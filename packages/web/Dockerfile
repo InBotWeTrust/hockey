@@ -1,0 +1,25 @@
+# syntax=docker/dockerfile:1.7
+
+# ---- Builder ----
+FROM node:20-alpine AS builder
+WORKDIR /repo
+
+RUN corepack enable && corepack prepare pnpm@9 --activate
+
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml tsconfig.base.json ./
+COPY packages/web/package.json ./packages/web/
+
+RUN pnpm install --frozen-lockfile --filter @hockey/web
+
+COPY packages/web ./packages/web
+
+RUN pnpm --filter @hockey/web build
+
+# ---- Runner ----
+FROM nginx:1.25-alpine AS runner
+COPY packages/web/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=builder /repo/packages/web/dist /usr/share/nginx/html
+
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+  CMD wget --quiet --tries=1 --spider http://localhost:8080/ || exit 1
