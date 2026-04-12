@@ -1,0 +1,27 @@
+{
+  "name": "ultimate-hockey",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r --filter './packages/*' build",
+    "test": "pnpm -r --filter './packages/*' test",
+    "typecheck": "pnpm -r --filter './packages/*' typecheck",
+    "lint": "eslint 'packages/*/src/**/*.{ts,tsx}'",
+    "format": "prettier --write 'packages/*/src/**/*.{ts,tsx,json,md}'",
+    "dev:server": "pnpm --filter @hockey/server dev",
+    "dev:web": "pnpm --filter @hockey/web dev"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.0",
+    "eslint": "^8.57.0",
+    "@typescript-eslint/eslint-plugin": "^7.5.0",
+    "@typescript-eslint/parser": "^7.5.0",
+    "prettier": "^3.2.5",
+    "typescript": "^5.4.3"
+  },
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  }
+}
