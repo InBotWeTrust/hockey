@@ -1,0 +1,22 @@
+name: ultimate-hockey
+
+services:
+  postgres:
+    ports:
+      - '${POSTGRES_PORT}:5432'
+
+  redis:
+    ports:
+      - '${REDIS_PORT}:6379'
+
+  server:
+    ports:
+      - '3000:3000'
+
+  web:
+    ports:
+      - '8080:8080'
+
+  caddy:
+    environment:
+      APP_DOMAIN: 'http://localhost'
