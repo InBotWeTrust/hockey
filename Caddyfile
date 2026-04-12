@@ -1,0 +1,20 @@
+{
+  email {$ADMIN_EMAIL}
+}
+
+{$APP_DOMAIN} {
+  encode gzip zstd
+
+  handle_path /api/* {
+    reverse_proxy server:3000
+  }
+
+  handle {
+    reverse_proxy web:8080
+  }
+
+  log {
+    output stdout
+    format console
+  }
+}
