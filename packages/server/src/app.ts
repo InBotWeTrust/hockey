@@ -1,4 +1,4 @@
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify from 'fastify';
 import { healthRoutes } from './routes/health.js';
 import { loadConfig, type AppConfig } from './config.js';
 
@@ -6,17 +6,17 @@ export interface BuildAppOptions {
   config?: AppConfig;
 }
 
-export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
+export async function buildApp(options: BuildAppOptions = {}) {
   const config = options.config ?? loadConfig();
-  const app = Fastify({
-    logger: {
-      level: config.LOG_LEVEL,
-      transport:
-        config.NODE_ENV === 'development'
-          ? { target: 'pino-pretty', options: { colorize: true } }
-          : undefined,
-    },
-  });
+  const loggerOptions =
+    config.NODE_ENV === 'development'
+      ? {
+          level: config.LOG_LEVEL,
+          transport: { target: 'pino-pretty', options: { colorize: true } },
+        }
+      : { level: config.LOG_LEVEL };
+
+  const app = Fastify({ logger: loggerOptions });
 
   await app.register(healthRoutes);
 
