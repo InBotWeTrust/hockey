@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
+import { DuelScreen } from '../screens/DuelScreen.js';
 
 function HomePlaceholder(): JSX.Element {
   return (
@@ -10,16 +11,12 @@ function HomePlaceholder(): JSX.Element {
   );
 }
 
-function DuelPlaceholder(): JSX.Element {
-  return <main style={{ padding: 24 }}>Duel placeholder</main>;
-}
-
 export function App(): JSX.Element {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<HomePlaceholder />} />
-        <Route path="/duel/:goalieId" element={<DuelPlaceholder />} />
+        <Route path="/duel/:goalieId" element={<DuelScreen />} />
       </Routes>
     </BrowserRouter>
   );
