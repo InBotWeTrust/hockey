@@ -1,4 +1,5 @@
 import type { GoalieConfig } from './types.js';
+import { GOALIE_SIZE } from './types.js';
 import type { Rng } from '../rng.js';
 import type { Vec2 } from '../rink.js';
 import { GOAL } from '../rink.js';
@@ -8,7 +9,9 @@ const goalY = GOAL.y + GOAL.height / 2;
 const halfOpening = (GOAL.width / 2) * 0.9; // leave post margin
 
 function clampX(x: number): number {
-  return Math.max(GOAL.x + 10, Math.min(GOAL.x + GOAL.width - 10, x));
+  // Keep the goalie AABB fully inside the goal frame, not just the center.
+  const half = GOALIE_SIZE.width / 2;
+  return Math.max(GOAL.x + half, Math.min(GOAL.x + GOAL.width - half, x));
 }
 
 /**

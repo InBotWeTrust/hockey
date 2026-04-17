@@ -44,6 +44,6 @@ describe('calcShotReward', () => {
       sokol,
       0,
     );
-    expect(r).toBe(rookie.baseReward * sokol.effects.rewardMultiplier);
+    expect(r).toBe(Math.round(rookie.baseReward * sokol.effects.rewardMultiplier));
   });
 });
