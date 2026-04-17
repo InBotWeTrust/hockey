@@ -29,14 +29,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build game-core
+        run: pnpm --filter @hockey/game-core build
+
       - name: Typecheck
         run: pnpm typecheck
 
       - name: Lint
         run: pnpm lint
-
-      - name: Build game-core
-        run: pnpm --filter @hockey/game-core build
 
       - name: Build server
         run: pnpm --filter @hockey/server build
