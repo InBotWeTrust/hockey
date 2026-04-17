@@ -76,6 +76,9 @@ importers:
 
   packages/web:
     dependencies:
+      '@hockey/game-core':
+        specifier: workspace:*
+        version: link:../game-core
       pixi.js:
         specifier: ^8.18.1
         version: 8.18.1
