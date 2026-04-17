@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
+import { GAME_CORE_VERSION } from '@hockey/game-core';
 import { buildApp } from '../src/app.js';
 import type { FastifyInstance } from 'fastify';
 
@@ -23,7 +24,7 @@ describe('GET /health', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
       ok: true,
-      gameCoreVersion: 1,
+      gameCoreVersion: GAME_CORE_VERSION,
     });
   });
 });
