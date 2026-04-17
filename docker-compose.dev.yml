@@ -10,10 +10,16 @@ services:
       - '${REDIS_PORT}:6379'
 
   server:
+    build:
+      context: .
+      dockerfile: packages/server/Dockerfile
     ports:
       - '3000:3000'
 
   web:
+    build:
+      context: .
+      dockerfile: packages/web/Dockerfile
     ports:
       - '8080:8080'
 
