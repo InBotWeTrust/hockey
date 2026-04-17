@@ -18,7 +18,11 @@
     "test:watch": "vitest"
   },
   "devDependencies": {
+    "@types/seedrandom": "^3.0.8",
     "typescript": "^5.4.3",
     "vitest": "^1.4.0"
+  },
+  "dependencies": {
+    "seedrandom": "^3.0.5"
   }
 }
