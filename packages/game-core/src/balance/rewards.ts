@@ -10,5 +10,8 @@ export function calcShotReward(
 ): number {
   if (result.type !== 'goal') return 0;
   const streakBonus = 1 + Math.min(currentStreak * 0.1, 1.0);
-  return goalie.baseReward * stick.effects.rewardMultiplier * streakBonus;
+  // Reward is a shared int contract between client and server: both must
+  // produce the same value bit-for-bit, and the UI shows it as "+N шайб".
+  // Math.round pins both — anything floating stays server-side.
+  return Math.round(goalie.baseReward * stick.effects.rewardMultiplier * streakBonus);
 }
