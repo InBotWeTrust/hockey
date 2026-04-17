@@ -15,8 +15,8 @@ RUN pnpm install --frozen-lockfile --filter @hockey/server... --filter @hockey/g
 COPY packages/game-core ./packages/game-core
 COPY packages/server ./packages/server
 
-RUN pnpm --filter @hockey/game-core build
-RUN pnpm --filter @hockey/server build
+RUN pnpm --filter @hockey/game-core exec tsc --build --force
+RUN pnpm --filter @hockey/server exec tsc --build --force
 
 # ---- Runner ----
 FROM node:20-alpine AS runner
