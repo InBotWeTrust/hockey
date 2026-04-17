@@ -1,1 +1,13 @@
 export { GAME_CORE_VERSION } from './version.js';
+export { createRng, type Rng } from './rng.js';
+export { RINK, GOAL, GOAL_OPENING, PUCK_START, type Vec2 } from './rink.js';
+export type { GoalieConfig, GoalieState, GoaliePatternId } from './goalie/types.js';
+export { GOALIE_SIZE } from './goalie/types.js';
+export { simulateGoalie } from './goalie/simulate.js';
+export type { ShotInput, ShotResult, StickEffects } from './shot/types.js';
+export { STICK_NEUTRAL } from './shot/types.js';
+export { computeTrajectory } from './shot/trajectory.js';
+export { resolveShot } from './shot/resolve.js';
+export { GOALIES, getGoalie } from './balance/goalies.js';
+export { STICKS, getStick, TRAINING_STICK_ID, type Stick, type StickRarity } from './balance/sticks.js';
+export { calcShotReward } from './balance/rewards.js';
