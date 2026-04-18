@@ -1,5 +1,5 @@
 import { Pool } from 'pg';
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 
 export function getTestUrls(): { databaseUrl: string; redisUrl: string } {
   const databaseUrl = process.env.TEST_DATABASE_URL;

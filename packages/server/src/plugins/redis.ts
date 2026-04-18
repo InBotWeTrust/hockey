@@ -1,6 +1,6 @@
 import fp from 'fastify-plugin';
 import type { FastifyPluginAsync } from 'fastify';
-import IORedis, { type Redis } from 'ioredis';
+import { Redis } from 'ioredis';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -13,7 +13,7 @@ export interface RedisPluginOptions {
 }
 
 const plugin: FastifyPluginAsync<RedisPluginOptions> = async (app, opts) => {
-  const client = new IORedis(opts.url, { lazyConnect: false, maxRetriesPerRequest: 1 });
+  const client = new Redis(opts.url, { lazyConnect: false, maxRetriesPerRequest: 1 });
   app.decorate('redis', client);
   app.addHook('onClose', async () => {
     await client.quit();
