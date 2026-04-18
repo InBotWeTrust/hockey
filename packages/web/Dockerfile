@@ -7,12 +7,15 @@ WORKDIR /repo
 RUN corepack enable && corepack prepare pnpm@9 --activate
 
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml tsconfig.base.json ./
+COPY packages/game-core/package.json ./packages/game-core/
 COPY packages/web/package.json ./packages/web/
 
-RUN pnpm install --frozen-lockfile --filter @hockey/web
+RUN pnpm install --frozen-lockfile --filter @hockey/web... --filter @hockey/game-core
 
+COPY packages/game-core ./packages/game-core
 COPY packages/web ./packages/web
 
+RUN pnpm --filter @hockey/game-core exec tsc --build --force
 RUN pnpm --filter @hockey/web build
 
 # ---- Runner ----
