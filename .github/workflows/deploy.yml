@@ -121,6 +121,7 @@ jobs:
           echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
           export IMAGE_TAG
           docker compose pull
+          docker compose run --rm server node packages/server/dist/db/migrate-cli.js
           docker compose up -d --remove-orphans
           docker image prune -f
           docker logout ghcr.io
