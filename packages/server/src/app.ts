@@ -6,6 +6,7 @@ import { redisPlugin } from './plugins/redis.js';
 import { errorsPlugin } from './plugins/errors.js';
 import { authPlugin } from './plugins/auth.js';
 import { authRoutes } from './routes/auth.js';
+import { meRoutes } from './routes/me.js';
 
 export interface BuildAppOptions {
   config?: AppConfig;
@@ -33,6 +34,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
     accessSecret: config.JWT_SECRET,
     refreshSecret: config.REFRESH_SECRET,
   });
+  await app.register(meRoutes);
 
   return app;
 }
