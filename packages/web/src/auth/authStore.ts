@@ -1,0 +1,45 @@
+import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+
+export interface AuthUser {
+  id: string;
+  displayName: string;
+}
+
+export interface AuthSession {
+  accessToken: string;
+  refreshToken: string;
+  user: AuthUser;
+}
+
+interface AuthState {
+  accessToken: string | null;
+  refreshToken: string | null;
+  user: AuthUser | null;
+  setSession: (s: AuthSession) => void;
+  clearSession: () => void;
+  isAuthenticated: () => boolean;
+}
+
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set, get) => ({
+      accessToken: null,
+      refreshToken: null,
+      user: null,
+      setSession: ({ accessToken, refreshToken, user }) =>
+        set({ accessToken, refreshToken, user }),
+      clearSession: () => set({ accessToken: null, refreshToken: null, user: null }),
+      isAuthenticated: () => Boolean(get().accessToken),
+    }),
+    {
+      name: 'hockey.auth',
+      storage: createJSONStorage(() => localStorage),
+      partialize: (s) => ({
+        accessToken: s.accessToken,
+        refreshToken: s.refreshToken,
+        user: s.user,
+      }),
+    },
+  ),
+);
