@@ -1,7 +1,7 @@
 import type { GoalieConfig, GoalieState } from './types.js';
 import { GOALIE_SIZE } from './types.js';
 import { createRng } from '../rng.js';
-import { linearPattern, sinePattern, dashPattern } from './patterns.js';
+import { linearPattern, sinePattern, dashPattern, feintPattern } from './patterns.js';
 
 export function simulateGoalie(
   cfg: GoalieConfig,
@@ -23,11 +23,7 @@ export function simulateGoalie(
       position = dashPattern(cfg, rng, t);
       break;
     case 'feint':
-      // TODO(plan-3): implement feintPattern. For Plan 2 the three feint
-      // bosses (trickster/iceking/legend) fall back to sine so the ladder
-      // stays fully playable. Determinism is preserved — same seed gives
-      // the same sine position; Plan 3 will bump GAME_CORE_VERSION.
-      position = sinePattern(cfg, rng, t);
+      position = feintPattern(cfg, rng, t);
       break;
   }
   return { position, width: GOALIE_SIZE.width, height: GOALIE_SIZE.height };

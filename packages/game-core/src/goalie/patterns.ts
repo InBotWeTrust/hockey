@@ -46,3 +46,33 @@ export function dashPattern(cfg: GoalieConfig, rng: Rng, t: number): Vec2 {
   const offset = (pick * 2 - 1) * cfg.amplitude; // -amplitude..amplitude
   return { x: clampX(goalCenterX + halfOpening * offset), y: goalY };
 }
+
+const FEINT_FAKE_SCALE = 0.6;
+
+/**
+ * Feint — ложное движение: вратарь «показывает» рывок в одну сторону, резко
+ * возвращается к центру и уходит в противоположную. За один период совершает:
+ *   0..0.3p — fake до FEINT_FAKE_SCALE·amplitude в направлении `dir`;
+ *   0.3..0.4p — резкий возврат к центру;
+ *   0.4..1.0p — коммит в -dir до полной amplitude.
+ * Направление выбирается rng per-period (как в dashPattern).
+ */
+export function feintPattern(cfg: GoalieConfig, rng: Rng, t: number): Vec2 {
+  const period = 1000 / Math.max(cfg.frequency, 0.1);
+  const step = Math.floor(t / period);
+  let pick = 0;
+  for (let i = 0; i <= step; i++) pick = rng.next();
+  const dir = pick < 0.5 ? -1 : 1;
+
+  const phase = (t % period) / period; // 0..1
+  let raw: number;
+  if (phase < 0.3) {
+    raw = (phase / 0.3) * FEINT_FAKE_SCALE;
+  } else if (phase < 0.4) {
+    raw = FEINT_FAKE_SCALE - ((phase - 0.3) / 0.1) * FEINT_FAKE_SCALE;
+  } else {
+    raw = -((phase - 0.4) / 0.6);
+  }
+  const offset = dir * raw * cfg.amplitude;
+  return { x: clampX(goalCenterX + halfOpening * offset), y: goalY };
+}
