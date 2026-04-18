@@ -94,6 +94,9 @@ importers:
       '@hockey/game-core':
         specifier: workspace:*
         version: link:../game-core
+      '@tanstack/react-query':
+        specifier: ^5.99.0
+        version: 5.99.0(react@18.3.1)
       pixi.js:
         specifier: ^8.18.1
         version: 8.18.1
@@ -773,6 +776,14 @@ packages:
 
   '@sinclair/typebox@0.27.10':
     resolution: {integrity: sha512-MTBk/3jGLNB2tVxv6uLlFh1iu64iYOQ2PbdOSK3NW8JZsmlaOh2q6sdtKowBhfw8QFLmYNzTW4/oK4uATIi6ZA==}
+
+  '@tanstack/query-core@5.99.0':
+    resolution: {integrity: sha512-3Jv3WQG0BCcH7G+7lf/bP8QyBfJOXeY+T08Rin3GZ1bshvwlbPt7NrDHMEzGdKIOmOzvIQmxjk28YEQX60k7pQ==}
+
+  '@tanstack/react-query@5.99.0':
+    resolution: {integrity: sha512-OY2bCqPemT1LlqJ8Y2CUau4KELnIhhG9Ol3ZndPbdnB095pRbPo1cHuXTndg8iIwtoHTgwZjyaDnQ0xD0mYwAw==}
+    peerDependencies:
+      react: ^18 || ^19
 
   '@testing-library/dom@9.3.4':
     resolution: {integrity: sha512-FlS4ZWlp97iiNWig0Muq8p+3rVDjRiYE+YKGbAqXOu9nwJFFOdL00kFpz42M+4huzYi86vAK1sOOfyOG45muIQ==}
@@ -2975,6 +2986,13 @@ snapshots:
     optional: true
 
   '@sinclair/typebox@0.27.10': {}
+
+  '@tanstack/query-core@5.99.0': {}
+
+  '@tanstack/react-query@5.99.0(react@18.3.1)':
+    dependencies:
+      '@tanstack/query-core': 5.99.0
+      react: 18.3.1
 
   '@testing-library/dom@9.3.4':
     dependencies:

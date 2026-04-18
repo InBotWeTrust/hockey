@@ -76,6 +76,13 @@ curl -X POST http://localhost:3000/auth/refresh \
 `POST /auth/logout` отзывает refresh-токен; access остаётся валидным до `exp` (15 минут).
 Полный отзыв access JWT (blocklist / rotation access secret) — отдельный план hardening.
 
+### Web (Telegram login)
+
+1. В `.env` пропиши `VITE_TELEGRAM_BOT_USERNAME=<username без @>` — это имя бота, не токен.
+2. В BotFather для бота настрой domain, под которым открывается фронт (для dev это может быть туннель/реальный домен — Telegram не принимает `localhost`).
+3. `pnpm dev:server` + `pnpm dev:web` → открой `http://<domain>:5173/login`, нажми виджет Telegram.
+4. После успешного логина access+refresh JWT сохраняются в `localStorage['hockey.auth']`; `apiFetch` сам подставляет `Authorization: Bearer` и при 401 делает одноразовый refresh-retry. Кнопка «Выйти» в шапке дёргает `/auth/logout` и чистит стор.
+
 ## Полный стек через Docker (опционально)
 
 ```bash

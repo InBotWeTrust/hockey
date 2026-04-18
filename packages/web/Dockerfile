@@ -16,6 +16,9 @@ COPY packages/game-core ./packages/game-core
 COPY packages/web ./packages/web
 
 RUN pnpm --filter @hockey/game-core exec tsc --build --force
+
+ARG VITE_TELEGRAM_BOT_USERNAME=""
+ENV VITE_TELEGRAM_BOT_USERNAME=$VITE_TELEGRAM_BOT_USERNAME
 RUN pnpm --filter @hockey/web build
 
 # ---- Runner ----

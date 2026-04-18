@@ -58,10 +58,14 @@ jobs:
 
       - name: Build and push web image
         uses: docker/build-push-action@v5
+        env:
+          BOT_USERNAME: ${{ vars.VITE_TELEGRAM_BOT_USERNAME }}
         with:
           context: .
           file: packages/web/Dockerfile
           push: true
+          build-args: |
+            VITE_TELEGRAM_BOT_USERNAME=${{ env.BOT_USERNAME }}
           tags: |
             ${{ env.WEB_IMAGE }}:latest
             ${{ env.WEB_IMAGE }}:${{ steps.meta.outputs.tag }}
