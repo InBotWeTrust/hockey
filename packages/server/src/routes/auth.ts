@@ -1,0 +1,75 @@
+import type { FastifyPluginAsync } from 'fastify';
+import { z } from 'zod';
+import { verifyTelegramLoginPayload } from '../auth/telegram.js';
+import { createJwt } from '../auth/jwt.js';
+import { findOrCreateTelegramUser } from '../auth/users.js';
+import { saveRefresh } from '../auth/session.js';
+import { AppError } from '../plugins/errors.js';
+
+export interface AuthRoutesOptions {
+  telegramBotToken: string;
+  accessSecret: string;
+  refreshSecret: string;
+}
+
+const tgBodySchema = z
+  .object({
+    id: z.union([z.string(), z.number()]),
+    first_name: z.string(),
+    last_name: z.string().optional(),
+    username: z.string().optional(),
+    photo_url: z.string().optional(),
+    auth_date: z.union([z.string(), z.number()]),
+    hash: z.string(),
+  })
+  .passthrough();
+
+export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (app, opts) => {
+  const jwt = createJwt({
+    accessSecret: opts.accessSecret,
+    refreshSecret: opts.refreshSecret,
+  });
+
+  app.post('/auth/telegram', async (req, reply) => {
+    const parsed = tgBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new AppError('bad_request', 'invalid telegram payload', 400);
+    }
+    let tgUser;
+    try {
+      tgUser = verifyTelegramLoginPayload(
+        parsed.data as Record<string, unknown>,
+        opts.telegramBotToken,
+      );
+    } catch (err) {
+      req.log.warn({ err }, 'telegram auth failed');
+      throw new AppError('unauthenticated', 'telegram hash invalid', 401);
+    }
+
+    const displayName =
+      [tgUser.firstName, tgUser.lastName].filter(Boolean).join(' ') ||
+      tgUser.username ||
+      'player';
+    const user = await findOrCreateTelegramUser(app.pg, {
+      providerUid: String(tgUser.id),
+      displayName,
+      ...(tgUser.photoUrl !== undefined ? { avatarUrl: tgUser.photoUrl } : {}),
+    });
+
+    const [accessToken, refresh] = await Promise.all([
+      jwt.issueAccessToken({ sub: user.id }),
+      jwt.issueRefreshToken({ sub: user.id }),
+    ]);
+    await saveRefresh(app.redis, {
+      jti: refresh.jti,
+      userId: user.id,
+      ttlSec: refresh.expSec,
+    });
+
+    reply.send({
+      accessToken,
+      refreshToken: refresh.token,
+      user: { id: user.id, displayName: user.displayName },
+    });
+  });
+};
