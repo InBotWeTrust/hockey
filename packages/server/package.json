@@ -17,6 +17,7 @@
     "fastify": "^4.26.0",
     "fastify-plugin": "^4.5.1",
     "ioredis": "^5.4.1",
+    "jose": "^5.2.0",
     "pg": "^8.11.5",
     "pino": "^8.19.0",
     "pino-pretty": "^11.0.0",

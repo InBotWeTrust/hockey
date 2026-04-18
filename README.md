@@ -47,6 +47,35 @@ pnpm dev:server
 vitest через `packages/server/test/setup.ts`. Сбросить тестовую БД и Redis
 помогут хелперы из `packages/server/test/helpers/testDb.ts`.
 
+## Auth (Telegram)
+
+Логин через Telegram Login Widget → POST `/auth/telegram`:
+```bash
+curl -X POST http://localhost:3000/auth/telegram \
+  -H 'Content-Type: application/json' \
+  -d '{ "id": 100500, "first_name": "Egor", "auth_date": 1713440000, "hash": "<hmac-sha256>" }'
+```
+
+Ответ:
+```json
+{ "accessToken": "<jwt>", "refreshToken": "<jwt>", "user": { "id": "<uuid>", "displayName": "Egor" } }
+```
+
+Использование access-токена:
+```bash
+curl http://localhost:3000/me -H "Authorization: Bearer $ACCESS"
+```
+
+Ротация refresh (одноразово, атомарный GETDEL в Redis):
+```bash
+curl -X POST http://localhost:3000/auth/refresh \
+  -H 'Content-Type: application/json' \
+  -d '{ "refreshToken": "<jwt>" }'
+```
+
+`POST /auth/logout` отзывает refresh-токен; access остаётся валидным до `exp` (15 минут).
+Полный отзыв access JWT (blocklist / rotation access secret) — отдельный план hardening.
+
 ## Полный стек через Docker (опционально)
 
 ```bash
