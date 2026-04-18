@@ -153,4 +153,38 @@ describe.skipIf(!hasIntegrationEnv)('POST /auth/telegram', () => {
       expect(res.statusCode).toBe(401);
     });
   });
+
+  describe('POST /auth/logout', () => {
+    it('revokes the provided refresh token', async () => {
+      const login = await app.inject({
+        method: 'POST',
+        url: '/auth/telegram',
+        payload: freshTgPayload(),
+      });
+      const tokens = login.json() as { refreshToken: string };
+
+      const logout = await app.inject({
+        method: 'POST',
+        url: '/auth/logout',
+        payload: { refreshToken: tokens.refreshToken },
+      });
+      expect(logout.statusCode).toBe(204);
+
+      const reuse = await app.inject({
+        method: 'POST',
+        url: '/auth/refresh',
+        payload: { refreshToken: tokens.refreshToken },
+      });
+      expect(reuse.statusCode).toBe(401);
+    });
+
+    it('returns 204 even for unknown refresh (no user enumeration)', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/auth/logout',
+        payload: { refreshToken: 'garbage.jwt.here' },
+      });
+      expect(res.statusCode).toBe(204);
+    });
+  });
 });

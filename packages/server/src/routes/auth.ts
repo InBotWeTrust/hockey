@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { verifyTelegramLoginPayload } from '../auth/telegram.js';
 import { createJwt, verifyRefreshToken } from '../auth/jwt.js';
 import { findOrCreateTelegramUser } from '../auth/users.js';
-import { saveRefresh, consumeRefresh } from '../auth/session.js';
+import { saveRefresh, consumeRefresh, revokeRefresh } from '../auth/session.js';
 import { AppError } from '../plugins/errors.js';
 
 export interface AuthRoutesOptions {
@@ -102,5 +102,18 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (app, opt
     });
 
     reply.send({ accessToken, refreshToken: refresh.token });
+  });
+
+  app.post('/auth/logout', async (req, reply) => {
+    const body = z.object({ refreshToken: z.string().optional() }).safeParse(req.body);
+    if (body.success && body.data.refreshToken) {
+      try {
+        const payload = await verifyRefreshToken(body.data.refreshToken, opts.refreshSecret);
+        await revokeRefresh(app.redis, payload.jti);
+      } catch {
+        // Не информируем о валидности чужого токена
+      }
+    }
+    reply.status(204).send();
   });
 };
