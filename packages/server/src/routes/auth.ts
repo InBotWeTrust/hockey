@@ -1,9 +1,9 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { verifyTelegramLoginPayload } from '../auth/telegram.js';
-import { createJwt } from '../auth/jwt.js';
+import { createJwt, verifyRefreshToken } from '../auth/jwt.js';
 import { findOrCreateTelegramUser } from '../auth/users.js';
-import { saveRefresh } from '../auth/session.js';
+import { saveRefresh, consumeRefresh } from '../auth/session.js';
 import { AppError } from '../plugins/errors.js';
 
 export interface AuthRoutesOptions {
@@ -71,5 +71,36 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (app, opt
       refreshToken: refresh.token,
       user: { id: user.id, displayName: user.displayName },
     });
+  });
+
+  app.post('/auth/refresh', async (req, reply) => {
+    const body = z.object({ refreshToken: z.string().min(10) }).safeParse(req.body);
+    if (!body.success) {
+      throw new AppError('bad_request', 'refreshToken required', 400);
+    }
+
+    let payload;
+    try {
+      payload = await verifyRefreshToken(body.data.refreshToken, opts.refreshSecret);
+    } catch {
+      throw new AppError('unauthenticated', 'invalid refresh token', 401);
+    }
+
+    const consumed = await consumeRefresh(app.redis, payload.jti);
+    if (!consumed || consumed.userId !== payload.sub) {
+      throw new AppError('unauthenticated', 'refresh token not recognized', 401);
+    }
+
+    const [accessToken, refresh] = await Promise.all([
+      jwt.issueAccessToken({ sub: payload.sub }),
+      jwt.issueRefreshToken({ sub: payload.sub }),
+    ]);
+    await saveRefresh(app.redis, {
+      jti: refresh.jti,
+      userId: payload.sub,
+      ttlSec: refresh.expSec,
+    });
+
+    reply.send({ accessToken, refreshToken: refresh.token });
   });
 };

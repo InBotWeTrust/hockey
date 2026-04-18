@@ -114,4 +114,43 @@ describe.skipIf(!hasIntegrationEnv)('POST /auth/telegram', () => {
     });
     expect(res.statusCode).toBe(400);
   });
+
+  describe('POST /auth/refresh', () => {
+    async function login() {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/auth/telegram',
+        payload: freshTgPayload(),
+      });
+      return res.json() as { accessToken: string; refreshToken: string };
+    }
+
+    it('rotates refresh and issues a new pair', async () => {
+      const first = await login();
+      const res = await app.inject({
+        method: 'POST',
+        url: '/auth/refresh',
+        payload: { refreshToken: first.refreshToken },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as { accessToken: string; refreshToken: string };
+      expect(body.refreshToken).not.toBe(first.refreshToken);
+
+      const reuse = await app.inject({
+        method: 'POST',
+        url: '/auth/refresh',
+        payload: { refreshToken: first.refreshToken },
+      });
+      expect(reuse.statusCode).toBe(401);
+    });
+
+    it('rejects tampered refresh as 401', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/auth/refresh',
+        payload: { refreshToken: 'not.a.valid.jwt' },
+      });
+      expect(res.statusCode).toBe(401);
+    });
+  });
 });
