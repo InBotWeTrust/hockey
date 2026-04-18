@@ -11,6 +11,34 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: hockey
+          POSTGRES_PASSWORD: hockey_dev_password
+          POSTGRES_DB: hockey_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      TEST_DATABASE_URL: postgres://hockey:hockey_dev_password@localhost:5432/hockey_test
+      TEST_REDIS_URL: redis://localhost:6379/15
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
