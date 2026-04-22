@@ -75,7 +75,7 @@ export function DuelScreen(): JSX.Element {
 
   useEffect(() => {
     if (isFirstShot.current) { isFirstShot.current = false; return; }
-    if (!state.lastResult || state.isCleared) return;
+    if (!state.lastResult) return;
     setIsShowingResult(true);
     const t = setTimeout(() => setIsShowingResult(false), 850);
     return () => clearTimeout(t);
@@ -304,7 +304,7 @@ export function DuelScreen(): JSX.Element {
       </div>
 
       {/* Result flash */}
-      {isShowingResult && state.lastResult && !state.isCleared && (
+      {isShowingResult && state.lastResult && (
         <>
           <style>{`
             @keyframes result-pop {
