@@ -1,95 +1,48 @@
-import type { ShotInput, ShotResult, StickEffects } from './types.js';
-import type { GoalieState } from '../goalie/types.js';
-import type { Vec2 } from '../rink.js';
-import { GOAL, GOAL_OPENING } from '../rink.js';
-import { computeTrajectory } from './trajectory.js';
-
-const MIN_POWER = 0.1;
-
-interface Aabb {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-function segmentHitsAabb(start: Vec2, end: Vec2, box: Aabb): Vec2 | null {
-  // Liang–Barsky clipping of segment [start, end] against AABB.
-  const dx = end.x - start.x;
-  const dy = end.y - start.y;
-  let tMin = 0;
-  let tMax = 1;
-  const p = [-dx, dx, -dy, dy];
-  const q = [
-    start.x - box.x,
-    box.x + box.width - start.x,
-    start.y - box.y,
-    box.y + box.height - start.y,
-  ];
-  for (let i = 0; i < 4; i++) {
-    const pi = p[i]!;
-    const qi = q[i]!;
-    if (pi === 0) {
-      if (qi < 0) return null;
-    } else {
-      const t = qi / pi;
-      if (pi < 0) {
-        if (t > tMax) return null;
-        if (t > tMin) tMin = t;
-      } else {
-        if (t < tMin) return null;
-        if (t < tMax) tMax = t;
-      }
-    }
-  }
-  return { x: start.x + dx * tMin, y: start.y + dy * tMin };
-}
+import type { GoalieConfig } from '../goalie/types.js';
+import { GOALIE_Y } from '../goalie/types.js';
+import { PUCK_START, GOAL_OPENING } from '../rink.js';
+import { simulateGoal } from '../goal/simulate.js';
+import { simulateGoalie } from '../goalie/simulate.js';
+import { simulateShooter } from '../shooter/simulate.js';
+import { PUCK_SPEED_PER_MS, type ShotInput, type ShotResult, type StickEffects } from './types.js';
 
 export function resolveShot(
   input: ShotInput,
-  goalie: GoalieState,
+  cfg: GoalieConfig,
+  seed: string,
+  shotIndex: number,
   stick: StickEffects,
 ): ShotResult {
-  if (input.power < MIN_POWER) return { type: 'miss', reason: 'short' };
+  const shooterX = simulateShooter(input.tapTime).x;
 
-  const tr = computeTrajectory(input);
-
-  const shrink = 1 / Math.max(stick.shotZoneMultiplier, 1);
-  const effWidth = goalie.width * shrink;
-  const goalieBox: Aabb = {
-    x: goalie.position.x - effWidth / 2,
-    y: goalie.position.y - goalie.height / 2,
-    width: effWidth,
-    height: goalie.height,
-  };
-  const savePoint = segmentHitsAabb(tr.start, tr.end, goalieBox);
-  if (savePoint) return { type: 'save', goalieContact: savePoint };
-
-  if (
-    segmentHitsAabb(tr.start, tr.end, GOAL.leftPost) ||
-    segmentHitsAabb(tr.start, tr.end, GOAL.rightPost)
-  ) {
+  const tGoalCross =
+    input.tapTime + (PUCK_START.y - GOAL_OPENING.y) / PUCK_SPEED_PER_MS;
+  const goalOffsetAtGoal = simulateGoal(cfg, tGoalCross).offsetX;
+  const openingXMin = GOAL_OPENING.xMin + goalOffsetAtGoal;
+  const openingXMax = GOAL_OPENING.xMax + goalOffsetAtGoal;
+  if (shooterX < openingXMin || shooterX > openingXMax) {
     return { type: 'miss', reason: 'wide' };
   }
 
-  // Where would the trajectory (extended to infinity) cross the goal line?
-  const dy = tr.end.y - tr.start.y;
-  if (dy >= 0) {
-    // Direction not pointing toward goal — puck never crosses y=60.
-    return { type: 'miss', reason: 'short' };
+  const tGoalieCross =
+    input.tapTime + (PUCK_START.y - GOALIE_Y) / PUCK_SPEED_PER_MS;
+  const goalieState = simulateGoalie(cfg, seed, shotIndex, tGoalieCross);
+
+  const shrink = 1 / Math.max(stick.shotZoneMultiplier, 1);
+  const effWidth = goalieState.width * shrink;
+  // Goalie moves independently of the goal — no goalOffset added here.
+  const goalieXMin = goalieState.position.x - effWidth / 2;
+  const goalieXMax = goalieXMin + effWidth;
+
+  if (shooterX >= goalieXMin && shooterX <= goalieXMax) {
+    return {
+      type: 'save',
+      goalieContact: { x: shooterX, y: GOALIE_Y },
+    };
   }
-  const tGoalLine = (GOAL_OPENING.y - tr.start.y) / dy;
-  const xAtGoal = tr.start.x + (tr.end.x - tr.start.x) * tGoalLine;
-  const inOpening = xAtGoal >= GOAL_OPENING.xMin && xAtGoal <= GOAL_OPENING.xMax;
 
-  if (tr.end.y > GOAL_OPENING.y) {
-    // Trajectory fell short of the goal line. Direction still tells us why.
-    return inOpening
-      ? { type: 'miss', reason: 'short' }
-      : { type: 'miss', reason: 'wide' };
-  }
-
-  if (!inOpening) return { type: 'miss', reason: 'wide' };
-
-  return { type: 'goal', hitPoint: { x: xAtGoal, y: GOAL_OPENING.y } };
+  return {
+    type: 'goal',
+    hitPoint: { x: shooterX, y: GOAL_OPENING.y },
+  };
 }

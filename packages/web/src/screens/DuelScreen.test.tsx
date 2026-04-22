@@ -9,7 +9,7 @@ vi.mock('../game/PixiStage.js', () => ({
 import { DuelScreen } from './DuelScreen.js';
 
 describe('DuelScreen', () => {
-  it('renders the goalie name in the header for a valid id', () => {
+  it('renders the rink and shot button for a valid goalie id', () => {
     render(
       <MemoryRouter initialEntries={['/duel/rookie']}>
         <Routes>
@@ -17,11 +17,11 @@ describe('DuelScreen', () => {
         </Routes>
       </MemoryRouter>,
     );
-    expect(screen.getByText('Новичок')).toBeInTheDocument();
     expect(screen.getByTestId('pixi-stage-mock')).toBeInTheDocument();
+    expect(screen.getByText(/бросок/i)).toBeInTheDocument();
   });
 
-  it('shows an error for an unknown goalie id', () => {
+  it('falls back to rookie for an unknown goalie id', () => {
     render(
       <MemoryRouter initialEntries={['/duel/no-such-boss']}>
         <Routes>
@@ -29,6 +29,20 @@ describe('DuelScreen', () => {
         </Routes>
       </MemoryRouter>,
     );
-    expect(screen.getByText(/неизвестный босс/i)).toBeInTheDocument();
+    expect(screen.getByTestId('pixi-stage-mock')).toBeInTheDocument();
+    expect(screen.getByText(/бросок/i)).toBeInTheDocument();
+  });
+
+  it('renders speed controls', () => {
+    render(
+      <MemoryRouter initialEntries={['/duel/rookie']}>
+        <Routes>
+          <Route path="/duel/:goalieId" element={<DuelScreen />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByText(/ворота/i)).toBeInTheDocument();
+    expect(screen.getByText(/вратарь/i)).toBeInTheDocument();
+    expect(screen.getByText(/хоккеист/i)).toBeInTheDocument();
   });
 });

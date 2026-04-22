@@ -1,28 +1,43 @@
 import { describe, it, expect } from 'vitest';
 import { linearPattern, sinePattern, dashPattern } from '../../src/goalie/patterns.js';
 import { createRng } from '../../src/rng.js';
-import { GOAL } from '../../src/rink.js';
+import { GOAL, RINK } from '../../src/rink.js';
+import { GOALIE_SIZE } from '../../src/goalie/types.js';
 
-const cfg = {
+import type { GoalieConfig } from '../../src/goalie/types.js';
+
+const cfg: GoalieConfig = {
   id: 'test',
   name: 'Test',
-  pattern: 'linear' as const,
+  pattern: 'linear',
   hp: 5,
   baseReward: 1,
   firstClearBonus: 10,
   speed: 200,
   amplitude: 0.8,
   frequency: 1,
+  goalAmplitude: 0,
+  goalFrequency: 0,
 };
 
 describe('goalie patterns', () => {
-  it('linear: position stays within goal opening', () => {
+  it('linear: position stays within rink (board-to-board pattern)', () => {
     const rng = createRng('s');
+    const halfGoalie = GOALIE_SIZE.width / 2;
     for (let t = 0; t < 10000; t += 50) {
       const p = linearPattern(cfg, rng, t);
-      expect(p.x).toBeGreaterThanOrEqual(GOAL.x);
-      expect(p.x).toBeLessThanOrEqual(GOAL.x + GOAL.width);
+      expect(p.x).toBeGreaterThanOrEqual(halfGoalie);
+      expect(p.x).toBeLessThanOrEqual(RINK.width - halfGoalie);
     }
+  });
+
+  it('linear: oscillates around rink center', () => {
+    const rng = createRng('s');
+    const samples = Array.from({ length: 400 }, (_, i) =>
+      linearPattern({ ...cfg, amplitude: 1.0 }, rng, i * 25).x,
+    );
+    const mean = samples.reduce((a, b) => a + b, 0) / samples.length;
+    expect(mean).toBeCloseTo(RINK.width / 2, 0);
   });
 
   it('linear: deterministic for same seed', () => {

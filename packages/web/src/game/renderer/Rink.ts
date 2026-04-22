@@ -1,34 +1,31 @@
-import { Container, Graphics } from 'pixi.js';
+import { Container, Sprite } from 'pixi.js';
 import { RINK } from '@hockey/game-core';
 import type { Scale } from '../coords.js';
 
 export class Rink {
   readonly container = new Container();
-  private readonly bg = new Graphics();
-  private readonly centerLine = new Graphics();
+  private readonly bg = Sprite.from('/sprites/court.webp');
 
   constructor() {
     this.container.addChild(this.bg);
-    this.container.addChild(this.centerLine);
   }
 
+  // court.webp natural aspect ratio (679/1280 ≈ 0.530); cover by height to avoid distortion
+  private static readonly COURT_ASPECT = 679 / 1280;
+
   update(scale: Scale): void {
-    const w = RINK.width * scale.factor;
-    const h = RINK.height * scale.factor;
-
-    this.bg.clear();
-    this.bg
-      .roundRect(0, 0, w, h, 24 * scale.factor)
-      .fill(0xe6f1ff)
-      .stroke({ color: 0x6aa7ff, width: 2 * scale.factor });
-
-    this.centerLine.clear();
-    this.centerLine
-      .moveTo(0, h / 2)
-      .lineTo(w, h / 2)
-      .stroke({ color: 0xff5a5a, width: 2 * scale.factor });
-
-    this.container.position.set(scale.offsetX, scale.offsetY);
+    const s = scale.factor;
+    try {
+      const rinkW = RINK.width  * s;
+      const rinkH = RINK.height * s;
+      const coverW = rinkH * Rink.COURT_ASPECT;
+      this.bg.width  = coverW;
+      this.bg.height = rinkH;
+      this.bg.x = -(coverW - rinkW) / 2;
+      this.container.position.set(scale.offsetX, scale.offsetY);
+    } catch {
+      // destroyed or texture not yet resolved (HMR edge case)
+    }
   }
 
   destroy(): void {

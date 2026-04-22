@@ -1,35 +1,34 @@
-import { Container, Graphics } from 'pixi.js';
-import { GOAL } from '@hockey/game-core';
+import { Container, Sprite } from 'pixi.js';
+import { GOAL, RINK } from '@hockey/game-core';
 import type { Scale } from '../coords.js';
+
+// gate.webp: 640×344, aspect 1.86:1 — use GOAL.width for display width
+const GATE_W = 78;
+const GATE_H = 42; // 78 / 1.86
+const HALF = GATE_W / 2;
+const INNER_MARGIN = 6;
 
 export class Goal {
   readonly container = new Container();
-  private readonly net = new Graphics();
-  private readonly posts = new Graphics();
+  private readonly sprite: Sprite;
 
   constructor() {
-    this.container.addChild(this.net);
-    this.container.addChild(this.posts);
+    this.sprite = Sprite.from('/sprites/gate.webp');
+    this.sprite.anchor.set(0.5, 0.5);
+    this.container.addChild(this.sprite);
   }
 
-  update(scale: Scale): void {
-    const toX = (x: number): number => x * scale.factor;
-    const toY = (y: number): number => y * scale.factor;
-
-    this.net.clear();
-    this.net
-      .rect(toX(GOAL.x), toY(GOAL.y), toX(GOAL.width), toY(GOAL.height))
-      .fill({ color: 0xffffff, alpha: 0.55 })
-      .stroke({ color: 0x0b2e5c, width: 2 * scale.factor });
-
-    this.posts.clear();
-    for (const post of [GOAL.leftPost, GOAL.rightPost]) {
-      this.posts
-        .rect(toX(post.x), toY(post.y), toX(post.width), toY(post.height))
-        .fill(0xff0000);
-    }
-
-    this.container.position.set(scale.offsetX, scale.offsetY);
+  update(scale: Scale, offsetRinkX = 0): void {
+    const s = scale.factor;
+    this.sprite.width  = GATE_W * s;
+    this.sprite.height = GATE_H * s;
+    const rawX = GOAL.x + GOAL.width / 2 + offsetRinkX;
+    const clampedX = Math.max(HALF + INNER_MARGIN, Math.min(RINK.width - HALF - INNER_MARGIN, rawX));
+    this.sprite.position.set(
+      Math.round(clampedX * s),
+      Math.round((GOAL.y + GOAL.height) * s),
+    );
+    this.container.position.set(Math.round(scale.offsetX), Math.round(scale.offsetY));
   }
 
   destroy(): void {

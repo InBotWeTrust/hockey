@@ -41,6 +41,6 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     const { rows } = await pool.query<{ name: string }>(
       'select name from _migrations order by name',
     );
-    expect(rows.map((r) => r.name)).toEqual(['001_init.sql']);
+    expect(rows.map((r) => r.name)).toEqual(['001_init.sql', '002_grip.sql']);
   });
 });

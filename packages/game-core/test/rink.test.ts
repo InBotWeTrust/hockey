@@ -7,8 +7,9 @@ describe('rink geometry', () => {
     expect(RINK.height).toBeGreaterThan(0);
   });
 
-  it('goal is centered horizontally at the top', () => {
-    expect(GOAL.y).toBe(0);
+  it('goal is centered horizontally near the top', () => {
+    expect(GOAL.y).toBeGreaterThanOrEqual(0);
+    expect(GOAL.y).toBeLessThan(50);
     const mid = GOAL.x + GOAL.width / 2;
     expect(mid).toBeCloseTo(RINK.width / 2);
   });

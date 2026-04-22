@@ -31,3 +31,18 @@ postgres-data
 redis-data
 caddy-data
 caddy-config
+
+# claude / superpowers / playwright local caches
+.claude/
+.playwright-mcp/
+.superpowers/
+
+# ad-hoc screenshots & screen recordings dropped at repo root
+/*.png
+/*.mov
+
+# sprite source drops at repo root (canonical copies live in packages/web/public/sprites/)
+/*.webp
+
+# loose notes at repo root (keep curated docs under docs/)
+/ovi universe.md
