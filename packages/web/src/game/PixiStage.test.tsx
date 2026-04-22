@@ -15,7 +15,8 @@ vi.mock('pixi.js', () => {
     async init(): Promise<void> {}
     destroy(): void {}
   }
-  return { Application: FakeApp };
+  const Assets = { load: async (): Promise<void> => {} };
+  return { Application: FakeApp, Assets };
 });
 
 import { PixiStage } from './PixiStage.js';

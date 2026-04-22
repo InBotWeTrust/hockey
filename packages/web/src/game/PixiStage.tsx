@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react';
-import { Application } from 'pixi.js';
+import { Application, Assets } from 'pixi.js';
 import { computeScale, type Scale } from './coords.js';
+
+const SPRITE_ASSETS = ['/sprites/gate.png', '/sprites/goalkeeper.png', '/sprites/player.png'];
 
 export interface PixiStageProps {
   onReady: (app: Application, scale: Scale) => void;
@@ -29,6 +31,7 @@ export function PixiStage({ onReady, onResize }: PixiStageProps): JSX.Element {
         resizeTo: host,
         antialias: true,
       });
+      await Assets.load(SPRITE_ASSETS);
       if (disposed) {
         try {
           app.destroy(true, { children: true });
