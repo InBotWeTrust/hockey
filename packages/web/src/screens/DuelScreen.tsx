@@ -169,7 +169,11 @@ export function DuelScreen(): JSX.Element {
     const offsets = getSessionPhaseOffsets(st.seed);
     const sx = computeShooterX(tapTime + offsets.shooter, overrides.shooterFreq);
     const result: ShotResult = resolveShot(
-      { tapTime, puckSpeedPerMs: overrides.puckSpeed },
+      {
+        tapTime,
+        puckSpeedPerMs: overrides.puckSpeed,
+        shooterFrequency: overrides.shooterFreq,
+      },
       activeCfg,
       st.seed,
       st.shotIndex,

@@ -16,24 +16,21 @@ export function resolveShot(
   phaseOffsets?: SessionPhaseOffsets,
 ): ShotResult {
   const speed = input.puckSpeedPerMs ?? PUCK_SPEED_PER_MS;
-  const shooterX = simulateShooter(input.tapTime + (phaseOffsets?.shooter ?? 0)).x;
+  const shooterX = simulateShooter(
+    input.tapTime + (phaseOffsets?.shooter ?? 0),
+    input.shooterFrequency,
+  ).x;
 
-  const tGoalCross =
-    input.tapTime + (PUCK_START.y - GOAL_OPENING.y) / speed;
-  const goalOffsetAtGoal = simulateGoal(cfg, tGoalCross, phaseOffsets?.goal ?? 0).offsetX;
-  const openingXMin = GOAL_OPENING.xMin + goalOffsetAtGoal;
-  const openingXMax = GOAL_OPENING.xMax + goalOffsetAtGoal;
-  if (shooterX < openingXMin || shooterX > openingXMax) {
-    return { type: 'miss', reason: 'wide' };
-  }
-
+  // Puck travels bottom-up, so it meets the goalie before the goal line.
+  // Hitting the goalie is always a save — even if the puck's X would have
+  // missed the net entirely. Only after the goalie is cleared do we decide
+  // goal vs wide-miss.
   const tGoalieCross =
     input.tapTime + (PUCK_START.y - GOALIE_Y) / speed;
   const goalieState = simulateGoalie(cfg, seed, shotIndex, tGoalieCross, phaseOffsets?.goalie ?? 0);
 
   const shrink = 1 / Math.max(stick.shotZoneMultiplier, 1);
   const effWidth = goalieState.width * shrink;
-  // Goalie moves independently of the goal — no goalOffset added here.
   const goalieXMin = goalieState.position.x - effWidth / 2;
   const goalieXMax = goalieXMin + effWidth;
 
@@ -42,6 +39,15 @@ export function resolveShot(
       type: 'save',
       goalieContact: { x: shooterX, y: GOALIE_Y },
     };
+  }
+
+  const tGoalCross =
+    input.tapTime + (PUCK_START.y - GOAL_OPENING.y) / speed;
+  const goalOffsetAtGoal = simulateGoal(cfg, tGoalCross, phaseOffsets?.goal ?? 0).offsetX;
+  const openingXMin = GOAL_OPENING.xMin + goalOffsetAtGoal;
+  const openingXMax = GOAL_OPENING.xMax + goalOffsetAtGoal;
+  if (shooterX < openingXMin || shooterX > openingXMax) {
+    return { type: 'miss', reason: 'wide' };
   }
 
   return {
