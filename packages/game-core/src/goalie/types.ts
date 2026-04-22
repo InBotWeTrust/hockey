@@ -1,4 +1,4 @@
-import type { Vec2 } from '../rink.js';
+import { GOAL, type Vec2 } from '../rink.js';
 
 export type GoaliePatternId = 'linear' | 'sine' | 'dash' | 'feint';
 
@@ -24,3 +24,6 @@ export interface GoalieState {
 }
 
 export const GOALIE_SIZE = { width: 38, height: 14 } as const;
+
+// Goalie stands in front of the goal (between goal line and player).
+export const GOALIE_Y = GOAL.y + GOAL.height + GOALIE_SIZE.height / 2 + 4;

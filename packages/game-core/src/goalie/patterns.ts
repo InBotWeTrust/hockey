@@ -1,12 +1,12 @@
 import type { GoalieConfig } from './types.js';
-import { GOALIE_SIZE } from './types.js';
+import { GOALIE_SIZE, GOALIE_Y } from './types.js';
 import type { Rng } from '../rng.js';
 import type { Vec2 } from '../rink.js';
 import { GOAL, RINK } from '../rink.js';
 
 const goalCenterX = GOAL.x + GOAL.width / 2;
 const rinkCenterX = RINK.width / 2;
-const goalY = GOAL.y + GOAL.height / 2;
+const goalY = GOALIE_Y;
 const halfOpening = (GOAL.width / 2) * 0.9; // leave post margin (for in-net patterns)
 const halfRink = (RINK.width - GOALIE_SIZE.width) / 2 - 4;
 

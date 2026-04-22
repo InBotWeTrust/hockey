@@ -1,5 +1,6 @@
 import type { GoalieConfig } from '../goalie/types.js';
-import { PUCK_START, GOAL, GOAL_OPENING } from '../rink.js';
+import { GOALIE_Y } from '../goalie/types.js';
+import { PUCK_START, GOAL_OPENING } from '../rink.js';
 import { simulateGoal } from '../goal/simulate.js';
 import { simulateGoalie } from '../goalie/simulate.js';
 import { simulateShooter } from '../shooter/simulate.js';
@@ -23,9 +24,8 @@ export function resolveShot(
     return { type: 'miss', reason: 'wide' };
   }
 
-  const goalieY = GOAL.y + GOAL.height / 2;
   const tGoalieCross =
-    input.tapTime + (PUCK_START.y - goalieY) / PUCK_SPEED_PER_MS;
+    input.tapTime + (PUCK_START.y - GOALIE_Y) / PUCK_SPEED_PER_MS;
   const goalieState = simulateGoalie(cfg, seed, shotIndex, tGoalieCross);
   const goalOffsetAtGoalie = simulateGoal(cfg, tGoalieCross).offsetX;
 
@@ -37,7 +37,7 @@ export function resolveShot(
   if (shooterX >= goalieXMin && shooterX <= goalieXMax) {
     return {
       type: 'save',
-      goalieContact: { x: shooterX, y: goalieY },
+      goalieContact: { x: shooterX, y: GOALIE_Y },
     };
   }
 
