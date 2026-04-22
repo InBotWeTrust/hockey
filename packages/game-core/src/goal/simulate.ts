@@ -9,13 +9,14 @@ const MARGIN = 4;
  * Static when `cfg.goalAmplitude` or `cfg.goalFrequency` is 0.
  * Time is absolute ms since session start — same contract as `simulateGoalie`.
  */
-export function simulateGoal(cfg: GoalieConfig, t: number): GoalState {
+export function simulateGoal(cfg: GoalieConfig, t: number, phaseOffsetMs = 0): GoalState {
   if (cfg.goalAmplitude <= 0 || cfg.goalFrequency <= 0) {
     return { offsetX: 0 };
   }
   const maxOffset = Math.max(0, Math.min(cfg.goalAmplitude, maxSafeOffset()));
   const period = 1000 / cfg.goalFrequency;
-  const phase = (((t % period) + period) % period) / period; // 0..1
+  const et = t + phaseOffsetMs;
+  const phase = (((et % period) + period) % period) / period; // 0..1
   const tri = phase < 0.5 ? phase * 4 - 1 : 3 - phase * 4; // -1..1..-1
   return { offsetX: maxOffset * tri };
 }

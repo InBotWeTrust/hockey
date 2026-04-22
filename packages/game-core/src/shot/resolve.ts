@@ -5,6 +5,7 @@ import { simulateGoal } from '../goal/simulate.js';
 import { simulateGoalie } from '../goalie/simulate.js';
 import { simulateShooter } from '../shooter/simulate.js';
 import { PUCK_SPEED_PER_MS, type ShotInput, type ShotResult, type StickEffects } from './types.js';
+import type { SessionPhaseOffsets } from '../session.js';
 
 export function resolveShot(
   input: ShotInput,
@@ -12,12 +13,13 @@ export function resolveShot(
   seed: string,
   shotIndex: number,
   stick: StickEffects,
+  phaseOffsets?: SessionPhaseOffsets,
 ): ShotResult {
-  const shooterX = simulateShooter(input.tapTime).x;
+  const shooterX = simulateShooter(input.tapTime + (phaseOffsets?.shooter ?? 0)).x;
 
   const tGoalCross =
     input.tapTime + (PUCK_START.y - GOAL_OPENING.y) / PUCK_SPEED_PER_MS;
-  const goalOffsetAtGoal = simulateGoal(cfg, tGoalCross).offsetX;
+  const goalOffsetAtGoal = simulateGoal(cfg, tGoalCross, phaseOffsets?.goal ?? 0).offsetX;
   const openingXMin = GOAL_OPENING.xMin + goalOffsetAtGoal;
   const openingXMax = GOAL_OPENING.xMax + goalOffsetAtGoal;
   if (shooterX < openingXMin || shooterX > openingXMax) {
@@ -26,7 +28,7 @@ export function resolveShot(
 
   const tGoalieCross =
     input.tapTime + (PUCK_START.y - GOALIE_Y) / PUCK_SPEED_PER_MS;
-  const goalieState = simulateGoalie(cfg, seed, shotIndex, tGoalieCross);
+  const goalieState = simulateGoalie(cfg, seed, shotIndex, tGoalieCross, phaseOffsets?.goalie ?? 0);
 
   const shrink = 1 / Math.max(stick.shotZoneMultiplier, 1);
   const effWidth = goalieState.width * shrink;

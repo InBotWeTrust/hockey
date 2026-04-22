@@ -5,6 +5,7 @@ import type { Application } from 'pixi.js';
 import {
   getGoalie,
   resolveShot,
+  getSessionPhaseOffsets,
   STICK_NEUTRAL,
   PUCK_SPEED_PER_MS,
   PUCK_START,
@@ -160,13 +161,15 @@ export function DuelScreen(): JSX.Element {
     const activeCfg = { ...cfg, goalFrequency: overrides.goalFreq, frequency: overrides.goalieFreq };
 
     const tapTime = performance.now() - loop.sessionStartMs;
-    const sx = computeShooterX(tapTime, overrides.shooterFreq);
+    const offsets = getSessionPhaseOffsets(st.seed);
+    const sx = computeShooterX(tapTime + offsets.shooter, overrides.shooterFreq);
     const result: ShotResult = resolveShot(
       { tapTime },
       activeCfg,
       st.seed,
       st.shotIndex,
       STICK_NEUTRAL,
+      offsets,
     );
 
     puck.playShot(
@@ -177,8 +180,9 @@ export function DuelScreen(): JSX.Element {
     );
     window.setTimeout(() => {
       useTrainingStore.getState().applyResult(result);
+      const o = getSessionPhaseOffsets(useTrainingStore.getState().seed);
       puck.resetAtStart(scaleRef.current, computeShooterX(
-        performance.now() - loop.sessionStartMs,
+        performance.now() - loop.sessionStartMs + o.shooter,
         speedsRef.current.shooterFreq,
       ));
     }, flightDurationMs + 20);

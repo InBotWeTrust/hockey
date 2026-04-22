@@ -3,8 +3,10 @@ import {
   simulateGoalie,
   simulateGoal,
   getGoalie,
+  getSessionPhaseOffsets,
   type GoalieState,
   type GoalState,
+  type SessionPhaseOffsets,
   SHOOTER_CENTER_X,
   SHOOTER_AMPLITUDE,
 } from '@hockey/game-core';
@@ -48,6 +50,18 @@ function shooterX(t: number, freq: number): number {
 
 export function createGameLoop(opts: GameLoopOpts): GameLoop {
   const sessionStartMs = performance.now();
+  let offsets: SessionPhaseOffsets | null = null;
+  let offsetSeed: string | null = null;
+
+  function getOffsets(): SessionPhaseOffsets {
+    const seed = opts.getSeed();
+    if (seed !== offsetSeed) {
+      offsetSeed = seed;
+      offsets = getSessionPhaseOffsets(seed);
+    }
+    return offsets!;
+  }
+
   const onTick = (): void => {
     const id = opts.getGoalieId();
     if (!id) return;
@@ -59,14 +73,16 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
       ? { ...cfg, goalFrequency: overrides.goalFreq, frequency: overrides.goalieFreq }
       : cfg;
     const sf = overrides?.shooterFreq ?? 0.45;
-    const goalState: GoalState = simulateGoal(activeCfg, t);
+    const o = getOffsets();
+    const goalState: GoalState = simulateGoal(activeCfg, t, o.goal);
     const goalieState: GoalieState = simulateGoalie(
       activeCfg,
       opts.getSeed(),
       opts.getShotIndex(),
       t,
+      o.goalie,
     );
-    const sx = shooterX(t, sf);
+    const sx = shooterX(t + o.shooter, sf);
     const scale = opts.getScale();
     opts.goalRenderer.update(scale, goalState.offsetX);
     opts.goalieRenderer.update(goalieState, scale);
