@@ -122,7 +122,10 @@ jobs:
           export IMAGE_TAG
           docker compose pull
           docker compose run --rm server node packages/server/dist/db/migrate-cli.js
-          docker compose up -d --remove-orphans
+          # Force app containers to pick up newly pulled images.
+          # Plain `up -d` was staying silent on an already-running server
+          # after a new IMAGE_TAG was pulled, leaving prod on the old bundle.
+          docker compose up -d --force-recreate --remove-orphans server web caddy
           docker image prune -f
           docker logout ghcr.io
           ENDSSH
