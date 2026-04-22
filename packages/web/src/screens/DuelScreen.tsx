@@ -43,6 +43,17 @@ export function DuelScreen(): JSX.Element {
   const puckRef = useRef<Puck | null>(null);
   const refreshRef = useRef<((s: Scale) => void) | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isShowingResult, setIsShowingResult] = useState(false);
+  const isFirstShot = useRef(true);
+
+  useEffect(() => {
+    if (isFirstShot.current) { isFirstShot.current = false; return; }
+    if (!state.lastResult || state.isCleared) return;
+    setIsShowingResult(true);
+    const t = setTimeout(() => setIsShowingResult(false), 850);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.shotIndex]);
 
   useEffect(() => {
     if (!goalieId) {
@@ -146,7 +157,7 @@ export function DuelScreen(): JSX.Element {
   const cfg = state.currentGoalieId ? getGoalie(state.currentGoalieId) : null;
   const hpPct = cfg ? Math.max(0, Math.min(100, (state.hpLeft / cfg.hp) * 100)) : 0;
   const bossNum = cfg ? 1 : 0;
-  const shotDisabled = !cfg || state.isCleared;
+  const shotDisabled = !cfg || state.isCleared || isShowingResult;
 
   return (
     <main
@@ -329,35 +340,6 @@ export function DuelScreen(): JSX.Element {
             </Link>
           </div>
         )}
-        {state.lastResult && !state.isCleared && (
-          <div
-            key={state.shotIndex}
-            style={{
-              position: 'absolute',
-              top: 14,
-              left: '50%',
-              transform: 'translateX(-50%)',
-              color: TEXT,
-              fontSize: 16,
-              fontWeight: 800,
-              letterSpacing: 2,
-              background:
-                state.lastResult.type === 'goal'
-                  ? GOOD
-                  : state.lastResult.type === 'save'
-                    ? '#334155'
-                    : ACCENT,
-              padding: '6px 14px',
-              borderRadius: 8,
-              textTransform: 'uppercase',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-            }}
-          >
-            {state.lastResult.type === 'goal' && 'ГОЛ!'}
-            {state.lastResult.type === 'save' && 'Сэйв'}
-            {state.lastResult.type === 'miss' && 'Мимо'}
-          </div>
-        )}
       </div>
 
       <div style={{ padding: '0 16px 16px' }}>
@@ -387,6 +369,51 @@ export function DuelScreen(): JSX.Element {
           Бросок
         </button>
       </div>
+
+      {/* Full-screen centered result modal */}
+      {isShowingResult && state.lastResult && !state.isCleared && (
+        <>
+          <style>{`
+            @keyframes result-pop {
+              0%  { transform: translate(-50%, -50%) scale(0.55); opacity: 0; }
+              60% { transform: translate(-50%, -50%) scale(1.08); opacity: 1; }
+              100%{ transform: translate(-50%, -50%) scale(1);    opacity: 1; }
+            }
+          `}</style>
+          <div
+            style={{
+              position: 'fixed',
+              top: '50%',
+              left: '50%',
+              zIndex: 300,
+              animation: 'result-pop 0.22s cubic-bezier(.22,.68,0,1.4) forwards',
+              pointerEvents: 'none',
+              textAlign: 'center',
+              background: state.lastResult.type === 'goal'
+                ? 'rgba(34,197,94,0.95)'
+                : state.lastResult.type === 'save'
+                  ? 'rgba(30,64,175,0.95)'
+                  : 'rgba(226,54,54,0.95)',
+              borderRadius: 24,
+              padding: '20px 52px',
+              boxShadow: '0 12px 60px rgba(0,0,0,0.55)',
+            }}
+          >
+            <div style={{
+              fontSize: 72,
+              fontWeight: 900,
+              letterSpacing: 4,
+              color: '#ffffff',
+              textTransform: 'uppercase',
+              lineHeight: 1,
+            }}>
+              {state.lastResult.type === 'goal' && 'ГОЛ!'}
+              {state.lastResult.type === 'save' && 'СЭЙВ'}
+              {state.lastResult.type === 'miss' && 'МИМО'}
+            </div>
+          </div>
+        </>
+      )}
     </main>
   );
 }
