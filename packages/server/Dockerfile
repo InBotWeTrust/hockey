@@ -36,6 +36,6 @@ RUN pnpm install --prod --frozen-lockfile --filter @hockey/server... --filter @h
 
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget --quiet --tries=1 --spider http://localhost:3000/health || exit 1
+  CMD wget --quiet --tries=1 --spider http://127.0.0.1:3000/health || exit 1
 
 CMD ["node", "packages/server/dist/index.js"]
