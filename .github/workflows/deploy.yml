@@ -118,9 +118,26 @@ jobs:
             bash -s <<'ENDSSH'
           set -euo pipefail
           cd "$REMOTE_PATH"
-          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+          # VPS occasionally flaps its IPv6 route to ghcr.io so the first
+          # `docker login` times out. Retry with a short backoff before failing.
+          for i in 1 2 3 4 5; do
+            if echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin; then
+              break
+            fi
+            [ "$i" = 5 ] && echo "docker login failed after 5 attempts" && exit 1
+            echo "docker login attempt $i failed, retry in 10s..."
+            sleep 10
+          done
           export IMAGE_TAG
-          docker compose pull
+          # Same flap can drop `compose pull` mid-transfer; retry a few times.
+          for i in 1 2 3; do
+            if docker compose pull; then
+              break
+            fi
+            [ "$i" = 3 ] && echo "docker compose pull failed after 3 attempts" && exit 1
+            echo "compose pull attempt $i failed, retry in 10s..."
+            sleep 10
+          done
           docker compose run --rm server node packages/server/dist/db/migrate-cli.js
           # Force app containers to pick up newly pulled images.
           # Plain `up -d` was staying silent on an already-running server
