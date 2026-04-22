@@ -2,7 +2,7 @@ import { Container, Graphics } from 'pixi.js';
 import { PUCK_START, type Vec2 } from '@hockey/game-core';
 import type { Scale } from '../coords.js';
 
-const PUCK_RADIUS = 6;
+const PUCK_RADIUS = 4;
 const PUCK_BLACK = 0x0b0b0b;
 const PUCK_OUTLINE = 0xe23636;
 const PUCK_HIGHLIGHT = 0x2a2a2a;
