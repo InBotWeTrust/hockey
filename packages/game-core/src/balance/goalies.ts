@@ -1,5 +1,9 @@
 import type { GoalieConfig } from '../goalie/types.js';
 
+// goalAmplitude clamp is 146 (from rink.ts geometry — RINK.width=390, GOAL.width=90).
+// Full board-to-board visible from the very first boss — that's the signature mechanic.
+const FULL_AMP = 145;
+
 export const GOALIES: readonly GoalieConfig[] = [
   {
     id: 'rookie',
@@ -9,8 +13,10 @@ export const GOALIES: readonly GoalieConfig[] = [
     baseReward: 1,
     firstClearBonus: 20,
     speed: 180,
-    amplitude: 0.6,
+    amplitude: 1.0,
     frequency: 0.4,
+    goalAmplitude: FULL_AMP,
+    goalFrequency: 0.25,
   },
   {
     id: 'wall',
@@ -20,8 +26,10 @@ export const GOALIES: readonly GoalieConfig[] = [
     baseReward: 1,
     firstClearBonus: 40,
     speed: 220,
-    amplitude: 0.7,
+    amplitude: 1.0,
     frequency: 0.5,
+    goalAmplitude: FULL_AMP,
+    goalFrequency: 0.32,
   },
   {
     id: 'quickfoot',
@@ -31,8 +39,10 @@ export const GOALIES: readonly GoalieConfig[] = [
     baseReward: 2,
     firstClearBonus: 80,
     speed: 280,
-    amplitude: 0.8,
+    amplitude: 1.0,
     frequency: 0.7,
+    goalAmplitude: FULL_AMP,
+    goalFrequency: 0.4,
   },
   {
     id: 'octopus',
@@ -42,8 +52,10 @@ export const GOALIES: readonly GoalieConfig[] = [
     baseReward: 2,
     firstClearBonus: 120,
     speed: 200,
-    amplitude: 0.7,
+    amplitude: 0.8,
     frequency: 0.8,
+    goalAmplitude: FULL_AMP,
+    goalFrequency: 0.5,
   },
   {
     id: 'dasher',
@@ -53,8 +65,10 @@ export const GOALIES: readonly GoalieConfig[] = [
     baseReward: 3,
     firstClearBonus: 200,
     speed: 0,
-    amplitude: 0.8,
+    amplitude: 0.9,
     frequency: 1.2,
+    goalAmplitude: FULL_AMP,
+    goalFrequency: 0.6,
   },
   {
     id: 'snowstorm',
@@ -64,8 +78,10 @@ export const GOALIES: readonly GoalieConfig[] = [
     baseReward: 3,
     firstClearBonus: 300,
     speed: 0,
-    amplitude: 0.9,
+    amplitude: 0.95,
     frequency: 1.1,
+    goalAmplitude: FULL_AMP,
+    goalFrequency: 0.7,
   },
   {
     id: 'trickster',
@@ -75,8 +91,10 @@ export const GOALIES: readonly GoalieConfig[] = [
     baseReward: 4,
     firstClearBonus: 500,
     speed: 0,
-    amplitude: 0.85,
+    amplitude: 0.9,
     frequency: 1.0,
+    goalAmplitude: FULL_AMP,
+    goalFrequency: 0.8,
   },
   {
     id: 'iceking',
@@ -86,8 +104,10 @@ export const GOALIES: readonly GoalieConfig[] = [
     baseReward: 5,
     firstClearBonus: 800,
     speed: 0,
-    amplitude: 0.9,
+    amplitude: 0.95,
     frequency: 1.3,
+    goalAmplitude: FULL_AMP,
+    goalFrequency: 0.95,
   },
   {
     id: 'shadow',
@@ -97,8 +117,10 @@ export const GOALIES: readonly GoalieConfig[] = [
     baseReward: 6,
     firstClearBonus: 1200,
     speed: 0,
-    amplitude: 0.95,
+    amplitude: 1.0,
     frequency: 1.6,
+    goalAmplitude: FULL_AMP,
+    goalFrequency: 1.1,
   },
   {
     id: 'legend',
@@ -110,6 +132,8 @@ export const GOALIES: readonly GoalieConfig[] = [
     speed: 0,
     amplitude: 1.0,
     frequency: 1.8,
+    goalAmplitude: FULL_AMP,
+    goalFrequency: 1.3,
   },
 ];
 

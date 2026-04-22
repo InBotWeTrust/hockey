@@ -37,6 +37,31 @@ export function LoginScreen(): JSX.Element {
             : 'Login failed'}
         </p>
       )}
+      {import.meta.env.DEV && (
+        <button
+          type="button"
+          onClick={() => {
+            setSession({
+              accessToken: 'dev',
+              refreshToken: 'dev',
+              user: { id: 'dev', displayName: 'Dev Player' },
+            });
+            navigate('/', { replace: true });
+          }}
+          style={{
+            marginTop: '1rem',
+            padding: '0.75rem 1.5rem',
+            background: '#1a3a8a',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 8,
+            fontWeight: 600,
+            cursor: 'pointer',
+          }}
+        >
+          Войти как Dev (только dev-режим)
+        </button>
+      )}
     </main>
   );
 }

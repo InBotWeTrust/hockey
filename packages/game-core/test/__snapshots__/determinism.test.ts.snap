@@ -1,0 +1,86 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`end-to-end determinism > fixed seed + fixed inputs → stable snapshot of results 1`] = `
+[
+  {
+    "shot": 0,
+    "type": "miss",
+  },
+  {
+    "shot": 1,
+    "type": "miss",
+  },
+  {
+    "shot": 2,
+    "type": "miss",
+  },
+  {
+    "shot": 3,
+    "type": "miss",
+  },
+  {
+    "shot": 4,
+    "type": "miss",
+  },
+  {
+    "shot": 5,
+    "type": "miss",
+  },
+  {
+    "shot": 6,
+    "type": "miss",
+  },
+  {
+    "shot": 7,
+    "type": "miss",
+  },
+  {
+    "shot": 8,
+    "type": "goal",
+  },
+  {
+    "shot": 9,
+    "type": "miss",
+  },
+  {
+    "shot": 10,
+    "type": "miss",
+  },
+  {
+    "shot": 11,
+    "type": "miss",
+  },
+  {
+    "shot": 12,
+    "type": "miss",
+  },
+  {
+    "shot": 13,
+    "type": "miss",
+  },
+  {
+    "shot": 14,
+    "type": "miss",
+  },
+  {
+    "shot": 15,
+    "type": "miss",
+  },
+  {
+    "shot": 16,
+    "type": "miss",
+  },
+  {
+    "shot": 17,
+    "type": "goal",
+  },
+  {
+    "shot": 18,
+    "type": "miss",
+  },
+  {
+    "shot": 19,
+    "type": "miss",
+  },
+]
+`;

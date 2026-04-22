@@ -1,16 +1,19 @@
 import { describe, it, expect } from 'vitest';
 import { simulateGoalie } from '../../src/goalie/simulate.js';
+import type { GoalieConfig } from '../../src/goalie/types.js';
 
-const cfg = {
+const cfg: GoalieConfig = {
   id: 'rookie',
   name: 'Новичок',
-  pattern: 'linear' as const,
+  pattern: 'linear',
   hp: 5,
   baseReward: 1,
   firstClearBonus: 20,
   speed: 200,
   amplitude: 0.7,
   frequency: 0.5,
+  goalAmplitude: 0,
+  goalFrequency: 0,
 };
 
 describe('simulateGoalie', () => {

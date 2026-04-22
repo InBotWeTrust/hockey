@@ -13,6 +13,8 @@ export interface GoalieConfig {
   speed: number; // усл.ед/сек для linear и амплитуды для других
   amplitude: number; // в долях ширины створа (0..1)
   frequency: number; // Гц (для sine) или частота событий (для dash/feint)
+  goalAmplitude: number; // rink units — горизонтальный ход ворот, 0 = статично
+  goalFrequency: number; // Hz — частота движения ворот, 0 = статично
 }
 
 export interface GoalieState {
@@ -21,4 +23,4 @@ export interface GoalieState {
   height: number; // высота AABB
 }
 
-export const GOALIE_SIZE = { width: 80, height: 24 } as const;
+export const GOALIE_SIZE = { width: 38, height: 14 } as const;
