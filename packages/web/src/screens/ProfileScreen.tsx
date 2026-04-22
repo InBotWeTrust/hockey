@@ -84,64 +84,54 @@ export function ProfileScreen(): JSX.Element {
         color: TEXT,
       }}
     >
-      {/* Avatar + name */}
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          padding: '32px 24px 20px',
-          gap: 10,
-        }}
-      >
-        {data?.avatarUrl ? (
-          <img
-            src={data.avatarUrl}
-            alt="avatar"
-            style={{ width: 88, height: 88, borderRadius: '50%', objectFit: 'cover', boxShadow: '0 2px 12px rgba(0,0,0,0.12)' }}
-          />
-        ) : (
-          <div
-            style={{
-              width: 88,
-              height: 88,
-              borderRadius: '50%',
-              background: ACCENT,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 36,
-              fontWeight: 700,
-              color: '#ffffff',
-            }}
-          >
-            {initial}
-          </div>
-        )}
-        <div style={{ fontSize: 22, fontWeight: 700, textAlign: 'center' }}>
-          {data?.displayName ?? '—'}
-        </div>
-        {data?.username && (
-          <div style={{ fontSize: 14, color: MUTED }}>@{data.username}</div>
-        )}
-      </div>
-
-      {/* Info card */}
-      <div style={{ padding: '0 16px 12px' }}>
+      {/* Profile header */}
+      <div style={{ padding: '24px 16px 12px' }}>
         <div
           style={{
             background: PANEL,
             border: `1px solid ${PANEL_BORDER}`,
-            borderRadius: 16,
-            overflow: 'hidden',
+            borderRadius: 20,
+            padding: '16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 14,
           }}
         >
-          {data?.tgId && (
-            <InfoRow label="Telegram ID" value={data.tgId} />
+          {data?.avatarUrl ? (
+            <img
+              src={data.avatarUrl}
+              alt="avatar"
+              style={{ width: 64, height: 64, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+            />
+          ) : (
+            <div
+              style={{
+                width: 64,
+                height: 64,
+                borderRadius: '50%',
+                background: ACCENT,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 26,
+                fontWeight: 700,
+                color: '#ffffff',
+                flexShrink: 0,
+              }}
+            >
+              {initial}
+            </div>
           )}
-          {data?.username && (
-            <InfoRow label="Юзернейм" value={`@${data.username}`} last={!data?.tgId} />
-          )}
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 17, fontWeight: 700, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {data?.displayName ?? '—'}
+            </div>
+            {(data?.username || data?.tgId) && (
+              <div style={{ fontSize: 13, color: MUTED, marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {data.username ? `@${data.username}` : ''}{data.username && data.tgId ? ' ' : ''}{data.tgId ? `(${data.tgId})` : ''}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -249,22 +239,6 @@ onClick={() => setGripInfoOpen(true)}
   );
 }
 
-function InfoRow({ label, value, last }: { label: string; value: string; last?: boolean }): JSX.Element {
-  return (
-    <div
-      style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        padding: '12px 16px',
-        borderBottom: last ? 'none' : `1px solid ${PANEL_BORDER}`,
-      }}
-    >
-      <span style={{ fontSize: 14, color: MUTED }}>{label}</span>
-      <span style={{ fontSize: 14, fontWeight: 500, color: TEXT }}>{value}</span>
-    </div>
-  );
-}
 
 function GripOption({
   label,
