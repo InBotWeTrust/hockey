@@ -1,7 +1,8 @@
 import type { Vec2 } from '../rink.js';
 
 export interface ShotInput {
-  tapTime: number; // ms from session start
+  tapTime: number;        // ms from session start
+  puckSpeedPerMs?: number; // override for PUCK_SPEED_PER_MS (debug/test)
 }
 
 export type ShotResult =

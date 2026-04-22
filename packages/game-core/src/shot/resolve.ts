@@ -15,10 +15,11 @@ export function resolveShot(
   stick: StickEffects,
   phaseOffsets?: SessionPhaseOffsets,
 ): ShotResult {
+  const speed = input.puckSpeedPerMs ?? PUCK_SPEED_PER_MS;
   const shooterX = simulateShooter(input.tapTime + (phaseOffsets?.shooter ?? 0)).x;
 
   const tGoalCross =
-    input.tapTime + (PUCK_START.y - GOAL_OPENING.y) / PUCK_SPEED_PER_MS;
+    input.tapTime + (PUCK_START.y - GOAL_OPENING.y) / speed;
   const goalOffsetAtGoal = simulateGoal(cfg, tGoalCross, phaseOffsets?.goal ?? 0).offsetX;
   const openingXMin = GOAL_OPENING.xMin + goalOffsetAtGoal;
   const openingXMax = GOAL_OPENING.xMax + goalOffsetAtGoal;
@@ -27,7 +28,7 @@ export function resolveShot(
   }
 
   const tGoalieCross =
-    input.tapTime + (PUCK_START.y - GOALIE_Y) / PUCK_SPEED_PER_MS;
+    input.tapTime + (PUCK_START.y - GOALIE_Y) / speed;
   const goalieState = simulateGoalie(cfg, seed, shotIndex, tGoalieCross, phaseOffsets?.goalie ?? 0);
 
   const shrink = 1 / Math.max(stick.shotZoneMultiplier, 1);
