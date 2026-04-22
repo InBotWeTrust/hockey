@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Container, Graphics } from 'pixi.js';
 import type { Application } from 'pixi.js';
@@ -15,6 +15,7 @@ import {
   SHOOTER_AMPLITUDE,
   type ShotResult,
 } from '@hockey/game-core';
+import { RotateCcw } from 'lucide-react';
 import { PixiStage } from '../game/PixiStage.js';
 import { Rink } from '../game/renderer/Rink.js';
 import { Goal } from '../game/renderer/Goal.js';
@@ -41,6 +42,7 @@ const DEFAULT_SPEEDS: SpeedOverrides = {
   goalFreq: ROOKIE_CFG.goalFrequency,
   goalieFreq: ROOKIE_CFG.frequency,
   shooterFreq: 0.45,
+  puckSpeed: PUCK_SPEED_PER_MS,
 };
 
 function computeShooterX(t: number, freq: number): number {
@@ -66,7 +68,10 @@ export function DuelScreen(): JSX.Element {
   const speedsRef = useRef<SpeedOverrides>(DEFAULT_SPEEDS);
   speedsRef.current = speeds;
 
-  const flightDurationMs = (PUCK_START.y - GOAL_OPENING.y) / PUCK_SPEED_PER_MS;
+  const flightDurationMs = useMemo(
+    () => (PUCK_START.y - GOAL_OPENING.y) / speeds.puckSpeed,
+    [speeds.puckSpeed],
+  );
 
   useEffect(() => {
     if (isFirstShot.current) { isFirstShot.current = false; return; }
@@ -164,7 +169,7 @@ export function DuelScreen(): JSX.Element {
     const offsets = getSessionPhaseOffsets(st.seed);
     const sx = computeShooterX(tapTime + offsets.shooter, overrides.shooterFreq);
     const result: ShotResult = resolveShot(
-      { tapTime },
+      { tapTime, puckSpeedPerMs: overrides.puckSpeed },
       activeCfg,
       st.seed,
       st.shotIndex,
@@ -211,33 +216,49 @@ export function DuelScreen(): JSX.Element {
         style={{
           padding: '10px 16px 6px',
           display: 'grid',
-          gridTemplateColumns: '1fr 1fr 1fr',
-          gap: 8,
+          gridTemplateColumns: '1fr 1fr',
+          gap: 6,
         }}
       >
         <SpeedInput
           label="Ворота"
           value={speeds.goalFreq}
+          defaultValue={DEFAULT_SPEEDS.goalFreq}
           min={0.05}
           max={2.0}
           step={0.05}
           onChange={(v) => setSpeeds((s) => ({ ...s, goalFreq: v }))}
+          onReset={() => setSpeeds((s) => ({ ...s, goalFreq: DEFAULT_SPEEDS.goalFreq }))}
         />
         <SpeedInput
           label="Вратарь"
           value={speeds.goalieFreq}
+          defaultValue={DEFAULT_SPEEDS.goalieFreq}
           min={0.05}
           max={2.0}
           step={0.05}
           onChange={(v) => setSpeeds((s) => ({ ...s, goalieFreq: v }))}
+          onReset={() => setSpeeds((s) => ({ ...s, goalieFreq: DEFAULT_SPEEDS.goalieFreq }))}
         />
         <SpeedInput
           label="Хоккеист"
           value={speeds.shooterFreq}
+          defaultValue={DEFAULT_SPEEDS.shooterFreq}
           min={0.05}
           max={2.0}
           step={0.05}
           onChange={(v) => setSpeeds((s) => ({ ...s, shooterFreq: v }))}
+          onReset={() => setSpeeds((s) => ({ ...s, shooterFreq: DEFAULT_SPEEDS.shooterFreq }))}
+        />
+        <SpeedInput
+          label="Шайба"
+          value={speeds.puckSpeed}
+          defaultValue={DEFAULT_SPEEDS.puckSpeed}
+          min={0.3}
+          max={3.0}
+          step={0.1}
+          onChange={(v) => setSpeeds((s) => ({ ...s, puckSpeed: v }))}
+          onReset={() => setSpeeds((s) => ({ ...s, puckSpeed: DEFAULT_SPEEDS.puckSpeed }))}
         />
       </div>
 
@@ -333,13 +354,16 @@ export function DuelScreen(): JSX.Element {
 interface SpeedInputProps {
   label: string;
   value: number;
+  defaultValue: number;
   min: number;
   max: number;
   step: number;
   onChange: (v: number) => void;
+  onReset: () => void;
 }
 
-function SpeedInput({ label, value, min, max, step, onChange }: SpeedInputProps): JSX.Element {
+function SpeedInput({ label, value, defaultValue, min, max, step, onChange, onReset }: SpeedInputProps): JSX.Element {
+  const isDefault = Math.abs(value - defaultValue) < step / 2;
   return (
     <div
       style={{
@@ -356,9 +380,27 @@ function SpeedInput({ label, value, min, max, step, onChange }: SpeedInputProps)
         <span style={{ fontSize: 10, letterSpacing: 0.8, color: MUTED, textTransform: 'uppercase' }}>
           {label}
         </span>
-        <span style={{ fontSize: 12, fontWeight: 700, color: TEXT }}>
-          {value.toFixed(2)}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: TEXT }}>
+            {value.toFixed(2)}
+          </span>
+          <button
+            onClick={onReset}
+            disabled={isDefault}
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: 2,
+              cursor: isDefault ? 'default' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              opacity: isDefault ? 0.2 : 0.6,
+              transition: 'opacity 0.15s',
+            }}
+          >
+            <RotateCcw size={11} color={TEXT} />
+          </button>
+        </div>
       </div>
       <input
         type="range"

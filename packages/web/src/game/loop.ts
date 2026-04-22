@@ -20,6 +20,7 @@ export interface SpeedOverrides {
   goalFreq: number;
   goalieFreq: number;
   shooterFreq: number;
+  puckSpeed: number;
 }
 
 export interface GameLoopOpts {
