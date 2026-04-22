@@ -27,11 +27,11 @@ export function resolveShot(
   const tGoalieCross =
     input.tapTime + (PUCK_START.y - GOALIE_Y) / PUCK_SPEED_PER_MS;
   const goalieState = simulateGoalie(cfg, seed, shotIndex, tGoalieCross);
-  const goalOffsetAtGoalie = simulateGoal(cfg, tGoalieCross).offsetX;
 
   const shrink = 1 / Math.max(stick.shotZoneMultiplier, 1);
   const effWidth = goalieState.width * shrink;
-  const goalieXMin = goalieState.position.x + goalOffsetAtGoalie - effWidth / 2;
+  // Goalie moves independently of the goal — no goalOffset added here.
+  const goalieXMin = goalieState.position.x - effWidth / 2;
   const goalieXMax = goalieXMin + effWidth;
 
   if (shooterX >= goalieXMin && shooterX <= goalieXMax) {

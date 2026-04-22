@@ -1,31 +1,31 @@
-import { Container, Sprite } from 'pixi.js';
+import { Assets, Container, Sprite, Texture } from 'pixi.js';
 import { PUCK_START } from '@hockey/game-core';
 import type { Scale } from '../coords.js';
 
-// player.png: body is upper-right, stick goes lower-left
-// Blade/hook is at ~15% from left, ~82% from top of the square image
-const SPRITE_SIZE = 80;
-const BLADE_ANCHOR_X = 0.15;
-const BLADE_ANCHOR_Y = 0.82;
+// lefthand/righthand.webp: 1024×1024 square, top-down view. Sprite centred
+// at shooterX so the body oscillates symmetrically regardless of grip;
+// the puck is offset from the body by Puck.BLADE_OFFSET.
+const SPRITE_SIZE = 70;
 
 export class Player {
   readonly container = new Container();
   private readonly sprite: Sprite;
 
-  constructor() {
-    this.sprite = Sprite.from('/sprites/player.png');
-    this.sprite.anchor.set(BLADE_ANCHOR_X, BLADE_ANCHOR_Y);
+  constructor(grip: 'left' | 'right' = 'left') {
+    this.sprite = new Sprite(Texture.EMPTY);
+    this.sprite.anchor.set(0.5, 0.5);
     this.container.addChild(this.sprite);
+    Assets.load<Texture>(`/sprites/${grip}hand.webp`).then((tex) => {
+      this.sprite.texture = tex;
+    });
   }
 
   update(scale: Scale, shooterX = PUCK_START.x): void {
     const s = scale.factor;
-    const size = SPRITE_SIZE * s;
-    this.sprite.width = size;
-    this.sprite.height = size;
-    // Position the anchor (blade) at the puck's resting position
-    this.sprite.position.set(shooterX * s, PUCK_START.y * s);
-    this.container.position.set(scale.offsetX, scale.offsetY);
+    this.sprite.width  = SPRITE_SIZE * s;
+    this.sprite.height = SPRITE_SIZE * s;
+    this.sprite.position.set(Math.round(shooterX * s), Math.round(PUCK_START.y * s));
+    this.container.position.set(Math.round(scale.offsetX), Math.round(scale.offsetY));
   }
 
   destroy(): void {

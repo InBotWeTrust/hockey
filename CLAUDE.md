@@ -8,7 +8,7 @@ Ultimate Hockey — мобильная хоккейная PWA в духе OVI Un
 
 Прод: https://hockey.inbotwetrust.ru, GHCR-образы `ghcr.io/inbotwetrust/hockey-server|web`. Деплой — только через GitHub Actions (`.github/workflows/deploy.yml`): CI билдит образы, пушит в GHCR, SSH-сессия на VPS делает `docker compose pull && up -d`. На VPS ничего не собирается.
 
-Дизайн-спек: `docs/superpowers/specs/2026-04-12-ultimate-hockey-pwa-mvp-design.md`. Имплементационные планы: `docs/superpowers/plans/`. Выполнены 1 (skeleton), 2 (game-core), 3 (playable prototype), 4A (server infra), 4B (Telegram auth), 5 (web login).
+Дизайн-спек: `docs/superpowers/specs/2026-04-12-ultimate-hockey-pwa-mvp-design.md`. Имплементационные планы: `docs/superpowers/plans/`. Выполнены 1–5 (skeleton → game-core → playable prototype → server infra → Telegram auth → web login). Сейчас — полировка playable prototype: top-down спрайты (`gate/goalkeeper/lefthand/righthand.webp`), профиль с выбором хвата (миграция `002_grip`), а следом сервер-роуты `/duel/*` (открытый поединок с персистентным HP — см. раздел «Модель поединка»).
 
 ## Commands
 
@@ -63,9 +63,9 @@ pnpm workspaces, `packages/*`, TS project references (`composite: true`):
 
 - **`@hockey/game-core`** — pure TS без браузерных/Node-зависимостей. Детерминированный движок: PRNG (`rng.ts` на seedrandom), координаты катка (`rink.ts`), `goalie/` (4 паттерна: linear/sine/dash/feint + `simulateGoalie`), `shot/` (`computeTrajectory` + `resolveShot`), `balance/` (10 боссов, 4 клюшки, формулы наград). Экспорт-фасад — `src/index.ts`. `GAME_CORE_VERSION` в `version.ts` — инт, бампится при любом изменении детерминированного поведения.
 
-- **`@hockey/server`** — Fastify 4 + Node 20, ESM, TS `module: NodeNext`. `src/config.ts` — zod-валидация env. `src/app.ts` строит инстанс через плагины (`plugins/{db,redis,errors,auth}.ts`). `routes/`: `health.ts` (probe pg+redis), `me.ts` (требует auth), `auth.ts` (`POST /auth/telegram`, `POST /auth/refresh`, `POST /auth/logout`). Миграции — raw SQL в `db/migrations/NNN_*.sql`, runner в `src/db/migrations.ts`, CLI — `pnpm db:migrate`. Тесты через `app.inject()`, реальный listen только в `index.ts`.
+- **`@hockey/server`** — Fastify 4 + Node 20, ESM, TS `module: NodeNext`. `src/config.ts` — zod-валидация env. `src/app.ts` строит инстанс через плагины (`plugins/{db,redis,errors,auth}.ts`). `routes/`: `health.ts` (probe pg+redis), `me.ts` (`GET /me` + `PATCH /me` для grip), `auth.ts` (`POST /auth/telegram`, `POST /auth/refresh`, `POST /auth/logout`, плюс `POST /auth/dev` — включён через `devLoginEnabled` флаг когда `NODE_ENV !== 'production'`, создаёт dev-юзера через `findOrCreateTelegramUser(providerUid='dev-user-1')`). Миграции — raw SQL в `db/migrations/NNN_*.sql`, runner в `src/db/migrations.ts`, CLI — `pnpm db:migrate`. Тесты через `app.inject()`, реальный listen только в `index.ts`.
 
-- **`@hockey/web`** — React 18 + Vite 5 + TS, PixiJS 8 для игровой сцены, Zustand для стейта (`stores/trainingStore.ts`, `auth/authStore.ts` с persist → `localStorage['hockey.auth']`), TanStack Query для мутаций. `game/PixiStage.tsx` скейлит RINK (390×700) под viewport. `app/App.tsx` — роутер с `PrivateRoute` guard, `AppHeader` с logout. `screens/`: `LoginScreen`, `GoalieListScreen`, `DuelScreen`. Vite dev прокси `/api → :3000` (срезает `/api`). Тесты — Testing Library + vitest + jsdom; `test-setup.ts` содержит `MemoryStorage` shim (Node 25 ломает jsdom localStorage).
+- **`@hockey/web`** — React 18 + Vite 5 + TS, PixiJS 8 для игровой сцены, Zustand для стейта (`stores/trainingStore.ts`, `auth/authStore.ts` с persist → `localStorage['hockey.auth']`, метод `updateUser({...})` для точечных апдейтов профиля), TanStack Query для мутаций. `game/PixiStage.tsx` скейлит RINK (390×700) под viewport. `game/renderer/{Rink,Goal,Goalie,Player,Puck}.ts` — Pixi-обёртки над спрайтами; `Puck.BLADE_OFFSET[grip]` задаёт положение шайбы у кончика клюшки для каждого хвата. `app/App.tsx` — роутер с `PrivateRoute` guard. `screens/`: `LoginScreen`, `GoalieListScreen`, `DuelScreen`, `ProfileScreen`. Vite dev прокси `/api → :3000` (срезает `/api`). Тесты — Testing Library + vitest + jsdom; `test-setup.ts` содержит `MemoryStorage` shim (Node 25 ломает jsdom localStorage).
 
 ### Ключевой инвариант: гибридная симуляция
 
@@ -87,7 +87,13 @@ pnpm workspaces, `packages/*`, TS project references (`composite: true`):
 
 `POST /auth/telegram` принимает payload виджета, валидирует HMAC через `TELEGRAM_BOT_TOKEN`, возвращает `{accessToken, refreshToken, user}`. Access JWT (15 мин) подписан `JWT_SECRET`. Refresh JWT (30 дней) подписан `REFRESH_SECRET`, ротация — `POST /auth/refresh` (атомарный `GETDEL` в Redis по jti: старый токен становится невалидным). `POST /auth/logout` отзывает refresh. Access JWT blocklist пока нет — access живёт до exp.
 
-Web: `auth/authStore.ts` (Zustand persist), `api/apiFetch.ts` (fetch wrapper с Bearer, 401 → single refresh-retry через in-flight promise), `auth/TelegramLoginButton.tsx` (динамически монтирует `<script>` виджета с колбэком через `useId()`). `VITE_TELEGRAM_BOT_USERNAME` — build-time переменная Vite, для прода запекается в бандл через Docker build-arg (GitHub Actions var `VITE_TELEGRAM_BOT_USERNAME`). BotFather `/setdomain` для прод-виджета — ручной шаг вне автоматизации.
+Web: `auth/authStore.ts` (Zustand persist), `api/apiFetch.ts` (fetch wrapper с Bearer, 401 → single refresh-retry через in-flight promise), `auth/TelegramLoginButton.tsx` (динамически монтирует `<script>` виджета с колбэком через `useId()`). Dev-кнопка в `LoginScreen` зовёт `POST /auth/dev` и получает настоящие JWT — не подставляй фейковые токены в `authStore`, иначе middleware сервера их отвергнет. `VITE_TELEGRAM_BOT_USERNAME` — build-time переменная Vite, для прода запекается в бандл через Docker build-arg (GitHub Actions var `VITE_TELEGRAM_BOT_USERNAME`). BotFather `/setdomain` для прод-виджета — ручной шаг вне автоматизации.
+
+### Grip и спрайты
+
+`user.grip` (`'left' | 'right'`) живёт в `authStore.user` и в БД (колонка `users.grip`). `ProfileScreen` меняет через `PATCH /me` + оптимистичный `updateUser`. `DuelScreen` читает grip один раз при mount и передаёт в `new Player(grip)` и `new Puck(grip)`. Спрайты `lefthand/righthand.webp` top-down, 1024×1024, якорь `(0.5, 0.5)` (тело центрировано на `shooterX`); положение шайбы относительно тела задаёт `BLADE_OFFSET[grip]` в `packages/web/src/game/renderer/Puck.ts`. Shooter body двигается в одинаковом диапазоне (`SHOOTER_MIN_X/MAX_X`) независимо от хвата — при правом хвате клюшка с шайбой докатывается до правого борта, при левом — до левого.
+
+**Pixi 8 quirk:** `Sprite.from(url)` для webp может вернуть спрайт с пустой текстурой, которая никогда не привязывается — всегда загружай через `Assets.load<Texture>(url).then(tex => sprite.texture = tex)` (пример: `Player.ts`, `Rink.ts` переведены). Симптом — `console.log(sprite.texture.valid) === false` и пустой bounding box на сцене.
 
 ### TypeScript strictness
 

@@ -8,7 +8,8 @@ const goalCenterX = GOAL.x + GOAL.width / 2;
 const rinkCenterX = RINK.width / 2;
 const goalY = GOALIE_Y;
 const halfOpening = (GOAL.width / 2) * 0.9; // leave post margin (for in-net patterns)
-const halfRink = (RINK.width - GOALIE_SIZE.width) / 2 - 4;
+// 44 = sprite_half(27.5) + inner_margin(16) — 10 extra px per side vs boards.
+const halfRink = RINK.width / 2 - 44; // = 151
 
 function clampGoalFrame(x: number): number {
   const half = GOALIE_SIZE.width / 2;

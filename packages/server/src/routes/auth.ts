@@ -10,6 +10,7 @@ export interface AuthRoutesOptions {
   telegramBotToken: string;
   accessSecret: string;
   refreshSecret: string;
+  devLoginEnabled?: boolean;
 }
 
 const tgBodySchema = z
@@ -54,6 +55,9 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (app, opt
       providerUid: String(tgUser.id),
       displayName,
       ...(tgUser.photoUrl !== undefined ? { avatarUrl: tgUser.photoUrl } : {}),
+      ...(tgUser.username !== undefined ? { username: tgUser.username } : {}),
+      ...(tgUser.firstName ? { firstName: tgUser.firstName } : {}),
+      ...(tgUser.lastName !== undefined ? { lastName: tgUser.lastName } : {}),
     });
 
     const [accessToken, refresh] = await Promise.all([
@@ -103,6 +107,29 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (app, opt
 
     reply.send({ accessToken, refreshToken: refresh.token });
   });
+
+  if (opts.devLoginEnabled) {
+    app.post('/auth/dev', async (_req, reply) => {
+      const user = await findOrCreateTelegramUser(app.pg, {
+        providerUid: 'dev-user-1',
+        displayName: 'Dev Player',
+      });
+      const [accessToken, refresh] = await Promise.all([
+        jwt.issueAccessToken({ sub: user.id }),
+        jwt.issueRefreshToken({ sub: user.id }),
+      ]);
+      await saveRefresh(app.redis, {
+        jti: refresh.jti,
+        userId: user.id,
+        ttlSec: refresh.expSec,
+      });
+      reply.send({
+        accessToken,
+        refreshToken: refresh.token,
+        user: { id: user.id, displayName: user.displayName },
+      });
+    });
+  }
 
   app.post('/auth/logout', async (req, reply) => {
     const body = z.object({ refreshToken: z.string().optional() }).safeParse(req.body);

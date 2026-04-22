@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Application, Assets } from 'pixi.js';
 import { computeScale, type Scale } from './coords.js';
 
-const SPRITE_ASSETS = ['/sprites/gate.png', '/sprites/goalkeeper.png', '/sprites/player.png'];
+const SPRITE_ASSETS = ['/sprites/court.webp', '/sprites/gate.webp', '/sprites/goalkeeper.webp', '/sprites/player.webp'];
 
 export interface PixiStageProps {
   onReady: (app: Application, scale: Scale) => void;
@@ -27,9 +27,11 @@ export function PixiStage({ onReady, onResize }: PixiStageProps): JSX.Element {
 
     void (async () => {
       await app.init({
-        background: '#0b2e5c',
+        background: '#eaf2fb',
         resizeTo: host,
         antialias: true,
+        resolution: Math.min(window.devicePixelRatio ?? 1, 3),
+        autoDensity: true,
       });
       await Assets.load(SPRITE_ASSETS);
       if (disposed) {

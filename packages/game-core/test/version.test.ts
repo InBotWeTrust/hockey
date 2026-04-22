@@ -7,7 +7,7 @@ describe('GAME_CORE_VERSION', () => {
     expect(GAME_CORE_VERSION).toBeGreaterThan(0);
   });
 
-  it('is bumped to 7', () => {
-    expect(GAME_CORE_VERSION).toBe(7);
+  it('is bumped to 21', () => {
+    expect(GAME_CORE_VERSION).toBe(21);
   });
 });

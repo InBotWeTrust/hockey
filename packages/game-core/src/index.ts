@@ -7,7 +7,7 @@ export { simulateGoalie } from './goalie/simulate.js';
 export type { GoalState } from './goal/types.js';
 export { simulateGoal } from './goal/simulate.js';
 export type { ShooterState } from './shooter/types.js';
-export { SHOOTER_SIZE, SHOOTER_AMPLITUDE, SHOOTER_FREQUENCY } from './shooter/types.js';
+export { SHOOTER_SIZE, SHOOTER_AMPLITUDE, SHOOTER_FREQUENCY, SHOOTER_CENTER_X } from './shooter/types.js';
 export { simulateShooter } from './shooter/simulate.js';
 export type { ShotInput, ShotResult, StickEffects } from './shot/types.js';
 export { STICK_NEUTRAL, PUCK_SPEED_PER_MS } from './shot/types.js';

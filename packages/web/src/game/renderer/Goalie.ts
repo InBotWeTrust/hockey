@@ -1,31 +1,34 @@
 import { Container, Sprite } from 'pixi.js';
-import type { GoalieState } from '@hockey/game-core';
+import { RINK, type GoalieState } from '@hockey/game-core';
 import type { Scale } from '../coords.js';
 
-// goalkeeper.png: spread (arms+stick+pads) fills ~85% of 320px image
-// 90 game units × 85% ≈ 76 units visible spread vs GOAL.width=90 — fills goal nicely
-const SPRITE_SIZE = 90;
+// goalkeeper.webp: 1024×1024 square
+const SPRITE_SIZE = 55;
+const HALF = SPRITE_SIZE / 2;
+const INNER_MARGIN = 6; // matches rink border in game units
 
 export class Goalie {
   readonly container = new Container();
   private readonly sprite: Sprite;
 
   constructor() {
-    this.sprite = Sprite.from('/sprites/goalkeeper.png');
+    this.sprite = Sprite.from('/sprites/goalkeeper.webp');
     this.sprite.anchor.set(0.5, 0.5);
     this.container.addChild(this.sprite);
   }
 
-  update(state: GoalieState, scale: Scale, offsetRinkX = 0): void {
+  update(state: GoalieState, scale: Scale): void {
     const s = scale.factor;
     const size = SPRITE_SIZE * s;
     this.sprite.width = size;
     this.sprite.height = size;
+    // Goalie moves independently of the goal — position is absolute, no goalOffset.
+    const clampedX = Math.max(HALF + INNER_MARGIN, Math.min(RINK.width - HALF - INNER_MARGIN, state.position.x));
     this.sprite.position.set(
-      (state.position.x + offsetRinkX) * s,
-      state.position.y * s,
+      Math.round(clampedX * s),
+      Math.round(state.position.y * s),
     );
-    this.container.position.set(scale.offsetX, scale.offsetY);
+    this.container.position.set(Math.round(scale.offsetX), Math.round(scale.offsetY));
   }
 
   destroy(): void {

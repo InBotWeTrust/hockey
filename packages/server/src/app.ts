@@ -33,6 +33,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
     telegramBotToken: config.TELEGRAM_BOT_TOKEN,
     accessSecret: config.JWT_SECRET,
     refreshSecret: config.REFRESH_SECRET,
+    devLoginEnabled: config.NODE_ENV !== 'production',
   });
   await app.register(meRoutes);
 

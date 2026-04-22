@@ -4,6 +4,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 export interface AuthUser {
   id: string;
   displayName: string;
+  grip?: 'left' | 'right';
 }
 
 export interface AuthSession {
@@ -17,6 +18,7 @@ interface AuthState {
   refreshToken: string | null;
   user: AuthUser | null;
   setSession: (s: AuthSession) => void;
+  updateUser: (patch: Partial<AuthUser>) => void;
   clearSession: () => void;
   isAuthenticated: () => boolean;
 }
@@ -29,6 +31,8 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       setSession: ({ accessToken, refreshToken, user }) =>
         set({ accessToken, refreshToken, user }),
+      updateUser: (patch) =>
+        set((s) => (s.user ? { user: { ...s.user, ...patch } } : s)),
       clearSession: () => set({ accessToken: null, refreshToken: null, user: null }),
       isAuthenticated: () => Boolean(get().accessToken),
     }),

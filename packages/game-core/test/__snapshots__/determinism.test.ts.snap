@@ -20,7 +20,7 @@ exports[`end-to-end determinism > fixed seed + fixed inputs → stable snapshot 
   },
   {
     "shot": 4,
-    "type": "miss",
+    "type": "goal",
   },
   {
     "shot": 5,
@@ -36,7 +36,7 @@ exports[`end-to-end determinism > fixed seed + fixed inputs → stable snapshot 
   },
   {
     "shot": 8,
-    "type": "save",
+    "type": "miss",
   },
   {
     "shot": 9,
@@ -48,7 +48,7 @@ exports[`end-to-end determinism > fixed seed + fixed inputs → stable snapshot 
   },
   {
     "shot": 11,
-    "type": "miss",
+    "type": "goal",
   },
   {
     "shot": 12,
@@ -72,15 +72,15 @@ exports[`end-to-end determinism > fixed seed + fixed inputs → stable snapshot 
   },
   {
     "shot": 17,
-    "type": "goal",
+    "type": "miss",
   },
   {
     "shot": 18,
-    "type": "miss",
+    "type": "goal",
   },
   {
     "shot": 19,
-    "type": "miss",
+    "type": "goal",
   },
 ]
 `;
