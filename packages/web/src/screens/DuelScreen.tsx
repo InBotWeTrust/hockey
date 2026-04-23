@@ -62,6 +62,7 @@ export function DuelScreen(): JSX.Element {
   const scaleRef = useRef<Scale>({ factor: 1, offsetX: 0, offsetY: 0 });
   const loopRef = useRef<GameLoop | null>(null);
   const puckRef = useRef<Puck | null>(null);
+  const playerRef = useRef<Player | null>(null);
   const goalieRef = useRef<Goalie | null>(null);
   const hitboxesRef = useRef<Hitboxes | null>(null);
   const refreshRef = useRef<((s: Scale) => void) | null>(null);
@@ -98,6 +99,7 @@ export function DuelScreen(): JSX.Element {
     const puck = new Puck(grip);
     const player = new Player(grip);
     puckRef.current = puck;
+    playerRef.current = player;
     goalieRef.current = goalie;
     hitboxesRef.current = hitboxes;
 
@@ -144,6 +146,7 @@ export function DuelScreen(): JSX.Element {
   const handleShotTap = useCallback((): void => {
     const loop = loopRef.current;
     const puck = puckRef.current;
+    const player = playerRef.current;
     const goalie = goalieRef.current;
     if (!loop || !puck || !goalie) return;
     const st = useTrainingStore.getState();
@@ -179,6 +182,7 @@ export function DuelScreen(): JSX.Element {
 
     // Phase 1 — flying: шутер замирает на текущей позиции, шайба летит
     loop.beginShooterPause();
+    player?.playShot();
     puck.playShot(
       puck.bladePoint(sx),
       { x: sx, y: GOAL_OPENING.y },

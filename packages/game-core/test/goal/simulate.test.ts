@@ -59,7 +59,7 @@ describe('simulateGoal', () => {
       { ...base, goalAmplitude: 10000 },
       1000 / base.goalFrequency / 2,
     );
-    // Geometry: GOAL.x=150, width=90 → boundaries leave max 150; MARGIN=-50 → 200.
-    expect(Math.abs(huge.offsetX)).toBeLessThanOrEqual(200 + 1e-6);
+    // Geometry: GOAL.x=234, width=104 → max offset = 234; MARGIN=14 → 220.
+    expect(Math.abs(huge.offsetX)).toBeLessThanOrEqual(220 + 1e-6);
   });
 });

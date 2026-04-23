@@ -5,8 +5,9 @@ import type { Scale } from '../coords.js';
 // goalkeeper.webp / save.webp: 1024×1024 square. Save-поза в отдельном
 // файле с раскинутыми щитками визуально не заполняет кадр так плотно, как
 // idle-спрайт, поэтому рисуем её крупнее, чтобы фигура совпадала.
-const IDLE_SIZE = 55;
-const SAVE_SIZE = 70;
+// +15% относительно предыдущих 55/70.
+const IDLE_SIZE = 63;
+const SAVE_SIZE = 80;
 
 export class Goalie {
   readonly container = new Container();

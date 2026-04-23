@@ -8,8 +8,11 @@ const goalCenterX = GOAL.x + GOAL.width / 2;
 const rinkCenterX = RINK.width / 2;
 const goalY = GOALIE_Y;
 const halfOpening = (GOAL.width / 2) * 0.9; // leave post margin (for in-net patterns)
-// halfRink задаёт ширину хода linear-pattern.
-const halfRink = RINK.width / 2 - 17; // = 178
+// BOARD_MARGIN учитывает визуальный размер save-спрайта вратаря (80 в
+// renderer'е) + запас, чтобы при крайних положениях даже раскинутая поза
+// не наезжала на борт.
+const BOARD_MARGIN = 50;
+const halfRink = RINK.width / 2 - BOARD_MARGIN; // = 236
 
 function clampGoalFrame(x: number): number {
   const half = GOALIE_SIZE.width / 2;
@@ -17,10 +20,7 @@ function clampGoalFrame(x: number): number {
 }
 
 function clampRink(x: number): number {
-  // Без INNER_MARGIN — позволяем sprite вратаря частично заходить за
-  // RINK borders, чтобы достигать краёв более широкого sprite-площадки.
-  const half = GOALIE_SIZE.width / 2;
-  return Math.max(half - 20, Math.min(RINK.width - half + 20, x));
+  return Math.max(BOARD_MARGIN, Math.min(RINK.width - BOARD_MARGIN, x));
 }
 
 /** Linear — board-to-board at constant speed, full rink width. */

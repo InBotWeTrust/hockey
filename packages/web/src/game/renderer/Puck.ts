@@ -9,8 +9,8 @@ const PUCK_BLACK = 0x111111;
 // Left grip carries the puck on the left side of the body (negative x),
 // right grip — on the right (positive x). Y is the same: puck is in front.
 export const BLADE_OFFSET: Record<'left' | 'right', Vec2> = {
-  left:  { x: -17, y: -39 },
-  right: { x:  17, y: -39 },
+  left:  { x: -14, y: -34 },
+  right: { x:  14, y: -34 },
 };
 
 export class Puck {

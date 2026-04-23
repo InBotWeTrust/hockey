@@ -3,31 +3,36 @@ export interface Vec2 {
   y: number;
 }
 
+// RINK logical dimensions. 572×700 matches the court_wide.webp sprite
+// aspect (900/1100 ≈ 0.8182); 572/700 = 0.8171 — the 0.1% slack is absorbed
+// by Rink.ts cover-by-height.
 export const RINK = {
-  width: 390,
+  width: 572,
   height: 700,
 } as const;
 
-// Ворота — сверху, центр по горизонтали. y=30 опускает их вниз от скруглённых
-// углов катка под новый court-спрайт (679×1100, аспект 0.617).
-// leftPost/rightPost.width=10 → opening = [160..230] (70 ед.), уже спрайта
-// ворот: визуально шайба должна войти именно в это окно.
+// Goal — top center. Hitbox scaled up +15%: 90×26 → 104×30, posts 10→12.
+// GOAL.x recentered on the rink.
+const _goalWidth = 104;
+const _goalHeight = 30;
+const _postWidth = 12;
+const _goalX = (RINK.width - _goalWidth) / 2; // 234
 export const GOAL = {
-  x: 150,
+  x: _goalX,
   y: 30,
-  width: 90,
-  height: 26,
-  leftPost: { x: 150, y: 30, width: 10, height: 26 },
-  rightPost: { x: 230, y: 30, width: 10, height: 26 },
+  width: _goalWidth,
+  height: _goalHeight,
+  leftPost: { x: _goalX, y: 30, width: _postWidth, height: _goalHeight },
+  rightPost: { x: _goalX + _goalWidth - _postWidth, y: 30, width: _postWidth, height: _goalHeight },
 } as const;
 
-// Точка старта шайбы — между нижней синей и нижней красной линией.
+// Puck start — rink center, between blue and red line.
 export const PUCK_START: Vec2 = {
   x: RINK.width / 2,
   y: 580,
 };
 
-// Зона ворот, внутри которой траектория считается «в створе».
+// In-goal opening (between the posts) — anything crossing here scores.
 export const GOAL_OPENING = {
   xMin: GOAL.x + GOAL.leftPost.width,
   xMax: GOAL.x + GOAL.width - GOAL.rightPost.width,

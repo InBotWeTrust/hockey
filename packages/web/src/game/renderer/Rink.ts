@@ -4,14 +4,14 @@ import type { Scale } from '../coords.js';
 
 export class Rink {
   readonly container = new Container();
-  private readonly bg = Sprite.from('/sprites/court.webp');
+  private readonly bg = Sprite.from('/sprites/court_wide.webp');
 
   constructor() {
     this.container.addChild(this.bg);
   }
 
-  // court.webp natural aspect ratio (679/1100 ≈ 0.617); cover by height to avoid distortion
-  private static readonly COURT_ASPECT = 679 / 1100;
+  // court_wide.webp natural aspect ratio (900/1100 ≈ 0.818); cover by height to avoid distortion
+  private static readonly COURT_ASPECT = 900 / 1100;
 
   update(scale: Scale): void {
     const s = scale.factor;

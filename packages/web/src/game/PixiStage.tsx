@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { Application, Assets } from 'pixi.js';
+import { RINK } from '@hockey/game-core';
 import { computeScale, type Scale } from './coords.js';
 
-const SPRITE_ASSETS = ['/sprites/court.webp', '/sprites/gate.webp', '/sprites/goalkeeper.webp', '/sprites/save.webp', '/sprites/player.webp'];
+const SPRITE_ASSETS = ['/sprites/court_wide.webp', '/sprites/gate.webp', '/sprites/goalkeeper.webp', '/sprites/save.webp', '/sprites/player.webp'];
 
 export interface PixiStageProps {
   onReady: (app: Application, scale: Scale) => void;
@@ -21,8 +22,8 @@ export function PixiStage({ onReady, onResize }: PixiStageProps): JSX.Element {
 
     const measure = (): Scale =>
       computeScale({
-        width: host.clientWidth || 390,
-        height: host.clientHeight || 700,
+        width: host.clientWidth || RINK.width,
+        height: host.clientHeight || RINK.height,
       });
 
     void (async () => {

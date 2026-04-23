@@ -33,7 +33,7 @@ function findTapTimeForShooter(targetX: number, tol = 2): number {
 
 describe('resolveShot', () => {
   it('shooter at rink center, goalie at rink center (amp=0) → save', () => {
-    const tapTime = findTapTimeForShooter(195); // rink center
+    const tapTime = findTapTimeForShooter(PUCK_START.x); // rink center
     const res = resolveShot({ tapTime }, baseCfg, 'seed', 0, STICK_NEUTRAL);
     expect(res.type).toBe('save');
   });
@@ -46,8 +46,8 @@ describe('resolveShot', () => {
   });
 
   it('shooter in opening but clear of goalie → goal', () => {
-    // With amplitude 0 the linear goalie sits at rink center (195).
-    // Shooter at GOAL_OPENING.xMin + 5 is in opening (51) — well clear of 195.
+    // With amplitude 0 the linear goalie sits at rink center (PUCK_START.x).
+    // Shooter at GOAL_OPENING.xMin + 5 is in opening — well clear of goalie.
     const tapTime = findTapTimeForShooter(GOAL_OPENING.xMin + 5);
     const res = resolveShot({ tapTime }, baseCfg, 'seed', 0, STICK_NEUTRAL);
     expect(res.type).toBe('goal');
@@ -77,9 +77,9 @@ describe('resolveShot', () => {
       0,
       STICK_NEUTRAL,
     );
-    // At tapTime=0, shooter is at center (195). So this test really checks
-    // that resolveShot doesn't blow up with a moving goalie and gives a
-    // deterministic classification.
+    // At tapTime=0, shooter is at SHOOTER_MIN_X (near the board). This test
+    // really checks that resolveShot doesn't blow up with a moving goalie
+    // and gives a deterministic classification.
     expect(['goal', 'save', 'miss']).toContain(movingResult.type);
     expect(tapTime).toBeGreaterThan(0);
   });
@@ -87,7 +87,7 @@ describe('resolveShot', () => {
   it('honors stick shotZoneMultiplier (narrows goalie AABB)', () => {
     // Shooter just barely at the edge of goalie's natural AABB at rink center.
     // With neutral stick → save; with a wide-zone stick → goal.
-    const edgeX = 195 + 17; // goalie width 38, half=19, slightly inside
+    const edgeX = PUCK_START.x + 17; // goalie width 38, half=19, slightly inside
     const tapTime = findTapTimeForShooter(edgeX);
     const saveRes = resolveShot({ tapTime }, baseCfg, 'seed', 0, STICK_NEUTRAL);
     const goalRes = resolveShot(

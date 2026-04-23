@@ -2,10 +2,10 @@ import type { GoalieConfig } from '../goalie/types.js';
 import type { GoalState } from './types.js';
 import { GOAL, RINK } from '../rink.js';
 
-// Отрицательный MARGIN позволяет воротам уезжать за номинальные борта
-// RINK — sprite-площадка шире RINK на ~21 ед. с каждой стороны.
-// maxSafeOffset = min(150-(-50), 390-240-(-50)) = 200.
-const MARGIN = -50;
+// MARGIN=14 — ворота держат небольшой зазор от бортов RINK; gate-sprite
+// (90 wide) при максимальном сдвиге не касается борта.
+// maxSafeOffset = min(234-14, 572-338-14) = 220.
+const MARGIN = 14;
 
 /**
  * Deterministic triangular-wave board-to-board slide for the goal frame.

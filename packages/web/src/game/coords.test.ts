@@ -8,28 +8,28 @@ import {
 } from './coords.js';
 
 describe('computeScale', () => {
-  it('fits rink into 390x700 viewport 1:1', () => {
-    const s = computeScale({ width: 390, height: 700 });
+  it(`fits rink into ${RINK.width}x${RINK.height} viewport 1:1`, () => {
+    const s = computeScale({ width: RINK.width, height: RINK.height });
     expect(s.factor).toBe(1);
     expect(s.offsetX).toBe(0);
     expect(s.offsetY).toBe(0);
   });
 
   it('scales uniformly and centers when viewport wider than rink', () => {
-    const s = computeScale({ width: 780, height: 700 });
+    const s = computeScale({ width: RINK.width * 2, height: RINK.height });
     expect(s.factor).toBe(1);
-    expect(s.offsetX).toBe((780 - 390) / 2);
+    expect(s.offsetX).toBe((RINK.width * 2 - RINK.width) / 2);
     expect(s.offsetY).toBe(0);
   });
 
   it('scales uniformly and centers when viewport taller than rink', () => {
-    const s = computeScale({ width: 390, height: 1400 });
+    const s = computeScale({ width: RINK.width, height: RINK.height * 2 });
     expect(s.factor).toBe(1);
-    expect(s.offsetY).toBe((1400 - 700) / 2);
+    expect(s.offsetY).toBe((RINK.height * 2 - RINK.height) / 2);
   });
 
   it('shrinks when viewport smaller', () => {
-    const s = computeScale({ width: 195, height: 350 });
+    const s = computeScale({ width: RINK.width / 2, height: RINK.height / 2 });
     expect(s.factor).toBe(0.5);
   });
 });
@@ -50,9 +50,11 @@ describe('rinkToScreen / screenToRink', () => {
   });
 
   it('RINK corners map within viewport bounds', () => {
-    const s = computeScale({ width: 780, height: 700 });
+    const vpW = RINK.width * 2;
+    const vpH = RINK.height;
+    const s = computeScale({ width: vpW, height: vpH });
     const bottomRight = rinkToScreen({ x: RINK.width, y: RINK.height }, s);
-    expect(bottomRight.x).toBeLessThanOrEqual(780);
-    expect(bottomRight.y).toBeLessThanOrEqual(700);
+    expect(bottomRight.x).toBeLessThanOrEqual(vpW);
+    expect(bottomRight.y).toBeLessThanOrEqual(vpH);
   });
 });
