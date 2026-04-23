@@ -10,8 +10,8 @@ export class Rink {
     this.container.addChild(this.bg);
   }
 
-  // court.webp natural aspect ratio (679/1280 ≈ 0.530); cover by height to avoid distortion
-  private static readonly COURT_ASPECT = 679 / 1280;
+  // court.webp natural aspect ratio (679/1100 ≈ 0.617); cover by height to avoid distortion
+  private static readonly COURT_ASPECT = 679 / 1100;
 
   update(scale: Scale): void {
     const s = scale.factor;

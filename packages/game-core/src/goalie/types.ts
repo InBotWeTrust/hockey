@@ -23,7 +23,10 @@ export interface GoalieState {
   height: number; // высота AABB
 }
 
-export const GOALIE_SIZE = { width: 38, height: 14 } as const;
+// AABB вратаря — на 5 ед. шире и выше с каждой стороны по сравнению с
+// предыдущей версией (38×14 → 48×24): визуальный спрайт всё равно крупнее,
+// но хитбокс ближе к ощущению «вратарь отбивает».
+export const GOALIE_SIZE = { width: 48, height: 24 } as const;
 
 // Goalie stands in front of the goal (between goal line and player).
 export const GOALIE_Y = GOAL.y + GOAL.height + GOALIE_SIZE.height / 2 + 4;
