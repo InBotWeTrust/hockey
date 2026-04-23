@@ -60,7 +60,7 @@ exports[`end-to-end determinism > fixed seed + fixed inputs → stable snapshot 
   },
   {
     "shot": 14,
-    "type": "save",
+    "type": "miss",
   },
   {
     "shot": 15,
