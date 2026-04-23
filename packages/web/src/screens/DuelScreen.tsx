@@ -7,7 +7,6 @@ import {
   resolveShot,
   getSessionPhaseOffsets,
   STICK_NEUTRAL,
-  PUCK_SPEED_PER_MS,
   PUCK_START,
   GOAL_OPENING,
   SHOOTER_CENTER_X,
@@ -37,14 +36,13 @@ const MUTED = '#64748b';
 const ACCENT = '#0f172a';
 
 const ROOKIE_ID = 'rookie';
-const ROOKIE_CFG = getGoalie(ROOKIE_ID);
 const PAUSE_MS = 1000;
 
 const DEFAULT_SPEEDS: SpeedOverrides = {
-  goalFreq: ROOKIE_CFG.goalFrequency,
-  goalieFreq: ROOKIE_CFG.frequency,
-  shooterFreq: 0.45,
-  puckSpeed: PUCK_SPEED_PER_MS,
+  goalFreq: 0.55,
+  goalieFreq: 0.65,
+  shooterFreq: 0.80,
+  puckSpeed: 1.30,
 };
 
 function computeShooterX(t: number, freq: number): number {
