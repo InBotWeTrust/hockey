@@ -13,7 +13,7 @@ interface Style {
 const STYLES: Record<ShotResult['type'], Style> = {
   goal: {
     gradient: 'linear-gradient(180deg, #ffffff 0%, #86efac 25%, #22c55e 60%, #15803d 100%)',
-    title: 'ГОЛ!',
+    title: 'ТОЧНО',
   },
   save: {
     gradient: 'linear-gradient(180deg, #ffffff 0%, #93c5fd 25%, #3b82f6 60%, #1d4ed8 100%)',
