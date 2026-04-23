@@ -4,8 +4,8 @@ import type { Scale } from '../coords.js';
 
 // lefthand/righthand.webp: 700×950 top-down view. Sprite centred at shooterX
 // so the body oscillates symmetrically regardless of grip; the puck is
-// offset from the body by Puck.BLADE_OFFSET. Width +15% относительно 52.
-const SPRITE_WIDTH = 60;
+// offset from the body by Puck.BLADE_OFFSET. Width +10% сверх предыдущих 60.
+const SPRITE_WIDTH = 66;
 const SPRITE_ASPECT = 700 / 950;
 const SPRITE_HEIGHT = SPRITE_WIDTH / SPRITE_ASPECT;
 
@@ -37,8 +37,8 @@ export class Player {
     const s = scale.factor;
     this.sprite.width  = SPRITE_WIDTH * s;
     this.sprite.height = SPRITE_HEIGHT * s;
-    this.sprite.position.set(Math.round(shooterX * s), Math.round(PUCK_START.y * s));
-    this.container.position.set(Math.round(scale.offsetX), Math.round(scale.offsetY));
+    this.sprite.position.set(shooterX * s, PUCK_START.y * s);
+    this.container.position.set(scale.offsetX, scale.offsetY);
 
     if (this.shotStartedAt !== null) {
       const t = (performance.now() - this.shotStartedAt) / SHOT_DURATION_MS;

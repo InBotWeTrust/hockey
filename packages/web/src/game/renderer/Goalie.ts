@@ -5,9 +5,9 @@ import type { Scale } from '../coords.js';
 // goalkeeper.webp / save.webp: 1024×1024 square. Save-поза в отдельном
 // файле с раскинутыми щитками визуально не заполняет кадр так плотно, как
 // idle-спрайт, поэтому рисуем её крупнее, чтобы фигура совпадала.
-// +15% относительно предыдущих 55/70.
-const IDLE_SIZE = 63;
-const SAVE_SIZE = 80;
+// +10% сверх предыдущих 63/80.
+const IDLE_SIZE = 69;
+const SAVE_SIZE = 88;
 
 export class Goalie {
   readonly container = new Container();
@@ -43,11 +43,8 @@ export class Goalie {
     this.sprite.height = size;
     // Без визуального clamp — диапазон движения задан patterns.ts /
     // game-core. Дополнительный clamp здесь создавал плато у бортов.
-    this.sprite.position.set(
-      Math.round(state.position.x * s),
-      Math.round(state.position.y * s),
-    );
-    this.container.position.set(Math.round(scale.offsetX), Math.round(scale.offsetY));
+    this.sprite.position.set(state.position.x * s, state.position.y * s);
+    this.container.position.set(scale.offsetX, scale.offsetY);
   }
 
   destroy(): void {

@@ -2,15 +2,17 @@ import { Container, Graphics } from 'pixi.js';
 import { PUCK_START, type Vec2 } from '@hockey/game-core';
 import type { Scale } from '../coords.js';
 
-const PUCK_RADIUS = 3;
+const PUCK_RADIUS = 3.3;
 const PUCK_BLACK = 0x111111;
 
 // Puck sits at the blade toe, offset from the body centre.
 // Left grip carries the puck on the left side of the body (negative x),
 // right grip — on the right (positive x). Y is the same: puck is in front.
+// Offset +10% вслед за ростом sprite игрока, чтобы шайба оставалась на
+// кончике клюшки.
 export const BLADE_OFFSET: Record<'left' | 'right', Vec2> = {
-  left:  { x: -14, y: -34 },
-  right: { x:  14, y: -34 },
+  left:  { x: -15, y: -37 },
+  right: { x:  15, y: -37 },
 };
 
 export class Puck {

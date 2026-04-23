@@ -2,9 +2,9 @@ import { Container, Sprite } from 'pixi.js';
 import { GOAL } from '@hockey/game-core';
 import type { Scale } from '../coords.js';
 
-// gate.webp: 640×344, aspect 1.86:1 — +15% относительно предыдущих 78×42.
-const GATE_W = 90;
-const GATE_H = 48; // 90 / 1.86
+// gate.webp: 640×344, aspect 1.86:1 — +10% сверх предыдущих 90×48.
+const GATE_W = 99;
+const GATE_H = 53; // 99 / 1.86
 
 export class Goal {
   readonly container = new Container();
@@ -23,11 +23,8 @@ export class Goal {
     // Без визуального clamp — диапазон задан goalAmplitude/maxSafeOffset
     // в game-core. Дополнительный clamp здесь создавал плато у бортов.
     const rawX = GOAL.x + GOAL.width / 2 + offsetRinkX;
-    this.sprite.position.set(
-      Math.round(rawX * s),
-      Math.round((GOAL.y + GOAL.height) * s),
-    );
-    this.container.position.set(Math.round(scale.offsetX), Math.round(scale.offsetY));
+    this.sprite.position.set(rawX * s, (GOAL.y + GOAL.height) * s);
+    this.container.position.set(scale.offsetX, scale.offsetY);
   }
 
   destroy(): void {
