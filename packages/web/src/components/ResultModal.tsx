@@ -50,7 +50,7 @@ export function ResultModal({ result, durationMs }: ResultModalProps): JSX.Eleme
           position: 'fixed',
           top: '50%',
           left: '50%',
-          width: '65vw',
+          width: '70vw',
           maxWidth: 560,
           minWidth: 260,
           zIndex: 300,
