@@ -61,6 +61,7 @@ export function DuelScreen(): JSX.Element {
   const loopRef = useRef<GameLoop | null>(null);
   const puckRef = useRef<Puck | null>(null);
   const playerRef = useRef<Player | null>(null);
+  const goalRef = useRef<Goal | null>(null);
   const goalieRef = useRef<Goalie | null>(null);
   const hitboxesRef = useRef<Hitboxes | null>(null);
   const refreshRef = useRef<((s: Scale) => void) | null>(null);
@@ -98,6 +99,7 @@ export function DuelScreen(): JSX.Element {
     const player = new Player(grip);
     puckRef.current = puck;
     playerRef.current = player;
+    goalRef.current = goal;
     goalieRef.current = goalie;
     hitboxesRef.current = hitboxes;
 
@@ -193,6 +195,7 @@ export function DuelScreen(): JSX.Element {
       loop.beginScenePause();
       puck.holdAt({ x: sx, y: GOAL_OPENING.y });
       if (result.type === 'save') goalie.setSavePose(true);
+      if (result.type === 'goal') goalRef.current?.triggerGoalLight();
       useTrainingStore.getState().applyResult(result);
       setIsShowingResult(true);
     }, flightDurationMs);
@@ -310,28 +313,33 @@ export function DuelScreen(): JSX.Element {
         <PixiStage onReady={handleReady} onResize={handleResize} />
       </div>
 
-      {/* Shot button — 50% width, centered */}
+      {/* Shot button */}
       <div style={{ padding: '0 16px 16px', display: 'flex', justifyContent: 'center' }}>
         <button
           onClick={handleShotTap}
           disabled={shotDisabled}
           style={{
-            width: '50%',
-            height: 60,
-            borderRadius: 16,
+            width: '60%',
+            height: 56,
+            borderRadius: 14,
             border: 'none',
-            background: shotDisabled ? '#cbd5e1' : ACCENT,
+            background: shotDisabled
+              ? 'linear-gradient(180deg, #b0bec5 0%, #90a4ae 100%)'
+              : 'linear-gradient(180deg, #e05c5c 0%, #c43a3a 100%)',
             color: '#ffffff',
-            fontSize: 18,
-            fontWeight: 700,
-            letterSpacing: 2,
+            fontSize: 17,
+            fontWeight: 800,
+            letterSpacing: 3,
             textTransform: 'uppercase',
             cursor: shotDisabled ? 'not-allowed' : 'pointer',
-            boxShadow: shotDisabled ? 'none' : '0 4px 16px rgba(0,0,0,0.25)',
+            boxShadow: shotDisabled
+              ? 'none'
+              : '0 4px 0 #8f2020, 0 6px 16px rgba(180,40,40,0.45), inset 0 1px 0 rgba(255,255,255,0.18)',
             touchAction: 'manipulation',
+            transition: 'box-shadow 0.1s',
           }}
         >
-          Бросок
+          БРОСОК
         </button>
       </div>
 
