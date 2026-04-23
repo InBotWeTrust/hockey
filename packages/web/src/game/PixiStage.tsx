@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Application, Assets } from 'pixi.js';
 import { computeScale, type Scale } from './coords.js';
 
-const SPRITE_ASSETS = ['/sprites/court.webp', '/sprites/gate.webp', '/sprites/goalkeeper.webp', '/sprites/player.webp'];
+const SPRITE_ASSETS = ['/sprites/court.webp', '/sprites/gate.webp', '/sprites/goalkeeper.webp', '/sprites/save.webp', '/sprites/player.webp'];
 
 export interface PixiStageProps {
   onReady: (app: Application, scale: Scale) => void;

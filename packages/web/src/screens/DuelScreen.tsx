@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Container, Graphics } from 'pixi.js';
+import { Container } from 'pixi.js';
 import type { Application } from 'pixi.js';
 import {
   getGoalie,
@@ -10,7 +10,6 @@ import {
   PUCK_SPEED_PER_MS,
   PUCK_START,
   GOAL_OPENING,
-  RINK,
   SHOOTER_CENTER_X,
   SHOOTER_AMPLITUDE,
   type ShotResult,
@@ -20,6 +19,7 @@ import { PixiStage } from '../game/PixiStage.js';
 import { Rink } from '../game/renderer/Rink.js';
 import { Goal } from '../game/renderer/Goal.js';
 import { Goalie } from '../game/renderer/Goalie.js';
+import { Hitboxes } from '../game/renderer/Hitboxes.js';
 import { Puck } from '../game/renderer/Puck.js';
 import { Player } from '../game/renderer/Player.js';
 import { createGameLoop, type GameLoop, type SpeedOverrides } from '../game/loop.js';
@@ -27,6 +27,7 @@ import type { Scale } from '../game/coords.js';
 import { useTrainingStore } from '../stores/trainingStore.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { NAV_HEIGHT } from '../components/BottomNav.js';
+import { ResultModal } from '../components/ResultModal.js';
 
 const BG = '#f4f7fb';
 const PANEL = '#ffffff';
@@ -37,6 +38,7 @@ const ACCENT = '#0f172a';
 
 const ROOKIE_ID = 'rookie';
 const ROOKIE_CFG = getGoalie(ROOKIE_ID);
+const PAUSE_MS = 1000;
 
 const DEFAULT_SPEEDS: SpeedOverrides = {
   goalFreq: ROOKIE_CFG.goalFrequency,
@@ -60,9 +62,11 @@ export function DuelScreen(): JSX.Element {
   const scaleRef = useRef<Scale>({ factor: 1, offsetX: 0, offsetY: 0 });
   const loopRef = useRef<GameLoop | null>(null);
   const puckRef = useRef<Puck | null>(null);
+  const goalieRef = useRef<Goalie | null>(null);
+  const hitboxesRef = useRef<Hitboxes | null>(null);
   const refreshRef = useRef<((s: Scale) => void) | null>(null);
   const [isShowingResult, setIsShowingResult] = useState(false);
-  const isFirstShot = useRef(true);
+  const [showHitboxes, setShowHitboxes] = useState(false);
 
   const [speeds, setSpeeds] = useState<SpeedOverrides>(DEFAULT_SPEEDS);
   const speedsRef = useRef<SpeedOverrides>(DEFAULT_SPEEDS);
@@ -72,14 +76,6 @@ export function DuelScreen(): JSX.Element {
     () => (PUCK_START.y - GOAL_OPENING.y) / speeds.puckSpeed,
     [speeds.puckSpeed],
   );
-
-  useEffect(() => {
-    if (isFirstShot.current) { isFirstShot.current = false; return; }
-    if (!state.lastResult) return;
-    setIsShowingResult(true);
-    const t = setTimeout(() => setIsShowingResult(false), 850);
-    return () => clearTimeout(t);
-  }, [state.shotIndex]);
 
   useEffect(() => {
     try {
@@ -97,25 +93,23 @@ export function DuelScreen(): JSX.Element {
     const rink = new Rink();
     const goal = new Goal();
     const goalie = new Goalie();
+    const hitboxes = new Hitboxes();
     const grip = useAuthStore.getState().user?.grip ?? 'left';
     const puck = new Puck(grip);
     const player = new Player(grip);
     puckRef.current = puck;
+    goalieRef.current = goalie;
+    hitboxesRef.current = hitboxes;
 
-    const rinkMask = new Graphics();
     const gameLayer = new Container();
     gameLayer.addChild(goal.container);
     gameLayer.addChild(goalie.container);
     gameLayer.addChild(player.container);
     gameLayer.addChild(puck.container);
-    gameLayer.mask = rinkMask;
+    gameLayer.addChild(hitboxes.container);
 
     app.stage.addChild(rink.container);
     app.stage.addChild(gameLayer);
-    app.stage.addChild(rinkMask);
-
-    const BORDER = 5;
-    const RADIUS = 23;
 
     const refresh = (s: Scale): void => {
       scaleRef.current = s;
@@ -123,14 +117,6 @@ export function DuelScreen(): JSX.Element {
       goal.update(s);
       player.update(s);
       puck.resetAtStart(s);
-      const f = s.factor;
-      rinkMask.clear().roundRect(
-        s.offsetX + BORDER * f,
-        s.offsetY + BORDER * f,
-        RINK.width * f - 2 * BORDER * f,
-        RINK.height * f - 2 * BORDER * f,
-        RADIUS * f,
-      ).fill(0xffffff);
     };
     refreshRef.current = refresh;
     refresh(initialScale);
@@ -140,6 +126,7 @@ export function DuelScreen(): JSX.Element {
       goalieRenderer: goalie,
       playerRenderer: player,
       puckRenderer: puck,
+      hitboxRenderer: hitboxes,
       getScale: () => scaleRef.current,
       getSeed: () => useTrainingStore.getState().seed,
       getShotIndex: () => useTrainingStore.getState().shotIndex,
@@ -157,20 +144,29 @@ export function DuelScreen(): JSX.Element {
   const handleShotTap = useCallback((): void => {
     const loop = loopRef.current;
     const puck = puckRef.current;
-    if (!loop || !puck) return;
+    const goalie = goalieRef.current;
+    if (!loop || !puck || !goalie) return;
     const st = useTrainingStore.getState();
-    if (!st.currentGoalieId || puck.isFlying()) return;
+    if (!st.currentGoalieId || puck.isFlying() || puck.isHeld()) return;
 
     const cfg = getGoalie(st.currentGoalieId);
     const overrides = speedsRef.current;
     const activeCfg = { ...cfg, goalFrequency: overrides.goalFreq, frequency: overrides.goalieFreq };
 
-    const tapTime = performance.now() - loop.sessionStartMs;
+    // tapTime для goalie/goal cross — sceneT (вратарь/ворота движутся по нему).
+    // shooterTapTime — shooterT (шутер визуально движется по нему). Эти t
+    // расходятся после первой паузы: шутер паузится с тапа, сцена с импакта,
+    // суммарная разница накапливается. Без отдельного shooter-time
+    // resolveShot пересчитал бы шутера от sceneT и получил позицию,
+    // не соответствующую видимой → ложные miss/save.
+    const tapTime = loop.getSceneT();
+    const shooterTapTime = loop.getShooterT();
     const offsets = getSessionPhaseOffsets(st.seed);
-    const sx = computeShooterX(tapTime + offsets.shooter, overrides.shooterFreq);
+    const sx = computeShooterX(shooterTapTime + offsets.shooter, overrides.shooterFreq);
     const result: ShotResult = resolveShot(
       {
         tapTime,
+        shooterTapTime,
         puckSpeedPerMs: overrides.puckSpeed,
         shooterFrequency: overrides.shooterFreq,
       },
@@ -181,21 +177,38 @@ export function DuelScreen(): JSX.Element {
       offsets,
     );
 
+    // Phase 1 — flying: шутер замирает на текущей позиции, шайба летит
+    loop.beginShooterPause();
     puck.playShot(
       puck.bladePoint(sx),
       { x: sx, y: GOAL_OPENING.y },
       performance.now(),
       flightDurationMs,
     );
+
+    // Phase 2 — paused (импакт): фриз сцены, hold puck, save-поза если save, applyResult, модалка
     window.setTimeout(() => {
+      loop.beginScenePause();
+      puck.holdAt({ x: sx, y: GOAL_OPENING.y });
+      if (result.type === 'save') goalie.setSavePose(true);
       useTrainingStore.getState().applyResult(result);
-      const o = getSessionPhaseOffsets(useTrainingStore.getState().seed);
-      puck.resetAtStart(scaleRef.current, computeShooterX(
-        performance.now() - loop.sessionStartMs + o.shooter,
-        speedsRef.current.shooterFreq,
-      ));
-    }, flightDurationMs + 20);
+      setIsShowingResult(true);
+    }, flightDurationMs);
+
+    // Phase 3 — idle: всё разморозить (t продолжается с того же значения,
+    // вратарь/ворота/шутер возобновляют движение в ту же сторону)
+    window.setTimeout(() => {
+      loop.endScenePause();
+      loop.endShooterPause();
+      puck.release();
+      if (result.type === 'save') goalie.setSavePose(false);
+      setIsShowingResult(false);
+    }, flightDurationMs + PAUSE_MS);
   }, [flightDurationMs]);
+
+  useEffect(() => {
+    hitboxesRef.current?.setVisible(showHitboxes);
+  }, [showHitboxes]);
 
   const cfg = state.currentGoalieId ? getGoalie(state.currentGoalieId) : null;
   const shotDisabled = !cfg || isShowingResult;
@@ -266,6 +279,19 @@ export function DuelScreen(): JSX.Element {
         />
       </div>
 
+      {/* Debug toggle */}
+      <div style={{ padding: '0 16px 6px', display: 'flex', justifyContent: 'flex-end' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: MUTED, cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={showHitboxes}
+            onChange={(e) => setShowHitboxes(e.target.checked)}
+            style={{ cursor: 'pointer' }}
+          />
+          Хитбоксы
+        </label>
+      </div>
+
       {/* Rink */}
       <div
         style={{
@@ -307,49 +333,9 @@ export function DuelScreen(): JSX.Element {
         </button>
       </div>
 
-      {/* Result flash */}
+      {/* Result modal */}
       {isShowingResult && state.lastResult && (
-        <>
-          <style>{`
-            @keyframes result-pop {
-              0%  { transform: translate(-50%, -50%) scale(0.55); opacity: 0; }
-              60% { transform: translate(-50%, -50%) scale(1.08); opacity: 1; }
-              100%{ transform: translate(-50%, -50%) scale(1);    opacity: 1; }
-            }
-          `}</style>
-          <div
-            style={{
-              position: 'fixed',
-              top: '50%',
-              left: '50%',
-              zIndex: 300,
-              animation: 'result-pop 0.22s cubic-bezier(.22,.68,0,1.4) forwards',
-              pointerEvents: 'none',
-              textAlign: 'center',
-              background: state.lastResult.type === 'goal'
-                ? 'rgba(34,197,94,0.95)'
-                : state.lastResult.type === 'save'
-                  ? 'rgba(30,64,175,0.95)'
-                  : 'rgba(226,54,54,0.95)',
-              borderRadius: 24,
-              padding: '20px 52px',
-              boxShadow: '0 12px 60px rgba(0,0,0,0.55)',
-            }}
-          >
-            <div style={{
-              fontSize: 72,
-              fontWeight: 900,
-              letterSpacing: 4,
-              color: '#ffffff',
-              textTransform: 'uppercase',
-              lineHeight: 1,
-            }}>
-              {state.lastResult.type === 'goal' && 'ТОЧНО'}
-              {state.lastResult.type === 'save' && 'СЭЙВ'}
-              {state.lastResult.type === 'miss' && 'МИМО'}
-            </div>
-          </div>
-        </>
+        <ResultModal result={state.lastResult} durationMs={PAUSE_MS} />
       )}
     </main>
   );

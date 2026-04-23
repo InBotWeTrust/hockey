@@ -1,8 +1,9 @@
 import type { GoalieConfig } from '../goalie/types.js';
 
-// goalAmplitude clamp is 146 (from rink.ts geometry — RINK.width=390, GOAL.width=90).
-// Full board-to-board visible from the very first boss — that's the signature mechanic.
-const FULL_AMP = 140;
+// goalAmplitude clamp is 200 (from rink.ts geometry — RINK.width=390,
+// GOAL.width=90, MARGIN=-50). Full board-to-board visible from the very
+// first boss — that's the signature mechanic.
+const FULL_AMP = 167;
 
 export const GOALIES: readonly GoalieConfig[] = [
   {

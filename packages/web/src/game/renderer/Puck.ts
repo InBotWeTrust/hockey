@@ -24,6 +24,7 @@ export class Puck {
     startedAt: number;
     durationMs: number;
   } | null = null;
+  private held: Vec2 | null = null;
 
   constructor(grip: 'left' | 'right' = 'left') {
     this.offset = BLADE_OFFSET[grip];
@@ -44,7 +45,20 @@ export class Puck {
     this.flight = { start, end, startedAt: now, durationMs };
   }
 
+  holdAt(pos: Vec2): void {
+    this.held = pos;
+    this.flight = null;
+  }
+
+  release(): void {
+    this.held = null;
+  }
+
   update(now: number, scale: Scale): void {
+    if (this.held) {
+      this.draw(this.held, scale);
+      return;
+    }
     if (!this.flight) return;
     const t = Math.min(1, (now - this.flight.startedAt) / this.flight.durationMs);
     const x = this.flight.start.x + (this.flight.end.x - this.flight.start.x) * t;
@@ -55,6 +69,10 @@ export class Puck {
 
   isFlying(): boolean {
     return this.flight !== null;
+  }
+
+  isHeld(): boolean {
+    return this.held !== null;
   }
 
   private draw(p: Vec2, scale: Scale): void {

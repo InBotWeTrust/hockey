@@ -16,8 +16,9 @@ export function resolveShot(
   phaseOffsets?: SessionPhaseOffsets,
 ): ShotResult {
   const speed = input.puckSpeedPerMs ?? PUCK_SPEED_PER_MS;
+  const shooterTime = input.shooterTapTime ?? input.tapTime;
   const shooterX = simulateShooter(
-    input.tapTime + (phaseOffsets?.shooter ?? 0),
+    shooterTime + (phaseOffsets?.shooter ?? 0),
     input.shooterFrequency,
   ).x;
 

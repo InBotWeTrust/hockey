@@ -2,10 +2,12 @@ import { Assets, Container, Sprite, Texture } from 'pixi.js';
 import { PUCK_START } from '@hockey/game-core';
 import type { Scale } from '../coords.js';
 
-// lefthand/righthand.webp: 1024×1024 square, top-down view. Sprite centred
-// at shooterX so the body oscillates symmetrically regardless of grip;
-// the puck is offset from the body by Puck.BLADE_OFFSET.
-const SPRITE_SIZE = 70;
+// lefthand/righthand.webp: 700×950 top-down view. Sprite centred at shooterX
+// so the body oscillates symmetrically regardless of grip; the puck is
+// offset from the body by Puck.BLADE_OFFSET.
+const SPRITE_WIDTH = 52;
+const SPRITE_ASPECT = 700 / 950;
+const SPRITE_HEIGHT = SPRITE_WIDTH / SPRITE_ASPECT;
 
 export class Player {
   readonly container = new Container();
@@ -22,8 +24,8 @@ export class Player {
 
   update(scale: Scale, shooterX = PUCK_START.x): void {
     const s = scale.factor;
-    this.sprite.width  = SPRITE_SIZE * s;
-    this.sprite.height = SPRITE_SIZE * s;
+    this.sprite.width  = SPRITE_WIDTH * s;
+    this.sprite.height = SPRITE_HEIGHT * s;
     this.sprite.position.set(Math.round(shooterX * s), Math.round(PUCK_START.y * s));
     this.container.position.set(Math.round(scale.offsetX), Math.round(scale.offsetY));
   }

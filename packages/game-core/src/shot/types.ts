@@ -1,7 +1,12 @@
 import type { Vec2 } from '../rink.js';
 
 export interface ShotInput {
-  tapTime: number;        // ms from session start
+  tapTime: number;        // ms from session start, для goalie/goal cross-time
+  // Отдельный tap-time для шутера. Web-клиент паузит шутера и сцену
+  // независимо (шутер замирает на тапе, сцена — на импакте), поэтому
+  // эффективное время для simulateShooter может отличаться от tapTime.
+  // Если не задан — используется tapTime (старое поведение / тесты).
+  shooterTapTime?: number;
   puckSpeedPerMs?: number; // override for PUCK_SPEED_PER_MS (debug/test)
   shooterFrequency?: number; // override for SHOOTER_FREQUENCY (debug/test)
 }

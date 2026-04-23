@@ -13,6 +13,7 @@ import {
 import type { Scale } from './coords.js';
 import type { Goal } from './renderer/Goal.js';
 import type { Goalie } from './renderer/Goalie.js';
+import type { Hitboxes } from './renderer/Hitboxes.js';
 import type { Player } from './renderer/Player.js';
 import type { Puck } from './renderer/Puck.js';
 
@@ -28,6 +29,7 @@ export interface GameLoopOpts {
   goalieRenderer: Goalie;
   playerRenderer: Player;
   puckRenderer: Puck;
+  hitboxRenderer?: Hitboxes;
   getScale: () => Scale;
   getSeed: () => string;
   getShotIndex: () => number;
@@ -40,6 +42,17 @@ export interface GameLoop {
   detach: () => void;
   sessionStartMs: number;
   getShooterX: (tMs: number, shooterFreq?: number) => number;
+  // Шутер и сцена паузятся независимо. Каждая пауза вычитает своё real-time
+  // из эффективного t (= since sessionStart минус суммарная пауза). Когда
+  // пауза заканчивается, t продолжается с того же значения, поэтому
+  // треугольные волны / синусоиды возобновляются с той же точки в ту же
+  // сторону, в которую двигались до остановки.
+  beginShooterPause: () => void;
+  endShooterPause: () => void;
+  beginScenePause: () => void;
+  endScenePause: () => void;
+  getShooterT: () => number;
+  getSceneT: () => number;
 }
 
 function shooterX(t: number, freq: number): number {
@@ -53,6 +66,21 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
   const sessionStartMs = performance.now();
   let offsets: SessionPhaseOffsets | null = null;
   let offsetSeed: string | null = null;
+
+  let shooterPausedTotal = 0;
+  let shooterPauseStartedAt: number | null = null;
+  let scenePausedTotal = 0;
+  let scenePauseStartedAt: number | null = null;
+
+  function shooterT(now: number): number {
+    const active = shooterPauseStartedAt !== null ? now - shooterPauseStartedAt : 0;
+    return now - sessionStartMs - shooterPausedTotal - active;
+  }
+
+  function sceneT(now: number): number {
+    const active = scenePauseStartedAt !== null ? now - scenePauseStartedAt : 0;
+    return now - sessionStartMs - scenePausedTotal - active;
+  }
 
   function getOffsets(): SessionPhaseOffsets {
     const seed = opts.getSeed();
@@ -68,27 +96,33 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
     if (!id) return;
     const cfg = getGoalie(id);
     const now = performance.now();
-    const t = now - sessionStartMs;
     const overrides = opts.getSpeedOverrides?.();
     const activeCfg = overrides
       ? { ...cfg, goalFrequency: overrides.goalFreq, frequency: overrides.goalieFreq }
       : cfg;
     const sf = overrides?.shooterFreq ?? 0.45;
     const o = getOffsets();
-    const goalState: GoalState = simulateGoal(activeCfg, t, o.goal);
+    const tScene = sceneT(now);
+    const tShooter = shooterT(now);
+    const goalState: GoalState = simulateGoal(activeCfg, tScene, o.goal);
     const goalieState: GoalieState = simulateGoalie(
       activeCfg,
       opts.getSeed(),
       opts.getShotIndex(),
-      t,
+      tScene,
       o.goalie,
     );
-    const sx = shooterX(t + o.shooter, sf);
+    const sx = shooterX(tShooter + o.shooter, sf);
     const scale = opts.getScale();
+
     opts.goalRenderer.update(scale, goalState.offsetX);
     opts.goalieRenderer.update(goalieState, scale);
     opts.playerRenderer.update(scale, sx);
-    if (!opts.puckRenderer.isFlying()) {
+    opts.hitboxRenderer?.update(scale, goalState.offsetX, goalieState);
+
+    if (opts.puckRenderer.isHeld()) {
+      opts.puckRenderer.update(now, scale);
+    } else if (!opts.puckRenderer.isFlying()) {
       opts.puckRenderer.resetAtStart(scale, sx);
     } else {
       opts.puckRenderer.update(now, scale);
@@ -109,5 +143,25 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
     getShooterX(tMs, freq = 0.45) {
       return shooterX(tMs, freq);
     },
+    beginShooterPause() {
+      if (shooterPauseStartedAt === null) shooterPauseStartedAt = performance.now();
+    },
+    endShooterPause() {
+      if (shooterPauseStartedAt !== null) {
+        shooterPausedTotal += performance.now() - shooterPauseStartedAt;
+        shooterPauseStartedAt = null;
+      }
+    },
+    beginScenePause() {
+      if (scenePauseStartedAt === null) scenePauseStartedAt = performance.now();
+    },
+    endScenePause() {
+      if (scenePauseStartedAt !== null) {
+        scenePausedTotal += performance.now() - scenePauseStartedAt;
+        scenePauseStartedAt = null;
+      }
+    },
+    getShooterT() { return shooterT(performance.now()); },
+    getSceneT() { return sceneT(performance.now()); },
   };
 }

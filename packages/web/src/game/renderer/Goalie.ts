@@ -1,31 +1,49 @@
-import { Container, Sprite } from 'pixi.js';
-import { RINK, type GoalieState } from '@hockey/game-core';
+import { Assets, Container, Sprite, Texture } from 'pixi.js';
+import { type GoalieState } from '@hockey/game-core';
 import type { Scale } from '../coords.js';
 
-// goalkeeper.webp: 1024×1024 square
-const SPRITE_SIZE = 55;
-const HALF = SPRITE_SIZE / 2;
-const INNER_MARGIN = 6; // matches rink border in game units
+// goalkeeper.webp / save.webp: 1024×1024 square. Save-поза в отдельном
+// файле с раскинутыми щитками визуально не заполняет кадр так плотно, как
+// idle-спрайт, поэтому рисуем её крупнее, чтобы фигура совпадала.
+const IDLE_SIZE = 55;
+const SAVE_SIZE = 70;
 
 export class Goalie {
   readonly container = new Container();
   private readonly sprite: Sprite;
+  private idleTex: Texture = Texture.EMPTY;
+  private saveTex: Texture = Texture.EMPTY;
+  private isSaving = false;
 
   constructor() {
-    this.sprite = Sprite.from('/sprites/goalkeeper.webp');
+    this.sprite = new Sprite(Texture.EMPTY);
     this.sprite.anchor.set(0.5, 0.5);
     this.container.addChild(this.sprite);
+    Assets.load<Texture>('/sprites/goalkeeper.webp').then((tex) => {
+      this.idleTex = tex;
+      if (!this.isSaving) this.sprite.texture = tex;
+    });
+    Assets.load<Texture>('/sprites/save.webp').then((tex) => {
+      this.saveTex = tex;
+      if (this.isSaving) this.sprite.texture = tex;
+    });
+  }
+
+  setSavePose(saving: boolean): void {
+    this.isSaving = saving;
+    const tex = saving ? this.saveTex : this.idleTex;
+    if (tex !== Texture.EMPTY) this.sprite.texture = tex;
   }
 
   update(state: GoalieState, scale: Scale): void {
     const s = scale.factor;
-    const size = SPRITE_SIZE * s;
+    const size = (this.isSaving ? SAVE_SIZE : IDLE_SIZE) * s;
     this.sprite.width = size;
     this.sprite.height = size;
-    // Goalie moves independently of the goal — position is absolute, no goalOffset.
-    const clampedX = Math.max(HALF + INNER_MARGIN, Math.min(RINK.width - HALF - INNER_MARGIN, state.position.x));
+    // Без визуального clamp — диапазон движения задан patterns.ts /
+    // game-core. Дополнительный clamp здесь создавал плато у бортов.
     this.sprite.position.set(
-      Math.round(clampedX * s),
+      Math.round(state.position.x * s),
       Math.round(state.position.y * s),
     );
     this.container.position.set(Math.round(scale.offsetX), Math.round(scale.offsetY));

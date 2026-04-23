@@ -23,7 +23,8 @@ export interface GoalieState {
   height: number; // высота AABB
 }
 
-export const GOALIE_SIZE = { width: 38, height: 14 } as const;
+// AABB вратаря: width 50 — ещё чуть шире для лучшего ощущения «отбивает».
+export const GOALIE_SIZE = { width: 50, height: 24 } as const;
 
 // Goalie stands in front of the goal (between goal line and player).
 export const GOALIE_Y = GOAL.y + GOAL.height + GOALIE_SIZE.height / 2 + 4;
