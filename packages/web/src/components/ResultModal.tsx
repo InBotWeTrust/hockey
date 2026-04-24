@@ -3,6 +3,7 @@ import type { ShotResult } from '@hockey/game-core';
 export interface ResultModalProps {
   result: ShotResult;
   durationMs: number;
+  subText?: string | null;
 }
 
 interface Theme {
@@ -29,7 +30,7 @@ const THEMES: Record<ShotResult['type'], Theme> = {
   },
 };
 
-export function ResultModal({ result, durationMs }: ResultModalProps): JSX.Element {
+export function ResultModal({ result, durationMs, subText }: ResultModalProps): JSX.Element {
   const theme = THEMES[result.type];
 
   return (
@@ -75,6 +76,21 @@ export function ResultModal({ result, durationMs }: ResultModalProps): JSX.Eleme
         >
           {theme.title}
         </div>
+        {subText && (
+          <div
+            style={{
+              marginTop: 10,
+              fontFamily: 'var(--font-sans)',
+              fontWeight: 600,
+              fontSize: 'clamp(13px, 3vw, 16px)',
+              color: '#0f172a',
+              opacity: 0.85,
+              letterSpacing: '0.02em',
+            }}
+          >
+            {subText}
+          </div>
+        )}
       </div>
     </>
   );

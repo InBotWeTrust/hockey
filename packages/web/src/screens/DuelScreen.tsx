@@ -6,9 +6,12 @@ import {
   getGoalie,
   resolveShot,
   getSessionPhaseOffsets,
+  simulateGoalie,
+  simulateGoal,
   STICK_NEUTRAL,
   PUCK_START,
   GOAL_OPENING,
+  GOALIE_Y,
   SHOOTER_CENTER_X,
   SHOOTER_AMPLITUDE,
   type ShotResult,
@@ -67,6 +70,7 @@ export function DuelScreen(): JSX.Element {
   const hitboxesRef = useRef<Hitboxes | null>(null);
   const refreshRef = useRef<((s: Scale) => void) | null>(null);
   const [isShowingResult, setIsShowingResult] = useState(false);
+  const [resultSubText, setResultSubText] = useState<string | null>(null);
   const [showHitboxes, setShowHitboxes] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -183,6 +187,32 @@ export function DuelScreen(): JSX.Element {
       offsets,
     );
 
+    // Flavor text — deterministic, mirrors resolveShot internals
+    let subText: string | null = null;
+    if (result.type === 'save') {
+      const tGoalieCross = tapTime + (PUCK_START.y - GOALIE_Y) / overrides.puckSpeed;
+      const gs = simulateGoalie(activeCfg, st.seed, st.shotIndex, tGoalieCross, offsets.goalie ?? 0);
+      const rel = sx - gs.position.x;
+      const sixth = gs.width / 6;
+      subText = rel < -sixth ? 'Уверенная игра блином' : rel > sixth ? 'Точно в ловушку!' : 'Вратарь на месте!';
+    } else if (result.type === 'goal') {
+      const tGoalCross = tapTime + (PUCK_START.y - GOAL_OPENING.y) / overrides.puckSpeed;
+      const goalOffsetAtGoal = simulateGoal(activeCfg, tGoalCross, offsets.goal ?? 0).offsetX;
+      const oMin = GOAL_OPENING.xMin + goalOffsetAtGoal;
+      const oMax = GOAL_OPENING.xMax + goalOffsetAtGoal;
+      const rel = (sx - oMin) / (oMax - oMin); // 0=left edge, 1=right edge
+      if (rel < 1 / 6 || rel > 5 / 6) subText = 'Точно в девятку!';
+      else if (rel < 2 / 6 || rel > 4 / 6) subText = Math.random() < 0.5 ? 'Мощный щелчок!' : 'Отличный кистевой!';
+      else subText = 'Отличный бросок!';
+    } else if (result.type === 'miss') {
+      const tGoalCross = tapTime + (PUCK_START.y - GOAL_OPENING.y) / overrides.puckSpeed;
+      const goalOffsetAtGoal = simulateGoal(activeCfg, tGoalCross, offsets.goal ?? 0).offsetX;
+      const oMin = GOAL_OPENING.xMin + goalOffsetAtGoal;
+      const oMax = GOAL_OPENING.xMax + goalOffsetAtGoal;
+      const dist = Math.max(oMin - sx, sx - oMax, 0);
+      subText = dist <= 3 ? 'Штанга спасает!' : dist < 18 ? 'Рядом со штангой!' : dist < 48 ? 'Но было опасно!' : 'Очень далеко...';
+    }
+
     loop.beginShooterPause();
     player?.playShot();
     puck.playShot(
@@ -198,6 +228,7 @@ export function DuelScreen(): JSX.Element {
       if (result.type === 'save') goalie.setSavePose(true);
       if (result.type === 'goal') goalRef.current?.triggerGoalLight();
       useTrainingStore.getState().applyResult(result);
+      setResultSubText(subText);
       setIsShowingResult(true);
     }, flightDurationMs);
 
@@ -374,7 +405,7 @@ export function DuelScreen(): JSX.Element {
       </SettingsSheet>
 
       {isShowingResult && state.lastResult && (
-        <ResultModal result={state.lastResult} durationMs={PAUSE_MS} />
+        <ResultModal result={state.lastResult} durationMs={PAUSE_MS} subText={resultSubText} />
       )}
     </main>
   );
