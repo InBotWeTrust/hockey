@@ -1,0 +1,742 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ultimate Hockey — E-style (glassmorphism)</title>
+    <style>
+      :root {
+        --ink: #0f172a;
+        --muted: #475569;
+        --red: #e11d48;
+        --red-soft: #fecdd3;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        background: #dde5ef;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro", "Segoe UI", Roboto, sans-serif;
+        color: var(--ink);
+        padding: 32px 16px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 24px;
+        justify-content: center;
+      }
+
+      .screen-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        margin-bottom: 8px;
+      }
+
+      /* Phone with ice-tinted wallpaper — glass reads against this */
+      .phone {
+        width: 430px;
+        height: 900px;
+        border-radius: 36px;
+        border: 8px solid #0f172a;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+        box-shadow: 0 12px 40px rgba(15, 23, 42, 0.28);
+        background:
+          radial-gradient(circle at 20% 10%, rgba(236, 72, 153, 0.15), transparent 55%),
+          radial-gradient(circle at 80% 90%, rgba(59, 130, 246, 0.22), transparent 55%),
+          linear-gradient(180deg, #c9dcf0 0%, #9cbfdf 100%);
+      }
+      /* fake "ice crystals" texture */
+      .phone::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image:
+          radial-gradient(circle at 15% 30%, rgba(255,255,255,0.5) 0 1.5px, transparent 2px),
+          radial-gradient(circle at 60% 50%, rgba(255,255,255,0.4) 0 1px, transparent 2px),
+          radial-gradient(circle at 35% 80%, rgba(255,255,255,0.35) 0 1.5px, transparent 2px),
+          radial-gradient(circle at 80% 20%, rgba(255,255,255,0.3) 0 1px, transparent 2px);
+        background-size: 220px 220px, 170px 170px, 260px 260px, 180px 180px;
+        opacity: 0.8;
+        pointer-events: none;
+      }
+
+      .notch {
+        height: 28px;
+        background: rgba(15, 23, 42, 0.92);
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        backdrop-filter: blur(8px);
+        position: relative;
+        z-index: 3;
+      }
+
+      /* Glass building block */
+      .glass {
+        background: rgba(255, 255, 255, 0.5);
+        backdrop-filter: blur(18px) saturate(130%);
+        -webkit-backdrop-filter: blur(18px) saturate(130%);
+        border: 1px solid rgba(255, 255, 255, 0.7);
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+      }
+      .glass-dark {
+        background: rgba(15, 23, 42, 0.42);
+        color: #fff;
+        backdrop-filter: blur(14px) saturate(140%);
+        -webkit-backdrop-filter: blur(14px) saturate(140%);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+      }
+
+      /* Header */
+      .header {
+        margin: 10px 14px 10px;
+        padding: 8px 10px;
+        border-radius: 999px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        position: relative;
+        z-index: 2;
+      }
+      .header__title {
+        flex: 1;
+        font-size: 15px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+        padding-left: 4px;
+      }
+      .icon-btn {
+        width: 32px; height: 32px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.55);
+        border: 1px solid rgba(255, 255, 255, 0.75);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        color: var(--ink);
+      }
+      .hp-pill {
+        padding: 6px 12px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.55);
+        border: 1px solid rgba(255, 255, 255, 0.75);
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      /* Rink with glass scoreboard */
+      .rink {
+        flex: 1;
+        margin: 0 14px 10px;
+        border-radius: 24px;
+        background: linear-gradient(180deg, rgba(234,242,251,0.85) 0%, rgba(219,231,244,0.85) 100%);
+        border: 1.5px solid rgba(30, 58, 95, 0.4);
+        position: relative;
+        overflow: hidden;
+      }
+      .rink__center {
+        position: absolute;
+        top: 50%; left: 50%;
+        transform: translate(-50%, -50%);
+        width: 90px; height: 90px;
+        border-radius: 50%;
+        border: 2px solid rgba(30, 58, 95, 0.18);
+      }
+      .rink__mid {
+        position: absolute;
+        top: 50%; left: 0; right: 0;
+        height: 2px;
+        background: rgba(225, 29, 72, 0.3);
+      }
+      .actor-goal {
+        position: absolute; top: 18px; left: 50%;
+        transform: translate(-50%, 0);
+        width: 80px; height: 28px;
+        background: repeating-linear-gradient(90deg, #a1a6b0 0 2px, transparent 2px 5px);
+        border: 2px solid #d84949;
+        border-radius: 4px 4px 0 0;
+      }
+      .actor-goalie {
+        position: absolute; top: 56px; left: 50%;
+        transform: translate(-50%, 0);
+        width: 44px; height: 44px;
+        border-radius: 10px;
+        background: radial-gradient(circle at 40% 30%, #e2e8f0, #334155 70%);
+        box-shadow: inset -4px -4px 8px rgba(0,0,0,0.2);
+      }
+      .actor-player {
+        position: absolute; bottom: 70px; left: 54%;
+        transform: translate(-50%, 0);
+        width: 42px; height: 60px;
+        background: radial-gradient(circle at 50% 30%, #ef4444, #7f1d1d 70%);
+        border-radius: 16px 16px 50% 50%;
+        box-shadow: inset -3px -3px 6px rgba(0,0,0,0.25);
+      }
+      .actor-puck {
+        position: absolute; bottom: 120px; left: 63%;
+        width: 7px; height: 7px;
+        border-radius: 50%;
+        background: #0f172a;
+      }
+
+      /* Glass scoreboard over rink */
+      .sb {
+        position: absolute;
+        top: 10px; left: 10px; right: 10px;
+        padding: 10px 12px;
+        border-radius: 16px;
+        display: grid;
+        grid-template-columns: auto 1fr auto auto;
+        align-items: center;
+        gap: 12px;
+        z-index: 2;
+      }
+      .sb__period {
+        width: 42px; height: 42px;
+        border-radius: 12px;
+        background: rgba(15, 23, 42, 0.92);
+        color: #fff;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+      }
+      .sb__period-label { font-size: 7px; letter-spacing: 0.22em; font-weight: 600; opacity: 0.7; }
+      .sb__period-value { font-size: 20px; font-weight: 800; margin-top: 2px; }
+      .sb__timer {
+        font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+        font-size: 28px;
+        font-weight: 600;
+        color: var(--red);
+        letter-spacing: -0.02em;
+        font-variant-numeric: tabular-nums;
+        text-align: center;
+      }
+      .sb__stat {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        line-height: 1;
+      }
+      .sb__stat-label {
+        font-size: 9px; letter-spacing: 0.14em; font-weight: 600;
+        color: rgba(71, 85, 105, 0.9);
+        text-transform: uppercase;
+      }
+      .sb__stat-value {
+        font-size: 18px; font-weight: 700; color: var(--ink);
+        margin-top: 3px; font-variant-numeric: tabular-nums;
+      }
+      .sb__stat-value small { font-size: 11px; color: var(--muted); font-weight: 500; }
+
+      /* CTA shot */
+      .cta {
+        margin: 0 14px 10px;
+        padding: 15px 20px;
+        border-radius: 999px;
+        font-size: 16px; font-weight: 700; letter-spacing: 0.08em;
+        text-align: center;
+        background: rgba(15, 23, 42, 0.92);
+        color: #fff;
+        backdrop-filter: blur(10px);
+        box-shadow: 0 8px 22px rgba(15, 23, 42, 0.3);
+      }
+
+      /* Bottom nav */
+      .bottom-nav {
+        margin: 0 14px 14px;
+        padding: 8px 10px;
+        border-radius: 22px;
+        display: flex;
+        align-items: center;
+        justify-content: space-around;
+        position: relative;
+        z-index: 2;
+      }
+      .nav-item {
+        display: flex; flex-direction: column; align-items: center; gap: 3px;
+        color: var(--muted); font-size: 10px; font-weight: 600; letter-spacing: 0.04em;
+      }
+      .nav-item--active { color: var(--ink); }
+      .nav-icon {
+        width: 22px; height: 22px; border-radius: 8px;
+        background: rgba(255, 255, 255, 0.6);
+        display: flex; align-items: center; justify-content: center;
+      }
+      .nav-item--active .nav-icon { background: rgba(15, 23, 42, 0.9); color: #fff; }
+
+      /* List screen */
+      .list-wrap {
+        padding: 0 14px; display: flex; flex-direction: column; gap: 10px;
+        overflow-y: auto; flex: 1;
+        position: relative; z-index: 2;
+      }
+      .filter-row {
+        display: flex; gap: 6px;
+        padding: 0 14px 10px;
+        overflow-x: auto;
+      }
+      .chip {
+        padding: 7px 14px; border-radius: 999px;
+        background: rgba(255, 255, 255, 0.55);
+        border: 1px solid rgba(255, 255, 255, 0.75);
+        font-size: 12px; font-weight: 600; color: var(--ink);
+      }
+      .chip--active { background: rgba(15, 23, 42, 0.9); color: #fff; border: none; }
+      .boss {
+        padding: 14px 16px;
+        border-radius: 20px;
+        display: grid;
+        grid-template-columns: 48px 1fr auto;
+        align-items: center;
+        gap: 14px;
+      }
+      .boss-avatar {
+        width: 48px; height: 48px; border-radius: 999px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 20px; font-weight: 800; color: #fff;
+      }
+      .boss-avatar--beaten { background: linear-gradient(135deg, #10b981 0%, #065f46 100%); }
+      .boss-avatar--wall { background: linear-gradient(135deg, #fbbf24 0%, #d97706 100%); }
+      .boss-avatar--quick { background: linear-gradient(135deg, #60a5fa 0%, #1d4ed8 100%); }
+      .boss-avatar--locked {
+        background: rgba(255, 255, 255, 0.6);
+        color: rgba(15, 23, 42, 0.35);
+        border: 1px dashed rgba(15, 23, 42, 0.3);
+      }
+      .boss-name { font-size: 16px; font-weight: 700; }
+      .boss-meta { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 4px; }
+      .meta-chip {
+        font-size: 9px; font-weight: 600;
+        padding: 3px 8px;
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.08);
+        color: var(--muted);
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+      .play-btn {
+        padding: 8px 14px; border-radius: 999px;
+        background: rgba(15, 23, 42, 0.9); color: #fff;
+        font-size: 12px; font-weight: 700;
+      }
+      .play-btn--disabled { background: rgba(15,23,42,0.15); color: rgba(15,23,42,0.5); }
+      .play-btn--replay { background: rgba(255,255,255,0.55); color: var(--muted); border: 1px solid rgba(255,255,255,0.7); }
+
+      /* Profile */
+      .profile-hero {
+        margin: 0 14px 14px;
+        padding: 20px;
+        border-radius: 24px;
+        display: flex; flex-direction: column; align-items: center; gap: 12px;
+        position: relative; z-index: 2;
+      }
+      .profile-avatar {
+        width: 88px; height: 88px; border-radius: 999px;
+        background: linear-gradient(135deg, #0f172a 0%, #334155 100%);
+        color: #fff; font-size: 32px; font-weight: 800;
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 10px 26px rgba(15, 23, 42, 0.25);
+      }
+      .profile-name { font-size: 20px; font-weight: 700; }
+      .profile-sub { font-size: 12px; color: var(--muted); }
+      .profile-pills { display: flex; gap: 6px; }
+      .glass-pill {
+        padding: 6px 12px; border-radius: 999px;
+        background: rgba(255,255,255,0.55);
+        border: 1px solid rgba(255,255,255,0.75);
+        font-size: 12px; font-weight: 600;
+        display: inline-flex; gap: 6px; align-items: center;
+      }
+      .glass-pill--dark { background: rgba(15,23,42,0.9); color: #fff; border: none; }
+      .glass-pill small { font-size: 9px; letter-spacing: 0.14em; opacity: 0.6; text-transform: uppercase; }
+
+      .section-label {
+        padding: 2px 22px;
+        font-size: 10px;
+        font-weight: 600;
+        color: rgba(15, 23, 42, 0.55);
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        position: relative;
+        z-index: 2;
+      }
+      .stats-grid {
+        margin: 0 14px 14px;
+        display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+        position: relative; z-index: 2;
+      }
+      .stat {
+        padding: 12px 14px;
+        border-radius: 16px;
+        display: flex; flex-direction: column; gap: 4px;
+      }
+      .stat-label {
+        font-size: 9px; font-weight: 600;
+        color: var(--muted);
+        text-transform: uppercase; letter-spacing: 0.12em;
+      }
+      .stat-value { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
+      .stat-value small { font-size: 12px; font-weight: 500; color: var(--muted); }
+
+      .grip-row {
+        margin: 0 14px 14px;
+        display: flex; gap: 8px;
+        position: relative; z-index: 2;
+      }
+      .grip {
+        flex: 1;
+        padding: 14px;
+        border-radius: 16px;
+        display: flex; flex-direction: column; align-items: center; gap: 5px;
+      }
+      .grip--active { background: rgba(15, 23, 42, 0.9); color: #fff; border: none; }
+      .grip-name { font-size: 13px; font-weight: 700; }
+      .grip-hint { font-size: 10px; opacity: 0.7; }
+
+      /* Login */
+      .login-hero {
+        padding: 40px 20px 10px;
+        text-align: center;
+        position: relative; z-index: 2;
+      }
+      .logo {
+        width: 82px; height: 82px; border-radius: 999px;
+        background: rgba(15, 23, 42, 0.9);
+        color: #fff; font-size: 28px; font-weight: 900;
+        display: inline-flex; align-items: center; justify-content: center;
+        margin-bottom: 18px;
+        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.35);
+      }
+      .login-title { font-size: 30px; font-weight: 800; letter-spacing: -0.03em; margin-bottom: 10px; }
+      .login-tag { font-size: 14px; color: var(--muted); line-height: 1.5; }
+      .login-badges {
+        padding: 18px 20px;
+        display: flex; justify-content: center; gap: 6px; flex-wrap: wrap;
+        position: relative; z-index: 2;
+      }
+      .login-actions {
+        padding: 24px 20px;
+        display: flex; flex-direction: column; gap: 10px;
+        position: relative; z-index: 2;
+      }
+      .login-btn {
+        padding: 16px;
+        border-radius: 999px;
+        font-size: 15px; font-weight: 700; letter-spacing: 0.04em;
+        display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      }
+      .login-btn--primary { background: #229ed9; color: #fff; }
+      .login-btn--ghost {
+        background: rgba(255, 255, 255, 0.55);
+        border: 1px solid rgba(255,255,255,0.75);
+        color: var(--ink);
+      }
+
+      /* Result modal */
+      .result-modal {
+        position: absolute; inset: 0;
+        background: rgba(15, 23, 42, 0.3);
+        backdrop-filter: blur(8px);
+        display: flex; align-items: center; justify-content: center;
+        padding: 20px; z-index: 10;
+      }
+      .result-card {
+        width: 100%;
+        padding: 26px 22px;
+        border-radius: 26px;
+        text-align: center;
+      }
+      .result-badge {
+        display: inline-block; padding: 6px 16px; border-radius: 999px;
+        background: var(--red-soft); color: #b91c1c;
+        font-size: 11px; font-weight: 700; letter-spacing: 0.12em;
+        margin-bottom: 14px;
+      }
+      .result-title {
+        font-size: 36px; font-weight: 900; letter-spacing: -0.03em;
+        color: var(--red); line-height: 1; margin-bottom: 10px;
+      }
+      .result-sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+      .result-stats { display: flex; gap: 8px; margin-bottom: 18px; }
+      .result-stats .stat { flex: 1; align-items: center; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <!-- 1. Duel -->
+    <div>
+      <div class="screen-title">E1. Дуэль</div>
+      <div class="phone">
+        <div class="notch">ULTIMATE HOCKEY</div>
+        <div class="header glass">
+          <div class="icon-btn">←</div>
+          <div class="header__title">Новичок</div>
+          <div class="hp-pill">HP 5</div>
+        </div>
+        <div class="rink">
+          <div class="sb glass">
+            <div class="sb__period">
+              <span class="sb__period-label">ПЕРИОД</span>
+              <span class="sb__period-value">2</span>
+            </div>
+            <div class="sb__timer">15:47</div>
+            <div class="sb__stat">
+              <span class="sb__stat-label">ГОЛЫ</span>
+              <span class="sb__stat-value">3</span>
+            </div>
+            <div class="sb__stat">
+              <span class="sb__stat-label">БРОСКИ</span>
+              <span class="sb__stat-value">7<small>/15</small></span>
+            </div>
+          </div>
+          <div class="actor-goal"></div>
+          <div class="actor-goalie"></div>
+          <div class="rink__mid"></div>
+          <div class="rink__center"></div>
+          <div class="actor-player"></div>
+          <div class="actor-puck"></div>
+        </div>
+        <div class="cta">БРОСОК</div>
+        <div class="bottom-nav glass">
+          <div class="nav-item nav-item--active"><div class="nav-icon">🏒</div>Игра</div>
+          <div class="nav-item"><div class="nav-icon">📖</div>Сюжет</div>
+          <div class="nav-item"><div class="nav-icon">🏆</div>Рейтинг</div>
+          <div class="nav-item"><div class="nav-icon">💬</div>Чат</div>
+          <div class="nav-item"><div class="nav-icon">👤</div>Профиль</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. Duel result -->
+    <div>
+      <div class="screen-title">E2. Дуэль — результат</div>
+      <div class="phone">
+        <div class="notch">ULTIMATE HOCKEY</div>
+        <div class="header glass">
+          <div class="icon-btn">←</div>
+          <div class="header__title">Новичок</div>
+          <div class="hp-pill">HP 4</div>
+        </div>
+        <div class="rink" style="opacity: 0.65">
+          <div class="actor-goal"></div>
+          <div class="actor-goalie"></div>
+          <div class="rink__mid"></div>
+          <div class="rink__center"></div>
+          <div class="actor-player"></div>
+        </div>
+        <div class="cta" style="opacity: 0.4">БРОСОК</div>
+        <div class="bottom-nav glass">
+          <div class="nav-item nav-item--active"><div class="nav-icon">🏒</div>Игра</div>
+          <div class="nav-item"><div class="nav-icon">📖</div>Сюжет</div>
+          <div class="nav-item"><div class="nav-icon">🏆</div>Рейтинг</div>
+          <div class="nav-item"><div class="nav-icon">💬</div>Чат</div>
+          <div class="nav-item"><div class="nav-icon">👤</div>Профиль</div>
+        </div>
+        <div class="result-modal">
+          <div class="result-card glass">
+            <div class="result-badge">Гол!</div>
+            <div class="result-title">ТОЧНО</div>
+            <div class="result-sub">Шайба пробила вратаря слева</div>
+            <div class="result-stats">
+              <div class="stat glass">
+                <span class="stat-label">Серия</span>
+                <span class="stat-value">×3</span>
+              </div>
+              <div class="stat glass">
+                <span class="stat-label">Награда</span>
+                <span class="stat-value">+24</span>
+              </div>
+              <div class="stat glass">
+                <span class="stat-label">HP вратаря</span>
+                <span class="stat-value">4<small>/8</small></span>
+              </div>
+            </div>
+            <div class="cta" style="margin: 0">ДАЛЬШЕ</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. List -->
+    <div>
+      <div class="screen-title">E3. Боссы-вратари</div>
+      <div class="phone">
+        <div class="notch">ULTIMATE HOCKEY</div>
+        <div class="header glass">
+          <div class="header__title">Лестница вратарей</div>
+          <div class="icon-btn">Ф</div>
+        </div>
+        <div class="filter-row" style="position: relative; z-index: 2">
+          <div class="chip chip--active">Все</div>
+          <div class="chip">Открыты</div>
+          <div class="chip">Пройдены</div>
+        </div>
+        <div class="list-wrap">
+          <div class="boss glass">
+            <div class="boss-avatar boss-avatar--beaten">Н</div>
+            <div>
+              <div class="boss-name">Новичок</div>
+              <div class="boss-meta">
+                <span class="meta-chip">Пройден</span>
+                <span class="meta-chip">+20</span>
+              </div>
+            </div>
+            <div class="play-btn play-btn--replay">Снова</div>
+          </div>
+          <div class="boss glass">
+            <div class="boss-avatar boss-avatar--wall">С</div>
+            <div>
+              <div class="boss-name">Стена</div>
+              <div class="boss-meta">
+                <span class="meta-chip">HP 8</span>
+                <span class="meta-chip">Линейный</span>
+                <span class="meta-chip">Награда ×1</span>
+              </div>
+            </div>
+            <div class="play-btn">Играть</div>
+          </div>
+          <div class="boss glass">
+            <div class="boss-avatar boss-avatar--quick">Б</div>
+            <div>
+              <div class="boss-name">Быстрые ноги</div>
+              <div class="boss-meta">
+                <span class="meta-chip">HP 12</span>
+                <span class="meta-chip">Линейный</span>
+                <span class="meta-chip">Награда ×2</span>
+              </div>
+            </div>
+            <div class="play-btn">Играть</div>
+          </div>
+          <div class="boss glass">
+            <div class="boss-avatar boss-avatar--locked">🔒</div>
+            <div>
+              <div class="boss-name" style="color: var(--muted)">Осьминог</div>
+              <div class="boss-meta">
+                <span class="meta-chip">HP 15</span>
+                <span class="meta-chip">Синус</span>
+              </div>
+            </div>
+            <div class="play-btn play-btn--disabled">Заперт</div>
+          </div>
+          <div class="boss glass">
+            <div class="boss-avatar boss-avatar--locked">🔒</div>
+            <div>
+              <div class="boss-name" style="color: var(--muted)">Рывок</div>
+              <div class="boss-meta">
+                <span class="meta-chip">HP 20</span>
+                <span class="meta-chip">Дэш</span>
+              </div>
+            </div>
+            <div class="play-btn play-btn--disabled">Заперт</div>
+          </div>
+        </div>
+        <div class="bottom-nav glass" style="margin-top: 12px">
+          <div class="nav-item nav-item--active"><div class="nav-icon">🏒</div>Игра</div>
+          <div class="nav-item"><div class="nav-icon">📖</div>Сюжет</div>
+          <div class="nav-item"><div class="nav-icon">🏆</div>Рейтинг</div>
+          <div class="nav-item"><div class="nav-icon">💬</div>Чат</div>
+          <div class="nav-item"><div class="nav-icon">👤</div>Профиль</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. Profile -->
+    <div>
+      <div class="screen-title">E4. Профиль</div>
+      <div class="phone">
+        <div class="notch">ULTIMATE HOCKEY</div>
+        <div class="header glass">
+          <div class="header__title">Профиль</div>
+          <div class="hp-pill">Выйти</div>
+        </div>
+        <div class="profile-hero glass">
+          <div class="profile-avatar">ЕГ</div>
+          <div style="display:flex; flex-direction:column; align-items:center; gap:4px">
+            <div class="profile-name">Егор Gumenyuk</div>
+            <div class="profile-sub">@egorgumenyuk · с 12 апр 2026</div>
+          </div>
+          <div class="profile-pills">
+            <div class="glass-pill"><small>Ранг</small> 127</div>
+            <div class="glass-pill glass-pill--dark"><small>Уровень</small> 4</div>
+          </div>
+        </div>
+        <div class="section-label">Статистика</div>
+        <div class="stats-grid">
+          <div class="stat glass">
+            <span class="stat-label">Всего бросков</span>
+            <span class="stat-value">138</span>
+          </div>
+          <div class="stat glass">
+            <span class="stat-label">Голов</span>
+            <span class="stat-value">42</span>
+          </div>
+          <div class="stat glass">
+            <span class="stat-label">Точность</span>
+            <span class="stat-value">30%</span>
+          </div>
+          <div class="stat glass">
+            <span class="stat-label">Вратарей пройдено</span>
+            <span class="stat-value">1<small>/10</small></span>
+          </div>
+        </div>
+        <div class="section-label">Хват клюшки</div>
+        <div class="grip-row">
+          <div class="grip grip--active">
+            <div style="font-size:26px">◀</div>
+            <div class="grip-name">Левый</div>
+            <div class="grip-hint">Шайба слева</div>
+          </div>
+          <div class="grip glass">
+            <div style="font-size:26px">▶</div>
+            <div class="grip-name">Правый</div>
+            <div class="grip-hint">Шайба справа</div>
+          </div>
+        </div>
+        <div style="flex:1"></div>
+        <div class="bottom-nav glass">
+          <div class="nav-item"><div class="nav-icon">🏒</div>Игра</div>
+          <div class="nav-item"><div class="nav-icon">📖</div>Сюжет</div>
+          <div class="nav-item"><div class="nav-icon">🏆</div>Рейтинг</div>
+          <div class="nav-item"><div class="nav-icon">💬</div>Чат</div>
+          <div class="nav-item nav-item--active"><div class="nav-icon">👤</div>Профиль</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5. Login -->
+    <div>
+      <div class="screen-title">E5. Экран входа</div>
+      <div class="phone">
+        <div class="notch">ULTIMATE HOCKEY</div>
+        <div class="login-hero">
+          <div class="logo">UH</div>
+          <div class="login-title">Ultimate Hockey</div>
+          <div class="login-tag">Поймай окно между движущимся<br/>вратарём и воротами.<br/>Пройди лестницу из 10 боссов.</div>
+        </div>
+        <div class="login-badges">
+          <span class="glass-pill" style="font-size:11px; padding:5px 12px">Тайминг</span>
+          <span class="glass-pill" style="font-size:11px; padding:5px 12px">Рейтинг</span>
+          <span class="glass-pill" style="font-size:11px; padding:5px 12px">10 вратарей</span>
+          <span class="glass-pill" style="font-size:11px; padding:5px 12px">PWA</span>
+        </div>
+        <div style="flex:1"></div>
+        <div class="login-actions">
+          <div class="login-btn login-btn--primary">✈ Войти через Telegram</div>
+          <div class="login-btn login-btn--ghost">Попробовать без аккаунта</div>
+          <div style="text-align:center; font-size:11px; color:var(--muted); margin-top:6px">
+            Нажимая «Войти», вы соглашаетесь<br/>с условиями использования
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

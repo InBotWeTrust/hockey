@@ -11,7 +11,7 @@ export { SHOOTER_SIZE, SHOOTER_AMPLITUDE, SHOOTER_FREQUENCY, SHOOTER_CENTER_X } 
 export { simulateShooter } from './shooter/simulate.js';
 export type { ShotInput, ShotResult, StickEffects } from './shot/types.js';
 export { STICK_NEUTRAL, PUCK_SPEED_PER_MS } from './shot/types.js';
-export { resolveShot } from './shot/resolve.js';
+export { resolveShot, GOAL_HITBOX_MARGIN, GOALIE_HITBOX_EXPAND } from './shot/resolve.js';
 export { GOALIES, getGoalie } from './balance/goalies.js';
 export { STICKS, getStick, TRAINING_STICK_ID, type Stick, type StickRarity } from './balance/sticks.js';
 export { calcShotReward } from './balance/rewards.js';
