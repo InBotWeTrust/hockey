@@ -138,11 +138,16 @@ jobs:
             echo "compose pull attempt $i failed, retry in 10s..."
             sleep 10
           done
-          docker compose run --rm server node packages/server/dist/db/migrate-cli.js
+          # `docker compose run` inherits parent stdin — our parent stdin is
+          # the heredoc itself, so without `-T < /dev/null` the run step
+          # consumes the rest of the script and the `up --force-recreate`
+          # line silently never executes. Manifests as prod stuck on the
+          # previous IMAGE_TAG while Actions reports success.
+          docker compose run --rm -T server node packages/server/dist/db/migrate-cli.js < /dev/null
           # Force app containers to pick up newly pulled images.
           # Plain `up -d` was staying silent on an already-running server
           # after a new IMAGE_TAG was pulled, leaving prod on the old bundle.
-          docker compose up -d --force-recreate --remove-orphans server web caddy
+          docker compose up -d --force-recreate --remove-orphans server web caddy < /dev/null
           docker image prune -f
           docker logout ghcr.io
           ENDSSH
