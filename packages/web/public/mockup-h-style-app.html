@@ -1,0 +1,1049 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ultimate Hockey — H-style mockup</title>
+    <style>
+      :root {
+        --bg: #f4f7fb;
+        --panel: #ffffff;
+        --pill: #f1f5f9;
+        --pill-border: #e2e8f0;
+        --ink: #0f172a;
+        --muted: #64748b;
+        --red: #e11d48;
+        --red-soft: #fff1f2;
+        --success: #059669;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        background: #dde5ef;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro", "Segoe UI", Roboto, sans-serif;
+        color: var(--ink);
+        padding: 32px 16px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 24px;
+        justify-content: center;
+      }
+
+      .screen-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        margin-bottom: 8px;
+      }
+
+      .phone {
+        width: 430px;
+        height: 900px;
+        background: var(--bg);
+        border-radius: 36px;
+        border: 8px solid #0f172a;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+        box-shadow: 0 12px 40px rgba(15, 23, 42, 0.25);
+      }
+
+      .notch {
+        height: 28px;
+        background: #0f172a;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+      }
+
+      /* ---------- Header (common pill nav) ---------- */
+      .header {
+        padding: 12px 14px 8px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .header__title {
+        flex: 1;
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      .btn-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 7px 14px;
+        border-radius: 999px;
+        background: var(--pill);
+        border: 1px solid var(--pill-border);
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--ink);
+        cursor: pointer;
+      }
+      .btn-pill--accent {
+        background: var(--ink);
+        color: #fff;
+        border-color: var(--ink);
+      }
+      .btn-pill--icon {
+        padding: 7px;
+        width: 32px;
+        height: 32px;
+        justify-content: center;
+      }
+      .icon {
+        width: 14px;
+        height: 14px;
+        display: inline-block;
+        vertical-align: middle;
+      }
+
+      /* ---------- Scoreboard H ---------- */
+      .scoreboard {
+        background: var(--panel);
+        border: 1px solid var(--pill-border);
+        border-radius: 999px;
+        padding: 8px 10px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0 14px 10px;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+      }
+      .pill {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: var(--pill);
+        line-height: 1;
+      }
+      .pill--accent { background: var(--ink); color: #fff; }
+      .pill--red-soft { background: var(--red-soft); color: var(--red); }
+      .pill__label {
+        font-size: 8px;
+        letter-spacing: 0.16em;
+        font-weight: 600;
+        opacity: 0.7;
+        text-transform: uppercase;
+      }
+      .pill__value {
+        font-size: 15px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+      }
+      .pill__value--big { font-size: 17px; }
+      .sb-timer {
+        font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+        font-size: 20px;
+        font-weight: 600;
+        color: var(--red);
+        flex: 1;
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+      }
+
+      /* ---------- Rink area ---------- */
+      .rink {
+        flex: 1;
+        margin: 0 14px;
+        border-radius: 26px;
+        background: linear-gradient(180deg, #eaf2fb 0%, #dbe7f4 100%);
+        border: 1.5px solid #1e3a5f;
+        position: relative;
+        overflow: hidden;
+      }
+      .rink__stub {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      /* faux hockey marks */
+      .rink::before, .rink::after {
+        content: "";
+        position: absolute;
+        left: 0; right: 0;
+        height: 3px;
+        background: rgba(30, 58, 95, 0.12);
+      }
+      .rink::before { top: 30%; }
+      .rink::after  { bottom: 30%; }
+      .rink__center-line {
+        position: absolute;
+        top: 50%; left: 0; right: 0;
+        height: 2px;
+        background: rgba(225, 29, 72, 0.25);
+      }
+      .rink__center-circle {
+        position: absolute;
+        top: 50%; left: 50%;
+        transform: translate(-50%, -50%);
+        width: 90px; height: 90px;
+        border-radius: 50%;
+        border: 2px solid rgba(30, 58, 95, 0.15);
+      }
+      /* actors */
+      .actor-goal {
+        position: absolute;
+        top: 24px;
+        left: 50%;
+        transform: translate(-50%, 0);
+        width: 70px;
+        height: 28px;
+        background: repeating-linear-gradient(90deg, #a1a6b0 0 2px, transparent 2px 5px);
+        border: 2px solid #d84949;
+        border-radius: 4px 4px 0 0;
+      }
+      .actor-goalie {
+        position: absolute;
+        top: 62px;
+        left: 50%;
+        transform: translate(-50%, 0);
+        width: 44px; height: 44px;
+        border-radius: 10px;
+        background: radial-gradient(circle at 40% 30%, #e2e8f0, #334155 70%);
+        box-shadow: inset -4px -4px 8px rgba(0,0,0,0.2);
+      }
+      .actor-player {
+        position: absolute;
+        bottom: 70px;
+        left: 54%;
+        transform: translate(-50%, 0);
+        width: 42px; height: 60px;
+        background: radial-gradient(circle at 50% 30%, #ef4444, #7f1d1d 70%);
+        border-radius: 16px 16px 50% 50%;
+        box-shadow: inset -3px -3px 6px rgba(0,0,0,0.25);
+      }
+      .actor-puck {
+        position: absolute;
+        bottom: 120px;
+        left: 63%;
+        width: 7px; height: 7px;
+        border-radius: 50%;
+        background: #0f172a;
+      }
+
+      /* ---------- Footer (shot button + bottom nav) ---------- */
+      .cta {
+        margin: 10px 14px 0;
+        background: var(--ink);
+        color: #fff;
+        border-radius: 999px;
+        padding: 16px 20px;
+        text-align: center;
+        font-size: 16px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+      }
+      .bottom-nav {
+        background: var(--panel);
+        border-top: 1px solid var(--pill-border);
+        padding: 8px 14px 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-around;
+        gap: 8px;
+      }
+      .nav-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 3px;
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+      }
+      .nav-item--active { color: var(--ink); }
+      .nav-icon {
+        width: 22px; height: 22px;
+        border-radius: 8px;
+        background: var(--pill);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .nav-item--active .nav-icon {
+        background: var(--ink);
+      }
+
+      /* ---------- Goalie list cards ---------- */
+      .list-section {
+        padding: 0 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        overflow-y: auto;
+        flex: 1;
+      }
+      .filter-row {
+        display: flex;
+        gap: 6px;
+        padding: 0 14px 10px;
+        overflow-x: auto;
+      }
+      .boss-card {
+        background: var(--panel);
+        border: 1px solid var(--pill-border);
+        border-radius: 20px;
+        padding: 14px 16px;
+        display: grid;
+        grid-template-columns: 48px 1fr auto;
+        align-items: center;
+        gap: 14px;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+      }
+      .boss-card__avatar {
+        width: 48px; height: 48px;
+        border-radius: 999px;
+        background: linear-gradient(135deg, #e2e8f0 0%, #94a3b8 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 20px;
+        font-weight: 800;
+        color: #fff;
+      }
+      .boss-card__avatar--locked {
+        background: var(--pill);
+        color: #cbd5e1;
+      }
+      .boss-card__avatar--beaten {
+        background: linear-gradient(135deg, #059669 0%, #065f46 100%);
+      }
+      .boss-card__main {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .boss-card__name {
+        font-size: 16px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+      }
+      .boss-card__meta {
+        display: flex;
+        gap: 5px;
+        flex-wrap: wrap;
+      }
+      .meta-pill {
+        font-size: 9px;
+        font-weight: 600;
+        color: var(--muted);
+        background: var(--pill);
+        border-radius: 999px;
+        padding: 3px 8px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+      .boss-card__cta {
+        font-size: 12px;
+        font-weight: 700;
+        padding: 8px 14px;
+        border-radius: 999px;
+        background: var(--ink);
+        color: #fff;
+      }
+      .boss-card__cta--disabled {
+        background: var(--pill);
+        color: var(--muted);
+      }
+
+      /* ---------- Profile ---------- */
+      .profile-hero {
+        margin: 0 14px 14px;
+        background: var(--panel);
+        border: 1px solid var(--pill-border);
+        border-radius: 24px;
+        padding: 18px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+      }
+      .profile-avatar {
+        width: 88px; height: 88px;
+        border-radius: 999px;
+        background: linear-gradient(135deg, #0f172a 0%, #334155 100%);
+        color: #fff;
+        font-size: 32px;
+        font-weight: 800;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .profile-name {
+        font-size: 20px;
+        font-weight: 700;
+      }
+      .profile-subtitle {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .section-label {
+        padding: 4px 20px;
+        font-size: 10px;
+        font-weight: 600;
+        color: var(--muted);
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      .stats-grid {
+        margin: 0 14px 14px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .stat-card {
+        background: var(--panel);
+        border: 1px solid var(--pill-border);
+        border-radius: 16px;
+        padding: 12px 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .stat-card__label {
+        font-size: 9px;
+        font-weight: 600;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+      }
+      .stat-card__value {
+        font-size: 22px;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+      }
+      .stat-card__value small {
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--muted);
+      }
+
+      .grip-row {
+        margin: 0 14px 14px;
+        display: flex;
+        gap: 8px;
+      }
+      .grip-option {
+        flex: 1;
+        background: var(--panel);
+        border: 1px solid var(--pill-border);
+        border-radius: 16px;
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+      }
+      .grip-option--active {
+        background: var(--ink);
+        color: #fff;
+        border-color: var(--ink);
+      }
+      .grip-option__name {
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .grip-option__hint {
+        font-size: 10px;
+        opacity: 0.65;
+      }
+
+      /* ---------- Login ---------- */
+      .login-hero {
+        padding: 40px 20px 20px;
+        text-align: center;
+      }
+      .login-logo {
+        width: 76px; height: 76px;
+        border-radius: 999px;
+        background: var(--ink);
+        color: #fff;
+        font-size: 28px;
+        font-weight: 900;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 16px;
+      }
+      .login-title {
+        font-size: 28px;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        margin-bottom: 8px;
+      }
+      .login-tagline {
+        font-size: 14px;
+        color: var(--muted);
+        line-height: 1.4;
+      }
+      .login-actions {
+        padding: 28px 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .login-btn {
+        width: 100%;
+        padding: 16px;
+        border-radius: 999px;
+        font-size: 15px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+      .login-btn--primary {
+        background: #229ed9;
+        color: #fff;
+      }
+      .login-btn--ghost {
+        background: var(--pill);
+        color: var(--ink);
+      }
+      .login-badges {
+        padding: 24px 20px;
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .badge {
+        background: var(--pill);
+        border-radius: 999px;
+        padding: 6px 12px;
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--muted);
+      }
+
+      /* ---------- Scoreboard E (glass over ice) ---------- */
+      .rink-with-glass {
+        position: relative;
+        flex: 1;
+        margin: 0 14px;
+        border-radius: 26px;
+        background: linear-gradient(180deg, #eaf2fb 0%, #dbe7f4 100%);
+        border: 1.5px solid #1e3a5f;
+        overflow: hidden;
+      }
+      .rink-with-glass .actor-goal,
+      .rink-with-glass .actor-goalie,
+      .rink-with-glass .actor-player,
+      .rink-with-glass .actor-puck { position: absolute; }
+      .glass-sb {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        right: 10px;
+        background: rgba(255, 255, 255, 0.55);
+        backdrop-filter: blur(16px) saturate(130%);
+        -webkit-backdrop-filter: blur(16px) saturate(130%);
+        border: 1px solid rgba(255, 255, 255, 0.75);
+        border-radius: 16px;
+        padding: 8px 12px;
+        display: grid;
+        grid-template-columns: auto 1fr auto auto;
+        align-items: center;
+        gap: 10px;
+        box-shadow: 0 8px 22px rgba(15, 23, 42, 0.15);
+        z-index: 2;
+      }
+      .glass-sb__period {
+        width: 38px;
+        height: 38px;
+        border-radius: 12px;
+        background: rgba(15, 23, 42, 0.9);
+        color: #fff;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+      }
+      .glass-sb__period-label {
+        font-size: 7px;
+        letter-spacing: 0.2em;
+        font-weight: 600;
+        opacity: 0.7;
+      }
+      .glass-sb__period-value {
+        font-size: 18px;
+        font-weight: 800;
+        margin-top: 1px;
+      }
+      .glass-sb__timer {
+        font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+        font-size: 26px;
+        font-weight: 600;
+        color: var(--red);
+        letter-spacing: -0.02em;
+        font-variant-numeric: tabular-nums;
+        text-align: center;
+      }
+      .glass-sb__stat {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        line-height: 1;
+      }
+      .glass-sb__stat-label {
+        font-size: 9px;
+        letter-spacing: 0.14em;
+        font-weight: 600;
+        color: #475569;
+        text-transform: uppercase;
+      }
+      .glass-sb__stat-value {
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--ink);
+        margin-top: 3px;
+        font-variant-numeric: tabular-nums;
+      }
+      .glass-sb__stat-value small {
+        font-size: 11px;
+        color: var(--muted);
+        font-weight: 500;
+      }
+
+      /* ---------- Result modal (H-style) ---------- */
+      .result-modal {
+        position: absolute;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.5);
+        backdrop-filter: blur(4px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+      .result-card {
+        width: 100%;
+        background: var(--panel);
+        border-radius: 28px;
+        padding: 26px 22px;
+        text-align: center;
+        box-shadow: 0 20px 60px rgba(15,23,42,0.35);
+      }
+      .result-badge {
+        display: inline-block;
+        padding: 6px 16px;
+        border-radius: 999px;
+        background: #fee2e2;
+        color: #b91c1c;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        margin-bottom: 14px;
+      }
+      .result-badge--goal { background: #fee2e2; color: #b91c1c; }
+      .result-title {
+        font-size: 36px;
+        font-weight: 900;
+        letter-spacing: -0.03em;
+        color: var(--red);
+        line-height: 1;
+        margin-bottom: 10px;
+      }
+      .result-sub {
+        color: var(--muted);
+        font-size: 13px;
+        margin-bottom: 18px;
+      }
+      .result-stats {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 18px;
+      }
+      .result-stats .stat-card {
+        flex: 1;
+        align-items: center;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ===================== 1. DuelScreen ===================== -->
+    <div>
+      <div class="screen-title">1. Дуэль (со scoreboard H)</div>
+      <div class="phone">
+        <div class="notch">ULTIMATE HOCKEY</div>
+
+        <div class="header">
+          <button class="btn-pill btn-pill--icon">←</button>
+          <div class="header__title">Новичок</div>
+          <button class="btn-pill">HP <strong style="margin-left:4px">5</strong></button>
+        </div>
+
+        <!-- Scoreboard H -->
+        <div class="scoreboard">
+          <div class="pill pill--accent">
+            <span class="pill__label">Период</span>
+            <span class="pill__value pill__value--big">2</span>
+          </div>
+          <div class="pill">
+            <span class="pill__label">Голы</span>
+            <span class="pill__value">3</span>
+          </div>
+          <span class="sb-timer">15:47</span>
+          <div class="pill">
+            <span class="pill__label">Броски</span>
+            <span class="pill__value">7/15</span>
+          </div>
+        </div>
+
+        <div class="rink">
+          <div class="actor-goal"></div>
+          <div class="actor-goalie"></div>
+          <div class="rink__center-line"></div>
+          <div class="rink__center-circle"></div>
+          <div class="actor-player"></div>
+          <div class="actor-puck"></div>
+        </div>
+
+        <div class="cta">БРОСОК</div>
+
+        <div class="bottom-nav" style="margin-top: 10px;">
+          <div class="nav-item nav-item--active"><div class="nav-icon">🏒</div>Игра</div>
+          <div class="nav-item"><div class="nav-icon">📖</div>Сюжет</div>
+          <div class="nav-item"><div class="nav-icon">🏆</div>Рейтинг</div>
+          <div class="nav-item"><div class="nav-icon">💬</div>Чат</div>
+          <div class="nav-item"><div class="nav-icon">👤</div>Профиль</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== 1b. Дуэль — вариант E (glass) ===================== -->
+    <div>
+      <div class="screen-title">1b. Дуэль — Scoreboard E (стекло)</div>
+      <div class="phone">
+        <div class="notch">ULTIMATE HOCKEY</div>
+
+        <div class="header">
+          <button class="btn-pill btn-pill--icon">←</button>
+          <div class="header__title">Новичок</div>
+          <button class="btn-pill">HP <strong style="margin-left:4px">5</strong></button>
+        </div>
+
+        <div class="rink-with-glass">
+          <div class="glass-sb">
+            <div class="glass-sb__period">
+              <span class="glass-sb__period-label">ПЕРИОД</span>
+              <span class="glass-sb__period-value">2</span>
+            </div>
+            <div class="glass-sb__timer">15:47</div>
+            <div class="glass-sb__stat">
+              <span class="glass-sb__stat-label">ГОЛЫ</span>
+              <span class="glass-sb__stat-value">3</span>
+            </div>
+            <div class="glass-sb__stat">
+              <span class="glass-sb__stat-label">БРОСКИ</span>
+              <span class="glass-sb__stat-value">7<small>/15</small></span>
+            </div>
+          </div>
+          <div class="actor-goal"></div>
+          <div class="actor-goalie"></div>
+          <div class="rink__center-line"></div>
+          <div class="rink__center-circle"></div>
+          <div class="actor-player"></div>
+          <div class="actor-puck"></div>
+        </div>
+
+        <div class="cta">БРОСОК</div>
+
+        <div class="bottom-nav" style="margin-top:10px">
+          <div class="nav-item nav-item--active"><div class="nav-icon">🏒</div>Игра</div>
+          <div class="nav-item"><div class="nav-icon">📖</div>Сюжет</div>
+          <div class="nav-item"><div class="nav-icon">🏆</div>Рейтинг</div>
+          <div class="nav-item"><div class="nav-icon">💬</div>Чат</div>
+          <div class="nav-item"><div class="nav-icon">👤</div>Профиль</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== 2. Дуэль — модалка результата ===================== -->
+    <div>
+      <div class="screen-title">2. Дуэль — результат броска</div>
+      <div class="phone">
+        <div class="notch">ULTIMATE HOCKEY</div>
+        <div class="header">
+          <button class="btn-pill btn-pill--icon">←</button>
+          <div class="header__title">Новичок</div>
+          <button class="btn-pill">HP <strong style="margin-left:4px">4</strong></button>
+        </div>
+        <div class="scoreboard">
+          <div class="pill pill--accent">
+            <span class="pill__label">Период</span>
+            <span class="pill__value pill__value--big">2</span>
+          </div>
+          <div class="pill">
+            <span class="pill__label">Голы</span>
+            <span class="pill__value">4</span>
+          </div>
+          <span class="sb-timer">15:32</span>
+          <div class="pill">
+            <span class="pill__label">Броски</span>
+            <span class="pill__value">8/15</span>
+          </div>
+        </div>
+        <div class="rink" style="opacity: 0.6">
+          <div class="actor-goal"></div>
+          <div class="actor-goalie"></div>
+          <div class="rink__center-line"></div>
+          <div class="rink__center-circle"></div>
+          <div class="actor-player"></div>
+        </div>
+        <div class="cta" style="opacity: 0.3">БРОСОК</div>
+        <div class="bottom-nav" style="margin-top:10px">
+          <div class="nav-item nav-item--active"><div class="nav-icon">🏒</div>Игра</div>
+          <div class="nav-item"><div class="nav-icon">📖</div>Сюжет</div>
+          <div class="nav-item"><div class="nav-icon">🏆</div>Рейтинг</div>
+          <div class="nav-item"><div class="nav-icon">💬</div>Чат</div>
+          <div class="nav-item"><div class="nav-icon">👤</div>Профиль</div>
+        </div>
+
+        <div class="result-modal">
+          <div class="result-card">
+            <div class="result-badge result-badge--goal">Гол!</div>
+            <div class="result-title">ТОЧНО</div>
+            <div class="result-sub">Шайба пробила вратаря слева</div>
+            <div class="result-stats">
+              <div class="stat-card">
+                <span class="stat-card__label">Серия</span>
+                <span class="stat-card__value">×3</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-card__label">Награда</span>
+                <span class="stat-card__value">+24</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-card__label">HP вратаря</span>
+                <span class="stat-card__value">4<small>/8</small></span>
+              </div>
+            </div>
+            <div class="cta" style="margin: 0;">ДАЛЬШЕ</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== 3. Список вратарей (боссы) ===================== -->
+    <div>
+      <div class="screen-title">3. Боссы-вратари</div>
+      <div class="phone">
+        <div class="notch">ULTIMATE HOCKEY</div>
+
+        <div class="header">
+          <div class="header__title">Лестница вратарей</div>
+          <button class="btn-pill">Ф</button>
+        </div>
+
+        <div class="filter-row">
+          <button class="btn-pill btn-pill--accent">Все</button>
+          <button class="btn-pill">Открыты</button>
+          <button class="btn-pill">Пройдены</button>
+        </div>
+
+        <div class="list-section">
+          <div class="boss-card">
+            <div class="boss-card__avatar boss-card__avatar--beaten">Н</div>
+            <div class="boss-card__main">
+              <div class="boss-card__name">Новичок</div>
+              <div class="boss-card__meta">
+                <span class="meta-pill">Пройден</span>
+                <span class="meta-pill">+20</span>
+              </div>
+            </div>
+            <div class="boss-card__cta" style="background: var(--pill); color: var(--muted)">Снова</div>
+          </div>
+
+          <div class="boss-card">
+            <div class="boss-card__avatar" style="background: linear-gradient(135deg, #fbbf24 0%, #d97706 100%)">С</div>
+            <div class="boss-card__main">
+              <div class="boss-card__name">Стена</div>
+              <div class="boss-card__meta">
+                <span class="meta-pill">HP 8</span>
+                <span class="meta-pill">Линейный</span>
+                <span class="meta-pill">Награда ×1</span>
+              </div>
+            </div>
+            <div class="boss-card__cta">Играть</div>
+          </div>
+
+          <div class="boss-card">
+            <div class="boss-card__avatar" style="background: linear-gradient(135deg, #60a5fa 0%, #1d4ed8 100%)">Б</div>
+            <div class="boss-card__main">
+              <div class="boss-card__name">Быстрые ноги</div>
+              <div class="boss-card__meta">
+                <span class="meta-pill">HP 12</span>
+                <span class="meta-pill">Линейный</span>
+                <span class="meta-pill">Награда ×2</span>
+              </div>
+            </div>
+            <div class="boss-card__cta">Играть</div>
+          </div>
+
+          <div class="boss-card">
+            <div class="boss-card__avatar boss-card__avatar--locked">🔒</div>
+            <div class="boss-card__main">
+              <div class="boss-card__name" style="color: var(--muted)">Осьминог</div>
+              <div class="boss-card__meta">
+                <span class="meta-pill">HP 15</span>
+                <span class="meta-pill">Синус</span>
+              </div>
+            </div>
+            <div class="boss-card__cta boss-card__cta--disabled">Заперт</div>
+          </div>
+
+          <div class="boss-card">
+            <div class="boss-card__avatar boss-card__avatar--locked">🔒</div>
+            <div class="boss-card__main">
+              <div class="boss-card__name" style="color: var(--muted)">Рывок</div>
+              <div class="boss-card__meta">
+                <span class="meta-pill">HP 20</span>
+                <span class="meta-pill">Дэш</span>
+              </div>
+            </div>
+            <div class="boss-card__cta boss-card__cta--disabled">Заперт</div>
+          </div>
+        </div>
+
+        <div class="bottom-nav">
+          <div class="nav-item nav-item--active"><div class="nav-icon">🏒</div>Игра</div>
+          <div class="nav-item"><div class="nav-icon">📖</div>Сюжет</div>
+          <div class="nav-item"><div class="nav-icon">🏆</div>Рейтинг</div>
+          <div class="nav-item"><div class="nav-icon">💬</div>Чат</div>
+          <div class="nav-item"><div class="nav-icon">👤</div>Профиль</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== 4. Профиль ===================== -->
+    <div>
+      <div class="screen-title">4. Профиль</div>
+      <div class="phone">
+        <div class="notch">ULTIMATE HOCKEY</div>
+
+        <div class="header">
+          <div class="header__title">Профиль</div>
+          <button class="btn-pill">Выйти</button>
+        </div>
+
+        <div class="profile-hero">
+          <div class="profile-avatar">ЕГ</div>
+          <div style="display:flex; flex-direction:column; align-items:center; gap:4px">
+            <div class="profile-name">Егор Gumenyuk</div>
+            <div class="profile-subtitle">@egorgumenyuk · с 12 апр 2026</div>
+          </div>
+          <div style="display:flex; gap:6px">
+            <div class="pill"><span class="pill__label">Ранг</span><span class="pill__value">127</span></div>
+            <div class="pill pill--accent"><span class="pill__label">Уровень</span><span class="pill__value">4</span></div>
+          </div>
+        </div>
+
+        <div class="section-label">Статистика</div>
+        <div class="stats-grid">
+          <div class="stat-card">
+            <span class="stat-card__label">Всего бросков</span>
+            <span class="stat-card__value">138</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-card__label">Голов</span>
+            <span class="stat-card__value">42</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-card__label">Точность</span>
+            <span class="stat-card__value">30%</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-card__label">Вратарей пройдено</span>
+            <span class="stat-card__value">1<small>/10</small></span>
+          </div>
+        </div>
+
+        <div class="section-label">Хват клюшки</div>
+        <div class="grip-row">
+          <div class="grip-option grip-option--active">
+            <div style="font-size:26px">◀</div>
+            <div class="grip-option__name">Левый</div>
+            <div class="grip-option__hint">Шайба слева</div>
+          </div>
+          <div class="grip-option">
+            <div style="font-size:26px">▶</div>
+            <div class="grip-option__name">Правый</div>
+            <div class="grip-option__hint">Шайба справа</div>
+          </div>
+        </div>
+
+        <div style="flex:1"></div>
+
+        <div class="bottom-nav">
+          <div class="nav-item"><div class="nav-icon">🏒</div>Игра</div>
+          <div class="nav-item"><div class="nav-icon">📖</div>Сюжет</div>
+          <div class="nav-item"><div class="nav-icon">🏆</div>Рейтинг</div>
+          <div class="nav-item"><div class="nav-icon">💬</div>Чат</div>
+          <div class="nav-item nav-item--active"><div class="nav-icon">👤</div>Профиль</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== 5. Вход ===================== -->
+    <div>
+      <div class="screen-title">5. Экран входа</div>
+      <div class="phone">
+        <div class="notch">ULTIMATE HOCKEY</div>
+
+        <div class="login-hero">
+          <div class="login-logo">UH</div>
+          <div class="login-title">Ultimate Hockey</div>
+          <div class="login-tagline">
+            Поймай окно между движущимся<br/>
+            вратарём и воротами.<br/>
+            Пройди лестницу из 10 боссов.
+          </div>
+        </div>
+
+        <div class="login-badges">
+          <span class="badge">Тайминг</span>
+          <span class="badge">Рейтинг</span>
+          <span class="badge">10 вратарей</span>
+          <span class="badge">PWA</span>
+        </div>
+
+        <div style="flex:1"></div>
+
+        <div class="login-actions">
+          <button class="login-btn login-btn--primary">
+            ✈ Войти через Telegram
+          </button>
+          <button class="login-btn login-btn--ghost">
+            Попробовать без аккаунта
+          </button>
+          <div style="text-align:center; font-size:11px; color:var(--muted); margin-top:6px">
+            Нажимая «Войти», вы соглашаетесь<br/>
+            с условиями использования
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=430, initial-scale=1" />
+    <title>Scoreboard mockups — E / F / H</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        background: #f4f7fb;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro", "Segoe UI", Roboto, sans-serif;
+        color: #0f172a;
+        padding: 24px 16px 80px;
+      }
+      h1 {
+        font-size: 18px;
+        font-weight: 600;
+        margin: 24px 0 10px;
+        color: #0f172a;
+        letter-spacing: -0.02em;
+      }
+      h1 small {
+        color: #64748b;
+        font-weight: 400;
+        font-size: 13px;
+        margin-left: 6px;
+      }
+      .stage {
+        width: 430px;
+        margin: 0 auto;
+      }
+      .rink-preview {
+        height: 220px;
+        background: linear-gradient(180deg, #eaf2fb 0%, #dbe7f4 100%);
+        border: 1.5px solid #1e3a5f;
+        border-radius: 26px;
+        margin-top: 6px;
+        opacity: 0.5;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #64748b;
+        font-size: 12px;
+      }
+
+      /* ---------- E: Glassmorphism over ice ---------- */
+      .sb-e-wrap {
+        position: relative;
+        background: linear-gradient(180deg, #d7e6f5 0%, #bfd2e9 100%);
+        border-radius: 16px;
+        padding: 16px 12px;
+      }
+      .sb-e {
+        background: rgba(255, 255, 255, 0.52);
+        backdrop-filter: blur(18px) saturate(130%);
+        -webkit-backdrop-filter: blur(18px) saturate(130%);
+        border: 1px solid rgba(255, 255, 255, 0.7);
+        border-radius: 14px;
+        padding: 10px 14px;
+        display: grid;
+        grid-template-columns: auto 1fr auto auto;
+        align-items: center;
+        gap: 14px;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+      }
+      .sb-e__period {
+        width: 38px;
+        height: 38px;
+        border-radius: 12px;
+        background: rgba(15, 23, 42, 0.92);
+        color: #ffffff;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+      }
+      .sb-e__period-label {
+        font-size: 7px;
+        letter-spacing: 0.22em;
+        font-weight: 600;
+        opacity: 0.7;
+      }
+      .sb-e__period-value {
+        font-size: 20px;
+        font-weight: 800;
+        margin-top: 1px;
+      }
+      .sb-e__timer {
+        font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+        font-size: 30px;
+        font-weight: 600;
+        color: #ef4444;
+        letter-spacing: -0.02em;
+        font-variant-numeric: tabular-nums;
+      }
+      .sb-e__stat {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        line-height: 1;
+      }
+      .sb-e__stat-label {
+        font-size: 9px;
+        letter-spacing: 0.14em;
+        font-weight: 600;
+        color: #475569;
+        text-transform: uppercase;
+      }
+      .sb-e__stat-value {
+        font-size: 20px;
+        font-weight: 700;
+        color: #0f172a;
+        margin-top: 3px;
+        font-variant-numeric: tabular-nums;
+      }
+      .sb-e__stat-value small {
+        font-size: 11px;
+        color: #64748b;
+        font-weight: 500;
+      }
+
+      /* ---------- F: NHL broadcast bar ---------- */
+      .sb-f {
+        display: flex;
+        align-items: stretch;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 4px 14px rgba(15, 23, 42, 0.12);
+        height: 62px;
+      }
+      .sb-f__home {
+        background: #0f172a;
+        color: #ffffff;
+        padding: 0 12px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+      .sb-f__puck {
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: #111827;
+        border: 2px solid #1e3a5f;
+        position: relative;
+      }
+      .sb-f__puck::after {
+        content: "";
+        position: absolute;
+        inset: 3px;
+        border-radius: 50%;
+        background: repeating-linear-gradient(45deg, #000 0 2px, #1f2937 2px 4px);
+        opacity: 0.5;
+      }
+      .sb-f__home-name {
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+      }
+      .sb-f__home-score {
+        font-size: 26px;
+        font-weight: 800;
+        margin-left: 6px;
+        font-variant-numeric: tabular-nums;
+      }
+      .sb-f__mid {
+        background: #e11d48;
+        color: #fff;
+        padding: 0 14px;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        clip-path: polygon(12px 0, 100% 0, calc(100% - 12px) 100%, 0 100%);
+        margin-left: -8px;
+        margin-right: -8px;
+        line-height: 1;
+      }
+      .sb-f__period-chip {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        opacity: 0.88;
+      }
+      .sb-f__timer {
+        font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+        font-size: 22px;
+        font-weight: 700;
+        margin-top: 4px;
+        font-variant-numeric: tabular-nums;
+      }
+      .sb-f__right {
+        background: #f1f5f9;
+        color: #0f172a;
+        padding: 0 14px 0 18px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-shrink: 0;
+      }
+      .sb-f__right-label {
+        font-size: 9px;
+        letter-spacing: 0.14em;
+        font-weight: 600;
+        color: #64748b;
+      }
+      .sb-f__right-value {
+        font-size: 22px;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+      }
+      .sb-f__right-value small {
+        font-size: 11px;
+        color: #64748b;
+        font-weight: 500;
+      }
+
+      /* ---------- H: Pill panel ---------- */
+      .sb-h {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 999px;
+        padding: 8px 10px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+      }
+      .sb-h__pill {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: #f1f5f9;
+        line-height: 1;
+      }
+      .sb-h__pill--accent {
+        background: #0f172a;
+        color: #ffffff;
+      }
+      .sb-h__pill--red {
+        background: #fff1f2;
+        color: #e11d48;
+      }
+      .sb-h__pill-label {
+        font-size: 8px;
+        letter-spacing: 0.16em;
+        font-weight: 600;
+        color: inherit;
+        opacity: 0.7;
+        text-transform: uppercase;
+      }
+      .sb-h__pill-value {
+        font-size: 15px;
+        font-weight: 700;
+        color: inherit;
+        font-variant-numeric: tabular-nums;
+      }
+      .sb-h__pill-value.big {
+        font-size: 17px;
+      }
+      .sb-h__timer {
+        font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+        font-size: 20px;
+        font-weight: 600;
+        color: #e11d48;
+        flex: 1;
+        text-align: center;
+        letter-spacing: -0.01em;
+        font-variant-numeric: tabular-nums;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage">
+      <h1>E — Glassmorphism <small>— полупрозрачное стекло над льдом</small></h1>
+      <div class="sb-e-wrap">
+        <div class="sb-e">
+          <div class="sb-e__period">
+            <span class="sb-e__period-label">ПЕРИОД</span>
+            <span class="sb-e__period-value">2</span>
+          </div>
+          <div class="sb-e__timer">20:00</div>
+          <div class="sb-e__stat">
+            <span class="sb-e__stat-label">ГОЛЫ</span>
+            <span class="sb-e__stat-value">3</span>
+          </div>
+          <div class="sb-e__stat">
+            <span class="sb-e__stat-label">БРОСКИ</span>
+            <span class="sb-e__stat-value">7<small>/15</small></span>
+          </div>
+        </div>
+      </div>
+      <div class="rink-preview">Площадка</div>
+
+      <h1>F — NHL broadcast bar <small>— ТВ-формат с шайбой-логотипом</small></h1>
+      <div class="sb-f">
+        <div class="sb-f__home">
+          <div class="sb-f__puck"></div>
+          <span class="sb-f__home-name">ГОЛЫ</span>
+          <span class="sb-f__home-score">3</span>
+        </div>
+        <div class="sb-f__mid">
+          <span class="sb-f__period-chip">ПЕРИОД 2</span>
+          <span class="sb-f__timer">20:00</span>
+        </div>
+        <div class="sb-f__right">
+          <span class="sb-f__right-label">БРОСКИ</span>
+          <span class="sb-f__right-value">7<small>/15</small></span>
+        </div>
+      </div>
+      <div class="rink-preview">Площадка</div>
+
+      <h1>H — Капсульная панель <small>— пилюли в одном ряду</small></h1>
+      <div class="sb-h">
+        <div class="sb-h__pill sb-h__pill--accent">
+          <span class="sb-h__pill-label">ПЕРИОД</span>
+          <span class="sb-h__pill-value big">2</span>
+        </div>
+        <div class="sb-h__pill">
+          <span class="sb-h__pill-label">ГОЛЫ</span>
+          <span class="sb-h__pill-value">3</span>
+        </div>
+        <span class="sb-h__timer">20:00</span>
+        <div class="sb-h__pill">
+          <span class="sb-h__pill-label">БРОСКИ</span>
+          <span class="sb-h__pill-value">7/15</span>
+        </div>
+      </div>
+      <div class="rink-preview">Площадка</div>
+    </div>
+  </body>
+</html>

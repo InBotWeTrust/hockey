@@ -1,17 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Info } from 'lucide-react';
+import { Info, LogOut } from 'lucide-react';
 import { apiFetch } from '../api/apiFetch.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { useLogout } from '../auth/useLogout.js';
 import { NAV_HEIGHT } from '../components/BottomNav.js';
-
-const BG = '#f4f7fb';
-const PANEL = '#ffffff';
-const PANEL_BORDER = '#e2e8f0';
-const TEXT = '#0f172a';
-const MUTED = '#64748b';
-const ACCENT = '#0f172a';
 
 interface ProfileData {
   id: string;
@@ -66,8 +59,11 @@ export function ProfileScreen(): JSX.Element {
 
   if (isLoading) {
     return (
-      <main style={{ background: BG, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ color: MUTED, fontSize: 14 }}>Загрузка...</div>
+      <main
+        className="screen"
+        style={{ alignItems: 'center', justifyContent: 'center' }}
+      >
+        <div style={{ color: 'var(--muted)', fontSize: 14 }}>Загрузка…</div>
       </main>
     );
   }
@@ -76,200 +72,293 @@ export function ProfileScreen(): JSX.Element {
 
   return (
     <main
+      className="screen"
       style={{
-        background: BG,
-        minHeight: '100vh',
         paddingBottom: `calc(${NAV_HEIGHT + 16}px + env(safe-area-inset-bottom, 0px) / 2)`,
-        fontFamily: 'system-ui, -apple-system, sans-serif',
-        color: TEXT,
       }}
     >
-      {/* Profile header */}
-      <div style={{ padding: '24px 16px 12px' }}>
-        <div
-          style={{
-            background: PANEL,
-            border: `1px solid ${PANEL_BORDER}`,
-            borderRadius: 20,
-            padding: '16px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 14,
-          }}
-        >
-          {data?.avatarUrl ? (
-            <img
-              src={data.avatarUrl}
-              alt="avatar"
-              style={{ width: 64, height: 64, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
-            />
-          ) : (
-            <div
-              style={{
-                width: 64,
-                height: 64,
-                borderRadius: '50%',
-                background: ACCENT,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 26,
-                fontWeight: 700,
-                color: '#ffffff',
-                flexShrink: 0,
-              }}
-            >
-              {initial}
-            </div>
-          )}
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 17, fontWeight: 700, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {data?.displayName ?? '—'}
-            </div>
-            {(data?.username || data?.tgId) && (
-              <div style={{ fontSize: 13, color: MUTED, marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {data.username ? `@${data.username}` : ''}{data.username && data.tgId ? ' ' : ''}{data.tgId ? `(${data.tgId})` : ''}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Grip */}
-      <div style={{ padding: '0 16px 12px' }}>
-        <div
-          style={{
-            background: PANEL,
-            border: `1px solid ${PANEL_BORDER}`,
-            borderRadius: 16,
-            padding: '14px 16px',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <span style={{ fontSize: 13, color: MUTED, fontWeight: 500 }}>ХВАТ</span>
-            <button
-onClick={() => setGripInfoOpen(true)}
-              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center' }}
-            >
-              <Info size={14} color={MUTED} />
-            </button>
-          </div>
-          {gripInfoOpen && (
-            <div
-              onClick={() => setGripInfoOpen(false)}
-              style={{
-                position: 'fixed', inset: 0,
-                background: 'rgba(15,23,42,0.45)',
-                zIndex: 200, display: 'flex',
-                alignItems: 'center', justifyContent: 'center',
-                fontFamily: 'system-ui, -apple-system, sans-serif',
-              }}
-            >
-              <div
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                  background: PANEL, borderRadius: 20,
-                  padding: '24px 24px 20px', maxWidth: 300,
-                  boxShadow: '0 16px 48px rgba(0,0,0,0.16)',
-                }}
-              >
-                <div style={{ fontSize: 15, fontWeight: 700, color: TEXT, marginBottom: 10 }}>Хват</div>
-                <div style={{ fontSize: 14, color: MUTED, lineHeight: 1.6 }}>
-                  При правом хвате можно бросить вплотную около правого борта. До левого борта шайба будет чуть-чуть недоезжать. При левом хвате — наоборот.
-                </div>
-                <button
-                  onClick={() => setGripInfoOpen(false)}
-                  style={{
-                    marginTop: 18, width: '100%', padding: '10px 0',
-                    fontSize: 14, fontWeight: 600, background: ACCENT,
-                    color: '#fff', border: 'none', borderRadius: 10, cursor: 'pointer',
-                  }}
-                >
-                  Понятно
-                </button>
-              </div>
-            </div>
-          )}
+      <div
+        className="glass"
+        style={{
+          margin: '16px 14px 14px',
+          padding: 20,
+          borderRadius: 24,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 12,
+        }}
+      >
+        {data?.avatarUrl ? (
+          <img
+            src={data.avatarUrl}
+            alt="avatar"
+            style={{
+              width: 88,
+              height: 88,
+              borderRadius: 999,
+              objectFit: 'cover',
+              boxShadow: '0 10px 26px rgba(15, 23, 42, 0.25)',
+            }}
+          />
+        ) : (
           <div
             style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              border: `1px solid ${PANEL_BORDER}`,
-              borderRadius: 10,
-              overflow: 'hidden',
+              width: 88,
+              height: 88,
+              borderRadius: 999,
+              background: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)',
+              color: '#ffffff',
+              fontSize: 32,
+              fontWeight: 800,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 10px 26px rgba(15, 23, 42, 0.25)',
             }}
           >
-            <GripOption
-              label="Правый"
-              active={grip === 'right'}
-              disabled={savingGrip}
-              divider
-              onClick={() => { if (grip !== 'right') saveGrip('right'); }}
-            />
-            <GripOption
-              label="Левый"
-              active={grip === 'left'}
-              disabled={savingGrip}
-              onClick={() => { if (grip !== 'left') saveGrip('left'); }}
-            />
+            {initial}
           </div>
+        )}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', textAlign: 'center' }}>
+            {data?.displayName ?? '—'}
+          </div>
+          {(data?.username || data?.tgId) && (
+            <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+              {data.username ? `@${data.username}` : `id ${data.tgId}`}
+            </div>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <span className="pill"><small>Ранг</small> —</span>
+          <span className="pill pill--dark"><small>Уровень</small> —</span>
         </div>
       </div>
 
-      {/* Logout */}
-      <div style={{ padding: '4px 16px 0' }}>
+      <div className="section-label" style={{ marginBottom: 6 }}>Статистика</div>
+      <div
+        style={{
+          margin: '0 14px 14px',
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: 8,
+        }}
+      >
+        <StatCard label="Всего бросков" value="—" />
+        <StatCard label="Голов" value="—" />
+        <StatCard label="Точность" value="—" />
+        <StatCard label="Вратарей пройдено" value="—" suffix="/10" />
+      </div>
+
+      <div
+        className="section-label"
+        style={{ marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}
+      >
+        <span>Хват клюшки</span>
         <button
+          type="button"
+          onClick={() => setGripInfoOpen(true)}
+          style={{
+            background: 'none',
+            border: 'none',
+            padding: 0,
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+          }}
+          aria-label="О хвате"
+        >
+          <Info size={12} color="var(--muted)" />
+        </button>
+      </div>
+      <div style={{ margin: '0 14px 14px', display: 'flex', gap: 8 }}>
+        <GripOption
+          label="Левый"
+          hint="Шайба слева"
+          active={grip === 'left'}
+          disabled={savingGrip}
+          sprite="/sprites/lefthand.webp"
+          side="left"
+          onClick={() => {
+            if (grip !== 'left') saveGrip('left');
+          }}
+        />
+        <GripOption
+          label="Правый"
+          hint="Шайба справа"
+          active={grip === 'right'}
+          disabled={savingGrip}
+          sprite="/sprites/righthand.webp"
+          side="right"
+          onClick={() => {
+            if (grip !== 'right') saveGrip('right');
+          }}
+        />
+      </div>
+
+      <div style={{ margin: '4px 14px 0' }}>
+        <button
+          type="button"
+          className="glass"
           onClick={() => void logout()}
           style={{
             width: '100%',
             padding: '14px 0',
-            fontSize: 16,
+            fontSize: 15,
             fontWeight: 600,
-            background: PANEL,
-            color: ACCENT,
-            border: `1px solid ${PANEL_BORDER}`,
+            color: 'var(--ink)',
             borderRadius: 16,
             cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
           }}
         >
+          <LogOut size={16} />
           Выйти
         </button>
       </div>
+
+      {gripInfoOpen && (
+        <div
+          onClick={() => setGripInfoOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.35)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
+            zIndex: 250,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+        >
+          <div
+            className="glass"
+            onClick={(e) => e.stopPropagation()}
+            style={{ borderRadius: 24, padding: '22px 22px 18px', maxWidth: 320, width: '100%' }}
+          >
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)', marginBottom: 10 }}>
+              Хват клюшки
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>
+              При правом хвате можно бросить вплотную у правого борта — слева шайба не докатится. При левом — наоборот.
+            </div>
+            <button
+              type="button"
+              className="btn btn--cta"
+              onClick={() => setGripInfoOpen(false)}
+              style={{ marginTop: 18, width: '100%', padding: '12px 0', fontSize: 14 }}
+            >
+              Понятно
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
 
-
-function GripOption({
-  label,
-  active,
-  disabled,
-  divider,
-  onClick,
-}: {
+interface GripOptionProps {
   label: string;
+  hint: string;
   active: boolean;
   disabled: boolean;
-  divider?: boolean;
+  sprite: string;
+  side: 'left' | 'right';
   onClick: () => void;
-}): JSX.Element {
+}
+
+function GripOption({ label, hint, active, disabled, sprite, side, onClick }: GripOptionProps): JSX.Element {
+  const SIZE = 72;
+  const puckSize = 3;
+  const puckSide = side === 'left' ? 'right' : 'left';
   return (
     <button
+      type="button"
+      className={active ? 'glass-dark' : 'glass'}
       onClick={onClick}
       disabled={disabled}
       style={{
-        padding: '10px 0',
-        fontSize: 15,
-        fontWeight: active ? 700 : 400,
-        background: active ? ACCENT : PANEL,
-        borderRight: divider ? `1px solid ${PANEL_BORDER}` : 'none',
-        color: active ? '#ffffff' : MUTED,
-        border: 'none',
+        flex: 1,
+        padding: '14px 10px',
+        borderRadius: 16,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 6,
         cursor: disabled ? 'not-allowed' : 'pointer',
-        transition: 'background 0.15s, color 0.15s',
+        transition: 'opacity 0.15s',
+        opacity: disabled ? 0.6 : 1,
       }}
     >
-      {label}
+      <div style={{ position: 'relative', width: SIZE, height: SIZE }}>
+        <img
+          src={sprite}
+          alt=""
+          aria-hidden
+          style={{
+            width: SIZE,
+            height: SIZE,
+            objectFit: 'contain',
+            filter: active
+              ? 'drop-shadow(0 2px 6px rgba(0, 0, 0, 0.3))'
+              : 'drop-shadow(0 1px 3px rgba(15, 23, 42, 0.15))',
+          }}
+        />
+        <div
+          aria-hidden
+          style={{
+            position: 'absolute',
+            top: '14%',
+            [puckSide]: '37%',
+            width: puckSize,
+            height: puckSize,
+            borderRadius: '50%',
+            background: '#0f172a',
+            boxShadow:
+              'inset 0 -1px 1px rgba(255, 255, 255, 0.2), 0 1px 2px rgba(15, 23, 42, 0.45)',
+          }}
+        />
+      </div>
+      <span style={{ fontSize: 13, fontWeight: 700 }}>{label}</span>
+      <span style={{ fontSize: 10, opacity: 0.7 }}>{hint}</span>
     </button>
   );
 }
+
+function StatCard({ label, value, suffix }: { label: string; value: string; suffix?: string }): JSX.Element {
+  return (
+    <div
+      className="glass"
+      style={{
+        padding: '12px 14px',
+        borderRadius: 16,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 4,
+      }}
+    >
+      <span
+        style={{
+          fontSize: 9,
+          fontWeight: 600,
+          color: 'var(--muted)',
+          textTransform: 'uppercase',
+          letterSpacing: '0.12em',
+        }}
+      >
+        {label}
+      </span>
+      <span style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--ink)' }}>
+        {value}
+        {suffix && <small style={{ fontSize: 12, fontWeight: 500, color: 'var(--muted)' }}>{suffix}</small>}
+      </span>
+    </div>
+  );
+}
+

@@ -13,9 +13,9 @@ import {
   SHOOTER_AMPLITUDE,
   type ShotResult,
 } from '@hockey/game-core';
-import { RotateCcw } from 'lucide-react';
+import { RotateCcw, Settings } from 'lucide-react';
 import { PixiStage } from '../game/PixiStage.js';
-import { Rink } from '../game/renderer/Rink.js';
+import { RinkSvg } from '../game/RinkSvg.js';
 import { Goal } from '../game/renderer/Goal.js';
 import { Goalie } from '../game/renderer/Goalie.js';
 import { Hitboxes } from '../game/renderer/Hitboxes.js';
@@ -25,15 +25,9 @@ import { createGameLoop, type GameLoop, type SpeedOverrides } from '../game/loop
 import type { Scale } from '../game/coords.js';
 import { useTrainingStore } from '../stores/trainingStore.js';
 import { useAuthStore } from '../auth/authStore.js';
-import { NAV_HEIGHT } from '../components/BottomNav.js';
 import { ResultModal } from '../components/ResultModal.js';
-
-const BG = '#f4f7fb';
-const PANEL = '#ffffff';
-const PANEL_BORDER = '#e2e8f0';
-const TEXT = '#0f172a';
-const MUTED = '#64748b';
-const ACCENT = '#0f172a';
+import { ScoreBoard } from '../components/ScoreBoard.js';
+import { SettingsSheet } from '../components/SettingsSheet.js';
 
 const ROOKIE_ID = 'rookie';
 const PAUSE_MS = 1000;
@@ -41,15 +35,22 @@ const PAUSE_MS = 1000;
 const DEFAULT_SPEEDS: SpeedOverrides = {
   goalFreq: 0.55,
   goalieFreq: 0.65,
-  shooterFreq: 0.80,
-  puckSpeed: 1.30,
+  shooterFreq: 0.8,
+  puckSpeed: 1.3,
 };
 
 function computeShooterX(t: number, freq: number): number {
   const period = 1000 / freq;
-  const phase = ((t % period) + period) % period / period;
+  const phase = (((t % period) + period) % period) / period;
   const tri = phase < 0.5 ? phase * 4 - 1 : 3 - phase * 4;
   return SHOOTER_CENTER_X + SHOOTER_AMPLITUDE * tri;
+}
+
+function formatTimer(ms: number): string {
+  const totalSec = Math.floor(ms / 1000);
+  const m = String(Math.floor(totalSec / 60)).padStart(2, '0');
+  const s = String(totalSec % 60).padStart(2, '0');
+  return `${m}:${s}`;
 }
 
 export function DuelScreen(): JSX.Element {
@@ -67,6 +68,8 @@ export function DuelScreen(): JSX.Element {
   const refreshRef = useRef<((s: Scale) => void) | null>(null);
   const [isShowingResult, setIsShowingResult] = useState(false);
   const [showHitboxes, setShowHitboxes] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [elapsedMs, setElapsedMs] = useState(0);
 
   const [speeds, setSpeeds] = useState<SpeedOverrides>(DEFAULT_SPEEDS);
   const speedsRef = useRef<SpeedOverrides>(DEFAULT_SPEEDS);
@@ -87,10 +90,18 @@ export function DuelScreen(): JSX.Element {
     return () => useTrainingStore.getState().reset();
   }, [goalieId]);
 
+  useEffect(() => {
+    const start = performance.now();
+    setElapsedMs(0);
+    const id = window.setInterval(() => {
+      setElapsedMs(performance.now() - start);
+    }, 500);
+    return () => window.clearInterval(id);
+  }, [goalieId]);
+
   const handleReady = useCallback((app: Application, initialScale: Scale): void => {
     scaleRef.current = initialScale;
 
-    const rink = new Rink();
     const goal = new Goal();
     const goalie = new Goalie();
     const hitboxes = new Hitboxes();
@@ -110,12 +121,10 @@ export function DuelScreen(): JSX.Element {
     gameLayer.addChild(puck.container);
     gameLayer.addChild(hitboxes.container);
 
-    app.stage.addChild(rink.container);
     app.stage.addChild(gameLayer);
 
     const refresh = (s: Scale): void => {
       scaleRef.current = s;
-      rink.update(s);
       goal.update(s);
       player.update(s);
       puck.resetAtStart(s);
@@ -156,12 +165,6 @@ export function DuelScreen(): JSX.Element {
     const overrides = speedsRef.current;
     const activeCfg = { ...cfg, goalFrequency: overrides.goalFreq, frequency: overrides.goalieFreq };
 
-    // tapTime для goalie/goal cross — sceneT (вратарь/ворота движутся по нему).
-    // shooterTapTime — shooterT (шутер визуально движется по нему). Эти t
-    // расходятся после первой паузы: шутер паузится с тапа, сцена с импакта,
-    // суммарная разница накапливается. Без отдельного shooter-time
-    // resolveShot пересчитал бы шутера от sceneT и получил позицию,
-    // не соответствующую видимой → ложные miss/save.
     const tapTime = loop.getSceneT();
     const shooterTapTime = loop.getShooterT();
     const offsets = getSessionPhaseOffsets(st.seed);
@@ -180,7 +183,6 @@ export function DuelScreen(): JSX.Element {
       offsets,
     );
 
-    // Phase 1 — flying: шутер замирает на текущей позиции, шайба летит
     loop.beginShooterPause();
     player?.playShot();
     puck.playShot(
@@ -190,18 +192,15 @@ export function DuelScreen(): JSX.Element {
       flightDurationMs,
     );
 
-    // Phase 2 — paused (импакт): фриз сцены, hold puck, save-поза если save, applyResult, модалка
     window.setTimeout(() => {
       loop.beginScenePause();
-      puck.holdAt({ x: sx, y: GOAL_OPENING.y });
+      puck.holdAt({ x: sx, y: result.type === 'save' ? GOAL_OPENING.y + 20 : GOAL_OPENING.y });
       if (result.type === 'save') goalie.setSavePose(true);
       if (result.type === 'goal') goalRef.current?.triggerGoalLight();
       useTrainingStore.getState().applyResult(result);
       setIsShowingResult(true);
     }, flightDurationMs);
 
-    // Phase 3 — idle: всё разморозить (t продолжается с того же значения,
-    // вратарь/ворота/шутер возобновляют движение в ту же сторону)
     window.setTimeout(() => {
       loop.endScenePause();
       loop.endShooterPause();
@@ -217,133 +216,163 @@ export function DuelScreen(): JSX.Element {
 
   const cfg = state.currentGoalieId ? getGoalie(state.currentGoalieId) : null;
   const shotDisabled = !cfg || isShowingResult;
+  const timerLabel = useMemo(() => formatTimer(elapsedMs), [elapsedMs]);
 
   return (
     <main
+      className="screen"
       style={{
         position: 'fixed',
         top: 'env(safe-area-inset-top, 0px)',
         left: 0,
         right: 0,
-        bottom: `calc(${NAV_HEIGHT}px + env(safe-area-inset-bottom, 0px) / 2)`,
-        display: 'flex',
-        flexDirection: 'column',
-        background: BG,
-        color: TEXT,
-        fontFamily: 'system-ui, -apple-system, sans-serif',
+        bottom: `calc(76px + env(safe-area-inset-bottom, 0px) / 2)`,
+        minHeight: 0,
       }}
     >
-      {/* Speed controls */}
-      <div
-        style={{
-          padding: '10px 16px 6px',
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: 6,
-        }}
-      >
-        <SpeedInput
-          label="Ворота"
-          value={speeds.goalFreq}
-          defaultValue={DEFAULT_SPEEDS.goalFreq}
-          min={0.05}
-          max={2.0}
-          step={0.05}
-          onChange={(v) => setSpeeds((s) => ({ ...s, goalFreq: v }))}
-          onReset={() => setSpeeds((s) => ({ ...s, goalFreq: DEFAULT_SPEEDS.goalFreq }))}
-        />
-        <SpeedInput
-          label="Вратарь"
-          value={speeds.goalieFreq}
-          defaultValue={DEFAULT_SPEEDS.goalieFreq}
-          min={0.05}
-          max={2.0}
-          step={0.05}
-          onChange={(v) => setSpeeds((s) => ({ ...s, goalieFreq: v }))}
-          onReset={() => setSpeeds((s) => ({ ...s, goalieFreq: DEFAULT_SPEEDS.goalieFreq }))}
-        />
-        <SpeedInput
-          label="Хоккеист"
-          value={speeds.shooterFreq}
-          defaultValue={DEFAULT_SPEEDS.shooterFreq}
-          min={0.05}
-          max={2.0}
-          step={0.05}
-          onChange={(v) => setSpeeds((s) => ({ ...s, shooterFreq: v }))}
-          onReset={() => setSpeeds((s) => ({ ...s, shooterFreq: DEFAULT_SPEEDS.shooterFreq }))}
-        />
-        <SpeedInput
-          label="Шайба"
-          value={speeds.puckSpeed}
-          defaultValue={DEFAULT_SPEEDS.puckSpeed}
-          min={0.3}
-          max={3.0}
-          step={0.1}
-          onChange={(v) => setSpeeds((s) => ({ ...s, puckSpeed: v }))}
-          onReset={() => setSpeeds((s) => ({ ...s, puckSpeed: DEFAULT_SPEEDS.puckSpeed }))}
+      <div style={{ margin: '12px 14px 10px' }}>
+        <ScoreBoard
+          period={1}
+          timer={timerLabel}
+          goals={state.sessionGoals}
+          shots={state.shotIndex}
         />
       </div>
 
-      {/* Debug toggle */}
-      <div style={{ padding: '0 16px 6px', display: 'flex', justifyContent: 'flex-end' }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: MUTED, cursor: 'pointer' }}>
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: '0 14px 10px',
+        }}
+      >
+        <div
+          style={{
+            position: 'relative',
+            aspectRatio: '572 / 700',
+            width: '100%',
+            maxHeight: '100%',
+            borderRadius: 64,
+            overflow: 'hidden',
+            border: '3px solid #1e3a5f',
+            background: '#EAF1F8',
+          }}
+        >
+          <RinkSvg />
+          <div style={{ position: 'absolute', inset: 0 }}>
+            <PixiStage onReady={handleReady} onResize={handleResize} />
+          </div>
+          {import.meta.env.DEV && (
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(true)}
+              aria-label="Настройки (dev)"
+              style={{
+                position: 'absolute',
+                bottom: 18,
+                right: 18,
+                width: 30,
+                height: 30,
+                borderRadius: 999,
+                border: '1px solid rgba(255, 255, 255, 0.6)',
+                background: 'rgba(255, 255, 255, 0.45)',
+                backdropFilter: 'blur(10px)',
+                WebkitBackdropFilter: 'blur(10px)',
+                color: 'var(--ink)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: 0.55,
+                cursor: 'pointer',
+                padding: 0,
+                zIndex: 3,
+              }}
+            >
+              <Settings size={14} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div style={{ padding: '0 14px 10px', display: 'flex', justifyContent: 'center' }}>
+        <button
+          type="button"
+          className="btn btn--cta"
+          onClick={handleShotTap}
+          disabled={shotDisabled}
+          style={{ width: '100%' }}
+        >
+          БРОСОК
+        </button>
+      </div>
+
+      <SettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+          <SpeedInput
+            label="Ворота"
+            value={speeds.goalFreq}
+            defaultValue={DEFAULT_SPEEDS.goalFreq}
+            min={0.05}
+            max={2.0}
+            step={0.05}
+            onChange={(v) => setSpeeds((s) => ({ ...s, goalFreq: v }))}
+            onReset={() => setSpeeds((s) => ({ ...s, goalFreq: DEFAULT_SPEEDS.goalFreq }))}
+          />
+          <SpeedInput
+            label="Вратарь"
+            value={speeds.goalieFreq}
+            defaultValue={DEFAULT_SPEEDS.goalieFreq}
+            min={0.05}
+            max={2.0}
+            step={0.05}
+            onChange={(v) => setSpeeds((s) => ({ ...s, goalieFreq: v }))}
+            onReset={() => setSpeeds((s) => ({ ...s, goalieFreq: DEFAULT_SPEEDS.goalieFreq }))}
+          />
+          <SpeedInput
+            label="Хоккеист"
+            value={speeds.shooterFreq}
+            defaultValue={DEFAULT_SPEEDS.shooterFreq}
+            min={0.05}
+            max={2.0}
+            step={0.05}
+            onChange={(v) => setSpeeds((s) => ({ ...s, shooterFreq: v }))}
+            onReset={() => setSpeeds((s) => ({ ...s, shooterFreq: DEFAULT_SPEEDS.shooterFreq }))}
+          />
+          <SpeedInput
+            label="Шайба"
+            value={speeds.puckSpeed}
+            defaultValue={DEFAULT_SPEEDS.puckSpeed}
+            min={0.3}
+            max={3.0}
+            step={0.1}
+            onChange={(v) => setSpeeds((s) => ({ ...s, puckSpeed: v }))}
+            onReset={() => setSpeeds((s) => ({ ...s, puckSpeed: DEFAULT_SPEEDS.puckSpeed }))}
+          />
+        </div>
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            fontSize: 13,
+            color: 'var(--muted)',
+            cursor: 'pointer',
+            padding: '4px 2px',
+          }}
+        >
           <input
             type="checkbox"
             checked={showHitboxes}
             onChange={(e) => setShowHitboxes(e.target.checked)}
             style={{ cursor: 'pointer' }}
           />
-          Хитбоксы
+          Показать хитбоксы
         </label>
-      </div>
+      </SettingsSheet>
 
-      {/* Rink */}
-      <div
-        style={{
-          flex: 1,
-          position: 'relative',
-          margin: '0 12px 12px',
-          borderRadius: 20,
-          overflow: 'hidden',
-          border: `1px solid ${PANEL_BORDER}`,
-          background: '#eaf2fb',
-          boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
-        }}
-      >
-        <PixiStage onReady={handleReady} onResize={handleResize} />
-      </div>
-
-      {/* Shot button */}
-      <div style={{ padding: '0 16px 16px', display: 'flex', justifyContent: 'center' }}>
-        <button
-          onClick={handleShotTap}
-          disabled={shotDisabled}
-          style={{
-            width: '60%',
-            height: 56,
-            borderRadius: 14,
-            border: 'none',
-            background: shotDisabled
-              ? 'linear-gradient(180deg, #b0bec5 0%, #90a4ae 100%)'
-              : 'linear-gradient(180deg, #e05c5c 0%, #c43a3a 100%)',
-            color: '#ffffff',
-            fontSize: 17,
-            fontWeight: 800,
-            letterSpacing: 3,
-            textTransform: 'uppercase',
-            cursor: shotDisabled ? 'not-allowed' : 'pointer',
-            boxShadow: shotDisabled
-              ? 'none'
-              : '0 4px 0 #8f2020, 0 6px 16px rgba(180,40,40,0.45), inset 0 1px 0 rgba(255,255,255,0.18)',
-            touchAction: 'manipulation',
-            transition: 'box-shadow 0.1s',
-          }}
-        >
-          БРОСОК
-        </button>
-      </div>
-
-      {/* Result modal */}
       {isShowingResult && state.lastResult && (
         <ResultModal result={state.lastResult} durationMs={PAUSE_MS} />
       )}
@@ -366,25 +395,33 @@ function SpeedInput({ label, value, defaultValue, min, max, step, onChange, onRe
   const isDefault = Math.abs(value - defaultValue) < step / 2;
   return (
     <div
+      className="glass"
       style={{
-        background: PANEL,
-        border: `1px solid ${PANEL_BORDER}`,
-        borderRadius: 12,
-        padding: '6px 8px',
+        borderRadius: 14,
+        padding: '8px 10px',
         display: 'flex',
         flexDirection: 'column',
         gap: 4,
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: 10, letterSpacing: 0.8, color: MUTED, textTransform: 'uppercase' }}>
+        <span
+          style={{
+            fontSize: 10,
+            letterSpacing: 0.8,
+            color: 'var(--muted)',
+            textTransform: 'uppercase',
+            fontWeight: 600,
+          }}
+        >
           {label}
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: TEXT }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink)' }}>
             {value.toFixed(2)}
           </span>
           <button
+            type="button"
             onClick={onReset}
             disabled={isDefault}
             style={{
@@ -397,8 +434,9 @@ function SpeedInput({ label, value, defaultValue, min, max, step, onChange, onRe
               opacity: isDefault ? 0.2 : 0.6,
               transition: 'opacity 0.15s',
             }}
+            aria-label="Сбросить"
           >
-            <RotateCcw size={11} color={TEXT} />
+            <RotateCcw size={11} color="var(--ink)" />
           </button>
         </div>
       </div>
@@ -409,7 +447,7 @@ function SpeedInput({ label, value, defaultValue, min, max, step, onChange, onRe
         step={step}
         value={value}
         onChange={(e) => onChange(parseFloat(e.target.value))}
-        style={{ width: '100%', accentColor: ACCENT, cursor: 'pointer' }}
+        style={{ width: '100%', accentColor: 'var(--ink)', cursor: 'pointer' }}
       />
     </div>
   );

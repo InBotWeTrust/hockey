@@ -7,6 +7,9 @@ import { simulateShooter } from '../shooter/simulate.js';
 import { PUCK_SPEED_PER_MS, type ShotInput, type ShotResult, type StickEffects } from './types.js';
 import type { SessionPhaseOffsets } from '../session.js';
 
+export const GOAL_HITBOX_MARGIN = 2;   // shrink goal opening by N px per side
+export const GOALIE_HITBOX_EXPAND = 6; // expand goalie AABB by N px total (3 per side)
+
 export function resolveShot(
   input: ShotInput,
   cfg: GoalieConfig,
@@ -31,7 +34,7 @@ export function resolveShot(
   const goalieState = simulateGoalie(cfg, seed, shotIndex, tGoalieCross, phaseOffsets?.goalie ?? 0);
 
   const shrink = 1 / Math.max(stick.shotZoneMultiplier, 1);
-  const effWidth = goalieState.width * shrink;
+  const effWidth = goalieState.width * shrink + GOALIE_HITBOX_EXPAND;
   const goalieXMin = goalieState.position.x - effWidth / 2;
   const goalieXMax = goalieXMin + effWidth;
 
@@ -45,8 +48,8 @@ export function resolveShot(
   const tGoalCross =
     input.tapTime + (PUCK_START.y - GOAL_OPENING.y) / speed;
   const goalOffsetAtGoal = simulateGoal(cfg, tGoalCross, phaseOffsets?.goal ?? 0).offsetX;
-  const openingXMin = GOAL_OPENING.xMin + goalOffsetAtGoal;
-  const openingXMax = GOAL_OPENING.xMax + goalOffsetAtGoal;
+  const openingXMin = GOAL_OPENING.xMin + goalOffsetAtGoal + GOAL_HITBOX_MARGIN;
+  const openingXMax = GOAL_OPENING.xMax + goalOffsetAtGoal - GOAL_HITBOX_MARGIN;
   if (shooterX < openingXMin || shooterX > openingXMax) {
     return { type: 'miss', reason: 'wide' };
   }

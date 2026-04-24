@@ -1,5 +1,5 @@
 import { Container, Graphics } from 'pixi.js';
-import { GOAL, GOAL_OPENING, type GoalieState } from '@hockey/game-core';
+import { GOAL, GOAL_OPENING, GOAL_HITBOX_MARGIN, GOALIE_HITBOX_EXPAND, type GoalieState } from '@hockey/game-core';
 import type { Scale } from '../coords.js';
 
 // Дебаг-оверлей реальных хитбоксов из @hockey/game-core/shot/resolve.ts:
@@ -29,17 +29,17 @@ export class Hitboxes {
     if (!this.container.visible) return;
     const s = scale.factor;
 
-    const openingXMin = (GOAL_OPENING.xMin + goalOffsetX) * s;
-    const openingXMax = (GOAL_OPENING.xMax + goalOffsetX) * s;
+    const openingXMin = (GOAL_OPENING.xMin + goalOffsetX + GOAL_HITBOX_MARGIN) * s;
+    const openingXMax = (GOAL_OPENING.xMax + goalOffsetX - GOAL_HITBOX_MARGIN) * s;
     const yTop = GOAL.y * s;
     const yBot = GOAL_OPENING.y * s;
     this.goalRect.clear()
       .rect(openingXMin, yTop, openingXMax - openingXMin, yBot - yTop)
       .stroke({ width: LINE_WIDTH, color: GOAL_COLOR });
 
-    const gw = goalieState.width * s;
+    const gw = (goalieState.width + GOALIE_HITBOX_EXPAND) * s;
     const gh = goalieState.height * s;
-    const gx = (goalieState.position.x - goalieState.width / 2) * s;
+    const gx = (goalieState.position.x - (goalieState.width + GOALIE_HITBOX_EXPAND) / 2) * s;
     const gy = (goalieState.position.y - goalieState.height / 2) * s;
     this.goalieRect.clear()
       .rect(gx, gy, gw, gh)

@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import './global.css';
+import './design-system.css';
 import { DuelScreen } from '../screens/DuelScreen.js';
 import { LoginScreen } from '../screens/LoginScreen.js';
 import { ProfileScreen } from '../screens/ProfileScreen.js';
@@ -19,6 +20,7 @@ export function App(): JSX.Element {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <div
+          className="app-shell"
           style={{
             maxWidth: 430,
             margin: '0 auto',
@@ -27,8 +29,7 @@ export function App(): JSX.Element {
             transform: 'translateZ(0)',
             overflow: 'hidden',
             paddingTop: 'env(safe-area-inset-top, 0px)',
-            background: '#f4f7fb',
-            boxShadow: '0 0 60px rgba(0,0,0,0.6)',
+            boxShadow: '0 0 60px rgba(0, 0, 0, 0.6)',
           }}
         >
           <Routes>

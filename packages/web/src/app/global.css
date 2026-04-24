@@ -1,7 +1,54 @@
 *, *::before, *::after { box-sizing: border-box; }
 
+:root {
+  --ink: #0f172a;
+  --muted: #475569;
+  --muted-soft: #64748b;
+  --red: #e11d48;
+  --red-soft: #fecdd3;
+  --red-deep: #b91c1c;
+  --green: #22c55e;
+  --green-deep: #15803d;
+  --blue-accent: #229ed9;
+
+  --glass-bg: rgba(255, 255, 255, 0.5);
+  --glass-border: rgba(255, 255, 255, 0.7);
+  --glass-bg-dark: rgba(15, 23, 42, 0.42);
+  --glass-border-dark: rgba(255, 255, 255, 0.14);
+  --glass-bg-strong-dark: rgba(15, 23, 42, 0.92);
+
+  --blur-md: blur(18px) saturate(130%);
+  --blur-sm: blur(10px) saturate(120%);
+  --blur-dark: blur(14px) saturate(140%);
+
+  --r-sm: 12px;
+  --r-md: 16px;
+  --r-lg: 20px;
+  --r-xl: 24px;
+  --r-pill: 999px;
+
+  --shadow-glass: 0 8px 24px rgba(15, 23, 42, 0.12);
+  --shadow-elev: 0 12px 40px rgba(15, 23, 42, 0.28);
+  --shadow-cta: 0 8px 22px rgba(15, 23, 42, 0.3);
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro", "Segoe UI", Roboto, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+
 html, body {
   margin: 0;
   padding: 0;
   background: #0a0a0a;
+  font-family: var(--font-sans);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  min-height: 100dvh;
+}
+
+button {
+  font-family: inherit;
 }

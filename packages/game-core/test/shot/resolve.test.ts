@@ -87,7 +87,10 @@ describe('resolveShot', () => {
   it('honors stick shotZoneMultiplier (narrows goalie AABB)', () => {
     // Shooter just barely at the edge of goalie's natural AABB at rink center.
     // With neutral stick → save; with a wide-zone stick → goal.
-    const edgeX = PUCK_START.x + 17; // goalie width 38, half=19, slightly inside
+    // GOALIE_SIZE.width=58, GOALIE_HITBOX_EXPAND=6:
+    //   neutral effWidth=64, half=32 → 19 is inside (save)
+    //   stick x2  effWidth=35, half=17.5 → 19 is outside (goal)
+    const edgeX = PUCK_START.x + 19;
     const tapTime = findTapTimeForShooter(edgeX);
     const saveRes = resolveShot({ tapTime }, baseCfg, 'seed', 0, STICK_NEUTRAL);
     const goalRes = resolveShot(

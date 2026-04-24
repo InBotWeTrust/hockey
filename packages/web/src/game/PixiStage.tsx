@@ -3,7 +3,7 @@ import { Application, Assets } from 'pixi.js';
 import { RINK } from '@hockey/game-core';
 import { computeScale, type Scale } from './coords.js';
 
-const SPRITE_ASSETS = ['/sprites/court_wide.webp', '/sprites/gate.webp', '/sprites/goalkeeper.webp', '/sprites/save.webp', '/sprites/player.webp'];
+const SPRITE_ASSETS = ['/sprites/gate.webp', '/sprites/goalkeeper.webp', '/sprites/save.webp', '/sprites/player.webp'];
 
 export interface PixiStageProps {
   onReady: (app: Application, scale: Scale) => void;
@@ -28,7 +28,7 @@ export function PixiStage({ onReady, onResize }: PixiStageProps): JSX.Element {
 
     void (async () => {
       await app.init({
-        background: '#eaf2fb',
+        backgroundAlpha: 0,
         resizeTo: host,
         antialias: true,
         resolution: Math.min(window.devicePixelRatio ?? 1, 3),
