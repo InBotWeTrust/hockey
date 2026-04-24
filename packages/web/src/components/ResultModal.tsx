@@ -83,8 +83,8 @@ export function ResultModal({ result, durationMs, subText }: ResultModalProps): 
               fontFamily: 'var(--font-sans)',
               fontWeight: 600,
               fontSize: 'clamp(13px, 3vw, 16px)',
-              color: theme.color,
-              opacity: 0.75,
+              color: '#0f172a',
+              opacity: 0.85,
               letterSpacing: '0.02em',
             }}
           >
