@@ -205,10 +205,12 @@ export function DuelScreen(): JSX.Element {
       else if (rel < 2 / 6 || rel > 4 / 6) subText = 'Мощный щелчок!';
       else subText = 'Отличный бросок!';
     } else if (result.type === 'miss') {
-      const distLeft = GOAL_OPENING.xMin - sx;   // >0 if left of left post
-      const distRight = sx - GOAL_OPENING.xMax;  // >0 if right of right post
-      const dist = Math.max(distLeft, distRight, 0);
-      subText = dist < 20 ? 'Рядом со штангой!' : 'Очень далеко...';
+      const tGoalCross = tapTime + (PUCK_START.y - GOAL_OPENING.y) / overrides.puckSpeed;
+      const goalOffsetAtGoal = simulateGoal(activeCfg, tGoalCross, offsets.goal ?? 0).offsetX;
+      const oMin = GOAL_OPENING.xMin + goalOffsetAtGoal;
+      const oMax = GOAL_OPENING.xMax + goalOffsetAtGoal;
+      const dist = Math.max(oMin - sx, sx - oMax, 0);
+      subText = dist <= 3 ? 'Штанга спасает!' : dist < 18 ? 'Рядом со штангой!' : dist < 48 ? 'Но было опасно!' : 'Очень далеко...';
     }
 
     loop.beginShooterPause();
