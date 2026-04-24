@@ -202,7 +202,7 @@ export function DuelScreen(): JSX.Element {
       const oMax = GOAL_OPENING.xMax + goalOffsetAtGoal;
       const rel = (sx - oMin) / (oMax - oMin); // 0=left edge, 1=right edge
       if (rel < 1 / 6 || rel > 5 / 6) subText = 'Точно в девятку!';
-      else if (rel < 2 / 6 || rel > 4 / 6) subText = 'Мощный щелчок!';
+      else if (rel < 2 / 6 || rel > 4 / 6) subText = Math.random() < 0.5 ? 'Мощный щелчок!' : 'Отличный кистевой!';
       else subText = 'Отличный бросок!';
     } else if (result.type === 'miss') {
       const tGoalCross = tapTime + (PUCK_START.y - GOAL_OPENING.y) / overrides.puckSpeed;
