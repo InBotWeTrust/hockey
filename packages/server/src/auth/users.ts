@@ -8,6 +8,7 @@ export interface FindOrCreateInput {
   username?: string;
   firstName?: string;
   lastName?: string;
+  timezone?: string;
 }
 
 export interface AppUser {
@@ -54,8 +55,8 @@ export async function findOrCreateTelegramUser(
     const userId = randomUUID();
     const providerId = randomUUID();
     await client.query(
-      'insert into users (id, display_name, avatar_url) values ($1, $2, $3)',
-      [userId, input.displayName, input.avatarUrl ?? null],
+      'insert into users (id, display_name, avatar_url, timezone) values ($1, $2, $3, $4)',
+      [userId, input.displayName, input.avatarUrl ?? null, input.timezone ?? 'UTC'],
     );
     await client.query(
       `insert into auth_providers (id, user_id, provider, provider_uid, provider_data)

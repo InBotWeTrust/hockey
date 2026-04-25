@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import './global.css';
 import './design-system.css';
-import { DuelScreen } from '../screens/DuelScreen.js';
+import { DailyScreen } from '../screens/DailyScreen.js';
 import { LoginScreen } from '../screens/LoginScreen.js';
 import { ProfileScreen } from '../screens/ProfileScreen.js';
 import { PrivateRoute } from '../auth/PrivateRoute.js';
@@ -38,7 +38,7 @@ export function App(): JSX.Element {
               path="/"
               element={
                 <PrivateRoute>
-                  <DuelScreen />
+                  <DailyScreen />
                 </PrivateRoute>
               }
             />
@@ -46,7 +46,7 @@ export function App(): JSX.Element {
               path="/duel/:goalieId"
               element={
                 <PrivateRoute>
-                  <DuelScreen />
+                  <DailyScreen />
                 </PrivateRoute>
               }
             />

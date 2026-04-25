@@ -5,6 +5,14 @@ import { TelegramLoginButton, type TelegramAuthPayload } from '../auth/TelegramL
 import { apiFetch, ApiError } from '../api/apiFetch.js';
 import { useAuthStore, type AuthSession } from '../auth/authStore.js';
 
+function detectTimezone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch {
+    return 'UTC';
+  }
+}
+
 export function LoginScreen(): JSX.Element {
   const navigate = useNavigate();
   const setSession = useAuthStore((s) => s.setSession);
@@ -14,7 +22,7 @@ export function LoginScreen(): JSX.Element {
     mutationFn: (payload) =>
       apiFetch<AuthSession>('/auth/telegram', {
         method: 'POST',
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, timezone: detectTimezone() }),
       }),
     onSuccess: (session) => {
       setSession(session);
@@ -96,7 +104,10 @@ export function LoginScreen(): JSX.Element {
             className="btn btn--ghost"
             onClick={async () => {
               try {
-                const session = await apiFetch<AuthSession>('/auth/dev', { method: 'POST' });
+                const session = await apiFetch<AuthSession>('/auth/dev', {
+                  method: 'POST',
+                  body: JSON.stringify({ timezone: detectTimezone() }),
+                });
                 setSession(session);
                 navigate('/', { replace: true });
               } catch (err) {
