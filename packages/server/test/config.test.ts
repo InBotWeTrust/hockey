@@ -8,6 +8,7 @@ const base = {
   JWT_SECRET: 'dev-jwt-secret-that-is-long-enough',
   REFRESH_SECRET: 'dev-refresh-secret-long-enough-too',
   TELEGRAM_BOT_TOKEN: '123456:placeholder-bot-token',
+  DAILY_SEED_SECRET: 'daily-seed-secret-long-enough!!',
 };
 
 describe('loadConfig', () => {

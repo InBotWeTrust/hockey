@@ -11,8 +11,8 @@ const PUCK_BLACK = 0x111111;
 // Offset +10% вслед за ростом sprite игрока, чтобы шайба оставалась на
 // кончике клюшки.
 export const BLADE_OFFSET: Record<'left' | 'right', Vec2> = {
-  left:  { x: -15, y: -37 },
-  right: { x:  15, y: -37 },
+  left:  { x: -25, y: -43 },
+  right: { x:  25, y: -43 },
 };
 
 export class Puck {

@@ -2,11 +2,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import './global.css';
 import './design-system.css';
-import { DuelScreen } from '../screens/DuelScreen.js';
+import { DailyScreen } from '../screens/DailyScreen.js';
 import { LoginScreen } from '../screens/LoginScreen.js';
 import { ProfileScreen } from '../screens/ProfileScreen.js';
 import { PrivateRoute } from '../auth/PrivateRoute.js';
 import { BottomNav } from '../components/BottomNav.js';
+import { UpdatePrompt } from '../components/UpdatePrompt.js';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -29,7 +30,7 @@ export function App(): JSX.Element {
             transform: 'translateZ(0)',
             overflow: 'hidden',
             paddingTop: 'env(safe-area-inset-top, 0px)',
-            boxShadow: '0 0 60px rgba(0, 0, 0, 0.6)',
+            boxShadow: '0 0 0 1px rgba(15,23,42,0.08), 0 8px 48px rgba(15,23,42,0.14)',
           }}
         >
           <Routes>
@@ -38,7 +39,7 @@ export function App(): JSX.Element {
               path="/"
               element={
                 <PrivateRoute>
-                  <DuelScreen />
+                  <DailyScreen />
                 </PrivateRoute>
               }
             />
@@ -46,7 +47,7 @@ export function App(): JSX.Element {
               path="/duel/:goalieId"
               element={
                 <PrivateRoute>
-                  <DuelScreen />
+                  <DailyScreen />
                 </PrivateRoute>
               }
             />
@@ -60,6 +61,7 @@ export function App(): JSX.Element {
             />
           </Routes>
           <BottomNav />
+          <UpdatePrompt />
         </div>
       </BrowserRouter>
     </QueryClientProvider>

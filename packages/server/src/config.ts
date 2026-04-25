@@ -10,6 +10,7 @@ const schema = z.object({
   JWT_SECRET: z.string().min(16),
   REFRESH_SECRET: z.string().min(16),
   TELEGRAM_BOT_TOKEN: z.string().min(1),
+  DAILY_SEED_SECRET: z.string().min(16),
 });
 
 export type AppConfig = z.infer<typeof schema>;

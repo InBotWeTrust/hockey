@@ -55,6 +55,7 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
         JWT_SECRET: 'access-secret-at-least-16-chars',
         REFRESH_SECRET: 'refresh-secret-at-least-16-chars',
         TELEGRAM_BOT_TOKEN: BOT_TOKEN,
+        DAILY_SEED_SECRET: 'daily-seed-secret-at-least-16!!',
       },
     });
   });

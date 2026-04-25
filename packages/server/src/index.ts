@@ -1,5 +1,8 @@
 import { buildApp } from './app.js';
 import { loadConfig } from './config.js';
+import { loadDotEnv } from './env.js';
+
+loadDotEnv();
 
 async function main(): Promise<void> {
   const config = loadConfig();

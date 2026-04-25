@@ -7,6 +7,7 @@ import { errorsPlugin } from './plugins/errors.js';
 import { authPlugin } from './plugins/auth.js';
 import { authRoutes } from './routes/auth.js';
 import { meRoutes } from './routes/me.js';
+import { dailyRoutes } from './duel/daily/routes.js';
 
 export interface BuildAppOptions {
   config?: AppConfig;
@@ -36,6 +37,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
     devLoginEnabled: config.NODE_ENV !== 'production',
   });
   await app.register(meRoutes);
+  await app.register(dailyRoutes, { dailySeedSecret: config.DAILY_SEED_SECRET });
 
   return app;
 }

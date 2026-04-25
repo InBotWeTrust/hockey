@@ -6,9 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Ultimate Hockey — мобильная хоккейная PWA в духе OVI Universe + Prison: тайминг-механика «поймай окно между движущимся вратарём и движущимися воротами», лестница боссов-вратарей, минимальная экипировка (клюшки), соревновательный рейтинг. Вход через Telegram Login Widget (VK OAuth отложен). Монетизация — Фаза 2.
 
-Прод: https://hockey.inbotwetrust.ru, GHCR-образы `ghcr.io/inbotwetrust/hockey-server|web`. Деплой — только через GitHub Actions (`.github/workflows/deploy.yml`): CI билдит образы, пушит в GHCR, SSH-сессия на VPS делает `docker compose pull && up -d`. На VPS ничего не собирается.
+Прод: https://hockey.inbotwetrust.ru, GHCR-образы `ghcr.io/inbotwetrust/hockey-server|web`. Деплой — только через GitHub Actions (`.github/workflows/deploy.yml`): CI билдит образы, пушит в GHCR, SSH-сессия на VPS делает `docker compose pull && up -d --force-recreate`. На VPS ничего не собирается.
 
-Дизайн-спек: `docs/superpowers/specs/2026-04-12-ultimate-hockey-pwa-mvp-design.md`. Имплементационные планы: `docs/superpowers/plans/`. Выполнены 1–5 (skeleton → game-core → playable prototype → server infra → Telegram auth → web login). Сейчас — полировка playable prototype: top-down спрайты (`gate/goalkeeper/lefthand/righthand.webp`), профиль с выбором хвата (миграция `002_grip`), а следом сервер-роуты `/duel/*` (открытый поединок с персистентным HP — см. раздел «Модель поединка»).
+Дизайн-спек: `docs/superpowers/specs/2026-04-12-ultimate-hockey-pwa-mvp-design.md`. Имплементационные планы: `docs/superpowers/plans/`. Spec на текущий рабочий подпроект 0+1 (базовая модель `shot_session` + дневная игра): `~/.claude/plans/1-1-async-dawn.md`. Выполнены 1–5 + подпроект 0+1: дневная игра 3×30 за 20 мин с серверными роутами `/duel/daily/*`. Roadmap (см. plan-файл): админка → сюжет → инвентарь → рейтинг → колесо → рефералка → чат → турниры. HP-модель удалена.
 
 ## Commands
 
@@ -63,9 +63,9 @@ pnpm workspaces, `packages/*`, TS project references (`composite: true`):
 
 - **`@hockey/game-core`** — pure TS без браузерных/Node-зависимостей. Детерминированный движок: PRNG (`rng.ts` на seedrandom), координаты катка (`rink.ts`), `goalie/` (4 паттерна: linear/sine/dash/feint + `simulateGoalie`), `shot/` (`computeTrajectory` + `resolveShot`), `balance/` (10 боссов, 4 клюшки, формулы наград). Экспорт-фасад — `src/index.ts`. `GAME_CORE_VERSION` в `version.ts` — инт, бампится при любом изменении детерминированного поведения.
 
-- **`@hockey/server`** — Fastify 4 + Node 20, ESM, TS `module: NodeNext`. `src/config.ts` — zod-валидация env. `src/app.ts` строит инстанс через плагины (`plugins/{db,redis,errors,auth}.ts`). `routes/`: `health.ts` (probe pg+redis), `me.ts` (`GET /me` + `PATCH /me` для grip), `auth.ts` (`POST /auth/telegram`, `POST /auth/refresh`, `POST /auth/logout`, плюс `POST /auth/dev` — включён через `devLoginEnabled` флаг когда `NODE_ENV !== 'production'`, создаёт dev-юзера через `findOrCreateTelegramUser(providerUid='dev-user-1')`). Миграции — raw SQL в `db/migrations/NNN_*.sql`, runner в `src/db/migrations.ts`, CLI — `pnpm db:migrate`. Тесты через `app.inject()`, реальный listen только в `index.ts`.
+- **`@hockey/server`** — Fastify 4 + Node 20, ESM, TS `module: NodeNext`. `src/config.ts` — zod-валидация env (включая `DAILY_SEED_SECRET` для дневных сессий). `src/app.ts` строит инстанс через плагины (`plugins/{db,redis,errors,auth}.ts`). `routes/`: `health.ts`, `me.ts` (`GET /me` + `PATCH /me`), `auth.ts` (`/auth/telegram|refresh|logout|dev` — последний при `NODE_ENV !== 'production'`). `src/duel/daily/`: `reconcile.ts` (lazy state-machine), `routes.ts` (`/duel/daily/state`, `/period/start`, `/shot`). `src/duel/seed.ts` — серверный `deriveDailySeed`; `deriveShotSeed` живёт в `@hockey/game-core` (общий клиент-сервер). Миграции — raw SQL в `db/migrations/NNN_*.sql`, runner в `src/db/migrations.ts`, CLI — `pnpm db:migrate`. Тесты через `app.inject()`. **Postgres `DATE`-колонки** парсятся как string через override в `src/db/pool.ts` (default `Date` ломал сравнения с `to_char()`-результатом).
 
-- **`@hockey/web`** — React 18 + Vite 5 + TS, PixiJS 8 для игровой сцены, Zustand для стейта (`stores/trainingStore.ts`, `auth/authStore.ts` с persist → `localStorage['hockey.auth']`, метод `updateUser({...})` для точечных апдейтов профиля), TanStack Query для мутаций. `game/PixiStage.tsx` скейлит RINK (390×700) под viewport. `game/renderer/{Rink,Goal,Goalie,Player,Puck}.ts` — Pixi-обёртки над спрайтами; `Puck.BLADE_OFFSET[grip]` задаёт положение шайбы у кончика клюшки для каждого хвата. `app/App.tsx` — роутер с `PrivateRoute` guard. `screens/`: `LoginScreen`, `GoalieListScreen`, `DuelScreen`, `ProfileScreen`. Vite dev прокси `/api → :3000` (срезает `/api`). Тесты — Testing Library + vitest + jsdom; `test-setup.ts` содержит `MemoryStorage` shim (Node 25 ломает jsdom localStorage).
+- **`@hockey/web`** — React 18 + Vite 5 + TS, PixiJS 8, Zustand (`auth/authStore.ts` с persist, `stores/dailyStore.ts` для дневной игры — без persist, синхронизуется с сервером), TanStack Query. `api/duel.ts` — типы и обёртки `fetchDailyState/startDailyPeriod/submitDailyShot`. `game/PixiStage.tsx` скейлит RINK (**572×700**) под viewport. `game/renderer/{Goal,Goalie,Player,Puck,Hitboxes}.ts` — Pixi-обёртки. UI через `app/design-system.css`. `screens/`: `LoginScreen`, `DailyScreen` (новый — view-switcher по daily state: idle/period_active/break_active/closed), `ProfileScreen`. Vite dev прокси `/api → :3000`. Тесты — Testing Library + vitest + jsdom.
 
 ### Ключевой инвариант: гибридная симуляция
 
@@ -79,9 +79,15 @@ pnpm workspaces, `packages/*`, TS project references (`composite: true`):
 
 При расхождении client/server результата — сервер 409, клиент откат визуала. Один мисматч — не чит, N+ от одного игрока → флаг в `event_log`. Логика goal/save/miss живёт **только** в `game-core`.
 
-### Модель поединка (ещё не имплементирована на сервере)
+### Модель поединка: дневная игра + сюжет (один `shot_session`, два режима)
 
-Не «серия из 5 бросков», а **открытый поединок с персистентным HP вратаря**. Зашёл → бросаешь → можешь выйти, HP сохраняется. Энергия списывается за бросок, не за серию. Стрик голов = множитель награды, выход сбрасывает стрик но не HP. Постгрес — истина, Redis — кэш TTL 2ч. Сервер держит `shot_index` и валидирует совпадение с клиентским каждым запросом (защита от гонок). Сервер-роутов `/duel/*` пока нет — это следующий план.
+**Дневная игра** — основной геймплей: 3 периода × 30 бросков, 20 мин на период, 15 мин перерыв. Жёсткий серверный таймер. В 00:00 локального времени юзера (`users.timezone`, set-once при первом логине) день обрывается, новый стартует чистым. Серверная логика — **lazy state-machine** в `src/duel/daily/reconcile.ts`: `idle → period_active → (quota|timeout) → break_active → idle → ... → closed`. На каждый запрос reconcile пересчитывает состояние из timestamp'ов, никаких cron'ов.
+
+**БД**: `users.timezone`, `users.lifetime_shots_total/goals_total` (денормализация для рейтинга, инкрементируется при INSERT в `period_log`); `day_pool` (один открытый на юзера через partial unique index); `period_log` (архив завершённых периодов с `closed_reason ∈ quota|timeout|day_end`); `shot_session` (один ряд на бросок, `mode ∈ daily|story` — общая абстракция для обоих режимов, схема story будет в подпроекте 3).
+
+**Анти-чит**: клиент симулирует и рендерит мгновенно (через `@hockey/game-core` + `daily_seed` от сервера + `deriveShotSeed(seed, period, shotIndex)`), параллельно шлёт `POST /duel/daily/shot` с `claimed_result`. Сервер симулирует тем же seed, при расхождении пишет `event_log {type: 'shot_mismatch'}` (без блокировки в MVP). `claimed_shot_index ≠ server count + 1` → 409. `users.timezone` иммутабельна.
+
+**Сюжет** — отдельная вкладка (5 вратарей × ~3 задания, 3 попытки/день, не пересекается с дневной квотой). Серверные роуты — отдельный подпроект.
 
 ### Auth (Telegram)
 
@@ -91,9 +97,9 @@ Web: `auth/authStore.ts` (Zustand persist), `api/apiFetch.ts` (fetch wrapper с 
 
 ### Grip и спрайты
 
-`user.grip` (`'left' | 'right'`) живёт в `authStore.user` и в БД (колонка `users.grip`). `ProfileScreen` меняет через `PATCH /me` + оптимистичный `updateUser`. `DuelScreen` читает grip один раз при mount и передаёт в `new Player(grip)` и `new Puck(grip)`. Спрайты `lefthand/righthand.webp` top-down, 1024×1024, якорь `(0.5, 0.5)` (тело центрировано на `shooterX`); положение шайбы относительно тела задаёт `BLADE_OFFSET[grip]` в `packages/web/src/game/renderer/Puck.ts`. Shooter body двигается в одинаковом диапазоне (`SHOOTER_MIN_X/MAX_X`) независимо от хвата — при правом хвате клюшка с шайбой докатывается до правого борта, при левом — до левого.
+`user.grip` (`'left' | 'right'`) живёт в `authStore.user` и в БД (колонка `users.grip`). `ProfileScreen` меняет через `PATCH /me` + оптимистичный `updateUser`. `DailyScreen` читает grip один раз при mount и передаёт в `new Player(grip)` и `new Puck(grip)`. Спрайты `lefthand/righthand.webp` top-down, 1024×1024, якорь `(0.5, 0.5)`; положение шайбы относительно тела задаёт `BLADE_OFFSET[grip]` в `packages/web/src/game/renderer/Puck.ts`. Shooter body двигается в одинаковом диапазоне (`SHOOTER_MIN_X/MAX_X`) независимо от хвата.
 
-**Pixi 8 quirk:** `Sprite.from(url)` для webp может вернуть спрайт с пустой текстурой, которая никогда не привязывается — всегда загружай через `Assets.load<Texture>(url).then(tex => sprite.texture = tex)` (пример: `Player.ts`, `Rink.ts` переведены). Симптом — `console.log(sprite.texture.valid) === false` и пустой bounding box на сцене.
+**Pixi 8 quirk:** `Sprite.from(url)` для webp может вернуть спрайт с пустой текстурой, которая никогда не привязывается — всегда загружай через `Assets.load<Texture>(url).then(tex => sprite.texture = tex)` (пример: `Player.ts`). Симптом — `console.log(sprite.texture.valid) === false` и пустой bounding box на сцене.
 
 ### TypeScript strictness
 
@@ -109,7 +115,7 @@ Fastify generic `FastifyInstance` резолвится к union http/http2/https
 
 `.github/workflows/deploy.yml` (только на push в `main`):
 1. Билд образов с тегами `sha-<short>` и `latest`, пуш в GHCR. Web билд получает `VITE_TELEGRAM_BOT_USERNAME` через `build-args` из repo variable.
-2. SSH на VPS → `scp docker-compose.yml Caddyfile` → `docker compose pull && up -d --remove-orphans && image prune`.
+2. SSH на VPS → `scp docker-compose.yml Caddyfile` → внутри heredoc'а: `docker login` (с retry), `docker compose pull` (с retry), `docker compose run --rm -T server ... migrate-cli.js < /dev/null`, `docker compose up -d --force-recreate --remove-orphans server web caddy < /dev/null`, `image prune`. **`-T < /dev/null` обязательны на обеих compose-командах** — без них `docker compose run` наследует stdin родителя (= сам heredoc), глотает остаток скрипта, и `up --force-recreate` молча не выполняется. Прод тогда зависает на старом IMAGE_TAG, а Actions репортит success (smoke-тест бьёт уже живой старый сервер). Корректное поведение PR #22; не убирай редиректы.
 3. Smoke test `GET /api/health` с 5 retries. Если валится — вся ветка деплоя красная.
 
 Concurrency: `group: deploy-prod, cancel-in-progress: false` — новый пуш ждёт текущий деплой.

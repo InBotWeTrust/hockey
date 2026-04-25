@@ -22,8 +22,21 @@ const tgBodySchema = z
     photo_url: z.string().optional(),
     auth_date: z.union([z.string(), z.number()]),
     hash: z.string(),
+    timezone: z.string().optional(),
   })
   .passthrough();
+
+function safeIanaTimezone(input: unknown): string | undefined {
+  if (typeof input !== 'string' || input.length === 0 || input.length > 64) {
+    return undefined;
+  }
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: input });
+    return input;
+  } catch {
+    return undefined;
+  }
+}
 
 export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (app, opts) => {
   const jwt = createJwt({
@@ -51,6 +64,7 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (app, opt
       [tgUser.firstName, tgUser.lastName].filter(Boolean).join(' ') ||
       tgUser.username ||
       'player';
+    const tz = safeIanaTimezone(parsed.data.timezone);
     const user = await findOrCreateTelegramUser(app.pg, {
       providerUid: String(tgUser.id),
       displayName,
@@ -58,6 +72,7 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (app, opt
       ...(tgUser.username !== undefined ? { username: tgUser.username } : {}),
       ...(tgUser.firstName ? { firstName: tgUser.firstName } : {}),
       ...(tgUser.lastName !== undefined ? { lastName: tgUser.lastName } : {}),
+      ...(tz !== undefined ? { timezone: tz } : {}),
     });
 
     const [accessToken, refresh] = await Promise.all([
@@ -109,10 +124,15 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (app, opt
   });
 
   if (opts.devLoginEnabled) {
-    app.post('/auth/dev', async (_req, reply) => {
+    app.post('/auth/dev', async (req, reply) => {
+      const body = z
+        .object({ timezone: z.string().optional() })
+        .safeParse(req.body ?? {});
+      const tz = body.success ? safeIanaTimezone(body.data.timezone) : undefined;
       const user = await findOrCreateTelegramUser(app.pg, {
         providerUid: 'dev-user-1',
         displayName: 'Dev Player',
+        ...(tz !== undefined ? { timezone: tz } : {}),
       });
       const [accessToken, refresh] = await Promise.all([
         jwt.issueAccessToken({ sub: user.id }),

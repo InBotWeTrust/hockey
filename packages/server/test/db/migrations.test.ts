@@ -32,7 +32,8 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     );
     const names = rows.map((r) => r.table_name);
     expect(names).toContain('users');
-    expect(names).toContain('duel_sessions');
+    expect(names).toContain('day_pool');
+    expect(names).toContain('shot_session');
     expect(names).toContain('event_log');
     expect(names).toContain('_migrations');
   });
@@ -41,6 +42,10 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     const { rows } = await pool.query<{ name: string }>(
       'select name from _migrations order by name',
     );
-    expect(rows.map((r) => r.name)).toEqual(['001_init.sql', '002_grip.sql']);
+    expect(rows.map((r) => r.name)).toEqual([
+      '001_init.sql',
+      '002_grip.sql',
+      '003_day_pool.sql',
+    ]);
   });
 });

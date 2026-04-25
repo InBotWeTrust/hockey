@@ -1,8 +1,7 @@
 /* === App shell: ice-tinted wallpaper === */
 .app-shell {
   background:
-    radial-gradient(circle at 20% 10%, rgba(236, 72, 153, 0.15), transparent 55%),
-    radial-gradient(circle at 80% 90%, rgba(59, 130, 246, 0.22), transparent 55%),
+    radial-gradient(circle at 80% 90%, rgba(59, 130, 246, 0.18), transparent 55%),
     linear-gradient(180deg, #c9dcf0 0%, #9cbfdf 100%);
 }
 .app-shell::before {

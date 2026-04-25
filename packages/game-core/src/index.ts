@@ -16,4 +16,4 @@ export { GOALIES, getGoalie } from './balance/goalies.js';
 export { STICKS, getStick, TRAINING_STICK_ID, type Stick, type StickRarity } from './balance/sticks.js';
 export { calcShotReward } from './balance/rewards.js';
 export type { SessionPhaseOffsets } from './session.js';
-export { getSessionPhaseOffsets } from './session.js';
+export { getSessionPhaseOffsets, deriveShotSeed } from './session.js';

@@ -38,11 +38,12 @@
 html, body {
   margin: 0;
   padding: 0;
-  background: #0a0a0a;
+  background: linear-gradient(180deg, #c9dcf0 0%, #9cbfdf 100%) fixed;
   font-family: var(--font-sans);
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overscroll-behavior: none;
 }
 
 body {

@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { BookOpen, MessageCircle, Settings, Target, Trophy, User } from 'lucide-react';
+import { BookOpen, MessageCircle, Target, Trophy, User } from 'lucide-react';
 import { useAuthStore } from '../auth/authStore.js';
 
-export const NAV_HEIGHT = 62;
+export const NAV_HEIGHT = 68;
 
 const ICON_SIZE = 22;
 
@@ -11,7 +11,28 @@ export function BottomNav(): JSX.Element | null {
   const user = useAuthStore((s) => s.user);
   const location = useLocation();
   const navigate = useNavigate();
-  const [modal, setModal] = useState<'story' | 'rating' | 'chat' | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (toastTimerRef.current !== null) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  function showToast(label: string): void {
+    setToast(label);
+    if (toastTimerRef.current !== null) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    toastTimerRef.current = window.setTimeout(() => {
+      setToast(null);
+      toastTimerRef.current = null;
+    }, 1800);
+  }
 
   if (!user || location.pathname === '/login') return null;
 
@@ -21,21 +42,25 @@ export function BottomNav(): JSX.Element | null {
   return (
     <>
       <nav
-        className="glass"
         style={{
           position: 'fixed',
-          left: 14,
-          right: 14,
-          bottom: `calc(14px + env(safe-area-inset-bottom, 0px) / 2)`,
-          maxWidth: 402,
+          left: 12,
+          right: 12,
+          bottom: `calc(12px + env(safe-area-inset-bottom, 0px) / 2)`,
+          maxWidth: 406,
           margin: '0 auto',
-          height: NAV_HEIGHT - 8,
-          borderRadius: 22,
+          height: 54,
+          borderRadius: 999,
           display: 'grid',
           gridTemplateColumns: 'repeat(5, 1fr)',
           alignItems: 'center',
           padding: '0 6px',
-          zIndex: 100,
+          zIndex: 500,
+          background: 'rgba(218, 230, 246, 0.96)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          boxShadow: '0 8px 32px rgba(15,23,42,0.18), 0 2px 8px rgba(15,23,42,0.10)',
+          border: '1px solid rgba(255,255,255,0.7)',
         }}
       >
         <NavTab
@@ -48,19 +73,19 @@ export function BottomNav(): JSX.Element | null {
           label="Сюжет"
           active={false}
           icon={<BookOpen size={ICON_SIZE} color="var(--muted)" strokeWidth={2} />}
-          onClick={() => setModal('story')}
+          onClick={() => showToast('Сюжет — в разработке')}
         />
         <NavTab
           label="Рейтинг"
           active={false}
           icon={<Trophy size={ICON_SIZE} color="var(--muted)" strokeWidth={2} />}
-          onClick={() => setModal('rating')}
+          onClick={() => showToast('Рейтинг — в разработке')}
         />
         <NavTab
           label="Чат"
           active={false}
           icon={<MessageCircle size={ICON_SIZE} color="var(--muted)" strokeWidth={2} />}
-          onClick={() => setModal('chat')}
+          onClick={() => showToast('Чат — в разработке')}
         />
         <NavTab
           label="Профиль"
@@ -70,61 +95,36 @@ export function BottomNav(): JSX.Element | null {
         />
       </nav>
 
-      {modal !== null && (
+      {toast !== null && (
         <>
           <style>{`
-            @keyframes gear-spin {
-              from { transform: rotate(0deg); }
-              to   { transform: rotate(360deg); }
+            @keyframes nav-toast-in {
+              from { opacity: 0; transform: translate(-50%, 8px); }
+              to   { opacity: 1; transform: translate(-50%, 0); }
             }
           `}</style>
           <div
-            role="dialog"
-            onClick={() => setModal(null)}
+            role="status"
+            aria-live="polite"
             style={{
               position: 'fixed',
-              inset: 0,
-              background: 'rgba(15, 23, 42, 0.35)',
-              backdropFilter: 'blur(8px)',
-              WebkitBackdropFilter: 'blur(8px)',
-              zIndex: 200,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: 20,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              bottom: `calc(78px + env(safe-area-inset-bottom, 0px) / 2)`,
+              padding: '10px 18px',
+              borderRadius: 999,
+              background: 'rgba(15, 23, 42, 0.92)',
+              color: '#ffffff',
+              fontSize: 13,
+              fontWeight: 600,
+              boxShadow: '0 12px 30px rgba(15, 23, 42, 0.35)',
+              zIndex: 600,
+              pointerEvents: 'none',
+              animation: 'nav-toast-in 180ms ease-out',
+              whiteSpace: 'nowrap',
             }}
           >
-            <div
-              className="glass"
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                borderRadius: 24,
-                padding: '32px 40px',
-                textAlign: 'center',
-                minWidth: 240,
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
-                <Settings
-                  size={42}
-                  color="var(--ink)"
-                  strokeWidth={1.5}
-                  style={{ animation: 'gear-spin 3s linear infinite' }}
-                />
-              </div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--ink)', marginBottom: 6 }}>
-                В разработке
-              </div>
-              <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 22 }}>Скоро появится</div>
-              <button
-                type="button"
-                className="btn btn--cta"
-                onClick={() => setModal(null)}
-                style={{ padding: '11px 28px', fontSize: 14 }}
-              >
-                Закрыть
-              </button>
-            </div>
+            {toast}
           </div>
         </>
       )}
