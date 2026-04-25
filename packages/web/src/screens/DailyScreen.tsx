@@ -40,7 +40,6 @@ import { ScoreBoard } from '../components/ScoreBoard.js';
 import { ResultModal } from '../components/ResultModal.js';
 import { PeriodSummaryModal } from '../components/PeriodSummaryModal.js';
 import { StartPeriodModal } from '../components/StartPeriodModal.js';
-import { getLastSeenAt, setLastSeenAt } from '../stores/seenPeriods.js';
 import type { DailyStateResponse, PeriodLogEntry } from '../api/duel.js';
 
 const DEFAULT_SPEEDS: SpeedOverrides = {
@@ -74,25 +73,6 @@ function formatHms(ms: number): string {
   return `${h}:${m}:${s}`;
 }
 
-function findUnseenSummary(
-  data: DailyStateResponse,
-  userId: string,
-): PeriodLogEntry | null {
-  const watermark = getLastSeenAt(userId);
-  for (const p of data.recent_periods) {
-    if (watermark === null || p.ended_at > watermark) {
-      return p;
-    }
-  }
-  return null;
-}
-
-function lastClosedPeriod(
-  data: DailyStateResponse,
-): PeriodLogEntry | null {
-  if (data.recent_periods.length === 0) return null;
-  return data.recent_periods[data.recent_periods.length - 1] ?? null;
-}
 
 export function DailyScreen(): JSX.Element {
   const data = useDailyStore((s) => s.data);
