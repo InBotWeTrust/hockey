@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Send } from 'lucide-react';
@@ -17,6 +18,8 @@ export function LoginScreen(): JSX.Element {
   const navigate = useNavigate();
   const setSession = useAuthStore((s) => s.setSession);
   const botUsername = import.meta.env.VITE_TELEGRAM_BOT_USERNAME ?? '';
+  const [devError, setDevError] = useState<string | null>(null);
+  const [devPending, setDevPending] = useState(false);
 
   const mutation = useMutation<AuthSession, Error, TelegramAuthPayload>({
     mutationFn: (payload) =>
@@ -99,27 +102,46 @@ export function LoginScreen(): JSX.Element {
         )}
 
         {import.meta.env.DEV && (
-          <button
-            type="button"
-            className="btn btn--ghost"
-            onClick={async () => {
-              try {
-                const session = await apiFetch<AuthSession>('/auth/dev', {
-                  method: 'POST',
-                  body: JSON.stringify({ timezone: detectTimezone() }),
-                });
-                setSession(session);
-                navigate('/', { replace: true });
-              } catch (err) {
-                // eslint-disable-next-line no-console
-                console.error('dev login failed', err);
-              }
-            }}
-            style={{ justifyContent: 'center' }}
-          >
-            <Send size={16} />
-            Войти как Dev
-          </button>
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={devPending}
+              onClick={async () => {
+                setDevError(null);
+                setDevPending(true);
+                try {
+                  const session = await apiFetch<AuthSession>('/auth/dev', {
+                    method: 'POST',
+                    body: JSON.stringify({ timezone: detectTimezone() }),
+                  });
+                  setSession(session);
+                  navigate('/', { replace: true });
+                } catch (err) {
+                  // eslint-disable-next-line no-console
+                  console.error('dev login failed', err);
+                  const msg =
+                    err instanceof ApiError
+                      ? `${err.status} ${err.code}: ${err.message}`
+                      : err instanceof Error
+                        ? err.message
+                        : 'Ошибка входа (см. console)';
+                  setDevError(msg);
+                } finally {
+                  setDevPending(false);
+                }
+              }}
+              style={{ justifyContent: 'center' }}
+            >
+              <Send size={16} />
+              Войти как Dev
+            </button>
+            {devError && (
+              <div role="alert" style={{ fontSize: 13, color: 'var(--red-deep, #b91c1c)', textAlign: 'center' }}>
+                {devError}
+              </div>
+            )}
+          </>
         )}
 
         <div style={{ textAlign: 'center', fontSize: 11, color: 'var(--muted)', marginTop: 4, lineHeight: 1.5 }}>

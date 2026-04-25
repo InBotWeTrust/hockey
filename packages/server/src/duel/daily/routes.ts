@@ -29,9 +29,19 @@ const shotBodySchema = z.object({
     shooterTapTime: z.number().optional(),
     puckSpeedPerMs: z.number().optional(),
     shooterFrequency: z.number().optional(),
+    goalieFrequency: z.number().optional(),
+    goalFrequency: z.number().optional(),
   }),
   claimed_result: z.enum(['goal', 'save', 'miss']),
 });
+
+interface PeriodLogEntry {
+  period_number: number;
+  shots_taken: number;
+  goals: number;
+  closed_reason: 'quota' | 'timeout' | 'day_end';
+  ended_at: string;
+}
 
 interface DailyStateResponse {
   state: 'idle' | 'period_active' | 'break_active' | 'closed';
@@ -45,10 +55,61 @@ interface DailyStateResponse {
   period_ends_at: string | null;
   break_ends_at: string | null;
   day_date: string | null;
+  next_day_starts_at: string;
   daily_seed: string | null;
   goalie_id: string;
   shots_per_period: number;
   total_periods: number;
+  recent_periods: PeriodLogEntry[];
+}
+
+async function fetchUserTimezone(
+  client: PoolClient,
+  userId: string,
+): Promise<string> {
+  const { rows } = await client.query<{ timezone: string }>(
+    'select timezone from users where id = $1',
+    [userId],
+  );
+  return rows[0]?.timezone ?? 'UTC';
+}
+
+async function nextDayStartsAt(
+  client: PoolClient,
+  localToday: string,
+  timezone: string,
+): Promise<string> {
+  const { rows } = await client.query<{ ts: string }>(
+    `select (($1::date + interval '1 day')::timestamp at time zone $2)::text as ts`,
+    [localToday, timezone],
+  );
+  return new Date(rows[0]!.ts).toISOString();
+}
+
+async function fetchRecentPeriods(
+  client: PoolClient,
+  dayPoolId: string,
+): Promise<PeriodLogEntry[]> {
+  const { rows } = await client.query<{
+    period_number: number;
+    shots_taken: number;
+    goals: number;
+    closed_reason: 'quota' | 'timeout' | 'day_end';
+    ended_at: Date;
+  }>(
+    `select period_number, shots_taken, goals, closed_reason, ended_at
+       from period_log
+      where day_pool_id = $1
+      order by period_number asc`,
+    [dayPoolId],
+  );
+  return rows.map((r) => ({
+    period_number: r.period_number,
+    shots_taken: r.shots_taken,
+    goals: r.goals,
+    closed_reason: r.closed_reason,
+    ended_at: r.ended_at.toISOString(),
+  }));
 }
 
 async function fetchLifetime(
@@ -110,6 +171,9 @@ async function buildState(
   localToday: string,
   userId: string,
 ): Promise<DailyStateResponse> {
+  const timezone = await fetchUserTimezone(client, userId);
+  const nextDay = await nextDayStartsAt(client, localToday, timezone);
+
   if (pool === null) {
     const lifetime = await fetchLifetime(client, userId);
     return {
@@ -124,10 +188,12 @@ async function buildState(
       period_ends_at: null,
       break_ends_at: null,
       day_date: localToday,
+      next_day_starts_at: nextDay,
       daily_seed: null,
       goalie_id: DAILY_GOALIE_ID,
       shots_per_period: SHOTS_PER_PERIOD,
       total_periods: TOTAL_PERIODS,
+      recent_periods: [],
     };
   }
 
@@ -142,6 +208,7 @@ async function buildState(
   // lifetime_*_total in users only includes closed periods. Add the still-open
   // period's shots so the response stays in sync with what the player sees.
   const lifetimeStored = await fetchLifetime(client, userId);
+  const recentPeriods = await fetchRecentPeriods(client, pool.id);
 
   const periodEndsAt =
     pool.state === 'period_active' && pool.period_started_at !== null
@@ -164,10 +231,12 @@ async function buildState(
     period_ends_at: periodEndsAt,
     break_ends_at: breakEndsAt,
     day_date: pool.day_date,
+    next_day_starts_at: nextDay,
     daily_seed: pool.daily_seed,
     goalie_id: DAILY_GOALIE_ID,
     shots_per_period: SHOTS_PER_PERIOD,
     total_periods: TOTAL_PERIODS,
+    recent_periods: recentPeriods,
   };
 }
 
@@ -327,6 +396,12 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
             : {}),
           ...(body.input.shooterFrequency !== undefined
             ? { shooterFrequency: body.input.shooterFrequency }
+            : {}),
+          ...(body.input.goalieFrequency !== undefined
+            ? { goalieFrequency: body.input.goalieFrequency }
+            : {}),
+          ...(body.input.goalFrequency !== undefined
+            ? { goalFrequency: body.input.goalFrequency }
             : {}),
         };
         const result = resolveShot(

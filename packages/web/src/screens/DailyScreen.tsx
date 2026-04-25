@@ -1,11 +1,19 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Container } from 'pixi.js';
-import type { Application } from 'pixi.js';
 import {
-  GAME_CORE_VERSION,
-  PUCK_START,
-  GOAL_OPENING,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { Container } from 'pixi.js';
+import type { Application, Ticker } from 'pixi.js';
+import {
+  GOALIE_SIZE,
   GOALIE_Y,
+  GOAL_OPENING,
+  PUCK_START,
+  RINK,
   SHOOTER_AMPLITUDE,
   SHOOTER_CENTER_X,
   STICK_NEUTRAL,
@@ -13,6 +21,8 @@ import {
   getGoalie,
   getSessionPhaseOffsets,
   resolveShot,
+  simulateGoal,
+  simulateGoalie,
   type ShotResult,
 } from '@hockey/game-core';
 import { PixiStage } from '../game/PixiStage.js';
@@ -28,9 +38,10 @@ import { useAuthStore } from '../auth/authStore.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { ScoreBoard } from '../components/ScoreBoard.js';
 import { ResultModal } from '../components/ResultModal.js';
-import { GAME_CORE_VERSION as _v } from '@hockey/game-core';
-
-void _v;
+import { PeriodSummaryModal } from '../components/PeriodSummaryModal.js';
+import { StartPeriodModal } from '../components/StartPeriodModal.js';
+import { getLastSeenAt, setLastSeenAt } from '../stores/seenPeriods.js';
+import type { DailyStateResponse, PeriodLogEntry } from '../api/duel.js';
 
 const DEFAULT_SPEEDS: SpeedOverrides = {
   goalFreq: 0.55,
@@ -55,105 +66,239 @@ function formatMs(ms: number): string {
   return `${m}:${s}`;
 }
 
+function formatHms(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const h = String(Math.floor(total / 3600)).padStart(2, '0');
+  const m = String(Math.floor((total % 3600) / 60)).padStart(2, '0');
+  const s = String(total % 60).padStart(2, '0');
+  return `${h}:${m}:${s}`;
+}
+
+function findUnseenSummary(
+  data: DailyStateResponse,
+  userId: string,
+): PeriodLogEntry | null {
+  const watermark = getLastSeenAt(userId);
+  for (const p of data.recent_periods) {
+    if (watermark === null || p.ended_at > watermark) {
+      return p;
+    }
+  }
+  return null;
+}
+
+function lastClosedPeriod(
+  data: DailyStateResponse,
+): PeriodLogEntry | null {
+  if (data.recent_periods.length === 0) return null;
+  return data.recent_periods[data.recent_periods.length - 1] ?? null;
+}
+
 export function DailyScreen(): JSX.Element {
-  const { data, refresh } = useDailyStore();
+  const data = useDailyStore((s) => s.data);
+  const deferredState = useDailyStore((s) => s.deferredState);
+  const error = useDailyStore((s) => s.error);
+  const loading = useDailyStore((s) => s.loading);
+  const refresh = useDailyStore((s) => s.refresh);
+  const applyDeferredState = useDailyStore((s) => s.applyDeferredState);
+  const userId = useAuthStore((s) => s.user?.id ?? '');
+  const [manualSummary, setManualSummary] = useState<PeriodLogEntry | null>(null);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
+  // No auto-popup — period summaries are opened on demand via buttons on the
+  // BreakOverlay / ClosedOverlay. Watermark machinery kept for future use.
+  void deferredState;
+  void applyDeferredState;
+  void userId;
+
+  const visibleSummary = manualSummary;
+
+  const handleSummaryClose = useCallback(() => {
+    setManualSummary(null);
+  }, []);
+
+  const handleOpenSummary = useCallback((entry: PeriodLogEntry) => {
+    setManualSummary(entry);
+  }, []);
+
   if (!data) {
     return (
-      <main className="screen" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ color: 'var(--muted)' }}>Загрузка…</div>
+      <main className="screen" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12, padding: 20, textAlign: 'center' }}>
+        {error ? (
+          <>
+            <div style={{ color: 'var(--red-deep, #b91c1c)', fontWeight: 600 }}>Не удалось загрузить</div>
+            <div style={{ color: 'var(--muted)', fontSize: 13, maxWidth: 280 }}>{error}</div>
+            <button type="button" className="btn btn--cta" onClick={() => void refresh()} disabled={loading}>
+              Повторить
+            </button>
+            <div style={{ color: 'var(--muted)', fontSize: 11 }}>
+              Если ошибка повторяется — выйди и зайди заново через /login.
+            </div>
+          </>
+        ) : (
+          <div style={{ color: 'var(--muted)' }}>Загрузка…</div>
+        )}
       </main>
     );
   }
 
-  if (data.state === 'period_active') return <PlayView />;
-  if (data.state === 'break_active') return <BreakView />;
-  if (data.state === 'closed') return <ClosedView />;
-  return <IdleView />;
+  const showStartModal =
+    visibleSummary === null &&
+    data.state === 'idle' &&
+    data.current_period < data.total_periods;
+
+  const isPlaying = data.state === 'period_active' && visibleSummary === null;
+
+  // PlayView (rink) is the always-on background so any modal/overlay shows
+  // the rink with goal centred and players hidden — never an empty gradient.
+  return (
+    <>
+      <PlayView suppressedByModal={!isPlaying} />
+      {visibleSummary && (
+        <PeriodSummaryModal
+          periodNumber={visibleSummary.period_number}
+          goals={visibleSummary.goals}
+          shots={visibleSummary.shots_taken}
+          closedReason={visibleSummary.closed_reason}
+          onClose={handleSummaryClose}
+        />
+      )}
+      {!visibleSummary && data.state === 'break_active' && (
+        <BreakOverlay onOpenSummary={handleOpenSummary} />
+      )}
+      {!visibleSummary && data.state === 'closed' && (
+        <ClosedOverlay onOpenSummary={handleOpenSummary} />
+      )}
+      {!visibleSummary && showStartModal && <StartPeriodModalConnector />}
+    </>
+  );
 }
 
-function StatsHeader(): JSX.Element {
-  const data = useDailyStore((s) => s.data);
-  if (!data) return <></>;
+function ModalBackdrop({ children }: { children: React.ReactNode }): JSX.Element {
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 350,
+        background: 'rgba(15, 23, 42, 0.18)',
+        backdropFilter: 'blur(6px) saturate(130%)',
+        WebkitBackdropFilter: 'blur(6px) saturate(130%)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function StartPeriodModalConnector(): JSX.Element {
+  const data = useDailyStore((s) => s.data)!;
+  const startPeriod = useDailyStore((s) => s.startPeriod);
+  const pending = useDailyStore((s) => s.inFlight);
+  const nextPeriod = data.current_period === 0 ? 1 : data.current_period + 1;
+  return (
+    <StartPeriodModal
+      nextPeriod={nextPeriod}
+      totalPeriods={data.total_periods}
+      shotsPerPeriod={data.shots_per_period}
+      isFirstPeriod={data.current_period === 0}
+      pending={pending}
+      onStart={() => void startPeriod()}
+    />
+  );
+}
+
+interface OverlayProps {
+  onOpenSummary: (p: PeriodLogEntry) => void;
+}
+
+function DailyTotalsRow(): JSX.Element {
+  const data = useDailyStore((s) => s.data)!;
   const acc =
-    data.lifetime_total_shots > 0
-      ? Math.round((data.lifetime_total_goals / data.lifetime_total_shots) * 100)
+    data.daily_total_shots > 0
+      ? Math.round((data.daily_total_goals / data.daily_total_shots) * 100)
       : 0;
   return (
     <div
-      className="glass"
       style={{
-        margin: '12px 14px',
-        padding: '10px 14px',
-        borderRadius: 14,
         display: 'grid',
         gridTemplateColumns: 'repeat(3, 1fr)',
         gap: 8,
-        textAlign: 'center',
-        fontSize: 12,
+        width: '100%',
+        maxWidth: 320,
       }}
     >
-      <div>
-        <div style={{ color: 'var(--muted)', fontSize: 10, letterSpacing: 0.6 }}>ЗА ВСЁ ВРЕМЯ</div>
-        <div style={{ fontWeight: 700 }}>{data.lifetime_total_goals} голов</div>
+      <TotalCell label="ГОЛЫ" value={String(data.daily_total_goals)} />
+      <TotalCell label="БРОСКИ" value={String(data.daily_total_shots)} />
+      <TotalCell label="ТОЧНОСТЬ" value={`${acc}%`} />
+    </div>
+  );
+}
+
+function TotalCell({ label, value }: { label: string; value: string }): JSX.Element {
+  return (
+    <div
+      style={{
+        padding: '10px 6px',
+        borderRadius: 14,
+        background:
+          'linear-gradient(180deg, rgba(255, 255, 255, 0.7) 0%, rgba(226, 232, 240, 0.55) 100%)',
+        border: '1px solid rgba(15, 23, 42, 0.06)',
+        boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.95)',
+        textAlign: 'center',
+      }}
+    >
+      <div style={{ fontSize: 9, letterSpacing: '0.18em', fontWeight: 700, color: 'var(--muted)' }}>
+        {label}
       </div>
-      <div>
-        <div style={{ color: 'var(--muted)', fontSize: 10, letterSpacing: 0.6 }}>БРОСКИ</div>
-        <div style={{ fontWeight: 700 }}>{data.lifetime_total_shots}</div>
-      </div>
-      <div>
-        <div style={{ color: 'var(--muted)', fontSize: 10, letterSpacing: 0.6 }}>ТОЧНОСТЬ</div>
-        <div style={{ fontWeight: 700 }}>{acc}%</div>
+      <div
+        style={{
+          marginTop: 4,
+          fontSize: 18,
+          fontWeight: 800,
+          color: 'var(--ink)',
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        {value}
       </div>
     </div>
   );
 }
 
-function IdleView(): JSX.Element {
-  const data = useDailyStore((s) => s.data)!;
-  const startPeriod = useDailyStore((s) => s.startPeriod);
-  const inFlight = useDailyStore((s) => s.inFlight);
-
-  const nextPeriod = data.current_period === 0 ? 1 : data.current_period + 1;
-  const allDone = nextPeriod > data.total_periods;
-  const label = data.current_period === 0 ? 'Готов к игре' : 'Перерыв окончен';
-
+function PeriodSummaryButtons({
+  periods,
+  onOpenSummary,
+}: {
+  periods: PeriodLogEntry[];
+  onOpenSummary: (p: PeriodLogEntry) => void;
+}): JSX.Element | null {
+  if (periods.length === 0) return null;
   return (
-    <main className="screen" style={{ display: 'flex', flexDirection: 'column' }}>
-      <StatsHeader />
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 20, gap: 18 }}>
-        <h1 style={{ fontSize: 26, fontWeight: 800, margin: 0 }}>{label}</h1>
-        {allDone ? (
-          <div style={{ color: 'var(--muted)' }}>Дневная игра завершена.</div>
-        ) : (
-          <>
-            <div style={{ color: 'var(--muted)', textAlign: 'center', maxWidth: 280 }}>
-              Период {nextPeriod} из {data.total_periods}. У тебя 20 минут на {data.shots_per_period} бросков.
-            </div>
-            <button
-              type="button"
-              className="btn btn--cta"
-              onClick={() => void startPeriod()}
-              disabled={inFlight}
-              style={{ minWidth: 240 }}
-            >
-              Начать {nextPeriod}-й период
-            </button>
-          </>
-        )}
-        <div style={{ color: 'var(--muted)', fontSize: 12 }}>
-          За день: {data.daily_total_goals} голов из {data.daily_total_shots} бросков
-        </div>
-      </div>
-    </main>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center', width: '100%', maxWidth: 320 }}>
+      {periods.map((p) => (
+        <button
+          key={p.period_number}
+          type="button"
+          className="btn btn--ghost"
+          onClick={() => onOpenSummary(p)}
+          style={{ paddingBlock: 12, width: '100%' }}
+        >
+          Статистика {p.period_number}-го периода
+        </button>
+      ))}
+    </div>
   );
 }
 
-function BreakView(): JSX.Element {
+function BreakOverlay({ onOpenSummary }: OverlayProps): JSX.Element {
   const data = useDailyStore((s) => s.data)!;
   const refresh = useDailyStore((s) => s.refresh);
   const breakEndsAt = data.break_ends_at ? new Date(data.break_ends_at).getTime() : 0;
@@ -166,62 +311,65 @@ function BreakView(): JSX.Element {
 
   const remaining = Math.max(0, breakEndsAt - now);
   useEffect(() => {
-    if (remaining === 0) void refresh();
-  }, [remaining, refresh]);
+    if (remaining === 0 && breakEndsAt > 0) void refresh();
+  }, [remaining, breakEndsAt, refresh]);
 
   return (
-    <main className="screen" style={{ display: 'flex', flexDirection: 'column' }}>
-      <StatsHeader />
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 20, gap: 18 }}>
+    <ModalBackdrop>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, textAlign: 'center', width: '100%' }}>
         <h1 style={{ fontSize: 26, fontWeight: 800, margin: 0 }}>Перерыв</h1>
         <div style={{ fontFamily: 'var(--font-mono)', fontSize: 56, fontWeight: 700, letterSpacing: '0.06em' }}>
           {formatMs(remaining)}
         </div>
-        <div style={{ color: 'var(--muted)' }}>До {data.current_period + 1}-го периода</div>
+        <div style={{ color: 'var(--muted)' }}>До начала {data.current_period + 1}-го периода</div>
+        <DailyTotalsRow />
+        <PeriodSummaryButtons periods={data.recent_periods} onOpenSummary={onOpenSummary} />
       </div>
-    </main>
+    </ModalBackdrop>
   );
 }
 
-function ClosedView(): JSX.Element {
+function ClosedOverlay({ onOpenSummary }: OverlayProps): JSX.Element {
   const data = useDailyStore((s) => s.data)!;
-  const acc =
-    data.daily_total_shots > 0
-      ? Math.round((data.daily_total_goals / data.daily_total_shots) * 100)
-      : 0;
+  const refresh = useDailyStore((s) => s.refresh);
+  const nextDayAt = new Date(data.next_day_starts_at).getTime();
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+  const remaining = Math.max(0, nextDayAt - now);
+  useEffect(() => {
+    if (remaining === 0 && nextDayAt > 0) void refresh();
+  }, [remaining, nextDayAt, refresh]);
+
   return (
-    <main className="screen" style={{ display: 'flex', flexDirection: 'column' }}>
-      <StatsHeader />
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 20, gap: 18 }}>
+    <ModalBackdrop>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, textAlign: 'center', width: '100%' }}>
         <h1 style={{ fontSize: 26, fontWeight: 800, margin: 0 }}>Игровой день окончен</h1>
-        <div style={{ color: 'var(--muted)' }}>Возвращайся завтра.</div>
-        <div className="glass" style={{ padding: '12px 18px', borderRadius: 14, display: 'flex', gap: 18 }}>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ color: 'var(--muted)', fontSize: 10, letterSpacing: 0.6 }}>ГОЛОВ</div>
-            <div style={{ fontSize: 28, fontWeight: 800 }}>{data.daily_total_goals}</div>
-          </div>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ color: 'var(--muted)', fontSize: 10, letterSpacing: 0.6 }}>БРОСКОВ</div>
-            <div style={{ fontSize: 28, fontWeight: 800 }}>{data.daily_total_shots}</div>
-          </div>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ color: 'var(--muted)', fontSize: 10, letterSpacing: 0.6 }}>%</div>
-            <div style={{ fontSize: 28, fontWeight: 800 }}>{acc}</div>
-          </div>
+        <div style={{ color: 'var(--muted)' }}>До нового дня</div>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 44, fontWeight: 700, letterSpacing: '0.06em' }}>
+          {formatHms(remaining)}
         </div>
+        <DailyTotalsRow />
+        <PeriodSummaryButtons periods={data.recent_periods} onOpenSummary={onOpenSummary} />
       </div>
-    </main>
+    </ModalBackdrop>
   );
 }
 
-function PlayView(): JSX.Element {
-  const dataRef = useRef(useDailyStore.getState().data!);
-  // Subscribe so re-renders happen on counter updates.
+interface PlayViewProps {
+  suppressedByModal: boolean;
+}
+
+function PlayView({ suppressedByModal }: PlayViewProps): JSX.Element {
   const data = useDailyStore((s) => s.data)!;
+  const dataRef = useRef(data);
   dataRef.current = data;
   const optimisticAddShot = useDailyStore((s) => s.optimisticAddShot);
   const submitShot = useDailyStore((s) => s.submitShot);
   const refresh = useDailyStore((s) => s.refresh);
+  const applyState = useDailyStore((s) => s.applyState);
 
   const scaleRef = useRef<Scale>({ factor: 1, offsetX: 0, offsetY: 0 });
   const loopRef = useRef<GameLoop | null>(null);
@@ -231,8 +379,21 @@ function PlayView(): JSX.Element {
   const goalieRef = useRef<Goalie | null>(null);
   const hitboxesRef = useRef<Hitboxes | null>(null);
   const refreshRef = useRef<((s: Scale) => void) | null>(null);
+  const tickerRef = useRef<Ticker | null>(null);
+  const entranceRafRef = useRef<number | null>(null);
+  const initializedRef = useRef(false);
   const [isShowingResult, setIsShowingResult] = useState(false);
+  const [isShotInProgress, setIsShotInProgress] = useState(false);
   const [resultSubText, setResultSubText] = useState<string | null>(null);
+  const [lastResult, setLastResult] = useState<ShotResult | null>(null);
+  // Server state is held until shot animation ends, so ScoreBoard counters
+  // don't jump while the puck is still flying.
+  const pendingMidShotStateRef = useRef<DailyStateResponse | null>(null);
+  const [pixiReady, setPixiReady] = useState(false);
+  // Ref-mirror of suppressedByModal so handleReady (initialized once via
+  // useCallback) can read the latest value when Pixi finishes loading.
+  const suppressedRef = useRef(suppressedByModal);
+  suppressedRef.current = suppressedByModal;
 
   const speeds = DEFAULT_SPEEDS;
   const speedsRef = useRef<SpeedOverrides>(DEFAULT_SPEEDS);
@@ -242,7 +403,6 @@ function PlayView(): JSX.Element {
     [speeds.puckSpeed],
   );
 
-  // Local timer for period_ends_at countdown
   const periodEndsAt = data.period_ends_at ? new Date(data.period_ends_at).getTime() : 0;
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -251,7 +411,6 @@ function PlayView(): JSX.Element {
   }, []);
   const remaining = Math.max(0, periodEndsAt - now);
 
-  // When timer hits 0 — refresh from server (it'll move us into break_active).
   useEffect(() => {
     if (remaining === 0 && periodEndsAt > 0) void refresh();
   }, [remaining, periodEndsAt, refresh]);
@@ -301,9 +460,92 @@ function PlayView(): JSX.Element {
       getGoalieId: () => dataRef.current.goalie_id,
       getSpeedOverrides: () => speedsRef.current,
     });
-    loop.attach(app.ticker);
+    tickerRef.current = app.ticker;
     loopRef.current = loop;
+
+    // Decide initial visibility/loop state synchronously, BEFORE the first
+    // ticker frame, so a modal-on-top mount never flashes moving sprites.
+    if (suppressedRef.current) {
+      player.container.visible = false;
+      goalie.container.visible = false;
+      puck.container.visible = false;
+      goal.update(initialScale, 0);
+      // loop intentionally not attached — frozen scene.
+    } else {
+      loop.attach(app.ticker);
+    }
+    setPixiReady(true);
   }, []);
+
+  // React to suppressedByModal flips after Pixi is up. handleReady applies
+  // the initial state inline; this hook handles transitions only.
+  useLayoutEffect(() => {
+    if (!pixiReady) return;
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      return;
+    }
+    const loop = loopRef.current;
+    const goal = goalRef.current;
+    const player = playerRef.current;
+    const goalie = goalieRef.current;
+    const puck = puckRef.current;
+    const ticker = tickerRef.current;
+    if (!loop || !goal || !player || !goalie || !puck || !ticker) return;
+    if (suppressedByModal) {
+      if (entranceRafRef.current !== null) {
+        cancelAnimationFrame(entranceRafRef.current);
+        entranceRafRef.current = null;
+      }
+      loop.detach();
+      goal.update(scaleRef.current, 0);
+      player.container.visible = false;
+      goalie.container.visible = false;
+      puck.container.visible = false;
+      return;
+    }
+
+    // Modal closed → players ride out from behind the right boards into the
+    // centre, then the loop takes over.
+    const ENTRY_DURATION_MS = 700;
+    const sxStart = RINK.width + 60;
+    const sxEnd = SHOOTER_CENTER_X;
+    const t0 = performance.now();
+    player.container.visible = true;
+    goalie.container.visible = true;
+    puck.container.visible = false; // appear once they take their spots
+    const drawAt = (sx: number): void => {
+      player.update(scaleRef.current, sx);
+      goalie.update(
+        {
+          position: { x: sx, y: GOALIE_Y },
+          width: GOALIE_SIZE.width,
+          height: GOALIE_SIZE.height,
+        },
+        scaleRef.current,
+      );
+    };
+    drawAt(sxStart);
+    const step = (): void => {
+      const t = Math.min(1, (performance.now() - t0) / ENTRY_DURATION_MS);
+      const eased = 1 - Math.pow(1 - t, 3);
+      drawAt(sxStart + (sxEnd - sxStart) * eased);
+      if (t < 1) {
+        entranceRafRef.current = requestAnimationFrame(step);
+      } else {
+        entranceRafRef.current = null;
+        puck.container.visible = true;
+        loop.attach(ticker);
+      }
+    };
+    entranceRafRef.current = requestAnimationFrame(step);
+    return () => {
+      if (entranceRafRef.current !== null) {
+        cancelAnimationFrame(entranceRafRef.current);
+        entranceRafRef.current = null;
+      }
+    };
+  }, [suppressedByModal, pixiReady]);
 
   const handleResize = useCallback((s: Scale): void => {
     refreshRef.current?.(s);
@@ -321,13 +563,12 @@ function PlayView(): JSX.Element {
     if (cur.current_period_shots >= cur.shots_per_period) return;
 
     const shotIndex = cur.current_period_shots + 1;
+    const isLastShotOfPeriod = shotIndex === cur.shots_per_period;
     const goalieCfg = getGoalie(cur.goalie_id);
     const overrides = speedsRef.current;
-    const activeCfg = {
-      ...goalieCfg,
-      goalFrequency: overrides.goalFreq,
-      frequency: overrides.goalieFreq,
-    };
+    // Frequency overrides live in `input` (sent to server) so client and
+    // server symulate identical motion. Avoid baking them into cfg here.
+    const activeCfg = goalieCfg;
     const seed = deriveShotSeed(cur.daily_seed, cur.current_period, shotIndex);
     const offsets = getSessionPhaseOffsets(cur.daily_seed);
 
@@ -340,6 +581,8 @@ function PlayView(): JSX.Element {
       shooterTapTime,
       puckSpeedPerMs: overrides.puckSpeed,
       shooterFrequency: overrides.shooterFreq,
+      goalieFrequency: overrides.goalieFreq,
+      goalFrequency: overrides.goalFreq,
     };
     const result: ShotResult = resolveShot(
       input,
@@ -350,7 +593,35 @@ function PlayView(): JSX.Element {
       offsets,
     );
 
+    let subText: string | null = null;
+    if (result.type === 'save') {
+      const tGoalieCross = tapTime + (PUCK_START.y - GOALIE_Y) / overrides.puckSpeed;
+      const gs = simulateGoalie(activeCfg, seed, shotIndex, tGoalieCross, offsets.goalie);
+      const rel = sx - gs.position.x;
+      const sixth = gs.width / 6;
+      subText = rel < -sixth ? 'Уверенная игра блином' : rel > sixth ? 'Точно в ловушку!' : 'Вратарь на месте!';
+    } else if (result.type === 'goal') {
+      const tGoalCross = tapTime + (PUCK_START.y - GOAL_OPENING.y) / overrides.puckSpeed;
+      const goalOffsetAtGoal = simulateGoal(activeCfg, tGoalCross, offsets.goal).offsetX;
+      const oMin = GOAL_OPENING.xMin + goalOffsetAtGoal;
+      const oMax = GOAL_OPENING.xMax + goalOffsetAtGoal;
+      const rel = (sx - oMin) / (oMax - oMin);
+      if (rel < 1 / 6 || rel > 5 / 6) subText = 'Точно в девятку!';
+      else if (rel < 2 / 6 || rel > 4 / 6) subText = Math.random() < 0.5 ? 'Мощный щелчок!' : 'Отличный кистевой!';
+      else subText = 'Отличный бросок!';
+    } else if (result.type === 'miss') {
+      const tGoalCross = tapTime + (PUCK_START.y - GOAL_OPENING.y) / overrides.puckSpeed;
+      const goalOffsetAtGoal = simulateGoal(activeCfg, tGoalCross, offsets.goal).offsetX;
+      const oMin = GOAL_OPENING.xMin + goalOffsetAtGoal;
+      const oMax = GOAL_OPENING.xMax + goalOffsetAtGoal;
+      const dist = Math.max(oMin - sx, sx - oMax, 0);
+      subText = dist <= 3 ? 'Штанга спасает!' : dist < 18 ? 'Рядом со штангой!' : dist < 48 ? 'Но было опасно!' : 'Очень далеко...';
+    }
+
     optimisticAddShot(result.type);
+    setIsShotInProgress(true);
+    pendingMidShotStateRef.current = null;
+    void isLastShotOfPeriod;
 
     loop.beginShooterPause();
     playerRef.current?.playShot();
@@ -366,7 +637,8 @@ function PlayView(): JSX.Element {
       puck.holdAt({ x: sx, y: result.type === 'save' ? GOAL_OPENING.y + 20 : GOAL_OPENING.y });
       if (result.type === 'save') goalie.setSavePose(true);
       if (result.type === 'goal') goalRef.current?.triggerGoalLight();
-      setResultSubText(null);
+      setLastResult(result);
+      setResultSubText(subText);
       setIsShowingResult(true);
     }, flightDurationMs);
 
@@ -376,20 +648,25 @@ function PlayView(): JSX.Element {
       puck.release();
       if (result.type === 'save') goalie.setSavePose(false);
       setIsShowingResult(false);
+      setIsShotInProgress(false);
+      const mid = pendingMidShotStateRef.current;
+      if (mid) {
+        applyState(mid);
+        pendingMidShotStateRef.current = null;
+      }
     }, flightDurationMs + PAUSE_MS);
 
     void submitShot({
       shotIndex,
       input,
       claimedResult: result.type,
+    }).then((res) => {
+      if (res === null) return;
+      pendingMidShotStateRef.current = res.state;
     });
-
-    void GAME_CORE_VERSION; // keeps import non-tree-shaken
-    void GOALIE_Y;
-  }, [flightDurationMs, optimisticAddShot, submitShot]);
+  }, [flightDurationMs, optimisticAddShot, submitShot, applyState, refresh]);
 
   const periodNum = data.current_period > 0 ? data.current_period : 1;
-  const lastResult = useMemo<ShotResult | null>(() => null, []);
 
   return (
     <main
@@ -447,8 +724,13 @@ function PlayView(): JSX.Element {
           type="button"
           className="btn btn--cta"
           onClick={handleShotTap}
-          disabled={isShowingResult || data.current_period_shots >= data.shots_per_period}
-          style={{ width: '100%' }}
+          disabled={
+            suppressedByModal ||
+            isShotInProgress ||
+            isShowingResult ||
+            data.current_period_shots >= data.shots_per_period
+          }
+          style={{ width: '100%', paddingBlock: 20 }}
         >
           БРОСОК
         </button>

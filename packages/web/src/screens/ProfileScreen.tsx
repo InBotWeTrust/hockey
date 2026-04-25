@@ -296,7 +296,10 @@ function GripOption({ label, hint, active, disabled, sprite, side, onClick }: Gr
         opacity: disabled ? 0.6 : 1,
       }}
     >
-      <div style={{ position: 'relative', width: SIZE, height: SIZE }}>
+      <div style={{
+        position: 'relative', width: SIZE, height: SIZE,
+        transform: `rotate(${side === 'left' ? -18.3 : 18.3}deg)`,
+      }}>
         <img
           src={sprite}
           alt=""
@@ -314,8 +317,8 @@ function GripOption({ label, hint, active, disabled, sprite, side, onClick }: Gr
           aria-hidden
           style={{
             position: 'absolute',
-            top: '14%',
-            [puckSide]: '37%',
+            top: 'calc(14% - 3px)',
+            [puckSide]: 'calc(37% + 10px)',
             width: puckSize,
             height: puckSize,
             borderRadius: '50%',

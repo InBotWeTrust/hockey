@@ -8,6 +8,16 @@ export type DailyState =
 
 export type ShotResultType = 'goal' | 'save' | 'miss';
 
+export type PeriodClosedReason = 'quota' | 'timeout' | 'day_end';
+
+export interface PeriodLogEntry {
+  period_number: number;
+  shots_taken: number;
+  goals: number;
+  closed_reason: PeriodClosedReason;
+  ended_at: string;
+}
+
 export interface DailyStateResponse {
   state: DailyState;
   current_period: number; // 0..3
@@ -20,10 +30,12 @@ export interface DailyStateResponse {
   period_ends_at: string | null; // ISO ts
   break_ends_at: string | null;
   day_date: string | null; // YYYY-MM-DD
+  next_day_starts_at: string;
   daily_seed: string | null;
   goalie_id: string;
   shots_per_period: number;
   total_periods: number;
+  recent_periods: PeriodLogEntry[];
 }
 
 export interface ShotInputPayload {
@@ -31,6 +43,8 @@ export interface ShotInputPayload {
   shooterTapTime?: number;
   puckSpeedPerMs?: number;
   shooterFrequency?: number;
+  goalieFrequency?: number;
+  goalFrequency?: number;
 }
 
 export interface SubmitShotRequest {

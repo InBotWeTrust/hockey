@@ -10,12 +10,19 @@ import {
 
 interface DailyStoreState {
   data: DailyStateResponse | null;
+  // State returned by /shot but not yet applied. Set when submitting the
+  // 30th shot of a period — we hold the visible state in `period_active`
+  // (rink stays on screen) until the player dismisses the period summary
+  // modal, which then promotes deferredState into data.
+  deferredState: DailyStateResponse | null;
   loading: boolean;
   error: string | null;
   inFlight: boolean;
   refresh: () => Promise<void>;
   startPeriod: () => Promise<DailyStateResponse | null>;
   applyState: (next: DailyStateResponse) => void;
+  setDeferredState: (next: DailyStateResponse) => void;
+  applyDeferredState: () => void;
   optimisticAddShot: (claimed: ShotResultType) => void;
   submitShot: (
     args: {
@@ -28,6 +35,7 @@ interface DailyStoreState {
 
 export const useDailyStore = create<DailyStoreState>()((set, get) => ({
   data: null,
+  deferredState: null,
   loading: false,
   error: null,
   inFlight: false,
@@ -60,7 +68,14 @@ export const useDailyStore = create<DailyStoreState>()((set, get) => ({
     }
   },
 
-  applyState: (next) => set({ data: next }),
+  applyState: (next) => set({ data: next, deferredState: null }),
+
+  setDeferredState: (next) => set({ deferredState: next }),
+
+  applyDeferredState: () => {
+    const pending = get().deferredState;
+    if (pending) set({ data: pending, deferredState: null });
+  },
 
   optimisticAddShot: (claimed) => {
     const cur = get().data;
@@ -85,12 +100,12 @@ export const useDailyStore = create<DailyStoreState>()((set, get) => ({
         input,
         claimed_result: claimedResult,
       });
-      set({ data: res.state, error: null });
+      // Caller decides when to applyState — for the 30th shot we want to
+      // hold on the current view until the broadcast/period summary modals
+      // are dismissed.
+      set({ error: null });
       return { serverResult: res.server_result, state: res.state };
     } catch (err) {
-      // Refresh state from server on any submission error so the UI gets
-      // back into a consistent shape (e.g. period closed by timeout while
-      // the user was tapping).
       try {
         const data = await fetchDailyState();
         set({ data, error: err instanceof Error ? err.message : 'shot failed' });

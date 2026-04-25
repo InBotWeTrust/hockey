@@ -26,10 +26,12 @@ const baseState: DailyStateResponse = {
   period_ends_at: null,
   break_ends_at: null,
   day_date: '2026-04-25',
+  next_day_starts_at: '2026-04-26T00:00:00.000Z',
   daily_seed: null,
   goalie_id: 'rookie',
   shots_per_period: 30,
   total_periods: 3,
+  recent_periods: [],
 };
 
 function renderWith() {

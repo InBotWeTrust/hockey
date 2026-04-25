@@ -7,8 +7,14 @@ export interface ShotInput {
   // эффективное время для simulateShooter может отличаться от tapTime.
   // Если не задан — используется tapTime (старое поведение / тесты).
   shooterTapTime?: number;
-  puckSpeedPerMs?: number; // override for PUCK_SPEED_PER_MS (debug/test)
-  shooterFrequency?: number; // override for SHOOTER_FREQUENCY (debug/test)
+  puckSpeedPerMs?: number; // override for PUCK_SPEED_PER_MS
+  shooterFrequency?: number; // override for SHOOTER_FREQUENCY
+  // Override goalie/goal frequency in cfg. Sent in input (rather than baked
+  // into cfg) so client and server agree on the effective movement rates and
+  // every shot is reproducible bit-for-bit. Anti-cheat: server will validate
+  // these against allowed ranges in a follow-up; for now anything goes.
+  goalieFrequency?: number;
+  goalFrequency?: number;
 }
 
 export type ShotResult =
