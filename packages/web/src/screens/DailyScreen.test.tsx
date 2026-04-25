@@ -73,7 +73,7 @@ describe('DailyScreen', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Начать 1-й период/ })).toBeInTheDocument();
     });
-    expect(screen.getByText(/Готов к игре/)).toBeInTheDocument();
+    expect(screen.getByText(/Сегодняшняя игра/)).toBeInTheDocument();
   });
 
   it('renders break view with countdown', async () => {
