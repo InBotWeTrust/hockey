@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadConfig } from '../config.js';
+import { loadMigrationConfig } from '../config.js';
 import { loadDotEnv } from '../env.js';
 import { createPool } from './pool.js';
 import { applyMigrations } from './migrations.js';
@@ -11,7 +11,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
 
 async function main(): Promise<void> {
-  const config = loadConfig();
+  const config = loadMigrationConfig();
   const pool = createPool(config.DATABASE_URL);
   try {
     const result = await applyMigrations(pool, MIGRATIONS_DIR);

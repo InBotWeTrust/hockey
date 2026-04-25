@@ -18,3 +18,13 @@ export type AppConfig = z.infer<typeof schema>;
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   return schema.parse(env);
 }
+
+const migrationSchema = z.object({
+  DATABASE_URL: z.string().url(),
+});
+
+export type MigrationConfig = z.infer<typeof migrationSchema>;
+
+export function loadMigrationConfig(env: NodeJS.ProcessEnv = process.env): MigrationConfig {
+  return migrationSchema.parse(env);
+}
