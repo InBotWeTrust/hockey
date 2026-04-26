@@ -165,3 +165,45 @@ export async function getMessages(
 
   return r.rows.map((row) => toChatMessageDTO(row, grouped.get(row.id) ?? []));
 }
+
+export interface SendMessageOpts {
+  chatId: string;
+  senderId: string;
+  content: string;
+  replyToId?: string;
+}
+
+export async function sendMessage(pool: Pool, opts: SendMessageOpts): Promise<ChatMessageDTO> {
+  // Lazy-upsert membership so unread/lastRead works for system-channel senders.
+  await pool.query(
+    `insert into chat_members (chat_id, user_id) values ($1, $2)
+     on conflict (chat_id, user_id) do nothing`,
+    [opts.chatId, opts.senderId],
+  );
+  const r = await pool.query<MessageRow>(
+    `insert into messages (chat_id, sender_id, content, reply_to_id)
+     values ($1, $2, $3, $4) returning *`,
+    [opts.chatId, opts.senderId, opts.content, opts.replyToId ?? null],
+  );
+  return toChatMessageDTO(r.rows[0]!);
+}
+
+export async function deleteMessage(pool: Pool, messageId: string): Promise<void> {
+  await pool.query(
+    `update messages set is_deleted = true, content = '', updated_at = now() where id = $1`,
+    [messageId],
+  );
+}
+
+export async function markChatAsRead(
+  pool: Pool,
+  chatId: string,
+  userId: string,
+): Promise<void> {
+  await pool.query(
+    `insert into chat_members (chat_id, user_id, last_read_at)
+     values ($1, $2, now())
+     on conflict (chat_id, user_id) do update set last_read_at = excluded.last_read_at`,
+    [chatId, userId],
+  );
+}

@@ -284,4 +284,114 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
       expect(thumb.reactedByMe).toBe(true);
     });
   });
+
+  describe('sendMessage', () => {
+    let dmId: string;
+    beforeEach(async () => {
+      const dm = await pool.query(
+        `insert into chats (type, created_by) values ('direct', $1) returning id`,
+        [userA],
+      );
+      dmId = dm.rows[0].id;
+      await pool.query(
+        `insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`,
+        [dmId, userA, userB],
+      );
+    });
+
+    it('inserts a message and returns DTO', async () => {
+      const { sendMessage } = await import('../../src/chat/service.js');
+      const dto = await sendMessage(pool, { chatId: dmId, senderId: userA, content: 'hi' });
+      expect(dto.content).toBe('hi');
+      expect(dto.senderId).toBe(userA);
+      expect(dto.chatId).toBe(dmId);
+      expect(dto.replyToId).toBeNull();
+      expect(dto.isDeleted).toBe(false);
+    });
+
+    it('preserves replyToId when provided', async () => {
+      const { sendMessage } = await import('../../src/chat/service.js');
+      const first = await sendMessage(pool, { chatId: dmId, senderId: userA, content: 'parent' });
+      const reply = await sendMessage(pool, {
+        chatId: dmId,
+        senderId: userB,
+        content: 'reply',
+        replyToId: first.id,
+      });
+      expect(reply.replyToId).toBe(first.id);
+    });
+
+    it('lazy-upserts chat_member for system channel sender', async () => {
+      const { sendMessage } = await import('../../src/chat/service.js');
+      const sys = await pool.query(
+        `insert into chats (type, name, created_by) values ('system', 'Общий', $1) returning id`,
+        [userA],
+      );
+      const before = await pool.query(`select count(*) as c from chat_members where chat_id = $1`, [
+        sys.rows[0].id,
+      ]);
+      expect(Number(before.rows[0].c)).toBe(0);
+      await sendMessage(pool, { chatId: sys.rows[0].id, senderId: userC, content: 'first' });
+      const after = await pool.query(`select count(*) as c from chat_members where chat_id = $1`, [
+        sys.rows[0].id,
+      ]);
+      expect(Number(after.rows[0].c)).toBe(1);
+    });
+  });
+
+  describe('deleteMessage', () => {
+    it('soft-deletes: sets is_deleted=true and content=""', async () => {
+      const { deleteMessage } = await import('../../src/chat/service.js');
+      const dm = await pool.query(
+        `insert into chats (type, created_by) values ('direct', $1) returning id`,
+        [userA],
+      );
+      const msg = await pool.query(
+        `insert into messages (chat_id, sender_id, content) values ($1, $2, 'gone') returning id`,
+        [dm.rows[0].id, userA],
+      );
+      await deleteMessage(pool, msg.rows[0].id);
+      const r = await pool.query(`select content, is_deleted from messages where id = $1`, [
+        msg.rows[0].id,
+      ]);
+      expect(r.rows[0].is_deleted).toBe(true);
+      expect(r.rows[0].content).toBe('');
+    });
+  });
+
+  describe('markChatAsRead', () => {
+    it('updates last_read_at when membership exists', async () => {
+      const { markChatAsRead } = await import('../../src/chat/service.js');
+      const dm = await pool.query(
+        `insert into chats (type, created_by) values ('direct', $1) returning id`,
+        [userA],
+      );
+      const dmId = dm.rows[0].id;
+      await pool.query(
+        `insert into chat_members (chat_id, user_id, last_read_at) values ($1, $2, now() - interval '1 day')`,
+        [dmId, userA],
+      );
+      await markChatAsRead(pool, dmId, userA);
+      const r = await pool.query(
+        `select last_read_at from chat_members where chat_id = $1 and user_id = $2`,
+        [dmId, userA],
+      );
+      const ts = r.rows[0].last_read_at as Date;
+      expect(Date.now() - ts.getTime()).toBeLessThan(2000);
+    });
+
+    it('lazy-creates chat_members row for system channel readers', async () => {
+      const { markChatAsRead } = await import('../../src/chat/service.js');
+      const sys = await pool.query(
+        `insert into chats (type, name, created_by) values ('system', 'Общий', $1) returning id`,
+        [userA],
+      );
+      await markChatAsRead(pool, sys.rows[0].id, userC);
+      const r = await pool.query(
+        `select count(*) as c from chat_members where chat_id = $1 and user_id = $2`,
+        [sys.rows[0].id, userC],
+      );
+      expect(Number(r.rows[0].c)).toBe(1);
+    });
+  });
 });
