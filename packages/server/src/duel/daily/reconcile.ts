@@ -188,16 +188,29 @@ export async function reconcileDayPool(
     );
     if (now >= periodEnd) {
       await insertPeriodLog(client, pool, periodEnd, 'timeout');
-      const { rows } = await client.query<DayPoolRow>(
-        `update day_pool
-            set state='break_active',
-                break_started_at=$1,
-                period_started_at=null
-          where id=$2
-        returning *`,
-        [periodEnd, pool.id],
-      );
+      const isFinal = pool.current_period >= TOTAL_PERIODS;
+      const sql = isFinal
+        ? `update day_pool
+              set state='closed',
+                  closed_at=$1,
+                  period_started_at=null
+            where id=$2
+          returning *`
+        : `update day_pool
+              set state='break_active',
+                  break_started_at=$1,
+                  period_started_at=null
+            where id=$2
+          returning *`;
+      const { rows } = await client.query<DayPoolRow>(sql, [periodEnd, pool.id]);
       pool = rows[0]!;
+      if (isFinal) {
+        await appendEvent(client, pool.user_id, 'day_pool_closed', {
+          day_pool_id: pool.id,
+          reason: 'completed',
+        });
+        return { pool: null, timezone, localToday: today };
+      }
     }
   }
 
