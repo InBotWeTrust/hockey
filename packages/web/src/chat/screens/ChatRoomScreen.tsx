@@ -193,9 +193,21 @@ export function ChatRoomScreen(): JSX.Element {
       >
         <button
           type="button"
-          className="icon-btn"
+          className="icon-btn glass"
           aria-label="К списку чатов"
           onClick={() => navigate('/chat')}
+          style={{
+            width: 40,
+            height: 40,
+            minWidth: 40,
+            minHeight: 40,
+            borderRadius: 999,
+            padding: 0,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
         >
           <ArrowLeft size={16} />
         </button>
