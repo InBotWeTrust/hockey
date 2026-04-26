@@ -89,9 +89,9 @@ pnpm workspaces, `packages/*`, TS project references (`composite: true`):
 
 **Сюжет** — отдельная вкладка (5 вратарей × ~3 задания, 3 попытки/день, не пересекается с дневной квотой). Серверные роуты — отдельный подпроект.
 
-### Чат (в работе — DM, системные каналы, realtime)
+### Чат (PR 1+2 — БД + REST готовы; PR 3 — realtime)
 
-Внутренний мессенджер: DM 1-на-1, системные каналы (создаются через `pnpm chat:seed "<name>"` + `SYSTEM_USER_ID` env — UUID существующего юзера-админа), задел под чаты команд/турниров через `chats.entity_type/entity_id`. Таблицы: `chats`, `chat_members`, `messages`, `message_reactions` (миграция `004_chat.sql`). Reply через `reply_to_id ON DELETE SET NULL`, soft-delete (`is_deleted=true, content=''`), реакции UNIQUE `(message_id, user_id, emoji)`, полнотекст по `to_tsvector('russian', ...)` GENERATED + GIN. RLS нет — все проверки в `chat/guards.ts`. Realtime (WebSocket + Redis pub/sub) поднимается в PR 3. Спек: `docs/superpowers/specs/2026-04-26-internal-chat-design.md`.
+Внутренний мессенджер: DM, системные каналы (`pnpm chat:seed "<name>"` + `SYSTEM_USER_ID` env), задел под чаты команд/турниров (`chats.entity_type/entity_id`). Таблицы: `chats`, `chat_members`, `messages`, `message_reactions` (миграция `004_chat.sql`). RLS нет — проверки в `chat/guards.ts` (`assertCanAccessChat`, `assertOwnsMessage`). Сервис `chat/service.ts`: `getMyChats` (LATERAL JOIN, без N+1), `findOrCreateDM` (advisory lock на пару), `getMessages` (before-cursor + батч-реакции), `sendMessage`/`deleteMessage` (soft, `content=''`)/`markChatAsRead` (lazy upsert), `searchUsers` (pg_trgm), `searchMessages` (tsvector russian), `getUnreadCounts`. REST под `/chat/*` (см. `chat/routes.ts`): list, dm, users, messages (GET/POST/DELETE), read, search, unread. Rate-limit 5 msg/sec (Redis INCR+EXPIRE). Unread-кеш в Redis 10s. Realtime (WebSocket + Redis pub/sub) — PR 3. Спек: `docs/superpowers/specs/2026-04-26-internal-chat-design.md`.
 
 ### Auth (Telegram)
 

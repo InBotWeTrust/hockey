@@ -3,7 +3,9 @@ import { z } from 'zod';
 import {
   getMyChats,
   getMessages,
+  type GetMessagesOpts,
   sendMessage,
+  type SendMessageOpts,
   deleteMessage,
   markChatAsRead,
   findOrCreateDM,
@@ -51,7 +53,9 @@ export const chatRoutes: FastifyPluginAsync = async (app) => {
       })
       .parse(req.query);
     await assertCanAccessChat(app.pg, req.user.id, chatId);
-    return await getMessages(app.pg, chatId, req.user.id, query);
+    const opts: GetMessagesOpts = { limit: query.limit };
+    if (query.before !== undefined) opts.before = query.before;
+    return await getMessages(app.pg, chatId, req.user.id, opts);
   });
 
   app.post('/chat/:chatId/messages', { preHandler: [app.authenticate] }, async (req, reply) => {
@@ -65,12 +69,9 @@ export const chatRoutes: FastifyPluginAsync = async (app) => {
     const userId = req.user.id;
     await assertCanAccessChat(app.pg, userId, chatId);
     await checkAndConsumeRateLimit(app.redis, userId);
-    const dto = await sendMessage(app.pg, {
-      chatId,
-      senderId: userId,
-      content: body.content,
-      replyToId: body.replyToId,
-    });
+    const sendOpts: SendMessageOpts = { chatId, senderId: userId, content: body.content };
+    if (body.replyToId !== undefined) sendOpts.replyToId = body.replyToId;
+    const dto = await sendMessage(app.pg, sendOpts);
     // Invalidate unread cache for all current members so they see fresh counts.
     const members = await app.pg.query<{ user_id: string }>(
       `select user_id from chat_members where chat_id = $1`,
