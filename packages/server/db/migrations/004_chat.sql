@@ -86,11 +86,15 @@ create index idx_message_reactions_message on message_reactions (message_id);
 
 -- ─────────────────────────────────────────────────────────────────────────
 -- Trigger: keep chats.last_message_at in sync with newest message.
+-- Monotonic update via greatest(): never rewinds last_message_at on out-of-order
+-- inserts (replay during reconnect, admin backfill). Without it an older
+-- created_at would corrupt chat-list ordering used by getMyChats LATERAL JOIN.
 -- ─────────────────────────────────────────────────────────────────────────
 create or replace function update_chat_last_message() returns trigger as $$
 begin
   update chats
-  set last_message_at = new.created_at, updated_at = now()
+  set last_message_at = greatest(coalesce(last_message_at, new.created_at), new.created_at),
+      updated_at = now()
   where id = new.chat_id;
   return new;
 end;
