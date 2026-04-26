@@ -30,6 +30,7 @@ import { RinkSvg } from '../game/RinkSvg.js';
 import { Goal } from '../game/renderer/Goal.js';
 import { Goalie } from '../game/renderer/Goalie.js';
 import { Hitboxes } from '../game/renderer/Hitboxes.js';
+import { IceCar, iceCarPosAt } from '../game/renderer/IceCar.js';
 import { Player } from '../game/renderer/Player.js';
 import { Puck } from '../game/renderer/Puck.js';
 import { createGameLoop, type GameLoop, type SpeedOverrides } from '../game/loop.js';
@@ -361,6 +362,8 @@ function PlayView({ suppressedByModal }: PlayViewProps): JSX.Element {
   const refreshRef = useRef<((s: Scale) => void) | null>(null);
   const tickerRef = useRef<Ticker | null>(null);
   const entranceRafRef = useRef<number | null>(null);
+  const iceCarRef = useRef<IceCar | null>(null);
+  const iceCarRafRef = useRef<number | null>(null);
   const initializedRef = useRef(false);
   const [isShowingResult, setIsShowingResult] = useState(false);
   const [isShotInProgress, setIsShotInProgress] = useState(false);
@@ -410,7 +413,11 @@ function PlayView({ suppressedByModal }: PlayViewProps): JSX.Element {
     goalieRef.current = goalie;
     hitboxesRef.current = hitboxes;
 
+    const iceCar = new IceCar();
+    iceCarRef.current = iceCar;
+
     const layer = new Container();
+    layer.addChild(iceCar.container);
     layer.addChild(goal.container);
     layer.addChild(goalie.container);
     layer.addChild(player.container);
@@ -443,6 +450,17 @@ function PlayView({ suppressedByModal }: PlayViewProps): JSX.Element {
     tickerRef.current = app.ticker;
     loopRef.current = loop;
 
+    const startIceCarLoop = (): void => {
+      let t0 = -1;
+      const carStep = (rafTime: number): void => {
+        if (t0 < 0) t0 = rafTime;
+        const pos = iceCarPosAt(rafTime - t0);
+        iceCarRef.current?.update(scaleRef.current, pos.x, pos.y, pos.rot);
+        iceCarRafRef.current = requestAnimationFrame(carStep);
+      };
+      iceCarRafRef.current = requestAnimationFrame(carStep);
+    };
+
     // Decide initial visibility/loop state synchronously, BEFORE the first
     // ticker frame, so a modal-on-top mount never flashes moving sprites.
     if (suppressedRef.current) {
@@ -450,8 +468,10 @@ function PlayView({ suppressedByModal }: PlayViewProps): JSX.Element {
       goalie.container.visible = false;
       puck.container.visible = false;
       goal.update(initialScale, 0);
-      // loop intentionally not attached — frozen scene.
+      iceCar.container.visible = true;
+      startIceCarLoop();
     } else {
+      iceCar.container.visible = false;
       loop.attach(app.ticker);
     }
     setPixiReady(true);
@@ -482,34 +502,64 @@ function PlayView({ suppressedByModal }: PlayViewProps): JSX.Element {
       player.container.visible = false;
       goalie.container.visible = false;
       puck.container.visible = false;
+      if (iceCarRafRef.current === null) {
+        const iceCar = iceCarRef.current;
+        if (iceCar) {
+          iceCar.container.visible = true;
+          let t0 = -1;
+          const carStep = (rafTime: number): void => {
+            if (t0 < 0) t0 = rafTime;
+            const pos = iceCarPosAt(rafTime - t0);
+            iceCar.update(scaleRef.current, pos.x, pos.y, pos.rot);
+            iceCarRafRef.current = requestAnimationFrame(carStep);
+          };
+          iceCarRafRef.current = requestAnimationFrame(carStep);
+        }
+      }
       return;
     }
 
-    // Modal closed → players ride out from behind the right boards into the
-    // centre, then the loop takes over.
-    const ENTRY_DURATION_MS = 700;
-    const sxStart = RINK.width + 60;
-    const sxEnd = SHOOTER_CENTER_X;
+    if (iceCarRafRef.current !== null) {
+      cancelAnimationFrame(iceCarRafRef.current);
+      iceCarRafRef.current = null;
+    }
+    if (iceCarRef.current) iceCarRef.current.container.visible = false;
+
+    // Modal closed → players skate out from center-ice area diagonally to
+    // their spots. Goalie enters from above the red line, player from below,
+    // so they never cross paths.
+    const ENTRY_DURATION_MS = 1400;
+    const CENTER_RED_Y = 350;
+    const ENTRY_X = RINK.width + 50;
+    const goalieStartX = ENTRY_X;
+    const goalieStartY = CENTER_RED_Y - 30;
+    const playerStartX = ENTRY_X;
+    const playerStartY = CENTER_RED_Y + 30;
     const t0 = performance.now();
     player.container.visible = true;
     goalie.container.visible = true;
-    puck.container.visible = false; // appear once they take their spots
-    const drawAt = (sx: number): void => {
-      player.update(scaleRef.current, sx);
+    puck.container.visible = false;
+    const drawAt = (gx: number, gy: number, px: number, py: number): void => {
+      player.update(scaleRef.current, px, py);
       goalie.update(
         {
-          position: { x: sx, y: GOALIE_Y },
+          position: { x: gx, y: gy },
           width: GOALIE_SIZE.width,
           height: GOALIE_SIZE.height,
         },
         scaleRef.current,
       );
     };
-    drawAt(sxStart);
+    drawAt(goalieStartX, goalieStartY, playerStartX, playerStartY);
     const step = (): void => {
       const t = Math.min(1, (performance.now() - t0) / ENTRY_DURATION_MS);
       const eased = 1 - Math.pow(1 - t, 3);
-      drawAt(sxStart + (sxEnd - sxStart) * eased);
+      drawAt(
+        goalieStartX + (SHOOTER_CENTER_X - goalieStartX) * eased,
+        goalieStartY + (GOALIE_Y        - goalieStartY)  * eased,
+        playerStartX + (SHOOTER_CENTER_X - playerStartX) * eased,
+        playerStartY + (PUCK_START.y    - playerStartY)  * eased,
+      );
       if (t < 1) {
         entranceRafRef.current = requestAnimationFrame(step);
       } else {
@@ -526,6 +576,10 @@ function PlayView({ suppressedByModal }: PlayViewProps): JSX.Element {
       if (entranceRafRef.current !== null) {
         cancelAnimationFrame(entranceRafRef.current);
         entranceRafRef.current = null;
+      }
+      if (iceCarRafRef.current !== null) {
+        cancelAnimationFrame(iceCarRafRef.current);
+        iceCarRafRef.current = null;
       }
     };
   }, [suppressedByModal, pixiReady]);
@@ -549,9 +603,14 @@ function PlayView({ suppressedByModal }: PlayViewProps): JSX.Element {
     const isLastShotOfPeriod = shotIndex === cur.shots_per_period;
     const goalieCfg = getGoalie(cur.goalie_id);
     const overrides = speedsRef.current;
-    // Frequency overrides live in `input` (sent to server) so client and
-    // server symulate identical motion. Avoid baking them into cfg here.
-    const activeCfg = goalieCfg;
+    // Apply the same frequency overrides that resolveShot uses internally, so
+    // subText simulateGoal/simulateGoalie calls see the same goal/goalie
+    // positions as the resolver did.
+    const activeCfg = {
+      ...goalieCfg,
+      frequency: overrides.goalieFreq,
+      goalFrequency: overrides.goalFreq,
+    };
     const seed = deriveShotSeed(cur.daily_seed, cur.current_period, shotIndex);
     const offsets = getSessionPhaseOffsets(cur.daily_seed);
 
@@ -725,3 +784,4 @@ function PlayView({ suppressedByModal }: PlayViewProps): JSX.Element {
     </main>
   );
 }
+

@@ -20,6 +20,7 @@ import {
   getUnreadFromCache,
   setUnreadCache,
 } from './cache.js';
+import { publishMessageNew, publishMessageDeleted, publishChatRead } from './events.js';
 
 const uuid = z.string().uuid();
 const isoDate = z.string().datetime({ offset: true });
@@ -67,7 +68,7 @@ export const chatRoutes: FastifyPluginAsync = async (app) => {
       })
       .parse(req.body);
     const userId = req.user.id;
-    await assertCanAccessChat(app.pg, userId, chatId);
+    const chat = await assertCanAccessChat(app.pg, userId, chatId);
     await checkAndConsumeRateLimit(app.redis, userId);
     const sendOpts: SendMessageOpts = { chatId, senderId: userId, content: body.content };
     if (body.replyToId !== undefined) sendOpts.replyToId = body.replyToId;
@@ -78,6 +79,7 @@ export const chatRoutes: FastifyPluginAsync = async (app) => {
       [chatId],
     );
     await Promise.all(members.rows.map((m) => invalidateUnreadCache(app.redis, m.user_id)));
+    await publishMessageNew(app.pg, app.realtime, chatId, chat.type, dto);
     reply.code(201);
     return dto;
   });
@@ -87,8 +89,21 @@ export const chatRoutes: FastifyPluginAsync = async (app) => {
     { preHandler: [app.authenticate] },
     async (req, reply) => {
       const { messageId } = z.object({ messageId: uuid }).parse(req.params);
-      await assertOwnsMessage(app.pg, req.user.id, messageId);
+      const message = await assertOwnsMessage(app.pg, req.user.id, messageId);
       await deleteMessage(app.pg, messageId);
+      const chatRow = await app.pg.query<{ type: 'direct' | 'group' | 'system' }>(
+        `select type from chats where id = $1`,
+        [message.chat_id],
+      );
+      if (chatRow.rowCount && chatRow.rowCount > 0) {
+        await publishMessageDeleted(
+          app.pg,
+          app.realtime,
+          message.chat_id,
+          chatRow.rows[0]!.type,
+          messageId,
+        );
+      }
       reply.code(204);
       return null;
     },
@@ -97,9 +112,10 @@ export const chatRoutes: FastifyPluginAsync = async (app) => {
   app.post('/chat/:chatId/read', { preHandler: [app.authenticate] }, async (req, reply) => {
     const { chatId } = z.object({ chatId: uuid }).parse(req.params);
     const userId = req.user.id;
-    await assertCanAccessChat(app.pg, userId, chatId);
+    const chat = await assertCanAccessChat(app.pg, userId, chatId);
     await markChatAsRead(app.pg, chatId, userId);
     await invalidateUnreadCache(app.redis, userId);
+    await publishChatRead(app.pg, app.realtime, chatId, chat.type, userId, new Date().toISOString());
     reply.code(204);
     return null;
   });

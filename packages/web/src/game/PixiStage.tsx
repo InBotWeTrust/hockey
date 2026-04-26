@@ -3,7 +3,7 @@ import { Application, Assets } from 'pixi.js';
 import { RINK } from '@hockey/game-core';
 import { computeScale, type Scale } from './coords.js';
 
-const SPRITE_ASSETS = ['/sprites/gate.webp', '/sprites/goalkeeper.webp', '/sprites/save.webp', '/sprites/player.webp'];
+const SPRITE_ASSETS = ['/sprites/gate.webp', '/sprites/goalkeeper.webp', '/sprites/save.webp', '/sprites/player.webp', '/sprites/ice_car.webp'];
 
 export interface PixiStageProps {
   onReady: (app: Application, scale: Scale) => void;

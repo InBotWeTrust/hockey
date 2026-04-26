@@ -33,11 +33,11 @@ export class Player {
     this.shotStartedAt = performance.now();
   }
 
-  update(scale: Scale, shooterX = PUCK_START.x): void {
+  update(scale: Scale, shooterX = PUCK_START.x, shooterY = PUCK_START.y): void {
     const s = scale.factor;
     this.sprite.width  = SPRITE_WIDTH * s;
     this.sprite.height = SPRITE_HEIGHT * s;
-    this.sprite.position.set(shooterX * s, PUCK_START.y * s);
+    this.sprite.position.set(shooterX * s, shooterY * s);
     this.container.position.set(scale.offsetX, scale.offsetY);
 
     if (this.shotStartedAt !== null) {
