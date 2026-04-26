@@ -426,4 +426,61 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
       await expect(findOrCreateDM(pool, userA, userA)).rejects.toBeInstanceOf(InvalidInputError);
     });
   });
+
+  describe('searchUsers', () => {
+    it('returns users matching trigram similarity, excluding self', async () => {
+      const { searchUsers } = await import('../../src/chat/service.js');
+      const list = await searchUsers(pool, userA, { q: 'bo', limit: 10 });
+      expect(list.find((u) => u.userId === userB)).toBeTruthy();
+      expect(list.find((u) => u.userId === userA)).toBeFalsy();
+    });
+
+    it('returns empty for empty query', async () => {
+      const { searchUsers } = await import('../../src/chat/service.js');
+      const list = await searchUsers(pool, userA, { q: '', limit: 10 });
+      expect(list).toEqual([]);
+    });
+  });
+
+  describe('searchMessages', () => {
+    it('returns full-text matches in user-accessible chats', async () => {
+      const { searchMessages } = await import('../../src/chat/service.js');
+      const dm = await pool.query(
+        `insert into chats (type, created_by) values ('direct', $1) returning id`,
+        [userA],
+      );
+      await pool.query(
+        `insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`,
+        [dm.rows[0].id, userA, userB],
+      );
+      await pool.query(
+        `insert into messages (chat_id, sender_id, content) values
+         ($1, $2, 'hello world'),
+         ($1, $2, 'привет мир'),
+         ($1, $2, 'unrelated text')`,
+        [dm.rows[0].id, userA],
+      );
+      const found = await searchMessages(pool, userA, { q: 'мир', limit: 10 });
+      expect(found.length).toBeGreaterThanOrEqual(1);
+      expect(found[0]!.content).toContain('мир');
+    });
+
+    it('does not return messages from chats the user has no access to', async () => {
+      const { searchMessages } = await import('../../src/chat/service.js');
+      const dm = await pool.query(
+        `insert into chats (type, created_by) values ('direct', $1) returning id`,
+        [userB],
+      );
+      await pool.query(
+        `insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`,
+        [dm.rows[0].id, userB, userC],
+      );
+      await pool.query(
+        `insert into messages (chat_id, sender_id, content) values ($1, $2, 'secret payload')`,
+        [dm.rows[0].id, userB],
+      );
+      const found = await searchMessages(pool, userA, { q: 'secret', limit: 10 });
+      expect(found).toEqual([]);
+    });
+  });
 });

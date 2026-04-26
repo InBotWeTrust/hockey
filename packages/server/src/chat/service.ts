@@ -263,3 +263,77 @@ export async function findOrCreateDM(
     client.release();
   }
 }
+
+export interface UserPickerItem {
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+}
+
+export async function searchUsers(
+  pool: Pool,
+  currentUserId: string,
+  opts: { q: string; limit: number },
+): Promise<UserPickerItem[]> {
+  const q = opts.q.trim();
+  if (q.length < 1) return [];
+  const limit = Math.min(Math.max(opts.limit, 1), 50);
+  const r = await pool.query<{ id: string; display_name: string; avatar_url: string | null }>(
+    `select id, display_name, avatar_url from users
+     where id != $1 and display_name ilike '%' || $2 || '%'
+     order by similarity(display_name, $2) desc
+     limit $3`,
+    [currentUserId, q, limit],
+  );
+  return r.rows.map((row) => ({
+    userId: row.id,
+    displayName: row.display_name,
+    avatarUrl: row.avatar_url,
+  }));
+}
+
+export interface MessageSearchHit {
+  id: string;
+  chatId: string;
+  content: string;
+  senderName: string;
+  createdAt: string;
+}
+
+export async function searchMessages(
+  pool: Pool,
+  currentUserId: string,
+  opts: { q: string; limit: number },
+): Promise<MessageSearchHit[]> {
+  const q = opts.q.trim();
+  if (q.length < 1) return [];
+  const limit = Math.min(Math.max(opts.limit, 1), 100);
+  const r = await pool.query<{
+    id: string;
+    chat_id: string;
+    content: string;
+    sender_name: string;
+    created_at: Date;
+  }>(
+    `select m.id, m.chat_id, m.content, u.display_name as sender_name, m.created_at
+     from messages m
+     join users u on u.id = m.sender_id
+     where m.chat_id in (
+       select chat_id from chat_members where user_id = $1
+       union
+       select id from chats where type = 'system' and is_active = true
+     )
+       and m.is_deleted = false
+       and m.search_vector @@ plainto_tsquery('russian', $2)
+     order by m.created_at desc
+     limit $3`,
+    [currentUserId, q, limit],
+  );
+  return r.rows.map((row) => ({
+    id: row.id,
+    chatId: row.chat_id,
+    content: row.content,
+    senderName: row.sender_name,
+    createdAt: row.created_at.toISOString(),
+  }));
+}
