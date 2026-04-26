@@ -271,24 +271,48 @@ describe.skipIf(!hasIntegrationEnv)('chat WebSocket', () => {
     await waitOpen(wsC);
 
     let leaked = false;
-    wsC.on('message', (raw) => {
+    const onMessage = (raw: WebSocket.RawData) => {
       const frame = JSON.parse(raw.toString()) as ChatEventFrame;
       if (frame.event.type === 'message:new' && frame.event.chatId === dmAB) {
         leaked = true;
       }
-    });
+    };
+    wsC.on('message', onMessage);
 
-    await app.inject({
+    // Set up the sentinel barrier BEFORE either POST: it must catch the
+    // post-leak system broadcast, not race with a stale earlier frame.
+    const sentinel = nextFrame(
+      wsC,
+      (f) =>
+        f.event.type === 'message:new' &&
+        f.event.chatId === systemChat &&
+        f.event.message.content === 'leak-test-sentinel',
+    );
+
+    // The (potentially) leaking publish first. Must NOT reach wsC.
+    const leakPost = await app.inject({
       method: 'POST',
       url: `/chat/${dmAB}/messages`,
       headers: { authorization: `Bearer ${tokenB}`, 'content-type': 'application/json' },
       payload: { content: 'private' },
     });
+    expect(leakPost.statusCode).toBe(201);
 
-    // Wait long enough that the publish + Redis round-trip finishes.
-    await new Promise((r) => setTimeout(r, 150));
+    // Then the sentinel publish on a channel wsC IS subscribed to.
+    // When the sentinel frame arrives, the Redis round-trip for both publishes
+    // has provably completed in order — so any leak would already have landed.
+    const sentinelPost = await app.inject({
+      method: 'POST',
+      url: `/chat/${systemChat}/messages`,
+      headers: { authorization: `Bearer ${tokenA}`, 'content-type': 'application/json' },
+      payload: { content: 'leak-test-sentinel' },
+    });
+    expect(sentinelPost.statusCode).toBe(201);
+
+    await sentinel;
     expect(leaked).toBe(false);
 
+    wsC.off('message', onMessage);
     wsC.close();
   });
 });
