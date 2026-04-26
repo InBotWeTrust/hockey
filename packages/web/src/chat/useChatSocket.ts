@@ -26,6 +26,7 @@ function applyMessageNew(qc: QueryClient, chatId: string, msg: ChatMessageDTO): 
 }
 
 function applyMessageDeleted(qc: QueryClient, chatId: string, messageId: string): void {
+  let didPatch = false;
   qc.setQueryData<InfinitePages | undefined>(chatKeys.messages(chatId), (old) => {
     if (!old) return old;
     let touched = false;
@@ -37,9 +38,10 @@ function applyMessageDeleted(qc: QueryClient, chatId: string, messageId: string)
         return { ...m, isDeleted: true, content: '' };
       }),
     );
+    if (touched) didPatch = true;
     return touched ? { ...old, pages } : old;
   });
-  void qc.invalidateQueries({ queryKey: chatKeys.list() });
+  if (didPatch) void qc.invalidateQueries({ queryKey: chatKeys.list() });
 }
 
 function applyChatRead(qc: QueryClient): void {
@@ -54,13 +56,10 @@ export function useChatSocket(): ChatSocketStatus {
   const qc = useQueryClient();
   const accessToken = useAuthStore((s) => s.accessToken);
   const [status, setStatus] = useState<ChatSocketStatus>('closed');
-  const sockRef = useRef<ChatSocket | null>(null);
   const firstOpenRef = useRef(true);
 
   useEffect(() => {
     if (!accessToken) {
-      sockRef.current?.disconnect();
-      sockRef.current = null;
       setStatus('closed');
       firstOpenRef.current = true;
       return;
@@ -103,12 +102,10 @@ export function useChatSocket(): ChatSocketStatus {
         }
       },
     });
-    sockRef.current = sock;
     sock.connect();
 
     return () => {
       sock.disconnect();
-      sockRef.current = null;
       firstOpenRef.current = true;
     };
   }, [accessToken, qc]);
