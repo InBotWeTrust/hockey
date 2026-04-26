@@ -7,6 +7,7 @@ import {
   fetchMessages,
   markChatAsRead,
   sendMessage,
+  type ChatDTO,
   type ChatMessageDTO,
 } from '../api.js';
 import { chatKeys } from '../../lib/queryKeys.js';
@@ -33,6 +34,16 @@ export function ChatRoomScreen(): JSX.Element {
   const resetUnread = useChatStore((s) => s.resetUnread);
 
   const [replyTo, setReplyTo] = useState<ChatMessageDTO | null>(null);
+
+  // Pull chat metadata from the list cache so the header shows the right title
+  // (DM counterpart name / system channel name) instead of a generic placeholder.
+  const chatMeta = queryClient
+    .getQueryData<ChatDTO[]>(chatKeys.list())
+    ?.find((c) => c.id === chatId);
+  const headerTitle =
+    chatMeta?.type === 'direct'
+      ? (chatMeta.dmCounterpart?.displayName ?? 'Диалог')
+      : (chatMeta?.name ?? (chatMeta?.type === 'system' ? 'Системный канал' : 'Чат'));
 
   // Track active chat in the store so message:new from PR 5 won't
   // increment unread for THIS chat.
@@ -173,7 +184,7 @@ export function ChatRoomScreen(): JSX.Element {
         >
           <ArrowLeft size={16} />
         </button>
-        <div className="header-bar__title">Чат</div>
+        <div className="header-bar__title">{headerTitle}</div>
       </header>
 
       <div

@@ -12,6 +12,7 @@ interface ChatInputProps {
 }
 
 const MAX_LEN = 4000;
+const ROW_HEIGHT = 40;
 
 export function ChatInput({
   disabled = false,
@@ -23,12 +24,20 @@ export function ChatInput({
   const [value, setValue] = useState('');
   const ref = useRef<HTMLTextAreaElement | null>(null);
 
-  // Auto-grow up to a cap.
+  // Auto-grow: at single-row use fixed line-height = 40 (visually centered);
+  // when content overflows, switch to padded multi-line mode up to 120.
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+    // Reset to base to measure content height correctly.
+    el.style.height = `${ROW_HEIGHT}px`;
+    el.style.lineHeight = `${ROW_HEIGHT}px`;
+    el.style.padding = '0 14px';
+    if (el.scrollHeight > ROW_HEIGHT) {
+      el.style.lineHeight = '1.4';
+      el.style.padding = '10px 14px';
+      el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+    }
   }, [value]);
 
   function submit(): void {
@@ -79,14 +88,17 @@ export function ChatInput({
             resize: 'none',
             border: 'none',
             outline: 'none',
-            padding: '8px 10px',
-            borderRadius: 12,
+            padding: '0 14px',
+            borderRadius: 999,
             background: 'rgba(255,255,255,0.92)',
             color: 'var(--ink)',
             fontSize: 14,
-            lineHeight: 1.4,
+            lineHeight: `${ROW_HEIGHT}px`,
+            height: ROW_HEIGHT,
+            minHeight: ROW_HEIGHT,
             maxHeight: 120,
             fontFamily: 'inherit',
+            boxSizing: 'border-box',
           }}
         />
         <button
@@ -95,7 +107,16 @@ export function ChatInput({
           onClick={submit}
           disabled={disabled || value.trim().length === 0}
           aria-label="Отправить"
-          style={{ padding: 12, borderRadius: 999, minWidth: 44, minHeight: 44 }}
+          style={{
+            padding: 0,
+            borderRadius: 999,
+            width: ROW_HEIGHT,
+            height: ROW_HEIGHT,
+            minWidth: ROW_HEIGHT,
+            minHeight: ROW_HEIGHT,
+            flexShrink: 0,
+            letterSpacing: 0,
+          }}
         >
           <Send size={16} />
         </button>
