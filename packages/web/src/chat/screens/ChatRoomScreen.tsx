@@ -167,7 +167,7 @@ export function ChatRoomScreen(): JSX.Element {
     <main
       className="screen"
       style={{
-        paddingBottom: `calc(${NAV_HEIGHT + 16}px + env(safe-area-inset-bottom, 0px) / 2)`,
+        paddingBottom: `calc(${NAV_HEIGHT + 10}px + env(safe-area-inset-bottom, 0px) / 2)`,
       }}
     >
       <header

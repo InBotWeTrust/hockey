@@ -52,7 +52,7 @@ export function ChatInput({
     <div
       className="glass-dark"
       style={{
-        margin: '0 12px 12px',
+        margin: '0 14px 0',
         padding: 10,
         borderRadius: 20,
         display: 'flex',
