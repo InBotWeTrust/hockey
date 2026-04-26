@@ -31,7 +31,12 @@ async function fanOut(
     return;
   }
   const userIds = await getMemberIds(pool, chatId);
-  await Promise.all(userIds.map((uid) => publisher.publish(userChannel(uid), event)));
+  // allSettled: a single Redis publish failure for one member must not reject
+  // the whole fan-out — the DB write already succeeded, message is durable,
+  // and a 500 to the sender on a successful send would be wrong. Per-channel
+  // publish failures are logged by the realtime plugin's subscriber error
+  // listener and Fastify's redis plugin error path.
+  await Promise.allSettled(userIds.map((uid) => publisher.publish(userChannel(uid), event)));
 }
 
 export async function publishMessageNew(
