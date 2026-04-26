@@ -7,7 +7,7 @@ import type { ChatEvent } from '../../src/chat/types.js';
 
 function flush(): Promise<void> {
   // Give Redis pub/sub one tick + a small delay to deliver across two clients.
-  return new Promise((r) => setTimeout(r, 30));
+  return new Promise((r) => setTimeout(r, 150));
 }
 
 describe.skipIf(!hasIntegrationEnv)('realtime plugin', () => {

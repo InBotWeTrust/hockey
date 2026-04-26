@@ -21,6 +21,10 @@ const plugin: FastifyPluginAsync = async (app) => {
   // so we duplicate the existing client for sub-only use. publish stays on app.redis.
   const subClient = app.redis.duplicate();
 
+  subClient.on('error', (err) => {
+    app.log.error({ err }, 'realtime: subscriber client error');
+  });
+
   const handlers = new Map<string, Set<RealtimeHandler>>();
 
   subClient.on('message', (channel, payload) => {
@@ -51,9 +55,11 @@ const plugin: FastifyPluginAsync = async (app) => {
       if (!set) {
         set = new Set();
         handlers.set(channel, set);
+        set.add(handler); // add before yielding to event loop
         await subClient.subscribe(channel);
+      } else {
+        set.add(handler);
       }
-      set.add(handler);
 
       let unsubscribed = false;
       return async () => {
