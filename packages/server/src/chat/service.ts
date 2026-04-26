@@ -1,6 +1,6 @@
 import type { Pool } from 'pg';
-import type { ChatDTO, ChatRow, MessageRow } from './types.js';
-import { toChatDTO, type ChatListAggregate } from './dto.js';
+import type { ChatDTO, ChatRow, MessageRow, ChatMessageDTO, MessageReactionRow } from './types.js';
+import { toChatDTO, type ChatListAggregate, toChatMessageDTO, groupReactions } from './dto.js';
 
 interface DmCounterpartRow {
   chat_id: string;
@@ -124,4 +124,44 @@ export async function getMyChats(pool: Pool, userId: string): Promise<ChatDTO[]>
     };
     return toChatDTO(agg);
   });
+}
+
+export interface GetMessagesOpts {
+  limit: number;
+  before?: string; // ISO timestamp; messages older than this
+}
+
+export async function getMessages(
+  pool: Pool,
+  chatId: string,
+  currentUserId: string,
+  opts: GetMessagesOpts,
+): Promise<ChatMessageDTO[]> {
+  const limit = Math.min(Math.max(opts.limit, 1), 100);
+  const params: unknown[] = [chatId];
+  let beforeClause = '';
+  if (opts.before) {
+    params.push(opts.before);
+    beforeClause = `and m.created_at < $${params.length}`;
+  }
+  params.push(limit);
+  const sql = `
+    select m.*
+    from messages m
+    where m.chat_id = $1
+      ${beforeClause}
+    order by m.created_at desc
+    limit $${params.length}
+  `;
+  const r = await pool.query<MessageRow>(sql, params);
+  if (r.rowCount === 0) return [];
+
+  const messageIds = r.rows.map((row) => row.id);
+  const rxns = await pool.query<MessageReactionRow>(
+    `select * from message_reactions where message_id = any($1::uuid[])`,
+    [messageIds],
+  );
+  const grouped = groupReactions(rxns.rows, currentUserId);
+
+  return r.rows.map((row) => toChatMessageDTO(row, grouped.get(row.id) ?? []));
 }

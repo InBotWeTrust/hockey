@@ -175,4 +175,113 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
       expect(list).toHaveLength(0);
     });
   });
+
+  describe('getMessages', () => {
+    it('returns messages for a chat newest-first, limited to 50', async () => {
+      const { getMessages } = await import('../../src/chat/service.js');
+      const dm = await pool.query(
+        `insert into chats (type, created_by) values ('direct', $1) returning id`,
+        [userA],
+      );
+      const dmId = dm.rows[0].id;
+      await pool.query(
+        `insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`,
+        [dmId, userA, userB],
+      );
+      // Insert 60 messages with strictly increasing created_at.
+      const baseTs = new Date(Date.now() - 60 * 60 * 1000);
+      for (let i = 0; i < 60; i++) {
+        await pool.query(
+          `insert into messages (chat_id, sender_id, content, created_at) values ($1, $2, $3, $4)`,
+          [dmId, userA, `msg${i}`, new Date(baseTs.getTime() + i * 60_000)],
+        );
+      }
+
+      const page1 = await getMessages(pool, dmId, userA, { limit: 50 });
+      expect(page1).toHaveLength(50);
+      expect(page1[0]!.content).toBe('msg59');
+      expect(page1[49]!.content).toBe('msg10');
+    });
+
+    it('paginates with before-cursor', async () => {
+      const { getMessages } = await import('../../src/chat/service.js');
+      const dm = await pool.query(
+        `insert into chats (type, created_by) values ('direct', $1) returning id`,
+        [userA],
+      );
+      const dmId = dm.rows[0].id;
+      await pool.query(
+        `insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`,
+        [dmId, userA, userB],
+      );
+      const baseTs = new Date(Date.now() - 60 * 60 * 1000);
+      for (let i = 0; i < 60; i++) {
+        await pool.query(
+          `insert into messages (chat_id, sender_id, content, created_at) values ($1, $2, $3, $4)`,
+          [dmId, userA, `msg${i}`, new Date(baseTs.getTime() + i * 60_000)],
+        );
+      }
+
+      const page1 = await getMessages(pool, dmId, userA, { limit: 50 });
+      const oldestOnPage1 = page1[49]!;
+      const page2 = await getMessages(pool, dmId, userA, {
+        limit: 50,
+        before: oldestOnPage1.createdAt,
+      });
+      expect(page2).toHaveLength(10);
+      expect(page2[0]!.content).toBe('msg9');
+    });
+
+    it('soft-deleted messages have content="" and isDeleted=true', async () => {
+      const { getMessages } = await import('../../src/chat/service.js');
+      const dm = await pool.query(
+        `insert into chats (type, created_by) values ('direct', $1) returning id`,
+        [userA],
+      );
+      const dmId = dm.rows[0].id;
+      await pool.query(
+        `insert into chat_members (chat_id, user_id) values ($1, $2)`,
+        [dmId, userA],
+      );
+      await pool.query(
+        `insert into messages (chat_id, sender_id, content, is_deleted) values ($1, $2, 'gone', true)`,
+        [dmId, userA],
+      );
+      const list = await getMessages(pool, dmId, userA, { limit: 50 });
+      expect(list[0]!.isDeleted).toBe(true);
+      expect(list[0]!.content).toBe('');
+    });
+
+    it('groups reactions by emoji and flags reactedByMe', async () => {
+      const { getMessages } = await import('../../src/chat/service.js');
+      const dm = await pool.query(
+        `insert into chats (type, created_by) values ('direct', $1) returning id`,
+        [userA],
+      );
+      const dmId = dm.rows[0].id;
+      await pool.query(
+        `insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`,
+        [dmId, userA, userB],
+      );
+      const msg = await pool.query(
+        `insert into messages (chat_id, sender_id, content) values ($1, $2, 'hi') returning id`,
+        [dmId, userA],
+      );
+      const messageId = msg.rows[0].id;
+      await pool.query(
+        `insert into message_reactions (message_id, user_id, emoji) values
+         ($1, $2, '🔥'), ($1, $3, '🔥'), ($1, $2, '👍')`,
+        [messageId, userA, userB],
+      );
+
+      const list = await getMessages(pool, dmId, userA, { limit: 50 });
+      const m = list[0]!;
+      const fire = m.reactions.find((r) => r.emoji === '🔥')!;
+      const thumb = m.reactions.find((r) => r.emoji === '👍')!;
+      expect(fire.count).toBe(2);
+      expect(fire.reactedByMe).toBe(true);
+      expect(thumb.count).toBe(1);
+      expect(thumb.reactedByMe).toBe(true);
+    });
+  });
 });
