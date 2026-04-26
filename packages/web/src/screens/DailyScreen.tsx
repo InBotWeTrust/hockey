@@ -223,23 +223,21 @@ function TotalCell({ label, value }: { label: string; value: string }): JSX.Elem
   );
 }
 
-function PeriodAccordion({ periods }: { periods: PeriodLogEntry[] }): JSX.Element | null {
+const SECTION_LABEL_STYLE: React.CSSProperties = {
+  fontSize: 11,
+  letterSpacing: '0.22em',
+  fontWeight: 700,
+  color: 'var(--muted)',
+  textTransform: 'uppercase',
+  textAlign: 'center',
+};
+
+function PeriodAccordion({ periods, showLabel = true }: { periods: PeriodLogEntry[]; showLabel?: boolean }): JSX.Element | null {
   const [openPeriod, setOpenPeriod] = useState<number | null>(null);
   if (periods.length === 0) return null;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'stretch', width: '100%', maxWidth: 320 }}>
-      <div
-        style={{
-          fontSize: 11,
-          letterSpacing: '0.22em',
-          fontWeight: 700,
-          color: 'var(--muted)',
-          textTransform: 'uppercase',
-          textAlign: 'center',
-        }}
-      >
-        Статистика
-      </div>
+      {showLabel && <div style={SECTION_LABEL_STYLE}>Статистика</div>}
       {periods.map((p) => {
         const isOpen = openPeriod === p.period_number;
         const accuracy = p.shots_taken > 0 ? Math.round((p.goals / p.shots_taken) * 100) : 0;
@@ -330,12 +328,13 @@ function BreakOverlay(): JSX.Element {
     <ModalBackdrop>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, textAlign: 'center', width: '100%' }}>
         <h1 style={{ fontSize: 26, fontWeight: 800, margin: 0 }}>Перерыв</h1>
+        <div style={SECTION_LABEL_STYLE}>До начала {data.current_period + 1}-го периода</div>
         <div style={{ fontFamily: 'var(--font-mono)', fontSize: 56, fontWeight: 700, letterSpacing: '0.06em' }}>
           {formatMs(remaining)}
         </div>
-        <div style={{ color: 'var(--muted)' }}>До начала {data.current_period + 1}-го периода</div>
+        <div style={SECTION_LABEL_STYLE}>Статистика</div>
         <DailyTotalsRow />
-        <PeriodAccordion periods={data.recent_periods} />
+        <PeriodAccordion periods={data.recent_periods} showLabel={false} />
       </div>
     </ModalBackdrop>
   );
