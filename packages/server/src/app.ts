@@ -5,10 +5,12 @@ import { dbPlugin } from './plugins/db.js';
 import { redisPlugin } from './plugins/redis.js';
 import { errorsPlugin } from './plugins/errors.js';
 import { authPlugin } from './plugins/auth.js';
+import { realtimePlugin } from './plugins/realtime.js';
 import { authRoutes } from './routes/auth.js';
 import { meRoutes } from './routes/me.js';
 import { dailyRoutes } from './duel/daily/routes.js';
 import { chatRoutes } from './chat/routes.js';
+import { chatWs } from './chat/ws.js';
 
 export interface BuildAppOptions {
   config?: AppConfig;
@@ -29,6 +31,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await app.register(errorsPlugin);
   await app.register(dbPlugin, { connectionString: config.DATABASE_URL });
   await app.register(redisPlugin, { url: config.REDIS_URL });
+  await app.register(realtimePlugin);
   await app.register(authPlugin, { accessSecret: config.JWT_SECRET });
   await app.register(healthRoutes);
   await app.register(authRoutes, {
@@ -40,6 +43,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await app.register(meRoutes);
   await app.register(dailyRoutes, { dailySeedSecret: config.DAILY_SEED_SECRET });
   await app.register(chatRoutes);
+  await app.register(chatWs, { accessSecret: config.JWT_SECRET });
 
   return app;
 }
