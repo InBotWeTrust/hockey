@@ -11,6 +11,21 @@ export interface EventPublisher {
 const userChannel = (userId: string) => `chat:user:${userId}`;
 const systemChannel = (chatId: string) => `chat:system:${chatId}`;
 
+// Realtime delivery is best-effort: the DB write is the durable record, so a
+// Redis publish failure must not bubble out and turn into a 500 on a successful
+// chat operation. Per-channel failures are swallowed here.
+async function safePublish(
+  publisher: EventPublisher,
+  channel: string,
+  event: ChatEvent,
+): Promise<void> {
+  try {
+    await publisher.publish(channel, event);
+  } catch {
+    // intentionally swallowed
+  }
+}
+
 async function getMemberIds(pool: Pool, chatId: string): Promise<string[]> {
   const r = await pool.query<{ user_id: string }>(
     `select user_id from chat_members where chat_id = $1`,
@@ -27,16 +42,17 @@ async function fanOut(
   event: ChatEvent,
 ): Promise<void> {
   if (chatType === 'system') {
-    await publisher.publish(systemChannel(chatId), event);
+    await safePublish(publisher, systemChannel(chatId), event);
     return;
   }
   const userIds = await getMemberIds(pool, chatId);
-  // allSettled: a single Redis publish failure for one member must not reject
-  // the whole fan-out — the DB write already succeeded, message is durable,
-  // and a 500 to the sender on a successful send would be wrong. Per-channel
-  // publish failures are logged by the realtime plugin's subscriber error
-  // listener and Fastify's redis plugin error path.
-  await Promise.allSettled(userIds.map((uid) => publisher.publish(userChannel(uid), event)));
+  // safePublish swallows per-channel failures: a single Redis publish failure
+  // for one member must not reject the whole fan-out — the DB write already
+  // succeeded, message is durable, and a 500 to the sender on a successful
+  // send would be wrong. Per-channel publish failures are logged by the
+  // realtime plugin's subscriber error listener and Fastify's redis plugin
+  // error path.
+  await Promise.all(userIds.map((uid) => safePublish(publisher, userChannel(uid), event)));
 }
 
 export async function publishMessageNew(
@@ -70,7 +86,7 @@ export async function publishChatRead(
   userId: string,
   lastReadAt: string,
 ): Promise<void> {
-  await publisher.publish(userChannel(userId), {
+  await safePublish(publisher, userChannel(userId), {
     type: 'chat:read',
     chatId,
     userId,
