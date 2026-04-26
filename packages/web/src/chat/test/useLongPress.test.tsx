@@ -23,6 +23,9 @@ const pointerMove = (target: HTMLElement, x: number, y: number): void => {
 const pointerCancel = (target: HTMLElement): void => {
   fireEvent.pointerCancel(target, { pointerId: 1 });
 };
+const pointerLeave = (target: HTMLElement): void => {
+  fireEvent.pointerLeave(target, { pointerId: 1 });
+};
 
 describe('useLongPress', () => {
   beforeEach(() => {
@@ -47,12 +50,23 @@ describe('useLongPress', () => {
     const cb = vi.fn();
     render(<Probe onLongPress={cb} />);
     const target = screen.getByTestId('target');
+    const mockRect = {
+      top: 40,
+      left: 10,
+      bottom: 90,
+      right: 110,
+      width: 100,
+      height: 50,
+      x: 10,
+      y: 40,
+      toJSON: () => ({}),
+    } as DOMRect;
+    const rectSpy = vi.spyOn(target, 'getBoundingClientRect').mockReturnValue(mockRect);
     pointerDown(target);
     vi.advanceTimersByTime(500);
     expect(cb).toHaveBeenCalledTimes(1);
-    const arg = cb.mock.calls[0]?.[0];
-    expect(arg).toBeDefined();
-    expect(typeof (arg as DOMRect).top).toBe('number');
+    expect(cb).toHaveBeenCalledWith(mockRect);
+    expect(rectSpy).toHaveBeenCalled();
   });
 
   it('cancels when the pointer moves more than 5 px', () => {
@@ -92,6 +106,16 @@ describe('useLongPress', () => {
     const target = screen.getByTestId('target');
     pointerDown(target);
     pointerCancel(target);
+    vi.advanceTimersByTime(600);
+    expect(cb).not.toHaveBeenCalled();
+  });
+
+  it('cancels on pointer leave (e.g. finger slides off the bubble)', () => {
+    const cb = vi.fn();
+    render(<Probe onLongPress={cb} />);
+    const target = screen.getByTestId('target');
+    pointerDown(target);
+    pointerLeave(target);
     vi.advanceTimersByTime(600);
     expect(cb).not.toHaveBeenCalled();
   });

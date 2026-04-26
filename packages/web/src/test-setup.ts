@@ -48,7 +48,9 @@ if (typeof globalThis.PointerEvent === 'undefined') {
       this.isPrimary = init.isPrimary ?? false;
     }
   }
-  // Cast through unknown — the shim covers the parts touched by tests.
+  // Cast through unknown is structurally unavoidable: jsdom omits the built-in
+  // PointerEvent class entirely, so the shim can only structurally approximate
+  // (not extend) the real DOM type — both `as unknown` casts are required.
   (globalThis as unknown as { PointerEvent: typeof PointerEvent }).PointerEvent =
     PointerEventShim as unknown as typeof PointerEvent;
   if (typeof window !== 'undefined') {
