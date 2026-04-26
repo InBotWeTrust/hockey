@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { buildApp } from '../../src/app.js';
-import { loadConfig } from '../../src/config.js';
+import type { AppConfig } from '../../src/config.js';
 import { createJwt } from '../../src/auth/jwt.js';
 import {
   hasIntegrationEnv,
@@ -36,10 +36,20 @@ describe.skipIf(!hasIntegrationEnv)('chat routes', () => {
     await resetRedis(setupRedis);
     await setupRedis.quit();
 
-    // Build a real app pointed at the test DB+Redis. Other env-required
-    // values (secrets, telegram token) come from .env loaded by setup.ts.
-    const baseConfig = loadConfig();
-    const config = { ...baseConfig, DATABASE_URL: databaseUrl, REDIS_URL: redisUrl };
+    // Build a real app with a fully inline test config so CI doesn't need
+    // production-style env vars (only TEST_DATABASE_URL/TEST_REDIS_URL are set).
+    const config: AppConfig = {
+      NODE_ENV: 'test',
+      HOST: '0.0.0.0',
+      PORT: 3000,
+      LOG_LEVEL: 'warn',
+      DATABASE_URL: databaseUrl,
+      REDIS_URL: redisUrl,
+      JWT_SECRET: 'test-jwt-secret-at-least-16-chars',
+      REFRESH_SECRET: 'test-refresh-secret-at-least-16-chars',
+      TELEGRAM_BOT_TOKEN: 'test-telegram-bot-token',
+      DAILY_SEED_SECRET: 'test-daily-seed-secret-at-least-16',
+    };
     app = await buildApp({ config });
     await app.ready();
 
