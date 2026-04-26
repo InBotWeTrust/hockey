@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { ChatRoomScreen } from '../screens/ChatRoomScreen.js';
-import { useAuthStore } from '../../auth/authStore.js';
+import { useAuthStore, type AuthUser } from '../../auth/authStore.js';
 import * as api from '../api.js';
 import type { ChatMessageDTO } from '../api.js';
 
@@ -51,15 +51,8 @@ const msgFromSelf: ChatMessageDTO = {
 
 describe('ChatRoomScreen', () => {
   beforeEach(() => {
-    useAuthStore.setState({
-      accessToken: 'tok',
-      refreshToken: 'rtok',
-      user: {
-        id: SELF_ID,
-        displayName: 'Me',
-        grip: 'right',
-      } as unknown as Parameters<typeof useAuthStore.setState>[0]['user'],
-    });
+    const user: AuthUser = { id: SELF_ID, displayName: 'Me', grip: 'right' };
+    useAuthStore.setState({ accessToken: 'tok', refreshToken: 'rtok', user });
     vi.spyOn(api, 'fetchMessages').mockResolvedValue([msgFromSelf, msgFromOther]); // server DESC
     vi.spyOn(api, 'markChatAsRead').mockResolvedValue(undefined);
   });
