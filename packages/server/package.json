@@ -10,7 +10,8 @@
     "test:watch": "vitest",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
-    "db:migrate": "tsx src/db/migrate-cli.ts"
+    "db:migrate": "tsx src/db/migrate-cli.ts",
+    "chat:seed": "tsx src/chat/seed-cli.ts"
   },
   "dependencies": {
     "@hockey/game-core": "workspace:*",
