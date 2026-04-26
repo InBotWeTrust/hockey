@@ -89,6 +89,10 @@ pnpm workspaces, `packages/*`, TS project references (`composite: true`):
 
 **Сюжет** — отдельная вкладка (5 вратарей × ~3 задания, 3 попытки/день, не пересекается с дневной квотой). Серверные роуты — отдельный подпроект.
 
+### Чат (в работе — DM, системные каналы, realtime)
+
+Внутренний мессенджер: DM 1-на-1, системные каналы (создаются через `pnpm chat:seed "<name>"` + `SYSTEM_USER_ID` env — UUID существующего юзера-админа), задел под чаты команд/турниров через `chats.entity_type/entity_id`. Таблицы: `chats`, `chat_members`, `messages`, `message_reactions` (миграция `004_chat.sql`). Reply через `reply_to_id ON DELETE SET NULL`, soft-delete (`is_deleted=true, content=''`), реакции UNIQUE `(message_id, user_id, emoji)`, полнотекст по `to_tsvector('russian', ...)` GENERATED + GIN. RLS нет — все проверки в `chat/guards.ts`. Realtime (WebSocket + Redis pub/sub) поднимается в PR 3. Спек: `docs/superpowers/specs/2026-04-26-internal-chat-design.md`.
+
 ### Auth (Telegram)
 
 `POST /auth/telegram` принимает payload виджета, валидирует HMAC через `TELEGRAM_BOT_TOKEN`, возвращает `{accessToken, refreshToken, user}`. Access JWT (15 мин) подписан `JWT_SECRET`. Refresh JWT (30 дней) подписан `REFRESH_SECRET`, ротация — `POST /auth/refresh` (атомарный `GETDEL` в Redis по jti: старый токен становится невалидным). `POST /auth/logout` отзывает refresh. Access JWT blocklist пока нет — access живёт до exp.
