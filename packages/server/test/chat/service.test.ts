@@ -483,4 +483,27 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
       expect(found).toEqual([]);
     });
   });
+
+  describe('getUnreadCounts', () => {
+    it('returns map of chatId -> count', async () => {
+      const { getUnreadCounts } = await import('../../src/chat/service.js');
+      const dm = await pool.query(
+        `insert into chats (type, created_by) values ('direct', $1) returning id`,
+        [userA],
+      );
+      await pool.query(
+        `insert into chat_members (chat_id, user_id, last_read_at) values
+         ($1, $2, now() - interval '1 hour'), ($1, $3, now() - interval '1 hour')`,
+        [dm.rows[0].id, userA, userB],
+      );
+      await pool.query(
+        `insert into messages (chat_id, sender_id, content) values
+         ($1, $2, 'a'), ($1, $2, 'b')`,
+        [dm.rows[0].id, userB],
+      );
+
+      const map = await getUnreadCounts(pool, userA);
+      expect(map[dm.rows[0].id]).toBe(2);
+    });
+  });
 });

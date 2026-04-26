@@ -337,3 +337,24 @@ export async function searchMessages(
     createdAt: row.created_at.toISOString(),
   }));
 }
+
+export async function getUnreadCounts(
+  pool: Pool,
+  userId: string,
+): Promise<Record<string, number>> {
+  const sql = `
+    select m.chat_id, count(m.id)::bigint as cnt
+    from messages m
+    join chat_members cm on cm.chat_id = m.chat_id and cm.user_id = $1
+    where m.created_at > cm.last_read_at
+      and m.sender_id != $1
+      and m.is_deleted = false
+    group by m.chat_id
+  `;
+  const r = await pool.query<{ chat_id: string; cnt: string }>(sql, [userId]);
+  const out: Record<string, number> = {};
+  for (const row of r.rows) {
+    out[row.chat_id] = Number(row.cnt);
+  }
+  return out;
+}
