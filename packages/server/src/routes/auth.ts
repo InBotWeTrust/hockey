@@ -49,10 +49,11 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (app, opt
     if (!parsed.success) {
       throw new AppError('bad_request', 'invalid telegram payload', 400);
     }
+    const { timezone: rawTimezone, ...tgPayload } = parsed.data;
     let tgUser;
     try {
       tgUser = verifyTelegramLoginPayload(
-        parsed.data as Record<string, unknown>,
+        tgPayload as Record<string, unknown>,
         opts.telegramBotToken,
       );
     } catch (err) {
@@ -64,7 +65,7 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (app, opt
       [tgUser.firstName, tgUser.lastName].filter(Boolean).join(' ') ||
       tgUser.username ||
       'player';
-    const tz = safeIanaTimezone(parsed.data.timezone);
+    const tz = safeIanaTimezone(rawTimezone);
     const user = await findOrCreateTelegramUser(app.pg, {
       providerUid: String(tgUser.id),
       displayName,
