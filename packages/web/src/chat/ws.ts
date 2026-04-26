@@ -14,6 +14,24 @@ const CLOSE_UNAUTHORIZED = 4401;
 const MIN_BACKOFF_MS = 1_000;
 const MAX_BACKOFF_MS = 30_000;
 
+const KNOWN_EVENT_TYPES: ReadonlySet<string> = new Set([
+  'message:new',
+  'message:deleted',
+  'reaction:added',
+  'reaction:removed',
+  'chat:read',
+]);
+
+function isChatEventFrame(value: unknown): value is ChatEventFrame {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = (value as { v?: unknown }).v;
+  const event = (value as { event?: unknown }).event;
+  if (v !== 1) return false;
+  if (typeof event !== 'object' || event === null) return false;
+  const type = (event as { type?: unknown }).type;
+  return typeof type === 'string' && KNOWN_EVENT_TYPES.has(type);
+}
+
 function buildUrl(token: string): string {
   if (typeof window === 'undefined') return `/api/chat/ws?token=${encodeURIComponent(token)}`;
   const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
@@ -34,6 +52,10 @@ export class ChatSocket {
 
   connect(): void {
     if (this.stopped) this.stopped = false;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     this.openWith(this.opts.getToken());
   }
 
@@ -76,14 +98,14 @@ export class ChatSocket {
     };
 
     ws.onmessage = (ev: MessageEvent) => {
-      let frame: ChatEventFrame;
+      let parsed: unknown;
       try {
-        frame = JSON.parse(typeof ev.data === 'string' ? ev.data : '') as ChatEventFrame;
+        parsed = JSON.parse(typeof ev.data === 'string' ? ev.data : '');
       } catch {
         return;
       }
-      if (!frame || frame.v !== 1 || !frame.event) return;
-      this.opts.onEvent(frame.event);
+      if (!isChatEventFrame(parsed)) return;
+      this.opts.onEvent(parsed.event);
     };
 
     ws.onclose = (ev: CloseEvent) => {
