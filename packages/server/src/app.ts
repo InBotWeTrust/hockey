@@ -8,6 +8,7 @@ import { authPlugin } from './plugins/auth.js';
 import { authRoutes } from './routes/auth.js';
 import { meRoutes } from './routes/me.js';
 import { dailyRoutes } from './duel/daily/routes.js';
+import { chatRoutes } from './chat/routes.js';
 
 export interface BuildAppOptions {
   config?: AppConfig;
@@ -38,6 +39,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   });
   await app.register(meRoutes);
   await app.register(dailyRoutes, { dailySeedSecret: config.DAILY_SEED_SECRET });
+  await app.register(chatRoutes);
 
   return app;
 }
