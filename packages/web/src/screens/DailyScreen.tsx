@@ -39,7 +39,6 @@ import { useAuthStore } from '../auth/authStore.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { ScoreBoard } from '../components/ScoreBoard.js';
 import { ResultModal } from '../components/ResultModal.js';
-import { PeriodSummaryModal } from '../components/PeriodSummaryModal.js';
 import { StartPeriodModal } from '../components/StartPeriodModal.js';
 import type { DailyStateResponse, PeriodLogEntry } from '../api/duel.js';
 
@@ -83,27 +82,15 @@ export function DailyScreen(): JSX.Element {
   const refresh = useDailyStore((s) => s.refresh);
   const applyDeferredState = useDailyStore((s) => s.applyDeferredState);
   const userId = useAuthStore((s) => s.user?.id ?? '');
-  const [manualSummary, setManualSummary] = useState<PeriodLogEntry | null>(null);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
-  // No auto-popup — period summaries are opened on demand via buttons on the
-  // BreakOverlay / ClosedOverlay. Watermark machinery kept for future use.
+  // Period stats render inline on the BreakOverlay / ClosedOverlay via accordion.
   void deferredState;
   void applyDeferredState;
   void userId;
-
-  const visibleSummary = manualSummary;
-
-  const handleSummaryClose = useCallback(() => {
-    setManualSummary(null);
-  }, []);
-
-  const handleOpenSummary = useCallback((entry: PeriodLogEntry) => {
-    setManualSummary(entry);
-  }, []);
 
   if (!data) {
     return (
@@ -127,33 +114,18 @@ export function DailyScreen(): JSX.Element {
   }
 
   const showStartModal =
-    visibleSummary === null &&
-    data.state === 'idle' &&
-    data.current_period < data.total_periods;
+    data.state === 'idle' && data.current_period < data.total_periods;
 
-  const isPlaying = data.state === 'period_active' && visibleSummary === null;
+  const isPlaying = data.state === 'period_active';
 
   // PlayView (rink) is the always-on background so any modal/overlay shows
   // the rink with goal centred and players hidden — never an empty gradient.
   return (
     <>
       <PlayView suppressedByModal={!isPlaying} />
-      {visibleSummary && (
-        <PeriodSummaryModal
-          periodNumber={visibleSummary.period_number}
-          goals={visibleSummary.goals}
-          shots={visibleSummary.shots_taken}
-          closedReason={visibleSummary.closed_reason}
-          onClose={handleSummaryClose}
-        />
-      )}
-      {!visibleSummary && data.state === 'break_active' && (
-        <BreakOverlay onOpenSummary={handleOpenSummary} />
-      )}
-      {!visibleSummary && data.state === 'closed' && (
-        <ClosedOverlay onOpenSummary={handleOpenSummary} />
-      )}
-      {!visibleSummary && showStartModal && <StartPeriodModalConnector />}
+      {data.state === 'break_active' && <BreakOverlay />}
+      {data.state === 'closed' && <ClosedOverlay />}
+      {showStartModal && <StartPeriodModalConnector />}
     </>
   );
 }
@@ -194,10 +166,6 @@ function StartPeriodModalConnector(): JSX.Element {
       onStart={() => void startPeriod()}
     />
   );
-}
-
-interface OverlayProps {
-  onOpenSummary: (p: PeriodLogEntry) => void;
 }
 
 function DailyTotalsRow(): JSX.Element {
@@ -254,32 +222,94 @@ function TotalCell({ label, value }: { label: string; value: string }): JSX.Elem
   );
 }
 
-function PeriodSummaryButtons({
-  periods,
-  onOpenSummary,
-}: {
-  periods: PeriodLogEntry[];
-  onOpenSummary: (p: PeriodLogEntry) => void;
-}): JSX.Element | null {
+function PeriodAccordion({ periods }: { periods: PeriodLogEntry[] }): JSX.Element | null {
+  const [openPeriod, setOpenPeriod] = useState<number | null>(null);
   if (periods.length === 0) return null;
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center', width: '100%', maxWidth: 320 }}>
-      {periods.map((p) => (
-        <button
-          key={p.period_number}
-          type="button"
-          className="btn btn--ghost"
-          onClick={() => onOpenSummary(p)}
-          style={{ paddingBlock: 12, width: '100%' }}
-        >
-          Статистика {p.period_number}-го периода
-        </button>
-      ))}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'stretch', width: '100%', maxWidth: 320 }}>
+      <div
+        style={{
+          fontSize: 11,
+          letterSpacing: '0.22em',
+          fontWeight: 700,
+          color: 'var(--muted)',
+          textTransform: 'uppercase',
+          textAlign: 'center',
+        }}
+      >
+        Статистика
+      </div>
+      {periods.map((p) => {
+        const isOpen = openPeriod === p.period_number;
+        const accuracy = p.shots_taken > 0 ? Math.round((p.goals / p.shots_taken) * 100) : 0;
+        return (
+          <div key={p.period_number} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              aria-expanded={isOpen}
+              onClick={() => setOpenPeriod(isOpen ? null : p.period_number)}
+              style={{ paddingBlock: 12, width: '100%' }}
+            >
+              {p.period_number}-й период
+            </button>
+            {isOpen && (
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, 1fr)',
+                  gap: 8,
+                }}
+              >
+                <PeriodStatCell label="ГОЛЫ" value={String(p.goals)} />
+                <PeriodStatCell label="БРОСКИ" value={String(p.shots_taken)} />
+                <PeriodStatCell label="ТОЧНОСТЬ" value={`${accuracy}%`} />
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-function BreakOverlay({ onOpenSummary }: OverlayProps): JSX.Element {
+function PeriodStatCell({ label, value }: { label: string; value: string }): JSX.Element {
+  return (
+    <div
+      style={{
+        padding: '10px 6px',
+        borderRadius: 14,
+        background: 'rgba(255, 255, 255, 0.55)',
+        border: '1px solid rgba(15, 23, 42, 0.06)',
+        textAlign: 'center',
+      }}
+    >
+      <div
+        style={{
+          fontSize: 9,
+          letterSpacing: '0.18em',
+          fontWeight: 700,
+          color: 'var(--muted)',
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          marginTop: 6,
+          fontSize: 22,
+          fontWeight: 800,
+          color: 'var(--ink)',
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function BreakOverlay(): JSX.Element {
   const data = useDailyStore((s) => s.data)!;
   const refresh = useDailyStore((s) => s.refresh);
   const breakEndsAt = data.break_ends_at ? new Date(data.break_ends_at).getTime() : 0;
@@ -304,13 +334,13 @@ function BreakOverlay({ onOpenSummary }: OverlayProps): JSX.Element {
         </div>
         <div style={{ color: 'var(--muted)' }}>До начала {data.current_period + 1}-го периода</div>
         <DailyTotalsRow />
-        <PeriodSummaryButtons periods={data.recent_periods} onOpenSummary={onOpenSummary} />
+        <PeriodAccordion periods={data.recent_periods} />
       </div>
     </ModalBackdrop>
   );
 }
 
-function ClosedOverlay({ onOpenSummary }: OverlayProps): JSX.Element {
+function ClosedOverlay(): JSX.Element {
   const data = useDailyStore((s) => s.data)!;
   const refresh = useDailyStore((s) => s.refresh);
   const nextDayAt = new Date(data.next_day_starts_at).getTime();
@@ -333,7 +363,7 @@ function ClosedOverlay({ onOpenSummary }: OverlayProps): JSX.Element {
           {formatHms(remaining)}
         </div>
         <DailyTotalsRow />
-        <PeriodSummaryButtons periods={data.recent_periods} onOpenSummary={onOpenSummary} />
+        <PeriodAccordion periods={data.recent_periods} />
       </div>
     </ModalBackdrop>
   );
