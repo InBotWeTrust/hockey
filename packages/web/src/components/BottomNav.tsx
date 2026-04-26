@@ -25,7 +25,6 @@ export function BottomNav(): JSX.Element | null {
     queryKey: chatKeys.unread(),
     queryFn: fetchUnreadCounts,
     enabled: Boolean(user),
-    staleTime: 30_000,
   });
 
   useEffect(() => {
