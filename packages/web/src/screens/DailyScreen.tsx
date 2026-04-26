@@ -637,25 +637,22 @@ function PlayView({ suppressedByModal }: PlayViewProps): JSX.Element {
 
     let subText: string | null = null;
     if (result.type === 'save') {
-      const tGoalieCross = tapTime + (PUCK_START.y - GOALIE_Y) / overrides.puckSpeed;
-      const gs = simulateGoalie(activeCfg, seed, shotIndex, tGoalieCross, offsets.goalie);
+      const gs = simulateGoalie(activeCfg, seed, shotIndex, tapTime, offsets.goalie);
       const rel = sx - gs.position.x;
       const sixth = gs.width / 6;
       subText = rel < -sixth ? 'Уверенная игра блином' : rel > sixth ? 'Точно в ловушку!' : 'Вратарь на месте!';
     } else if (result.type === 'goal') {
-      const tGoalCross = tapTime + (PUCK_START.y - GOAL_OPENING.y) / overrides.puckSpeed;
-      const goalOffsetAtGoal = simulateGoal(activeCfg, tGoalCross, offsets.goal).offsetX;
-      const oMin = GOAL_OPENING.xMin + goalOffsetAtGoal;
-      const oMax = GOAL_OPENING.xMax + goalOffsetAtGoal;
+      const goalOffsetAtTap = simulateGoal(activeCfg, tapTime, offsets.goal).offsetX;
+      const oMin = GOAL_OPENING.xMin + goalOffsetAtTap;
+      const oMax = GOAL_OPENING.xMax + goalOffsetAtTap;
       const rel = (sx - oMin) / (oMax - oMin);
       if (rel < 1 / 6 || rel > 5 / 6) subText = 'Точно в девятку!';
       else if (rel < 2 / 6 || rel > 4 / 6) subText = Math.random() < 0.5 ? 'Мощный щелчок!' : 'Отличный кистевой!';
       else subText = 'Отличный бросок!';
     } else if (result.type === 'miss') {
-      const tGoalCross = tapTime + (PUCK_START.y - GOAL_OPENING.y) / overrides.puckSpeed;
-      const goalOffsetAtGoal = simulateGoal(activeCfg, tGoalCross, offsets.goal).offsetX;
-      const oMin = GOAL_OPENING.xMin + goalOffsetAtGoal;
-      const oMax = GOAL_OPENING.xMax + goalOffsetAtGoal;
+      const goalOffsetAtTap = simulateGoal(activeCfg, tapTime, offsets.goal).offsetX;
+      const oMin = GOAL_OPENING.xMin + goalOffsetAtTap;
+      const oMax = GOAL_OPENING.xMax + goalOffsetAtTap;
       const dist = Math.max(oMin - sx, sx - oMax, 0);
       subText = dist <= 3 ? 'Штанга спасает!' : dist < 18 ? 'Рядом со штангой!' : dist < 48 ? 'Но было опасно!' : 'Очень далеко...';
     }
