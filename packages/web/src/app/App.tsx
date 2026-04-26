@@ -8,8 +8,10 @@ import { ProfileScreen } from '../screens/ProfileScreen.js';
 import { PrivateRoute } from '../auth/PrivateRoute.js';
 import { BottomNav } from '../components/BottomNav.js';
 import { UpdatePrompt } from '../components/UpdatePrompt.js';
+import { OfflineBanner } from '../chat/components/OfflineBanner.js';
 import { ChatListScreen } from '../chat/screens/ChatListScreen.js';
 import { ChatRoomScreen } from '../chat/screens/ChatRoomScreen.js';
+import { useChatSocket } from '../chat/useChatSocket.js';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -18,10 +20,16 @@ const queryClient = new QueryClient({
   },
 });
 
+function ChatRealtime(): JSX.Element {
+  const status = useChatSocket();
+  return <OfflineBanner status={status} />;
+}
+
 export function App(): JSX.Element {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
+        <ChatRealtime />
         <div
           className="app-shell"
           style={{
