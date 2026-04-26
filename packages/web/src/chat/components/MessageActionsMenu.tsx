@@ -12,6 +12,7 @@ interface Props {
 }
 
 const PANEL_GAP = 8;
+const SAFE_MARGIN = 12;
 const PANEL_WIDTH = 168;
 const PANEL_HEIGHT_OWN = 96;
 const PANEL_HEIGHT_OTHER = 48;
@@ -19,10 +20,18 @@ const PANEL_HEIGHT_OTHER = 48;
 function panelPosition(anchor: DOMRect, height: number): { top: number; left: number } {
   const above = anchor.top - height - PANEL_GAP;
   const below = anchor.bottom + PANEL_GAP;
-  const top = above >= 8 ? above : below;
+  const maxTop = window.innerHeight - height - SAFE_MARGIN;
+  let top: number;
+  if (above >= SAFE_MARGIN) {
+    top = above;
+  } else if (below <= maxTop) {
+    top = below;
+  } else {
+    top = Math.max(SAFE_MARGIN, maxTop);
+  }
   const wantedLeft = anchor.left + anchor.width / 2 - PANEL_WIDTH / 2;
-  const maxLeft = window.innerWidth - PANEL_WIDTH - 8;
-  const left = Math.min(Math.max(8, wantedLeft), Math.max(8, maxLeft));
+  const maxLeft = window.innerWidth - PANEL_WIDTH - SAFE_MARGIN;
+  const left = Math.min(Math.max(SAFE_MARGIN, wantedLeft), Math.max(SAFE_MARGIN, maxLeft));
   return { top, left };
 }
 
