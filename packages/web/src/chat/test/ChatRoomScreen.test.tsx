@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { ChatRoomScreen } from '../screens/ChatRoomScreen.js';
@@ -49,6 +49,21 @@ const msgFromSelf: ChatMessageDTO = {
   reactions: [],
 };
 
+function longPressBubble(messageId: string): void {
+  const bubble = screen.getAllByTestId('chat-bubble').find(
+    (el) => el.getAttribute('data-message-id') === messageId,
+  );
+  if (!bubble) throw new Error(`bubble ${messageId} not in DOM`);
+  // The long-press handlers are on the inner wrapper (first child of the bubble div).
+  const wrapper = bubble.querySelector<HTMLElement>('div');
+  if (!wrapper) throw new Error('bubble inner wrapper missing');
+  fireEvent.pointerDown(wrapper, { pointerId: 1, clientX: 0, clientY: 0, isPrimary: true });
+  act(() => {
+    vi.advanceTimersByTime(500);
+  });
+  fireEvent.pointerUp(wrapper, { pointerId: 1, clientX: 0, clientY: 0 });
+}
+
 describe('ChatRoomScreen', () => {
   beforeEach(() => {
     const user: AuthUser = { id: SELF_ID, displayName: 'Me', grip: 'right' };
@@ -59,13 +74,13 @@ describe('ChatRoomScreen', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   it('renders messages from REST in chronological order', async () => {
     renderRoom('c1');
     await waitFor(() => expect(screen.getAllByTestId('chat-bubble').length).toBe(2));
     const bubbles = screen.getAllByTestId('chat-bubble');
-    // Oldest first (ASC): other → self.
     expect(bubbles[0]?.getAttribute('data-message-id')).toBe('m1');
     expect(bubbles[1]?.getAttribute('data-message-id')).toBe('m2');
     expect(screen.getByText('привет')).toBeInTheDocument();
@@ -75,6 +90,31 @@ describe('ChatRoomScreen', () => {
   it('marks the chat as read on mount once messages have loaded', async () => {
     renderRoom('c1');
     await waitFor(() => expect(api.markChatAsRead).toHaveBeenCalledWith('c1'));
+  });
+
+  it('search toggle: header search button reveals the input below; typing filters messages', async () => {
+    renderRoom('c1');
+    await waitFor(() => expect(screen.getAllByTestId('chat-bubble').length).toBe(2));
+
+    // Two elements share aria-label "Поиск по чату" — the header toggle <button>
+    // and the search <input>. Pick the input by tagName.
+    const findInput = (): HTMLInputElement => {
+      const els = screen.getAllByLabelText('Поиск по чату');
+      const input = els.find((el): el is HTMLInputElement => el.tagName === 'INPUT');
+      if (!input) throw new Error('search input not in DOM');
+      return input;
+    };
+
+    // Closed by default — input is in DOM but not in the tab order.
+    expect(findInput().tabIndex).toBe(-1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Поиск по чату' }));
+    const input = findInput();
+    expect(input.tabIndex).toBe(0);
+
+    fireEvent.change(input, { target: { value: 'привет' } });
+    await waitFor(() => expect(screen.queryByText('хай')).toBeNull());
+    expect(screen.getByText('привет')).toBeInTheDocument();
   });
 
   it('sends a message and prepends it to the cache', async () => {
@@ -101,7 +141,8 @@ describe('ChatRoomScreen', () => {
     await waitFor(() => expect(screen.getByText('тест')).toBeInTheDocument());
   });
 
-  it('reply flow: clicking Reply on a foreign bubble shows a composer reply chip; sending includes replyToId', async () => {
+  it('long-press on a foreign bubble surfaces a Reply action; using it sets replyToId on the next send', async () => {
+    vi.useFakeTimers();
     const sendSpy = vi.spyOn(api, 'sendMessage').mockResolvedValue({
       ...msgFromSelf,
       id: 'm4',
@@ -110,14 +151,17 @@ describe('ChatRoomScreen', () => {
     });
 
     renderRoom('c1');
-    await waitFor(() => expect(screen.getAllByTestId('chat-bubble').length).toBe(2));
+    // Run pending timers from React's effects (mark-as-read + initial render),
+    // then move on to the synchronous test interactions.
+    await vi.runAllTimersAsync();
 
-    // Click "Ответить" on the foreign bubble.
-    const replyButtons = screen.getAllByLabelText('Ответить');
-    expect(replyButtons.length).toBeGreaterThan(0);
-    fireEvent.click(replyButtons[0]!); // first one belongs to msgFromOther
+    longPressBubble('m1');
+    expect(screen.getByRole('menuitem', { name: 'Ответить' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Ответить' }));
 
-    // Composer must show the previewed quote.
+    // Switch back to real timers so waitFor polling actually advances.
+    vi.useRealTimers();
+
     await waitFor(() => expect(screen.getByLabelText('Снять ответ')).toBeInTheDocument());
 
     const textarea = screen.getByLabelText('Текст сообщения') as HTMLTextAreaElement;
@@ -127,18 +171,21 @@ describe('ChatRoomScreen', () => {
     await waitFor(() =>
       expect(sendSpy).toHaveBeenCalledWith('c1', { content: 'отвечаю', replyToId: 'm1' }),
     );
-
-    // Composer chip should clear after send.
     await waitFor(() => expect(screen.queryByLabelText('Снять ответ')).toBeNull());
   });
 
-  it('soft-delete: clicking Trash on own bubble optimistically marks it deleted', async () => {
+  it('long-press on own bubble surfaces a Delete action; using it optimistically marks the message deleted', async () => {
+    vi.useFakeTimers();
     const delSpy = vi.spyOn(api, 'deleteMessage').mockResolvedValue(undefined);
 
     renderRoom('c1');
-    await waitFor(() => expect(screen.getAllByTestId('chat-bubble').length).toBe(2));
+    await vi.runAllTimersAsync();
 
-    fireEvent.click(screen.getByLabelText('Удалить сообщение'));
+    longPressBubble('m2');
+    expect(screen.getByRole('menuitem', { name: 'Удалить' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Удалить' }));
+
+    vi.useRealTimers();
 
     await waitFor(() => expect(delSpy).toHaveBeenCalledWith('m2'));
     await waitFor(() => expect(screen.getByText('Сообщение удалено')).toBeInTheDocument());
