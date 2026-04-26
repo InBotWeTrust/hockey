@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Search } from 'lucide-react';
 import {
   deleteMessage,
   fetchMessages,
@@ -15,12 +14,20 @@ import { useChatStore } from '../chatStore.js';
 import { useAuthStore } from '../../auth/authStore.js';
 import { ChatBubble } from '../components/ChatBubble.js';
 import { ChatInput } from '../components/ChatInput.js';
+import { ChatRoomHeader } from '../components/ChatRoomHeader.js';
+import { ChatRoomSearchBar } from '../components/ChatRoomSearchBar.js';
+import { MessageActionsMenu } from '../components/MessageActionsMenu.js';
 
 const PAGE_SIZE = 50;
 
 interface InfinitePages {
   pages: ChatMessageDTO[][];
   pageParams: unknown[];
+}
+
+interface ActionTarget {
+  message: ChatMessageDTO;
+  anchorRect: DOMRect;
 }
 
 export function ChatRoomScreen(): JSX.Element {
@@ -33,10 +40,10 @@ export function ChatRoomScreen(): JSX.Element {
   const resetUnread = useChatStore((s) => s.resetUnread);
 
   const [replyTo, setReplyTo] = useState<ChatMessageDTO | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [actionTarget, setActionTarget] = useState<ActionTarget | null>(null);
 
-  // Pull chat metadata from the list cache so the search placeholder hints at
-  // which chat we're in (DM counterpart name / system channel name).
   const chatMeta = queryClient
     .getQueryData<ChatDTO[]>(chatKeys.list())
     ?.find((c) => c.id === chatId);
@@ -44,9 +51,8 @@ export function ChatRoomScreen(): JSX.Element {
     chatMeta?.type === 'direct'
       ? (chatMeta.dmCounterpart?.displayName ?? 'Диалог')
       : (chatMeta?.name ?? (chatMeta?.type === 'system' ? 'Системный канал' : 'Чат'));
+  const chatAvatarUrl = chatMeta?.dmCounterpart?.avatarUrl ?? null;
 
-  // Track active chat in the store so message:new from PR 5 won't
-  // increment unread for THIS chat.
   useEffect(() => {
     if (!chatId) return;
     setActive(chatId);
@@ -70,13 +76,11 @@ export function ChatRoomScreen(): JSX.Element {
     initialPageParam: undefined,
     getNextPageParam: (lastPage) => {
       if (lastPage.length < PAGE_SIZE) return undefined;
-      // Server returns DESC by created_at — last item in the array is the OLDEST in this page.
       return lastPage[lastPage.length - 1]?.createdAt;
     },
     staleTime: Infinity,
   });
 
-  // Mark as read on mount + when query first fetches.
   const { mutate: markRead } = useMutation({
     mutationFn: () => markChatAsRead(chatId),
     onSuccess: () => {
@@ -92,11 +96,9 @@ export function ChatRoomScreen(): JSX.Element {
     markRead();
   }, [chatId, query.data, markRead]);
 
-  // Flatten pages, oldest at top.
   const messages = useMemo<ChatMessageDTO[]>(() => {
     if (!query.data) return [];
     const all = query.data.pages.flat();
-    // Server returns each page DESC; we want ASC for display.
     return [...all].sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
   }, [query.data]);
 
@@ -118,11 +120,9 @@ export function ChatRoomScreen(): JSX.Element {
         ...(vars.replyToId !== null ? { replyToId: vars.replyToId } : {}),
       }),
     onSuccess: (msg) => {
-      // Append to first page (server returns the created DTO).
       queryClient.setQueryData<InfinitePages | undefined>(chatKeys.messages(chatId), (old) => {
         if (!old) return { pages: [[msg]], pageParams: [undefined] };
         const firstPage = old.pages[0] ?? [];
-        // Insert as newest (server DESC: index 0).
         const nextFirst = [msg, ...firstPage];
         return { ...old, pages: [nextFirst, ...old.pages.slice(1)] };
       });
@@ -132,7 +132,6 @@ export function ChatRoomScreen(): JSX.Element {
   const deleteMut = useMutation({
     mutationFn: (messageId: string) => deleteMessage(messageId),
     onMutate: (messageId) => {
-      // Optimistic patch: mark as deleted in-cache.
       queryClient.setQueryData<InfinitePages | undefined>(chatKeys.messages(chatId), (old) => {
         if (!old) return old;
         return {
@@ -145,9 +144,16 @@ export function ChatRoomScreen(): JSX.Element {
     },
   });
 
-  // Stable callbacks so memoised ChatBubble doesn't churn on each render.
-  const onReply = useCallback((m: ChatMessageDTO) => setReplyTo(m), []);
-  const onDelete = useCallback((id: string) => deleteMut.mutate(id), [deleteMut]);
+  const onRequestActions = useCallback(
+    (message: ChatMessageDTO, anchorRect: DOMRect): void => {
+      setActionTarget({ message, anchorRect });
+    },
+    [],
+  );
+  const onCloseActions = useCallback(() => setActionTarget(null), []);
+
+  const onReplyTo = useCallback((m: ChatMessageDTO) => setReplyTo(m), []);
+  const onDeleteId = useCallback((id: string) => deleteMut.mutate(id), [deleteMut]);
 
   const handleSend = useCallback(
     (content: string, replyToId: string | null): void => {
@@ -164,6 +170,9 @@ export function ChatRoomScreen(): JSX.Element {
     );
   }, [messages, trimmedQuery]);
 
+  const actionMessage = actionTarget?.message ?? null;
+  const actionIsOwn = actionMessage ? actionMessage.senderId === meId : false;
+
   return (
     <main
       className="screen"
@@ -176,65 +185,19 @@ export function ChatRoomScreen(): JSX.Element {
         minHeight: 0,
       }}
     >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          margin: 'calc(10px + env(safe-area-inset-top, 0px) / 2) 12px 0',
-        }}
-      >
-        <button
-          type="button"
-          className="icon-btn glass"
-          aria-label="К списку чатов"
-          onClick={() => navigate('/chat')}
-          style={{
-            width: 40,
-            height: 40,
-            minWidth: 40,
-            minHeight: 40,
-            borderRadius: 999,
-            padding: 0,
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-          }}
-        >
-          <ArrowLeft size={16} />
-        </button>
-        <div
-          className="glass"
-          style={{
-            flex: 1,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '0 12px',
-            height: 40,
-            borderRadius: 999,
-          }}
-        >
-          <Search size={14} color="var(--muted)" />
-          <input
-            type="search"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={`Поиск в «${chatTitle}»`}
-            aria-label="Поиск по чату"
-            style={{
-              flex: 1,
-              border: 'none',
-              outline: 'none',
-              background: 'transparent',
-              color: 'var(--ink)',
-              fontSize: 14,
-              fontFamily: 'inherit',
-            }}
-          />
-        </div>
-      </div>
+      <ChatRoomHeader
+        title={chatTitle}
+        avatarUrl={chatAvatarUrl}
+        onBack={() => navigate('/chat')}
+        searchOpen={searchOpen}
+        onToggleSearch={() => setSearchOpen((o) => !o)}
+      />
+      <ChatRoomSearchBar
+        open={searchOpen}
+        value={searchQuery}
+        placeholder={`Поиск в «${chatTitle}»`}
+        onChange={setSearchQuery}
+      />
 
       <div
         data-testid="messages-list"
@@ -275,8 +238,7 @@ export function ChatRoomScreen(): JSX.Element {
               message={m}
               isOwn={isOwn}
               replyTo={replyTo}
-              onReply={onReply}
-              onDelete={onDelete}
+              onRequestActions={onRequestActions}
             />
           );
         })}
@@ -291,6 +253,15 @@ export function ChatRoomScreen(): JSX.Element {
           onSend={handleSend}
         />
       </div>
+
+      <MessageActionsMenu
+        open={actionTarget !== null}
+        anchorRect={actionTarget?.anchorRect ?? null}
+        isOwn={actionIsOwn}
+        onReply={() => actionMessage && onReplyTo(actionMessage)}
+        onDelete={() => actionMessage && onDeleteId(actionMessage.id)}
+        onClose={onCloseActions}
+      />
     </main>
   );
 }
