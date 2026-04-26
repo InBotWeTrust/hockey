@@ -1,16 +1,13 @@
 import { memo } from 'react';
 import type { ChatMessageDTO } from '../api.js';
 import { ReplyPreview } from './ReplyPreview.js';
-import { MessageActions } from './MessageActions.js';
+import { useLongPress } from '../useLongPress.js';
 
 interface ChatBubbleProps {
   message: ChatMessageDTO;
   isOwn: boolean;
-  // Context needed to render an in-bubble quote when replyToId is set.
-  // Looked up by parent (ChatRoomScreen) from the local messages cache.
   replyTo?: { senderName: string; content: string } | null;
-  onReply: (message: ChatMessageDTO) => void;
-  onDelete: (messageId: string) => void;
+  onRequestActions: (message: ChatMessageDTO, anchorRect: DOMRect) => void;
 }
 
 function formatTime(iso: string): string {
@@ -21,13 +18,20 @@ function ChatBubbleImpl({
   message,
   isOwn,
   replyTo,
-  onReply,
-  onDelete,
+  onRequestActions,
 }: ChatBubbleProps): JSX.Element {
   const className = isOwn ? 'glass-dark' : 'glass';
   const align = isOwn ? 'flex-end' : 'flex-start';
   const radius = isOwn ? '20px 20px 4px 20px' : '20px 20px 20px 4px';
   const text = message.isDeleted ? 'Сообщение удалено' : message.content;
+
+  const longPress = useLongPress(
+    (rect) => {
+      if (message.isDeleted) return;
+      onRequestActions(message, rect);
+    },
+    { delayMs: 500 },
+  );
 
   return (
     <div
@@ -40,14 +44,15 @@ function ChatBubbleImpl({
         marginBottom: 8,
       }}
     >
-      <div style={{ maxWidth: '78%', display: 'flex', alignItems: 'center', gap: 6 }}>
-        {!isOwn && (
-          <MessageActions
-            isOwn={false}
-            onReply={() => onReply(message)}
-            disabled={message.isDeleted}
-          />
-        )}
+      <div
+        {...longPress}
+        style={{
+          maxWidth: '78%',
+          touchAction: 'manipulation',
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
+        }}
+      >
         <div
           className={className}
           style={{
@@ -66,14 +71,6 @@ function ChatBubbleImpl({
           )}
           <div>{text}</div>
         </div>
-        {isOwn && (
-          <MessageActions
-            isOwn
-            onReply={() => onReply(message)}
-            onDelete={() => onDelete(message.id)}
-            disabled={message.isDeleted}
-          />
-        )}
       </div>
       <span
         style={{
@@ -89,8 +86,6 @@ function ChatBubbleImpl({
   );
 }
 
-// Spec §10.11 — explicit comparator so typing in ChatInput doesn't re-render
-// every bubble. We depend only on identity-stable fields plus content/isDeleted.
 function areEqual(prev: ChatBubbleProps, next: ChatBubbleProps): boolean {
   return (
     prev.message.id === next.message.id &&
@@ -99,8 +94,7 @@ function areEqual(prev: ChatBubbleProps, next: ChatBubbleProps): boolean {
     prev.isOwn === next.isOwn &&
     prev.replyTo?.content === next.replyTo?.content &&
     prev.replyTo?.senderName === next.replyTo?.senderName &&
-    prev.onReply === next.onReply &&
-    prev.onDelete === next.onDelete
+    prev.onRequestActions === next.onRequestActions
   );
 }
 
