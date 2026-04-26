@@ -143,7 +143,7 @@ function ModalBackdrop({ children }: { children: React.ReactNode }): JSX.Element
         display: 'flex',
         alignItems: 'flex-start',
         justifyContent: 'center',
-        padding: 'calc(50dvh - 280px) 20px 20px',
+        padding: 'calc(50dvh - 200px) 20px 20px',
         overflowY: 'auto',
       }}
     >
