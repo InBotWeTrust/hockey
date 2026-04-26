@@ -318,6 +318,7 @@ export async function searchMessages(
     `select m.id, m.chat_id, m.content, u.display_name as sender_name, m.created_at
      from messages m
      join users u on u.id = m.sender_id
+     join chats c on c.id = m.chat_id and c.is_active = true
      where m.chat_id in (
        select chat_id from chat_members where user_id = $1
        union
