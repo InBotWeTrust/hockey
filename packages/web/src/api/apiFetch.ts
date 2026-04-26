@@ -62,6 +62,10 @@ async function refreshOnce(): Promise<string | null> {
   return refreshInFlight;
 }
 
+export async function refreshAccessToken(): Promise<string | null> {
+  return refreshOnce();
+}
+
 function buildHeaders(init: RequestInit | undefined, token: string | null): Headers {
   const h = new Headers(init?.headers ?? {});
   if (!h.has('content-type') && init?.body && typeof init.body === 'string') {
