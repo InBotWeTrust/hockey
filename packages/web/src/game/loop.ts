@@ -40,6 +40,10 @@ export interface GameLoopOpts {
 export interface GameLoop {
   attach: (ticker: Ticker) => void;
   detach: () => void;
+  // Resets accumulated simulation time so the scene picks up from t=0 — used
+  // when the loop is re-attached after a long pause (period start) so goal
+  // and goalie don't snap to a "future" position on the first tick.
+  resetTime: () => void;
   sessionStartMs: number;
   getShooterX: (tMs: number, shooterFreq?: number) => number;
   // Шутер и сцена паузятся независимо. Каждая пауза вычитает своё real-time
@@ -63,7 +67,7 @@ function shooterX(t: number, freq: number): number {
 }
 
 export function createGameLoop(opts: GameLoopOpts): GameLoop {
-  const sessionStartMs = performance.now();
+  let sessionStartMs = performance.now();
   let offsets: SessionPhaseOffsets | null = null;
   let offsetSeed: string | null = null;
 
@@ -138,6 +142,13 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
     detach() {
       attachedTo?.remove(onTick);
       attachedTo = null;
+    },
+    resetTime() {
+      sessionStartMs = performance.now();
+      shooterPausedTotal = 0;
+      scenePausedTotal = 0;
+      shooterPauseStartedAt = null;
+      scenePauseStartedAt = null;
     },
     sessionStartMs,
     getShooterX(tMs, freq = 0.45) {

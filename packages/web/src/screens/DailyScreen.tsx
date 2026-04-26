@@ -515,6 +515,9 @@ function PlayView({ suppressedByModal }: PlayViewProps): JSX.Element {
       } else {
         entranceRafRef.current = null;
         puck.container.visible = true;
+        // Reset before attach so goal/goalie pick up motion from t=0 instead
+        // of a long-accumulated time that would snap them mid-cycle.
+        loop.resetTime();
         loop.attach(ticker);
       }
     };

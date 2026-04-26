@@ -473,16 +473,30 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
             shots_taken: SHOTS_PER_PERIOD,
             goals,
           });
-          const { rows } = await client.query<DayPoolRow>(
-            `update day_pool
-                set state='break_active',
-                    break_started_at=$1,
-                    period_started_at=null
-              where id=$2
-            returning *`,
-            [periodEndedAt, pool.id],
-          );
+          // After the LAST period — close the day directly. Otherwise enter
+          // the regular break.
+          const isFinalPeriod = pool.current_period >= TOTAL_PERIODS;
+          const updateSql = isFinalPeriod
+            ? `update day_pool
+                  set state='closed',
+                      closed_at=$1,
+                      period_started_at=null
+                where id=$2
+              returning *`
+            : `update day_pool
+                  set state='break_active',
+                      break_started_at=$1,
+                      period_started_at=null
+                where id=$2
+              returning *`;
+          const { rows } = await client.query<DayPoolRow>(updateSql, [periodEndedAt, pool.id]);
           currentPool = rows[0]!;
+          if (isFinalPeriod) {
+            await appendEvent(client, req.user.id, 'day_pool_closed', {
+              day_pool_id: pool.id,
+              reason: 'completed',
+            });
+          }
         }
 
         const state = await buildState(client, currentPool, localToday, req.user.id);
