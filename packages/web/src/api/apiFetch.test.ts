@@ -107,16 +107,14 @@ describe('apiFetch', () => {
   });
 
   it('refreshAccessToken reuses the in-flight refresh promise (no parallel /auth/refresh calls)', async () => {
-    const fetchMock = vi.fn(async () =>
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(JSON.stringify({ accessToken: 'AT2', refreshToken: 'RT2' }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
       }),
     );
-    vi.stubGlobal('fetch', fetchMock);
     const user: AuthUser = { id: 'u1', displayName: 'U' };
     useAuthStore.setState({ accessToken: 'AT1', refreshToken: 'RT1', user });
-    __resetRefreshStateForTests();
 
     const [a, b] = await Promise.all([refreshAccessToken(), refreshAccessToken()]);
     expect(a).toBe('AT2');
