@@ -278,7 +278,11 @@ describe('useChatSocket dispatch', () => {
     await act(async () => {
       MockWebSocket.instances[0]?.fireClose(1006);
     });
-    // Simulate the post-backoff reconnect by manually opening a new ws instance the hook would create.
+    // ChatSocket would schedule a setTimeout for the real reconnect, but no fake
+    // timers are installed here. Instead we synthesize the post-reconnect 'open'
+    // by firing onOpen again on the same MockWebSocket — this hits the
+    // `firstOpenRef === false` branch in useChatSocket exactly as a real
+    // reconnect would.
     await act(async () => {
       MockWebSocket.instances[0]?.fireOpen();
     });
