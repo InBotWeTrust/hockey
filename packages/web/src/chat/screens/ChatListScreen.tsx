@@ -62,45 +62,65 @@ export function ChatListScreen(): JSX.Element {
         paddingBottom: `calc(${NAV_HEIGHT + 16}px + env(safe-area-inset-bottom, 0px) / 2)`,
       }}
     >
-      <header
-        className="glass"
+      <div
         style={{
-          margin: '10px 14px 10px',
-          marginTop: 'calc(10px + env(safe-area-inset-top, 0px) / 2)',
-          padding: '6px 8px 6px 14px',
-          borderRadius: 999,
           display: 'flex',
           alignItems: 'center',
           gap: 8,
+          margin: 'calc(10px + env(safe-area-inset-top, 0px) / 2) 14px 10px',
         }}
       >
-        <Search size={16} color="var(--muted)" aria-hidden />
-        <input
-          type="search"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          placeholder="Поиск чатов"
-          aria-label="Поиск чатов"
+        <div
+          className="glass"
           style={{
             flex: 1,
-            border: 'none',
-            outline: 'none',
-            background: 'transparent',
-            fontSize: 14,
-            color: 'var(--ink)',
-            padding: '8px 0',
-            fontFamily: 'inherit',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '0 12px',
+            height: 40,
+            borderRadius: 999,
           }}
-        />
+        >
+          <Search size={14} color="var(--muted)" aria-hidden />
+          <input
+            type="search"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Поиск чатов"
+            aria-label="Поиск чатов"
+            style={{
+              flex: 1,
+              border: 'none',
+              outline: 'none',
+              background: 'transparent',
+              fontSize: 14,
+              color: 'var(--ink)',
+              fontFamily: 'inherit',
+            }}
+          />
+        </div>
         <button
           type="button"
           className="icon-btn icon-btn--dark"
           aria-label="Новый диалог"
           onClick={openPicker}
+          style={{
+            width: 40,
+            height: 40,
+            minWidth: 40,
+            minHeight: 40,
+            borderRadius: 999,
+            padding: 0,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
         >
           <Plus size={16} />
         </button>
-      </header>
+      </div>
 
       {isLoading && (
         <div style={{ padding: 24, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
