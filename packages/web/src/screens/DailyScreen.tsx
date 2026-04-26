@@ -141,9 +141,10 @@ function ModalBackdrop({ children }: { children: React.ReactNode }): JSX.Element
         backdropFilter: 'blur(6px) saturate(130%)',
         WebkitBackdropFilter: 'blur(6px) saturate(130%)',
         display: 'flex',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         justifyContent: 'center',
-        padding: 20,
+        padding: '15vh 20px 20px',
+        overflowY: 'auto',
       }}
     >
       {children}
