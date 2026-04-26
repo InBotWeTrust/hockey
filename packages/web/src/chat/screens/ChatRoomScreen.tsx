@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Search } from 'lucide-react';
 import {
   deleteMessage,
   fetchMessages,
@@ -15,7 +15,6 @@ import { useChatStore } from '../chatStore.js';
 import { useAuthStore } from '../../auth/authStore.js';
 import { ChatBubble } from '../components/ChatBubble.js';
 import { ChatInput } from '../components/ChatInput.js';
-import { NAV_HEIGHT } from '../../components/BottomNav.js';
 
 const PAGE_SIZE = 50;
 
@@ -34,13 +33,14 @@ export function ChatRoomScreen(): JSX.Element {
   const resetUnread = useChatStore((s) => s.resetUnread);
 
   const [replyTo, setReplyTo] = useState<ChatMessageDTO | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // Pull chat metadata from the list cache so the header shows the right title
-  // (DM counterpart name / system channel name) instead of a generic placeholder.
+  // Pull chat metadata from the list cache so the search placeholder hints at
+  // which chat we're in (DM counterpart name / system channel name).
   const chatMeta = queryClient
     .getQueryData<ChatDTO[]>(chatKeys.list())
     ?.find((c) => c.id === chatId);
-  const headerTitle =
+  const chatTitle =
     chatMeta?.type === 'direct'
       ? (chatMeta.dmCounterpart?.displayName ?? 'Диалог')
       : (chatMeta?.name ?? (chatMeta?.type === 'system' ? 'Системный канал' : 'Чат'));
@@ -163,41 +163,86 @@ export function ChatRoomScreen(): JSX.Element {
     [sendMut],
   );
 
+  const trimmedQuery = searchQuery.trim().toLowerCase();
+  const visibleMessages = useMemo<ChatMessageDTO[]>(() => {
+    if (trimmedQuery.length === 0) return messages;
+    return messages.filter(
+      (m) => !m.isDeleted && m.content.toLowerCase().includes(trimmedQuery),
+    );
+  }, [messages, trimmedQuery]);
+
   return (
     <main
       className="screen"
       style={{
-        paddingBottom: `calc(${NAV_HEIGHT + 10}px + env(safe-area-inset-bottom, 0px) / 2)`,
+        position: 'fixed',
+        top: 'env(safe-area-inset-top, 0px)',
+        left: 0,
+        right: 0,
+        bottom: 0,
+        minHeight: 0,
       }}
     >
-      <header
-        className="header-bar glass"
+      <div
         style={{
-          marginTop: 'calc(10px + env(safe-area-inset-top, 0px) / 2)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          margin: 'calc(10px + env(safe-area-inset-top, 0px) / 2) 12px 0',
         }}
       >
         <button
           type="button"
           className="icon-btn"
-          aria-label="Назад"
+          aria-label="К списку чатов"
           onClick={() => navigate('/chat')}
         >
           <ArrowLeft size={16} />
         </button>
-        <div className="header-bar__title">{headerTitle}</div>
-      </header>
+        <div
+          className="glass"
+          style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '0 12px',
+            height: 40,
+            borderRadius: 999,
+          }}
+        >
+          <Search size={14} color="var(--muted)" />
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={`Поиск в «${chatTitle}»`}
+            aria-label="Поиск по чату"
+            style={{
+              flex: 1,
+              border: 'none',
+              outline: 'none',
+              background: 'transparent',
+              color: 'var(--ink)',
+              fontSize: 14,
+              fontFamily: 'inherit',
+            }}
+          />
+        </div>
+      </div>
 
       <div
         data-testid="messages-list"
         style={{
           flex: 1,
+          minHeight: 0,
           padding: '8px 14px',
           display: 'flex',
           flexDirection: 'column',
           overflowY: 'auto',
         }}
       >
-        {query.hasNextPage && (
+        {query.hasNextPage && trimmedQuery.length === 0 && (
           <button
             type="button"
             className="btn btn--ghost"
@@ -208,7 +253,12 @@ export function ChatRoomScreen(): JSX.Element {
             {query.isFetchingNextPage ? 'Загрузка...' : 'Загрузить ещё'}
           </button>
         )}
-        {messages.map((m) => {
+        {visibleMessages.length === 0 && trimmedQuery.length > 0 && (
+          <div style={{ color: 'var(--muted)', fontSize: 13, textAlign: 'center', padding: 24 }}>
+            Ничего не найдено
+          </div>
+        )}
+        {visibleMessages.map((m) => {
           const isOwn = m.senderId === meId;
           const replyParent = m.replyToId ? messageById.get(m.replyToId) : undefined;
           const replyTo = replyParent
@@ -227,13 +277,15 @@ export function ChatRoomScreen(): JSX.Element {
         })}
       </div>
 
-      <ChatInput
-        replyTo={replyTo}
-        replyToSenderName={replyTo ? senderNameOf(replyTo) : undefined}
-        onClearReply={() => setReplyTo(null)}
-        disabled={sendMut.isPending}
-        onSend={handleSend}
-      />
+      <div style={{ marginBottom: `calc(12px + env(safe-area-inset-bottom, 0px) / 2)` }}>
+        <ChatInput
+          replyTo={replyTo}
+          replyToSenderName={replyTo ? senderNameOf(replyTo) : undefined}
+          onClearReply={() => setReplyTo(null)}
+          disabled={sendMut.isPending}
+          onSend={handleSend}
+        />
+      </div>
     </main>
   );
 }
