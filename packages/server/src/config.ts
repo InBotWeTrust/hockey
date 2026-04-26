@@ -11,6 +11,7 @@ const schema = z.object({
   REFRESH_SECRET: z.string().min(16),
   TELEGRAM_BOT_TOKEN: z.string().min(1),
   DAILY_SEED_SECRET: z.string().min(16),
+  SYSTEM_USER_ID: z.string().uuid().optional(),
 });
 
 export type AppConfig = z.infer<typeof schema>;
