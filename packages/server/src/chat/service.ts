@@ -24,6 +24,7 @@ interface MyChatsRow {
   last_message_id: string | null;
   last_message_content: string | null;
   last_message_sender_id: string | null;
+  last_message_sender_name: string | null;
   last_message_created_at: Date | null;
   last_message_is_deleted: boolean | null;
   last_message_reply_to_id: string | null;
@@ -43,6 +44,7 @@ export async function getMyChats(pool: Pool, userId: string): Promise<ChatDTO[]>
       lm.id as last_message_id,
       lm.content as last_message_content,
       lm.sender_id as last_message_sender_id,
+      lu.display_name as last_message_sender_name,
       lm.created_at as last_message_created_at,
       lm.is_deleted as last_message_is_deleted,
       lm.reply_to_id as last_message_reply_to_id,
@@ -56,6 +58,7 @@ export async function getMyChats(pool: Pool, userId: string): Promise<ChatDTO[]>
       order by created_at desc
       limit 1
     ) lm on true
+    left join users lu on lu.id = lm.sender_id
     left join lateral (
       select count(*) as cnt
       from messages m
@@ -120,6 +123,7 @@ export async function getMyChats(pool: Pool, userId: string): Promise<ChatDTO[]>
     const agg: ChatListAggregate = {
       chat,
       lastMessage,
+      lastMessageSenderName: row.last_message_sender_name,
       unreadCount: Number(row.unread_count),
       dmCounterpart: row.type === 'direct' ? (counterparts.get(row.id) ?? null) : null,
     };

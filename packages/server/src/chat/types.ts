@@ -58,6 +58,9 @@ export interface ChatDTO {
   lastMessageAt: string | null; // ISO
   unreadCount: number;
   lastMessage: ChatMessageDTO | null;
+  // Display name of the author of `lastMessage`. Null when no last message.
+  // Used by the client to render "Имя Ф: text" preview without an extra fetch.
+  lastMessageSenderName: string | null;
   // For DMs: rendered name and avatar of the OTHER user. Null for group/system.
   dmCounterpart: { userId: string; displayName: string; avatarUrl: string | null } | null;
 }

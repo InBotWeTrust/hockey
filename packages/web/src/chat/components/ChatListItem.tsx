@@ -1,9 +1,26 @@
 import { memo } from 'react';
 import type { ChatDTO } from '../api.js';
+import { useAuthStore } from '../../auth/authStore.js';
 
 interface ChatListItemProps {
   chat: ChatDTO;
   onOpen: (chatId: string) => void;
+}
+
+const PREVIEW_LIMIT = 28;
+
+function formatAuthor(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length === 0) return '';
+  const first = parts[0] ?? '';
+  if (parts.length === 1) return first;
+  const lastInitial = (parts[parts.length - 1] ?? '').charAt(0).toUpperCase();
+  return lastInitial ? `${first} ${lastInitial}` : first;
+}
+
+function truncate(s: string, max: number): string {
+  if (s.length <= max) return s;
+  return `${s.slice(0, max - 1).trimEnd()}…`;
 }
 
 function formatTime(iso: string | null): string {
@@ -27,11 +44,18 @@ function displayTitle(chat: ChatDTO): string {
   return chat.name ?? (chat.type === 'system' ? 'Системный канал' : 'Чат');
 }
 
-function lastMessagePreview(chat: ChatDTO): string {
+function lastMessagePreview(chat: ChatDTO, meId: string | null): string {
   const m = chat.lastMessage;
   if (!m) return 'Нет сообщений';
   if (m.isDeleted) return 'Сообщение удалено';
-  return m.content;
+  const isMine = meId !== null && m.senderId === meId;
+  const author = isMine
+    ? 'Вы'
+    : chat.lastMessageSenderName
+      ? formatAuthor(chat.lastMessageSenderName)
+      : '';
+  const body = truncate(m.content, PREVIEW_LIMIT);
+  return author ? `${author}: ${body}` : body;
 }
 
 function avatarInitial(chat: ChatDTO): string {
@@ -40,6 +64,7 @@ function avatarInitial(chat: ChatDTO): string {
 }
 
 function ChatListItemImpl({ chat, onOpen }: ChatListItemProps): JSX.Element {
+  const meId = useAuthStore((s) => s.user?.id ?? null);
   const isSystem = chat.type === 'system';
   const avatarUrl = chat.dmCounterpart?.avatarUrl ?? null;
   const unread = chat.unreadCount;
@@ -127,7 +152,7 @@ function ChatListItemImpl({ chat, onOpen }: ChatListItemProps): JSX.Element {
             textOverflow: 'ellipsis',
           }}
         >
-          {lastMessagePreview(chat)}
+          {lastMessagePreview(chat, meId)}
         </div>
       </div>
 

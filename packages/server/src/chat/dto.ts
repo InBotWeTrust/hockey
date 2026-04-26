@@ -26,6 +26,7 @@ export function toChatMessageDTO(
 export interface ChatListAggregate {
   chat: ChatRow;
   lastMessage: MessageRow | null;
+  lastMessageSenderName: string | null;
   unreadCount: number;
   dmCounterpart: ChatDTO['dmCounterpart'];
 }
@@ -40,6 +41,7 @@ export function toChatDTO(agg: ChatListAggregate): ChatDTO {
     lastMessageAt: agg.chat.last_message_at?.toISOString() ?? null,
     unreadCount: agg.unreadCount,
     lastMessage: agg.lastMessage ? toChatMessageDTO(agg.lastMessage) : null,
+    lastMessageSenderName: agg.lastMessageSenderName,
     dmCounterpart: agg.dmCounterpart,
   };
 }

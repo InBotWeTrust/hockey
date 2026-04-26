@@ -31,6 +31,7 @@ export interface ChatDTO {
   lastMessageAt: string | null;
   unreadCount: number;
   lastMessage: ChatMessageDTO | null;
+  lastMessageSenderName: string | null;
   dmCounterpart: { userId: string; displayName: string; avatarUrl: string | null } | null;
 }
 
