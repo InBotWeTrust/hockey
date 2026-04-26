@@ -14,6 +14,7 @@
     "chat:seed": "tsx src/chat/seed-cli.ts"
   },
   "dependencies": {
+    "@fastify/websocket": "^10.0.1",
     "@hockey/game-core": "workspace:*",
     "fastify": "^4.26.0",
     "fastify-plugin": "^4.5.1",
@@ -27,8 +28,10 @@
   "devDependencies": {
     "@types/node": "^20.12.0",
     "@types/pg": "^8.11.5",
+    "@types/ws": "^8.18.1",
     "tsx": "^4.7.1",
     "typescript": "^5.4.3",
-    "vitest": "^1.4.0"
+    "vitest": "^1.4.0",
+    "ws": "^8.20.0"
   }
 }
