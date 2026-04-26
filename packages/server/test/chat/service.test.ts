@@ -394,4 +394,36 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
       expect(Number(r.rows[0].c)).toBe(1);
     });
   });
+
+  describe('findOrCreateDM', () => {
+    it('creates a new DM and returns chatId', async () => {
+      const { findOrCreateDM } = await import('../../src/chat/service.js');
+      const r = await findOrCreateDM(pool, userA, userB);
+      expect(r.chatId).toBeTruthy();
+      expect(r.created).toBe(true);
+
+      const chat = await pool.query(`select * from chats where id = $1`, [r.chatId]);
+      expect(chat.rows[0].type).toBe('direct');
+
+      const members = await pool.query(
+        `select user_id from chat_members where chat_id = $1`,
+        [r.chatId],
+      );
+      expect(members.rowCount).toBe(2);
+    });
+
+    it('is idempotent: second call returns the same chatId regardless of arg order', async () => {
+      const { findOrCreateDM } = await import('../../src/chat/service.js');
+      const r1 = await findOrCreateDM(pool, userA, userB);
+      const r2 = await findOrCreateDM(pool, userB, userA);
+      expect(r2.chatId).toBe(r1.chatId);
+      expect(r2.created).toBe(false);
+    });
+
+    it('rejects self-DM with InvalidInputError', async () => {
+      const { findOrCreateDM } = await import('../../src/chat/service.js');
+      const { InvalidInputError } = await import('../../src/chat/errors.js');
+      await expect(findOrCreateDM(pool, userA, userA)).rejects.toBeInstanceOf(InvalidInputError);
+    });
+  });
 });

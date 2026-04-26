@@ -1,6 +1,7 @@
 import type { Pool } from 'pg';
 import type { ChatDTO, ChatRow, MessageRow, ChatMessageDTO, MessageReactionRow } from './types.js';
 import { toChatDTO, type ChatListAggregate, toChatMessageDTO, groupReactions } from './dto.js';
+import { InvalidInputError } from './errors.js';
 
 interface DmCounterpartRow {
   chat_id: string;
@@ -206,4 +207,59 @@ export async function markChatAsRead(
      on conflict (chat_id, user_id) do update set last_read_at = excluded.last_read_at`,
     [chatId, userId],
   );
+}
+
+export interface FindOrCreateDMResult {
+  chatId: string;
+  created: boolean;
+}
+
+export async function findOrCreateDM(
+  pool: Pool,
+  userA: string,
+  userB: string,
+): Promise<FindOrCreateDMResult> {
+  if (userA === userB) {
+    throw new InvalidInputError('Cannot create a DM with yourself');
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    // Advisory lock keyed on the unordered pair: same lock id regardless of arg order.
+    await client.query(
+      `select pg_advisory_xact_lock(hashtextextended(least($1, $2)::text || greatest($1, $2)::text, 0))`,
+      [userA, userB],
+    );
+
+    const existing = await client.query<{ id: string }>(
+      `select c.id
+       from chats c
+       join chat_members m1 on m1.chat_id = c.id and m1.user_id = $1
+       join chat_members m2 on m2.chat_id = c.id and m2.user_id = $2
+       where c.type = 'direct' and c.is_active = true
+       limit 1`,
+      [userA, userB],
+    );
+    if (existing.rowCount && existing.rowCount > 0) {
+      await client.query('commit');
+      return { chatId: existing.rows[0]!.id, created: false };
+    }
+
+    const created = await client.query<{ id: string }>(
+      `insert into chats (type, created_by) values ('direct', $1) returning id`,
+      [userA],
+    );
+    const chatId = created.rows[0]!.id;
+    await client.query(
+      `insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`,
+      [chatId, userA, userB],
+    );
+    await client.query('commit');
+    return { chatId, created: true };
+  } catch (err) {
+    await client.query('rollback');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
