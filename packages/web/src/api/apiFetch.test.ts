@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { apiFetch, ApiError, __resetRefreshStateForTests } from './apiFetch.js';
+import { apiFetch, ApiError, __resetRefreshStateForTests, refreshAccessToken } from './apiFetch.js';
 import { useAuthStore } from '../auth/authStore.js';
+import type { AuthUser } from '../auth/authStore.js';
 
 function mockJson(body: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(body), {
@@ -103,5 +104,24 @@ describe('apiFetch', () => {
     );
     await expect(apiFetch('/me')).rejects.toBeInstanceOf(ApiError);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('refreshAccessToken reuses the in-flight refresh promise (no parallel /auth/refresh calls)', async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ accessToken: 'AT2', refreshToken: 'RT2' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const user: AuthUser = { id: 'u1', displayName: 'U' };
+    useAuthStore.setState({ accessToken: 'AT1', refreshToken: 'RT1', user });
+    __resetRefreshStateForTests();
+
+    const [a, b] = await Promise.all([refreshAccessToken(), refreshAccessToken()]);
+    expect(a).toBe('AT2');
+    expect(b).toBe('AT2');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(useAuthStore.getState().accessToken).toBe('AT2');
   });
 });
