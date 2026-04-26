@@ -5,6 +5,7 @@ import { dbPlugin } from './plugins/db.js';
 import { redisPlugin } from './plugins/redis.js';
 import { errorsPlugin } from './plugins/errors.js';
 import { authPlugin } from './plugins/auth.js';
+import { realtimePlugin } from './plugins/realtime.js';
 import { authRoutes } from './routes/auth.js';
 import { meRoutes } from './routes/me.js';
 import { dailyRoutes } from './duel/daily/routes.js';
@@ -29,6 +30,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await app.register(errorsPlugin);
   await app.register(dbPlugin, { connectionString: config.DATABASE_URL });
   await app.register(redisPlugin, { url: config.REDIS_URL });
+  await app.register(realtimePlugin);
   await app.register(authPlugin, { accessSecret: config.JWT_SECRET });
   await app.register(healthRoutes);
   await app.register(authRoutes, {
