@@ -33,6 +33,7 @@ export interface ChatDTO {
   lastMessage: ChatMessageDTO | null;
   lastMessageSenderName: string | null;
   dmCounterpart: { userId: string; displayName: string; avatarUrl: string | null } | null;
+  memberCount: number;
 }
 
 export type ChatEvent =

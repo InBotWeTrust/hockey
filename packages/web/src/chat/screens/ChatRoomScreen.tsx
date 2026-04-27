@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useState, useCallback, useRef } from 'react';
-import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   deleteMessage,
+  fetchChatList,
   fetchMessages,
   markChatAsRead,
   sendMessage,
@@ -23,6 +24,15 @@ import { ReactionPicker } from '../components/ReactionPicker.js';
 import { switchMyReactionTo, removeMyReaction } from '../reactionsState.js';
 
 const PAGE_SIZE = 50;
+
+function formatMemberCount(n: number): string {
+  // Russian plural rules for "участник".
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return `${n} участник`;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${n} участника`;
+  return `${n} участников`;
+}
 
 interface InfinitePages {
   pages: ChatMessageDTO[][];
@@ -60,14 +70,24 @@ export function ChatRoomScreen(): JSX.Element {
   // (loading older messages) keeps the viewport stable instead of jumping.
   const isNearBottomRef = useRef(true);
 
-  const chatMeta = queryClient
-    .getQueryData<ChatDTO[]>(chatKeys.list())
-    ?.find((c) => c.id === chatId);
+  // Lazy-fetch the chat list when entering by direct URL: without this the
+  // header would render the "Чат" fallback until the user visits /chat.
+  // Reuses the same key as ChatListScreen, so the cache stays consistent.
+  const chatListQuery = useQuery<ChatDTO[]>({
+    queryKey: chatKeys.list(),
+    queryFn: fetchChatList,
+    staleTime: 30_000,
+  });
+  const chatMeta = chatListQuery.data?.find((c) => c.id === chatId);
   const chatTitle =
     chatMeta?.type === 'direct'
       ? (chatMeta.dmCounterpart?.displayName ?? 'Диалог')
       : (chatMeta?.name ?? (chatMeta?.type === 'system' ? 'Системный канал' : 'Чат'));
   const chatAvatarUrl = chatMeta?.dmCounterpart?.avatarUrl ?? null;
+  const chatSubtitle =
+    chatMeta && chatMeta.type !== 'direct'
+      ? formatMemberCount(chatMeta.memberCount)
+      : undefined;
 
   useEffect(() => {
     if (!chatId) return;
@@ -388,6 +408,7 @@ export function ChatRoomScreen(): JSX.Element {
     >
       <ChatRoomHeader
         title={chatTitle}
+        {...(chatSubtitle !== undefined ? { subtitle: chatSubtitle } : {})}
         avatarUrl={chatAvatarUrl}
         onBack={() => navigate('/chat')}
         searchOpen={searchOpen}

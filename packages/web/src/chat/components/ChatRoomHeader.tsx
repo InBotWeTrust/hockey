@@ -2,6 +2,7 @@ import { ArrowLeft, Search, X } from 'lucide-react';
 
 interface Props {
   title: string;
+  subtitle?: string;
   avatarUrl: string | null;
   onBack: () => void;
   searchOpen: boolean;
@@ -14,6 +15,7 @@ function avatarInitial(title: string): string {
 
 export function ChatRoomHeader({
   title,
+  subtitle,
   avatarUrl,
   onBack,
   searchOpen,
@@ -104,6 +106,22 @@ export function ChatRoomHeader({
         >
           {title}
         </div>
+        {subtitle && (
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 500,
+              color: 'var(--muted)',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              lineHeight: '14px',
+              marginTop: 2,
+            }}
+          >
+            {subtitle}
+          </div>
+        )}
       </div>
 
       <button

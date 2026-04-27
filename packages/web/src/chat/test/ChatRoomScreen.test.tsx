@@ -71,6 +71,7 @@ describe('ChatRoomScreen', () => {
     useAuthStore.setState({ accessToken: 'tok', refreshToken: 'rtok', user });
     vi.spyOn(api, 'fetchMessages').mockResolvedValue([msgFromSelf, msgFromOther]); // server DESC
     vi.spyOn(api, 'markChatAsRead').mockResolvedValue(undefined);
+    vi.spyOn(api, 'fetchChatList').mockResolvedValue([]);
   });
 
   afterEach(() => {

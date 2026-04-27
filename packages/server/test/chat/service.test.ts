@@ -132,6 +132,28 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
       expect(list[0]!.dmCounterpart).toBeNull();
     });
 
+    it('memberCount: system → all users; direct → 2 from chat_members', async () => {
+      await pool.query(
+        `insert into chats (type, name, created_by) values ('system', 'Общий', $1)`,
+        [userA],
+      );
+      const dm = await pool.query(
+        `insert into chats (type, created_by) values ('direct', $1) returning id`,
+        [userA],
+      );
+      await pool.query(
+        `insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`,
+        [dm.rows[0].id, userA, userB],
+      );
+
+      const list = await getMyChats(pool, userA);
+      const sys = list.find((c) => c.type === 'system')!;
+      const dmRow = list.find((c) => c.type === 'direct')!;
+      // 3 users seeded in beforeAll (Alice, Bob, Charlie).
+      expect(sys.memberCount).toBe(3);
+      expect(dmRow.memberCount).toBe(2);
+    });
+
     it('orders by last_message_at desc, NULLS last', async () => {
       const old = await pool.query(
         `insert into chats (type, created_by) values ('direct', $1) returning id`,
