@@ -143,6 +143,37 @@ describe('ChatRoomScreen', () => {
     await waitFor(() => expect(screen.getByText('тест')).toBeInTheDocument());
   });
 
+  it('regression: double-tap on send only fires sendMessage once', async () => {
+    const newMsg: ChatMessageDTO = {
+      id: 'm-dt',
+      chatId: 'c1',
+      senderId: SELF_ID,
+      content: 'тест',
+      replyToId: null,
+      isDeleted: false,
+      createdAt: '2026-04-26T10:02:00.000Z',
+      reactions: [],
+    };
+    // Keep the send unresolved so `disabled` (sendMut.isPending) stays true
+    // for the entire window we double-tap inside.
+    const sendSpy = vi
+      .spyOn(api, 'sendMessage')
+      .mockImplementation(() => new Promise<ChatMessageDTO>(() => undefined));
+
+    renderRoom('c1');
+    await waitFor(() => expect(screen.getAllByTestId('chat-bubble').length).toBe(2));
+
+    const textarea = screen.getByLabelText('Текст сообщения') as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: 'тест' } });
+    const button = screen.getByLabelText('Отправить');
+    fireEvent.click(button);
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    await waitFor(() => expect(sendSpy).toHaveBeenCalledTimes(1));
+    sendSpy.mockResolvedValue(newMsg);
+  });
+
   it('regression: WS message:new arriving before HTTP onSuccess does not duplicate the bubble', async () => {
     const newMsg: ChatMessageDTO = {
       id: 'm3-race',

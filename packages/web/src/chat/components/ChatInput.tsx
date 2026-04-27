@@ -28,6 +28,18 @@ export function ChatInput({
 }: ChatInputProps): JSX.Element {
   const [value, setValue] = useState('');
   const ref = useRef<HTMLTextAreaElement | null>(null);
+  // Synchronous guard against double-tap: the parent flips `disabled` only
+  // after the next render once `sendMut.isPending` propagates, leaving a
+  // small window where two taps can fire submit() with the same closure
+  // value. A ref blocks the second call immediately.
+  const sendingRef = useRef(false);
+
+  // Reset the in-flight guard whenever the parent reports the mutation has
+  // settled (`disabled` flips from true → false). The disabled→false edge
+  // is the safe moment to allow a new send.
+  useEffect(() => {
+    if (!disabled) sendingRef.current = false;
+  }, [disabled]);
 
   // Auto-grow: single-row uses line-height=40 for vertical centering. Once the
   // content needs more than one row, switch to padded multi-line mode capped
@@ -50,11 +62,13 @@ export function ChatInput({
   }, [value]);
 
   function submit(): void {
+    if (disabled || sendingRef.current) return;
     const trimmed = value.trim();
-    if (!trimmed || disabled) return;
-    void onSend(trimmed, replyTo?.id ?? null);
+    if (!trimmed) return;
+    sendingRef.current = true;
     setValue('');
     onClearReply();
+    void onSend(trimmed, replyTo?.id ?? null);
   }
 
   return (
