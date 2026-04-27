@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
 
-describe.skipIf(!hasIntegrationEnv)('chat migration 004', () => {
+describe.skipIf(!hasIntegrationEnv)('chat migrations 004 + 005', () => {
   let pool: Pool;
   let userA: string;
   let userB: string;
@@ -87,7 +87,7 @@ describe.skipIf(!hasIntegrationEnv)('chat migration 004', () => {
     expect(refreshed.rows[0].last_message_at).toBeInstanceOf(Date);
   });
 
-  it('reactions enforce uniqueness on (message, user, emoji)', async () => {
+  it('reactions enforce uniqueness on (message, user) — only one reaction per user per message', async () => {
     const chat = await pool.query(
       `insert into chats (type, created_by) values ('direct', $1) returning id`,
       [userA],
@@ -102,16 +102,63 @@ describe.skipIf(!hasIntegrationEnv)('chat migration 004', () => {
       `insert into message_reactions (message_id, user_id, emoji) values ($1, $2, '🔥')`,
       [messageId, userA],
     );
-    await pool.query(
+
+    // Second reaction by SAME user on SAME message — even with a DIFFERENT emoji — must fail.
+    const dup = pool.query(
       `insert into message_reactions (message_id, user_id, emoji) values ($1, $2, '👍')`,
       [messageId, userA],
     );
+    await expect(dup).rejects.toThrow(/duplicate key/);
+  });
 
-    const dup = pool.query(
+  it('a different user can react to the same message', async () => {
+    const chat = await pool.query(
+      `insert into chats (type, created_by) values ('direct', $1) returning id`,
+      [userA],
+    );
+    const msg = await pool.query(
+      `insert into messages (chat_id, sender_id, content) values ($1, $2, 'hi') returning id`,
+      [chat.rows[0].id, userA],
+    );
+    const messageId = msg.rows[0].id;
+
+    await pool.query(
       `insert into message_reactions (message_id, user_id, emoji) values ($1, $2, '🔥')`,
       [messageId, userA],
     );
-    await expect(dup).rejects.toThrow(/duplicate key/);
+    const ok = await pool.query(
+      `insert into message_reactions (message_id, user_id, emoji) values ($1, $2, '🔥') returning id`,
+      [messageId, userB],
+    );
+    expect(ok.rowCount).toBe(1);
+  });
+
+  it('the same user can react to two DIFFERENT messages', async () => {
+    const chat = await pool.query(
+      `insert into chats (type, created_by) values ('direct', $1) returning id`,
+      [userA],
+    );
+    const m1 = await pool.query(
+      `insert into messages (chat_id, sender_id, content) values ($1, $2, 'one') returning id`,
+      [chat.rows[0].id, userA],
+    );
+    const m2 = await pool.query(
+      `insert into messages (chat_id, sender_id, content) values ($1, $2, 'two') returning id`,
+      [chat.rows[0].id, userA],
+    );
+
+    await pool.query(
+      `insert into message_reactions (message_id, user_id, emoji) values ($1, $2, '🔥'), ($3, $2, '👍')`,
+      [m1.rows[0].id, userA, m2.rows[0].id],
+    );
+    // Scope by the messages created in this test so prior tests in this
+    // describe (which also insert reactions for userA) don't leak in.
+    const r = await pool.query<{ cnt: string }>(
+      `select count(*)::bigint as cnt from message_reactions
+        where user_id = $1 and message_id = any($2::uuid[])`,
+      [userA, [m1.rows[0].id, m2.rows[0].id]],
+    );
+    expect(Number(r.rows[0].cnt)).toBe(2);
   });
 
   it('rejects invalid chat.type via CHECK', async () => {
