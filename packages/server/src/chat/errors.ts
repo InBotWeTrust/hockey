@@ -36,3 +36,12 @@ export class InvalidInputError extends AppError {
     this.name = 'InvalidInputError';
   }
 }
+
+// Pin limit: at most 3 pinned chats per user. Surface as 400 with a stable
+// error code so the client can render the localized toast.
+export class PinLimitExceededError extends AppError {
+  constructor(public readonly limit: number) {
+    super('pin_limit_exceeded', `User already pinned ${limit} chats (max)`, 400);
+    this.name = 'PinLimitExceededError';
+  }
+}

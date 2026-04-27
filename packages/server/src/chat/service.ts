@@ -8,7 +8,13 @@ import type {
   AddReactionResult,
 } from './types.js';
 import { toChatDTO, type ChatListAggregate, toChatMessageDTO, groupReactions } from './dto.js';
-import { InvalidInputError, MessageNotFoundError } from './errors.js';
+import {
+  InvalidInputError,
+  MessageNotFoundError,
+  PinLimitExceededError,
+} from './errors.js';
+
+export const PIN_LIMIT = 3;
 
 interface DmCounterpartRow {
   chat_id: string;
@@ -38,9 +44,29 @@ interface MyChatsRow {
   last_message_updated_at: Date | null;
   unread_count: string;
   member_count: string;
+  pinned_at: Date | null;
 }
 
 export async function getMyChats(pool: Pool, userId: string): Promise<ChatDTO[]> {
+  // Auto-pin every active system channel the user has never seen before.
+  // Per-chat NOT EXISTS check (rather than "user has no pinned rows") so an
+  // explicit unpin — recorded as `pinned_at = NULL` on a real chat_members
+  // row — stays sticky on subsequent /chat/list calls. ON CONFLICT covers
+  // the rare race of two parallel list calls hitting the same gap.
+  await pool.query(
+    `insert into chat_members (chat_id, user_id, pinned_at)
+     select c.id, $1, now()
+       from chats c
+      where c.type = 'system'
+        and c.is_active = true
+        and not exists (
+          select 1 from chat_members cm
+           where cm.chat_id = c.id and cm.user_id = $1
+        )
+     on conflict (chat_id, user_id) do nothing`,
+    [userId],
+  );
+
   const sql = `
     with my_chat_ids as (
       select chat_id from chat_members where user_id = $1
@@ -58,8 +84,11 @@ export async function getMyChats(pool: Pool, userId: string): Promise<ChatDTO[]>
       lm.reply_to_id as last_message_reply_to_id,
       lm.updated_at as last_message_updated_at,
       coalesce(unread.cnt, 0)::bigint as unread_count,
-      mc.cnt::bigint as member_count
+      mc.cnt::bigint as member_count,
+      cm_self.pinned_at as pinned_at
     from chats c
+    left join chat_members cm_self
+      on cm_self.chat_id = c.id and cm_self.user_id = $1
     left join lateral (
       select id, content, sender_id, created_at, is_deleted, reply_to_id, updated_at
       from messages
@@ -88,7 +117,8 @@ export async function getMyChats(pool: Pool, userId: string): Promise<ChatDTO[]>
     ) mc on true
     where c.id in (select chat_id from my_chat_ids)
       and c.is_active = true
-    order by c.last_message_at desc nulls last
+    order by cm_self.pinned_at desc nulls last,
+             c.last_message_at desc nulls last
   `;
   const r = await pool.query<MyChatsRow>(sql, [userId]);
   if (!r.rowCount) return [];
@@ -144,9 +174,59 @@ export async function getMyChats(pool: Pool, userId: string): Promise<ChatDTO[]>
       unreadCount: Number(row.unread_count),
       dmCounterpart: row.type === 'direct' ? (counterparts.get(row.id) ?? null) : null,
       memberCount: Number(row.member_count),
+      pinnedAt: row.pinned_at,
     };
     return toChatDTO(agg);
   });
+}
+
+export async function pinChat(pool: Pool, userId: string, chatId: string): Promise<void> {
+  // Atomic: count currently-pinned and conditionally upsert in one transaction
+  // so two parallel pin requests can't both squeeze past a 2-pinned check and
+  // exceed the limit.
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    const cur = await client.query<{ cnt: string; mine: boolean }>(
+      `select count(*)::bigint as cnt,
+              bool_or(chat_id = $2) as mine
+         from chat_members
+        where user_id = $1 and pinned_at is not null`,
+      [userId, chatId],
+    );
+    const cnt = Number(cur.rows[0]?.cnt ?? 0);
+    const mine = cur.rows[0]?.mine ?? false;
+    if (!mine && cnt >= PIN_LIMIT) {
+      await client.query('rollback');
+      throw new PinLimitExceededError(PIN_LIMIT);
+    }
+    await client.query(
+      `insert into chat_members (chat_id, user_id, pinned_at)
+       values ($1, $2, now())
+       on conflict (chat_id, user_id)
+         do update set pinned_at = excluded.pinned_at`,
+      [chatId, userId],
+    );
+    await client.query('commit');
+  } catch (err) {
+    await client.query('rollback').catch(() => undefined);
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+export async function unpinChat(pool: Pool, userId: string, chatId: string): Promise<void> {
+  // Lazy upsert: a system chat the user has never written to has no
+  // chat_members row yet. Insert with pinned_at = NULL to record the explicit
+  // unpin (so the auto-pin fallback in getMyChats does not re-add it).
+  await pool.query(
+    `insert into chat_members (chat_id, user_id, pinned_at)
+     values ($1, $2, null)
+     on conflict (chat_id, user_id)
+       do update set pinned_at = null`,
+    [chatId, userId],
+  );
 }
 
 export interface GetMessagesOpts {

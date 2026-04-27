@@ -198,6 +198,108 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
     });
   });
 
+  describe('pinned chats', () => {
+    it('auto-pins active system chats for users with no chat_members rows yet', async () => {
+      await pool.query(
+        `insert into chats (type, name, created_by) values ('system', 'Общий', $1)`,
+        [userA],
+      );
+      const list = await getMyChats(pool, userA);
+      expect(list).toHaveLength(1);
+      expect(list[0]!.pinnedAt).not.toBeNull();
+    });
+
+    it('orders pinned chats first, then by last_message_at desc', async () => {
+      const sys = await pool.query(
+        `insert into chats (type, name, created_by) values ('system', 'Общий', $1) returning id`,
+        [userA],
+      );
+      const dm = await pool.query(
+        `insert into chats (type, created_by) values ('direct', $1) returning id`,
+        [userA],
+      );
+      const dmId = dm.rows[0].id;
+      await pool.query(
+        `insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`,
+        [dmId, userA, userB],
+      );
+      // DM has the freshest message; without pin, DM would be first.
+      await pool.query(
+        `insert into messages (chat_id, sender_id, content) values ($1, $2, 'recent')`,
+        [dmId, userB],
+      );
+
+      const { pinChat } = await import('../../src/chat/service.js');
+      await pinChat(pool, userA, sys.rows[0].id);
+      const list = await getMyChats(pool, userA);
+      expect(list).toHaveLength(2);
+      expect(list[0]!.type).toBe('system');
+      expect(list[0]!.pinnedAt).not.toBeNull();
+      expect(list[1]!.type).toBe('direct');
+      expect(list[1]!.pinnedAt).toBeNull();
+    });
+
+    it('pinChat throws PinLimitExceededError on the 4th distinct pin', async () => {
+      const { pinChat } = await import('../../src/chat/service.js');
+      const ids: string[] = [];
+      for (let i = 0; i < 4; i++) {
+        const r = await pool.query(
+          `insert into chats (type, created_by) values ('group', $1) returning id`,
+          [userA],
+        );
+        ids.push(r.rows[0].id);
+        await pool.query(
+          `insert into chat_members (chat_id, user_id) values ($1, $2)`,
+          [r.rows[0].id, userA],
+        );
+      }
+      await pinChat(pool, userA, ids[0]!);
+      await pinChat(pool, userA, ids[1]!);
+      await pinChat(pool, userA, ids[2]!);
+      await expect(pinChat(pool, userA, ids[3]!)).rejects.toThrow(/pin/i);
+    });
+
+    it('re-pinning an already-pinned chat is a no-op (does not count toward the limit)', async () => {
+      const { pinChat } = await import('../../src/chat/service.js');
+      const r = await pool.query(
+        `insert into chats (type, created_by) values ('group', $1) returning id`,
+        [userA],
+      );
+      await pool.query(
+        `insert into chat_members (chat_id, user_id) values ($1, $2)`,
+        [r.rows[0].id, userA],
+      );
+      await pinChat(pool, userA, r.rows[0].id);
+      await pinChat(pool, userA, r.rows[0].id); // idempotent
+      await pinChat(pool, userA, r.rows[0].id); // still ok
+
+      const cnt = await pool.query<{ c: string }>(
+        `select count(*)::bigint as c from chat_members
+          where user_id = $1 and pinned_at is not null`,
+        [userA],
+      );
+      expect(Number(cnt.rows[0]!.c)).toBe(1);
+    });
+
+    it('explicit unpin is sticky: auto-pin does not re-pin a system chat the user unpinned', async () => {
+      const { unpinChat } = await import('../../src/chat/service.js');
+      const sys = await pool.query(
+        `insert into chats (type, name, created_by) values ('system', 'Общий', $1) returning id`,
+        [userA],
+      );
+      // First /chat/list triggers auto-pin.
+      let list = await getMyChats(pool, userA);
+      expect(list[0]!.pinnedAt).not.toBeNull();
+      // User unpins.
+      await unpinChat(pool, userA, sys.rows[0].id);
+      // Subsequent list calls keep it unpinned.
+      list = await getMyChats(pool, userA);
+      expect(list[0]!.pinnedAt).toBeNull();
+      list = await getMyChats(pool, userA);
+      expect(list[0]!.pinnedAt).toBeNull();
+    });
+  });
+
   describe('getMessages', () => {
     it('returns messages for a chat newest-first, limited to 50', async () => {
       const { getMessages } = await import('../../src/chat/service.js');

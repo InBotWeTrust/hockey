@@ -1,10 +1,13 @@
-import { memo } from 'react';
+import { memo, useCallback } from 'react';
+import { Pin } from 'lucide-react';
 import type { ChatDTO } from '../api.js';
 import { useAuthStore } from '../../auth/authStore.js';
+import { useLongPress } from '../useLongPress.js';
 
 interface ChatListItemProps {
   chat: ChatDTO;
   onOpen: (chatId: string) => void;
+  onRequestActions?: (chatId: string, anchorRect: DOMRect) => void;
 }
 
 const PREVIEW_LIMIT = 28;
@@ -63,17 +66,27 @@ function avatarInitial(chat: ChatDTO): string {
   return (title || '?').charAt(0).toUpperCase();
 }
 
-function ChatListItemImpl({ chat, onOpen }: ChatListItemProps): JSX.Element {
+function ChatListItemImpl({ chat, onOpen, onRequestActions }: ChatListItemProps): JSX.Element {
   const meId = useAuthStore((s) => s.user?.id ?? null);
   const isSystem = chat.type === 'system';
+  const isPinned = chat.pinnedAt !== null;
   const avatarUrl = chat.dmCounterpart?.avatarUrl ?? null;
   const unread = chat.unreadCount;
+
+  const onLongPress = useCallback(
+    (rect: DOMRect) => {
+      onRequestActions?.(chat.id, rect);
+    },
+    [onRequestActions, chat.id],
+  );
+  const longPressHandlers = useLongPress(onLongPress);
 
   return (
     <button
       type="button"
       className="glass"
       onClick={() => onOpen(chat.id)}
+      {...longPressHandlers}
       style={{
         position: 'relative',
         display: 'grid',
@@ -87,6 +100,13 @@ function ChatListItemImpl({ chat, onOpen }: ChatListItemProps): JSX.Element {
         cursor: 'pointer',
         color: 'var(--ink)',
         overflow: 'hidden',
+        // touch-action: manipulation prevents the long-press text-select
+        // affordance on mobile while still letting native scroll handle the
+        // list. Without it some browsers cancel the pointer sequence after
+        // ~200ms and the long-press timer never fires.
+        touchAction: 'manipulation',
+        userSelect: 'none',
+        WebkitUserSelect: 'none',
       }}
     >
       {isSystem && (
@@ -165,7 +185,18 @@ function ChatListItemImpl({ chat, onOpen }: ChatListItemProps): JSX.Element {
           flexShrink: 0,
         }}
       >
-        <span style={{ fontSize: 10, color: 'var(--muted)' }}>{formatTime(chat.lastMessageAt)}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          {isPinned && (
+            <Pin
+              size={11}
+              aria-label="Закреплено"
+              style={{ color: 'var(--muted)', transform: 'rotate(45deg)' }}
+            />
+          )}
+          <span style={{ fontSize: 10, color: 'var(--muted)' }}>
+            {formatTime(chat.lastMessageAt)}
+          </span>
+        </div>
         {unread > 0 && (
           <span
             className="pill pill--dark"

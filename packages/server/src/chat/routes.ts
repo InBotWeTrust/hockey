@@ -15,6 +15,8 @@ import {
   addReaction,
   removeReaction,
   getMessageOr404,
+  pinChat,
+  unpinChat,
 } from './service.js';
 import { assertCanAccessChat, assertOwnsMessage } from './guards.js';
 import {
@@ -200,6 +202,22 @@ export const chatRoutes: FastifyPluginAsync = async (app) => {
       return { messageId, emoji, removed: result.removed };
     },
   );
+
+  app.post('/chat/:chatId/pin', { preHandler: [app.authenticate] }, async (req, reply) => {
+    const { chatId } = z.object({ chatId: uuid }).parse(req.params);
+    await assertCanAccessChat(app.pg, req.user.id, chatId);
+    await pinChat(app.pg, req.user.id, chatId);
+    reply.code(204);
+    return null;
+  });
+
+  app.delete('/chat/:chatId/pin', { preHandler: [app.authenticate] }, async (req, reply) => {
+    const { chatId } = z.object({ chatId: uuid }).parse(req.params);
+    await assertCanAccessChat(app.pg, req.user.id, chatId);
+    await unpinChat(app.pg, req.user.id, chatId);
+    reply.code(204);
+    return null;
+  });
 
   app.delete(
     '/chat/messages/:messageId/reactions',
