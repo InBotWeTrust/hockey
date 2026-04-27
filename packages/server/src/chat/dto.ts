@@ -15,6 +15,8 @@ export function toChatMessageDTO(
     id: row.id,
     chatId: row.chat_id,
     senderId: row.sender_id,
+    senderDisplayName: row.sender_display_name ?? null,
+    senderAvatarUrl: row.sender_avatar_url ?? null,
     content: row.is_deleted ? '' : row.content,
     replyToId: row.reply_to_id,
     isDeleted: row.is_deleted,

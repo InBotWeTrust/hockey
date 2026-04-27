@@ -66,6 +66,23 @@ export function ChatRoomScreen(): JSX.Element {
   const [gotoError, setGotoError] = useState<string | null>(null);
   const gotoRef = useRef<string | null>(null);
   const messagesListRef = useRef<HTMLDivElement | null>(null);
+  // Android (especially MIUI WebView) and some iOS Safari builds don't shrink
+  // `100dvh` when the soft keyboard opens, so the composer ends up beneath
+  // the keyboard. visualViewport.height is the source of truth — track it
+  // and pin the screen height to it so the layout adapts in real time.
+  const [viewportHeight, setViewportHeight] = useState<number | null>(null);
+  useEffect(() => {
+    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+    if (!vv) return;
+    const update = (): void => setViewportHeight(vv.height);
+    update();
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    return () => {
+      vv.removeEventListener('resize', update);
+      vv.removeEventListener('scroll', update);
+    };
+  }, []);
   // Auto-follow only when the user is already near the bottom; pagination
   // (loading older messages) keeps the viewport stable instead of jumping.
   const isNearBottomRef = useRef(true);
@@ -88,6 +105,11 @@ export function ChatRoomScreen(): JSX.Element {
     chatMeta && chatMeta.type !== 'direct'
       ? formatMemberCount(chatMeta.memberCount)
       : undefined;
+  // Show avatar + author name on every foreign bubble in non-DM chats so
+  // members can tell who said what. DMs keep the cleaner layout (header
+  // already names the counterpart). Default to false until chatMeta loads,
+  // so the bubble structure stays stable while tests/cold-loads warm up.
+  const showAuthorOnBubbles = chatMeta !== undefined && chatMeta.type !== 'direct';
 
   useEffect(() => {
     if (!chatId) return;
@@ -402,9 +424,13 @@ export function ChatRoomScreen(): JSX.Element {
         // but `app-shell` has `transform: translateZ(0)` which turns any
         // descendant `fixed` element into a containing-block-relative `absolute`
         // — so the document scroll dragged the header up and pushed the input
-        // below the screen. Sizing exactly to 100dvh + clipping overflow keeps
-        // the header pinned and the messages list owning its own scroll.
-        height: '100dvh',
+        // below the screen. Sizing exactly to the visual viewport + clipping
+        // overflow keeps the header pinned and the messages list owning its
+        // own scroll. visualViewport.height adapts to the soft keyboard
+        // (where 100dvh on Android often does not), so the composer stays
+        // visible while typing. Fallback to 100dvh on browsers without
+        // visualViewport.
+        height: viewportHeight !== null ? `${viewportHeight}px` : '100dvh',
         paddingTop: 'env(safe-area-inset-top, 0px)',
         overflow: 'hidden',
       }}
@@ -479,6 +505,7 @@ export function ChatRoomScreen(): JSX.Element {
               key={m.id}
               message={m}
               isOwn={isOwn}
+              showAuthor={showAuthorOnBubbles}
               replyTo={replyTo}
               onRequestActions={onRequestActions}
               onReact={onToggleReaction}

@@ -36,6 +36,11 @@ export interface MessageRow {
   is_deleted: boolean;
   created_at: Date;
   updated_at: Date;
+  // Optional: hydrated by getMessages / sendMessage via LEFT JOIN users so
+  // group-chat bubbles can render an avatar + author name. Internal queries
+  // that don't need them (e.g. getMessageOr404 for reactions) leave them undefined.
+  sender_display_name?: string | null;
+  sender_avatar_url?: string | null;
   // search_vector is generated; not selected into typed rows.
 }
 
@@ -80,6 +85,10 @@ export interface ChatMessageDTO {
   id: string;
   chatId: string;
   senderId: string;
+  // Display name + avatar of the message author. Null only if the user row
+  // was deleted; we keep messages even after the sender is gone.
+  senderDisplayName: string | null;
+  senderAvatarUrl: string | null;
   content: string;
   replyToId: string | null;
   isDeleted: boolean;

@@ -6,6 +6,8 @@ const baseMessage: ChatMessageDTO = {
   id: 'msg-1',
   chatId: 'chat-A',
   senderId: 'user-other',
+  senderDisplayName: null,
+  senderAvatarUrl: null,
   content: 'hello',
   replyToId: null,
   isDeleted: false,
