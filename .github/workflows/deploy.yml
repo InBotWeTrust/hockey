@@ -152,7 +152,7 @@ jobs:
           # auto-picks the earliest user as `created_by` when SYSTEM_USER_ID
           # isn't set (the secret is optional). Failures are non-fatal so a
           # missing/empty users table doesn't block unrelated deploys.
-          CHAT_NAME="${SYSTEM_CHAT_NAME:-Общий чат лиги}"
+          CHAT_NAME="${SYSTEM_CHAT_NAME:-Общий чат}"
           docker compose run --rm -T \
             -e SYSTEM_USER_ID="${SYSTEM_USER_ID:-}" \
             server node packages/server/dist/chat/seed-cli.js "$CHAT_NAME" < /dev/null \
