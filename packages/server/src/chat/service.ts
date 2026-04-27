@@ -37,6 +37,7 @@ interface MyChatsRow {
   last_message_reply_to_id: string | null;
   last_message_updated_at: Date | null;
   unread_count: string;
+  member_count: string;
 }
 
 export async function getMyChats(pool: Pool, userId: string): Promise<ChatDTO[]> {
@@ -56,7 +57,8 @@ export async function getMyChats(pool: Pool, userId: string): Promise<ChatDTO[]>
       lm.is_deleted as last_message_is_deleted,
       lm.reply_to_id as last_message_reply_to_id,
       lm.updated_at as last_message_updated_at,
-      coalesce(unread.cnt, 0)::bigint as unread_count
+      coalesce(unread.cnt, 0)::bigint as unread_count,
+      mc.cnt::bigint as member_count
     from chats c
     left join lateral (
       select id, content, sender_id, created_at, is_deleted, reply_to_id, updated_at
@@ -76,6 +78,14 @@ export async function getMyChats(pool: Pool, userId: string): Promise<ChatDTO[]>
         and m.sender_id != $1
         and m.created_at > coalesce(cm.last_read_at, '1970-01-01'::timestamptz)
     ) unread on true
+    left join lateral (
+      -- System channels are open to every active user (chat_members is lazy);
+      -- count users instead. Direct/group rely on explicit membership rows.
+      select case
+        when c.type = 'system' then (select count(*) from users)
+        else (select count(*) from chat_members where chat_id = c.id)
+      end as cnt
+    ) mc on true
     where c.id in (select chat_id from my_chat_ids)
       and c.is_active = true
     order by c.last_message_at desc nulls last
@@ -133,6 +143,7 @@ export async function getMyChats(pool: Pool, userId: string): Promise<ChatDTO[]>
       lastMessageSenderName: row.last_message_sender_name,
       unreadCount: Number(row.unread_count),
       dmCounterpart: row.type === 'direct' ? (counterparts.get(row.id) ?? null) : null,
+      memberCount: Number(row.member_count),
     };
     return toChatDTO(agg);
   });

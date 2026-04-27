@@ -68,6 +68,9 @@ export interface ChatDTO {
   lastMessageSenderName: string | null;
   // For DMs: rendered name and avatar of the OTHER user. Null for group/system.
   dmCounterpart: { userId: string; displayName: string; avatarUrl: string | null } | null;
+  // For system chats — total active users (everyone has access).
+  // For group/direct — count of chat_members rows.
+  memberCount: number;
 }
 
 export interface ChatMessageDTO {

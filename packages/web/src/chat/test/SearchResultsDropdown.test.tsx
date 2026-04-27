@@ -30,6 +30,7 @@ function makeChat(name: string, id = 'chat-1'): ChatDTO {
     lastMessage: null,
     lastMessageSenderName: null,
     dmCounterpart: null,
+    memberCount: 0,
   };
 }
 
