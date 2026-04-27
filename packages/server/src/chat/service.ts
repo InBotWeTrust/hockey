@@ -273,8 +273,11 @@ export async function getMessages(
                order by created_at asc
                offset $3 limit 1
             )
-       select m.*
+       select m.*,
+              u.display_name as sender_display_name,
+              u.avatar_url as sender_avatar_url
          from messages m
+         left join users u on u.id = m.sender_id
         where m.chat_id = $1 and m.is_deleted = false
           and m.created_at >= coalesce(
                 (select created_at from lower_bound),
@@ -301,8 +304,11 @@ export async function getMessages(
     }
     params.push(limit);
     const sql = `
-      select m.*
+      select m.*,
+             u.display_name as sender_display_name,
+             u.avatar_url as sender_avatar_url
       from messages m
+      left join users u on u.id = m.sender_id
       where m.chat_id = $1
         ${whereExtra}
       ${orderClause}
@@ -339,8 +345,16 @@ export async function sendMessage(pool: Pool, opts: SendMessageOpts): Promise<Ch
     [opts.chatId, opts.senderId],
   );
   const r = await pool.query<MessageRow>(
-    `insert into messages (chat_id, sender_id, content, reply_to_id)
-     values ($1, $2, $3, $4) returning *`,
+    `with ins as (
+       insert into messages (chat_id, sender_id, content, reply_to_id)
+       values ($1, $2, $3, $4)
+       returning *
+     )
+     select ins.*,
+            u.display_name as sender_display_name,
+            u.avatar_url as sender_avatar_url
+       from ins
+       left join users u on u.id = ins.sender_id`,
     [opts.chatId, opts.senderId, opts.content, opts.replyToId ?? null],
   );
   return toChatMessageDTO(r.rows[0]!);

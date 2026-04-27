@@ -59,6 +59,8 @@ const fixtureMsg = (id: string, chatId: string, senderId: string): ChatMessageDT
   id,
   chatId,
   senderId,
+  senderDisplayName: null,
+  senderAvatarUrl: null,
   content: `msg-${id}`,
   replyToId: null,
   isDeleted: false,

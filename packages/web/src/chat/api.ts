@@ -15,6 +15,8 @@ export interface ChatMessageDTO {
   id: string;
   chatId: string;
   senderId: string;
+  senderDisplayName: string | null;
+  senderAvatarUrl: string | null;
   content: string;
   replyToId: string | null;
   isDeleted: boolean;
