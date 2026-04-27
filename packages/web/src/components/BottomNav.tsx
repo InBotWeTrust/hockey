@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { BookOpen, MessageCircle, Target, Trophy, User } from 'lucide-react';
 import { useAuthStore } from '../auth/authStore.js';
+import { fetchUnreadCounts } from '../chat/api.js';
+import { useChatStore } from '../chat/chatStore.js';
+import { chatKeys } from '../lib/queryKeys.js';
 
 export const NAV_HEIGHT = 68;
 
@@ -13,6 +17,20 @@ export function BottomNav(): JSX.Element | null {
   const navigate = useNavigate();
   const [toast, setToast] = useState<string | null>(null);
   const toastTimerRef = useRef<number | null>(null);
+
+  const totalUnread = useChatStore((s) => s.totalUnread());
+  const setUnread = useChatStore((s) => s.setUnread);
+
+  const { data: unreadMap } = useQuery<Record<string, number>>({
+    queryKey: chatKeys.unread(),
+    queryFn: fetchUnreadCounts,
+    enabled: Boolean(user),
+    staleTime: 30_000,
+  });
+
+  useEffect(() => {
+    if (unreadMap) setUnread(unreadMap);
+  }, [unreadMap, setUnread]);
 
   useEffect(
     () => () => {
@@ -34,7 +52,9 @@ export function BottomNav(): JSX.Element | null {
     }, 1800);
   }
 
-  if (!user || location.pathname === '/login') return null;
+  // Hide nav inside a chat room — composer takes the nav's spot.
+  const isInChatRoom = /^\/chat\/[^/]+$/.test(location.pathname);
+  if (!user || location.pathname === '/login' || isInChatRoom) return null;
 
   const isGame = location.pathname === '/' || location.pathname.startsWith('/duel');
   const isProfile = location.pathname === '/profile';
@@ -83,9 +103,41 @@ export function BottomNav(): JSX.Element | null {
         />
         <NavTab
           label="Чат"
-          active={false}
-          icon={<MessageCircle size={ICON_SIZE} color="var(--muted)" strokeWidth={2} />}
-          onClick={() => showToast('Чат — в разработке')}
+          active={location.pathname.startsWith('/chat')}
+          icon={
+            <span style={{ position: 'relative', display: 'inline-flex' }}>
+              <MessageCircle
+                size={ICON_SIZE}
+                color={location.pathname.startsWith('/chat') ? '#ffffff' : 'var(--muted)'}
+                strokeWidth={2}
+              />
+              {totalUnread > 0 && (
+                <span
+                  aria-label={`Непрочитанные: ${totalUnread}`}
+                  style={{
+                    position: 'absolute',
+                    top: -4,
+                    right: -6,
+                    minWidth: 16,
+                    height: 16,
+                    padding: '0 4px',
+                    borderRadius: 999,
+                    background: 'rgb(220, 38, 38)',
+                    color: '#ffffff',
+                    fontSize: 9,
+                    fontWeight: 800,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 0 0 2px rgba(218, 230, 246, 0.96)',
+                  }}
+                >
+                  {totalUnread > 99 ? '99+' : totalUnread}
+                </span>
+              )}
+            </span>
+          }
+          onClick={() => navigate('/chat')}
         />
         <NavTab
           label="Профиль"

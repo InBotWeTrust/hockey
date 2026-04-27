@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import './global.css';
 import './design-system.css';
 import { DailyScreen } from '../screens/DailyScreen.js';
@@ -8,6 +8,8 @@ import { ProfileScreen } from '../screens/ProfileScreen.js';
 import { PrivateRoute } from '../auth/PrivateRoute.js';
 import { BottomNav } from '../components/BottomNav.js';
 import { UpdatePrompt } from '../components/UpdatePrompt.js';
+import { ChatListScreen } from '../chat/screens/ChatListScreen.js';
+import { ChatRoomScreen } from '../chat/screens/ChatRoomScreen.js';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -56,6 +58,23 @@ export function App(): JSX.Element {
               element={
                 <PrivateRoute>
                   <ProfileScreen />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/chat"
+              element={
+                <PrivateRoute>
+                  <ChatListScreen />
+                </PrivateRoute>
+              }
+            />
+            <Route path="/chat/new" element={<Navigate to="/chat?new=1" replace />} />
+            <Route
+              path="/chat/:chatId"
+              element={
+                <PrivateRoute>
+                  <ChatRoomScreen />
                 </PrivateRoute>
               }
             />
