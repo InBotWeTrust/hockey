@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import type { ChatMessageDTO } from '../api.js';
 import { ReplyPreview } from './ReplyPreview.js';
+import { ReactionBar } from './ReactionBar.js';
 import { useLongPress } from '../useLongPress.js';
 
 interface ChatBubbleProps {
@@ -8,6 +9,9 @@ interface ChatBubbleProps {
   isOwn: boolean;
   replyTo?: { senderName: string; content: string } | null;
   onRequestActions: (message: ChatMessageDTO, anchorRect: DOMRect) => void;
+  // Receives messageId so the parent can pass a stable useCallback reference
+  // (without a per-bubble closure) — preserves React.memo across parent renders.
+  onReact: (messageId: string, emoji: string) => void;
 }
 
 function formatTime(iso: string): string {
@@ -19,6 +23,7 @@ function ChatBubbleImpl({
   isOwn,
   replyTo,
   onRequestActions,
+  onReact,
 }: ChatBubbleProps): JSX.Element {
   const className = isOwn ? 'glass-dark' : 'glass';
   const align = isOwn ? 'flex-end' : 'flex-start';
@@ -70,6 +75,10 @@ function ChatBubbleImpl({
             <ReplyPreview senderName={replyTo.senderName} content={replyTo.content} />
           )}
           <div>{text}</div>
+          <ReactionBar
+            reactions={message.reactions}
+            onToggle={(emoji) => onReact(message.id, emoji)}
+          />
         </div>
       </div>
       <span
@@ -91,10 +100,12 @@ function areEqual(prev: ChatBubbleProps, next: ChatBubbleProps): boolean {
     prev.message.id === next.message.id &&
     prev.message.content === next.message.content &&
     prev.message.isDeleted === next.message.isDeleted &&
+    prev.message.reactions === next.message.reactions &&
     prev.isOwn === next.isOwn &&
     prev.replyTo?.content === next.replyTo?.content &&
     prev.replyTo?.senderName === next.replyTo?.senderName &&
-    prev.onRequestActions === next.onRequestActions
+    prev.onRequestActions === next.onRequestActions &&
+    prev.onReact === next.onReact
   );
 }
 

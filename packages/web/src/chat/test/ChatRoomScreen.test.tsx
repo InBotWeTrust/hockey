@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { ChatRoomScreen } from '../screens/ChatRoomScreen.js';
 import { useAuthStore, type AuthUser } from '../../auth/authStore.js';
+import { chatKeys } from '../../lib/queryKeys.js';
 import * as api from '../api.js';
 import type { ChatMessageDTO } from '../api.js';
 
@@ -189,6 +190,82 @@ describe('ChatRoomScreen', () => {
 
     await waitFor(() => expect(delSpy).toHaveBeenCalledWith('m2'));
     await waitFor(() => expect(screen.getByText('Сообщение удалено')).toBeInTheDocument());
+  });
+
+  it('long-press → menu shelf → tap favorite → POST sent + optimistic count+1', async () => {
+    vi.useFakeTimers();
+    const addSpy = vi
+      .spyOn(api, 'addReaction')
+      .mockResolvedValue({ messageId: 'm1', emoji: '👍', removed: null });
+
+    const { queryClient } = renderRoom('c1');
+    await vi.runAllTimersAsync();
+
+    longPressBubble('m1');
+    // The favorite shelf renders FAVORITE_EMOJI as <button aria-label="<emoji>">.
+    const favorite = screen.getByRole('button', { name: '👍' });
+    fireEvent.click(favorite);
+
+    vi.useRealTimers();
+
+    await waitFor(() => expect(addSpy).toHaveBeenCalledWith('m1', '👍'));
+
+    // Optimistic patch present in cache.
+    const data = queryClient.getQueryData<{ pages: ChatMessageDTO[][] }>(
+      chatKeys.messages('c1'),
+    );
+    const patched = data?.pages.flat().find((m) => m.id === 'm1');
+    expect(patched?.reactions).toEqual([{ emoji: '👍', count: 1, reactedByMe: true }]);
+  });
+
+  it('tap on own pill → DELETE + optimistic count-1', async () => {
+    const removeSpy = vi.spyOn(api, 'removeReaction').mockResolvedValue(undefined);
+    // Pre-seed messages so msgFromSelf carries my reaction.
+    vi.spyOn(api, 'fetchMessages').mockResolvedValue([
+      {
+        ...msgFromSelf,
+        reactions: [{ emoji: '👍', count: 1, reactedByMe: true }],
+      },
+      msgFromOther,
+    ]);
+
+    const { queryClient } = renderRoom('c1');
+    const pill = await screen.findByRole('button', { name: /👍 1/ });
+    fireEvent.click(pill);
+
+    await waitFor(() => expect(removeSpy).toHaveBeenCalledWith('m2', '👍'));
+
+    const data = queryClient.getQueryData<{ pages: ChatMessageDTO[][] }>(
+      chatKeys.messages('c1'),
+    );
+    const patched = data?.pages.flat().find((m) => m.id === 'm2');
+    expect(patched?.reactions).toEqual([]);
+  });
+
+  it('POST failure rolls back optimistic patch', async () => {
+    vi.useFakeTimers();
+    const addSpy = vi
+      .spyOn(api, 'addReaction')
+      .mockRejectedValue(new Error('boom'));
+
+    const { queryClient } = renderRoom('c1');
+    await vi.runAllTimersAsync();
+
+    longPressBubble('m1');
+    const favorite = screen.getByRole('button', { name: '👍' });
+    fireEvent.click(favorite);
+
+    vi.useRealTimers();
+
+    // Wait for the rejection + onError rollback.
+    await waitFor(() => expect(addSpy).toHaveBeenCalled());
+    await waitFor(() => {
+      const data = queryClient.getQueryData<{ pages: ChatMessageDTO[][] }>(
+        chatKeys.messages('c1'),
+      );
+      const patched = data?.pages.flat().find((m) => m.id === 'm1');
+      expect(patched?.reactions).toEqual([]);
+    });
   });
 });
 

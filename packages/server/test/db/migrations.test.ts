@@ -47,6 +47,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '002_grip.sql',
       '003_day_pool.sql',
       '004_chat.sql',
+      '005_chat_reaction_user_unique.sql',
     ]);
   });
 });

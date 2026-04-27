@@ -12,6 +12,9 @@ import {
   searchUsers,
   searchMessages,
   getUnreadCounts,
+  addReaction,
+  removeReaction,
+  getMessageOr404,
 } from './service.js';
 import { assertCanAccessChat, assertOwnsMessage } from './guards.js';
 import {
@@ -20,7 +23,14 @@ import {
   getUnreadFromCache,
   setUnreadCache,
 } from './cache.js';
-import { publishMessageNew, publishMessageDeleted, publishChatRead } from './events.js';
+import {
+  publishMessageNew,
+  publishMessageDeleted,
+  publishChatRead,
+  publishReactionAdded,
+  publishReactionRemoved,
+} from './events.js';
+import { EMOJI_WHITELIST } from './whitelist.js';
 
 const uuid = z.string().uuid();
 const isoDate = z.string().datetime({ offset: true });
@@ -148,4 +158,74 @@ export const chatRoutes: FastifyPluginAsync = async (app) => {
     await setUnreadCache(app.redis, userId, counts);
     return counts;
   });
+
+  app.post(
+    '/chat/messages/:messageId/reactions',
+    { preHandler: [app.authenticate] },
+    async (req, reply) => {
+      const { messageId } = z.object({ messageId: uuid }).parse(req.params);
+      const { emoji } = z
+        .object({ emoji: z.enum(EMOJI_WHITELIST) })
+        .parse(req.body);
+      const userId = req.user.id;
+      const message = await getMessageOr404(app.pg, messageId);
+      const chat = await assertCanAccessChat(app.pg, userId, message.chat_id);
+      const result = await addReaction(app.pg, messageId, userId, emoji);
+      if (result.removed) {
+        await publishReactionRemoved(
+          app.pg,
+          app.realtime,
+          chat.id,
+          chat.type,
+          messageId,
+          userId,
+          result.removed,
+        );
+      }
+      if (result.added) {
+        await publishReactionAdded(
+          app.pg,
+          app.realtime,
+          chat.id,
+          chat.type,
+          messageId,
+          userId,
+          result.added,
+        );
+      }
+      reply.code(201);
+      // `removed` echoes the prior emoji from this user (or null) so the
+      // caller can dedupe its optimistic UI against the upcoming WS
+      // `reaction:removed` event on switch.
+      return { messageId, emoji, removed: result.removed };
+    },
+  );
+
+  app.delete(
+    '/chat/messages/:messageId/reactions',
+    { preHandler: [app.authenticate] },
+    async (req, reply) => {
+      const { messageId } = z.object({ messageId: uuid }).parse(req.params);
+      const { emoji } = z
+        .object({ emoji: z.enum(EMOJI_WHITELIST) })
+        .parse(req.body);
+      const userId = req.user.id;
+      const message = await getMessageOr404(app.pg, messageId);
+      const chat = await assertCanAccessChat(app.pg, userId, message.chat_id);
+      const result = await removeReaction(app.pg, messageId, userId, emoji);
+      if (result.removed) {
+        await publishReactionRemoved(
+          app.pg,
+          app.realtime,
+          chat.id,
+          chat.type,
+          messageId,
+          userId,
+          emoji,
+        );
+      }
+      reply.code(204);
+      return null;
+    },
+  );
 };

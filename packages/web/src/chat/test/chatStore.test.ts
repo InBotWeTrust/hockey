@@ -19,9 +19,18 @@ describe('chatStore', () => {
     useChatStore.setState({ unreadByChat: {}, activeChatId: null });
   });
 
-  it('totalUnread sums over unreadByChat', () => {
+  it('totalUnread counts chats with >0 unread (not message sum)', () => {
     useChatStore.getState().setUnread({ 'chat-A': 2, 'chat-B': 5, 'chat-C': 0 });
-    expect(useChatStore.getState().totalUnread()).toBe(7);
+    expect(useChatStore.getState().totalUnread()).toBe(2);
+  });
+
+  it('totalUnread is 0 when all chats are zero', () => {
+    useChatStore.getState().setUnread({ 'chat-A': 0, 'chat-B': 0 });
+    expect(useChatStore.getState().totalUnread()).toBe(0);
+  });
+
+  it('totalUnread is 0 when map is empty', () => {
+    expect(useChatStore.getState().totalUnread()).toBe(0);
   });
 
   it('setUnread replaces the entire map', () => {

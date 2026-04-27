@@ -1,5 +1,12 @@
 import type { Pool } from 'pg';
-import type { ChatDTO, ChatRow, MessageRow, ChatMessageDTO, MessageReactionRow } from './types.js';
+import type {
+  ChatDTO,
+  ChatRow,
+  MessageRow,
+  ChatMessageDTO,
+  MessageReactionRow,
+  AddReactionResult,
+} from './types.js';
 import { toChatDTO, type ChatListAggregate, toChatMessageDTO, groupReactions } from './dto.js';
 import { InvalidInputError, MessageNotFoundError } from './errors.js';
 
@@ -417,4 +424,69 @@ export async function getUnreadCounts(
     out[row.chat_id] = Number(row.cnt);
   }
   return out;
+}
+
+export async function getMessageOr404(
+  pool: Pool,
+  messageId: string,
+): Promise<MessageRow> {
+  // Soft-deleted messages are tombstones — every other reader in this file
+  // excludes them, and reactions/replies must not target them either.
+  const r = await pool.query<MessageRow>(
+    `select * from messages where id = $1 and is_deleted = false`,
+    [messageId],
+  );
+  if (r.rowCount === 0) throw new MessageNotFoundError(messageId);
+  return r.rows[0]!;
+}
+
+export async function addReaction(
+  pool: Pool,
+  messageId: string,
+  userId: string,
+  emoji: string,
+): Promise<AddReactionResult> {
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    // Drop a previous reaction by this user on this message (only if it's a different emoji).
+    const del = await client.query<{ emoji: string }>(
+      `delete from message_reactions
+       where message_id = $1 and user_id = $2 and emoji != $3
+       returning emoji`,
+      [messageId, userId, emoji],
+    );
+    // Insert the new one; if (message,user,emoji) already exists, no-op.
+    const ins = await client.query<{ id: string }>(
+      `insert into message_reactions (message_id, user_id, emoji)
+       values ($1, $2, $3)
+       on conflict (message_id, user_id) do nothing
+       returning id`,
+      [messageId, userId, emoji],
+    );
+    await client.query('commit');
+    return {
+      added: ins.rowCount && ins.rowCount > 0 ? emoji : null,
+      removed: del.rowCount && del.rowCount > 0 ? del.rows[0]!.emoji : null,
+    };
+  } catch (err) {
+    await client.query('rollback');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+export async function removeReaction(
+  pool: Pool,
+  messageId: string,
+  userId: string,
+  emoji: string,
+): Promise<{ removed: boolean }> {
+  const r = await pool.query(
+    `delete from message_reactions
+     where message_id = $1 and user_id = $2 and emoji = $3`,
+    [messageId, userId, emoji],
+  );
+  return { removed: (r.rowCount ?? 0) > 0 };
 }

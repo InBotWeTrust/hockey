@@ -5,6 +5,7 @@ import { useAuthStore } from '../auth/authStore.js';
 import { useChatStore } from './chatStore.js';
 import { refreshAccessToken } from '../api/apiFetch.js';
 import { chatKeys } from '../lib/queryKeys.js';
+import { applyReactionEventToMessage } from './reactionsState.js';
 import type { ChatEvent, ChatMessageDTO } from './api.js';
 
 interface InfinitePages {
@@ -48,8 +49,25 @@ function applyChatRead(qc: QueryClient): void {
   void qc.invalidateQueries({ queryKey: chatKeys.unread() });
 }
 
-function applyReactionChange(qc: QueryClient, messageId: string): void {
-  void qc.invalidateQueries({ queryKey: chatKeys.reactions(messageId) });
+function applyReactionEvent(
+  qc: QueryClient,
+  meId: string | null,
+  event: Extract<ChatEvent, { type: 'reaction:added' | 'reaction:removed' }>,
+): void {
+  qc.setQueryData<InfinitePages | undefined>(chatKeys.messages(event.chatId), (old) => {
+    if (!old) return old;
+    let touched = false;
+    const pages = old.pages.map((page) =>
+      page.map((m) => {
+        if (m.id !== event.messageId) return m;
+        const next = applyReactionEventToMessage(m, event, meId);
+        if (next === m) return m;
+        touched = true;
+        return next;
+      }),
+    );
+    return touched ? { ...old, pages } : old;
+  });
 }
 
 export function useChatSocket(): ChatSocketStatus {
@@ -82,7 +100,7 @@ export function useChatSocket(): ChatSocketStatus {
             return;
           case 'reaction:added':
           case 'reaction:removed':
-            applyReactionChange(qc, event.messageId);
+            applyReactionEvent(qc, useAuthStore.getState().user?.id ?? null, event);
             return;
         }
       },

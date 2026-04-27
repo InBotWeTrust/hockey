@@ -93,3 +93,39 @@ export async function publishChatRead(
     lastReadAt,
   });
 }
+
+export async function publishReactionAdded(
+  pool: Pool,
+  publisher: EventPublisher,
+  chatId: string,
+  chatType: ChatType,
+  messageId: string,
+  userId: string,
+  emoji: string,
+): Promise<void> {
+  await fanOut(pool, publisher, chatId, chatType, {
+    type: 'reaction:added',
+    chatId,
+    messageId,
+    userId,
+    emoji,
+  });
+}
+
+export async function publishReactionRemoved(
+  pool: Pool,
+  publisher: EventPublisher,
+  chatId: string,
+  chatType: ChatType,
+  messageId: string,
+  userId: string,
+  emoji: string,
+): Promise<void> {
+  await fanOut(pool, publisher, chatId, chatType, {
+    type: 'reaction:removed',
+    chatId,
+    messageId,
+    userId,
+    emoji,
+  });
+}

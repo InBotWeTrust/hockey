@@ -133,3 +133,26 @@ export function searchMessagesApi(q: string, limit = 50): Promise<MessageSearchH
 export function fetchUnreadCounts(): Promise<Record<string, number>> {
   return apiFetch<Record<string, number>>('/chat/unread');
 }
+
+export interface AddReactionResponse {
+  messageId: string;
+  emoji: string;
+  removed: string | null;
+}
+
+export function addReaction(
+  messageId: string,
+  emoji: string,
+): Promise<AddReactionResponse> {
+  return apiFetch<AddReactionResponse>(`/chat/messages/${messageId}/reactions`, {
+    method: 'POST',
+    body: JSON.stringify({ emoji }),
+  });
+}
+
+export function removeReaction(messageId: string, emoji: string): Promise<void> {
+  return apiFetch<void>(`/chat/messages/${messageId}/reactions`, {
+    method: 'DELETE',
+    body: JSON.stringify({ emoji }),
+  });
+}
