@@ -36,6 +36,7 @@ export function App(): JSX.Element {
             maxWidth: 430,
             margin: '0 auto',
             minHeight: '100dvh',
+            boxSizing: 'border-box',
             position: 'relative',
             transform: 'translateZ(0)',
             overflow: 'hidden',
@@ -87,9 +88,9 @@ export function App(): JSX.Element {
               }
             />
           </Routes>
-          <BottomNav />
-          <UpdatePrompt />
         </div>
+        <BottomNav />
+        <UpdatePrompt />
       </BrowserRouter>
     </QueryClientProvider>
   );
