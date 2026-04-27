@@ -47,6 +47,11 @@ export interface MessageReactionRow {
   created_at: Date;
 }
 
+export interface AddReactionResult {
+  added: string | null;
+  removed: string | null;
+}
+
 // DTOs — what the API returns to clients. camelCase, no internal flags exposed.
 
 export interface ChatDTO {

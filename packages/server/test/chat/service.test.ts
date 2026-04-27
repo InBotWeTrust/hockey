@@ -252,7 +252,7 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
       expect(list[0]!.content).toBe('');
     });
 
-    it('groups reactions by emoji and flags reactedByMe', async () => {
+    it('groups reactions by emoji across users and flags reactedByMe', async () => {
       const { getMessages } = await import('../../src/chat/service.js');
       const dm = await pool.query(
         `insert into chats (type, created_by) values ('direct', $1) returning id`,
@@ -268,10 +268,13 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
         [dmId, userA],
       );
       const messageId = msg.rows[0].id;
+      // Migration 005 enforces UNIQUE(message_id, user_id), so each user
+      // gets at most one row. Use three distinct users to exercise
+      // group-by-emoji aggregation: A+B both react 🔥, C reacts 👍.
       await pool.query(
         `insert into message_reactions (message_id, user_id, emoji) values
-         ($1, $2, '🔥'), ($1, $3, '🔥'), ($1, $2, '👍')`,
-        [messageId, userA, userB],
+         ($1, $2, '🔥'), ($1, $3, '🔥'), ($1, $4, '👍')`,
+        [messageId, userA, userB, userC],
       );
 
       const list = await getMessages(pool, dmId, userA, { limit: 50 });
@@ -281,7 +284,7 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
       expect(fire.count).toBe(2);
       expect(fire.reactedByMe).toBe(true);
       expect(thumb.count).toBe(1);
-      expect(thumb.reactedByMe).toBe(true);
+      expect(thumb.reactedByMe).toBe(false);
     });
   });
 
