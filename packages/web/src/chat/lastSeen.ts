@@ -29,11 +29,16 @@ function pluralizeMinutes(n: number): string {
   return `${n} минут`;
 }
 
-export function formatLastSeen(iso: string | null, now: Date = new Date()): string | null {
-  if (!iso) return null;
+// Fallback for users who have never been recorded as active (legacy
+// pre-touchLastSeen accounts) or for unparseable timestamps. We always render
+// *something* under the DM header so the layout stays balanced.
+export const LAST_SEEN_FALLBACK = 'был(а) давно';
+
+export function formatLastSeen(iso: string | null, now: Date = new Date()): string {
+  if (!iso) return LAST_SEEN_FALLBACK;
   const seen = new Date(iso);
   const ms = now.getTime() - seen.getTime();
-  if (Number.isNaN(ms)) return null;
+  if (Number.isNaN(ms)) return LAST_SEEN_FALLBACK;
 
   if (ms < ONLINE_WINDOW_MS) return 'в сети';
 
