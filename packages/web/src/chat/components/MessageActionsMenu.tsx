@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Reply, Trash2 } from 'lucide-react';
+import { Reply, Trash2, SmilePlus } from 'lucide-react';
+import { FAVORITE_EMOJI } from '../reactions.js';
 
 interface Props {
   open: boolean;
@@ -8,27 +9,26 @@ interface Props {
   isOwn: boolean;
   onReply: () => void;
   onDelete: () => void;
+  onPickEmoji?: (emoji: string) => void;
+  onMoreEmoji?: () => void;
   onClose: () => void;
 }
 
 const PANEL_GAP = 8;
 const SAFE_MARGIN = 12;
-const PANEL_WIDTH = 168;
-const PANEL_HEIGHT_OWN = 96;
-const PANEL_HEIGHT_OTHER = 48;
+const PANEL_WIDTH = 320;
+// Heights include the new 44px shelf (emojis + `+` button + dividers).
+const PANEL_HEIGHT_OWN = 140;
+const PANEL_HEIGHT_OTHER = 92;
 
 function panelPosition(anchor: DOMRect, height: number): { top: number; left: number } {
   const above = anchor.top - height - PANEL_GAP;
   const below = anchor.bottom + PANEL_GAP;
   const maxTop = window.innerHeight - height - SAFE_MARGIN;
   let top: number;
-  if (above >= SAFE_MARGIN) {
-    top = above;
-  } else if (below <= maxTop) {
-    top = below;
-  } else {
-    top = Math.max(SAFE_MARGIN, maxTop);
-  }
+  if (above >= SAFE_MARGIN) top = above;
+  else if (below <= maxTop) top = below;
+  else top = Math.max(SAFE_MARGIN, maxTop);
   const wantedLeft = anchor.left + anchor.width / 2 - PANEL_WIDTH / 2;
   const maxLeft = window.innerWidth - PANEL_WIDTH - SAFE_MARGIN;
   const left = Math.min(Math.max(SAFE_MARGIN, wantedLeft), Math.max(SAFE_MARGIN, maxLeft));
@@ -41,6 +41,8 @@ export function MessageActionsMenu({
   isOwn,
   onReply,
   onDelete,
+  onPickEmoji,
+  onMoreEmoji,
   onClose,
 }: Props): JSX.Element | null {
   useEffect(() => {
@@ -87,6 +89,61 @@ export function MessageActionsMenu({
           boxShadow: '0 12px 30px rgba(15, 23, 42, 0.22)',
         }}
       >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            padding: '4px 6px',
+            borderBottom: '1px solid rgba(15,23,42,0.06)',
+          }}
+        >
+          {FAVORITE_EMOJI.map((e) => (
+            <button
+              key={e}
+              type="button"
+              aria-label={e}
+              onClick={() => {
+                onPickEmoji?.(e);
+                onClose();
+              }}
+              style={{
+                flex: 1,
+                height: 32,
+                border: 'none',
+                background: 'transparent',
+                cursor: 'pointer',
+                fontSize: 20,
+                padding: 0,
+                lineHeight: 1,
+                borderRadius: 8,
+              }}
+            >
+              {e}
+            </button>
+          ))}
+          <button
+            type="button"
+            aria-label="Ещё реакции"
+            onClick={() => onMoreEmoji?.()}
+            style={{
+              width: 32,
+              height: 32,
+              border: 'none',
+              background: 'transparent',
+              cursor: 'pointer',
+              padding: 0,
+              borderRadius: 8,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--ink)',
+            }}
+          >
+            <SmilePlus size={18} />
+          </button>
+        </div>
+
         <button
           type="button"
           role="menuitem"
