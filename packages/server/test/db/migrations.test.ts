@@ -51,6 +51,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '006_chat_rename_system_default.sql',
       '007_chat_pinned.sql',
       '008_backfill_legacy_timezone.sql',
+      '009_chat_description.sql',
     ]);
   });
 });

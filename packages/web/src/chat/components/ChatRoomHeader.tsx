@@ -5,6 +5,9 @@ interface Props {
   subtitle?: string;
   avatarUrl: string | null;
   onBack: () => void;
+  // Optional: when provided, the avatar+title cluster becomes a button that
+  // navigates to the chat info screen. Skipped for DMs (no info screen yet).
+  onTitleClick?: () => void;
   searchOpen: boolean;
   onToggleSearch: () => void;
 }
@@ -18,6 +21,7 @@ export function ChatRoomHeader({
   subtitle,
   avatarUrl,
   onBack,
+  onTitleClick,
   searchOpen,
   onToggleSearch,
 }: Props): JSX.Element {
@@ -51,78 +55,113 @@ export function ChatRoomHeader({
         <ArrowLeft size={16} />
       </button>
 
-      {avatarUrl ? (
-        <img
-          src={avatarUrl}
-          alt=""
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: '50%',
-            objectFit: 'cover',
-            flexShrink: 0,
-          }}
-        />
-      ) : (
-        <div
-          aria-hidden
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: '50%',
-            background: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)',
-            color: '#ffffff',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: 16,
-            fontWeight: 800,
-            flexShrink: 0,
-          }}
-        >
-          {avatarInitial(title)}
-        </div>
-      )}
-
-      <div
-        style={{
-          flex: 1,
-          minWidth: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'center',
-        }}
-      >
-        <div
-          style={{
-            fontSize: 15,
-            fontWeight: 700,
-            color: 'var(--ink)',
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            lineHeight: '18px',
-          }}
-        >
-          {title}
-        </div>
-        {subtitle && (
-          <div
+      {(() => {
+        const avatarNode = avatarUrl ? (
+          <img
+            src={avatarUrl}
+            alt=""
             style={{
-              fontSize: 12,
-              fontWeight: 500,
-              color: 'var(--muted)',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              lineHeight: '14px',
-              marginTop: 2,
+              width: 40,
+              height: 40,
+              borderRadius: '50%',
+              objectFit: 'cover',
+              flexShrink: 0,
+            }}
+          />
+        ) : (
+          <div
+            aria-hidden
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)',
+              color: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 16,
+              fontWeight: 800,
+              flexShrink: 0,
             }}
           >
-            {subtitle}
+            {avatarInitial(title)}
           </div>
-        )}
-      </div>
+        );
+        const titleNode = (
+          <div
+            style={{
+              flex: 1,
+              minWidth: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+            }}
+          >
+            <div
+              style={{
+                fontSize: 15,
+                fontWeight: 700,
+                color: 'var(--ink)',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                lineHeight: '18px',
+              }}
+            >
+              {title}
+            </div>
+            {subtitle && (
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 500,
+                  color: 'var(--muted)',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  lineHeight: '14px',
+                  marginTop: 2,
+                }}
+              >
+                {subtitle}
+              </div>
+            )}
+          </div>
+        );
+        if (onTitleClick) {
+          return (
+            <button
+              type="button"
+              onClick={onTitleClick}
+              aria-label="Открыть информацию о чате"
+              style={{
+                flex: 1,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: 0,
+                minWidth: 0,
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'inherit',
+                font: 'inherit',
+                textAlign: 'left',
+              }}
+            >
+              {avatarNode}
+              {titleNode}
+            </button>
+          );
+        }
+        return (
+          <>
+            {avatarNode}
+            {titleNode}
+          </>
+        );
+      })()}
 
       <button
         type="button"
