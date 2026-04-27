@@ -272,7 +272,13 @@ export function ChatRoomScreen(): JSX.Element {
   const onCloseActions = useCallback(() => setActionTarget(null), []);
 
   const onReplyTo = useCallback((m: ChatMessageDTO) => setReplyTo(m), []);
-  const onDeleteId = useCallback((id: string) => deleteMut.mutate(id), [deleteMut]);
+  // TanStack Query v5 returns a fresh result-object identity every render but
+  // the .mutate function itself is memoized — depend on it directly so our
+  // useCallback returns a stable ref that React.memo on ChatBubble can rely on.
+  const deleteMutate = deleteMut.mutate;
+  const addMutate = addMut.mutate;
+  const removeMutate = removeMut.mutate;
+  const onDeleteId = useCallback((id: string) => deleteMutate(id), [deleteMutate]);
 
   const onToggleReaction = useCallback(
     (messageId: string, emoji: string): void => {
@@ -280,19 +286,19 @@ export function ChatRoomScreen(): JSX.Element {
       const msg = all?.pages.flat().find((m) => m.id === messageId);
       const existing = msg?.reactions.find((r) => r.emoji === emoji);
       if (existing?.reactedByMe) {
-        removeMut.mutate({ messageId, emoji });
+        removeMutate({ messageId, emoji });
       } else {
-        addMut.mutate({ messageId, emoji });
+        addMutate({ messageId, emoji });
       }
     },
-    [queryClient, chatId, addMut, removeMut],
+    [queryClient, chatId, addMutate, removeMutate],
   );
 
   const onPickEmojiFromMenu = useCallback(
     (emoji: string): void => {
-      if (actionTarget) addMut.mutate({ messageId: actionTarget.message.id, emoji });
+      if (actionTarget) addMutate({ messageId: actionTarget.message.id, emoji });
     },
-    [actionTarget, addMut],
+    [actionTarget, addMutate],
   );
 
   const onMoreEmoji = useCallback((): void => {
@@ -303,10 +309,10 @@ export function ChatRoomScreen(): JSX.Element {
 
   const onPickFromPicker = useCallback(
     (emoji: string): void => {
-      if (pickerTarget) addMut.mutate({ messageId: pickerTarget.messageId, emoji });
+      if (pickerTarget) addMutate({ messageId: pickerTarget.messageId, emoji });
       setPickerTarget(null);
     },
-    [pickerTarget, addMut],
+    [pickerTarget, addMutate],
   );
 
   const handleSend = useCallback(

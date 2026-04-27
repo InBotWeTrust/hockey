@@ -21,4 +21,16 @@ describe('chat emoji whitelist', () => {
     expect(isWhitelistEmoji('')).toBe(false);
     expect(isWhitelistEmoji('🦄')).toBe(false);
   });
+
+  it('matches the web-side whitelist (snapshot)', () => {
+    // Lock the order. If you intentionally change the list, update both
+    // packages/web/src/chat/reactions.ts AND this snapshot. Web's first 6
+    // entries are the FAVORITE_EMOJI shelf in MessageActionsMenu, so
+    // server-side reorder of the head silently breaks the menu shelf.
+    expect(EMOJI_WHITELIST).toEqual([
+      '👍', '❤️', '😂', '🎉', '😮', '😢', '🔥', '👏',
+      '🙏', '💯', '🤔', '😍', '😡', '🥳', '😎', '🤩',
+      '👎', '💔', '🤯', '🥶', '🤝', '🍻', '💪', '🎯',
+    ]);
+  });
 });
