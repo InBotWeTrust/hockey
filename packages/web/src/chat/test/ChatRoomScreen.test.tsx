@@ -142,6 +142,54 @@ describe('ChatRoomScreen', () => {
     await waitFor(() => expect(screen.getByText('тест')).toBeInTheDocument());
   });
 
+  it('regression: WS message:new arriving before HTTP onSuccess does not duplicate the bubble', async () => {
+    const newMsg: ChatMessageDTO = {
+      id: 'm3-race',
+      chatId: 'c1',
+      senderId: SELF_ID,
+      content: 'привет',
+      replyToId: null,
+      isDeleted: false,
+      createdAt: '2026-04-26T10:02:00.000Z',
+      reactions: [],
+    };
+    // Hold the POST resolver so we can simulate the WS frame landing first.
+    let resolveSend: (msg: ChatMessageDTO) => void = () => {};
+    vi.spyOn(api, 'sendMessage').mockImplementation(
+      () => new Promise<ChatMessageDTO>((res) => { resolveSend = res; }),
+    );
+
+    const { queryClient } = renderRoom('c1');
+    await waitFor(() => expect(screen.getAllByTestId('chat-bubble').length).toBe(2));
+
+    const textarea = screen.getByLabelText('Текст сообщения') as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: 'привет' } });
+    fireEvent.click(screen.getByLabelText('Отправить'));
+
+    // WS publishMessageNew lands first (server awaits publish before reply, so on
+    // higher-latency HTTP paths the WS frame can beat the response). Simulate by
+    // patching the cache directly the way useChatSocket.applyMessageNew would.
+    act(() => {
+      queryClient.setQueryData<{ pages: ChatMessageDTO[][]; pageParams: unknown[] }>(
+        chatKeys.messages('c1'),
+        (old) => {
+          if (!old) return { pages: [[newMsg]], pageParams: [undefined] };
+          if (old.pages.some((p) => p.some((m) => m.id === newMsg.id))) return old;
+          const firstPage = old.pages[0] ?? [];
+          return { ...old, pages: [[newMsg, ...firstPage], ...old.pages.slice(1)] };
+        },
+      );
+    });
+
+    // Now HTTP reply lands.
+    await act(async () => {
+      resolveSend(newMsg);
+    });
+
+    await waitFor(() => expect(screen.getAllByText('привет').length).toBe(1));
+    expect(screen.getAllByTestId('chat-bubble').length).toBe(3);
+  });
+
   it('long-press on a foreign bubble surfaces a Reply action; using it sets replyToId on the next send', async () => {
     vi.useFakeTimers();
     const sendSpy = vi.spyOn(api, 'sendMessage').mockResolvedValue({

@@ -181,6 +181,10 @@ export function ChatRoomScreen(): JSX.Element {
     onSuccess: (msg) => {
       queryClient.setQueryData<InfinitePages | undefined>(chatKeys.messages(chatId), (old) => {
         if (!old) return { pages: [[msg]], pageParams: [undefined] };
+        // Dedup: the WS publishMessageNew runs before the HTTP reply on the
+        // server, so the WS frame can land first and applyMessageNew will have
+        // already inserted this message. Skip if its id is already present.
+        if (old.pages.some((page) => page.some((m) => m.id === msg.id))) return old;
         const firstPage = old.pages[0] ?? [];
         const nextFirst = [msg, ...firstPage];
         return { ...old, pages: [nextFirst, ...old.pages.slice(1)] };
