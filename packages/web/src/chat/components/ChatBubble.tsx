@@ -76,6 +76,22 @@ function ChatBubbleImpl({
           fontStyle: message.isDeleted ? 'italic' : 'normal',
         }}
       >
+        {showAvatarAndName && (
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 700,
+              color: 'var(--blue-accent)',
+              marginBottom: 2,
+              maxWidth: '100%',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {message.senderDisplayName ?? 'Участник'}
+          </div>
+        )}
         {message.replyToId && replyTo && (
           <ReplyPreview senderName={replyTo.senderName} content={replyTo.content} />
         )}
@@ -162,21 +178,6 @@ function ChatBubbleImpl({
     >
       {avatar}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: align, minWidth: 0 }}>
-        <span
-          style={{
-            fontSize: 11,
-            fontWeight: 600,
-            color: 'var(--muted)',
-            padding: '0 4px',
-            marginBottom: 2,
-            maxWidth: '100%',
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-          }}
-        >
-          {message.senderDisplayName ?? 'Участник'}
-        </span>
         {body}
         {timestamp}
       </div>
