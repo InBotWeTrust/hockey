@@ -194,6 +194,9 @@ export const chatRoutes: FastifyPluginAsync = async (app) => {
         );
       }
       reply.code(201);
+      // `removed` echoes the prior emoji from this user (or null) so the
+      // caller can dedupe its optimistic UI against the upcoming WS
+      // `reaction:removed` event on switch.
       return { messageId, emoji, removed: result.removed };
     },
   );
