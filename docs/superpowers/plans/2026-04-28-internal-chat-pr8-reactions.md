@@ -2573,14 +2573,16 @@ EOF
 
 - [ ] **Step 12.1.1: Update ChatBubble**
 
-Open `packages/web/src/chat/components/ChatBubble.tsx`. Find the `Props` interface and add `onReact: (emoji: string) => void;`. Then in the JSX, after the rendered message content (immediately before the closing element of the bubble container), insert:
+Open `packages/web/src/chat/components/ChatBubble.tsx`. Find the `Props` interface and add `onReact: (messageId: string, emoji: string) => void;` (the `messageId` arg lets the parent pass a stable `useCallback` reference without per-bubble closures, preserving `React.memo`). Then in the JSX, after the rendered message content (immediately before the closing element of the bubble container), insert:
 
 ```tsx
         <ReactionBar
           reactions={message.reactions}
-          onToggle={onReact}
+          onToggle={(emoji) => onReact(message.id, emoji)}
         />
 ```
+
+The inline closure here is per-*bubble*, not per-parent-render — `ReactionBar` re-creates only when the bubble itself does (and the bubble is `memo`-guarded), so this doesn't break memoization.
 
 Add the import:
 
@@ -2738,7 +2740,7 @@ In the JSX list rendering messages (around line 295), update the `<ChatBubble>`:
               isOwn={isOwn}
               replyTo={replyTo}
               onRequestActions={onRequestActions}
-              onReact={(emoji) => onToggleReaction(m.id, emoji)}
+              onReact={onToggleReaction}
             />
 ```
 

@@ -408,7 +408,7 @@ export function ChatRoomScreen(): JSX.Element {
               isOwn={isOwn}
               replyTo={replyTo}
               onRequestActions={onRequestActions}
-              onReact={(emoji) => onToggleReaction(m.id, emoji)}
+              onReact={onToggleReaction}
             />
           );
         })}

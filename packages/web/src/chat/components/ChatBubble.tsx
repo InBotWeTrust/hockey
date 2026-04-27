@@ -9,7 +9,9 @@ interface ChatBubbleProps {
   isOwn: boolean;
   replyTo?: { senderName: string; content: string } | null;
   onRequestActions: (message: ChatMessageDTO, anchorRect: DOMRect) => void;
-  onReact: (emoji: string) => void;
+  // Receives messageId so the parent can pass a stable useCallback reference
+  // (without a per-bubble closure) — preserves React.memo across parent renders.
+  onReact: (messageId: string, emoji: string) => void;
 }
 
 function formatTime(iso: string): string {
@@ -73,7 +75,10 @@ function ChatBubbleImpl({
             <ReplyPreview senderName={replyTo.senderName} content={replyTo.content} />
           )}
           <div>{text}</div>
-          <ReactionBar reactions={message.reactions} onToggle={onReact} />
+          <ReactionBar
+            reactions={message.reactions}
+            onToggle={(emoji) => onReact(message.id, emoji)}
+          />
         </div>
       </div>
       <span
