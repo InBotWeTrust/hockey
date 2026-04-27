@@ -109,12 +109,16 @@ jobs:
           IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
           GHCR_USER: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SYSTEM_USER_ID: ${{ secrets.SYSTEM_USER_ID }}
+          SYSTEM_CHAT_NAME: ${{ vars.SYSTEM_CHAT_NAME }}
         run: |
           ssh -i ~/.ssh/id_ed25519 "${USER}@${HOST}" \
             IMAGE_TAG="$IMAGE_TAG" \
             GHCR_USER="$GHCR_USER" \
             GHCR_TOKEN="$GHCR_TOKEN" \
             REMOTE_PATH="$REMOTE_PATH" \
+            SYSTEM_USER_ID="$SYSTEM_USER_ID" \
+            SYSTEM_CHAT_NAME="$SYSTEM_CHAT_NAME" \
             bash -s <<'ENDSSH'
           set -euo pipefail
           cd "$REMOTE_PATH"
@@ -144,6 +148,18 @@ jobs:
           # line silently never executes. Manifests as prod stuck on the
           # previous IMAGE_TAG while Actions reports success.
           docker compose run --rm -T server node packages/server/dist/db/migrate-cli.js < /dev/null
+          # Idempotent system-channel seed (no-op if the chat already exists).
+          # Skipped silently when SYSTEM_USER_ID is not configured so deploys
+          # don't break before the secret is added; failures are non-fatal.
+          if [ -n "${SYSTEM_USER_ID:-}" ]; then
+            CHAT_NAME="${SYSTEM_CHAT_NAME:-Общий чат лиги}"
+            docker compose run --rm -T \
+              -e SYSTEM_USER_ID="$SYSTEM_USER_ID" \
+              server node packages/server/dist/chat/seed-cli.js "$CHAT_NAME" < /dev/null \
+              || echo "[deploy] chat:seed of '$CHAT_NAME' failed (non-fatal); continuing"
+          else
+            echo "[deploy] SYSTEM_USER_ID not set in repo secrets; skipping system-channel seed"
+          fi
           # Force app containers to pick up newly pulled images.
           # Plain `up -d` was staying silent on an already-running server
           # after a new IMAGE_TAG was pulled, leaving prod on the old bundle.
