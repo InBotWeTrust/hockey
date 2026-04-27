@@ -34,7 +34,12 @@ export interface ChatDTO {
   unreadCount: number;
   lastMessage: ChatMessageDTO | null;
   lastMessageSenderName: string | null;
-  dmCounterpart: { userId: string; displayName: string; avatarUrl: string | null } | null;
+  dmCounterpart: {
+    userId: string;
+    displayName: string;
+    avatarUrl: string | null;
+    lastSeenAt: string | null;
+  } | null;
   memberCount: number;
   pinnedAt: string | null;
 }
@@ -209,6 +214,7 @@ export interface UserPublicProfileDTO {
   displayName: string;
   avatarUrl: string | null;
   createdAt: string; // ISO
+  lastSeenAt: string | null; // ISO; null = never recorded
 }
 
 export function fetchChatInfo(chatId: string): Promise<ChatInfoDTO> {
