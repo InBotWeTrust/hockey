@@ -204,3 +204,22 @@
   color: var(--ink);
   font-family: var(--font-sans);
 }
+
+/* === Chat bubble flash (PR 7 — search goto) === */
+@keyframes chat-bubble-flash {
+  0%   { box-shadow: 0 0 0 0 rgba(255, 215, 0, 0); background-color: rgba(255, 215, 0, 0.18); }
+  60%  { box-shadow: 0 0 0 6px rgba(255, 215, 0, 0); background-color: rgba(255, 215, 0, 0.10); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 215, 0, 0); background-color: transparent; }
+}
+
+.chat-bubble--flash {
+  animation: chat-bubble-flash 1200ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-bubble--flash {
+    animation: none;
+    background-color: rgba(255, 215, 0, 0.18);
+    transition: background-color 1200ms ease-out;
+  }
+}
