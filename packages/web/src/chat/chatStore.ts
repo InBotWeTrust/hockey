@@ -19,9 +19,11 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
   activeChatId: null,
 
   totalUnread() {
-    let total = 0;
-    for (const v of Object.values(get().unreadByChat)) total += v;
-    return total;
+    let chats = 0;
+    for (const v of Object.values(get().unreadByChat)) {
+      if (v > 0) chats += 1;
+    }
+    return chats;
   },
 
   setUnread(map) {
