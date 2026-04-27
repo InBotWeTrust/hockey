@@ -86,6 +86,9 @@ export function searchUsers(q: string, limit = 20): Promise<UserPickerItem[]> {
 
 export interface FetchMessagesOpts {
   before?: string; // ISO
+  after?: string; // ISO
+  around?: string; // message UUID
+  radius?: number;
   limit?: number; // default 50
 }
 
@@ -95,6 +98,9 @@ export function fetchMessages(
 ): Promise<ChatMessageDTO[]> {
   const params = new URLSearchParams();
   if (opts.before) params.set('before', opts.before);
+  if (opts.after) params.set('after', opts.after);
+  if (opts.around) params.set('around', opts.around);
+  if (opts.radius !== undefined) params.set('radius', String(opts.radius));
   params.set('limit', String(opts.limit ?? 50));
   return apiFetch<ChatMessageDTO[]>(`/chat/${chatId}/messages?${params.toString()}`);
 }

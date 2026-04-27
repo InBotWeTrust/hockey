@@ -1,7 +1,7 @@
 import type { Pool } from 'pg';
 import type { ChatDTO, ChatRow, MessageRow, ChatMessageDTO, MessageReactionRow } from './types.js';
 import { toChatDTO, type ChatListAggregate, toChatMessageDTO, groupReactions } from './dto.js';
-import { InvalidInputError } from './errors.js';
+import { InvalidInputError, MessageNotFoundError } from './errors.js';
 
 interface DmCounterpartRow {
   chat_id: string;
@@ -134,6 +134,9 @@ export async function getMyChats(pool: Pool, userId: string): Promise<ChatDTO[]>
 export interface GetMessagesOpts {
   limit: number;
   before?: string; // ISO timestamp; messages older than this
+  after?: string; // ISO timestamp; messages newer than this
+  around?: string; // message UUID; load ±radius messages centered on this anchor
+  radius?: number; // default 25, used only with `around`
 }
 
 export async function getMessages(
@@ -143,32 +146,84 @@ export async function getMessages(
   opts: GetMessagesOpts,
 ): Promise<ChatMessageDTO[]> {
   const limit = Math.min(Math.max(opts.limit, 1), 100);
-  const params: unknown[] = [chatId];
-  let beforeClause = '';
-  if (opts.before) {
-    params.push(opts.before);
-    beforeClause = `and m.created_at < $${params.length}`;
-  }
-  params.push(limit);
-  const sql = `
-    select m.*
-    from messages m
-    where m.chat_id = $1
-      ${beforeClause}
-    order by m.created_at desc
-    limit $${params.length}
-  `;
-  const r = await pool.query<MessageRow>(sql, params);
-  if (r.rowCount === 0) return [];
 
-  const messageIds = r.rows.map((row) => row.id);
+  let rows: MessageRow[];
+  if (opts.around !== undefined) {
+    const radius = Math.min(Math.max(opts.radius ?? 25, 1), 50);
+    const anchorRes = await pool.query<{ created_at: Date }>(
+      `select created_at from messages
+       where id = $1 and chat_id = $2 and is_deleted = false`,
+      [opts.around, chatId],
+    );
+    if (anchorRes.rowCount === 0) {
+      throw new MessageNotFoundError(opts.around);
+    }
+    const anchorAt = anchorRes.rows[0]!.created_at.toISOString();
+    const r = await pool.query<MessageRow>(
+      `with anchor as (select $2::timestamptz as ts),
+            lower_bound as (
+              select created_at from messages
+               where chat_id = $1 and is_deleted = false
+                 and created_at <= (select ts from anchor)
+               order by created_at desc
+               offset $3 limit 1
+            ),
+            upper_bound as (
+              select created_at from messages
+               where chat_id = $1 and is_deleted = false
+                 and created_at >= (select ts from anchor)
+               order by created_at asc
+               offset $3 limit 1
+            )
+       select m.*
+         from messages m
+        where m.chat_id = $1 and m.is_deleted = false
+          and m.created_at >= coalesce(
+                (select created_at from lower_bound),
+                (select min(created_at) from messages where chat_id = $1 and is_deleted = false))
+          and m.created_at <= coalesce(
+                (select created_at from upper_bound),
+                (select max(created_at) from messages where chat_id = $1 and is_deleted = false))
+        order by m.created_at asc`,
+      [chatId, anchorAt, radius],
+    );
+    rows = r.rows;
+  } else {
+    const params: unknown[] = [chatId];
+    let whereExtra = '';
+    let orderClause = 'order by m.created_at desc';
+    if (opts.before !== undefined) {
+      params.push(opts.before);
+      whereExtra += ` and m.created_at < $${params.length}`;
+    }
+    if (opts.after !== undefined) {
+      params.push(opts.after);
+      whereExtra += ` and m.created_at > $${params.length}`;
+      orderClause = 'order by m.created_at asc';
+    }
+    params.push(limit);
+    const sql = `
+      select m.*
+      from messages m
+      where m.chat_id = $1
+        ${whereExtra}
+      ${orderClause}
+      limit $${params.length}
+    `;
+    const r = await pool.query<MessageRow>(sql, params);
+    rows = r.rows;
+  }
+
+  if (rows.length === 0) return [];
+
+  const messageIds = rows.map((row) => row.id);
   const rxns = await pool.query<MessageReactionRow>(
     `select * from message_reactions where message_id = any($1::uuid[])`,
     [messageIds],
   );
   const grouped = groupReactions(rxns.rows, currentUserId);
 
-  return r.rows.map((row) => toChatMessageDTO(row, grouped.get(row.id) ?? []));
+  return rows.map((row) => toChatMessageDTO(row, grouped.get(row.id) ?? []));
 }
 
 export interface SendMessageOpts {

@@ -233,4 +233,121 @@ describe.skipIf(!hasIntegrationEnv)('chat routes', () => {
     const res = await app.inject({ method: 'GET', url: '/chat/list' });
     expect(res.statusCode).toBe(401);
   });
+
+  describe('GET /chat/:chatId/messages — after / around cursors', () => {
+    async function freshChatWithMessages(count: number, gapMs = 1000): Promise<{
+      chatId: string;
+      ids: string[];
+    }> {
+      const dm = await app.inject({
+        method: 'POST',
+        url: '/chat/dm',
+        headers: { authorization: `Bearer ${tokenA}`, 'content-type': 'application/json' },
+        payload: { otherUserId: userB },
+      });
+      const { chatId } = dm.json() as { chatId: string };
+      const baseTime = Date.now();
+      const ids: string[] = [];
+      for (let i = 0; i < count; i++) {
+        const r = await app.pg.query<{ id: string }>(
+          `insert into messages (chat_id, sender_id, content, created_at)
+           values ($1, $2, $3, to_timestamp($4)) returning id`,
+          [chatId, userA, `m${i}`, (baseTime + i * gapMs) / 1000],
+        );
+        ids.push(r.rows[0]!.id);
+      }
+      return { chatId, ids };
+    }
+
+    it('after=<iso>: returns only messages newer than the cursor, ascending', async () => {
+      const { chatId } = await freshChatWithMessages(5, 10_000);
+      // Read m1's actual timestamp as ISO and use it as the cursor.
+      const m1 = await app.pg.query<{ created_at: Date }>(
+        `select created_at from messages where chat_id = $1 and content = 'm1'`,
+        [chatId],
+      );
+      const cursor = m1.rows[0]!.created_at.toISOString();
+
+      const res = await app.inject({
+        method: 'GET',
+        url: `/chat/${chatId}/messages?after=${encodeURIComponent(cursor)}&limit=10`,
+        headers: { authorization: `Bearer ${tokenA}` },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as Array<{ content: string }>;
+      expect(body.map((m) => m.content)).toEqual(['m2', 'm3', 'm4']);
+    });
+
+    it('around=<uuid>&radius=2: returns 2*radius+1 messages centered on anchor, ascending', async () => {
+      const { chatId, ids } = await freshChatWithMessages(7);
+      const anchor = ids[3]!;
+      const res = await app.inject({
+        method: 'GET',
+        url: `/chat/${chatId}/messages?around=${anchor}&radius=2`,
+        headers: { authorization: `Bearer ${tokenA}` },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as Array<{ content: string }>;
+      expect(body.map((m) => m.content)).toEqual(['m1', 'm2', 'm3', 'm4', 'm5']);
+    });
+
+    it('around=<uuid>: returns 404 when the anchor message does not exist', async () => {
+      const { chatId } = await freshChatWithMessages(1);
+      const res = await app.inject({
+        method: 'GET',
+        url: `/chat/${chatId}/messages?around=00000000-0000-0000-0000-000000000000&radius=5`,
+        headers: { authorization: `Bearer ${tokenA}` },
+      });
+      expect(res.statusCode).toBe(404);
+    });
+
+    it('around=<uuid>: returns 404 when the anchor belongs to a different chat', async () => {
+      const { chatId } = await freshChatWithMessages(1);
+      // Create a second DM userA<->userC and put a message there.
+      const otherDm = await app.inject({
+        method: 'POST',
+        url: '/chat/dm',
+        headers: { authorization: `Bearer ${tokenA}`, 'content-type': 'application/json' },
+        payload: { otherUserId: userC },
+      });
+      const otherChatId = (otherDm.json() as { chatId: string }).chatId;
+      const otherMsg = await app.pg.query<{ id: string }>(
+        `insert into messages (chat_id, sender_id, content) values ($1, $2, 'cross-chat') returning id`,
+        [otherChatId, userA],
+      );
+      const res = await app.inject({
+        method: 'GET',
+        url: `/chat/${chatId}/messages?around=${otherMsg.rows[0]!.id}&radius=5`,
+        headers: { authorization: `Bearer ${tokenA}` },
+      });
+      expect(res.statusCode).toBe(404);
+    });
+
+    it('around=<uuid>: returns 404 when the anchor is soft-deleted', async () => {
+      const { chatId } = await freshChatWithMessages(1);
+      const r = await app.pg.query<{ id: string }>(
+        `insert into messages (chat_id, sender_id, content, is_deleted)
+         values ($1, $2, '', true) returning id`,
+        [chatId, userA],
+      );
+      const anchor = r.rows[0]!.id;
+      const res = await app.inject({
+        method: 'GET',
+        url: `/chat/${chatId}/messages?around=${anchor}&radius=5`,
+        headers: { authorization: `Bearer ${tokenA}` },
+      });
+      expect(res.statusCode).toBe(404);
+    });
+
+    it('around + before simultaneously → 400 (mutual exclusion)', async () => {
+      const { chatId, ids } = await freshChatWithMessages(1);
+      const res = await app.inject({
+        method: 'GET',
+        url: `/chat/${chatId}/messages?around=${ids[0]}&before=${encodeURIComponent(new Date().toISOString())}`,
+        headers: { authorization: `Bearer ${tokenA}` },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+  });
 });

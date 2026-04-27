@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   deleteMessage,
   fetchMessages,
@@ -35,6 +35,8 @@ export function ChatRoomScreen(): JSX.Element {
   const chatId = params.chatId ?? '';
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const goto = searchParams.get('goto');
   const meId = useAuthStore((s) => s.user?.id ?? null);
   const setActive = useChatStore((s) => s.setActive);
   const resetUnread = useChatStore((s) => s.resetUnread);
@@ -43,6 +45,8 @@ export function ChatRoomScreen(): JSX.Element {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [actionTarget, setActionTarget] = useState<ActionTarget | null>(null);
+  const [gotoError, setGotoError] = useState<string | null>(null);
+  const gotoRef = useRef<string | null>(null);
 
   const chatMeta = queryClient
     .getQueryData<ChatDTO[]>(chatKeys.list())
@@ -68,18 +72,50 @@ export function ChatRoomScreen(): JSX.Element {
   >({
     queryKey: chatKeys.messages(chatId),
     enabled: chatId.length > 0,
-    queryFn: ({ pageParam }) =>
-      fetchMessages(chatId, {
+    queryFn: async ({ pageParam }) => {
+      // First fetch with ?goto=<id>: try around-mode; on failure (404 etc.) fall back
+      // to the default last-page load and surface a non-blocking error banner.
+      if (pageParam === undefined && goto) {
+        try {
+          const res = await fetchMessages(chatId, { around: goto, radius: 25 });
+          return res;
+        } catch {
+          setGotoError('Сообщение недоступно');
+          setSearchParams({}, { replace: true });
+          return await fetchMessages(chatId, { limit: PAGE_SIZE });
+        }
+      }
+      return await fetchMessages(chatId, {
         limit: PAGE_SIZE,
         ...(pageParam ? { before: pageParam } : {}),
-      }),
+      });
+    },
     initialPageParam: undefined,
     getNextPageParam: (lastPage) => {
       if (lastPage.length < PAGE_SIZE) return undefined;
-      return lastPage[lastPage.length - 1]?.createdAt;
+      // For the around first-page (asc order), `oldest` is the FIRST element.
+      // For default before-paginated pages (desc order), oldest is the LAST.
+      // Both cases: pick whichever createdAt is earliest in the page.
+      let oldest = lastPage[0]?.createdAt;
+      for (const m of lastPage) {
+        if (oldest === undefined || m.createdAt < oldest) oldest = m.createdAt;
+      }
+      return oldest;
     },
     staleTime: Infinity,
   });
+
+  // When ?goto changes (or appears), wipe the cache for this chat so the queryFn
+  // re-runs with the new goto branch. Same cache-key keeps WS patches consistent.
+  useEffect(() => {
+    if (goto !== gotoRef.current) {
+      gotoRef.current = goto;
+      if (goto !== null) {
+        setGotoError(null);
+        void queryClient.resetQueries({ queryKey: chatKeys.messages(chatId), exact: true });
+      }
+    }
+  }, [goto, chatId, queryClient]);
 
   const { mutate: markRead } = useMutation({
     mutationFn: () => markChatAsRead(chatId),
@@ -95,6 +131,21 @@ export function ChatRoomScreen(): JSX.Element {
     if (!query.data) return;
     markRead();
   }, [chatId, query.data, markRead]);
+
+  // After the goto-page is loaded, scroll to the target bubble, flash it,
+  // then strip ?goto from the URL so a refresh doesn't re-trigger.
+  useEffect(() => {
+    if (!goto || gotoError || !query.data) return;
+    const node = document.querySelector<HTMLElement>(`[data-message-id="${goto}"]`);
+    if (!node) return;
+    node.scrollIntoView({ block: 'center' });
+    node.classList.add('chat-bubble--flash');
+    const handle = window.setTimeout(() => {
+      node.classList.remove('chat-bubble--flash');
+      setSearchParams({}, { replace: true });
+    }, 1200);
+    return () => window.clearTimeout(handle);
+  }, [goto, gotoError, query.data, setSearchParams]);
 
   const messages = useMemo<ChatMessageDTO[]>(() => {
     if (!query.data) return [];
@@ -198,6 +249,21 @@ export function ChatRoomScreen(): JSX.Element {
         placeholder={`Поиск в «${chatTitle}»`}
         onChange={setSearchQuery}
       />
+
+      {gotoError && (
+        <div
+          className="glass-dark"
+          role="alert"
+          style={{
+            margin: '6px 14px',
+            padding: '6px 12px',
+            borderRadius: 10,
+            fontSize: 13,
+          }}
+        >
+          {gotoError}
+        </div>
+      )}
 
       <div
         data-testid="messages-list"
