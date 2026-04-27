@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
@@ -55,6 +55,10 @@ export function ChatRoomScreen(): JSX.Element {
   } | null>(null);
   const [gotoError, setGotoError] = useState<string | null>(null);
   const gotoRef = useRef<string | null>(null);
+  const messagesListRef = useRef<HTMLDivElement | null>(null);
+  // Auto-follow only when the user is already near the bottom; pagination
+  // (loading older messages) keeps the viewport stable instead of jumping.
+  const isNearBottomRef = useRef(true);
 
   const chatMeta = queryClient
     .getQueryData<ChatDTO[]>(chatKeys.list())
@@ -161,6 +165,33 @@ export function ChatRoomScreen(): JSX.Element {
     return [...all].sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
   }, [query.data]);
 
+  // Track whether the user is "near the bottom" so we can auto-follow new
+  // messages without yanking the viewport while they read older history.
+  useEffect(() => {
+    const el = messagesListRef.current;
+    if (!el) return;
+    const onScroll = (): void => {
+      const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+      isNearBottomRef.current = dist < 80;
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, []);
+
+  // Scroll to bottom when the latest message changes — covers initial load,
+  // incoming WS message:new, and our own onSuccess insert. Pagination keeps
+  // lastMessageId stable (older messages prepend), so the viewport stays put.
+  // `goto`-mode owns its own scroll (PR 7), so skip there.
+  const lastMessageId = messages[messages.length - 1]?.id ?? null;
+  useLayoutEffect(() => {
+    if (goto) return;
+    if (lastMessageId === null) return;
+    if (!isNearBottomRef.current) return;
+    const el = messagesListRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [lastMessageId, goto]);
+
   const messageById = useMemo(() => {
     const map = new Map<string, ChatMessageDTO>();
     for (const m of messages) map.set(m.id, m);
@@ -188,6 +219,12 @@ export function ChatRoomScreen(): JSX.Element {
         const firstPage = old.pages[0] ?? [];
         const nextFirst = [msg, ...firstPage];
         return { ...old, pages: [nextFirst, ...old.pages.slice(1)] };
+      });
+      // Force scroll past any "user is reading older history" guard — they
+      // just sent the message, they expect to see it above the input.
+      requestAnimationFrame(() => {
+        const el = messagesListRef.current;
+        if (el) el.scrollTop = el.scrollHeight;
       });
     },
   });
@@ -379,6 +416,7 @@ export function ChatRoomScreen(): JSX.Element {
       )}
 
       <div
+        ref={messagesListRef}
         data-testid="messages-list"
         style={{
           flex: 1,
