@@ -255,21 +255,106 @@ describe('useChatSocket dispatch', () => {
     expect(invalSpy).toHaveBeenCalledWith({ queryKey: chatKeys.unread() });
   });
 
-  it('reaction:added: invalidates the reactions key (PR 6 will mount that query)', async () => {
-    const invalSpy = vi.spyOn(qc, 'invalidateQueries');
+  it('reaction:added (stranger): inserts pill in chatKeys.messages cache, count 1, reactedByMe=false', async () => {
+    qc.setQueryData(chatKeys.messages('c1'), {
+      pages: [[{ id: 'm0', chatId: 'c1', senderId: OTHER, content: 'x', replyToId: null,
+                  isDeleted: false, createdAt: '2026-04-26T00:00:00.000Z', reactions: [] }]],
+      pageParams: [undefined],
+    });
     await act(async () => {
       MockWebSocket.instances[0]?.fireMessage({
         v: 1,
-        event: {
-          type: 'reaction:added',
-          chatId: 'c1',
-          messageId: 'm0',
-          userId: OTHER,
-          emoji: 'thumbs-up',
-        },
+        event: { type: 'reaction:added', chatId: 'c1', messageId: 'm0', userId: OTHER, emoji: '🔥' },
       });
     });
-    expect(invalSpy).toHaveBeenCalledWith({ queryKey: chatKeys.reactions('m0') });
+    const data = qc.getQueryData<{ pages: ChatMessageDTO[][] }>(chatKeys.messages('c1'));
+    expect(data?.pages[0]?.[0]?.reactions).toEqual([{ emoji: '🔥', count: 1, reactedByMe: false }]);
+  });
+
+  it('reaction:removed (stranger): decrements; pill disappears at 0', async () => {
+    qc.setQueryData(chatKeys.messages('c1'), {
+      pages: [[{ id: 'm0', chatId: 'c1', senderId: OTHER, content: 'x', replyToId: null,
+                  isDeleted: false, createdAt: '2026-04-26T00:00:00.000Z',
+                  reactions: [{ emoji: '🔥', count: 1, reactedByMe: false }] }]],
+      pageParams: [undefined],
+    });
+    await act(async () => {
+      MockWebSocket.instances[0]?.fireMessage({
+        v: 1,
+        event: { type: 'reaction:removed', chatId: 'c1', messageId: 'm0', userId: OTHER, emoji: '🔥' },
+      });
+    });
+    const data = qc.getQueryData<{ pages: ChatMessageDTO[][] }>(chatKeys.messages('c1'));
+    expect(data?.pages[0]?.[0]?.reactions).toEqual([]);
+  });
+
+  it('reaction:added (self) is deduped when reactedByMe already true', async () => {
+    qc.setQueryData(chatKeys.messages('c1'), {
+      pages: [[{ id: 'm0', chatId: 'c1', senderId: SELF, content: 'x', replyToId: null,
+                  isDeleted: false, createdAt: '2026-04-26T00:00:00.000Z',
+                  reactions: [{ emoji: '🔥', count: 1, reactedByMe: true }] }]],
+      pageParams: [undefined],
+    });
+    await act(async () => {
+      MockWebSocket.instances[0]?.fireMessage({
+        v: 1,
+        event: { type: 'reaction:added', chatId: 'c1', messageId: 'm0', userId: SELF, emoji: '🔥' },
+      });
+    });
+    const data = qc.getQueryData<{ pages: ChatMessageDTO[][] }>(chatKeys.messages('c1'));
+    expect(data?.pages[0]?.[0]?.reactions).toEqual([{ emoji: '🔥', count: 1, reactedByMe: true }]);
+  });
+
+  it('reaction:removed (self) is deduped when pill no longer mine', async () => {
+    qc.setQueryData(chatKeys.messages('c1'), {
+      pages: [[{ id: 'm0', chatId: 'c1', senderId: SELF, content: 'x', replyToId: null,
+                  isDeleted: false, createdAt: '2026-04-26T00:00:00.000Z',
+                  reactions: [{ emoji: '🔥', count: 1, reactedByMe: false }] }]],
+      pageParams: [undefined],
+    });
+    await act(async () => {
+      MockWebSocket.instances[0]?.fireMessage({
+        v: 1,
+        event: { type: 'reaction:removed', chatId: 'c1', messageId: 'm0', userId: SELF, emoji: '🔥' },
+      });
+    });
+    const data = qc.getQueryData<{ pages: ChatMessageDTO[][] }>(chatKeys.messages('c1'));
+    // No-op: count not double-decremented to 0.
+    expect(data?.pages[0]?.[0]?.reactions).toEqual([{ emoji: '🔥', count: 1, reactedByMe: false }]);
+  });
+
+  it('reaction:added when no cache exists for the chat: no crash, no patch', async () => {
+    expect(qc.getQueryData(chatKeys.messages('c-unknown'))).toBeUndefined();
+    await act(async () => {
+      MockWebSocket.instances[0]?.fireMessage({
+        v: 1,
+        event: { type: 'reaction:added', chatId: 'c-unknown', messageId: 'm', userId: OTHER, emoji: '🔥' },
+      });
+    });
+    expect(qc.getQueryData(chatKeys.messages('c-unknown'))).toBeUndefined();
+  });
+
+  it('switch via two stranger events (removed prev + added new) keeps state consistent', async () => {
+    qc.setQueryData(chatKeys.messages('c1'), {
+      pages: [[{ id: 'm0', chatId: 'c1', senderId: OTHER, content: 'x', replyToId: null,
+                  isDeleted: false, createdAt: '2026-04-26T00:00:00.000Z',
+                  reactions: [{ emoji: '❤️', count: 1, reactedByMe: false }] }]],
+      pageParams: [undefined],
+    });
+    await act(async () => {
+      MockWebSocket.instances[0]?.fireMessage({
+        v: 1,
+        event: { type: 'reaction:removed', chatId: 'c1', messageId: 'm0', userId: OTHER, emoji: '❤️' },
+      });
+    });
+    await act(async () => {
+      MockWebSocket.instances[0]?.fireMessage({
+        v: 1,
+        event: { type: 'reaction:added', chatId: 'c1', messageId: 'm0', userId: OTHER, emoji: '🔥' },
+      });
+    });
+    const data = qc.getQueryData<{ pages: ChatMessageDTO[][] }>(chatKeys.messages('c1'));
+    expect(data?.pages[0]?.[0]?.reactions).toEqual([{ emoji: '🔥', count: 1, reactedByMe: false }]);
   });
 
   it('on reconnect open: refetches list + active chat messages', async () => {
