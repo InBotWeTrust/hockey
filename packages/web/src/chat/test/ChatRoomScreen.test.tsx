@@ -7,13 +7,13 @@ import { useAuthStore, type AuthUser } from '../../auth/authStore.js';
 import * as api from '../api.js';
 import type { ChatMessageDTO } from '../api.js';
 
-function renderRoom(chatId: string): { queryClient: QueryClient } {
+function renderRoom(chatId: string, search = ''): { queryClient: QueryClient } {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[`/chat/${chatId}`]}>
+      <MemoryRouter initialEntries={[`/chat/${chatId}${search}`]}>
         <Routes>
           <Route path="/chat/:chatId" element={<ChatRoomScreen />} />
           <Route path="/chat" element={<div>list</div>} />
@@ -189,5 +189,102 @@ describe('ChatRoomScreen', () => {
 
     await waitFor(() => expect(delSpy).toHaveBeenCalledWith('m2'));
     await waitFor(() => expect(screen.getByText('Сообщение удалено')).toBeInTheDocument());
+  });
+});
+
+describe('ChatRoomScreen — ?goto=<messageId>', () => {
+  beforeEach(() => {
+    const user: AuthUser = { id: SELF_ID, displayName: 'Me', grip: 'right' };
+    useAuthStore.setState({ accessToken: 'tok', refreshToken: 'rtok', user });
+    vi.spyOn(api, 'markChatAsRead').mockResolvedValue(undefined);
+    if (typeof Element.prototype.scrollIntoView !== 'function') {
+      Object.defineProperty(Element.prototype, 'scrollIntoView', {
+        configurable: true,
+        value: vi.fn(),
+      });
+    } else {
+      vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(() => {});
+    }
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it('loads messages with around=<id>&radius=25 when ?goto is present', async () => {
+    const target: ChatMessageDTO = {
+      id: 'gtarget',
+      chatId: 'c1',
+      senderId: OTHER_ID,
+      content: 'target',
+      replyToId: null,
+      isDeleted: false,
+      createdAt: '2026-04-26T10:00:00.000Z',
+      reactions: [],
+    };
+    const fetchSpy = vi.spyOn(api, 'fetchMessages').mockResolvedValue([target]);
+
+    renderRoom('c1', '?goto=gtarget');
+
+    await waitFor(() =>
+      expect(fetchSpy).toHaveBeenCalledWith('c1', { around: 'gtarget', radius: 25 }),
+    );
+  });
+
+  it('adds .chat-bubble--flash to the target bubble and removes it after 1200ms', async () => {
+    vi.useFakeTimers();
+    const target: ChatMessageDTO = {
+      id: 'gtarget',
+      chatId: 'c1',
+      senderId: OTHER_ID,
+      content: 'target',
+      replyToId: null,
+      isDeleted: false,
+      createdAt: '2026-04-26T10:00:00.000Z',
+      reactions: [],
+    };
+    vi.spyOn(api, 'fetchMessages').mockResolvedValue([target]);
+
+    renderRoom('c1', '?goto=gtarget');
+
+    // Let the queryFn promise resolve and the flash effect run.
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+    let node = document.querySelector('[data-message-id="gtarget"]');
+    expect(node?.classList.contains('chat-bubble--flash')).toBe(true);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1200);
+    });
+    node = document.querySelector('[data-message-id="gtarget"]');
+    expect(node?.classList.contains('chat-bubble--flash')).toBe(false);
+  });
+
+  it('falls back to default load and shows "Сообщение недоступно" banner on 404', async () => {
+    const fallback: ChatMessageDTO = {
+      id: 'm-existing',
+      chatId: 'c1',
+      senderId: OTHER_ID,
+      content: 'existing',
+      replyToId: null,
+      isDeleted: false,
+      createdAt: '2026-04-26T11:00:00.000Z',
+      reactions: [],
+    };
+    const fetchSpy = vi.spyOn(api, 'fetchMessages');
+    fetchSpy.mockRejectedValueOnce(new Error('not found'));
+    fetchSpy.mockResolvedValueOnce([fallback]);
+
+    renderRoom('c1', '?goto=gone');
+
+    expect(await screen.findByText('Сообщение недоступно')).toBeInTheDocument();
+    await waitFor(() => {
+      const defaultCall = fetchSpy.mock.calls.find(
+        ([, opts]) => opts && !('around' in opts),
+      );
+      expect(defaultCall).toBeDefined();
+    });
   });
 });
