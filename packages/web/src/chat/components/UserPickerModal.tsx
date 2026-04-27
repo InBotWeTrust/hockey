@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search, X } from 'lucide-react';
 import { findOrCreateDM, searchUsers, type UserPickerItem } from '../api.js';
 import { chatKeys } from '../../lib/queryKeys.js';
+import { UserAvatar } from './UserAvatar.js';
 
 interface UserPickerModalProps {
   open: boolean;
@@ -140,30 +141,7 @@ export function UserPickerModal({
                 textAlign: 'left',
               }}
             >
-              {u.avatarUrl ? (
-                <img
-                  src={u.avatarUrl}
-                  alt=""
-                  style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover' }}
-                />
-              ) : (
-                <div
-                  style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: '50%',
-                    background: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)',
-                    color: '#ffffff',
-                    fontSize: 13,
-                    fontWeight: 800,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  {u.displayName.charAt(0).toUpperCase()}
-                </div>
-              )}
+              <UserAvatar avatarUrl={u.avatarUrl} name={u.displayName} size={32} fontSize={13} />
               <span style={{ fontSize: 14, fontWeight: 600 }}>{u.displayName}</span>
             </button>
           ))}

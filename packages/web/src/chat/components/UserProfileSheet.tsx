@@ -6,6 +6,7 @@ import { X } from 'lucide-react';
 import { findOrCreateDM, type UserPickerItem } from '../api.js';
 import { chatKeys } from '../../lib/queryKeys.js';
 import { StatCard } from '../../components/StatCard.js';
+import { UserAvatar } from './UserAvatar.js';
 
 interface UserProfileSheetProps {
   sender: UserPickerItem | null;
@@ -96,38 +97,13 @@ export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JS
         </button>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          {sender.avatarUrl ? (
-            <img
-              src={sender.avatarUrl}
-              alt=""
-              style={{
-                width: 88,
-                height: 88,
-                borderRadius: 999,
-                objectFit: 'cover',
-                boxShadow: '0 10px 26px rgba(15, 23, 42, 0.25)',
-              }}
-            />
-          ) : (
-            <div
-              aria-hidden
-              style={{
-                width: 88,
-                height: 88,
-                borderRadius: 999,
-                background: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)',
-                color: '#ffffff',
-                fontSize: 32,
-                fontWeight: 800,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 10px 26px rgba(15, 23, 42, 0.25)',
-              }}
-            >
-              {initial}
-            </div>
-          )}
+          <UserAvatar
+            avatarUrl={sender.avatarUrl}
+            name={sender.displayName}
+            size={88}
+            fontSize={32}
+            style={{ boxShadow: '0 10px 26px rgba(15, 23, 42, 0.25)' }}
+          />
           <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', minWidth: 0 }}>
             {sender.displayName}
           </div>

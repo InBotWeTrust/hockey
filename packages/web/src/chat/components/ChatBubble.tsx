@@ -3,6 +3,7 @@ import type { ChatMessageDTO } from '../api.js';
 import { ReplyPreview } from './ReplyPreview.js';
 import { ReactionBar } from './ReactionBar.js';
 import { useLongPress } from '../useLongPress.js';
+import { UserAvatar } from './UserAvatar.js';
 
 interface ChatBubbleProps {
   message: ChatMessageDTO;
@@ -159,37 +160,13 @@ function ChatBubbleImpl({
     );
   }
 
-  const avatarInner = message.senderAvatarUrl ? (
-    <img
-      src={message.senderAvatarUrl}
-      alt=""
-      style={{
-        width: 32,
-        height: 32,
-        borderRadius: '50%',
-        objectFit: 'cover',
-        flexShrink: 0,
-      }}
+  const avatarInner = (
+    <UserAvatar
+      avatarUrl={message.senderAvatarUrl}
+      name={message.senderDisplayName}
+      size={32}
+      fontSize={13}
     />
-  ) : (
-    <div
-      aria-hidden
-      style={{
-        width: 32,
-        height: 32,
-        borderRadius: '50%',
-        background: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)',
-        color: '#ffffff',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: 13,
-        fontWeight: 800,
-        flexShrink: 0,
-      }}
-    >
-      {authorInitial(message.senderDisplayName)}
-    </div>
   );
   const avatar = (
     <button

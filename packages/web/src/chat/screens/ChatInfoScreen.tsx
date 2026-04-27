@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { fetchChatInfo, type ChatInfoDTO } from '../api.js';
 import { chatKeys } from '../../lib/queryKeys.js';
+import { UserAvatar } from '../components/UserAvatar.js';
 
 function formatMemberCount(n: number): string {
   const mod10 = n % 10;
@@ -171,31 +172,7 @@ export function ChatInfoScreen(): JSX.Element {
                   color: 'var(--ink)',
                 }}
               >
-                {m.avatarUrl ? (
-                  <img
-                    src={m.avatarUrl}
-                    alt=""
-                    style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover' }}
-                  />
-                ) : (
-                  <div
-                    aria-hidden
-                    style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: '50%',
-                      background: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)',
-                      color: '#ffffff',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: 16,
-                      fontWeight: 800,
-                    }}
-                  >
-                    {avatarInitial(m.displayName)}
-                  </div>
-                )}
+                <UserAvatar avatarUrl={m.avatarUrl} name={m.displayName} size={40} />
                 <div
                   style={{
                     fontSize: 14,

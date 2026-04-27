@@ -1,4 +1,5 @@
 import { ArrowLeft, Search, X } from 'lucide-react';
+import { UserAvatar } from './UserAvatar.js';
 
 interface Props {
   title: string;
@@ -56,38 +57,7 @@ export function ChatRoomHeader({
       </button>
 
       {(() => {
-        const avatarNode = avatarUrl ? (
-          <img
-            src={avatarUrl}
-            alt=""
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: '50%',
-              objectFit: 'cover',
-              flexShrink: 0,
-            }}
-          />
-        ) : (
-          <div
-            aria-hidden
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: '50%',
-              background: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)',
-              color: '#ffffff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 16,
-              fontWeight: 800,
-              flexShrink: 0,
-            }}
-          >
-            {avatarInitial(title)}
-          </div>
-        );
+        const avatarNode = <UserAvatar avatarUrl={avatarUrl} name={title} size={40} />;
         const titleNode = (
           <div
             style={{

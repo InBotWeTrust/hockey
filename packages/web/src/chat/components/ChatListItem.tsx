@@ -3,6 +3,7 @@ import { Pin } from 'lucide-react';
 import type { ChatDTO } from '../api.js';
 import { useAuthStore } from '../../auth/authStore.js';
 import { useLongPress } from '../useLongPress.js';
+import { UserAvatar } from './UserAvatar.js';
 
 interface ChatListItemProps {
   chat: ChatDTO;
@@ -125,30 +126,7 @@ function ChatListItemImpl({ chat, onOpen, onRequestActions }: ChatListItemProps)
         />
       )}
 
-      {avatarUrl ? (
-        <img
-          src={avatarUrl}
-          alt=""
-          style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover' }}
-        />
-      ) : (
-        <div
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: '50%',
-            background: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)',
-            color: '#ffffff',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: 16,
-            fontWeight: 800,
-          }}
-        >
-          {avatarInitial(chat)}
-        </div>
-      )}
+      <UserAvatar avatarUrl={avatarUrl} name={displayTitle(chat)} size={40} />
 
       <div style={{ minWidth: 0 }}>
         <div

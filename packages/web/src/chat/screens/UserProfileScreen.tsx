@@ -10,6 +10,7 @@ import {
 import { userKeys } from '../../lib/queryKeys.js';
 import { useAuthStore } from '../../auth/authStore.js';
 import { formatLastSeen } from '../lastSeen.js';
+import { UserAvatar } from '../components/UserAvatar.js';
 
 function avatarInitial(name: string | null): string {
   return (name?.trim() || '?').charAt(0).toUpperCase();
@@ -115,31 +116,7 @@ export function UserProfileScreen(): JSX.Element {
               gap: 10,
             }}
           >
-            {data.avatarUrl ? (
-              <img
-                src={data.avatarUrl}
-                alt=""
-                style={{ width: 96, height: 96, borderRadius: '50%', objectFit: 'cover' }}
-              />
-            ) : (
-              <div
-                aria-hidden
-                style={{
-                  width: 96,
-                  height: 96,
-                  borderRadius: '50%',
-                  background: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)',
-                  color: '#ffffff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 36,
-                  fontWeight: 800,
-                }}
-              >
-                {avatarInitial(data.displayName)}
-              </div>
-            )}
+            <UserAvatar avatarUrl={data.avatarUrl} name={data.displayName} size={96} fontSize={36} />
             <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--ink)' }}>
               {data.displayName}
             </div>
