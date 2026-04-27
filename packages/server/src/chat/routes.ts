@@ -50,12 +50,22 @@ export const chatRoutes: FastifyPluginAsync = async (app) => {
     const query = z
       .object({
         before: isoDate.optional(),
+        after: isoDate.optional(),
+        around: uuid.optional(),
+        radius: z.coerce.number().int().min(1).max(50).optional(),
         limit: z.coerce.number().int().min(1).max(100).default(50),
       })
+      .refine(
+        (o) => !(o.around && (o.before !== undefined || o.after !== undefined)),
+        { message: 'around is mutually exclusive with before/after' },
+      )
       .parse(req.query);
     await assertCanAccessChat(app.pg, req.user.id, chatId);
     const opts: GetMessagesOpts = { limit: query.limit };
     if (query.before !== undefined) opts.before = query.before;
+    if (query.after !== undefined) opts.after = query.after;
+    if (query.around !== undefined) opts.around = query.around;
+    if (query.radius !== undefined) opts.radius = query.radius;
     return await getMessages(app.pg, chatId, req.user.id, opts);
   });
 

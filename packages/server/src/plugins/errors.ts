@@ -1,5 +1,6 @@
 import fp from 'fastify-plugin';
 import type { FastifyPluginAsync } from 'fastify';
+import { ZodError } from 'zod';
 
 export class AppError extends Error {
   constructor(
@@ -17,6 +18,12 @@ const plugin: FastifyPluginAsync = async (app) => {
     if (err instanceof AppError) {
       reply.status(err.statusCode).send({
         error: { code: err.code, message: err.message },
+      });
+      return;
+    }
+    if (err instanceof ZodError) {
+      reply.status(400).send({
+        error: { code: 'bad_request', message: err.message, issues: err.issues },
       });
       return;
     }
