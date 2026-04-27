@@ -126,7 +126,6 @@ export function ChatRoomScreen(): JSX.Element {
         const nextFirst = [msg, ...firstPage];
         return { ...old, pages: [nextFirst, ...old.pages.slice(1)] };
       });
-      void queryClient.invalidateQueries({ queryKey: chatKeys.list() });
     },
   });
 
@@ -143,12 +142,6 @@ export function ChatRoomScreen(): JSX.Element {
           ),
         };
       });
-    },
-    onError: () => {
-      void queryClient.invalidateQueries({ queryKey: chatKeys.messages(chatId) });
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: chatKeys.list() });
     },
   });
 
