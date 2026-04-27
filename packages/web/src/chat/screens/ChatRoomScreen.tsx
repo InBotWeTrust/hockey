@@ -107,7 +107,7 @@ export function ChatRoomScreen(): JSX.Element {
   const chatAvatarUrl = chatMeta?.dmCounterpart?.avatarUrl ?? null;
   const chatSubtitle =
     chatMeta?.type === 'direct'
-      ? (formatLastSeen(chatMeta.dmCounterpart?.lastSeenAt ?? null) ?? undefined)
+      ? formatLastSeen(chatMeta.dmCounterpart?.lastSeenAt ?? null)
       : chatMeta
       ? formatMemberCount(chatMeta.memberCount)
       : undefined;

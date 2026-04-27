@@ -146,12 +146,9 @@ export function UserProfileScreen(): JSX.Element {
             <div style={{ fontSize: 12, color: 'var(--muted)' }}>
               В лиге с {formatJoined(data.createdAt)}
             </div>
-            {(() => {
-              const ls = formatLastSeen(data.lastSeenAt);
-              return ls ? (
-                <div style={{ fontSize: 12, color: 'var(--muted)' }}>{ls}</div>
-              ) : null;
-            })()}
+            <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+              {formatLastSeen(data.lastSeenAt)}
+            </div>
           </div>
 
           {!isSelf && (

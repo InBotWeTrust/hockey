@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatLastSeen } from '../lastSeen.js';
+import { formatLastSeen, LAST_SEEN_FALLBACK } from '../lastSeen.js';
 
 const NOW = new Date('2026-04-27T15:30:00');
 
@@ -8,12 +8,13 @@ function iso(d: string): string {
 }
 
 describe('formatLastSeen', () => {
-  it('returns null for null input', () => {
-    expect(formatLastSeen(null, NOW)).toBeNull();
+  it('renders fallback for null input', () => {
+    expect(formatLastSeen(null, NOW)).toBe(LAST_SEEN_FALLBACK);
+    expect(LAST_SEEN_FALLBACK).toBe('был(а) давно');
   });
 
-  it('returns null for an unparseable iso', () => {
-    expect(formatLastSeen('not-a-date', NOW)).toBeNull();
+  it('renders fallback for an unparseable iso', () => {
+    expect(formatLastSeen('not-a-date', NOW)).toBe(LAST_SEEN_FALLBACK);
   });
 
   it('renders "в сети" when within 2-minute online window', () => {
