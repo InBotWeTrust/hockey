@@ -6,6 +6,8 @@ import {
   fetchMessages,
   markChatAsRead,
   sendMessage,
+  addReaction,
+  removeReaction,
   type ChatDTO,
   type ChatMessageDTO,
 } from '../api.js';
@@ -17,6 +19,8 @@ import { ChatInput } from '../components/ChatInput.js';
 import { ChatRoomHeader } from '../components/ChatRoomHeader.js';
 import { ChatRoomSearchBar } from '../components/ChatRoomSearchBar.js';
 import { MessageActionsMenu } from '../components/MessageActionsMenu.js';
+import { ReactionPicker } from '../components/ReactionPicker.js';
+import { switchMyReactionTo, removeMyReaction } from '../reactionsState.js';
 
 const PAGE_SIZE = 50;
 
@@ -45,6 +49,10 @@ export function ChatRoomScreen(): JSX.Element {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [actionTarget, setActionTarget] = useState<ActionTarget | null>(null);
+  const [pickerTarget, setPickerTarget] = useState<{
+    messageId: string;
+    anchorRect: DOMRect;
+  } | null>(null);
   const [gotoError, setGotoError] = useState<string | null>(null);
   const gotoRef = useRef<string | null>(null);
 
@@ -195,6 +203,66 @@ export function ChatRoomScreen(): JSX.Element {
     },
   });
 
+  const addMut = useMutation<
+    Awaited<ReturnType<typeof addReaction>>,
+    Error,
+    { messageId: string; emoji: string },
+    { prev: InfinitePages | undefined }
+  >({
+    mutationFn: ({ messageId, emoji }) => addReaction(messageId, emoji),
+    onMutate: ({ messageId, emoji }) => {
+      const prev = queryClient.getQueryData<InfinitePages>(chatKeys.messages(chatId));
+      queryClient.setQueryData<InfinitePages | undefined>(chatKeys.messages(chatId), (old) => {
+        if (!old) return old;
+        let touched = false;
+        const pages = old.pages.map((page) =>
+          page.map((m) => {
+            if (m.id !== messageId) return m;
+            const next = switchMyReactionTo(m, emoji);
+            if (next === m) return m;
+            touched = true;
+            return next;
+          }),
+        );
+        return touched ? { ...old, pages } : old;
+      });
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(chatKeys.messages(chatId), ctx.prev);
+    },
+  });
+
+  const removeMut = useMutation<
+    void,
+    Error,
+    { messageId: string; emoji: string },
+    { prev: InfinitePages | undefined }
+  >({
+    mutationFn: ({ messageId, emoji }) => removeReaction(messageId, emoji),
+    onMutate: ({ messageId, emoji }) => {
+      const prev = queryClient.getQueryData<InfinitePages>(chatKeys.messages(chatId));
+      queryClient.setQueryData<InfinitePages | undefined>(chatKeys.messages(chatId), (old) => {
+        if (!old) return old;
+        let touched = false;
+        const pages = old.pages.map((page) =>
+          page.map((m) => {
+            if (m.id !== messageId) return m;
+            const next = removeMyReaction(m, emoji);
+            if (next === m) return m;
+            touched = true;
+            return next;
+          }),
+        );
+        return touched ? { ...old, pages } : old;
+      });
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(chatKeys.messages(chatId), ctx.prev);
+    },
+  });
+
   const onRequestActions = useCallback(
     (message: ChatMessageDTO, anchorRect: DOMRect): void => {
       setActionTarget({ message, anchorRect });
@@ -205,6 +273,41 @@ export function ChatRoomScreen(): JSX.Element {
 
   const onReplyTo = useCallback((m: ChatMessageDTO) => setReplyTo(m), []);
   const onDeleteId = useCallback((id: string) => deleteMut.mutate(id), [deleteMut]);
+
+  const onToggleReaction = useCallback(
+    (messageId: string, emoji: string): void => {
+      const all = queryClient.getQueryData<InfinitePages>(chatKeys.messages(chatId));
+      const msg = all?.pages.flat().find((m) => m.id === messageId);
+      const existing = msg?.reactions.find((r) => r.emoji === emoji);
+      if (existing?.reactedByMe) {
+        removeMut.mutate({ messageId, emoji });
+      } else {
+        addMut.mutate({ messageId, emoji });
+      }
+    },
+    [queryClient, chatId, addMut, removeMut],
+  );
+
+  const onPickEmojiFromMenu = useCallback(
+    (emoji: string): void => {
+      if (actionTarget) addMut.mutate({ messageId: actionTarget.message.id, emoji });
+    },
+    [actionTarget, addMut],
+  );
+
+  const onMoreEmoji = useCallback((): void => {
+    if (!actionTarget) return;
+    setPickerTarget({ messageId: actionTarget.message.id, anchorRect: actionTarget.anchorRect });
+    setActionTarget(null);
+  }, [actionTarget]);
+
+  const onPickFromPicker = useCallback(
+    (emoji: string): void => {
+      if (pickerTarget) addMut.mutate({ messageId: pickerTarget.messageId, emoji });
+      setPickerTarget(null);
+    },
+    [pickerTarget, addMut],
+  );
 
   const handleSend = useCallback(
     (content: string, replyToId: string | null): void => {
@@ -305,6 +408,7 @@ export function ChatRoomScreen(): JSX.Element {
               isOwn={isOwn}
               replyTo={replyTo}
               onRequestActions={onRequestActions}
+              onReact={(emoji) => onToggleReaction(m.id, emoji)}
             />
           );
         })}
@@ -326,7 +430,15 @@ export function ChatRoomScreen(): JSX.Element {
         isOwn={actionIsOwn}
         onReply={() => actionMessage && onReplyTo(actionMessage)}
         onDelete={() => actionMessage && onDeleteId(actionMessage.id)}
+        onPickEmoji={onPickEmojiFromMenu}
+        onMoreEmoji={onMoreEmoji}
         onClose={onCloseActions}
+      />
+      <ReactionPicker
+        open={pickerTarget !== null}
+        anchorRect={pickerTarget?.anchorRect ?? null}
+        onPick={onPickFromPicker}
+        onClose={() => setPickerTarget(null)}
       />
     </main>
   );
