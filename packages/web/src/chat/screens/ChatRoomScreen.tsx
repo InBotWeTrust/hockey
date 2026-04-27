@@ -256,7 +256,13 @@ export function ChatRoomScreen(): JSX.Element {
       }),
     onSuccess: (msg) => {
       queryClient.setQueryData<InfinitePages | undefined>(chatKeys.messages(chatId), (old) => {
-        if (!old) return { pages: [[msg]], pageParams: [undefined] };
+        if (!old) {
+          // Same race as in useChatSocket.applyMessageNew: a {pages:[[msg]]}
+          // shell here gets overwritten when the in-flight initial fetch
+          // resolves. Refetch instead so the user sees what they sent.
+          void queryClient.invalidateQueries({ queryKey: chatKeys.messages(chatId) });
+          return old;
+        }
         // Dedup: the WS publishMessageNew runs before the HTTP reply on the
         // server, so the WS frame can land first and applyMessageNew will have
         // already inserted this message. Skip if its id is already present.

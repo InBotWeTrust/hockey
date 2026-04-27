@@ -15,7 +15,16 @@ interface InfinitePages {
 
 function applyMessageNew(qc: QueryClient, chatId: string, msg: ChatMessageDTO): void {
   qc.setQueryData<InfinitePages | undefined>(chatKeys.messages(chatId), (old) => {
-    if (!old) return { pages: [[msg]], pageParams: [undefined] };
+    if (!old) {
+      // Cache not yet initialized — the initial fetchMessages is in flight.
+      // Writing a {pages:[[msg]]} shell here gets overwritten when the fetch
+      // resolves (TanStack replaces the page for pageParam=undefined), and
+      // the WS-arrived message silently vanishes from the UI until reload.
+      // Trigger a refetch instead — by the time WS publishes, the message
+      // is already committed in the DB, so the refresh will include it.
+      void qc.invalidateQueries({ queryKey: chatKeys.messages(chatId) });
+      return old;
+    }
     const flat = old.pages.flat();
     if (flat.some((m) => m.id === msg.id)) return old;
     const firstPage = old.pages[0] ?? [];
