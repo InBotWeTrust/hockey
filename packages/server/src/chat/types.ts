@@ -97,7 +97,12 @@ export type ChatEvent =
   | { type: 'message:deleted'; chatId: string; messageId: string }
   | { type: 'reaction:added'; chatId: string; messageId: string; userId: string; emoji: string }
   | { type: 'reaction:removed'; chatId: string; messageId: string; userId: string; emoji: string }
-  | { type: 'chat:read'; chatId: string; userId: string; lastReadAt: string };
+  | { type: 'chat:read'; chatId: string; userId: string; lastReadAt: string }
+  // Sent by the server immediately after all Redis subscribes complete on a
+  // fresh /chat/ws connection. Closes the race where a client posts a message
+  // (or any publish-trigger) before the server-side SUBSCRIBE has registered.
+  // Only ever sent by ws.ts; never published through realtime.
+  | { type: 'connection:ready' };
 
 export interface ChatEventFrame {
   v: 1;
