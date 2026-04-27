@@ -223,3 +223,12 @@
     transition: background-color 1200ms ease-out;
   }
 }
+
+/* Utility: hide native scrollbar while keeping scroll behavior. */
+.no-scrollbar {
+  scrollbar-width: none;          /* Firefox */
+  -ms-overflow-style: none;       /* legacy Edge/IE */
+}
+.no-scrollbar::-webkit-scrollbar { /* Chromium/Safari */
+  display: none;
+}

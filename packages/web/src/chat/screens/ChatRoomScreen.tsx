@@ -442,6 +442,7 @@ export function ChatRoomScreen(): JSX.Element {
       <div
         ref={messagesListRef}
         data-testid="messages-list"
+        className="no-scrollbar"
         style={{
           flex: 1,
           minHeight: 0,
