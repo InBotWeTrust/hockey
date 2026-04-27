@@ -202,6 +202,26 @@ describe('useChatSocket dispatch', () => {
     expect(invalSpy).toHaveBeenCalledWith({ queryKey: chatKeys.unread() });
   });
 
+  it('regression: message:new with no cache yet does not write a shell — invalidates messages query so refetch picks it up', async () => {
+    // Reproduces the "messages disappear" bug: a {pages:[[msg]]} shell here
+    // would be overwritten when the in-flight initial fetchMessages resolves
+    // (TanStack replaces the page for pageParam=undefined), and the WS
+    // message would silently vanish until reload.
+    expect(qc.getQueryData(chatKeys.messages('c-fresh'))).toBeUndefined();
+    const invalSpy = vi.spyOn(qc, 'invalidateQueries');
+    const newMsg = fixtureMsg('m-fresh', 'c-fresh', OTHER);
+    await act(async () => {
+      MockWebSocket.instances[0]?.fireMessage({
+        v: 1,
+        event: { type: 'message:new', chatId: 'c-fresh', message: newMsg },
+      });
+    });
+    expect(qc.getQueryData(chatKeys.messages('c-fresh'))).toBeUndefined();
+    expect(invalSpy).toHaveBeenCalledWith({
+      queryKey: chatKeys.messages('c-fresh'),
+    });
+  });
+
   it('message:new dedup — same message id is prepended only once', async () => {
     const newMsg = fixtureMsg('m-dedup', 'c1', SELF);
     const ev: ChatEvent = { type: 'message:new', chatId: 'c1', message: newMsg };
