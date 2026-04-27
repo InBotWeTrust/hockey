@@ -72,8 +72,15 @@ export interface ChatDTO {
   // Display name of the author of `lastMessage`. Null when no last message.
   // Used by the client to render "Имя Ф: text" preview without an extra fetch.
   lastMessageSenderName: string | null;
-  // For DMs: rendered name and avatar of the OTHER user. Null for group/system.
-  dmCounterpart: { userId: string; displayName: string; avatarUrl: string | null } | null;
+  // For DMs: rendered name, avatar and last-seen of the OTHER user. Null for
+  // group/system. `lastSeenAt` is ISO; null when the user has never been
+  // recorded as active (legacy pre-touchLastSeen accounts).
+  dmCounterpart: {
+    userId: string;
+    displayName: string;
+    avatarUrl: string | null;
+    lastSeenAt: string | null;
+  } | null;
   // For system chats — total active users (everyone has access).
   // For group/direct — count of chat_members rows.
   memberCount: number;
@@ -127,6 +134,9 @@ export interface UserPublicProfileDTO {
   avatarUrl: string | null;
   // ISO; surface "joined at" on the profile screen.
   createdAt: string;
+  // ISO; surface "last seen" subtitle on the public profile / DM header.
+  // Null for legacy accounts that have never had `last_seen_at` populated.
+  lastSeenAt: string | null;
 }
 
 // WS event types. Discriminated union; serialized as JSON over the wire.

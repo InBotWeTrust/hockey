@@ -22,6 +22,7 @@ interface DmCounterpartRow {
   user_id: string;
   display_name: string;
   avatar_url: string | null;
+  last_seen_at: Date | null;
 }
 
 interface MyChatsRow {
@@ -129,7 +130,7 @@ export async function getMyChats(pool: Pool, userId: string): Promise<ChatDTO[]>
   const counterparts = new Map<string, ChatDTO['dmCounterpart']>();
   if (dmChatIds.length > 0) {
     const cpSql = `
-      select cm.chat_id, u.id as user_id, u.display_name, u.avatar_url
+      select cm.chat_id, u.id as user_id, u.display_name, u.avatar_url, u.last_seen_at
       from chat_members cm
       join users u on u.id = cm.user_id
       where cm.chat_id = any($1::uuid[]) and cm.user_id != $2
@@ -140,6 +141,7 @@ export async function getMyChats(pool: Pool, userId: string): Promise<ChatDTO[]>
         userId: row.user_id,
         displayName: row.display_name,
         avatarUrl: row.avatar_url,
+        lastSeenAt: row.last_seen_at !== null ? row.last_seen_at.toISOString() : null,
       });
     }
   }
@@ -306,14 +308,16 @@ export async function getUserPublicProfile(
   displayName: string;
   avatarUrl: string | null;
   createdAt: string;
+  lastSeenAt: string | null;
 } | null> {
   const r = await pool.query<{
     id: string;
     display_name: string;
     avatar_url: string | null;
     created_at: Date;
+    last_seen_at: Date | null;
   }>(
-    `select id, display_name, avatar_url, created_at from users where id = $1`,
+    `select id, display_name, avatar_url, created_at, last_seen_at from users where id = $1`,
     [userId],
   );
   if (r.rowCount === 0) return null;
@@ -323,6 +327,7 @@ export async function getUserPublicProfile(
     displayName: row.display_name,
     avatarUrl: row.avatar_url,
     createdAt: row.created_at.toISOString(),
+    lastSeenAt: row.last_seen_at !== null ? row.last_seen_at.toISOString() : null,
   };
 }
 

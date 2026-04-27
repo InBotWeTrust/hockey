@@ -49,6 +49,11 @@ const plugin: FastifyPluginAsync<ChatWsOptions> = async (app, opts) => {
       socket.close(CLOSE_UNAUTHORIZED, 'unauthorized');
       return;
     }
+    // Mark presence on connect — onResponse hook only fires for HTTP routes,
+    // and a long-lived chat tab might not poll any endpoint while idle.
+    void app.touchLastSeen(userId).catch((err) =>
+      app.log.warn({ err, userId }, 'ws: touchLastSeen failed'),
+    );
 
     const offs: Unsubscribe[] = [];
     let interval: NodeJS.Timeout | null = null;

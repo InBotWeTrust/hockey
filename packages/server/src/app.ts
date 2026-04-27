@@ -5,6 +5,7 @@ import { dbPlugin } from './plugins/db.js';
 import { redisPlugin } from './plugins/redis.js';
 import { errorsPlugin } from './plugins/errors.js';
 import { authPlugin } from './plugins/auth.js';
+import { lastSeenPlugin } from './plugins/lastSeen.js';
 import { realtimePlugin } from './plugins/realtime.js';
 import { authRoutes } from './routes/auth.js';
 import { meRoutes } from './routes/me.js';
@@ -33,6 +34,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await app.register(redisPlugin, { url: config.REDIS_URL });
   await app.register(realtimePlugin);
   await app.register(authPlugin, { accessSecret: config.JWT_SECRET });
+  await app.register(lastSeenPlugin);
   await app.register(healthRoutes);
   await app.register(authRoutes, {
     telegramBotToken: config.TELEGRAM_BOT_TOKEN,
