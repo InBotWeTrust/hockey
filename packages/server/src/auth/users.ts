@@ -26,8 +26,8 @@ export async function findOrCreateTelegramUser(
     ...(input.lastName !== undefined ? { lastName: input.lastName } : {}),
   });
 
-  const existing = await pool.query<{ id: string; display_name: string }>(
-    `select u.id, u.display_name
+  const existing = await pool.query<{ id: string; display_name: string; timezone: string }>(
+    `select u.id, u.display_name, u.timezone
        from users u
        join auth_providers ap on ap.user_id = u.id
       where ap.provider = 'telegram' and ap.provider_uid = $1`,
@@ -36,9 +36,23 @@ export async function findOrCreateTelegramUser(
 
   if (existing.rowCount && existing.rowCount > 0) {
     const row = existing.rows[0]!;
+    // Backfill timezone for legacy users created before migration 003 (which
+    // assigned 'UTC' as the default). Only overwrite the migration default —
+    // never a user-chosen value.
+    const shouldBackfillTz =
+      row.timezone === 'UTC' &&
+      input.timezone !== undefined &&
+      input.timezone !== 'UTC';
     await Promise.all([
       input.avatarUrl !== undefined
         ? pool.query('update users set avatar_url = $1 where id = $2', [input.avatarUrl, row.id])
+        : Promise.resolve(),
+      shouldBackfillTz
+        ? pool.query(
+            `update users set timezone = $1
+              where id = $2 and timezone = 'UTC'`,
+            [input.timezone, row.id],
+          )
         : Promise.resolve(),
       pool.query(
         `update auth_providers set provider_data = $1
