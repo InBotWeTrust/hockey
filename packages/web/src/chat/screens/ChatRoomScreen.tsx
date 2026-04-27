@@ -398,12 +398,15 @@ export function ChatRoomScreen(): JSX.Element {
     <main
       className="screen"
       style={{
-        position: 'fixed',
-        top: 'env(safe-area-inset-top, 0px)',
-        left: 0,
-        right: 0,
-        bottom: 0,
-        minHeight: 0,
+        // `position: fixed` was previously used to pin the chat to the viewport,
+        // but `app-shell` has `transform: translateZ(0)` which turns any
+        // descendant `fixed` element into a containing-block-relative `absolute`
+        // — so the document scroll dragged the header up and pushed the input
+        // below the screen. Sizing exactly to 100dvh + clipping overflow keeps
+        // the header pinned and the messages list owning its own scroll.
+        height: '100dvh',
+        paddingTop: 'env(safe-area-inset-top, 0px)',
+        overflow: 'hidden',
       }}
     >
       <ChatRoomHeader
