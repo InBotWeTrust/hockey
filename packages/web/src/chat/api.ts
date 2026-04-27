@@ -41,7 +41,8 @@ export type ChatEvent =
   | { type: 'message:deleted'; chatId: string; messageId: string }
   | { type: 'reaction:added'; chatId: string; messageId: string; userId: string; emoji: string }
   | { type: 'reaction:removed'; chatId: string; messageId: string; userId: string; emoji: string }
-  | { type: 'chat:read'; chatId: string; userId: string; lastReadAt: string };
+  | { type: 'chat:read'; chatId: string; userId: string; lastReadAt: string }
+  | { type: 'connection:ready' };
 
 export interface ChatEventFrame {
   v: 1;

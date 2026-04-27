@@ -102,6 +102,10 @@ export function useChatSocket(): ChatSocketStatus {
           case 'reaction:removed':
             applyReactionEvent(qc, useAuthStore.getState().user?.id ?? null, event);
             return;
+          case 'connection:ready':
+            // Server finished registering Redis SUBSCRIBEs. Pure transport
+            // signal — no cache to patch.
+            return;
         }
       },
       onStatus: (next) => {

@@ -53,6 +53,18 @@ function waitOpen(ws: WebSocket): Promise<void> {
   });
 }
 
+// Server emits {type:'connection:ready'} after all SUBSCRIBEs are registered.
+// Without it, a publish that fires immediately after `open` can race the
+// async Redis SUBSCRIBE and be lost.
+function waitReady(ws: WebSocket): Promise<void> {
+  return nextFrame(ws, (f) => f.event.type === 'connection:ready').then(() => undefined);
+}
+
+async function openAndReady(ws: WebSocket): Promise<void> {
+  await waitOpen(ws);
+  await waitReady(ws);
+}
+
 describe.skipIf(!hasIntegrationEnv)('chat WebSocket', () => {
   let app: Awaited<ReturnType<typeof buildApp>>;
   let baseUrl: string;
@@ -145,7 +157,7 @@ describe.skipIf(!hasIntegrationEnv)('chat WebSocket', () => {
 
   it('A receives message:new when B posts to DM A↔B', async () => {
     const wsA = new WebSocket(`${baseUrl}/chat/ws?token=${tokenA}`);
-    await waitOpen(wsA);
+    await openAndReady(wsA);
 
     const incoming = nextFrame(
       wsA,
@@ -174,7 +186,7 @@ describe.skipIf(!hasIntegrationEnv)('chat WebSocket', () => {
 
   it('any connected client receives message:new posted to a system chat', async () => {
     const wsC = new WebSocket(`${baseUrl}/chat/ws?token=${tokenC}`);
-    await waitOpen(wsC);
+    await openAndReady(wsC);
 
     const incoming = nextFrame(
       wsC,
@@ -200,7 +212,7 @@ describe.skipIf(!hasIntegrationEnv)('chat WebSocket', () => {
 
   it('A receives message:deleted when A deletes own message', async () => {
     const wsA = new WebSocket(`${baseUrl}/chat/ws?token=${tokenA}`);
-    await waitOpen(wsA);
+    await openAndReady(wsA);
 
     const post = await app.inject({
       method: 'POST',
@@ -243,7 +255,7 @@ describe.skipIf(!hasIntegrationEnv)('chat WebSocket', () => {
 
   it('A receives chat:read on /chat/:id/read for the same user (other-tab sync)', async () => {
     const wsA = new WebSocket(`${baseUrl}/chat/ws?token=${tokenA}`);
-    await waitOpen(wsA);
+    await openAndReady(wsA);
 
     const incoming = nextFrame(
       wsA,
@@ -268,7 +280,7 @@ describe.skipIf(!hasIntegrationEnv)('chat WebSocket', () => {
 
   it('does NOT leak DM A↔B messages to user C', async () => {
     const wsC = new WebSocket(`${baseUrl}/chat/ws?token=${tokenC}`);
-    await waitOpen(wsC);
+    await openAndReady(wsC);
 
     let leaked = false;
     const onMessage = (raw: WebSocket.RawData) => {

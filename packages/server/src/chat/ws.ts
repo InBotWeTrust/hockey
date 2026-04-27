@@ -89,6 +89,11 @@ const plugin: FastifyPluginAsync<ChatWsOptions> = async (app, opts) => {
         const off = await app.realtime.subscribe(`chat:system:${row.id}`, (e) => send(socket, e));
         offs.push(off);
       }
+      // Tell the client that all SUBSCRIBEs are registered. Without this a client
+      // that triggers a publish right after the WS open event can race the server
+      // and miss the resulting frame (Redis SUBSCRIBE is async and the upstream
+      // 'open' fires before this block finishes).
+      send(socket, { type: 'connection:ready' });
     } catch (err) {
       app.log.warn({ err, userId }, 'ws: setup failed');
       await cleanup();

@@ -66,6 +66,9 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
       case 'reaction:removed':
         // Handled by TanStack invalidation in PR 5; no store mutation needed.
         return;
+      case 'connection:ready':
+        // Transport-layer signal; no store state to mutate.
+        return;
     }
   },
 }));
