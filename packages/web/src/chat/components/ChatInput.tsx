@@ -13,6 +13,11 @@ interface ChatInputProps {
 
 const MAX_LEN = 4000;
 const ROW_HEIGHT = 40;
+// Clamp auto-grow at 4 visible lines: 14px font * 1.4 line-height ≈ 19.6px,
+// 4 lines ≈ 78.4px + 20px (top+bottom padding) ≈ 98.4 → round to 100. Past
+// this height the textarea owns its own internal scroll.
+const MULTILINE_MAX_HEIGHT = 100;
+const CORNER_RADIUS = 20;
 
 export function ChatInput({
   disabled = false,
@@ -24,19 +29,23 @@ export function ChatInput({
   const [value, setValue] = useState('');
   const ref = useRef<HTMLTextAreaElement | null>(null);
 
-  // Auto-grow: at single-row use fixed line-height = 40 (visually centered);
-  // when content overflows, switch to padded multi-line mode up to 120.
+  // Auto-grow: single-row uses line-height=40 for vertical centering. Once the
+  // content needs more than one row, switch to padded multi-line mode capped
+  // at MULTILINE_MAX_HEIGHT (~4 lines); beyond that the textarea owns its own
+  // scrollbar so the input doesn't push the messages list off-screen.
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    // Reset to base to measure content height correctly.
     el.style.height = `${ROW_HEIGHT}px`;
     el.style.lineHeight = `${ROW_HEIGHT}px`;
     el.style.padding = '0 14px';
+    el.style.overflowY = 'hidden';
     if (el.scrollHeight > ROW_HEIGHT) {
       el.style.lineHeight = '1.4';
       el.style.padding = '10px 14px';
-      el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+      const next = Math.min(el.scrollHeight, MULTILINE_MAX_HEIGHT);
+      el.style.height = `${next}px`;
+      el.style.overflowY = el.scrollHeight > MULTILINE_MAX_HEIGHT ? 'auto' : 'hidden';
     }
   }, [value]);
 
@@ -83,20 +92,24 @@ export function ChatInput({
           rows={1}
           disabled={disabled}
           aria-label="Текст сообщения"
+          className="no-scrollbar"
           style={{
             flex: 1,
             resize: 'none',
             border: 'none',
             outline: 'none',
             padding: '0 14px',
-            borderRadius: 999,
+            // Fixed corner radius: stays consistent regardless of textarea
+            // height (the previous `999` produced an ever-rounder pill that
+            // grew "less square" as the box got taller).
+            borderRadius: CORNER_RADIUS,
             background: 'rgba(255,255,255,0.92)',
             color: 'var(--ink)',
             fontSize: 14,
             lineHeight: `${ROW_HEIGHT}px`,
             height: ROW_HEIGHT,
             minHeight: ROW_HEIGHT,
-            maxHeight: 120,
+            maxHeight: MULTILINE_MAX_HEIGHT,
             fontFamily: 'inherit',
             boxSizing: 'border-box',
           }}
