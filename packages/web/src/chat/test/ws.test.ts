@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { ChatSocket, type ChatSocketStatus } from '../ws.js';
+import { ChatSocket } from '../ws.js';
 import type { ChatEvent, ChatEventFrame } from '../api.js';
 
 // --- Mock WebSocket --------------------------------------------------------
