@@ -130,4 +130,14 @@ describe.skipIf(!hasIntegrationEnv)('chat reactions service', () => {
       getMessageOr404(pool, '00000000-0000-0000-0000-000000000000'),
     ).rejects.toBeInstanceOf(MessageNotFoundError);
   });
+
+  it('getMessageOr404 treats soft-deleted messages as missing (404)', async () => {
+    await pool.query(
+      `update messages set is_deleted = true, content = '' where id = $1`,
+      [messageId],
+    );
+    await expect(getMessageOr404(pool, messageId)).rejects.toBeInstanceOf(
+      MessageNotFoundError,
+    );
+  });
 });

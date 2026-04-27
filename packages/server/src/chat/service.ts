@@ -430,8 +430,10 @@ export async function getMessageOr404(
   pool: Pool,
   messageId: string,
 ): Promise<MessageRow> {
+  // Soft-deleted messages are tombstones — every other reader in this file
+  // excludes them, and reactions/replies must not target them either.
   const r = await pool.query<MessageRow>(
-    `select * from messages where id = $1`,
+    `select * from messages where id = $1 and is_deleted = false`,
     [messageId],
   );
   if (r.rowCount === 0) throw new MessageNotFoundError(messageId);
