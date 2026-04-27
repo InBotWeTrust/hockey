@@ -11,6 +11,7 @@ import {
   removeReaction,
   type ChatDTO,
   type ChatMessageDTO,
+  type UserPickerItem,
 } from '../api.js';
 import { chatKeys } from '../../lib/queryKeys.js';
 import { useChatStore } from '../chatStore.js';
@@ -21,6 +22,7 @@ import { ChatRoomHeader } from '../components/ChatRoomHeader.js';
 import { ChatRoomSearchBar } from '../components/ChatRoomSearchBar.js';
 import { MessageActionsMenu } from '../components/MessageActionsMenu.js';
 import { ReactionPicker } from '../components/ReactionPicker.js';
+import { UserProfileSheet } from '../components/UserProfileSheet.js';
 import { switchMyReactionTo, removeMyReaction } from '../reactionsState.js';
 
 const PAGE_SIZE = 50;
@@ -63,6 +65,7 @@ export function ChatRoomScreen(): JSX.Element {
     messageId: string;
     anchorRect: DOMRect;
   } | null>(null);
+  const [previewSender, setPreviewSender] = useState<UserPickerItem | null>(null);
   const [gotoError, setGotoError] = useState<string | null>(null);
   const gotoRef = useRef<string | null>(null);
   const messagesListRef = useRef<HTMLDivElement | null>(null);
@@ -354,6 +357,18 @@ export function ChatRoomScreen(): JSX.Element {
   );
   const onCloseActions = useCallback(() => setActionTarget(null), []);
 
+  const onOpenProfile = useCallback(
+    (sender: UserPickerItem): void => {
+      // Defensive guard: never open the sheet for self. Own bubbles already
+      // hide their author UI, but a future regression shouldn't open a "DM
+      // myself" path.
+      if (sender.userId === meId) return;
+      setPreviewSender(sender);
+    },
+    [meId],
+  );
+  const onCloseProfile = useCallback(() => setPreviewSender(null), []);
+
   const onReplyTo = useCallback((m: ChatMessageDTO) => setReplyTo(m), []);
   // TanStack Query v5 returns a fresh result-object identity every render but
   // the .mutate function itself is memoized — depend on it directly so our
@@ -509,6 +524,7 @@ export function ChatRoomScreen(): JSX.Element {
               replyTo={replyTo}
               onRequestActions={onRequestActions}
               onReact={onToggleReaction}
+              onOpenProfile={onOpenProfile}
             />
           );
         })}
@@ -540,6 +556,7 @@ export function ChatRoomScreen(): JSX.Element {
         onPick={onPickFromPicker}
         onClose={() => setPickerTarget(null)}
       />
+      <UserProfileSheet sender={previewSender} onClose={onCloseProfile} />
     </main>
   );
 }

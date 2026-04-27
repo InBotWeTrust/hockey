@@ -5,6 +5,7 @@ import { apiFetch } from '../api/apiFetch.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { useLogout } from '../auth/useLogout.js';
 import { NAV_HEIGHT } from '../components/BottomNav.js';
+import { StatCard } from '../components/StatCard.js';
 
 interface ProfileData {
   id: string;
@@ -334,34 +335,4 @@ function GripOption({ label, hint, active, disabled, sprite, side, onClick }: Gr
   );
 }
 
-function StatCard({ label, value, suffix }: { label: string; value: string; suffix?: string }): JSX.Element {
-  return (
-    <div
-      className="glass"
-      style={{
-        padding: '12px 14px',
-        borderRadius: 16,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 4,
-      }}
-    >
-      <span
-        style={{
-          fontSize: 9,
-          fontWeight: 600,
-          color: 'var(--muted)',
-          textTransform: 'uppercase',
-          letterSpacing: '0.12em',
-        }}
-      >
-        {label}
-      </span>
-      <span style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--ink)' }}>
-        {value}
-        {suffix && <small style={{ fontSize: 12, fontWeight: 500, color: 'var(--muted)' }}>{suffix}</small>}
-      </span>
-    </div>
-  );
-}
 

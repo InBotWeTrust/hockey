@@ -32,7 +32,7 @@ const msgFromOther: ChatMessageDTO = {
   id: 'm1',
   chatId: 'c1',
   senderId: OTHER_ID,
-  senderDisplayName: null,
+  senderDisplayName: 'Иван',
   senderAvatarUrl: null,
   content: 'привет',
   replyToId: null,
@@ -459,5 +459,43 @@ describe('ChatRoomScreen — ?goto=<messageId>', () => {
       );
       expect(defaultCall).toBeDefined();
     });
+  });
+});
+
+describe('ChatRoomScreen — profile preview', () => {
+  beforeEach(() => {
+    const user: AuthUser = { id: SELF_ID, displayName: 'Me', grip: 'right' };
+    useAuthStore.setState({ accessToken: 'tok', refreshToken: 'rtok', user });
+    vi.spyOn(api, 'fetchMessages').mockResolvedValue([msgFromOther]);
+    vi.spyOn(api, 'markChatAsRead').mockResolvedValue(undefined);
+    vi.spyOn(api, 'fetchChatList').mockResolvedValue([
+      {
+        id: 'c1',
+        type: 'group',
+        name: 'Командный чат',
+        entityType: null,
+        entityId: null,
+        lastMessageAt: null,
+        unreadCount: 0,
+        lastMessage: null,
+        lastMessageSenderName: null,
+        dmCounterpart: null,
+        memberCount: 5,
+        pinnedAt: null,
+      },
+    ]);
+    vi.spyOn(api, 'findOrCreateDM').mockResolvedValue({ chatId: 'dm-new', created: true });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('opens UserProfileSheet on author tap and navigates to DM after "Написать"', async () => {
+    renderRoom('c1');
+    const nameBtn = await screen.findByRole('button', { name: 'Профиль: Иван' });
+    fireEvent.click(nameBtn);
+    const writeBtn = await screen.findByRole('button', { name: /написать в личку/i });
+    fireEvent.click(writeBtn);
+    await waitFor(() => expect(api.findOrCreateDM).toHaveBeenCalledWith(OTHER_ID));
   });
 });
