@@ -134,6 +134,9 @@ export async function getMyChats(pool: Pool, userId: string): Promise<ChatDTO[]>
 export interface GetMessagesOpts {
   limit: number;
   before?: string; // ISO timestamp; messages older than this
+  after?: string; // ISO timestamp; messages newer than this
+  around?: string; // message UUID; load ±radius messages centered on this anchor
+  radius?: number; // default 25, used only with `around`
 }
 
 export async function getMessages(
