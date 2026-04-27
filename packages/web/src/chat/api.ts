@@ -188,3 +188,33 @@ export async function pinChat(chatId: string): Promise<void> {
 export function unpinChat(chatId: string): Promise<void> {
   return apiFetch<void>(`/chat/${chatId}/pin`, { method: 'DELETE' });
 }
+
+export interface ChatMemberSummaryDTO {
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+}
+
+export interface ChatInfoDTO {
+  id: string;
+  type: ChatType;
+  name: string | null;
+  description: string | null;
+  memberCount: number;
+  members: ChatMemberSummaryDTO[];
+}
+
+export interface UserPublicProfileDTO {
+  id: string;
+  displayName: string;
+  avatarUrl: string | null;
+  createdAt: string; // ISO
+}
+
+export function fetchChatInfo(chatId: string): Promise<ChatInfoDTO> {
+  return apiFetch<ChatInfoDTO>(`/chat/${chatId}/info`);
+}
+
+export function fetchUserProfile(userId: string): Promise<UserPublicProfileDTO> {
+  return apiFetch<UserPublicProfileDTO>(`/users/${userId}`);
+}

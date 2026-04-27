@@ -455,6 +455,9 @@ export function ChatRoomScreen(): JSX.Element {
         {...(chatSubtitle !== undefined ? { subtitle: chatSubtitle } : {})}
         avatarUrl={chatAvatarUrl}
         onBack={() => navigate('/chat')}
+        {...(chatMeta && chatMeta.type !== 'direct'
+          ? { onTitleClick: () => navigate(`/chat/${chatId}/info`) }
+          : {})}
         searchOpen={searchOpen}
         onToggleSearch={() => setSearchOpen((o) => !o)}
       />

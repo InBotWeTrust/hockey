@@ -9,6 +9,7 @@ import type {
 } from './types.js';
 import { toChatDTO, type ChatListAggregate, toChatMessageDTO, groupReactions } from './dto.js';
 import {
+  ChatNotFoundError,
   InvalidInputError,
   MessageNotFoundError,
   PinLimitExceededError,
@@ -27,6 +28,7 @@ interface MyChatsRow {
   id: string;
   type: 'direct' | 'group' | 'system';
   name: string | null;
+  description: string | null;
   created_by: string;
   entity_type: 'team' | 'tournament' | null;
   entity_id: string | null;
@@ -147,6 +149,7 @@ export async function getMyChats(pool: Pool, userId: string): Promise<ChatDTO[]>
       id: row.id,
       type: row.type,
       name: row.name,
+      description: row.description,
       created_by: row.created_by,
       entity_type: row.entity_type,
       entity_id: row.entity_id,
@@ -214,6 +217,113 @@ export async function pinChat(pool: Pool, userId: string, chatId: string): Promi
   } finally {
     client.release();
   }
+}
+
+export const CHAT_INFO_MEMBERS_LIMIT = 100;
+
+export async function getChatInfo(
+  pool: Pool,
+  chatId: string,
+): Promise<{
+  id: string;
+  type: 'direct' | 'group' | 'system';
+  name: string | null;
+  description: string | null;
+  memberCount: number;
+  members: { userId: string; displayName: string; avatarUrl: string | null }[];
+}> {
+  // Caller is expected to have already passed assertCanAccessChat. This
+  // returns chat metadata + a capped, alphabetised member list. For system
+  // chats we treat every active user as a member (chat_members is lazy);
+  // for group/direct we use the explicit chat_members rows.
+  const chatRes = await pool.query<{
+    id: string;
+    type: 'direct' | 'group' | 'system';
+    name: string | null;
+    description: string | null;
+  }>(
+    `select id, type, name, description from chats where id = $1 and is_active = true`,
+    [chatId],
+  );
+  if (chatRes.rowCount === 0) {
+    throw new ChatNotFoundError(chatId);
+  }
+  const chat = chatRes.rows[0]!;
+
+  let memberCount: number;
+  let members: { userId: string; displayName: string; avatarUrl: string | null }[];
+
+  if (chat.type === 'system') {
+    const total = await pool.query<{ c: string }>(`select count(*)::bigint as c from users`);
+    memberCount = Number(total.rows[0]!.c);
+    const r = await pool.query<{ id: string; display_name: string; avatar_url: string | null }>(
+      `select id, display_name, avatar_url from users
+       order by display_name asc limit $1`,
+      [CHAT_INFO_MEMBERS_LIMIT],
+    );
+    members = r.rows.map((row) => ({
+      userId: row.id,
+      displayName: row.display_name,
+      avatarUrl: row.avatar_url,
+    }));
+  } else {
+    const total = await pool.query<{ c: string }>(
+      `select count(*)::bigint as c from chat_members where chat_id = $1`,
+      [chatId],
+    );
+    memberCount = Number(total.rows[0]!.c);
+    const r = await pool.query<{ id: string; display_name: string; avatar_url: string | null }>(
+      `select u.id, u.display_name, u.avatar_url
+         from chat_members cm
+         join users u on u.id = cm.user_id
+        where cm.chat_id = $1
+        order by u.display_name asc
+        limit $2`,
+      [chatId, CHAT_INFO_MEMBERS_LIMIT],
+    );
+    members = r.rows.map((row) => ({
+      userId: row.id,
+      displayName: row.display_name,
+      avatarUrl: row.avatar_url,
+    }));
+  }
+
+  return {
+    id: chat.id,
+    type: chat.type,
+    name: chat.name,
+    description: chat.description,
+    memberCount,
+    members,
+  };
+}
+
+export async function getUserPublicProfile(
+  pool: Pool,
+  userId: string,
+): Promise<{
+  id: string;
+  displayName: string;
+  avatarUrl: string | null;
+  createdAt: string;
+} | null> {
+  const r = await pool.query<{
+    id: string;
+    display_name: string;
+    avatar_url: string | null;
+    created_at: Date;
+  }>(
+    `select id, display_name, avatar_url, created_at from users where id = $1`,
+    [userId],
+  );
+  if (r.rowCount === 0) return null;
+  const row = r.rows[0]!;
+  return {
+    id: row.id,
+    displayName: row.display_name,
+    avatarUrl: row.avatar_url,
+    createdAt: row.created_at.toISOString(),
+  };
 }
 
 export async function unpinChat(pool: Pool, userId: string, chatId: string): Promise<void> {

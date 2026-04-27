@@ -9,6 +9,13 @@ export class ChatAccessDeniedError extends AppError {
   }
 }
 
+export class ChatNotFoundError extends AppError {
+  constructor(public readonly chatId: string) {
+    super('chat_not_found', `Chat ${chatId} not found`, 404);
+    this.name = 'ChatNotFoundError';
+  }
+}
+
 export class MessageNotFoundError extends AppError {
   constructor(public readonly messageId: string) {
     super('message_not_found', `Message ${messageId} not found`, 404);

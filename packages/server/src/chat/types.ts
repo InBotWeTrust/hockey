@@ -9,6 +9,7 @@ export interface ChatRow {
   id: string;
   type: ChatType;
   name: string | null;
+  description: string | null;
   created_by: string;
   entity_type: EntityType | null;
   entity_id: string | null;
@@ -100,6 +101,32 @@ export interface ReactionGroupDTO {
   emoji: string;
   count: number;
   reactedByMe: boolean;
+}
+
+export interface ChatMemberSummaryDTO {
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+}
+
+// `GET /chat/:chatId/info` payload — used by the chat info screen.
+// `members` is paginated server-side (capped); `memberCount` is the
+// authoritative total. DMs are not expected to call this endpoint.
+export interface ChatInfoDTO {
+  id: string;
+  type: ChatType;
+  name: string | null;
+  description: string | null;
+  memberCount: number;
+  members: ChatMemberSummaryDTO[];
+}
+
+export interface UserPublicProfileDTO {
+  id: string;
+  displayName: string;
+  avatarUrl: string | null;
+  // ISO; surface "joined at" on the profile screen.
+  createdAt: string;
 }
 
 // WS event types. Discriminated union; serialized as JSON over the wire.

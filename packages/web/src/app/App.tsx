@@ -11,6 +11,8 @@ import { UpdatePrompt } from '../components/UpdatePrompt.js';
 import { OfflineBanner } from '../chat/components/OfflineBanner.js';
 import { ChatListScreen } from '../chat/screens/ChatListScreen.js';
 import { ChatRoomScreen } from '../chat/screens/ChatRoomScreen.js';
+import { ChatInfoScreen } from '../chat/screens/ChatInfoScreen.js';
+import { UserProfileScreen } from '../chat/screens/UserProfileScreen.js';
 import { useChatSocket } from '../chat/useChatSocket.js';
 
 const queryClient = new QueryClient({
@@ -82,6 +84,22 @@ export function App(): JSX.Element {
               element={
                 <PrivateRoute>
                   <ChatRoomScreen />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/chat/:chatId/info"
+              element={
+                <PrivateRoute>
+                  <ChatInfoScreen />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/users/:userId"
+              element={
+                <PrivateRoute>
+                  <UserProfileScreen />
                 </PrivateRoute>
               }
             />

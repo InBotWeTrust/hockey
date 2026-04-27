@@ -17,6 +17,8 @@ import {
   getMessageOr404,
   pinChat,
   unpinChat,
+  getChatInfo,
+  getUserPublicProfile,
 } from './service.js';
 import { assertCanAccessChat, assertOwnsMessage } from './guards.js';
 import {
@@ -202,6 +204,22 @@ export const chatRoutes: FastifyPluginAsync = async (app) => {
       return { messageId, emoji, removed: result.removed };
     },
   );
+
+  app.get('/chat/:chatId/info', { preHandler: [app.authenticate] }, async (req) => {
+    const { chatId } = z.object({ chatId: uuid }).parse(req.params);
+    await assertCanAccessChat(app.pg, req.user.id, chatId);
+    return await getChatInfo(app.pg, chatId);
+  });
+
+  app.get('/users/:userId', { preHandler: [app.authenticate] }, async (req, reply) => {
+    const { userId } = z.object({ userId: uuid }).parse(req.params);
+    const profile = await getUserPublicProfile(app.pg, userId);
+    if (!profile) {
+      reply.code(404);
+      return { error: { code: 'user_not_found', message: 'user not found' } };
+    }
+    return profile;
+  });
 
   app.post('/chat/:chatId/pin', { preHandler: [app.authenticate] }, async (req, reply) => {
     const { chatId } = z.object({ chatId: uuid }).parse(req.params);
