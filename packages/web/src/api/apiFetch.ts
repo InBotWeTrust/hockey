@@ -23,8 +23,19 @@ async function parseError(res: Response): Promise<ApiError> {
   let code = 'http_error';
   let message = `HTTP ${res.status}`;
   try {
-    const body = (await res.json()) as { error?: string; message?: string };
-    if (body.error) code = body.error;
+    // Server (errorsPlugin) sends `{ error: { code, message } }`. Older
+    // callers/tests may still send the flat `{ error, message }` shape, so
+    // accept both.
+    const body = (await res.json()) as {
+      error?: string | { code?: string; message?: string };
+      message?: string;
+    };
+    if (typeof body.error === 'string') {
+      code = body.error;
+    } else if (body.error && typeof body.error === 'object') {
+      if (body.error.code) code = body.error.code;
+      if (body.error.message) message = body.error.message;
+    }
     if (body.message) message = body.message;
   } catch {
     // ignore body parse failures

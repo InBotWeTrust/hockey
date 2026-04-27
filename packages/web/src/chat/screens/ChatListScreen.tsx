@@ -1,11 +1,19 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Plus, Search } from 'lucide-react';
-import { fetchChatList, type ChatDTO } from '../api.js';
+import {
+  fetchChatList,
+  pinChat,
+  unpinChat,
+  PinLimitError,
+  PIN_LIMIT,
+  type ChatDTO,
+} from '../api.js';
 import { chatKeys } from '../../lib/queryKeys.js';
 import { useChatStore } from '../chatStore.js';
 import { ChatListItem } from '../components/ChatListItem.js';
+import { ChatListActionsMenu } from '../components/ChatListActionsMenu.js';
 import { UserPickerModal } from '../components/UserPickerModal.js';
 import { SearchResultsDropdown } from '../components/SearchResultsDropdown.js';
 import { useDebouncedValue } from '../../lib/useDebouncedValue.js';
@@ -21,6 +29,7 @@ function chatHaystack(chat: ChatDTO): string {
 
 export function ChatListScreen(): JSX.Element {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const setActive = useChatStore((s) => s.setActive);
 
@@ -34,6 +43,86 @@ export function ChatListScreen(): JSX.Element {
     queryFn: fetchChatList,
     staleTime: 30_000,
   });
+
+  const [actionTarget, setActionTarget] = useState<{ chatId: string; anchorRect: DOMRect } | null>(
+    null,
+  );
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+
+  const showToast = useCallback((label: string) => {
+    setToast(label);
+    if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => {
+      setToast(null);
+      toastTimerRef.current = null;
+    }, 2400);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
+    };
+  }, []);
+
+  // Optimistic pin/unpin: rewrite the cached list on mutate, roll back on
+  // server error. The server is the source of truth for the pinned_at value
+  // — refetch on settled keeps client and server in sync.
+  function patchPinned(chatId: string, pinnedAtIso: string | null): void {
+    queryClient.setQueryData<ChatDTO[] | undefined>(chatKeys.list(), (old) => {
+      if (!old) return old;
+      return old.map((c) => (c.id === chatId ? { ...c, pinnedAt: pinnedAtIso } : c));
+    });
+  }
+
+  const pinMut = useMutation<void, Error, string, { prev: ChatDTO[] | undefined }>({
+    mutationFn: (chatId) => pinChat(chatId),
+    onMutate: (chatId) => {
+      const prev = queryClient.getQueryData<ChatDTO[]>(chatKeys.list());
+      patchPinned(chatId, new Date().toISOString());
+      return { prev };
+    },
+    onError: (err, _chatId, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(chatKeys.list(), ctx.prev);
+      if (err instanceof PinLimitError) {
+        showToast(`Можно закрепить не более ${PIN_LIMIT} чатов`);
+      }
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: chatKeys.list() });
+    },
+  });
+
+  const unpinMut = useMutation<void, Error, string, { prev: ChatDTO[] | undefined }>({
+    mutationFn: (chatId) => unpinChat(chatId),
+    onMutate: (chatId) => {
+      const prev = queryClient.getQueryData<ChatDTO[]>(chatKeys.list());
+      patchPinned(chatId, null);
+      return { prev };
+    },
+    onError: (_err, _chatId, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(chatKeys.list(), ctx.prev);
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: chatKeys.list() });
+    },
+  });
+
+  const onRequestActions = useCallback((chatId: string, anchorRect: DOMRect) => {
+    setActionTarget({ chatId, anchorRect });
+  }, []);
+
+  const targetChat = actionTarget ? data?.find((c) => c.id === actionTarget.chatId) : undefined;
+  const targetIsPinned = targetChat?.pinnedAt !== null && targetChat !== undefined;
+
+  const onTogglePin = useCallback((): void => {
+    if (!actionTarget || !targetChat) return;
+    if (targetChat.pinnedAt !== null) {
+      unpinMut.mutate(actionTarget.chatId);
+    } else {
+      pinMut.mutate(actionTarget.chatId);
+    }
+  }, [actionTarget, targetChat, pinMut, unpinMut]);
 
   const [filter, setFilter] = useState('');
   const debouncedFilter = useDebouncedValue(filter, 300);
@@ -163,8 +252,43 @@ export function ChatListScreen(): JSX.Element {
           }}
         >
           {filteredChats.map((chat) => (
-            <ChatListItem key={chat.id} chat={chat} onOpen={openChat} />
+            <ChatListItem
+              key={chat.id}
+              chat={chat}
+              onOpen={openChat}
+              onRequestActions={onRequestActions}
+            />
           ))}
+        </div>
+      )}
+
+      <ChatListActionsMenu
+        open={actionTarget !== null}
+        anchorRect={actionTarget?.anchorRect ?? null}
+        isPinned={targetIsPinned}
+        onTogglePin={onTogglePin}
+        onClose={() => setActionTarget(null)}
+      />
+
+      {toast !== null && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="glass-dark"
+          style={{
+            position: 'fixed',
+            left: '50%',
+            bottom: `calc(${NAV_HEIGHT + 24}px + env(safe-area-inset-bottom, 0px) / 2)`,
+            transform: 'translateX(-50%)',
+            padding: '10px 16px',
+            borderRadius: 999,
+            fontSize: 13,
+            color: '#ffffff',
+            zIndex: 900,
+            pointerEvents: 'none',
+          }}
+        >
+          {toast}
         </div>
       )}
 

@@ -71,6 +71,9 @@ export interface ChatDTO {
   // For system chats — total active users (everyone has access).
   // For group/direct — count of chat_members rows.
   memberCount: number;
+  // ISO timestamp when the current user pinned this chat. Null = not pinned.
+  // Server orders /chat/list by pinned_at desc nulls last, then last_message_at.
+  pinnedAt: string | null;
 }
 
 export interface ChatMessageDTO {

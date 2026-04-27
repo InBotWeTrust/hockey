@@ -1,4 +1,4 @@
-import { apiFetch } from '../api/apiFetch.js';
+import { apiFetch, ApiError } from '../api/apiFetch.js';
 
 // === DTO types (mirror @hockey/server/src/chat/types.ts) ===
 
@@ -34,6 +34,7 @@ export interface ChatDTO {
   lastMessageSenderName: string | null;
   dmCounterpart: { userId: string; displayName: string; avatarUrl: string | null } | null;
   memberCount: number;
+  pinnedAt: string | null;
 }
 
 export type ChatEvent =
@@ -157,4 +158,31 @@ export function removeReaction(messageId: string, emoji: string): Promise<void> 
     method: 'DELETE',
     body: JSON.stringify({ emoji }),
   });
+}
+
+export const PIN_LIMIT = 3;
+
+export class PinLimitError extends Error {
+  constructor() {
+    super('pin_limit_exceeded');
+    this.name = 'PinLimitError';
+  }
+}
+
+export async function pinChat(chatId: string): Promise<void> {
+  try {
+    await apiFetch<void>(`/chat/${chatId}/pin`, { method: 'POST' });
+  } catch (err) {
+    // Server returns 400 with code='pin_limit_exceeded' once the user is at
+    // the limit. Translate that into a typed error so the screen can show
+    // the localized toast without parsing message strings.
+    if (err instanceof ApiError && err.code === 'pin_limit_exceeded') {
+      throw new PinLimitError();
+    }
+    throw err;
+  }
+}
+
+export function unpinChat(chatId: string): Promise<void> {
+  return apiFetch<void>(`/chat/${chatId}/pin`, { method: 'DELETE' });
 }

@@ -31,6 +31,7 @@ function makeChat(name: string, id = 'chat-1'): ChatDTO {
     lastMessageSenderName: null,
     dmCounterpart: null,
     memberCount: 0,
+    pinnedAt: null,
   };
 }
 

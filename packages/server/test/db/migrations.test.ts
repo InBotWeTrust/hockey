@@ -49,6 +49,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '004_chat.sql',
       '005_chat_reaction_user_unique.sql',
       '006_chat_rename_system_default.sql',
+      '007_chat_pinned.sql',
     ]);
   });
 });
