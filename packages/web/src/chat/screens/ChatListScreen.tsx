@@ -7,6 +7,8 @@ import { chatKeys } from '../../lib/queryKeys.js';
 import { useChatStore } from '../chatStore.js';
 import { ChatListItem } from '../components/ChatListItem.js';
 import { UserPickerModal } from '../components/UserPickerModal.js';
+import { SearchResultsDropdown } from '../components/SearchResultsDropdown.js';
+import { useDebouncedValue } from '../../lib/useDebouncedValue.js';
 import { NAV_HEIGHT } from '../../components/BottomNav.js';
 
 function chatHaystack(chat: ChatDTO): string {
@@ -34,12 +36,14 @@ export function ChatListScreen(): JSX.Element {
   });
 
   const [filter, setFilter] = useState('');
+  const debouncedFilter = useDebouncedValue(filter, 300);
   const filteredChats = useMemo<ChatDTO[]>(() => {
     if (!data) return [];
     const q = filter.trim().toLowerCase();
     if (!q) return data;
     return data.filter((c) => chatHaystack(c).includes(q));
   }, [data, filter]);
+  const dropdownOpen = filter.trim().length >= 2;
 
   const pickerOpen = searchParams.get('new') === '1';
 
@@ -122,13 +126,17 @@ export function ChatListScreen(): JSX.Element {
         </button>
       </div>
 
-      {isLoading && (
+      {dropdownOpen && (
+        <SearchResultsDropdown query={debouncedFilter} chatHits={filteredChats} />
+      )}
+
+      {!dropdownOpen && isLoading && (
         <div style={{ padding: 24, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
           Загрузка...
         </div>
       )}
 
-      {isError && (
+      {!dropdownOpen && isError && (
         <div style={{ padding: 24, textAlign: 'center' }}>
           <div style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 8 }}>
             Не удалось загрузить чаты
@@ -139,34 +147,26 @@ export function ChatListScreen(): JSX.Element {
         </div>
       )}
 
-      {!isLoading && !isError && (data?.length ?? 0) === 0 && (
+      {!dropdownOpen && !isLoading && !isError && (data?.length ?? 0) === 0 && (
         <div style={{ padding: 24, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
           Здесь пока пусто. Начните диалог через «+».
         </div>
       )}
 
-      {!isLoading &&
-        !isError &&
-        (data?.length ?? 0) > 0 &&
-        filteredChats.length === 0 &&
-        filter.trim().length > 0 && (
-          <div style={{ padding: 24, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
-            Ничего не найдено
-          </div>
-        )}
-
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 12,
-          padding: '4px 14px 14px',
-        }}
-      >
-        {filteredChats.map((chat) => (
-          <ChatListItem key={chat.id} chat={chat} onOpen={openChat} />
-        ))}
-      </div>
+      {!dropdownOpen && (
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 12,
+            padding: '4px 14px 14px',
+          }}
+        >
+          {filteredChats.map((chat) => (
+            <ChatListItem key={chat.id} chat={chat} onOpen={openChat} />
+          ))}
+        </div>
+      )}
 
       <UserPickerModal
         open={pickerOpen}
