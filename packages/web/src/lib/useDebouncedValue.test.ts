@@ -3,8 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useDebouncedValue } from './useDebouncedValue.js';
 
 describe('useDebouncedValue', () => {
-  beforeEach(() => vi.useFakeTimers());
-  afterEach(() => vi.useRealTimers());
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   it('returns the initial value synchronously', () => {
     const { result } = renderHook(() => useDebouncedValue('a', 300));

@@ -46,7 +46,9 @@ describe('SearchResultsDropdown', () => {
     navigateMock.mockReset();
     apiFetchMock.mockReset();
   });
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   it('renders Чаты section from chatHits prop without any network call', () => {
     apiFetchMock.mockResolvedValue([]);
