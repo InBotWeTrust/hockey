@@ -72,4 +72,49 @@ describe.skipIf(!hasIntegrationEnv)('findOrCreateTelegramUser', () => {
     const row = await pool.query('select avatar_url from users where id=$1', [user.id]);
     expect(row.rows[0].avatar_url).toBe('https://t.me/i/pic.jpg');
   });
+
+  it('persists timezone on first creation', async () => {
+    const user = await findOrCreateTelegramUser(pool, {
+      providerUid: '300',
+      displayName: 'Tz User',
+      timezone: 'Europe/Moscow',
+    });
+    const row = await pool.query('select timezone from users where id=$1', [user.id]);
+    expect(row.rows[0].timezone).toBe('Europe/Moscow');
+  });
+
+  it('backfills legacy UTC timezone on subsequent login', async () => {
+    // First login: client did not send a timezone (legacy path) — user gets 'UTC'.
+    const first = await findOrCreateTelegramUser(pool, {
+      providerUid: '400',
+      displayName: 'Legacy',
+    });
+    const before = await pool.query('select timezone from users where id=$1', [first.id]);
+    expect(before.rows[0].timezone).toBe('UTC');
+
+    // Second login: client now sends a real IANA tz — backfill should overwrite UTC.
+    await findOrCreateTelegramUser(pool, {
+      providerUid: '400',
+      displayName: 'Legacy',
+      timezone: 'Europe/Moscow',
+    });
+    const after = await pool.query('select timezone from users where id=$1', [first.id]);
+    expect(after.rows[0].timezone).toBe('Europe/Moscow');
+  });
+
+  it('does NOT overwrite a non-UTC timezone on subsequent login (set-once)', async () => {
+    const first = await findOrCreateTelegramUser(pool, {
+      providerUid: '500',
+      displayName: 'Traveller',
+      timezone: 'Europe/Moscow',
+    });
+    // User flies to Berlin and reopens the app — timezone must NOT change.
+    await findOrCreateTelegramUser(pool, {
+      providerUid: '500',
+      displayName: 'Traveller',
+      timezone: 'Europe/Berlin',
+    });
+    const row = await pool.query('select timezone from users where id=$1', [first.id]);
+    expect(row.rows[0].timezone).toBe('Europe/Moscow');
+  });
 });
