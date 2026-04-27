@@ -286,6 +286,13 @@ export function ChatListScreen(): JSX.Element {
             color: '#ffffff',
             zIndex: 900,
             pointerEvents: 'none',
+            // Single-line toast — keeps the pill shape readable. Cap at the
+            // viewport width so a longer message gets ellipsized rather than
+            // overflowing horizontally.
+            whiteSpace: 'nowrap',
+            maxWidth: 'calc(100vw - 32px)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
           }}
         >
           {toast}
