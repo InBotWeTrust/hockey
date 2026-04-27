@@ -1901,8 +1901,7 @@ Create `packages/web/src/chat/test/ReactionBar.test.tsx`:
 
 ```tsx
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { ReactionBar } from '../components/ReactionBar.js';
 import type { ReactionGroupDTO } from '../api.js';
 
@@ -1935,11 +1934,11 @@ describe('ReactionBar', () => {
     expect(theirs.className).not.toMatch(/pill--dark/);
   });
 
-  it('clicking a pill calls onToggle with that emoji', async () => {
+  it('clicking a pill calls onToggle with that emoji', () => {
     const reactions: ReactionGroupDTO[] = [{ emoji: '🔥', count: 1, reactedByMe: true }];
     const onToggle = vi.fn();
     render(<ReactionBar reactions={reactions} onToggle={onToggle} />);
-    await userEvent.click(screen.getByRole('button', { name: /🔥 1/ }));
+    fireEvent.click(screen.getByRole('button', { name: /🔥 1/ }));
     expect(onToggle).toHaveBeenCalledWith('🔥');
   });
 });
@@ -2020,8 +2019,7 @@ Create `packages/web/src/chat/test/ReactionPicker.test.tsx`:
 
 ```tsx
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { ReactionPicker } from '../components/ReactionPicker.js';
 import { EMOJI_WHITELIST } from '../reactions.js';
 
@@ -2047,34 +2045,34 @@ describe('ReactionPicker', () => {
     }
   });
 
-  it('clicking an emoji calls onPick + onClose', async () => {
+  it('clicking an emoji calls onPick + onClose', () => {
     const onPick = vi.fn();
     const onClose = vi.fn();
     render(
       <ReactionPicker open={true} anchorRect={anchor} onPick={onPick} onClose={onClose} />,
     );
-    await userEvent.click(screen.getByRole('button', { name: '🔥' }));
+    fireEvent.click(screen.getByRole('button', { name: '🔥' }));
     expect(onPick).toHaveBeenCalledWith('🔥');
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('Escape key calls onClose', async () => {
+  it('Escape key calls onClose', () => {
     const onClose = vi.fn();
     render(
       <ReactionPicker open={true} anchorRect={anchor} onPick={() => {}} onClose={onClose} />,
     );
-    await userEvent.keyboard('{Escape}');
+    fireEvent.keyDown(window, { key: 'Escape' });
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('clicking the backdrop calls onClose', async () => {
+  it('pointerdown on the backdrop calls onClose', () => {
     const onClose = vi.fn();
     render(
       <ReactionPicker open={true} anchorRect={anchor} onPick={() => {}} onClose={onClose} />,
     );
     const backdrop = document.querySelector('[data-reaction-picker-backdrop]');
     expect(backdrop).not.toBeNull();
-    await userEvent.click(backdrop as HTMLElement);
+    fireEvent.pointerDown(backdrop as HTMLElement);
     expect(onClose).toHaveBeenCalled();
   });
 });
@@ -2245,8 +2243,7 @@ Create `packages/web/src/chat/test/MessageActionsMenu.test.tsx`:
 
 ```tsx
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MessageActionsMenu } from '../components/MessageActionsMenu.js';
 import { FAVORITE_EMOJI } from '../reactions.js';
 
@@ -2288,33 +2285,33 @@ describe('MessageActionsMenu', () => {
     expect(screen.queryByRole('menuitem', { name: /удалить/i })).not.toBeInTheDocument();
   });
 
-  it('clicking a favorite calls onPickEmoji + onClose', async () => {
+  it('clicking a favorite calls onPickEmoji + onClose', () => {
     const props = defaults();
     render(<MessageActionsMenu {...props} />);
-    await userEvent.click(screen.getByRole('button', { name: FAVORITE_EMOJI[0]! }));
+    fireEvent.click(screen.getByRole('button', { name: FAVORITE_EMOJI[0]! }));
     expect(props.onPickEmoji).toHaveBeenCalledWith(FAVORITE_EMOJI[0]);
     expect(props.onClose).toHaveBeenCalled();
   });
 
-  it('clicking + calls onMoreEmoji (parent decides what to do with the menu)', async () => {
+  it('clicking + calls onMoreEmoji (parent decides what to do with the menu)', () => {
     const props = defaults();
     render(<MessageActionsMenu {...props} />);
-    await userEvent.click(screen.getByRole('button', { name: /ещё реакции/i }));
+    fireEvent.click(screen.getByRole('button', { name: /ещё реакции/i }));
     expect(props.onMoreEmoji).toHaveBeenCalled();
   });
 
-  it('clicking Ответить calls onReply + onClose', async () => {
+  it('clicking Ответить calls onReply + onClose', () => {
     const props = defaults();
     render(<MessageActionsMenu {...props} />);
-    await userEvent.click(screen.getByRole('menuitem', { name: /ответить/i }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /ответить/i }));
     expect(props.onReply).toHaveBeenCalled();
     expect(props.onClose).toHaveBeenCalled();
   });
 
-  it('clicking Удалить calls onDelete + onClose', async () => {
+  it('clicking Удалить calls onDelete + onClose', () => {
     const props = defaults();
     render(<MessageActionsMenu {...props} />);
-    await userEvent.click(screen.getByRole('menuitem', { name: /удалить/i }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /удалить/i }));
     expect(props.onDelete).toHaveBeenCalled();
     expect(props.onClose).toHaveBeenCalled();
   });
@@ -2808,7 +2805,7 @@ Open `packages/web/src/chat/test/ChatRoomScreen.test.tsx`. At the **end** of the
 
     // Tap a favorite emoji (e.g. first FAVORITE_EMOJI = 👍).
     const favorite = await screen.findByRole('button', { name: '👍' });
-    await userEvent.click(favorite);
+    fireEvent.click(favorite);
 
     // POST was issued.
     expect(fetchMock).toHaveBeenCalledWith(
@@ -2832,7 +2829,7 @@ Open `packages/web/src/chat/test/ChatRoomScreen.test.tsx`. At the **end** of the
 
     renderRoom('c1');
     const pill = await screen.findByRole('button', { name: /👍 1/ });
-    await userEvent.click(pill);
+    fireEvent.click(pill);
 
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringMatching(/\/chat\/messages\/m0\/reactions$/),
@@ -2858,7 +2855,7 @@ Open `packages/web/src/chat/test/ChatRoomScreen.test.tsx`. At the **end** of the
     fireEvent.pointerUp(bubble, { pointerId: 1 });
 
     const favorite = await screen.findByRole('button', { name: '👍' });
-    await userEvent.click(favorite);
+    fireEvent.click(favorite);
 
     // Wait a tick for the rejection to land.
     await new Promise((r) => setTimeout(r, 0));
@@ -2873,7 +2870,9 @@ These tests assume the existing test file already exposes:
 - `fetchMock` (`vi.spyOn(global, 'fetch')` or similar),
 - `SELF` / `OTHER` constants,
 - `renderRoom(chatId)` helper,
-- top-level imports for `screen`, `fireEvent`, `userEvent`, `chatKeys`, `ChatMessageDTO`.
+- top-level imports for `screen`, `fireEvent`, `chatKeys`, `ChatMessageDTO`.
+
+NOTE: this repo does NOT use `@testing-library/user-event` — every existing chat component test in `packages/web/src/chat/test/` uses raw `fireEvent` from `@testing-library/react`. Stick to that pattern; do not add user-event as a dependency.
 
 If any of these is missing in the current file, port it from `useChatSocket.test.tsx` patterns (the test setup is the same: `MemoryRouter`, mocked WS, `fetchMock` swap). If the existing file uses a different render helper / signature, adapt the calls but keep the assertions identical.
 
