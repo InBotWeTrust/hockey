@@ -23,6 +23,7 @@ import { ChatRoomSearchBar } from '../components/ChatRoomSearchBar.js';
 import { MessageActionsMenu } from '../components/MessageActionsMenu.js';
 import { ReactionPicker } from '../components/ReactionPicker.js';
 import { UserProfileSheet } from '../components/UserProfileSheet.js';
+import { formatLastSeen } from '../lastSeen.js';
 import { switchMyReactionTo, removeMyReaction } from '../reactionsState.js';
 
 const PAGE_SIZE = 50;
@@ -105,7 +106,9 @@ export function ChatRoomScreen(): JSX.Element {
       : (chatMeta?.name ?? (chatMeta?.type === 'system' ? 'Системный канал' : 'Чат'));
   const chatAvatarUrl = chatMeta?.dmCounterpart?.avatarUrl ?? null;
   const chatSubtitle =
-    chatMeta && chatMeta.type !== 'direct'
+    chatMeta?.type === 'direct'
+      ? (formatLastSeen(chatMeta.dmCounterpart?.lastSeenAt ?? null) ?? undefined)
+      : chatMeta
       ? formatMemberCount(chatMeta.memberCount)
       : undefined;
   // Show avatar + author name on every foreign bubble in non-DM chats so

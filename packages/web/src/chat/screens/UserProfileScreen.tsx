@@ -9,6 +9,7 @@ import {
 } from '../api.js';
 import { userKeys } from '../../lib/queryKeys.js';
 import { useAuthStore } from '../../auth/authStore.js';
+import { formatLastSeen } from '../lastSeen.js';
 
 function avatarInitial(name: string | null): string {
   return (name?.trim() || '?').charAt(0).toUpperCase();
@@ -145,6 +146,12 @@ export function UserProfileScreen(): JSX.Element {
             <div style={{ fontSize: 12, color: 'var(--muted)' }}>
               В лиге с {formatJoined(data.createdAt)}
             </div>
+            {(() => {
+              const ls = formatLastSeen(data.lastSeenAt);
+              return ls ? (
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>{ls}</div>
+              ) : null;
+            })()}
           </div>
 
           {!isSelf && (
