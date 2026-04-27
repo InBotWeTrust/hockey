@@ -36,11 +36,9 @@ export function App(): JSX.Element {
             maxWidth: 430,
             margin: '0 auto',
             minHeight: '100dvh',
-            boxSizing: 'border-box',
             position: 'relative',
             transform: 'translateZ(0)',
             overflow: 'hidden',
-            paddingTop: 'env(safe-area-inset-top, 0px)',
             boxShadow: '0 0 0 1px rgba(15,23,42,0.08), 0 8px 48px rgba(15,23,42,0.14)',
           }}
         >
