@@ -5,6 +5,7 @@ import './design-system.css';
 import { DailyScreen } from '../screens/DailyScreen.js';
 import { LoginScreen } from '../screens/LoginScreen.js';
 import { ProfileScreen } from '../screens/ProfileScreen.js';
+import { VkAuthCallbackScreen } from '../screens/VkAuthCallbackScreen.js';
 import { PrivateRoute } from '../auth/PrivateRoute.js';
 import { BottomNav } from '../components/BottomNav.js';
 import { UpdatePrompt } from '../components/UpdatePrompt.js';
@@ -46,6 +47,7 @@ export function App(): JSX.Element {
         >
           <Routes>
             <Route path="/login" element={<LoginScreen />} />
+            <Route path="/auth/vk/callback" element={<VkAuthCallbackScreen />} />
             <Route
               path="/"
               element={

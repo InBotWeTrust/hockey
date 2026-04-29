@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Ultimate Hockey — мобильная хоккейная PWA в духе OVI Universe + Prison: тайминг-механика «поймай окно между движущимся вратарём и движущимися воротами», лестница боссов-вратарей, минимальная экипировка (клюшки), соревновательный рейтинг. Вход через Telegram Login Widget (VK OAuth отложен). Монетизация — Фаза 2.
+Ultimate Hockey — мобильная хоккейная PWA в духе OVI Universe + Prison: тайминг-механика «поймай окно между движущимся вратарём и движущимися воротами», лестница боссов-вратарей, минимальная экипировка (клюшки), соревновательный рейтинг. Вход через Telegram Login Widget и VK ID OAuth. Монетизация — Фаза 2.
 
 Прод: https://hockey.inbotwetrust.ru, GHCR-образы `ghcr.io/inbotwetrust/hockey-server|web`. Деплой — только через GitHub Actions (`.github/workflows/deploy.yml`): CI билдит образы, пушит в GHCR, SSH-сессия на VPS делает `docker compose pull && up -d --force-recreate`. На VPS ничего не собирается.
 
@@ -108,11 +108,15 @@ pnpm workspaces, `packages/*`, TS project references (`composite: true`):
 2. **WS-message пропадает при холодной загрузке** — если первый `fetchMessages` ещё в полёте, `applyMessageNew` пишет shell `{pages:[[msg]]}`, который TanStack потом перезатирает; вместо этого триггерим `invalidateQueries` (`useChatSocket.applyMessageNew`, #55).
 3. **Двойная отправка по тапу** — `disabled` пропом обновляется через React, между двумя тапами успевает только один render → sync-ref guard в composer (#47).
 
-### Auth (Telegram)
+### Auth (Telegram + VK)
 
 `POST /auth/telegram` принимает payload виджета, валидирует HMAC через `TELEGRAM_BOT_TOKEN`, возвращает `{accessToken, refreshToken, user}`. Access JWT (15 мин) подписан `JWT_SECRET`. Refresh JWT (30 дней) подписан `REFRESH_SECRET`, ротация — `POST /auth/refresh` (атомарный `GETDEL` в Redis по jti: старый токен становится невалидным). `POST /auth/logout` отзывает refresh. Access JWT blocklist пока нет — access живёт до exp.
 
-Web: `auth/authStore.ts` (Zustand persist), `api/apiFetch.ts` (fetch wrapper с Bearer, 401 → single refresh-retry через in-flight promise), `auth/TelegramLoginButton.tsx` (динамически монтирует `<script>` виджета с колбэком через `useId()`). Dev-кнопка в `LoginScreen` зовёт `POST /auth/dev` и получает настоящие JWT — не подставляй фейковые токены в `authStore`, иначе middleware сервера их отвергнет. `VITE_TELEGRAM_BOT_USERNAME` — build-time переменная Vite, для прода запекается в бандл через Docker build-arg (GitHub Actions var `VITE_TELEGRAM_BOT_USERNAME`). BotFather `/setdomain` для прод-виджета — ручной шаг вне автоматизации.
+`POST /auth/vk` принимает PKCE-payload (`code`, `codeVerifier`, `deviceId`, `redirectUri`, `timezone`), обменивает через `id.vk.com/oauth2/auth` + `oauth2/user_info`, делает find-or-link-or-create по `vk_id` (advisory-lock на `vk:<id>`). Если запрос идёт с валидным Bearer — VK линкуется к текущему юзеру; если этот `vk_id` уже привязан к другому юзеру — 409 `vk_already_linked`. `VK_APP_ID` публичный; prod app id `54571497`. Protected key/service token не используются в PKCE-флоу и не должны попадать в repo/env.
+
+`users.display_source ∈ {'telegram','vk'}` определяет, из каких mirrored-полей (`tg_*`/`vk_*`) пересчитываются `users.display_name` и `avatar_url` через `recomputeEffectiveProfile`. `/me` отдаёт `displaySource`, `linkedProviders` и per-provider profile fields; `PATCH /me { displaySource }` разрешён только для уже привязанного провайдера.
+
+Web: `auth/authStore.ts` (Zustand persist), `api/apiFetch.ts` (fetch wrapper с Bearer, 401 → single refresh-retry через in-flight promise), `auth/TelegramLoginButton.tsx` (динамически монтирует `<script>` виджета с колбэком через `useId()`), `auth/vkAuth.ts` (`sessionStorage` PKCE + `startVkOAuth`), экран `/auth/vk/callback` с `calledRef` против двойного обмена code в StrictMode. Dev-кнопка в `LoginScreen` зовёт `POST /auth/dev` и получает настоящие JWT — не подставляй фейковые токены в `authStore`, иначе middleware сервера их отвергнет. `VITE_TELEGRAM_BOT_USERNAME` и `VITE_VK_APP_ID` — build-time переменные Vite, для прода запекаются в бандл через Docker build-arg (GitHub Actions vars). BotFather `/setdomain` и VK Console redirect URIs — ручные шаги вне автоматизации.
 
 ### Presence (last_seen)
 
@@ -137,7 +141,7 @@ Fastify generic `FastifyInstance` резолвится к union http/http2/https
 2. `docker-build` — билдит оба Dockerfile через buildx с GHA cache, не пушит.
 
 `.github/workflows/deploy.yml` (только на push в `main`):
-1. Билд образов с тегами `sha-<short>` и `latest`, пуш в GHCR. Web билд получает `VITE_TELEGRAM_BOT_USERNAME` через `build-args` из repo variable.
+1. Билд образов с тегами `sha-<short>` и `latest`, пуш в GHCR. Web билд получает `VITE_TELEGRAM_BOT_USERNAME` и `VITE_VK_APP_ID` через `build-args` из repo variables.
 2. SSH на VPS → `scp docker-compose.yml Caddyfile` → внутри heredoc'а: `docker login` (с retry), `docker compose pull` (с retry), `docker compose run --rm -T server ... migrate-cli.js < /dev/null`, `docker compose up -d --force-recreate --remove-orphans server web caddy < /dev/null`, `image prune`. **`-T < /dev/null` обязательны на обеих compose-командах** — без них `docker compose run` наследует stdin родителя (= сам heredoc), глотает остаток скрипта, и `up --force-recreate` молча не выполняется. Прод тогда зависает на старом IMAGE_TAG, а Actions репортит success (smoke-тест бьёт уже живой старый сервер). Корректное поведение PR #22; не убирай редиректы.
 3. Smoke test `GET /api/health` с 5 retries. Если валится — вся ветка деплоя красная.
 

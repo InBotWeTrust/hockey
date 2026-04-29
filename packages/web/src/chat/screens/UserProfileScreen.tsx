@@ -12,10 +12,6 @@ import { useAuthStore } from '../../auth/authStore.js';
 import { formatLastSeen } from '../lastSeen.js';
 import { UserAvatar } from '../components/UserAvatar.js';
 
-function avatarInitial(name: string | null): string {
-  return (name?.trim() || '?').charAt(0).toUpperCase();
-}
-
 function formatJoined(iso: string): string {
   return new Date(iso).toLocaleDateString('ru-RU', {
     day: '2-digit',

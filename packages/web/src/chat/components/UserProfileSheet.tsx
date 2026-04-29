@@ -41,8 +41,6 @@ export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JS
 
   if (!sender) return null;
 
-  const initial = (sender.displayName.trim() || '?').charAt(0).toUpperCase();
-
   return createPortal(
     <div
       data-testid="profile-sheet-backdrop"

@@ -41,9 +41,7 @@ services:
       REFRESH_SECRET: ${REFRESH_SECRET}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       DAILY_SEED_SECRET: ${DAILY_SEED_SECRET}
-      VK_APP_ID: ${VK_APP_ID}
-      VK_APP_SECRET: ${VK_APP_SECRET}
-      VK_REDIRECT_URI: ${VK_REDIRECT_URI}
+      VK_APP_ID: ${VK_APP_ID:-54571497}
     depends_on:
       postgres:
         condition: service_healthy

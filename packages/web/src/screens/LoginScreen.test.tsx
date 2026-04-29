@@ -37,6 +37,7 @@ describe('LoginScreen', () => {
   it('renders the Telegram button', () => {
     renderWith();
     expect(screen.getByTestId('telegram-login-container')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /войти через вконтакте/i })).toBeInTheDocument();
   });
 
   it('exchanges payload for session and navigates home', async () => {

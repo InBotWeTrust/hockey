@@ -60,12 +60,14 @@ jobs:
         uses: docker/build-push-action@v5
         env:
           BOT_USERNAME: ${{ vars.VITE_TELEGRAM_BOT_USERNAME }}
+          VK_APP_ID: ${{ vars.VITE_VK_APP_ID || '54571497' }}
         with:
           context: .
           file: packages/web/Dockerfile
           push: true
           build-args: |
             VITE_TELEGRAM_BOT_USERNAME=${{ env.BOT_USERNAME }}
+            VITE_VK_APP_ID=${{ env.VK_APP_ID }}
           tags: |
             ${{ env.WEB_IMAGE }}:latest
             ${{ env.WEB_IMAGE }}:${{ steps.meta.outputs.tag }}

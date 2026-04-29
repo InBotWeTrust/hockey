@@ -19,6 +19,8 @@ RUN pnpm --filter @hockey/game-core exec tsc --build --force
 
 ARG VITE_TELEGRAM_BOT_USERNAME=""
 ENV VITE_TELEGRAM_BOT_USERNAME=$VITE_TELEGRAM_BOT_USERNAME
+ARG VITE_VK_APP_ID="54571497"
+ENV VITE_VK_APP_ID=$VITE_VK_APP_ID
 RUN pnpm --filter @hockey/web build
 
 # ---- Runner ----

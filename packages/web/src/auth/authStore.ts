@@ -4,7 +4,18 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 export interface AuthUser {
   id: string;
   displayName: string;
+  avatarUrl?: string | null;
   grip?: 'left' | 'right';
+  displaySource?: 'telegram' | 'vk';
+  linkedProviders?: Array<'telegram' | 'vk'>;
+  tgFirstName?: string | null;
+  tgLastName?: string | null;
+  tgAvatarUrl?: string | null;
+  tgUsername?: string | null;
+  vkFirstName?: string | null;
+  vkLastName?: string | null;
+  vkAvatarUrl?: string | null;
+  vkUsername?: string | null;
 }
 
 export interface AuthSession {
@@ -29,10 +40,8 @@ export const useAuthStore = create<AuthState>()(
       accessToken: null,
       refreshToken: null,
       user: null,
-      setSession: ({ accessToken, refreshToken, user }) =>
-        set({ accessToken, refreshToken, user }),
-      updateUser: (patch) =>
-        set((s) => (s.user ? { user: { ...s.user, ...patch } } : s)),
+      setSession: ({ accessToken, refreshToken, user }) => set({ accessToken, refreshToken, user }),
+      updateUser: (patch) => set((s) => (s.user ? { user: { ...s.user, ...patch } } : s)),
       clearSession: () => set({ accessToken: null, refreshToken: null, user: null }),
       isAuthenticated: () => Boolean(get().accessToken),
     }),
