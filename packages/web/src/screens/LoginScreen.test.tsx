@@ -40,6 +40,7 @@ describe('LoginScreen', () => {
     const vkButton = screen.getByRole('button', { name: /войти через вконтакте/i });
     expect(vkButton).toBeInTheDocument();
     expect(vkButton).toHaveStyle({ width: '242px', height: '40px', background: '#0077ff' });
+    expect(vkButton.closest('main')).toHaveStyle({ height: '100dvh', overflow: 'hidden' });
   });
 
   it('exchanges payload for session and navigates home', async () => {

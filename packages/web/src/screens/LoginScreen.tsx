@@ -37,30 +37,39 @@ export function LoginScreen(): JSX.Element {
   });
 
   return (
-    <main className="screen" style={{ textAlign: 'center', paddingBottom: 20 }}>
-      <div style={{ padding: '40px 20px 10px' }}>
+    <main
+      className="screen"
+      style={{
+        textAlign: 'center',
+        height: '100dvh',
+        minHeight: 0,
+        overflow: 'hidden',
+        paddingBottom: 'max(12px, env(safe-area-inset-bottom, 0px))',
+      }}
+    >
+      <div style={{ padding: 'clamp(24px, 5dvh, 40px) 20px 8px' }}>
         <div
           className="glass-dark"
           style={{
-            width: 82,
-            height: 82,
+            width: 76,
+            height: 76,
             borderRadius: 'var(--r-pill)',
             fontSize: 28,
             fontWeight: 900,
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
-            marginBottom: 18,
+            marginBottom: 14,
             boxShadow: '0 12px 30px rgba(15, 23, 42, 0.35)',
-            letterSpacing: 1,
+            letterSpacing: 0,
           }}
         >
           UH
         </div>
-        <h1 style={{ fontSize: 30, fontWeight: 800, letterSpacing: '-0.03em', margin: '0 0 10px' }}>
+        <h1 style={{ fontSize: 29, fontWeight: 800, letterSpacing: 0, margin: '0 0 8px' }}>
           Ultimate Hockey
         </h1>
-        <div style={{ fontSize: 14, color: 'var(--muted)', lineHeight: 1.5 }}>
+        <div style={{ fontSize: 14, color: 'var(--muted)', lineHeight: 1.42 }}>
           Поймай окно между движущимся
           <br />
           вратарём и воротами.
@@ -71,7 +80,7 @@ export function LoginScreen(): JSX.Element {
 
       <div
         style={{
-          padding: '18px 20px',
+          padding: 'clamp(10px, 2.5dvh, 16px) 20px',
           display: 'flex',
           justifyContent: 'center',
           gap: 6,
@@ -92,9 +101,16 @@ export function LoginScreen(): JSX.Element {
         </span>
       </div>
 
-      <div style={{ flex: 1 }} />
+      <div style={{ flex: 1, minHeight: 8 }} />
 
-      <div style={{ padding: '24px 20px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div
+        style={{
+          padding: 'clamp(12px, 3dvh, 22px) 20px 0',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 9,
+        }}
+      >
         <TelegramLoginButton
           botUsername={botUsername}
           onAuth={(payload) => mutation.mutate(payload)}
