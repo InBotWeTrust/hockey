@@ -189,7 +189,7 @@ describe('ChatRoomScreen', () => {
       senderId: SELF_ID,
       senderDisplayName: null,
       senderAvatarUrl: null,
-      content: 'привет',
+      content: 'гонка',
       replyToId: null,
       isDeleted: false,
       createdAt: '2026-04-26T10:02:00.000Z',
@@ -205,7 +205,7 @@ describe('ChatRoomScreen', () => {
     await waitFor(() => expect(screen.getAllByTestId('chat-bubble').length).toBe(2));
 
     const textarea = screen.getByLabelText('Текст сообщения') as HTMLTextAreaElement;
-    fireEvent.change(textarea, { target: { value: 'привет' } });
+    fireEvent.change(textarea, { target: { value: 'гонка' } });
     fireEvent.click(screen.getByLabelText('Отправить'));
 
     // WS publishMessageNew lands first (server awaits publish before reply, so on
@@ -228,7 +228,7 @@ describe('ChatRoomScreen', () => {
       resolveSend(newMsg);
     });
 
-    await waitFor(() => expect(screen.getAllByText('привет').length).toBe(1));
+    await waitFor(() => expect(screen.getAllByText('гонка').length).toBe(1));
     expect(screen.getAllByTestId('chat-bubble').length).toBe(3);
   });
 

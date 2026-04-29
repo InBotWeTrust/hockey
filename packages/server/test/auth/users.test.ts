@@ -32,6 +32,8 @@ describe.skipIf(!hasIntegrationEnv)('findOrCreateTelegramUser', () => {
     const user = await findOrCreateTelegramUser(pool, {
       providerUid: '100500',
       displayName: 'Egor',
+      firstName: 'Egor',
+      username: 'egor',
     });
     expect(user.id).toMatch(/^[0-9a-f-]{36}$/i);
     const wallet = await pool.query('select * from user_wallet where user_id=$1', [user.id]);
@@ -43,10 +45,19 @@ describe.skipIf(!hasIntegrationEnv)('findOrCreateTelegramUser', () => {
     const sticks = await pool.query('select stick_id from user_sticks where user_id=$1', [user.id]);
     expect(sticks.rows.map((r) => r.stick_id)).toEqual(['training']);
     const prov = await pool.query(
-      "select provider, provider_uid from auth_providers where user_id=$1",
+      'select provider, provider_uid from auth_providers where user_id=$1',
       [user.id],
     );
     expect(prov.rows[0]).toEqual({ provider: 'telegram', provider_uid: '100500' });
+    const profile = await pool.query(
+      'select display_source, tg_first_name, tg_username from users where id=$1',
+      [user.id],
+    );
+    expect(profile.rows[0]).toMatchObject({
+      display_source: 'telegram',
+      tg_first_name: 'Egor',
+      tg_username: 'egor',
+    });
   });
 
   it('is idempotent: second call with same provider_uid returns existing user', async () => {
@@ -71,6 +82,40 @@ describe.skipIf(!hasIntegrationEnv)('findOrCreateTelegramUser', () => {
     });
     const row = await pool.query('select avatar_url from users where id=$1', [user.id]);
     expect(row.rows[0].avatar_url).toBe('https://t.me/i/pic.jpg');
+  });
+
+  it('updates tg_* mirror fields on subsequent login', async () => {
+    const first = await findOrCreateTelegramUser(pool, {
+      providerUid: '600',
+      displayName: 'Old Name',
+      firstName: 'Old',
+      lastName: 'Name',
+      avatarUrl: 'old.png',
+      username: 'old',
+    });
+
+    const second = await findOrCreateTelegramUser(pool, {
+      providerUid: '600',
+      displayName: 'New Name',
+      firstName: 'New',
+      lastName: 'Name',
+      avatarUrl: 'new.png',
+      username: 'new',
+    });
+
+    expect(second.id).toBe(first.id);
+    expect(second.displayName).toBe('New Name');
+    const row = await pool.query(
+      'select display_name, avatar_url, tg_first_name, tg_avatar_url, tg_username from users where id=$1',
+      [first.id],
+    );
+    expect(row.rows[0]).toMatchObject({
+      display_name: 'New Name',
+      avatar_url: 'new.png',
+      tg_first_name: 'New',
+      tg_avatar_url: 'new.png',
+      tg_username: 'new',
+    });
   });
 
   it('persists timezone on first creation', async () => {

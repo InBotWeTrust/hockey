@@ -1,5 +1,10 @@
 import { z } from 'zod';
 
+const optionalNonEmptyString = z.preprocess(
+  (value) => (value === '' ? undefined : value),
+  z.string().min(1).optional(),
+);
+
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   HOST: z.string().default('0.0.0.0'),
@@ -10,6 +15,7 @@ const schema = z.object({
   JWT_SECRET: z.string().min(16),
   REFRESH_SECRET: z.string().min(16),
   TELEGRAM_BOT_TOKEN: z.string().min(1),
+  VK_APP_ID: optionalNonEmptyString,
   DAILY_SEED_SECRET: z.string().min(16),
   SYSTEM_USER_ID: z.string().uuid().optional(),
 });

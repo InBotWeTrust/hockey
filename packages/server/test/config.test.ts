@@ -36,4 +36,9 @@ describe('loadConfig', () => {
     expect(cfg.TELEGRAM_BOT_TOKEN).toBe(base.TELEGRAM_BOT_TOKEN);
     expect(cfg.PORT).toBe(3000);
   });
+
+  it('treats VK_APP_ID as optional and normalizes blank value', () => {
+    expect(loadConfig({ ...base, VK_APP_ID: '' }).VK_APP_ID).toBeUndefined();
+    expect(loadConfig({ ...base, VK_APP_ID: '777' }).VK_APP_ID).toBe('777');
+  });
 });

@@ -1,19 +1,43 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Info, LogOut } from 'lucide-react';
+import { Info, Link as LinkIcon, LogOut } from 'lucide-react';
 import { apiFetch } from '../api/apiFetch.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { useLogout } from '../auth/useLogout.js';
+import { startVkOAuth } from '../auth/vkAuth.js';
 import { NAV_HEIGHT } from '../components/BottomNav.js';
 import { StatCard } from '../components/StatCard.js';
 
 interface ProfileData {
   id: string;
   displayName: string;
-  avatarUrl?: string;
+  avatarUrl?: string | null;
   grip: 'right' | 'left';
+  displaySource?: 'telegram' | 'vk';
+  linkedProviders?: Array<'telegram' | 'vk'>;
   tgId?: string;
   username?: string;
+  tgFirstName?: string | null;
+  tgLastName?: string | null;
+  tgAvatarUrl?: string | null;
+  tgUsername?: string | null;
+  vkFirstName?: string | null;
+  vkLastName?: string | null;
+  vkAvatarUrl?: string | null;
+  vkUsername?: string | null;
+}
+
+function providerName(data: ProfileData | undefined, source: 'telegram' | 'vk'): string {
+  if (!data) return '—';
+  const first = source === 'telegram' ? data.tgFirstName : data.vkFirstName;
+  const last = source === 'telegram' ? data.tgLastName : data.vkLastName;
+  const username = source === 'telegram' ? (data.tgUsername ?? data.username) : data.vkUsername;
+  return [first, last].filter(Boolean).join(' ') || username || '—';
+}
+
+function providerAvatar(data: ProfileData | undefined, source: 'telegram' | 'vk'): string | null {
+  if (!data) return null;
+  return source === 'telegram' ? (data.tgAvatarUrl ?? null) : (data.vkAvatarUrl ?? null);
 }
 
 export function ProfileScreen(): JSX.Element {
@@ -28,10 +52,18 @@ export function ProfileScreen(): JSX.Element {
 
   const [grip, setGrip] = useState<'right' | 'left'>('right');
   const [gripInfoOpen, setGripInfoOpen] = useState(false);
+  const [sourceError, setSourceError] = useState<string | null>(null);
+  const [vkLinkPending, setVkLinkPending] = useState(false);
   useEffect(() => {
     if (data) {
       setGrip(data.grip);
-      updateUser({ grip: data.grip });
+      updateUser({
+        grip: data.grip,
+        displayName: data.displayName,
+        ...(data.avatarUrl !== undefined ? { avatarUrl: data.avatarUrl } : {}),
+        ...(data.displaySource !== undefined ? { displaySource: data.displaySource } : {}),
+        ...(data.linkedProviders !== undefined ? { linkedProviders: data.linkedProviders } : {}),
+      });
     }
   }, [data, updateUser]);
 
@@ -58,18 +90,63 @@ export function ProfileScreen(): JSX.Element {
     },
   });
 
+  const { mutate: saveDisplaySource, isPending: savingDisplaySource } = useMutation<
+    ProfileData,
+    Error,
+    'telegram' | 'vk',
+    { previous?: ProfileData }
+  >({
+    mutationFn: (displaySource) =>
+      apiFetch<ProfileData>('/me', {
+        method: 'PATCH',
+        body: JSON.stringify({ displaySource }),
+      }),
+    onMutate: (displaySource) => {
+      setSourceError(null);
+      const previous = queryClient.getQueryData<ProfileData>(['profile']);
+      queryClient.setQueryData<ProfileData>(['profile'], (old) => {
+        if (!old) return old;
+        const nextName = providerName(old, displaySource);
+        const nextAvatar = providerAvatar(old, displaySource);
+        return {
+          ...old,
+          displaySource,
+          displayName: nextName === '—' ? old.displayName : nextName,
+          avatarUrl: nextAvatar,
+        };
+      });
+      return previous ? { previous } : {};
+    },
+    onSuccess: (profile) => {
+      queryClient.setQueryData<ProfileData>(['profile'], profile);
+      updateUser({
+        displayName: profile.displayName,
+        ...(profile.avatarUrl !== undefined ? { avatarUrl: profile.avatarUrl } : {}),
+        ...(profile.displaySource !== undefined ? { displaySource: profile.displaySource } : {}),
+        ...(profile.linkedProviders !== undefined
+          ? { linkedProviders: profile.linkedProviders }
+          : {}),
+      });
+    },
+    onError: (err, _source, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData<ProfileData>(['profile'], context.previous);
+      }
+      setSourceError(err.message);
+    },
+  });
+
   if (isLoading) {
     return (
-      <main
-        className="screen"
-        style={{ alignItems: 'center', justifyContent: 'center' }}
-      >
+      <main className="screen" style={{ alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ color: 'var(--muted)', fontSize: 14 }}>Загрузка…</div>
       </main>
     );
   }
 
   const initial = (data?.displayName ?? '?').charAt(0).toUpperCase();
+  const linkedProviders = data?.linkedProviders ?? ['telegram'];
+  const displaySource = data?.displaySource ?? 'telegram';
 
   return (
     <main
@@ -132,12 +209,74 @@ export function ProfileScreen(): JSX.Element {
           )}
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
-          <span className="pill"><small>Ранг</small> —</span>
-          <span className="pill pill--dark"><small>Уровень</small> —</span>
+          <span className="pill">
+            <small>Ранг</small> —
+          </span>
+          <span className="pill pill--dark">
+            <small>Уровень</small> —
+          </span>
         </div>
       </div>
 
-      <div className="section-label" style={{ marginBottom: 6 }}>Статистика</div>
+      <div className="section-label" style={{ marginBottom: 6 }}>
+        Имя и аватар
+      </div>
+      <div style={{ margin: '0 14px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <ProfileSourceOption
+          label="Из Telegram"
+          name={providerName(data, 'telegram')}
+          avatarUrl={providerAvatar(data, 'telegram')}
+          active={displaySource === 'telegram'}
+          disabled={savingDisplaySource || !linkedProviders.includes('telegram')}
+          onClick={() => {
+            if (displaySource !== 'telegram' && linkedProviders.includes('telegram')) {
+              saveDisplaySource('telegram');
+            }
+          }}
+        />
+        <ProfileSourceOption
+          label="Из ВКонтакте"
+          name={providerName(data, 'vk')}
+          avatarUrl={providerAvatar(data, 'vk')}
+          active={displaySource === 'vk'}
+          disabled={savingDisplaySource || !linkedProviders.includes('vk')}
+          onClick={() => {
+            if (displaySource !== 'vk' && linkedProviders.includes('vk')) {
+              saveDisplaySource('vk');
+            }
+          }}
+        />
+        {!linkedProviders.includes('vk') && (
+          <button
+            type="button"
+            className="btn btn--ghost"
+            disabled={vkLinkPending}
+            onClick={async () => {
+              setSourceError(null);
+              setVkLinkPending(true);
+              try {
+                await startVkOAuth();
+              } catch (err) {
+                setVkLinkPending(false);
+                setSourceError(err instanceof Error ? err.message : 'Ошибка привязки ВКонтакте');
+              }
+            }}
+            style={{ justifyContent: 'center', padding: '11px 0', fontSize: 13 }}
+          >
+            <LinkIcon size={15} />
+            Привязать ВКонтакте
+          </button>
+        )}
+        {sourceError && (
+          <div role="alert" style={{ fontSize: 12, color: 'var(--red-deep)', textAlign: 'center' }}>
+            {sourceError}
+          </div>
+        )}
+      </div>
+
+      <div className="section-label" style={{ marginBottom: 6 }}>
+        Статистика
+      </div>
       <div
         style={{
           margin: '0 14px 14px',
@@ -247,7 +386,8 @@ export function ProfileScreen(): JSX.Element {
               Хват клюшки
             </div>
             <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>
-              При правом хвате можно бросить вплотную у правого борта — слева шайба не докатится. При левом — наоборот.
+              При правом хвате можно бросить вплотную у правого борта — слева шайба не докатится.
+              При левом — наоборот.
             </div>
             <button
               type="button"
@@ -264,6 +404,95 @@ export function ProfileScreen(): JSX.Element {
   );
 }
 
+interface ProfileSourceOptionProps {
+  label: string;
+  name: string;
+  avatarUrl: string | null;
+  active: boolean;
+  disabled: boolean;
+  onClick: () => void;
+}
+
+function ProfileSourceOption({
+  label,
+  name,
+  avatarUrl,
+  active,
+  disabled,
+  onClick,
+}: ProfileSourceOptionProps): JSX.Element {
+  const initial = name !== '—' ? name.charAt(0).toUpperCase() : '?';
+  return (
+    <button
+      type="button"
+      className={active ? 'glass-dark' : 'glass'}
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        width: '100%',
+        padding: '12px 14px',
+        borderRadius: 16,
+        display: 'grid',
+        gridTemplateColumns: '40px 1fr auto',
+        alignItems: 'center',
+        gap: 10,
+        opacity: disabled && !active ? 0.55 : 1,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        textAlign: 'left',
+      }}
+    >
+      {avatarUrl ? (
+        <img
+          src={avatarUrl}
+          alt=""
+          aria-hidden
+          style={{ width: 40, height: 40, borderRadius: 999, objectFit: 'cover' }}
+        />
+      ) : (
+        <span
+          aria-hidden
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 999,
+            background: active ? 'rgba(255,255,255,0.18)' : 'rgba(15,23,42,0.08)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontWeight: 800,
+          }}
+        >
+          {initial}
+        </span>
+      )}
+      <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span style={{ fontSize: 13, fontWeight: 800 }}>{label}</span>
+        <span
+          style={{
+            fontSize: 12,
+            opacity: 0.75,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {name}
+        </span>
+      </span>
+      <span
+        aria-hidden
+        style={{
+          width: 18,
+          height: 18,
+          borderRadius: 999,
+          border: active ? '5px solid currentColor' : '2px solid currentColor',
+          opacity: active ? 1 : 0.35,
+        }}
+      />
+    </button>
+  );
+}
+
 interface GripOptionProps {
   label: string;
   hint: string;
@@ -274,7 +503,15 @@ interface GripOptionProps {
   onClick: () => void;
 }
 
-function GripOption({ label, hint, active, disabled, sprite, side, onClick }: GripOptionProps): JSX.Element {
+function GripOption({
+  label,
+  hint,
+  active,
+  disabled,
+  sprite,
+  side,
+  onClick,
+}: GripOptionProps): JSX.Element {
   const SIZE = 72;
   const puckSize = 3;
   const puckSide = side === 'left' ? 'right' : 'left';
@@ -297,10 +534,14 @@ function GripOption({ label, hint, active, disabled, sprite, side, onClick }: Gr
         opacity: disabled ? 0.6 : 1,
       }}
     >
-      <div style={{
-        position: 'relative', width: SIZE, height: SIZE,
-        transform: `rotate(${side === 'left' ? -18.3 : 18.3}deg)`,
-      }}>
+      <div
+        style={{
+          position: 'relative',
+          width: SIZE,
+          height: SIZE,
+          transform: `rotate(${side === 'left' ? -18.3 : 18.3}deg)`,
+        }}
+      >
         <img
           src={sprite}
           alt=""
@@ -334,5 +575,3 @@ function GripOption({ label, hint, active, disabled, sprite, side, onClick }: Gr
     </button>
   );
 }
-
-

@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Send } from 'lucide-react';
+import { LogIn, Send } from 'lucide-react';
 import { TelegramLoginButton, type TelegramAuthPayload } from '../auth/TelegramLoginButton.js';
 import { apiFetch, ApiError } from '../api/apiFetch.js';
 import { useAuthStore, type AuthSession } from '../auth/authStore.js';
+import { startVkOAuth } from '../auth/vkAuth.js';
 
 function detectTimezone(): string {
   try {
@@ -20,6 +21,8 @@ export function LoginScreen(): JSX.Element {
   const botUsername = import.meta.env.VITE_TELEGRAM_BOT_USERNAME ?? '';
   const [devError, setDevError] = useState<string | null>(null);
   const [devPending, setDevPending] = useState(false);
+  const [vkError, setVkError] = useState<string | null>(null);
+  const [vkPending, setVkPending] = useState(false);
 
   const mutation = useMutation<AuthSession, Error, TelegramAuthPayload>({
     mutationFn: (payload) =>
@@ -34,10 +37,7 @@ export function LoginScreen(): JSX.Element {
   });
 
   return (
-    <main
-      className="screen"
-      style={{ textAlign: 'center', paddingBottom: 20 }}
-    >
+    <main className="screen" style={{ textAlign: 'center', paddingBottom: 20 }}>
       <div style={{ padding: '40px 20px 10px' }}>
         <div
           className="glass-dark"
@@ -78,10 +78,18 @@ export function LoginScreen(): JSX.Element {
           flexWrap: 'wrap',
         }}
       >
-        <span className="pill" style={{ fontSize: 11, padding: '5px 12px' }}>Тайминг</span>
-        <span className="pill" style={{ fontSize: 11, padding: '5px 12px' }}>Рейтинг</span>
-        <span className="pill" style={{ fontSize: 11, padding: '5px 12px' }}>10 вратарей</span>
-        <span className="pill" style={{ fontSize: 11, padding: '5px 12px' }}>PWA</span>
+        <span className="pill" style={{ fontSize: 11, padding: '5px 12px' }}>
+          Тайминг
+        </span>
+        <span className="pill" style={{ fontSize: 11, padding: '5px 12px' }}>
+          Рейтинг
+        </span>
+        <span className="pill" style={{ fontSize: 11, padding: '5px 12px' }}>
+          10 вратарей
+        </span>
+        <span className="pill" style={{ fontSize: 11, padding: '5px 12px' }}>
+          PWA
+        </span>
       </div>
 
       <div style={{ flex: 1 }} />
@@ -92,12 +100,37 @@ export function LoginScreen(): JSX.Element {
           onAuth={(payload) => mutation.mutate(payload)}
         />
 
+        <button
+          type="button"
+          className="btn btn--ghost"
+          disabled={vkPending}
+          onClick={async () => {
+            setVkError(null);
+            setVkPending(true);
+            try {
+              await startVkOAuth();
+            } catch (err) {
+              setVkPending(false);
+              setVkError(err instanceof Error ? err.message : 'Ошибка входа через ВКонтакте');
+            }
+          }}
+          style={{ justifyContent: 'center' }}
+        >
+          <LogIn size={16} />
+          Войти через ВКонтакте
+        </button>
+
         {mutation.isPending && (
           <div style={{ fontSize: 13, color: 'var(--muted)' }}>Проверяем профиль…</div>
         )}
         {mutation.isError && (
           <div role="alert" style={{ fontSize: 13, color: 'var(--red-deep)' }}>
             {mutation.error instanceof ApiError ? mutation.error.message : 'Ошибка входа'}
+          </div>
+        )}
+        {vkError && (
+          <div role="alert" style={{ fontSize: 13, color: 'var(--red-deep)' }}>
+            {vkError}
           </div>
         )}
 
@@ -137,17 +170,27 @@ export function LoginScreen(): JSX.Element {
               Войти как Dev
             </button>
             {devError && (
-              <div role="alert" style={{ fontSize: 13, color: 'var(--red-deep, #b91c1c)', textAlign: 'center' }}>
+              <div
+                role="alert"
+                style={{ fontSize: 13, color: 'var(--red-deep, #b91c1c)', textAlign: 'center' }}
+              >
                 {devError}
               </div>
             )}
           </>
         )}
 
-        <div style={{ textAlign: 'center', fontSize: 11, color: 'var(--muted)', marginTop: 4, lineHeight: 1.5 }}>
+        <div
+          style={{
+            textAlign: 'center',
+            fontSize: 11,
+            color: 'var(--muted)',
+            marginTop: 4,
+            lineHeight: 1.5,
+          }}
+        >
           Нажимая «Войти», вы соглашаетесь
-          <br />
-          с условиями использования
+          <br />с условиями использования
         </div>
       </div>
     </main>

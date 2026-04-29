@@ -13,10 +13,6 @@ interface Props {
   onToggleSearch: () => void;
 }
 
-function avatarInitial(title: string): string {
-  return (title.trim() || '?').charAt(0).toUpperCase();
-}
-
 export function ChatRoomHeader({
   title,
   subtitle,

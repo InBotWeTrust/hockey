@@ -62,11 +62,6 @@ function lastMessagePreview(chat: ChatDTO, meId: string | null): string {
   return author ? `${author}: ${body}` : body;
 }
 
-function avatarInitial(chat: ChatDTO): string {
-  const title = displayTitle(chat);
-  return (title || '?').charAt(0).toUpperCase();
-}
-
 function ChatListItemImpl({ chat, onOpen, onRequestActions }: ChatListItemProps): JSX.Element {
   const meId = useAuthStore((s) => s.user?.id ?? null);
   const isSystem = chat.type === 'system';

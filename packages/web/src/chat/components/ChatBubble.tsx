@@ -27,10 +27,6 @@ function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 }
 
-function authorInitial(name: string | null): string {
-  return (name?.trim() || '?').charAt(0).toUpperCase();
-}
-
 function ChatBubbleImpl({
   message,
   isOwn,

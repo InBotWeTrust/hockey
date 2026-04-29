@@ -38,6 +38,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await app.register(healthRoutes);
   await app.register(authRoutes, {
     telegramBotToken: config.TELEGRAM_BOT_TOKEN,
+    ...(config.VK_APP_ID !== undefined ? { vkAppId: config.VK_APP_ID } : {}),
     accessSecret: config.JWT_SECRET,
     refreshSecret: config.REFRESH_SECRET,
     devLoginEnabled: config.NODE_ENV !== 'production',
