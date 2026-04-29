@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { LogIn, Send } from 'lucide-react';
+import { Send } from 'lucide-react';
 import { TelegramLoginButton, type TelegramAuthPayload } from '../auth/TelegramLoginButton.js';
 import { apiFetch, ApiError } from '../api/apiFetch.js';
 import { useAuthStore, type AuthSession } from '../auth/authStore.js';
@@ -102,7 +102,7 @@ export function LoginScreen(): JSX.Element {
 
         <button
           type="button"
-          className="btn btn--ghost"
+          className="btn"
           disabled={vkPending}
           onClick={async () => {
             setVkError(null);
@@ -114,9 +114,42 @@ export function LoginScreen(): JSX.Element {
               setVkError(err instanceof Error ? err.message : 'Ошибка входа через ВКонтакте');
             }
           }}
-          style={{ justifyContent: 'center' }}
+          style={{
+            alignSelf: 'center',
+            width: 242,
+            height: 40,
+            padding: '0 14px',
+            borderRadius: 12,
+            background: '#0077ff',
+            color: '#ffffff',
+            justifyContent: 'center',
+            gap: 10,
+            fontSize: 16,
+            fontWeight: 700,
+            letterSpacing: 0,
+            boxShadow: 'none',
+            whiteSpace: 'nowrap',
+          }}
         >
-          <LogIn size={16} />
+          <span
+            aria-hidden="true"
+            style={{
+              width: 24,
+              height: 24,
+              borderRadius: 7,
+              background: '#ffffff',
+              color: '#0077ff',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 13,
+              fontWeight: 900,
+              lineHeight: 1,
+              flexShrink: 0,
+            }}
+          >
+            VK
+          </span>
           Войти через ВКонтакте
         </button>
 
