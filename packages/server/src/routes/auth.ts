@@ -89,6 +89,10 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (app, opt
     const displayName =
       [tgUser.firstName, tgUser.lastName].filter(Boolean).join(' ') || tgUser.username || 'player';
     const tz = safeIanaTimezone(rawTimezone);
+    const currentUserId = await tryReadAccessTokenFromHeader(
+      req.headers.authorization,
+      opts.accessSecret,
+    );
     const user = await findOrCreateTelegramUser(app.pg, {
       providerUid: String(tgUser.id),
       displayName,
@@ -97,6 +101,7 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (app, opt
       ...(tgUser.firstName ? { firstName: tgUser.firstName } : {}),
       ...(tgUser.lastName !== undefined ? { lastName: tgUser.lastName } : {}),
       ...(tz !== undefined ? { timezone: tz } : {}),
+      ...(currentUserId !== undefined ? { currentUserId } : {}),
     });
 
     const [accessToken, refresh] = await Promise.all([

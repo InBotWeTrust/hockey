@@ -12,6 +12,7 @@ export interface FindOrCreateInput {
   firstName?: string;
   lastName?: string;
   timezone?: string;
+  currentUserId?: string;
 }
 
 export interface AppUser {
@@ -43,6 +44,44 @@ function telegramProviderData(input: FindOrCreateInput): string {
   });
 }
 
+async function updateTelegramProfile(
+  pool: Queryable,
+  userId: string,
+  input: FindOrCreateInput,
+): Promise<void> {
+  const tgFirstName = input.firstName ?? input.displayName;
+  await pool.query(
+    `update users set
+        tg_first_name = $1,
+        tg_last_name = $2,
+        tg_avatar_url = coalesce($3, tg_avatar_url),
+        tg_username = $4
+      where id = $5`,
+    [
+      tgFirstName,
+      input.lastName ?? null,
+      input.avatarUrl ?? null,
+      input.username ?? null,
+      userId,
+    ],
+  );
+}
+
+async function updateTelegramProviderData(
+  pool: Queryable,
+  userId: string,
+  providerUid: string,
+  input: FindOrCreateInput,
+): Promise<void> {
+  await pool.query(
+    `update auth_providers set provider_data = $1
+      where user_id = $2
+        and provider = 'telegram'
+        and provider_uid = $3`,
+    [telegramProviderData(input), userId, providerUid],
+  );
+}
+
 function vkProviderData(profile: VkProfile): string {
   return JSON.stringify({
     ...(profile.firstName !== undefined ? { firstName: profile.firstName } : {}),
@@ -59,60 +98,65 @@ export async function findOrCreateTelegramUser(
   const providerData = telegramProviderData(input);
   const tgFirstName = input.firstName ?? input.displayName;
 
-  const existing = await pool.query<{ id: string; display_name: string; timezone: string }>(
-    `select u.id, u.display_name, u.timezone
-       from users u
-       join auth_providers ap on ap.user_id = u.id
-      where ap.provider = 'telegram' and ap.provider_uid = $1`,
-    [input.providerUid],
-  );
-
-  if (existing.rowCount && existing.rowCount > 0) {
-    const row = existing.rows[0]!;
-    // Backfill timezone for legacy users created before migration 003 (which
-    // assigned 'UTC' as the default). Only overwrite the migration default —
-    // never a user-chosen value.
-    const shouldBackfillTz =
-      row.timezone === 'UTC' && input.timezone !== undefined && input.timezone !== 'UTC';
-    await Promise.all([
-      input.avatarUrl !== undefined
-        ? pool.query('update users set avatar_url = $1 where id = $2', [input.avatarUrl, row.id])
-        : Promise.resolve(),
-      shouldBackfillTz
-        ? pool.query(
-            `update users set timezone = $1
-              where id = $2 and timezone = 'UTC'`,
-            [input.timezone, row.id],
-          )
-        : Promise.resolve(),
-      pool.query(
-        `update users set
-            tg_first_name = $1,
-            tg_last_name = $2,
-            tg_avatar_url = coalesce($3, tg_avatar_url),
-            tg_username = $4
-          where id = $5`,
-        [
-          tgFirstName,
-          input.lastName ?? null,
-          input.avatarUrl ?? null,
-          input.username ?? null,
-          row.id,
-        ],
-      ),
-      pool.query(
-        `update auth_providers set provider_data = $1
-          where user_id = $2 and provider = 'telegram'`,
-        [providerData, row.id],
-      ),
-    ]);
-    const profile = await recomputeEffectiveProfile(pool, row.id);
-    return { id: row.id, displayName: profile.displayName };
-  }
-
   const client = await pool.connect();
   try {
     await client.query('begin');
+    await client.query('select pg_advisory_xact_lock(hashtext($1))', [
+      `telegram:${input.providerUid}`,
+    ]);
+
+    const existing = await client.query<{ user_id: string; display_name: string }>(
+      `select ap.user_id, u.display_name
+         from auth_providers ap
+         join users u on u.id = ap.user_id
+        where ap.provider = 'telegram'
+          and ap.provider_uid = $1`,
+      [input.providerUid],
+    );
+    const linked = existing.rows[0];
+
+    if (input.currentUserId && linked && linked.user_id !== input.currentUserId) {
+      throw new AppError('conflict', 'telegram_already_linked', 409);
+    }
+
+    if (linked) {
+      await Promise.all([
+        input.timezone !== undefined && input.timezone !== 'UTC'
+          ? client.query(
+              `update users set timezone = $1
+                where id = $2 and timezone = 'UTC'`,
+              [input.timezone, linked.user_id],
+            )
+          : Promise.resolve(),
+        updateTelegramProfile(client, linked.user_id, input),
+        updateTelegramProviderData(client, linked.user_id, input.providerUid, input),
+      ]);
+      const profile = await recomputeEffectiveProfile(client, linked.user_id);
+      await client.query('commit');
+      return { id: linked.user_id, displayName: profile.displayName };
+    }
+
+    if (input.currentUserId) {
+      await client.query(
+        `insert into auth_providers (id, user_id, provider, provider_uid, provider_data)
+         values ($1, $2, 'telegram', $3, $4)`,
+        [randomUUID(), input.currentUserId, input.providerUid, providerData],
+      );
+      await Promise.all([
+        input.timezone !== undefined && input.timezone !== 'UTC'
+          ? client.query(
+              `update users set timezone = $1
+                where id = $2 and timezone = 'UTC'`,
+              [input.timezone, input.currentUserId],
+            )
+          : Promise.resolve(),
+        updateTelegramProfile(client, input.currentUserId, input),
+      ]);
+      const profile = await recomputeEffectiveProfile(client, input.currentUserId);
+      await client.query('commit');
+      return { id: input.currentUserId, displayName: profile.displayName };
+    }
+
     const userId = randomUUID();
     const providerId = randomUUID();
     await client.query(

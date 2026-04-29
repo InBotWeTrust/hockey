@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Info, Link as LinkIcon, LogOut } from 'lucide-react';
 import { apiFetch } from '../api/apiFetch.js';
-import { useAuthStore } from '../auth/authStore.js';
+import { TelegramLoginButton, type TelegramAuthPayload } from '../auth/TelegramLoginButton.js';
+import { useAuthStore, type AuthSession } from '../auth/authStore.js';
 import { useLogout } from '../auth/useLogout.js';
 import { startVkOAuth } from '../auth/vkAuth.js';
 import { NAV_HEIGHT } from '../components/BottomNav.js';
@@ -40,10 +41,28 @@ function providerAvatar(data: ProfileData | undefined, source: 'telegram' | 'vk'
   return source === 'telegram' ? (data.tgAvatarUrl ?? null) : (data.vkAvatarUrl ?? null);
 }
 
+function detectTimezone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch {
+    return 'UTC';
+  }
+}
+
+function withLinkedProvider(
+  providers: Array<'telegram' | 'vk'> | undefined,
+  provider: 'telegram' | 'vk',
+): Array<'telegram' | 'vk'> {
+  if (providers?.includes(provider)) return providers;
+  return [provider, ...(providers ?? [])];
+}
+
 export function ProfileScreen(): JSX.Element {
   const queryClient = useQueryClient();
   const logout = useLogout();
+  const setSession = useAuthStore((s) => s.setSession);
   const updateUser = useAuthStore((s) => s.updateUser);
+  const botUsername = import.meta.env.VITE_TELEGRAM_BOT_USERNAME ?? '';
 
   const { data, isLoading } = useQuery<ProfileData>({
     queryKey: ['profile'],
@@ -132,6 +151,37 @@ export function ProfileScreen(): JSX.Element {
       if (context?.previous) {
         queryClient.setQueryData<ProfileData>(['profile'], context.previous);
       }
+      setSourceError(err.message);
+    },
+  });
+
+  const { mutate: linkTelegram, isPending: telegramLinkPending } = useMutation<
+    AuthSession,
+    Error,
+    TelegramAuthPayload
+  >({
+    mutationFn: (payload) =>
+      apiFetch<AuthSession>('/auth/telegram', {
+        method: 'POST',
+        body: JSON.stringify({ ...payload, timezone: detectTimezone() }),
+      }),
+    onSuccess: (session) => {
+      const currentUser = useAuthStore.getState().user;
+      setSession({
+        accessToken: session.accessToken,
+        refreshToken: session.refreshToken,
+        user: currentUser ? { ...currentUser, ...session.user } : session.user,
+      });
+      queryClient.setQueryData<ProfileData>(['profile'], (old) => {
+        if (!old) return old;
+        return { ...old, linkedProviders: withLinkedProvider(old.linkedProviders, 'telegram') };
+      });
+      updateUser({
+        linkedProviders: withLinkedProvider(currentUser?.linkedProviders, 'telegram'),
+      });
+      void queryClient.invalidateQueries({ queryKey: ['profile'] });
+    },
+    onError: (err) => {
       setSourceError(err.message);
     },
   });
@@ -266,6 +316,35 @@ export function ProfileScreen(): JSX.Element {
             <LinkIcon size={15} />
             Привязать ВКонтакте
           </button>
+        )}
+        {!linkedProviders.includes('telegram') && (
+          <div
+            className="glass"
+            style={{
+              padding: '12px 10px',
+              borderRadius: 16,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center' }}>
+              Привязать Telegram
+            </div>
+            <TelegramLoginButton
+              botUsername={botUsername}
+              cornerRadius={12}
+              size="medium"
+              onAuth={(payload) => {
+                setSourceError(null);
+                linkTelegram(payload);
+              }}
+            />
+            {telegramLinkPending && (
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>Привязываем…</div>
+            )}
+          </div>
         )}
         {sourceError && (
           <div role="alert" style={{ fontSize: 12, color: 'var(--red-deep)', textAlign: 'center' }}>
