@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { createHash, createHmac } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../../src/app.js';
+import { createJwt } from '../../src/auth/jwt.js';
+import { findOrLinkOrCreateVkUser } from '../../src/auth/users.js';
 import { applyMigrations } from '../../src/db/migrations.js';
 import {
   createTestPool,
@@ -75,7 +77,7 @@ describe.skipIf(!hasIntegrationEnv)('POST /auth/telegram', () => {
   });
 
   afterAll(async () => {
-    await app.close();
+    await app?.close();
   });
 
   it('issues tokens on valid payload and creates user', async () => {
@@ -114,6 +116,66 @@ describe.skipIf(!hasIntegrationEnv)('POST /auth/telegram', () => {
       payload: { foo: 'bar' },
     });
     expect(res.statusCode).toBe(400);
+  });
+
+  it('links Telegram identity to current Bearer VK user', async () => {
+    const vkUser = await findOrLinkOrCreateVkUser(app.pg, {
+      vkUserId: 77701,
+      profile: { firstName: 'Vera', lastName: 'Only', avatarUrl: 'vk.png' },
+      timezone: 'Europe/Moscow',
+    });
+    const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+    const token = await jwt.issueAccessToken({ sub: vkUser.id });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/auth/telegram',
+      payload: freshTgPayload({
+        id: 'tg-link-route',
+        first_name: 'Tanya',
+        last_name: 'Linked',
+        photo_url: 'tg.png',
+      }),
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { user: { id: string; displayName: string } };
+    expect(body.user).toMatchObject({ id: vkUser.id, displayName: 'Vera Only' });
+
+    const providers = await app.pg.query(
+      'select provider from auth_providers where user_id=$1 order by provider',
+      [vkUser.id],
+    );
+    expect(providers.rows.map((r: { provider: string }) => r.provider)).toEqual(['telegram', 'vk']);
+  });
+
+  it('returns 409 when Telegram identity is already linked to another user', async () => {
+    const owner = await app.inject({
+      method: 'POST',
+      url: '/auth/telegram',
+      payload: freshTgPayload({ id: 'tg-owned-route', first_name: 'Owner' }),
+    });
+    expect(owner.statusCode).toBe(200);
+
+    const vkUser = await findOrLinkOrCreateVkUser(app.pg, {
+      vkUserId: 77702,
+      profile: { firstName: 'Other' },
+    });
+    const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+    const token = await jwt.issueAccessToken({ sub: vkUser.id });
+
+    const conflict = await app.inject({
+      method: 'POST',
+      url: '/auth/telegram',
+      payload: freshTgPayload({ id: 'tg-owned-route', first_name: 'Owner' }),
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(conflict.statusCode).toBe(409);
+    expect(conflict.json()).toMatchObject({
+      error: { code: 'conflict', message: 'telegram_already_linked' },
+    });
   });
 
   describe('POST /auth/refresh', () => {
