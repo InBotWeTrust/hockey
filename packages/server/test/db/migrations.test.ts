@@ -52,6 +52,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '007_chat_pinned.sql',
       '008_backfill_legacy_timezone.sql',
       '009_chat_description.sql',
+      '010_vk_auth_and_display_source.sql',
     ]);
   });
 });

@@ -31,8 +31,8 @@ describe.skipIf(!hasIntegrationEnv)('recomputeEffectiveProfile', () => {
     const userId = randomUUID();
     await pool.query(
       `insert into users (
-         id, display_name, display_source, tg_first_name, tg_last_name, tg_avatar_url
-       ) values ($1, 'Old', 'telegram', 'Ivan', 'Petrov', 'tg.png')`,
+         id, display_name, timezone, display_source, tg_first_name, tg_last_name, tg_avatar_url
+       ) values ($1, 'Old', 'UTC', 'telegram', 'Ivan', 'Petrov', 'tg.png')`,
       [userId],
     );
 
@@ -48,8 +48,8 @@ describe.skipIf(!hasIntegrationEnv)('recomputeEffectiveProfile', () => {
     const userId = randomUUID();
     await pool.query(
       `insert into users (
-         id, display_name, display_source, vk_first_name, vk_last_name, vk_avatar_url
-       ) values ($1, 'Old', 'vk', 'Vera', 'Volkova', 'vk.png')`,
+         id, display_name, timezone, display_source, vk_first_name, vk_last_name, vk_avatar_url
+       ) values ($1, 'Old', 'UTC', 'vk', 'Vera', 'Volkova', 'vk.png')`,
       [userId],
     );
 
