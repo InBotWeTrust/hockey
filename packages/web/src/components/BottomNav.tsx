@@ -56,7 +56,7 @@ export function BottomNav(): JSX.Element | null {
   if (!user || location.pathname === '/login' || isInChatRoom) return null;
 
   const isGame = location.pathname === '/' || location.pathname.startsWith('/duel');
-  const isProfile = location.pathname === '/profile';
+  const isProfile = location.pathname.startsWith('/profile');
 
   return (
     <>

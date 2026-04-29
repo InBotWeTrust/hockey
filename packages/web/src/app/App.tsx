@@ -5,6 +5,7 @@ import './design-system.css';
 import { DailyScreen } from '../screens/DailyScreen.js';
 import { LoginScreen } from '../screens/LoginScreen.js';
 import { ProfileScreen } from '../screens/ProfileScreen.js';
+import { ProfileSettingsScreen } from '../screens/ProfileSettingsScreen.js';
 import { VkAuthCallbackScreen } from '../screens/VkAuthCallbackScreen.js';
 import { PrivateRoute } from '../auth/PrivateRoute.js';
 import { BottomNav } from '../components/BottomNav.js';
@@ -69,6 +70,14 @@ export function App(): JSX.Element {
               element={
                 <PrivateRoute>
                   <ProfileScreen />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/profile/settings"
+              element={
+                <PrivateRoute>
+                  <ProfileSettingsScreen />
                 </PrivateRoute>
               }
             />
