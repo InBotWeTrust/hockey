@@ -131,7 +131,7 @@ describe.skipIf(!hasIntegrationEnv)('POST /auth/telegram', () => {
       method: 'POST',
       url: '/auth/telegram',
       payload: freshTgPayload({
-        id: 'tg-link-route',
+        id: '7770101',
         first_name: 'Tanya',
         last_name: 'Linked',
         photo_url: 'tg.png',
@@ -154,7 +154,7 @@ describe.skipIf(!hasIntegrationEnv)('POST /auth/telegram', () => {
     const owner = await app.inject({
       method: 'POST',
       url: '/auth/telegram',
-      payload: freshTgPayload({ id: 'tg-owned-route', first_name: 'Owner' }),
+      payload: freshTgPayload({ id: '7770102', first_name: 'Owner' }),
     });
     expect(owner.statusCode).toBe(200);
 
@@ -168,7 +168,7 @@ describe.skipIf(!hasIntegrationEnv)('POST /auth/telegram', () => {
     const conflict = await app.inject({
       method: 'POST',
       url: '/auth/telegram',
-      payload: freshTgPayload({ id: 'tg-owned-route', first_name: 'Owner' }),
+      payload: freshTgPayload({ id: '7770102', first_name: 'Owner' }),
       headers: { authorization: `Bearer ${token}` },
     });
 
