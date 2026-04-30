@@ -16,7 +16,7 @@ import {
   SHOOTER_AMPLITUDE,
   type ShotResult,
 } from '@hockey/game-core';
-import { RotateCcw, Settings } from 'lucide-react';
+import { Settings } from 'lucide-react';
 import { PixiStage } from '../game/PixiStage.js';
 import { RinkSvg } from '../game/RinkSvg.js';
 import { Goal } from '../game/renderer/Goal.js';
@@ -31,6 +31,7 @@ import { useAuthStore } from '../auth/authStore.js';
 import { ResultModal } from '../components/ResultModal.js';
 import { ScoreBoard } from '../components/ScoreBoard.js';
 import { SettingsSheet } from '../components/SettingsSheet.js';
+import { SpeedInput } from '../components/SpeedInput.js';
 
 const ROOKIE_ID = 'rookie';
 const PAUSE_MS = 1000;
@@ -167,7 +168,11 @@ export function DuelScreen(): JSX.Element {
 
     const cfg = getGoalie(st.currentGoalieId);
     const overrides = speedsRef.current;
-    const activeCfg = { ...cfg, goalFrequency: overrides.goalFreq, frequency: overrides.goalieFreq };
+    const activeCfg = {
+      ...cfg,
+      goalFrequency: overrides.goalFreq,
+      frequency: overrides.goalieFreq,
+    };
 
     const tapTime = loop.getSceneT();
     const shooterTapTime = loop.getShooterT();
@@ -191,10 +196,21 @@ export function DuelScreen(): JSX.Element {
     let subText: string | null = null;
     if (result.type === 'save') {
       const tGoalieCross = tapTime + (PUCK_START.y - GOALIE_Y) / overrides.puckSpeed;
-      const gs = simulateGoalie(activeCfg, st.seed, st.shotIndex, tGoalieCross, offsets.goalie ?? 0);
+      const gs = simulateGoalie(
+        activeCfg,
+        st.seed,
+        st.shotIndex,
+        tGoalieCross,
+        offsets.goalie ?? 0,
+      );
       const rel = sx - gs.position.x;
       const sixth = gs.width / 6;
-      subText = rel < -sixth ? 'Уверенная игра блином' : rel > sixth ? 'Точно в ловушку!' : 'Вратарь на месте!';
+      subText =
+        rel < -sixth
+          ? 'Уверенная игра блином'
+          : rel > sixth
+            ? 'Точно в ловушку!'
+            : 'Вратарь на месте!';
     } else if (result.type === 'goal') {
       const tGoalCross = tapTime + (PUCK_START.y - GOAL_OPENING.y) / overrides.puckSpeed;
       const goalOffsetAtGoal = simulateGoal(activeCfg, tGoalCross, offsets.goal ?? 0).offsetX;
@@ -202,7 +218,8 @@ export function DuelScreen(): JSX.Element {
       const oMax = GOAL_OPENING.xMax + goalOffsetAtGoal;
       const rel = (sx - oMin) / (oMax - oMin); // 0=left edge, 1=right edge
       if (rel < 1 / 6 || rel > 5 / 6) subText = 'Точно в девятку!';
-      else if (rel < 2 / 6 || rel > 4 / 6) subText = Math.random() < 0.5 ? 'Мощный щелчок!' : 'Отличный кистевой!';
+      else if (rel < 2 / 6 || rel > 4 / 6)
+        subText = Math.random() < 0.5 ? 'Мощный щелчок!' : 'Отличный кистевой!';
       else subText = 'Отличный бросок!';
     } else if (result.type === 'miss') {
       const tGoalCross = tapTime + (PUCK_START.y - GOAL_OPENING.y) / overrides.puckSpeed;
@@ -210,7 +227,14 @@ export function DuelScreen(): JSX.Element {
       const oMin = GOAL_OPENING.xMin + goalOffsetAtGoal;
       const oMax = GOAL_OPENING.xMax + goalOffsetAtGoal;
       const dist = Math.max(oMin - sx, sx - oMax, 0);
-      subText = dist <= 3 ? 'Штанга спасает!' : dist < 18 ? 'Рядом со штангой!' : dist < 48 ? 'Но было опасно!' : 'Очень далеко...';
+      subText =
+        dist <= 3
+          ? 'Штанга спасает!'
+          : dist < 18
+            ? 'Рядом со штангой!'
+            : dist < 48
+              ? 'Но было опасно!'
+              : 'Очень далеко...';
     }
 
     loop.beginShooterPause();
@@ -408,78 +432,5 @@ export function DuelScreen(): JSX.Element {
         <ResultModal result={state.lastResult} durationMs={PAUSE_MS} subText={resultSubText} />
       )}
     </main>
-  );
-}
-
-interface SpeedInputProps {
-  label: string;
-  value: number;
-  defaultValue: number;
-  min: number;
-  max: number;
-  step: number;
-  onChange: (v: number) => void;
-  onReset: () => void;
-}
-
-function SpeedInput({ label, value, defaultValue, min, max, step, onChange, onReset }: SpeedInputProps): JSX.Element {
-  const isDefault = Math.abs(value - defaultValue) < step / 2;
-  return (
-    <div
-      className="glass"
-      style={{
-        borderRadius: 14,
-        padding: '8px 10px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 4,
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span
-          style={{
-            fontSize: 10,
-            letterSpacing: 0.8,
-            color: 'var(--muted)',
-            textTransform: 'uppercase',
-            fontWeight: 600,
-          }}
-        >
-          {label}
-        </span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink)' }}>
-            {value.toFixed(2)}
-          </span>
-          <button
-            type="button"
-            onClick={onReset}
-            disabled={isDefault}
-            style={{
-              background: 'none',
-              border: 'none',
-              padding: 2,
-              cursor: isDefault ? 'default' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              opacity: isDefault ? 0.2 : 0.6,
-              transition: 'opacity 0.15s',
-            }}
-            aria-label="Сбросить"
-          >
-            <RotateCcw size={11} color="var(--ink)" />
-          </button>
-        </div>
-      </div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(parseFloat(e.target.value))}
-        style={{ width: '100%', accentColor: 'var(--ink)', cursor: 'pointer' }}
-      />
-    </div>
   );
 }

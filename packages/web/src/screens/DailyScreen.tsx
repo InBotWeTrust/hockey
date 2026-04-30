@@ -1,11 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Container } from 'pixi.js';
 import type { Application, Ticker } from 'pixi.js';
 import {
@@ -25,6 +18,7 @@ import {
   simulateGoalie,
   type ShotResult,
 } from '@hockey/game-core';
+import { Settings } from 'lucide-react';
 import { PixiStage } from '../game/PixiStage.js';
 import { RinkSvg } from '../game/RinkSvg.js';
 import { Goal } from '../game/renderer/Goal.js';
@@ -39,6 +33,8 @@ import { useAuthStore } from '../auth/authStore.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { ScoreBoard } from '../components/ScoreBoard.js';
 import { ResultModal } from '../components/ResultModal.js';
+import { SettingsSheet } from '../components/SettingsSheet.js';
+import { SpeedInput } from '../components/SpeedInput.js';
 import { StartPeriodModal } from '../components/StartPeriodModal.js';
 import type { DailyStateResponse, PeriodLogEntry } from '../api/duel.js';
 
@@ -73,7 +69,6 @@ function formatHms(ms: number): string {
   return `${h}:${m}:${s}`;
 }
 
-
 export function DailyScreen(): JSX.Element {
   const data = useDailyStore((s) => s.data);
   const deferredState = useDailyStore((s) => s.deferredState);
@@ -94,12 +89,30 @@ export function DailyScreen(): JSX.Element {
 
   if (!data) {
     return (
-      <main className="screen" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12, padding: 20, textAlign: 'center' }}>
+      <main
+        className="screen"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexDirection: 'column',
+          gap: 12,
+          padding: 20,
+          textAlign: 'center',
+        }}
+      >
         {error ? (
           <>
-            <div style={{ color: 'var(--red-deep, #b91c1c)', fontWeight: 600 }}>Не удалось загрузить</div>
+            <div style={{ color: 'var(--red-deep, #b91c1c)', fontWeight: 600 }}>
+              Не удалось загрузить
+            </div>
             <div style={{ color: 'var(--muted)', fontSize: 13, maxWidth: 280 }}>{error}</div>
-            <button type="button" className="btn btn--cta" onClick={() => void refresh()} disabled={loading}>
+            <button
+              type="button"
+              className="btn btn--cta"
+              onClick={() => void refresh()}
+              disabled={loading}
+            >
               Повторить
             </button>
             <div style={{ color: 'var(--muted)', fontSize: 11 }}>
@@ -113,8 +126,7 @@ export function DailyScreen(): JSX.Element {
     );
   }
 
-  const showStartModal =
-    data.state === 'idle' && data.current_period < data.total_periods;
+  const showStartModal = data.state === 'idle' && data.current_period < data.total_periods;
 
   const isPlaying = data.state === 'period_active';
 
@@ -227,7 +239,16 @@ function PeriodAccordion({ periods }: { periods: PeriodLogEntry[] }): JSX.Elemen
   const [openPeriod, setOpenPeriod] = useState<number | null>(null);
   if (periods.length === 0) return null;
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'stretch', width: '100%', maxWidth: 320 }}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+        alignItems: 'stretch',
+        width: '100%',
+        maxWidth: 320,
+      }}
+    >
       <div
         style={{
           fontSize: 11,
@@ -328,9 +349,25 @@ function BreakOverlay(): JSX.Element {
 
   return (
     <ModalBackdrop>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, textAlign: 'center', width: '100%' }}>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 16,
+          textAlign: 'center',
+          width: '100%',
+        }}
+      >
         <h1 style={{ fontSize: 26, fontWeight: 800, margin: 0 }}>Перерыв</h1>
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 56, fontWeight: 700, letterSpacing: '0.06em' }}>
+        <div
+          style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: 56,
+            fontWeight: 700,
+            letterSpacing: '0.06em',
+          }}
+        >
           {formatMs(remaining)}
         </div>
         <div style={{ color: 'var(--muted)' }}>До начала {data.current_period + 1}-го периода</div>
@@ -357,10 +394,26 @@ function ClosedOverlay(): JSX.Element {
 
   return (
     <ModalBackdrop>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, textAlign: 'center', width: '100%' }}>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 16,
+          textAlign: 'center',
+          width: '100%',
+        }}
+      >
         <h1 style={{ fontSize: 26, fontWeight: 800, margin: 0 }}>Игровой день окончен</h1>
         <div style={{ color: 'var(--muted)' }}>До нового дня</div>
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 44, fontWeight: 700, letterSpacing: '0.06em' }}>
+        <div
+          style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: 44,
+            fontWeight: 700,
+            letterSpacing: '0.06em',
+          }}
+        >
           {formatHms(remaining)}
         </div>
         <DailyTotalsRow />
@@ -400,6 +453,8 @@ function PlayView({ suppressedByModal }: PlayViewProps): JSX.Element {
   const [isShotInProgress, setIsShotInProgress] = useState(false);
   const [resultSubText, setResultSubText] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<ShotResult | null>(null);
+  const [showHitboxes, setShowHitboxes] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   // Server state is held until shot animation ends, so ScoreBoard counters
   // don't jump while the puck is still flying.
   const pendingMidShotStateRef = useRef<DailyStateResponse | null>(null);
@@ -409,8 +464,9 @@ function PlayView({ suppressedByModal }: PlayViewProps): JSX.Element {
   const suppressedRef = useRef(suppressedByModal);
   suppressedRef.current = suppressedByModal;
 
-  const speeds = DEFAULT_SPEEDS;
+  const [speeds, setSpeeds] = useState<SpeedOverrides>(DEFAULT_SPEEDS);
   const speedsRef = useRef<SpeedOverrides>(DEFAULT_SPEEDS);
+  speedsRef.current = speeds;
 
   const flightDurationMs = useMemo(
     () => (PUCK_START.y - GOAL_OPENING.y) / speeds.puckSpeed,
@@ -587,9 +643,9 @@ function PlayView({ suppressedByModal }: PlayViewProps): JSX.Element {
       const eased = 1 - Math.pow(1 - t, 3);
       drawAt(
         goalieStartX + (SHOOTER_CENTER_X - goalieStartX) * eased,
-        goalieStartY + (GOALIE_Y        - goalieStartY)  * eased,
+        goalieStartY + (GOALIE_Y - goalieStartY) * eased,
         playerStartX + (SHOOTER_CENTER_X - playerStartX) * eased,
-        playerStartY + (PUCK_START.y    - playerStartY)  * eased,
+        playerStartY + (PUCK_START.y - playerStartY) * eased,
       );
       if (t < 1) {
         entranceRafRef.current = requestAnimationFrame(step);
@@ -674,21 +730,34 @@ function PlayView({ suppressedByModal }: PlayViewProps): JSX.Element {
       const gs = simulateGoalie(activeCfg, seed, shotIndex, tGoalieCross, offsets.goalie);
       const rel = sx - gs.position.x;
       const sixth = gs.width / 6;
-      subText = rel < -sixth ? 'Уверенная игра блином' : rel > sixth ? 'Точно в ловушку!' : 'Вратарь на месте!';
+      subText =
+        rel < -sixth
+          ? 'Уверенная игра блином'
+          : rel > sixth
+            ? 'Точно в ловушку!'
+            : 'Вратарь на месте!';
     } else if (result.type === 'goal') {
       const goalOffsetAtCross = simulateGoal(activeCfg, tGoalCross, offsets.goal).offsetX;
       const oMin = GOAL_OPENING.xMin + goalOffsetAtCross;
       const oMax = GOAL_OPENING.xMax + goalOffsetAtCross;
       const rel = (sx - oMin) / (oMax - oMin);
       if (rel < 1 / 6 || rel > 5 / 6) subText = 'Точно в девятку!';
-      else if (rel < 2 / 6 || rel > 4 / 6) subText = Math.random() < 0.5 ? 'Мощный щелчок!' : 'Отличный кистевой!';
+      else if (rel < 2 / 6 || rel > 4 / 6)
+        subText = Math.random() < 0.5 ? 'Мощный щелчок!' : 'Отличный кистевой!';
       else subText = 'Отличный бросок!';
     } else if (result.type === 'miss') {
       const goalOffsetAtCross = simulateGoal(activeCfg, tGoalCross, offsets.goal).offsetX;
       const oMin = GOAL_OPENING.xMin + goalOffsetAtCross;
       const oMax = GOAL_OPENING.xMax + goalOffsetAtCross;
       const dist = Math.max(oMin - sx, sx - oMax, 0);
-      subText = dist <= 3 ? 'Штанга спасает!' : dist < 18 ? 'Рядом со штангой!' : dist < 48 ? 'Но было опасно!' : 'Очень далеко...';
+      subText =
+        dist <= 3
+          ? 'Штанга спасает!'
+          : dist < 18
+            ? 'Рядом со штангой!'
+            : dist < 48
+              ? 'Но было опасно!'
+              : 'Очень далеко...';
     }
 
     optimisticAddShot(result.type);
@@ -738,6 +807,10 @@ function PlayView({ suppressedByModal }: PlayViewProps): JSX.Element {
       pendingMidShotStateRef.current = res.state;
     });
   }, [flightDurationMs, optimisticAddShot, submitShot, applyState, refresh]);
+
+  useEffect(() => {
+    hitboxesRef.current?.setVisible(showHitboxes);
+  }, [showHitboxes, pixiReady]);
 
   const periodNum = data.current_period > 0 ? data.current_period : 1;
 
@@ -789,6 +862,36 @@ function PlayView({ suppressedByModal }: PlayViewProps): JSX.Element {
           <div style={{ position: 'absolute', inset: 0 }}>
             <PixiStage onReady={handleReady} onResize={handleResize} />
           </div>
+          {import.meta.env.DEV && (
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(true)}
+              aria-label="Настройки скоростей"
+              title="Настройки скоростей"
+              style={{
+                position: 'absolute',
+                bottom: 18,
+                right: 18,
+                width: 34,
+                height: 34,
+                borderRadius: 999,
+                border: '1px solid rgba(255, 255, 255, 0.72)',
+                background: 'rgba(255, 255, 255, 0.72)',
+                backdropFilter: 'blur(10px)',
+                WebkitBackdropFilter: 'blur(10px)',
+                boxShadow: '0 8px 24px rgba(15, 23, 42, 0.16)',
+                color: 'var(--ink)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                padding: 0,
+                zIndex: 3,
+              }}
+            >
+              <Settings size={16} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -812,7 +915,70 @@ function PlayView({ suppressedByModal }: PlayViewProps): JSX.Element {
       {isShowingResult && lastResult && (
         <ResultModal result={lastResult} durationMs={PAUSE_MS} subText={resultSubText} />
       )}
+
+      <SettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+          <SpeedInput
+            label="Ворота"
+            value={speeds.goalFreq}
+            defaultValue={DEFAULT_SPEEDS.goalFreq}
+            min={0.05}
+            max={2.0}
+            step={0.05}
+            onChange={(v) => setSpeeds((s) => ({ ...s, goalFreq: v }))}
+            onReset={() => setSpeeds((s) => ({ ...s, goalFreq: DEFAULT_SPEEDS.goalFreq }))}
+          />
+          <SpeedInput
+            label="Вратарь"
+            value={speeds.goalieFreq}
+            defaultValue={DEFAULT_SPEEDS.goalieFreq}
+            min={0.05}
+            max={2.0}
+            step={0.05}
+            onChange={(v) => setSpeeds((s) => ({ ...s, goalieFreq: v }))}
+            onReset={() => setSpeeds((s) => ({ ...s, goalieFreq: DEFAULT_SPEEDS.goalieFreq }))}
+          />
+          <SpeedInput
+            label="Хоккеист"
+            value={speeds.shooterFreq}
+            defaultValue={DEFAULT_SPEEDS.shooterFreq}
+            min={0.05}
+            max={2.0}
+            step={0.05}
+            onChange={(v) => setSpeeds((s) => ({ ...s, shooterFreq: v }))}
+            onReset={() => setSpeeds((s) => ({ ...s, shooterFreq: DEFAULT_SPEEDS.shooterFreq }))}
+          />
+          <SpeedInput
+            label="Шайба"
+            value={speeds.puckSpeed}
+            defaultValue={DEFAULT_SPEEDS.puckSpeed}
+            min={0.3}
+            max={3.0}
+            step={0.1}
+            onChange={(v) => setSpeeds((s) => ({ ...s, puckSpeed: v }))}
+            onReset={() => setSpeeds((s) => ({ ...s, puckSpeed: DEFAULT_SPEEDS.puckSpeed }))}
+          />
+        </div>
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            fontSize: 13,
+            color: 'var(--muted)',
+            cursor: 'pointer',
+            padding: '4px 2px',
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={showHitboxes}
+            onChange={(e) => setShowHitboxes(e.target.checked)}
+            style={{ cursor: 'pointer' }}
+          />
+          Показать хитбоксы
+        </label>
+      </SettingsSheet>
     </main>
   );
 }
-

@@ -108,6 +108,35 @@ describe('DailyScreen', () => {
     });
   });
 
+  it('exposes speed controls through the rink settings button', async () => {
+    const activeState: DailyStateResponse = {
+      ...baseState,
+      state: 'period_active',
+      current_period: 1,
+      daily_seed: 'seed-abc',
+      period_ends_at: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
+    };
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(activeState), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    useDailyStore.setState({ data: activeState });
+
+    renderWith();
+
+    fireEvent.click(screen.getByRole('button', { name: /настройки скоростей/i }));
+
+    expect(screen.getByText(/ворота/i)).toBeInTheDocument();
+    expect(screen.getByText(/вратарь/i)).toBeInTheDocument();
+    expect(screen.getByText(/хоккеист/i)).toBeInTheDocument();
+    expect(screen.getByText(/шайба/i)).toBeInTheDocument();
+
+    fireEvent.change(screen.getAllByRole('slider')[0]!, { target: { value: '1' } });
+    expect(screen.getByText('1.00')).toBeInTheDocument();
+  });
+
   it('clicking start period triggers POST /duel/daily/period/start', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch');
     fetchMock.mockReset();
