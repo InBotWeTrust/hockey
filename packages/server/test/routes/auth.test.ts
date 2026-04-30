@@ -150,26 +150,69 @@ describe.skipIf(!hasIntegrationEnv)('POST /auth/telegram', () => {
     expect(providers.rows.map((r: { provider: string }) => r.provider)).toEqual(['telegram', 'vk']);
   });
 
-  it('returns 409 when Telegram identity is already linked to another user', async () => {
+  it('moves current VK identity to the existing Telegram user when linking Telegram', async () => {
     const owner = await app.inject({
       method: 'POST',
       url: '/auth/telegram',
       payload: freshTgPayload({ id: '7770102', first_name: 'Owner' }),
     });
     expect(owner.statusCode).toBe(200);
+    const ownerBody = owner.json() as { user: { id: string } };
 
     const vkUser = await findOrLinkOrCreateVkUser(app.pg, {
       vkUserId: 77702,
-      profile: { firstName: 'Other' },
+      profile: { firstName: 'Other', avatarUrl: 'vk.png' },
     });
     const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
     const token = await jwt.issueAccessToken({ sub: vkUser.id });
 
-    const conflict = await app.inject({
+    const merged = await app.inject({
       method: 'POST',
       url: '/auth/telegram',
       payload: freshTgPayload({ id: '7770102', first_name: 'Owner' }),
       headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(merged.statusCode).toBe(200);
+    expect(merged.json()).toMatchObject({
+      user: { id: ownerBody.user.id, displayName: 'Owner' },
+    });
+    const ownerProviders = await app.pg.query(
+      'select provider from auth_providers where user_id=$1 order by provider',
+      [ownerBody.user.id],
+    );
+    expect(ownerProviders.rows.map((r: { provider: string }) => r.provider)).toEqual([
+      'telegram',
+      'vk',
+    ]);
+    const sourceProviders = await app.pg.query(
+      'select provider from auth_providers where user_id=$1',
+      [vkUser.id],
+    );
+    expect(sourceProviders.rowCount).toBe(0);
+  });
+
+  it('returns 409 when Telegram identity is already linked and current user has no VK', async () => {
+    const owner = await app.inject({
+      method: 'POST',
+      url: '/auth/telegram',
+      payload: freshTgPayload({ id: '7770103', first_name: 'Owner' }),
+    });
+    expect(owner.statusCode).toBe(200);
+
+    const other = await app.inject({
+      method: 'POST',
+      url: '/auth/telegram',
+      payload: freshTgPayload({ id: '7770104', first_name: 'Other' }),
+    });
+    expect(other.statusCode).toBe(200);
+    const otherBody = other.json() as { accessToken: string };
+
+    const conflict = await app.inject({
+      method: 'POST',
+      url: '/auth/telegram',
+      payload: freshTgPayload({ id: '7770103', first_name: 'Owner' }),
+      headers: { authorization: `Bearer ${otherBody.accessToken}` },
     });
 
     expect(conflict.statusCode).toBe(409);

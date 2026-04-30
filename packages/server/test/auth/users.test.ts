@@ -197,15 +197,109 @@ describe.skipIf(!hasIntegrationEnv)('findOrCreateTelegramUser', () => {
     });
   });
 
-  it('rejects linking Telegram identity already owned by another user', async () => {
+  it('moves current VK identity to the existing Telegram user on conflict', async () => {
+    const tg = await findOrCreateTelegramUser(pool, {
+      providerUid: 'tg-owned',
+      displayName: 'Egor Gumenyuk',
+      firstName: 'Egor',
+      lastName: 'Gumenyuk',
+      avatarUrl: 'tg.png',
+    });
+    const vk = await findOrLinkOrCreateVkUser(pool, {
+      vkUserId: 901,
+      profile: { firstName: 'Egor', lastName: 'VK', avatarUrl: 'vk.png', screenName: 'egor_vk' },
+    });
+
+    const merged = await findOrCreateTelegramUser(pool, {
+      providerUid: 'tg-owned',
+      displayName: 'Egor Gumenyuk',
+      firstName: 'Egor',
+      lastName: 'Gumenyuk',
+      currentUserId: vk.id,
+    });
+
+    expect(merged.id).toBe(tg.id);
+    expect(merged.displayName).toBe('Egor Gumenyuk');
+    const tgProviders = await pool.query(
+      'select provider from auth_providers where user_id=$1 order by provider',
+      [tg.id],
+    );
+    expect(tgProviders.rows.map((r) => r.provider)).toEqual(['telegram', 'vk']);
+    const vkProviders = await pool.query(
+      'select provider from auth_providers where user_id=$1',
+      [vk.id],
+    );
+    expect(vkProviders.rowCount).toBe(0);
+    const row = await pool.query(
+      `select display_source, display_name, avatar_url, vk_first_name, vk_avatar_url, vk_username
+         from users where id=$1`,
+      [tg.id],
+    );
+    expect(row.rows[0]).toMatchObject({
+      display_source: 'telegram',
+      display_name: 'Egor Gumenyuk',
+      avatar_url: 'tg.png',
+      vk_first_name: 'Egor',
+      vk_avatar_url: 'vk.png',
+      vk_username: 'egor_vk',
+    });
+  });
+
+  it('moves an already-owned VK identity into the current Telegram user', async () => {
+    const tg = await findOrCreateTelegramUser(pool, {
+      providerUid: 'tg-target',
+      displayName: 'Telegram Main',
+      firstName: 'Telegram',
+      lastName: 'Main',
+      avatarUrl: 'tg.png',
+    });
+    const vk = await findOrLinkOrCreateVkUser(pool, {
+      vkUserId: 902,
+      profile: { firstName: 'Old', lastName: 'Vk', avatarUrl: 'old.png' },
+    });
+
+    const merged = await findOrLinkOrCreateVkUser(pool, {
+      vkUserId: 902,
+      profile: { firstName: 'Fresh', lastName: 'Vk', avatarUrl: 'fresh.png' },
+      currentUserId: tg.id,
+    });
+
+    expect(merged.id).toBe(tg.id);
+    expect(merged.displayName).toBe('Telegram Main');
+    const tgProviders = await pool.query(
+      'select provider from auth_providers where user_id=$1 order by provider',
+      [tg.id],
+    );
+    expect(tgProviders.rows.map((r) => r.provider)).toEqual(['telegram', 'vk']);
+    const vkProviders = await pool.query(
+      'select provider from auth_providers where user_id=$1',
+      [vk.id],
+    );
+    expect(vkProviders.rowCount).toBe(0);
+    const row = await pool.query(
+      `select display_source, display_name, avatar_url, vk_first_name, vk_avatar_url
+         from users where id=$1`,
+      [tg.id],
+    );
+    expect(row.rows[0]).toMatchObject({
+      display_source: 'telegram',
+      display_name: 'Telegram Main',
+      avatar_url: 'tg.png',
+      vk_first_name: 'Fresh',
+      vk_avatar_url: 'fresh.png',
+    });
+  });
+
+  it('rejects linking Telegram identity already owned by another user when current user has no VK', async () => {
     await findOrCreateTelegramUser(pool, {
       providerUid: 'tg-owned',
       displayName: 'Owner',
       firstName: 'Owner',
     });
-    const vk = await findOrLinkOrCreateVkUser(pool, {
-      vkUserId: 901,
-      profile: { firstName: 'Vera' },
+    const other = await findOrCreateTelegramUser(pool, {
+      providerUid: 'tg-current',
+      displayName: 'Current',
+      firstName: 'Current',
     });
 
     await expect(
@@ -213,7 +307,7 @@ describe.skipIf(!hasIntegrationEnv)('findOrCreateTelegramUser', () => {
         providerUid: 'tg-owned',
         displayName: 'Owner',
         firstName: 'Owner',
-        currentUserId: vk.id,
+        currentUserId: other.id,
       }),
     ).rejects.toThrow(/telegram_already_linked/);
   });

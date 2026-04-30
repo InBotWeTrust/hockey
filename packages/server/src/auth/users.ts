@@ -22,6 +22,19 @@ export interface AppUser {
 
 type Queryable = Pool | PoolClient;
 
+interface ProviderOwnerRow {
+  user_id: string;
+  display_name: string;
+}
+
+interface VkIdentityRow {
+  provider_uid: string;
+  vk_first_name: string | null;
+  vk_last_name: string | null;
+  vk_avatar_url: string | null;
+  vk_username: string | null;
+}
+
 function displayNameFromProfile(input: {
   firstName: string | undefined;
   lastName: string | undefined;
@@ -105,7 +118,7 @@ export async function findOrCreateTelegramUser(
       `telegram:${input.providerUid}`,
     ]);
 
-    const existing = await client.query<{ user_id: string; display_name: string }>(
+    const existing = await client.query<ProviderOwnerRow>(
       `select ap.user_id, u.display_name
          from auth_providers ap
          join users u on u.id = ap.user_id
@@ -116,7 +129,21 @@ export async function findOrCreateTelegramUser(
     const linked = existing.rows[0];
 
     if (input.currentUserId && linked && linked.user_id !== input.currentUserId) {
-      throw new AppError('conflict', 'telegram_already_linked', 409);
+      const moved = await moveVkIdentityToTelegramUser(
+        client,
+        input.currentUserId,
+        linked.user_id,
+      );
+      if (!moved) {
+        throw new AppError('conflict', 'telegram_already_linked', 409);
+      }
+      await Promise.all([
+        updateTelegramProfile(client, linked.user_id, input),
+        updateTelegramProviderData(client, linked.user_id, input.providerUid, input),
+      ]);
+      const profile = await recomputeEffectiveProfile(client, linked.user_id);
+      await client.query('commit');
+      return { id: linked.user_id, displayName: profile.displayName };
     }
 
     if (linked) {
@@ -237,6 +264,97 @@ async function updateVkProviderData(
   );
 }
 
+async function userHasProvider(
+  pool: Queryable,
+  userId: string,
+  provider: 'telegram' | 'vk',
+): Promise<boolean> {
+  const { rows } = await pool.query<{ exists: boolean }>(
+    `select exists (
+       select 1 from auth_providers
+        where user_id = $1
+          and provider = $2
+     )`,
+    [userId, provider],
+  );
+  return rows[0]?.exists === true;
+}
+
+async function moveVkIdentityToTelegramUser(
+  client: PoolClient,
+  fromUserId: string,
+  toUserId: string,
+  profile?: VkProfile,
+): Promise<boolean> {
+  if (fromUserId === toUserId) return false;
+
+  const sourceProvider = await client.query<{ provider_uid: string }>(
+    `select provider_uid
+       from auth_providers
+      where user_id = $1
+        and provider = 'vk'
+      order by created_at asc
+      limit 1`,
+    [fromUserId],
+  );
+  const providerUid = sourceProvider.rows[0]?.provider_uid;
+  if (!providerUid) return false;
+
+  await client.query('select pg_advisory_xact_lock(hashtext($1))', [`vk:${providerUid}`]);
+
+  if (await userHasProvider(client, toUserId, 'vk')) {
+    throw new AppError('conflict', 'vk_already_linked', 409);
+  }
+
+  const source = await client.query<VkIdentityRow>(
+    `select ap.provider_uid,
+            u.vk_first_name,
+            u.vk_last_name,
+            u.vk_avatar_url,
+            u.vk_username
+       from auth_providers ap
+       join users u on u.id = ap.user_id
+      where ap.user_id = $1
+        and ap.provider = 'vk'
+        and ap.provider_uid = $2`,
+    [fromUserId, providerUid],
+  );
+  const row = source.rows[0];
+  if (!row) return false;
+
+  await client.query(
+    `update auth_providers
+        set user_id = $1,
+            provider_data = coalesce($4::jsonb, provider_data)
+      where user_id = $2
+        and provider = 'vk'
+        and provider_uid = $3`,
+    [toUserId, fromUserId, row.provider_uid, profile ? vkProviderData(profile) : null],
+  );
+
+  await client.query(
+    `update users target
+        set vk_first_name = coalesce($2, source.vk_first_name, target.vk_first_name),
+            vk_last_name = coalesce($3, source.vk_last_name, target.vk_last_name),
+            vk_avatar_url = coalesce($4, source.vk_avatar_url, target.vk_avatar_url),
+            vk_username = coalesce($5, source.vk_username, target.vk_username),
+            display_source = 'telegram'
+       from users source
+      where target.id = $1
+        and source.id = $6`,
+    [
+      toUserId,
+      profile?.firstName ?? null,
+      profile?.lastName ?? null,
+      profile?.avatarUrl ?? null,
+      profile?.screenName ?? null,
+      fromUserId,
+    ],
+  );
+
+  return true;
+}
+
 export async function findOrLinkOrCreateVkUser(
   pool: Pool,
   input: FindOrLinkVkInput,
@@ -247,7 +365,7 @@ export async function findOrLinkOrCreateVkUser(
     await client.query('begin');
     await client.query('select pg_advisory_xact_lock(hashtext($1))', [`vk:${providerUid}`]);
 
-    const existing = await client.query<{ user_id: string; display_name: string }>(
+    const existing = await client.query<ProviderOwnerRow>(
       `select ap.user_id, u.display_name
          from auth_providers ap
          join users u on u.id = ap.user_id
@@ -258,7 +376,22 @@ export async function findOrLinkOrCreateVkUser(
     const linked = existing.rows[0];
 
     if (input.currentUserId && linked && linked.user_id !== input.currentUserId) {
-      throw new AppError('conflict', 'vk_already_linked', 409);
+      const currentHasTelegram = await userHasProvider(client, input.currentUserId, 'telegram');
+      if (!currentHasTelegram) {
+        throw new AppError('conflict', 'vk_already_linked', 409);
+      }
+      const moved = await moveVkIdentityToTelegramUser(
+        client,
+        linked.user_id,
+        input.currentUserId,
+        input.profile,
+      );
+      if (!moved) {
+        throw new AppError('conflict', 'vk_already_linked', 409);
+      }
+      const profile = await recomputeEffectiveProfile(client, input.currentUserId);
+      await client.query('commit');
+      return { id: input.currentUserId, displayName: profile.displayName };
     }
 
     if (linked) {
