@@ -88,4 +88,27 @@ describe('LoginScreen', () => {
     });
     expect(useAuthStore.getState().accessToken).toBeNull();
   });
+
+  it('shows a Russian message when the account is already linked', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({ error: { code: 'conflict', message: 'telegram_already_linked' } }),
+        {
+          status: 409,
+          headers: { 'content-type': 'application/json' },
+        },
+      ),
+    );
+
+    renderWith();
+    const script = screen.getByTestId('telegram-login-container').querySelector('script')!;
+    const cbName = script.getAttribute('data-onauth')!.replace('(user)', '');
+    const cb = (window as WindowWithCallbacks)[cbName]!;
+    cb({ id: 42, first_name: 'Alice', auth_date: 1, hash: 'x' });
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Аккаунт уже занят');
+    });
+    expect(useAuthStore.getState().accessToken).toBeNull();
+  });
 });

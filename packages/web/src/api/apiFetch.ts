@@ -2,6 +2,11 @@ import { useAuthStore } from '../auth/authStore.js';
 
 const API_BASE = '/api';
 
+const SERVER_ERROR_MESSAGES: Record<string, string> = {
+  telegram_already_linked: 'Аккаунт уже занят',
+  vk_already_linked: 'Аккаунт уже занят',
+};
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
@@ -11,6 +16,10 @@ export class ApiError extends Error {
     super(message);
     this.name = 'ApiError';
   }
+}
+
+function localizeServerError(message: string, code: string): string {
+  return SERVER_ERROR_MESSAGES[message] ?? SERVER_ERROR_MESSAGES[code] ?? message;
 }
 
 let refreshInFlight: Promise<string | null> | null = null;
@@ -40,7 +49,7 @@ async function parseError(res: Response): Promise<ApiError> {
   } catch {
     // ignore body parse failures
   }
-  return new ApiError(res.status, code, message);
+  return new ApiError(res.status, code, localizeServerError(message, code));
 }
 
 async function runRefresh(): Promise<string | null> {
