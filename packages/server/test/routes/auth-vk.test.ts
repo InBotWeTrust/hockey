@@ -164,10 +164,11 @@ describe.skipIf(!hasIntegrationEnv)('POST /auth/vk', () => {
     expect(linked.rows[0].n).toBe(1);
   });
 
-  it('rejects linking VK identity already owned by another user', async () => {
-    mockVkFetch(4004, { first_name: 'Owner' });
+  it('moves an already-owned VK identity into the current Telegram user', async () => {
+    mockVkFetch(4004, { first_name: 'Owner', avatar: 'old.png' });
     const owner = await app.inject({ method: 'POST', url: '/auth/vk', payload: baseBody });
     expect(owner.statusCode).toBe(200);
+    const ownerBody = owner.json() as { user: { id: string } };
 
     const other = await findOrCreateTelegramUser(app.pg, {
       providerUid: 'tg-2',
@@ -178,12 +179,61 @@ describe.skipIf(!hasIntegrationEnv)('POST /auth/vk', () => {
     const token = await jwt.issueAccessToken({ sub: other.id });
 
     vi.restoreAllMocks();
-    mockVkFetch(4004, { first_name: 'Owner' });
-    const conflict = await app.inject({
+    mockVkFetch(4004, { first_name: 'Fresh', avatar: 'fresh.png' });
+    const merged = await app.inject({
       method: 'POST',
       url: '/auth/vk',
       payload: baseBody,
       headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(merged.statusCode).toBe(200);
+    expect(merged.json()).toMatchObject({
+      user: { id: other.id, displayName: 'Other' },
+    });
+    const targetProviders = await app.pg.query(
+      'select provider from auth_providers where user_id=$1 order by provider',
+      [other.id],
+    );
+    expect(targetProviders.rows.map((r: { provider: string }) => r.provider)).toEqual([
+      'telegram',
+      'vk',
+    ]);
+    const sourceProviders = await app.pg.query(
+      'select provider from auth_providers where user_id=$1',
+      [ownerBody.user.id],
+    );
+    expect(sourceProviders.rowCount).toBe(0);
+    const row = await app.pg.query(
+      'select display_source, display_name, avatar_url, vk_first_name, vk_avatar_url from users where id=$1',
+      [other.id],
+    );
+    expect(row.rows[0]).toMatchObject({
+      display_source: 'telegram',
+      display_name: 'Other',
+      vk_first_name: 'Fresh',
+      vk_avatar_url: 'fresh.png',
+    });
+  });
+
+  it('returns 409 when owned VK identity is linked from a non-Telegram current user', async () => {
+    mockVkFetch(4104, { first_name: 'Owner' });
+    const owner = await app.inject({ method: 'POST', url: '/auth/vk', payload: baseBody });
+    expect(owner.statusCode).toBe(200);
+
+    vi.restoreAllMocks();
+    mockVkFetch(5105, { first_name: 'Other' });
+    const other = await app.inject({ method: 'POST', url: '/auth/vk', payload: baseBody });
+    expect(other.statusCode).toBe(200);
+    const otherBody = other.json() as { accessToken: string };
+
+    vi.restoreAllMocks();
+    mockVkFetch(4104, { first_name: 'Owner' });
+    const conflict = await app.inject({
+      method: 'POST',
+      url: '/auth/vk',
+      payload: baseBody,
+      headers: { authorization: `Bearer ${otherBody.accessToken}` },
     });
 
     expect(conflict.statusCode).toBe(409);
