@@ -915,7 +915,7 @@ function PlayView({ suppressedByModal }: PlayViewProps): JSX.Element {
       )}
 
       <SettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10, marginBottom: 14 }}>
           <SpeedInput
             label="Ворота"
             value={speeds.goalFreq}

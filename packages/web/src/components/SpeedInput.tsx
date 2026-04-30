@@ -27,6 +27,8 @@ export function SpeedInput({
     <div
       className="glass"
       style={{
+        width: '100%',
+        boxSizing: 'border-box',
         borderRadius: 14,
         padding: '8px 10px',
         display: 'flex',
