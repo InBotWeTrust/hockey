@@ -862,36 +862,34 @@ function PlayView({ suppressedByModal }: PlayViewProps): JSX.Element {
           <div style={{ position: 'absolute', inset: 0 }}>
             <PixiStage onReady={handleReady} onResize={handleResize} />
           </div>
-          {import.meta.env.DEV && (
-            <button
-              type="button"
-              onClick={() => setSettingsOpen(true)}
-              aria-label="Настройки скоростей"
-              title="Настройки скоростей"
-              style={{
-                position: 'absolute',
-                bottom: 18,
-                right: 18,
-                width: 34,
-                height: 34,
-                borderRadius: 999,
-                border: '1px solid rgba(255, 255, 255, 0.72)',
-                background: 'rgba(255, 255, 255, 0.72)',
-                backdropFilter: 'blur(10px)',
-                WebkitBackdropFilter: 'blur(10px)',
-                boxShadow: '0 8px 24px rgba(15, 23, 42, 0.16)',
-                color: 'var(--ink)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                padding: 0,
-                zIndex: 3,
-              }}
-            >
-              <Settings size={16} />
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            aria-label="Настройки скоростей"
+            title="Настройки скоростей"
+            style={{
+              position: 'absolute',
+              bottom: 18,
+              right: 18,
+              width: 34,
+              height: 34,
+              borderRadius: 999,
+              border: '1px solid rgba(255, 255, 255, 0.72)',
+              background: 'rgba(255, 255, 255, 0.72)',
+              backdropFilter: 'blur(10px)',
+              WebkitBackdropFilter: 'blur(10px)',
+              boxShadow: '0 8px 24px rgba(15, 23, 42, 0.16)',
+              color: 'var(--ink)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              padding: 0,
+              zIndex: 3,
+            }}
+          >
+            <Settings size={16} />
+          </button>
         </div>
       </div>
 
