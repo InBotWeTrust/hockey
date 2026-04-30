@@ -13,6 +13,7 @@ export interface FindOrCreateInput {
   lastName?: string;
   timezone?: string;
   currentUserId?: string;
+  recoveryMergeTelegramProviderUids?: readonly string[];
 }
 
 export interface AppUser {
@@ -104,6 +105,33 @@ function vkProviderData(profile: VkProfile): string {
   });
 }
 
+function isRecoveryMergeAllowedForTelegram(
+  allowedProviderUids: readonly string[] | undefined,
+  telegramProviderUid: string | undefined,
+): boolean {
+  return (
+    telegramProviderUid !== undefined &&
+    allowedProviderUids !== undefined &&
+    allowedProviderUids.includes(telegramProviderUid)
+  );
+}
+
+async function getTelegramProviderUidForUser(
+  pool: Queryable,
+  userId: string,
+): Promise<string | undefined> {
+  const { rows } = await pool.query<{ provider_uid: string }>(
+    `select provider_uid
+       from auth_providers
+      where user_id = $1
+        and provider = 'telegram'
+      order by created_at asc
+      limit 1`,
+    [userId],
+  );
+  return rows[0]?.provider_uid;
+}
+
 export async function findOrCreateTelegramUser(
   pool: Pool,
   input: FindOrCreateInput,
@@ -129,6 +157,14 @@ export async function findOrCreateTelegramUser(
     const linked = existing.rows[0];
 
     if (input.currentUserId && linked && linked.user_id !== input.currentUserId) {
+      if (
+        !isRecoveryMergeAllowedForTelegram(
+          input.recoveryMergeTelegramProviderUids,
+          input.providerUid,
+        )
+      ) {
+        throw new AppError('conflict', 'telegram_already_linked', 409);
+      }
       const moved = await moveVkIdentityToTelegramUser(
         client,
         input.currentUserId,
@@ -228,6 +264,7 @@ export interface FindOrLinkVkInput {
   profile: VkProfile;
   currentUserId?: string;
   timezone?: string;
+  recoveryMergeTelegramProviderUids?: readonly string[];
 }
 
 async function updateVkProfile(pool: Queryable, userId: string, profile: VkProfile): Promise<void> {
@@ -378,6 +415,18 @@ export async function findOrLinkOrCreateVkUser(
     if (input.currentUserId && linked && linked.user_id !== input.currentUserId) {
       const currentHasTelegram = await userHasProvider(client, input.currentUserId, 'telegram');
       if (!currentHasTelegram) {
+        throw new AppError('conflict', 'vk_already_linked', 409);
+      }
+      const currentTelegramProviderUid = await getTelegramProviderUidForUser(
+        client,
+        input.currentUserId,
+      );
+      if (
+        !isRecoveryMergeAllowedForTelegram(
+          input.recoveryMergeTelegramProviderUids,
+          currentTelegramProviderUid,
+        )
+      ) {
         throw new AppError('conflict', 'vk_already_linked', 409);
       }
       const moved = await moveVkIdentityToTelegramUser(

@@ -71,6 +71,7 @@ describe.skipIf(!hasIntegrationEnv)('POST /auth/telegram', () => {
         JWT_SECRET,
         REFRESH_SECRET,
         TELEGRAM_BOT_TOKEN: BOT_TOKEN,
+        ACCOUNT_RECOVERY_TELEGRAM_PROVIDER_UIDS: '7770102',
         DAILY_SEED_SECRET: 'daily-seed-secret-at-least-16!!',
       },
     });

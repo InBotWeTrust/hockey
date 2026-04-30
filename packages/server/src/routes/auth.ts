@@ -10,6 +10,7 @@ import { AppError } from '../plugins/errors.js';
 export interface AuthRoutesOptions {
   telegramBotToken: string;
   vkAppId?: string;
+  accountRecoveryTelegramProviderUids?: readonly string[];
   accessSecret: string;
   refreshSecret: string;
   devLoginEnabled?: boolean;
@@ -102,6 +103,9 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (app, opt
       ...(tgUser.lastName !== undefined ? { lastName: tgUser.lastName } : {}),
       ...(tz !== undefined ? { timezone: tz } : {}),
       ...(currentUserId !== undefined ? { currentUserId } : {}),
+      ...(opts.accountRecoveryTelegramProviderUids !== undefined
+        ? { recoveryMergeTelegramProviderUids: opts.accountRecoveryTelegramProviderUids }
+        : {}),
     });
 
     const [accessToken, refresh] = await Promise.all([
@@ -166,6 +170,9 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (app, opt
       profile,
       ...(currentUserId !== undefined ? { currentUserId } : {}),
       ...(tz !== undefined ? { timezone: tz } : {}),
+      ...(opts.accountRecoveryTelegramProviderUids !== undefined
+        ? { recoveryMergeTelegramProviderUids: opts.accountRecoveryTelegramProviderUids }
+        : {}),
     });
 
     const [accessToken, refresh] = await Promise.all([
