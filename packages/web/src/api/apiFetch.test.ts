@@ -53,6 +53,21 @@ describe('apiFetch', () => {
     await expect(apiFetch('/x')).rejects.toBeInstanceOf(ApiError);
   });
 
+  it.each(['telegram_already_linked', 'vk_already_linked'])(
+    'localizes auth conflict message %s',
+    async (serverMessage) => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        mockJson({ error: { code: 'conflict', message: serverMessage } }, { status: 409 }),
+      );
+
+      await expect(apiFetch('/auth/telegram')).rejects.toMatchObject({
+        status: 409,
+        code: 'conflict',
+        message: 'Аккаунт уже занят',
+      });
+    },
+  );
+
   it('retries original request once after successful refresh', async () => {
     useAuthStore.getState().setSession({
       accessToken: 'stale',
