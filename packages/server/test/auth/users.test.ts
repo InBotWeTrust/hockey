@@ -216,6 +216,7 @@ describe.skipIf(!hasIntegrationEnv)('findOrCreateTelegramUser', () => {
       firstName: 'Egor',
       lastName: 'Gumenyuk',
       currentUserId: vk.id,
+      recoveryMergeTelegramProviderUids: ['tg-owned'],
     });
 
     expect(merged.id).toBe(tg.id);
@@ -262,6 +263,7 @@ describe.skipIf(!hasIntegrationEnv)('findOrCreateTelegramUser', () => {
       vkUserId: 902,
       profile: { firstName: 'Fresh', lastName: 'Vk', avatarUrl: 'fresh.png' },
       currentUserId: tg.id,
+      recoveryMergeTelegramProviderUids: ['tg-target'],
     });
 
     expect(merged.id).toBe(tg.id);
@@ -290,6 +292,26 @@ describe.skipIf(!hasIntegrationEnv)('findOrCreateTelegramUser', () => {
     });
   });
 
+  it('rejects moving already-owned VK identity to current Telegram user when Telegram is not allowlisted', async () => {
+    const tg = await findOrCreateTelegramUser(pool, {
+      providerUid: 'tg-not-allowed-vk',
+      displayName: 'Telegram Main',
+      firstName: 'Telegram',
+    });
+    await findOrLinkOrCreateVkUser(pool, {
+      vkUserId: 904,
+      profile: { firstName: 'Old', lastName: 'Vk' },
+    });
+
+    await expect(
+      findOrLinkOrCreateVkUser(pool, {
+        vkUserId: 904,
+        profile: { firstName: 'Fresh', lastName: 'Vk' },
+        currentUserId: tg.id,
+      }),
+    ).rejects.toThrow(/vk_already_linked/);
+  });
+
   it('rejects linking Telegram identity already owned by another user when current user has no VK', async () => {
     await findOrCreateTelegramUser(pool, {
       providerUid: 'tg-owned',
@@ -308,6 +330,27 @@ describe.skipIf(!hasIntegrationEnv)('findOrCreateTelegramUser', () => {
         displayName: 'Owner',
         firstName: 'Owner',
         currentUserId: other.id,
+      }),
+    ).rejects.toThrow(/telegram_already_linked/);
+  });
+
+  it('rejects moving current VK identity to existing Telegram user when Telegram is not allowlisted', async () => {
+    await findOrCreateTelegramUser(pool, {
+      providerUid: 'tg-not-allowed',
+      displayName: 'Owner',
+      firstName: 'Owner',
+    });
+    const vk = await findOrLinkOrCreateVkUser(pool, {
+      vkUserId: 903,
+      profile: { firstName: 'Vera' },
+    });
+
+    await expect(
+      findOrCreateTelegramUser(pool, {
+        providerUid: 'tg-not-allowed',
+        displayName: 'Owner',
+        firstName: 'Owner',
+        currentUserId: vk.id,
       }),
     ).rejects.toThrow(/telegram_already_linked/);
   });

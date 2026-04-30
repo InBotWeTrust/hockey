@@ -74,6 +74,7 @@ describe.skipIf(!hasIntegrationEnv)('POST /auth/vk', () => {
         REFRESH_SECRET,
         TELEGRAM_BOT_TOKEN: '111:test-bot-token',
         VK_APP_ID: '777',
+        ACCOUNT_RECOVERY_TELEGRAM_PROVIDER_UIDS: 'tg-2',
         DAILY_SEED_SECRET: 'daily-seed-secret-at-least-16!!',
       },
     });

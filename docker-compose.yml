@@ -42,6 +42,7 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       DAILY_SEED_SECRET: ${DAILY_SEED_SECRET}
       VK_APP_ID: ${VK_APP_ID:-54571497}
+      ACCOUNT_RECOVERY_TELEGRAM_PROVIDER_UIDS: ${ACCOUNT_RECOVERY_TELEGRAM_PROVIDER_UIDS:-}
     depends_on:
       postgres:
         condition: service_healthy

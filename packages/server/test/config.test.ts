@@ -41,4 +41,15 @@ describe('loadConfig', () => {
     expect(loadConfig({ ...base, VK_APP_ID: '' }).VK_APP_ID).toBeUndefined();
     expect(loadConfig({ ...base, VK_APP_ID: '777' }).VK_APP_ID).toBe('777');
   });
+
+  it('treats account recovery allowlist as optional and normalizes blank value', () => {
+    expect(
+      loadConfig({ ...base, ACCOUNT_RECOVERY_TELEGRAM_PROVIDER_UIDS: '' })
+        .ACCOUNT_RECOVERY_TELEGRAM_PROVIDER_UIDS,
+    ).toBeUndefined();
+    expect(
+      loadConfig({ ...base, ACCOUNT_RECOVERY_TELEGRAM_PROVIDER_UIDS: '42,100500' })
+        .ACCOUNT_RECOVERY_TELEGRAM_PROVIDER_UIDS,
+    ).toBe('42,100500');
+  });
 });
