@@ -11,31 +11,37 @@ const SPRITE_HEIGHT = SPRITE_WIDTH / SPRITE_ASPECT;
 
 const SHOT_DURATION_MS = 240;
 const BASE_ROTATION = 0.32; // resting "ready" pose, ~18.3 deg (opposite shot dir)
-const SHOT_MAX      = 0.24; // follow-through peak, ~13.7 deg
+const SHOT_MAX = 0.24; // follow-through peak, ~13.7 deg
 
 export class Player {
   readonly container = new Container();
   private readonly sprite: Sprite;
   private readonly shotDir: 1 | -1;
   private shotStartedAt: number | null = null;
+  private destroyed = false;
 
   constructor(grip: 'left' | 'right' = 'left') {
     this.shotDir = grip === 'right' ? -1 : 1;
     this.sprite = new Sprite(Texture.EMPTY);
     this.sprite.anchor.set(0.5, 0.5);
     this.container.addChild(this.sprite);
-    Assets.load<Texture>(`/sprites/${grip}hand.webp`).then((tex) => {
-      this.sprite.texture = tex;
-    });
+    Assets.load<Texture>(`/sprites/${grip}hand.webp`)
+      .then((tex) => {
+        if (this.destroyed) return;
+        this.sprite.texture = tex;
+      })
+      .catch(() => undefined);
   }
 
   playShot(): void {
+    if (this.destroyed) return;
     this.shotStartedAt = performance.now();
   }
 
   update(scale: Scale, shooterX = PUCK_START.x, shooterY = PUCK_START.y): void {
+    if (this.destroyed) return;
     const s = scale.factor;
-    this.sprite.width  = SPRITE_WIDTH * s;
+    this.sprite.width = SPRITE_WIDTH * s;
     this.sprite.height = SPRITE_HEIGHT * s;
     this.sprite.position.set(shooterX * s, shooterY * s);
     this.container.position.set(scale.offsetX, scale.offsetY);
@@ -61,6 +67,12 @@ export class Player {
   }
 
   destroy(): void {
-    this.container.destroy({ children: true });
+    if (this.destroyed) return;
+    this.destroyed = true;
+    try {
+      this.container.destroy({ children: true });
+    } catch {
+      // Pixi may already have destroyed this through the parent stage.
+    }
   }
 }

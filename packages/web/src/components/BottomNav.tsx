@@ -65,7 +65,7 @@ export function BottomNav(): JSX.Element | null {
           position: 'fixed',
           left: 12,
           right: 12,
-          bottom: `calc(12px + env(safe-area-inset-bottom, 0px) / 2)`,
+          bottom: 'max(12px, var(--app-safe-bottom))',
           maxWidth: 406,
           margin: '0 auto',
           height: 54,
@@ -85,7 +85,9 @@ export function BottomNav(): JSX.Element | null {
         <NavTab
           label="Игра"
           active={isGame}
-          icon={<Target size={ICON_SIZE} color={isGame ? '#ffffff' : 'var(--muted)'} strokeWidth={2} />}
+          icon={
+            <Target size={ICON_SIZE} color={isGame ? '#ffffff' : 'var(--muted)'} strokeWidth={2} />
+          }
           onClick={() => navigate('/')}
         />
         <NavTab
@@ -141,7 +143,9 @@ export function BottomNav(): JSX.Element | null {
         <NavTab
           label="Профиль"
           active={isProfile}
-          icon={<User size={ICON_SIZE} color={isProfile ? '#ffffff' : 'var(--muted)'} strokeWidth={2} />}
+          icon={
+            <User size={ICON_SIZE} color={isProfile ? '#ffffff' : 'var(--muted)'} strokeWidth={2} />
+          }
           onClick={() => navigate('/profile')}
         />
       </nav>
@@ -161,7 +165,7 @@ export function BottomNav(): JSX.Element | null {
               position: 'fixed',
               left: '50%',
               transform: 'translateX(-50%)',
-              bottom: `calc(78px + env(safe-area-inset-bottom, 0px) / 2)`,
+              bottom: 'calc(66px + max(12px, var(--app-safe-bottom)))',
               padding: '10px 18px',
               borderRadius: 999,
               background: 'rgba(15, 23, 42, 0.92)',

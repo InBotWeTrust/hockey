@@ -109,8 +109,8 @@ export function ChatRoomScreen(): JSX.Element {
     chatMeta?.type === 'direct'
       ? formatLastSeen(chatMeta.dmCounterpart?.lastSeenAt ?? null)
       : chatMeta
-      ? formatMemberCount(chatMeta.memberCount)
-      : undefined;
+        ? formatMemberCount(chatMeta.memberCount)
+        : undefined;
   // Show avatar + author name on every foreign bubble in non-DM chats so
   // members can tell who said what. DMs keep the cleaner layout (header
   // already names the counterpart). Default to false until chatMeta loads,
@@ -358,12 +358,9 @@ export function ChatRoomScreen(): JSX.Element {
     },
   });
 
-  const onRequestActions = useCallback(
-    (message: ChatMessageDTO, anchorRect: DOMRect): void => {
-      setActionTarget({ message, anchorRect });
-    },
-    [],
-  );
+  const onRequestActions = useCallback((message: ChatMessageDTO, anchorRect: DOMRect): void => {
+    setActionTarget({ message, anchorRect });
+  }, []);
   const onCloseActions = useCallback(() => setActionTarget(null), []);
 
   const onOpenProfile = useCallback(
@@ -432,9 +429,7 @@ export function ChatRoomScreen(): JSX.Element {
   const trimmedQuery = searchQuery.trim().toLowerCase();
   const visibleMessages = useMemo<ChatMessageDTO[]>(() => {
     if (trimmedQuery.length === 0) return messages;
-    return messages.filter(
-      (m) => !m.isDeleted && m.content.toLowerCase().includes(trimmedQuery),
-    );
+    return messages.filter((m) => !m.isDeleted && m.content.toLowerCase().includes(trimmedQuery));
   }, [messages, trimmedQuery]);
 
   const actionMessage = actionTarget?.message ?? null;
@@ -455,7 +450,7 @@ export function ChatRoomScreen(): JSX.Element {
         // visible while typing. Fallback to 100dvh on browsers without
         // visualViewport.
         height: viewportHeight !== null ? `${viewportHeight}px` : '100dvh',
-        paddingTop: 'env(safe-area-inset-top, 0px)',
+        paddingTop: 'var(--app-safe-top)',
         overflow: 'hidden',
       }}
     >
@@ -542,7 +537,7 @@ export function ChatRoomScreen(): JSX.Element {
         })}
       </div>
 
-      <div style={{ marginBottom: `calc(12px + env(safe-area-inset-bottom, 0px) / 2)` }}>
+      <div style={{ marginBottom: 'max(12px, var(--app-safe-bottom))' }}>
         <ChatInput
           replyTo={replyTo}
           replyToSenderName={replyTo ? senderNameOf(replyTo) : undefined}

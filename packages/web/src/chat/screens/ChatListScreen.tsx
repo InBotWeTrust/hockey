@@ -152,7 +152,7 @@ export function ChatListScreen(): JSX.Element {
     <main
       className="screen"
       style={{
-        paddingBottom: `calc(${NAV_HEIGHT + 16}px + env(safe-area-inset-bottom, 0px) / 2)`,
+        paddingBottom: `calc(${NAV_HEIGHT + 16}px + var(--app-safe-bottom))`,
       }}
     >
       <div
@@ -160,7 +160,7 @@ export function ChatListScreen(): JSX.Element {
           display: 'flex',
           alignItems: 'center',
           gap: 8,
-          margin: 'calc(10px + env(safe-area-inset-top, 0px) / 2) 14px 10px',
+          margin: 'calc(10px + var(--app-safe-top)) 14px 10px',
         }}
       >
         <div
@@ -215,9 +215,7 @@ export function ChatListScreen(): JSX.Element {
         </button>
       </div>
 
-      {dropdownOpen && (
-        <SearchResultsDropdown query={debouncedFilter} chatHits={filteredChats} />
-      )}
+      {dropdownOpen && <SearchResultsDropdown query={debouncedFilter} chatHits={filteredChats} />}
 
       {!dropdownOpen && isLoading && (
         <div style={{ padding: 24, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
@@ -278,7 +276,7 @@ export function ChatListScreen(): JSX.Element {
           style={{
             position: 'fixed',
             left: '50%',
-            bottom: `calc(${NAV_HEIGHT + 24}px + env(safe-area-inset-bottom, 0px) / 2)`,
+            bottom: `calc(${NAV_HEIGHT + 24}px + var(--app-safe-bottom))`,
             transform: 'translateX(-50%)',
             padding: '10px 16px',
             borderRadius: 999,

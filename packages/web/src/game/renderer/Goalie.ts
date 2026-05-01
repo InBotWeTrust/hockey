@@ -15,28 +15,37 @@ export class Goalie {
   private idleTex: Texture = Texture.EMPTY;
   private saveTex: Texture = Texture.EMPTY;
   private isSaving = false;
+  private destroyed = false;
 
   constructor() {
     this.sprite = new Sprite(Texture.EMPTY);
     this.sprite.anchor.set(0.5, 0.5);
     this.container.addChild(this.sprite);
-    Assets.load<Texture>('/sprites/goalkeeper.webp').then((tex) => {
-      this.idleTex = tex;
-      if (!this.isSaving) this.sprite.texture = tex;
-    });
-    Assets.load<Texture>('/sprites/save.webp').then((tex) => {
-      this.saveTex = tex;
-      if (this.isSaving) this.sprite.texture = tex;
-    });
+    Assets.load<Texture>('/sprites/goalkeeper.webp')
+      .then((tex) => {
+        if (this.destroyed) return;
+        this.idleTex = tex;
+        if (!this.isSaving) this.sprite.texture = tex;
+      })
+      .catch(() => undefined);
+    Assets.load<Texture>('/sprites/save.webp')
+      .then((tex) => {
+        if (this.destroyed) return;
+        this.saveTex = tex;
+        if (this.isSaving) this.sprite.texture = tex;
+      })
+      .catch(() => undefined);
   }
 
   setSavePose(saving: boolean): void {
+    if (this.destroyed) return;
     this.isSaving = saving;
     const tex = saving ? this.saveTex : this.idleTex;
     if (tex !== Texture.EMPTY) this.sprite.texture = tex;
   }
 
   update(state: GoalieState, scale: Scale): void {
+    if (this.destroyed) return;
     const s = scale.factor;
     const size = (this.isSaving ? SAVE_SIZE : IDLE_SIZE) * s;
     this.sprite.width = size;
@@ -48,6 +57,12 @@ export class Goalie {
   }
 
   destroy(): void {
-    this.container.destroy({ children: true });
+    if (this.destroyed) return;
+    this.destroyed = true;
+    try {
+      this.container.destroy({ children: true });
+    } catch {
+      // Pixi may already have destroyed this through the parent stage.
+    }
   }
 }

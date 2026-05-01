@@ -11,8 +11,8 @@ const PUCK_BLACK = 0x111111;
 // Offset +10% вслед за ростом sprite игрока, чтобы шайба оставалась на
 // кончике клюшки.
 export const BLADE_OFFSET: Record<'left' | 'right', Vec2> = {
-  left:  { x: -13, y: -33 },
-  right: { x:  13, y: -33 },
+  left: { x: -13, y: -33 },
+  right: { x: 13, y: -33 },
 };
 
 export class Puck {
@@ -27,6 +27,7 @@ export class Puck {
     durationMs: number;
   } | null = null;
   private held: Vec2 | null = null;
+  private destroyed = false;
 
   constructor(grip: 'left' | 'right' = 'left') {
     this.offset = BLADE_OFFSET[grip];
@@ -39,24 +40,29 @@ export class Puck {
   }
 
   resetAtStart(scale: Scale, shooterX = PUCK_START.x): void {
+    if (this.destroyed) return;
     this.flight = null;
     this.draw(this.bladePoint(shooterX), scale);
   }
 
   playShot(start: Vec2, end: Vec2, now: number, durationMs = 300): void {
+    if (this.destroyed) return;
     this.flight = { start, end, startedAt: now, durationMs };
   }
 
   holdAt(pos: Vec2): void {
+    if (this.destroyed) return;
     this.held = pos;
     this.flight = null;
   }
 
   release(): void {
+    if (this.destroyed) return;
     this.held = null;
   }
 
   update(now: number, scale: Scale): void {
+    if (this.destroyed) return;
     if (this.held) {
       this.draw(this.held, scale);
       return;
@@ -81,9 +87,7 @@ export class Puck {
     const r = PUCK_RADIUS * scale.factor;
     this.shadow.clear();
     this.body.clear();
-    this.body
-      .circle(0, 0, r)
-      .fill(PUCK_BLACK);
+    this.body.circle(0, 0, r).fill(PUCK_BLACK);
 
     this.container.position.set(
       p.x * scale.factor + scale.offsetX,
@@ -92,6 +96,12 @@ export class Puck {
   }
 
   destroy(): void {
-    this.container.destroy({ children: true });
+    if (this.destroyed) return;
+    this.destroyed = true;
+    try {
+      this.container.destroy({ children: true });
+    } catch {
+      // Pixi may already have destroyed this through the parent stage.
+    }
   }
 }

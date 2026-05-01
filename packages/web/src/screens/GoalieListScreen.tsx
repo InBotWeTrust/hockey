@@ -27,7 +27,7 @@ export function GoalieListScreen(): JSX.Element {
     <main
       className="screen"
       style={{
-        paddingBottom: `calc(${NAV_HEIGHT + 16}px + env(safe-area-inset-bottom, 0px) / 2)`,
+        paddingBottom: `calc(${NAV_HEIGHT + 16}px + var(--app-safe-bottom))`,
       }}
     >
       <header className="header-bar glass">
@@ -47,7 +47,11 @@ export function GoalieListScreen(): JSX.Element {
       >
         <FilterChip label="Все" active={filter === 'all'} onClick={() => setFilter('all')} />
         <FilterChip label="Открыты" active={filter === 'open'} onClick={() => setFilter('open')} />
-        <FilterChip label="Пройдены" active={filter === 'beaten'} onClick={() => setFilter('beaten')} />
+        <FilterChip
+          label="Пройдены"
+          active={filter === 'beaten'}
+          onClick={() => setFilter('beaten')}
+        />
       </div>
 
       <div
@@ -124,13 +128,17 @@ export function GoalieListScreen(): JSX.Element {
   );
 }
 
-function FilterChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }): JSX.Element {
+function FilterChip({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}): JSX.Element {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={active ? 'chip chip--active' : 'chip'}
-    >
+    <button type="button" onClick={onClick} className={active ? 'chip chip--active' : 'chip'}>
       {label}
     </button>
   );

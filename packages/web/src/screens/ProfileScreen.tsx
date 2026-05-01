@@ -43,13 +43,13 @@ export function ProfileScreen(): JSX.Element {
     <main
       className="screen"
       style={{
-        paddingBottom: `calc(${NAV_HEIGHT + 16}px + env(safe-area-inset-bottom, 0px) / 2)`,
+        paddingBottom: `calc(${NAV_HEIGHT + 16}px + var(--app-safe-bottom))`,
       }}
     >
       <div
         className="glass"
         style={{
-          margin: '16px 14px 14px',
+          margin: 'calc(16px + var(--app-safe-top)) 14px 14px',
           padding: 20,
           borderRadius: 24,
           display: 'flex',

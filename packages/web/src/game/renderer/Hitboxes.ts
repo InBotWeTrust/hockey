@@ -1,5 +1,11 @@
 import { Container, Graphics } from 'pixi.js';
-import { GOAL, GOAL_OPENING, GOAL_HITBOX_MARGIN, GOALIE_HITBOX_EXPAND, type GoalieState } from '@hockey/game-core';
+import {
+  GOAL,
+  GOAL_OPENING,
+  GOAL_HITBOX_MARGIN,
+  GOALIE_HITBOX_EXPAND,
+  type GoalieState,
+} from '@hockey/game-core';
 import type { Scale } from '../coords.js';
 
 // Дебаг-оверлей реальных хитбоксов из @hockey/game-core/shot/resolve.ts:
@@ -14,6 +20,7 @@ export class Hitboxes {
   readonly container = new Container();
   private readonly goalRect = new Graphics();
   private readonly goalieRect = new Graphics();
+  private destroyed = false;
 
   constructor() {
     this.container.addChild(this.goalRect);
@@ -22,10 +29,12 @@ export class Hitboxes {
   }
 
   setVisible(visible: boolean): void {
+    if (this.destroyed) return;
     this.container.visible = visible;
   }
 
   update(scale: Scale, goalOffsetX: number, goalieState: GoalieState): void {
+    if (this.destroyed) return;
     if (!this.container.visible) return;
     const s = scale.factor;
 
@@ -33,7 +42,8 @@ export class Hitboxes {
     const openingXMax = (GOAL_OPENING.xMax + goalOffsetX - GOAL_HITBOX_MARGIN) * s;
     const yTop = GOAL.y * s;
     const yBot = GOAL_OPENING.y * s;
-    this.goalRect.clear()
+    this.goalRect
+      .clear()
       .rect(openingXMin, yTop, openingXMax - openingXMin, yBot - yTop)
       .stroke({ width: LINE_WIDTH, color: GOAL_COLOR });
 
@@ -41,14 +51,18 @@ export class Hitboxes {
     const gh = goalieState.height * s;
     const gx = (goalieState.position.x - (goalieState.width + GOALIE_HITBOX_EXPAND) / 2) * s;
     const gy = (goalieState.position.y - goalieState.height / 2) * s;
-    this.goalieRect.clear()
-      .rect(gx, gy, gw, gh)
-      .stroke({ width: LINE_WIDTH, color: GOALIE_COLOR });
+    this.goalieRect.clear().rect(gx, gy, gw, gh).stroke({ width: LINE_WIDTH, color: GOALIE_COLOR });
 
     this.container.position.set(scale.offsetX, scale.offsetY);
   }
 
   destroy(): void {
-    this.container.destroy({ children: true });
+    if (this.destroyed) return;
+    this.destroyed = true;
+    try {
+      this.container.destroy({ children: true });
+    } catch {
+      // Pixi may already have destroyed this through the parent stage.
+    }
   }
 }

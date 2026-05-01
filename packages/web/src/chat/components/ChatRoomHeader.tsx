@@ -28,7 +28,7 @@ export function ChatRoomHeader({
         display: 'flex',
         alignItems: 'center',
         gap: 10,
-        margin: 'calc(10px + env(safe-area-inset-top, 0px) / 2) 12px 0',
+        margin: '10px 12px 0',
       }}
     >
       <button

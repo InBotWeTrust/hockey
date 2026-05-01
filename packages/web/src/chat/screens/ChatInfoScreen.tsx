@@ -37,8 +37,8 @@ export function ChatInfoScreen(): JSX.Element {
     <main
       className="screen"
       style={{
-        paddingTop: 'env(safe-area-inset-top, 0px)',
-        paddingBottom: `calc(24px + env(safe-area-inset-bottom, 0px) / 2)`,
+        paddingTop: 'var(--app-safe-top)',
+        paddingBottom: 'calc(24px + var(--app-safe-bottom))',
       }}
     >
       <div
@@ -46,7 +46,7 @@ export function ChatInfoScreen(): JSX.Element {
           display: 'flex',
           alignItems: 'center',
           gap: 10,
-          margin: 'calc(10px + env(safe-area-inset-top, 0px) / 2) 12px 4px',
+          margin: '10px 12px 4px',
         }}
       >
         <button

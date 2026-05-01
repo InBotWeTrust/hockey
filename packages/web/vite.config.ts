@@ -6,14 +6,14 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'prompt',
+      registerType: 'autoUpdate',
       includeAssets: ['icons/icon-512.png', 'icons/icon-192.png', 'icons/apple-touch-icon.png'],
       manifest: {
         name: 'Ultimate Hockey',
         short_name: 'Hockey',
         description: 'Хоккейная игра в стиле OVI Universe',
-        theme_color: '#0f172a',
-        background_color: '#f4f7fb',
+        theme_color: '#9cbfdf',
+        background_color: '#9cbfdf',
         display: 'standalone',
         orientation: 'portrait',
         scope: '/',
@@ -25,6 +25,9 @@ export default defineConfig({
         ],
       },
       workbox: {
+        cleanupOutdatedCaches: true,
+        clientsClaim: true,
+        skipWaiting: true,
         globPatterns: ['**/*.{js,css,html,ico,png,webp,svg,woff2}'],
         runtimeCaching: [
           {

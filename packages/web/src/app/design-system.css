@@ -5,7 +5,7 @@
     linear-gradient(180deg, #c9dcf0 0%, #9cbfdf 100%);
 }
 .app-shell::before {
-  content: "";
+  content: '';
   position: absolute;
   inset: 0;
   background-image:
@@ -13,7 +13,11 @@
     radial-gradient(circle at 60% 50%, rgba(255, 255, 255, 0.4) 0 1px, transparent 2px),
     radial-gradient(circle at 35% 80%, rgba(255, 255, 255, 0.35) 0 1.5px, transparent 2px),
     radial-gradient(circle at 80% 20%, rgba(255, 255, 255, 0.3) 0 1px, transparent 2px);
-  background-size: 220px 220px, 170px 170px, 260px 260px, 180px 180px;
+  background-size:
+    220px 220px,
+    170px 170px,
+    260px 260px,
+    180px 180px;
   opacity: 0.8;
   pointer-events: none;
   z-index: 0;
@@ -100,7 +104,9 @@
   justify-content: center;
   gap: 8px;
   touch-action: manipulation;
-  transition: transform 0.1s, opacity 0.15s;
+  transition:
+    transform 0.1s,
+    opacity 0.15s;
 }
 .btn:active:not(:disabled) {
   transform: scale(0.98);
@@ -176,7 +182,7 @@
 
 /* === Header bar (top of each screen) === */
 .header-bar {
-  margin: 10px 14px 10px;
+  margin: calc(10px + var(--app-safe-top)) 14px 10px;
   padding: 8px 10px;
   border-radius: var(--r-pill);
   display: flex;
@@ -200,6 +206,7 @@
 .screen {
   display: flex;
   flex-direction: column;
+  min-height: 100vh;
   min-height: 100dvh;
   color: var(--ink);
   font-family: var(--font-sans);
@@ -207,9 +214,18 @@
 
 /* === Chat bubble flash (PR 7 — search goto) === */
 @keyframes chat-bubble-flash {
-  0%   { box-shadow: 0 0 0 0 rgba(255, 215, 0, 0); background-color: rgba(255, 215, 0, 0.18); }
-  60%  { box-shadow: 0 0 0 6px rgba(255, 215, 0, 0); background-color: rgba(255, 215, 0, 0.10); }
-  100% { box-shadow: 0 0 0 0 rgba(255, 215, 0, 0); background-color: transparent; }
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 215, 0, 0);
+    background-color: rgba(255, 215, 0, 0.18);
+  }
+  60% {
+    box-shadow: 0 0 0 6px rgba(255, 215, 0, 0);
+    background-color: rgba(255, 215, 0, 0.1);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 215, 0, 0);
+    background-color: transparent;
+  }
 }
 
 .chat-bubble--flash {
@@ -226,9 +242,10 @@
 
 /* Utility: hide native scrollbar while keeping scroll behavior. */
 .no-scrollbar {
-  scrollbar-width: none;          /* Firefox */
-  -ms-overflow-style: none;       /* legacy Edge/IE */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* legacy Edge/IE */
 }
-.no-scrollbar::-webkit-scrollbar { /* Chromium/Safari */
+.no-scrollbar::-webkit-scrollbar {
+  /* Chromium/Safari */
   display: none;
 }

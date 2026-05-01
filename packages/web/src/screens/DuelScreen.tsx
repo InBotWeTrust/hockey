@@ -278,10 +278,10 @@ export function DuelScreen(): JSX.Element {
       className="screen"
       style={{
         position: 'fixed',
-        top: 'env(safe-area-inset-top, 0px)',
+        top: 'calc(var(--app-safe-top) + 6px)',
         left: 0,
         right: 0,
-        bottom: `calc(76px + env(safe-area-inset-bottom, 0px) / 2)`,
+        bottom: 'calc(76px + var(--app-safe-bottom))',
         minHeight: 0,
       }}
     >

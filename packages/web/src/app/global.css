@@ -1,6 +1,15 @@
-*, *::before, *::after { box-sizing: border-box; }
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
 
 :root {
+  --app-bg-top: #c9dcf0;
+  --app-bg-bottom: #9cbfdf;
+  --app-safe-top: env(safe-area-inset-top, 0px);
+  --app-safe-bottom: env(safe-area-inset-bottom, 0px);
+
   --ink: #0f172a;
   --muted: #475569;
   --muted-soft: #64748b;
@@ -31,14 +40,31 @@
   --shadow-elev: 0 12px 40px rgba(15, 23, 42, 0.28);
   --shadow-cta: 0 8px 22px rgba(15, 23, 42, 0.3);
 
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro", "Segoe UI", Roboto, sans-serif;
-  --font-mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro', 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
 }
 
-html, body {
+@supports (-webkit-touch-callout: none) {
+  @media (hover: none) and (pointer: coarse) {
+    :root {
+      --app-safe-top: max(44px, env(safe-area-inset-top, 0px));
+      --app-safe-bottom: max(22px, env(safe-area-inset-bottom, 0px));
+    }
+  }
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  background-color: var(--app-bg-bottom);
+}
+
+html,
+body {
   margin: 0;
   padding: 0;
-  background: linear-gradient(180deg, #c9dcf0 0%, #9cbfdf 100%) fixed;
+  background: linear-gradient(180deg, var(--app-bg-top) 0%, var(--app-bg-bottom) 100%) fixed;
   font-family: var(--font-sans);
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
@@ -47,6 +73,18 @@ html, body {
 }
 
 body {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+#root {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: linear-gradient(180deg, var(--app-bg-top) 0%, var(--app-bg-bottom) 100%) fixed;
+}
+
+.app-shell {
+  min-height: 100vh;
   min-height: 100dvh;
 }
 

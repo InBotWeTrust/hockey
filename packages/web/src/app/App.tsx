@@ -43,6 +43,7 @@ export function App(): JSX.Element {
             position: 'relative',
             transform: 'translateZ(0)',
             overflow: 'hidden',
+            background: 'linear-gradient(180deg, var(--app-bg-top) 0%, var(--app-bg-bottom) 100%)',
             boxShadow: '0 0 0 1px rgba(15,23,42,0.08), 0 8px 48px rgba(15,23,42,0.14)',
           }}
         >

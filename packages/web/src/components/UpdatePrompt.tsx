@@ -1,7 +1,10 @@
 import { useRegisterSW } from 'virtual:pwa-register/react';
 
 export function UpdatePrompt(): JSX.Element | null {
-  const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW();
+  const {
+    needRefresh: [needRefresh],
+    updateServiceWorker,
+  } = useRegisterSW();
 
   if (!needRefresh) return null;
 
@@ -9,7 +12,7 @@ export function UpdatePrompt(): JSX.Element | null {
     <div
       style={{
         position: 'fixed',
-        bottom: 92,
+        bottom: 'calc(78px + max(12px, var(--app-safe-bottom)))',
         left: '50%',
         transform: 'translateX(-50%)',
         zIndex: 600,

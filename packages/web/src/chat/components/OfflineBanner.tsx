@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ChatSocketStatus } from '../ws.js';
 
-const SHOW_AFTER_MS = 3_000;
+const RECONNECT_SHOW_AFTER_MS = 10_000;
 
 interface Props {
   status: ChatSocketStatus;
@@ -9,17 +9,39 @@ interface Props {
 
 export function OfflineBanner({ status }: Props): JSX.Element | null {
   const [visible, setVisible] = useState(false);
+  const [browserOffline, setBrowserOffline] = useState(() =>
+    typeof navigator !== 'undefined' ? !navigator.onLine : false,
+  );
 
   useEffect(() => {
-    if (status === 'open' || status === 'closed') {
+    const onOnline = () => setBrowserOffline(false);
+    const onOffline = () => setBrowserOffline(true);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (browserOffline) {
+      setVisible(true);
+      return;
+    }
+    if (status !== 'reconnecting') {
       setVisible(false);
       return;
     }
-    const t = window.setTimeout(() => setVisible(true), SHOW_AFTER_MS);
+    const t = window.setTimeout(() => setVisible(true), RECONNECT_SHOW_AFTER_MS);
     return () => window.clearTimeout(t);
-  }, [status]);
+  }, [browserOffline, status]);
 
   if (!visible) return null;
+
+  const label = browserOffline
+    ? 'Нет соединения — ждём сеть...'
+    : 'Чат переподключается — пробуем снова...';
 
   return (
     <div
@@ -28,11 +50,11 @@ export function OfflineBanner({ status }: Props): JSX.Element | null {
       className="glass-dark"
       style={{
         position: 'fixed',
-        top: 'env(safe-area-inset-top, 0px)',
-        left: 0,
-        right: 0,
+        top: 'calc(var(--app-safe-top) + 6px)',
+        left: 12,
+        right: 12,
         margin: '0 auto',
-        maxWidth: 430,
+        maxWidth: 406,
         padding: '6px 14px',
         textAlign: 'center',
         fontSize: 12,
@@ -42,7 +64,7 @@ export function OfflineBanner({ status }: Props): JSX.Element | null {
         borderRadius: '0 0 12px 12px',
       }}
     >
-      Соединение пропало — пробуем снова...
+      {label}
     </div>
   );
 }

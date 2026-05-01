@@ -65,7 +65,7 @@ export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JS
           width: '100%',
           maxWidth: 480,
           maxHeight: '80dvh',
-          padding: `16px 16px calc(16px + env(safe-area-inset-bottom, 0px))`,
+          padding: '16px 16px calc(16px + var(--app-safe-bottom))',
           borderRadius: '24px 24px 0 0',
           display: 'flex',
           flexDirection: 'column',
@@ -107,7 +107,9 @@ export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JS
           </div>
         </div>
 
-        <div className="section-label" style={{ marginTop: 4 }}>Статистика</div>
+        <div className="section-label" style={{ marginTop: 4 }}>
+          Статистика
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           <StatCard label="Всего бросков" value="—" />
           <StatCard label="Голов" value="—" />

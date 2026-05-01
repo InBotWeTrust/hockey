@@ -448,6 +448,8 @@ function PlayView({ suppressedByModal }: PlayViewProps): JSX.Element {
   const entranceRafRef = useRef<number | null>(null);
   const iceCarRef = useRef<IceCar | null>(null);
   const iceCarRafRef = useRef<number | null>(null);
+  const shotTimeoutsRef = useRef<number[]>([]);
+  const mountedRef = useRef(true);
   const initializedRef = useRef(false);
   const [isShowingResult, setIsShowingResult] = useState(false);
   const [isShotInProgress, setIsShotInProgress] = useState(false);
@@ -484,6 +486,39 @@ function PlayView({ suppressedByModal }: PlayViewProps): JSX.Element {
   useEffect(() => {
     if (remaining === 0 && periodEndsAt > 0) void refresh();
   }, [remaining, periodEndsAt, refresh]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      loopRef.current?.detach();
+      if (entranceRafRef.current !== null) {
+        cancelAnimationFrame(entranceRafRef.current);
+        entranceRafRef.current = null;
+      }
+      if (iceCarRafRef.current !== null) {
+        cancelAnimationFrame(iceCarRafRef.current);
+        iceCarRafRef.current = null;
+      }
+      for (const id of shotTimeoutsRef.current) window.clearTimeout(id);
+      shotTimeoutsRef.current = [];
+      goalRef.current?.destroy();
+      goalieRef.current?.destroy();
+      playerRef.current?.destroy();
+      puckRef.current?.destroy();
+      hitboxesRef.current?.destroy();
+      iceCarRef.current?.destroy();
+      loopRef.current = null;
+      tickerRef.current = null;
+      refreshRef.current = null;
+      goalRef.current = null;
+      goalieRef.current = null;
+      playerRef.current = null;
+      puckRef.current = null;
+      hitboxesRef.current = null;
+      iceCarRef.current = null;
+    };
+  }, []);
 
   const handleReady = useCallback((app: Application, initialScale: Scale): void => {
     scaleRef.current = initialScale;
@@ -540,6 +575,7 @@ function PlayView({ suppressedByModal }: PlayViewProps): JSX.Element {
     const startIceCarLoop = (): void => {
       let t0 = -1;
       const carStep = (rafTime: number): void => {
+        if (!mountedRef.current) return;
         if (t0 < 0) t0 = rafTime;
         const pos = iceCarPosAt(rafTime - t0);
         iceCarRef.current?.update(scaleRef.current, pos.x, pos.y, pos.rot);
@@ -595,6 +631,7 @@ function PlayView({ suppressedByModal }: PlayViewProps): JSX.Element {
           iceCar.container.visible = true;
           let t0 = -1;
           const carStep = (rafTime: number): void => {
+            if (!mountedRef.current) return;
             if (t0 < 0) t0 = rafTime;
             const pos = iceCarPosAt(rafTime - t0);
             iceCar.update(scaleRef.current, pos.x, pos.y, pos.rot);
@@ -639,6 +676,7 @@ function PlayView({ suppressedByModal }: PlayViewProps): JSX.Element {
     };
     drawAt(goalieStartX, goalieStartY, playerStartX, playerStartY);
     const step = (): void => {
+      if (!mountedRef.current) return;
       const t = Math.min(1, (performance.now() - t0) / ENTRY_DURATION_MS);
       const eased = 1 - Math.pow(1 - t, 3);
       drawAt(
@@ -774,7 +812,16 @@ function PlayView({ suppressedByModal }: PlayViewProps): JSX.Element {
       flightDurationMs,
     );
 
-    window.setTimeout(() => {
+    const scheduleShotTimeout = (fn: () => void, delay: number): void => {
+      const id = window.setTimeout(() => {
+        shotTimeoutsRef.current = shotTimeoutsRef.current.filter((timeoutId) => timeoutId !== id);
+        if (!mountedRef.current) return;
+        fn();
+      }, delay);
+      shotTimeoutsRef.current.push(id);
+    };
+
+    scheduleShotTimeout(() => {
       loop.beginScenePause();
       puck.holdAt({ x: sx, y: result.type === 'save' ? GOAL_OPENING.y + 20 : GOAL_OPENING.y });
       if (result.type === 'save') goalie.setSavePose(true);
@@ -784,7 +831,7 @@ function PlayView({ suppressedByModal }: PlayViewProps): JSX.Element {
       setIsShowingResult(true);
     }, flightDurationMs);
 
-    window.setTimeout(() => {
+    scheduleShotTimeout(() => {
       loop.endScenePause();
       loop.endShooterPause();
       puck.release();
@@ -803,6 +850,7 @@ function PlayView({ suppressedByModal }: PlayViewProps): JSX.Element {
       input,
       claimedResult: result.type,
     }).then((res) => {
+      if (!mountedRef.current) return;
       if (res === null) return;
       pendingMidShotStateRef.current = res.state;
     });
@@ -819,10 +867,10 @@ function PlayView({ suppressedByModal }: PlayViewProps): JSX.Element {
       className="screen"
       style={{
         position: 'fixed',
-        top: 'env(safe-area-inset-top, 0px)',
+        top: 'calc(var(--app-safe-top) + 6px)',
         left: 0,
         right: 0,
-        bottom: `calc(76px + env(safe-area-inset-bottom, 0px) / 2)`,
+        bottom: 'calc(76px + var(--app-safe-bottom))',
         minHeight: 0,
       }}
     >

@@ -1,4 +1,4 @@
-import { BlurFilter, Container, Graphics, Sprite } from 'pixi.js';
+import { Assets, BlurFilter, Container, Graphics, Sprite, Texture } from 'pixi.js';
 import { GOAL } from '@hockey/game-core';
 import type { Scale } from '../coords.js';
 
@@ -7,13 +7,14 @@ const GATE_W = 99;
 const GATE_H = 53; // 99 / 1.86
 
 const LIGHT_DURATION_MS = 900;
-const LIGHT_PEAK_ALPHA  = 0.40;
+const LIGHT_PEAK_ALPHA = 0.4;
 
 export class Goal {
   readonly container = new Container();
   private readonly light: Graphics;
   private readonly sprite: Sprite;
   private lightStartedAt: number | null = null;
+  private destroyed = false;
 
   constructor() {
     this.light = new Graphics()
@@ -22,8 +23,14 @@ export class Goal {
     this.light.filters = [new BlurFilter({ strength: 14 })];
     this.light.alpha = 0;
 
-    this.sprite = Sprite.from('/sprites/gate.webp');
+    this.sprite = new Sprite(Texture.EMPTY);
     this.sprite.anchor.set(0.5, 0.5);
+    Assets.load<Texture>('/sprites/gate.webp')
+      .then((tex) => {
+        if (this.destroyed) return;
+        this.sprite.texture = tex;
+      })
+      .catch(() => undefined);
 
     // light renders behind the gate sprite
     this.container.addChild(this.light);
@@ -31,12 +38,14 @@ export class Goal {
   }
 
   triggerGoalLight(): void {
+    if (this.destroyed) return;
     this.lightStartedAt = performance.now();
   }
 
   update(scale: Scale, offsetRinkX = 0): void {
+    if (this.destroyed) return;
     const s = scale.factor;
-    this.sprite.width  = GATE_W * s;
+    this.sprite.width = GATE_W * s;
     this.sprite.height = GATE_H * s;
     const rawX = GOAL.x + GOAL.width / 2 + offsetRinkX;
     const cx = rawX * s;
@@ -54,17 +63,19 @@ export class Goal {
         this.lightStartedAt = null;
       } else {
         // fast fade-in (0→0.2), hold (0.2→0.6), fade-out (0.6→1.0)
-        const a = t < 0.2
-          ? t / 0.2
-          : t < 0.6
-            ? 1
-            : 1 - (t - 0.6) / 0.4;
+        const a = t < 0.2 ? t / 0.2 : t < 0.6 ? 1 : 1 - (t - 0.6) / 0.4;
         this.light.alpha = a * LIGHT_PEAK_ALPHA;
       }
     }
   }
 
   destroy(): void {
-    this.container.destroy({ children: true });
+    if (this.destroyed) return;
+    this.destroyed = true;
+    try {
+      this.container.destroy({ children: true });
+    } catch {
+      // Pixi may already have destroyed this through the parent stage.
+    }
   }
 }

@@ -44,7 +44,8 @@ export function LoginScreen(): JSX.Element {
         height: '100dvh',
         minHeight: 0,
         overflow: 'hidden',
-        paddingBottom: 'max(12px, env(safe-area-inset-bottom, 0px))',
+        paddingTop: 'var(--app-safe-top)',
+        paddingBottom: 'max(12px, var(--app-safe-bottom))',
       }}
     >
       <div style={{ padding: 'clamp(24px, 5dvh, 40px) 20px 8px' }}>
