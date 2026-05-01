@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Ultimate Hockey — мобильная хоккейная PWA в духе OVI Universe + Prison: тайминг-механика «поймай окно между движущимся вратарём и движущимися воротами», лестница боссов-вратарей, минимальная экипировка (клюшки), соревновательный рейтинг. Вход через Telegram Login Widget и VK ID OAuth. Монетизация — Фаза 2.
+Ultimate Hockey — мобильная хоккейная PWA в духе OVI Universe + Prison: тайминг-механика «поймай окно между движущимся вратарём и движущимися воротами», три уровня игры (начальный, любители, профессионалы), расходуемый инвентарь, дуэли/турниры и соревновательные рейтинги. Вход через Telegram Login Widget и VK ID OAuth. Монетизация — через внутреннюю валюту + ЮKassa.
 
 Прод: https://hockey.inbotwetrust.ru, GHCR-образы `ghcr.io/inbotwetrust/hockey-server|web`. Деплой — только через GitHub Actions (`.github/workflows/deploy.yml`): CI билдит образы, пушит в GHCR, SSH-сессия на VPS делает `docker compose pull && up -d --force-recreate`. На VPS ничего не собирается.
 
-Дизайн-спек: `docs/superpowers/specs/2026-04-12-ultimate-hockey-pwa-mvp-design.md`. Имплементационные планы: `docs/superpowers/plans/`. Spec на текущий рабочий подпроект 0+1 (базовая модель `shot_session` + дневная игра): `~/.claude/plans/1-1-async-dawn.md`. Roadmap (см. plan-файл): админка → сюжет → инвентарь → рейтинг → рефералка → чат → турниры → офлайн-режим (resilience + read-only PWA-кеш для профиля/чата/daily-state, без офлайн-геймплея). HP-модель удалена.
+Дизайн-спек: `docs/superpowers/specs/2026-04-12-ultimate-hockey-pwa-mvp-design.md`. Имплементационные планы: `docs/superpowers/plans/`. Spec на текущий рабочий подпроект 0+1 (базовая модель `shot_session` + дневная игра): `~/.claude/plans/1-1-async-dawn.md`. Roadmap (см. plan-файл): уровни игры → тренировка → инвентарь/внутренняя валюта → любительские дуэли/турниры → рейтинги → про-раздел → офлайн-режим (resilience + read-only PWA-кеш для профиля/чата/daily-state, без офлайн-геймплея). Сюжет/прохождение вратарей, HP-модель и колесо удачи удалены из плана.
 
 ## Commands
 
@@ -79,15 +79,15 @@ pnpm workspaces, `packages/*`, TS project references (`composite: true`):
 
 При расхождении client/server результата — сервер 409, клиент откат визуала. Один мисматч — не чит, N+ от одного игрока → флаг в `event_log`. Логика goal/save/miss живёт **только** в `game-core`.
 
-### Модель поединка: дневная игра + сюжет (один `shot_session`, два режима)
+### Модель поединка: дневная игра + будущие режимы (один `shot_session`)
 
 **Дневная игра** — основной геймплей: 3 периода × 30 бросков, 20 мин на период, 15 мин перерыв. Жёсткий серверный таймер. В 00:00 локального времени юзера (`users.timezone`, set-once при первом логине) день обрывается, новый стартует чистым. Серверная логика — **lazy state-machine** в `src/duel/daily/reconcile.ts`: `idle → period_active → (quota|timeout) → break_active → idle → ... → closed`. На каждый запрос reconcile пересчитывает состояние из timestamp'ов, никаких cron'ов.
 
-**БД**: `users.timezone`, `users.lifetime_shots_total/goals_total` (денормализация для рейтинга, инкрементируется при INSERT в `period_log`); `day_pool` (один открытый на юзера через partial unique index); `period_log` (архив завершённых периодов с `closed_reason ∈ quota|timeout|day_end`); `shot_session` (один ряд на бросок, `mode ∈ daily|story` — общая абстракция для обоих режимов, схема story будет в подпроекте 3).
+**БД**: `users.timezone`, `users.lifetime_shots_total/goals_total` (денормализация для рейтинга, инкрементируется при INSERT в `period_log`); `day_pool` (один открытый на юзера через partial unique index); `period_log` (архив завершённых периодов с `closed_reason ∈ quota|timeout|day_end`); `shot_session` (один ряд на бросок; текущая схема ещё содержит legacy `mode='story'`, но сюжет/прохождение вратарей удалены из roadmap — новые режимы должны переиспользовать/мигрировать эту абстракцию под training/amateur/pro).
 
 **Анти-чит**: клиент симулирует и рендерит мгновенно (через `@hockey/game-core` + `daily_seed` от сервера + `deriveShotSeed(seed, period, shotIndex)`), параллельно шлёт `POST /duel/daily/shot` с `claimed_result`. Сервер симулирует тем же seed, при расхождении пишет `event_log {type: 'shot_mismatch'}` (без блокировки в MVP). `claimed_shot_index ≠ server count + 1` → 409. `users.timezone` иммутабельна.
 
-**Сюжет** — отдельная вкладка (5 вратарей × ~3 задания, 3 попытки/день, не пересекается с дневной квотой). Серверные роуты — отдельный подпроект.
+**Новые режимы** — начальный уровень получает тренировку 50 бросков раз в 24 часа с выбором модели периода 1/2/3. Любители открываются после 1000 голов в дневной игре начального уровня и добавляют асинхронные дуэли 1 на 1, индивидуальные турниры и расходуемый инвентарь. Профессионалы пока закрытый раздел-заглушка.
 
 ### Чат
 

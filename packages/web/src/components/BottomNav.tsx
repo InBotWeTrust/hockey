@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { BookOpen, MessageCircle, Target, Trophy, User } from 'lucide-react';
+import { Gamepad2, MessageCircle, Package, Trophy, User } from 'lucide-react';
 import { useAuthStore } from '../auth/authStore.js';
 import { fetchUnreadCounts } from '../chat/api.js';
 import { useChatStore } from '../chat/chatStore.js';
@@ -56,6 +56,7 @@ export function BottomNav(): JSX.Element | null {
   if (!user || location.pathname === '/login' || isInChatRoom) return null;
 
   const isGame = location.pathname === '/' || location.pathname.startsWith('/duel');
+  const isInventory = location.pathname.startsWith('/inventory');
   const isProfile = location.pathname.startsWith('/profile');
 
   return (
@@ -86,15 +87,25 @@ export function BottomNav(): JSX.Element | null {
           label="Игра"
           active={isGame}
           icon={
-            <Target size={ICON_SIZE} color={isGame ? '#ffffff' : 'var(--muted)'} strokeWidth={2} />
+            <Gamepad2
+              size={ICON_SIZE}
+              color={isGame ? '#ffffff' : 'var(--muted)'}
+              strokeWidth={2}
+            />
           }
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/?view=hub')}
         />
         <NavTab
-          label="Сюжет"
-          active={false}
-          icon={<BookOpen size={ICON_SIZE} color="var(--muted)" strokeWidth={2} />}
-          onClick={() => showToast('Сюжет — в разработке')}
+          label="Инвентарь"
+          active={isInventory}
+          icon={
+            <Package
+              size={ICON_SIZE}
+              color={isInventory ? '#ffffff' : 'var(--muted)'}
+              strokeWidth={2}
+            />
+          }
+          onClick={() => navigate('/inventory')}
         />
         <NavTab
           label="Рейтинг"

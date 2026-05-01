@@ -75,7 +75,7 @@ export function LoginScreen(): JSX.Element {
           <br />
           вратарём и воротами.
           <br />
-          Пройди лестницу из 10 боссов.
+          Играй день, тренируйся и открывай уровни.
         </div>
       </div>
 
@@ -95,7 +95,7 @@ export function LoginScreen(): JSX.Element {
           Рейтинг
         </span>
         <span className="pill" style={{ fontSize: 11, padding: '5px 12px' }}>
-          10 вратарей
+          3 уровня
         </span>
         <span className="pill" style={{ fontSize: 11, padding: '5px 12px' }}>
           PWA

@@ -4,7 +4,9 @@ export type EventType =
   | 'shot_mismatch'
   | 'day_pool_created'
   | 'day_pool_closed'
-  | 'period_closed';
+  | 'period_closed'
+  | 'training_session_created'
+  | 'training_session_closed';
 
 export async function appendEvent(
   conn: Pool | PoolClient,

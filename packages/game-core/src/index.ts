@@ -15,5 +15,10 @@ export { resolveShot, GOAL_HITBOX_MARGIN, GOALIE_HITBOX_EXPAND } from './shot/re
 export { GOALIES, getGoalie } from './balance/goalies.js';
 export { STICKS, getStick, TRAINING_STICK_ID, type Stick, type StickRarity } from './balance/sticks.js';
 export { calcShotReward } from './balance/rewards.js';
+export {
+  DAILY_PERIOD_SPEED_PRESETS,
+  getDailyPeriodSpeedPreset,
+  type DailyPeriodSpeedPreset,
+} from './balance/periods.js';
 export type { SessionPhaseOffsets } from './session.js';
 export { getSessionPhaseOffsets, deriveShotSeed } from './session.js';

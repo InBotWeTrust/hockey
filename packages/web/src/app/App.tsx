@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import './global.css';
 import './design-system.css';
 import { DailyScreen } from '../screens/DailyScreen.js';
+import { InventoryScreen } from '../screens/InventoryScreen.js';
 import { LoginScreen } from '../screens/LoginScreen.js';
 import { ProfileScreen } from '../screens/ProfileScreen.js';
 import { ProfileSettingsScreen } from '../screens/ProfileSettingsScreen.js';
@@ -63,6 +64,14 @@ export function App(): JSX.Element {
               element={
                 <PrivateRoute>
                   <DailyScreen />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/inventory"
+              element={
+                <PrivateRoute>
+                  <InventoryScreen />
                 </PrivateRoute>
               }
             />

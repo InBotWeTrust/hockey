@@ -210,6 +210,11 @@
   min-height: 100dvh;
   color: var(--ink);
   font-family: var(--font-sans);
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.screen::-webkit-scrollbar {
+  display: none;
 }
 
 /* === Chat bubble flash (PR 7 — search goto) === */

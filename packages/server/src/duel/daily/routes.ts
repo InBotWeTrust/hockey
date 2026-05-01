@@ -4,6 +4,7 @@ import { z } from 'zod';
 import {
   GAME_CORE_VERSION,
   STICK_NEUTRAL,
+  getDailyPeriodSpeedPreset,
   getGoalie,
   getSessionPhaseOffsets,
   resolveShot,
@@ -386,23 +387,16 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
         );
         const goalieCfg = getGoalie(DAILY_GOALIE_ID);
         const phaseOffsets = getSessionPhaseOffsets(pool.daily_seed);
+        const periodSpeeds = getDailyPeriodSpeedPreset(pool.current_period);
         const shotInput = {
           tapTime: body.input.tapTime,
           ...(body.input.shooterTapTime !== undefined
             ? { shooterTapTime: body.input.shooterTapTime }
             : {}),
-          ...(body.input.puckSpeedPerMs !== undefined
-            ? { puckSpeedPerMs: body.input.puckSpeedPerMs }
-            : {}),
-          ...(body.input.shooterFrequency !== undefined
-            ? { shooterFrequency: body.input.shooterFrequency }
-            : {}),
-          ...(body.input.goalieFrequency !== undefined
-            ? { goalieFrequency: body.input.goalieFrequency }
-            : {}),
-          ...(body.input.goalFrequency !== undefined
-            ? { goalFrequency: body.input.goalFrequency }
-            : {}),
+          puckSpeedPerMs: periodSpeeds.puckSpeedPerMs,
+          shooterFrequency: periodSpeeds.shooterFrequency,
+          goalieFrequency: periodSpeeds.goalieFrequency,
+          goalFrequency: periodSpeeds.goalFrequency,
         };
         const result = resolveShot(
           shotInput,
@@ -425,7 +419,7 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
             pool.current_period,
             body.shot_index,
             shotSeed,
-            JSON.stringify(body.input),
+            JSON.stringify(shotInput),
             serverResult,
             pool.game_core_version,
           ],

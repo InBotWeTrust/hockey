@@ -10,6 +10,7 @@ import { realtimePlugin } from './plugins/realtime.js';
 import { authRoutes } from './routes/auth.js';
 import { meRoutes } from './routes/me.js';
 import { dailyRoutes } from './duel/daily/routes.js';
+import { trainingRoutes } from './duel/training/routes.js';
 import { chatRoutes } from './chat/routes.js';
 import { chatWs } from './chat/ws.js';
 
@@ -54,6 +55,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   });
   await app.register(meRoutes);
   await app.register(dailyRoutes, { dailySeedSecret: config.DAILY_SEED_SECRET });
+  await app.register(trainingRoutes, { trainingSeedSecret: config.DAILY_SEED_SECRET });
   await app.register(chatRoutes);
   await app.register(chatWs, { accessSecret: config.JWT_SECRET });
 

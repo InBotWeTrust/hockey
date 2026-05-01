@@ -2,6 +2,7 @@ export interface ScoreBoardProps {
   period: number;
   periodsTotal?: number;
   timer: string;
+  timerLabel?: string | undefined;
   goals: number;
   shots: number;
   shotsTotal?: number;
@@ -15,6 +16,7 @@ export function ScoreBoard({
   period,
   periodsTotal = 3,
   timer,
+  timerLabel = 'ВРЕМЯ',
   goals,
   shots,
   shotsTotal,
@@ -78,7 +80,7 @@ export function ScoreBoard({
         <LedNumber value={shotsStr} color="#f1f5f9" />
       </Column>
 
-      <Column label="ВРЕМЯ">
+      <Column label={timerLabel}>
         <LedNumber value={timer} color="#f43f5e" />
       </Column>
     </div>

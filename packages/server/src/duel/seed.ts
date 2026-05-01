@@ -10,6 +10,17 @@ export function deriveDailySeed(
     .digest('hex');
 }
 
+export function deriveTrainingSeed(
+  userId: string,
+  dayDate: string,
+  selectedPeriod: number,
+  secret: string,
+): string {
+  return createHash('sha256')
+    .update(`${userId}:${dayDate}:training:${selectedPeriod}:${secret}`)
+    .digest('hex');
+}
+
 // Per-shot seed derivation lives in @hockey/game-core so the client uses
 // the exact same function (cross-client determinism for the gybrid
 // simulation). Re-export here so server callers can import from one place.

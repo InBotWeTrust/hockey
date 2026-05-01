@@ -33,6 +33,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     const names = rows.map((r) => r.table_name);
     expect(names).toContain('users');
     expect(names).toContain('day_pool');
+    expect(names).toContain('training_session');
     expect(names).toContain('shot_session');
     expect(names).toContain('event_log');
     expect(names).toContain('_migrations');
@@ -53,6 +54,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '008_backfill_legacy_timezone.sql',
       '009_chat_description.sql',
       '010_vk_auth_and_display_source.sql',
+      '011_training_session.sql',
     ]);
   });
 });

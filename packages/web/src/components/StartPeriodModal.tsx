@@ -1,9 +1,12 @@
+import type { ReactNode } from 'react';
+
 export interface StartPeriodModalProps {
   nextPeriod: number;
   totalPeriods: number;
   shotsPerPeriod: number;
   isFirstPeriod: boolean;
   pending: boolean;
+  topSlot?: ReactNode;
   onStart: () => void;
 }
 
@@ -21,6 +24,7 @@ export function StartPeriodModal({
   shotsPerPeriod,
   isFirstPeriod,
   pending,
+  topSlot,
   onStart,
 }: StartPeriodModalProps): JSX.Element {
   const heading = isFirstPeriod ? 'Сегодняшняя игра' : 'Перерыв окончен';
@@ -69,6 +73,7 @@ export function StartPeriodModal({
           animation: 'period-summary-pop 280ms cubic-bezier(0.22, 0.68, 0.18, 1.2)',
         }}
       >
+        {topSlot && <div style={{ marginBottom: 18 }}>{topSlot}</div>}
         <div
           style={{
             fontSize: 26,

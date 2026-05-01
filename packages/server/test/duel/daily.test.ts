@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
+import { getDailyPeriodSpeedPreset } from '@hockey/game-core';
 import { buildApp } from '../../src/app.js';
 import { applyMigrations } from '../../src/db/migrations.js';
 import { findOrCreateTelegramUser } from '../../src/auth/users.js';
@@ -376,6 +377,13 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     expect(['goal', 'save', 'miss']).toContain(rows[0].server_result);
     expect(rows[0].day_pool_id).not.toBeNull();
     expect(rows[0].story_task_id).toBeNull();
-    expect(rows[0].input_payload).toEqual({ tapTime: 1050 });
+    const periodSpeeds = getDailyPeriodSpeedPreset(1);
+    expect(rows[0].input_payload).toEqual({
+      tapTime: 1050,
+      puckSpeedPerMs: periodSpeeds.puckSpeedPerMs,
+      shooterFrequency: periodSpeeds.shooterFrequency,
+      goalieFrequency: periodSpeeds.goalieFrequency,
+      goalFrequency: periodSpeeds.goalFrequency,
+    });
   });
 });
