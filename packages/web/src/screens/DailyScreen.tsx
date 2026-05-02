@@ -73,6 +73,39 @@ function computeShooterX(t: number, freq: number): number {
   return SHOOTER_CENTER_X + SHOOTER_AMPLITUDE * tri;
 }
 
+function startIceCarLoop(
+  iceCarRef: { current: IceCar | null },
+  iceCarRafRef: { current: number | null },
+  mountedRef: { current: boolean },
+  scaleRef: { current: Scale },
+): void {
+  if (iceCarRafRef.current !== null) return;
+  const iceCar = iceCarRef.current;
+  if (!iceCar) return;
+
+  iceCar.container.visible = true;
+  let t0 = -1;
+  const carStep = (rafTime: number): void => {
+    if (!mountedRef.current) return;
+    if (t0 < 0) t0 = rafTime;
+    const pos = iceCarPosAt(rafTime - t0);
+    iceCar.update(scaleRef.current, pos.x, pos.y, pos.rot);
+    iceCarRafRef.current = requestAnimationFrame(carStep);
+  };
+  iceCarRafRef.current = requestAnimationFrame(carStep);
+}
+
+function stopIceCarLoop(
+  iceCarRef: { current: IceCar | null },
+  iceCarRafRef: { current: number | null },
+): void {
+  if (iceCarRafRef.current !== null) {
+    cancelAnimationFrame(iceCarRafRef.current);
+    iceCarRafRef.current = null;
+  }
+  if (iceCarRef.current) iceCarRef.current.container.visible = false;
+}
+
 function formatMs(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
   const m = String(Math.floor(total / 60)).padStart(2, '0');
@@ -1371,6 +1404,7 @@ function TotalCell({ label, value }: { label: string; value: string }): JSX.Elem
 
 interface PlayViewProps<TState> {
   suppressedByModal: boolean;
+  showIceCar: boolean;
   onBack: () => void;
   active: boolean;
   seed: string | null;
@@ -1450,6 +1484,7 @@ function DailyPlayView({ onBack }: { onBack: () => void }): JSX.Element {
     <>
       <PlayView<DailyStateResponse>
         suppressedByModal={shouldSuppressRink}
+        showIceCar={isBreak}
         onBack={onBack}
         active={data.state === 'period_active'}
         seed={data.daily_seed}
@@ -1599,6 +1634,7 @@ function TrainingPlayView({ onBack }: { onBack: () => void }): JSX.Element | nul
   return (
     <PlayView<TrainingStateResponse>
       suppressedByModal={false}
+      showIceCar={false}
       onBack={onBack}
       active={data.state === 'active'}
       seed={data.training_seed}
@@ -1619,6 +1655,7 @@ function TrainingPlayView({ onBack }: { onBack: () => void }): JSX.Element | nul
 
 function PlayView<TState>({
   suppressedByModal,
+  showIceCar,
   onBack,
   active,
   seed,
@@ -1685,6 +1722,8 @@ function PlayView<TState>({
   // useCallback) can read the latest value when Pixi finishes loading.
   const suppressedRef = useRef(suppressedByModal);
   suppressedRef.current = suppressedByModal;
+  const showIceCarRef = useRef(showIceCar);
+  showIceCarRef.current = showIceCar;
 
   const speeds = useMemo(() => speedOverridesForPeriod(periodNumber), [periodNumber]);
   const speedsRef = useRef<SpeedOverrides>(speeds);
@@ -1797,18 +1836,6 @@ function PlayView<TState>({
     tickerRef.current = app.ticker;
     loopRef.current = loop;
 
-    const startIceCarLoop = (): void => {
-      let t0 = -1;
-      const carStep = (rafTime: number): void => {
-        if (!mountedRef.current) return;
-        if (t0 < 0) t0 = rafTime;
-        const pos = iceCarPosAt(rafTime - t0);
-        iceCarRef.current?.update(scaleRef.current, pos.x, pos.y, pos.rot);
-        iceCarRafRef.current = requestAnimationFrame(carStep);
-      };
-      iceCarRafRef.current = requestAnimationFrame(carStep);
-    };
-
     // Decide initial visibility/loop state synchronously, BEFORE the first
     // ticker frame, so a modal-on-top mount never flashes moving sprites.
     if (suppressedRef.current) {
@@ -1816,8 +1843,11 @@ function PlayView<TState>({
       goalie.container.visible = false;
       puck.container.visible = false;
       goal.update(initialScale, 0);
-      iceCar.container.visible = true;
-      startIceCarLoop();
+      if (showIceCarRef.current) {
+        startIceCarLoop(iceCarRef, iceCarRafRef, mountedRef, scaleRef);
+      } else {
+        iceCar.container.visible = false;
+      }
     } else {
       iceCar.container.visible = false;
       loop.attach(app.ticker);
@@ -1850,29 +1880,15 @@ function PlayView<TState>({
       player.container.visible = false;
       goalie.container.visible = false;
       puck.container.visible = false;
-      if (iceCarRafRef.current === null) {
-        const iceCar = iceCarRef.current;
-        if (iceCar) {
-          iceCar.container.visible = true;
-          let t0 = -1;
-          const carStep = (rafTime: number): void => {
-            if (!mountedRef.current) return;
-            if (t0 < 0) t0 = rafTime;
-            const pos = iceCarPosAt(rafTime - t0);
-            iceCar.update(scaleRef.current, pos.x, pos.y, pos.rot);
-            iceCarRafRef.current = requestAnimationFrame(carStep);
-          };
-          iceCarRafRef.current = requestAnimationFrame(carStep);
-        }
+      if (showIceCar) {
+        startIceCarLoop(iceCarRef, iceCarRafRef, mountedRef, scaleRef);
+      } else {
+        stopIceCarLoop(iceCarRef, iceCarRafRef);
       }
       return;
     }
 
-    if (iceCarRafRef.current !== null) {
-      cancelAnimationFrame(iceCarRafRef.current);
-      iceCarRafRef.current = null;
-    }
-    if (iceCarRef.current) iceCarRef.current.container.visible = false;
+    stopIceCarLoop(iceCarRef, iceCarRafRef);
 
     // Modal closed → players skate out from center-ice area diagonally to
     // their spots. Goalie enters from above the red line, player from below,
@@ -1932,7 +1948,7 @@ function PlayView<TState>({
         iceCarRafRef.current = null;
       }
     };
-  }, [suppressedByModal, pixiReady]);
+  }, [suppressedByModal, showIceCar, pixiReady]);
 
   const handleResize = useCallback((s: Scale): void => {
     refreshRef.current?.(s);
