@@ -902,34 +902,6 @@ function ModeShell({
         gap: 14,
       }}
     >
-      <button
-        type="button"
-        onClick={onBack}
-        aria-label="Назад"
-        title="Назад"
-        style={{
-          alignSelf: 'flex-start',
-          minHeight: 42,
-          padding: '0 14px 0 12px',
-          borderRadius: 16,
-          border: '1px solid rgba(255, 255, 255, 0.78)',
-          background: 'rgba(255, 255, 255, 0.56)',
-          color: 'var(--ink)',
-          boxShadow: '0 8px 20px rgba(15, 23, 42, 0.12), inset 0 1px 0 rgba(255,255,255,0.9)',
-          backdropFilter: 'var(--blur-md)',
-          WebkitBackdropFilter: 'var(--blur-md)',
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 8,
-          fontSize: 14,
-          fontWeight: 850,
-          letterSpacing: 0,
-          cursor: 'pointer',
-        }}
-      >
-        <ArrowLeft size={18} strokeWidth={2.8} />
-        <span>Назад</span>
-      </button>
       <section
         className="glass"
         style={{
@@ -940,7 +912,30 @@ function ModeShell({
           gap: 14,
         }}
       >
-        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>{title}</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button
+            type="button"
+            className="icon-btn glass"
+            onClick={onBack}
+            aria-label="Назад"
+            title="Назад"
+            style={{
+              width: 40,
+              height: 40,
+              minWidth: 40,
+              minHeight: 40,
+              borderRadius: 999,
+              padding: 0,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <ArrowLeft size={16} />
+          </button>
+          <h1 style={{ margin: 0, minWidth: 0, fontSize: 24, fontWeight: 800 }}>{title}</h1>
+        </div>
         {children}
       </section>
     </main>
