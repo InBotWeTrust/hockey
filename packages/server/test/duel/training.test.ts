@@ -23,6 +23,7 @@ const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
 const JWT_SECRET = 'access-secret-at-least-16-chars';
 const REFRESH_SECRET = 'refresh-secret-at-least-16-chars';
 const DAILY_SEED_SECRET = 'daily-seed-secret-at-least-16!!';
+const TRAINING_SHOTS_LIMIT = 500;
 
 describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
   const { databaseUrl, redisUrl } = hasIntegrationEnv
@@ -118,7 +119,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
   it('initial state is idle', async () => {
     const state = await getState();
     expect(state.state).toBe('idle');
-    expect(state.shots_limit).toBe(50);
+    expect(state.shots_limit).toBe(TRAINING_SHOTS_LIMIT);
     expect(state.selected_period).toBeNull();
   });
 
@@ -167,17 +168,17 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
     expect(userRows.rows[0].lifetime_goals_total).toBe(0);
   });
 
-  it('closes after the 50th shot', async () => {
+  it('closes after the 500th shot', async () => {
     await startTraining(1);
-    for (let i = 1; i <= 50; i += 1) {
+    for (let i = 1; i <= TRAINING_SHOTS_LIMIT; i += 1) {
       const r = await submitShot(i);
       expect(r.statusCode).toBe(200);
     }
     const state = await getState();
     expect(state.state).toBe('closed');
-    expect(state.shots_taken).toBe(50);
+    expect(state.shots_taken).toBe(TRAINING_SHOTS_LIMIT);
 
-    const extra = await submitShot(51);
+    const extra = await submitShot(TRAINING_SHOTS_LIMIT + 1);
     expect(extra.statusCode).toBe(409);
   });
 });

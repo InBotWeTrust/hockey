@@ -5,6 +5,32 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { UserProfileSheet } from '../components/UserProfileSheet.js';
 import * as api from '../api.js';
 
+const publicProfile: api.UserPublicProfileDTO = {
+  id: 'u1',
+  displayName: 'Иван Петров',
+  avatarUrl: null,
+  competitionLevel: 'amateur',
+  stats: {
+    shots: 128,
+    goals: 64,
+    accuracy: 50,
+    playStreakDays: 7,
+  },
+  achievements: [
+    {
+      id: 'first-goal',
+      photoUrl: '/sprites/gate.webp',
+      title: 'Первая шайба',
+      description: 'Первый гол всегда самый шумный.',
+      requirement: 'Забить 1 гол в дневной игре.',
+      isUnlocked: true,
+      unlockedAt: '2026-05-02T08:00:00.000Z',
+    },
+  ],
+  createdAt: '2026-05-01T08:00:00.000Z',
+  lastSeenAt: null,
+};
+
 function renderSheet(props: Parameters<typeof UserProfileSheet>[0]): { qc: QueryClient } {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -24,6 +50,7 @@ function renderSheet(props: Parameters<typeof UserProfileSheet>[0]): { qc: Query
 describe('UserProfileSheet', () => {
   beforeEach(() => {
     vi.spyOn(api, 'findOrCreateDM').mockResolvedValue({ chatId: 'dm1', created: false });
+    vi.spyOn(api, 'fetchUserProfile').mockResolvedValue(publicProfile);
   });
   afterEach(() => {
     vi.restoreAllMocks();
@@ -40,15 +67,20 @@ describe('UserProfileSheet', () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it('renders displayName and stat placeholders when sender is provided', () => {
+  it('renders displayName, public stats and achievements when sender is provided', async () => {
     renderSheet({
       sender: { userId: 'u1', displayName: 'Иван Петров', avatarUrl: null },
       onClose: () => {},
     });
     expect(screen.getByText('Иван Петров')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /написать в личку/i })).toBeInTheDocument();
-    const dashes = screen.getAllByText('—');
-    expect(dashes.length).toBeGreaterThanOrEqual(4);
+    expect(await screen.findByText('Любитель')).toBeInTheDocument();
+    expect(screen.getByText('Броски')).toBeInTheDocument();
+    expect(screen.getByText('128')).toBeInTheDocument();
+    expect(screen.getByText('Голы')).toBeInTheDocument();
+    expect(screen.getByText('64')).toBeInTheDocument();
+    expect(screen.getByText('Достижения (1/1)')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Первая шайба.*получено/i })).toBeInTheDocument();
   });
 
   it('clicking "Написать в личку" calls findOrCreateDM and closes the sheet', async () => {
@@ -74,7 +106,9 @@ describe('UserProfileSheet', () => {
         </MemoryRouter>
       </QueryClientProvider>,
     );
-    const backdrop = document.body.querySelector<HTMLElement>('[data-testid="profile-sheet-backdrop"]');
+    const backdrop = document.body.querySelector<HTMLElement>(
+      '[data-testid="profile-sheet-backdrop"]',
+    );
     expect(backdrop).not.toBeNull();
     fireEvent.click(backdrop!);
     expect(onClose).toHaveBeenCalled();

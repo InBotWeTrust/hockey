@@ -170,6 +170,17 @@
   color: #ffffff;
 }
 
+.achievement-tile {
+  outline: none;
+}
+.achievement-tile:focus-visible {
+  outline: 2px solid rgba(15, 23, 42, 0.38);
+  outline-offset: 4px;
+}
+.achievement-tile:active {
+  transform: scale(0.97);
+}
+
 /* === Section label === */
 .section-label {
   padding: 2px 22px;

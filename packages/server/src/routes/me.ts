@@ -2,12 +2,17 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { recomputeEffectiveProfile, type DisplaySource } from '../auth/profile.js';
 import { AppError } from '../plugins/errors.js';
+import { buildProfileProgress } from '../profile/summary.js';
 
 interface MeRow {
   id: string;
   display_name: string;
   avatar_url: string | null;
   grip: string;
+  level: number;
+  timezone: string;
+  lifetime_shots_total: number;
+  lifetime_goals_total: number;
   display_source: DisplaySource;
   tg_id: string | null;
   tg_first_name: string | null;
@@ -23,7 +28,8 @@ interface MeRow {
 
 async function getMe(app: Parameters<FastifyPluginAsync>[0], userId: string) {
   const { rows } = await app.pg.query<MeRow>(
-    `select u.id, u.display_name, u.avatar_url, u.grip, u.display_source,
+    `select u.id, u.display_name, u.avatar_url, u.grip, u.level, u.timezone,
+            u.lifetime_shots_total, u.lifetime_goals_total, u.display_source,
             tg.provider_uid as tg_id,
             u.tg_first_name, u.tg_last_name, u.tg_avatar_url, u.tg_username,
             u.vk_first_name, u.vk_last_name, u.vk_avatar_url, u.vk_username,
@@ -43,11 +49,16 @@ async function getMe(app: Parameters<FastifyPluginAsync>[0], userId: string) {
     throw new AppError('not_found', 'user not found', 404);
   }
   const row = rows[0]!;
+  const profileProgress = await buildProfileProgress(app.pg, row);
+
   return {
     id: row.id,
     displayName: row.display_name,
     ...(row.avatar_url !== null ? { avatarUrl: row.avatar_url } : {}),
     grip: row.grip as 'right' | 'left',
+    competitionLevel: profileProgress.competitionLevel,
+    stats: profileProgress.stats,
+    achievements: profileProgress.achievements,
     displaySource: row.display_source,
     linkedProviders: (row.linked_providers ?? []) as Array<'telegram' | 'vk'>,
     ...(row.tg_id !== null ? { tgId: row.tg_id } : {}),

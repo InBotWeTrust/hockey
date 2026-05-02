@@ -1,8 +1,30 @@
+export type CompetitionLevel = 'beginner' | 'amateur' | 'professional';
+
+export interface ProfileStats {
+  shots: number;
+  goals: number;
+  accuracy: number;
+  playStreakDays: number;
+}
+
+export interface ProfileAchievement {
+  id: string;
+  photoUrl: string;
+  title: string;
+  description: string;
+  requirement: string;
+  isUnlocked: boolean;
+  unlockedAt?: string;
+}
+
 export interface ProfileData {
   id: string;
   displayName: string;
   avatarUrl?: string | null;
   grip: 'right' | 'left';
+  competitionLevel: CompetitionLevel;
+  stats: ProfileStats;
+  achievements: ProfileAchievement[];
   displaySource?: 'telegram' | 'vk';
   linkedProviders?: Array<'telegram' | 'vk'>;
   tgId?: string;

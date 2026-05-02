@@ -26,6 +26,32 @@ const telegramProfile = {
   displayName: 'Alice T',
   avatarUrl: 'tg.png',
   grip: 'right',
+  competitionLevel: 'beginner',
+  stats: {
+    shots: 128,
+    goals: 64,
+    accuracy: 50,
+    playStreakDays: 7,
+  },
+  achievements: [
+    {
+      id: 'first-goal',
+      photoUrl: '/achievements/first-goal.webp',
+      title: 'Первая шайба',
+      description: 'Первый гол всегда самый шумный.',
+      requirement: 'Забить 1 гол.',
+      isUnlocked: true,
+      unlockedAt: '2026-05-02T08:00:00.000Z',
+    },
+    {
+      id: 'amateur-ticket',
+      photoUrl: '/achievements/amateur-ticket.webp',
+      title: 'Билет в любители',
+      description: 'Ты готов к любительским дуэлям и турнирам.',
+      requirement: 'Открыть уровень «Любитель».',
+      isUnlocked: false,
+    },
+  ],
   displaySource: 'telegram',
   linkedProviders: ['telegram', 'vk'],
   tgFirstName: 'Alice',
@@ -49,7 +75,7 @@ describe('ProfileScreen', () => {
     vi.restoreAllMocks();
   });
 
-  it('shows stats before the settings entry and navigates into settings', async () => {
+  it('shows profile stats, achievements and a header settings button', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(JSON.stringify(telegramProfile), {
         status: 200,
@@ -60,8 +86,35 @@ describe('ProfileScreen', () => {
     renderProfile();
 
     const statsLabel = await screen.findByText('Статистика');
-    const settingsLabel = screen.getAllByText('Настройки')[0]!;
-    expect(statsLabel.compareDocumentPosition(settingsLabel)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    const achievementsLabel = screen.getByText('Достижения (1/2)');
+    expect(screen.getByText('Новичок')).toBeInTheDocument();
+    expect(screen.queryByText('Ранг')).not.toBeInTheDocument();
+    expect(screen.getByText('Броски')).toBeInTheDocument();
+    expect(screen.getByText('128')).toBeInTheDocument();
+    expect(screen.getByText('Голы')).toBeInTheDocument();
+    expect(screen.getByText('64')).toBeInTheDocument();
+    expect(screen.getByText('Точность')).toBeInTheDocument();
+    expect(screen.getByText('50%')).toBeInTheDocument();
+    expect(screen.getByText('Дней подряд')).toBeInTheDocument();
+    expect(screen.getByText('7')).toBeInTheDocument();
+    expect(screen.queryByText('Вратарей пройдено')).not.toBeInTheDocument();
+    expect(screen.queryByText('Аккаунт и хват игрока')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Первая шайба.*получено/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Билет в любители.*не получено/i }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Первый гол всегда самый шумный.')).not.toBeInTheDocument();
+    expect(statsLabel.compareDocumentPosition(achievementsLabel)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Первая шайба.*получено/i }));
+    expect(screen.getByRole('dialog', { name: 'Первая шайба' })).toBeInTheDocument();
+    expect(screen.getByText('Первый гол всегда самый шумный.')).toBeInTheDocument();
+    expect(screen.getByText(/Забить 1 гол/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Понятно' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+    expect(screen.queryByRole('dialog', { name: 'Первая шайба' })).not.toBeInTheDocument();
 
     const settingsButton = screen.getByRole('button', { name: /настройки/i });
     fireEvent.click(settingsButton);

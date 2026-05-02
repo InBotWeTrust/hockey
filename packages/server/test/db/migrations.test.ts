@@ -34,6 +34,8 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     expect(names).toContain('users');
     expect(names).toContain('day_pool');
     expect(names).toContain('training_session');
+    expect(names).toContain('achievements');
+    expect(names).toContain('user_achievements');
     expect(names).toContain('shot_session');
     expect(names).toContain('event_log');
     expect(names).toContain('_migrations');
@@ -55,6 +57,8 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '009_chat_description.sql',
       '010_vk_auth_and_display_source.sql',
       '011_training_session.sql',
+      '012_achievements.sql',
+      '013_refresh_profile_achievements.sql',
     ]);
   });
 });

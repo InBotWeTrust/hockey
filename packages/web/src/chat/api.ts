@@ -1,4 +1,9 @@
 import { apiFetch, ApiError } from '../api/apiFetch.js';
+import type {
+  CompetitionLevel,
+  ProfileAchievement,
+  ProfileStats,
+} from '../screens/profileTypes.js';
 
 // === DTO types (mirror @hockey/server/src/chat/types.ts) ===
 
@@ -150,10 +155,7 @@ export interface AddReactionResponse {
   removed: string | null;
 }
 
-export function addReaction(
-  messageId: string,
-  emoji: string,
-): Promise<AddReactionResponse> {
+export function addReaction(messageId: string, emoji: string): Promise<AddReactionResponse> {
   return apiFetch<AddReactionResponse>(`/chat/messages/${messageId}/reactions`, {
     method: 'POST',
     body: JSON.stringify({ emoji }),
@@ -213,6 +215,9 @@ export interface UserPublicProfileDTO {
   id: string;
   displayName: string;
   avatarUrl: string | null;
+  competitionLevel: CompetitionLevel;
+  stats: ProfileStats;
+  achievements: ProfileAchievement[];
   createdAt: string; // ISO
   lastSeenAt: string | null; // ISO; null = never recorded
 }

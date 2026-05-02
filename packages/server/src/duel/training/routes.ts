@@ -9,12 +9,13 @@ import {
   getSessionPhaseOffsets,
   resolveShot,
 } from '@hockey/game-core';
+import { grantAchievements } from '../../achievements/service.js';
 import { AppError } from '../../plugins/errors.js';
 import { appendEvent } from '../eventLog.js';
 import { deriveShotSeed, deriveTrainingSeed } from '../seed.js';
 
 const TRAINING_GOALIE_ID = 'rookie';
-const TRAINING_SHOTS_LIMIT = 50;
+const TRAINING_SHOTS_LIMIT = 500;
 
 const startBodySchema = z.object({
   period_number: z.number().int().min(1).max(3),
@@ -360,6 +361,7 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
           training_session_id: session.id,
           closed_reason: 'quota',
         });
+        await grantAchievements(client, req.user.id, ['first-training']);
       }
 
       const nextSession = await fetchTodayTrainingSession(client, req.user.id, localToday);

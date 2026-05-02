@@ -6,6 +6,7 @@ import type {
   ChatMessageDTO,
   MessageReactionRow,
   AddReactionResult,
+  UserPublicProfileDTO,
 } from './types.js';
 import { toChatDTO, type ChatListAggregate, toChatMessageDTO, groupReactions } from './dto.js';
 import {
@@ -14,6 +15,7 @@ import {
   MessageNotFoundError,
   PinLimitExceededError,
 } from './errors.js';
+import { buildProfileProgress } from '../profile/summary.js';
 
 export const PIN_LIMIT = 3;
 
@@ -243,10 +245,7 @@ export async function getChatInfo(
     type: 'direct' | 'group' | 'system';
     name: string | null;
     description: string | null;
-  }>(
-    `select id, type, name, description from chats where id = $1 and is_active = true`,
-    [chatId],
-  );
+  }>(`select id, type, name, description from chats where id = $1 and is_active = true`, [chatId]);
   if (chatRes.rowCount === 0) {
     throw new ChatNotFoundError(chatId);
   }
@@ -303,29 +302,36 @@ export async function getChatInfo(
 export async function getUserPublicProfile(
   pool: Pool,
   userId: string,
-): Promise<{
-  id: string;
-  displayName: string;
-  avatarUrl: string | null;
-  createdAt: string;
-  lastSeenAt: string | null;
-} | null> {
+): Promise<UserPublicProfileDTO | null> {
   const r = await pool.query<{
     id: string;
     display_name: string;
     avatar_url: string | null;
+    level: number;
+    timezone: string;
+    lifetime_shots_total: number;
+    lifetime_goals_total: number;
     created_at: Date;
     last_seen_at: Date | null;
   }>(
-    `select id, display_name, avatar_url, created_at, last_seen_at from users where id = $1`,
+    `select id, display_name, avatar_url, level, timezone,
+            lifetime_shots_total, lifetime_goals_total,
+            created_at, last_seen_at
+       from users
+      where id = $1`,
     [userId],
   );
   if (r.rowCount === 0) return null;
   const row = r.rows[0]!;
+  const profileProgress = await buildProfileProgress(pool, row);
+
   return {
     id: row.id,
     displayName: row.display_name,
     avatarUrl: row.avatar_url,
+    competitionLevel: profileProgress.competitionLevel,
+    stats: profileProgress.stats,
+    achievements: profileProgress.achievements,
     createdAt: row.created_at.toISOString(),
     lastSeenAt: row.last_seen_at !== null ? row.last_seen_at.toISOString() : null,
   };
@@ -482,11 +488,7 @@ export async function deleteMessage(pool: Pool, messageId: string): Promise<void
   );
 }
 
-export async function markChatAsRead(
-  pool: Pool,
-  chatId: string,
-  userId: string,
-): Promise<void> {
+export async function markChatAsRead(pool: Pool, chatId: string, userId: string): Promise<void> {
   await pool.query(
     `insert into chat_members (chat_id, user_id, last_read_at)
      values ($1, $2, now())
@@ -536,10 +538,11 @@ export async function findOrCreateDM(
       [userA],
     );
     const chatId = created.rows[0]!.id;
-    await client.query(
-      `insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`,
-      [chatId, userA, userB],
-    );
+    await client.query(`insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`, [
+      chatId,
+      userA,
+      userB,
+    ]);
     await client.query('commit');
     return { chatId, created: true };
   } catch (err) {
@@ -625,10 +628,7 @@ export async function searchMessages(
   }));
 }
 
-export async function getUnreadCounts(
-  pool: Pool,
-  userId: string,
-): Promise<Record<string, number>> {
+export async function getUnreadCounts(pool: Pool, userId: string): Promise<Record<string, number>> {
   const sql = `
     select m.chat_id, count(m.id)::bigint as cnt
     from messages m
@@ -646,10 +646,7 @@ export async function getUnreadCounts(
   return out;
 }
 
-export async function getMessageOr404(
-  pool: Pool,
-  messageId: string,
-): Promise<MessageRow> {
+export async function getMessageOr404(pool: Pool, messageId: string): Promise<MessageRow> {
   // Soft-deleted messages are tombstones — every other reader in this file
   // excludes them, and reactions/replies must not target them either.
   const r = await pool.query<MessageRow>(

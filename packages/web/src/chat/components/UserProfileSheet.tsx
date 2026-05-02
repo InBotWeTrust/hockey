@@ -1,12 +1,24 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
-import { findOrCreateDM, type UserPickerItem } from '../api.js';
-import { chatKeys } from '../../lib/queryKeys.js';
-import { StatCard } from '../../components/StatCard.js';
+import {
+  fetchUserProfile,
+  findOrCreateDM,
+  type UserPickerItem,
+  type UserPublicProfileDTO,
+} from '../api.js';
+import { chatKeys, userKeys } from '../../lib/queryKeys.js';
 import { UserAvatar } from './UserAvatar.js';
+import type { ProfileAchievement } from '../../screens/profileTypes.js';
+import {
+  AchievementDetailsSheet,
+  EMPTY_PROFILE_STATS,
+  getLevelLabel,
+  ProfileAchievementsSection,
+  ProfileStatsGrid,
+} from '../../screens/profileSections.js';
 
 interface UserProfileSheetProps {
   sender: UserPickerItem | null;
@@ -16,10 +28,13 @@ interface UserProfileSheetProps {
 export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JSX.Element | null {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const senderId = sender?.userId ?? '';
+  const [selectedAchievement, setSelectedAchievement] = useState<ProfileAchievement | null>(null);
 
   // Slide-up: render off-screen on first frame, then animate in.
   const [entered, setEntered] = useState(false);
   useEffect(() => {
+    setSelectedAchievement(null);
     if (sender) {
       const id = requestAnimationFrame(() => setEntered(true));
       return () => cancelAnimationFrame(id);
@@ -39,7 +54,17 @@ export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JS
     },
   });
 
+  const { data: profile } = useQuery<UserPublicProfileDTO>({
+    queryKey: userKeys.profile(senderId),
+    queryFn: () => fetchUserProfile(senderId),
+    enabled: senderId.length > 0,
+    staleTime: 60_000,
+  });
+
   if (!sender) return null;
+
+  const displayName = profile?.displayName ?? sender.displayName;
+  const avatarUrl = profile?.avatarUrl ?? sender.avatarUrl;
 
   return createPortal(
     <div
@@ -65,6 +90,7 @@ export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JS
           width: '100%',
           maxWidth: 480,
           maxHeight: '80dvh',
+          overflowY: 'auto',
           padding: '16px 16px calc(16px + var(--app-safe-bottom))',
           borderRadius: '24px 24px 0 0',
           display: 'flex',
@@ -96,26 +122,61 @@ export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JS
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <UserAvatar
-            avatarUrl={sender.avatarUrl}
-            name={sender.displayName}
+            avatarUrl={avatarUrl}
+            name={displayName}
             size={88}
             fontSize={32}
             style={{ boxShadow: '0 10px 26px rgba(15, 23, 42, 0.25)' }}
           />
-          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', minWidth: 0 }}>
-            {sender.displayName}
+          <div
+            style={{
+              minWidth: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              gap: 8,
+            }}
+          >
+            <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', minWidth: 0 }}>
+              {displayName}
+            </div>
+            {profile && (
+              <span className="pill pill--dark">
+                <small>Уровень</small> {getLevelLabel(profile.competitionLevel)}
+              </span>
+            )}
           </div>
         </div>
 
         <div className="section-label" style={{ marginTop: 4 }}>
           Статистика
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-          <StatCard label="Всего бросков" value="—" />
-          <StatCard label="Голов" value="—" />
-          <StatCard label="Точность" value="—" />
-          <StatCard label="Ранг" value="—" />
-        </div>
+        {profile ? (
+          <ProfileStatsGrid stats={profile.stats ?? EMPTY_PROFILE_STATS} columns={2} />
+        ) : (
+          <div
+            className="glass"
+            style={{
+              minHeight: 74,
+              borderRadius: 16,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--muted)',
+              fontSize: 13,
+            }}
+          >
+            Загрузка...
+          </div>
+        )}
+
+        {profile && (
+          <ProfileAchievementsSection
+            achievements={profile.achievements ?? []}
+            onOpenAchievement={setSelectedAchievement}
+            style={{ margin: 0 }}
+          />
+        )}
 
         <button
           type="button"
@@ -126,6 +187,12 @@ export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JS
         >
           {isPending ? 'Открываем чат…' : 'Написать в личку'}
         </button>
+        {selectedAchievement !== null && (
+          <AchievementDetailsSheet
+            achievement={selectedAchievement}
+            onClose={() => setSelectedAchievement(null)}
+          />
+        )}
       </div>
     </div>,
     document.body,

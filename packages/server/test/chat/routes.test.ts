@@ -58,7 +58,10 @@ describe.skipIf(!hasIntegrationEnv)('chat routes', () => {
     userB = (await app.pg.query(ins, ['Bob'])).rows[0].id;
     userC = (await app.pg.query(ins, ['Charlie'])).rows[0].id;
 
-    const jwt = createJwt({ accessSecret: config.JWT_SECRET, refreshSecret: config.REFRESH_SECRET });
+    const jwt = createJwt({
+      accessSecret: config.JWT_SECRET,
+      refreshSecret: config.REFRESH_SECRET,
+    });
     tokenA = await jwt.issueAccessToken({ sub: userA });
     tokenB = await jwt.issueAccessToken({ sub: userB });
     tokenC = await jwt.issueAccessToken({ sub: userC });
@@ -191,6 +194,47 @@ describe.skipIf(!hasIntegrationEnv)('chat routes', () => {
     expect(list.some((u) => u.userId === userA)).toBe(false);
   });
 
+  it('GET /users/:id returns public stats and achievements', async () => {
+    await app.pg.query(
+      `update users
+          set lifetime_shots_total = 30,
+              lifetime_goals_total = 10,
+              level = 2
+        where id = $1`,
+      [userB],
+    );
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/users/${userB}`,
+      headers: { authorization: `Bearer ${tokenA}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      id: userB,
+      displayName: 'Bob',
+      competitionLevel: 'amateur',
+      stats: {
+        shots: 30,
+        goals: 10,
+        accuracy: 33,
+        playStreakDays: 0,
+      },
+    });
+    const body = res.json() as {
+      achievements: Array<{ id: string; isUnlocked: boolean; unlockedAt?: string }>;
+    };
+    expect(
+      body.achievements
+        .filter((achievement) => achievement.isUnlocked)
+        .map((achievement) => achievement.id),
+    ).toEqual(['first-goal']);
+    expect(
+      body.achievements.find((achievement) => achievement.id === 'first-goal')?.unlockedAt,
+    ).toEqual(expect.any(String));
+  });
+
   it('GET /chat/unread returns map and uses cache on second call', async () => {
     const res1 = await app.inject({
       method: 'GET',
@@ -235,7 +279,10 @@ describe.skipIf(!hasIntegrationEnv)('chat routes', () => {
   });
 
   describe('GET /chat/:chatId/messages — after / around cursors', () => {
-    async function freshChatWithMessages(count: number, gapMs = 1000): Promise<{
+    async function freshChatWithMessages(
+      count: number,
+      gapMs = 1000,
+    ): Promise<{
       chatId: string;
       ids: string[];
     }> {

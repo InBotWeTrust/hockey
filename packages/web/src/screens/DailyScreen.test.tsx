@@ -41,7 +41,7 @@ const trainingIdleState: TrainingStateResponse = {
   selected_period: null,
   shots_taken: 0,
   goals: 0,
-  shots_limit: 50,
+  shots_limit: 500,
   day_date: '2026-04-25',
   next_day_starts_at: '2026-04-26T00:00:00.000Z',
   training_seed: null,
@@ -115,12 +115,20 @@ describe('DailyScreen', () => {
     expect(screen.getByLabelText('Изображение режима Любители')).toBeInTheDocument();
     expect(screen.getByLabelText('Изображение режима Профессионалы')).toBeInTheDocument();
     expect(screen.getByText('Три периода на выбор')).toBeInTheDocument();
-    expect(screen.getByText('0/50 бросков сегодня')).toBeInTheDocument();
+    expect(screen.getByText('0/500 бросков сегодня')).toBeInTheDocument();
     expect(screen.getByText('0/1000 шайб для открытия')).toBeInTheDocument();
     expect(screen.getByText('Раздел в разработке')).toBeInTheDocument();
-    expect(screen.getByLabelText('Изображение режима Любители')).toHaveStyle({ opacity: '0.66' });
-    expect(screen.getByLabelText('Изображение режима Профессионалы')).toHaveStyle({
-      opacity: '0.66',
+    const amateurArtwork = screen.getByLabelText('Изображение режима Любители');
+    const proArtwork = screen.getByLabelText('Изображение режима Профессионалы');
+    expect(amateurArtwork).toHaveStyle({ opacity: '1' });
+    expect(amateurArtwork.querySelector('img')).toHaveStyle({
+      filter: 'grayscale(1) saturate(0.1)',
+      opacity: '0.58',
+    });
+    expect(proArtwork).toHaveStyle({ opacity: '1' });
+    expect(proArtwork.querySelector('img')).toHaveStyle({
+      filter: 'grayscale(1) saturate(0.1)',
+      opacity: '0.58',
     });
   });
 
@@ -134,7 +142,10 @@ describe('DailyScreen', () => {
 
     renderWith();
 
-    expect(await screen.findByLabelText('Изображение режима Любители')).toHaveStyle({
+    const amateurArtwork = await screen.findByLabelText('Изображение режима Любители');
+    expect(amateurArtwork).toHaveStyle({ opacity: '1' });
+    expect(amateurArtwork.querySelector('img')).toHaveStyle({
+      filter: 'none',
       opacity: '1',
     });
     expect(screen.queryByText('Открыт')).not.toBeInTheDocument();
@@ -286,7 +297,7 @@ describe('DailyScreen', () => {
 
     expect(screen.getByRole('heading', { name: 'Тренировка' })).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: /Начать тренировку/ })).toBeInTheDocument();
-    expect(screen.getByText('0/50')).toBeInTheDocument();
+    expect(screen.getByText('0/500')).toBeInTheDocument();
     expect(screen.getByText('ДО ОБНОВЛЕНИЯ')).toBeInTheDocument();
     expect(screen.getByText('Скорости 1-го периода')).toBeInTheDocument();
     expect(screen.getByText('0,55/с')).toBeInTheDocument();
@@ -325,7 +336,7 @@ describe('DailyScreen', () => {
     expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Продолжить тренировку/ }));
     expect(await screen.findByRole('button', { name: 'БРОСОК' })).toBeInTheDocument();
-    expect(screen.getByText('12/50')).toBeInTheDocument();
+    expect(screen.getByText('12/500')).toBeInTheDocument();
     expect(screen.getByText('ЛИМИТ')).toBeInTheDocument();
     expect(screen.getByTestId('pixi-stage-stub')).toBeInTheDocument();
   });

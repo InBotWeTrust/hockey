@@ -9,6 +9,7 @@ import {
   getSessionPhaseOffsets,
   resolveShot,
 } from '@hockey/game-core';
+import { grantAchievements } from '../../achievements/service.js';
 import { AppError } from '../../plugins/errors.js';
 import { appendEvent } from '../eventLog.js';
 import { deriveDailySeed, deriveShotSeed } from '../seed.js';
@@ -467,6 +468,9 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
             shots_taken: SHOTS_PER_PERIOD,
             goals,
           });
+          if (goals === SHOTS_PER_PERIOD) {
+            await grantAchievements(client, req.user.id, ['sniper-hand']);
+          }
           // After the LAST period — close the day directly. Otherwise enter
           // the regular break.
           const isFinalPeriod = pool.current_period >= TOTAL_PERIODS;
@@ -486,6 +490,7 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
           const { rows } = await client.query<DayPoolRow>(updateSql, [periodEndedAt, pool.id]);
           currentPool = rows[0]!;
           if (isFinalPeriod) {
+            await grantAchievements(client, req.user.id, ['first-game']);
             await appendEvent(client, req.user.id, 'day_pool_closed', {
               day_pool_id: pool.id,
               reason: 'completed',

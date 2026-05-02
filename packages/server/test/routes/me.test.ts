@@ -77,6 +77,90 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
     return login.json() as { accessToken: string; user: { id: string; displayName: string } };
   }
 
+  async function insertDailyShot(userId: string, dayOffset: number, shotIndex: number): Promise<void> {
+    const pool = await app.pg.query<{ id: string }>(
+      `insert into day_pool
+         (user_id, day_date, state, current_period, game_core_version, daily_seed, closed_at)
+       values (
+         $1,
+         (now() at time zone 'UTC')::date - $2::int,
+         'closed',
+         0,
+         1,
+         $3,
+         now()
+       )
+       returning id`,
+      [userId, dayOffset, `daily-seed-${dayOffset}-${shotIndex}`],
+    );
+    await app.pg.query(
+      `insert into shot_session
+         (user_id, mode, day_pool_id, period_number, shot_index, seed, input_payload,
+          server_result, game_core_version, created_at)
+       values (
+         $1,
+         'daily',
+         $2,
+         1,
+         $3,
+         $4,
+         '{}'::jsonb,
+         'goal',
+         1,
+         (((now() at time zone 'UTC')::date - $5::int)::timestamp + interval '12 hours')
+           at time zone 'UTC'
+       )`,
+      [userId, pool.rows[0]!.id, shotIndex, `shot-seed-${dayOffset}-${shotIndex}`, dayOffset],
+    );
+  }
+
+  async function insertTrainingShot(
+    userId: string,
+    dayOffset: number,
+    shotIndex: number,
+  ): Promise<void> {
+    const session = await app.pg.query<{ id: string }>(
+      `insert into training_session
+         (user_id, day_date, selected_period, state, game_core_version, training_seed, closed_at)
+       values (
+         $1,
+         (now() at time zone 'UTC')::date - $2::int,
+         1,
+         'closed',
+         1,
+         $3,
+         now()
+       )
+       returning id`,
+      [userId, dayOffset, `training-seed-${dayOffset}-${shotIndex}`],
+    );
+    await app.pg.query(
+      `insert into shot_session
+         (user_id, mode, training_session_id, period_number, shot_index, seed, input_payload,
+          server_result, game_core_version, created_at)
+       values (
+         $1,
+         'training',
+         $2,
+         1,
+         $3,
+         $4,
+         '{}'::jsonb,
+         'save',
+         1,
+         (((now() at time zone 'UTC')::date - $5::int)::timestamp + interval '12 hours')
+           at time zone 'UTC'
+       )`,
+      [
+        userId,
+        session.rows[0]!.id,
+        shotIndex,
+        `training-shot-seed-${dayOffset}-${shotIndex}`,
+        dayOffset,
+      ],
+    );
+  }
+
   it('returns 401 without bearer', async () => {
     const res = await app.inject({ method: 'GET', url: '/me' });
     expect(res.statusCode).toBe(401);
@@ -98,11 +182,87 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
     expect(body.displayName).toBe('Alice');
     expect(body.id).toMatch(/^[0-9a-f-]{36}$/i);
     expect(res.json()).toMatchObject({
+      competitionLevel: 'beginner',
+      stats: {
+        shots: 0,
+        goals: 0,
+        accuracy: 0,
+        playStreakDays: 0,
+      },
       displaySource: 'telegram',
       linkedProviders: ['telegram'],
       tgFirstName: 'Alice',
       tgAvatarUrl: 'tg.png',
       tgUsername: 'alice',
+    });
+    const fullBody = res.json() as {
+      achievements: Array<{ id: string; isUnlocked: boolean; photoUrl: string }>;
+    };
+    expect(fullBody.achievements.length).toBeGreaterThan(0);
+    expect(fullBody.achievements.every((achievement) => !achievement.isUnlocked)).toBe(true);
+    expect(fullBody.achievements[0]).toMatchObject({
+      id: 'first-goal',
+      photoUrl: '/achievements/first-goal.webp',
+    });
+  });
+
+  it('unlocks stat achievements from lifetime totals', async () => {
+    const { accessToken, user } = await loginTelegram({ id: '45' });
+    await app.pg.query(
+      `update users
+          set lifetime_shots_total = 1200,
+              lifetime_goals_total = 1000
+        where id = $1`,
+      [user.id],
+    );
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/me',
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      stats: {
+        shots: 1200,
+        goals: 1000,
+        accuracy: 83,
+        playStreakDays: 0,
+      },
+    });
+    const body = res.json() as {
+      achievements: Array<{ id: string; isUnlocked: boolean; unlockedAt?: string }>;
+    };
+    expect(
+      body.achievements
+        .filter((achievement) => achievement.isUnlocked)
+        .map((achievement) => achievement.id),
+    ).toEqual(['first-goal', 'amateur-ticket']);
+    expect(body.achievements.find((achievement) => achievement.id === 'first-goal')?.unlockedAt)
+      .toEqual(expect.any(String));
+  });
+
+  it('counts consecutive play days from shots in any game mode', async () => {
+    const { accessToken, user } = await loginTelegram({ id: '46' });
+
+    await insertDailyShot(user.id, 0, 1);
+    await insertTrainingShot(user.id, 1, 1);
+    await insertDailyShot(user.id, 2, 2);
+    await insertTrainingShot(user.id, 4, 3);
+    await insertDailyShot(user.id, 4, 4);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/me',
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      stats: {
+        playStreakDays: 3,
+      },
     });
   });
 

@@ -1,4 +1,4 @@
--- Beginner training: one 50-shot session per local day, period preset chosen at start.
+-- Beginner training: one daily session per local day, period preset chosen at start.
 
 create table training_session (
   id uuid primary key default gen_random_uuid(),

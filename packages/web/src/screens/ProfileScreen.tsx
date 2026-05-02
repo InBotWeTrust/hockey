@@ -1,16 +1,32 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronRight, Settings } from 'lucide-react';
+import { Settings } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../api/apiFetch.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { NAV_HEIGHT } from '../components/BottomNav.js';
-import { StatCard } from '../components/StatCard.js';
-import type { ProfileData } from './profileTypes.js';
+import type { ProfileAchievement, ProfileData } from './profileTypes.js';
+import {
+  AchievementDetailsSheet,
+  EMPTY_PROFILE_STATS,
+  getLevelLabel,
+  ProfileAchievementsSection,
+  ProfileStatsGrid,
+} from './profileSections.js';
+
+function canStartMouseDragScroll(target: EventTarget | null): boolean {
+  return (
+    !(target instanceof Element) ||
+    target.closest('[data-no-drag-scroll], a, input, textarea, select') === null
+  );
+}
 
 export function ProfileScreen(): JSX.Element {
   const navigate = useNavigate();
   const updateUser = useAuthStore((s) => s.updateUser);
+  const dragScrollRef = useRef<{ startY: number; scrollTop: number } | null>(null);
+  const suppressClickRef = useRef(false);
+  const [selectedAchievement, setSelectedAchievement] = useState<ProfileAchievement | null>(null);
 
   const { data, isLoading } = useQuery<ProfileData>({
     queryKey: ['profile'],
@@ -38,12 +54,63 @@ export function ProfileScreen(): JSX.Element {
   }
 
   const initial = (data?.displayName ?? '?').charAt(0).toUpperCase();
+  const stats = data?.stats ?? EMPTY_PROFILE_STATS;
+  const achievements = data?.achievements ?? [];
+
+  function handlePointerDown(event: PointerEvent<HTMLElement>): void {
+    if (
+      event.pointerType !== 'mouse' ||
+      event.button !== 0 ||
+      !canStartMouseDragScroll(event.target)
+    ) {
+      return;
+    }
+
+    dragScrollRef.current = {
+      startY: event.clientY,
+      scrollTop: event.currentTarget.scrollTop,
+    };
+    suppressClickRef.current = false;
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function handlePointerMove(event: PointerEvent<HTMLElement>): void {
+    const drag = dragScrollRef.current;
+    if (drag === null || event.pointerType !== 'mouse') return;
+
+    const deltaY = event.clientY - drag.startY;
+    if (Math.abs(deltaY) > 4) {
+      suppressClickRef.current = true;
+      event.preventDefault();
+    }
+    event.currentTarget.scrollTop = drag.scrollTop - deltaY;
+  }
+
+  function handlePointerEnd(event: PointerEvent<HTMLElement>): void {
+    dragScrollRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    window.setTimeout(() => {
+      suppressClickRef.current = false;
+    }, 0);
+  }
 
   return (
     <main
       className="screen"
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerEnd}
+      onPointerCancel={handlePointerEnd}
       style={{
+        height: '100dvh',
+        minHeight: 0,
         paddingBottom: `calc(${NAV_HEIGHT + 16}px + var(--app-safe-bottom))`,
+        overflowY: 'auto',
+        overscrollBehaviorY: 'contain',
+        touchAction: 'pan-y',
+        WebkitOverflowScrolling: 'touch',
       }}
     >
       <div
@@ -56,8 +123,28 @@ export function ProfileScreen(): JSX.Element {
           flexDirection: 'column',
           alignItems: 'center',
           gap: 12,
+          position: 'relative',
         }}
       >
+        <button
+          type="button"
+          className="icon-btn glass"
+          data-no-drag-scroll="true"
+          aria-label="Настройки"
+          onClick={() => navigate('/profile/settings')}
+          style={{
+            position: 'absolute',
+            top: 14,
+            right: 14,
+            width: 38,
+            height: 38,
+            color: 'var(--ink)',
+            background: 'rgba(255, 255, 255, 0.48)',
+            zIndex: 1,
+          }}
+        >
+          <Settings size={18} />
+        </button>
         {data?.avatarUrl ? (
           <img
             src={data.avatarUrl}
@@ -99,12 +186,9 @@ export function ProfileScreen(): JSX.Element {
             </div>
           )}
         </div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <span className="pill">
-            <small>Ранг</small> -
-          </span>
+        <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
           <span className="pill pill--dark">
-            <small>Уровень</small> -
+            <small>Уровень</small> {getLevelLabel(data?.competitionLevel)}
           </span>
         </div>
       </div>
@@ -112,62 +196,20 @@ export function ProfileScreen(): JSX.Element {
       <div className="section-label" style={{ marginBottom: 6 }}>
         Статистика
       </div>
-      <div
-        style={{
-          margin: '0 14px 14px',
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: 8,
-        }}
-      >
-        <StatCard label="Всего бросков" value="-" />
-        <StatCard label="Голов" value="-" />
-        <StatCard label="Точность" value="-" />
-        <StatCard label="Вратарей пройдено" value="-" suffix="/10" />
-      </div>
+      <ProfileStatsGrid stats={stats} style={{ margin: '0 14px 14px' }} />
 
-      <div className="section-label" style={{ marginBottom: 6 }}>
-        Настройки
-      </div>
-      <div style={{ margin: '0 14px' }}>
-        <button
-          type="button"
-          className="glass"
-          onClick={() => navigate('/profile/settings')}
-          style={{
-            width: '100%',
-            padding: '14px 14px',
-            borderRadius: 16,
-            cursor: 'pointer',
-            display: 'grid',
-            gridTemplateColumns: '38px 1fr auto',
-            alignItems: 'center',
-            gap: 10,
-            textAlign: 'left',
-            color: 'var(--ink)',
-          }}
-        >
-          <span
-            aria-hidden
-            style={{
-              width: 38,
-              height: 38,
-              borderRadius: 999,
-              background: 'rgba(15, 23, 42, 0.08)',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Settings size={17} />
-          </span>
-          <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <span style={{ fontSize: 14, fontWeight: 800 }}>Настройки</span>
-            <span style={{ fontSize: 12, color: 'var(--muted)' }}>Аккаунт и хват игрока</span>
-          </span>
-          <ChevronRight size={18} color="var(--muted)" />
-        </button>
-      </div>
+      <ProfileAchievementsSection
+        achievements={achievements}
+        onOpenAchievement={(achievement) => {
+          if (!suppressClickRef.current) setSelectedAchievement(achievement);
+        }}
+      />
+      {selectedAchievement !== null && (
+        <AchievementDetailsSheet
+          achievement={selectedAchievement}
+          onClose={() => setSelectedAchievement(null)}
+        />
+      )}
     </main>
   );
 }

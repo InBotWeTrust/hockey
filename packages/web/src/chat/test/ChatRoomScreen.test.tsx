@@ -55,9 +55,9 @@ const msgFromSelf: ChatMessageDTO = {
 };
 
 function longPressBubble(messageId: string): void {
-  const bubble = screen.getAllByTestId('chat-bubble').find(
-    (el) => el.getAttribute('data-message-id') === messageId,
-  );
+  const bubble = screen
+    .getAllByTestId('chat-bubble')
+    .find((el) => el.getAttribute('data-message-id') === messageId);
   if (!bubble) throw new Error(`bubble ${messageId} not in DOM`);
   // The long-press handlers are on the inner wrapper (first child of the bubble div).
   const wrapper = bubble.querySelector<HTMLElement>('div');
@@ -76,6 +76,21 @@ describe('ChatRoomScreen', () => {
     vi.spyOn(api, 'fetchMessages').mockResolvedValue([msgFromSelf, msgFromOther]); // server DESC
     vi.spyOn(api, 'markChatAsRead').mockResolvedValue(undefined);
     vi.spyOn(api, 'fetchChatList').mockResolvedValue([]);
+    vi.spyOn(api, 'fetchUserProfile').mockResolvedValue({
+      id: OTHER_ID,
+      displayName: 'Иван',
+      avatarUrl: null,
+      competitionLevel: 'beginner',
+      stats: {
+        shots: 0,
+        goals: 0,
+        accuracy: 0,
+        playStreakDays: 0,
+      },
+      achievements: [],
+      createdAt: '2026-04-26T10:00:00.000Z',
+      lastSeenAt: null,
+    });
   });
 
   afterEach(() => {
@@ -198,7 +213,10 @@ describe('ChatRoomScreen', () => {
     // Hold the POST resolver so we can simulate the WS frame landing first.
     let resolveSend: (msg: ChatMessageDTO) => void = () => {};
     vi.spyOn(api, 'sendMessage').mockImplementation(
-      () => new Promise<ChatMessageDTO>((res) => { resolveSend = res; }),
+      () =>
+        new Promise<ChatMessageDTO>((res) => {
+          resolveSend = res;
+        }),
     );
 
     const { queryClient } = renderRoom('c1');
@@ -301,9 +319,7 @@ describe('ChatRoomScreen', () => {
     await waitFor(() => expect(addSpy).toHaveBeenCalledWith('m1', '👍'));
 
     // Optimistic patch present in cache.
-    const data = queryClient.getQueryData<{ pages: ChatMessageDTO[][] }>(
-      chatKeys.messages('c1'),
-    );
+    const data = queryClient.getQueryData<{ pages: ChatMessageDTO[][] }>(chatKeys.messages('c1'));
     const patched = data?.pages.flat().find((m) => m.id === 'm1');
     expect(patched?.reactions).toEqual([{ emoji: '👍', count: 1, reactedByMe: true }]);
   });
@@ -325,18 +341,14 @@ describe('ChatRoomScreen', () => {
 
     await waitFor(() => expect(removeSpy).toHaveBeenCalledWith('m2', '👍'));
 
-    const data = queryClient.getQueryData<{ pages: ChatMessageDTO[][] }>(
-      chatKeys.messages('c1'),
-    );
+    const data = queryClient.getQueryData<{ pages: ChatMessageDTO[][] }>(chatKeys.messages('c1'));
     const patched = data?.pages.flat().find((m) => m.id === 'm2');
     expect(patched?.reactions).toEqual([]);
   });
 
   it('POST failure rolls back optimistic patch', async () => {
     vi.useFakeTimers();
-    const addSpy = vi
-      .spyOn(api, 'addReaction')
-      .mockRejectedValue(new Error('boom'));
+    const addSpy = vi.spyOn(api, 'addReaction').mockRejectedValue(new Error('boom'));
 
     const { queryClient } = renderRoom('c1');
     await vi.runAllTimersAsync();
@@ -350,9 +362,7 @@ describe('ChatRoomScreen', () => {
     // Wait for the rejection + onError rollback.
     await waitFor(() => expect(addSpy).toHaveBeenCalled());
     await waitFor(() => {
-      const data = queryClient.getQueryData<{ pages: ChatMessageDTO[][] }>(
-        chatKeys.messages('c1'),
-      );
+      const data = queryClient.getQueryData<{ pages: ChatMessageDTO[][] }>(chatKeys.messages('c1'));
       const patched = data?.pages.flat().find((m) => m.id === 'm1');
       expect(patched?.reactions).toEqual([]);
     });
@@ -454,9 +464,7 @@ describe('ChatRoomScreen — ?goto=<messageId>', () => {
 
     expect(await screen.findByText('Сообщение недоступно')).toBeInTheDocument();
     await waitFor(() => {
-      const defaultCall = fetchSpy.mock.calls.find(
-        ([, opts]) => opts && !('around' in opts),
-      );
+      const defaultCall = fetchSpy.mock.calls.find(([, opts]) => opts && !('around' in opts));
       expect(defaultCall).toBeDefined();
     });
   });

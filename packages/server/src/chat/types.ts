@@ -1,6 +1,9 @@
 // Row types — one per chat table. snake_case to match SQL columns; conversion
 // to camelCase happens at the API boundary (routes layer) in PR 2.
 
+import type { ProfileAchievementDTO } from '../achievements/service.js';
+import type { CompetitionLevel, ProfileStatsDTO } from '../profile/summary.js';
+
 export type ChatType = 'direct' | 'group' | 'system';
 export type ChatMemberRole = 'admin' | 'member';
 export type EntityType = 'team' | 'tournament';
@@ -132,6 +135,9 @@ export interface UserPublicProfileDTO {
   id: string;
   displayName: string;
   avatarUrl: string | null;
+  competitionLevel: CompetitionLevel;
+  stats: ProfileStatsDTO;
+  achievements: ProfileAchievementDTO[];
   // ISO; surface "joined at" on the profile screen.
   createdAt: string;
   // ISO; surface "last seen" subtitle on the public profile / DM header.

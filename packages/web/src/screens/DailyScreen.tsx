@@ -364,7 +364,7 @@ function GameHub({
   const amateurGoals = Math.min(1000, data.lifetime_total_goals);
   const amateurProgress = Math.round((amateurGoals / 1000) * 100);
   const isAmateurUnlocked = amateurGoals >= 1000;
-  const trainingShotsLimit = trainingData?.shots_limit ?? 50;
+  const trainingShotsLimit = trainingData?.shots_limit ?? 500;
   const trainingShotsTaken = trainingData?.shots_taken ?? 0;
   const trainingAvailability = `${trainingShotsTaken}/${trainingShotsLimit} бросков сегодня`;
 
@@ -621,7 +621,7 @@ function LevelHubCard({
   progress?: number;
   onClick: () => void;
 }): JSX.Element {
-  const isMuted = tone === 'muted';
+  const isLocked = tone === 'muted';
   return (
     <button
       type="button"
@@ -639,9 +639,7 @@ function LevelHubCard({
         background:
           tone === 'active'
             ? 'rgba(255, 255, 255, 0.64)'
-            : isMuted
-              ? 'rgba(255, 255, 255, 0.34)'
-              : 'rgba(255, 255, 255, 0.48)',
+            : 'rgba(255, 255, 255, 0.48)',
         border: '1px solid rgba(255,255,255,0.66)',
         boxShadow: '0 8px 22px rgba(15,23,42,0.1), inset 0 1px 0 rgba(255,255,255,0.78)',
         width: '100%',
@@ -673,7 +671,7 @@ function LevelHubCard({
           />
         </div>
       )}
-      <ModeArtwork label={title} tone={artwork} muted={isMuted} />
+      <ModeArtwork label={title} tone={artwork} muted={isLocked} />
       <div
         style={{
           minWidth: 0,
@@ -690,14 +688,14 @@ function LevelHubCard({
             fontSize: 18,
             lineHeight: 1.05,
             fontWeight: 900,
-            color: isMuted ? 'rgba(15,23,42,0.62)' : 'var(--ink)',
+            color: 'var(--ink)',
           }}
         >
           {title}
         </h2>
         <div
           style={{
-            color: isMuted ? 'rgba(15,23,42,0.48)' : 'rgba(15, 23, 42, 0.64)',
+            color: 'rgba(15, 23, 42, 0.64)',
             fontSize: 12,
             fontWeight: 700,
             lineHeight: 1.25,
@@ -707,7 +705,7 @@ function LevelHubCard({
         </div>
         <div
           style={{
-            color: isMuted ? 'rgba(15,23,42,0.46)' : 'rgba(15, 23, 42, 0.54)',
+            color: 'rgba(15, 23, 42, 0.54)',
             fontSize: 12,
             fontWeight: 800,
             lineHeight: 1.2,
@@ -723,7 +721,7 @@ function LevelHubCard({
         strokeWidth={2.7}
         style={{
           justifySelf: 'end',
-          color: isMuted ? 'rgba(15,23,42,0.34)' : 'rgba(15, 23, 42, 0.56)',
+          color: 'rgba(15, 23, 42, 0.56)',
         }}
       />
     </button>
@@ -828,7 +826,7 @@ function ModeArtwork({
         background: palette.bg,
         border: '1px solid rgba(255,255,255,0.82)',
         boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9), 0 8px 18px rgba(15,23,42,0.12)',
-        opacity: muted ? 0.66 : 1,
+        opacity: 1,
       }}
     >
       {imageSrc && (
@@ -841,6 +839,8 @@ function ModeArtwork({
             width: '100%',
             height: '100%',
             objectFit: 'cover',
+            filter: muted ? 'grayscale(1) saturate(0.1)' : 'none',
+            opacity: muted ? 0.58 : 1,
           }}
         />
       )}
@@ -973,7 +973,7 @@ function TrainingPlaceholder({ onBack }: { onBack: () => void }): JSX.Element {
     if (data?.state !== 'active') setPlayTraining(false);
   }, [data?.state]);
 
-  const shotsLimit = data?.shots_limit ?? 50;
+  const shotsLimit = data?.shots_limit ?? 500;
   const shotsTaken = data?.shots_taken ?? 0;
   const goals = data?.goals ?? 0;
   const accuracy = shotsTaken > 0 ? Math.round((goals / shotsTaken) * 100) : 0;

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, MessageSquare } from 'lucide-react';
@@ -11,6 +12,14 @@ import { userKeys } from '../../lib/queryKeys.js';
 import { useAuthStore } from '../../auth/authStore.js';
 import { formatLastSeen } from '../lastSeen.js';
 import { UserAvatar } from '../components/UserAvatar.js';
+import type { ProfileAchievement } from '../../screens/profileTypes.js';
+import {
+  AchievementDetailsSheet,
+  EMPTY_PROFILE_STATS,
+  getLevelLabel,
+  ProfileAchievementsSection,
+  ProfileStatsGrid,
+} from '../../screens/profileSections.js';
 
 function formatJoined(iso: string): string {
   return new Date(iso).toLocaleDateString('ru-RU', {
@@ -25,6 +34,7 @@ export function UserProfileScreen(): JSX.Element {
   const userId = params.userId ?? '';
   const navigate = useNavigate();
   const meId = useAuthStore((s) => s.user?.id ?? null);
+  const [selectedAchievement, setSelectedAchievement] = useState<ProfileAchievement | null>(null);
 
   const { data, isLoading, isError, refetch } = useQuery<UserPublicProfileDTO>({
     queryKey: userKeys.profile(userId),
@@ -46,8 +56,13 @@ export function UserProfileScreen(): JSX.Element {
     <main
       className="screen"
       style={{
+        height: '100dvh',
+        minHeight: 0,
         paddingTop: 'var(--app-safe-top)',
         paddingBottom: 'calc(24px + var(--app-safe-bottom))',
+        overflowY: 'auto',
+        overscrollBehaviorY: 'contain',
+        WebkitOverflowScrolling: 'touch',
       }}
     >
       <div
@@ -127,7 +142,25 @@ export function UserProfileScreen(): JSX.Element {
             <div style={{ fontSize: 12, color: 'var(--muted)' }}>
               {formatLastSeen(data.lastSeenAt)}
             </div>
+            <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginTop: 2 }}>
+              <span className="pill pill--dark">
+                <small>Уровень</small> {getLevelLabel(data.competitionLevel)}
+              </span>
+            </div>
           </div>
+
+          <div className="section-label" style={{ marginBottom: 6 }}>
+            Статистика
+          </div>
+          <ProfileStatsGrid
+            stats={data.stats ?? EMPTY_PROFILE_STATS}
+            style={{ margin: '0 14px 14px' }}
+          />
+
+          <ProfileAchievementsSection
+            achievements={data.achievements ?? []}
+            onOpenAchievement={setSelectedAchievement}
+          />
 
           {!isSelf && (
             <div style={{ padding: '4px 14px 0' }}>
@@ -152,6 +185,12 @@ export function UserProfileScreen(): JSX.Element {
                 {dmMut.isPending ? 'Открываем…' : 'Написать сообщение'}
               </button>
             </div>
+          )}
+          {selectedAchievement !== null && (
+            <AchievementDetailsSheet
+              achievement={selectedAchievement}
+              onClose={() => setSelectedAchievement(null)}
+            />
           )}
         </>
       )}
