@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Home } from 'lucide-react';
 
 export interface StartPeriodModalProps {
   nextPeriod: number;
@@ -7,6 +8,7 @@ export interface StartPeriodModalProps {
   isFirstPeriod: boolean;
   pending: boolean;
   topSlot?: ReactNode;
+  onHome?: () => void;
   onStart: () => void;
 }
 
@@ -25,6 +27,7 @@ export function StartPeriodModal({
   isFirstPeriod,
   pending,
   topSlot,
+  onHome,
   onStart,
 }: StartPeriodModalProps): JSX.Element {
   const heading = isFirstPeriod ? 'Сегодняшняя игра' : 'Перерыв окончен';
@@ -71,8 +74,32 @@ export function StartPeriodModal({
           boxShadow:
             '0 30px 80px rgba(15, 23, 42, 0.35), 0 0 0 1px rgba(15, 23, 42, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.9)',
           animation: 'period-summary-pop 280ms cubic-bezier(0.22, 0.68, 0.18, 1.2)',
+          position: 'relative',
         }}
       >
+        {onHome && (
+          <button
+            type="button"
+            aria-label="Вернуться к режимам"
+            title="К режимам"
+            onClick={onHome}
+            className="icon-btn"
+            style={{
+              position: 'absolute',
+              top: 16,
+              right: 16,
+              width: 44,
+              height: 44,
+              borderRadius: 18,
+              background: 'rgba(255, 255, 255, 0.72)',
+              border: '1px solid rgba(255, 255, 255, 0.86)',
+              color: 'var(--ink)',
+              boxShadow: '0 12px 26px rgba(15, 23, 42, 0.16)',
+            }}
+          >
+            <Home size={20} />
+          </button>
+        )}
         {topSlot && <div style={{ marginBottom: 18 }}>{topSlot}</div>}
         <div
           style={{

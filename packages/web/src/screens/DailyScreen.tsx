@@ -1484,13 +1484,39 @@ function DailyPlayView({ onBack }: { onBack: () => void }): JSX.Element {
           shotsPerPeriod={data.shots_per_period}
           isFirstPeriod={data.current_period === 0}
           pending={pending}
+          onHome={onBack}
           onStart={() => void startPeriod()}
         />
       )}
+      {isBreak && <DailyRinkHomeButton onBack={onBack} />}
       {isClosed && (
         <DailyClosedModal timer={formatHms(nextDayRemaining)} onBack={onBack} />
       )}
     </>
+  );
+}
+
+function DailyRinkHomeButton({ onBack }: { onBack: () => void }): JSX.Element {
+  return (
+    <button
+      type="button"
+      aria-label="Вернуться к режимам"
+      title="К режимам"
+      onClick={onBack}
+      className="icon-btn icon-btn--dark"
+      style={{
+        position: 'fixed',
+        top: 'calc(var(--app-safe-top) + 92px)',
+        left: 14,
+        zIndex: 260,
+        width: 48,
+        height: 48,
+        borderRadius: 18,
+        boxShadow: '0 16px 30px rgba(15, 23, 42, 0.24)',
+      }}
+    >
+      <Home size={21} />
+    </button>
   );
 }
 

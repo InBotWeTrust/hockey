@@ -251,7 +251,25 @@ describe('DailyScreen', () => {
     expect(screen.getByText('10/90')).toBeInTheDocument();
     const breakControl = screen.getByRole('button', { name: 'ПЕРЕРЫВ' });
     expect(breakControl).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Вернуться к режимам' })).toBeEnabled();
     expect(screen.getByTestId('pixi-stage-stub')).toBeInTheDocument();
+  });
+
+  it('can leave the daily rink start modal without starting a period', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    renderWith();
+
+    const rinkButton = await screen.findByRole('button', { name: 'На площадку' });
+    fireEvent.click(rinkButton);
+
+    const homeButton = await screen.findByRole('button', { name: 'Вернуться к режимам' });
+    fireEvent.click(homeButton);
+
+    await waitFor(() => {
+      expect(screen.getByText('Ежедневная игра')).toBeInTheDocument();
+    });
+    const calls = fetchMock.mock.calls.map((c) => String(c[0]));
+    expect(calls.some((u) => u.includes('/duel/daily/period/start'))).toBe(false);
   });
 
   it('renders closed view', async () => {
