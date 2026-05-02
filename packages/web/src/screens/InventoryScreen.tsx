@@ -79,7 +79,7 @@ export function InventoryScreen(): JSX.Element {
                   gridTemplateColumns: `${INVENTORY_ARTWORK_SIZE}px minmax(0, 1fr)`,
                   gap: 12,
                   alignItems: 'center',
-                  background: 'rgba(255, 255, 255, 0.34)',
+                  background: 'rgba(255, 255, 255, 0.18)',
                   border: '1px solid rgba(255,255,255,0.66)',
                   boxShadow: '0 8px 22px rgba(15,23,42,0.1), inset 0 1px 0 rgba(255,255,255,0.78)',
                   width: '100%',
@@ -107,14 +107,14 @@ export function InventoryScreen(): JSX.Element {
                       fontSize: 18,
                       lineHeight: 1.05,
                       fontWeight: 900,
-                      color: 'rgba(15,23,42,0.62)',
+                      color: 'var(--ink)',
                     }}
                   >
                     {slot.title}
                   </h2>
                   <div
                     style={{
-                      color: 'rgba(15,23,42,0.48)',
+                      color: 'rgba(15, 23, 42, 0.64)',
                       fontSize: 12,
                       fontWeight: 700,
                       lineHeight: 1.25,
@@ -163,7 +163,7 @@ function InventoryLockedModal({ onClose }: { onClose: () => void }): JSX.Element
           Недоступно
         </div>
         <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>
-          Инвентарь будет открыт при переходе в режим любителей
+          Инвентарь пока недоступен. Откроем его в следующих обновлениях.
         </div>
         <button
           type="button"
@@ -202,7 +202,7 @@ function InventoryArtwork({
         background: 'linear-gradient(145deg, #dbeafe 0%, #f8fafc 48%, #bfdbfe 100%)',
         border: '1px solid rgba(255,255,255,0.82)',
         boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9), 0 8px 18px rgba(15,23,42,0.12)',
-        opacity: 0.66,
+        opacity: 1,
       }}
     >
       <img
@@ -214,6 +214,8 @@ function InventoryArtwork({
           width: '100%',
           height: '100%',
           objectFit: 'cover',
+          filter: 'grayscale(1) saturate(0.1)',
+          opacity: 0.58,
         }}
       />
     </div>

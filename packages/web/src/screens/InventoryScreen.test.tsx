@@ -21,6 +21,10 @@ describe('InventoryScreen', () => {
     expect(screen.getByLabelText('Изображение инвентаря Клюшки')).toBeInTheDocument();
     expect(screen.getByLabelText('Изображение инвентаря Коньки')).toBeInTheDocument();
     expect(screen.getByLabelText('Изображение инвентаря Спортпитание')).toBeInTheDocument();
+    expect(screen.getByLabelText('Изображение инвентаря Клюшки').querySelector('img')).toHaveStyle({
+      filter: 'grayscale(1) saturate(0.1)',
+      opacity: '0.58',
+    });
     expect(
       screen.getByRole('button', {
         name: /Клюшки: Более точные и быстрые броски по воротам\. Недоступно/,
@@ -49,7 +53,7 @@ describe('InventoryScreen', () => {
 
     expect(screen.getByRole('dialog', { name: 'Недоступно' })).toBeInTheDocument();
     expect(
-      screen.getByText('Инвентарь будет открыт при переходе в режим любителей'),
+      screen.getByText('Инвентарь пока недоступен. Откроем его в следующих обновлениях.'),
     ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Понятно' }));
