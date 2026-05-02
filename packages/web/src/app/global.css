@@ -4,6 +4,17 @@
   box-sizing: border-box;
 }
 
+/* Keep scrolling touch-friendly without ever reserving visible scrollbar space. */
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
 :root {
   --app-bg-top: #c9dcf0;
   --app-bg-bottom: #9cbfdf;
@@ -57,7 +68,10 @@ html,
 body,
 #root {
   min-height: 100%;
+  width: 100%;
   background-color: var(--app-bg-bottom);
+  overflow-x: hidden;
+  scrollbar-gutter: auto;
 }
 
 html,
