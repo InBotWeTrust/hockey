@@ -666,7 +666,7 @@ function LevelHubCard({
             style={{
               width: `${progress}%`,
               height: '100%',
-              background: 'var(--red)',
+              background: 'linear-gradient(90deg, rgba(34, 158, 217, 0.72), var(--blue-accent))',
             }}
           />
         </div>
