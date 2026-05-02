@@ -13,6 +13,11 @@ import { grantAchievements } from '../../achievements/service.js';
 import { AppError } from '../../plugins/errors.js';
 import { appendEvent } from '../eventLog.js';
 import { deriveShotSeed, deriveTrainingSeed } from '../seed.js';
+import {
+  TOTAL_PERIODS,
+  reconcileDayPool,
+  type DayPoolRow,
+} from '../daily/reconcile.js';
 
 const TRAINING_GOALIE_ID = 'rookie';
 const TRAINING_SHOTS_LIMIT = 500;
@@ -61,6 +66,12 @@ interface TrainingStateResponse {
 interface TrainingShotSubmitResponse {
   server_result: 'goal' | 'save' | 'miss';
   state: TrainingStateResponse;
+}
+
+function isDailyGameStartedAndIncomplete(pool: DayPoolRow | null): boolean {
+  if (pool === null || pool.state === 'closed') return false;
+  if (pool.state === 'period_active' || pool.state === 'break_active') return true;
+  return pool.state === 'idle' && pool.current_period > 0 && pool.current_period < TOTAL_PERIODS;
 }
 
 async function withTransaction<T>(
@@ -194,6 +205,21 @@ async function buildTrainingState(
   };
 }
 
+async function assertTrainingAvailableDuringDaily(
+  client: PoolClient,
+  userId: string,
+  now: Date,
+): Promise<void> {
+  const { pool } = await reconcileDayPool(client, userId, now);
+  if (isDailyGameStartedAndIncomplete(pool)) {
+    throw new AppError(
+      'conflict',
+      'training is locked while the daily game is in progress',
+      409,
+    );
+  }
+}
+
 export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> = async (
   app,
   opts,
@@ -218,6 +244,7 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
 
     return withTransaction(app, async (client): Promise<TrainingStateResponse> => {
       const now = new Date();
+      await assertTrainingAvailableDuringDaily(client, req.user.id, now);
       const { session, localToday, timezone } = await reconcileTrainingSession(
         client,
         req.user.id,
@@ -272,6 +299,7 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
 
     return withTransaction(app, async (client): Promise<TrainingShotSubmitResponse> => {
       const now = new Date();
+      await assertTrainingAvailableDuringDaily(client, req.user.id, now);
       const { session, localToday, timezone } = await reconcileTrainingSession(
         client,
         req.user.id,

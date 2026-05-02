@@ -59,6 +59,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '011_training_session.sql',
       '012_achievements.sql',
       '013_refresh_profile_achievements.sql',
+      '014_training_daily_locks.sql',
     ]);
   });
 });

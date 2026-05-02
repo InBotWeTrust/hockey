@@ -14,6 +14,10 @@ import { AppError } from '../../plugins/errors.js';
 import { appendEvent } from '../eventLog.js';
 import { deriveDailySeed, deriveShotSeed } from '../seed.js';
 import {
+  assertTrainingCooldownExpired,
+  fetchTrainingCooldownEndsAt,
+} from '../trainingCooldown.js';
+import {
   BREAK_DURATION_MS,
   PERIOD_DURATION_MS,
   SHOTS_PER_PERIOD,
@@ -42,7 +46,16 @@ interface PeriodLogEntry {
   shots_taken: number;
   goals: number;
   closed_reason: 'quota' | 'timeout' | 'day_end';
+  duration_ms: number;
   ended_at: string;
+}
+
+interface DailyGameStats {
+  day_date: string;
+  total_shots: number;
+  total_goals: number;
+  total_duration_ms: number;
+  periods: PeriodLogEntry[];
 }
 
 interface DailyStateResponse {
@@ -63,6 +76,8 @@ interface DailyStateResponse {
   shots_per_period: number;
   total_periods: number;
   recent_periods: PeriodLogEntry[];
+  previous_game: DailyGameStats | null;
+  training_cooldown_ends_at: string | null;
 }
 
 async function fetchUserTimezone(
@@ -97,9 +112,10 @@ async function fetchRecentPeriods(
     shots_taken: number;
     goals: number;
     closed_reason: 'quota' | 'timeout' | 'day_end';
+    started_at: Date;
     ended_at: Date;
   }>(
-    `select period_number, shots_taken, goals, closed_reason, ended_at
+    `select period_number, shots_taken, goals, closed_reason, started_at, ended_at
        from period_log
       where day_pool_id = $1
       order by period_number asc`,
@@ -110,8 +126,37 @@ async function fetchRecentPeriods(
     shots_taken: r.shots_taken,
     goals: r.goals,
     closed_reason: r.closed_reason,
+    duration_ms: Math.max(0, r.ended_at.getTime() - r.started_at.getTime()),
     ended_at: r.ended_at.toISOString(),
   }));
+}
+
+async function fetchPreviousGameStats(
+  client: PoolClient,
+  userId: string,
+): Promise<DailyGameStats | null> {
+  const { rows } = await client.query<{ id: string; day_date: string }>(
+    `select id, to_char(day_date, 'YYYY-MM-DD') as day_date
+       from day_pool
+      where user_id = $1
+        and state = 'closed'
+      order by closed_at desc nulls last, day_date desc, created_at desc
+      limit 1`,
+    [userId],
+  );
+  const pool = rows[0];
+  if (!pool) return null;
+
+  const periods = await fetchRecentPeriods(client, pool.id);
+  const totals = await aggregateDailyTotals(client, pool.id);
+
+  return {
+    day_date: pool.day_date,
+    total_shots: totals.shots,
+    total_goals: totals.goals,
+    total_duration_ms: periods.reduce((sum, period) => sum + period.duration_ms, 0),
+    periods,
+  };
 }
 
 async function fetchLifetime(
@@ -172,9 +217,13 @@ async function buildState(
   pool: DayPoolRow | null,
   localToday: string,
   userId: string,
+  now = new Date(),
 ): Promise<DailyStateResponse> {
   const timezone = await fetchUserTimezone(client, userId);
   const nextDay = await nextDayStartsAt(client, localToday, timezone);
+  const trainingCooldownEndsAt = await fetchTrainingCooldownEndsAt(client, userId, now);
+  const trainingCooldownEndsAtIso = trainingCooldownEndsAt?.toISOString() ?? null;
+  const previousGame = await fetchPreviousGameStats(client, userId);
 
   if (pool === null) {
     const lifetime = await fetchLifetime(client, userId);
@@ -196,6 +245,8 @@ async function buildState(
       shots_per_period: SHOTS_PER_PERIOD,
       total_periods: TOTAL_PERIODS,
       recent_periods: [],
+      previous_game: previousGame,
+      training_cooldown_ends_at: trainingCooldownEndsAtIso,
     };
   }
 
@@ -239,6 +290,8 @@ async function buildState(
     shots_per_period: SHOTS_PER_PERIOD,
     total_periods: TOTAL_PERIODS,
     recent_periods: recentPeriods,
+    previous_game: previousGame,
+    training_cooldown_ends_at: trainingCooldownEndsAtIso,
   };
 }
 
@@ -286,6 +339,10 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
           req.user.id,
           now,
         );
+        const isFirstDailyPeriod = pool === null || pool.current_period === 0;
+        if (isFirstDailyPeriod) {
+          await assertTrainingCooldownExpired(client, req.user.id, now);
+        }
 
         if (pool !== null) {
           if (pool.state !== 'idle') {

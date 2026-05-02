@@ -134,14 +134,33 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
   };
 
   let attachedTo: Ticker | null = null;
+  let isAttached = false;
+
+  const detachFromTicker = (): void => {
+    const ticker = attachedTo;
+    attachedTo = null;
+    if (!ticker || !isAttached) {
+      isAttached = false;
+      return;
+    }
+    isAttached = false;
+    try {
+      ticker.remove(onTick);
+    } catch {
+      // Pixi may already have dropped the listener during React/HMR cleanup.
+    }
+  };
+
   return {
     attach(ticker) {
-      attachedTo = ticker;
+      if (isAttached && attachedTo === ticker) return;
+      detachFromTicker();
       ticker.add(onTick);
+      attachedTo = ticker;
+      isAttached = true;
     },
     detach() {
-      attachedTo?.remove(onTick);
-      attachedTo = null;
+      detachFromTicker();
     },
     resetTime() {
       sessionStartMs = performance.now();

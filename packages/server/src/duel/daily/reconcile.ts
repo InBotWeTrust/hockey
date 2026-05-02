@@ -147,6 +147,22 @@ async function fetchOpenPool(
   return rows[0] ?? null;
 }
 
+async function fetchPoolForLocalDay(
+  client: PoolClient,
+  userId: string,
+  dayDate: string,
+): Promise<DayPoolRow | null> {
+  const { rows } = await client.query<DayPoolRow>(
+    `select * from day_pool
+      where user_id = $1 and day_date = $2
+      order by created_at desc
+      limit 1
+        for update`,
+    [userId, dayDate],
+  );
+  return rows[0] ?? null;
+}
+
 export interface ReconciledPool {
   pool: DayPoolRow | null;
   timezone: string;
@@ -159,11 +175,12 @@ export async function reconcileDayPool(
   now: Date,
 ): Promise<ReconciledPool> {
   const timezone = await fetchUserTimezone(client, userId);
-  let pool = await fetchOpenPool(client, userId);
   const today = await localDate(client, now, timezone);
+  let pool = await fetchOpenPool(client, userId);
 
   if (pool === null) {
-    return { pool: null, timezone, localToday: today };
+    const todayPool = await fetchPoolForLocalDay(client, userId, today);
+    return { pool: todayPool, timezone, localToday: today };
   }
 
   if (pool.day_date !== today) {
@@ -209,7 +226,7 @@ export async function reconcileDayPool(
           day_pool_id: pool.id,
           reason: 'completed',
         });
-        return { pool: null, timezone, localToday: today };
+        return { pool, timezone, localToday: today };
       }
     }
   }
@@ -233,15 +250,16 @@ export async function reconcileDayPool(
 
   if (pool.state === 'idle' && pool.current_period >= TOTAL_PERIODS) {
     const closedAt = now;
-    await client.query(
-      `update day_pool set state='closed', closed_at=$1 where id=$2`,
+    const { rows } = await client.query<DayPoolRow>(
+      `update day_pool set state='closed', closed_at=$1 where id=$2 returning *`,
       [closedAt, pool.id],
     );
+    pool = rows[0]!;
     await appendEvent(client, pool.user_id, 'day_pool_closed', {
       day_pool_id: pool.id,
       reason: 'completed',
     });
-    return { pool: null, timezone, localToday: today };
+    return { pool, timezone, localToday: today };
   }
 
   return { pool, timezone, localToday: today };

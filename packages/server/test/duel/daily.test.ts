@@ -72,7 +72,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
   beforeEach(async () => {
     await pool.query(
       `truncate users, auth_providers, user_wallet, user_equipment, user_sticks,
-              day_pool, period_log, shot_session, event_log
+              training_session, day_pool, period_log, shot_session, event_log
               restart identity cascade`,
     );
     const user = await findOrCreateTelegramUser(pool, {
@@ -121,15 +121,65 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     });
   }
 
+  async function startTraining(periodNumber = 1) {
+    return app.inject({
+      method: 'POST',
+      url: '/duel/training/start',
+      headers: authHeader(),
+      payload: { period_number: periodNumber },
+    });
+  }
+
+  async function submitTrainingShot(shotIndex: number, claimedResult = 'goal') {
+    return app.inject({
+      method: 'POST',
+      url: '/duel/training/shot',
+      headers: authHeader(),
+      payload: {
+        shot_index: shotIndex,
+        input: { tapTime: 1000 + shotIndex * 50 },
+        claimed_result: claimedResult,
+      },
+    });
+  }
+
   it('initial state is idle with no day_pool', async () => {
     const s = await getState();
     expect(s.state).toBe('idle');
     expect(s.current_period).toBe(0);
     expect(s.shots_per_period).toBe(30);
     expect(s.total_periods).toBe(3);
+    expect(s.previous_game).toBeNull();
+    expect(s.training_cooldown_ends_at).toBeNull();
 
     const { rows } = await pool.query('select count(*)::int as n from day_pool');
     expect(rows[0].n).toBe(0);
+  });
+
+  it('locks daily start for 2 hours after a training shot', async () => {
+    const training = await startTraining(1);
+    expect(training.statusCode).toBe(200);
+    const shot = await submitTrainingShot(1);
+    expect(shot.statusCode).toBe(200);
+
+    const lockedState = await getState();
+    expect(lockedState.training_cooldown_ends_at).not.toBeNull();
+
+    const lockedStart = await startPeriod();
+    expect(lockedStart.statusCode).toBe(409);
+
+    await pool.query(
+      `update shot_session
+          set created_at = now() - interval '121 minutes'
+        where user_id = $1 and mode = 'training'`,
+      [userId],
+    );
+    const unlockedState = await getState();
+    expect(unlockedState.training_cooldown_ends_at).toBeNull();
+
+    const start = await startPeriod();
+    expect(start.statusCode).toBe(200);
+    expect(start.json().state).toBe('period_active');
   });
 
   it('start first period creates a day_pool with daily_seed and period_active', async () => {
@@ -231,6 +281,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     );
     const s = await getState();
     expect(s.state).toBe('break_active');
+    expect(s.recent_periods[0].duration_ms).toBe(20 * 60 * 1000);
 
     const { rows } = await pool.query(
       `select shots_taken, closed_reason from period_log
@@ -254,6 +305,14 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     const s = await getState();
     expect(s.state).toBe('idle');
     expect(s.current_period).toBe(0);
+    expect(s.previous_game).not.toBeNull();
+    expect(s.previous_game.day_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(s.previous_game.total_shots).toBe(1);
+    expect(s.previous_game.periods).toHaveLength(1);
+    expect(s.previous_game.periods[0].period_number).toBe(1);
+    expect(s.previous_game.periods[0].closed_reason).toBe('day_end');
+    expect(s.previous_game.periods[0].duration_ms).toBeGreaterThanOrEqual(0);
+    expect(s.previous_game.total_duration_ms).toBe(s.previous_game.periods[0].duration_ms);
 
     const { rows } = await pool.query(
       `select state, closed_reason
@@ -267,35 +326,72 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     expect(rows[0].closed_reason).toBe('day_end');
   });
 
-  it('after 3 full periods state becomes closed and period/start returns 409', async () => {
+  it('runs 3 periods with 2 breaks, then stays closed until the next local day', async () => {
     for (let p = 1; p <= 3; p += 1) {
       const start = await startPeriod();
       expect(start.statusCode).toBe(200);
+      expect(start.json().current_period).toBe(p);
       for (let i = 1; i <= 30; i += 1) {
         const r = await submitShot(i);
         expect(r.statusCode).toBe(200);
+        if (i === 30) {
+          expect(r.json().state.state).toBe(p === 3 ? 'closed' : 'break_active');
+          expect(r.json().state.current_period).toBe(p);
+        }
       }
-      // Skip break unless this was the 3rd period.
+
       if (p < 3) {
+        const breakState = await getState();
+        expect(breakState.state).toBe('break_active');
+        expect(breakState.break_ends_at).not.toBeNull();
         await pool.query(
           `update day_pool set break_started_at = now() - interval '16 minutes' where user_id=$1`,
           [userId],
         );
+        const idleState = await getState();
+        expect(idleState.state).toBe('idle');
+        expect(idleState.current_period).toBe(p);
       }
     }
 
-    // After 3rd period quota → break_active. Skip break, then state should close.
-    await pool.query(
-      `update day_pool set break_started_at = now() - interval '16 minutes' where user_id=$1`,
-      [userId],
-    );
     const s = await getState();
-    expect(s.state).toBe('idle');
-    expect(s.current_period).toBe(0); // closed → returned as null pool
+    expect(s.state).toBe('closed');
+    expect(s.current_period).toBe(3);
+    expect(s.daily_total_shots).toBe(90);
+    expect(s.recent_periods).toHaveLength(3);
+    expect(s.recent_periods.map((p: { period_number: number }) => p.period_number)).toEqual([
+      1, 2, 3,
+    ]);
+    expect(s.previous_game).not.toBeNull();
+    expect(s.previous_game.total_shots).toBe(90);
+    expect(s.previous_game.total_goals).toBe(s.daily_total_goals);
+    expect(s.previous_game.total_duration_ms).toBeGreaterThanOrEqual(0);
+    expect(s.previous_game.periods.map((p: { period_number: number }) => p.period_number)).toEqual([
+      1, 2, 3,
+    ]);
+    expect(
+      s.previous_game.periods.every((p: { duration_ms: number }) => p.duration_ms >= 0),
+    ).toBe(true);
 
     const start4 = await startPeriod();
-    expect(start4.statusCode).toBe(200); // a new day_pool gets created (lazy, today)
-    expect(start4.json().current_period).toBe(1);
+    expect(start4.statusCode).toBe(409);
+
+    await pool.query(
+      `update day_pool set day_date = (now() at time zone 'Europe/Moscow')::date - 1
+         where user_id=$1`,
+      [userId],
+    );
+    const nextDay = await getState();
+    expect(nextDay.state).toBe('idle');
+    expect(nextDay.current_period).toBe(0);
+    expect(nextDay.previous_game).not.toBeNull();
+    expect(nextDay.previous_game.total_shots).toBe(90);
+    expect(nextDay.previous_game.total_goals).toBe(s.daily_total_goals);
+    expect(nextDay.previous_game.total_duration_ms).toBe(s.previous_game.total_duration_ms);
+
+    const newDayStart = await startPeriod();
+    expect(newDayStart.statusCode).toBe(200);
+    expect(newDayStart.json().current_period).toBe(1);
   });
 
   it('claimed_result mismatch with server_result writes shot_mismatch event', async () => {

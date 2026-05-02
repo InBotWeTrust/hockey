@@ -77,29 +77,6 @@ export function StartPeriodModal({
           position: 'relative',
         }}
       >
-        {onHome && (
-          <button
-            type="button"
-            aria-label="Вернуться к режимам"
-            title="К режимам"
-            onClick={onHome}
-            className="icon-btn"
-            style={{
-              position: 'absolute',
-              top: 16,
-              right: 16,
-              width: 44,
-              height: 44,
-              borderRadius: 18,
-              background: 'rgba(255, 255, 255, 0.72)',
-              border: '1px solid rgba(255, 255, 255, 0.86)',
-              color: 'var(--ink)',
-              boxShadow: '0 12px 26px rgba(15, 23, 42, 0.16)',
-            }}
-          >
-            <Home size={20} />
-          </button>
-        )}
         {topSlot && <div style={{ marginBottom: 18 }}>{topSlot}</div>}
         <div
           style={{
@@ -133,15 +110,40 @@ export function StartPeriodModal({
           20 минут и {shotsPerPeriod} бросков.
         </div>
 
-        <button
-          type="button"
-          className="btn btn--cta"
-          onClick={onStart}
-          disabled={pending}
-          style={{ marginTop: 22, width: '100%', paddingBlock: 16 }}
+        <div
+          style={{
+            marginTop: 22,
+            display: 'flex',
+            alignItems: 'stretch',
+            gap: 10,
+          }}
         >
-          Начать {nextPeriod}-й период
-        </button>
+          {onHome && (
+            <button
+              type="button"
+              aria-label="Вернуться к режимам"
+              title="К режимам"
+              onClick={onHome}
+              className="icon-btn icon-btn--dark"
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: 20,
+              }}
+            >
+              <Home size={22} />
+            </button>
+          )}
+          <button
+            type="button"
+            className="btn btn--cta"
+            onClick={onStart}
+            disabled={pending}
+            style={{ flex: 1, minWidth: 0, paddingBlock: 16 }}
+          >
+            Начать {nextPeriod}-й период
+          </button>
+        </div>
       </div>
     </div>
   );

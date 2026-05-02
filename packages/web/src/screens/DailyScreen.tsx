@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Container } from 'pixi.js';
 import type { Application, Ticker } from 'pixi.js';
-import { ArrowLeft, ChevronRight, Home, Info, Play, Volume2, VolumeX } from 'lucide-react';
+import { ArrowLeft, BarChart3, ChevronRight, Home, Info, Play, Volume2, VolumeX, X } from 'lucide-react';
 import {
   GOALIE_SIZE,
   GOALIE_Y,
@@ -36,11 +36,18 @@ import { useDailyStore } from '../stores/dailyStore.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
 import { ScoreBoard } from '../components/ScoreBoard.js';
 import { ResultModal } from '../components/ResultModal.js';
-import type { DailyStateResponse, ShotInputPayload, ShotResultType } from '../api/duel.js';
+import type {
+  DailyGameStats,
+  DailyStateResponse,
+  PeriodLogEntry,
+  ShotInputPayload,
+  ShotResultType,
+} from '../api/duel.js';
 import type { TrainingStateResponse } from '../api/training.js';
 import { StartPeriodModal } from '../components/StartPeriodModal.js';
 
 const PAUSE_MS = 1000;
+const HUB_PERIOD_DURATION_MS = 20 * 60 * 1000;
 const SOUND_ENABLED_STORAGE_KEY = 'hockey:sound-enabled';
 const MODE_ARTWORK_SIZE = 104;
 
@@ -123,6 +130,24 @@ function formatHms(ms: number): string {
 
 function formatSpeedValue(value: number): string {
   return value.toFixed(2).replace('.', ',');
+}
+
+function formatGoalRate(goals: number, shots: number): string {
+  if (shots <= 0) return '0%';
+  return `${Math.round((goals / shots) * 100)}%`;
+}
+
+function formatDailyGameDate(dayDate: string): string {
+  const [year, month, day] = dayDate.split('-');
+  if (!year || !month || !day) return dayDate;
+  return `${day}.${month}.${year}`;
+}
+
+function formatDurationMs(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
 export function DailyScreen(): JSX.Element {
@@ -317,32 +342,51 @@ function GameHub({
   const refresh = useDailyStore((s) => s.refresh);
   const trainingData = useTrainingSessionStore((s) => s.data);
   const [modeInfoModal, setModeInfoModal] = useState<ModeInfoModalContent | null>(null);
+  const [dailyStatsOpen, setDailyStatsOpen] = useState(false);
   const pending = useDailyStore((s) => s.inFlight);
   const nextPeriod = data.current_period === 0 ? 1 : data.current_period + 1;
   const breakEndsAt = data.break_ends_at ? new Date(data.break_ends_at).getTime() : 0;
   const periodEndsAt = data.period_ends_at ? new Date(data.period_ends_at).getTime() : 0;
   const nextDayAt = new Date(data.next_day_starts_at).getTime();
+  const trainingCooldownEndsAt = data.training_cooldown_ends_at
+    ? new Date(data.training_cooldown_ends_at).getTime()
+    : 0;
   const [now, setNow] = useState(Date.now());
+  const breakRemaining = Math.max(0, breakEndsAt - now);
+  const periodRemaining = Math.max(0, periodEndsAt - now);
+  const nextDayRemaining = Math.max(0, nextDayAt - now);
+  const trainingCooldownRemaining = Math.max(0, trainingCooldownEndsAt - now);
+  const isDailyStartedAndIncomplete =
+    data.state === 'period_active' ||
+    data.state === 'break_active' ||
+    (data.state === 'idle' && data.current_period > 0 && data.current_period < data.total_periods);
+  const isTrainingLockedByDaily = isDailyStartedAndIncomplete;
+  const isDailyLockedByTraining =
+    data.state === 'idle' &&
+    data.current_period === 0 &&
+    trainingCooldownEndsAt > 0 &&
+    trainingCooldownRemaining > 0;
 
   useEffect(() => {
     if (
       data.state !== 'period_active' &&
       data.state !== 'break_active' &&
-      data.state !== 'closed'
+      data.state !== 'closed' &&
+      !isDailyLockedByTraining
     ) {
       return undefined;
     }
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
-  }, [data.state]);
+  }, [data.state, isDailyLockedByTraining]);
 
-  const breakRemaining = Math.max(0, breakEndsAt - now);
-  const periodRemaining = Math.max(0, periodEndsAt - now);
-  const nextDayRemaining = Math.max(0, nextDayAt - now);
   useEffect(() => {
     if (data.state === 'period_active' && periodEndsAt > 0 && periodRemaining === 0) void refresh();
     if (data.state === 'break_active' && breakEndsAt > 0 && breakRemaining === 0) void refresh();
     if (data.state === 'closed' && nextDayAt > 0 && nextDayRemaining === 0) void refresh();
+    if (isDailyLockedByTraining && trainingCooldownEndsAt > 0 && trainingCooldownRemaining === 0) {
+      void refresh();
+    }
   }, [
     data.state,
     periodEndsAt,
@@ -351,41 +395,96 @@ function GameHub({
     breakRemaining,
     nextDayAt,
     nextDayRemaining,
+    isDailyLockedByTraining,
+    trainingCooldownEndsAt,
+    trainingCooldownRemaining,
     refresh,
   ]);
 
   const isDailyInProgress = data.state === 'period_active' || data.state === 'break_active';
-  const dailyActionDisabled = pending;
+  const isDailyClosed = data.state === 'closed';
+  const dailyActionDisabled = pending || isDailyClosed;
   const dailyActionLabel =
-    isDailyInProgress ? 'Вернуться на площадку' : 'На площадку';
+    isDailyInProgress
+      ? 'Вернуться на площадку'
+      : isDailyLockedByTraining
+        ? `Игра через ${formatHms(trainingCooldownRemaining)}`
+        : 'На площадку';
   const dailyEventTitle =
+    isDailyLockedByTraining
+      ? 'Восстановление'
+      : data.state === 'period_active'
+        ? `${data.current_period}-й период`
+        : data.state === 'break_active'
+          ? 'Перерыв'
+          : data.state === 'closed'
+            ? 'Завершена'
+            : 'Игра доступна';
+  const dailyHubScoreboard =
     data.state === 'period_active'
-      ? `${data.current_period}-й период`
+      ? {
+          timerLabel: 'До конца',
+          timer: formatMs(periodRemaining),
+          activePeriod: data.current_period,
+          ariaLabel: `${data.current_period}-й период. До конца ${formatMs(periodRemaining)}`,
+        }
       : data.state === 'break_active'
-        ? 'Перерыв'
+        ? {
+            timerLabel: 'До конца',
+            timer: formatMs(breakRemaining),
+            activePeriod: nextPeriod,
+            ariaLabel: `Перерыв. До конца ${formatMs(breakRemaining)}. Период ${nextPeriod}`,
+          }
         : data.state === 'closed'
-          ? 'Ждём следующий день'
-          : 'Игра доступна';
-  const dailyEventSubtitle =
-    data.state === 'period_active'
-      ? ''
-      : data.state === 'break_active'
-        ? ''
-        : data.state === 'closed'
-          ? `До обновления ${formatHms(nextDayRemaining)}`
-          : `Можно начать ${nextPeriod}-й период`;
-  const dailyEventHasScoreboard =
-    data.state === 'period_active' || data.state === 'break_active';
+          ? {
+              timerLabel: 'До обновления',
+              timer: formatHms(nextDayRemaining),
+              activePeriod: null,
+              ariaLabel: `Завершена. До обновления ${formatHms(nextDayRemaining)}. Периоды не активны`,
+            }
+          : isDailyLockedByTraining
+            ? {
+                timerLabel: 'До игры',
+                timer: formatHms(trainingCooldownRemaining),
+                activePeriod: null,
+                ariaLabel: `Восстановление. До игры ${formatHms(trainingCooldownRemaining)}`,
+              }
+            : {
+                timerLabel: 'Время',
+                timer: formatMs(HUB_PERIOD_DURATION_MS),
+                activePeriod: nextPeriod,
+                ariaLabel: `Игра доступна. Время периода ${formatMs(HUB_PERIOD_DURATION_MS)}. Период ${nextPeriod}`,
+              };
   const amateurGoals = Math.min(1000, data.lifetime_total_goals);
   const amateurProgress = Math.round((amateurGoals / 1000) * 100);
   const isAmateurUnlocked = amateurGoals >= 1000;
   const trainingShotsLimit = trainingData?.shots_limit ?? 500;
   const trainingShotsTaken = trainingData?.shots_taken ?? 0;
-  const trainingAvailability = `${trainingShotsTaken}/${trainingShotsLimit} бросков сегодня`;
+  const trainingAvailability = isTrainingLockedByDaily
+    ? 'Закрыта до завершения игры'
+    : `${trainingShotsTaken}/${trainingShotsLimit} бросков сегодня`;
 
   const handleDailyAction = async (): Promise<void> => {
-    if (pending) return;
+    if (pending || isDailyClosed) return;
+    if (isDailyLockedByTraining) {
+      setModeInfoModal({
+        title: 'Нужно восстановиться',
+        text: `После тренировочного броска ежедневную игру можно начать только через 2 часа. Осталось ${formatHms(trainingCooldownRemaining)}.`,
+      });
+      return;
+    }
     onOpenDailyPlay();
+  };
+
+  const handleOpenTraining = (): void => {
+    if (isTrainingLockedByDaily) {
+      setModeInfoModal({
+        title: 'Тренировка закрыта',
+        text: 'Пока ежедневная игра начата и не завершён 3-й период, тренировка недоступна. Доиграйте текущий день, затем возвращайтесь к тренировкам.',
+      });
+      return;
+    }
+    onOpenTraining();
   };
 
   const handleOpenAmateurs = (): void => {
@@ -481,6 +580,31 @@ function GameHub({
               boxShadow: '0 18px 42px rgba(15,23,42,0.18), inset 0 1px 0 rgba(255,255,255,0.95)',
             }}
           >
+            <button
+              type="button"
+              aria-label="Статистика последней игры"
+              title="Статистика последней игры"
+              onClick={() => setDailyStatsOpen(true)}
+              className="icon-btn"
+              style={{
+                position: 'absolute',
+                top: 16,
+                right: 16,
+                zIndex: 2,
+                width: 30,
+                height: 30,
+                borderRadius: 999,
+                background: 'rgba(15, 23, 42, 0.035)',
+                border: '1px solid rgba(15, 23, 42, 0.08)',
+                color: 'rgba(15, 23, 42, 0.48)',
+                boxShadow: 'none',
+                backdropFilter: 'none',
+                WebkitBackdropFilter: 'none',
+              }}
+            >
+              <BarChart3 size={15} strokeWidth={2.35} />
+            </button>
+
             <div
               style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 14 }}
             >
@@ -501,7 +625,7 @@ function GameHub({
                 style={{
                   display: 'flex',
                   flexDirection: 'column',
-                  alignItems: dailyEventHasScoreboard ? 'center' : 'flex-start',
+                  alignItems: 'center',
                   gap: 7,
                 }}
               >
@@ -511,37 +635,18 @@ function GameHub({
                     fontSize: 26,
                     lineHeight: 1.05,
                     fontWeight: 900,
-                    textAlign: dailyEventHasScoreboard ? 'center' : 'left',
+                    textAlign: 'center',
                   }}
                 >
                   {dailyEventTitle}
                 </div>
-                {data.state === 'period_active' ? (
-                  <DailyEventScoreboard
-                    period={data.current_period}
-                    periodsTotal={data.total_periods}
-                    timer={formatMs(periodRemaining)}
-                    shots={`${data.current_period_shots}/${data.shots_per_period}`}
-                  />
-                ) : data.state === 'break_active' ? (
-                  <DailyBreakScoreboard
-                    nextPeriod={nextPeriod}
-                    periodsTotal={data.total_periods}
-                    timer={formatMs(breakRemaining)}
-                  />
-                ) : (
-                  <div
-                    style={{
-                      color: 'rgba(15, 23, 42, 0.58)',
-                      fontSize: 14,
-                      lineHeight: 1.28,
-                      fontWeight: 800,
-                      fontVariantNumeric: 'tabular-nums',
-                    }}
-                  >
-                    {dailyEventSubtitle}
-                  </div>
-                )}
+                <DailyHubScoreboard
+                  activePeriod={dailyHubScoreboard.activePeriod}
+                  ariaLabel={dailyHubScoreboard.ariaLabel}
+                  periodsTotal={data.total_periods}
+                  timer={dailyHubScoreboard.timer}
+                  timerLabel={dailyHubScoreboard.timerLabel}
+                />
               </div>
             </div>
 
@@ -593,8 +698,8 @@ function GameHub({
               description="Три периода на выбор"
               meta={trainingAvailability}
               artwork="beginner"
-              tone="active"
-              onClick={onOpenTraining}
+              tone={isTrainingLockedByDaily ? 'muted' : 'active'}
+              onClick={handleOpenTraining}
             />
 
             <LevelHubCard
@@ -626,34 +731,45 @@ function GameHub({
           onClose={() => setModeInfoModal(null)}
         />
       )}
+
+      {dailyStatsOpen && (
+        <DailyGameStatsModal
+          stats={data.previous_game}
+          totalPeriods={data.total_periods}
+          onClose={() => setDailyStatsOpen(false)}
+        />
+      )}
     </main>
   );
 }
 
-function DailyEventScoreboard({
-  period,
+function DailyHubScoreboard({
+  activePeriod,
+  ariaLabel,
   periodsTotal,
   timer,
-  shots,
+  timerLabel,
 }: {
-  period: number;
+  activePeriod: number | null;
+  ariaLabel: string;
   periodsTotal: number;
   timer: string;
-  shots: string;
+  timerLabel: string;
 }): JSX.Element {
   return (
     <div
-      aria-label={`${period}-й период. До конца периода ${timer}. Бросков сыграно ${shots}`}
+      aria-label={ariaLabel}
       style={{
         width: '100%',
-        maxWidth: 360,
+        maxWidth: 280,
         padding: '2px 0 0',
         display: 'grid',
-        gridTemplateColumns: '1.15fr 1fr 1fr',
+        gridTemplateColumns: '1fr 1fr',
         alignItems: 'center',
         gap: 12,
       }}
     >
+      <DailyEventScoreboardColumn label={timerLabel} value={timer} />
       <div
         style={{
           display: 'flex',
@@ -665,49 +781,7 @@ function DailyEventScoreboard({
         }}
       >
         <DailyEventScoreboardLabel>Период</DailyEventScoreboardLabel>
-        <DailyPeriodTabs activePeriod={period} periodsTotal={periodsTotal} />
-      </div>
-      <DailyEventScoreboardColumn label="До конца" value={timer} />
-      <DailyEventScoreboardColumn label="Броски" value={shots} />
-    </div>
-  );
-}
-
-function DailyBreakScoreboard({
-  nextPeriod,
-  periodsTotal,
-  timer,
-}: {
-  nextPeriod: number;
-  periodsTotal: number;
-  timer: string;
-}): JSX.Element {
-  return (
-    <div
-      aria-label={`До конца перерыва ${timer}. Следующий период ${nextPeriod}`}
-      style={{
-        width: '100%',
-        maxWidth: 280,
-        padding: '2px 0 0',
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        alignItems: 'center',
-        gap: 12,
-      }}
-    >
-      <DailyEventScoreboardColumn label="До конца" value={timer} />
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: 5,
-          minWidth: 0,
-          lineHeight: 1,
-        }}
-      >
-        <DailyEventScoreboardLabel>Следующий</DailyEventScoreboardLabel>
-        <DailyPeriodTabs activePeriod={nextPeriod} periodsTotal={periodsTotal} />
+        <DailyPeriodTabs activePeriod={activePeriod} periodsTotal={periodsTotal} />
       </div>
     </div>
   );
@@ -717,35 +791,48 @@ function DailyPeriodTabs({
   activePeriod,
   periodsTotal,
 }: {
-  activePeriod: number;
+  activePeriod: number | null;
   periodsTotal: number;
 }): JSX.Element {
   const periodNums = Array.from({ length: periodsTotal }, (_, i) => i + 1);
   return (
     <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
       {periodNums.map((n) => (
-        <span
-          key={n}
-          style={{
-            display: 'inline-flex',
-            width: 20,
-            height: 20,
-            borderRadius: 5,
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontFamily: 'var(--font-mono)',
-            fontSize: 11,
-            fontWeight: 700,
-            background: n === activePeriod ? 'var(--red)' : 'transparent',
-            border: n === activePeriod ? 'none' : '1px solid rgba(15, 23, 42, 0.24)',
-            color: n === activePeriod ? '#ffffff' : 'rgba(15, 23, 42, 0.34)',
-            boxShadow: n === activePeriod ? '0 0 10px rgba(225, 29, 72, 0.55)' : 'none',
-          }}
-        >
+        <DailyPeriodTab key={n} active={activePeriod !== null && n === activePeriod}>
           {n}
-        </span>
+        </DailyPeriodTab>
       ))}
     </div>
+  );
+}
+
+function DailyPeriodTab({
+  active,
+  children,
+}: {
+  active: boolean;
+  children: React.ReactNode;
+}): JSX.Element {
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        width: 20,
+        height: 20,
+        borderRadius: 5,
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontFamily: 'var(--font-mono)',
+        fontSize: 11,
+        fontWeight: 700,
+        background: active ? 'var(--red)' : 'transparent',
+        border: active ? 'none' : '1px solid rgba(15, 23, 42, 0.24)',
+        color: active ? '#ffffff' : 'rgba(15, 23, 42, 0.34)',
+        boxShadow: active ? '0 0 10px rgba(225, 29, 72, 0.55)' : 'none',
+      }}
+    >
+      {children}
+    </span>
   );
 }
 
@@ -980,6 +1067,270 @@ function ModeInfoModal({
         >
           Понятно
         </button>
+      </div>
+    </div>
+  );
+}
+
+function DailyGameStatsModal({
+  stats,
+  totalPeriods,
+  onClose,
+}: {
+  stats: DailyGameStats | null;
+  totalPeriods: number;
+  onClose: () => void;
+}): JSX.Element {
+  const periodsByNumber = new Map<number, PeriodLogEntry>(
+    stats?.periods.map((period) => [period.period_number, period]) ?? [],
+  );
+  const periodNumbers = Array.from({ length: totalPeriods }, (_, index) => index + 1);
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Статистика последней игры"
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(15, 23, 42, 0.35)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+        zIndex: 260,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      <div
+        className="glass"
+        onClick={(event) => event.stopPropagation()}
+        style={{
+          borderRadius: 24,
+          padding: '18px 18px 20px',
+          maxWidth: 380,
+          width: '100%',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            marginBottom: 16,
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 14,
+                fontWeight: 900,
+                letterSpacing: '0.1em',
+                textTransform: 'uppercase',
+                color: 'var(--ink)',
+              }}
+            >
+              Статистика прошлой игры
+            </div>
+            <div
+              style={{
+                marginTop: 5,
+                color: 'rgba(15, 23, 42, 0.55)',
+                fontSize: 12,
+                fontWeight: 800,
+              }}
+            >
+              {stats ? `Дата: ${formatDailyGameDate(stats.day_date)}` : 'Игр пока нет'}
+            </div>
+          </div>
+          <button type="button" className="icon-btn" onClick={onClose} aria-label="Закрыть">
+            <X size={16} />
+          </button>
+        </div>
+
+        {!stats ? (
+          <div
+            style={{
+              color: 'rgba(15, 23, 42, 0.64)',
+              fontSize: 13,
+              fontWeight: 700,
+              lineHeight: 1.55,
+            }}
+          >
+            После завершения первой ежедневной игры здесь появятся общие итоги и статистика по
+            периодам.
+          </div>
+        ) : (
+          <>
+            <div
+              aria-label={`Итого: ${stats.total_goals} голов из ${stats.total_shots} бросков`}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+                gap: 8,
+                marginBottom: 16,
+              }}
+            >
+              <DailyStatsMetric label="Броски" value={String(stats.total_shots)} />
+              <DailyStatsMetric label="Голы" value={String(stats.total_goals)} />
+              <DailyStatsMetric label="Время" value={formatDurationMs(stats.total_duration_ms)} />
+              <DailyStatsMetric
+                label="Процент"
+                value={formatGoalRate(stats.total_goals, stats.total_shots)}
+              />
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+              }}
+            >
+              {periodNumbers.map((periodNumber) => {
+                const period = periodsByNumber.get(periodNumber);
+                return (
+                  <DailyStatsPeriodRow
+                    key={periodNumber}
+                    periodNumber={periodNumber}
+                    period={period}
+                  />
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        <button
+          type="button"
+          className="btn btn--cta"
+          onClick={onClose}
+          style={{ marginTop: 18, width: '100%', padding: '12px 0', fontSize: 14 }}
+        >
+          Понятно
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function DailyStatsMetric({ label, value }: { label: string; value: string }): JSX.Element {
+  return (
+    <div
+      style={{
+        borderRadius: 16,
+        padding: '12px 8px',
+        textAlign: 'center',
+        background: 'rgba(255, 255, 255, 0.52)',
+        border: '1px solid rgba(255, 255, 255, 0.7)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.72)',
+      }}
+    >
+      <div
+        style={{
+          color: 'rgba(15, 23, 42, 0.52)',
+          fontSize: 9,
+          fontWeight: 900,
+          letterSpacing: '0.12em',
+          textTransform: 'uppercase',
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          marginTop: 7,
+          color: 'var(--ink)',
+          fontFamily: 'var(--font-mono)',
+          fontSize: 20,
+          fontWeight: 800,
+          lineHeight: 1,
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function DailyStatsPeriodRow({
+  periodNumber,
+  period,
+}: {
+  periodNumber: number;
+  period: PeriodLogEntry | undefined;
+}): JSX.Element {
+  const shots = period?.shots_taken ?? 0;
+  const goals = period?.goals ?? 0;
+  return (
+    <div
+      aria-label={
+        period
+          ? `${periodNumber}-й период: ${goals} голов из ${shots} бросков за ${formatDurationMs(period.duration_ms)}`
+          : `${periodNumber}-й период: не сыгран`
+      }
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'minmax(0, 1fr) auto auto',
+        alignItems: 'center',
+        gap: 10,
+        borderRadius: 16,
+        padding: '10px 12px',
+        background: 'rgba(255, 255, 255, 0.42)',
+        border: '1px solid rgba(255, 255, 255, 0.58)',
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <div
+          style={{
+            color: 'var(--ink)',
+            fontSize: 13,
+            fontWeight: 900,
+          }}
+        >
+          {periodNumber}-й период
+        </div>
+        <div
+          style={{
+            marginTop: 3,
+            color: 'rgba(15, 23, 42, 0.44)',
+            fontSize: 10,
+            fontWeight: 800,
+            lineHeight: 1.15,
+          }}
+        >
+          {period ? formatDurationMs(period.duration_ms) : 'не сыгран'}
+        </div>
+      </div>
+      <div
+        style={{
+          color: period ? 'rgba(15, 23, 42, 0.78)' : 'rgba(15, 23, 42, 0.32)',
+          fontFamily: 'var(--font-mono)',
+          fontSize: 14,
+          fontWeight: 800,
+          fontVariantNumeric: 'tabular-nums',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {period ? `${goals}/${shots}` : '—'}
+      </div>
+      <div
+        style={{
+          minWidth: 42,
+          color: period ? 'rgba(15, 23, 42, 0.58)' : 'rgba(15, 23, 42, 0.32)',
+          fontFamily: 'var(--font-mono)',
+          fontSize: 13,
+          fontWeight: 800,
+          fontVariantNumeric: 'tabular-nums',
+          textAlign: 'right',
+        }}
+      >
+        {period ? formatGoalRate(goals, shots) : '—'}
       </div>
     </div>
   );
@@ -1447,7 +1798,7 @@ function DailyPlayView({ onBack }: { onBack: () => void }): JSX.Element {
   const refresh = useDailyStore((s) => s.refresh);
   const applyState = useDailyStore((s) => s.applyState);
   const isBreak = data.state === 'break_active';
-  const isClosed = data.state === 'closed' || data.current_period >= data.total_periods;
+  const isClosed = data.state === 'closed';
   const canStartPeriod = data.state === 'idle' && data.current_period < data.total_periods;
   const shouldSuppressRink = data.state !== 'period_active';
   const periodNumber = isBreak
@@ -1484,7 +1835,7 @@ function DailyPlayView({ onBack }: { onBack: () => void }): JSX.Element {
     <>
       <PlayView<DailyStateResponse>
         suppressedByModal={shouldSuppressRink}
-        showIceCar={isBreak}
+        showIceCar={isBreak || isClosed}
         onBack={onBack}
         active={data.state === 'period_active'}
         seed={data.daily_seed}

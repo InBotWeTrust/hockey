@@ -34,6 +34,8 @@ const baseState: DailyStateResponse = {
   shots_per_period: 30,
   total_periods: 3,
   recent_periods: [],
+  previous_game: null,
+  training_cooldown_ends_at: null,
 };
 
 const trainingIdleState: TrainingStateResponse = {
@@ -109,7 +111,9 @@ describe('DailyScreen', () => {
     expect(screen.getByText(/Здесь будут собраны все игровые события/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Понятно' }));
     expect(screen.getByText('Игра доступна')).toBeInTheDocument();
-    expect(screen.getByText('Можно начать 1-й период')).toBeInTheDocument();
+    expect(screen.getByText('Время')).toBeInTheDocument();
+    expect(screen.getByText('20:00')).toBeInTheDocument();
+    expect(screen.getByText('Период')).toBeInTheDocument();
     expect(screen.getByLabelText('Статус ежедневной игры')).toBeInTheDocument();
     expect(screen.getByLabelText('Изображение режима Тренировка')).toBeInTheDocument();
     expect(screen.getByLabelText('Изображение режима Любители')).toBeInTheDocument();
@@ -172,6 +176,10 @@ describe('DailyScreen', () => {
 
     const resume = await screen.findByRole('button', { name: 'Вернуться на площадку' });
     expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();
+    expect(screen.getByText('1-й период')).toBeInTheDocument();
+    expect(screen.getByText('До конца')).toBeInTheDocument();
+    expect(screen.getByText('Период')).toBeInTheDocument();
+    expect(screen.queryByText('Броски')).not.toBeInTheDocument();
 
     fireEvent.click(resume);
     expect(await screen.findByRole('button', { name: 'БРОСОК' })).toBeInTheDocument();
@@ -203,6 +211,32 @@ describe('DailyScreen', () => {
     expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();
   });
 
+  it('keeps the third period playable instead of showing the closed-day modal', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ...baseState,
+          state: 'period_active',
+          current_period: 3,
+          current_period_shots: 0,
+          current_period_goals: 0,
+          daily_total_shots: 60,
+          daily_total_goals: 24,
+          daily_seed: 'seed-abc',
+          period_ends_at: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    renderWith(['/?view=daily']);
+
+    const shotButton = await screen.findByRole('button', { name: 'БРОСОК' });
+    expect(shotButton).toBeEnabled();
+    expect(screen.getByText('00/30')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'День завершён' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'ДЕНЬ ЗАВЕРШЁН' })).not.toBeInTheDocument();
+  });
+
   it('renders break view with countdown', async () => {
     const future = new Date(Date.now() + 5 * 60 * 1000).toISOString();
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
@@ -220,6 +254,8 @@ describe('DailyScreen', () => {
     await waitFor(() => {
       expect(screen.getByText(/Перерыв/)).toBeInTheDocument();
     });
+    expect(screen.getByText('Период')).toBeInTheDocument();
+    expect(screen.queryByText(/Следующий/)).not.toBeInTheDocument();
     const breakButton = screen.getByRole('button', { name: 'Вернуться на площадку' });
     expect(breakButton).toBeEnabled();
   });
@@ -273,6 +309,30 @@ describe('DailyScreen', () => {
   });
 
   it('renders closed view', async () => {
+    const previousGame = {
+      day_date: '2026-04-25',
+      total_shots: 48,
+      total_goals: 19,
+      total_duration_ms: 1_980_000,
+      periods: [
+        {
+          period_number: 1,
+          shots_taken: 30,
+          goals: 14,
+          closed_reason: 'quota' as const,
+          duration_ms: 1_200_000,
+          ended_at: '2026-04-25T12:20:00.000Z',
+        },
+        {
+          period_number: 2,
+          shots_taken: 18,
+          goals: 5,
+          closed_reason: 'day_end' as const,
+          duration_ms: 780_000,
+          ended_at: '2026-04-25T21:00:00.000Z',
+        },
+      ],
+    };
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -281,15 +341,86 @@ describe('DailyScreen', () => {
           current_period: 3,
           daily_total_shots: 90,
           daily_total_goals: 42,
+          previous_game: previousGame,
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       ),
     );
     renderWith();
     await waitFor(() => {
-      expect(screen.getByText(/Ждём следующий день/)).toBeInTheDocument();
+      expect(screen.getByText('Завершена')).toBeInTheDocument();
     });
-    expect(screen.getByText(/До обновления/)).toBeInTheDocument();
+    expect(screen.getByText('До обновления')).toBeInTheDocument();
+    expect(screen.getByText('Период')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Периоды не активны/)).toBeInTheDocument();
+    expect(screen.queryByText(/Ждём следующий день/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Следующий/)).not.toBeInTheDocument();
+    expect(screen.getByText(/\d{2}:\d{2}:\d{2}/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'На площадку' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Статистика последней игры' }));
+    expect(screen.getByRole('dialog', { name: 'Статистика последней игры' })).toBeInTheDocument();
+    expect(screen.getByText('Статистика прошлой игры')).toBeInTheDocument();
+    expect(screen.getByText('Дата: 25.04.2026')).toBeInTheDocument();
+    expect(screen.getByText('48')).toBeInTheDocument();
+    expect(screen.getByText('19')).toBeInTheDocument();
+    expect(screen.getByText('33:00')).toBeInTheDocument();
+    expect(screen.getByText('40%')).toBeInTheDocument();
+    expect(screen.getByLabelText('1-й период: 14 голов из 30 бросков за 20:00')).toBeInTheDocument();
+    expect(screen.getByText('20:00')).toBeInTheDocument();
+    expect(screen.getByLabelText('2-й период: 5 голов из 18 бросков за 13:00')).toBeInTheDocument();
+    expect(screen.getByText('13:00')).toBeInTheDocument();
+    expect(screen.queryByText('лимит бросков')).not.toBeInTheDocument();
+    expect(screen.queryByText('день закончился')).not.toBeInTheDocument();
+    expect(screen.queryByText('время вышло')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('3-й период: не сыгран')).toBeInTheDocument();
+    expect(screen.getByText('не сыгран')).toBeInTheDocument();
+  });
+
+  it('shows empty previous-game stats state before the first completed game', async () => {
+    renderWith();
+
+    const statsButton = await screen.findByRole('button', {
+      name: 'Статистика последней игры',
+    });
+    fireEvent.click(statsButton);
+
+    expect(screen.getByRole('dialog', { name: 'Статистика последней игры' })).toBeInTheDocument();
+    expect(screen.getByText('Игр пока нет')).toBeInTheDocument();
+    expect(screen.getByText(/После завершения первой ежедневной игры/)).toBeInTheDocument();
+  });
+
+  it('keeps the hub daily action disabled when the day is closed', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(
+        JSON.stringify({
+          ...baseState,
+          state: 'closed',
+          current_period: 3,
+          daily_total_shots: 90,
+          daily_total_goals: 42,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+    renderWith();
+
+    const rinkButton = await screen.findByRole('button', { name: 'На площадку' });
+    expect(rinkButton).toBeDisabled();
+    fireEvent.click(rinkButton);
+
+    expect(screen.queryByRole('dialog', { name: 'День завершён' })).not.toBeInTheDocument();
+    const calls = fetchMock.mock.calls.map((c) => String(c[0]));
+    expect(calls.some((u) => u.includes('/duel/daily/period/start'))).toBe(false);
   });
 
   it('switches from daily game to the training placeholder', async () => {
@@ -319,6 +450,68 @@ describe('DailyScreen', () => {
     expect(screen.getByText('ДО ОБНОВЛЕНИЯ')).toBeInTheDocument();
     expect(screen.getByText('Скорости 1-го периода')).toBeInTheDocument();
     expect(screen.getByText('0,55/с')).toBeInTheDocument();
+  });
+
+  it('shows why training is locked while the daily game is in progress', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(
+        JSON.stringify({
+          ...baseState,
+          state: 'period_active',
+          current_period: 2,
+          current_period_shots: 3,
+          daily_seed: 'seed-abc',
+          period_ends_at: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+    renderWith();
+
+    const trainingCard = await screen.findByRole('button', { name: 'Тренировка' });
+    expect(screen.getByText('Закрыта до завершения игры')).toBeInTheDocument();
+    fireEvent.click(trainingCard);
+
+    expect(screen.getByRole('dialog', { name: 'Тренировка закрыта' })).toBeInTheDocument();
+    expect(screen.getByText(/не завершён 3-й период/)).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Тренировка', level: 1 })).not.toBeInTheDocument();
+  });
+
+  it('shows why the daily game is locked after a training shot', async () => {
+    const cooldownEndsAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify({ ...trainingIdleState, shots_taken: 1 }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(
+        JSON.stringify({
+          ...baseState,
+          training_cooldown_ends_at: cooldownEndsAt,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+    renderWith();
+
+    const dailyButton = await screen.findByRole('button', { name: /Игра через/ });
+    expect(screen.getByText('Восстановление')).toBeInTheDocument();
+    expect(screen.getByText('До игры')).toBeInTheDocument();
+    fireEvent.click(dailyButton);
+
+    expect(screen.getByRole('dialog', { name: 'Нужно восстановиться' })).toBeInTheDocument();
+    expect(screen.getByText(/можно начать только через 2 часа/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();
   });
 
   it('keeps active training on the setup screen until the user continues it', async () => {

@@ -15,7 +15,16 @@ export interface PeriodLogEntry {
   shots_taken: number;
   goals: number;
   closed_reason: PeriodClosedReason;
+  duration_ms: number;
   ended_at: string;
+}
+
+export interface DailyGameStats {
+  day_date: string;
+  total_shots: number;
+  total_goals: number;
+  total_duration_ms: number;
+  periods: PeriodLogEntry[];
 }
 
 export interface DailyStateResponse {
@@ -36,6 +45,8 @@ export interface DailyStateResponse {
   shots_per_period: number;
   total_periods: number;
   recent_periods: PeriodLogEntry[];
+  previous_game: DailyGameStats | null;
+  training_cooldown_ends_at: string | null;
 }
 
 export interface ShotInputPayload {

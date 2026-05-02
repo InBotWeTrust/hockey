@@ -116,6 +116,14 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
     });
   }
 
+  async function startDailyPeriod() {
+    return app.inject({
+      method: 'POST',
+      url: '/duel/daily/period/start',
+      headers: authHeader(),
+    });
+  }
+
   it('initial state is idle', async () => {
     const state = await getState();
     expect(state.state).toBe('idle');
@@ -134,6 +142,41 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
     const second = await startTraining(1);
     expect(second.statusCode).toBe(200);
     expect(second.json().selected_period).toBe(1);
+  });
+
+  it('rejects training start while a daily period is active', async () => {
+    const daily = await startDailyPeriod();
+    expect(daily.statusCode).toBe(200);
+
+    const training = await startTraining(1);
+    expect(training.statusCode).toBe(409);
+  });
+
+  it('rejects training start between daily periods before the third period is complete', async () => {
+    const daily = await startDailyPeriod();
+    expect(daily.statusCode).toBe(200);
+    await pool.query(
+      `update day_pool
+          set state = 'idle',
+              current_period = 1,
+              period_started_at = null,
+              break_started_at = null
+        where user_id = $1`,
+      [userId],
+    );
+
+    const training = await startTraining(1);
+    expect(training.statusCode).toBe(409);
+  });
+
+  it('rejects training shots once the daily game starts', async () => {
+    const training = await startTraining(2);
+    expect(training.statusCode).toBe(200);
+    const daily = await startDailyPeriod();
+    expect(daily.statusCode).toBe(200);
+
+    const shot = await submitShot(1);
+    expect(shot.statusCode).toBe(409);
   });
 
   it('records shots without incrementing lifetime daily totals', async () => {
