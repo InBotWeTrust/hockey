@@ -99,7 +99,7 @@ describe('DailyScreen', () => {
   it('renders idle view with start button after fetch', async () => {
     renderWith();
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Начать 1-й период/ })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'На площадку' })).toBeInTheDocument();
     });
     expect(screen.getByText('Ежедневная игра')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Об описании страницы' }));
@@ -170,7 +170,7 @@ describe('DailyScreen', () => {
     );
     renderWith();
 
-    const resume = await screen.findByRole('button', { name: /Вернуться в 1-й период/ });
+    const resume = await screen.findByRole('button', { name: 'Вернуться на площадку' });
     expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();
 
     fireEvent.click(resume);
@@ -198,7 +198,7 @@ describe('DailyScreen', () => {
     fireEvent.click(back);
 
     expect(
-      await screen.findByRole('button', { name: /Вернуться в 1-й период/ }),
+      await screen.findByRole('button', { name: 'Вернуться на площадку' }),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();
   });
@@ -220,7 +220,7 @@ describe('DailyScreen', () => {
     await waitFor(() => {
       expect(screen.getByText(/Перерыв/)).toBeInTheDocument();
     });
-    const breakButton = screen.getByRole('button', { name: /Смотреть перерыв/ });
+    const breakButton = screen.getByRole('button', { name: 'Вернуться на площадку' });
     expect(breakButton).toBeEnabled();
   });
 
@@ -242,7 +242,7 @@ describe('DailyScreen', () => {
     );
     renderWith();
 
-    const breakButton = await screen.findByRole('button', { name: /Смотреть перерыв/ });
+    const breakButton = await screen.findByRole('button', { name: 'Вернуться на площадку' });
     fireEvent.click(breakButton);
 
     await waitFor(() => {
@@ -399,8 +399,10 @@ describe('DailyScreen', () => {
       });
     });
     renderWith();
-    const btn = await screen.findByRole('button', { name: /Начать 1-й период/ });
-    fireEvent.click(btn);
+    const rinkButton = await screen.findByRole('button', { name: 'На площадку' });
+    fireEvent.click(rinkButton);
+    const startButton = await screen.findByRole('button', { name: /Начать 1-й период/ });
+    fireEvent.click(startButton);
     await waitFor(() => {
       const calls = fetchMock.mock.calls.map((c) => String(c[0]));
       expect(calls.some((u) => u.includes('/duel/daily/period/start'))).toBe(true);
