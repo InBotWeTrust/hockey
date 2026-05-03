@@ -82,7 +82,7 @@ export function BottomNav(): JSX.Element | null {
   return (
     <div
       style={{
-        padding: '0 12px max(12px, var(--app-safe-bottom))',
+        padding: '12px 12px max(12px, var(--app-safe-bottom))',
         zIndex: 2,
       }}
     >
