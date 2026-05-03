@@ -103,12 +103,6 @@ function mockProfileFetch(profile: typeof telegramProfile) {
         headers: { 'content-type': 'application/json' },
       });
     }
-    if (url.endsWith('/api/push/test')) {
-      return new Response(JSON.stringify({ total: 1, sent: 1, failed: 0 }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    }
     if (url.endsWith('/api/feedback') && init?.method === 'POST') {
       const body = typeof init.body === 'string' ? JSON.parse(init.body) : {};
       return new Response(
@@ -131,9 +125,32 @@ function mockProfileFetch(profile: typeof telegramProfile) {
   });
 }
 
+function mockPushSupport(subscription: PushSubscription | null): void {
+  const registration = {
+    pushManager: {
+      getSubscription: vi.fn().mockResolvedValue(subscription),
+    },
+  };
+
+  vi.stubGlobal('Notification', {
+    permission: 'granted',
+    requestPermission: vi.fn().mockResolvedValue('granted'),
+  });
+  vi.stubGlobal('PushManager', class PushManager {});
+  Object.defineProperty(navigator, 'serviceWorker', {
+    configurable: true,
+    value: { ready: Promise.resolve(registration) },
+  });
+}
+
 describe('ProfileScreen', () => {
   beforeEach(() => {
     localStorage.clear();
+    vi.unstubAllGlobals();
+    Object.defineProperty(navigator, 'serviceWorker', {
+      configurable: true,
+      value: undefined,
+    });
     useAuthStore.getState().setSession({
       accessToken: 'a',
       refreshToken: 'r',
@@ -208,15 +225,34 @@ describe('ProfileScreen', () => {
     expect(screen.getByText('settings screen')).toBeInTheDocument();
   });
 
-  it('shows a test push button for admins', async () => {
+  it('shows disabled push status when notifications are off', async () => {
+    mockPushSupport(null);
+    mockProfileFetch(telegramProfile);
+
+    renderProfile();
+
+    expect(await screen.findByText('Уведомления выключены')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Включить уведомления/i })).toBeInTheDocument();
+  });
+
+  it('does not render a redundant enabled push button', async () => {
+    mockPushSupport({} as PushSubscription);
+    mockProfileFetch(telegramProfile);
+
+    renderProfile();
+
+    expect(await screen.findByText('Уведомления включены')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Уведомления включены' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Выключить уведомления' })).toBeInTheDocument();
+  });
+
+  it('does not show a test push button for admins', async () => {
     mockProfileFetch({ ...telegramProfile, role: 'admin' });
 
     renderProfile();
 
-    const testButton = await screen.findByRole('button', { name: /Тестовый пуш/i });
-    fireEvent.click(testButton);
-
-    expect(await screen.findByText('Тестовый пуш отправлен')).toBeInTheDocument();
+    await screen.findByText('Пуш-уведомления');
+    expect(screen.queryByRole('button', { name: /Тестовый пуш/i })).not.toBeInTheDocument();
   });
 
   it('saves push preference switches', async () => {

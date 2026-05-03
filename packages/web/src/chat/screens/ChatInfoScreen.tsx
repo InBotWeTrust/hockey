@@ -46,35 +46,37 @@ export function ChatInfoScreen(): JSX.Element {
         WebkitOverflowScrolling: 'touch',
       }}
     >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          margin: '10px 12px 4px',
-        }}
-      >
-        <button
-          type="button"
-          className="icon-btn glass"
-          aria-label="Назад"
-          onClick={() => navigate(-1)}
+      <div className="chat-edge-top glass-edge-fade glass-edge-fade--top">
+        <div
           style={{
-            width: 40,
-            height: 40,
-            minWidth: 40,
-            minHeight: 40,
-            borderRadius: 999,
-            padding: 0,
-            display: 'inline-flex',
+            display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
+            gap: 10,
+            margin: '0 12px',
           }}
         >
-          <ArrowLeft size={16} />
-        </button>
-        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>Информация</div>
+          <button
+            type="button"
+            className="icon-btn glass"
+            aria-label="Назад"
+            onClick={() => navigate(-1)}
+            style={{
+              width: 40,
+              height: 40,
+              minWidth: 40,
+              minHeight: 40,
+              borderRadius: 999,
+              padding: 0,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <ArrowLeft size={16} />
+          </button>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>Информация</div>
+        </div>
       </div>
 
       {isLoading && (

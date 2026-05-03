@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type MouseEvent, type PointerEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, BellOff, ChevronDown, MessageSquare, Send, Settings, X } from 'lucide-react';
+import { Bell, ChevronDown, MessageSquare, Send, Settings, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../api/apiFetch.js';
 import { createFeedback, type FeedbackKind } from '../api/feedback.js';
@@ -9,7 +9,6 @@ import {
   fetchPushConfig,
   fetchPushPreferences,
   savePushSubscription,
-  sendTestPush,
   updatePushPreferences,
   type PushConfig,
   type PushPreferences,
@@ -40,7 +39,6 @@ type PushStatus =
   | 'unsupported'
   | 'denied'
   | 'error';
-type TestPushStatus = 'idle' | 'sending';
 type PushPreferenceKey = keyof PushPreferences;
 
 const PUSH_PREFERENCES_QUERY_KEY = ['push', 'preferences'] as const;
@@ -492,8 +490,6 @@ export function ProfileScreen(): JSX.Element {
   const [selectedAchievement, setSelectedAchievement] = useState<ProfileAchievement | null>(null);
   const [pushStatus, setPushStatus] = useState<PushStatus>('idle');
   const [pushMessage, setPushMessage] = useState('');
-  const [testPushStatus, setTestPushStatus] = useState<TestPushStatus>('idle');
-  const [testPushMessage, setTestPushMessage] = useState('');
   const [pendingPreference, setPendingPreference] = useState<PushPreferenceKey | null>(null);
   const [pushPreferencesOpen, setPushPreferencesOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
@@ -567,8 +563,6 @@ export function ProfileScreen(): JSX.Element {
   }, [data]);
 
   async function handleSubscribePush(): Promise<void> {
-    setTestPushMessage('');
-
     if (!supportsPushNotifications()) {
       setPushStatus('unsupported');
       setPushMessage('Недоступно в этом браузере');
@@ -632,7 +626,7 @@ export function ProfileScreen(): JSX.Element {
       const subscription = await registration.pushManager.getSubscription();
       if (!subscription) {
         setPushStatus('idle');
-        setPushMessage('Уведомления отключены');
+        setPushMessage('Уведомления выключены');
         return;
       }
 
@@ -640,7 +634,7 @@ export function ProfileScreen(): JSX.Element {
       await subscription.unsubscribe();
       await deletePushSubscription(endpoint);
       setPushStatus('idle');
-      setPushMessage('Уведомления отключены');
+      setPushMessage('Уведомления выключены');
     } catch {
       setPushStatus('error');
       setPushMessage('Не удалось отключить уведомления');
@@ -669,26 +663,6 @@ export function ProfileScreen(): JSX.Element {
     }
   }
 
-  async function handleSendTestPush(): Promise<void> {
-    setTestPushStatus('sending');
-    setTestPushMessage('');
-
-    try {
-      const result = await sendTestPush();
-      if (result.total === 0) {
-        setTestPushMessage('Нет активной подписки');
-      } else if (result.failed > 0) {
-        setTestPushMessage(`Отправлено ${result.sent}, ошибок ${result.failed}`);
-      } else {
-        setTestPushMessage('Тестовый пуш отправлен');
-      }
-    } catch {
-      setTestPushMessage('Не удалось отправить тест');
-    } finally {
-      setTestPushStatus('idle');
-    }
-  }
-
   if (isLoading) {
     return (
       <main className="screen" style={{ alignItems: 'center', justifyContent: 'center' }}>
@@ -700,22 +674,25 @@ export function ProfileScreen(): JSX.Element {
   const initial = (data?.displayName ?? '?').charAt(0).toUpperCase();
   const stats = data?.stats ?? EMPTY_PROFILE_STATS;
   const achievements = data?.achievements ?? [];
-  const isAdmin = data?.role === 'admin';
+  const isPushSubscribed = pushStatus === 'subscribed' || pushStatus === 'unsubscribing';
   const pushButtonLabel =
-    pushStatus === 'subscribed'
-      ? 'Уведомления включены'
-      : pushStatus === 'unsubscribing'
-        ? 'Отключаем...'
-        : pushStatus === 'subscribing'
-          ? 'Подключаем...'
+    pushStatus === 'unsubscribing'
+      ? 'Выключаем...'
+      : pushStatus === 'subscribing'
+        ? 'Включаем...'
+        : isPushSubscribed
+          ? 'Выключить уведомления'
           : 'Включить уведомления';
+  const pushStatusMessage =
+    pushMessage ||
+    (pushStatus === 'subscribed' ? 'Уведомления включены' : 'Уведомления выключены');
   const pushButtonDisabled =
     pushStatus === 'subscribing' ||
     pushStatus === 'unsubscribing' ||
-    pushStatus === 'subscribed' ||
-    pushStatus === 'unsupported' ||
-    pushStatus === 'denied' ||
-    isPushConfigLoading;
+    (!isPushSubscribed &&
+      (pushStatus === 'unsupported' ||
+        pushStatus === 'denied' ||
+        isPushConfigLoading));
 
   function handlePointerDown(event: PointerEvent<HTMLElement>): void {
     if (
@@ -897,36 +874,30 @@ export function ProfileScreen(): JSX.Element {
                   pushStatus === 'error' || pushStatus === 'denied' ? '#b42318' : 'var(--muted)',
               }}
             >
-              {pushMessage || 'Отключены'}
+              {pushStatusMessage}
             </div>
           </div>
-        </div>
-
-        <button
-          type="button"
-          className="btn btn--cta"
-          data-no-drag-scroll="true"
-          disabled={pushButtonDisabled}
-          onClick={() => void handleSubscribePush()}
-          style={{ width: '100%', minHeight: 52, letterSpacing: 0 }}
-        >
-          <Bell size={18} />
-          {pushButtonLabel}
-        </button>
-
-        {pushStatus === 'subscribed' || pushStatus === 'unsubscribing' ? (
           <button
             type="button"
-            className="btn btn--ghost"
+            className="btn btn--cta"
             data-no-drag-scroll="true"
-            disabled={pushStatus === 'unsubscribing'}
-            onClick={() => void handleUnsubscribePush()}
-            style={{ width: '100%', minHeight: 50, letterSpacing: 0 }}
+            aria-label={pushButtonLabel}
+            disabled={pushButtonDisabled}
+            onClick={() =>
+              void (isPushSubscribed ? handleUnsubscribePush() : handleSubscribePush())
+            }
+            style={{
+              minHeight: 42,
+              padding: '0 14px',
+              borderRadius: 14,
+              fontSize: 12,
+              letterSpacing: 0,
+              flexShrink: 0,
+            }}
           >
-            <BellOff size={18} />
-            {pushStatus === 'unsubscribing' ? 'Отключаем...' : 'Отключить все'}
+            {isPushSubscribed ? 'Выключить' : 'Включить'}
           </button>
-        ) : null}
+        </div>
 
         {pushPreferences ? (
           <>
@@ -989,36 +960,6 @@ export function ProfileScreen(): JSX.Element {
             ) : null}
           </>
         ) : null}
-
-        {isAdmin && (
-          <>
-            <button
-              type="button"
-              className="btn btn--ghost"
-              data-no-drag-scroll="true"
-              disabled={testPushStatus === 'sending'}
-              onClick={() => void handleSendTestPush()}
-              style={{ width: '100%', minHeight: 50, letterSpacing: 0 }}
-            >
-              <Send size={18} />
-              {testPushStatus === 'sending' ? 'Отправляем...' : 'Тестовый пуш'}
-            </button>
-            {testPushMessage && (
-              <div
-                role="status"
-                aria-live="polite"
-                style={{
-                  fontSize: 12,
-                  fontWeight: 700,
-                  color: 'var(--muted)',
-                  textAlign: 'center',
-                }}
-              >
-                {testPushMessage}
-              </div>
-            )}
-          </>
-        )}
       </div>
       <div className="section-label" style={{ marginBottom: 8 }}>
         Обратная связь

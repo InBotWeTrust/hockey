@@ -156,63 +156,68 @@ export function ChatListScreen(): JSX.Element {
       }}
     >
       <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          margin: 'calc(10px + var(--app-safe-top)) 14px 10px',
-        }}
+        className="chat-edge-top glass-edge-fade glass-edge-fade--top"
+        style={{ paddingTop: 'calc(10px + var(--app-safe-top))' }}
       >
         <div
-          className="glass"
           style={{
-            flex: 1,
             display: 'flex',
             alignItems: 'center',
             gap: 8,
-            padding: '0 12px',
-            height: 40,
-            borderRadius: 999,
+            margin: '0 14px',
           }}
         >
-          <Search size={14} color="var(--muted)" aria-hidden />
-          <input
-            type="search"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            placeholder="Поиск чатов"
-            aria-label="Поиск чатов"
+          <div
+            className="glass"
             style={{
               flex: 1,
-              border: 'none',
-              outline: 'none',
-              background: 'transparent',
-              fontSize: 14,
-              color: 'var(--ink)',
-              fontFamily: 'inherit',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '0 12px',
+              height: 40,
+              borderRadius: 999,
             }}
-          />
+          >
+            <Search size={14} color="var(--muted)" aria-hidden />
+            <input
+              type="search"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              placeholder="Поиск чатов"
+              aria-label="Поиск чатов"
+              style={{
+                flex: 1,
+                border: 'none',
+                outline: 'none',
+                background: 'transparent',
+                fontSize: 14,
+                color: 'var(--ink)',
+                fontFamily: 'inherit',
+              }}
+            />
+          </div>
+          <button
+            type="button"
+            className="icon-btn icon-btn--dark"
+            aria-label="Новый диалог"
+            onClick={openPicker}
+            style={{
+              width: 40,
+              height: 40,
+              minWidth: 40,
+              minHeight: 40,
+              borderRadius: 999,
+              padding: 0,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <Plus size={16} />
+          </button>
         </div>
-        <button
-          type="button"
-          className="icon-btn icon-btn--dark"
-          aria-label="Новый диалог"
-          onClick={openPicker}
-          style={{
-            width: 40,
-            height: 40,
-            minWidth: 40,
-            minHeight: 40,
-            borderRadius: 999,
-            padding: 0,
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-          }}
-        >
-          <Plus size={16} />
-        </button>
       </div>
 
       {dropdownOpen && <SearchResultsDropdown query={debouncedFilter} chatHits={filteredChats} />}

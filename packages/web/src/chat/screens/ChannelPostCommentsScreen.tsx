@@ -348,26 +348,28 @@ export function ChannelPostCommentsScreen(): JSX.Element {
         overflow: 'hidden',
       }}
     >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          margin: '10px 12px 8px',
-        }}
-      >
-        <button
-          type="button"
-          className="icon-btn glass"
-          aria-label="К посту"
-          onClick={() => navigate(`/chat/${chatId}`)}
-          style={{ width: 40, height: 40, minWidth: 40, minHeight: 40 }}
+      <div className="chat-edge-top glass-edge-fade glass-edge-fade--top">
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            margin: '0 12px',
+          }}
         >
-          <ArrowLeft size={16} />
-        </button>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--ink)' }}>Комментарии</div>
-          <div style={{ fontSize: 12, color: 'var(--muted)' }}>{comments.length}</div>
+          <button
+            type="button"
+            className="icon-btn glass"
+            aria-label="К посту"
+            onClick={() => navigate(`/chat/${chatId}`)}
+            style={{ width: 40, height: 40, minWidth: 40, minHeight: 40 }}
+          >
+            <ArrowLeft size={16} />
+          </button>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--ink)' }}>Комментарии</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)' }}>{comments.length}</div>
+          </div>
         </div>
       </div>
 
@@ -419,7 +421,7 @@ export function ChannelPostCommentsScreen(): JSX.Element {
         ))}
       </div>
 
-      <div style={{ marginBottom: 'max(12px, var(--app-safe-bottom))' }}>
+      <div className="chat-edge-bottom glass-edge-fade glass-edge-fade--bottom">
         <ChatInput
           replyTo={replyToComment}
           replyToSenderName={replyToComment?.authorDisplayName ?? undefined}

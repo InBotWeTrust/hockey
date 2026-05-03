@@ -547,38 +547,40 @@ export function ChatRoomScreen(): JSX.Element {
         overflow: 'hidden',
       }}
     >
-      <ChatRoomHeader
-        title={chatTitle}
-        {...(chatSubtitle !== undefined ? { subtitle: chatSubtitle } : {})}
-        avatarUrl={chatAvatarUrl}
-        onBack={() => navigate('/chat')}
-        {...(chatMeta && chatMeta.type !== 'direct'
-          ? { onTitleClick: () => navigate(`/chat/${chatId}/info`) }
-          : {})}
-        searchOpen={searchOpen}
-        onToggleSearch={() => setSearchOpen((o) => !o)}
-      />
-      <ChatRoomSearchBar
-        open={searchOpen}
-        value={searchQuery}
-        placeholder={`Поиск в «${chatTitle}»`}
-        onChange={setSearchQuery}
-      />
+      <div className="chat-edge-top glass-edge-fade glass-edge-fade--top">
+        <ChatRoomHeader
+          title={chatTitle}
+          {...(chatSubtitle !== undefined ? { subtitle: chatSubtitle } : {})}
+          avatarUrl={chatAvatarUrl}
+          onBack={() => navigate('/chat')}
+          {...(chatMeta && chatMeta.type !== 'direct'
+            ? { onTitleClick: () => navigate(`/chat/${chatId}/info`) }
+            : {})}
+          searchOpen={searchOpen}
+          onToggleSearch={() => setSearchOpen((o) => !o)}
+        />
+        <ChatRoomSearchBar
+          open={searchOpen}
+          value={searchQuery}
+          placeholder={`Поиск в «${chatTitle}»`}
+          onChange={setSearchQuery}
+        />
 
-      {gotoError && (
-        <div
-          className="glass-dark"
-          role="alert"
-          style={{
-            margin: '6px 14px',
-            padding: '6px 12px',
-            borderRadius: 10,
-            fontSize: 13,
-          }}
-        >
-          {gotoError}
-        </div>
-      )}
+        {gotoError && (
+          <div
+            className="glass-dark"
+            role="alert"
+            style={{
+              margin: '6px 14px 0',
+              padding: '6px 12px',
+              borderRadius: 10,
+              fontSize: 13,
+            }}
+          >
+            {gotoError}
+          </div>
+        )}
+      </div>
 
       <div
         ref={messagesListRef}
@@ -645,7 +647,7 @@ export function ChatRoomScreen(): JSX.Element {
       </div>
 
       {showComposer && (
-        <div style={{ marginBottom: 'max(12px, var(--app-safe-bottom))' }}>
+        <div className="chat-edge-bottom glass-edge-fade glass-edge-fade--bottom">
           <ChatInput
             replyTo={isChannel ? null : replyTo}
             replyToSenderName={replyTo ? senderNameOf(replyTo) : undefined}

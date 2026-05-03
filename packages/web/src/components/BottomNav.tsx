@@ -81,19 +81,15 @@ export function BottomNav(): JSX.Element | null {
 
   return (
     <div
-      className="bottom-nav-shell"
+      className="bottom-nav-shell glass-edge-fade glass-edge-fade--bottom"
       style={{
         position: 'absolute',
         left: 0,
         right: 0,
         bottom: 0,
-        padding: '18px 12px max(12px, var(--app-safe-bottom))',
+        padding: '28px 12px max(12px, var(--app-safe-bottom))',
         zIndex: 5,
         pointerEvents: 'none',
-        background:
-          'linear-gradient(to top, rgba(152, 190, 222, 0.76), rgba(152, 190, 222, 0.38) 58%, rgba(152, 190, 222, 0))',
-        backdropFilter: 'blur(18px) saturate(125%)',
-        WebkitBackdropFilter: 'blur(18px) saturate(125%)',
       }}
     >
       <nav
