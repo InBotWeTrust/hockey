@@ -8,6 +8,7 @@ import { authPlugin } from './plugins/auth.js';
 import { lastSeenPlugin } from './plugins/lastSeen.js';
 import { realtimePlugin } from './plugins/realtime.js';
 import { authRoutes } from './routes/auth.js';
+import { feedbackRoutes } from './routes/feedback.js';
 import { meRoutes } from './routes/me.js';
 import { dailyRoutes } from './duel/daily/routes.js';
 import { trainingRoutes } from './duel/training/routes.js';
@@ -64,6 +65,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
     refreshSecret: config.REFRESH_SECRET,
     devLoginEnabled: config.NODE_ENV !== 'production',
   });
+  await app.register(feedbackRoutes);
   await app.register(meRoutes);
   await app.register(dailyRoutes, { dailySeedSecret: config.DAILY_SEED_SECRET });
   await app.register(trainingRoutes, { trainingSeedSecret: config.DAILY_SEED_SECRET });

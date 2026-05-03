@@ -109,6 +109,21 @@ function mockProfileFetch(profile: typeof telegramProfile) {
         headers: { 'content-type': 'application/json' },
       });
     }
+    if (url.endsWith('/api/feedback') && init?.method === 'POST') {
+      const body = typeof init.body === 'string' ? JSON.parse(init.body) : {};
+      return new Response(
+        JSON.stringify({
+          feedback: {
+            id: 'feedback-1',
+            ...body,
+            rating: body.kind === 'review' ? body.rating : null,
+            isRead: false,
+            createdAt: '2026-05-03T08:00:00.000Z',
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    }
     return new Response(JSON.stringify({ error: { code: 'not_found', message: 'not found' } }), {
       status: 404,
       headers: { 'content-type': 'application/json' },
@@ -164,6 +179,8 @@ describe('ProfileScreen', () => {
     expect(screen.getByRole('switch', { name: 'Ежедневная игра' })).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: 'Тренировка доступна' })).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: 'Новости игры' })).toBeInTheDocument();
+    expect(screen.getByText('Обратная связь')).toBeInTheDocument();
+    expect(screen.getByText('Форма обратной связи')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Тестовый пуш/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Первая шайба.*получено/i })).toBeInTheDocument();
     expect(
@@ -217,6 +234,38 @@ describe('ProfileScreen', () => {
       expect.objectContaining({
         method: 'PATCH',
         body: JSON.stringify({ chatNewDialogMessage: false }),
+      }),
+    );
+  });
+
+  it('submits feedback from the profile modal', async () => {
+    const fetchMock = mockProfileFetch(telegramProfile);
+
+    renderProfile();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Написать в обратную связь' }));
+    expect(screen.getByRole('dialog', { name: 'Обратная связь' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: '0 из 5' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+
+    fireEvent.click(screen.getByRole('radio', { name: '5 из 5' }));
+    fireEvent.change(screen.getByLabelText('Сообщение'), {
+      target: { value: 'Очень нравится новый режим.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Отправить' }));
+
+    expect(await screen.findByText('Спасибо, сообщение сохранено')).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/feedback',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          kind: 'review',
+          rating: 5,
+          message: 'Очень нравится новый режим.',
+        }),
       }),
     );
   });

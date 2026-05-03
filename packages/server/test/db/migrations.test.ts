@@ -43,6 +43,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     expect(names).toContain('user_push_preferences');
     expect(names).toContain('channel_post_comments');
     expect(names).toContain('channel_post_views');
+    expect(names).toContain('feedback_messages');
     expect(names).toContain('_migrations');
   });
 
@@ -66,9 +67,12 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '013_refresh_profile_achievements.sql',
       '014_training_daily_locks.sql',
       '015_admin_roles_and_game_settings.sql',
+      '016_admin_user_blocking.sql',
       '017_push_subscriptions.sql',
       '018_channel_posts.sql',
       '019_push_preferences.sql',
+      '020_admin_payments_inventory.sql',
+      '021_feedback_messages.sql',
     ]);
   });
 });

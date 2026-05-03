@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, BellOff, ChevronDown, Send, Settings } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Bell, BellOff, ChevronDown, MessageSquare, Send, Settings, Star, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../api/apiFetch.js';
+import { createFeedback, type FeedbackKind } from '../api/feedback.js';
 import {
   deletePushSubscription,
   fetchPushConfig,
@@ -69,6 +70,12 @@ const PUSH_PREFERENCE_ITEMS: Array<{
     label: 'Новости игры',
     hint: 'Редкие системные объявления',
   },
+];
+
+const FEEDBACK_KIND_OPTIONS: Array<{ kind: FeedbackKind; label: string }> = [
+  { kind: 'review', label: 'Отзыв' },
+  { kind: 'suggestion', label: 'Пожелание' },
+  { kind: 'question', label: 'Вопрос' },
 ];
 
 function supportsPushNotifications(): boolean {
@@ -198,6 +205,241 @@ function PushPreferenceToggle({
   );
 }
 
+function FeedbackModal({ onClose }: { onClose: () => void }): JSX.Element {
+  const [kind, setKind] = useState<FeedbackKind>('review');
+  const [rating, setRating] = useState(0);
+  const [message, setMessage] = useState('');
+  const feedback = useMutation({
+    mutationFn: () =>
+      createFeedback({
+        kind,
+        ...(kind === 'review' ? { rating } : {}),
+        message,
+      }),
+  });
+  const messageLength = message.trim().length;
+  const canSubmit = messageLength > 0 && messageLength <= 2000 && !feedback.isPending;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Обратная связь"
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 1000,
+        background: 'rgba(15, 23, 42, 0.35)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 'calc(18px + var(--app-safe-top)) 14px calc(18px + var(--app-safe-bottom))',
+      }}
+    >
+      <section
+        className="glass"
+        onClick={(event) => event.stopPropagation()}
+        style={{
+          width: '100%',
+          maxWidth: 420,
+          borderRadius: 24,
+          padding: 18,
+          color: 'var(--ink)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 14,
+                fontWeight: 900,
+                letterSpacing: '0.11em',
+                textTransform: 'uppercase',
+                color: 'var(--ink)',
+              }}
+            >
+              Обратная связь
+            </div>
+            <div style={{ marginTop: 5, color: 'var(--muted)', fontSize: 12, fontWeight: 800 }}>
+              {feedback.isSuccess ? 'Спасибо, сообщение сохранено' : 'Выберите тип сообщения'}
+            </div>
+          </div>
+          <button type="button" className="icon-btn" onClick={onClose} aria-label="Закрыть">
+            <X size={16} />
+          </button>
+        </div>
+
+        {feedback.isSuccess ? (
+          <button
+            type="button"
+            className="btn btn--cta"
+            onClick={onClose}
+            style={{ marginTop: 18, width: '100%', minHeight: 52, letterSpacing: 0 }}
+          >
+            Понятно
+          </button>
+        ) : (
+          <>
+            <div
+              style={{
+                marginTop: 16,
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                gap: 8,
+              }}
+            >
+              {FEEDBACK_KIND_OPTIONS.map((item) => (
+                <button
+                  key={item.kind}
+                  type="button"
+                  className={kind === item.kind ? 'chip chip--active' : 'chip'}
+                  onClick={() => setKind(item.kind)}
+                  style={{
+                    minHeight: 42,
+                    borderRadius: 14,
+                    justifyContent: 'center',
+                    padding: '8px 10px',
+                  }}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+
+            {kind === 'review' && (
+              <div style={{ marginTop: 14 }}>
+                <div
+                  style={{
+                    color: 'var(--muted)',
+                    fontSize: 11,
+                    fontWeight: 900,
+                    letterSpacing: '0.12em',
+                    textTransform: 'uppercase',
+                    marginBottom: 8,
+                  }}
+                >
+                  Оценка
+                </div>
+                <div
+                  role="radiogroup"
+                  aria-label="Оценка отзыва"
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(6, minmax(0, 1fr))',
+                    gap: 6,
+                  }}
+                >
+                  {[0, 1, 2, 3, 4, 5].map((value) => (
+                    <button
+                      key={value}
+                      type="button"
+                      role="radio"
+                      aria-checked={rating === value}
+                      aria-label={`${value} из 5`}
+                      onClick={() => setRating(value)}
+                      className={rating === value ? 'chip chip--active' : 'chip'}
+                      style={{
+                        minWidth: 0,
+                        height: 40,
+                        borderRadius: 13,
+                        padding: 0,
+                        justifyContent: 'center',
+                        gap: 3,
+                      }}
+                    >
+                      {value}
+                      {value > 0 && <Star size={12} fill="currentColor" />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <label style={{ marginTop: 14, display: 'block' }}>
+              <span
+                style={{
+                  display: 'block',
+                  color: 'var(--muted)',
+                  fontSize: 11,
+                  fontWeight: 900,
+                  letterSpacing: '0.12em',
+                  textTransform: 'uppercase',
+                  marginBottom: 8,
+                }}
+              >
+                Сообщение
+              </span>
+              <textarea
+                value={message}
+                onChange={(event) => setMessage(event.target.value.slice(0, 2000))}
+                placeholder={
+                  kind === 'review'
+                    ? 'Что понравилось или мешает?'
+                    : kind === 'suggestion'
+                      ? 'Что стоит добавить или поменять?'
+                      : 'Что хотите уточнить?'
+                }
+                rows={6}
+                style={{
+                  width: '100%',
+                  resize: 'vertical',
+                  minHeight: 132,
+                  border: '1px solid rgba(255,255,255,0.74)',
+                  borderRadius: 18,
+                  background: 'rgba(255, 255, 255, 0.46)',
+                  color: 'var(--ink)',
+                  padding: 12,
+                  outline: 'none',
+                  fontSize: 14,
+                  fontWeight: 700,
+                  lineHeight: 1.4,
+                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.72)',
+                }}
+              />
+            </label>
+
+            <div
+              style={{
+                marginTop: 6,
+                minHeight: 18,
+                color: feedback.isError ? 'var(--red-deep)' : 'var(--muted)',
+                fontSize: 11,
+                fontWeight: 800,
+              }}
+              role={feedback.isError ? 'alert' : undefined}
+            >
+              {feedback.isError
+                ? 'Не удалось отправить сообщение'
+                : `${messageLength}/2000 символов`}
+            </div>
+
+            <button
+              type="button"
+              className="btn btn--cta"
+              disabled={!canSubmit}
+              onClick={() => feedback.mutate()}
+              style={{
+                marginTop: 12,
+                width: '100%',
+                minHeight: 54,
+                letterSpacing: 0,
+                opacity: canSubmit ? 1 : 0.56,
+                cursor: canSubmit ? 'pointer' : 'not-allowed',
+              }}
+            >
+              <Send size={18} />
+              {feedback.isPending ? 'Отправляем...' : 'Отправить'}
+            </button>
+          </>
+        )}
+      </section>
+    </div>
+  );
+}
+
 export function ProfileScreen(): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -211,6 +453,7 @@ export function ProfileScreen(): JSX.Element {
   const [testPushMessage, setTestPushMessage] = useState('');
   const [pendingPreference, setPendingPreference] = useState<PushPreferenceKey | null>(null);
   const [pushPreferencesOpen, setPushPreferencesOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   const { data, isLoading } = useQuery<ProfileData>({
     queryKey: ['profile'],
@@ -753,12 +996,71 @@ export function ProfileScreen(): JSX.Element {
           </>
         )}
       </div>
+      <div className="section-label" style={{ marginBottom: 8 }}>
+        Обратная связь
+      </div>
+      <div
+        className="glass"
+        style={{
+          margin: '0 14px 14px',
+          padding: 16,
+          borderRadius: 22,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+        }}
+      >
+        <div
+          aria-hidden="true"
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: 14,
+            background: 'rgba(255, 255, 255, 0.72)',
+            color: 'var(--ink)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            border: '1px solid rgba(255, 255, 255, 0.88)',
+            boxShadow: '0 8px 22px rgba(15, 23, 42, 0.08)',
+          }}
+        >
+          <MessageSquare size={20} />
+        </div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--ink)' }}>
+            Форма обратной связи
+          </div>
+          <div style={{ marginTop: 3, fontSize: 12, fontWeight: 700, color: 'var(--muted)' }}>
+            Отзыв, пожелание или вопрос
+          </div>
+        </div>
+        <button
+          type="button"
+          className="btn btn--ghost"
+          data-no-drag-scroll="true"
+          aria-label="Написать в обратную связь"
+          onClick={() => setFeedbackOpen(true)}
+          style={{
+            minHeight: 42,
+            padding: '0 14px',
+            borderRadius: 14,
+            fontSize: 12,
+            letterSpacing: 0,
+            flexShrink: 0,
+          }}
+        >
+          Написать
+        </button>
+      </div>
       {selectedAchievement !== null && (
         <AchievementDetailsSheet
           achievement={selectedAchievement}
           onClose={() => setSelectedAchievement(null)}
         />
       )}
+      {feedbackOpen && <FeedbackModal onClose={() => setFeedbackOpen(false)} />}
     </main>
   );
 }
