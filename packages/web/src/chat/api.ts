@@ -186,6 +186,10 @@ export function sendChannelPostComment(
   });
 }
 
+export function deleteChannelPostComment(commentId: string): Promise<void> {
+  return apiFetch<void>(`/chat/channel/comments/${commentId}`, { method: 'DELETE' });
+}
+
 export interface AddCommentReactionResponse {
   commentId: string;
   emoji: string;

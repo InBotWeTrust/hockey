@@ -26,6 +26,7 @@ import {
   addChannelPostComment,
   assertAdminUser,
   deleteChannelPost,
+  deleteChannelPostComment,
   getChannelPost,
   getChannelPostComments,
   getChannelPostReactionUsers,
@@ -269,6 +270,17 @@ export const chatRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, push
       );
       reply.code(201);
       return comment;
+    },
+  );
+
+  app.delete(
+    '/chat/channel/comments/:commentId',
+    { preHandler: [app.authenticate] },
+    async (req, reply) => {
+      const { commentId } = z.object({ commentId: uuid }).parse(req.params);
+      await deleteChannelPostComment(app.pg, commentId, req.user.id);
+      reply.code(204);
+      return null;
     },
   );
 

@@ -230,6 +230,39 @@ describe.skipIf(!hasIntegrationEnv)('chat routes', () => {
       payload: { emoji: '👍' },
     });
     expect(removed.statusCode).toBe(204);
+
+    const deniedCommentDelete = await app.inject({
+      method: 'DELETE',
+      url: `/chat/channel/comments/${childId}`,
+      headers: { authorization: `Bearer ${tokenB}` },
+    });
+    expect(deniedCommentDelete.statusCode).toBe(403);
+
+    const ownCommentDelete = await app.inject({
+      method: 'DELETE',
+      url: `/chat/channel/comments/${childId}`,
+      headers: { authorization: `Bearer ${tokenC}` },
+    });
+    expect(ownCommentDelete.statusCode).toBe(204);
+
+    const adminCommentDelete = await app.inject({
+      method: 'DELETE',
+      url: `/chat/channel/comments/${parentId}`,
+      headers: { authorization: `Bearer ${tokenA}` },
+    });
+    expect(adminCommentDelete.statusCode).toBe(204);
+
+    const listAfterDelete = await app.inject({
+      method: 'GET',
+      url: `/chat/channel/posts/${postId}/comments`,
+      headers: { authorization: `Bearer ${tokenA}` },
+    });
+    expect(listAfterDelete.statusCode).toBe(200);
+    const afterDeleteIds = (listAfterDelete.json() as Array<{ id: string }>).map(
+      (comment) => comment.id,
+    );
+    expect(afterDeleteIds).not.toContain(parentId);
+    expect(afterDeleteIds).not.toContain(childId);
   });
 
   it('POST /chat/dm + GET /chat/list flow', async () => {

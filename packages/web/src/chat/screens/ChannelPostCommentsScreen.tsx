@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, SmilePlus } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import {
   addChannelCommentReaction,
+  deleteChannelPostComment,
   fetchChannelPost,
   fetchChannelPostComments,
   removeChannelCommentReaction,
@@ -11,14 +12,17 @@ import {
   type ChannelPostCommentDTO,
 } from '../api.js';
 import { ChatInput } from '../components/ChatInput.js';
+import { MessageActionsMenu } from '../components/MessageActionsMenu.js';
 import { ReactionBar } from '../components/ReactionBar.js';
 import { ReactionPicker } from '../components/ReactionPicker.js';
 import { ReplyPreview } from '../components/ReplyPreview.js';
 import { UserAvatar } from '../components/UserAvatar.js';
 import { chatKeys } from '../../lib/queryKeys.js';
+import { useAuthStore } from '../../auth/authStore.js';
 import { useChatStore } from '../chatStore.js';
 import { RichText } from '../richText.js';
 import { removeMyReactionFromReactable, switchMyReactionToReactable } from '../reactionsState.js';
+import { useLongPress } from '../useLongPress.js';
 
 function formatCommentTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
@@ -27,16 +31,21 @@ function formatCommentTime(iso: string): string {
 function CommentRow({
   comment,
   replyTo,
-  onReply,
-  onOpenReactionPicker,
+  onRequestActions,
   onToggleReaction,
 }: {
   comment: ChannelPostCommentDTO;
   replyTo: ChannelPostCommentDTO | null;
-  onReply: (comment: ChannelPostCommentDTO) => void;
-  onOpenReactionPicker: (commentId: string, anchorRect: DOMRect) => void;
+  onRequestActions: (comment: ChannelPostCommentDTO, anchorRect: DOMRect) => void;
   onToggleReaction: (commentId: string, emoji: string) => void;
 }): JSX.Element {
+  const longPress = useLongPress(
+    (rect) => {
+      onRequestActions(comment, rect);
+    },
+    { delayMs: 500 },
+  );
+
   return (
     <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
       <UserAvatar
@@ -47,11 +56,18 @@ function CommentRow({
       />
       <div style={{ minWidth: 0, maxWidth: '82%' }}>
         <div
+          {...longPress}
           className="glass"
+          onDoubleClick={(event) =>
+            onRequestActions(comment, event.currentTarget.getBoundingClientRect())
+          }
           style={{
             borderRadius: '16px 16px 16px 4px',
             padding: '8px 11px',
             color: 'var(--ink)',
+            touchAction: 'manipulation',
+            userSelect: 'none',
+            WebkitUserSelect: 'none',
           }}
         >
           {replyTo && (
@@ -76,11 +92,11 @@ function CommentRow({
           <div style={{ fontSize: 14, lineHeight: 1.4, wordBreak: 'break-word' }}>
             {comment.content}
           </div>
+          <ReactionBar
+            reactions={comment.reactions}
+            onToggle={(emoji) => onToggleReaction(comment.id, emoji)}
+          />
         </div>
-        <ReactionBar
-          reactions={comment.reactions}
-          onToggle={(emoji) => onToggleReaction(comment.id, emoji)}
-        />
         <div
           style={{
             display: 'flex',
@@ -93,43 +109,15 @@ function CommentRow({
           }}
         >
           <span>{formatCommentTime(comment.createdAt)}</span>
-          <button
-            type="button"
-            onClick={() => onReply(comment)}
-            style={{
-              border: 'none',
-              background: 'transparent',
-              padding: 0,
-              color: 'var(--muted)',
-              font: 'inherit',
-              fontWeight: 700,
-              cursor: 'pointer',
-            }}
-          >
-            Ответить
-          </button>
-          <button
-            type="button"
-            aria-label="Добавить реакцию"
-            onClick={(event) =>
-              onOpenReactionPicker(comment.id, event.currentTarget.getBoundingClientRect())
-            }
-            style={{
-              border: 'none',
-              background: 'transparent',
-              padding: 0,
-              color: 'var(--muted)',
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-            }}
-          >
-            <SmilePlus size={14} />
-          </button>
         </div>
       </div>
     </div>
   );
+}
+
+interface ActionTarget {
+  comment: ChannelPostCommentDTO;
+  anchorRect: DOMRect;
 }
 
 export function ChannelPostCommentsScreen(): JSX.Element {
@@ -139,8 +127,12 @@ export function ChannelPostCommentsScreen(): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const setActive = useChatStore((s) => s.setActive);
+  const me = useAuthStore((s) => s.user);
+  const meId = me?.id ?? null;
+  const isAdmin = me?.role === 'admin';
   const [viewportHeight, setViewportHeight] = useState<number | null>(null);
   const [replyToComment, setReplyToComment] = useState<ChannelPostCommentDTO | null>(null);
+  const [actionTarget, setActionTarget] = useState<ActionTarget | null>(null);
   const [pickerTarget, setPickerTarget] = useState<{
     commentId: string;
     anchorRect: DOMRect;
@@ -246,6 +238,34 @@ export function ChannelPostCommentsScreen(): JSX.Element {
     },
   });
 
+  const deleteCommentMut = useMutation<
+    void,
+    Error,
+    string,
+    { prev: ChannelPostCommentDTO[] | undefined }
+  >({
+    mutationFn: (commentId) => deleteChannelPostComment(commentId),
+    onMutate: (commentId) => {
+      const prev = queryClient.getQueryData<ChannelPostCommentDTO[]>(
+        chatKeys.channelComments(postId),
+      );
+      queryClient.setQueryData<ChannelPostCommentDTO[] | undefined>(
+        chatKeys.channelComments(postId),
+        (old) => old?.filter((comment) => comment.id !== commentId) ?? old,
+      );
+      if (replyToComment?.id === commentId) setReplyToComment(null);
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(chatKeys.channelComments(postId), ctx.prev);
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: chatKeys.channelComments(postId) });
+      void queryClient.invalidateQueries({ queryKey: chatKeys.channelPost(postId) });
+      void queryClient.invalidateQueries({ queryKey: chatKeys.messages(chatId) });
+    },
+  });
+
   const handleSend = useCallback(
     (content: string, replyToId: string | null): void => {
       sendMut.mutate({ content, replyToId });
@@ -273,9 +293,28 @@ export function ChannelPostCommentsScreen(): JSX.Element {
     [addReaction, postId, queryClient, removeReaction],
   );
 
-  const handleOpenReactionPicker = useCallback((commentId: string, anchorRect: DOMRect): void => {
-    setPickerTarget({ commentId, anchorRect });
-  }, []);
+  const handleRequestActions = useCallback(
+    (comment: ChannelPostCommentDTO, anchorRect: DOMRect): void => {
+      setActionTarget({ comment, anchorRect });
+    },
+    [],
+  );
+
+  const handleCloseActions = useCallback(() => setActionTarget(null), []);
+
+  const handlePickEmojiFromMenu = useCallback(
+    (emoji: string): void => {
+      if (!actionTarget) return;
+      addReaction({ commentId: actionTarget.comment.id, emoji });
+    },
+    [actionTarget, addReaction],
+  );
+
+  const handleMoreEmoji = useCallback((): void => {
+    if (!actionTarget) return;
+    setPickerTarget({ commentId: actionTarget.comment.id, anchorRect: actionTarget.anchorRect });
+    setActionTarget(null);
+  }, [actionTarget]);
 
   const handlePickEmoji = useCallback(
     (emoji: string): void => {
@@ -284,6 +323,10 @@ export function ChannelPostCommentsScreen(): JSX.Element {
     },
     [addReaction, pickerTarget],
   );
+
+  const actionComment = actionTarget?.comment ?? null;
+  const canDeleteAction =
+    actionComment !== null && (isAdmin || (meId !== null && actionComment.authorId === meId));
 
   return (
     <main
@@ -359,8 +402,7 @@ export function ChannelPostCommentsScreen(): JSX.Element {
             key={comment.id}
             comment={comment}
             replyTo={comment.replyToId ? (commentById.get(comment.replyToId) ?? null) : null}
-            onReply={setReplyToComment}
-            onOpenReactionPicker={handleOpenReactionPicker}
+            onRequestActions={handleRequestActions}
             onToggleReaction={handleToggleReaction}
           />
         ))}
@@ -382,6 +424,16 @@ export function ChannelPostCommentsScreen(): JSX.Element {
         anchorRect={pickerTarget?.anchorRect ?? null}
         onPick={handlePickEmoji}
         onClose={() => setPickerTarget(null)}
+      />
+      <MessageActionsMenu
+        open={actionTarget !== null}
+        anchorRect={actionTarget?.anchorRect ?? null}
+        isOwn={canDeleteAction}
+        onReply={() => actionComment && setReplyToComment(actionComment)}
+        onDelete={() => actionComment && deleteCommentMut.mutate(actionComment.id)}
+        onPickEmoji={handlePickEmojiFromMenu}
+        onMoreEmoji={handleMoreEmoji}
+        onClose={handleCloseActions}
       />
     </main>
   );

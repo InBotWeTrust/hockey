@@ -222,6 +222,32 @@ export async function removeChannelPostCommentReaction(
   return { removed: (row.rowCount ?? 0) > 0 };
 }
 
+export async function deleteChannelPostComment(
+  pool: Pool,
+  commentId: string,
+  userId: string,
+): Promise<{ postId: string }> {
+  const comment = await getChannelPostCommentOr404(pool, commentId);
+  if (comment.author_id !== userId && !(await isAdminUser(pool, userId))) {
+    throw new AppError('forbidden', 'comment owner or admin required', 403);
+  }
+
+  const row = await pool.query<{ post_message_id: string }>(
+    `update channel_post_comments
+        set is_deleted = true,
+            content = '',
+            updated_at = now()
+      where id = $1
+        and is_deleted = false
+      returning post_message_id`,
+    [commentId],
+  );
+  if (row.rowCount === 0) {
+    throw new AppError('comment_not_found', `Comment ${commentId} not found`, 404);
+  }
+  return { postId: row.rows[0]!.post_message_id };
+}
+
 export async function updateChannelPostContent(
   pool: Pool,
   postId: string,

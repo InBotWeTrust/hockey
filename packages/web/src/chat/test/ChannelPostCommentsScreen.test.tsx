@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { ChannelPostCommentsScreen } from '../screens/ChannelPostCommentsScreen.js';
 import type { ChannelPostCommentDTO, ChatMessageDTO } from '../api.js';
 import * as api from '../api.js';
+import { useAuthStore } from '../../auth/authStore.js';
 
 const post: ChatMessageDTO = {
   id: 'post-1',
@@ -48,6 +49,11 @@ const childComment: ChannelPostCommentDTO = {
 };
 
 function renderScreen(): QueryClient {
+  useAuthStore.setState({
+    accessToken: 'tok',
+    refreshToken: 'rtok',
+    user: { id: 'user-1', displayName: 'Alice', role: 'player' },
+  });
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -70,6 +76,7 @@ function renderScreen(): QueryClient {
 describe('ChannelPostCommentsScreen', () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    useAuthStore.setState({ accessToken: null, refreshToken: null, user: null });
   });
 
   it('sends replies to comments with replyToId', async () => {
@@ -88,7 +95,8 @@ describe('ChannelPostCommentsScreen', () => {
     expect(await screen.findByText('Ответ на первый')).toBeInTheDocument();
     expect(screen.getAllByText('Первый комментарий').length).toBeGreaterThanOrEqual(2);
 
-    fireEvent.click(screen.getAllByText('Ответить')[0]!);
+    fireEvent.doubleClick(screen.getAllByText('Первый комментарий')[0]!);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Ответить' }));
     expect(screen.getByLabelText('Снять ответ')).toBeInTheDocument();
 
     const textarea = screen.getByLabelText('Текст сообщения') as HTMLTextAreaElement;
@@ -114,11 +122,25 @@ describe('ChannelPostCommentsScreen', () => {
 
     expect((await screen.findAllByText('Первый комментарий')).length).toBeGreaterThanOrEqual(2);
 
-    fireEvent.click(screen.getAllByLabelText('Добавить реакцию')[0]!);
+    fireEvent.doubleClick(screen.getAllByText('Первый комментарий')[0]!);
     fireEvent.click(screen.getByRole('button', { name: '👍' }));
     await waitFor(() => expect(addSpy).toHaveBeenCalledWith('comment-1', '👍'));
 
     fireEvent.click(screen.getByRole('button', { name: '🔥 1' }));
     await waitFor(() => expect(removeSpy).toHaveBeenCalledWith('comment-2', '🔥'));
+  });
+
+  it('deletes own comments from the action menu', async () => {
+    vi.spyOn(api, 'fetchChannelPost').mockResolvedValue(post);
+    vi.spyOn(api, 'fetchChannelPostComments').mockResolvedValue([parentComment, childComment]);
+    const deleteSpy = vi.spyOn(api, 'deleteChannelPostComment').mockResolvedValue();
+
+    renderScreen();
+
+    expect((await screen.findAllByText('Первый комментарий')).length).toBeGreaterThanOrEqual(2);
+    fireEvent.doubleClick(screen.getAllByText('Первый комментарий')[0]!);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Удалить' }));
+
+    await waitFor(() => expect(deleteSpy).toHaveBeenCalledWith('comment-1'));
   });
 });
