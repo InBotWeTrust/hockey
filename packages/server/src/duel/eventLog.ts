@@ -8,7 +8,12 @@ export type EventType =
   | 'training_session_created'
   | 'training_session_closed'
   | 'admin_user_updated'
-  | 'admin_game_setting_updated';
+  | 'admin_game_setting_updated'
+  | 'admin_channel_post_updated'
+  | 'admin_channel_post_deleted'
+  | 'admin_inventory_item_created'
+  | 'admin_inventory_item_updated'
+  | 'admin_inventory_item_deleted';
 
 export async function appendEvent(
   conn: Pool | PoolClient,
@@ -16,8 +21,9 @@ export async function appendEvent(
   type: EventType,
   payload: Record<string, unknown>,
 ): Promise<void> {
-  await conn.query(
-    'insert into event_log (user_id, type, payload) values ($1, $2, $3)',
-    [userId, type, JSON.stringify(payload)],
-  );
+  await conn.query('insert into event_log (user_id, type, payload) values ($1, $2, $3)', [
+    userId,
+    type,
+    JSON.stringify(payload),
+  ]);
 }
