@@ -96,19 +96,17 @@ function CommentRow({
             reactions={comment.reactions}
             onToggle={(emoji) => onToggleReaction(comment.id, emoji)}
           />
-        </div>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            fontSize: 10,
-            color: 'var(--muted)',
-            marginTop: 2,
-            paddingLeft: 4,
-          }}
-        >
-          <span>{formatCommentTime(comment.createdAt)}</span>
+          <div
+            style={{
+              fontSize: 10,
+              color: 'var(--muted)',
+              lineHeight: 1,
+              marginTop: 4,
+              textAlign: 'right',
+            }}
+          >
+            {formatCommentTime(comment.createdAt)}
+          </div>
         </div>
       </div>
     </div>
