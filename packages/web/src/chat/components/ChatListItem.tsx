@@ -1,5 +1,5 @@
 import { memo, useCallback } from 'react';
-import { Megaphone, Pin } from 'lucide-react';
+import { Megaphone, MessageSquareMore, Pin } from 'lucide-react';
 import type { ChatDTO } from '../api.js';
 import { useAuthStore } from '../../auth/authStore.js';
 import { useLongPress } from '../useLongPress.js';
@@ -127,7 +127,7 @@ function ChatListItemImpl({ chat, onOpen, onRequestActions }: ChatListItemProps)
         />
       )}
 
-      {isChannel ? (
+      {isChannel || isSystem ? (
         <span
           className="glass-dark"
           aria-hidden
@@ -140,7 +140,7 @@ function ChatListItemImpl({ chat, onOpen, onRequestActions }: ChatListItemProps)
             justifyContent: 'center',
           }}
         >
-          <Megaphone size={18} />
+          {isChannel ? <Megaphone size={18} /> : <MessageSquareMore size={18} />}
         </span>
       ) : (
         <UserAvatar avatarUrl={avatarUrl} name={displayTitle(chat)} size={40} />
