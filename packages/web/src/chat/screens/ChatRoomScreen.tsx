@@ -2,11 +2,13 @@ import { useEffect, useLayoutEffect, useMemo, useState, useCallback, useRef } fr
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
+  deleteChannelPost,
   deleteMessage,
   fetchChatList,
   fetchMessages,
   markChatAsRead,
   sendMessage,
+  updateChannelPost,
   addReaction,
   removeReaction,
   type ChatDTO,
@@ -24,6 +26,7 @@ import { MessageActionsMenu } from '../components/MessageActionsMenu.js';
 import { ReactionPicker } from '../components/ReactionPicker.js';
 import { UserProfileSheet } from '../components/UserProfileSheet.js';
 import { ChannelPostCard } from '../components/ChannelPostCard.js';
+import { ChannelPostEditorSheet } from '../components/ChannelPostEditorSheet.js';
 import { formatLastSeen } from '../lastSeen.js';
 import { switchMyReactionTo, removeMyReaction } from '../reactionsState.js';
 
@@ -70,6 +73,7 @@ export function ChatRoomScreen(): JSX.Element {
     anchorRect: DOMRect;
   } | null>(null);
   const [previewSender, setPreviewSender] = useState<UserPickerItem | null>(null);
+  const [editingPost, setEditingPost] = useState<ChatMessageDTO | null>(null);
   const [gotoError, setGotoError] = useState<string | null>(null);
   const gotoRef = useRef<string | null>(null);
   const messagesListRef = useRef<HTMLDivElement | null>(null);
@@ -295,6 +299,48 @@ export function ChatRoomScreen(): JSX.Element {
     },
   });
 
+  const editChannelPostMut = useMutation({
+    mutationFn: ({ postId, content }: { postId: string; content: string }) =>
+      updateChannelPost(postId, content),
+    onSuccess: (post) => {
+      queryClient.setQueryData<InfinitePages | undefined>(chatKeys.messages(chatId), (old) => {
+        if (!old) return old;
+        let touched = false;
+        const pages = old.pages.map((page) =>
+          page.map((message) => {
+            if (message.id !== post.id) return message;
+            touched = true;
+            return post;
+          }),
+        );
+        return touched ? { ...old, pages } : old;
+      });
+      queryClient.setQueryData<ChatMessageDTO | undefined>(chatKeys.channelPost(post.id), (old) =>
+        old ? post : old,
+      );
+      void queryClient.invalidateQueries({ queryKey: chatKeys.list() });
+      setEditingPost(null);
+    },
+  });
+
+  const deleteChannelPostMut = useMutation({
+    mutationFn: (postId: string) => deleteChannelPost(postId),
+    onMutate: (postId) => {
+      queryClient.setQueryData<InfinitePages | undefined>(chatKeys.messages(chatId), (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          pages: old.pages.map((page) => page.filter((message) => message.id !== postId)),
+        };
+      });
+      queryClient.setQueryData<ChatMessageDTO | undefined>(chatKeys.channelPost(postId), undefined);
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: chatKeys.list() });
+      setEditingPost(null);
+    },
+  });
+
   const deleteMut = useMutation({
     mutationFn: (messageId: string) => deleteMessage(messageId),
     onMutate: (messageId) => {
@@ -440,9 +486,10 @@ export function ChatRoomScreen(): JSX.Element {
 
   const trimmedQuery = searchQuery.trim().toLowerCase();
   const visibleMessages = useMemo<ChatMessageDTO[]>(() => {
-    if (trimmedQuery.length === 0) return messages;
-    return messages.filter((m) => !m.isDeleted && m.content.toLowerCase().includes(trimmedQuery));
-  }, [messages, trimmedQuery]);
+    const base = isChannel ? messages.filter((message) => !message.isDeleted) : messages;
+    if (trimmedQuery.length === 0) return base;
+    return base.filter((m) => !m.isDeleted && m.content.toLowerCase().includes(trimmedQuery));
+  }, [isChannel, messages, trimmedQuery]);
 
   const actionMessage = actionTarget?.message ?? null;
   const actionIsOwn = actionMessage ? actionMessage.senderId === meId : false;
@@ -458,6 +505,20 @@ export function ChatRoomScreen(): JSX.Element {
   const onOpenChannelReactionPicker = useCallback((postId: string, anchorRect: DOMRect): void => {
     setPickerTarget({ messageId: postId, anchorRect });
   }, []);
+
+  const onSaveChannelPost = useCallback(
+    (postId: string, content: string): void => {
+      editChannelPostMut.mutate({ postId, content });
+    },
+    [editChannelPostMut],
+  );
+
+  const onDeleteChannelPost = useCallback(
+    (postId: string): void => {
+      deleteChannelPostMut.mutate(postId);
+    },
+    [deleteChannelPostMut],
+  );
 
   return (
     <main
@@ -547,9 +608,11 @@ export function ChatRoomScreen(): JSX.Element {
                 key={m.id}
                 post={m}
                 showViews={isAdmin}
+                canEdit={isAdmin}
                 onReact={onToggleReaction}
                 onOpenReactionPicker={onOpenChannelReactionPicker}
                 onOpenComments={onOpenChannelComments}
+                onEdit={setEditingPost}
               />
             );
           }
@@ -579,6 +642,7 @@ export function ChatRoomScreen(): JSX.Element {
             replyTo={isChannel ? null : replyTo}
             replyToSenderName={replyTo ? senderNameOf(replyTo) : undefined}
             placeholder={isChannel ? 'Новость...' : 'Сообщение...'}
+            formattingTools={isChannel && isAdmin}
             onClearReply={() => setReplyTo(null)}
             disabled={sendMut.isPending}
             onSend={handleSend}
@@ -603,6 +667,14 @@ export function ChatRoomScreen(): JSX.Element {
         onClose={() => setPickerTarget(null)}
       />
       <UserProfileSheet sender={previewSender} onClose={onCloseProfile} />
+      <ChannelPostEditorSheet
+        post={editingPost}
+        disabled={editChannelPostMut.isPending || deleteChannelPostMut.isPending}
+        deleteDisabled={deleteChannelPostMut.isPending}
+        onSave={onSaveChannelPost}
+        onDelete={onDeleteChannelPost}
+        onClose={() => setEditingPost(null)}
+      />
     </main>
   );
 }

@@ -62,6 +62,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
         return;
       }
       case 'message:deleted':
+      case 'message:updated':
       case 'reaction:added':
       case 'reaction:removed':
         // Handled by TanStack invalidation in PR 5; no store mutation needed.

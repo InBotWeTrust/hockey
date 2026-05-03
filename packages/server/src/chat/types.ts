@@ -196,6 +196,7 @@ export interface UserPublicProfileDTO {
 
 export type ChatEvent =
   | { type: 'message:new'; chatId: string; message: ChatMessageDTO; silent?: boolean }
+  | { type: 'message:updated'; chatId: string; message: ChatMessageDTO }
   | { type: 'message:deleted'; chatId: string; messageId: string }
   | { type: 'reaction:added'; chatId: string; messageId: string; userId: string; emoji: string }
   | { type: 'reaction:removed'; chatId: string; messageId: string; userId: string; emoji: string }

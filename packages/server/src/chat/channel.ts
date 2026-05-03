@@ -118,6 +118,75 @@ export async function addChannelPostComment(
   return toChannelPostCommentDTO(row.rows[0]!);
 }
 
+export async function updateChannelPostContent(
+  pool: Pool,
+  postId: string,
+  editorUserId: string,
+  content: string,
+): Promise<ChatMessageDTO> {
+  const existing = await getChannelPost(pool, postId, editorUserId);
+  const updated = await pool.query<MessageRow>(
+    `with upd as (
+       update messages
+          set content = $2,
+              updated_at = now()
+        where id = $1
+          and is_deleted = false
+        returning *
+     )
+     select upd.*,
+            u.display_name as sender_display_name,
+            u.avatar_url as sender_avatar_url,
+            (select count(*)::bigint
+               from channel_post_comments cpc
+              where cpc.post_message_id = upd.id
+                and cpc.is_deleted = false) as comment_count,
+            (select count(*)::bigint
+               from channel_post_views cpv
+              where cpv.post_message_id = upd.id) as view_count
+       from upd
+       left join users u on u.id = upd.sender_id`,
+    [postId, content],
+  );
+  if (updated.rowCount === 0) throw new MessageNotFoundError(postId);
+
+  const reactions = await pool.query<MessageReactionRow>(
+    `select * from message_reactions where message_id = $1`,
+    [postId],
+  );
+  const grouped = groupReactions(reactions.rows, editorUserId);
+  return {
+    ...toChatMessageDTO(updated.rows[0]!, grouped.get(postId) ?? []),
+    chatId: existing.chatId,
+  };
+}
+
+export async function deleteChannelPost(pool: Pool, postId: string): Promise<{ chatId: string }> {
+  const deleted = await pool.query<{ chat_id: string }>(
+    `with target as (
+       select m.id, m.chat_id
+         from messages m
+         join chats c on c.id = m.chat_id and c.type = 'channel' and c.is_active = true
+        where m.id = $1
+          and m.is_deleted = false
+        limit 1
+     ),
+     upd as (
+       update messages m
+          set is_deleted = true,
+              content = '',
+              updated_at = now()
+         from target
+        where m.id = target.id
+        returning target.chat_id
+     )
+     select chat_id from upd`,
+    [postId],
+  );
+  if (deleted.rowCount === 0) throw new MessageNotFoundError(postId);
+  return { chatId: deleted.rows[0]!.chat_id };
+}
+
 export async function getChannelPostViewers(
   pool: Pool,
   postId: string,

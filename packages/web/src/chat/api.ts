@@ -54,6 +54,7 @@ export interface ChatDTO {
 
 export type ChatEvent =
   | { type: 'message:new'; chatId: string; message: ChatMessageDTO; silent?: boolean }
+  | { type: 'message:updated'; chatId: string; message: ChatMessageDTO }
   | { type: 'message:deleted'; chatId: string; messageId: string }
   | { type: 'reaction:added'; chatId: string; messageId: string; userId: string; emoji: string }
   | { type: 'reaction:removed'; chatId: string; messageId: string; userId: string; emoji: string }
@@ -153,6 +154,17 @@ export interface ChannelPostReactionUserDTO {
 
 export function fetchChannelPost(postId: string): Promise<ChatMessageDTO> {
   return apiFetch<ChatMessageDTO>(`/chat/channel/posts/${postId}`);
+}
+
+export function updateChannelPost(postId: string, content: string): Promise<ChatMessageDTO> {
+  return apiFetch<ChatMessageDTO>(`/chat/channel/posts/${postId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ content }),
+  });
+}
+
+export function deleteChannelPost(postId: string): Promise<void> {
+  return apiFetch<void>(`/chat/channel/posts/${postId}`, { method: 'DELETE' });
 }
 
 export function fetchChannelPostComments(postId: string): Promise<ChannelPostCommentDTO[]> {

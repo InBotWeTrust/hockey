@@ -75,6 +75,16 @@ export async function publishMessageDeleted(
   await fanOut(pool, publisher, chatId, chatType, { type: 'message:deleted', chatId, messageId });
 }
 
+export async function publishMessageUpdated(
+  pool: Pool,
+  publisher: EventPublisher,
+  chatId: string,
+  chatType: ChatType,
+  message: ChatMessageDTO,
+): Promise<void> {
+  await fanOut(pool, publisher, chatId, chatType, { type: 'message:updated', chatId, message });
+}
+
 // chat:read is intentionally NOT broadcast to all members — read-receipts of
 // the form "Alice has read this" are out of scope (spec §2). We only notify
 // the reader's own other tabs so their unread badge resets in sync.

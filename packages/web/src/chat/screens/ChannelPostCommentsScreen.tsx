@@ -12,6 +12,7 @@ import { ChatInput } from '../components/ChatInput.js';
 import { UserAvatar } from '../components/UserAvatar.js';
 import { chatKeys } from '../../lib/queryKeys.js';
 import { useChatStore } from '../chatStore.js';
+import { RichText } from '../richText.js';
 
 function formatCommentTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
@@ -177,7 +178,7 @@ export function ChannelPostCommentsScreen(): JSX.Element {
               wordBreak: 'break-word',
             }}
           >
-            {postQuery.data.content}
+            <RichText text={postQuery.data.content} />
           </div>
         )}
         {commentsQuery.isLoading && (

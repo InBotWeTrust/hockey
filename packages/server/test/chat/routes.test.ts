@@ -87,6 +87,50 @@ describe.skipIf(!hasIntegrationEnv)('chat routes', () => {
     ]);
   });
 
+  it('lets admins delete channel posts through the channel endpoint', async () => {
+    await app.pg.query(`update users set role = 'admin' where id = $1`, [userA]);
+    const chats = await app.inject({
+      method: 'GET',
+      url: '/chat/list',
+      headers: { authorization: `Bearer ${tokenA}` },
+    });
+    expect(chats.statusCode).toBe(200);
+    const news = (
+      chats.json() as Array<{ id: string; type: string; channelSlug?: string | null }>
+    ).find((chat) => chat.type === 'channel' && chat.channelSlug === 'news');
+    expect(news).toBeDefined();
+
+    const created = await app.inject({
+      method: 'POST',
+      url: `/chat/${news!.id}/messages`,
+      headers: { authorization: `Bearer ${tokenA}` },
+      payload: { content: 'delete me' },
+    });
+    expect(created.statusCode).toBe(201);
+    const postId = created.json().id as string;
+
+    const denied = await app.inject({
+      method: 'DELETE',
+      url: `/chat/channel/posts/${postId}`,
+      headers: { authorization: `Bearer ${tokenB}` },
+    });
+    expect(denied.statusCode).toBe(403);
+
+    const deleted = await app.inject({
+      method: 'DELETE',
+      url: `/chat/channel/posts/${postId}`,
+      headers: { authorization: `Bearer ${tokenA}` },
+    });
+    expect(deleted.statusCode).toBe(204);
+
+    const deletedPost = await app.inject({
+      method: 'GET',
+      url: `/chat/channel/posts/${postId}`,
+      headers: { authorization: `Bearer ${tokenA}` },
+    });
+    expect(deletedPost.statusCode).toBe(404);
+  });
+
   it('POST /chat/dm + GET /chat/list flow', async () => {
     const dm = await app.inject({
       method: 'POST',

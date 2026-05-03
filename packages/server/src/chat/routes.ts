@@ -24,11 +24,13 @@ import {
 import {
   addChannelPostComment,
   assertAdminUser,
+  deleteChannelPost,
   getChannelPost,
   getChannelPostComments,
   getChannelPostReactionUsers,
   getChannelPostViewers,
   recordChannelPostViews,
+  updateChannelPostContent,
 } from './channel.js';
 import { assertCanAccessChat, assertOwnsMessage } from './guards.js';
 import {
@@ -40,6 +42,7 @@ import {
 import {
   publishMessageNew,
   publishMessageDeleted,
+  publishMessageUpdated,
   publishChatRead,
   publishReactionAdded,
   publishReactionRemoved,
@@ -211,6 +214,28 @@ export const chatRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, push
     await recordChannelPostViews(app.pg, req.user.id, [postId]);
     return post;
   });
+
+  app.patch('/chat/channel/posts/:postId', { preHandler: [app.authenticate] }, async (req) => {
+    await assertAdminUser(app.pg, req.user.id);
+    const { postId } = z.object({ postId: uuid }).parse(req.params);
+    const body = z.object({ content: z.string().trim().min(1).max(4000) }).parse(req.body);
+    const post = await updateChannelPostContent(app.pg, postId, req.user.id, body.content);
+    await publishMessageUpdated(app.pg, app.realtime, post.chatId, 'channel', post);
+    return post;
+  });
+
+  app.delete(
+    '/chat/channel/posts/:postId',
+    { preHandler: [app.authenticate] },
+    async (req, reply) => {
+      await assertAdminUser(app.pg, req.user.id);
+      const { postId } = z.object({ postId: uuid }).parse(req.params);
+      const { chatId } = await deleteChannelPost(app.pg, postId);
+      await publishMessageDeleted(app.pg, app.realtime, chatId, 'channel', postId);
+      reply.code(204);
+      return null;
+    },
+  );
 
   app.get(
     '/chat/channel/posts/:postId/comments',

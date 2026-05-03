@@ -67,7 +67,9 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
   beforeEach(async () => {
     await pool.query(
       `truncate users, auth_providers, user_wallet, user_equipment, user_sticks,
-              training_session, day_pool, period_log, shot_session, event_log
+              training_session, day_pool, period_log, shot_session, event_log,
+              payments, admin_inventory_items, feedback_messages,
+              push_subscriptions, user_push_preferences
               restart identity cascade`,
     );
 
@@ -108,15 +110,257 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
     });
     expect(adminRes.statusCode).toBe(200);
     expect(adminRes.json()).toMatchObject({
-      users: { total: 2, admins: 1 },
+      users: {
+        total: 2,
+        admins: 1,
+        notifications: {
+          subscribed: { count: 0, percent: 0 },
+          types: {
+            chatNewDialogMessage: { count: 0, percent: 0 },
+            dailyGame: { count: 0, percent: 0 },
+            trainingAvailable: { count: 0, percent: 0 },
+            gameNews: { count: 0, percent: 0 },
+          },
+        },
+      },
       gameCoreVersion: expect.any(Number),
     });
   });
 
-  it('lists and updates users', async () => {
+  it('stores player feedback and lets admins mark it read manually', async () => {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/feedback',
+      headers: auth(playerToken),
+      payload: {
+        kind: 'review',
+        rating: 5,
+        message: 'Игра стала быстрее и приятнее.',
+      },
+    });
+    expect(created.statusCode).toBe(200);
+    expect(created.json()).toMatchObject({
+      feedback: {
+        kind: 'review',
+        rating: 5,
+        message: 'Игра стала быстрее и приятнее.',
+        isRead: false,
+      },
+    });
+    const feedbackId = created.json().feedback.id;
+
+    const denied = await app.inject({
+      method: 'GET',
+      url: '/admin/feedback',
+      headers: auth(playerToken),
+    });
+    expect(denied.statusCode).toBe(403);
+
     const list = await app.inject({
       method: 'GET',
-      url: '/admin/users?q=Regular',
+      url: '/admin/feedback?status=unread',
+      headers: auth(adminToken),
+    });
+    expect(list.statusCode).toBe(200);
+    expect(list.json()).toMatchObject({
+      total: 1,
+      unreadCount: 1,
+      feedback: [
+        {
+          id: feedbackId,
+          userId: playerId,
+          userDisplayName: 'Regular Player',
+          kind: 'review',
+          rating: 5,
+          message: 'Игра стала быстрее и приятнее.',
+          isRead: false,
+        },
+      ],
+    });
+
+    const markRead = await app.inject({
+      method: 'PATCH',
+      url: `/admin/feedback/${feedbackId}`,
+      headers: auth(adminToken),
+      payload: { isRead: true },
+    });
+    expect(markRead.statusCode).toBe(200);
+    expect(markRead.json()).toMatchObject({
+      feedback: {
+        id: feedbackId,
+        isRead: true,
+        readBy: adminId,
+        readByDisplayName: 'Egor Admin',
+      },
+    });
+
+    const afterRead = await app.inject({
+      method: 'GET',
+      url: '/admin/feedback',
+      headers: auth(adminToken),
+    });
+    expect(afterRead.statusCode).toBe(200);
+    expect(afterRead.json()).toMatchObject({
+      total: 1,
+      unreadCount: 0,
+      feedback: [expect.objectContaining({ id: feedbackId, isRead: true })],
+    });
+
+    const markUnread = await app.inject({
+      method: 'PATCH',
+      url: `/admin/feedback/${feedbackId}`,
+      headers: auth(adminToken),
+      payload: { isRead: false },
+    });
+    expect(markUnread.statusCode).toBe(200);
+    expect(markUnread.json()).toMatchObject({
+      feedback: {
+        id: feedbackId,
+        isRead: false,
+        readAt: null,
+        readBy: null,
+      },
+    });
+  });
+
+  it('reports news channel analytics and lets admins manage posts', async () => {
+    const chats = await app.inject({
+      method: 'GET',
+      url: '/chat/list',
+      headers: auth(adminToken),
+    });
+    expect(chats.statusCode).toBe(200);
+    const news = (
+      chats.json() as Array<{ id: string; type: string; channelSlug?: string | null }>
+    ).find((chat) => chat.type === 'channel' && chat.channelSlug === 'news');
+    expect(news).toBeDefined();
+
+    const created = await app.inject({
+      method: 'POST',
+      url: `/chat/${news!.id}/messages`,
+      headers: auth(adminToken),
+      payload: { content: '**Большой апдейт** уже в игре' },
+    });
+    expect(created.statusCode).toBe(201);
+    const postId = created.json().id as string;
+
+    const viewed = await app.inject({
+      method: 'GET',
+      url: `/chat/${news!.id}/messages`,
+      headers: auth(playerToken),
+    });
+    expect(viewed.statusCode).toBe(200);
+
+    const comment = await app.inject({
+      method: 'POST',
+      url: `/chat/channel/posts/${postId}/comments`,
+      headers: auth(playerToken),
+      payload: { content: 'Ждём турнир' },
+    });
+    expect(comment.statusCode).toBe(201);
+
+    const reaction = await app.inject({
+      method: 'POST',
+      url: `/chat/messages/${postId}/reactions`,
+      headers: auth(playerToken),
+      payload: { emoji: '👍' },
+    });
+    expect(reaction.statusCode).toBe(201);
+
+    const analytics = await app.inject({
+      method: 'GET',
+      url: '/admin/channel/news?period=7d',
+      headers: auth(adminToken),
+    });
+    expect(analytics.statusCode).toBe(200);
+    expect(analytics.json()).toMatchObject({
+      channel: { id: news!.id, slug: 'news' },
+      summary: {
+        posts: 1,
+        comments: 1,
+        reactions: 1,
+        likes: 1,
+        viewEvents: 1,
+        engagedUsers: 1,
+      },
+      posts: [
+        expect.objectContaining({
+          id: postId,
+          content: '**Большой апдейт** уже в игре',
+          comments: 1,
+          reactionsCount: 1,
+          likes: 1,
+          viewers: 1,
+          reactions: [{ emoji: '👍', count: 1 }],
+        }),
+      ],
+    });
+    expect(analytics.json().periods[0]).toMatchObject({
+      comments: 1,
+      reactions: 1,
+      likes: 1,
+      engagedUsers: 1,
+    });
+
+    const updated = await app.inject({
+      method: 'PATCH',
+      url: `/admin/channel/posts/${postId}`,
+      headers: auth(adminToken),
+      payload: { content: '__Обновлено__' },
+    });
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json()).toMatchObject({
+      post: {
+        id: postId,
+        content: '__Обновлено__',
+      },
+    });
+
+    const deleted = await app.inject({
+      method: 'DELETE',
+      url: `/admin/channel/posts/${postId}`,
+      headers: auth(adminToken),
+    });
+    expect(deleted.statusCode).toBe(200);
+
+    const afterDelete = await app.inject({
+      method: 'GET',
+      url: '/admin/channel/news?period=7d',
+      headers: auth(adminToken),
+    });
+    expect(afterDelete.statusCode).toBe(200);
+    expect(afterDelete.json().posts).toEqual([]);
+  });
+
+  it('lists and updates users', async () => {
+    await pool.query(
+      `update users
+          set lifetime_shots_total = 20,
+              lifetime_goals_total = 8,
+              display_name = 'Regular Player',
+              avatar_url = 'https://stale.example/avatar.jpg',
+              display_source = 'vk',
+              vk_first_name = 'Viktor',
+              vk_last_name = 'Goalie',
+              vk_avatar_url = 'https://vk.example/avatar.jpg'
+        where id = $1`,
+      [playerId],
+    );
+    await pool.query(
+      `insert into push_subscriptions (user_id, endpoint, p256dh, auth)
+       values ($1, 'https://push.example/regular', 'p256dh', 'auth')`,
+      [playerId],
+    );
+    await pool.query(
+      `insert into user_push_preferences
+         (user_id, chat_new_dialog_message, daily_game, training_available, game_news)
+       values ($1, true, false, true, false)`,
+      [playerId],
+    );
+
+    const list = await app.inject({
+      method: 'GET',
+      url: '/admin/users?q=Viktor&role=player&level=beginner&sort=goals_desc&minGoals=1&minAccuracy=1',
       headers: auth(adminToken),
     });
     expect(list.statusCode).toBe(200);
@@ -125,11 +369,44 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
       users: [
         {
           id: playerId,
-          displayName: 'Regular Player',
+          displayName: 'Viktor Goalie',
+          avatarUrl: 'https://vk.example/avatar.jpg',
+          displaySource: 'vk',
           role: 'player',
+          lifetimeGoalsTotal: 8,
+          accuracy: 40,
+          competitionLevel: 'beginner',
+          identities: expect.arrayContaining([
+            expect.objectContaining({
+              source: 'vk',
+              displayName: 'Viktor Goalie',
+              avatarUrl: 'https://vk.example/avatar.jpg',
+              active: true,
+            }),
+          ]),
           wallet: { pucks: 0 },
+          pushNotifications: {
+            subscribed: true,
+            subscriptionCount: 1,
+            types: {
+              chatNewDialogMessage: true,
+              dailyGame: false,
+              trainingAvailable: true,
+              gameNews: false,
+            },
+          },
         },
       ],
+      notificationStats: {
+        totalUsers: 2,
+        subscribed: { count: 1, percent: 50 },
+        types: {
+          chatNewDialogMessage: { count: 1, percent: 50 },
+          dailyGame: { count: 0, percent: 0 },
+          trainingAvailable: { count: 1, percent: 50 },
+          gameNews: { count: 0, percent: 0 },
+        },
+      },
     });
 
     const patch = await app.inject({
@@ -148,6 +425,35 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
         role: 'admin',
         wallet: { pucks: 250, goldPucks: 5 },
       },
+    });
+
+    const block = await app.inject({
+      method: 'PATCH',
+      url: `/admin/users/${playerId}`,
+      headers: auth(adminToken),
+      payload: { isBlocked: true },
+    });
+    expect(block.statusCode).toBe(200);
+    expect(block.json()).toMatchObject({
+      user: { id: playerId, isBlocked: true },
+    });
+
+    const blockedMe = await app.inject({
+      method: 'GET',
+      url: '/me',
+      headers: auth(playerToken),
+    });
+    expect(blockedMe.statusCode).toBe(403);
+
+    const unblock = await app.inject({
+      method: 'PATCH',
+      url: `/admin/users/${playerId}`,
+      headers: auth(adminToken),
+      payload: { isBlocked: false },
+    });
+    expect(unblock.statusCode).toBe(200);
+    expect(unblock.json()).toMatchObject({
+      user: { id: playerId, isBlocked: false },
     });
 
     const selfDemote = await app.inject({
@@ -184,5 +490,130 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
         expect.objectContaining({ key: 'training.shots_limit', value: 120 }),
       ]),
     );
+
+    const speedUpdate = await app.inject({
+      method: 'PATCH',
+      url: '/admin/game-settings/daily.period_2.puck_speed_per_ms',
+      headers: auth(adminToken),
+      payload: { value: 1.72 },
+    });
+    expect(speedUpdate.statusCode).toBe(200);
+    expect(speedUpdate.json()).toMatchObject({
+      key: 'daily.period_2.puck_speed_per_ms',
+      value: 1.72,
+      updatedBy: adminId,
+    });
+  });
+
+  it('lists payments with analytics and manages inventory', async () => {
+    const createdItem = await app.inject({
+      method: 'POST',
+      url: '/admin/inventory',
+      headers: auth(adminToken),
+      payload: {
+        photoUrl: 'https://cdn.example/stick.png',
+        title: 'Клюшка',
+        description: 'Бросает красиво',
+        priceRub: 199,
+      },
+    });
+    expect(createdItem.statusCode).toBe(200);
+    expect(createdItem.json()).toMatchObject({
+      item: {
+        title: 'Клюшка',
+        description: 'Бросает красиво',
+        priceRub: 199,
+        paymentsCount: 0,
+      },
+    });
+    const itemId = createdItem.json().item.id;
+
+    const updatedItem = await app.inject({
+      method: 'PATCH',
+      url: `/admin/inventory/${itemId}`,
+      headers: auth(adminToken),
+      payload: { priceRub: 249, title: 'Про-клюшка' },
+    });
+    expect(updatedItem.statusCode).toBe(200);
+    expect(updatedItem.json()).toMatchObject({
+      item: { id: itemId, title: 'Про-клюшка', priceRub: 249 },
+    });
+
+    await pool.query(
+      `insert into payments
+         (user_id, inventory_item_id, title, amount_rub, status, provider, provider_payment_id, paid_at)
+       values
+         ($1, $2, 'Про-клюшка', 249, 'paid', 'test', 'paid-1', now()),
+         ($1, $2, 'Про-клюшка', 199, 'pending', 'test', 'pending-1', null)`,
+      [playerId, itemId],
+    );
+
+    const payments = await app.inject({
+      method: 'GET',
+      url: '/admin/payments?q=Regular&status=paid&sort=amount_desc&minAmount=200',
+      headers: auth(adminToken),
+    });
+    expect(payments.statusCode).toBe(200);
+    expect(payments.json()).toMatchObject({
+      total: 1,
+      payments: [
+        {
+          userId: playerId,
+          userDisplayName: 'Regular Player',
+          title: 'Про-клюшка',
+          amountRub: 249,
+          status: 'paid',
+        },
+      ],
+      analytics: {
+        month: { revenueRub: 249, paidCount: 1 },
+        quarter: { revenueRub: 249, paidCount: 1 },
+        year: { revenueRub: 249, paidCount: 1 },
+      },
+    });
+
+    const inventory = await app.inject({
+      method: 'GET',
+      url: '/admin/inventory',
+      headers: auth(adminToken),
+    });
+    expect(inventory.statusCode).toBe(200);
+    expect(inventory.json()).toMatchObject({
+      items: [
+        {
+          id: itemId,
+          title: 'Про-клюшка',
+          paymentsCount: 2,
+          paidRevenueRub: 249,
+        },
+      ],
+    });
+
+    const detail = await app.inject({
+      method: 'GET',
+      url: `/admin/users/${playerId}`,
+      headers: auth(adminToken),
+    });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json()).toMatchObject({
+      purchaseSummary: { totalRubSpent: 249, purchasesCount: 2 },
+      purchases: expect.arrayContaining([
+        expect.objectContaining({ title: 'Про-клюшка', amountRub: 249, status: 'paid' }),
+      ]),
+    });
+
+    const deleted = await app.inject({
+      method: 'DELETE',
+      url: `/admin/inventory/${itemId}`,
+      headers: auth(adminToken),
+    });
+    expect(deleted.statusCode).toBe(200);
+
+    const afterDelete = await app.inject({
+      method: 'GET',
+      url: '/admin/inventory',
+      headers: auth(adminToken),
+    });
+    expect(afterDelete.json()).toMatchObject({ items: [] });
   });
 });

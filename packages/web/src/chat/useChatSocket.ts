@@ -54,6 +54,27 @@ function applyMessageDeleted(qc: QueryClient, chatId: string, messageId: string)
   if (didPatch) void qc.invalidateQueries({ queryKey: chatKeys.list() });
 }
 
+function applyMessageUpdated(qc: QueryClient, chatId: string, message: ChatMessageDTO): void {
+  let didPatch = false;
+  qc.setQueryData<InfinitePages | undefined>(chatKeys.messages(chatId), (old) => {
+    if (!old) return old;
+    let touched = false;
+    const pages = old.pages.map((page) =>
+      page.map((m) => {
+        if (m.id !== message.id) return m;
+        touched = true;
+        return message;
+      }),
+    );
+    if (touched) didPatch = true;
+    return touched ? { ...old, pages } : old;
+  });
+  qc.setQueryData<ChatMessageDTO | undefined>(chatKeys.channelPost(message.id), (old) =>
+    old ? message : old,
+  );
+  if (didPatch) void qc.invalidateQueries({ queryKey: chatKeys.list() });
+}
+
 function applyChatRead(qc: QueryClient): void {
   void qc.invalidateQueries({ queryKey: chatKeys.unread() });
 }
@@ -103,6 +124,9 @@ export function useChatSocket(): ChatSocketStatus {
             return;
           case 'message:deleted':
             applyMessageDeleted(qc, event.chatId, event.messageId);
+            return;
+          case 'message:updated':
+            applyMessageUpdated(qc, event.chatId, event.message);
             return;
           case 'chat:read':
             applyChatRead(qc);

@@ -5,8 +5,14 @@ import { DAILY_PERIOD_SPEED_PRESETS, GAME_CORE_VERSION, GOALIES, STICKS } from '
 import { AppError } from '../plugins/errors.js';
 import { appendEvent } from '../duel/eventLog.js';
 import { listGameSettings, saveGameSetting, type GameSettingDTO } from '../duel/gameSettings.js';
+import { buildProfileProgress } from '../profile/summary.js';
+import { deleteChannelPost, updateChannelPostContent } from '../chat/channel.js';
+import { publishMessageDeleted, publishMessageUpdated } from '../chat/events.js';
+import { DEFAULT_NEWS_CHANNEL_SLUG } from '../chat/service.js';
 
 type UserRole = 'player' | 'admin';
+type DisplaySource = 'custom' | 'telegram' | 'vk';
+type FeedbackKind = 'review' | 'suggestion' | 'question';
 
 interface AdminSummaryRow {
   total_users: string;
@@ -20,10 +26,81 @@ interface AdminSummaryRow {
   mismatches_24h: string;
 }
 
+interface AdminPushNotificationStatsRow {
+  total_users: string;
+  subscribed_users: string;
+  chat_new_dialog_message_users: string;
+  daily_game_users: string;
+  training_available_users: string;
+  game_news_users: string;
+}
+
+interface AdminDashboardCoreRow {
+  total_users: string;
+  admin_users: string;
+  player_users: string;
+  new_today: string;
+  new_7d: string;
+  new_30d: string;
+  new_365d: string;
+  active_today: string;
+  active_yesterday: string;
+  active_7d: string;
+  active_30d: string;
+  active_365d: string;
+  activated_users: string;
+  paid_users_total: string;
+  paid_users_30d: string;
+  paid_payments_30d: string;
+  revenue_today: string;
+  revenue_30d: string;
+  revenue_month: string;
+  revenue_quarter: string;
+  revenue_year: string;
+  revenue_total: string;
+  shots_today: string;
+  goals_today: string;
+  shots_7d: string;
+  goals_7d: string;
+  shots_30d: string;
+  goals_30d: string;
+  shots_total: string;
+  goals_total: string;
+  daily_players_30d: string;
+  training_players_30d: string;
+  active_daily_pools: string;
+  active_training_sessions: string;
+  mismatches_30d: string;
+  messages_today: string;
+  messages_7d: string;
+  messages_30d: string;
+  chat_users_30d: string;
+  feedback_total: string;
+  feedback_unread: string;
+  inventory_items: string;
+}
+
+interface AdminDashboardEngagementRow {
+  avg_daily_activity_span_minutes: string | null;
+}
+
+interface AdminDashboardSeriesRow {
+  day: string;
+  new_users: string;
+  active_users: string;
+  revenue_rub: string;
+  shots: string;
+  goals: string;
+  messages: string;
+}
+
 interface AdminUserRow {
   id: string;
   display_name: string;
   avatar_url: string | null;
+  active_display_name: string;
+  active_avatar_url: string | null;
+  display_source: DisplaySource;
   role: UserRole;
   grip: 'left' | 'right';
   level: number;
@@ -31,11 +108,22 @@ interface AdminUserRow {
   timezone: string;
   created_at: Date;
   last_seen_at: Date | null;
+  blocked_at: Date | null;
+  blocked_by: string | null;
+  blocked_by_display_name: string | null;
   lifetime_shots_total: number;
   lifetime_goals_total: number;
+  accuracy: number;
+  competition_level: 'beginner' | 'amateur' | 'professional';
   tg_id: string | null;
   vk_id: string | null;
+  tg_first_name: string | null;
+  tg_last_name: string | null;
+  tg_avatar_url: string | null;
   tg_username: string | null;
+  vk_first_name: string | null;
+  vk_last_name: string | null;
+  vk_avatar_url: string | null;
   vk_username: string | null;
   shots_current: number;
   shots_max: number;
@@ -44,6 +132,11 @@ interface AdminUserRow {
   gold_pucks: string;
   wheel_spins: number;
   training_energy: number;
+  push_subscription_count: string;
+  push_chat_new_dialog_message: boolean;
+  push_daily_game: boolean;
+  push_training_available: boolean;
+  push_game_news: boolean;
   total_count?: string;
 }
 
@@ -61,8 +154,118 @@ interface AdminEventRow {
   created_at: Date;
 }
 
+type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded' | 'canceled';
+
+interface AdminPaymentRow {
+  id: string;
+  user_id: string | null;
+  user_display_name: string | null;
+  user_avatar_url: string | null;
+  inventory_item_id: string | null;
+  title: string;
+  amount_rub: number;
+  status: PaymentStatus;
+  provider: string;
+  provider_payment_id: string | null;
+  created_at: Date;
+  paid_at: Date | null;
+  total_count?: string;
+}
+
+interface AdminPaymentAnalyticsRow {
+  month_revenue: string;
+  quarter_revenue: string;
+  year_revenue: string;
+  month_count: string;
+  quarter_count: string;
+  year_count: string;
+}
+
+interface AdminInventoryItemRow {
+  id: string;
+  photo_url: string;
+  title: string;
+  description: string;
+  price_rub: number;
+  created_at: Date;
+  updated_at: Date;
+  payments_count?: string;
+  paid_revenue?: string;
+}
+
+interface AdminFeedbackRow {
+  id: string;
+  user_id: string | null;
+  user_display_name: string | null;
+  user_avatar_url: string | null;
+  kind: FeedbackKind;
+  rating: number | null;
+  message: string;
+  is_read: boolean;
+  read_at: Date | null;
+  read_by: string | null;
+  read_by_display_name: string | null;
+  created_at: Date;
+  total_count?: string;
+}
+
+interface AdminChannelRow {
+  id: string;
+  name: string | null;
+  channel_slug: string | null;
+  created_at: Date;
+}
+
+interface AdminChannelSummaryRow {
+  total_users: string;
+  posts: string;
+  comments: string;
+  reactions: string;
+  likes: string;
+  view_events: string;
+  views: string;
+  engaged_users: string;
+}
+
+interface AdminChannelPeriodRow {
+  period_start: Date;
+  posts: string;
+  comments: string;
+  commenters: string;
+  reactions: string;
+  reactors: string;
+  likes: string;
+  view_events: string;
+  views: string;
+  viewers: string;
+  engaged_users: string;
+}
+
+interface AdminChannelPostRow {
+  id: string;
+  chat_id: string;
+  content: string;
+  created_at: Date;
+  updated_at: Date;
+  comment_count: string;
+  commenter_count: string;
+  reaction_count: string;
+  reaction_user_count: string;
+  like_count: string;
+  view_count: string;
+  viewer_count: string;
+  reactions: Array<{ emoji: string; count: number | string }> | null;
+}
+
 const listUsersQuerySchema = z.object({
   q: z.string().trim().min(1).max(80).optional(),
+  role: z.enum(['all', 'player', 'admin']).default('all'),
+  level: z.enum(['all', 'beginner', 'amateur', 'professional']).default('all'),
+  sort: z
+    .enum(['name_asc', 'name_desc', 'goals_asc', 'goals_desc', 'accuracy_asc', 'accuracy_desc'])
+    .default('name_asc'),
+  minGoals: z.coerce.number().int().min(0).max(2_147_483_647).optional(),
+  minAccuracy: z.coerce.number().int().min(0).max(100).optional(),
   limit: z.coerce.number().int().min(1).max(50).default(20),
   offset: z.coerce.number().int().min(0).default(0),
 });
@@ -76,6 +279,7 @@ const userPatchSchema = z
     xp: z.number().int().min(0).max(2_147_483_647).optional(),
     lifetimeShotsTotal: z.number().int().min(0).max(2_147_483_647).optional(),
     lifetimeGoalsTotal: z.number().int().min(0).max(2_147_483_647).optional(),
+    isBlocked: z.boolean().optional(),
     wallet: z
       .object({
         shotsCurrent: z.number().int().min(0).max(100_000).optional(),
@@ -98,6 +302,7 @@ const userPatchSchema = z
       value.xp !== undefined ||
       value.lifetimeShotsTotal !== undefined ||
       value.lifetimeGoalsTotal !== undefined ||
+      value.isBlocked !== undefined ||
       (value.wallet !== undefined && Object.keys(value.wallet).length > 0),
     'no changes',
   );
@@ -105,6 +310,66 @@ const userPatchSchema = z
 const settingPatchSchema = z.object({
   value: z.union([z.string(), z.number(), z.boolean()]),
 });
+
+const listPaymentsQuerySchema = z.object({
+  q: z.string().trim().min(1).max(80).optional(),
+  status: z.enum(['all', 'pending', 'paid', 'failed', 'refunded', 'canceled']).default('all'),
+  sort: z
+    .enum(['created_desc', 'created_asc', 'amount_desc', 'amount_asc', 'user_asc', 'user_desc'])
+    .default('created_desc'),
+  minAmount: z.coerce.number().int().min(0).max(9_000_000_000).optional(),
+  maxAmount: z.coerce.number().int().min(0).max(9_000_000_000).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+const listFeedbackQuerySchema = z.object({
+  kind: z.enum(['all', 'review', 'suggestion', 'question']).default('all'),
+  status: z.enum(['all', 'unread', 'read']).default('all'),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+const channelPeriodQuerySchema = z.object({
+  period: z.enum(['7d', '30d', '90d']).default('30d'),
+});
+
+const feedbackPatchSchema = z
+  .object({
+    isRead: z.boolean(),
+  })
+  .strict();
+
+const inventoryItemBodySchema = z
+  .object({
+    photoUrl: z.string().trim().url().or(z.literal('')).optional(),
+    title: z.string().trim().min(1).max(120).optional(),
+    description: z.string().trim().max(1000).optional(),
+    priceRub: z.number().int().min(0).max(9_000_000_000).optional(),
+  })
+  .strict();
+
+const createInventoryItemSchema = inventoryItemBodySchema.extend({
+  title: z.string().trim().min(1).max(120),
+  photoUrl: z.string().trim().url().or(z.literal('')).default(''),
+  description: z.string().trim().max(1000).default(''),
+  priceRub: z.number().int().min(0).max(9_000_000_000),
+});
+
+const updateInventoryItemSchema = inventoryItemBodySchema.refine(
+  (value) =>
+    value.photoUrl !== undefined ||
+    value.title !== undefined ||
+    value.description !== undefined ||
+    value.priceRub !== undefined,
+  'no changes',
+);
+
+const channelPostPatchSchema = z
+  .object({
+    content: z.string().trim().min(1).max(4000),
+  })
+  .strict();
 
 async function withTransaction<T>(
   app: { pg: { connect: () => Promise<PoolClient> } },
@@ -124,11 +389,160 @@ async function withTransaction<T>(
   }
 }
 
+function percent(count: number, total: number): number {
+  return total > 0 ? Math.round((count * 1000) / total) / 10 : 0;
+}
+
+function ratioPercent(numerator: number, denominator: number): number {
+  return denominator > 0 ? Math.round((numerator * 1000) / denominator) / 10 : 0;
+}
+
+function mapPushNotificationStats(row: AdminPushNotificationStatsRow) {
+  const totalUsers = Number(row.total_users);
+  const subscribedUsers = Number(row.subscribed_users);
+  const chatNewDialogMessage = Number(row.chat_new_dialog_message_users);
+  const dailyGame = Number(row.daily_game_users);
+  const trainingAvailable = Number(row.training_available_users);
+  const gameNews = Number(row.game_news_users);
+  return {
+    totalUsers,
+    subscribed: {
+      count: subscribedUsers,
+      percent: percent(subscribedUsers, totalUsers),
+    },
+    types: {
+      chatNewDialogMessage: {
+        count: chatNewDialogMessage,
+        percent: percent(chatNewDialogMessage, totalUsers),
+      },
+      dailyGame: {
+        count: dailyGame,
+        percent: percent(dailyGame, totalUsers),
+      },
+      trainingAvailable: {
+        count: trainingAvailable,
+        percent: percent(trainingAvailable, totalUsers),
+      },
+      gameNews: {
+        count: gameNews,
+        percent: percent(gameNews, totalUsers),
+      },
+    },
+  };
+}
+
+function rubPerUser(revenue: number, users: number): number {
+  return users > 0 ? Math.round(revenue / users) : 0;
+}
+
+function mapDashboard(
+  core: AdminDashboardCoreRow,
+  engagement: AdminDashboardEngagementRow,
+  series: AdminDashboardSeriesRow[],
+  notifications: ReturnType<typeof mapPushNotificationStats>,
+) {
+  const totalUsers = Number(core.total_users);
+  const active7d = Number(core.active_7d);
+  const active30d = Number(core.active_30d);
+  const revenue30d = Number(core.revenue_30d);
+  const paidUsers30d = Number(core.paid_users_30d);
+  const paidUsersTotal = Number(core.paid_users_total);
+  const shots30d = Number(core.shots_30d);
+  const goals30d = Number(core.goals_30d);
+  const activeToday = Number(core.active_today);
+  return {
+    users: {
+      total: totalUsers,
+      admins: Number(core.admin_users),
+      players: Number(core.player_users),
+      newToday: Number(core.new_today),
+      new7d: Number(core.new_7d),
+      new30d: Number(core.new_30d),
+      new365d: Number(core.new_365d),
+      activeToday,
+      activeYesterday: Number(core.active_yesterday),
+      active7d,
+      active30d,
+      active365d: Number(core.active_365d),
+      activated: {
+        count: Number(core.activated_users),
+        percent: ratioPercent(Number(core.activated_users), totalUsers),
+      },
+    },
+    payments: {
+      revenueTodayRub: Number(core.revenue_today),
+      revenue30dRub: revenue30d,
+      revenueMonthRub: Number(core.revenue_month),
+      revenueQuarterRub: Number(core.revenue_quarter),
+      revenueYearRub: Number(core.revenue_year),
+      revenueTotalRub: Number(core.revenue_total),
+      paidUsersTotal,
+      paidUsers30d,
+      paidPayments30d: Number(core.paid_payments_30d),
+      payerConversionPercent: ratioPercent(paidUsersTotal, totalUsers),
+      arpu30dRub: rubPerUser(revenue30d, totalUsers),
+      arppu30dRub: rubPerUser(revenue30d, paidUsers30d),
+    },
+    game: {
+      shotsToday: Number(core.shots_today),
+      goalsToday: Number(core.goals_today),
+      shots7d: Number(core.shots_7d),
+      goals7d: Number(core.goals_7d),
+      shots30d,
+      goals30d,
+      shotsTotal: Number(core.shots_total),
+      goalsTotal: Number(core.goals_total),
+      accuracy30d: ratioPercent(goals30d, shots30d),
+      dailyPlayers30d: Number(core.daily_players_30d),
+      trainingPlayers30d: Number(core.training_players_30d),
+      activeDailyPools: Number(core.active_daily_pools),
+      activeTrainingSessions: Number(core.active_training_sessions),
+      mismatches30d: Number(core.mismatches_30d),
+    },
+    chat: {
+      messagesToday: Number(core.messages_today),
+      messages7d: Number(core.messages_7d),
+      messages30d: Number(core.messages_30d),
+      activeUsers30d: Number(core.chat_users_30d),
+    },
+    feedback: {
+      total: Number(core.feedback_total),
+      unread: Number(core.feedback_unread),
+    },
+    inventory: {
+      activeItems: Number(core.inventory_items),
+    },
+    engagement: {
+      avgDailyActivitySpanMinutes: Math.round(
+        Number(engagement.avg_daily_activity_span_minutes ?? 0),
+      ),
+      dauWauPercent: ratioPercent(activeToday, active7d),
+      wauMauPercent: ratioPercent(active7d, active30d),
+    },
+    notifications,
+    series: series.map((point) => ({
+      date: point.day,
+      newUsers: Number(point.new_users),
+      activeUsers: Number(point.active_users),
+      revenueRub: Number(point.revenue_rub),
+      shots: Number(point.shots),
+      goals: Number(point.goals),
+      messages: Number(point.messages),
+    })),
+  };
+}
+
 function mapUser(row: AdminUserRow) {
+  const displaySource: DisplaySource =
+    row.display_source === 'vk' || row.display_source === 'custom'
+      ? row.display_source
+      : 'telegram';
+  const pushSubscriptionCount = Number(row.push_subscription_count);
   return {
     id: row.id,
-    displayName: row.display_name,
-    avatarUrl: row.avatar_url,
+    displayName: row.active_display_name,
+    avatarUrl: row.active_avatar_url,
+    displaySource,
     role: row.role,
     grip: row.grip,
     level: row.level,
@@ -136,8 +550,52 @@ function mapUser(row: AdminUserRow) {
     timezone: row.timezone,
     createdAt: row.created_at.toISOString(),
     lastSeenAt: row.last_seen_at?.toISOString() ?? null,
+    isBlocked: row.blocked_at !== null,
+    blockedAt: row.blocked_at?.toISOString() ?? null,
+    blockedBy: row.blocked_by,
+    blockedByDisplayName: row.blocked_by_display_name,
     lifetimeShotsTotal: row.lifetime_shots_total,
     lifetimeGoalsTotal: row.lifetime_goals_total,
+    accuracy: row.accuracy,
+    competitionLevel: row.competition_level,
+    identities: [
+      {
+        source: 'custom',
+        label: 'Кастом',
+        displayName: row.display_name || 'Player',
+        avatarUrl: row.avatar_url,
+        id: row.id,
+        username: null,
+        linked: true,
+        active: displaySource === 'custom',
+      },
+      {
+        source: 'telegram',
+        label: 'TG',
+        displayName:
+          [row.tg_first_name, row.tg_last_name].filter(Boolean).join(' ') ||
+          row.tg_username ||
+          'Telegram',
+        avatarUrl: row.tg_avatar_url,
+        id: row.tg_id,
+        username: row.tg_username,
+        linked: row.tg_id !== null,
+        active: displaySource === 'telegram',
+      },
+      {
+        source: 'vk',
+        label: 'VK',
+        displayName:
+          [row.vk_first_name, row.vk_last_name].filter(Boolean).join(' ') ||
+          row.vk_username ||
+          'VK',
+        avatarUrl: row.vk_avatar_url,
+        id: row.vk_id,
+        username: row.vk_username,
+        linked: row.vk_id !== null,
+        active: displaySource === 'vk',
+      },
+    ],
     providers: {
       telegram: row.tg_id !== null ? { id: row.tg_id, username: row.tg_username } : null,
       vk: row.vk_id !== null ? { id: row.vk_id, username: row.vk_username } : null,
@@ -151,6 +609,100 @@ function mapUser(row: AdminUserRow) {
       wheelSpins: row.wheel_spins,
       trainingEnergy: row.training_energy,
     },
+    pushNotifications: {
+      subscribed: pushSubscriptionCount > 0,
+      subscriptionCount: pushSubscriptionCount,
+      types: {
+        chatNewDialogMessage: row.push_chat_new_dialog_message,
+        dailyGame: row.push_daily_game,
+        trainingAvailable: row.push_training_available,
+        gameNews: row.push_game_news,
+      },
+    },
+  };
+}
+
+function mapPayment(row: AdminPaymentRow) {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    userDisplayName: row.user_display_name ?? 'Удалённый игрок',
+    userAvatarUrl: row.user_avatar_url,
+    inventoryItemId: row.inventory_item_id,
+    title: row.title,
+    amountRub: row.amount_rub,
+    status: row.status,
+    provider: row.provider,
+    providerPaymentId: row.provider_payment_id,
+    createdAt: row.created_at.toISOString(),
+    paidAt: row.paid_at?.toISOString() ?? null,
+  };
+}
+
+function mapInventoryItem(row: AdminInventoryItemRow) {
+  return {
+    id: row.id,
+    photoUrl: row.photo_url,
+    title: row.title,
+    description: row.description,
+    priceRub: row.price_rub,
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
+    paymentsCount: Number(row.payments_count ?? 0),
+    paidRevenueRub: Number(row.paid_revenue ?? 0),
+  };
+}
+
+function mapFeedback(row: AdminFeedbackRow) {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    userDisplayName: row.user_display_name ?? 'Удалённый игрок',
+    userAvatarUrl: row.user_avatar_url,
+    kind: row.kind,
+    rating: row.rating,
+    message: row.message,
+    isRead: row.is_read,
+    readAt: row.read_at?.toISOString() ?? null,
+    readBy: row.read_by,
+    readByDisplayName: row.read_by_display_name,
+    createdAt: row.created_at.toISOString(),
+  };
+}
+
+function channelPeriodInterval(period: '7d' | '30d' | '90d'): string {
+  return (
+    {
+      '7d': '7 days',
+      '30d': '30 days',
+      '90d': '90 days',
+    } satisfies Record<'7d' | '30d' | '90d', string>
+  )[period];
+}
+
+function engagementRate(engagedUsers: number, totalUsers: number): number {
+  if (totalUsers <= 0) return 0;
+  return Math.round((engagedUsers * 10_000) / totalUsers) / 100;
+}
+
+function mapChannelPost(row: AdminChannelPostRow) {
+  return {
+    id: row.id,
+    chatId: row.chat_id,
+    content: row.content,
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
+    comments: Number(row.comment_count),
+    commenters: Number(row.commenter_count),
+    reactionsCount: Number(row.reaction_count),
+    reactionUsers: Number(row.reaction_user_count),
+    likes: Number(row.like_count),
+    views: Number(row.view_count),
+    viewers: Number(row.viewer_count),
+    reactions: (row.reactions ?? []).map((reaction) => ({
+      emoji: reaction.emoji,
+      count: Number(reaction.count),
+    })),
   };
 }
 
@@ -163,14 +715,276 @@ async function requireAdmin(app: Parameters<FastifyPluginAsync>[0], req: Fastify
   }
 }
 
+async function fetchPushNotificationStats(
+  client: Pool | PoolClient,
+): Promise<AdminPushNotificationStatsRow> {
+  const { rows } = await client.query<AdminPushNotificationStatsRow>(
+    `with subscribed as (
+       select user_id, count(*)::int as subscription_count
+         from push_subscriptions
+        group by user_id
+     ),
+     prepared as (
+       select u.id,
+              coalesce(s.subscription_count, 0) > 0 as is_subscribed,
+              coalesce(s.subscription_count, 0) > 0
+                and coalesce(pref.chat_new_dialog_message, true) as chat_new_dialog_message,
+              coalesce(s.subscription_count, 0) > 0
+                and coalesce(pref.daily_game, true) as daily_game,
+              coalesce(s.subscription_count, 0) > 0
+                and coalesce(pref.training_available, true) as training_available,
+              coalesce(s.subscription_count, 0) > 0
+                and coalesce(pref.game_news, true) as game_news
+         from users u
+         left join subscribed s on s.user_id = u.id
+         left join user_push_preferences pref on pref.user_id = u.id
+     )
+     select count(*)::int as total_users,
+            count(*) filter (where is_subscribed)::int as subscribed_users,
+            count(*) filter (where chat_new_dialog_message)::int as chat_new_dialog_message_users,
+            count(*) filter (where daily_game)::int as daily_game_users,
+            count(*) filter (where training_available)::int as training_available_users,
+            count(*) filter (where game_news)::int as game_news_users
+       from prepared`,
+  );
+  return (
+    rows[0] ?? {
+      total_users: '0',
+      subscribed_users: '0',
+      chat_new_dialog_message_users: '0',
+      daily_game_users: '0',
+      training_available_users: '0',
+      game_news_users: '0',
+    }
+  );
+}
+
+async function fetchAdminDashboardCore(client: Pool | PoolClient): Promise<AdminDashboardCoreRow> {
+  const { rows } = await client.query<AdminDashboardCoreRow>(
+    `select
+       (select count(*) from users)::int as total_users,
+       (select count(*) from users where role = 'admin')::int as admin_users,
+       (select count(*) from users where role = 'player')::int as player_users,
+       (select count(*) from users where created_at >= date_trunc('day', now()))::int as new_today,
+       (select count(*) from users where created_at >= now() - interval '7 days')::int as new_7d,
+       (select count(*) from users where created_at >= now() - interval '30 days')::int as new_30d,
+       (select count(*) from users where created_at >= now() - interval '365 days')::int as new_365d,
+       (select count(*) from users where last_seen_at >= date_trunc('day', now()))::int as active_today,
+       (select count(*) from users
+         where last_seen_at >= date_trunc('day', now()) - interval '1 day'
+           and last_seen_at < date_trunc('day', now()))::int as active_yesterday,
+       (select count(*) from users where last_seen_at >= now() - interval '7 days')::int as active_7d,
+       (select count(*) from users where last_seen_at >= now() - interval '30 days')::int as active_30d,
+       (select count(*) from users where last_seen_at >= now() - interval '365 days')::int as active_365d,
+       (select count(distinct user_id) from shot_session)::int as activated_users,
+       (select count(distinct user_id) from payments where status = 'paid')::int as paid_users_total,
+       (select count(distinct user_id) from payments
+         where status = 'paid'
+           and user_id is not null
+           and coalesce(paid_at, created_at) >= now() - interval '30 days')::int as paid_users_30d,
+       (select count(*) from payments
+         where status = 'paid'
+           and coalesce(paid_at, created_at) >= now() - interval '30 days')::int as paid_payments_30d,
+       (select coalesce(sum(amount_rub), 0) from payments
+         where status = 'paid'
+           and coalesce(paid_at, created_at) >= date_trunc('day', now()))::int as revenue_today,
+       (select coalesce(sum(amount_rub), 0) from payments
+         where status = 'paid'
+           and coalesce(paid_at, created_at) >= now() - interval '30 days')::int as revenue_30d,
+       (select coalesce(sum(amount_rub), 0) from payments
+         where status = 'paid'
+           and coalesce(paid_at, created_at) >= date_trunc('month', now()))::int as revenue_month,
+       (select coalesce(sum(amount_rub), 0) from payments
+         where status = 'paid'
+           and coalesce(paid_at, created_at) >= date_trunc('quarter', now()))::int as revenue_quarter,
+       (select coalesce(sum(amount_rub), 0) from payments
+         where status = 'paid'
+           and coalesce(paid_at, created_at) >= date_trunc('year', now()))::int as revenue_year,
+       (select coalesce(sum(amount_rub), 0) from payments where status = 'paid')::int as revenue_total,
+       (select count(*) from shot_session where created_at >= date_trunc('day', now()))::int as shots_today,
+       (select count(*) from shot_session
+         where created_at >= date_trunc('day', now()) and server_result = 'goal')::int as goals_today,
+       (select count(*) from shot_session where created_at >= now() - interval '7 days')::int as shots_7d,
+       (select count(*) from shot_session
+         where created_at >= now() - interval '7 days' and server_result = 'goal')::int as goals_7d,
+       (select count(*) from shot_session where created_at >= now() - interval '30 days')::int as shots_30d,
+       (select count(*) from shot_session
+         where created_at >= now() - interval '30 days' and server_result = 'goal')::int as goals_30d,
+       (select count(*) from shot_session)::int as shots_total,
+       (select count(*) from shot_session where server_result = 'goal')::int as goals_total,
+       (select count(distinct user_id) from shot_session
+         where mode = 'daily' and created_at >= now() - interval '30 days')::int as daily_players_30d,
+       (select count(distinct user_id) from shot_session
+         where mode = 'training' and created_at >= now() - interval '30 days')::int as training_players_30d,
+       (select count(*) from day_pool where state <> 'closed')::int as active_daily_pools,
+       (select count(*) from training_session where state = 'active')::int as active_training_sessions,
+       (select count(*) from event_log
+         where type = 'shot_mismatch' and created_at >= now() - interval '30 days')::int as mismatches_30d,
+       (select count(*) from messages
+         where is_deleted = false and created_at >= date_trunc('day', now()))::int as messages_today,
+       (select count(*) from messages
+         where is_deleted = false and created_at >= now() - interval '7 days')::int as messages_7d,
+       (select count(*) from messages
+         where is_deleted = false and created_at >= now() - interval '30 days')::int as messages_30d,
+       (select count(distinct sender_id) from messages
+         where is_deleted = false and created_at >= now() - interval '30 days')::int as chat_users_30d,
+       (select count(*) from feedback_messages)::int as feedback_total,
+       (select count(*) from feedback_messages where is_read = false)::int as feedback_unread,
+       (select count(*) from admin_inventory_items where deleted_at is null)::int as inventory_items`,
+  );
+  return rows[0]!;
+}
+
+async function fetchAdminDashboardEngagement(
+  client: Pool | PoolClient,
+): Promise<AdminDashboardEngagementRow> {
+  const { rows } = await client.query<AdminDashboardEngagementRow>(
+    `with activity_events as (
+       select id as user_id, created_at as occurred_at from users
+       union all
+       select id as user_id, last_seen_at as occurred_at from users where last_seen_at is not null
+       union all
+       select user_id, created_at as occurred_at from shot_session
+       union all
+       select sender_id as user_id, created_at as occurred_at from messages where is_deleted = false
+       union all
+       select user_id, created_at as occurred_at from payments where user_id is not null
+       union all
+       select user_id, created_at as occurred_at from feedback_messages where user_id is not null
+     ),
+     daily_activity as (
+       select user_id,
+              date_trunc('day', occurred_at) as day,
+              min(occurred_at) as first_at,
+              max(occurred_at) as last_at,
+              count(*) as events_count
+         from activity_events
+        where occurred_at >= now() - interval '30 days'
+        group by user_id, date_trunc('day', occurred_at)
+       having count(*) >= 2
+     )
+     select coalesce(avg(extract(epoch from (last_at - first_at)) / 60), 0)
+              as avg_daily_activity_span_minutes
+       from daily_activity`,
+  );
+  return rows[0] ?? { avg_daily_activity_span_minutes: '0' };
+}
+
+async function fetchAdminDashboardSeries(
+  client: Pool | PoolClient,
+): Promise<AdminDashboardSeriesRow[]> {
+  const { rows } = await client.query<AdminDashboardSeriesRow>(
+    `with days as (
+       select generate_series(
+         date_trunc('day', now()) - interval '29 days',
+         date_trunc('day', now()),
+         interval '1 day'
+       )::date as day
+     ),
+     activity_events as (
+       select id as user_id, created_at as occurred_at from users
+       union all
+       select id as user_id, last_seen_at as occurred_at from users where last_seen_at is not null
+       union all
+       select user_id, created_at as occurred_at from shot_session
+       union all
+       select sender_id as user_id, created_at as occurred_at from messages where is_deleted = false
+       union all
+       select user_id, created_at as occurred_at from payments where user_id is not null
+       union all
+       select user_id, created_at as occurred_at from feedback_messages where user_id is not null
+     ),
+     active_users as (
+       select occurred_at::date as day, count(distinct user_id)::int as value
+         from activity_events
+        where occurred_at >= date_trunc('day', now()) - interval '29 days'
+        group by occurred_at::date
+     ),
+     new_users as (
+       select created_at::date as day, count(*)::int as value
+         from users
+        where created_at >= date_trunc('day', now()) - interval '29 days'
+        group by created_at::date
+     ),
+     revenue as (
+       select coalesce(paid_at, created_at)::date as day,
+              coalesce(sum(amount_rub), 0)::int as value
+         from payments
+        where status = 'paid'
+          and coalesce(paid_at, created_at) >= date_trunc('day', now()) - interval '29 days'
+        group by coalesce(paid_at, created_at)::date
+     ),
+     shots as (
+       select created_at::date as day,
+              count(*)::int as shots,
+              count(*) filter (where server_result = 'goal')::int as goals
+         from shot_session
+        where created_at >= date_trunc('day', now()) - interval '29 days'
+        group by created_at::date
+     ),
+     messages_series as (
+       select created_at::date as day, count(*)::int as value
+         from messages
+        where is_deleted = false
+          and created_at >= date_trunc('day', now()) - interval '29 days'
+        group by created_at::date
+     )
+     select to_char(d.day, 'YYYY-MM-DD') as day,
+            coalesce(nu.value, 0)::int as new_users,
+            coalesce(au.value, 0)::int as active_users,
+            coalesce(r.value, 0)::int as revenue_rub,
+            coalesce(s.shots, 0)::int as shots,
+            coalesce(s.goals, 0)::int as goals,
+            coalesce(ms.value, 0)::int as messages
+       from days d
+       left join new_users nu on nu.day = d.day
+       left join active_users au on au.day = d.day
+       left join revenue r on r.day = d.day
+       left join shots s on s.day = d.day
+       left join messages_series ms on ms.day = d.day
+      order by d.day asc`,
+  );
+  return rows;
+}
+
 async function fetchAdminUser(client: Pool | PoolClient, userId: string): Promise<AdminUserRow> {
   const { rows } = await client.query<AdminUserRow>(
-    `select u.id, u.display_name, u.avatar_url, u.role, u.grip, u.level, u.xp,
+    `select u.id, u.display_name, u.avatar_url, u.display_source,
+            u.role, u.grip, u.level, u.xp,
+            case
+              when u.display_source = 'vk' then
+                coalesce(nullif(concat_ws(' ', u.vk_first_name, u.vk_last_name), ''), u.vk_username, 'Player')
+              when u.display_source = 'telegram' then
+                coalesce(nullif(concat_ws(' ', u.tg_first_name, u.tg_last_name), ''), u.tg_username, 'Player')
+              else coalesce(nullif(u.display_name, ''), 'Player')
+            end as active_display_name,
+            case
+              when u.display_source = 'vk' then u.vk_avatar_url
+              when u.display_source = 'telegram' then u.tg_avatar_url
+              else u.avatar_url
+            end as active_avatar_url,
             u.timezone, u.created_at, u.last_seen_at,
+            u.blocked_at, u.blocked_by, blocker.display_name as blocked_by_display_name,
             u.lifetime_shots_total, u.lifetime_goals_total,
+            case
+              when u.lifetime_shots_total > 0
+                then round(u.lifetime_goals_total::numeric * 100 / u.lifetime_shots_total)::int
+              else 0
+            end as accuracy,
+            case
+              when u.level >= 3 then 'professional'
+              when u.level >= 2 or u.lifetime_goals_total >= 1000 then 'amateur'
+              else 'beginner'
+            end as competition_level,
             tg.provider_uid as tg_id,
             vk.provider_uid as vk_id,
+            u.tg_first_name,
+            u.tg_last_name,
+            u.tg_avatar_url,
             u.tg_username,
+            u.vk_first_name,
+            u.vk_last_name,
+            u.vk_avatar_url,
             u.vk_username,
             coalesce(w.shots_current, 0) as shots_current,
             coalesce(w.shots_max, 25) as shots_max,
@@ -178,13 +992,29 @@ async function fetchAdminUser(client: Pool | PoolClient, userId: string): Promis
             coalesce(w.pucks, 0) as pucks,
             coalesce(w.gold_pucks, 0) as gold_pucks,
             coalesce(w.wheel_spins, 0) as wheel_spins,
-            coalesce(w.training_energy, 0) as training_energy
+            coalesce(w.training_energy, 0) as training_energy,
+            coalesce(push.subscription_count, 0) as push_subscription_count,
+            coalesce(push.subscription_count, 0) > 0
+              and coalesce(pref.chat_new_dialog_message, true) as push_chat_new_dialog_message,
+            coalesce(push.subscription_count, 0) > 0
+              and coalesce(pref.daily_game, true) as push_daily_game,
+            coalesce(push.subscription_count, 0) > 0
+              and coalesce(pref.training_available, true) as push_training_available,
+            coalesce(push.subscription_count, 0) > 0
+              and coalesce(pref.game_news, true) as push_game_news
        from users u
        left join user_wallet w on w.user_id = u.id
+       left join users blocker on blocker.id = u.blocked_by
        left join auth_providers tg
          on tg.user_id = u.id and tg.provider = 'telegram'
        left join auth_providers vk
          on vk.user_id = u.id and vk.provider = 'vk'
+       left join (
+         select user_id, count(*)::int as subscription_count
+           from push_subscriptions
+          group by user_id
+       ) push on push.user_id = u.id
+       left join user_push_preferences pref on pref.user_id = u.id
       where u.id = $1`,
     [userId],
   );
@@ -203,6 +1033,44 @@ function addAssignment(
   assignments.push(`${column} = $${values.length}`);
 }
 
+async function fetchAdminFeedbackById(
+  client: Pool | PoolClient,
+  feedbackId: string,
+): Promise<AdminFeedbackRow> {
+  const { rows } = await client.query<AdminFeedbackRow>(
+    `select f.id,
+            f.user_id,
+            case
+              when u.display_source = 'vk' then
+                coalesce(nullif(concat_ws(' ', u.vk_first_name, u.vk_last_name), ''), u.vk_username, u.display_name)
+              when u.display_source = 'telegram' then
+                coalesce(nullif(concat_ws(' ', u.tg_first_name, u.tg_last_name), ''), u.tg_username, u.display_name)
+              else u.display_name
+            end as user_display_name,
+            case
+              when u.display_source = 'vk' then u.vk_avatar_url
+              when u.display_source = 'telegram' then u.tg_avatar_url
+              else u.avatar_url
+            end as user_avatar_url,
+            f.kind,
+            f.rating,
+            f.message,
+            f.is_read,
+            f.read_at,
+            f.read_by,
+            reader.display_name as read_by_display_name,
+            f.created_at
+       from feedback_messages f
+       left join users u on u.id = f.user_id
+       left join users reader on reader.id = f.read_by
+      where f.id = $1`,
+    [feedbackId],
+  );
+  const row = rows[0];
+  if (!row) throw new AppError('not_found', 'feedback not found', 404);
+  return row;
+}
+
 export const adminRoutes: FastifyPluginAsync = async (app) => {
   const adminPreHandlers = [
     app.authenticate,
@@ -210,28 +1078,38 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
   ];
 
   app.get('/admin/summary', { preHandler: adminPreHandlers }, async () => {
-    const { rows } = await app.pg.query<AdminSummaryRow>(
-      `select
-         (select count(*) from users) as total_users,
-         (select count(*) from users where role = 'admin') as admin_users,
-         (select coalesce(sum(lifetime_shots_total), 0) from users) as total_shots,
-         (select coalesce(sum(lifetime_goals_total), 0) from users) as total_goals,
-         (select count(*) from day_pool where state <> 'closed') as active_daily,
-         (select count(*) from training_session where state = 'active') as active_training,
-         (select count(*) from shot_session where created_at >= now() - interval '24 hours')
-           as shots_24h,
-         (select count(*) from shot_session
-           where created_at >= now() - interval '24 hours' and server_result = 'goal')
-           as goals_24h,
-         (select count(*) from event_log
-           where created_at >= now() - interval '24 hours' and type = 'shot_mismatch')
-           as mismatches_24h`,
-    );
+    const [summary, pushStats, dashboardCore, dashboardEngagement, dashboardSeries] =
+      await Promise.all([
+        app.pg.query<AdminSummaryRow>(
+          `select
+           (select count(*) from users) as total_users,
+           (select count(*) from users where role = 'admin') as admin_users,
+           (select coalesce(sum(lifetime_shots_total), 0) from users) as total_shots,
+           (select coalesce(sum(lifetime_goals_total), 0) from users) as total_goals,
+           (select count(*) from day_pool where state <> 'closed') as active_daily,
+           (select count(*) from training_session where state = 'active') as active_training,
+           (select count(*) from shot_session where created_at >= now() - interval '24 hours')
+             as shots_24h,
+           (select count(*) from shot_session
+             where created_at >= now() - interval '24 hours' and server_result = 'goal')
+             as goals_24h,
+           (select count(*) from event_log
+             where created_at >= now() - interval '24 hours' and type = 'shot_mismatch')
+             as mismatches_24h`,
+        ),
+        fetchPushNotificationStats(app.pg),
+        fetchAdminDashboardCore(app.pg),
+        fetchAdminDashboardEngagement(app.pg),
+        fetchAdminDashboardSeries(app.pg),
+      ]);
+    const rows = summary.rows;
     const row = rows[0]!;
+    const notifications = mapPushNotificationStats(pushStats);
     return {
       users: {
         total: Number(row.total_users),
         admins: Number(row.admin_users),
+        notifications,
       },
       lifetime: {
         shots: Number(row.total_shots ?? 0),
@@ -246,6 +1124,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
         goals: Number(row.goals_24h),
         mismatches: Number(row.mismatches_24h),
       },
+      dashboard: mapDashboard(dashboardCore, dashboardEngagement, dashboardSeries, notifications),
       gameCoreVersion: GAME_CORE_VERSION,
     };
   });
@@ -287,59 +1166,743 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
     return setting;
   });
 
+  app.get('/admin/channel/news', { preHandler: adminPreHandlers }, async (req) => {
+    const parsed = channelPeriodQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      throw new AppError('bad_request', 'invalid channel query', 400);
+    }
+    const interval = channelPeriodInterval(parsed.data.period);
+
+    const channel = await app.pg.query<AdminChannelRow>(
+      `select id, name, channel_slug, created_at
+         from chats
+        where type = 'channel'
+          and channel_slug = $1
+          and is_active = true
+        limit 1`,
+      [DEFAULT_NEWS_CHANNEL_SLUG],
+    );
+    const channelRow = channel.rows[0] ?? null;
+    if (channelRow === null) {
+      return {
+        channel: null,
+        period: parsed.data.period,
+        summary: {
+          totalUsers: 0,
+          posts: 0,
+          comments: 0,
+          reactions: 0,
+          likes: 0,
+          viewEvents: 0,
+          views: 0,
+          engagedUsers: 0,
+          engagementRate: 0,
+        },
+        periods: [],
+        posts: [],
+      };
+    }
+
+    const [summary, periods, posts] = await Promise.all([
+      app.pg.query<AdminChannelSummaryRow>(
+        `with bounds as (
+           select now() - $2::interval as since
+         ),
+         channel_posts as (
+           select m.id
+             from messages m
+            where m.chat_id = $1
+              and m.is_deleted = false
+         ),
+         engaged as (
+           select v.user_id
+             from channel_post_views v
+             join channel_posts p on p.id = v.post_message_id
+             join bounds b on v.last_viewed_at >= b.since
+           union
+           select c.author_id as user_id
+             from channel_post_comments c
+             join channel_posts p on p.id = c.post_message_id
+             join bounds b on c.created_at >= b.since
+            where c.is_deleted = false
+           union
+           select r.user_id
+             from message_reactions r
+             join channel_posts p on p.id = r.message_id
+             join bounds b on r.created_at >= b.since
+         )
+         select
+           (select count(*) from users where blocked_at is null) as total_users,
+           (select count(*)
+              from messages m, bounds b
+             where m.chat_id = $1
+               and m.is_deleted = false
+               and m.created_at >= b.since) as posts,
+           (select count(*)
+              from channel_post_comments c
+              join channel_posts p on p.id = c.post_message_id
+              join bounds b on c.created_at >= b.since
+             where c.is_deleted = false) as comments,
+           (select count(*)
+              from message_reactions r
+              join channel_posts p on p.id = r.message_id
+              join bounds b on r.created_at >= b.since) as reactions,
+           (select count(*)
+              from message_reactions r
+              join channel_posts p on p.id = r.message_id
+              join bounds b on r.created_at >= b.since
+             where r.emoji = '👍') as likes,
+           (select count(*)
+              from channel_post_views v
+              join channel_posts p on p.id = v.post_message_id
+              join bounds b on v.last_viewed_at >= b.since) as view_events,
+           (select coalesce(sum(v.view_count), 0)
+              from channel_post_views v
+              join channel_posts p on p.id = v.post_message_id
+              join bounds b on v.last_viewed_at >= b.since) as views,
+           (select count(*) from engaged) as engaged_users`,
+        [channelRow.id, interval],
+      ),
+      app.pg.query<AdminChannelPeriodRow>(
+        `with days as (
+           select generate_series(
+             date_trunc('day', now() - $2::interval),
+             date_trunc('day', now()),
+             interval '1 day'
+           ) as period_start
+         ),
+         channel_posts as (
+           select m.id, m.created_at
+             from messages m
+            where m.chat_id = $1
+              and m.is_deleted = false
+         )
+         select
+           d.period_start,
+           coalesce(p.posts, 0) as posts,
+           coalesce(c.comments, 0) as comments,
+           coalesce(c.commenters, 0) as commenters,
+           coalesce(r.reactions, 0) as reactions,
+           coalesce(r.reactors, 0) as reactors,
+           coalesce(r.likes, 0) as likes,
+           coalesce(v.view_events, 0) as view_events,
+           coalesce(v.views, 0) as views,
+           coalesce(v.viewers, 0) as viewers,
+           coalesce(e.engaged_users, 0) as engaged_users
+         from days d
+         left join lateral (
+           select count(*) as posts
+             from channel_posts p
+            where p.created_at >= d.period_start
+              and p.created_at < d.period_start + interval '1 day'
+         ) p on true
+         left join lateral (
+           select count(*) as comments,
+                  count(distinct c.author_id) as commenters
+             from channel_post_comments c
+             join channel_posts p on p.id = c.post_message_id
+            where c.is_deleted = false
+              and c.created_at >= d.period_start
+              and c.created_at < d.period_start + interval '1 day'
+         ) c on true
+         left join lateral (
+           select count(*) as reactions,
+                  count(distinct r.user_id) as reactors,
+                  count(*) filter (where r.emoji = '👍') as likes
+             from message_reactions r
+             join channel_posts p on p.id = r.message_id
+            where r.created_at >= d.period_start
+              and r.created_at < d.period_start + interval '1 day'
+         ) r on true
+         left join lateral (
+           select count(*) as view_events,
+                  coalesce(sum(v.view_count), 0) as views,
+                  count(distinct v.user_id) as viewers
+             from channel_post_views v
+             join channel_posts p on p.id = v.post_message_id
+            where v.last_viewed_at >= d.period_start
+              and v.last_viewed_at < d.period_start + interval '1 day'
+         ) v on true
+         left join lateral (
+           select count(distinct user_id) as engaged_users
+             from (
+               select v.user_id
+                 from channel_post_views v
+                 join channel_posts p on p.id = v.post_message_id
+                where v.last_viewed_at >= d.period_start
+                  and v.last_viewed_at < d.period_start + interval '1 day'
+               union all
+               select c.author_id as user_id
+                 from channel_post_comments c
+                 join channel_posts p on p.id = c.post_message_id
+                where c.is_deleted = false
+                  and c.created_at >= d.period_start
+                  and c.created_at < d.period_start + interval '1 day'
+               union all
+               select r.user_id
+                 from message_reactions r
+                 join channel_posts p on p.id = r.message_id
+                where r.created_at >= d.period_start
+                  and r.created_at < d.period_start + interval '1 day'
+             ) users
+         ) e on true
+         order by d.period_start desc`,
+        [channelRow.id, interval],
+      ),
+      app.pg.query<AdminChannelPostRow>(
+        `select m.id,
+                m.chat_id,
+                m.content,
+                m.created_at,
+                m.updated_at,
+                coalesce(c.comment_count, 0) as comment_count,
+                coalesce(c.commenter_count, 0) as commenter_count,
+                coalesce(r.reaction_count, 0) as reaction_count,
+                coalesce(r.reaction_user_count, 0) as reaction_user_count,
+                coalesce(r.like_count, 0) as like_count,
+                coalesce(v.view_count, 0) as view_count,
+                coalesce(v.viewer_count, 0) as viewer_count,
+                coalesce(r.reactions, '[]'::json) as reactions
+           from messages m
+           left join lateral (
+             select count(*) as comment_count,
+                    count(distinct author_id) as commenter_count
+               from channel_post_comments c
+              where c.post_message_id = m.id
+                and c.is_deleted = false
+           ) c on true
+           left join lateral (
+             select (select count(*)
+                       from message_reactions
+                      where message_id = m.id) as reaction_count,
+                    (select count(distinct user_id)
+                       from message_reactions
+                      where message_id = m.id) as reaction_user_count,
+                    (select count(*)
+                       from message_reactions
+                      where message_id = m.id
+                        and emoji = '👍') as like_count,
+                    coalesce(
+                      (select json_agg(json_build_object('emoji', emoji, 'count', emoji_count)
+                                order by emoji_count desc, emoji)
+                         from (
+                           select emoji, count(*) as emoji_count
+                             from message_reactions
+                            where message_id = m.id
+                            group by emoji
+                         ) by_emoji),
+                      '[]'::json
+                    ) as reactions
+           ) r on true
+           left join lateral (
+             select coalesce(sum(view_count), 0) as view_count,
+                    count(distinct user_id) as viewer_count
+               from channel_post_views v
+              where v.post_message_id = m.id
+           ) v on true
+          where m.chat_id = $1
+            and m.is_deleted = false
+          order by m.created_at desc
+          limit 50`,
+        [channelRow.id],
+      ),
+    ]);
+
+    const summaryRow = summary.rows[0]!;
+    const totalUsers = Number(summaryRow.total_users);
+    const engagedUsers = Number(summaryRow.engaged_users);
+    return {
+      channel: {
+        id: channelRow.id,
+        name: channelRow.name,
+        slug: channelRow.channel_slug,
+        createdAt: channelRow.created_at.toISOString(),
+      },
+      period: parsed.data.period,
+      summary: {
+        totalUsers,
+        posts: Number(summaryRow.posts),
+        comments: Number(summaryRow.comments),
+        reactions: Number(summaryRow.reactions),
+        likes: Number(summaryRow.likes),
+        viewEvents: Number(summaryRow.view_events),
+        views: Number(summaryRow.views),
+        engagedUsers,
+        engagementRate: engagementRate(engagedUsers, totalUsers),
+      },
+      periods: periods.rows.map((row) => {
+        const rowEngagedUsers = Number(row.engaged_users);
+        return {
+          periodStart: row.period_start.toISOString(),
+          posts: Number(row.posts),
+          comments: Number(row.comments),
+          commenters: Number(row.commenters),
+          reactions: Number(row.reactions),
+          reactors: Number(row.reactors),
+          likes: Number(row.likes),
+          viewEvents: Number(row.view_events),
+          views: Number(row.views),
+          viewers: Number(row.viewers),
+          engagedUsers: rowEngagedUsers,
+          engagementRate: engagementRate(rowEngagedUsers, totalUsers),
+        };
+      }),
+      posts: posts.rows.map(mapChannelPost),
+    };
+  });
+
+  app.patch('/admin/channel/posts/:postId', { preHandler: adminPreHandlers }, async (req) => {
+    const params = z.object({ postId: z.string().uuid() }).parse(req.params);
+    const body = channelPostPatchSchema.safeParse(req.body);
+    if (!body.success) {
+      throw new AppError('bad_request', 'invalid channel post patch', 400);
+    }
+    const post = await updateChannelPostContent(
+      app.pg,
+      params.postId,
+      req.user.id,
+      body.data.content,
+    );
+    await publishMessageUpdated(app.pg, app.realtime, post.chatId, 'channel', post);
+    await appendEvent(app.pg, req.user.id, 'admin_channel_post_updated', {
+      post_id: params.postId,
+    });
+    return { post };
+  });
+
+  app.delete('/admin/channel/posts/:postId', { preHandler: adminPreHandlers }, async (req) => {
+    const params = z.object({ postId: z.string().uuid() }).parse(req.params);
+    const { chatId } = await deleteChannelPost(app.pg, params.postId);
+    await publishMessageDeleted(app.pg, app.realtime, chatId, 'channel', params.postId);
+    await appendEvent(app.pg, req.user.id, 'admin_channel_post_deleted', {
+      post_id: params.postId,
+    });
+    return { ok: true };
+  });
+
+  app.get('/admin/payments', { preHandler: adminPreHandlers }, async (req) => {
+    const parsed = listPaymentsQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      throw new AppError('bad_request', 'invalid payments query', 400);
+    }
+    const search = parsed.data.q ?? null;
+    const orderBy = {
+      created_desc: 'p.created_at desc',
+      created_asc: 'p.created_at asc',
+      amount_desc: 'p.amount_rub desc, p.created_at desc',
+      amount_asc: 'p.amount_rub asc, p.created_at desc',
+      user_asc: 'lower(user_display_name) asc nulls last, p.created_at desc',
+      user_desc: 'lower(user_display_name) desc nulls last, p.created_at desc',
+    }[parsed.data.sort];
+
+    const [list, analytics] = await Promise.all([
+      app.pg.query<AdminPaymentRow>(
+        `with prepared as (
+           select p.id,
+                  p.user_id,
+                  case
+                    when u.display_source = 'vk' then
+                      coalesce(nullif(concat_ws(' ', u.vk_first_name, u.vk_last_name), ''), u.vk_username, u.display_name)
+                    when u.display_source = 'telegram' then
+                      coalesce(nullif(concat_ws(' ', u.tg_first_name, u.tg_last_name), ''), u.tg_username, u.display_name)
+                    else u.display_name
+                  end as user_display_name,
+                  case
+                    when u.display_source = 'vk' then u.vk_avatar_url
+                    when u.display_source = 'telegram' then u.tg_avatar_url
+                    else u.avatar_url
+                  end as user_avatar_url,
+                  p.inventory_item_id,
+                  p.title,
+                  p.amount_rub,
+                  p.status,
+                  p.provider,
+                  p.provider_payment_id,
+                  p.created_at,
+                  p.paid_at
+             from payments p
+             left join users u on u.id = p.user_id
+         ),
+         filtered as (
+           select *
+             from prepared p
+            where ($1::text is null
+                   or user_display_name ilike '%' || $1 || '%'
+                   or title ilike '%' || $1 || '%'
+                   or user_id::text = $1
+                   or provider_payment_id = $1)
+              and ($2::text = 'all' or status = $2)
+              and ($3::int is null or amount_rub >= $3)
+              and ($4::int is null or amount_rub <= $4)
+         )
+         select *, count(*) over() as total_count
+           from filtered p
+          order by ${orderBy}
+          limit $5 offset $6`,
+        [
+          search,
+          parsed.data.status,
+          parsed.data.minAmount ?? null,
+          parsed.data.maxAmount ?? null,
+          parsed.data.limit,
+          parsed.data.offset,
+        ],
+      ),
+      app.pg.query<AdminPaymentAnalyticsRow>(
+        `select
+           coalesce(sum(amount_rub) filter (
+             where status = 'paid' and coalesce(paid_at, created_at) >= date_trunc('month', now())
+           ), 0) as month_revenue,
+           coalesce(sum(amount_rub) filter (
+             where status = 'paid' and coalesce(paid_at, created_at) >= date_trunc('quarter', now())
+           ), 0) as quarter_revenue,
+           coalesce(sum(amount_rub) filter (
+             where status = 'paid' and coalesce(paid_at, created_at) >= date_trunc('year', now())
+           ), 0) as year_revenue,
+           count(*) filter (
+             where status = 'paid' and coalesce(paid_at, created_at) >= date_trunc('month', now())
+           ) as month_count,
+           count(*) filter (
+             where status = 'paid' and coalesce(paid_at, created_at) >= date_trunc('quarter', now())
+           ) as quarter_count,
+           count(*) filter (
+             where status = 'paid' and coalesce(paid_at, created_at) >= date_trunc('year', now())
+           ) as year_count
+          from payments`,
+      ),
+    ]);
+    const analyticsRow = analytics.rows[0]!;
+    return {
+      payments: list.rows.map(mapPayment),
+      total: list.rows.length > 0 ? Number(list.rows[0]!.total_count ?? list.rows.length) : 0,
+      limit: parsed.data.limit,
+      offset: parsed.data.offset,
+      analytics: {
+        month: {
+          revenueRub: Number(analyticsRow.month_revenue),
+          paidCount: Number(analyticsRow.month_count),
+        },
+        quarter: {
+          revenueRub: Number(analyticsRow.quarter_revenue),
+          paidCount: Number(analyticsRow.quarter_count),
+        },
+        year: {
+          revenueRub: Number(analyticsRow.year_revenue),
+          paidCount: Number(analyticsRow.year_count),
+        },
+      },
+    };
+  });
+
+  app.get('/admin/feedback', { preHandler: adminPreHandlers }, async (req) => {
+    const parsed = listFeedbackQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      throw new AppError('bad_request', 'invalid feedback query', 400);
+    }
+
+    const [list, unread] = await Promise.all([
+      app.pg.query<AdminFeedbackRow>(
+        `with prepared as (
+           select f.id,
+                  f.user_id,
+                  case
+                    when u.display_source = 'vk' then
+                      coalesce(nullif(concat_ws(' ', u.vk_first_name, u.vk_last_name), ''), u.vk_username, u.display_name)
+                    when u.display_source = 'telegram' then
+                      coalesce(nullif(concat_ws(' ', u.tg_first_name, u.tg_last_name), ''), u.tg_username, u.display_name)
+                    else u.display_name
+                  end as user_display_name,
+                  case
+                    when u.display_source = 'vk' then u.vk_avatar_url
+                    when u.display_source = 'telegram' then u.tg_avatar_url
+                    else u.avatar_url
+                  end as user_avatar_url,
+                  f.kind,
+                  f.rating,
+                  f.message,
+                  f.is_read,
+                  f.read_at,
+                  f.read_by,
+                  reader.display_name as read_by_display_name,
+                  f.created_at
+             from feedback_messages f
+             left join users u on u.id = f.user_id
+             left join users reader on reader.id = f.read_by
+         ),
+         filtered as (
+           select *
+             from prepared
+            where ($1::text = 'all' or kind = $1)
+              and ($2::text = 'all'
+                   or ($2::text = 'read' and is_read = true)
+                   or ($2::text = 'unread' and is_read = false))
+         )
+         select *, count(*) over() as total_count
+           from filtered
+          order by is_read asc, created_at desc
+          limit $3 offset $4`,
+        [parsed.data.kind, parsed.data.status, parsed.data.limit, parsed.data.offset],
+      ),
+      app.pg.query<{ count: string }>(
+        `select count(*)::int as count from feedback_messages where is_read = false`,
+      ),
+    ]);
+
+    return {
+      feedback: list.rows.map(mapFeedback),
+      total: list.rows.length > 0 ? Number(list.rows[0]!.total_count ?? list.rows.length) : 0,
+      unreadCount: Number(unread.rows[0]?.count ?? 0),
+      limit: parsed.data.limit,
+      offset: parsed.data.offset,
+    };
+  });
+
+  app.patch('/admin/feedback/:feedbackId', { preHandler: adminPreHandlers }, async (req) => {
+    const params = z.object({ feedbackId: z.string().uuid() }).parse(req.params);
+    const body = feedbackPatchSchema.safeParse(req.body);
+    if (!body.success) {
+      throw new AppError('bad_request', 'invalid feedback patch', 400);
+    }
+
+    const { rowCount } = await app.pg.query(
+      `update feedback_messages
+          set is_read = $2::boolean,
+              read_at = case when $2::boolean then now() else null end,
+              read_by = case when $2::boolean then $3::uuid else null end
+        where id = $1`,
+      [params.feedbackId, body.data.isRead, req.user.id],
+    );
+    if (rowCount === 0) {
+      throw new AppError('not_found', 'feedback not found', 404);
+    }
+
+    const updated = await fetchAdminFeedbackById(app.pg, params.feedbackId);
+    return { feedback: mapFeedback(updated) };
+  });
+
+  app.get('/admin/inventory', { preHandler: adminPreHandlers }, async () => {
+    const { rows } = await app.pg.query<AdminInventoryItemRow>(
+      `select i.id,
+              i.photo_url,
+              i.title,
+              i.description,
+              i.price_rub,
+              i.created_at,
+              i.updated_at,
+              count(p.id)::int as payments_count,
+              coalesce(sum(p.amount_rub) filter (where p.status = 'paid'), 0)::int as paid_revenue
+         from admin_inventory_items i
+         left join payments p on p.inventory_item_id = i.id
+        where i.deleted_at is null
+        group by i.id
+        order by i.created_at desc`,
+    );
+    return { items: rows.map(mapInventoryItem) };
+  });
+
+  app.post('/admin/inventory', { preHandler: adminPreHandlers }, async (req) => {
+    const body = createInventoryItemSchema.safeParse(req.body);
+    if (!body.success) {
+      throw new AppError('bad_request', 'invalid inventory item', 400);
+    }
+    const { rows } = await app.pg.query<AdminInventoryItemRow>(
+      `insert into admin_inventory_items (photo_url, title, description, price_rub)
+       values ($1, $2, $3, $4)
+       returning id, photo_url, title, description, price_rub, created_at, updated_at`,
+      [body.data.photoUrl, body.data.title, body.data.description, body.data.priceRub],
+    );
+    await appendEvent(app.pg, req.user.id, 'admin_inventory_item_created', {
+      item_id: rows[0]!.id,
+    });
+    return { item: mapInventoryItem(rows[0]!) };
+  });
+
+  app.patch('/admin/inventory/:itemId', { preHandler: adminPreHandlers }, async (req) => {
+    const params = z.object({ itemId: z.string().uuid() }).parse(req.params);
+    const body = updateInventoryItemSchema.safeParse(req.body);
+    if (!body.success) {
+      throw new AppError('bad_request', 'invalid inventory item patch', 400);
+    }
+    const assignments: string[] = [];
+    const values: unknown[] = [];
+    if (body.data.photoUrl !== undefined) {
+      addAssignment(assignments, values, 'photo_url', body.data.photoUrl);
+    }
+    if (body.data.title !== undefined) {
+      addAssignment(assignments, values, 'title', body.data.title);
+    }
+    if (body.data.description !== undefined) {
+      addAssignment(assignments, values, 'description', body.data.description);
+    }
+    if (body.data.priceRub !== undefined) {
+      addAssignment(assignments, values, 'price_rub', body.data.priceRub);
+    }
+    values.push(params.itemId);
+    const { rows } = await app.pg.query<AdminInventoryItemRow>(
+      `update admin_inventory_items
+          set ${assignments.join(', ')},
+              updated_at = now()
+        where id = $${values.length} and deleted_at is null
+      returning id, photo_url, title, description, price_rub, created_at, updated_at`,
+      values,
+    );
+    if (rows.length === 0) {
+      throw new AppError('not_found', 'inventory item not found', 404);
+    }
+    await appendEvent(app.pg, req.user.id, 'admin_inventory_item_updated', {
+      item_id: params.itemId,
+      fields: Object.keys(body.data),
+    });
+    return { item: mapInventoryItem(rows[0]!) };
+  });
+
+  app.delete('/admin/inventory/:itemId', { preHandler: adminPreHandlers }, async (req) => {
+    const params = z.object({ itemId: z.string().uuid() }).parse(req.params);
+    const { rowCount } = await app.pg.query(
+      `update admin_inventory_items
+          set deleted_at = now(),
+              updated_at = now()
+        where id = $1 and deleted_at is null`,
+      [params.itemId],
+    );
+    if (rowCount === 0) {
+      throw new AppError('not_found', 'inventory item not found', 404);
+    }
+    await appendEvent(app.pg, req.user.id, 'admin_inventory_item_deleted', {
+      item_id: params.itemId,
+    });
+    return { ok: true };
+  });
+
   app.get('/admin/users', { preHandler: adminPreHandlers }, async (req) => {
     const parsed = listUsersQuerySchema.safeParse(req.query);
     if (!parsed.success) {
       throw new AppError('bad_request', 'invalid users query', 400);
     }
     const search = parsed.data.q ?? null;
-    const { rows } = await app.pg.query<AdminUserRow>(
-      `with filtered as (
-         select u.id, u.display_name, u.avatar_url, u.role, u.grip, u.level, u.xp,
-                u.timezone, u.created_at, u.last_seen_at,
-                u.lifetime_shots_total, u.lifetime_goals_total,
-                tg.provider_uid as tg_id,
-                vk.provider_uid as vk_id,
-                u.tg_username,
-                u.vk_username,
-                coalesce(w.shots_current, 0) as shots_current,
-                coalesce(w.shots_max, 25) as shots_max,
-                coalesce(w.shots_bonus, 0) as shots_bonus,
-                coalesce(w.pucks, 0) as pucks,
-                coalesce(w.gold_pucks, 0) as gold_pucks,
-                coalesce(w.wheel_spins, 0) as wheel_spins,
-                coalesce(w.training_energy, 0) as training_energy
-           from users u
-           left join user_wallet w on w.user_id = u.id
-           left join auth_providers tg
-             on tg.user_id = u.id and tg.provider = 'telegram'
-           left join auth_providers vk
-             on vk.user_id = u.id and vk.provider = 'vk'
-          where $1::text is null
-             or u.display_name ilike '%' || $1 || '%'
-             or u.tg_username ilike '%' || $1 || '%'
-             or u.vk_username ilike '%' || $1 || '%'
-             or tg.provider_uid = $1
-             or vk.provider_uid = $1
-       )
-       select *, count(*) over() as total_count
-         from filtered
-        order by created_at desc
-        limit $2 offset $3`,
-      [search, parsed.data.limit, parsed.data.offset],
-    );
+    const orderBy = {
+      name_asc: 'lower(active_display_name) asc, created_at asc',
+      name_desc: 'lower(active_display_name) desc, created_at desc',
+      goals_asc: 'lifetime_goals_total asc, lower(active_display_name) asc',
+      goals_desc: 'lifetime_goals_total desc, lower(active_display_name) asc',
+      accuracy_asc: 'accuracy asc, lower(active_display_name) asc',
+      accuracy_desc: 'accuracy desc, lower(active_display_name) asc',
+    }[parsed.data.sort];
+    const [list, pushStats] = await Promise.all([
+      app.pg.query<AdminUserRow>(
+        `with filtered as (
+           select *
+             from (
+               select u.id, u.display_name, u.avatar_url, u.display_source,
+                      u.role, u.grip, u.level, u.xp,
+                      case
+                        when u.display_source = 'vk' then
+                          coalesce(nullif(concat_ws(' ', u.vk_first_name, u.vk_last_name), ''), u.vk_username, 'Player')
+                        when u.display_source = 'telegram' then
+                          coalesce(nullif(concat_ws(' ', u.tg_first_name, u.tg_last_name), ''), u.tg_username, 'Player')
+                        else coalesce(nullif(u.display_name, ''), 'Player')
+                      end as active_display_name,
+                      case
+                        when u.display_source = 'vk' then u.vk_avatar_url
+                        when u.display_source = 'telegram' then u.tg_avatar_url
+                        else u.avatar_url
+                      end as active_avatar_url,
+                      u.timezone, u.created_at, u.last_seen_at,
+                      u.blocked_at, u.blocked_by, blocker.display_name as blocked_by_display_name,
+                      u.lifetime_shots_total, u.lifetime_goals_total,
+                      case
+                        when u.lifetime_shots_total > 0
+                          then round(u.lifetime_goals_total::numeric * 100 / u.lifetime_shots_total)::int
+                        else 0
+                      end as accuracy,
+                      case
+                        when u.level >= 3 then 'professional'
+                        when u.level >= 2 or u.lifetime_goals_total >= 1000 then 'amateur'
+                        else 'beginner'
+                      end as competition_level,
+                      tg.provider_uid as tg_id,
+                      vk.provider_uid as vk_id,
+                      u.tg_first_name,
+                      u.tg_last_name,
+                      u.tg_avatar_url,
+                      u.tg_username,
+                      u.vk_first_name,
+                      u.vk_last_name,
+                      u.vk_avatar_url,
+                      u.vk_username,
+                      coalesce(w.shots_current, 0) as shots_current,
+                      coalesce(w.shots_max, 25) as shots_max,
+                      coalesce(w.shots_bonus, 0) as shots_bonus,
+                      coalesce(w.pucks, 0) as pucks,
+                      coalesce(w.gold_pucks, 0) as gold_pucks,
+                      coalesce(w.wheel_spins, 0) as wheel_spins,
+                      coalesce(w.training_energy, 0) as training_energy,
+                      coalesce(push.subscription_count, 0) as push_subscription_count,
+                      coalesce(push.subscription_count, 0) > 0
+                        and coalesce(pref.chat_new_dialog_message, true) as push_chat_new_dialog_message,
+                      coalesce(push.subscription_count, 0) > 0
+                        and coalesce(pref.daily_game, true) as push_daily_game,
+                      coalesce(push.subscription_count, 0) > 0
+                        and coalesce(pref.training_available, true) as push_training_available,
+                      coalesce(push.subscription_count, 0) > 0
+                        and coalesce(pref.game_news, true) as push_game_news
+                 from users u
+                 left join user_wallet w on w.user_id = u.id
+                 left join users blocker on blocker.id = u.blocked_by
+                 left join auth_providers tg
+                   on tg.user_id = u.id and tg.provider = 'telegram'
+                 left join auth_providers vk
+                   on vk.user_id = u.id and vk.provider = 'vk'
+                 left join (
+                   select user_id, count(*)::int as subscription_count
+                     from push_subscriptions
+                    group by user_id
+                 ) push on push.user_id = u.id
+                 left join user_push_preferences pref on pref.user_id = u.id
+             ) users_with_stats
+            where ($1::text is null
+                   or active_display_name ilike '%' || $1 || '%'
+                   or display_name ilike '%' || $1 || '%'
+                   or tg_username ilike '%' || $1 || '%'
+                   or vk_username ilike '%' || $1 || '%'
+                   or tg_id = $1
+                   or vk_id = $1)
+              and ($2::text = 'all' or role = $2)
+              and ($3::text = 'all' or competition_level = $3)
+              and ($4::int is null or lifetime_goals_total >= $4)
+              and ($5::int is null or accuracy >= $5)
+         )
+         select *, count(*) over() as total_count
+           from filtered
+          order by ${orderBy}
+          limit $6 offset $7`,
+        [
+          search,
+          parsed.data.role,
+          parsed.data.level,
+          parsed.data.minGoals ?? null,
+          parsed.data.minAccuracy ?? null,
+          parsed.data.limit,
+          parsed.data.offset,
+        ],
+      ),
+      fetchPushNotificationStats(app.pg),
+    ]);
+    const rows = list.rows;
     return {
       users: rows.map(mapUser),
       total: rows.length > 0 ? Number(rows[0]!.total_count ?? rows.length) : 0,
       limit: parsed.data.limit,
       offset: parsed.data.offset,
+      notificationStats: mapPushNotificationStats(pushStats),
     };
   });
 
   app.get('/admin/users/:userId', { preHandler: adminPreHandlers }, async (req) => {
     const params = z.object({ userId: z.string().uuid() }).parse(req.params);
     const user = await fetchAdminUser(app.pg, params.userId);
-    const [shotModes, events] = await Promise.all([
+    const [profileProgress, shotModes, events, purchases] = await Promise.all([
+      buildProfileProgress(app.pg, user),
       app.pg.query<AdminShotModeRow>(
         `select mode,
                 count(*)::int as shots,
@@ -359,9 +1922,41 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
           limit 20`,
         [params.userId],
       ),
+      app.pg.query<AdminPaymentRow>(
+        `select p.id,
+                p.user_id,
+                null::text as user_display_name,
+                null::text as user_avatar_url,
+                p.inventory_item_id,
+                p.title,
+                p.amount_rub,
+                p.status,
+                p.provider,
+                p.provider_payment_id,
+                p.created_at,
+                p.paid_at
+           from payments p
+          where p.user_id = $1
+          order by p.created_at desc
+          limit 50`,
+        [params.userId],
+      ),
     ]);
+    const paidPurchases = purchases.rows.filter((row) => row.status === 'paid');
     return {
       user: mapUser(user),
+      purchaseSummary: {
+        totalRubSpent: paidPurchases.reduce((sum, row) => sum + row.amount_rub, 0),
+        purchasesCount: purchases.rows.length,
+      },
+      purchases: purchases.rows.map((row) => ({
+        id: row.id,
+        title: row.title,
+        amountRub: row.amount_rub,
+        status: row.status,
+        createdAt: row.created_at.toISOString(),
+      })),
+      achievements: profileProgress.achievements,
       shotModes: shotModes.rows.map((row) => ({
         mode: row.mode,
         shots: Number(row.shots),
@@ -388,6 +1983,9 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       await fetchAdminUser(client, params.userId);
       if (params.userId === req.user.id && body.data.role === 'player') {
         throw new AppError('conflict', 'cannot demote yourself', 409);
+      }
+      if (params.userId === req.user.id && body.data.isBlocked === true) {
+        throw new AppError('conflict', 'cannot block yourself', 409);
       }
 
       const changed: string[] = [];
@@ -430,6 +2028,17 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
           body.data.lifetimeGoalsTotal,
         );
         changed.push('lifetimeGoalsTotal');
+      }
+      if (body.data.isBlocked !== undefined) {
+        if (body.data.isBlocked) {
+          userAssignments.push('blocked_at = coalesce(blocked_at, now())');
+          addAssignment(userAssignments, userValues, 'blocked_by', req.user.id);
+        } else {
+          userAssignments.push('blocked_at = null');
+          userAssignments.push('blocked_by = null');
+          userAssignments.push('block_reason = null');
+        }
+        changed.push('isBlocked');
       }
       if (userAssignments.length > 0) {
         userValues.push(params.userId);

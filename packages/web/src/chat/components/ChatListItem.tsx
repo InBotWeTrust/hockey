@@ -4,6 +4,7 @@ import type { ChatDTO } from '../api.js';
 import { useAuthStore } from '../../auth/authStore.js';
 import { useLongPress } from '../useLongPress.js';
 import { UserAvatar } from './UserAvatar.js';
+import { stripRichTextSyntax } from '../richText.js';
 
 interface ChatListItemProps {
   chat: ChatDTO;
@@ -59,7 +60,8 @@ function lastMessagePreview(chat: ChatDTO, meId: string | null): string {
     : chat.lastMessageSenderName
       ? formatAuthor(chat.lastMessageSenderName)
       : '';
-  const body = truncate(m.content, PREVIEW_LIMIT);
+  const previewContent = chat.type === 'channel' ? stripRichTextSyntax(m.content) : m.content;
+  const body = truncate(previewContent, PREVIEW_LIMIT);
   return author ? `${author}: ${body}` : body;
 }
 

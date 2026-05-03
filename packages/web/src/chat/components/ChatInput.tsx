@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Send } from 'lucide-react';
+import { Bold, Italic, Send } from 'lucide-react';
 import type { ChatMessageDTO } from '../api.js';
 import { ReplyPreview } from './ReplyPreview.js';
 
@@ -8,6 +8,7 @@ interface ChatInputProps {
   replyTo: ChatMessageDTO | null;
   replyToSenderName?: string | undefined;
   placeholder?: string;
+  formattingTools?: boolean;
   onClearReply: () => void;
   onSend: (content: string, replyToId: string | null) => void | Promise<void>;
 }
@@ -20,11 +21,16 @@ const ROW_HEIGHT = 40;
 const MULTILINE_MAX_HEIGHT = 100;
 const CORNER_RADIUS = 20;
 
+function hasMeaningfulContent(value: string): boolean {
+  return value.replace(/\*\*|__/g, '').trim().length > 0;
+}
+
 export function ChatInput({
   disabled = false,
   replyTo,
   replyToSenderName,
   placeholder = 'Сообщение...',
+  formattingTools = false,
   onClearReply,
   onSend,
 }: ChatInputProps): JSX.Element {
@@ -63,10 +69,29 @@ export function ChatInput({
     }
   }, [value]);
 
+  function applyInlineFormat(marker: '**' | '__'): void {
+    if (disabled) return;
+    const textarea = ref.current;
+    const selectionStart = textarea?.selectionStart ?? value.length;
+    const selectionEnd = textarea?.selectionEnd ?? value.length;
+    const before = value.slice(0, selectionStart);
+    const selected = value.slice(selectionStart, selectionEnd);
+    const after = value.slice(selectionEnd);
+    const next = `${before}${marker}${selected}${marker}${after}`.slice(0, MAX_LEN);
+    const nextSelectionStart = Math.min(selectionStart + marker.length, next.length);
+    const nextSelectionEnd = Math.min(nextSelectionStart + selected.length, next.length);
+
+    setValue(next);
+    window.setTimeout(() => {
+      ref.current?.focus();
+      ref.current?.setSelectionRange(nextSelectionStart, nextSelectionEnd);
+    }, 0);
+  }
+
   function submit(): void {
     if (disabled || sendingRef.current) return;
     const trimmed = value.trim();
-    if (!trimmed) return;
+    if (!hasMeaningfulContent(trimmed)) return;
     sendingRef.current = true;
     setValue('');
     onClearReply();
@@ -92,6 +117,48 @@ export function ChatInput({
           content={replyTo.content}
           onClear={onClearReply}
         />
+      )}
+      {formattingTools && (
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <button
+            type="button"
+            className="icon-btn"
+            title="Жирный"
+            aria-label="Жирный"
+            disabled={disabled}
+            onClick={() => applyInlineFormat('**')}
+            style={{
+              width: 32,
+              height: 32,
+              minWidth: 32,
+              minHeight: 32,
+              borderRadius: 10,
+              background: 'rgba(255,255,255,0.88)',
+              color: 'var(--ink)',
+            }}
+          >
+            <Bold size={16} />
+          </button>
+          <button
+            type="button"
+            className="icon-btn"
+            title="Курсив"
+            aria-label="Курсив"
+            disabled={disabled}
+            onClick={() => applyInlineFormat('__')}
+            style={{
+              width: 32,
+              height: 32,
+              minWidth: 32,
+              minHeight: 32,
+              borderRadius: 10,
+              background: 'rgba(255,255,255,0.88)',
+              color: 'var(--ink)',
+            }}
+          >
+            <Italic size={16} />
+          </button>
+        </div>
       )}
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
         <textarea
@@ -134,7 +201,7 @@ export function ChatInput({
           type="button"
           className="btn btn--cta"
           onClick={submit}
-          disabled={disabled || value.trim().length === 0}
+          disabled={disabled || !hasMeaningfulContent(value)}
           aria-label="Отправить"
           style={{
             padding: 0,

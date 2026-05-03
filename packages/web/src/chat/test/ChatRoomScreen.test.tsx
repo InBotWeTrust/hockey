@@ -86,6 +86,7 @@ describe('ChatRoomScreen', () => {
         goals: 0,
         accuracy: 0,
         playStreakDays: 0,
+        bestPlayStreakDays: 0,
       },
       achievements: [],
       createdAt: '2026-04-26T10:00:00.000Z',
