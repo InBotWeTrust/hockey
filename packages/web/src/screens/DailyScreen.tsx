@@ -615,13 +615,6 @@ function GameHub({
                 zIndex: 2,
                 width: 30,
                 height: 30,
-                borderRadius: 999,
-                background: 'rgba(15, 23, 42, 0.035)',
-                border: '1px solid rgba(15, 23, 42, 0.08)',
-                color: 'rgba(15, 23, 42, 0.48)',
-                boxShadow: 'none',
-                backdropFilter: 'none',
-                WebkitBackdropFilter: 'none',
               }}
             >
               <BarChart3 size={15} strokeWidth={2.35} />

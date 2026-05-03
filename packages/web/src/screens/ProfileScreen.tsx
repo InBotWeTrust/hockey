@@ -798,10 +798,6 @@ export function ProfileScreen(): JSX.Element {
             right: 14,
             width: 40,
             height: 40,
-            borderRadius: 12,
-            color: 'var(--ink)',
-            background: 'rgba(255, 255, 255, 0.55)',
-            border: '1px solid rgba(255, 255, 255, 0.7)',
             zIndex: 1,
           }}
         >

@@ -226,19 +226,22 @@
 
 /* === Icon button === */
 .icon-btn {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   border-radius: var(--r-pill);
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
+  background: rgba(15, 23, 42, 0.035);
+  border: 1px solid rgba(15, 23, 42, 0.1);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--ink);
+  color: rgba(15, 23, 42, 0.52);
   cursor: pointer;
   padding: 0;
-  backdrop-filter: var(--blur-sm);
-  -webkit-backdrop-filter: var(--blur-sm);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.36),
+    0 4px 10px rgba(15, 23, 42, 0.04);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   flex-shrink: 0;
   transition: transform 0.1s;
 }
