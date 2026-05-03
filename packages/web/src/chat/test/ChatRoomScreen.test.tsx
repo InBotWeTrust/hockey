@@ -109,6 +109,30 @@ describe('ChatRoomScreen', () => {
     expect(screen.getByText('хай')).toBeInTheDocument();
   });
 
+  it('uses subscribers wording in channel header', async () => {
+    vi.mocked(api.fetchChatList).mockResolvedValue([
+      {
+        id: 'c1',
+        type: 'channel',
+        name: 'Новости игры',
+        entityType: null,
+        entityId: null,
+        channelSlug: 'news',
+        lastMessageAt: null,
+        unreadCount: 0,
+        lastMessage: null,
+        lastMessageSenderName: null,
+        dmCounterpart: null,
+        memberCount: 10,
+        pinnedAt: null,
+      },
+    ]);
+
+    renderRoom('c1');
+
+    expect(await screen.findByText('Канал · 10 подписчиков')).toBeInTheDocument();
+  });
+
   it('marks the chat as read on mount once messages have loaded', async () => {
     renderRoom('c1');
     await waitFor(() => expect(api.markChatAsRead).toHaveBeenCalledWith('c1'));

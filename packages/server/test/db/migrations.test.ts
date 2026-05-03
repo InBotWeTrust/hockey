@@ -42,6 +42,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     expect(names).toContain('push_subscriptions');
     expect(names).toContain('user_push_preferences');
     expect(names).toContain('channel_post_comments');
+    expect(names).toContain('channel_post_comment_reactions');
     expect(names).toContain('channel_post_views');
     expect(names).toContain('feedback_messages');
     expect(names).toContain('_migrations');

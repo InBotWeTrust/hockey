@@ -131,6 +131,107 @@ describe.skipIf(!hasIntegrationEnv)('chat routes', () => {
     expect(deletedPost.statusCode).toBe(404);
   });
 
+  it('supports replies and one reaction per channel comment', async () => {
+    await app.pg.query(`update users set role = 'admin' where id = $1`, [userA]);
+    const chats = await app.inject({
+      method: 'GET',
+      url: '/chat/list',
+      headers: { authorization: `Bearer ${tokenA}` },
+    });
+    expect(chats.statusCode).toBe(200);
+    const news = (
+      chats.json() as Array<{ id: string; type: string; channelSlug?: string | null }>
+    ).find((chat) => chat.type === 'channel' && chat.channelSlug === 'news');
+    expect(news).toBeDefined();
+
+    const created = await app.inject({
+      method: 'POST',
+      url: `/chat/${news!.id}/messages`,
+      headers: { authorization: `Bearer ${tokenA}` },
+      payload: { content: 'commentable post' },
+    });
+    expect(created.statusCode).toBe(201);
+    const postId = created.json().id as string;
+
+    const parent = await app.inject({
+      method: 'POST',
+      url: `/chat/channel/posts/${postId}/comments`,
+      headers: { authorization: `Bearer ${tokenB}` },
+      payload: { content: 'first comment' },
+    });
+    expect(parent.statusCode).toBe(201);
+    const parentId = parent.json().id as string;
+    expect(parent.json()).toEqual(expect.objectContaining({ replyToId: null, reactions: [] }));
+
+    const child = await app.inject({
+      method: 'POST',
+      url: `/chat/channel/posts/${postId}/comments`,
+      headers: { authorization: `Bearer ${tokenC}` },
+      payload: { content: 'reply comment', replyToId: parentId },
+    });
+    expect(child.statusCode).toBe(201);
+    const childId = child.json().id as string;
+    expect(child.json()).toEqual(expect.objectContaining({ replyToId: parentId }));
+
+    const fire = await app.inject({
+      method: 'POST',
+      url: `/chat/channel/comments/${childId}/reactions`,
+      headers: { authorization: `Bearer ${tokenA}` },
+      payload: { emoji: '🔥' },
+    });
+    expect(fire.statusCode).toBe(201);
+    expect(fire.json()).toEqual({ commentId: childId, emoji: '🔥', removed: null });
+
+    const thumb = await app.inject({
+      method: 'POST',
+      url: `/chat/channel/comments/${childId}/reactions`,
+      headers: { authorization: `Bearer ${tokenA}` },
+      payload: { emoji: '👍' },
+    });
+    expect(thumb.statusCode).toBe(201);
+    expect(thumb.json()).toEqual({ commentId: childId, emoji: '👍', removed: '🔥' });
+
+    const listForMe = await app.inject({
+      method: 'GET',
+      url: `/chat/channel/posts/${postId}/comments`,
+      headers: { authorization: `Bearer ${tokenA}` },
+    });
+    expect(listForMe.statusCode).toBe(200);
+    const commentsForMe = listForMe.json() as Array<{
+      id: string;
+      replyToId: string | null;
+      reactions: Array<{ emoji: string; count: number; reactedByMe: boolean }>;
+    }>;
+    expect(commentsForMe.find((comment) => comment.id === childId)).toEqual(
+      expect.objectContaining({
+        replyToId: parentId,
+        reactions: [{ emoji: '👍', count: 1, reactedByMe: true }],
+      }),
+    );
+
+    const listForOther = await app.inject({
+      method: 'GET',
+      url: `/chat/channel/posts/${postId}/comments`,
+      headers: { authorization: `Bearer ${tokenB}` },
+    });
+    expect(listForOther.statusCode).toBe(200);
+    const commentsForOther = listForOther.json() as Array<{
+      id: string;
+      reactions: Array<{ emoji: string; count: number; reactedByMe: boolean }>;
+    }>;
+    expect(commentsForOther.find((comment) => comment.id === childId)?.reactions).toEqual([
+      { emoji: '👍', count: 1, reactedByMe: false },
+    ]);
+
+    const removed = await app.inject({
+      method: 'DELETE',
+      url: `/chat/channel/comments/${childId}/reactions`,
+      headers: { authorization: `Bearer ${tokenA}` },
+      payload: { emoji: '👍' },
+    });
+    expect(removed.statusCode).toBe(204);
+  });
+
   it('POST /chat/dm + GET /chat/list flow', async () => {
     const dm = await app.inject({
       method: 'POST',

@@ -1,24 +1,42 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, SmilePlus } from 'lucide-react';
 import {
+  addChannelCommentReaction,
   fetchChannelPost,
   fetchChannelPostComments,
+  removeChannelCommentReaction,
   sendChannelPostComment,
   type ChannelPostCommentDTO,
 } from '../api.js';
 import { ChatInput } from '../components/ChatInput.js';
+import { ReactionBar } from '../components/ReactionBar.js';
+import { ReactionPicker } from '../components/ReactionPicker.js';
+import { ReplyPreview } from '../components/ReplyPreview.js';
 import { UserAvatar } from '../components/UserAvatar.js';
 import { chatKeys } from '../../lib/queryKeys.js';
 import { useChatStore } from '../chatStore.js';
 import { RichText } from '../richText.js';
+import { removeMyReactionFromReactable, switchMyReactionToReactable } from '../reactionsState.js';
 
 function formatCommentTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 }
 
-function CommentRow({ comment }: { comment: ChannelPostCommentDTO }): JSX.Element {
+function CommentRow({
+  comment,
+  replyTo,
+  onReply,
+  onOpenReactionPicker,
+  onToggleReaction,
+}: {
+  comment: ChannelPostCommentDTO;
+  replyTo: ChannelPostCommentDTO | null;
+  onReply: (comment: ChannelPostCommentDTO) => void;
+  onOpenReactionPicker: (commentId: string, anchorRect: DOMRect) => void;
+  onToggleReaction: (commentId: string, emoji: string) => void;
+}): JSX.Element {
   return (
     <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
       <UserAvatar
@@ -36,6 +54,12 @@ function CommentRow({ comment }: { comment: ChannelPostCommentDTO }): JSX.Elemen
             color: 'var(--ink)',
           }}
         >
+          {replyTo && (
+            <ReplyPreview
+              senderName={replyTo.authorDisplayName ?? 'Участник'}
+              content={replyTo.content}
+            />
+          )}
           <div
             style={{
               fontSize: 12,
@@ -53,8 +77,55 @@ function CommentRow({ comment }: { comment: ChannelPostCommentDTO }): JSX.Elemen
             {comment.content}
           </div>
         </div>
-        <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2, paddingLeft: 4 }}>
-          {formatCommentTime(comment.createdAt)}
+        <ReactionBar
+          reactions={comment.reactions}
+          onToggle={(emoji) => onToggleReaction(comment.id, emoji)}
+        />
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            fontSize: 10,
+            color: 'var(--muted)',
+            marginTop: 2,
+            paddingLeft: 4,
+          }}
+        >
+          <span>{formatCommentTime(comment.createdAt)}</span>
+          <button
+            type="button"
+            onClick={() => onReply(comment)}
+            style={{
+              border: 'none',
+              background: 'transparent',
+              padding: 0,
+              color: 'var(--muted)',
+              font: 'inherit',
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            Ответить
+          </button>
+          <button
+            type="button"
+            aria-label="Добавить реакцию"
+            onClick={(event) =>
+              onOpenReactionPicker(comment.id, event.currentTarget.getBoundingClientRect())
+            }
+            style={{
+              border: 'none',
+              background: 'transparent',
+              padding: 0,
+              color: 'var(--muted)',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+            }}
+          >
+            <SmilePlus size={14} />
+          </button>
         </div>
       </div>
     </div>
@@ -69,6 +140,11 @@ export function ChannelPostCommentsScreen(): JSX.Element {
   const queryClient = useQueryClient();
   const setActive = useChatStore((s) => s.setActive);
   const [viewportHeight, setViewportHeight] = useState<number | null>(null);
+  const [replyToComment, setReplyToComment] = useState<ChannelPostCommentDTO | null>(null);
+  const [pickerTarget, setPickerTarget] = useState<{
+    commentId: string;
+    anchorRect: DOMRect;
+  } | null>(null);
 
   useEffect(() => {
     if (!chatId) return;
@@ -102,7 +178,8 @@ export function ChannelPostCommentsScreen(): JSX.Element {
   });
 
   const sendMut = useMutation({
-    mutationFn: (content: string) => sendChannelPostComment(postId, content),
+    mutationFn: (vars: { content: string; replyToId: string | null }) =>
+      sendChannelPostComment(postId, vars.content, vars.replyToId),
     onSuccess: (comment) => {
       queryClient.setQueryData<ChannelPostCommentDTO[] | undefined>(
         chatKeys.channelComments(postId),
@@ -113,14 +190,100 @@ export function ChannelPostCommentsScreen(): JSX.Element {
     },
   });
 
+  const addReactionMut = useMutation<
+    Awaited<ReturnType<typeof addChannelCommentReaction>>,
+    Error,
+    { commentId: string; emoji: string },
+    { prev: ChannelPostCommentDTO[] | undefined }
+  >({
+    mutationFn: ({ commentId, emoji }) => addChannelCommentReaction(commentId, emoji),
+    onMutate: ({ commentId, emoji }) => {
+      const prev = queryClient.getQueryData<ChannelPostCommentDTO[]>(
+        chatKeys.channelComments(postId),
+      );
+      queryClient.setQueryData<ChannelPostCommentDTO[] | undefined>(
+        chatKeys.channelComments(postId),
+        (old) =>
+          old?.map((comment) =>
+            comment.id === commentId ? switchMyReactionToReactable(comment, emoji) : comment,
+          ) ?? old,
+      );
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(chatKeys.channelComments(postId), ctx.prev);
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: chatKeys.channelComments(postId) });
+    },
+  });
+
+  const removeReactionMut = useMutation<
+    void,
+    Error,
+    { commentId: string; emoji: string },
+    { prev: ChannelPostCommentDTO[] | undefined }
+  >({
+    mutationFn: ({ commentId, emoji }) => removeChannelCommentReaction(commentId, emoji),
+    onMutate: ({ commentId, emoji }) => {
+      const prev = queryClient.getQueryData<ChannelPostCommentDTO[]>(
+        chatKeys.channelComments(postId),
+      );
+      queryClient.setQueryData<ChannelPostCommentDTO[] | undefined>(
+        chatKeys.channelComments(postId),
+        (old) =>
+          old?.map((comment) =>
+            comment.id === commentId ? removeMyReactionFromReactable(comment, emoji) : comment,
+          ) ?? old,
+      );
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(chatKeys.channelComments(postId), ctx.prev);
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: chatKeys.channelComments(postId) });
+    },
+  });
+
   const handleSend = useCallback(
-    (content: string): void => {
-      sendMut.mutate(content);
+    (content: string, replyToId: string | null): void => {
+      sendMut.mutate({ content, replyToId });
     },
     [sendMut],
   );
 
   const comments = commentsQuery.data ?? [];
+  const commentById = new Map(comments.map((comment) => [comment.id, comment]));
+
+  const addReaction = addReactionMut.mutate;
+  const removeReaction = removeReactionMut.mutate;
+  const handleToggleReaction = useCallback(
+    (commentId: string, emoji: string): void => {
+      const comment = queryClient
+        .getQueryData<ChannelPostCommentDTO[]>(chatKeys.channelComments(postId))
+        ?.find((item) => item.id === commentId);
+      const existing = comment?.reactions.find((reaction) => reaction.emoji === emoji);
+      if (existing?.reactedByMe) {
+        removeReaction({ commentId, emoji });
+      } else {
+        addReaction({ commentId, emoji });
+      }
+    },
+    [addReaction, postId, queryClient, removeReaction],
+  );
+
+  const handleOpenReactionPicker = useCallback((commentId: string, anchorRect: DOMRect): void => {
+    setPickerTarget({ commentId, anchorRect });
+  }, []);
+
+  const handlePickEmoji = useCallback(
+    (emoji: string): void => {
+      if (!pickerTarget) return;
+      addReaction({ commentId: pickerTarget.commentId, emoji });
+    },
+    [addReaction, pickerTarget],
+  );
 
   return (
     <main
@@ -192,19 +355,34 @@ export function ChannelPostCommentsScreen(): JSX.Element {
           </div>
         )}
         {comments.map((comment) => (
-          <CommentRow key={comment.id} comment={comment} />
+          <CommentRow
+            key={comment.id}
+            comment={comment}
+            replyTo={comment.replyToId ? (commentById.get(comment.replyToId) ?? null) : null}
+            onReply={setReplyToComment}
+            onOpenReactionPicker={handleOpenReactionPicker}
+            onToggleReaction={handleToggleReaction}
+          />
         ))}
       </div>
 
       <div style={{ marginBottom: 'max(12px, var(--app-safe-bottom))' }}>
         <ChatInput
-          replyTo={null}
+          replyTo={replyToComment}
+          replyToSenderName={replyToComment?.authorDisplayName ?? undefined}
           placeholder="Комментарий..."
-          onClearReply={() => undefined}
+          onClearReply={() => setReplyToComment(null)}
           disabled={sendMut.isPending}
-          onSend={(content) => handleSend(content)}
+          onSend={handleSend}
         />
       </div>
+
+      <ReactionPicker
+        open={pickerTarget !== null}
+        anchorRect={pickerTarget?.anchorRect ?? null}
+        onPick={handlePickEmoji}
+        onClose={() => setPickerTarget(null)}
+      />
     </main>
   );
 }

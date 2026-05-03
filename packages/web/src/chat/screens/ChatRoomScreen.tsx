@@ -41,6 +41,14 @@ function formatMemberCount(n: number): string {
   return `${n} участников`;
 }
 
+function formatSubscriberCount(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return `${n} подписчик`;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${n} подписчика`;
+  return `${n} подписчиков`;
+}
+
 interface InfinitePages {
   pages: ChatMessageDTO[][];
   pageParams: unknown[];
@@ -123,7 +131,7 @@ export function ChatRoomScreen(): JSX.Element {
       ? formatLastSeen(chatMeta.dmCounterpart?.lastSeenAt ?? null)
       : chatMeta
         ? chatMeta.type === 'channel'
-          ? `Канал · ${formatMemberCount(chatMeta.memberCount)}`
+          ? `Канал · ${formatSubscriberCount(chatMeta.memberCount)}`
           : formatMemberCount(chatMeta.memberCount)
         : undefined;
   // Show avatar + author name on every foreign bubble in non-DM chats so

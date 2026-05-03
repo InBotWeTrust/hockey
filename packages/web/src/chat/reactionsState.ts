@@ -58,10 +58,7 @@ export function applyReactionEventToMessage(
 
 // Optimistic: drop my prev reaction (any other emoji) and add `emoji` as mine.
 // Returns the same reference if I'm already on `emoji`.
-export function switchMyReactionTo(
-  m: ChatMessageDTO,
-  emoji: string,
-): ChatMessageDTO {
+export function switchMyReactionTo(m: ChatMessageDTO, emoji: string): ChatMessageDTO {
   return switchMyReactionToReactable(m, emoji);
 }
 
@@ -97,10 +94,7 @@ export function switchMyReactionToReactable<T extends Reactable>(m: T, emoji: st
 }
 
 // Optimistic: remove my reaction with this emoji. No-op if not mine.
-export function removeMyReaction(
-  m: ChatMessageDTO,
-  emoji: string,
-): ChatMessageDTO {
+export function removeMyReaction(m: ChatMessageDTO, emoji: string): ChatMessageDTO {
   return removeMyReactionFromReactable(m, emoji);
 }
 
