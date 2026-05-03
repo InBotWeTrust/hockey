@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
+import fp from 'fastify-plugin';
 import { authPlugin } from '../../src/plugins/auth.js';
 import { errorsPlugin } from '../../src/plugins/errors.js';
 import { createJwt } from '../../src/auth/jwt.js';
@@ -9,12 +10,20 @@ const ACCESS = 'access-secret-1234567890abcdef';
 async function buildTestApp(): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
   await app.register(errorsPlugin);
-  await app.register(authPlugin, { accessSecret: ACCESS });
-  app.get(
-    '/protected',
-    { preHandler: [app.authenticate] },
-    async (req) => ({ userId: req.user.id }),
+  await app.register(
+    fp(
+      async (instance) => {
+        instance.decorate('pg', {
+          query: async () => ({ rows: [{ blocked_at: null }], rowCount: 1 }),
+        });
+      },
+      { name: 'db' },
+    ),
   );
+  await app.register(authPlugin, { accessSecret: ACCESS });
+  app.get('/protected', { preHandler: [app.authenticate] }, async (req) => ({
+    userId: req.user.id,
+  }));
   return app;
 }
 

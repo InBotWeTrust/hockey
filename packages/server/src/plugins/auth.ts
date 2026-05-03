@@ -26,11 +26,23 @@ const plugin: FastifyPluginAsync<AuthPluginOptions> = async (app, opts) => {
     const token = header.slice('Bearer '.length).trim();
     try {
       const payload = await verifyAccessToken(token, opts.accessSecret);
+      const { rows } = await app.pg.query<{ blocked_at: Date | null }>(
+        'select blocked_at from users where id = $1',
+        [payload.sub],
+      );
+      const user = rows[0];
+      if (!user) {
+        throw new AppError('unauthenticated', 'user not found', 401);
+      }
+      if (user.blocked_at !== null) {
+        throw new AppError('forbidden', 'user is blocked', 403);
+      }
       req.user = { id: payload.sub };
-    } catch {
+    } catch (err) {
+      if (err instanceof AppError) throw err;
       throw new AppError('unauthenticated', 'invalid token', 401);
     }
   });
 };
 
-export const authPlugin = fp(plugin, { name: 'auth', dependencies: ['errors'] });
+export const authPlugin = fp(plugin, { name: 'auth', dependencies: ['errors', 'db'] });

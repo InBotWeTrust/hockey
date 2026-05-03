@@ -37,6 +37,23 @@ const vkBodySchema = z.object({
   timezone: z.string().optional(),
 });
 
+async function assertUserCanAuthenticate(
+  app: Parameters<FastifyPluginAsync>[0],
+  userId: string,
+): Promise<void> {
+  const { rows } = await app.pg.query<{ blocked_at: Date | null }>(
+    'select blocked_at from users where id = $1',
+    [userId],
+  );
+  const user = rows[0];
+  if (!user) {
+    throw new AppError('unauthenticated', 'user not found', 401);
+  }
+  if (user.blocked_at !== null) {
+    throw new AppError('forbidden', 'user is blocked', 403);
+  }
+}
+
 function safeIanaTimezone(input: unknown): string | undefined {
   if (typeof input !== 'string' || input.length === 0 || input.length > 64) {
     return undefined;
@@ -209,6 +226,7 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (app, opt
     if (!consumed || consumed.userId !== payload.sub) {
       throw new AppError('unauthenticated', 'refresh token not recognized', 401);
     }
+    await assertUserCanAuthenticate(app, payload.sub);
 
     const [accessToken, refresh] = await Promise.all([
       jwt.issueAccessToken({ sub: payload.sub }),

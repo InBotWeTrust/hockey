@@ -76,11 +76,16 @@ async function ensureBootstrapAdminRole(
   await pool.query(`update users set role = 'admin' where id = $1 and role <> 'admin'`, [userId]);
 }
 
-async function fetchUserRole(pool: Queryable, userId: string): Promise<UserRole> {
-  const { rows } = await pool.query<{ role: UserRole }>('select role from users where id = $1', [
-    userId,
-  ]);
-  return rows[0]?.role ?? 'player';
+async function fetchAllowedUserRole(pool: Queryable, userId: string): Promise<UserRole> {
+  const { rows } = await pool.query<{ role: UserRole; blocked_at: Date | null }>(
+    'select role, blocked_at from users where id = $1',
+    [userId],
+  );
+  const user = rows[0];
+  if (user?.blocked_at !== null && user?.blocked_at !== undefined) {
+    throw new AppError('forbidden', 'user is blocked', 403);
+  }
+  return user?.role ?? 'player';
 }
 
 async function updateTelegramProfile(
@@ -193,7 +198,7 @@ export async function findOrCreateTelegramUser(
       await updateTelegramProfile(client, linked.user_id, input);
       await updateTelegramProviderData(client, linked.user_id, input.providerUid, input);
       const profile = await recomputeEffectiveProfile(client, linked.user_id);
-      const role = await fetchUserRole(client, linked.user_id);
+      const role = await fetchAllowedUserRole(client, linked.user_id);
       await client.query('commit');
       return { id: linked.user_id, displayName: profile.displayName, role };
     }
@@ -210,7 +215,7 @@ export async function findOrCreateTelegramUser(
       await updateTelegramProviderData(client, linked.user_id, input.providerUid, input);
       await ensureBootstrapAdminRole(client, linked.user_id, input.providerUid);
       const profile = await recomputeEffectiveProfile(client, linked.user_id);
-      const role = await fetchUserRole(client, linked.user_id);
+      const role = await fetchAllowedUserRole(client, linked.user_id);
       await client.query('commit');
       return { id: linked.user_id, displayName: profile.displayName, role };
     }
@@ -231,7 +236,7 @@ export async function findOrCreateTelegramUser(
       await updateTelegramProfile(client, input.currentUserId, input);
       await ensureBootstrapAdminRole(client, input.currentUserId, input.providerUid);
       const profile = await recomputeEffectiveProfile(client, input.currentUserId);
-      const role = await fetchUserRole(client, input.currentUserId);
+      const role = await fetchAllowedUserRole(client, input.currentUserId);
       await client.query('commit');
       return { id: input.currentUserId, displayName: profile.displayName, role };
     }
@@ -461,7 +466,7 @@ export async function findOrLinkOrCreateVkUser(
         throw new AppError('conflict', 'vk_already_linked', 409);
       }
       const profile = await recomputeEffectiveProfile(client, input.currentUserId);
-      const role = await fetchUserRole(client, input.currentUserId);
+      const role = await fetchAllowedUserRole(client, input.currentUserId);
       await client.query('commit');
       return {
         id: input.currentUserId,
@@ -474,8 +479,9 @@ export async function findOrLinkOrCreateVkUser(
       await updateVkProfile(client, linked.user_id, input.profile);
       await updateVkProviderData(client, linked.user_id, input.vkUserId, input.profile);
       const profile = await recomputeEffectiveProfile(client, linked.user_id);
+      const role = await fetchAllowedUserRole(client, linked.user_id);
       await client.query('commit');
-      return { id: linked.user_id, displayName: profile.displayName, role: linked.role };
+      return { id: linked.user_id, displayName: profile.displayName, role };
     }
 
     if (input.currentUserId) {
@@ -486,7 +492,7 @@ export async function findOrLinkOrCreateVkUser(
       );
       await updateVkProfile(client, input.currentUserId, input.profile);
       const profile = await recomputeEffectiveProfile(client, input.currentUserId);
-      const role = await fetchUserRole(client, input.currentUserId);
+      const role = await fetchAllowedUserRole(client, input.currentUserId);
       await client.query('commit');
       return {
         id: input.currentUserId,
