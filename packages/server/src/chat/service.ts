@@ -29,12 +29,13 @@ interface DmCounterpartRow {
 
 interface MyChatsRow {
   id: string;
-  type: 'direct' | 'group' | 'system';
+  type: 'direct' | 'group' | 'system' | 'channel';
   name: string | null;
   description: string | null;
   created_by: string;
   entity_type: 'team' | 'tournament' | null;
   entity_id: string | null;
+  channel_slug: string | null;
   last_message_at: Date | null;
   is_active: boolean;
   created_at: Date;
@@ -52,7 +53,47 @@ interface MyChatsRow {
   pinned_at: Date | null;
 }
 
+export const DEFAULT_NEWS_CHANNEL_SLUG = 'news';
+export const DEFAULT_NEWS_CHANNEL_NAME = 'Новости игры';
+
+export async function ensureDefaultNewsChannel(
+  pool: Pool,
+  createdByUserId: string,
+): Promise<ChatRow> {
+  const existing = await pool.query<ChatRow>(
+    `select * from chats
+      where type = 'channel'
+        and channel_slug = $1
+        and is_active = true
+      limit 1`,
+    [DEFAULT_NEWS_CHANNEL_SLUG],
+  );
+  if (existing.rowCount && existing.rowCount > 0) return existing.rows[0]!;
+
+  const inserted = await pool.query<ChatRow>(
+    `insert into chats (type, name, channel_slug, created_by)
+     values ('channel', $1, $2, $3)
+     on conflict do nothing
+     returning *`,
+    [DEFAULT_NEWS_CHANNEL_NAME, DEFAULT_NEWS_CHANNEL_SLUG, createdByUserId],
+  );
+  if (inserted.rowCount && inserted.rowCount > 0) return inserted.rows[0]!;
+
+  const raced = await pool.query<ChatRow>(
+    `select * from chats
+      where type = 'channel'
+        and channel_slug = $1
+        and is_active = true
+      limit 1`,
+    [DEFAULT_NEWS_CHANNEL_SLUG],
+  );
+  if (raced.rowCount && raced.rowCount > 0) return raced.rows[0]!;
+  throw new Error('ensureDefaultNewsChannel: failed to create news channel');
+}
+
 export async function getMyChats(pool: Pool, userId: string): Promise<ChatDTO[]> {
+  await ensureDefaultNewsChannel(pool, userId);
+
   // Auto-pin every active system channel the user has never seen before.
   // Per-chat NOT EXISTS check (rather than "user has no pinned rows") so an
   // explicit unpin — recorded as `pinned_at = NULL` on a real chat_members
@@ -77,6 +118,8 @@ export async function getMyChats(pool: Pool, userId: string): Promise<ChatDTO[]>
       select chat_id from chat_members where user_id = $1
       union
       select id from chats where type = 'system' and is_active = true
+      union
+      select id from chats where type = 'channel' and is_active = true
     )
     select
       c.*,
@@ -116,13 +159,14 @@ export async function getMyChats(pool: Pool, userId: string): Promise<ChatDTO[]>
       -- System channels are open to every active user (chat_members is lazy);
       -- count users instead. Direct/group rely on explicit membership rows.
       select case
-        when c.type = 'system' then (select count(*) from users)
+        when c.type in ('system', 'channel') then (select count(*) from users)
         else (select count(*) from chat_members where chat_id = c.id)
       end as cnt
     ) mc on true
     where c.id in (select chat_id from my_chat_ids)
       and c.is_active = true
-    order by cm_self.pinned_at desc nulls last,
+    order by (c.type = 'channel') desc,
+             cm_self.pinned_at desc nulls last,
              c.last_message_at desc nulls last
   `;
   const r = await pool.query<MyChatsRow>(sql, [userId]);
@@ -157,6 +201,7 @@ export async function getMyChats(pool: Pool, userId: string): Promise<ChatDTO[]>
       created_by: row.created_by,
       entity_type: row.entity_type,
       entity_id: row.entity_id,
+      channel_slug: row.channel_slug,
       last_message_at: row.last_message_at,
       is_active: row.is_active,
       created_at: row.created_at,
@@ -230,7 +275,7 @@ export async function getChatInfo(
   chatId: string,
 ): Promise<{
   id: string;
-  type: 'direct' | 'group' | 'system';
+  type: 'direct' | 'group' | 'system' | 'channel';
   name: string | null;
   description: string | null;
   memberCount: number;
@@ -242,7 +287,7 @@ export async function getChatInfo(
   // for group/direct we use the explicit chat_members rows.
   const chatRes = await pool.query<{
     id: string;
-    type: 'direct' | 'group' | 'system';
+    type: 'direct' | 'group' | 'system' | 'channel';
     name: string | null;
     description: string | null;
   }>(`select id, type, name, description from chats where id = $1 and is_active = true`, [chatId]);
@@ -254,7 +299,7 @@ export async function getChatInfo(
   let memberCount: number;
   let members: { userId: string; displayName: string; avatarUrl: string | null }[];
 
-  if (chat.type === 'system') {
+  if (chat.type === 'system' || chat.type === 'channel') {
     const total = await pool.query<{ c: string }>(`select count(*)::bigint as c from users`);
     memberCount = Number(total.rows[0]!.c);
     const r = await pool.query<{ id: string; display_name: string; avatar_url: string | null }>(
@@ -396,7 +441,14 @@ export async function getMessages(
             )
        select m.*,
               u.display_name as sender_display_name,
-              u.avatar_url as sender_avatar_url
+              u.avatar_url as sender_avatar_url,
+              (select count(*)::bigint
+                 from channel_post_comments cpc
+                where cpc.post_message_id = m.id
+                  and cpc.is_deleted = false) as comment_count,
+              (select count(*)::bigint
+                 from channel_post_views cpv
+                where cpv.post_message_id = m.id) as view_count
          from messages m
          left join users u on u.id = m.sender_id
         where m.chat_id = $1 and m.is_deleted = false
@@ -427,7 +479,14 @@ export async function getMessages(
     const sql = `
       select m.*,
              u.display_name as sender_display_name,
-             u.avatar_url as sender_avatar_url
+             u.avatar_url as sender_avatar_url,
+             (select count(*)::bigint
+                from channel_post_comments cpc
+               where cpc.post_message_id = m.id
+                 and cpc.is_deleted = false) as comment_count,
+             (select count(*)::bigint
+                from channel_post_views cpv
+               where cpv.post_message_id = m.id) as view_count
       from messages m
       left join users u on u.id = m.sender_id
       where m.chat_id = $1
@@ -473,7 +532,9 @@ export async function sendMessage(pool: Pool, opts: SendMessageOpts): Promise<Ch
      )
      select ins.*,
             u.display_name as sender_display_name,
-            u.avatar_url as sender_avatar_url
+            u.avatar_url as sender_avatar_url,
+            '0'::bigint as comment_count,
+            '0'::bigint as view_count
        from ins
        left join users u on u.id = ins.sender_id`,
     [opts.chatId, opts.senderId, opts.content, opts.replyToId ?? null],
@@ -612,6 +673,8 @@ export async function searchMessages(
        select chat_id from chat_members where user_id = $1
        union
        select id from chats where type = 'system' and is_active = true
+       union
+       select id from chats where type = 'channel' and is_active = true
      )
        and m.is_deleted = false
        and m.search_vector @@ plainto_tsquery('russian', $2)
@@ -629,11 +692,22 @@ export async function searchMessages(
 }
 
 export async function getUnreadCounts(pool: Pool, userId: string): Promise<Record<string, number>> {
+  await ensureDefaultNewsChannel(pool, userId);
+
   const sql = `
+    with accessible_chats as (
+      select c.id
+        from chats c
+        left join chat_members cm_access
+          on cm_access.chat_id = c.id and cm_access.user_id = $1
+       where c.is_active = true
+         and (c.type in ('system', 'channel') or cm_access.user_id is not null)
+    )
     select m.chat_id, count(m.id)::bigint as cnt
     from messages m
-    join chat_members cm on cm.chat_id = m.chat_id and cm.user_id = $1
-    where m.created_at > cm.last_read_at
+    join accessible_chats ac on ac.id = m.chat_id
+    left join chat_members cm on cm.chat_id = m.chat_id and cm.user_id = $1
+    where m.created_at > coalesce(cm.last_read_at, '1970-01-01'::timestamptz)
       and m.sender_id != $1
       and m.is_deleted = false
     group by m.chat_id

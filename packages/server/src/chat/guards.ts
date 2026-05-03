@@ -1,10 +1,6 @@
 import type { Pool } from 'pg';
 import type { ChatRow, MessageRow } from './types.js';
-import {
-  ChatAccessDeniedError,
-  MessageNotFoundError,
-  MessageNotOwnedError,
-} from './errors.js';
+import { ChatAccessDeniedError, MessageNotFoundError, MessageNotOwnedError } from './errors.js';
 
 export async function getChatById(pool: Pool, chatId: string): Promise<ChatRow | null> {
   const r = await pool.query<ChatRow>(
@@ -38,7 +34,7 @@ export async function canAccessChat(
 ): Promise<AccessResult | null> {
   const chat = await getChatById(pool, chatId);
   if (!chat) return null;
-  if (chat.type === 'system') return { chat, isMember: false };
+  if (chat.type === 'system' || chat.type === 'channel') return { chat, isMember: false };
   const isMember = await checkMembership(pool, userId, chatId);
   return isMember ? { chat, isMember: true } : null;
 }

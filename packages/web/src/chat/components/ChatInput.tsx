@@ -7,6 +7,7 @@ interface ChatInputProps {
   disabled?: boolean;
   replyTo: ChatMessageDTO | null;
   replyToSenderName?: string | undefined;
+  placeholder?: string;
   onClearReply: () => void;
   onSend: (content: string, replyToId: string | null) => void | Promise<void>;
 }
@@ -23,6 +24,7 @@ export function ChatInput({
   disabled = false,
   replyTo,
   replyToSenderName,
+  placeholder = 'Сообщение...',
   onClearReply,
   onSend,
 }: ChatInputProps): JSX.Element {
@@ -102,7 +104,7 @@ export function ChatInput({
               submit();
             }
           }}
-          placeholder="Сообщение..."
+          placeholder={placeholder}
           rows={1}
           disabled={disabled}
           aria-label="Текст сообщения"

@@ -23,6 +23,7 @@ import { ChatRoomSearchBar } from '../components/ChatRoomSearchBar.js';
 import { MessageActionsMenu } from '../components/MessageActionsMenu.js';
 import { ReactionPicker } from '../components/ReactionPicker.js';
 import { UserProfileSheet } from '../components/UserProfileSheet.js';
+import { ChannelPostCard } from '../components/ChannelPostCard.js';
 import { formatLastSeen } from '../lastSeen.js';
 import { switchMyReactionTo, removeMyReaction } from '../reactionsState.js';
 
@@ -54,7 +55,9 @@ export function ChatRoomScreen(): JSX.Element {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const goto = searchParams.get('goto');
-  const meId = useAuthStore((s) => s.user?.id ?? null);
+  const me = useAuthStore((s) => s.user);
+  const meId = me?.id ?? null;
+  const isAdmin = me?.role === 'admin';
   const setActive = useChatStore((s) => s.setActive);
   const resetUnread = useChatStore((s) => s.resetUnread);
 
@@ -100,22 +103,31 @@ export function ChatRoomScreen(): JSX.Element {
     staleTime: 30_000,
   });
   const chatMeta = chatListQuery.data?.find((c) => c.id === chatId);
+  const isChannel = chatMeta?.type === 'channel';
   const chatTitle =
     chatMeta?.type === 'direct'
       ? (chatMeta.dmCounterpart?.displayName ?? 'Диалог')
-      : (chatMeta?.name ?? (chatMeta?.type === 'system' ? 'Системный канал' : 'Чат'));
+      : (chatMeta?.name ??
+        (chatMeta?.type === 'channel'
+          ? 'Канал'
+          : chatMeta?.type === 'system'
+            ? 'Системный канал'
+            : 'Чат'));
   const chatAvatarUrl = chatMeta?.dmCounterpart?.avatarUrl ?? null;
   const chatSubtitle =
     chatMeta?.type === 'direct'
       ? formatLastSeen(chatMeta.dmCounterpart?.lastSeenAt ?? null)
       : chatMeta
-        ? formatMemberCount(chatMeta.memberCount)
+        ? chatMeta.type === 'channel'
+          ? `Канал · ${formatMemberCount(chatMeta.memberCount)}`
+          : formatMemberCount(chatMeta.memberCount)
         : undefined;
   // Show avatar + author name on every foreign bubble in non-DM chats so
   // members can tell who said what. DMs keep the cleaner layout (header
   // already names the counterpart). Default to false until chatMeta loads,
   // so the bubble structure stays stable while tests/cold-loads warm up.
-  const showAuthorOnBubbles = chatMeta !== undefined && chatMeta.type !== 'direct';
+  const showAuthorOnBubbles =
+    chatMeta !== undefined && chatMeta.type !== 'direct' && chatMeta.type !== 'channel';
 
   useEffect(() => {
     if (!chatId) return;
@@ -434,6 +446,18 @@ export function ChatRoomScreen(): JSX.Element {
 
   const actionMessage = actionTarget?.message ?? null;
   const actionIsOwn = actionMessage ? actionMessage.senderId === meId : false;
+  const showComposer = chatMeta === undefined || !isChannel || isAdmin;
+
+  const onOpenChannelComments = useCallback(
+    (postId: string): void => {
+      navigate(`/chat/${chatId}/posts/${postId}/comments`);
+    },
+    [navigate, chatId],
+  );
+
+  const onOpenChannelReactionPicker = useCallback((postId: string, anchorRect: DOMRect): void => {
+    setPickerTarget({ messageId: postId, anchorRect });
+  }, []);
 
   return (
     <main
@@ -517,6 +541,18 @@ export function ChatRoomScreen(): JSX.Element {
           </div>
         )}
         {visibleMessages.map((m) => {
+          if (isChannel) {
+            return (
+              <ChannelPostCard
+                key={m.id}
+                post={m}
+                showViews={isAdmin}
+                onReact={onToggleReaction}
+                onOpenReactionPicker={onOpenChannelReactionPicker}
+                onOpenComments={onOpenChannelComments}
+              />
+            );
+          }
           const isOwn = m.senderId === meId;
           const replyParent = m.replyToId ? messageById.get(m.replyToId) : undefined;
           const replyTo = replyParent
@@ -537,15 +573,18 @@ export function ChatRoomScreen(): JSX.Element {
         })}
       </div>
 
-      <div style={{ marginBottom: 'max(12px, var(--app-safe-bottom))' }}>
-        <ChatInput
-          replyTo={replyTo}
-          replyToSenderName={replyTo ? senderNameOf(replyTo) : undefined}
-          onClearReply={() => setReplyTo(null)}
-          disabled={sendMut.isPending}
-          onSend={handleSend}
-        />
-      </div>
+      {showComposer && (
+        <div style={{ marginBottom: 'max(12px, var(--app-safe-bottom))' }}>
+          <ChatInput
+            replyTo={isChannel ? null : replyTo}
+            replyToSenderName={replyTo ? senderNameOf(replyTo) : undefined}
+            placeholder={isChannel ? 'Новость...' : 'Сообщение...'}
+            onClearReply={() => setReplyTo(null)}
+            disabled={sendMut.isPending}
+            onSend={handleSend}
+          />
+        </div>
+      )}
 
       <MessageActionsMenu
         open={actionTarget !== null}

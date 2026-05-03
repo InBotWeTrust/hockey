@@ -37,9 +37,15 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
   });
 
   describe('getMyChats', () => {
-    it('returns empty when user has no chats and no system channels', async () => {
+    it('returns the default news channel when user has no chats and no system channels', async () => {
       const list = await getMyChats(pool, userA);
-      expect(list).toEqual([]);
+      expect(list).toEqual([
+        expect.objectContaining({
+          type: 'channel',
+          name: 'Новости игры',
+          channelSlug: 'news',
+        }),
+      ]);
     });
 
     it('returns DM with counterpart info', async () => {
@@ -48,19 +54,19 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
         [userA],
       );
       const dmId = dm.rows[0].id;
-      await pool.query(
-        `insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`,
-        [dmId, userA, userB],
-      );
+      await pool.query(`insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`, [
+        dmId,
+        userA,
+        userB,
+      ]);
 
       const list = await getMyChats(pool, userA);
-      expect(list).toHaveLength(1);
-      expect(list[0]!.id).toBe(dmId);
-      expect(list[0]!.type).toBe('direct');
-      expect(list[0]!.dmCounterpart?.userId).toBe(userB);
-      expect(list[0]!.dmCounterpart?.displayName).toBe('Bob');
-      expect(list[0]!.unreadCount).toBe(0);
-      expect(list[0]!.lastMessage).toBeNull();
+      const dmChat = list.find((chat) => chat.id === dmId)!;
+      expect(dmChat.type).toBe('direct');
+      expect(dmChat.dmCounterpart?.userId).toBe(userB);
+      expect(dmChat.dmCounterpart?.displayName).toBe('Bob');
+      expect(dmChat.unreadCount).toBe(0);
+      expect(dmChat.lastMessage).toBeNull();
     });
 
     it('counts unread messages from others past last_read_at', async () => {
@@ -91,9 +97,9 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
       }
 
       const list = await getMyChats(pool, userA);
-      expect(list).toHaveLength(1);
-      expect(list[0]!.unreadCount).toBe(3);
-      expect(list[0]!.lastMessage?.content).toBe('mine');
+      const dmChat = list.find((chat) => chat.id === dmId)!;
+      expect(dmChat.unreadCount).toBe(3);
+      expect(dmChat.lastMessage?.content).toBe('mine');
     });
 
     it('skips soft-deleted messages from last_message and unread count', async () => {
@@ -115,8 +121,9 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
       );
 
       const list = await getMyChats(pool, userA);
-      expect(list[0]!.unreadCount).toBe(1);
-      expect(list[0]!.lastMessage?.content).toBe('visible');
+      const dmChat = list.find((chat) => chat.id === dmId)!;
+      expect(dmChat.unreadCount).toBe(1);
+      expect(dmChat.lastMessage?.content).toBe('visible');
     });
 
     it('includes system channels even without chat_members row', async () => {
@@ -126,10 +133,9 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
       );
 
       const list = await getMyChats(pool, userA);
-      expect(list).toHaveLength(1);
-      expect(list[0]!.type).toBe('system');
-      expect(list[0]!.name).toBe('Общий');
-      expect(list[0]!.dmCounterpart).toBeNull();
+      const systemChat = list.find((chat) => chat.type === 'system')!;
+      expect(systemChat.name).toBe('Общий');
+      expect(systemChat.dmCounterpart).toBeNull();
     });
 
     it('memberCount: system → all users; direct → 2 from chat_members', async () => {
@@ -141,10 +147,11 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
         `insert into chats (type, created_by) values ('direct', $1) returning id`,
         [userA],
       );
-      await pool.query(
-        `insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`,
-        [dm.rows[0].id, userA, userB],
-      );
+      await pool.query(`insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`, [
+        dm.rows[0].id,
+        userA,
+        userB,
+      ]);
 
       const list = await getMyChats(pool, userA);
       const sys = list.find((c) => c.type === 'system')!;
@@ -160,10 +167,11 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
         [userA],
       );
       const oldId = old.rows[0].id;
-      await pool.query(
-        `insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`,
-        [oldId, userA, userB],
-      );
+      await pool.query(`insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`, [
+        oldId,
+        userA,
+        userB,
+      ]);
       await pool.query(
         `insert into messages (chat_id, sender_id, content) values ($1, $2, 'old')`,
         [oldId, userB],
@@ -173,15 +181,17 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
         `insert into chats (type, created_by) values ('direct', $1) returning id`,
         [userA],
       );
-      await pool.query(
-        `insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`,
-        [empty.rows[0].id, userA, userC],
-      );
+      await pool.query(`insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`, [
+        empty.rows[0].id,
+        userA,
+        userC,
+      ]);
 
       const list = await getMyChats(pool, userA);
-      expect(list).toHaveLength(2);
-      expect(list[0]!.id).toBe(oldId);
-      expect(list[1]!.id).toBe(empty.rows[0].id);
+      const regularChats = list.filter((chat) => chat.type !== 'channel');
+      expect(regularChats).toHaveLength(2);
+      expect(regularChats[0]!.id).toBe(oldId);
+      expect(regularChats[1]!.id).toBe(empty.rows[0].id);
     });
 
     it('does not return inactive chats', async () => {
@@ -189,12 +199,12 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
         `insert into chats (type, created_by, is_active) values ('direct', $1, false) returning id`,
         [userA],
       );
-      await pool.query(
-        `insert into chat_members (chat_id, user_id) values ($1, $2)`,
-        [c.rows[0].id, userA],
-      );
+      await pool.query(`insert into chat_members (chat_id, user_id) values ($1, $2)`, [
+        c.rows[0].id,
+        userA,
+      ]);
       const list = await getMyChats(pool, userA);
-      expect(list).toHaveLength(0);
+      expect(list.filter((chat) => chat.type !== 'channel')).toHaveLength(0);
     });
   });
 
@@ -205,8 +215,8 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
         [userA],
       );
       const list = await getMyChats(pool, userA);
-      expect(list).toHaveLength(1);
-      expect(list[0]!.pinnedAt).not.toBeNull();
+      const systemChat = list.find((chat) => chat.type === 'system')!;
+      expect(systemChat.pinnedAt).not.toBeNull();
     });
 
     it('orders pinned chats first, then by last_message_at desc', async () => {
@@ -219,10 +229,11 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
         [userA],
       );
       const dmId = dm.rows[0].id;
-      await pool.query(
-        `insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`,
-        [dmId, userA, userB],
-      );
+      await pool.query(`insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`, [
+        dmId,
+        userA,
+        userB,
+      ]);
       // DM has the freshest message; without pin, DM would be first.
       await pool.query(
         `insert into messages (chat_id, sender_id, content) values ($1, $2, 'recent')`,
@@ -232,11 +243,12 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
       const { pinChat } = await import('../../src/chat/service.js');
       await pinChat(pool, userA, sys.rows[0].id);
       const list = await getMyChats(pool, userA);
-      expect(list).toHaveLength(2);
-      expect(list[0]!.type).toBe('system');
-      expect(list[0]!.pinnedAt).not.toBeNull();
-      expect(list[1]!.type).toBe('direct');
-      expect(list[1]!.pinnedAt).toBeNull();
+      const regularChats = list.filter((chat) => chat.type !== 'channel');
+      expect(regularChats).toHaveLength(2);
+      expect(regularChats[0]!.type).toBe('system');
+      expect(regularChats[0]!.pinnedAt).not.toBeNull();
+      expect(regularChats[1]!.type).toBe('direct');
+      expect(regularChats[1]!.pinnedAt).toBeNull();
     });
 
     it('pinChat throws PinLimitExceededError on the 4th distinct pin', async () => {
@@ -248,10 +260,10 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
           [userA],
         );
         ids.push(r.rows[0].id);
-        await pool.query(
-          `insert into chat_members (chat_id, user_id) values ($1, $2)`,
-          [r.rows[0].id, userA],
-        );
+        await pool.query(`insert into chat_members (chat_id, user_id) values ($1, $2)`, [
+          r.rows[0].id,
+          userA,
+        ]);
       }
       await pinChat(pool, userA, ids[0]!);
       await pinChat(pool, userA, ids[1]!);
@@ -265,10 +277,10 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
         `insert into chats (type, created_by) values ('group', $1) returning id`,
         [userA],
       );
-      await pool.query(
-        `insert into chat_members (chat_id, user_id) values ($1, $2)`,
-        [r.rows[0].id, userA],
-      );
+      await pool.query(`insert into chat_members (chat_id, user_id) values ($1, $2)`, [
+        r.rows[0].id,
+        userA,
+      ]);
       await pinChat(pool, userA, r.rows[0].id);
       await pinChat(pool, userA, r.rows[0].id); // idempotent
       await pinChat(pool, userA, r.rows[0].id); // still ok
@@ -289,14 +301,14 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
       );
       // First /chat/list triggers auto-pin.
       let list = await getMyChats(pool, userA);
-      expect(list[0]!.pinnedAt).not.toBeNull();
+      expect(list.find((chat) => chat.type === 'system')!.pinnedAt).not.toBeNull();
       // User unpins.
       await unpinChat(pool, userA, sys.rows[0].id);
       // Subsequent list calls keep it unpinned.
       list = await getMyChats(pool, userA);
-      expect(list[0]!.pinnedAt).toBeNull();
+      expect(list.find((chat) => chat.type === 'system')!.pinnedAt).toBeNull();
       list = await getMyChats(pool, userA);
-      expect(list[0]!.pinnedAt).toBeNull();
+      expect(list.find((chat) => chat.type === 'system')!.pinnedAt).toBeNull();
     });
   });
 
@@ -308,10 +320,11 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
         [userA],
       );
       const dmId = dm.rows[0].id;
-      await pool.query(
-        `insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`,
-        [dmId, userA, userB],
-      );
+      await pool.query(`insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`, [
+        dmId,
+        userA,
+        userB,
+      ]);
       // Insert 60 messages with strictly increasing created_at.
       const baseTs = new Date(Date.now() - 60 * 60 * 1000);
       for (let i = 0; i < 60; i++) {
@@ -334,10 +347,11 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
         [userA],
       );
       const dmId = dm.rows[0].id;
-      await pool.query(
-        `insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`,
-        [dmId, userA, userB],
-      );
+      await pool.query(`insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`, [
+        dmId,
+        userA,
+        userB,
+      ]);
       const baseTs = new Date(Date.now() - 60 * 60 * 1000);
       for (let i = 0; i < 60; i++) {
         await pool.query(
@@ -363,10 +377,10 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
         [userA],
       );
       const dmId = dm.rows[0].id;
-      await pool.query(
-        `insert into chat_members (chat_id, user_id) values ($1, $2)`,
-        [dmId, userA],
-      );
+      await pool.query(`insert into chat_members (chat_id, user_id) values ($1, $2)`, [
+        dmId,
+        userA,
+      ]);
       await pool.query(
         `insert into messages (chat_id, sender_id, content, is_deleted) values ($1, $2, 'gone', true)`,
         [dmId, userA],
@@ -383,10 +397,11 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
         [userA],
       );
       const dmId = dm.rows[0].id;
-      await pool.query(
-        `insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`,
-        [dmId, userA, userB],
-      );
+      await pool.query(`insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`, [
+        dmId,
+        userA,
+        userB,
+      ]);
       const msg = await pool.query(
         `insert into messages (chat_id, sender_id, content) values ($1, $2, 'hi') returning id`,
         [dmId, userA],
@@ -420,10 +435,11 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
         [userA],
       );
       dmId = dm.rows[0].id;
-      await pool.query(
-        `insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`,
-        [dmId, userA, userB],
-      );
+      await pool.query(`insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`, [
+        dmId,
+        userA,
+        userB,
+      ]);
     });
 
     it('inserts a message and returns DTO', async () => {
@@ -532,10 +548,9 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
       const chat = await pool.query(`select * from chats where id = $1`, [r.chatId]);
       expect(chat.rows[0].type).toBe('direct');
 
-      const members = await pool.query(
-        `select user_id from chat_members where chat_id = $1`,
-        [r.chatId],
-      );
+      const members = await pool.query(`select user_id from chat_members where chat_id = $1`, [
+        r.chatId,
+      ]);
       expect(members.rowCount).toBe(2);
     });
 
@@ -576,10 +591,11 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
         `insert into chats (type, created_by) values ('direct', $1) returning id`,
         [userA],
       );
-      await pool.query(
-        `insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`,
-        [dm.rows[0].id, userA, userB],
-      );
+      await pool.query(`insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`, [
+        dm.rows[0].id,
+        userA,
+        userB,
+      ]);
       await pool.query(
         `insert into messages (chat_id, sender_id, content) values
          ($1, $2, 'hello world'),
@@ -598,10 +614,11 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
         `insert into chats (type, created_by) values ('direct', $1) returning id`,
         [userB],
       );
-      await pool.query(
-        `insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`,
-        [dm.rows[0].id, userB, userC],
-      );
+      await pool.query(`insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`, [
+        dm.rows[0].id,
+        userB,
+        userC,
+      ]);
       await pool.query(
         `insert into messages (chat_id, sender_id, content) values ($1, $2, 'secret payload')`,
         [dm.rows[0].id, userB],

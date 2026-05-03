@@ -41,7 +41,7 @@ async function fanOut(
   chatType: ChatType,
   event: ChatEvent,
 ): Promise<void> {
-  if (chatType === 'system') {
+  if (chatType === 'system' || chatType === 'channel') {
     await safePublish(publisher, systemChannel(chatId), event);
     return;
   }

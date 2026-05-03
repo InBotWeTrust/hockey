@@ -71,14 +71,20 @@ describe.skipIf(!hasIntegrationEnv)('chat routes', () => {
     await app.close();
   });
 
-  it('GET /chat/list returns empty for new user', async () => {
+  it('GET /chat/list returns the default news channel for new user', async () => {
     const res = await app.inject({
       method: 'GET',
       url: '/chat/list',
       headers: { authorization: `Bearer ${tokenA}` },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual([]);
+    expect(res.json()).toEqual([
+      expect.objectContaining({
+        type: 'channel',
+        name: 'Новости игры',
+        channelSlug: 'news',
+      }),
+    ]);
   });
 
   it('POST /chat/dm + GET /chat/list flow', async () => {
@@ -220,6 +226,7 @@ describe.skipIf(!hasIntegrationEnv)('chat routes', () => {
         goals: 10,
         accuracy: 33,
         playStreakDays: 0,
+        bestPlayStreakDays: 0,
       },
     });
     const body = res.json() as {

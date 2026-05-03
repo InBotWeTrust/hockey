@@ -1,10 +1,12 @@
-import type { FastifyPluginAsync } from 'fastify';
+import type { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import fp from 'fastify-plugin';
 import fastifyWebsocket from '@fastify/websocket';
 import type { WebSocket } from 'ws';
 import { verifyAccessToken } from '../auth/jwt.js';
 import type { ChatEvent, ChatEventFrame } from './types.js';
 import type { Unsubscribe } from '../plugins/realtime.js';
+import { DEFAULT_NEWS_CHANNEL_SLUG, ensureDefaultNewsChannel } from './service.js';
+import { getPushPreferences } from '../push/preferences.js';
 
 export interface ChatWsOptions {
   accessSecret: string;
@@ -20,6 +22,35 @@ function send(socket: WebSocket, event: ChatEvent): void {
   if (socket.readyState !== socket.OPEN) return;
   const frame: ChatEventFrame = { v: 1, event };
   socket.send(JSON.stringify(frame));
+}
+
+async function withUserDeliveryFlags(
+  app: FastifyInstance,
+  userId: string,
+  event: ChatEvent,
+  isNewsChannelByChatId: Map<string, boolean>,
+): Promise<ChatEvent> {
+  if (event.type !== 'message:new') return event;
+
+  let isNewsChannel = isNewsChannelByChatId.get(event.chatId);
+  if (isNewsChannel === undefined) {
+    const { rows } = await app.pg.query<{ channel_slug: string | null }>(
+      `select channel_slug
+         from chats
+        where id = $1
+          and type = 'channel'
+          and is_active = true
+        limit 1`,
+      [event.chatId],
+    );
+    isNewsChannel = rows[0]?.channel_slug === DEFAULT_NEWS_CHANNEL_SLUG;
+    isNewsChannelByChatId.set(event.chatId, isNewsChannel);
+  }
+
+  if (!isNewsChannel) return event;
+
+  const preferences = await getPushPreferences(app.pg, userId);
+  return preferences.gameNews ? event : { ...event, silent: true };
 }
 
 function readToken(req: { query: unknown }): string | null {
@@ -51,14 +82,24 @@ const plugin: FastifyPluginAsync<ChatWsOptions> = async (app, opts) => {
     }
     // Mark presence on connect — onResponse hook only fires for HTTP routes,
     // and a long-lived chat tab might not poll any endpoint while idle.
-    void app.touchLastSeen(userId).catch((err) =>
-      app.log.warn({ err, userId }, 'ws: touchLastSeen failed'),
-    );
+    void app
+      .touchLastSeen(userId)
+      .catch((err) => app.log.warn({ err, userId }, 'ws: touchLastSeen failed'));
 
     const offs: Unsubscribe[] = [];
     let interval: NodeJS.Timeout | null = null;
     let pongDeadline: NodeJS.Timeout | null = null;
     let cleanedUp = false;
+    const isNewsChannelByChatId = new Map<string, boolean>();
+
+    const deliver = (event: ChatEvent): void => {
+      void withUserDeliveryFlags(app, userId, event, isNewsChannelByChatId)
+        .then((outgoing) => send(socket, outgoing))
+        .catch((err) => {
+          app.log.warn({ err, userId }, 'ws: delivery flags failed');
+          send(socket, event);
+        });
+    };
 
     const cleanup = async () => {
       if (cleanedUp) return;
@@ -72,26 +113,33 @@ const plugin: FastifyPluginAsync<ChatWsOptions> = async (app, opts) => {
         pongDeadline = null;
       }
       for (const off of offs) {
-        try { await off(); } catch (err) { app.log.warn({ err }, 'ws: unsubscribe failed'); }
+        try {
+          await off();
+        } catch (err) {
+          app.log.warn({ err }, 'ws: unsubscribe failed');
+        }
       }
     };
 
     // Wire close + error BEFORE any awaitable subscribe so a setup failure
     // can still trigger cleanup of partially-acquired subscriptions.
-    socket.on('close', () => { void cleanup(); });
+    socket.on('close', () => {
+      void cleanup();
+    });
     socket.on('error', (err) => {
       app.log.warn({ err, userId }, 'ws: socket error');
     });
 
     try {
-      const userOff = await app.realtime.subscribe(`chat:user:${userId}`, (e) => send(socket, e));
+      const userOff = await app.realtime.subscribe(`chat:user:${userId}`, deliver);
       offs.push(userOff);
 
+      await ensureDefaultNewsChannel(app.pg, userId);
       const sysRows = await app.pg.query<{ id: string }>(
-        `select id from chats where type = 'system' and is_active = true`,
+        `select id from chats where type in ('system', 'channel') and is_active = true`,
       );
       for (const row of sysRows.rows) {
-        const off = await app.realtime.subscribe(`chat:system:${row.id}`, (e) => send(socket, e));
+        const off = await app.realtime.subscribe(`chat:system:${row.id}`, deliver);
         offs.push(off);
       }
       // Tell the client that all SUBSCRIBEs are registered. Without this a client

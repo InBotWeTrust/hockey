@@ -5,13 +5,15 @@ import type {
   ChatMessageDTO,
   MessageReactionRow,
   ReactionGroupDTO,
+  ChannelPostCommentRow,
+  ChannelPostCommentDTO,
 } from './types.js';
 
 export function toChatMessageDTO(
   row: MessageRow,
   reactions: ReactionGroupDTO[] = [],
 ): ChatMessageDTO {
-  return {
+  const dto: ChatMessageDTO = {
     id: row.id,
     chatId: row.chat_id,
     senderId: row.sender_id,
@@ -23,6 +25,9 @@ export function toChatMessageDTO(
     createdAt: row.created_at.toISOString(),
     reactions,
   };
+  if (row.comment_count !== undefined) dto.commentCount = Number(row.comment_count);
+  if (row.view_count !== undefined) dto.viewCount = Number(row.view_count);
+  return dto;
 }
 
 export interface ChatListAggregate {
@@ -42,6 +47,7 @@ export function toChatDTO(agg: ChatListAggregate): ChatDTO {
     name: agg.chat.name,
     entityType: agg.chat.entity_type,
     entityId: agg.chat.entity_id,
+    channelSlug: agg.chat.channel_slug,
     lastMessageAt: agg.chat.last_message_at?.toISOString() ?? null,
     unreadCount: agg.unreadCount,
     lastMessage: agg.lastMessage ? toChatMessageDTO(agg.lastMessage) : null,
@@ -77,4 +83,17 @@ export function groupReactions(
     result.set(msgId, [...byEmoji.values()]);
   }
   return result;
+}
+
+export function toChannelPostCommentDTO(row: ChannelPostCommentRow): ChannelPostCommentDTO {
+  return {
+    id: row.id,
+    postId: row.post_message_id,
+    authorId: row.author_id,
+    authorDisplayName: row.author_display_name ?? null,
+    authorAvatarUrl: row.author_avatar_url ?? null,
+    content: row.is_deleted ? '' : row.content,
+    isDeleted: row.is_deleted,
+    createdAt: row.created_at.toISOString(),
+  };
 }

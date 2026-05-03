@@ -19,7 +19,10 @@ import type { ChatEventFrame } from '../../src/chat/types.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
 
-function nextFrame(ws: WebSocket, predicate: (f: ChatEventFrame) => boolean): Promise<ChatEventFrame> {
+function nextFrame(
+  ws: WebSocket,
+  predicate: (f: ChatEventFrame) => boolean,
+): Promise<ChatEventFrame> {
   return new Promise((resolve, reject) => {
     const onMessage = (raw: WebSocket.RawData) => {
       try {
@@ -114,10 +117,11 @@ describe.skipIf(!hasIntegrationEnv)('chat WebSocket', () => {
       [userA],
     );
     dmAB = dm.rows[0].id;
-    await app.pg.query(
-      `insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`,
-      [dmAB, userA, userB],
-    );
+    await app.pg.query(`insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`, [
+      dmAB,
+      userA,
+      userB,
+    ]);
 
     const sys = await app.pg.query(
       `insert into chats (type, name, created_by) values ('system', $1, $2) returning id`,
@@ -125,7 +129,10 @@ describe.skipIf(!hasIntegrationEnv)('chat WebSocket', () => {
     );
     systemChat = sys.rows[0].id;
 
-    const jwt = createJwt({ accessSecret: config.JWT_SECRET, refreshSecret: config.REFRESH_SECRET });
+    const jwt = createJwt({
+      accessSecret: config.JWT_SECRET,
+      refreshSecret: config.REFRESH_SECRET,
+    });
     tokenA = await jwt.issueAccessToken({ sub: userA });
     tokenB = await jwt.issueAccessToken({ sub: userB });
     tokenC = await jwt.issueAccessToken({ sub: userC });
@@ -210,6 +217,59 @@ describe.skipIf(!hasIntegrationEnv)('chat WebSocket', () => {
     wsC.close();
   });
 
+  it('marks news channel message:new as silent for users with news notifications disabled', async () => {
+    await app.pg.query(`update users set role = 'admin' where id = $1`, [userA]);
+    await app.pg.query(
+      `insert into user_push_preferences (user_id, game_news)
+       values ($1, false)
+       on conflict (user_id) do update set game_news = false`,
+      [userC],
+    );
+
+    const list = await app.inject({
+      method: 'GET',
+      url: '/chat/list',
+      headers: { authorization: `Bearer ${tokenA}` },
+    });
+    expect(list.statusCode).toBe(200);
+    const news = (
+      list.json() as Array<{ id: string; type: string; channelSlug?: string | null }>
+    ).find((chat) => chat.type === 'channel' && chat.channelSlug === 'news');
+    expect(news).toBeDefined();
+
+    const wsB = new WebSocket(`${baseUrl}/chat/ws?token=${tokenB}`);
+    const wsC = new WebSocket(`${baseUrl}/chat/ws?token=${tokenC}`);
+    await Promise.all([openAndReady(wsB), openAndReady(wsC)]);
+
+    const incomingB = nextFrame(
+      wsB,
+      (f) => f.event.type === 'message:new' && f.event.chatId === news!.id,
+    );
+    const incomingC = nextFrame(
+      wsC,
+      (f) => f.event.type === 'message:new' && f.event.chatId === news!.id,
+    );
+
+    const post = await app.inject({
+      method: 'POST',
+      url: `/chat/${news!.id}/messages`,
+      headers: { authorization: `Bearer ${tokenA}`, 'content-type': 'application/json' },
+      payload: { content: 'quiet news' },
+    });
+    expect(post.statusCode).toBe(201);
+
+    const [frameB, frameC] = await Promise.all([incomingB, incomingC]);
+    expect(frameB.event.type).toBe('message:new');
+    expect(frameC.event.type).toBe('message:new');
+    if (frameB.event.type === 'message:new' && frameC.event.type === 'message:new') {
+      expect(frameB.event.silent).toBeUndefined();
+      expect(frameC.event.silent).toBe(true);
+    }
+
+    wsB.close();
+    wsC.close();
+  });
+
   it('A receives message:deleted when A deletes own message', async () => {
     const wsA = new WebSocket(`${baseUrl}/chat/ws?token=${tokenA}`);
     await openAndReady(wsA);
@@ -259,10 +319,7 @@ describe.skipIf(!hasIntegrationEnv)('chat WebSocket', () => {
 
     const incoming = nextFrame(
       wsA,
-      (f) =>
-        f.event.type === 'chat:read' &&
-        f.event.chatId === dmAB &&
-        f.event.userId === userA,
+      (f) => f.event.type === 'chat:read' && f.event.chatId === dmAB && f.event.userId === userA,
     );
 
     const r = await app.inject({

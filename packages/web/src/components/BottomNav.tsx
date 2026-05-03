@@ -66,7 +66,7 @@ export function BottomNav(): JSX.Element | null {
   }
 
   // Hide nav inside a chat room — composer takes the nav's spot.
-  const isInChatRoom = /^\/chat\/[^/]+$/.test(location.pathname);
+  const isInChatRoom = /^\/chat\/[^/]+(?:\/posts\/[^/]+\/comments)?$/.test(location.pathname);
   if (!user || location.pathname === '/login' || isInChatRoom) return null;
 
   const isGame = location.pathname === '/' || location.pathname.startsWith('/duel');

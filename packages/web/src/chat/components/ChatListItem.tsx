@@ -1,5 +1,5 @@
 import { memo, useCallback } from 'react';
-import { Pin } from 'lucide-react';
+import { Megaphone, Pin } from 'lucide-react';
 import type { ChatDTO } from '../api.js';
 import { useAuthStore } from '../../auth/authStore.js';
 import { useLongPress } from '../useLongPress.js';
@@ -45,6 +45,7 @@ function displayTitle(chat: ChatDTO): string {
   if (chat.type === 'direct') {
     return chat.dmCounterpart?.displayName ?? 'Диалог';
   }
+  if (chat.type === 'channel') return chat.name ?? 'Канал';
   return chat.name ?? (chat.type === 'system' ? 'Системный канал' : 'Чат');
 }
 
@@ -65,6 +66,7 @@ function lastMessagePreview(chat: ChatDTO, meId: string | null): string {
 function ChatListItemImpl({ chat, onOpen, onRequestActions }: ChatListItemProps): JSX.Element {
   const meId = useAuthStore((s) => s.user?.id ?? null);
   const isSystem = chat.type === 'system';
+  const isChannel = chat.type === 'channel';
   const isPinned = chat.pinnedAt !== null;
   const avatarUrl = chat.dmCounterpart?.avatarUrl ?? null;
   const unread = chat.unreadCount;
@@ -105,7 +107,7 @@ function ChatListItemImpl({ chat, onOpen, onRequestActions }: ChatListItemProps)
         WebkitUserSelect: 'none',
       }}
     >
-      {isSystem && (
+      {(isSystem || isChannel) && (
         <span
           aria-hidden
           style={{
@@ -116,12 +118,29 @@ function ChatListItemImpl({ chat, onOpen, onRequestActions }: ChatListItemProps)
             width: 4,
             borderTopRightRadius: 4,
             borderBottomRightRadius: 4,
-            background: 'var(--blue-accent)',
+            background: isChannel ? 'rgb(220, 38, 38)' : 'var(--blue-accent)',
           }}
         />
       )}
 
-      <UserAvatar avatarUrl={avatarUrl} name={displayTitle(chat)} size={40} />
+      {isChannel ? (
+        <span
+          className="glass-dark"
+          aria-hidden
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 14,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Megaphone size={18} />
+        </span>
+      ) : (
+        <UserAvatar avatarUrl={avatarUrl} name={displayTitle(chat)} size={40} />
+      )}
 
       <div style={{ minWidth: 0 }}>
         <div

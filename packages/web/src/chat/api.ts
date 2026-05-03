@@ -7,7 +7,7 @@ import type {
 
 // === DTO types (mirror @hockey/server/src/chat/types.ts) ===
 
-export type ChatType = 'direct' | 'group' | 'system';
+export type ChatType = 'direct' | 'group' | 'system' | 'channel';
 export type EntityType = 'team' | 'tournament';
 
 export interface ReactionGroupDTO {
@@ -27,6 +27,8 @@ export interface ChatMessageDTO {
   isDeleted: boolean;
   createdAt: string; // ISO
   reactions: ReactionGroupDTO[];
+  commentCount?: number;
+  viewCount?: number;
 }
 
 export interface ChatDTO {
@@ -35,6 +37,7 @@ export interface ChatDTO {
   name: string | null;
   entityType: EntityType | null;
   entityId: string | null;
+  channelSlug?: string | null;
   lastMessageAt: string | null;
   unreadCount: number;
   lastMessage: ChatMessageDTO | null;
@@ -50,7 +53,7 @@ export interface ChatDTO {
 }
 
 export type ChatEvent =
-  | { type: 'message:new'; chatId: string; message: ChatMessageDTO }
+  | { type: 'message:new'; chatId: string; message: ChatMessageDTO; silent?: boolean }
   | { type: 'message:deleted'; chatId: string; messageId: string }
   | { type: 'reaction:added'; chatId: string; messageId: string; userId: string; emoji: string }
   | { type: 'reaction:removed'; chatId: string; messageId: string; userId: string; emoji: string }
@@ -118,6 +121,62 @@ export function fetchMessages(
   if (opts.radius !== undefined) params.set('radius', String(opts.radius));
   params.set('limit', String(opts.limit ?? 50));
   return apiFetch<ChatMessageDTO[]>(`/chat/${chatId}/messages?${params.toString()}`);
+}
+
+export interface ChannelPostCommentDTO {
+  id: string;
+  postId: string;
+  authorId: string;
+  authorDisplayName: string | null;
+  authorAvatarUrl: string | null;
+  content: string;
+  isDeleted: boolean;
+  createdAt: string;
+}
+
+export interface ChannelPostViewerDTO {
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  firstViewedAt: string;
+  lastViewedAt: string;
+  viewCount: number;
+}
+
+export interface ChannelPostReactionUserDTO {
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  emoji: string;
+  reactedAt: string;
+}
+
+export function fetchChannelPost(postId: string): Promise<ChatMessageDTO> {
+  return apiFetch<ChatMessageDTO>(`/chat/channel/posts/${postId}`);
+}
+
+export function fetchChannelPostComments(postId: string): Promise<ChannelPostCommentDTO[]> {
+  return apiFetch<ChannelPostCommentDTO[]>(`/chat/channel/posts/${postId}/comments`);
+}
+
+export function sendChannelPostComment(
+  postId: string,
+  content: string,
+): Promise<ChannelPostCommentDTO> {
+  return apiFetch<ChannelPostCommentDTO>(`/chat/channel/posts/${postId}/comments`, {
+    method: 'POST',
+    body: JSON.stringify({ content }),
+  });
+}
+
+export function fetchChannelPostViewers(postId: string): Promise<ChannelPostViewerDTO[]> {
+  return apiFetch<ChannelPostViewerDTO[]>(`/chat/channel/posts/${postId}/views`);
+}
+
+export function fetchChannelPostReactionUsers(
+  postId: string,
+): Promise<ChannelPostReactionUserDTO[]> {
+  return apiFetch<ChannelPostReactionUserDTO[]>(`/chat/channel/posts/${postId}/reactions/users`);
 }
 
 export interface SendMessageBody {

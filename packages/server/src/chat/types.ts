@@ -4,7 +4,7 @@
 import type { ProfileAchievementDTO } from '../achievements/service.js';
 import type { CompetitionLevel, ProfileStatsDTO } from '../profile/summary.js';
 
-export type ChatType = 'direct' | 'group' | 'system';
+export type ChatType = 'direct' | 'group' | 'system' | 'channel';
 export type ChatMemberRole = 'admin' | 'member';
 export type EntityType = 'team' | 'tournament';
 
@@ -16,6 +16,7 @@ export interface ChatRow {
   created_by: string;
   entity_type: EntityType | null;
   entity_id: string | null;
+  channel_slug: string | null;
   last_message_at: Date | null;
   is_active: boolean;
   created_at: Date;
@@ -45,6 +46,8 @@ export interface MessageRow {
   // that don't need them (e.g. getMessageOr404 for reactions) leave them undefined.
   sender_display_name?: string | null;
   sender_avatar_url?: string | null;
+  comment_count?: string;
+  view_count?: string;
   // search_vector is generated; not selected into typed rows.
 }
 
@@ -69,6 +72,7 @@ export interface ChatDTO {
   name: string | null;
   entityType: EntityType | null;
   entityId: string | null;
+  channelSlug?: string | null;
   lastMessageAt: string | null; // ISO
   unreadCount: number;
   lastMessage: ChatMessageDTO | null;
@@ -105,6 +109,9 @@ export interface ChatMessageDTO {
   isDeleted: boolean;
   createdAt: string; // ISO
   reactions: ReactionGroupDTO[];
+  // Present for channel posts; omitted for regular chat messages.
+  commentCount?: number;
+  viewCount?: number;
 }
 
 export interface ReactionGroupDTO {
@@ -131,6 +138,46 @@ export interface ChatInfoDTO {
   members: ChatMemberSummaryDTO[];
 }
 
+export interface ChannelPostCommentRow {
+  id: string;
+  post_message_id: string;
+  author_id: string;
+  content: string;
+  is_deleted: boolean;
+  created_at: Date;
+  updated_at: Date;
+  author_display_name?: string | null;
+  author_avatar_url?: string | null;
+}
+
+export interface ChannelPostCommentDTO {
+  id: string;
+  postId: string;
+  authorId: string;
+  authorDisplayName: string | null;
+  authorAvatarUrl: string | null;
+  content: string;
+  isDeleted: boolean;
+  createdAt: string;
+}
+
+export interface ChannelPostViewerDTO {
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  firstViewedAt: string;
+  lastViewedAt: string;
+  viewCount: number;
+}
+
+export interface ChannelPostReactionUserDTO {
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  emoji: string;
+  reactedAt: string;
+}
+
 export interface UserPublicProfileDTO {
   id: string;
   displayName: string;
@@ -148,7 +195,7 @@ export interface UserPublicProfileDTO {
 // WS event types. Discriminated union; serialized as JSON over the wire.
 
 export type ChatEvent =
-  | { type: 'message:new'; chatId: string; message: ChatMessageDTO }
+  | { type: 'message:new'; chatId: string; message: ChatMessageDTO; silent?: boolean }
   | { type: 'message:deleted'; chatId: string; messageId: string }
   | { type: 'reaction:added'; chatId: string; messageId: string; userId: string; emoji: string }
   | { type: 'reaction:removed'; chatId: string; messageId: string; userId: string; emoji: string }

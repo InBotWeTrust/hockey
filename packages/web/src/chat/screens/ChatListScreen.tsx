@@ -254,7 +254,7 @@ export function ChatListScreen(): JSX.Element {
               key={chat.id}
               chat={chat}
               onOpen={openChat}
-              onRequestActions={onRequestActions}
+              {...(chat.type !== 'channel' ? { onRequestActions } : {})}
             />
           ))}
         </div>

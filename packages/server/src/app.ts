@@ -67,7 +67,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await app.register(meRoutes);
   await app.register(dailyRoutes, { dailySeedSecret: config.DAILY_SEED_SECRET });
   await app.register(trainingRoutes, { trainingSeedSecret: config.DAILY_SEED_SECRET });
-  await app.register(chatRoutes);
+  await app.register(chatRoutes, pushVapidOptions);
   await app.register(chatWs, { accessSecret: config.JWT_SECRET });
   await app.register(pushRoutes, pushVapidOptions);
   await app.register(adminRoutes);
