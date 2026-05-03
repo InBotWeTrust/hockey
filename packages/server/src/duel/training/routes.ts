@@ -377,6 +377,7 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
         await appendEvent(client, req.user.id, 'shot_mismatch', {
           mode: 'training',
           training_session_id: session.id,
+          period_number: session.selected_period,
           shot_index: body.shot_index,
           claimed_result: body.claimed_result,
           server_result: serverResult,

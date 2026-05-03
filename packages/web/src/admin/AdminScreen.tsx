@@ -1,4 +1,11 @@
-import { type CSSProperties, type ReactNode, useEffect, useMemo, useState } from 'react';
+import {
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -24,6 +31,7 @@ import {
   RotateCcw,
   Save,
   Search,
+  ShieldAlert,
   SlidersHorizontal,
   Star,
   Trash2,
@@ -49,6 +57,7 @@ import {
   fetchAdminFeedback,
   fetchAdminGameSettings,
   fetchAdminInventory,
+  fetchAdminMismatches,
   fetchAdminPayments,
   fetchAdminSummary,
   fetchAdminUser,
@@ -70,6 +79,9 @@ import {
   type AdminGameSetting,
   type AdminInventoryItem,
   type AdminInventoryItemPatch,
+  type AdminMismatchLog,
+  type AdminMismatchPeriod,
+  type AdminMismatchesResponse,
   type AdminNotificationStats,
   type AdminUserDetail,
   type AdminLevelFilter,
@@ -87,6 +99,7 @@ type AdminTab =
   | 'dashboard'
   | 'users'
   | 'channel'
+  | 'anticheat'
   | 'payments'
   | 'inventory'
   | 'feedback'
@@ -102,6 +115,7 @@ const tabs: Array<{ id: AdminTab; label: string; icon: JSX.Element }> = [
   { id: 'dashboard', label: 'Дашборд', icon: <BarChart3 size={15} /> },
   { id: 'users', label: 'Игроки', icon: <Users size={15} /> },
   { id: 'channel', label: 'Канал', icon: <Megaphone size={15} /> },
+  { id: 'anticheat', label: 'Античит', icon: <ShieldAlert size={15} /> },
   { id: 'payments', label: 'Платежи', icon: <CreditCard size={15} /> },
   { id: 'inventory', label: 'Инвентарь', icon: <Package size={15} /> },
   { id: 'feedback', label: 'Отзывы', icon: <MessageSquare size={15} /> },
@@ -222,6 +236,13 @@ function numberText(value: number): string {
   return new Intl.NumberFormat('ru-RU').format(value);
 }
 
+function compactNumberText(value: number): string {
+  return new Intl.NumberFormat('ru-RU', {
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(value);
+}
+
 function pluralText(value: number, one: string, few: string, many: string): string {
   const mod10 = value % 10;
   const mod100 = value % 100;
@@ -255,6 +276,10 @@ function moneyText(value: number): string {
   }).format(value);
 }
 
+function compactMoneyText(value: number): string {
+  return `${compactNumberText(value)} ₽`;
+}
+
 function roleLabel(role: AdminRole): string {
   return role === 'admin' ? 'Админ' : 'Игрок';
 }
@@ -265,6 +290,20 @@ function levelLabel(level: AdminUser['competitionLevel']): string {
 
 function paymentStatusLabel(status: AdminPaymentStatus): string {
   return paymentStatusOptions.find((option) => option.value === status)?.label ?? status;
+}
+
+function gameModeLabel(mode: string | null | undefined): string {
+  if (mode === 'daily') return 'Ежедневная игра';
+  if (mode === 'training') return 'Тренировка';
+  if (mode === 'story') return 'Сюжет';
+  return mode || '-';
+}
+
+function shotResultLabel(result: string | null | undefined): string {
+  if (result === 'goal') return 'Гол';
+  if (result === 'save') return 'Сейв';
+  if (result === 'miss') return 'Мимо';
+  return result || '-';
 }
 
 function percentText(value: number): string {
@@ -372,6 +411,14 @@ function shortDateText(iso: string): string {
   return new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: '2-digit' }).format(date);
 }
 
+function niceChartMax(value: number): number {
+  if (value <= 1) return 1;
+  const magnitude = 10 ** Math.floor(Math.log10(value));
+  const normalized = value / magnitude;
+  const niceNormalized = normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
+  return niceNormalized * magnitude;
+}
+
 export function AdminScreen(): JSX.Element {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
@@ -393,6 +440,7 @@ export function AdminScreen(): JSX.Element {
   const [feedbackStatus, setFeedbackStatus] = useState<AdminFeedbackStatus>('unread');
   const [feedbackKind, setFeedbackKind] = useState<'all' | AdminFeedbackKind>('all');
   const [dashboardPeriod, setDashboardPeriod] = useState<AdminDashboardPeriod>('30d');
+  const [mismatchPeriod, setMismatchPeriod] = useState<AdminMismatchPeriod>('30d');
   const [channelPeriod, setChannelPeriod] = useState<AdminChannelPeriod>('30d');
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const filtersChanged =
@@ -473,6 +521,11 @@ export function AdminScreen(): JSX.Element {
     queryFn: () => fetchAdminFeedback(feedbackQuery),
     enabled: canTryAdmin,
   });
+  const mismatches = useQuery({
+    queryKey: ['admin', 'mismatches', mismatchPeriod],
+    queryFn: () => fetchAdminMismatches(mismatchPeriod),
+    enabled: canTryAdmin && tab === 'anticheat',
+  });
   const channel = useQuery({
     queryKey: ['admin', 'channel', channelPeriod],
     queryFn: () => fetchAdminChannelNews(channelPeriod),
@@ -493,6 +546,7 @@ export function AdminScreen(): JSX.Element {
       payments.error,
       inventory.error,
       feedback.error,
+      mismatches.error,
       channel.error,
     ].some((error) => error instanceof ApiError && error.status === 403);
 
@@ -618,6 +672,14 @@ export function AdminScreen(): JSX.Element {
           onChanged={() => {
             void queryClient.invalidateQueries({ queryKey: ['admin', 'channel'] });
           }}
+        />
+      )}
+      {tab === 'anticheat' && (
+        <AnticheatPanel
+          loading={mismatches.isLoading}
+          data={mismatches.data}
+          period={mismatchPeriod}
+          onPeriod={setMismatchPeriod}
         />
       )}
       {tab === 'payments' && (
@@ -747,6 +809,7 @@ function DashboardPanel({
         valueKey="revenueRub"
         color="#7c2d12"
         formatValue={moneyText}
+        formatAxisValue={compactMoneyText}
       />
       <DashboardChartCard
         title="Броски"
@@ -945,16 +1008,6 @@ function DashboardMetricGrid({
       value: numberText(dashboard.feedback.unread),
       note: `${numberText(dashboard.feedback.total)} всего`,
     },
-    {
-      label: 'Инвентарь',
-      value: numberText(dashboard.inventory.activeItems),
-      note: 'активных предметов',
-    },
-    {
-      label: 'Мисматчи',
-      value: numberText(dashboard.game.mismatchesPeriod),
-      note: `за ${periodLabel}`,
-    },
   ];
   return (
     <section
@@ -1031,6 +1084,7 @@ function DashboardChartCard({
   valueKey,
   color,
   formatValue = numberText,
+  formatAxisValue = compactNumberText,
 }: {
   title: string;
   subtitle: string;
@@ -1041,6 +1095,7 @@ function DashboardChartCard({
   >;
   color: string;
   formatValue?: (value: number) => string;
+  formatAxisValue?: (value: number) => string;
 }): JSX.Element {
   const values = series.map((point) => point[valueKey]);
   const total = values.reduce((sum, value) => sum + value, 0);
@@ -1062,6 +1117,8 @@ function DashboardChartCard({
         series={series}
         values={values}
         color={color}
+        formatValue={formatValue}
+        formatAxisValue={formatAxisValue}
         ariaLabel={`График ${title.toLowerCase()} за ${subtitle}`}
       />
       <div
@@ -1084,61 +1141,126 @@ function MiniLineChart({
   series,
   values,
   color,
+  formatValue,
+  formatAxisValue,
   ariaLabel,
 }: {
   series: AdminDashboardSeriesPoint[];
   values: number[];
   color: string;
+  formatValue: (value: number) => string;
+  formatAxisValue: (value: number) => string;
   ariaLabel: string;
 }): JSX.Element {
-  const width = 320;
-  const height = 142;
-  const padding = 20;
-  const max = Math.max(1, ...values);
-  const step = series.length > 1 ? (width - padding * 2) / (series.length - 1) : 0;
-  const points = values
-    .map((value, index) => {
-      const x = padding + step * index;
-      const y = height - padding - (value / max) * (height - padding * 2);
-      return `${x},${y}`;
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const width = 344;
+  const height = 154;
+  const chartLeft = 58;
+  const chartRight = width - 10;
+  const chartTop = 18;
+  const chartBottom = height - 24;
+  const chartWidth = chartRight - chartLeft;
+  const chartHeight = chartBottom - chartTop;
+  const peak = Math.max(0, ...values);
+  const max = niceChartMax(peak);
+  const tickValues =
+    peak > 0
+      ? [max, Math.round((max * 2) / 3), Math.round(max / 3), 0].filter(
+          (tick, index, ticks) => index === 0 || tick !== ticks[index - 1],
+        )
+      : [0];
+  const step = series.length > 1 ? chartWidth / (series.length - 1) : 0;
+  const plottedPoints = values.map((value, index) => {
+    const x = chartLeft + step * index;
+    const y = chartBottom - (Math.max(0, value) / max) * chartHeight;
+    return { value, x, y };
+  });
+  const points = plottedPoints
+    .map((value) => {
+      return `${value.x},${value.y}`;
     })
     .join(' ');
   const first = series[0]?.date;
   const middle = series[Math.floor(series.length / 2)]?.date;
   const last = series[series.length - 1]?.date;
+  const activePoint =
+    activeIndex === null || activeIndex >= plottedPoints.length
+      ? null
+      : (plottedPoints[activeIndex] ?? null);
+  const activeSeriesPoint =
+    activeIndex === null || activeIndex >= series.length ? null : (series[activeIndex] ?? null);
+  const tooltipWidth = 108;
+  const tooltipHeight = 34;
+  const tooltipX =
+    activePoint === null
+      ? 0
+      : Math.min(width - tooltipWidth - 4, Math.max(4, activePoint.x - tooltipWidth / 2));
+  const tooltipY =
+    activePoint === null ? 0 : Math.max(4, activePoint.y - tooltipHeight - 10);
+
+  function pointerIndex(event: ReactPointerEvent<SVGSVGElement>): number | null {
+    if (series.length === 0) return null;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = ((event.clientX - rect.left) / rect.width) * width;
+    const ratio = (x - chartLeft) / chartWidth;
+    const index = Math.round(ratio * (series.length - 1));
+    return Math.max(0, Math.min(series.length - 1, index));
+  }
+
+  function handlePointer(event: ReactPointerEvent<SVGSVGElement>): void {
+    const nextIndex = pointerIndex(event);
+    if (nextIndex !== null) setActiveIndex(nextIndex);
+  }
+
   return (
     <svg
       viewBox={`0 0 ${width} ${height}`}
       role="img"
       aria-label={ariaLabel}
-      style={{ width: '100%', height: 142, display: 'block' }}
+      onPointerDown={handlePointer}
+      onPointerMove={handlePointer}
+      onPointerLeave={(event) => {
+        if (event.pointerType !== 'touch') setActiveIndex(null);
+      }}
+      style={{ width: '100%', height: 154, display: 'block', touchAction: 'none' }}
     >
-      {[0, 1, 2, 3].map((line) => {
-        const y = padding + ((height - padding * 2) / 3) * line;
+      {tickValues.map((tick) => {
+        const y = chartBottom - (tick / max) * chartHeight;
         return (
-          <line
-            key={line}
-            x1={padding}
-            x2={width - padding}
-            y1={y}
-            y2={y}
-            stroke="rgba(15, 23, 42, 0.12)"
-            strokeDasharray="4 5"
-          />
+          <g key={tick}>
+            <text
+              x={chartLeft - 7}
+              y={y + 4}
+              fill="rgba(15, 23, 42, 0.52)"
+              fontSize="9"
+              fontWeight="700"
+              textAnchor="end"
+            >
+              {formatAxisValue(tick)}
+            </text>
+            <line
+              x1={chartLeft}
+              x2={chartRight}
+              y1={y}
+              y2={y}
+              stroke="rgba(15, 23, 42, 0.12)"
+              strokeDasharray="4 5"
+            />
+          </g>
         );
       })}
       <line
-        x1={padding}
-        x2={padding}
-        y1={padding}
-        y2={height - padding}
+        x1={chartLeft}
+        x2={chartLeft}
+        y1={chartTop}
+        y2={chartBottom}
         stroke="rgba(15, 23, 42, 0.38)"
       />
       <line
-        x1={padding}
-        x2={width - padding}
-        y1={height - padding}
-        y2={height - padding}
+        x1={chartLeft}
+        x2={chartRight}
+        y1={chartBottom}
+        y2={chartBottom}
         stroke="rgba(15, 23, 42, 0.38)"
       />
       {points ? (
@@ -1151,15 +1273,50 @@ function MiniLineChart({
           strokeLinejoin="round"
         />
       ) : null}
+      {activePoint !== null && activeSeriesPoint !== null ? (
+        <g pointerEvents="none">
+          <line
+            x1={activePoint.x}
+            x2={activePoint.x}
+            y1={chartTop}
+            y2={chartBottom}
+            stroke="rgba(15, 23, 42, 0.22)"
+            strokeDasharray="3 5"
+          />
+          <circle cx={activePoint.x} cy={activePoint.y} r="5" fill={color} />
+          <circle
+            cx={activePoint.x}
+            cy={activePoint.y}
+            r="8"
+            fill="none"
+            stroke="rgba(255, 255, 255, 0.82)"
+            strokeWidth="2"
+          />
+          <rect
+            x={tooltipX}
+            y={tooltipY}
+            width={tooltipWidth}
+            height={tooltipHeight}
+            rx="9"
+            fill="rgba(15, 23, 42, 0.92)"
+          />
+          <text x={tooltipX + 8} y={tooltipY + 13} fill="#fff" fontSize="9" fontWeight="800">
+            {shortDateText(activeSeriesPoint.date)}
+          </text>
+          <text x={tooltipX + 8} y={tooltipY + 27} fill="#fff" fontSize="11" fontWeight="950">
+            {formatValue(activePoint.value)}
+          </text>
+        </g>
+      ) : null}
       {first && (
-        <text x={padding} y={height - 4} fill="rgba(15, 23, 42, 0.58)" fontSize="10">
+        <text x={chartLeft} y={height - 5} fill="rgba(15, 23, 42, 0.58)" fontSize="10">
           {shortDateText(first)}
         </text>
       )}
       {middle && (
         <text
           x={width / 2}
-          y={height - 4}
+          y={height - 5}
           fill="rgba(15, 23, 42, 0.58)"
           fontSize="10"
           textAnchor="middle"
@@ -1169,8 +1326,8 @@ function MiniLineChart({
       )}
       {last && (
         <text
-          x={width - padding}
-          y={height - 4}
+          x={chartRight}
+          y={height - 5}
           fill="rgba(15, 23, 42, 0.58)"
           fontSize="10"
           textAnchor="end"
@@ -1240,14 +1397,15 @@ function UsersPanel({
         className="glass"
         style={{
           borderRadius: 999,
-          padding: '0 12px',
-          height: 40,
+          padding: '0 14px',
+          height: 46,
+          minHeight: 46,
           display: 'flex',
           alignItems: 'center',
-          gap: 8,
+          gap: 10,
         }}
       >
-        <Search size={14} color="var(--muted)" aria-hidden />
+        <Search size={16} color="var(--muted)" aria-hidden />
         <input
           type="search"
           value={search}
@@ -1258,7 +1416,7 @@ function UsersPanel({
             flex: 1,
             minWidth: 0,
             width: 'auto',
-            height: 'auto',
+            height: 24,
             padding: 0,
             border: 'none',
             outline: 'none',
@@ -1266,6 +1424,8 @@ function UsersPanel({
             color: 'var(--ink)',
             fontSize: 14,
             fontWeight: 600,
+            fontFamily: 'inherit',
+            lineHeight: '24px',
             boxShadow: 'none',
           }}
         />
@@ -2437,6 +2597,7 @@ function ChannelPanel({
   onPeriod: (value: AdminChannelPeriod) => void;
   onChanged: () => void;
 }): JSX.Element {
+  const [channelView, setChannelView] = useState<'root' | 'engagement' | 'posts'>('root');
   const [editingPost, setEditingPost] = useState<AdminChannelPost | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<AdminChannelPost | null>(null);
   const editMutation = useMutation({
@@ -2456,12 +2617,12 @@ function ChannelPanel({
     },
   });
   const summary = data?.summary;
-  const statCards = [
+  const engagementCards = [
     {
-      label: 'Посты',
-      value: numberText(summary?.posts ?? 0),
-      hint: 'за период',
-      icon: <Megaphone size={15} />,
+      label: 'Просмотры',
+      value: numberText(summary?.views ?? 0),
+      hint: `${numberText(summary?.viewEvents ?? 0)} событий`,
+      icon: <UserCheck size={15} />,
     },
     {
       label: 'Комментарии',
@@ -2480,6 +2641,24 @@ function ChannelPanel({
       value: percentText(summary?.engagementRate ?? 0),
       hint: `${numberText(summary?.engagedUsers ?? 0)} из ${numberText(summary?.totalUsers ?? 0)}`,
       icon: <BarChart3 size={15} />,
+    },
+  ];
+  const rootCards = [
+    {
+      id: 'engagement' as const,
+      title: 'Вовлеченность',
+      icon: <BarChart3 size={18} />,
+      value: percentText(summary?.engagementRate ?? 0),
+      note: `${numberText(summary?.engagedUsers ?? 0)} из ${numberText(summary?.totalUsers ?? 0)} игроков`,
+      meta: `${numberText(summary?.views ?? 0)} просмотров · ${numberText(summary?.comments ?? 0)} комм.`,
+    },
+    {
+      id: 'posts' as const,
+      title: 'Посты',
+      icon: <Megaphone size={18} />,
+      value: numberText(summary?.posts ?? 0),
+      note: channelPeriodOptions.find((option) => option.value === period)?.label ?? 'Период',
+      meta: `${numberText(summary?.reactions ?? 0)} реакций · ${numberText(summary?.likes ?? 0)} лайков`,
     },
   ];
 
@@ -2511,73 +2690,180 @@ function ChannelPanel({
           </AdminField>
         </div>
       </section>
-      <section
-        style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}
-      >
-        {statCards.map((card) => (
-          <div key={card.label} className="glass" style={{ borderRadius: 18, padding: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7, color: 'var(--muted)' }}>
-              {card.icon}
-              <span style={{ fontSize: 10, fontWeight: 900 }}>{card.label}</span>
-            </div>
-            <div
+
+      {channelView === 'root' && (
+        <section
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+            gap: 10,
+          }}
+        >
+          {rootCards.map((card) => (
+            <button
+              key={card.id}
+              type="button"
+              className="glass"
+              onClick={() => setChannelView(card.id)}
               style={{
-                marginTop: 7,
-                color: 'var(--ink)',
-                fontSize: 22,
-                fontWeight: 950,
-                fontVariantNumeric: 'tabular-nums',
+                minHeight: 132,
+                borderRadius: 20,
+                padding: 14,
+                color: 'inherit',
+                textAlign: 'left',
+                cursor: 'pointer',
+                display: 'grid',
+                gridTemplateRows: 'auto minmax(0, 1fr) auto',
+                gap: 12,
               }}
             >
-              {card.value}
-            </div>
-            <div style={{ marginTop: 3, color: 'var(--muted)', fontSize: 10, fontWeight: 800 }}>
-              {card.hint}
-            </div>
-          </div>
-        ))}
-      </section>
+              <div
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+              >
+                <span className="pill pill--dark" style={{ padding: 8 }}>
+                  {card.icon}
+                </span>
+                <ChevronRight size={17} color="var(--muted)" />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ color: 'var(--ink)', fontSize: 16, fontWeight: 950 }}>
+                  {card.title}
+                </div>
+                <div
+                  style={{
+                    marginTop: 7,
+                    color: 'var(--ink)',
+                    fontSize: 24,
+                    fontWeight: 950,
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
+                >
+                  {loading ? '-' : card.value}
+                </div>
+                <div style={{ marginTop: 4, color: 'var(--muted)', fontSize: 10, fontWeight: 800 }}>
+                  {card.note}
+                </div>
+              </div>
+              <div style={{ color: 'var(--muted)', fontSize: 10, fontWeight: 850 }}>
+                {card.meta}
+              </div>
+            </button>
+          ))}
+          {loading && <AdminPlainState style={{ gridColumn: '1 / -1' }}>Загрузка...</AdminPlainState>}
+        </section>
+      )}
 
-      <section
-        className="glass"
-        style={{ borderRadius: 18, padding: 12, display: 'grid', gap: 10 }}
-      >
-        <div
-          style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}
-        >
-          <div style={{ color: 'var(--ink)', fontSize: 14, fontWeight: 950 }}>
-            Вовлеченность по дням
-          </div>
-          <span className="pill" style={{ fontSize: 10 }}>
-            {channelPeriodOptions.find((option) => option.value === period)?.label}
-          </span>
-        </div>
-        {loading && <AdminPlainState>Загрузка аналитики...</AdminPlainState>}
-        {!loading && (data?.periods.length ?? 0) === 0 && (
-          <AdminPlainState>Данных пока нет</AdminPlainState>
-        )}
-        {(data?.periods ?? []).slice(0, 12).map((point) => (
-          <ChannelPeriodRow key={point.periodStart} point={point} />
-        ))}
-      </section>
+      {channelView === 'engagement' && (
+        <>
+          <button
+            type="button"
+            className="chip"
+            onClick={() => setChannelView('root')}
+            style={{
+              justifySelf: 'start',
+              padding: '8px 12px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <ArrowDown size={14} style={{ transform: 'rotate(90deg)' }} />
+            Назад
+          </button>
+          <section
+            style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}
+          >
+            {engagementCards.map((card) => (
+              <div key={card.label} className="glass" style={{ borderRadius: 18, padding: 12 }}>
+                <div
+                  style={{ display: 'flex', alignItems: 'center', gap: 7, color: 'var(--muted)' }}
+                >
+                  {card.icon}
+                  <span style={{ fontSize: 10, fontWeight: 900 }}>{card.label}</span>
+                </div>
+                <div
+                  style={{
+                    marginTop: 7,
+                    color: 'var(--ink)',
+                    fontSize: 22,
+                    fontWeight: 950,
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
+                >
+                  {loading ? '-' : card.value}
+                </div>
+                <div
+                  style={{ marginTop: 3, color: 'var(--muted)', fontSize: 10, fontWeight: 800 }}
+                >
+                  {card.hint}
+                </div>
+              </div>
+            ))}
+          </section>
+          <section
+            className="glass"
+            style={{ borderRadius: 18, padding: 12, display: 'grid', gap: 10 }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                gap: 8,
+                alignItems: 'center',
+              }}
+            >
+              <div style={{ color: 'var(--ink)', fontSize: 14, fontWeight: 950 }}>
+                Вовлеченность по дням
+              </div>
+              <span className="pill" style={{ fontSize: 10 }}>
+                {channelPeriodOptions.find((option) => option.value === period)?.label}
+              </span>
+            </div>
+            {loading && <AdminPlainState>Загрузка аналитики...</AdminPlainState>}
+            {!loading && (data?.periods.length ?? 0) === 0 && (
+              <AdminPlainState>Данных пока нет</AdminPlainState>
+            )}
+            {(data?.periods ?? []).slice(0, 12).map((point) => (
+              <ChannelPeriodRow key={point.periodStart} point={point} />
+            ))}
+          </section>
+        </>
+      )}
 
-      <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
-          Посты ({numberText(data?.posts.length ?? 0)})
-        </div>
-        {loading && <AdminPlainState>Загрузка постов...</AdminPlainState>}
-        {!loading && (data?.posts.length ?? 0) === 0 && (
-          <AdminPlainState>Постов пока нет</AdminPlainState>
-        )}
-        {(data?.posts ?? []).map((post) => (
-          <AdminChannelPostCard
-            key={post.id}
-            post={post}
-            onEdit={() => setEditingPost(post)}
-            onDelete={() => setDeleteTarget(post)}
-          />
-        ))}
-      </section>
+      {channelView === 'posts' && (
+        <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <button
+            type="button"
+            className="chip"
+            onClick={() => setChannelView('root')}
+            style={{
+              alignSelf: 'flex-start',
+              padding: '8px 12px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <ArrowDown size={14} style={{ transform: 'rotate(90deg)' }} />
+            Назад
+          </button>
+          <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+            Посты ({numberText(data?.posts.length ?? 0)})
+          </div>
+          {loading && <AdminPlainState>Загрузка постов...</AdminPlainState>}
+          {!loading && (data?.posts.length ?? 0) === 0 && (
+            <AdminPlainState>Постов пока нет</AdminPlainState>
+          )}
+          {(data?.posts ?? []).map((post) => (
+            <AdminChannelPostCard
+              key={post.id}
+              post={post}
+              onEdit={() => setEditingPost(post)}
+              onDelete={() => setDeleteTarget(post)}
+            />
+          ))}
+        </section>
+      )}
 
       <ChannelPostEditorSheet
         post={editingPost}
@@ -2710,6 +2996,230 @@ function AdminChannelPostCard({
         </button>
       </div>
     </article>
+  );
+}
+
+function AnticheatPanel({
+  loading,
+  data,
+  period,
+  onPeriod,
+}: {
+  loading: boolean;
+  data: AdminMismatchesResponse | undefined;
+  period: AdminMismatchPeriod;
+  onPeriod: (value: AdminMismatchPeriod) => void;
+}): JSX.Element {
+  const periodLabel = dashboardPeriodLabel(data?.period ?? period);
+  const statCards = [
+    {
+      label: 'Мисматчи',
+      value: numberText(data?.periodTotal ?? 0),
+      note: periodLabel,
+    },
+    {
+      label: 'За 24ч',
+      value: numberText(data?.last24h ?? 0),
+      note: 'последние сутки',
+    },
+    {
+      label: 'Игроков',
+      value: numberText(data?.usersAffected ?? 0),
+      note: 'с событиями',
+    },
+  ];
+
+  return (
+    <>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'minmax(0, 1fr) 126px',
+          gap: 8,
+          alignItems: 'center',
+          margin: '2px 0 -4px 0',
+        }}
+      >
+        <div className="section-label" style={{ margin: '0 0 0 -14px' }}>
+          Античит
+        </div>
+        <GlassSelect
+          value={period}
+          options={dashboardPeriodOptions}
+          onChange={onPeriod}
+          ariaLabel="Период античита"
+        />
+      </div>
+      <section
+        style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}
+      >
+        {statCards.map((card) => (
+          <div key={card.label} className="glass" style={{ borderRadius: 18, padding: 11 }}>
+            <div style={{ color: 'var(--ink)', fontSize: 21, fontWeight: 950 }}>
+              {loading ? '-' : card.value}
+            </div>
+            <div style={{ marginTop: 7, color: 'var(--muted)', fontSize: 10, fontWeight: 900 }}>
+              {card.label}
+            </div>
+            <div style={{ marginTop: 3, color: 'var(--ink)', fontSize: 10, fontWeight: 750 }}>
+              {card.note}
+            </div>
+          </div>
+        ))}
+      </section>
+      <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+          Логи ({loading ? '-' : numberText(data?.logs.length ?? 0)})
+        </div>
+        {loading && <AdminPlainState>Загрузка логов античита...</AdminPlainState>}
+        {!loading && (data?.logs.length ?? 0) === 0 && (
+          <AdminPlainState>Мисматчей за период нет</AdminPlainState>
+        )}
+        {(data?.logs ?? []).map((log) => (
+          <MismatchLogCard key={log.id} log={log} />
+        ))}
+      </section>
+    </>
+  );
+}
+
+function MismatchLogCard({ log }: { log: AdminMismatchLog }): JSX.Element {
+  const initial = log.userDisplayName.charAt(0).toUpperCase() || '?';
+  const payloadText = JSON.stringify(log.payload, null, 2);
+  const shortSessionId = log.sessionId ? log.sessionId.slice(0, 8) : '-';
+  const shortShotSessionId = log.shotSessionId ? log.shotSessionId.slice(0, 8) : '-';
+  return (
+    <article className="glass" style={{ borderRadius: 18, padding: 12, display: 'grid', gap: 10 }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '42px minmax(0, 1fr) auto',
+          gap: 10,
+          alignItems: 'center',
+        }}
+      >
+        {log.userAvatarUrl ? (
+          <img
+            src={log.userAvatarUrl}
+            alt=""
+            style={{ width: 42, height: 42, borderRadius: 999, objectFit: 'cover' }}
+          />
+        ) : (
+          <div
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: 999,
+              background: 'rgba(15, 23, 42, 0.92)',
+              color: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 16,
+              fontWeight: 950,
+            }}
+          >
+            {initial}
+          </div>
+        )}
+        <div style={{ minWidth: 0 }}>
+          <div
+            style={{
+              color: 'var(--ink)',
+              fontSize: 14,
+              fontWeight: 950,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {log.userDisplayName}
+          </div>
+          <div style={{ marginTop: 4, color: 'var(--muted)', fontSize: 10, fontWeight: 800 }}>
+            {dateTimeText(log.createdAt)}
+          </div>
+        </div>
+        <span className="pill pill--dark" style={{ fontSize: 10 }}>
+          {gameModeLabel(log.mode)}
+        </span>
+      </div>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+          gap: 8,
+        }}
+      >
+        <MismatchInfo label="Период" value={log.periodNumber?.toString() ?? '-'} />
+        <MismatchInfo label="Бросок" value={log.shotIndex?.toString() ?? '-'} />
+        <MismatchInfo label="Клиент" value={shotResultLabel(log.claimedResult)} />
+        <MismatchInfo label="Сервер" value={shotResultLabel(log.serverResult)} />
+      </div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <span className="pill" style={{ fontSize: 10 }}>
+          user {log.userId.slice(0, 8)}
+        </span>
+        <span className="pill" style={{ fontSize: 10 }}>
+          session {shortSessionId}
+        </span>
+        <span className="pill" style={{ fontSize: 10 }}>
+          shot {shortShotSessionId}
+        </span>
+        {log.gameCoreVersion !== null && (
+          <span className="pill" style={{ fontSize: 10 }}>
+            core v{log.gameCoreVersion}
+          </span>
+        )}
+      </div>
+      <details>
+        <summary style={{ color: 'var(--ink)', fontSize: 12, fontWeight: 900, cursor: 'pointer' }}>
+          Payload
+        </summary>
+        <pre
+          style={{
+            margin: '8px 0 0',
+            padding: 10,
+            borderRadius: 14,
+            background: 'rgba(15, 23, 42, 0.88)',
+            color: '#ffffff',
+            overflowX: 'auto',
+            fontSize: 10,
+            lineHeight: 1.45,
+          }}
+        >
+          {payloadText}
+        </pre>
+      </details>
+    </article>
+  );
+}
+
+function MismatchInfo({ label, value }: { label: string; value: string }): JSX.Element {
+  return (
+    <div
+      style={{
+        border: '1px solid rgba(255, 255, 255, 0.72)',
+        borderRadius: 14,
+        padding: '8px 9px',
+        background: 'rgba(255, 255, 255, 0.3)',
+        minWidth: 0,
+      }}
+    >
+      <div style={{ color: 'var(--muted)', fontSize: 10, fontWeight: 900 }}>{label}</div>
+      <div
+        style={{
+          marginTop: 4,
+          color: 'var(--ink)',
+          fontSize: 13,
+          fontWeight: 950,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {value}
+      </div>
+    </div>
   );
 }
 

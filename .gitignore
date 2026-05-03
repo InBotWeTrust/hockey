@@ -34,6 +34,7 @@ caddy-config
 
 # claude / superpowers / playwright local caches
 .claude/
+.playwright-cli/
 .playwright-mcp/
 .superpowers/
 

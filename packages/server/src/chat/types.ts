@@ -59,6 +59,14 @@ export interface MessageReactionRow {
   created_at: Date;
 }
 
+export interface ChannelPostCommentReactionRow {
+  id: string;
+  comment_id: string;
+  user_id: string;
+  emoji: string;
+  created_at: Date;
+}
+
 export interface AddReactionResult {
   added: string | null;
   removed: string | null;
@@ -142,6 +150,7 @@ export interface ChannelPostCommentRow {
   id: string;
   post_message_id: string;
   author_id: string;
+  reply_to_id: string | null;
   content: string;
   is_deleted: boolean;
   created_at: Date;
@@ -156,9 +165,11 @@ export interface ChannelPostCommentDTO {
   authorId: string;
   authorDisplayName: string | null;
   authorAvatarUrl: string | null;
+  replyToId: string | null;
   content: string;
   isDeleted: boolean;
   createdAt: string;
+  reactions: ReactionGroupDTO[];
 }
 
 export interface ChannelPostViewerDTO {

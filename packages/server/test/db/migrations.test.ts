@@ -45,6 +45,18 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     expect(names).toContain('channel_post_views');
     expect(names).toContain('feedback_messages');
     expect(names).toContain('_migrations');
+
+    const inventory = await pool.query<{ title: string; photo_url: string }>(
+      `select title, photo_url
+         from admin_inventory_items
+        where deleted_at is null
+        order by title`,
+    );
+    expect(inventory.rows).toEqual([
+      { title: 'Клюшки', photo_url: '/inventory/sticks.webp' },
+      { title: 'Коньки', photo_url: '/inventory/skates.webp' },
+      { title: 'Спортпитание', photo_url: '/inventory/nutrition.webp' },
+    ]);
   });
 
   it('records applied migrations in the ledger', async () => {
@@ -73,6 +85,8 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '019_push_preferences.sql',
       '020_admin_payments_inventory.sql',
       '021_feedback_messages.sql',
+      '022_seed_admin_inventory_items.sql',
+      '023_channel_comment_threads.sql',
     ]);
   });
 });

@@ -7,6 +7,7 @@ import type {
   ReactionGroupDTO,
   ChannelPostCommentRow,
   ChannelPostCommentDTO,
+  ChannelPostCommentReactionRow,
 } from './types.js';
 
 export function toChatMessageDTO(
@@ -85,15 +86,46 @@ export function groupReactions(
   return result;
 }
 
-export function toChannelPostCommentDTO(row: ChannelPostCommentRow): ChannelPostCommentDTO {
+export function groupCommentReactions(
+  rows: ChannelPostCommentReactionRow[],
+  currentUserId: string,
+): Map<string, ReactionGroupDTO[]> {
+  const out = new Map<string, Map<string, ReactionGroupDTO>>();
+  for (const r of rows) {
+    let perComment = out.get(r.comment_id);
+    if (!perComment) {
+      perComment = new Map();
+      out.set(r.comment_id, perComment);
+    }
+    let group = perComment.get(r.emoji);
+    if (!group) {
+      group = { emoji: r.emoji, count: 0, reactedByMe: false };
+      perComment.set(r.emoji, group);
+    }
+    group.count += 1;
+    if (r.user_id === currentUserId) group.reactedByMe = true;
+  }
+  const result = new Map<string, ReactionGroupDTO[]>();
+  for (const [commentId, byEmoji] of out) {
+    result.set(commentId, [...byEmoji.values()]);
+  }
+  return result;
+}
+
+export function toChannelPostCommentDTO(
+  row: ChannelPostCommentRow,
+  reactions: ReactionGroupDTO[] = [],
+): ChannelPostCommentDTO {
   return {
     id: row.id,
     postId: row.post_message_id,
     authorId: row.author_id,
     authorDisplayName: row.author_display_name ?? null,
     authorAvatarUrl: row.author_avatar_url ?? null,
+    replyToId: row.reply_to_id,
     content: row.is_deleted ? '' : row.content,
     isDeleted: row.is_deleted,
     createdAt: row.created_at.toISOString(),
+    reactions,
   };
 }

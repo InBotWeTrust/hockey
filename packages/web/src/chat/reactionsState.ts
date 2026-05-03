@@ -1,5 +1,9 @@
 import type { ChatMessageDTO, ReactionGroupDTO } from './api.js';
 
+interface Reactable {
+  reactions: ReactionGroupDTO[];
+}
+
 interface ReactionEvent {
   type: 'reaction:added' | 'reaction:removed';
   userId: string;
@@ -58,6 +62,10 @@ export function switchMyReactionTo(
   m: ChatMessageDTO,
   emoji: string,
 ): ChatMessageDTO {
+  return switchMyReactionToReactable(m, emoji);
+}
+
+export function switchMyReactionToReactable<T extends Reactable>(m: T, emoji: string): T {
   const mine = m.reactions.find((r) => r.reactedByMe);
   if (mine?.emoji === emoji) return m;
 
@@ -93,6 +101,10 @@ export function removeMyReaction(
   m: ChatMessageDTO,
   emoji: string,
 ): ChatMessageDTO {
+  return removeMyReactionFromReactable(m, emoji);
+}
+
+export function removeMyReactionFromReactable<T extends Reactable>(m: T, emoji: string): T {
   const target = m.reactions.find((r) => r.emoji === emoji);
   if (!target || !target.reactedByMe) return m;
   const nextCount = target.count - 1;

@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { Bold, Italic, Send } from 'lucide-react';
-import type { ChatMessageDTO } from '../api.js';
 import { ReplyPreview } from './ReplyPreview.js';
+
+export interface ChatInputReplyTarget {
+  id: string;
+  content: string;
+}
 
 interface ChatInputProps {
   disabled?: boolean;
-  replyTo: ChatMessageDTO | null;
+  replyTo: ChatInputReplyTarget | null;
   replyToSenderName?: string | undefined;
   placeholder?: string;
   formattingTools?: boolean;

@@ -453,11 +453,14 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
 
       if (body.claimed_result !== serverResult) {
         await appendEvent(client, req.user.id, 'shot_mismatch', {
+          mode: 'daily',
           day_pool_id: pool.id,
           period_number: pool.current_period,
           shot_index: body.shot_index,
           claimed: body.claimed_result,
           server: serverResult,
+          claimed_result: body.claimed_result,
+          server_result: serverResult,
         });
       }
 

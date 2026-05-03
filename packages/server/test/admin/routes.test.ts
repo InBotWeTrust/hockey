@@ -146,6 +146,84 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
     expect(invalidPeriodRes.statusCode).toBe(400);
   });
 
+  it('lists anti-cheat mismatch logs with shot context', async () => {
+    const poolInsert = await pool.query<{ id: string }>(
+      `insert into day_pool
+         (user_id, day_date, state, current_period, game_core_version, daily_seed)
+       values ($1, current_date, 'closed', 1, 42, 'daily-seed')
+       returning id`,
+      [playerId],
+    );
+    const dayPoolId = poolInsert.rows[0]!.id;
+    const shotInsert = await pool.query<{ id: string }>(
+      `insert into shot_session
+         (user_id, mode, day_pool_id, period_number, shot_index, seed,
+          input_payload, server_result, game_core_version)
+       values ($1, 'daily', $2, 1, 3, 'shot-seed', '{}'::jsonb, 'save', 42)
+       returning id`,
+      [playerId, dayPoolId],
+    );
+    const shotSessionId = shotInsert.rows[0]!.id;
+    await pool.query(
+      `insert into event_log (user_id, type, payload)
+       values ($1, 'shot_mismatch', $2::jsonb)`,
+      [
+        playerId,
+        JSON.stringify({
+          mode: 'daily',
+          day_pool_id: dayPoolId,
+          period_number: 1,
+          shot_index: 3,
+          claimed_result: 'goal',
+          server_result: 'save',
+        }),
+      ],
+    );
+
+    const denied = await app.inject({
+      method: 'GET',
+      url: '/admin/mismatches',
+      headers: auth(playerToken),
+    });
+    expect(denied.statusCode).toBe(403);
+
+    const list = await app.inject({
+      method: 'GET',
+      url: '/admin/mismatches?period=7d',
+      headers: auth(adminToken),
+    });
+    expect(list.statusCode).toBe(200);
+    expect(list.json()).toMatchObject({
+      period: '7d',
+      periodDays: 7,
+      total: 1,
+      periodTotal: 1,
+      last24h: 1,
+      usersAffected: 1,
+      logs: [
+        expect.objectContaining({
+          userId: playerId,
+          userDisplayName: 'Regular Player',
+          mode: 'daily',
+          sessionId: dayPoolId,
+          shotSessionId,
+          periodNumber: 1,
+          shotIndex: 3,
+          claimedResult: 'goal',
+          serverResult: 'save',
+          gameCoreVersion: 42,
+        }),
+      ],
+    });
+
+    const invalid = await app.inject({
+      method: 'GET',
+      url: '/admin/mismatches?period=all',
+      headers: auth(adminToken),
+    });
+    expect(invalid.statusCode).toBe(400);
+  });
+
   it('stores player feedback and lets admins mark it read manually', async () => {
     const created = await app.inject({
       method: 'POST',

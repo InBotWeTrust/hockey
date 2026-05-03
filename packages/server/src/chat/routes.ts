@@ -22,6 +22,7 @@ import {
   getUserPublicProfile,
 } from './service.js';
 import {
+  addChannelPostCommentReaction,
   addChannelPostComment,
   assertAdminUser,
   deleteChannelPost,
@@ -30,6 +31,7 @@ import {
   getChannelPostReactionUsers,
   getChannelPostViewers,
   recordChannelPostViews,
+  removeChannelPostCommentReaction,
   updateChannelPostContent,
 } from './channel.js';
 import { assertCanAccessChat, assertOwnsMessage } from './guards.js';
@@ -242,7 +244,7 @@ export const chatRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, push
     { preHandler: [app.authenticate] },
     async (req) => {
       const { postId } = z.object({ postId: uuid }).parse(req.params);
-      return await getChannelPostComments(app.pg, postId);
+      return await getChannelPostComments(app.pg, postId, req.user.id);
     },
   );
 
@@ -251,11 +253,46 @@ export const chatRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, push
     { preHandler: [app.authenticate] },
     async (req, reply) => {
       const { postId } = z.object({ postId: uuid }).parse(req.params);
-      const body = z.object({ content: z.string().trim().min(1).max(4000) }).parse(req.body);
+      const body = z
+        .object({
+          content: z.string().trim().min(1).max(4000),
+          replyToId: uuid.optional(),
+        })
+        .parse(req.body);
       await checkAndConsumeRateLimit(app.redis, req.user.id);
-      const comment = await addChannelPostComment(app.pg, postId, req.user.id, body.content);
+      const comment = await addChannelPostComment(
+        app.pg,
+        postId,
+        req.user.id,
+        body.content,
+        body.replyToId,
+      );
       reply.code(201);
       return comment;
+    },
+  );
+
+  app.post(
+    '/chat/channel/comments/:commentId/reactions',
+    { preHandler: [app.authenticate] },
+    async (req, reply) => {
+      const { commentId } = z.object({ commentId: uuid }).parse(req.params);
+      const { emoji } = z.object({ emoji: z.enum(EMOJI_WHITELIST) }).parse(req.body);
+      const result = await addChannelPostCommentReaction(app.pg, commentId, req.user.id, emoji);
+      reply.code(201);
+      return { commentId, emoji, removed: result.removed };
+    },
+  );
+
+  app.delete(
+    '/chat/channel/comments/:commentId/reactions',
+    { preHandler: [app.authenticate] },
+    async (req, reply) => {
+      const { commentId } = z.object({ commentId: uuid }).parse(req.params);
+      const { emoji } = z.object({ emoji: z.enum(EMOJI_WHITELIST) }).parse(req.body);
+      await removeChannelPostCommentReaction(app.pg, commentId, req.user.id, emoji);
+      reply.code(204);
+      return null;
     },
   );
 

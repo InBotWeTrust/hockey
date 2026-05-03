@@ -344,6 +344,44 @@ describe('AdminScreen', () => {
           { status: 200, headers: { 'content-type': 'application/json' } },
         );
       }
+      if (url.includes('/admin/mismatches')) {
+        return new Response(
+          JSON.stringify({
+            period: '30d',
+            periodDays: 30,
+            total: 1,
+            periodTotal: 1,
+            last24h: 1,
+            usersAffected: 1,
+            logs: [
+              {
+                id: 'm1',
+                userId: 'u1',
+                userDisplayName: 'Regular Player',
+                userAvatarUrl: null,
+                createdAt: '2026-05-03T08:00:00.000Z',
+                mode: 'daily',
+                sessionId: 'session-1',
+                shotSessionId: 'shot-1',
+                periodNumber: 2,
+                shotIndex: 7,
+                claimedResult: 'goal',
+                serverResult: 'save',
+                gameCoreVersion: 42,
+                payload: {
+                  mode: 'daily',
+                  day_pool_id: 'session-1',
+                  period_number: 2,
+                  shot_index: 7,
+                  claimed_result: 'goal',
+                  server_result: 'save',
+                },
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
       if (url.includes('/admin/users/u1')) {
         return new Response(
           JSON.stringify({
@@ -466,7 +504,12 @@ describe('AdminScreen', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Канал' }));
     expect(await screen.findByText('Новостной канал')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /Вовлеченность/ })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /Посты/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Вовлеченность/ }));
     expect(await screen.findByText('Вовлеченность по дням')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Назад' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Посты/ }));
     expect(await screen.findByText('Жирный пост')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Редактировать пост' }));
     fireEvent.change(await screen.findByLabelText('Текст поста'), {
@@ -490,6 +533,13 @@ describe('AdminScreen', () => {
         expect.objectContaining({ method: 'DELETE' }),
       ),
     );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Античит' }));
+    expect(await screen.findByText('Логи (1)')).toBeInTheDocument();
+    expect(await screen.findByText('Regular Player')).toBeInTheDocument();
+    expect(screen.getByText('Ежедневная игра')).toBeInTheDocument();
+    expect(screen.getByText('Бросок')).toBeInTheDocument();
+    expect(screen.getByText('Сейв')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Отзывы (2)' }));
     expect(await screen.findByText('Обратная связь (1)')).toBeInTheDocument();

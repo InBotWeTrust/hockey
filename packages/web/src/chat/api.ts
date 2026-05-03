@@ -130,9 +130,11 @@ export interface ChannelPostCommentDTO {
   authorId: string;
   authorDisplayName: string | null;
   authorAvatarUrl: string | null;
+  replyToId: string | null;
   content: string;
   isDeleted: boolean;
   createdAt: string;
+  reactions: ReactionGroupDTO[];
 }
 
 export interface ChannelPostViewerDTO {
@@ -174,10 +176,36 @@ export function fetchChannelPostComments(postId: string): Promise<ChannelPostCom
 export function sendChannelPostComment(
   postId: string,
   content: string,
+  replyToId: string | null = null,
 ): Promise<ChannelPostCommentDTO> {
+  const body: { content: string; replyToId?: string } = { content };
+  if (replyToId !== null) body.replyToId = replyToId;
   return apiFetch<ChannelPostCommentDTO>(`/chat/channel/posts/${postId}/comments`, {
     method: 'POST',
-    body: JSON.stringify({ content }),
+    body: JSON.stringify(body),
+  });
+}
+
+export interface AddCommentReactionResponse {
+  commentId: string;
+  emoji: string;
+  removed: string | null;
+}
+
+export function addChannelCommentReaction(
+  commentId: string,
+  emoji: string,
+): Promise<AddCommentReactionResponse> {
+  return apiFetch<AddCommentReactionResponse>(`/chat/channel/comments/${commentId}/reactions`, {
+    method: 'POST',
+    body: JSON.stringify({ emoji }),
+  });
+}
+
+export function removeChannelCommentReaction(commentId: string, emoji: string): Promise<void> {
+  return apiFetch<void>(`/chat/channel/comments/${commentId}/reactions`, {
+    method: 'DELETE',
+    body: JSON.stringify({ emoji }),
   });
 }
 

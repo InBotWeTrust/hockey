@@ -6,6 +6,7 @@ export type AdminLevelFilter = 'all' | 'beginner' | 'amateur' | 'professional';
 export type AdminFeedbackKind = 'review' | 'suggestion' | 'question';
 export type AdminChannelPeriod = '7d' | '30d' | '90d';
 export type AdminDashboardPeriod = '7d' | '30d' | '90d' | '365d';
+export type AdminMismatchPeriod = AdminDashboardPeriod;
 export type AdminSort =
   | 'name_asc'
   | 'name_desc'
@@ -287,6 +288,33 @@ export interface AdminFeedbackResponse {
   offset: number;
 }
 
+export interface AdminMismatchLog {
+  id: string;
+  userId: string;
+  userDisplayName: string;
+  userAvatarUrl: string | null;
+  createdAt: string;
+  mode: string;
+  sessionId: string | null;
+  shotSessionId: string | null;
+  periodNumber: number | null;
+  shotIndex: number | null;
+  claimedResult: string | null;
+  serverResult: string | null;
+  gameCoreVersion: number | null;
+  payload: unknown;
+}
+
+export interface AdminMismatchesResponse {
+  period: AdminMismatchPeriod;
+  periodDays: number;
+  total: number;
+  periodTotal: number;
+  last24h: number;
+  usersAffected: number;
+  logs: AdminMismatchLog[];
+}
+
 export interface AdminChannelPost {
   id: string;
   chatId: string;
@@ -428,6 +456,11 @@ export function fetchAdminFeedback(query: AdminFeedbackQuery): Promise<AdminFeed
   if (query.kind !== 'all') params.set('kind', query.kind);
   if (query.status !== 'all') params.set('status', query.status);
   return apiFetch<AdminFeedbackResponse>(`/admin/feedback?${params.toString()}`);
+}
+
+export function fetchAdminMismatches(period: AdminMismatchPeriod): Promise<AdminMismatchesResponse> {
+  const params = new URLSearchParams({ period, limit: '50' });
+  return apiFetch<AdminMismatchesResponse>(`/admin/mismatches?${params.toString()}`);
 }
 
 export function fetchAdminChannelNews(period: AdminChannelPeriod): Promise<AdminChannelResponse> {

@@ -167,6 +167,30 @@ interface AdminEventRow {
   created_at: Date;
 }
 
+interface AdminMismatchRow {
+  id: string;
+  user_id: string;
+  user_display_name: string;
+  user_avatar_url: string | null;
+  created_at: Date;
+  mode: string;
+  session_id: string | null;
+  shot_session_id: string | null;
+  period_number: number | null;
+  shot_index: number | null;
+  claimed_result: string | null;
+  server_result: string | null;
+  game_core_version: number | null;
+  payload: unknown;
+}
+
+interface AdminMismatchSummaryRow {
+  total: string;
+  period_total: string;
+  last_24h: string;
+  users_affected: string;
+}
+
 type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded' | 'canceled';
 
 interface AdminPaymentRow {
@@ -351,15 +375,28 @@ const dashboardPeriodQuerySchema = z.object({
   period: z.enum(['7d', '30d', '90d', '365d']).default('30d'),
 });
 
+const mismatchQuerySchema = z.object({
+  period: z.enum(['7d', '30d', '90d', '365d']).default('30d'),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+
 const feedbackPatchSchema = z
   .object({
     isRead: z.boolean(),
   })
   .strict();
 
+const inventoryPhotoUrlSchema = z
+  .string()
+  .trim()
+  .refine(
+    (value) => value === '' || value.startsWith('/') || z.string().url().safeParse(value).success,
+    'invalid photo url',
+  );
+
 const inventoryItemBodySchema = z
   .object({
-    photoUrl: z.string().trim().url().or(z.literal('')).optional(),
+    photoUrl: inventoryPhotoUrlSchema.optional(),
     title: z.string().trim().min(1).max(120).optional(),
     description: z.string().trim().max(1000).optional(),
     priceRub: z.number().int().min(0).max(9_000_000_000).optional(),
@@ -368,7 +405,7 @@ const inventoryItemBodySchema = z
 
 const createInventoryItemSchema = inventoryItemBodySchema.extend({
   title: z.string().trim().min(1).max(120),
-  photoUrl: z.string().trim().url().or(z.literal('')).default(''),
+  photoUrl: inventoryPhotoUrlSchema.default(''),
   description: z.string().trim().max(1000).default(''),
   priceRub: z.number().int().min(0).max(9_000_000_000),
 });
@@ -1035,6 +1072,104 @@ async function fetchAdminDashboardSeries(
   return rows;
 }
 
+async function fetchAdminMismatchSummary(
+  client: Pool | PoolClient,
+  periodDays: number,
+): Promise<AdminMismatchSummaryRow> {
+  const { rows } = await client.query<AdminMismatchSummaryRow>(
+    `select count(*)::int as total,
+            count(*) filter (
+              where created_at >= now() - ($1::int * interval '1 day')
+            )::int as period_total,
+            count(*) filter (
+              where created_at >= now() - interval '24 hours'
+            )::int as last_24h,
+            count(distinct user_id) filter (
+              where created_at >= now() - ($1::int * interval '1 day')
+            )::int as users_affected
+       from event_log
+      where type = 'shot_mismatch'`,
+    [periodDays],
+  );
+  return rows[0] ?? { total: '0', period_total: '0', last_24h: '0', users_affected: '0' };
+}
+
+async function fetchAdminMismatchLogs(
+  client: Pool | PoolClient,
+  periodDays: number,
+  limit: number,
+): Promise<AdminMismatchRow[]> {
+  const { rows } = await client.query<AdminMismatchRow>(
+    `select e.id::text,
+            e.user_id::text,
+            case
+              when u.display_source = 'vk' then
+                coalesce(nullif(concat_ws(' ', u.vk_first_name, u.vk_last_name), ''), u.vk_username, 'Player')
+              when u.display_source = 'telegram' then
+                coalesce(nullif(concat_ws(' ', u.tg_first_name, u.tg_last_name), ''), u.tg_username, u.display_name, 'Player')
+              else coalesce(u.display_name, 'Player')
+            end as user_display_name,
+            case
+              when u.display_source = 'vk' then u.vk_avatar_url
+              when u.display_source = 'telegram' then u.tg_avatar_url
+              else u.avatar_url
+            end as user_avatar_url,
+            e.created_at,
+            coalesce(
+              e.payload->>'mode',
+              s.mode,
+              case when e.payload ? 'training_session_id' then 'training' else 'daily' end
+            ) as mode,
+            coalesce(
+              e.payload->>'training_session_id',
+              e.payload->>'day_pool_id',
+              s.training_session_id::text,
+              s.day_pool_id::text
+            ) as session_id,
+            s.id::text as shot_session_id,
+            coalesce(nullif(e.payload->>'period_number', '')::int, s.period_number)::int
+              as period_number,
+            coalesce(nullif(e.payload->>'shot_index', '')::int, s.shot_index)::int
+              as shot_index,
+            coalesce(e.payload->>'claimed_result', e.payload->>'claimed') as claimed_result,
+            coalesce(e.payload->>'server_result', e.payload->>'server', s.server_result)
+              as server_result,
+            s.game_core_version,
+            e.payload
+       from event_log e
+       join users u on u.id = e.user_id
+       left join lateral (
+         select ss.id,
+                ss.mode,
+                ss.day_pool_id,
+                ss.training_session_id,
+                ss.period_number,
+                ss.shot_index,
+                ss.server_result,
+                ss.game_core_version,
+                ss.created_at
+           from shot_session ss
+          where ss.user_id = e.user_id
+            and ss.shot_index = nullif(e.payload->>'shot_index', '')::int
+            and (
+              (e.payload ? 'day_pool_id' and ss.day_pool_id::text = e.payload->>'day_pool_id')
+              or (
+                e.payload ? 'training_session_id'
+                and ss.training_session_id::text = e.payload->>'training_session_id'
+              )
+            )
+          order by abs(extract(epoch from (ss.created_at - e.created_at))) asc
+          limit 1
+       ) s on true
+      where e.type = 'shot_mismatch'
+        and e.created_at >= now() - ($1::int * interval '1 day')
+      order by e.created_at desc
+      limit $2`,
+    [periodDays, limit],
+  );
+  return rows;
+}
+
 async function fetchAdminUser(client: Pool | PoolClient, userId: string): Promise<AdminUserRow> {
   const { rows } = await client.query<AdminUserRow>(
     `select u.id, u.display_name, u.avatar_url, u.display_source,
@@ -1228,6 +1363,43 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
         notifications,
       ),
       gameCoreVersion: GAME_CORE_VERSION,
+    };
+  });
+
+  app.get('/admin/mismatches', { preHandler: adminPreHandlers }, async (req) => {
+    const parsed = mismatchQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      throw new AppError('bad_request', 'invalid mismatch query', 400);
+    }
+    const period = parsed.data.period;
+    const periodDays = dashboardPeriodDays(period);
+    const [summary, logs] = await Promise.all([
+      fetchAdminMismatchSummary(app.pg, periodDays),
+      fetchAdminMismatchLogs(app.pg, periodDays, parsed.data.limit),
+    ]);
+    return {
+      period,
+      periodDays,
+      total: Number(summary.total),
+      periodTotal: Number(summary.period_total),
+      last24h: Number(summary.last_24h),
+      usersAffected: Number(summary.users_affected),
+      logs: logs.map((row) => ({
+        id: row.id,
+        userId: row.user_id,
+        userDisplayName: row.user_display_name,
+        userAvatarUrl: row.user_avatar_url,
+        createdAt: row.created_at.toISOString(),
+        mode: row.mode,
+        sessionId: row.session_id,
+        shotSessionId: row.shot_session_id,
+        periodNumber: row.period_number,
+        shotIndex: row.shot_index,
+        claimedResult: row.claimed_result,
+        serverResult: row.server_result,
+        gameCoreVersion: row.game_core_version,
+        payload: row.payload,
+      })),
     };
   });
 

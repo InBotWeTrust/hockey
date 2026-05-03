@@ -1,6 +1,8 @@
 import type { Pool } from 'pg';
 import type {
+  AddReactionResult,
   ChannelPostCommentDTO,
+  ChannelPostCommentReactionRow,
   ChannelPostCommentRow,
   ChannelPostReactionUserDTO,
   ChannelPostViewerDTO,
@@ -8,7 +10,12 @@ import type {
   MessageReactionRow,
   MessageRow,
 } from './types.js';
-import { toChannelPostCommentDTO, toChatMessageDTO, groupReactions } from './dto.js';
+import {
+  toChannelPostCommentDTO,
+  toChatMessageDTO,
+  groupCommentReactions,
+  groupReactions,
+} from './dto.js';
 import { MessageNotFoundError } from './errors.js';
 import { AppError } from '../plugins/errors.js';
 
@@ -79,8 +86,9 @@ export async function recordChannelPostViews(
 export async function getChannelPostComments(
   pool: Pool,
   postId: string,
+  currentUserId: string,
 ): Promise<ChannelPostCommentDTO[]> {
-  await getChannelPost(pool, postId, '00000000-0000-0000-0000-000000000000');
+  await getChannelPost(pool, postId, currentUserId);
   const rows = await pool.query<ChannelPostCommentRow>(
     `select c.*,
             u.display_name as author_display_name,
@@ -92,7 +100,14 @@ export async function getChannelPostComments(
       order by c.created_at asc`,
     [postId],
   );
-  return rows.rows.map(toChannelPostCommentDTO);
+  const commentIds = rows.rows.map((row) => row.id);
+  if (commentIds.length === 0) return [];
+  const reactions = await pool.query<ChannelPostCommentReactionRow>(
+    `select * from channel_post_comment_reactions where comment_id = any($1::uuid[])`,
+    [commentIds],
+  );
+  const grouped = groupCommentReactions(reactions.rows, currentUserId);
+  return rows.rows.map((row) => toChannelPostCommentDTO(row, grouped.get(row.id) ?? []));
 }
 
 export async function addChannelPostComment(
@@ -100,12 +115,27 @@ export async function addChannelPostComment(
   postId: string,
   authorId: string,
   content: string,
+  replyToId?: string,
 ): Promise<ChannelPostCommentDTO> {
   await getChannelPost(pool, postId, authorId);
+  if (replyToId !== undefined) {
+    const replyTo = await pool.query<{ id: string }>(
+      `select id
+         from channel_post_comments
+        where id = $1
+          and post_message_id = $2
+          and is_deleted = false
+        limit 1`,
+      [replyToId, postId],
+    );
+    if (replyTo.rowCount === 0) {
+      throw new AppError('comment_not_found', `Comment ${replyToId} not found`, 404);
+    }
+  }
   const row = await pool.query<ChannelPostCommentRow>(
     `with ins as (
-       insert into channel_post_comments (post_message_id, author_id, content)
-       values ($1, $2, $3)
+       insert into channel_post_comments (post_message_id, author_id, content, reply_to_id)
+       values ($1, $2, $3, $4)
        returning *
      )
      select ins.*,
@@ -113,9 +143,83 @@ export async function addChannelPostComment(
             u.avatar_url as author_avatar_url
        from ins
        left join users u on u.id = ins.author_id`,
-    [postId, authorId, content],
+    [postId, authorId, content, replyToId ?? null],
   );
-  return toChannelPostCommentDTO(row.rows[0]!);
+  return toChannelPostCommentDTO(row.rows[0]!, []);
+}
+
+export async function getChannelPostCommentOr404(
+  pool: Pool,
+  commentId: string,
+): Promise<ChannelPostCommentRow> {
+  const row = await pool.query<ChannelPostCommentRow>(
+    `select c.*,
+            u.display_name as author_display_name,
+            u.avatar_url as author_avatar_url
+       from channel_post_comments c
+       join messages m on m.id = c.post_message_id and m.is_deleted = false
+       join chats ch on ch.id = m.chat_id and ch.type = 'channel' and ch.is_active = true
+       left join users u on u.id = c.author_id
+      where c.id = $1
+        and c.is_deleted = false
+      limit 1`,
+    [commentId],
+  );
+  if (row.rowCount === 0) {
+    throw new AppError('comment_not_found', `Comment ${commentId} not found`, 404);
+  }
+  return row.rows[0]!;
+}
+
+export async function addChannelPostCommentReaction(
+  pool: Pool,
+  commentId: string,
+  userId: string,
+  emoji: string,
+): Promise<AddReactionResult> {
+  await getChannelPostCommentOr404(pool, commentId);
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    const del = await client.query<{ emoji: string }>(
+      `delete from channel_post_comment_reactions
+       where comment_id = $1 and user_id = $2 and emoji != $3
+       returning emoji`,
+      [commentId, userId, emoji],
+    );
+    const ins = await client.query<{ id: string }>(
+      `insert into channel_post_comment_reactions (comment_id, user_id, emoji)
+       values ($1, $2, $3)
+       on conflict (comment_id, user_id) do nothing
+       returning id`,
+      [commentId, userId, emoji],
+    );
+    await client.query('commit');
+    return {
+      added: ins.rowCount && ins.rowCount > 0 ? emoji : null,
+      removed: del.rowCount && del.rowCount > 0 ? del.rows[0]!.emoji : null,
+    };
+  } catch (err) {
+    await client.query('rollback');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+export async function removeChannelPostCommentReaction(
+  pool: Pool,
+  commentId: string,
+  userId: string,
+  emoji: string,
+): Promise<{ removed: boolean }> {
+  await getChannelPostCommentOr404(pool, commentId);
+  const row = await pool.query(
+    `delete from channel_post_comment_reactions
+      where comment_id = $1 and user_id = $2 and emoji = $3`,
+    [commentId, userId, emoji],
+  );
+  return { removed: (row.rowCount ?? 0) > 0 };
 }
 
 export async function updateChannelPostContent(
