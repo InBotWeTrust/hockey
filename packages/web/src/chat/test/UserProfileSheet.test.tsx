@@ -15,6 +15,7 @@ const publicProfile: api.UserPublicProfileDTO = {
     goals: 64,
     accuracy: 50,
     playStreakDays: 7,
+    bestPlayStreakDays: 12,
   },
   achievements: [
     {
@@ -79,6 +80,7 @@ describe('UserProfileSheet', () => {
     expect(screen.getByText('128')).toBeInTheDocument();
     expect(screen.getByText('Голы')).toBeInTheDocument();
     expect(screen.getByText('64')).toBeInTheDocument();
+    expect(screen.getByText('(12)')).toBeInTheDocument();
     expect(screen.getByText('Достижения (1/1)')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Первая шайба.*получено/i })).toBeInTheDocument();
   });

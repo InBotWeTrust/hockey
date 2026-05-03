@@ -40,6 +40,7 @@ describe('UserProfileScreen', () => {
         goals: 64,
         accuracy: 50,
         playStreakDays: 7,
+        bestPlayStreakDays: 12,
       },
       achievements: [
         {
@@ -72,6 +73,7 @@ describe('UserProfileScreen', () => {
     expect(screen.getByText('64')).toBeInTheDocument();
     expect(screen.getByText('50%')).toBeInTheDocument();
     expect(screen.getByText('7')).toBeInTheDocument();
+    expect(screen.getByText('(12)')).toBeInTheDocument();
     expect(screen.getByText('Достижения (1/1)')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Первая шайба.*получено/i }));
