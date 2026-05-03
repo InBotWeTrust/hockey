@@ -181,6 +181,9 @@ describe('ProfileScreen', () => {
     expect(screen.getByRole('switch', { name: 'Новости игры' })).toBeInTheDocument();
     expect(screen.getByText('Обратная связь')).toBeInTheDocument();
     expect(screen.getByText('Форма обратной связи')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Написать в обратную связь' })).toHaveClass(
+      'btn--cta',
+    );
     expect(screen.queryByRole('button', { name: /Тестовый пуш/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Первая шайба.*получено/i })).toBeInTheDocument();
     expect(
@@ -259,8 +262,11 @@ describe('ProfileScreen', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Написать в обратную связь' }));
     const ratingFive = screen.getByRole('radio', { name: '5 из 5' });
-    expect(ratingFive).toHaveTextContent('5');
-    expect(ratingFive.querySelector('svg')).toBeNull();
+    [0, 1, 2, 3, 4, 5].forEach((value) => {
+      const ratingButton = screen.getByRole('radio', { name: `${value} из 5` });
+      expect(ratingButton).toHaveTextContent(String(value));
+      expect(ratingButton.querySelector('svg')).toBeNull();
+    });
 
     fireEvent.click(ratingFive);
     fireEvent.change(screen.getByLabelText('Сообщение'), {

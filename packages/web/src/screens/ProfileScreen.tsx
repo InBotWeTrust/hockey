@@ -1058,7 +1058,7 @@ export function ProfileScreen(): JSX.Element {
         </div>
         <button
           type="button"
-          className="btn btn--ghost"
+          className="btn btn--cta"
           data-no-drag-scroll="true"
           aria-label="Написать в обратную связь"
           onClick={() => setFeedbackOpen(true)}
