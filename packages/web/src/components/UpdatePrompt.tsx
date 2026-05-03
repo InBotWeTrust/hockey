@@ -1,5 +1,4 @@
 import { useRegisterSW } from 'virtual:pwa-register/react';
-import { RefreshCw } from 'lucide-react';
 
 const UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -49,7 +48,9 @@ export function UpdatePrompt(): JSX.Element | null {
 
   return (
     <div
-      role="presentation"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Доступно обновление"
       style={{
         position: 'fixed',
         inset: 0,
@@ -58,70 +59,35 @@ export function UpdatePrompt(): JSX.Element | null {
         alignItems: 'center',
         justifyContent: 'center',
         padding: '20px',
-        background: 'rgba(15, 23, 42, 0.28)',
-        backdropFilter: 'blur(10px)',
-        WebkitBackdropFilter: 'blur(10px)',
+        background: 'rgba(15, 23, 42, 0.35)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
         fontFamily: 'var(--font-sans)',
       }}
     >
-      <section
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="app-update-title"
+      <div
         className="glass"
         style={{
-          width: 'min(390px, 100%)',
           borderRadius: 24,
-          padding: 18,
-          display: 'grid',
-          gap: 14,
+          padding: '22px 22px 18px',
+          maxWidth: 320,
+          width: '100%',
           color: 'var(--ink)',
           boxShadow: '0 24px 70px rgba(15, 23, 42, 0.22)',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div
-            aria-hidden="true"
-            style={{
-              width: 46,
-              height: 46,
-              borderRadius: 16,
-              background: 'rgba(15, 23, 42, 0.92)',
-              color: '#ffffff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >
-            <RefreshCw size={22} />
-          </div>
-          <div style={{ minWidth: 0 }}>
-            <h2
-              id="app-update-title"
-              style={{
-                margin: 0,
-                color: 'var(--ink)',
-                fontSize: 20,
-                fontWeight: 900,
-                lineHeight: 1.12,
-                letterSpacing: 0,
-              }}
-            >
-              Доступно обновление
-            </h2>
-            <p
-              style={{
-                margin: '5px 0 0',
-                color: 'var(--muted)',
-                fontSize: 13,
-                fontWeight: 750,
-                lineHeight: 1.35,
-              }}
-            >
-              Перезагрузим приложение, чтобы открыть свежую версию.
-            </p>
-          </div>
+        <div
+          style={{
+            fontSize: 15,
+            fontWeight: 700,
+            color: 'var(--ink)',
+            marginBottom: 10,
+          }}
+        >
+          Доступно обновление
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>
+          Перезагрузим приложение, чтобы открыть свежую версию.
         </div>
         <button
           type="button"
@@ -130,17 +96,16 @@ export function UpdatePrompt(): JSX.Element | null {
             void updateServiceWorker(true);
           }}
           style={{
-            minHeight: 52,
-            borderRadius: 18,
-            fontSize: 15,
-            letterSpacing: 0,
+            marginTop: 18,
             width: '100%',
+            padding: '12px 0',
+            fontSize: 14,
+            letterSpacing: 0,
           }}
         >
-          <RefreshCw size={18} />
           Обновить приложение
         </button>
-      </section>
+      </div>
     </div>
   );
 }
