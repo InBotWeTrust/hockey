@@ -16,7 +16,6 @@ import {
   Bell,
   BellOff,
   CalendarDays,
-  CheckCircle,
   ChevronRight,
   CreditCard,
   Dumbbell,
@@ -3942,7 +3941,6 @@ function FeedbackCard({
               whiteSpace: 'nowrap',
             }}
           >
-            <CheckCircle size={14} />
             Прочитано
           </span>
         ) : (
@@ -3960,7 +3958,6 @@ function FeedbackCard({
               whiteSpace: 'nowrap',
             }}
           >
-            <CheckCircle size={14} />
             Прочитать
           </button>
         )}
