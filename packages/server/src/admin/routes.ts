@@ -9,6 +9,13 @@ import { buildProfileProgress } from '../profile/summary.js';
 import { deleteChannelPost, updateChannelPostContent } from '../chat/channel.js';
 import { publishMessageDeleted, publishMessageUpdated } from '../chat/events.js';
 import { DEFAULT_NEWS_CHANNEL_SLUG } from '../chat/service.js';
+import {
+  listPushNotificationTemplates,
+  mapPushNotificationTemplate,
+  updatePushNotificationTemplate,
+  type PushNotificationTemplatePatch,
+} from '../push/templates.js';
+import type { PushEventType } from '../push/preferences.js';
 
 type UserRole = 'player' | 'admin';
 type DisplaySource = 'custom' | 'telegram' | 'vk';
@@ -380,11 +387,45 @@ const mismatchQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 
+const pushEventTypeSchema = z.enum([
+  'chat.new_dialog_message',
+  'daily.available',
+  'daily.period_ending',
+  'daily.break_finished',
+  'training.available',
+  'news.posted',
+]);
+
 const feedbackPatchSchema = z
   .object({
     isRead: z.boolean(),
   })
   .strict();
+
+const pushNotificationTemplatePatchSchema = z
+  .object({
+    title: z.string().trim().min(1).max(80).optional(),
+    body: z.string().trim().min(1).max(240).optional(),
+    trigger: z.string().trim().min(1).max(500).optional(),
+    clickUrl: z
+      .string()
+      .trim()
+      .min(1)
+      .max(240)
+      .regex(/^\/(?!\/)/)
+      .optional(),
+    isEnabled: z.boolean().optional(),
+  })
+  .strict()
+  .refine(
+    (value) =>
+      value.title !== undefined ||
+      value.body !== undefined ||
+      value.trigger !== undefined ||
+      value.clickUrl !== undefined ||
+      value.isEnabled !== undefined,
+    'no changes',
+  );
 
 const inventoryPhotoUrlSchema = z
   .string()
@@ -1400,6 +1441,44 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
         gameCoreVersion: row.game_core_version,
         payload: row.payload,
       })),
+    };
+  });
+
+  app.get('/admin/notifications', { preHandler: adminPreHandlers }, async () => {
+    const templates = await listPushNotificationTemplates(app.pg);
+    return { notifications: templates.map(mapPushNotificationTemplate) };
+  });
+
+  app.patch('/admin/notifications/:key', { preHandler: adminPreHandlers }, async (req) => {
+    const params = z.object({ key: pushEventTypeSchema }).parse(req.params);
+    const body = pushNotificationTemplatePatchSchema.safeParse(req.body);
+    if (!body.success) {
+      throw new AppError('bad_request', 'invalid notification template patch', 400);
+    }
+    const patch: PushNotificationTemplatePatch = {};
+    if (body.data.title !== undefined) patch.title = body.data.title;
+    if (body.data.body !== undefined) patch.body = body.data.body;
+    if (body.data.trigger !== undefined) patch.trigger = body.data.trigger;
+    if (body.data.clickUrl !== undefined) patch.clickUrl = body.data.clickUrl;
+    if (body.data.isEnabled !== undefined) patch.isEnabled = body.data.isEnabled;
+
+    const updated = await updatePushNotificationTemplate(
+      app.pg,
+      params.key as PushEventType,
+      patch,
+      req.user.id,
+    );
+    if (updated === null) {
+      throw new AppError('not_found', 'notification template not found', 404);
+    }
+    await appendEvent(app.pg, req.user.id, 'admin_push_notification_updated', {
+      key: params.key,
+      fields: Object.keys(body.data),
+    });
+    const templates = await listPushNotificationTemplates(app.pg);
+    const template = templates.find((item) => item.key === params.key);
+    return {
+      notification: mapPushNotificationTemplate(template ?? updated),
     };
   });
 

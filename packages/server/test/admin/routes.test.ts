@@ -224,6 +224,68 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
     expect(invalid.statusCode).toBe(400);
   });
 
+  it('lists and updates push notification templates', async () => {
+    const denied = await app.inject({
+      method: 'GET',
+      url: '/admin/notifications',
+      headers: auth(playerToken),
+    });
+    expect(denied.statusCode).toBe(403);
+
+    const list = await app.inject({
+      method: 'GET',
+      url: '/admin/notifications',
+      headers: auth(adminToken),
+    });
+    expect(list.statusCode).toBe(200);
+    expect(list.json().notifications).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: 'news.posted',
+          title: 'Новости игры',
+          body: '{{postContent}}',
+          trigger: 'Админ публикует новый пост в новостном канале.',
+          clickUrl: '/chat/{{chatId}}',
+          isEnabled: true,
+        }),
+      ]),
+    );
+
+    const patch = await app.inject({
+      method: 'PATCH',
+      url: '/admin/notifications/news.posted',
+      headers: auth(adminToken),
+      payload: {
+        title: 'Срочная новость',
+        body: 'Открывай канал',
+        trigger: 'Публикация важной новости',
+        clickUrl: '/chat/news',
+        isEnabled: false,
+      },
+    });
+    expect(patch.statusCode).toBe(200);
+    expect(patch.json()).toMatchObject({
+      notification: {
+        key: 'news.posted',
+        title: 'Срочная новость',
+        body: 'Открывай канал',
+        trigger: 'Публикация важной новости',
+        clickUrl: '/chat/news',
+        isEnabled: false,
+        updatedBy: adminId,
+        updatedByDisplayName: 'Egor Admin',
+      },
+    });
+
+    const invalid = await app.inject({
+      method: 'PATCH',
+      url: '/admin/notifications/news.posted',
+      headers: auth(adminToken),
+      payload: { clickUrl: 'https://example.com' },
+    });
+    expect(invalid.statusCode).toBe(400);
+  });
+
   it('stores player feedback and lets admins mark it read manually', async () => {
     const created = await app.inject({
       method: 'POST',

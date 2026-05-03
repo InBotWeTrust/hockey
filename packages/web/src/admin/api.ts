@@ -7,6 +7,14 @@ export type AdminFeedbackKind = 'review' | 'suggestion' | 'question';
 export type AdminChannelPeriod = '7d' | '30d' | '90d';
 export type AdminDashboardPeriod = '7d' | '30d' | '90d' | '365d';
 export type AdminMismatchPeriod = AdminDashboardPeriod;
+export type AdminPushNotificationKey =
+  | 'chat.new_dialog_message'
+  | 'daily.available'
+  | 'daily.period_ending'
+  | 'daily.break_finished'
+  | 'training.available'
+  | 'news.posted';
+export type AdminPushNotificationCategory = 'chat' | 'daily' | 'training' | 'news';
 export type AdminSort =
   | 'name_asc'
   | 'name_desc'
@@ -315,6 +323,27 @@ export interface AdminMismatchesResponse {
   logs: AdminMismatchLog[];
 }
 
+export interface AdminPushNotification {
+  key: AdminPushNotificationKey;
+  category: AdminPushNotificationCategory;
+  title: string;
+  body: string;
+  trigger: string;
+  clickUrl: string;
+  isEnabled: boolean;
+  updatedAt: string;
+  updatedBy: string | null;
+  updatedByDisplayName: string | null;
+}
+
+export interface AdminPushNotificationPatch {
+  title?: string;
+  body?: string;
+  trigger?: string;
+  clickUrl?: string;
+  isEnabled?: boolean;
+}
+
 export interface AdminChannelPost {
   id: string;
   chatId: string;
@@ -461,6 +490,23 @@ export function fetchAdminFeedback(query: AdminFeedbackQuery): Promise<AdminFeed
 export function fetchAdminMismatches(period: AdminMismatchPeriod): Promise<AdminMismatchesResponse> {
   const params = new URLSearchParams({ period, limit: '50' });
   return apiFetch<AdminMismatchesResponse>(`/admin/mismatches?${params.toString()}`);
+}
+
+export function fetchAdminNotifications(): Promise<{ notifications: AdminPushNotification[] }> {
+  return apiFetch<{ notifications: AdminPushNotification[] }>('/admin/notifications');
+}
+
+export function patchAdminNotification(
+  key: AdminPushNotificationKey,
+  body: AdminPushNotificationPatch,
+): Promise<{ notification: AdminPushNotification }> {
+  return apiFetch<{ notification: AdminPushNotification }>(
+    `/admin/notifications/${encodeURIComponent(key)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    },
+  );
 }
 
 export function fetchAdminChannelNews(period: AdminChannelPeriod): Promise<AdminChannelResponse> {

@@ -41,6 +41,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     expect(names).toContain('game_settings');
     expect(names).toContain('push_subscriptions');
     expect(names).toContain('user_push_preferences');
+    expect(names).toContain('push_notification_templates');
     expect(names).toContain('channel_post_comments');
     expect(names).toContain('channel_post_comment_reactions');
     expect(names).toContain('channel_post_views');
@@ -58,6 +59,18 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       { title: 'Коньки', photo_url: '/inventory/skates.webp' },
       { title: 'Спортпитание', photo_url: '/inventory/nutrition.webp' },
     ]);
+
+    const notifications = await pool.query<{ key: string; click_url: string }>(
+      `select key, click_url
+         from push_notification_templates
+        order by key`,
+    );
+    expect(notifications.rows).toEqual(
+      expect.arrayContaining([
+        { key: 'news.posted', click_url: '/chat/{{chatId}}' },
+        { key: 'training.available', click_url: '/' },
+      ]),
+    );
   });
 
   it('records applied migrations in the ledger', async () => {
@@ -88,6 +101,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '021_feedback_messages.sql',
       '022_seed_admin_inventory_items.sql',
       '023_channel_comment_threads.sql',
+      '024_push_notification_templates.sql',
     ]);
   });
 });

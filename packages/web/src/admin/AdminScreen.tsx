@@ -58,6 +58,7 @@ import {
   fetchAdminGameSettings,
   fetchAdminInventory,
   fetchAdminMismatches,
+  fetchAdminNotifications,
   fetchAdminPayments,
   fetchAdminSummary,
   fetchAdminUser,
@@ -66,6 +67,7 @@ import {
   patchAdminFeedback,
   patchAdminInventoryItem,
   patchAdminGameSetting,
+  patchAdminNotification,
   patchAdminUser,
   type AdminDashboard,
   type AdminDashboardPeriod,
@@ -83,6 +85,10 @@ import {
   type AdminMismatchPeriod,
   type AdminMismatchesResponse,
   type AdminNotificationStats,
+  type AdminPushNotification,
+  type AdminPushNotificationCategory,
+  type AdminPushNotificationKey,
+  type AdminPushNotificationPatch,
   type AdminUserDetail,
   type AdminLevelFilter,
   type AdminPayment,
@@ -98,6 +104,7 @@ import {
 type AdminTab =
   | 'dashboard'
   | 'users'
+  | 'notifications'
   | 'channel'
   | 'anticheat'
   | 'payments'
@@ -114,6 +121,7 @@ type AdminFeedbackStatus = AdminFeedbackQuery['status'];
 const tabs: Array<{ id: AdminTab; label: string; icon: JSX.Element }> = [
   { id: 'dashboard', label: 'Дашборд', icon: <BarChart3 size={15} /> },
   { id: 'users', label: 'Игроки', icon: <Users size={15} /> },
+  { id: 'notifications', label: 'Уведомления', icon: <Bell size={15} /> },
   { id: 'channel', label: 'Канал', icon: <Megaphone size={15} /> },
   { id: 'anticheat', label: 'Античит', icon: <ShieldAlert size={15} /> },
   { id: 'payments', label: 'Платежи', icon: <CreditCard size={15} /> },
@@ -134,6 +142,18 @@ const dashboardPeriodOptions: Array<GlassSelectOption<AdminDashboardPeriod>> = [
   { value: '90d', label: '90 дней' },
   { value: '365d', label: '1 год' },
 ];
+
+const pushNotificationStatusOptions: Array<GlassSelectOption<'enabled' | 'disabled'>> = [
+  { value: 'enabled', label: 'Включено' },
+  { value: 'disabled', label: 'Отключено' },
+];
+
+const pushNotificationCategoryLabels: Record<AdminPushNotificationCategory, string> = {
+  chat: 'Чат',
+  daily: 'Ежедневная игра',
+  training: 'Тренировка',
+  news: 'Новости',
+};
 
 const settingSections: Array<{
   id: SettingsSectionId;
@@ -526,6 +546,11 @@ export function AdminScreen(): JSX.Element {
     queryFn: () => fetchAdminMismatches(mismatchPeriod),
     enabled: canTryAdmin && tab === 'anticheat',
   });
+  const notifications = useQuery({
+    queryKey: ['admin', 'notifications'],
+    queryFn: fetchAdminNotifications,
+    enabled: canTryAdmin && tab === 'notifications',
+  });
   const channel = useQuery({
     queryKey: ['admin', 'channel', channelPeriod],
     queryFn: () => fetchAdminChannelNews(channelPeriod),
@@ -547,6 +572,7 @@ export function AdminScreen(): JSX.Element {
       inventory.error,
       feedback.error,
       mismatches.error,
+      notifications.error,
       channel.error,
     ].some((error) => error instanceof ApiError && error.status === 403);
 
@@ -661,6 +687,15 @@ export function AdminScreen(): JSX.Element {
           filtersChanged={filtersChanged}
           onResetFilters={resetUserFilters}
           onCloseUser={() => setSelectedUserId(null)}
+        />
+      )}
+      {tab === 'notifications' && (
+        <NotificationsPanel
+          loading={notifications.isLoading}
+          notifications={notifications.data?.notifications ?? []}
+          onChanged={() => {
+            void queryClient.invalidateQueries({ queryKey: ['admin', 'notifications'] });
+          }}
         />
       )}
       {tab === 'channel' && (
@@ -2581,6 +2616,317 @@ function ConfirmAction({
         </button>
       </div>
     </div>
+  );
+}
+
+function NotificationsPanel({
+  loading,
+  notifications,
+  onChanged,
+}: {
+  loading: boolean;
+  notifications: AdminPushNotification[];
+  onChanged: () => void;
+}): JSX.Element {
+  const [editing, setEditing] = useState<AdminPushNotification | null>(null);
+  const enabledCount = notifications.filter((item) => item.isEnabled).length;
+
+  return (
+    <>
+      <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+        Уведомления ({numberText(notifications.length)})
+      </div>
+      <section
+        className="glass"
+        style={{
+          borderRadius: 20,
+          padding: 12,
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+          gap: 8,
+        }}
+      >
+        <div
+          style={{
+            border: '1px solid rgba(255, 255, 255, 0.72)',
+            borderRadius: 16,
+            padding: 10,
+            background: 'rgba(255, 255, 255, 0.28)',
+          }}
+        >
+          <div style={{ color: 'var(--muted)', fontSize: 10, fontWeight: 900 }}>Активные</div>
+          <div style={{ marginTop: 5, color: 'var(--ink)', fontSize: 22, fontWeight: 950 }}>
+            {loading ? '-' : numberText(enabledCount)}
+          </div>
+        </div>
+        <div
+          style={{
+            border: '1px solid rgba(255, 255, 255, 0.72)',
+            borderRadius: 16,
+            padding: 10,
+            background: 'rgba(255, 255, 255, 0.28)',
+          }}
+        >
+          <div style={{ color: 'var(--muted)', fontSize: 10, fontWeight: 900 }}>Всего</div>
+          <div style={{ marginTop: 5, color: 'var(--ink)', fontSize: 22, fontWeight: 950 }}>
+            {loading ? '-' : numberText(notifications.length)}
+          </div>
+        </div>
+      </section>
+      {editing !== null && (
+        <NotificationEditor
+          notification={editing}
+          onCancel={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            onChanged();
+          }}
+        />
+      )}
+      <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {loading && <AdminPlainState>Загрузка уведомлений...</AdminPlainState>}
+        {!loading && notifications.length === 0 && (
+          <AdminPlainState>Уведомлений пока нет</AdminPlainState>
+        )}
+        {notifications.map((notification) => (
+          <NotificationTemplateCard
+            key={notification.key}
+            notification={notification}
+            onEdit={() => setEditing(notification)}
+          />
+        ))}
+      </section>
+    </>
+  );
+}
+
+function NotificationTemplateCard({
+  notification,
+  onEdit,
+}: {
+  notification: AdminPushNotification;
+  onEdit: () => void;
+}): JSX.Element {
+  return (
+    <article className="glass" style={{ borderRadius: 18, padding: 12, display: 'grid', gap: 10 }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'minmax(0, 1fr) auto',
+          gap: 10,
+          alignItems: 'start',
+        }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span className={notification.isEnabled ? 'pill pill--dark' : 'pill'}>
+              {notification.isEnabled ? 'Вкл.' : 'Выкл.'}
+            </span>
+            <span className="pill" style={{ fontSize: 10 }}>
+              {pushNotificationCategoryLabels[notification.category]}
+            </span>
+            <span className="pill" style={{ fontSize: 10 }}>
+              {notification.key}
+            </span>
+          </div>
+          <div style={{ marginTop: 8, color: 'var(--ink)', fontSize: 16, fontWeight: 950 }}>
+            {notification.title}
+          </div>
+          <div
+            style={{
+              marginTop: 5,
+              color: 'rgba(15, 23, 42, 0.78)',
+              fontSize: 13,
+              fontWeight: 750,
+              lineHeight: 1.35,
+              whiteSpace: 'pre-wrap',
+              overflowWrap: 'anywhere',
+            }}
+          >
+            {notification.body}
+          </div>
+        </div>
+        <button
+          type="button"
+          className="icon-btn"
+          onClick={onEdit}
+          aria-label={`Редактировать ${notification.title}`}
+          title="Редактировать"
+          style={{ width: 44, height: 44 }}
+        >
+          <Pencil size={15} />
+        </button>
+      </div>
+      <div style={{ display: 'grid', gap: 7 }}>
+        <NotificationInfo label="Триггер" value={notification.trigger} />
+        <NotificationInfo label="Путь" value={notification.clickUrl} />
+      </div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <span className="pill" style={{ fontSize: 10 }}>
+          Обновлено {dateText(notification.updatedAt)}
+        </span>
+        {notification.updatedByDisplayName && (
+          <span className="pill" style={{ fontSize: 10 }}>
+            {notification.updatedByDisplayName}
+          </span>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function NotificationInfo({ label, value }: { label: string; value: string }): JSX.Element {
+  return (
+    <div
+      style={{
+        border: '1px solid rgba(255, 255, 255, 0.72)',
+        borderRadius: 14,
+        padding: '8px 9px',
+        background: 'rgba(255, 255, 255, 0.3)',
+        minWidth: 0,
+      }}
+    >
+      <div style={{ color: 'var(--muted)', fontSize: 10, fontWeight: 900 }}>{label}</div>
+      <div
+        style={{
+          marginTop: 4,
+          color: 'var(--ink)',
+          fontSize: 12,
+          fontWeight: 850,
+          overflowWrap: 'anywhere',
+          lineHeight: 1.35,
+        }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function NotificationEditor({
+  notification,
+  onCancel,
+  onSaved,
+}: {
+  notification: AdminPushNotification;
+  onCancel: () => void;
+  onSaved: () => void;
+}): JSX.Element {
+  const [title, setTitle] = useState(notification.title);
+  const [body, setBody] = useState(notification.body);
+  const [trigger, setTrigger] = useState(notification.trigger);
+  const [clickUrl, setClickUrl] = useState(notification.clickUrl);
+  const [status, setStatus] = useState<'enabled' | 'disabled'>(
+    notification.isEnabled ? 'enabled' : 'disabled',
+  );
+  const mutation = useMutation({
+    mutationFn: () => {
+      const patch: AdminPushNotificationPatch = {
+        title: title.trim(),
+        body: body.trim(),
+        trigger: trigger.trim(),
+        clickUrl: clickUrl.trim(),
+        isEnabled: status === 'enabled',
+      };
+      return patchAdminNotification(notification.key as AdminPushNotificationKey, patch);
+    },
+    onSuccess: onSaved,
+  });
+  const normalizedClickUrl = clickUrl.trim();
+  const canSave =
+    title.trim() !== '' &&
+    body.trim() !== '' &&
+    trigger.trim() !== '' &&
+    normalizedClickUrl.startsWith('/') &&
+    !normalizedClickUrl.startsWith('//');
+
+  return (
+    <section className="glass" style={{ borderRadius: 20, padding: 14, display: 'grid', gap: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ color: 'var(--ink)', fontSize: 15, fontWeight: 950 }}>
+            Редактирование уведомления
+          </div>
+          <div
+            style={{
+              marginTop: 4,
+              color: 'var(--muted)',
+              fontSize: 11,
+              fontWeight: 800,
+              overflowWrap: 'anywhere',
+            }}
+          >
+            {notification.key}
+          </div>
+        </div>
+        <span className="pill">{pushNotificationCategoryLabels[notification.category]}</span>
+      </div>
+      <AdminField label="Статус">
+        <GlassSelect
+          value={status}
+          options={pushNotificationStatusOptions}
+          onChange={setStatus}
+          ariaLabel="Статус уведомления"
+        />
+      </AdminField>
+      <AdminField label="Заголовок">
+        <input
+          aria-label="Заголовок"
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+        />
+      </AdminField>
+      <AdminField label="Текст">
+        <textarea
+          aria-label="Текст"
+          value={body}
+          onChange={(event) => setBody(event.target.value)}
+          rows={3}
+          style={{ resize: 'vertical', minHeight: 84, lineHeight: 1.35 }}
+        />
+      </AdminField>
+      <AdminField label="Триггер">
+        <textarea
+          aria-label="Триггер"
+          value={trigger}
+          onChange={(event) => setTrigger(event.target.value)}
+          rows={3}
+          style={{ resize: 'vertical', minHeight: 84, lineHeight: 1.35 }}
+        />
+      </AdminField>
+      <AdminField label="Путь при клике">
+        <input
+          aria-label="Путь при клике"
+          value={clickUrl}
+          onChange={(event) => setClickUrl(event.target.value)}
+        />
+      </AdminField>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        <button
+          type="button"
+          className="btn btn--ghost"
+          onClick={onCancel}
+          style={{ padding: '10px', fontSize: 12, letterSpacing: 0 }}
+        >
+          Отмена
+        </button>
+        <button
+          type="button"
+          className="btn btn--cta"
+          onClick={() => mutation.mutate()}
+          disabled={mutation.isPending || !canSave}
+          style={{ padding: '10px', fontSize: 12, letterSpacing: 0 }}
+        >
+          <Save size={14} />
+          Сохранить
+        </button>
+      </div>
+      {mutation.isError && (
+        <div role="alert" style={{ color: 'var(--red-deep)', fontSize: 12 }}>
+          {mutation.error instanceof Error ? mutation.error.message : 'Ошибка сохранения'}
+        </div>
+      )}
+    </section>
   );
 }
 

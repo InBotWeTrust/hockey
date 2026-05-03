@@ -11,6 +11,7 @@ export type EventType =
   | 'admin_game_setting_updated'
   | 'admin_channel_post_updated'
   | 'admin_channel_post_deleted'
+  | 'admin_push_notification_updated'
   | 'admin_inventory_item_created'
   | 'admin_inventory_item_updated'
   | 'admin_inventory_item_deleted';

@@ -11,6 +11,7 @@ import {
   type WebPushPayload,
   type WebPushSubscription,
 } from './service.js';
+import { renderPushNotificationPayload } from './templates.js';
 
 interface NewsPushSubscriptionRow extends PushPreferencesRow {
   id: string;
@@ -51,11 +52,11 @@ function compactBody(body: string): string {
   return `${normalized.slice(0, BODY_LIMIT - 1).trimEnd()}…`;
 }
 
-function buildPayload(input: SendNewsPostPushInput): WebPushPayload {
+function buildPayload(base: WebPushPayload, input: SendNewsPostPushInput): WebPushPayload {
   const payload: WebPushPayload = {
-    title: input.title,
-    body: compactBody(input.body),
-    url: input.url,
+    title: base.title,
+    body: compactBody(base.body),
+    url: base.url,
   };
   if (input.tag !== undefined) payload.tag = input.tag;
   return payload;
@@ -84,7 +85,24 @@ export async function sendNewsPostPush(
     [input.senderUserId],
   );
 
-  const payload = buildPayload(input);
+  const rendered = await renderPushNotificationPayload(
+    pool,
+    'news.posted',
+    {
+      postContent: input.body,
+      chatId: input.url.startsWith('/chat/') ? input.url.slice('/chat/'.length) : '',
+    },
+    {
+      title: input.title,
+      body: input.body,
+      url: input.url,
+    },
+  );
+  if (rendered === null) {
+    return { total: rows.length, sent: 0, skipped: rows.length, failed: 0 };
+  }
+
+  const payload = buildPayload(rendered, input);
   let sent = 0;
   let skipped = 0;
   let failed = 0;

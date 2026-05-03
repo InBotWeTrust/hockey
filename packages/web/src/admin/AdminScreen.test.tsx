@@ -382,6 +382,69 @@ describe('AdminScreen', () => {
           { status: 200, headers: { 'content-type': 'application/json' } },
         );
       }
+      if (url.includes('/admin/notifications/news.posted')) {
+        return new Response(
+          JSON.stringify({
+            notification: {
+              key: 'news.posted',
+              category: 'news',
+              title:
+                typeof init?.body === 'string'
+                  ? JSON.parse(init.body).title
+                  : 'Большая новость',
+              body:
+                typeof init?.body === 'string'
+                  ? JSON.parse(init.body).body
+                  : '{{postContent}}',
+              trigger:
+                typeof init?.body === 'string'
+                  ? JSON.parse(init.body).trigger
+                  : 'Публикация новости',
+              clickUrl:
+                typeof init?.body === 'string' ? JSON.parse(init.body).clickUrl : '/chat/{{chatId}}',
+              isEnabled:
+                typeof init?.body === 'string' ? JSON.parse(init.body).isEnabled : true,
+              updatedAt: '2026-05-03T08:10:00.000Z',
+              updatedBy: 'admin',
+              updatedByDisplayName: 'Egor',
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.includes('/admin/notifications')) {
+        return new Response(
+          JSON.stringify({
+            notifications: [
+              {
+                key: 'news.posted',
+                category: 'news',
+                title: 'Новости игры',
+                body: '{{postContent}}',
+                trigger: 'Админ публикует новый пост в новостном канале.',
+                clickUrl: '/chat/{{chatId}}',
+                isEnabled: true,
+                updatedAt: '2026-05-03T08:00:00.000Z',
+                updatedBy: null,
+                updatedByDisplayName: null,
+              },
+              {
+                key: 'training.available',
+                category: 'training',
+                title: 'Тренировка доступна',
+                body: 'Можно снова потренироваться.',
+                trigger: 'Через 24 часа после прошлой тренировки.',
+                clickUrl: '/',
+                isEnabled: false,
+                updatedAt: '2026-05-03T08:00:00.000Z',
+                updatedBy: null,
+                updatedByDisplayName: null,
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
       if (url.includes('/admin/users/u1')) {
         return new Response(
           JSON.stringify({
@@ -540,6 +603,40 @@ describe('AdminScreen', () => {
     expect(screen.getByText('Ежедневная игра')).toBeInTheDocument();
     expect(screen.getByText('Бросок')).toBeInTheDocument();
     expect(screen.getByText('Сейв')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Уведомления' }));
+    expect(await screen.findByText('Уведомления (2)')).toBeInTheDocument();
+    expect(await screen.findByText('Новости игры')).toBeInTheDocument();
+    expect(screen.getByText('/chat/{{chatId}}')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать Новости игры' }));
+    fireEvent.change(await screen.findByLabelText('Заголовок'), {
+      target: { value: 'Большая новость' },
+    });
+    fireEvent.change(await screen.findByLabelText('Текст'), {
+      target: { value: 'Матч уже в игре' },
+    });
+    fireEvent.change(await screen.findByLabelText('Триггер'), {
+      target: { value: 'Публикация новости' },
+    });
+    fireEvent.change(await screen.findByLabelText('Путь при клике'), {
+      target: { value: '/chat/news' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/admin/notifications/news.posted',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({
+            title: 'Большая новость',
+            body: 'Матч уже в игре',
+            trigger: 'Публикация новости',
+            clickUrl: '/chat/news',
+            isEnabled: true,
+          }),
+        }),
+      ),
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'Отзывы (2)' }));
     expect(await screen.findByText('Обратная связь (1)')).toBeInTheDocument();
