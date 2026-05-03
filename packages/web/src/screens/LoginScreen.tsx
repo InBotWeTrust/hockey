@@ -71,11 +71,7 @@ export function LoginScreen(): JSX.Element {
           Ultimate Hockey
         </h1>
         <div style={{ fontSize: 14, color: 'var(--muted)', lineHeight: 1.42 }}>
-          Поймай окно между движущимся
-          <br />
-          вратарём и воротами.
-          <br />
-          Играй день, тренируйся и открывай уровни.
+          Живи жизнью профессионального хоккеиста
         </div>
       </div>
 
@@ -89,16 +85,16 @@ export function LoginScreen(): JSX.Element {
         }}
       >
         <span className="pill" style={{ fontSize: 11, padding: '5px 12px' }}>
-          Тайминг
+          тренировки
         </span>
         <span className="pill" style={{ fontSize: 11, padding: '5px 12px' }}>
-          Рейтинг
+          игры
         </span>
         <span className="pill" style={{ fontSize: 11, padding: '5px 12px' }}>
-          3 уровня
+          соревнования
         </span>
         <span className="pill" style={{ fontSize: 11, padding: '5px 12px' }}>
-          PWA
+          призы
         </span>
       </div>
 
