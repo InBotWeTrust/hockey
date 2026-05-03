@@ -45,7 +45,6 @@ import { ApiError } from '../api/apiFetch.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { ChannelPostEditorSheet } from '../chat/components/ChannelPostEditorSheet.js';
 import { RichText } from '../chat/richText.js';
-import { NAV_HEIGHT } from '../components/BottomNav.js';
 import { GlassSelect, type GlassSelectOption } from '../components/GlassSelect.js';
 import { useDebouncedValue } from '../lib/useDebouncedValue.js';
 import { AchievementDetailsSheet, AchievementTile } from '../screens/profileSections.js';
@@ -596,10 +595,10 @@ export function AdminScreen(): JSX.Element {
     <main
       className="screen no-scrollbar admin-screen"
       style={{
-        height: '100dvh',
+        height: '100%',
         minHeight: 0,
         overflowY: 'auto',
-        padding: `calc(14px + var(--app-safe-top)) 14px calc(${NAV_HEIGHT + 18}px + var(--app-safe-bottom))`,
+        padding: 'calc(14px + var(--app-safe-top)) 14px 18px',
         gap: 12,
       }}
     >

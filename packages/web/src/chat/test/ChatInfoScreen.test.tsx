@@ -3,7 +3,6 @@ import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { ChatInfoScreen } from '../screens/ChatInfoScreen.js';
-import { NAV_HEIGHT } from '../../components/BottomNav.js';
 import * as api from '../api.js';
 
 function renderScreen(): HTMLElement {
@@ -48,10 +47,10 @@ describe('ChatInfoScreen', () => {
     expect(await screen.findByText('Участники')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Player 12' })).toBeInTheDocument();
     expect(main).toHaveStyle({
-      height: '100dvh',
+      height: '100%',
       minHeight: '0',
       overflowY: 'auto',
-      paddingBottom: `calc(${NAV_HEIGHT + 24}px + var(--app-safe-bottom))`,
+      paddingBottom: '24px',
     });
   });
 });

@@ -16,7 +16,6 @@ import {
   type PushSubscriptionPayload,
 } from '../api/push.js';
 import { useAuthStore } from '../auth/authStore.js';
-import { NAV_HEIGHT } from '../components/BottomNav.js';
 import type { ProfileAchievement, ProfileData } from './profileTypes.js';
 import {
   AchievementDetailsSheet,
@@ -765,9 +764,9 @@ export function ProfileScreen(): JSX.Element {
       onPointerUp={handlePointerEnd}
       onPointerCancel={handlePointerEnd}
       style={{
-        height: '100dvh',
+        height: '100%',
         minHeight: 0,
-        paddingBottom: `calc(${NAV_HEIGHT + 16}px + var(--app-safe-bottom))`,
+        paddingBottom: 16,
         overflowY: 'auto',
         overscrollBehaviorY: 'contain',
         touchAction: 'pan-y',

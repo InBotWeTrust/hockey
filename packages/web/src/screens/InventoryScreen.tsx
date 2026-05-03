@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { NAV_HEIGHT } from '../components/BottomNav.js';
 
 const INVENTORY_ARTWORK_SIZE = 104;
 
@@ -36,7 +35,7 @@ export function InventoryScreen(): JSX.Element {
     <main
       className="screen"
       style={{
-        padding: `calc(16px + var(--app-safe-top)) 14px calc(${NAV_HEIGHT + 24}px + var(--app-safe-bottom))`,
+        padding: 'calc(16px + var(--app-safe-top)) 14px 24px',
         gap: 14,
       }}
     >

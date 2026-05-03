@@ -42,110 +42,116 @@ export function App(): JSX.Element {
           style={{
             maxWidth: 430,
             margin: '0 auto',
+            width: '100%',
+            height: '100dvh',
             minHeight: '100dvh',
             position: 'relative',
             transform: 'translateZ(0)',
             overflow: 'hidden',
+            display: 'grid',
+            gridTemplateRows: 'minmax(0, 1fr) auto',
             background: 'linear-gradient(180deg, var(--app-bg-top) 0%, var(--app-bg-bottom) 100%)',
             boxShadow: '0 0 0 1px rgba(15,23,42,0.08), 0 8px 48px rgba(15,23,42,0.14)',
           }}
         >
-          <Routes>
-            <Route path="/login" element={<LoginScreen />} />
-            <Route path="/demo" element={<DemoScreen />} />
-            <Route path="/auth/vk/callback" element={<VkAuthCallbackScreen />} />
-            <Route
-              path="/"
-              element={
-                <PrivateRoute>
-                  <DailyScreen />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/duel/:goalieId"
-              element={
-                <PrivateRoute>
-                  <DailyScreen />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/inventory"
-              element={
-                <PrivateRoute>
-                  <InventoryScreen />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/profile"
-              element={
-                <PrivateRoute>
-                  <ProfileScreen />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/profile/settings"
-              element={
-                <PrivateRoute>
-                  <ProfileSettingsScreen />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/admin"
-              element={
-                <PrivateRoute>
-                  <AdminScreen />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/chat"
-              element={
-                <PrivateRoute>
-                  <ChatListScreen />
-                </PrivateRoute>
-              }
-            />
-            <Route path="/chat/new" element={<Navigate to="/chat?new=1" replace />} />
-            <Route
-              path="/chat/:chatId"
-              element={
-                <PrivateRoute>
-                  <ChatRoomScreen />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/chat/:chatId/info"
-              element={
-                <PrivateRoute>
-                  <ChatInfoScreen />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/chat/:chatId/posts/:postId/comments"
-              element={
-                <PrivateRoute>
-                  <ChannelPostCommentsScreen />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/users/:userId"
-              element={
-                <PrivateRoute>
-                  <UserProfileScreen />
-                </PrivateRoute>
-              }
-            />
-          </Routes>
+          <div className="app-content">
+            <Routes>
+              <Route path="/login" element={<LoginScreen />} />
+              <Route path="/demo" element={<DemoScreen />} />
+              <Route path="/auth/vk/callback" element={<VkAuthCallbackScreen />} />
+              <Route
+                path="/"
+                element={
+                  <PrivateRoute>
+                    <DailyScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/duel/:goalieId"
+                element={
+                  <PrivateRoute>
+                    <DailyScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/inventory"
+                element={
+                  <PrivateRoute>
+                    <InventoryScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/profile"
+                element={
+                  <PrivateRoute>
+                    <ProfileScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/profile/settings"
+                element={
+                  <PrivateRoute>
+                    <ProfileSettingsScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/admin"
+                element={
+                  <PrivateRoute>
+                    <AdminScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/chat"
+                element={
+                  <PrivateRoute>
+                    <ChatListScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route path="/chat/new" element={<Navigate to="/chat?new=1" replace />} />
+              <Route
+                path="/chat/:chatId"
+                element={
+                  <PrivateRoute>
+                    <ChatRoomScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/chat/:chatId/info"
+                element={
+                  <PrivateRoute>
+                    <ChatInfoScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/chat/:chatId/posts/:postId/comments"
+                element={
+                  <PrivateRoute>
+                    <ChannelPostCommentsScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/users/:userId"
+                element={
+                  <PrivateRoute>
+                    <UserProfileScreen />
+                  </PrivateRoute>
+                }
+              />
+            </Routes>
+          </div>
+          <BottomNav />
         </div>
-        <BottomNav />
         <UpdatePrompt />
       </BrowserRouter>
     </QueryClientProvider>

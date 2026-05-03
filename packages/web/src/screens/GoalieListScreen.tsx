@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Filter } from 'lucide-react';
 import { GOALIES, type GoaliePatternId } from '@hockey/game-core';
-import { NAV_HEIGHT } from '../components/BottomNav.js';
 
 const PATTERN_LABEL: Record<GoaliePatternId, string> = {
   linear: 'Линейный',
@@ -27,7 +26,7 @@ export function GoalieListScreen(): JSX.Element {
     <main
       className="screen"
       style={{
-        paddingBottom: `calc(${NAV_HEIGHT + 16}px + var(--app-safe-bottom))`,
+        paddingBottom: 16,
       }}
     >
       <header className="header-bar glass">

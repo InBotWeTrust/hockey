@@ -369,6 +369,7 @@ function GameHub({
   const [dailyStatsOpen, setDailyStatsOpen] = useState(false);
   const pending = useDailyStore((s) => s.inFlight);
   const nextPeriod = data.current_period === 0 ? 1 : data.current_period + 1;
+  const dailyAvailableTitle = `${nextPeriod}-й период доступен`;
   const breakEndsAt = data.break_ends_at ? new Date(data.break_ends_at).getTime() : 0;
   const periodEndsAt = data.period_ends_at ? new Date(data.period_ends_at).getTime() : 0;
   const nextDayAt = new Date(data.next_day_starts_at).getTime();
@@ -441,7 +442,7 @@ function GameHub({
         ? 'Перерыв'
         : data.state === 'closed'
           ? 'Завершена'
-          : 'Игра доступна';
+          : dailyAvailableTitle;
   const dailyHubScoreboard =
     data.state === 'period_active'
       ? {
@@ -475,7 +476,7 @@ function GameHub({
                 timerLabel: 'Время',
                 timer: formatMs(HUB_PERIOD_DURATION_MS),
                 activePeriod: nextPeriod,
-                ariaLabel: `Игра доступна. Время периода ${formatMs(HUB_PERIOD_DURATION_MS)}. Период ${nextPeriod}`,
+                ariaLabel: `${dailyAvailableTitle}. Время периода ${formatMs(HUB_PERIOD_DURATION_MS)}. Период ${nextPeriod}`,
               };
   const amateurGoals = Math.min(1000, data.lifetime_total_goals);
   const amateurProgress = Math.round((amateurGoals / 1000) * 100);
@@ -531,8 +532,7 @@ function GameHub({
     <main
       className="screen"
       style={{
-        minHeight: '100dvh',
-        padding: 'calc(16px + var(--app-safe-top)) 14px calc(92px + var(--app-safe-bottom))',
+        padding: 'calc(16px + var(--app-safe-top)) 14px 24px',
         overflowY: 'auto',
       }}
     >
@@ -1468,7 +1468,7 @@ function ModeShell({
     <main
       className="screen"
       style={{
-        padding: 'calc(16px + var(--app-safe-top)) 14px calc(92px + var(--app-safe-bottom))',
+        padding: 'calc(16px + var(--app-safe-top)) 14px 24px',
         gap: 14,
       }}
     >

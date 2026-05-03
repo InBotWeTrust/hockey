@@ -7,7 +7,6 @@ import { TelegramLoginButton, type TelegramAuthPayload } from '../auth/TelegramL
 import { useAuthStore, type AuthSession } from '../auth/authStore.js';
 import { useLogout } from '../auth/useLogout.js';
 import { startVkOAuth } from '../auth/vkAuth.js';
-import { NAV_HEIGHT } from '../components/BottomNav.js';
 import type { ProfileData } from './profileTypes.js';
 
 function providerName(data: ProfileData | undefined, source: 'telegram' | 'vk'): string {
@@ -178,7 +177,7 @@ export function ProfileSettingsScreen(): JSX.Element {
       className="screen"
       style={{
         paddingTop: 'var(--app-safe-top)',
-        paddingBottom: `calc(${NAV_HEIGHT + 16}px + var(--app-safe-bottom))`,
+        paddingBottom: 16,
       }}
     >
       <div

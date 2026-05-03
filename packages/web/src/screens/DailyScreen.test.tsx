@@ -113,7 +113,7 @@ describe('DailyScreen', () => {
     ).toBeInTheDocument();
     expect(screen.getByText(/Здесь будут собраны все игровые события/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Понятно' }));
-    expect(screen.getByText('Игра доступна')).toBeInTheDocument();
+    expect(screen.getByText('1-й период доступен')).toBeInTheDocument();
     expect(screen.getByText('Время')).toBeInTheDocument();
     expect(screen.getByText('20:00')).toBeInTheDocument();
     expect(screen.getByText('Период')).toBeInTheDocument();
@@ -137,6 +137,22 @@ describe('DailyScreen', () => {
       filter: 'grayscale(1) saturate(0.1)',
       opacity: '0.58',
     });
+  });
+
+  it('names the next available daily period on the hub', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ ...baseState, current_period: 2 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+
+    renderWith();
+
+    expect(await screen.findByText('3-й период доступен')).toBeInTheDocument();
+    expect(
+      screen.getByLabelText('3-й период доступен. Время периода 20:00. Период 3'),
+    ).toBeInTheDocument();
   });
 
   it('restores amateur artwork color after 1000 lifetime goals', async () => {

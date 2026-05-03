@@ -3,7 +3,6 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { fetchChatInfo, type ChatInfoDTO } from '../api.js';
 import { chatKeys } from '../../lib/queryKeys.js';
-import { NAV_HEIGHT } from '../../components/BottomNav.js';
 import { UserAvatar } from '../components/UserAvatar.js';
 
 function formatMemberCount(n: number): string {
@@ -38,10 +37,10 @@ export function ChatInfoScreen(): JSX.Element {
     <main
       className="screen"
       style={{
-        height: '100dvh',
+        height: '100%',
         minHeight: 0,
         paddingTop: 'var(--app-safe-top)',
-        paddingBottom: `calc(${NAV_HEIGHT + 24}px + var(--app-safe-bottom))`,
+        paddingBottom: 24,
         overflowY: 'auto',
         overscrollBehaviorY: 'contain',
         WebkitOverflowScrolling: 'touch',

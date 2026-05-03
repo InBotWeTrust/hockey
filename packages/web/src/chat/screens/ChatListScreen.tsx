@@ -152,7 +152,7 @@ export function ChatListScreen(): JSX.Element {
     <main
       className="screen"
       style={{
-        paddingBottom: `calc(${NAV_HEIGHT + 16}px + var(--app-safe-bottom))`,
+        paddingBottom: 16,
       }}
     >
       <div

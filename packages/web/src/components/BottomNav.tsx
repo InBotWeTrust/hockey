@@ -80,14 +80,17 @@ export function BottomNav(): JSX.Element | null {
   const inactiveIconColor = isDemo ? 'rgba(71, 85, 105, 0.48)' : 'var(--muted)';
 
   return (
-    <>
+    <div
+      style={{
+        padding: '0 12px max(12px, var(--app-safe-bottom))',
+        zIndex: 2,
+      }}
+    >
       <nav
         aria-label={isDemo ? 'Демо-навигация' : 'Навигация'}
         style={{
-          position: 'fixed',
-          left: 12,
-          right: 12,
-          bottom: 'max(12px, var(--app-safe-bottom))',
+          position: 'relative',
+          width: '100%',
           maxWidth: 406,
           margin: '0 auto',
           height: 54,
@@ -241,7 +244,7 @@ export function BottomNav(): JSX.Element | null {
           </div>
         </>
       )}
-    </>
+    </div>
   );
 }
 
