@@ -5,7 +5,15 @@ import { sendWebPush, type ResolvedPushVapidOptions } from '../../src/push/servi
 function createP256KeyPair(): { publicKey: string; privateKey: string } {
   const ecdh = createECDH('prime256v1');
   const publicKey = ecdh.generateKeys().toString('base64url');
-  const privateKey = ecdh.getPrivateKey().toString('base64url');
+  const privateBytes = ecdh.getPrivateKey();
+  if (privateBytes.length > 32) {
+    throw new Error('unexpected P-256 private key length');
+  }
+  const normalizedPrivateKey =
+    privateBytes.length === 32
+      ? privateBytes
+      : Buffer.concat([Buffer.alloc(32 - privateBytes.length), privateBytes]);
+  const privateKey = normalizedPrivateKey.toString('base64url');
   return { publicKey, privateKey };
 }
 
