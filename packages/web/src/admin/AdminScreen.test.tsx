@@ -495,7 +495,8 @@ describe('AdminScreen', () => {
     expect(await screen.findByText('Обратная связь (1)')).toBeInTheDocument();
     expect(screen.getAllByText('Непрочитанные').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Очень нравится ежедневная игра.')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Прочитано' }));
+    expect(screen.queryByText('Новое')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Прочитать' }));
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
         '/api/admin/feedback/fb1',

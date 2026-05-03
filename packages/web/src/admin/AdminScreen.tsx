@@ -2957,11 +2957,9 @@ function FeedbackPanel({
         }}
       >
         <div
-          className="glass"
           style={{
             gridColumn: '1 / -1',
-            borderRadius: 16,
-            padding: '10px 12px',
+            padding: '2px 2px 6px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -2972,12 +2970,13 @@ function FeedbackPanel({
             Непрочитанные
           </span>
           <span
+            className="pill pill--dark"
             style={{
-              color: 'var(--ink)',
               fontFamily: 'var(--font-mono)',
-              fontSize: 24,
+              fontSize: 16,
               fontWeight: 900,
-              lineHeight: 1,
+              minWidth: 42,
+              justifyContent: 'center',
               fontVariantNumeric: 'tabular-nums',
             }}
           >
@@ -3010,7 +3009,7 @@ function FeedbackPanel({
             key={item.id}
             item={item}
             pending={markMutation.isPending}
-            onToggleRead={() => markMutation.mutate({ id: item.id, isRead: !item.isRead })}
+            onMarkRead={() => markMutation.mutate({ id: item.id, isRead: true })}
           />
         ))}
       </section>
@@ -3021,11 +3020,11 @@ function FeedbackPanel({
 function FeedbackCard({
   item,
   pending,
-  onToggleRead,
+  onMarkRead,
 }: {
   item: AdminFeedback;
   pending: boolean;
-  onToggleRead: () => void;
+  onMarkRead: () => void;
 }): JSX.Element {
   return (
     <article
@@ -3048,9 +3047,6 @@ function FeedbackCard({
       >
         <div style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
-            <span className={item.isRead ? 'pill' : 'pill pill--dark'} style={{ fontSize: 10 }}>
-              {item.isRead ? 'Прочитано' : 'Новое'}
-            </span>
             <span className="pill" style={{ fontSize: 10 }}>
               {feedbackKindLabel(item.kind)}
             </span>
@@ -3080,23 +3076,39 @@ function FeedbackCard({
             {item.readAt ? ` · прочитал ${item.readByDisplayName ?? 'админ'}` : ''}
           </div>
         </div>
-        <button
-          type="button"
-          className={item.isRead ? 'btn btn--ghost' : 'btn btn--cta'}
-          disabled={pending}
-          onClick={onToggleRead}
-          style={{
-            minHeight: 38,
-            padding: '0 12px',
-            borderRadius: 13,
-            fontSize: 11,
-            letterSpacing: 0,
-            whiteSpace: 'nowrap',
-          }}
-        >
-          <CheckCircle size={14} />
-          {item.isRead ? 'В непрочитанные' : 'Прочитано'}
-        </button>
+        {item.isRead ? (
+          <span
+            className="pill"
+            style={{
+              minHeight: 38,
+              padding: '0 12px',
+              borderRadius: 13,
+              fontSize: 11,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <CheckCircle size={14} />
+            Прочитано
+          </span>
+        ) : (
+          <button
+            type="button"
+            className="btn btn--cta"
+            disabled={pending}
+            onClick={onMarkRead}
+            style={{
+              minHeight: 38,
+              padding: '0 12px',
+              borderRadius: 13,
+              fontSize: 11,
+              letterSpacing: 0,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <CheckCircle size={14} />
+            Прочитать
+          </button>
+        )}
       </div>
       <div
         style={{
