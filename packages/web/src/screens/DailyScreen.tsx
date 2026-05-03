@@ -2073,7 +2073,6 @@ export function DemoScreen(): JSX.Element {
         timer="ДЕМО"
         timerLabel="РЕЖИМ"
         backLabel="На вход"
-        bottomInset="calc(12px + var(--app-safe-bottom))"
         optimisticAddShot={() => {}}
         submitShot={submitDemoShot}
         applyState={applyDemoState}

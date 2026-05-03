@@ -18,6 +18,7 @@ export function BottomNav(): JSX.Element | null {
   const updateUser = useAuthStore((s) => s.updateUser);
   const location = useLocation();
   const navigate = useNavigate();
+  const isDemo = location.pathname === '/demo';
   const [toast, setToast] = useState<string | null>(null);
   const toastTimerRef = useRef<number | null>(null);
 
@@ -27,12 +28,12 @@ export function BottomNav(): JSX.Element | null {
   const { data: unreadMap } = useQuery<Record<string, number>>({
     queryKey: chatKeys.unread(),
     queryFn: fetchUnreadCounts,
-    enabled: Boolean(user),
+    enabled: Boolean(user) && !isDemo,
   });
   const { data: refreshedUser } = useQuery<AuthUser>({
     queryKey: ['auth', 'me-role'],
     queryFn: () => apiFetch<AuthUser>('/me'),
-    enabled: Boolean(user) && user?.role === undefined,
+    enabled: Boolean(user) && !isDemo && user?.role === undefined,
   });
 
   useEffect(() => {
@@ -67,19 +68,21 @@ export function BottomNav(): JSX.Element | null {
 
   // Hide nav inside a chat room — composer takes the nav's spot.
   const isInChatRoom = /^\/chat\/[^/]+(?:\/posts\/[^/]+\/comments)?$/.test(location.pathname);
-  if (!user || location.pathname === '/login' || location.pathname === '/demo' || isInChatRoom) {
+  if (location.pathname === '/login' || isInChatRoom || (!user && !isDemo)) {
     return null;
   }
 
-  const isGame = location.pathname === '/' || location.pathname.startsWith('/duel');
+  const isGame = isDemo || location.pathname === '/' || location.pathname.startsWith('/duel');
   const isInventory = location.pathname.startsWith('/inventory');
   const isProfile = location.pathname.startsWith('/profile');
   const isAdmin = location.pathname.startsWith('/admin');
-  const showAdmin = user.role === 'admin';
+  const showAdmin = !isDemo && user?.role === 'admin';
+  const inactiveIconColor = isDemo ? 'rgba(71, 85, 105, 0.48)' : 'var(--muted)';
 
   return (
     <>
       <nav
+        aria-label={isDemo ? 'Демо-навигация' : 'Навигация'}
         style={{
           position: 'fixed',
           left: 12,
@@ -99,15 +102,17 @@ export function BottomNav(): JSX.Element | null {
           WebkitBackdropFilter: 'blur(20px)',
           boxShadow: '0 8px 32px rgba(15,23,42,0.18), 0 2px 8px rgba(15,23,42,0.10)',
           border: '1px solid rgba(255,255,255,0.7)',
+          pointerEvents: isDemo ? 'none' : 'auto',
         }}
       >
         <NavTab
           label="Игра"
+          disabled={isDemo}
           active={isGame}
           icon={
             <Gamepad2
               size={ICON_SIZE}
-              color={isGame ? '#ffffff' : 'var(--muted)'}
+              color={isGame ? '#ffffff' : inactiveIconColor}
               strokeWidth={2}
             />
           }
@@ -115,11 +120,12 @@ export function BottomNav(): JSX.Element | null {
         />
         <NavTab
           label="Инвентарь"
+          disabled={isDemo}
           active={isInventory}
           icon={
             <Package
               size={ICON_SIZE}
-              color={isInventory ? '#ffffff' : 'var(--muted)'}
+              color={isInventory ? '#ffffff' : inactiveIconColor}
               strokeWidth={2}
             />
           }
@@ -127,21 +133,25 @@ export function BottomNav(): JSX.Element | null {
         />
         <NavTab
           label="Рейтинг"
+          disabled={isDemo}
           active={false}
-          icon={<Trophy size={ICON_SIZE} color="var(--muted)" strokeWidth={2} />}
+          icon={<Trophy size={ICON_SIZE} color={inactiveIconColor} strokeWidth={2} />}
           onClick={() => showToast('Рейтинг — в разработке')}
         />
         <NavTab
           label="Чат"
-          active={location.pathname.startsWith('/chat')}
+          disabled={isDemo}
+          active={!isDemo && location.pathname.startsWith('/chat')}
           icon={
             <span style={{ position: 'relative', display: 'inline-flex' }}>
               <MessageCircle
                 size={ICON_SIZE}
-                color={location.pathname.startsWith('/chat') ? '#ffffff' : 'var(--muted)'}
+                color={
+                  !isDemo && location.pathname.startsWith('/chat') ? '#ffffff' : inactiveIconColor
+                }
                 strokeWidth={2}
               />
-              {totalUnread > 0 && (
+              {!isDemo && totalUnread > 0 && (
                 <span
                   aria-label={`Непрочитанные: ${totalUnread}`}
                   style={{
@@ -171,9 +181,14 @@ export function BottomNav(): JSX.Element | null {
         />
         <NavTab
           label="Профиль"
+          disabled={isDemo}
           active={isProfile}
           icon={
-            <User size={ICON_SIZE} color={isProfile ? '#ffffff' : 'var(--muted)'} strokeWidth={2} />
+            <User
+              size={ICON_SIZE}
+              color={isProfile ? '#ffffff' : inactiveIconColor}
+              strokeWidth={2}
+            />
           }
           onClick={() => navigate('/profile')}
         />
@@ -235,13 +250,15 @@ interface NavTabProps {
   active: boolean;
   icon: JSX.Element;
   onClick: () => void;
+  disabled?: boolean;
 }
 
-function NavTab({ label, active, icon, onClick }: NavTabProps): JSX.Element {
+function NavTab({ label, active, icon, onClick, disabled = false }: NavTabProps): JSX.Element {
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
       aria-label={label}
       style={{
         display: 'flex',
@@ -249,10 +266,11 @@ function NavTab({ label, active, icon, onClick }: NavTabProps): JSX.Element {
         justifyContent: 'center',
         background: 'none',
         border: 'none',
-        cursor: 'pointer',
+        cursor: disabled ? 'default' : 'pointer',
         padding: 0,
         height: '100%',
         touchAction: 'manipulation',
+        opacity: disabled && !active ? 0.58 : 1,
       }}
     >
       <div
