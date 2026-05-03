@@ -92,20 +92,33 @@ function CommentRow({
           <div style={{ fontSize: 14, lineHeight: 1.4, wordBreak: 'break-word' }}>
             {comment.content}
           </div>
-          <ReactionBar
-            reactions={comment.reactions}
-            onToggle={(emoji) => onToggleReaction(comment.id, emoji)}
-          />
           <div
             style={{
-              fontSize: 10,
-              color: 'var(--muted)',
-              lineHeight: 1,
+              display: 'flex',
+              alignItems: 'flex-end',
+              gap: 8,
               marginTop: 4,
-              textAlign: 'right',
             }}
           >
-            {formatCommentTime(comment.createdAt)}
+            <div style={{ flex: '1 1 auto', minWidth: 0 }}>
+              <ReactionBar
+                reactions={comment.reactions}
+                onToggle={(emoji) => onToggleReaction(comment.id, emoji)}
+                style={{ marginTop: 0 }}
+              />
+            </div>
+            <div
+              style={{
+                flexShrink: 0,
+                marginLeft: 'auto',
+                fontSize: 10,
+                color: 'var(--muted)',
+                lineHeight: 1.15,
+                textAlign: 'right',
+              }}
+            >
+              {formatCommentTime(comment.createdAt)}
+            </div>
           </div>
         </div>
       </div>

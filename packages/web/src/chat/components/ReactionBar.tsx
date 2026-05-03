@@ -1,11 +1,13 @@
+import type { CSSProperties } from 'react';
 import type { ReactionGroupDTO } from '../api.js';
 
 interface Props {
   reactions: ReactionGroupDTO[];
   onToggle: (emoji: string) => void;
+  style?: CSSProperties;
 }
 
-export function ReactionBar({ reactions, onToggle }: Props): JSX.Element | null {
+export function ReactionBar({ reactions, onToggle, style }: Props): JSX.Element | null {
   if (reactions.length === 0) return null;
   return (
     <div
@@ -14,6 +16,7 @@ export function ReactionBar({ reactions, onToggle }: Props): JSX.Element | null 
         flexWrap: 'wrap',
         gap: 4,
         marginTop: 4,
+        ...style,
       }}
     >
       {reactions.map((r) => (
