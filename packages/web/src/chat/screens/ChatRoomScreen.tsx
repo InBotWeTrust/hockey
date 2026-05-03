@@ -589,7 +589,7 @@ export function ChatRoomScreen(): JSX.Element {
         style={{
           flex: 1,
           minHeight: 0,
-          padding: '8px 14px',
+          padding: '20px 14px 52px',
           display: 'flex',
           flexDirection: 'column',
           overflowY: 'auto',

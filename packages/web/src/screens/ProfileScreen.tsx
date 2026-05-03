@@ -684,15 +684,12 @@ export function ProfileScreen(): JSX.Element {
           ? 'Выключить уведомления'
           : 'Включить уведомления';
   const pushStatusMessage =
-    pushMessage ||
-    (pushStatus === 'subscribed' ? 'Уведомления включены' : 'Уведомления выключены');
+    pushMessage || (pushStatus === 'subscribed' ? 'Уведомления включены' : 'Уведомления выключены');
   const pushButtonDisabled =
     pushStatus === 'subscribing' ||
     pushStatus === 'unsubscribing' ||
     (!isPushSubscribed &&
-      (pushStatus === 'unsupported' ||
-        pushStatus === 'denied' ||
-        isPushConfigLoading));
+      (pushStatus === 'unsupported' || pushStatus === 'denied' || isPushConfigLoading));
 
   function handlePointerDown(event: PointerEvent<HTMLElement>): void {
     if (
@@ -1004,6 +1001,10 @@ export function ProfileScreen(): JSX.Element {
           Написать
         </button>
       </div>
+      <div
+        aria-hidden="true"
+        style={{ height: 'calc(112px + var(--app-safe-bottom))', flexShrink: 0 }}
+      />
       {selectedAchievement !== null && (
         <AchievementDetailsSheet
           achievement={selectedAchievement}

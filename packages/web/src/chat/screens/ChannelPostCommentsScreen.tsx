@@ -382,7 +382,7 @@ export function ChannelPostCommentsScreen(): JSX.Element {
           display: 'flex',
           flexDirection: 'column',
           gap: 10,
-          padding: '4px 14px 12px',
+          padding: '20px 14px 52px',
         }}
       >
         {postQuery.data && (

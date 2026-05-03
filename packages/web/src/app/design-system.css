@@ -75,8 +75,8 @@
   z-index: 0;
   pointer-events: none;
   background: var(--glass-edge-bg);
-  backdrop-filter: blur(var(--glass-edge-blur, 12px)) saturate(var(--glass-edge-saturate, 120%));
-  -webkit-backdrop-filter: blur(var(--glass-edge-blur, 12px))
+  backdrop-filter: blur(var(--glass-edge-blur, 10px)) saturate(var(--glass-edge-saturate, 120%));
+  -webkit-backdrop-filter: blur(var(--glass-edge-blur, 10px))
     saturate(var(--glass-edge-saturate, 120%));
   mask-image: var(--glass-edge-mask);
   -webkit-mask-image: var(--glass-edge-mask);
@@ -123,12 +123,16 @@
 
 .chat-edge-top {
   flex: 0 0 auto;
-  padding: 10px 0 10px;
+  z-index: 4;
+  padding: 10px 0 30px;
+  margin-bottom: -26px;
 }
 
 .chat-edge-bottom {
   flex: 0 0 auto;
-  padding: 16px 0 max(12px, var(--app-safe-bottom));
+  z-index: 4;
+  padding: 30px 0 max(12px, var(--app-safe-bottom));
+  margin-top: -28px;
 }
 
 /* === Modal standard: blurred ice backdrop + centered frosted card === */
