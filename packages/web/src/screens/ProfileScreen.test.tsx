@@ -24,6 +24,7 @@ function renderProfile(): void {
 const telegramProfile = {
   id: 'u1',
   displayName: 'Alice T',
+  role: 'player',
   avatarUrl: 'tg.png',
   grip: 'right',
   competitionLevel: 'beginner',
@@ -32,6 +33,7 @@ const telegramProfile = {
     goals: 64,
     accuracy: 50,
     playStreakDays: 7,
+    bestPlayStreakDays: 12,
   },
   achievements: [
     {
@@ -64,6 +66,56 @@ const telegramProfile = {
   vkUsername: 'vera',
 };
 
+function getFetchUrl(input: Parameters<typeof fetch>[0]): string {
+  if (typeof input === 'string') return input;
+  if (input instanceof URL) return input.href;
+  return input.url;
+}
+
+function mockProfileFetch(profile: typeof telegramProfile) {
+  return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const url = getFetchUrl(input);
+    if (url.endsWith('/api/me')) {
+      return new Response(JSON.stringify(profile), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    if (url.endsWith('/api/push/config')) {
+      return new Response(JSON.stringify({ supported: true, publicKey: 'test-key' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    if (url.endsWith('/api/push/preferences')) {
+      const preferences = {
+        chatNewDialogMessage: true,
+        dailyGame: true,
+        trainingAvailable: true,
+        gameNews: true,
+      };
+      const patch =
+        init?.method === 'PATCH' && typeof init.body === 'string'
+          ? (JSON.parse(init.body) as Partial<typeof preferences>)
+          : {};
+      return new Response(JSON.stringify({ ...preferences, ...patch }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    if (url.endsWith('/api/push/test')) {
+      return new Response(JSON.stringify({ total: 1, sent: 1, failed: 0 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    return new Response(JSON.stringify({ error: { code: 'not_found', message: 'not found' } }), {
+      status: 404,
+      headers: { 'content-type': 'application/json' },
+    });
+  });
+}
+
 describe('ProfileScreen', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -76,12 +128,7 @@ describe('ProfileScreen', () => {
   });
 
   it('shows profile stats, achievements and a header settings button', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      new Response(JSON.stringify(telegramProfile), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      }),
-    );
+    mockProfileFetch(telegramProfile);
 
     renderProfile();
 
@@ -97,8 +144,27 @@ describe('ProfileScreen', () => {
     expect(screen.getByText('50%')).toBeInTheDocument();
     expect(screen.getByText('Дней подряд')).toBeInTheDocument();
     expect(screen.getByText('7')).toBeInTheDocument();
+    expect(screen.getByText('(12)')).toBeInTheDocument();
     expect(screen.queryByText('Вратарей пройдено')).not.toBeInTheDocument();
     expect(screen.queryByText('Аккаунт и хват игрока')).not.toBeInTheDocument();
+    expect(screen.getByText('Уведомления')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Включить уведомления/i })).toBeInTheDocument();
+    const notificationSettings = await screen.findByRole('button', {
+      name: 'Настройки уведомлений',
+    });
+    expect(notificationSettings).toHaveAttribute('aria-expanded', 'false');
+    expect(
+      screen.queryByRole('switch', { name: 'Первое сообщение в личке' }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(notificationSettings);
+    expect(screen.getByRole('switch', { name: 'Первое сообщение в личке' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    expect(screen.getByRole('switch', { name: 'Ежедневная игра' })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Тренировка доступна' })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Новости игры' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Тестовый пуш/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Первая шайба.*получено/i })).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: /Билет в любители.*не получено/i }),
@@ -116,9 +182,42 @@ describe('ProfileScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
     expect(screen.queryByRole('dialog', { name: 'Первая шайба' })).not.toBeInTheDocument();
 
-    const settingsButton = screen.getByRole('button', { name: /настройки/i });
+    const settingsButton = screen.getByRole('button', { name: 'Настройки' });
     fireEvent.click(settingsButton);
 
     expect(screen.getByText('settings screen')).toBeInTheDocument();
+  });
+
+  it('shows a test push button for admins', async () => {
+    mockProfileFetch({ ...telegramProfile, role: 'admin' });
+
+    renderProfile();
+
+    const testButton = await screen.findByRole('button', { name: /Тестовый пуш/i });
+    fireEvent.click(testButton);
+
+    expect(await screen.findByText('Тестовый пуш отправлен')).toBeInTheDocument();
+  });
+
+  it('saves push preference switches', async () => {
+    const fetchMock = mockProfileFetch(telegramProfile);
+
+    renderProfile();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Настройки уведомлений' }));
+    const chatSwitch = await screen.findByRole('switch', { name: 'Первое сообщение в личке' });
+    fireEvent.click(chatSwitch);
+
+    expect(await screen.findByRole('switch', { name: 'Первое сообщение в личке' })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/push/preferences',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ chatNewDialogMessage: false }),
+      }),
+    );
   });
 });

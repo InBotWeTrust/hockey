@@ -5,6 +5,7 @@ export interface ProfileStats {
   goals: number;
   accuracy: number;
   playStreakDays: number;
+  bestPlayStreakDays?: number;
 }
 
 export interface ProfileAchievement {

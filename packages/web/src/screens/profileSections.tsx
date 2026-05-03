@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import type { CompetitionLevel, ProfileAchievement, ProfileStats } from './profileTypes.js';
@@ -14,6 +14,7 @@ export const EMPTY_PROFILE_STATS: ProfileStats = {
   goals: 0,
   accuracy: 0,
   playStreakDays: 0,
+  bestPlayStreakDays: 0,
 };
 
 export function formatProfileNumber(value: number): string {
@@ -24,7 +25,13 @@ export function getLevelLabel(level: CompetitionLevel | undefined): string {
   return level ? LEVEL_LABELS[level] : '-';
 }
 
-export function ProfileStatCard({ label, value }: { label: string; value: string }): JSX.Element {
+export function ProfileStatCard({
+  label,
+  value,
+}: {
+  label: string;
+  value: ReactNode;
+}): JSX.Element {
   return (
     <div
       className="glass"
@@ -76,6 +83,9 @@ export function ProfileStatsGrid({
   columns?: 2 | 4;
   style?: CSSProperties;
 }): JSX.Element {
+  const currentStreakDays = stats.playStreakDays;
+  const bestStreakDays = stats.bestPlayStreakDays ?? stats.playStreakDays;
+
   return (
     <div
       style={{
@@ -88,7 +98,23 @@ export function ProfileStatsGrid({
       <ProfileStatCard label="Броски" value={formatProfileNumber(stats.shots)} />
       <ProfileStatCard label="Голы" value={formatProfileNumber(stats.goals)} />
       <ProfileStatCard label="Точность" value={`${stats.accuracy}%`} />
-      <ProfileStatCard label="Дней подряд" value={formatProfileNumber(stats.playStreakDays)} />
+      <ProfileStatCard
+        label="Дней подряд"
+        value={
+          <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 4, minWidth: 0 }}>
+            <span>{formatProfileNumber(currentStreakDays)}</span>
+            <span
+              style={{
+                fontSize: 14,
+                fontWeight: 700,
+                color: 'rgba(71, 85, 105, 0.68)',
+              }}
+            >
+              ({formatProfileNumber(bestStreakDays)})
+            </span>
+          </span>
+        }
+      />
     </div>
   );
 }
@@ -209,6 +235,7 @@ export function ProfileAchievementsSection({
           margin: '0 14px 14px',
           padding: '14px 12px',
           borderRadius: 22,
+          minHeight: 121,
           overflow: 'hidden',
           ...style,
         }}
@@ -218,6 +245,7 @@ export function ProfileAchievementsSection({
             display: 'flex',
             alignItems: 'flex-start',
             gap: 12,
+            minHeight: 95,
             overflowX: 'auto',
             overflowY: 'hidden',
             overscrollBehaviorX: 'contain',

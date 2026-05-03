@@ -7,7 +7,12 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['icons/icon-512.png', 'icons/icon-192.png', 'icons/apple-touch-icon.png'],
+      includeAssets: [
+        'icons/icon-512.png',
+        'icons/icon-192.png',
+        'icons/apple-touch-icon.png',
+        'push-sw.js',
+      ],
       manifest: {
         name: 'Ultimate Hockey',
         short_name: 'Hockey',
@@ -28,6 +33,7 @@ export default defineConfig({
         cleanupOutdatedCaches: true,
         clientsClaim: true,
         skipWaiting: true,
+        importScripts: ['/push-sw.js'],
         globPatterns: ['**/*.{js,css,html,ico,png,webp,svg,woff2}'],
         runtimeCaching: [
           {

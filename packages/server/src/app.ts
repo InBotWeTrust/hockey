@@ -14,6 +14,7 @@ import { trainingRoutes } from './duel/training/routes.js';
 import { chatRoutes } from './chat/routes.js';
 import { chatWs } from './chat/ws.js';
 import { adminRoutes } from './admin/routes.js';
+import { pushRoutes } from './push/routes.js';
 
 export interface BuildAppOptions {
   config?: AppConfig;
@@ -30,6 +31,15 @@ export async function buildApp(options: BuildAppOptions = {}) {
       : { level: config.LOG_LEVEL };
 
   const app = Fastify({ logger: loggerOptions });
+  const pushVapidOptions = {
+    ...(config.PUSH_VAPID_PUBLIC_KEY !== undefined
+      ? { publicKey: config.PUSH_VAPID_PUBLIC_KEY }
+      : {}),
+    ...(config.PUSH_VAPID_PRIVATE_KEY !== undefined
+      ? { privateKey: config.PUSH_VAPID_PRIVATE_KEY }
+      : {}),
+    ...(config.PUSH_VAPID_SUBJECT !== undefined ? { subject: config.PUSH_VAPID_SUBJECT } : {}),
+  };
 
   await app.register(errorsPlugin);
   await app.register(dbPlugin, { connectionString: config.DATABASE_URL });
@@ -59,6 +69,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await app.register(trainingRoutes, { trainingSeedSecret: config.DAILY_SEED_SECRET });
   await app.register(chatRoutes);
   await app.register(chatWs, { accessSecret: config.JWT_SECRET });
+  await app.register(pushRoutes, pushVapidOptions);
   await app.register(adminRoutes);
 
   return app;

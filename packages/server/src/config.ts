@@ -19,6 +19,9 @@ const schema = z.object({
   ACCOUNT_RECOVERY_TELEGRAM_PROVIDER_UIDS: optionalNonEmptyString,
   DAILY_SEED_SECRET: z.string().min(16),
   SYSTEM_USER_ID: z.string().uuid().optional(),
+  PUSH_VAPID_PUBLIC_KEY: optionalNonEmptyString,
+  PUSH_VAPID_PRIVATE_KEY: optionalNonEmptyString,
+  PUSH_VAPID_SUBJECT: optionalNonEmptyString,
 });
 
 export type AppConfig = z.infer<typeof schema>;

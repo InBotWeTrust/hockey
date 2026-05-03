@@ -10,6 +10,7 @@ export interface ProfileStatsDTO {
   goals: number;
   accuracy: number;
   playStreakDays: number;
+  bestPlayStreakDays: number;
 }
 
 export interface ProfileProgressDTO {
@@ -41,7 +42,16 @@ export async function fetchPlayStreakDays(
   userId: string,
   timezone: string,
 ): Promise<number> {
-  const { rows } = await db.query<{ days: number }>(
+  const stats = await fetchPlayStreakStats(db, userId, timezone);
+  return stats.currentDays;
+}
+
+export async function fetchPlayStreakStats(
+  db: Queryable,
+  userId: string,
+  timezone: string,
+): Promise<{ currentDays: number; bestDays: number }> {
+  const { rows } = await db.query<{ current_days: number; best_days: number }>(
     `with activity_days as (
        select distinct (created_at at time zone $2)::date as day
          from shot_session
@@ -61,16 +71,34 @@ export async function fetchPlayStreakDays(
               row_number() over (order by ad.day desc) as rn
          from activity_days ad
          cross join anchor a
-        where a.day is not null
-          and ad.day <= a.day
+       where a.day is not null
+         and ad.day <= a.day
+     ),
+     current_streak as (
+       select count(*)::int as days
+         from ordered o
+         cross join anchor a
+        where o.day = a.day - (o.rn::int - 1)
+     ),
+     grouped_days as (
+       select ad.day,
+              ad.day - (row_number() over (order by ad.day))::int as streak_group
+         from activity_days ad
+     ),
+     streaks as (
+       select count(*)::int as days
+         from grouped_days
+        group by streak_group
      )
-     select count(*)::int as days
-       from ordered o
-       cross join anchor a
-      where o.day = a.day - (o.rn::int - 1)`,
+     select coalesce((select days from current_streak), 0)::int as current_days,
+            coalesce((select max(days) from streaks), 0)::int as best_days`,
     [userId, timezone],
   );
-  return Number(rows[0]?.days ?? 0);
+  const row = rows[0];
+  return {
+    currentDays: Number(row?.current_days ?? 0),
+    bestDays: Number(row?.best_days ?? 0),
+  };
 }
 
 export async function buildProfileProgress(
@@ -81,7 +109,7 @@ export async function buildProfileProgress(
   const shots = toNumber(row.lifetime_shots_total);
   const goals = toNumber(row.lifetime_goals_total);
   const accuracy = shots > 0 ? Math.round((goals / shots) * 100) : 0;
-  const playStreakDays = await fetchPlayStreakDays(db, row.id, row.timezone);
+  const playStreakStats = await fetchPlayStreakStats(db, row.id, row.timezone);
   const achievements = await fetchProfileAchievements(db, row.id, {
     lifetimeShots: shots,
     lifetimeGoals: goals,
@@ -94,7 +122,8 @@ export async function buildProfileProgress(
       shots,
       goals,
       accuracy,
-      playStreakDays,
+      playStreakDays: playStreakStats.currentDays,
+      bestPlayStreakDays: playStreakStats.bestDays,
     },
     achievements,
   };

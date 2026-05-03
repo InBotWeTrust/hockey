@@ -77,7 +77,11 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
     return login.json() as { accessToken: string; user: { id: string; displayName: string } };
   }
 
-  async function insertDailyShot(userId: string, dayOffset: number, shotIndex: number): Promise<void> {
+  async function insertDailyShot(
+    userId: string,
+    dayOffset: number,
+    shotIndex: number,
+  ): Promise<void> {
     const pool = await app.pg.query<{ id: string }>(
       `insert into day_pool
          (user_id, day_date, state, current_period, game_core_version, daily_seed, closed_at)
@@ -188,6 +192,7 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
         goals: 0,
         accuracy: 0,
         playStreakDays: 0,
+        bestPlayStreakDays: 0,
       },
       displaySource: 'telegram',
       linkedProviders: ['telegram'],
@@ -229,6 +234,7 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
         goals: 1000,
         accuracy: 83,
         playStreakDays: 0,
+        bestPlayStreakDays: 0,
       },
     });
     const body = res.json() as {
@@ -239,8 +245,9 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
         .filter((achievement) => achievement.isUnlocked)
         .map((achievement) => achievement.id),
     ).toEqual(['first-goal', 'amateur-ticket']);
-    expect(body.achievements.find((achievement) => achievement.id === 'first-goal')?.unlockedAt)
-      .toEqual(expect.any(String));
+    expect(
+      body.achievements.find((achievement) => achievement.id === 'first-goal')?.unlockedAt,
+    ).toEqual(expect.any(String));
   });
 
   it('counts consecutive play days from shots in any game mode', async () => {
@@ -262,6 +269,7 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
     expect(res.json()).toMatchObject({
       stats: {
         playStreakDays: 3,
+        bestPlayStreakDays: 3,
       },
     });
   });

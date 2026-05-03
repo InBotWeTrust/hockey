@@ -11,6 +11,12 @@ const base = {
   DAILY_SEED_SECRET: 'daily-seed-secret-long-enough!!',
 };
 
+function withoutEnvKey(key: keyof typeof base): Record<string, string> {
+  const env = { ...base } as Record<string, string>;
+  delete env[key];
+  return env;
+}
+
 describe('loadConfig', () => {
   it('requires DATABASE_URL and REDIS_URL', () => {
     expect(() => loadConfig({ NODE_ENV: 'development' })).toThrow();
@@ -18,15 +24,12 @@ describe('loadConfig', () => {
 
   it('requires JWT_SECRET (min 16 chars)', () => {
     expect(() => loadConfig({ ...base, JWT_SECRET: 'short' })).toThrow();
-    const { JWT_SECRET: _omit, ...rest } = base;
-    expect(() => loadConfig(rest)).toThrow();
+    expect(() => loadConfig(withoutEnvKey('JWT_SECRET'))).toThrow();
   });
 
   it('requires REFRESH_SECRET (min 16 chars) and TELEGRAM_BOT_TOKEN', () => {
-    const { REFRESH_SECRET: _r, ...rest1 } = base;
-    expect(() => loadConfig(rest1)).toThrow();
-    const { TELEGRAM_BOT_TOKEN: _t, ...rest2 } = base;
-    expect(() => loadConfig(rest2)).toThrow();
+    expect(() => loadConfig(withoutEnvKey('REFRESH_SECRET'))).toThrow();
+    expect(() => loadConfig(withoutEnvKey('TELEGRAM_BOT_TOKEN'))).toThrow();
   });
 
   it('parses valid env', () => {
@@ -51,5 +54,18 @@ describe('loadConfig', () => {
       loadConfig({ ...base, ACCOUNT_RECOVERY_TELEGRAM_PROVIDER_UIDS: '42,100500' })
         .ACCOUNT_RECOVERY_TELEGRAM_PROVIDER_UIDS,
     ).toBe('42,100500');
+  });
+
+  it('treats push VAPID config as optional and normalizes blank values', () => {
+    expect(
+      loadConfig({ ...base, PUSH_VAPID_PUBLIC_KEY: '' }).PUSH_VAPID_PUBLIC_KEY,
+    ).toBeUndefined();
+    expect(
+      loadConfig({ ...base, PUSH_VAPID_PRIVATE_KEY: '' }).PUSH_VAPID_PRIVATE_KEY,
+    ).toBeUndefined();
+    expect(loadConfig({ ...base, PUSH_VAPID_SUBJECT: '' }).PUSH_VAPID_SUBJECT).toBeUndefined();
+    expect(loadConfig({ ...base, PUSH_VAPID_PUBLIC_KEY: 'public' }).PUSH_VAPID_PUBLIC_KEY).toBe(
+      'public',
+    );
   });
 });

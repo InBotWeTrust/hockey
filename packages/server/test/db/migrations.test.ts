@@ -39,6 +39,8 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     expect(names).toContain('shot_session');
     expect(names).toContain('event_log');
     expect(names).toContain('game_settings');
+    expect(names).toContain('push_subscriptions');
+    expect(names).toContain('user_push_preferences');
     expect(names).toContain('_migrations');
   });
 
@@ -62,6 +64,8 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '013_refresh_profile_achievements.sql',
       '014_training_daily_locks.sql',
       '015_admin_roles_and_game_settings.sql',
+      '017_push_subscriptions.sql',
+      '019_push_preferences.sql',
     ]);
   });
 });
