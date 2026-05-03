@@ -54,14 +54,16 @@ function lastMessagePreview(chat: ChatDTO, meId: string | null): string {
   const m = chat.lastMessage;
   if (!m) return 'Нет сообщений';
   if (m.isDeleted) return 'Сообщение удалено';
+  if (chat.type === 'channel') {
+    return truncate(stripRichTextSyntax(m.content), PREVIEW_LIMIT);
+  }
   const isMine = meId !== null && m.senderId === meId;
   const author = isMine
     ? 'Вы'
     : chat.lastMessageSenderName
       ? formatAuthor(chat.lastMessageSenderName)
       : '';
-  const previewContent = chat.type === 'channel' ? stripRichTextSyntax(m.content) : m.content;
-  const body = truncate(previewContent, PREVIEW_LIMIT);
+  const body = truncate(m.content, PREVIEW_LIMIT);
   return author ? `${author}: ${body}` : body;
 }
 
