@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Container } from 'pixi.js';
 import type { Application, Ticker } from 'pixi.js';
-import { ArrowLeft, BarChart3, ChevronRight, Home, Info, Play, Volume2, VolumeX, X } from 'lucide-react';
+import { ArrowLeft, BarChart3, ChevronRight, Home, Info, Play, VolumeX, X } from 'lucide-react';
 import {
   GOALIE_SIZE,
   GOALIE_Y,
@@ -19,6 +19,7 @@ import {
   resolveShot,
   simulateGoal,
   simulateGoalie,
+  type DailyPeriodSpeedPreset,
   type ShotResult,
 } from '@hockey/game-core';
 import { PixiStage } from '../game/PixiStage.js';
@@ -48,7 +49,6 @@ import { StartPeriodModal } from '../components/StartPeriodModal.js';
 
 const PAUSE_MS = 1000;
 const HUB_PERIOD_DURATION_MS = 20 * 60 * 1000;
-const SOUND_ENABLED_STORAGE_KEY = 'hockey:sound-enabled';
 const MODE_ARTWORK_SIZE = 104;
 
 type GameLevel = 'beginner' | 'amateur' | 'pro';
@@ -63,8 +63,22 @@ const MODE_ARTWORK_IMAGES: Record<LevelArtwork, string | null> = {
   pro: '/modes/pro.webp',
 };
 
-function speedOverridesForPeriod(periodNumber: number): SpeedOverrides {
-  const preset = getDailyPeriodSpeedPreset(periodNumber);
+function periodSpeedPresetFor(
+  periodNumber: number,
+  presets?: readonly DailyPeriodSpeedPreset[],
+): DailyPeriodSpeedPreset {
+  const normalized = Math.min(3, Math.max(1, Math.trunc(periodNumber))) as 1 | 2 | 3;
+  return (
+    presets?.find((preset) => preset.periodNumber === normalized) ??
+    getDailyPeriodSpeedPreset(normalized)
+  );
+}
+
+function speedOverridesForPeriod(
+  periodNumber: number,
+  presets?: readonly DailyPeriodSpeedPreset[],
+): SpeedOverrides {
+  const preset = periodSpeedPresetFor(periodNumber, presets);
   return {
     goalFreq: preset.goalFrequency,
     goalieFreq: preset.goalieFrequency,
@@ -242,11 +256,7 @@ export function DailyScreen(): JSX.Element {
     navigate('/?view=daily', { replace: true });
   };
 
-  if (
-    selectedLevel === 'beginner' &&
-    beginnerMode === 'daily' &&
-    dailyView === 'play'
-  ) {
+  if (selectedLevel === 'beginner' && beginnerMode === 'daily' && dailyView === 'play') {
     return <DailyPlayView onBack={openHub} />;
   }
 
@@ -404,22 +414,20 @@ function GameHub({
   const isDailyInProgress = data.state === 'period_active' || data.state === 'break_active';
   const isDailyClosed = data.state === 'closed';
   const dailyActionDisabled = pending || isDailyClosed;
-  const dailyActionLabel =
-    isDailyInProgress
-      ? 'Вернуться на площадку'
-      : isDailyLockedByTraining
-        ? `Игра через ${formatHms(trainingCooldownRemaining)}`
-        : 'На площадку';
-  const dailyEventTitle =
-    isDailyLockedByTraining
-      ? 'Восстановление'
-      : data.state === 'period_active'
-        ? `${data.current_period}-й период`
-        : data.state === 'break_active'
-          ? 'Перерыв'
-          : data.state === 'closed'
-            ? 'Завершена'
-            : 'Игра доступна';
+  const dailyActionLabel = isDailyInProgress
+    ? 'Вернуться на площадку'
+    : isDailyLockedByTraining
+      ? `Игра через ${formatHms(trainingCooldownRemaining)}`
+      : 'На площадку';
+  const dailyEventTitle = isDailyLockedByTraining
+    ? 'Восстановление'
+    : data.state === 'period_active'
+      ? `${data.current_period}-й период`
+      : data.state === 'break_active'
+        ? 'Перерыв'
+        : data.state === 'closed'
+          ? 'Завершена'
+          : 'Игра доступна';
   const dailyHubScoreboard =
     data.state === 'period_active'
       ? {
@@ -923,10 +931,7 @@ function LevelHubCard({
         gridTemplateColumns: `${MODE_ARTWORK_SIZE}px minmax(0, 1fr) 18px`,
         gap: 12,
         alignItems: 'center',
-        background:
-          tone === 'active'
-            ? 'rgba(255, 255, 255, 0.64)'
-            : 'rgba(255, 255, 255, 0.48)',
+        background: tone === 'active' ? 'rgba(255, 255, 255, 0.64)' : 'rgba(255, 255, 255, 0.48)',
         border: '1px solid rgba(255,255,255,0.66)',
         boxShadow: '0 8px 22px rgba(15,23,42,0.1), inset 0 1px 0 rgba(255,255,255,0.78)',
         width: '100%',
@@ -1585,7 +1590,10 @@ function TrainingPlaceholder({ onBack }: { onBack: () => void }): JSX.Element {
                 value={String(selectedPeriod)}
                 onChange={(id) => setSelectedPeriod(Number(id) as 1 | 2 | 3)}
               />
-              <PeriodSpeedSummary periodNumber={selectedPeriod} />
+              <PeriodSpeedSummary
+                periodNumber={selectedPeriod}
+                presets={data?.period_speed_presets}
+              />
               <button
                 type="button"
                 className="btn btn--cta"
@@ -1645,8 +1653,14 @@ function LevelPlaceholder({
   );
 }
 
-function PeriodSpeedSummary({ periodNumber }: { periodNumber: 1 | 2 | 3 }): JSX.Element {
-  const preset = getDailyPeriodSpeedPreset(periodNumber);
+function PeriodSpeedSummary({
+  periodNumber,
+  presets,
+}: {
+  periodNumber: 1 | 2 | 3;
+  presets?: readonly DailyPeriodSpeedPreset[] | undefined;
+}): JSX.Element {
+  const preset = periodSpeedPresetFor(periodNumber, presets);
   const items = [
     { label: 'Ворота', value: `${formatSpeedValue(preset.goalFrequency)}/с` },
     { label: 'Вратарь', value: `${formatSpeedValue(preset.goalieFrequency)}/с` },
@@ -1761,6 +1775,7 @@ interface PlayViewProps<TState> {
   seed: string | null;
   goalieId: string;
   periodNumber: number;
+  periodSpeedPresets?: readonly DailyPeriodSpeedPreset[] | undefined;
   periodsTotal?: number;
   goals: number;
   shots: number;
@@ -1841,6 +1856,7 @@ function DailyPlayView({ onBack }: { onBack: () => void }): JSX.Element {
         seed={data.daily_seed}
         goalieId={data.goalie_id}
         periodNumber={periodNumber}
+        periodSpeedPresets={data.period_speed_presets}
         goals={isBreak || isClosed ? data.daily_total_goals : data.current_period_goals}
         shots={isBreak || isClosed ? data.daily_total_shots : data.current_period_shots}
         shotsTotal={
@@ -1874,45 +1890,12 @@ function DailyPlayView({ onBack }: { onBack: () => void }): JSX.Element {
           onStart={() => void startPeriod()}
         />
       )}
-      {isBreak && <DailyRinkHomeButton onBack={onBack} />}
-      {isClosed && (
-        <DailyClosedModal timer={formatHms(nextDayRemaining)} onBack={onBack} />
-      )}
+      {isClosed && <DailyClosedModal timer={formatHms(nextDayRemaining)} onBack={onBack} />}
     </>
   );
 }
 
-function DailyRinkHomeButton({ onBack }: { onBack: () => void }): JSX.Element {
-  return (
-    <button
-      type="button"
-      aria-label="Вернуться к режимам"
-      title="К режимам"
-      onClick={onBack}
-      className="icon-btn icon-btn--dark"
-      style={{
-        position: 'fixed',
-        top: 'calc(var(--app-safe-top) + 92px)',
-        left: 14,
-        zIndex: 260,
-        width: 48,
-        height: 48,
-        borderRadius: 18,
-        boxShadow: '0 16px 30px rgba(15, 23, 42, 0.24)',
-      }}
-    >
-      <Home size={21} />
-    </button>
-  );
-}
-
-function DailyClosedModal({
-  timer,
-  onBack,
-}: {
-  timer: string;
-  onBack: () => void;
-}): JSX.Element {
+function DailyClosedModal({ timer, onBack }: { timer: string; onBack: () => void }): JSX.Element {
   return (
     <div
       role="dialog"
@@ -1947,9 +1930,7 @@ function DailyClosedModal({
             '0 30px 80px rgba(15, 23, 42, 0.35), 0 0 0 1px rgba(15, 23, 42, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.9)',
         }}
       >
-        <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.02em' }}>
-          День завершён
-        </div>
+        <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.02em' }}>День завершён</div>
         <div
           style={{
             marginTop: 10,
@@ -1991,6 +1972,7 @@ function TrainingPlayView({ onBack }: { onBack: () => void }): JSX.Element | nul
       seed={data.training_seed}
       goalieId={data.goalie_id}
       periodNumber={data.selected_period ?? 1}
+      periodSpeedPresets={data.period_speed_presets}
       goals={data.goals}
       shots={data.shots_taken}
       shotsTotal={data.shots_limit}
@@ -2012,6 +1994,7 @@ function PlayView<TState>({
   seed,
   goalieId,
   periodNumber,
+  periodSpeedPresets,
   periodsTotal = 3,
   goals,
   shots,
@@ -2057,12 +2040,8 @@ function PlayView<TState>({
   const initializedRef = useRef(false);
   const [isShowingResult, setIsShowingResult] = useState(false);
   const [isShotInProgress, setIsShotInProgress] = useState(false);
-  const [soundEnabled, setSoundEnabled] = useState(() => {
-    if (typeof window === 'undefined') {
-      return true;
-    }
-    return window.localStorage.getItem(SOUND_ENABLED_STORAGE_KEY) !== 'false';
-  });
+  const [soundToastVisible, setSoundToastVisible] = useState(false);
+  const soundToastTimerRef = useRef<number | null>(null);
   const [resultSubText, setResultSubText] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<ShotResult | null>(null);
   // Server state is held until shot animation ends, so ScoreBoard counters
@@ -2076,7 +2055,10 @@ function PlayView<TState>({
   const showIceCarRef = useRef(showIceCar);
   showIceCarRef.current = showIceCar;
 
-  const speeds = useMemo(() => speedOverridesForPeriod(periodNumber), [periodNumber]);
+  const speeds = useMemo(
+    () => speedOverridesForPeriod(periodNumber, periodSpeedPresets),
+    [periodNumber, periodSpeedPresets],
+  );
   const speedsRef = useRef<SpeedOverrides>(speeds);
   speedsRef.current = speeds;
 
@@ -2087,9 +2069,25 @@ function PlayView<TState>({
 
   const [now, setNow] = useState(Date.now());
 
-  useEffect(() => {
-    window.localStorage.setItem(SOUND_ENABLED_STORAGE_KEY, soundEnabled ? 'true' : 'false');
-  }, [soundEnabled]);
+  useEffect(
+    () => () => {
+      if (soundToastTimerRef.current !== null) {
+        window.clearTimeout(soundToastTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  const showSoundToast = useCallback((): void => {
+    setSoundToastVisible(true);
+    if (soundToastTimerRef.current !== null) {
+      window.clearTimeout(soundToastTimerRef.current);
+    }
+    soundToastTimerRef.current = window.setTimeout(() => {
+      setSoundToastVisible(false);
+      soundToastTimerRef.current = null;
+    }, 1800);
+  }, []);
 
   useEffect(() => {
     if (!periodEndsAt) return undefined;
@@ -2550,25 +2548,60 @@ function PlayView<TState>({
         </button>
         <button
           type="button"
-          aria-label={soundEnabled ? 'Выключить звук' : 'Включить звук'}
-          aria-pressed={!soundEnabled}
-          title={soundEnabled ? 'Выключить звук' : 'Включить звук'}
-          onClick={() => setSoundEnabled((enabled) => !enabled)}
+          aria-label="Звук в разработке"
+          title="Звук в разработке"
+          onClick={showSoundToast}
           className="icon-btn"
           style={{
             width: 56,
             height: 56,
             borderRadius: 20,
-            background: soundEnabled ? 'var(--glass-bg)' : 'rgba(15, 23, 42, 0.9)',
-            color: soundEnabled ? 'var(--ink)' : '#ffffff',
-            border: soundEnabled
-              ? '1px solid var(--glass-border)'
-              : '1px solid rgba(15, 23, 42, 0.9)',
+            background: 'rgba(15, 23, 42, 0.1)',
+            color: 'var(--muted)',
+            border: '1px solid rgba(15, 23, 42, 0.08)',
+            opacity: 0.72,
           }}
         >
-          {soundEnabled ? <Volume2 size={22} /> : <VolumeX size={22} />}
+          <VolumeX size={22} />
         </button>
       </div>
+
+      {soundToastVisible && (
+        <>
+          <style>{`
+            @keyframes game-toast-in {
+              from { opacity: 0; transform: translate(-50%, 8px); }
+              to   { opacity: 1; transform: translate(-50%, 0); }
+            }
+          `}</style>
+          <div
+            role="status"
+            aria-live="polite"
+            style={{
+              position: 'fixed',
+              left: '50%',
+              bottom: 'calc(148px + var(--app-safe-bottom))',
+              transform: 'translateX(-50%)',
+              padding: '10px 16px',
+              borderRadius: 999,
+              background: 'rgba(15, 23, 42, 0.92)',
+              color: '#ffffff',
+              fontSize: 13,
+              fontWeight: 700,
+              boxShadow: '0 14px 34px rgba(15, 23, 42, 0.34)',
+              zIndex: 520,
+              pointerEvents: 'none',
+              animation: 'game-toast-in 180ms ease-out',
+              whiteSpace: 'nowrap',
+              maxWidth: 'calc(100vw - 32px)',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            Звук в разработке
+          </div>
+        </>
+      )}
 
       {isShowingResult && lastResult && (
         <ResultModal result={lastResult} durationMs={PAUSE_MS} subText={resultSubText} />

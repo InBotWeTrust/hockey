@@ -1,5 +1,10 @@
 import type { Pool, PoolClient } from 'pg';
-import { GOALIES } from '@hockey/game-core';
+import {
+  DAILY_PERIOD_SPEED_PRESETS,
+  GOALIES,
+  getDailyPeriodSpeedPreset,
+  type DailyPeriodSpeedPreset,
+} from '@hockey/game-core';
 import {
   BREAK_DURATION_MS,
   DEFAULT_DAILY_RULES,
@@ -22,6 +27,7 @@ export interface GameSettingDefinition {
   defaultValue: GameSettingValue;
   min?: number;
   max?: number;
+  step?: number;
   options?: Array<{ value: string; label: string }>;
 }
 
@@ -34,6 +40,7 @@ export interface GameSettingDTO extends GameSettingDefinition {
 export interface GameSettings {
   daily: DailyRules & {
     goalieId: string;
+    periodSpeedPresets: DailyPeriodSpeedPreset[];
   };
   training: {
     goalieId: string;
@@ -43,6 +50,73 @@ export interface GameSettings {
 
 const goalieOptions = GOALIES.map((goalie) => ({ value: goalie.id, label: goalie.name }));
 const goalieIds = new Set(GOALIES.map((goalie) => goalie.id));
+
+type DailySpeedField = keyof Omit<DailyPeriodSpeedPreset, 'periodNumber'>;
+
+const dailySpeedFields: Array<{
+  field: DailySpeedField;
+  key: string;
+  label: string;
+  description: string;
+  min: number;
+  max: number;
+  step: number;
+}> = [
+  {
+    field: 'goalFrequency',
+    key: 'goal_frequency',
+    label: 'Скорость ворот',
+    description: 'Частота движения ворот в этом периоде, циклов в секунду.',
+    min: 0.1,
+    max: 3,
+    step: 0.01,
+  },
+  {
+    field: 'goalieFrequency',
+    key: 'goalie_frequency',
+    label: 'Скорость вратаря',
+    description: 'Частота движения вратаря в этом периоде, циклов в секунду.',
+    min: 0.1,
+    max: 3,
+    step: 0.01,
+  },
+  {
+    field: 'shooterFrequency',
+    key: 'shooter_frequency',
+    label: 'Скорость игрока',
+    description: 'Частота движения игрока в этом периоде, циклов в секунду.',
+    min: 0.1,
+    max: 3,
+    step: 0.01,
+  },
+  {
+    field: 'puckSpeedPerMs',
+    key: 'puck_speed_per_ms',
+    label: 'Скорость шайбы',
+    description: 'Скорость полёта шайбы в этом периоде, единиц в миллисекунду.',
+    min: 0.2,
+    max: 5,
+    step: 0.01,
+  },
+];
+
+function dailySpeedSettingKey(periodNumber: DailyPeriodSpeedPreset['periodNumber'], key: string) {
+  return `daily.period_${periodNumber}.${key}`;
+}
+
+const dailyPeriodSpeedDefinitions: GameSettingDefinition[] = DAILY_PERIOD_SPEED_PRESETS.flatMap(
+  (preset) =>
+    dailySpeedFields.map((field) => ({
+      key: dailySpeedSettingKey(preset.periodNumber, field.key),
+      label: field.label,
+      description: field.description,
+      type: 'number' as const,
+      defaultValue: preset[field.field],
+      min: field.min,
+      max: field.max,
+      step: field.step,
+    })),
+);
 
 export const GAME_SETTING_DEFINITIONS: readonly GameSettingDefinition[] = [
   {
@@ -80,6 +154,7 @@ export const GAME_SETTING_DEFINITIONS: readonly GameSettingDefinition[] = [
     defaultValue: 'rookie',
     options: goalieOptions,
   },
+  ...dailyPeriodSpeedDefinitions,
   {
     key: 'training.shots_limit',
     label: 'Лимит тренировки',
@@ -116,7 +191,11 @@ function numberValue(value: unknown, definition: GameSettingDefinition): number 
   const min = definition.min ?? Number.NEGATIVE_INFINITY;
   const max = definition.max ?? Number.POSITIVE_INFINITY;
   if (!Number.isFinite(raw)) return fallback;
-  return Math.min(max, Math.max(min, Math.trunc(raw)));
+  const bounded = Math.min(max, Math.max(min, raw));
+  if (definition.step !== undefined && definition.step < 1) {
+    return Number(bounded.toFixed(4));
+  }
+  return Math.trunc(bounded);
 }
 
 function selectValue(value: unknown, definition: GameSettingDefinition): string {
@@ -175,6 +254,25 @@ export async function getGameSettings(pool: Queryable): Promise<GameSettings> {
   const dailyGoalieId = String(values.get('daily.goalie_id') ?? 'rookie');
   const trainingGoalieId = String(values.get('training.goalie_id') ?? 'rookie');
   const trainingShotsLimit = Number(values.get('training.shots_limit'));
+  const periodSpeedPresets = DAILY_PERIOD_SPEED_PRESETS.map((preset) => ({
+    periodNumber: preset.periodNumber,
+    goalFrequency: Number(
+      values.get(dailySpeedSettingKey(preset.periodNumber, 'goal_frequency')) ??
+        preset.goalFrequency,
+    ),
+    goalieFrequency: Number(
+      values.get(dailySpeedSettingKey(preset.periodNumber, 'goalie_frequency')) ??
+        preset.goalieFrequency,
+    ),
+    shooterFrequency: Number(
+      values.get(dailySpeedSettingKey(preset.periodNumber, 'shooter_frequency')) ??
+        preset.shooterFrequency,
+    ),
+    puckSpeedPerMs: Number(
+      values.get(dailySpeedSettingKey(preset.periodNumber, 'puck_speed_per_ms')) ??
+        preset.puckSpeedPerMs,
+    ),
+  }));
 
   return {
     daily: {
@@ -191,12 +289,24 @@ export async function getGameSettings(pool: Queryable): Promise<GameSettings> {
           : DEFAULT_DAILY_RULES.breakDurationMs / 60000) * 60000,
       totalPeriods: TOTAL_PERIODS,
       goalieId: dailyGoalieId,
+      periodSpeedPresets,
     },
     training: {
       goalieId: trainingGoalieId,
       shotsLimit: Number.isFinite(trainingShotsLimit) ? trainingShotsLimit : 500,
     },
   };
+}
+
+export function getConfiguredDailyPeriodSpeedPreset(
+  presets: readonly DailyPeriodSpeedPreset[],
+  periodNumber: number,
+): DailyPeriodSpeedPreset {
+  const normalized = Math.min(3, Math.max(1, Math.trunc(periodNumber))) as 1 | 2 | 3;
+  return (
+    presets.find((preset) => preset.periodNumber === normalized) ??
+    getDailyPeriodSpeedPreset(normalized)
+  );
 }
 
 export async function saveGameSetting(

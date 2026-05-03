@@ -1,5 +1,6 @@
 import { apiFetch } from './apiFetch.js';
 import type { ShotInputPayload, ShotResultType } from './duel.js';
+import type { DailyPeriodSpeedPreset } from '@hockey/game-core';
 
 export type TrainingState = 'idle' | 'active' | 'closed';
 
@@ -13,6 +14,7 @@ export interface TrainingStateResponse {
   next_day_starts_at: string;
   training_seed: string | null;
   goalie_id: string;
+  period_speed_presets: DailyPeriodSpeedPreset[];
 }
 
 export interface StartTrainingRequest {

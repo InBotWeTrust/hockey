@@ -4,17 +4,21 @@ import { z } from 'zod';
 import {
   GAME_CORE_VERSION,
   STICK_NEUTRAL,
-  getDailyPeriodSpeedPreset,
   getGoalie,
   getSessionPhaseOffsets,
   resolveShot,
+  type DailyPeriodSpeedPreset,
 } from '@hockey/game-core';
 import { grantAchievements } from '../../achievements/service.js';
 import { AppError } from '../../plugins/errors.js';
 import { appendEvent } from '../eventLog.js';
 import { deriveShotSeed, deriveTrainingSeed } from '../seed.js';
 import { reconcileDayPool, type DayPoolRow } from '../daily/reconcile.js';
-import { getGameSettings, type GameSettings } from '../gameSettings.js';
+import {
+  getConfiguredDailyPeriodSpeedPreset,
+  getGameSettings,
+  type GameSettings,
+} from '../gameSettings.js';
 
 const startBodySchema = z.object({
   period_number: z.number().int().min(1).max(3),
@@ -55,6 +59,7 @@ interface TrainingStateResponse {
   next_day_starts_at: string;
   training_seed: string | null;
   goalie_id: string;
+  period_speed_presets: DailyPeriodSpeedPreset[];
 }
 
 interface TrainingShotSubmitResponse {
@@ -183,6 +188,7 @@ async function buildTrainingState(
       next_day_starts_at: nextDay,
       training_seed: null,
       goalie_id: settings.training.goalieId,
+      period_speed_presets: settings.daily.periodSpeedPresets,
     };
   }
 
@@ -197,6 +203,7 @@ async function buildTrainingState(
     next_day_starts_at: nextDay,
     training_seed: session.training_seed,
     goalie_id: settings.training.goalieId,
+    period_speed_presets: settings.daily.periodSpeedPresets,
   };
 }
 
@@ -325,7 +332,10 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
         session.selected_period,
         body.shot_index,
       );
-      const periodSpeeds = getDailyPeriodSpeedPreset(session.selected_period);
+      const periodSpeeds = getConfiguredDailyPeriodSpeedPreset(
+        settings.daily.periodSpeedPresets,
+        session.selected_period,
+      );
       const shotInput = {
         tapTime: body.input.tapTime,
         ...(body.input.shooterTapTime !== undefined

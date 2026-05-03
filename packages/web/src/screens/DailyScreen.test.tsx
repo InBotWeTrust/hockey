@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { DAILY_PERIOD_SPEED_PRESETS } from '@hockey/game-core';
 import { DailyScreen } from './DailyScreen.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { useDailyStore } from '../stores/dailyStore.js';
@@ -33,6 +34,7 @@ const baseState: DailyStateResponse = {
   goalie_id: 'rookie',
   shots_per_period: 30,
   total_periods: 3,
+  period_speed_presets: [...DAILY_PERIOD_SPEED_PRESETS],
   recent_periods: [],
   previous_game: null,
   training_cooldown_ends_at: null,
@@ -48,6 +50,7 @@ const trainingIdleState: TrainingStateResponse = {
   next_day_starts_at: '2026-04-26T00:00:00.000Z',
   training_seed: null,
   goalie_id: 'rookie',
+  period_speed_presets: [...DAILY_PERIOD_SPEED_PRESETS],
 };
 
 const trainingActiveState: TrainingStateResponse = {
@@ -232,6 +235,8 @@ describe('DailyScreen', () => {
 
     const shotButton = await screen.findByRole('button', { name: 'БРОСОК' });
     expect(shotButton).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Звук в разработке' }));
+    expect(screen.getByRole('status')).toHaveTextContent('Звук в разработке');
     expect(screen.getByText('00/30')).toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: 'День завершён' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'ДЕНЬ ЗАВЕРШЁН' })).not.toBeInTheDocument();
@@ -287,7 +292,7 @@ describe('DailyScreen', () => {
     expect(screen.getByText('10/90')).toBeInTheDocument();
     const breakControl = screen.getByRole('button', { name: 'ПЕРЕРЫВ' });
     expect(breakControl).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Вернуться к режимам' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'К режимам' })).toBeEnabled();
     expect(screen.getByTestId('pixi-stage-stub')).toBeInTheDocument();
   });
 
@@ -366,7 +371,9 @@ describe('DailyScreen', () => {
     expect(screen.getByText('19')).toBeInTheDocument();
     expect(screen.getByText('33:00')).toBeInTheDocument();
     expect(screen.getByText('40%')).toBeInTheDocument();
-    expect(screen.getByLabelText('1-й период: 14 голов из 30 бросков за 20:00')).toBeInTheDocument();
+    expect(
+      screen.getByLabelText('1-й период: 14 голов из 30 бросков за 20:00'),
+    ).toBeInTheDocument();
     expect(screen.getByText('20:00')).toBeInTheDocument();
     expect(screen.getByLabelText('2-й период: 5 голов из 18 бросков за 13:00')).toBeInTheDocument();
     expect(screen.getByText('13:00')).toBeInTheDocument();
@@ -549,6 +556,8 @@ describe('DailyScreen', () => {
     expect(await screen.findByRole('button', { name: 'БРОСОК' })).toBeInTheDocument();
     expect(screen.getByText('12/500')).toBeInTheDocument();
     expect(screen.getByText('ЛИМИТ')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Звук в разработке' }));
+    expect(screen.getByRole('status')).toHaveTextContent('Звук в разработке');
     expect(screen.getByTestId('pixi-stage-stub')).toBeInTheDocument();
   });
 

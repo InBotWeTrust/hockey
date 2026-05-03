@@ -1,10 +1,7 @@
 import { apiFetch } from './apiFetch.js';
+import type { DailyPeriodSpeedPreset } from '@hockey/game-core';
 
-export type DailyState =
-  | 'idle'
-  | 'period_active'
-  | 'break_active'
-  | 'closed';
+export type DailyState = 'idle' | 'period_active' | 'break_active' | 'closed';
 
 export type ShotResultType = 'goal' | 'save' | 'miss';
 
@@ -44,6 +41,7 @@ export interface DailyStateResponse {
   goalie_id: string;
   shots_per_period: number;
   total_periods: number;
+  period_speed_presets: DailyPeriodSpeedPreset[];
   recent_periods: PeriodLogEntry[];
   previous_game: DailyGameStats | null;
   training_cooldown_ends_at: string | null;
@@ -79,9 +77,7 @@ export function startDailyPeriod(): Promise<DailyStateResponse> {
   });
 }
 
-export function submitDailyShot(
-  body: SubmitShotRequest,
-): Promise<SubmitShotResponse> {
+export function submitDailyShot(body: SubmitShotRequest): Promise<SubmitShotResponse> {
   return apiFetch<SubmitShotResponse>('/duel/daily/shot', {
     method: 'POST',
     body: JSON.stringify(body),

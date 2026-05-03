@@ -4,10 +4,10 @@ import { z } from 'zod';
 import {
   GAME_CORE_VERSION,
   STICK_NEUTRAL,
-  getDailyPeriodSpeedPreset,
   getGoalie,
   getSessionPhaseOffsets,
   resolveShot,
+  type DailyPeriodSpeedPreset,
 } from '@hockey/game-core';
 import { grantAchievements } from '../../achievements/service.js';
 import { AppError } from '../../plugins/errors.js';
@@ -15,7 +15,11 @@ import { appendEvent } from '../eventLog.js';
 import { deriveDailySeed, deriveShotSeed } from '../seed.js';
 import { assertTrainingCooldownExpired, fetchTrainingCooldownEndsAt } from '../trainingCooldown.js';
 import { reconcileDayPool, type DayPoolRow } from './reconcile.js';
-import { getGameSettings, type GameSettings } from '../gameSettings.js';
+import {
+  getConfiguredDailyPeriodSpeedPreset,
+  getGameSettings,
+  type GameSettings,
+} from '../gameSettings.js';
 
 const shotBodySchema = z.object({
   shot_index: z.number().int().min(1),
@@ -64,6 +68,7 @@ interface DailyStateResponse {
   goalie_id: string;
   shots_per_period: number;
   total_periods: number;
+  period_speed_presets: DailyPeriodSpeedPreset[];
   recent_periods: PeriodLogEntry[];
   previous_game: DailyGameStats | null;
   training_cooldown_ends_at: string | null;
@@ -231,6 +236,7 @@ async function buildState(
       goalie_id: settings.daily.goalieId,
       shots_per_period: settings.daily.shotsPerPeriod,
       total_periods: settings.daily.totalPeriods,
+      period_speed_presets: settings.daily.periodSpeedPresets,
       recent_periods: [],
       previous_game: previousGame,
       training_cooldown_ends_at: trainingCooldownEndsAtIso,
@@ -276,6 +282,7 @@ async function buildState(
     goalie_id: settings.daily.goalieId,
     shots_per_period: settings.daily.shotsPerPeriod,
     total_periods: settings.daily.totalPeriods,
+    period_speed_presets: settings.daily.periodSpeedPresets,
     recent_periods: recentPeriods,
     previous_game: previousGame,
     training_cooldown_ends_at: trainingCooldownEndsAtIso,
@@ -403,7 +410,10 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
       const shotSeed = deriveShotSeed(pool.daily_seed, pool.current_period, body.shot_index);
       const goalieCfg = getGoalie(settings.daily.goalieId);
       const phaseOffsets = getSessionPhaseOffsets(pool.daily_seed);
-      const periodSpeeds = getDailyPeriodSpeedPreset(pool.current_period);
+      const periodSpeeds = getConfiguredDailyPeriodSpeedPreset(
+        settings.daily.periodSpeedPresets,
+        pool.current_period,
+      );
       const shotInput = {
         tapTime: body.input.tapTime,
         ...(body.input.shooterTapTime !== undefined
