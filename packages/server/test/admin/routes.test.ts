@@ -109,7 +109,8 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
       headers: auth(adminToken),
     });
     expect(adminRes.statusCode).toBe(200);
-    expect(adminRes.json()).toMatchObject({
+    const adminSummary = adminRes.json();
+    expect(adminSummary).toMatchObject({
       users: {
         total: 2,
         admins: 1,
@@ -125,6 +126,24 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
       },
       gameCoreVersion: expect.any(Number),
     });
+    expect(adminSummary.dashboard).toMatchObject({ period: '30d', periodDays: 30 });
+    expect(adminSummary.dashboard.series).toHaveLength(30);
+
+    const sevenDaysRes = await app.inject({
+      method: 'GET',
+      url: '/admin/summary?period=7d',
+      headers: auth(adminToken),
+    });
+    expect(sevenDaysRes.statusCode).toBe(200);
+    expect(sevenDaysRes.json().dashboard).toMatchObject({ period: '7d', periodDays: 7 });
+    expect(sevenDaysRes.json().dashboard.series).toHaveLength(7);
+
+    const invalidPeriodRes = await app.inject({
+      method: 'GET',
+      url: '/admin/summary?period=all',
+      headers: auth(adminToken),
+    });
+    expect(invalidPeriodRes.statusCode).toBe(400);
   });
 
   it('stores player feedback and lets admins mark it read manually', async () => {

@@ -5,6 +5,7 @@ export type AdminIdentitySource = 'custom' | 'telegram' | 'vk';
 export type AdminLevelFilter = 'all' | 'beginner' | 'amateur' | 'professional';
 export type AdminFeedbackKind = 'review' | 'suggestion' | 'question';
 export type AdminChannelPeriod = '7d' | '30d' | '90d';
+export type AdminDashboardPeriod = '7d' | '30d' | '90d' | '365d';
 export type AdminSort =
   | 'name_asc'
   | 'name_desc'
@@ -34,6 +35,8 @@ export interface AdminDashboardSeriesPoint {
 }
 
 export interface AdminDashboard {
+  period: AdminDashboardPeriod;
+  periodDays: number;
   users: {
     total: number;
     admins: number;
@@ -42,26 +45,33 @@ export interface AdminDashboard {
     new7d: number;
     new30d: number;
     new365d: number;
+    newInPeriod: number;
     activeToday: number;
     activeYesterday: number;
     active7d: number;
     active30d: number;
     active365d: number;
+    activeInPeriod: number;
     activated: { count: number; percent: number };
   };
   payments: {
     revenueTodayRub: number;
     revenue30dRub: number;
+    revenuePeriodRub: number;
     revenueMonthRub: number;
     revenueQuarterRub: number;
     revenueYearRub: number;
     revenueTotalRub: number;
     paidUsersTotal: number;
     paidUsers30d: number;
+    paidUsersPeriod: number;
     paidPayments30d: number;
+    paidPaymentsPeriod: number;
     payerConversionPercent: number;
     arpu30dRub: number;
     arppu30dRub: number;
+    arpuPeriodRub: number;
+    arppuPeriodRub: number;
   };
   game: {
     shotsToday: number;
@@ -70,20 +80,28 @@ export interface AdminDashboard {
     goals7d: number;
     shots30d: number;
     goals30d: number;
+    shotsPeriod: number;
+    goalsPeriod: number;
     shotsTotal: number;
     goalsTotal: number;
     accuracy30d: number;
+    accuracyPeriod: number;
     dailyPlayers30d: number;
     trainingPlayers30d: number;
+    dailyPlayersPeriod: number;
+    trainingPlayersPeriod: number;
     activeDailyPools: number;
     activeTrainingSessions: number;
     mismatches30d: number;
+    mismatchesPeriod: number;
   };
   chat: {
     messagesToday: number;
     messages7d: number;
     messages30d: number;
     activeUsers30d: number;
+    messagesPeriod: number;
+    activeUsersPeriod: number;
   };
   feedback: { total: number; unread: number };
   inventory: { activeItems: number };
@@ -362,8 +380,9 @@ export interface AdminUserPatch {
   wallet?: Partial<AdminUser['wallet']>;
 }
 
-export function fetchAdminSummary(): Promise<AdminSummary> {
-  return apiFetch<AdminSummary>('/admin/summary');
+export function fetchAdminSummary(period: AdminDashboardPeriod): Promise<AdminSummary> {
+  const params = new URLSearchParams({ period });
+  return apiFetch<AdminSummary>(`/admin/summary?${params.toString()}`);
 }
 
 export interface AdminUsersQuery {

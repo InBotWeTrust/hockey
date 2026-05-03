@@ -59,6 +59,7 @@ import {
   patchAdminGameSetting,
   patchAdminUser,
   type AdminDashboard,
+  type AdminDashboardPeriod,
   type AdminDashboardSeriesPoint,
   type AdminChannelPeriod,
   type AdminChannelPost,
@@ -111,6 +112,13 @@ const channelPeriodOptions: Array<GlassSelectOption<AdminChannelPeriod>> = [
   { value: '7d', label: '7 дней' },
   { value: '30d', label: '30 дней' },
   { value: '90d', label: '90 дней' },
+];
+
+const dashboardPeriodOptions: Array<GlassSelectOption<AdminDashboardPeriod>> = [
+  { value: '7d', label: '7 дней' },
+  { value: '30d', label: '30 дней' },
+  { value: '90d', label: '90 дней' },
+  { value: '365d', label: '1 год' },
 ];
 
 const settingSections: Array<{
@@ -204,6 +212,10 @@ const pushNotificationTypeItems: Array<{
 
 function toAdminSort(field: SortField, direction: SortDirection): AdminSort {
   return `${field}_${direction}` as AdminSort;
+}
+
+function dashboardPeriodLabel(period: AdminDashboardPeriod): string {
+  return dashboardPeriodOptions.find((option) => option.value === period)?.label ?? '30 дней';
 }
 
 function numberText(value: number): string {
@@ -380,6 +392,7 @@ export function AdminScreen(): JSX.Element {
   const [maxAmount, setMaxAmount] = useState('');
   const [feedbackStatus, setFeedbackStatus] = useState<AdminFeedbackStatus>('unread');
   const [feedbackKind, setFeedbackKind] = useState<'all' | AdminFeedbackKind>('all');
+  const [dashboardPeriod, setDashboardPeriod] = useState<AdminDashboardPeriod>('30d');
   const [channelPeriod, setChannelPeriod] = useState<AdminChannelPeriod>('30d');
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const filtersChanged =
@@ -430,8 +443,8 @@ export function AdminScreen(): JSX.Element {
     enabled: canTryAdmin,
   });
   const summary = useQuery({
-    queryKey: ['admin', 'summary'],
-    queryFn: fetchAdminSummary,
+    queryKey: ['admin', 'summary', dashboardPeriod],
+    queryFn: () => fetchAdminSummary(dashboardPeriod),
     enabled: canTryAdmin && tab === 'dashboard',
   });
   const settings = useQuery({
@@ -521,7 +534,6 @@ export function AdminScreen(): JSX.Element {
           flex: '0 0 auto',
           overflowX: 'auto',
           overscrollBehaviorX: 'contain',
-          scrollSnapType: 'x proximity',
           gap: 5,
         }}
       >
@@ -541,17 +553,34 @@ export function AdminScreen(): JSX.Element {
               alignItems: 'center',
               justifyContent: 'center',
               gap: 6,
-              scrollSnapAlign: 'start',
             }}
           >
-            {item.icon}
+            <span
+              aria-hidden="true"
+              style={{
+                width: 18,
+                height: 18,
+                flex: '0 0 18px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transform: 'translateX(1px)',
+              }}
+            >
+              {item.icon}
+            </span>
             {item.id === 'feedback' ? `${item.label} (${feedbackUnreadCount})` : item.label}
           </button>
         ))}
       </nav>
 
       {tab === 'dashboard' && (
-        <DashboardPanel loading={summary.isLoading} dashboard={summary.data?.dashboard ?? null} />
+        <DashboardPanel
+          loading={summary.isLoading}
+          dashboard={summary.data?.dashboard ?? null}
+          period={dashboardPeriod}
+          onPeriod={setDashboardPeriod}
+        />
       )}
       {tab === 'users' && (
         <UsersPanel
@@ -651,16 +680,41 @@ export function AdminScreen(): JSX.Element {
 function DashboardPanel({
   loading,
   dashboard,
+  period,
+  onPeriod,
 }: {
   loading: boolean;
   dashboard: AdminDashboard | null;
+  period: AdminDashboardPeriod;
+  onPeriod: (period: AdminDashboardPeriod) => void;
 }): JSX.Element {
+  const periodLabel = dashboardPeriodLabel(dashboard?.period ?? period);
+  const header = (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'minmax(0, 1fr) 126px',
+        gap: 8,
+        alignItems: 'center',
+        margin: '2px 0 -4px 0',
+      }}
+    >
+      <div className="section-label" style={{ margin: '0 0 0 -14px' }}>
+        Дашборд
+      </div>
+      <GlassSelect
+        value={period}
+        options={dashboardPeriodOptions}
+        onChange={onPeriod}
+        ariaLabel="Период дашборда"
+      />
+    </div>
+  );
+
   if (loading || dashboard === null) {
     return (
       <>
-        <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
-          Дашборд
-        </div>
+        {header}
         <AdminPlainState>Собираем цифры проекта...</AdminPlainState>
       </>
     );
@@ -668,29 +722,27 @@ function DashboardPanel({
 
   return (
     <>
-      <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
-        Дашборд
-      </div>
-      <DashboardHero dashboard={dashboard} />
-      <DashboardMetricGrid dashboard={dashboard} />
+      {header}
+      <DashboardHero dashboard={dashboard} periodLabel={periodLabel} />
+      <DashboardMetricGrid dashboard={dashboard} periodLabel={periodLabel} />
       <UserNotificationStats stats={dashboard.notifications} loading={false} />
       <DashboardChartCard
         title="Активные пользователи"
-        subtitle="30 дней"
+        subtitle={periodLabel}
         series={dashboard.series}
         valueKey="activeUsers"
         color="#1d4ed8"
       />
       <DashboardChartCard
         title="Новые пользователи"
-        subtitle="30 дней"
+        subtitle={periodLabel}
         series={dashboard.series}
         valueKey="newUsers"
         color="#0f766e"
       />
       <DashboardChartCard
         title="Выручка"
-        subtitle="30 дней"
+        subtitle={periodLabel}
         series={dashboard.series}
         valueKey="revenueRub"
         color="#7c2d12"
@@ -698,14 +750,14 @@ function DashboardPanel({
       />
       <DashboardChartCard
         title="Броски"
-        subtitle="30 дней"
+        subtitle={periodLabel}
         series={dashboard.series}
         valueKey="shots"
         color="#4338ca"
       />
       <DashboardChartCard
         title="Сообщения"
-        subtitle="30 дней"
+        subtitle={periodLabel}
         series={dashboard.series}
         valueKey="messages"
         color="#047857"
@@ -714,7 +766,13 @@ function DashboardPanel({
   );
 }
 
-function DashboardHero({ dashboard }: { dashboard: AdminDashboard }): JSX.Element {
+function DashboardHero({
+  dashboard,
+  periodLabel,
+}: {
+  dashboard: AdminDashboard;
+  periodLabel: string;
+}): JSX.Element {
   return (
     <section
       className="glass"
@@ -754,14 +812,14 @@ function DashboardHero({ dashboard }: { dashboard: AdminDashboard }): JSX.Elemen
           note={`вчера ${numberText(dashboard.users.activeYesterday)}`}
         />
         <DashboardMiniStat
-          label="Выручка 30д"
-          value={moneyText(dashboard.payments.revenue30dRub)}
-          note={`год ${moneyText(dashboard.payments.revenueYearRub)}`}
+          label="Выручка"
+          value={moneyText(dashboard.payments.revenuePeriodRub)}
+          note={`${periodLabel} · год ${moneyText(dashboard.payments.revenueYearRub)}`}
         />
         <DashboardMiniStat
-          label="Точность 30д"
-          value={percentText(dashboard.game.accuracy30d)}
-          note={`${numberText(dashboard.game.goals30d)} голов`}
+          label="Точность"
+          value={percentText(dashboard.game.accuracyPeriod)}
+          note={`${numberText(dashboard.game.goalsPeriod)} голов · ${periodLabel}`}
         />
       </div>
     </section>
@@ -829,16 +887,22 @@ function DashboardMiniStat({
   );
 }
 
-function DashboardMetricGrid({ dashboard }: { dashboard: AdminDashboard }): JSX.Element {
+function DashboardMetricGrid({
+  dashboard,
+  periodLabel,
+}: {
+  dashboard: AdminDashboard;
+  periodLabel: string;
+}): JSX.Element {
   const cards = [
     {
       label: 'Всего игроков',
       value: numberText(dashboard.users.total),
-      note: `+${numberText(dashboard.users.new30d)} за 30д`,
+      note: `+${numberText(dashboard.users.newInPeriod)} за ${periodLabel}`,
     },
     {
       label: 'Активные',
-      value: numberText(dashboard.users.active30d),
+      value: numberText(dashboard.users.activeInPeriod),
       note: `7д ${numberText(dashboard.users.active7d)} · год ${numberText(dashboard.users.active365d)}`,
     },
     {
@@ -857,14 +921,14 @@ function DashboardMetricGrid({ dashboard }: { dashboard: AdminDashboard }): JSX.
       note: `${percentText(dashboard.payments.payerConversionPercent)} от игроков`,
     },
     {
-      label: 'ARPU 30д',
-      value: moneyText(dashboard.payments.arpu30dRub),
-      note: `ARPPU ${moneyText(dashboard.payments.arppu30dRub)}`,
+      label: 'ARPU',
+      value: moneyText(dashboard.payments.arpuPeriodRub),
+      note: `${periodLabel} · ARPPU ${moneyText(dashboard.payments.arppuPeriodRub)}`,
     },
     {
-      label: 'Броски 30д',
-      value: numberText(dashboard.game.shots30d),
-      note: `${numberText(dashboard.game.dailyPlayers30d)} daily · ${numberText(dashboard.game.trainingPlayers30d)} training`,
+      label: 'Броски',
+      value: numberText(dashboard.game.shotsPeriod),
+      note: `${numberText(dashboard.game.dailyPlayersPeriod)} дневная · ${numberText(dashboard.game.trainingPlayersPeriod)} тренировка`,
     },
     {
       label: 'Броски всего',
@@ -873,8 +937,8 @@ function DashboardMetricGrid({ dashboard }: { dashboard: AdminDashboard }): JSX.
     },
     {
       label: 'Чат',
-      value: numberText(dashboard.chat.messages30d),
-      note: `${numberText(dashboard.chat.activeUsers30d)} авторов за 30д`,
+      value: numberText(dashboard.chat.messagesPeriod),
+      note: `${numberText(dashboard.chat.activeUsersPeriod)} авторов за ${periodLabel}`,
     },
     {
       label: 'Фидбек',
@@ -888,8 +952,8 @@ function DashboardMetricGrid({ dashboard }: { dashboard: AdminDashboard }): JSX.
     },
     {
       label: 'Мисматчи',
-      value: numberText(dashboard.game.mismatches30d),
-      note: 'за 30 дней',
+      value: numberText(dashboard.game.mismatchesPeriod),
+      note: `за ${periodLabel}`,
     },
   ];
   return (
@@ -994,7 +1058,12 @@ function DashboardChartCard({
           {formatValue(total)}
         </span>
       </div>
-      <MiniLineChart series={series} values={values} color={color} />
+      <MiniLineChart
+        series={series}
+        values={values}
+        color={color}
+        ariaLabel={`График ${title.toLowerCase()} за ${subtitle}`}
+      />
       <div
         style={{
           display: 'flex',
@@ -1015,10 +1084,12 @@ function MiniLineChart({
   series,
   values,
   color,
+  ariaLabel,
 }: {
   series: AdminDashboardSeriesPoint[];
   values: number[];
   color: string;
+  ariaLabel: string;
 }): JSX.Element {
   const width = 320;
   const height = 142;
@@ -1039,7 +1110,7 @@ function MiniLineChart({
     <svg
       viewBox={`0 0 ${width} ${height}`}
       role="img"
-      aria-label="График за 30 дней"
+      aria-label={ariaLabel}
       style={{ width: '100%', height: 142, display: 'block' }}
     >
       {[0, 1, 2, 3].map((line) => {

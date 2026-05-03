@@ -111,7 +111,7 @@ describe('AdminScreen', () => {
     vi.restoreAllMocks();
   });
 
-  it('starts with users and renders game settings for admins', async () => {
+  it('starts with dashboard and renders game settings for admins', async () => {
     useAuthStore.getState().setSession({
       accessToken: 'a',
       refreshToken: 'r',
@@ -131,6 +131,8 @@ describe('AdminScreen', () => {
             active: { daily: 0, training: 0 },
             last24h: { shots: 0, goals: 0, mismatches: 0 },
             dashboard: {
+              period: '30d',
+              periodDays: 30,
               users: {
                 total: 2,
                 admins: 1,
@@ -139,26 +141,33 @@ describe('AdminScreen', () => {
                 new7d: 1,
                 new30d: 1,
                 new365d: 1,
+                newInPeriod: 1,
                 activeToday: 1,
                 activeYesterday: 0,
                 active7d: 1,
                 active30d: 1,
                 active365d: 1,
+                activeInPeriod: 1,
                 activated: { count: 1, percent: 50 },
               },
               payments: {
                 revenueTodayRub: 0,
                 revenue30dRub: 100,
+                revenuePeriodRub: 100,
                 revenueMonthRub: 100,
                 revenueQuarterRub: 100,
                 revenueYearRub: 100,
                 revenueTotalRub: 100,
                 paidUsersTotal: 1,
                 paidUsers30d: 1,
+                paidUsersPeriod: 1,
                 paidPayments30d: 1,
+                paidPaymentsPeriod: 1,
                 payerConversionPercent: 50,
                 arpu30dRub: 50,
                 arppu30dRub: 100,
+                arpuPeriodRub: 50,
+                arppuPeriodRub: 100,
               },
               game: {
                 shotsToday: 0,
@@ -167,16 +176,29 @@ describe('AdminScreen', () => {
                 goals7d: 6,
                 shots30d: 12,
                 goals30d: 6,
+                shotsPeriod: 12,
+                goalsPeriod: 6,
                 shotsTotal: 12,
                 goalsTotal: 6,
                 accuracy30d: 50,
+                accuracyPeriod: 50,
                 dailyPlayers30d: 1,
                 trainingPlayers30d: 0,
+                dailyPlayersPeriod: 1,
+                trainingPlayersPeriod: 0,
                 activeDailyPools: 0,
                 activeTrainingSessions: 0,
                 mismatches30d: 0,
+                mismatchesPeriod: 0,
               },
-              chat: { messagesToday: 0, messages7d: 0, messages30d: 0, activeUsers30d: 0 },
+              chat: {
+                messagesToday: 0,
+                messages7d: 0,
+                messages30d: 0,
+                activeUsers30d: 0,
+                messagesPeriod: 0,
+                activeUsersPeriod: 0,
+              },
               feedback: { total: 1, unread: 1 },
               inventory: { activeItems: 0 },
               engagement: {
@@ -431,6 +453,11 @@ describe('AdminScreen', () => {
     expect((await screen.findAllByText('Дашборд')).length).toBeGreaterThan(0);
     expect(await screen.findByText('Ultimate Hockey')).toBeInTheDocument();
     expect(await screen.findByText('Активные пользователи')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Период дашборда' }));
+    fireEvent.click(await screen.findByRole('option', { name: '90 дней' }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith('/api/admin/summary?period=90d', expect.any(Object)),
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Игроки' }));
     expect(await screen.findByText('Игроки (1)')).toBeInTheDocument();
     expect(screen.queryByText('1 из 2 пользователей')).not.toBeInTheDocument();

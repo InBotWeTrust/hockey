@@ -13,6 +13,7 @@ import { DEFAULT_NEWS_CHANNEL_SLUG } from '../chat/service.js';
 type UserRole = 'player' | 'admin';
 type DisplaySource = 'custom' | 'telegram' | 'vk';
 type FeedbackKind = 'review' | 'suggestion' | 'question';
+type AdminDashboardPeriod = '7d' | '30d' | '90d' | '365d';
 
 interface AdminSummaryRow {
   total_users: string;
@@ -48,12 +49,17 @@ interface AdminDashboardCoreRow {
   active_7d: string;
   active_30d: string;
   active_365d: string;
+  new_period: string;
+  active_period: string;
   activated_users: string;
   paid_users_total: string;
   paid_users_30d: string;
+  paid_users_period: string;
   paid_payments_30d: string;
+  paid_payments_period: string;
   revenue_today: string;
   revenue_30d: string;
+  revenue_period: string;
   revenue_month: string;
   revenue_quarter: string;
   revenue_year: string;
@@ -64,17 +70,24 @@ interface AdminDashboardCoreRow {
   goals_7d: string;
   shots_30d: string;
   goals_30d: string;
+  shots_period: string;
+  goals_period: string;
   shots_total: string;
   goals_total: string;
   daily_players_30d: string;
   training_players_30d: string;
+  daily_players_period: string;
+  training_players_period: string;
   active_daily_pools: string;
   active_training_sessions: string;
   mismatches_30d: string;
+  mismatches_period: string;
   messages_today: string;
   messages_7d: string;
   messages_30d: string;
   chat_users_30d: string;
+  messages_period: string;
+  chat_users_period: string;
   feedback_total: string;
   feedback_unread: string;
   inventory_items: string;
@@ -334,6 +347,10 @@ const channelPeriodQuerySchema = z.object({
   period: z.enum(['7d', '30d', '90d']).default('30d'),
 });
 
+const dashboardPeriodQuerySchema = z.object({
+  period: z.enum(['7d', '30d', '90d', '365d']).default('30d'),
+});
+
 const feedbackPatchSchema = z
   .object({
     isRead: z.boolean(),
@@ -436,6 +453,8 @@ function rubPerUser(revenue: number, users: number): number {
 }
 
 function mapDashboard(
+  period: AdminDashboardPeriod,
+  periodDays: number,
   core: AdminDashboardCoreRow,
   engagement: AdminDashboardEngagementRow,
   series: AdminDashboardSeriesRow[],
@@ -444,13 +463,20 @@ function mapDashboard(
   const totalUsers = Number(core.total_users);
   const active7d = Number(core.active_7d);
   const active30d = Number(core.active_30d);
+  const activePeriod = Number(core.active_period);
   const revenue30d = Number(core.revenue_30d);
+  const revenuePeriod = Number(core.revenue_period);
   const paidUsers30d = Number(core.paid_users_30d);
+  const paidUsersPeriod = Number(core.paid_users_period);
   const paidUsersTotal = Number(core.paid_users_total);
   const shots30d = Number(core.shots_30d);
   const goals30d = Number(core.goals_30d);
+  const shotsPeriod = Number(core.shots_period);
+  const goalsPeriod = Number(core.goals_period);
   const activeToday = Number(core.active_today);
   return {
+    period,
+    periodDays,
     users: {
       total: totalUsers,
       admins: Number(core.admin_users),
@@ -459,11 +485,13 @@ function mapDashboard(
       new7d: Number(core.new_7d),
       new30d: Number(core.new_30d),
       new365d: Number(core.new_365d),
+      newInPeriod: Number(core.new_period),
       activeToday,
       activeYesterday: Number(core.active_yesterday),
       active7d,
       active30d,
       active365d: Number(core.active_365d),
+      activeInPeriod: activePeriod,
       activated: {
         count: Number(core.activated_users),
         percent: ratioPercent(Number(core.activated_users), totalUsers),
@@ -472,16 +500,21 @@ function mapDashboard(
     payments: {
       revenueTodayRub: Number(core.revenue_today),
       revenue30dRub: revenue30d,
+      revenuePeriodRub: revenuePeriod,
       revenueMonthRub: Number(core.revenue_month),
       revenueQuarterRub: Number(core.revenue_quarter),
       revenueYearRub: Number(core.revenue_year),
       revenueTotalRub: Number(core.revenue_total),
       paidUsersTotal,
       paidUsers30d,
+      paidUsersPeriod,
       paidPayments30d: Number(core.paid_payments_30d),
+      paidPaymentsPeriod: Number(core.paid_payments_period),
       payerConversionPercent: ratioPercent(paidUsersTotal, totalUsers),
       arpu30dRub: rubPerUser(revenue30d, totalUsers),
       arppu30dRub: rubPerUser(revenue30d, paidUsers30d),
+      arpuPeriodRub: rubPerUser(revenuePeriod, totalUsers),
+      arppuPeriodRub: rubPerUser(revenuePeriod, paidUsersPeriod),
     },
     game: {
       shotsToday: Number(core.shots_today),
@@ -490,20 +523,28 @@ function mapDashboard(
       goals7d: Number(core.goals_7d),
       shots30d,
       goals30d,
+      shotsPeriod,
+      goalsPeriod,
       shotsTotal: Number(core.shots_total),
       goalsTotal: Number(core.goals_total),
       accuracy30d: ratioPercent(goals30d, shots30d),
+      accuracyPeriod: ratioPercent(goalsPeriod, shotsPeriod),
       dailyPlayers30d: Number(core.daily_players_30d),
       trainingPlayers30d: Number(core.training_players_30d),
+      dailyPlayersPeriod: Number(core.daily_players_period),
+      trainingPlayersPeriod: Number(core.training_players_period),
       activeDailyPools: Number(core.active_daily_pools),
       activeTrainingSessions: Number(core.active_training_sessions),
       mismatches30d: Number(core.mismatches_30d),
+      mismatchesPeriod: Number(core.mismatches_period),
     },
     chat: {
       messagesToday: Number(core.messages_today),
       messages7d: Number(core.messages_7d),
       messages30d: Number(core.messages_30d),
       activeUsers30d: Number(core.chat_users_30d),
+      messagesPeriod: Number(core.messages_period),
+      activeUsersPeriod: Number(core.chat_users_period),
     },
     feedback: {
       total: Number(core.feedback_total),
@@ -680,6 +721,17 @@ function channelPeriodInterval(period: '7d' | '30d' | '90d'): string {
   )[period];
 }
 
+function dashboardPeriodDays(period: AdminDashboardPeriod): number {
+  return (
+    {
+      '7d': 7,
+      '30d': 30,
+      '90d': 90,
+      '365d': 365,
+    } satisfies Record<AdminDashboardPeriod, number>
+  )[period];
+}
+
 function engagementRate(engagedUsers: number, totalUsers: number): number {
   if (totalUsers <= 0) return 0;
   return Math.round((engagedUsers * 10_000) / totalUsers) / 100;
@@ -759,7 +811,10 @@ async function fetchPushNotificationStats(
   );
 }
 
-async function fetchAdminDashboardCore(client: Pool | PoolClient): Promise<AdminDashboardCoreRow> {
+async function fetchAdminDashboardCore(
+  client: Pool | PoolClient,
+  periodDays: number,
+): Promise<AdminDashboardCoreRow> {
   const { rows } = await client.query<AdminDashboardCoreRow>(
     `select
        (select count(*) from users)::int as total_users,
@@ -776,21 +831,35 @@ async function fetchAdminDashboardCore(client: Pool | PoolClient): Promise<Admin
        (select count(*) from users where last_seen_at >= now() - interval '7 days')::int as active_7d,
        (select count(*) from users where last_seen_at >= now() - interval '30 days')::int as active_30d,
        (select count(*) from users where last_seen_at >= now() - interval '365 days')::int as active_365d,
+       (select count(*) from users
+         where created_at >= now() - ($1::int * interval '1 day'))::int as new_period,
+       (select count(*) from users
+         where last_seen_at >= now() - ($1::int * interval '1 day'))::int as active_period,
        (select count(distinct user_id) from shot_session)::int as activated_users,
        (select count(distinct user_id) from payments where status = 'paid')::int as paid_users_total,
        (select count(distinct user_id) from payments
          where status = 'paid'
            and user_id is not null
            and coalesce(paid_at, created_at) >= now() - interval '30 days')::int as paid_users_30d,
+       (select count(distinct user_id) from payments
+         where status = 'paid'
+           and user_id is not null
+           and coalesce(paid_at, created_at) >= now() - ($1::int * interval '1 day'))::int as paid_users_period,
        (select count(*) from payments
          where status = 'paid'
            and coalesce(paid_at, created_at) >= now() - interval '30 days')::int as paid_payments_30d,
+       (select count(*) from payments
+         where status = 'paid'
+           and coalesce(paid_at, created_at) >= now() - ($1::int * interval '1 day'))::int as paid_payments_period,
        (select coalesce(sum(amount_rub), 0) from payments
          where status = 'paid'
            and coalesce(paid_at, created_at) >= date_trunc('day', now()))::int as revenue_today,
        (select coalesce(sum(amount_rub), 0) from payments
          where status = 'paid'
            and coalesce(paid_at, created_at) >= now() - interval '30 days')::int as revenue_30d,
+       (select coalesce(sum(amount_rub), 0) from payments
+         where status = 'paid'
+           and coalesce(paid_at, created_at) >= now() - ($1::int * interval '1 day'))::int as revenue_period,
        (select coalesce(sum(amount_rub), 0) from payments
          where status = 'paid'
            and coalesce(paid_at, created_at) >= date_trunc('month', now()))::int as revenue_month,
@@ -810,16 +879,26 @@ async function fetchAdminDashboardCore(client: Pool | PoolClient): Promise<Admin
        (select count(*) from shot_session where created_at >= now() - interval '30 days')::int as shots_30d,
        (select count(*) from shot_session
          where created_at >= now() - interval '30 days' and server_result = 'goal')::int as goals_30d,
+       (select count(*) from shot_session
+         where created_at >= now() - ($1::int * interval '1 day'))::int as shots_period,
+       (select count(*) from shot_session
+         where created_at >= now() - ($1::int * interval '1 day') and server_result = 'goal')::int as goals_period,
        (select count(*) from shot_session)::int as shots_total,
        (select count(*) from shot_session where server_result = 'goal')::int as goals_total,
        (select count(distinct user_id) from shot_session
          where mode = 'daily' and created_at >= now() - interval '30 days')::int as daily_players_30d,
        (select count(distinct user_id) from shot_session
          where mode = 'training' and created_at >= now() - interval '30 days')::int as training_players_30d,
+       (select count(distinct user_id) from shot_session
+         where mode = 'daily' and created_at >= now() - ($1::int * interval '1 day'))::int as daily_players_period,
+       (select count(distinct user_id) from shot_session
+         where mode = 'training' and created_at >= now() - ($1::int * interval '1 day'))::int as training_players_period,
        (select count(*) from day_pool where state <> 'closed')::int as active_daily_pools,
        (select count(*) from training_session where state = 'active')::int as active_training_sessions,
        (select count(*) from event_log
          where type = 'shot_mismatch' and created_at >= now() - interval '30 days')::int as mismatches_30d,
+       (select count(*) from event_log
+         where type = 'shot_mismatch' and created_at >= now() - ($1::int * interval '1 day'))::int as mismatches_period,
        (select count(*) from messages
          where is_deleted = false and created_at >= date_trunc('day', now()))::int as messages_today,
        (select count(*) from messages
@@ -828,15 +907,21 @@ async function fetchAdminDashboardCore(client: Pool | PoolClient): Promise<Admin
          where is_deleted = false and created_at >= now() - interval '30 days')::int as messages_30d,
        (select count(distinct sender_id) from messages
          where is_deleted = false and created_at >= now() - interval '30 days')::int as chat_users_30d,
+       (select count(*) from messages
+         where is_deleted = false and created_at >= now() - ($1::int * interval '1 day'))::int as messages_period,
+       (select count(distinct sender_id) from messages
+         where is_deleted = false and created_at >= now() - ($1::int * interval '1 day'))::int as chat_users_period,
        (select count(*) from feedback_messages)::int as feedback_total,
        (select count(*) from feedback_messages where is_read = false)::int as feedback_unread,
        (select count(*) from admin_inventory_items where deleted_at is null)::int as inventory_items`,
+    [periodDays],
   );
   return rows[0]!;
 }
 
 async function fetchAdminDashboardEngagement(
   client: Pool | PoolClient,
+  periodDays: number,
 ): Promise<AdminDashboardEngagementRow> {
   const { rows } = await client.query<AdminDashboardEngagementRow>(
     `with activity_events as (
@@ -859,24 +944,26 @@ async function fetchAdminDashboardEngagement(
               max(occurred_at) as last_at,
               count(*) as events_count
          from activity_events
-        where occurred_at >= now() - interval '30 days'
+        where occurred_at >= now() - ($1::int * interval '1 day')
         group by user_id, date_trunc('day', occurred_at)
        having count(*) >= 2
      )
      select coalesce(avg(extract(epoch from (last_at - first_at)) / 60), 0)
               as avg_daily_activity_span_minutes
        from daily_activity`,
+    [periodDays],
   );
   return rows[0] ?? { avg_daily_activity_span_minutes: '0' };
 }
 
 async function fetchAdminDashboardSeries(
   client: Pool | PoolClient,
+  periodDays: number,
 ): Promise<AdminDashboardSeriesRow[]> {
   const { rows } = await client.query<AdminDashboardSeriesRow>(
     `with days as (
        select generate_series(
-         date_trunc('day', now()) - interval '29 days',
+         date_trunc('day', now()) - (($1::int - 1) * interval '1 day'),
          date_trunc('day', now()),
          interval '1 day'
        )::date as day
@@ -897,13 +984,13 @@ async function fetchAdminDashboardSeries(
      active_users as (
        select occurred_at::date as day, count(distinct user_id)::int as value
          from activity_events
-        where occurred_at >= date_trunc('day', now()) - interval '29 days'
+        where occurred_at >= date_trunc('day', now()) - (($1::int - 1) * interval '1 day')
         group by occurred_at::date
      ),
      new_users as (
        select created_at::date as day, count(*)::int as value
          from users
-        where created_at >= date_trunc('day', now()) - interval '29 days'
+        where created_at >= date_trunc('day', now()) - (($1::int - 1) * interval '1 day')
         group by created_at::date
      ),
      revenue as (
@@ -911,7 +998,7 @@ async function fetchAdminDashboardSeries(
               coalesce(sum(amount_rub), 0)::int as value
          from payments
         where status = 'paid'
-          and coalesce(paid_at, created_at) >= date_trunc('day', now()) - interval '29 days'
+          and coalesce(paid_at, created_at) >= date_trunc('day', now()) - (($1::int - 1) * interval '1 day')
         group by coalesce(paid_at, created_at)::date
      ),
      shots as (
@@ -919,14 +1006,14 @@ async function fetchAdminDashboardSeries(
               count(*)::int as shots,
               count(*) filter (where server_result = 'goal')::int as goals
          from shot_session
-        where created_at >= date_trunc('day', now()) - interval '29 days'
+        where created_at >= date_trunc('day', now()) - (($1::int - 1) * interval '1 day')
         group by created_at::date
      ),
      messages_series as (
        select created_at::date as day, count(*)::int as value
          from messages
         where is_deleted = false
-          and created_at >= date_trunc('day', now()) - interval '29 days'
+          and created_at >= date_trunc('day', now()) - (($1::int - 1) * interval '1 day')
         group by created_at::date
      )
      select to_char(d.day, 'YYYY-MM-DD') as day,
@@ -943,6 +1030,7 @@ async function fetchAdminDashboardSeries(
        left join shots s on s.day = d.day
        left join messages_series ms on ms.day = d.day
       order by d.day asc`,
+    [periodDays],
   );
   return rows;
 }
@@ -1077,7 +1165,14 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
     async (req: FastifyRequest) => requireAdmin(app, req),
   ];
 
-  app.get('/admin/summary', { preHandler: adminPreHandlers }, async () => {
+  app.get('/admin/summary', { preHandler: adminPreHandlers }, async (req) => {
+    const parsed = dashboardPeriodQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      throw new AppError('bad_request', 'invalid dashboard query', 400);
+    }
+    const period = parsed.data.period;
+    const periodDays = dashboardPeriodDays(period);
+
     const [summary, pushStats, dashboardCore, dashboardEngagement, dashboardSeries] =
       await Promise.all([
         app.pg.query<AdminSummaryRow>(
@@ -1098,9 +1193,9 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
              as mismatches_24h`,
         ),
         fetchPushNotificationStats(app.pg),
-        fetchAdminDashboardCore(app.pg),
-        fetchAdminDashboardEngagement(app.pg),
-        fetchAdminDashboardSeries(app.pg),
+        fetchAdminDashboardCore(app.pg, periodDays),
+        fetchAdminDashboardEngagement(app.pg, periodDays),
+        fetchAdminDashboardSeries(app.pg, periodDays),
       ]);
     const rows = summary.rows;
     const row = rows[0]!;
@@ -1124,7 +1219,14 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
         goals: Number(row.goals_24h),
         mismatches: Number(row.mismatches_24h),
       },
-      dashboard: mapDashboard(dashboardCore, dashboardEngagement, dashboardSeries, notifications),
+      dashboard: mapDashboard(
+        period,
+        periodDays,
+        dashboardCore,
+        dashboardEngagement,
+        dashboardSeries,
+        notifications,
+      ),
       gameCoreVersion: GAME_CORE_VERSION,
     };
   });
