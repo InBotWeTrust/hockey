@@ -113,6 +113,9 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SYSTEM_USER_ID: ${{ secrets.SYSTEM_USER_ID }}
           SYSTEM_CHAT_NAME: ${{ vars.SYSTEM_CHAT_NAME }}
+          PUSH_VAPID_PUBLIC_KEY: ${{ secrets.PUSH_VAPID_PUBLIC_KEY }}
+          PUSH_VAPID_PRIVATE_KEY: ${{ secrets.PUSH_VAPID_PRIVATE_KEY }}
+          PUSH_VAPID_SUBJECT: ${{ vars.PUSH_VAPID_SUBJECT || 'mailto:push@hockey.inbotwetrust.ru' }}
         run: |
           ssh -i ~/.ssh/id_ed25519 "${USER}@${HOST}" \
             IMAGE_TAG="$IMAGE_TAG" \
@@ -121,9 +124,16 @@ jobs:
             REMOTE_PATH="$REMOTE_PATH" \
             SYSTEM_USER_ID="$SYSTEM_USER_ID" \
             SYSTEM_CHAT_NAME="$SYSTEM_CHAT_NAME" \
+            PUSH_VAPID_PUBLIC_KEY="$PUSH_VAPID_PUBLIC_KEY" \
+            PUSH_VAPID_PRIVATE_KEY="$PUSH_VAPID_PRIVATE_KEY" \
+            PUSH_VAPID_SUBJECT="$PUSH_VAPID_SUBJECT" \
             bash -s <<'ENDSSH'
           set -euo pipefail
           cd "$REMOTE_PATH"
+          if [ -z "${PUSH_VAPID_PUBLIC_KEY:-}" ] || [ -z "${PUSH_VAPID_PRIVATE_KEY:-}" ]; then
+            echo "PUSH_VAPID_PUBLIC_KEY and PUSH_VAPID_PRIVATE_KEY GitHub secrets are required for production push notifications"
+            exit 1
+          fi
           # VPS occasionally flaps its IPv6 route to ghcr.io so the first
           # `docker login` times out. Retry with a short backoff before failing.
           for i in 1 2 3 4 5; do
@@ -134,7 +144,7 @@ jobs:
             echo "docker login attempt $i failed, retry in 10s..."
             sleep 10
           done
-          export IMAGE_TAG
+          export IMAGE_TAG PUSH_VAPID_PUBLIC_KEY PUSH_VAPID_PRIVATE_KEY PUSH_VAPID_SUBJECT
           # Same flap can drop `compose pull` mid-transfer; retry a few times.
           for i in 1 2 3; do
             if docker compose pull; then
