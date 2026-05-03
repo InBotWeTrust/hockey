@@ -750,6 +750,7 @@ export function AdminScreen(): JSX.Element {
           feedback={feedback.data?.feedback ?? []}
           total={feedback.data?.total ?? 0}
           unreadCount={feedbackUnreadCount}
+          ratingStats={feedback.data?.ratingStats ?? { count: 0, average: null }}
           status={feedbackStatus}
           onStatus={setFeedbackStatus}
           kind={feedbackKind}
@@ -3773,6 +3774,7 @@ function FeedbackPanel({
   feedback,
   total,
   unreadCount,
+  ratingStats,
   status,
   onStatus,
   kind,
@@ -3783,6 +3785,7 @@ function FeedbackPanel({
   feedback: AdminFeedback[];
   total: number;
   unreadCount: number;
+  ratingStats: { count: number; average: number | null };
   status: AdminFeedbackStatus;
   onStatus: (value: AdminFeedbackStatus) => void;
   kind: 'all' | AdminFeedbackKind;
@@ -3813,29 +3816,25 @@ function FeedbackPanel({
         <div
           style={{
             gridColumn: '1 / -1',
-            padding: '2px 2px 6px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+            gap: 8,
           }}
         >
-          <span style={{ color: 'var(--muted)', fontSize: 12, fontWeight: 850 }}>
-            Непрочитанные
-          </span>
-          <span
-            className="pill pill--dark"
-            style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: 16,
-              fontWeight: 900,
-              minWidth: 42,
-              justifyContent: 'center',
-              fontVariantNumeric: 'tabular-nums',
-            }}
-          >
-            {numberText(unreadCount)}
-          </span>
+          <FeedbackMetric label="Непрочитанные" value={numberText(unreadCount)} />
+          <FeedbackMetric label="Оценки" value={numberText(ratingStats.count)} />
+          <FeedbackMetric
+            label="Средняя"
+            value={
+              ratingStats.average === null
+                ? '—'
+                : ratingStats.average.toLocaleString('ru-RU', {
+                    minimumFractionDigits: 1,
+                    maximumFractionDigits: 2,
+                  })
+            }
+            suffix={ratingStats.average === null ? '' : '/5'}
+          />
         </div>
         <AdminField label="Статус">
           <GlassSelect
@@ -3868,6 +3867,49 @@ function FeedbackPanel({
         ))}
       </section>
     </>
+  );
+}
+
+function FeedbackMetric({
+  label,
+  value,
+  suffix,
+}: {
+  label: string;
+  value: string;
+  suffix?: string;
+}): JSX.Element {
+  return (
+    <div
+      style={{
+        minWidth: 0,
+        border: '1px solid rgba(255, 255, 255, 0.72)',
+        borderRadius: 15,
+        padding: '8px 8px 9px',
+        background: 'rgba(255, 255, 255, 0.24)',
+      }}
+    >
+      <div style={{ color: 'var(--muted)', fontSize: 10, fontWeight: 900 }}>{label}</div>
+      <div
+        style={{
+          marginTop: 4,
+          color: 'var(--ink)',
+          fontFamily: 'var(--font-mono)',
+          fontSize: 18,
+          fontWeight: 950,
+          lineHeight: 1.05,
+          fontVariantNumeric: 'tabular-nums',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {value}
+        {suffix && (
+          <span style={{ marginLeft: 3, fontSize: 11, fontFamily: 'var(--font-ui)' }}>
+            {suffix}
+          </span>
+        )}
+      </div>
+    </div>
   );
 }
 

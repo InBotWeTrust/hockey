@@ -338,6 +338,7 @@ describe('AdminScreen', () => {
             ],
             total: 1,
             unreadCount: 2,
+            ratingStats: { count: 1, average: 4 },
             limit: 50,
             offset: 0,
           }),
@@ -641,6 +642,9 @@ describe('AdminScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Отзывы (2)' }));
     expect(await screen.findByText('Обратная связь (1)')).toBeInTheDocument();
     expect(screen.getAllByText('Непрочитанные').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('Оценки')).toBeInTheDocument();
+    expect(screen.getByText('Средняя')).toBeInTheDocument();
+    expect(screen.getByText('4,0')).toBeInTheDocument();
     expect(screen.getByText('Очень нравится ежедневная игра.')).toBeInTheDocument();
     expect(screen.queryByText('Новое')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Прочитать' }));

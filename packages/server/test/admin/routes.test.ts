@@ -324,6 +324,10 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
     expect(list.json()).toMatchObject({
       total: 1,
       unreadCount: 1,
+      ratingStats: {
+        count: 1,
+        average: 5,
+      },
       feedback: [
         {
           id: feedbackId,
@@ -378,6 +382,33 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
         isRead: false,
         readAt: null,
         readBy: null,
+      },
+    });
+  });
+
+  it('aggregates only feedback ratings from 1 to 5', async () => {
+    await pool.query(
+      `insert into feedback_messages (user_id, kind, rating, message)
+       values ($1, 'review', 0, 'Без оценки'),
+              ($1, 'review', 3, 'Нормально'),
+              ($1, 'review', 5, 'Отлично'),
+              ($1, 'suggestion', null, 'Добавьте турнир')`,
+      [playerId],
+    );
+
+    const list = await app.inject({
+      method: 'GET',
+      url: '/admin/feedback?status=all',
+      headers: auth(adminToken),
+    });
+
+    expect(list.statusCode).toBe(200);
+    expect(list.json()).toMatchObject({
+      total: 4,
+      unreadCount: 4,
+      ratingStats: {
+        count: 2,
+        average: 4,
       },
     });
   });

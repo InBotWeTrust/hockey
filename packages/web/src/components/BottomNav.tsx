@@ -81,9 +81,19 @@ export function BottomNav(): JSX.Element | null {
 
   return (
     <div
+      className="bottom-nav-shell"
       style={{
-        padding: '12px 12px max(12px, var(--app-safe-bottom))',
-        zIndex: 2,
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        bottom: 0,
+        padding: '18px 12px max(12px, var(--app-safe-bottom))',
+        zIndex: 5,
+        pointerEvents: 'none',
+        background:
+          'linear-gradient(to top, rgba(152, 190, 222, 0.76), rgba(152, 190, 222, 0.38) 58%, rgba(152, 190, 222, 0))',
+        backdropFilter: 'blur(18px) saturate(125%)',
+        WebkitBackdropFilter: 'blur(18px) saturate(125%)',
       }}
     >
       <nav
@@ -100,11 +110,12 @@ export function BottomNav(): JSX.Element | null {
           alignItems: 'center',
           padding: '0 6px',
           zIndex: 500,
-          background: 'rgba(218, 230, 246, 0.96)',
-          backdropFilter: 'blur(20px)',
-          WebkitBackdropFilter: 'blur(20px)',
-          boxShadow: '0 8px 32px rgba(15,23,42,0.18), 0 2px 8px rgba(15,23,42,0.10)',
-          border: '1px solid rgba(255,255,255,0.7)',
+          background: 'rgba(232, 242, 255, 0.62)',
+          backdropFilter: 'blur(24px) saturate(135%)',
+          WebkitBackdropFilter: 'blur(24px) saturate(135%)',
+          boxShadow:
+            '0 18px 36px rgba(42, 91, 132, 0.22), 0 -1px 0 rgba(255, 255, 255, 0.5) inset',
+          border: '1px solid rgba(255,255,255,0.78)',
           pointerEvents: isDemo ? 'none' : 'auto',
         }}
       >

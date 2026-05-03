@@ -30,6 +30,8 @@
 }
 
 .app-content {
+  position: absolute;
+  inset: 0;
   min-height: 0;
   overflow: hidden;
 }
@@ -38,6 +40,11 @@
   height: 100%;
   min-height: 100%;
   overflow-y: auto;
+}
+
+.app-shell:has(.bottom-nav-shell) .app-content > .screen {
+  padding-bottom: calc(92px + var(--app-safe-bottom)) !important;
+  scroll-padding-bottom: calc(92px + var(--app-safe-bottom));
 }
 
 /* === Glass surfaces === */
@@ -54,6 +61,67 @@
   backdrop-filter: var(--blur-dark);
   -webkit-backdrop-filter: var(--blur-dark);
   border: 1px solid var(--glass-border-dark);
+}
+
+/* === Modal standard: blurred ice backdrop + centered frosted card === */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 260;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(20px + var(--app-safe-top)) 20px calc(20px + var(--app-safe-bottom));
+  background: rgba(84, 101, 120, 0.36);
+  backdrop-filter: blur(14px) saturate(115%);
+  -webkit-backdrop-filter: blur(14px) saturate(115%);
+}
+
+.modal-card {
+  width: min(100%, 320px);
+  border-radius: 24px;
+  padding: 24px 22px 22px;
+  background: rgba(226, 233, 241, 0.68);
+  border: 1.5px solid rgba(255, 255, 255, 0.86);
+  box-shadow:
+    0 24px 70px rgba(15, 23, 42, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  color: var(--ink);
+  backdrop-filter: blur(22px) saturate(150%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+}
+
+.modal-title {
+  margin: 0;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 950;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+.modal-copy {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.42;
+  letter-spacing: 0;
+}
+
+.modal-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.modal-primary {
+  min-height: 56px;
+  width: 100%;
+  border-radius: var(--r-pill);
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
 }
 
 /* === Pills === */

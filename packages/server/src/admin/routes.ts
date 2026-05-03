@@ -253,6 +253,11 @@ interface AdminFeedbackRow {
   total_count?: string;
 }
 
+interface AdminFeedbackRatingStatsRow {
+  rating_count: string;
+  rating_average: string | null;
+}
+
 interface AdminChannelRow {
   id: string;
   name: string | null;
@@ -1953,7 +1958,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       throw new AppError('bad_request', 'invalid feedback query', 400);
     }
 
-    const [list, unread] = await Promise.all([
+    const [list, unread, ratingStats] = await Promise.all([
       app.pg.query<AdminFeedbackRow>(
         `with prepared as (
            select f.id,
@@ -1999,12 +2004,26 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       app.pg.query<{ count: string }>(
         `select count(*)::int as count from feedback_messages where is_read = false`,
       ),
+      app.pg.query<AdminFeedbackRatingStatsRow>(
+        `select count(*) filter (where rating between 1 and 5)::int as rating_count,
+                round((avg(rating) filter (where rating between 1 and 5))::numeric, 2)::text
+                  as rating_average
+           from feedback_messages`,
+      ),
     ]);
+    const ratingStatsRow = ratingStats.rows[0];
 
     return {
       feedback: list.rows.map(mapFeedback),
       total: list.rows.length > 0 ? Number(list.rows[0]!.total_count ?? list.rows.length) : 0,
       unreadCount: Number(unread.rows[0]?.count ?? 0),
+      ratingStats: {
+        count: Number(ratingStatsRow?.rating_count ?? 0),
+        average:
+          ratingStatsRow?.rating_average === null || ratingStatsRow?.rating_average === undefined
+            ? null
+            : Number(ratingStatsRow.rating_average),
+      },
       limit: parsed.data.limit,
       offset: parsed.data.offset,
     };

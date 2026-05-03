@@ -67,6 +67,8 @@ pnpm workspaces, `packages/*`, TS project references (`composite: true`):
 
 - **`@hockey/web`** — React 18 + Vite 5 + TS, PixiJS 8, Zustand (`auth/authStore.ts` с persist, `stores/dailyStore.ts` для дневной игры — без persist, синхронизуется с сервером), TanStack Query. `api/duel.ts` — типы и обёртки `fetchDailyState/startDailyPeriod/submitDailyShot`. `game/PixiStage.tsx` скейлит RINK (**572×700**) под viewport. `game/renderer/{Goal,Goalie,Player,Puck,Hitboxes}.ts` — Pixi-обёртки. UI через `app/design-system.css`. `screens/`: `LoginScreen`, `DailyScreen` (новый — view-switcher по daily state: idle/period_active/break_active/closed), `ProfileScreen`. Vite dev прокси `/api → :3000`. Тесты — Testing Library + vitest + jsdom.
 
+**UI-инвариант для модалок.** Все обычные модальные окна должны выглядеть как стандарт из `packages/web/src/app/design-system.css`: `.modal-backdrop` + `.modal-card` + `.modal-title` + `.modal-copy` + `.modal-actions` + CTA-кнопка `.modal-primary.btn--cta`. Визуально это полноэкранный сильно размытый ледяной backdrop, центрированная светлая frosted-glass карточка с радиусом 24px и белой рамкой, компактный заголовок/текст и широкая тёмная pill-кнопка. Не вводить отдельный стиль модалки без явной причины; bottom-sheet допустим только когда сценарий действительно sheet-овый.
+
 ### Ключевой инвариант: гибридная симуляция
 
 `game-core` шерится между клиентом и сервером. Клиент симулирует бросок локально для мгновенной отрисовки, сервер параллельно симулирует на том же seed и валидирует. Отсюда **жёсткие правила** для всего что попадает в `game-core`:

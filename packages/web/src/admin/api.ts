@@ -292,6 +292,10 @@ export interface AdminFeedbackResponse {
   feedback: AdminFeedback[];
   total: number;
   unreadCount: number;
+  ratingStats: {
+    count: number;
+    average: number | null;
+  };
   limit: number;
   offset: number;
 }
