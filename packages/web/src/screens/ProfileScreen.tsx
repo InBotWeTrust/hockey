@@ -78,6 +78,30 @@ const FEEDBACK_KIND_OPTIONS: Array<{ kind: FeedbackKind; label: string }> = [
   { kind: 'question', label: 'Вопрос' },
 ];
 
+function ProfileSectionIcon({ children }: { children: JSX.Element }): JSX.Element {
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        width: 44,
+        height: 44,
+        borderRadius: 14,
+        background: 'rgba(15, 23, 42, 0.08)',
+        color: 'rgba(15, 23, 42, 0.62)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+        border: '1px solid rgba(15, 23, 42, 0.08)',
+        boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.35)',
+        pointerEvents: 'none',
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 function supportsPushNotifications(): boolean {
   return (
     typeof window !== 'undefined' &&
@@ -859,24 +883,9 @@ export function ProfileScreen(): JSX.Element {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-          <div
-            aria-hidden="true"
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 14,
-              background: 'rgba(255, 255, 255, 0.72)',
-              color: 'var(--ink)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-              border: '1px solid rgba(255, 255, 255, 0.88)',
-              boxShadow: '0 8px 22px rgba(15, 23, 42, 0.08)',
-            }}
-          >
+          <ProfileSectionIcon>
             <Bell size={20} />
-          </div>
+          </ProfileSectionIcon>
           <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--ink)' }}>
               Пуш-уведомления
@@ -1030,24 +1039,9 @@ export function ProfileScreen(): JSX.Element {
           gap: 12,
         }}
       >
-        <div
-          aria-hidden="true"
-          style={{
-            width: 44,
-            height: 44,
-            borderRadius: 14,
-            background: 'rgba(255, 255, 255, 0.72)',
-            color: 'var(--ink)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-            border: '1px solid rgba(255, 255, 255, 0.88)',
-            boxShadow: '0 8px 22px rgba(15, 23, 42, 0.08)',
-          }}
-        >
+        <ProfileSectionIcon>
           <MessageSquare size={20} />
-        </div>
+        </ProfileSectionIcon>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--ink)' }}>
             Форма обратной связи
