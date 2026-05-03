@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Container } from 'pixi.js';
 import type { Application, Ticker } from 'pixi.js';
@@ -32,8 +33,21 @@ import { Player } from '../game/renderer/Player.js';
 import { Puck } from '../game/renderer/Puck.js';
 import { createGameLoop, type GameLoop, type SpeedOverrides } from '../game/loop.js';
 import type { Scale } from '../game/coords.js';
-import { useAuthStore } from '../auth/authStore.js';
+import { TelegramLoginButton, type TelegramAuthPayload } from '../auth/TelegramLoginButton.js';
+import { useAuthStore, type AuthSession } from '../auth/authStore.js';
+import { startVkOAuth } from '../auth/vkAuth.js';
+import { detectTimezone } from '../auth/timezone.js';
+import { apiFetch, ApiError } from '../api/apiFetch.js';
 import { useDailyStore } from '../stores/dailyStore.js';
+import {
+  DEMO_GOALIE_ID,
+  DEMO_PERIOD_NUMBER,
+  DEMO_SHOTS_PER_PERIOD,
+  DEMO_TOTAL_PERIODS,
+  advanceDemoSessionShot,
+  createDemoSessionState,
+  type DemoSessionState,
+} from '../stores/demoSession.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
 import { ScoreBoard } from '../components/ScoreBoard.js';
 import { ResultModal } from '../components/ResultModal.js';
@@ -1784,6 +1798,7 @@ interface PlayViewProps<TState> {
   timerLabel?: string | undefined;
   shotButtonLabel?: string | undefined;
   backLabel?: string | undefined;
+  bottomInset?: string | undefined;
   periodEndsAt?: number | undefined;
   onTimerExpired?: (() => void | Promise<void>) | undefined;
   optimisticAddShot: (claimed: ShotResultType) => void;
@@ -1986,6 +2001,269 @@ function TrainingPlayView({ onBack }: { onBack: () => void }): JSX.Element | nul
   );
 }
 
+export function DemoScreen(): JSX.Element {
+  const navigate = useNavigate();
+  const setSession = useAuthStore((s) => s.setSession);
+  const botUsername = import.meta.env.VITE_TELEGRAM_BOT_USERNAME ?? '';
+  const [demoState, setDemoState] = useState<DemoSessionState>(() => createDemoSessionState());
+  const demoStateRef = useRef(demoState);
+  const [completionOpen, setCompletionOpen] = useState(false);
+  const [vkError, setVkError] = useState<string | null>(null);
+  const [vkPending, setVkPending] = useState(false);
+  demoStateRef.current = demoState;
+
+  const telegramMutation = useMutation<AuthSession, Error, TelegramAuthPayload>({
+    mutationFn: (payload) =>
+      apiFetch<AuthSession>('/auth/telegram', {
+        method: 'POST',
+        body: JSON.stringify({ ...payload, timezone: detectTimezone() }),
+      }),
+    onSuccess: (session) => {
+      setSession(session);
+      navigate('/', { replace: true });
+    },
+  });
+
+  const submitDemoShot = useCallback(
+    async ({
+      claimedResult,
+    }: {
+      shotIndex: number;
+      input: ShotInputPayload;
+      claimedResult: ShotResultType;
+    }): Promise<{ serverResult: ShotResultType; state: DemoSessionState }> => {
+      const next = advanceDemoSessionShot(demoStateRef.current, claimedResult);
+      demoStateRef.current = next;
+      return { serverResult: claimedResult, state: next };
+    },
+    [],
+  );
+
+  const applyDemoState = useCallback((next: DemoSessionState): void => {
+    demoStateRef.current = next;
+    setDemoState(next);
+    if (next.status === 'finished') setCompletionOpen(true);
+  }, []);
+
+  const handleVkLogin = useCallback(async (): Promise<void> => {
+    setVkError(null);
+    setVkPending(true);
+    try {
+      await startVkOAuth();
+    } catch (err) {
+      setVkPending(false);
+      setVkError(err instanceof Error ? err.message : 'Ошибка входа через ВКонтакте');
+    }
+  }, []);
+
+  return (
+    <>
+      <PlayView<DemoSessionState>
+        suppressedByModal={completionOpen}
+        showIceCar={completionOpen}
+        onBack={() => navigate('/login', { replace: true })}
+        active={demoState.status === 'active'}
+        seed={demoState.seed}
+        goalieId={DEMO_GOALIE_ID}
+        periodNumber={DEMO_PERIOD_NUMBER}
+        periodsTotal={DEMO_TOTAL_PERIODS}
+        goals={demoState.goals}
+        shots={demoState.shotsTaken}
+        shotsTotal={DEMO_SHOTS_PER_PERIOD}
+        timer="ДЕМО"
+        timerLabel="РЕЖИМ"
+        backLabel="На вход"
+        bottomInset="calc(12px + var(--app-safe-bottom))"
+        optimisticAddShot={() => {}}
+        submitShot={submitDemoShot}
+        applyState={applyDemoState}
+      />
+
+      {completionOpen && (
+        <DemoCompletionModal
+          goals={demoState.goals}
+          shots={demoState.shotsTaken}
+          botUsername={botUsername}
+          telegramPending={telegramMutation.isPending}
+          telegramError={telegramMutation.error}
+          vkPending={vkPending}
+          vkError={vkError}
+          onTelegramAuth={(payload) => telegramMutation.mutate(payload)}
+          onVkLogin={() => void handleVkLogin()}
+        />
+      )}
+    </>
+  );
+}
+
+function DemoCompletionModal({
+  goals,
+  shots,
+  botUsername,
+  telegramPending,
+  telegramError,
+  vkPending,
+  vkError,
+  onTelegramAuth,
+  onVkLogin,
+}: {
+  goals: number;
+  shots: number;
+  botUsername: string;
+  telegramPending: boolean;
+  telegramError: Error | null;
+  vkPending: boolean;
+  vkError: string | null;
+  onTelegramAuth: (payload: TelegramAuthPayload) => void;
+  onVkLogin: () => void;
+}): JSX.Element {
+  const goalRate = formatGoalRate(goals, shots);
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Демо завершено"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 430,
+        background: 'rgba(15, 23, 42, 0.22)',
+        backdropFilter: 'blur(8px) saturate(130%)',
+        WebkitBackdropFilter: 'blur(8px) saturate(130%)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      <div
+        style={{
+          width: '100%',
+          maxWidth: 368,
+          padding: '26px 22px 20px',
+          borderRadius: 28,
+          textAlign: 'center',
+          background:
+            'linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(241, 245, 249, 0.9) 100%)',
+          backdropFilter: 'blur(22px) saturate(160%)',
+          WebkitBackdropFilter: 'blur(22px) saturate(160%)',
+          border: '1px solid rgba(255, 255, 255, 0.68)',
+          boxShadow:
+            '0 30px 80px rgba(15, 23, 42, 0.35), 0 0 0 1px rgba(15, 23, 42, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.9)',
+        }}
+      >
+        <div style={{ fontSize: 25, fontWeight: 900, letterSpacing: 0 }}>Первый период сыгран</div>
+        <div
+          style={{
+            marginTop: 10,
+            color: 'var(--muted)',
+            fontSize: 14,
+            lineHeight: 1.45,
+            fontWeight: 700,
+          }}
+        >
+          Необходимо войти, чтобы играть сезон, сохранять прогресс и открывать новые режимы игры
+        </div>
+
+        <div
+          style={{
+            marginTop: 18,
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+            gap: 8,
+          }}
+        >
+          <TotalCell label="БРОСКИ" value={`${shots}/${DEMO_SHOTS_PER_PERIOD}`} />
+          <TotalCell label="ГОЛЫ" value={String(goals)} />
+          <TotalCell label="ТОЧНОСТЬ" value={goalRate} />
+        </div>
+
+        <div
+          style={{
+            marginTop: 20,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 10,
+          }}
+        >
+          <button
+            type="button"
+            className="btn"
+            disabled={vkPending}
+            onClick={onVkLogin}
+            style={{
+              width: 242,
+              height: 42,
+              padding: '0 14px',
+              borderRadius: 12,
+              background: '#0077ff',
+              color: '#ffffff',
+              justifyContent: 'center',
+              gap: 10,
+              fontSize: 16,
+              fontWeight: 700,
+              letterSpacing: 0,
+              boxShadow: 'none',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <span
+              aria-hidden="true"
+              style={{
+                width: 24,
+                height: 24,
+                borderRadius: 7,
+                background: '#ffffff',
+                color: '#0077ff',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 13,
+                fontWeight: 900,
+                lineHeight: 1,
+                flexShrink: 0,
+              }}
+            >
+              VK
+            </span>
+            Войти через ВКонтакте
+          </button>
+
+          <TelegramLoginButton
+            botUsername={botUsername}
+            onAuth={onTelegramAuth}
+            cornerRadius={12}
+            size="large"
+          />
+
+          {(telegramPending || telegramError || vkError) && (
+            <div
+              role="alert"
+              style={{
+                minHeight: 18,
+                color: telegramError || vkError ? 'var(--red-deep)' : 'var(--muted)',
+                fontSize: 13,
+                fontWeight: 700,
+                lineHeight: 1.35,
+              }}
+            >
+              {telegramPending
+                ? 'Проверяем профиль...'
+                : telegramError
+                  ? telegramError instanceof ApiError
+                    ? telegramError.message
+                    : 'Ошибка входа'
+                  : vkError}
+            </div>
+          )}
+
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PlayView<TState>({
   suppressedByModal,
   showIceCar,
@@ -2003,6 +2281,7 @@ function PlayView<TState>({
   timerLabel,
   shotButtonLabel = 'БРОСОК',
   backLabel = 'К режимам',
+  bottomInset = 'calc(76px + var(--app-safe-bottom))',
   periodEndsAt,
   onTimerExpired,
   optimisticAddShot,
@@ -2454,7 +2733,7 @@ function PlayView<TState>({
         top: 'calc(var(--app-safe-top) + 6px)',
         left: 0,
         right: 0,
-        bottom: 'calc(76px + var(--app-safe-bottom))',
+        bottom: bottomInset,
         minHeight: 0,
       }}
     >

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LoginScreen } from './LoginScreen.js';
@@ -18,6 +18,7 @@ function renderWith(): { client: QueryClient } {
         <Routes>
           <Route path="/login" element={<LoginScreen />} />
           <Route path="/" element={<div>home</div>} />
+          <Route path="/demo" element={<div>demo mode</div>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -40,7 +41,15 @@ describe('LoginScreen', () => {
     const vkButton = screen.getByRole('button', { name: /войти через вконтакте/i });
     expect(vkButton).toBeInTheDocument();
     expect(vkButton).toHaveStyle({ width: '242px', height: '40px', background: '#0077ff' });
+    expect(screen.getByRole('button', { name: /демо-режим/i })).toBeInTheDocument();
     expect(vkButton.closest('main')).toHaveStyle({ height: '100dvh', overflow: 'hidden' });
+  });
+
+  it('opens demo mode without creating an auth session', () => {
+    renderWith();
+    fireEvent.click(screen.getByRole('button', { name: /демо-режим/i }));
+    expect(screen.getByText('demo mode')).toBeInTheDocument();
+    expect(useAuthStore.getState().accessToken).toBeNull();
   });
 
   it('exchanges payload for session and navigates home', async () => {

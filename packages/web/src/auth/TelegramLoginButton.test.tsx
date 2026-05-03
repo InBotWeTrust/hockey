@@ -45,6 +45,6 @@ describe('TelegramLoginButton', () => {
 
   it('renders fallback when botUsername is empty', () => {
     render(<TelegramLoginButton botUsername="" onAuth={() => {}} />);
-    expect(screen.getByText(/login is not configured/i)).toBeInTheDocument();
+    expect(screen.getByText('Вход через Telegram не настроен.')).toBeInTheDocument();
   });
 });

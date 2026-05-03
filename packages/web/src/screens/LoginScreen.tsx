@@ -1,19 +1,12 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Send } from 'lucide-react';
+import { Gamepad2, Send } from 'lucide-react';
 import { TelegramLoginButton, type TelegramAuthPayload } from '../auth/TelegramLoginButton.js';
 import { apiFetch, ApiError } from '../api/apiFetch.js';
 import { useAuthStore, type AuthSession } from '../auth/authStore.js';
 import { startVkOAuth } from '../auth/vkAuth.js';
-
-function detectTimezone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-  } catch {
-    return 'UTC';
-  }
-}
+import { detectTimezone } from '../auth/timezone.js';
 
 export function LoginScreen(): JSX.Element {
   const navigate = useNavigate();
@@ -164,6 +157,28 @@ export function LoginScreen(): JSX.Element {
             VK
           </span>
           Войти через ВКонтакте
+        </button>
+
+        <button
+          type="button"
+          className="btn btn--ghost"
+          onClick={() => navigate('/demo')}
+          style={{
+            alignSelf: 'center',
+            width: 242,
+            height: 40,
+            padding: '0 14px',
+            borderRadius: 12,
+            justifyContent: 'center',
+            gap: 10,
+            fontSize: 15,
+            fontWeight: 800,
+            letterSpacing: 0,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          <Gamepad2 size={17} />
+          Демо-режим
         </button>
 
         {mutation.isPending && (

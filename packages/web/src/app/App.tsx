@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import './global.css';
 import './design-system.css';
-import { DailyScreen } from '../screens/DailyScreen.js';
+import { DailyScreen, DemoScreen } from '../screens/DailyScreen.js';
 import { InventoryScreen } from '../screens/InventoryScreen.js';
 import { LoginScreen } from '../screens/LoginScreen.js';
 import { ProfileScreen } from '../screens/ProfileScreen.js';
@@ -52,6 +52,7 @@ export function App(): JSX.Element {
         >
           <Routes>
             <Route path="/login" element={<LoginScreen />} />
+            <Route path="/demo" element={<DemoScreen />} />
             <Route path="/auth/vk/callback" element={<VkAuthCallbackScreen />} />
             <Route
               path="/"

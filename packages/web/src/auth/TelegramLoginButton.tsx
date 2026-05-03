@@ -58,7 +58,7 @@ export function TelegramLoginButton({
   }, [botUsername, onAuth, callbackName, cornerRadius, size]);
 
   if (!botUsername) {
-    return <div role="alert">Telegram login is not configured.</div>;
+    return <div role="alert">Вход через Telegram не настроен.</div>;
   }
 
   return <div ref={containerRef} data-testid="telegram-login-container" />;
