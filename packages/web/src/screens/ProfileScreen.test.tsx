@@ -245,12 +245,24 @@ describe('ProfileScreen', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Написать в обратную связь' }));
     expect(screen.getByRole('dialog', { name: 'Обратная связь' })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: '0 из 5' })).toHaveAttribute(
-      'aria-checked',
-      'true',
-    );
+    expect(screen.getByRole('radio', { name: '0 из 5' })).toHaveAttribute('aria-checked', 'true');
 
-    fireEvent.click(screen.getByRole('radio', { name: '5 из 5' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Пожелание' }));
+    expect(screen.queryByRole('radiogroup', { name: 'Оценка отзыва' })).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Что стоит добавить или поменять?')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Вопрос' }));
+    expect(screen.getByPlaceholderText('Что хотите уточнить?')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+    expect(screen.queryByRole('dialog', { name: 'Обратная связь' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Написать в обратную связь' }));
+    const ratingFive = screen.getByRole('radio', { name: '5 из 5' });
+    expect(ratingFive).toHaveTextContent('5');
+    expect(ratingFive.querySelector('svg')).toBeNull();
+
+    fireEvent.click(ratingFive);
     fireEvent.change(screen.getByLabelText('Сообщение'), {
       target: { value: 'Очень нравится новый режим.' },
     });

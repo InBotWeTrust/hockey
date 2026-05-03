@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type PointerEvent } from 'react';
+import { useEffect, useRef, useState, type MouseEvent, type PointerEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, BellOff, ChevronDown, MessageSquare, Send, Settings, Star, X } from 'lucide-react';
+import { Bell, BellOff, ChevronDown, MessageSquare, Send, Settings, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../api/apiFetch.js';
 import { createFeedback, type FeedbackKind } from '../api/feedback.js';
@@ -29,7 +29,7 @@ import {
 function canStartMouseDragScroll(target: EventTarget | null): boolean {
   return (
     !(target instanceof Element) ||
-    target.closest('[data-no-drag-scroll], a, input, textarea, select') === null
+    target.closest('[data-no-drag-scroll], button, a, input, textarea, select') === null
   );
 }
 
@@ -220,12 +220,23 @@ function FeedbackModal({ onClose }: { onClose: () => void }): JSX.Element {
   const messageLength = message.trim().length;
   const canSubmit = messageLength > 0 && messageLength <= 2000 && !feedback.isPending;
 
+  function handleKindChange(nextKind: FeedbackKind): void {
+    if (nextKind === kind) return;
+    feedback.reset();
+    setKind(nextKind);
+  }
+
+  function handleClose(event?: MouseEvent): void {
+    event?.stopPropagation();
+    onClose();
+  }
+
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-label="Обратная связь"
-      onClick={onClose}
+      onClick={() => handleClose()}
       style={{
         position: 'fixed',
         inset: 0,
@@ -267,7 +278,13 @@ function FeedbackModal({ onClose }: { onClose: () => void }): JSX.Element {
               {feedback.isSuccess ? 'Спасибо, сообщение сохранено' : 'Выберите тип сообщения'}
             </div>
           </div>
-          <button type="button" className="icon-btn" onClick={onClose} aria-label="Закрыть">
+          <button
+            type="button"
+            className="icon-btn"
+            data-no-drag-scroll="true"
+            onClick={handleClose}
+            aria-label="Закрыть"
+          >
             <X size={16} />
           </button>
         </div>
@@ -276,7 +293,8 @@ function FeedbackModal({ onClose }: { onClose: () => void }): JSX.Element {
           <button
             type="button"
             className="btn btn--cta"
-            onClick={onClose}
+            data-no-drag-scroll="true"
+            onClick={handleClose}
             style={{ marginTop: 18, width: '100%', minHeight: 52, letterSpacing: 0 }}
           >
             Понятно
@@ -295,8 +313,9 @@ function FeedbackModal({ onClose }: { onClose: () => void }): JSX.Element {
                 <button
                   key={item.kind}
                   type="button"
+                  data-no-drag-scroll="true"
                   className={kind === item.kind ? 'chip chip--active' : 'chip'}
-                  onClick={() => setKind(item.kind)}
+                  onClick={() => handleKindChange(item.kind)}
                   style={{
                     minHeight: 42,
                     borderRadius: 14,
@@ -339,6 +358,7 @@ function FeedbackModal({ onClose }: { onClose: () => void }): JSX.Element {
                       role="radio"
                       aria-checked={rating === value}
                       aria-label={`${value} из 5`}
+                      data-no-drag-scroll="true"
                       onClick={() => setRating(value)}
                       className={rating === value ? 'chip chip--active' : 'chip'}
                       style={{
@@ -347,11 +367,10 @@ function FeedbackModal({ onClose }: { onClose: () => void }): JSX.Element {
                         borderRadius: 13,
                         padding: 0,
                         justifyContent: 'center',
-                        gap: 3,
+                        textAlign: 'center',
                       }}
                     >
                       {value}
-                      {value > 0 && <Star size={12} fill="currentColor" />}
                     </button>
                   ))}
                 </div>
@@ -419,6 +438,7 @@ function FeedbackModal({ onClose }: { onClose: () => void }): JSX.Element {
             <button
               type="button"
               className="btn btn--cta"
+              data-no-drag-scroll="true"
               disabled={!canSubmit}
               onClick={() => feedback.mutate()}
               style={{
