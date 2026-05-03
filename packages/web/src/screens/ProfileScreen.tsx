@@ -38,6 +38,7 @@ export function ProfileScreen(): JSX.Element {
       updateUser({
         grip: data.grip,
         displayName: data.displayName,
+        ...(data.role !== undefined ? { role: data.role } : {}),
         ...(data.avatarUrl !== undefined ? { avatarUrl: data.avatarUrl } : {}),
         ...(data.displaySource !== undefined ? { displaySource: data.displaySource } : {}),
         ...(data.linkedProviders !== undefined ? { linkedProviders: data.linkedProviders } : {}),

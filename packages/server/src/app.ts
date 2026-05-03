@@ -13,6 +13,7 @@ import { dailyRoutes } from './duel/daily/routes.js';
 import { trainingRoutes } from './duel/training/routes.js';
 import { chatRoutes } from './chat/routes.js';
 import { chatWs } from './chat/ws.js';
+import { adminRoutes } from './admin/routes.js';
 
 export interface BuildAppOptions {
   config?: AppConfig;
@@ -58,6 +59,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await app.register(trainingRoutes, { trainingSeedSecret: config.DAILY_SEED_SECRET });
   await app.register(chatRoutes);
   await app.register(chatWs, { accessSecret: config.JWT_SECRET });
+  await app.register(adminRoutes);
 
   return app;
 }

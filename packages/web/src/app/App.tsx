@@ -11,6 +11,7 @@ import { VkAuthCallbackScreen } from '../screens/VkAuthCallbackScreen.js';
 import { PrivateRoute } from '../auth/PrivateRoute.js';
 import { BottomNav } from '../components/BottomNav.js';
 import { UpdatePrompt } from '../components/UpdatePrompt.js';
+import { AdminScreen } from '../admin/AdminScreen.js';
 import { OfflineBanner } from '../chat/components/OfflineBanner.js';
 import { ChatListScreen } from '../chat/screens/ChatListScreen.js';
 import { ChatRoomScreen } from '../chat/screens/ChatRoomScreen.js';
@@ -88,6 +89,14 @@ export function App(): JSX.Element {
               element={
                 <PrivateRoute>
                   <ProfileSettingsScreen />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/admin"
+              element={
+                <PrivateRoute>
+                  <AdminScreen />
                 </PrivateRoute>
               }
             />

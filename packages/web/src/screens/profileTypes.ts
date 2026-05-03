@@ -20,6 +20,7 @@ export interface ProfileAchievement {
 export interface ProfileData {
   id: string;
   displayName: string;
+  role?: 'player' | 'admin';
   avatarUrl?: string | null;
   grip: 'right' | 'left';
   competitionLevel: CompetitionLevel;

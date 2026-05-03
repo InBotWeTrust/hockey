@@ -265,3 +265,25 @@
   /* Chromium/Safari */
   display: none;
 }
+
+.admin-screen input,
+.admin-screen select {
+  width: 100%;
+  min-width: 0;
+  height: 44px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.52);
+  color: var(--ink);
+  padding: 0 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  outline: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.admin-screen input:focus,
+.admin-screen select:focus {
+  border-color: rgba(15, 23, 42, 0.42);
+}

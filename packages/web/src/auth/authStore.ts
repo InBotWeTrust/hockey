@@ -4,6 +4,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 export interface AuthUser {
   id: string;
   displayName: string;
+  role?: 'player' | 'admin';
   avatarUrl?: string | null;
   grip?: 'left' | 'right';
   displaySource?: 'telegram' | 'vk';

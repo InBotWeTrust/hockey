@@ -8,6 +8,7 @@ interface MeRow {
   id: string;
   display_name: string;
   avatar_url: string | null;
+  role: 'player' | 'admin';
   grip: string;
   level: number;
   timezone: string;
@@ -28,7 +29,7 @@ interface MeRow {
 
 async function getMe(app: Parameters<FastifyPluginAsync>[0], userId: string) {
   const { rows } = await app.pg.query<MeRow>(
-    `select u.id, u.display_name, u.avatar_url, u.grip, u.level, u.timezone,
+    `select u.id, u.display_name, u.avatar_url, u.role, u.grip, u.level, u.timezone,
             u.lifetime_shots_total, u.lifetime_goals_total, u.display_source,
             tg.provider_uid as tg_id,
             u.tg_first_name, u.tg_last_name, u.tg_avatar_url, u.tg_username,
@@ -55,6 +56,7 @@ async function getMe(app: Parameters<FastifyPluginAsync>[0], userId: string) {
     id: row.id,
     displayName: row.display_name,
     ...(row.avatar_url !== null ? { avatarUrl: row.avatar_url } : {}),
+    role: row.role,
     grip: row.grip as 'right' | 'left',
     competitionLevel: profileProgress.competitionLevel,
     stats: profileProgress.stats,

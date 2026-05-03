@@ -38,6 +38,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     expect(names).toContain('user_achievements');
     expect(names).toContain('shot_session');
     expect(names).toContain('event_log');
+    expect(names).toContain('game_settings');
     expect(names).toContain('_migrations');
   });
 
@@ -60,6 +61,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '012_achievements.sql',
       '013_refresh_profile_achievements.sql',
       '014_training_daily_locks.sql',
+      '015_admin_roles_and_game_settings.sql',
     ]);
   });
 });

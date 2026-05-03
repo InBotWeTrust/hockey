@@ -19,13 +19,18 @@ export interface FindOrCreateInput {
 export interface AppUser {
   id: string;
   displayName: string;
+  role: UserRole;
 }
 
 type Queryable = Pool | PoolClient;
+export type UserRole = 'player' | 'admin';
+
+const BOOTSTRAP_ADMIN_TELEGRAM_PROVIDER_UIDS = new Set(['432014500']);
 
 interface ProviderOwnerRow {
   user_id: string;
   display_name: string;
+  role: UserRole;
 }
 
 interface VkIdentityRow {
@@ -58,6 +63,26 @@ function telegramProviderData(input: FindOrCreateInput): string {
   });
 }
 
+function roleForTelegramProviderUid(providerUid: string): UserRole {
+  return BOOTSTRAP_ADMIN_TELEGRAM_PROVIDER_UIDS.has(providerUid) ? 'admin' : 'player';
+}
+
+async function ensureBootstrapAdminRole(
+  pool: Queryable,
+  userId: string,
+  providerUid: string,
+): Promise<void> {
+  if (roleForTelegramProviderUid(providerUid) !== 'admin') return;
+  await pool.query(`update users set role = 'admin' where id = $1 and role <> 'admin'`, [userId]);
+}
+
+async function fetchUserRole(pool: Queryable, userId: string): Promise<UserRole> {
+  const { rows } = await pool.query<{ role: UserRole }>('select role from users where id = $1', [
+    userId,
+  ]);
+  return rows[0]?.role ?? 'player';
+}
+
 async function updateTelegramProfile(
   pool: Queryable,
   userId: string,
@@ -71,13 +96,7 @@ async function updateTelegramProfile(
         tg_avatar_url = coalesce($3, tg_avatar_url),
         tg_username = $4
       where id = $5`,
-    [
-      tgFirstName,
-      input.lastName ?? null,
-      input.avatarUrl ?? null,
-      input.username ?? null,
-      userId,
-    ],
+    [tgFirstName, input.lastName ?? null, input.avatarUrl ?? null, input.username ?? null, userId],
   );
 }
 
@@ -148,6 +167,7 @@ export async function findOrCreateTelegramUser(
 
     const existing = await client.query<ProviderOwnerRow>(
       `select ap.user_id, u.display_name
+              , u.role
          from auth_providers ap
          join users u on u.id = ap.user_id
         where ap.provider = 'telegram'
@@ -165,38 +185,34 @@ export async function findOrCreateTelegramUser(
       ) {
         throw new AppError('conflict', 'telegram_already_linked', 409);
       }
-      const moved = await moveVkIdentityToTelegramUser(
-        client,
-        input.currentUserId,
-        linked.user_id,
-      );
+      const moved = await moveVkIdentityToTelegramUser(client, input.currentUserId, linked.user_id);
       if (!moved) {
         throw new AppError('conflict', 'telegram_already_linked', 409);
       }
-      await Promise.all([
-        updateTelegramProfile(client, linked.user_id, input),
-        updateTelegramProviderData(client, linked.user_id, input.providerUid, input),
-      ]);
+      await ensureBootstrapAdminRole(client, linked.user_id, input.providerUid);
+      await updateTelegramProfile(client, linked.user_id, input);
+      await updateTelegramProviderData(client, linked.user_id, input.providerUid, input);
       const profile = await recomputeEffectiveProfile(client, linked.user_id);
+      const role = await fetchUserRole(client, linked.user_id);
       await client.query('commit');
-      return { id: linked.user_id, displayName: profile.displayName };
+      return { id: linked.user_id, displayName: profile.displayName, role };
     }
 
     if (linked) {
-      await Promise.all([
-        input.timezone !== undefined && input.timezone !== 'UTC'
-          ? client.query(
-              `update users set timezone = $1
+      if (input.timezone !== undefined && input.timezone !== 'UTC') {
+        await client.query(
+          `update users set timezone = $1
                 where id = $2 and timezone = 'UTC'`,
-              [input.timezone, linked.user_id],
-            )
-          : Promise.resolve(),
-        updateTelegramProfile(client, linked.user_id, input),
-        updateTelegramProviderData(client, linked.user_id, input.providerUid, input),
-      ]);
+          [input.timezone, linked.user_id],
+        );
+      }
+      await updateTelegramProfile(client, linked.user_id, input);
+      await updateTelegramProviderData(client, linked.user_id, input.providerUid, input);
+      await ensureBootstrapAdminRole(client, linked.user_id, input.providerUid);
       const profile = await recomputeEffectiveProfile(client, linked.user_id);
+      const role = await fetchUserRole(client, linked.user_id);
       await client.query('commit');
-      return { id: linked.user_id, displayName: profile.displayName };
+      return { id: linked.user_id, displayName: profile.displayName, role };
     }
 
     if (input.currentUserId) {
@@ -205,19 +221,19 @@ export async function findOrCreateTelegramUser(
          values ($1, $2, 'telegram', $3, $4)`,
         [randomUUID(), input.currentUserId, input.providerUid, providerData],
       );
-      await Promise.all([
-        input.timezone !== undefined && input.timezone !== 'UTC'
-          ? client.query(
-              `update users set timezone = $1
+      if (input.timezone !== undefined && input.timezone !== 'UTC') {
+        await client.query(
+          `update users set timezone = $1
                 where id = $2 and timezone = 'UTC'`,
-              [input.timezone, input.currentUserId],
-            )
-          : Promise.resolve(),
-        updateTelegramProfile(client, input.currentUserId, input),
-      ]);
+          [input.timezone, input.currentUserId],
+        );
+      }
+      await updateTelegramProfile(client, input.currentUserId, input);
+      await ensureBootstrapAdminRole(client, input.currentUserId, input.providerUid);
       const profile = await recomputeEffectiveProfile(client, input.currentUserId);
+      const role = await fetchUserRole(client, input.currentUserId);
       await client.query('commit');
-      return { id: input.currentUserId, displayName: profile.displayName };
+      return { id: input.currentUserId, displayName: profile.displayName, role };
     }
 
     const userId = randomUUID();
@@ -225,8 +241,8 @@ export async function findOrCreateTelegramUser(
     await client.query(
       `insert into users (
          id, display_name, avatar_url, timezone,
-         tg_first_name, tg_last_name, tg_avatar_url, tg_username, display_source
-       ) values ($1, $2, $3, $4, $5, $6, $7, $8, 'telegram')`,
+         tg_first_name, tg_last_name, tg_avatar_url, tg_username, display_source, role
+       ) values ($1, $2, $3, $4, $5, $6, $7, $8, 'telegram', $9)`,
       [
         userId,
         input.displayName,
@@ -236,6 +252,7 @@ export async function findOrCreateTelegramUser(
         input.lastName ?? null,
         input.avatarUrl ?? null,
         input.username ?? null,
+        roleForTelegramProviderUid(input.providerUid),
       ],
     );
     await client.query(
@@ -250,7 +267,11 @@ export async function findOrCreateTelegramUser(
     ]);
     const profile = await recomputeEffectiveProfile(client, userId);
     await client.query('commit');
-    return { id: userId, displayName: profile.displayName };
+    return {
+      id: userId,
+      displayName: profile.displayName,
+      role: roleForTelegramProviderUid(input.providerUid),
+    };
   } catch (err) {
     await client.query('rollback');
     throw err;
@@ -404,6 +425,7 @@ export async function findOrLinkOrCreateVkUser(
 
     const existing = await client.query<ProviderOwnerRow>(
       `select ap.user_id, u.display_name
+              , u.role
          from auth_providers ap
          join users u on u.id = ap.user_id
         where ap.provider = 'vk'
@@ -439,8 +461,13 @@ export async function findOrLinkOrCreateVkUser(
         throw new AppError('conflict', 'vk_already_linked', 409);
       }
       const profile = await recomputeEffectiveProfile(client, input.currentUserId);
+      const role = await fetchUserRole(client, input.currentUserId);
       await client.query('commit');
-      return { id: input.currentUserId, displayName: profile.displayName };
+      return {
+        id: input.currentUserId,
+        displayName: profile.displayName,
+        role,
+      };
     }
 
     if (linked) {
@@ -448,7 +475,7 @@ export async function findOrLinkOrCreateVkUser(
       await updateVkProviderData(client, linked.user_id, input.vkUserId, input.profile);
       const profile = await recomputeEffectiveProfile(client, linked.user_id);
       await client.query('commit');
-      return { id: linked.user_id, displayName: profile.displayName };
+      return { id: linked.user_id, displayName: profile.displayName, role: linked.role };
     }
 
     if (input.currentUserId) {
@@ -459,8 +486,13 @@ export async function findOrLinkOrCreateVkUser(
       );
       await updateVkProfile(client, input.currentUserId, input.profile);
       const profile = await recomputeEffectiveProfile(client, input.currentUserId);
+      const role = await fetchUserRole(client, input.currentUserId);
       await client.query('commit');
-      return { id: input.currentUserId, displayName: profile.displayName };
+      return {
+        id: input.currentUserId,
+        displayName: profile.displayName,
+        role,
+      };
     }
 
     const userId = randomUUID();
@@ -497,7 +529,7 @@ export async function findOrLinkOrCreateVkUser(
     ]);
     const profile = await recomputeEffectiveProfile(client, userId);
     await client.query('commit');
-    return { id: userId, displayName: profile.displayName };
+    return { id: userId, displayName: profile.displayName, role: 'player' };
   } catch (err) {
     await client.query('rollback');
     throw err;

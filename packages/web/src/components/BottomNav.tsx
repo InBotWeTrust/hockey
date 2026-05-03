@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Gamepad2, MessageCircle, Package, Trophy, User } from 'lucide-react';
+import { Gamepad2, MessageCircle, Package, ShieldCheck, Trophy, User } from 'lucide-react';
+import { apiFetch } from '../api/apiFetch.js';
 import { useAuthStore } from '../auth/authStore.js';
+import type { AuthUser } from '../auth/authStore.js';
 import { fetchUnreadCounts } from '../chat/api.js';
 import { useChatStore } from '../chat/chatStore.js';
 import { chatKeys } from '../lib/queryKeys.js';
@@ -13,6 +15,7 @@ const ICON_SIZE = 22;
 
 export function BottomNav(): JSX.Element | null {
   const user = useAuthStore((s) => s.user);
+  const updateUser = useAuthStore((s) => s.updateUser);
   const location = useLocation();
   const navigate = useNavigate();
   const [toast, setToast] = useState<string | null>(null);
@@ -26,10 +29,21 @@ export function BottomNav(): JSX.Element | null {
     queryFn: fetchUnreadCounts,
     enabled: Boolean(user),
   });
+  const { data: refreshedUser } = useQuery<AuthUser>({
+    queryKey: ['auth', 'me-role'],
+    queryFn: () => apiFetch<AuthUser>('/me'),
+    enabled: Boolean(user) && user?.role === undefined,
+  });
 
   useEffect(() => {
     if (unreadMap) setUnread(unreadMap);
   }, [unreadMap, setUnread]);
+
+  useEffect(() => {
+    if (refreshedUser?.role !== undefined) {
+      updateUser({ role: refreshedUser.role });
+    }
+  }, [refreshedUser, updateUser]);
 
   useEffect(
     () => () => {
@@ -58,6 +72,8 @@ export function BottomNav(): JSX.Element | null {
   const isGame = location.pathname === '/' || location.pathname.startsWith('/duel');
   const isInventory = location.pathname.startsWith('/inventory');
   const isProfile = location.pathname.startsWith('/profile');
+  const isAdmin = location.pathname.startsWith('/admin');
+  const showAdmin = user.role === 'admin';
 
   return (
     <>
@@ -72,7 +88,7 @@ export function BottomNav(): JSX.Element | null {
           height: 54,
           borderRadius: 999,
           display: 'grid',
-          gridTemplateColumns: 'repeat(5, 1fr)',
+          gridTemplateColumns: `repeat(${showAdmin ? 6 : 5}, 1fr)`,
           alignItems: 'center',
           padding: '0 6px',
           zIndex: 500,
@@ -159,6 +175,20 @@ export function BottomNav(): JSX.Element | null {
           }
           onClick={() => navigate('/profile')}
         />
+        {showAdmin && (
+          <NavTab
+            label="Админ"
+            active={isAdmin}
+            icon={
+              <ShieldCheck
+                size={ICON_SIZE}
+                color={isAdmin ? '#ffffff' : 'var(--muted)'}
+                strokeWidth={2}
+              />
+            }
+            onClick={() => navigate('/admin')}
+          />
+        )}
       </nav>
 
       {toast !== null && (

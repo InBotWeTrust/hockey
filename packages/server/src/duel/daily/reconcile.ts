@@ -7,6 +7,20 @@ export const BREAK_DURATION_MS = 15 * 60 * 1000;
 export const SHOTS_PER_PERIOD = 30;
 export const TOTAL_PERIODS = 3;
 
+export interface DailyRules {
+  periodDurationMs: number;
+  breakDurationMs: number;
+  shotsPerPeriod: number;
+  totalPeriods: number;
+}
+
+export const DEFAULT_DAILY_RULES: DailyRules = {
+  periodDurationMs: PERIOD_DURATION_MS,
+  breakDurationMs: BREAK_DURATION_MS,
+  shotsPerPeriod: SHOTS_PER_PERIOD,
+  totalPeriods: TOTAL_PERIODS,
+};
+
 export type DayPoolState = 'idle' | 'period_active' | 'break_active' | 'closed';
 
 export interface DayPoolRow {
@@ -53,11 +67,7 @@ async function insertPeriodLog(
   closedReason: 'quota' | 'timeout' | 'day_end',
 ): Promise<void> {
   if (pool.period_started_at === null) {
-    throw new AppError(
-      'internal_error',
-      'cannot insert period_log without period_started_at',
-      500,
-    );
+    throw new AppError('internal_error', 'cannot insert period_log without period_started_at', 500);
   }
   const agg = await aggregatePeriodShots(client, pool.id, pool.current_period);
   const inserted = await client.query<{ id: string }>(
@@ -96,10 +106,7 @@ async function insertPeriodLog(
   });
 }
 
-async function fetchUserTimezone(
-  client: PoolClient,
-  userId: string,
-): Promise<string> {
+async function fetchUserTimezone(client: PoolClient, userId: string): Promise<string> {
   const { rows } = await client.query<{ timezone: string }>(
     'select timezone from users where id = $1',
     [userId],
@@ -110,11 +117,7 @@ async function fetchUserTimezone(
   return rows[0]!.timezone;
 }
 
-async function localDate(
-  client: PoolClient,
-  now: Date,
-  tz: string,
-): Promise<string> {
+async function localDate(client: PoolClient, now: Date, tz: string): Promise<string> {
   const { rows } = await client.query<{ d: string }>(
     `select to_char(($1::timestamptz at time zone $2)::date, 'YYYY-MM-DD') as d`,
     [now.toISOString(), tz],
@@ -122,11 +125,7 @@ async function localDate(
   return rows[0]!.d;
 }
 
-async function nextDayMidnight(
-  client: PoolClient,
-  poolDayDate: string,
-  tz: string,
-): Promise<Date> {
+async function nextDayMidnight(client: PoolClient, poolDayDate: string, tz: string): Promise<Date> {
   const { rows } = await client.query<{ midnight: string }>(
     `select (($1::date + interval '1 day')::timestamp at time zone $2) as midnight`,
     [poolDayDate, tz],
@@ -134,10 +133,7 @@ async function nextDayMidnight(
   return new Date(rows[0]!.midnight);
 }
 
-async function fetchOpenPool(
-  client: PoolClient,
-  userId: string,
-): Promise<DayPoolRow | null> {
+async function fetchOpenPool(client: PoolClient, userId: string): Promise<DayPoolRow | null> {
   const { rows } = await client.query<DayPoolRow>(
     `select * from day_pool
       where user_id = $1 and state != 'closed'
@@ -173,6 +169,7 @@ export async function reconcileDayPool(
   client: PoolClient,
   userId: string,
   now: Date,
+  rules: DailyRules = DEFAULT_DAILY_RULES,
 ): Promise<ReconciledPool> {
   const timezone = await fetchUserTimezone(client, userId);
   const today = await localDate(client, now, timezone);
@@ -188,10 +185,10 @@ export async function reconcileDayPool(
     if (pool.state === 'period_active') {
       await insertPeriodLog(client, pool, midnight, 'day_end');
     }
-    await client.query(
-      `update day_pool set state='closed', closed_at=$1 where id=$2`,
-      [midnight, pool.id],
-    );
+    await client.query(`update day_pool set state='closed', closed_at=$1 where id=$2`, [
+      midnight,
+      pool.id,
+    ]);
     await appendEvent(client, pool.user_id, 'day_pool_closed', {
       day_pool_id: pool.id,
       reason: 'day_end',
@@ -200,12 +197,40 @@ export async function reconcileDayPool(
   }
 
   if (pool.state === 'period_active' && pool.period_started_at !== null) {
-    const periodEnd = new Date(
-      pool.period_started_at.getTime() + PERIOD_DURATION_MS,
-    );
+    const quota = await aggregatePeriodShots(client, pool.id, pool.current_period);
+    if (quota.shots_taken >= rules.shotsPerPeriod) {
+      await insertPeriodLog(client, pool, now, 'quota');
+      const isFinal = pool.current_period >= rules.totalPeriods;
+      const sql = isFinal
+        ? `update day_pool
+              set state='closed',
+                  closed_at=$1,
+                  period_started_at=null
+            where id=$2
+          returning *`
+        : `update day_pool
+              set state='break_active',
+                  break_started_at=$1,
+                  period_started_at=null
+            where id=$2
+          returning *`;
+      const { rows } = await client.query<DayPoolRow>(sql, [now, pool.id]);
+      pool = rows[0]!;
+      if (isFinal) {
+        await appendEvent(client, pool.user_id, 'day_pool_closed', {
+          day_pool_id: pool.id,
+          reason: 'completed',
+        });
+        return { pool, timezone, localToday: today };
+      }
+    }
+  }
+
+  if (pool.state === 'period_active' && pool.period_started_at !== null) {
+    const periodEnd = new Date(pool.period_started_at.getTime() + rules.periodDurationMs);
     if (now >= periodEnd) {
       await insertPeriodLog(client, pool, periodEnd, 'timeout');
-      const isFinal = pool.current_period >= TOTAL_PERIODS;
+      const isFinal = pool.current_period >= rules.totalPeriods;
       const sql = isFinal
         ? `update day_pool
               set state='closed',
@@ -232,9 +257,7 @@ export async function reconcileDayPool(
   }
 
   if (pool.state === 'break_active' && pool.break_started_at !== null) {
-    const breakEnd = new Date(
-      pool.break_started_at.getTime() + BREAK_DURATION_MS,
-    );
+    const breakEnd = new Date(pool.break_started_at.getTime() + rules.breakDurationMs);
     if (now >= breakEnd) {
       const { rows } = await client.query<DayPoolRow>(
         `update day_pool
@@ -248,7 +271,7 @@ export async function reconcileDayPool(
     }
   }
 
-  if (pool.state === 'idle' && pool.current_period >= TOTAL_PERIODS) {
+  if (pool.state === 'idle' && pool.current_period >= rules.totalPeriods) {
     const closedAt = now;
     const { rows } = await client.query<DayPoolRow>(
       `update day_pool set state='closed', closed_at=$1 where id=$2 returning *`,

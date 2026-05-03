@@ -6,7 +6,9 @@ export type EventType =
   | 'day_pool_closed'
   | 'period_closed'
   | 'training_session_created'
-  | 'training_session_closed';
+  | 'training_session_closed'
+  | 'admin_user_updated'
+  | 'admin_game_setting_updated';
 
 export async function appendEvent(
   conn: Pool | PoolClient,

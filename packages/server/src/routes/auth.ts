@@ -121,7 +121,7 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (app, opt
     reply.send({
       accessToken,
       refreshToken: refresh.token,
-      user: { id: user.id, displayName: user.displayName },
+      user: { id: user.id, displayName: user.displayName, role: user.role },
     });
   });
 
@@ -188,7 +188,7 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (app, opt
     reply.send({
       accessToken,
       refreshToken: refresh.token,
-      user: { id: user.id, displayName: user.displayName },
+      user: { id: user.id, displayName: user.displayName, role: user.role },
     });
   });
 
@@ -244,7 +244,7 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (app, opt
       reply.send({
         accessToken,
         refreshToken: refresh.token,
-        user: { id: user.id, displayName: user.displayName },
+        user: { id: user.id, displayName: user.displayName, role: user.role },
       });
     });
   }

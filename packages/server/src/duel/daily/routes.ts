@@ -13,20 +13,9 @@ import { grantAchievements } from '../../achievements/service.js';
 import { AppError } from '../../plugins/errors.js';
 import { appendEvent } from '../eventLog.js';
 import { deriveDailySeed, deriveShotSeed } from '../seed.js';
-import {
-  assertTrainingCooldownExpired,
-  fetchTrainingCooldownEndsAt,
-} from '../trainingCooldown.js';
-import {
-  BREAK_DURATION_MS,
-  PERIOD_DURATION_MS,
-  SHOTS_PER_PERIOD,
-  TOTAL_PERIODS,
-  reconcileDayPool,
-  type DayPoolRow,
-} from './reconcile.js';
-
-const DAILY_GOALIE_ID = 'rookie';
+import { assertTrainingCooldownExpired, fetchTrainingCooldownEndsAt } from '../trainingCooldown.js';
+import { reconcileDayPool, type DayPoolRow } from './reconcile.js';
+import { getGameSettings, type GameSettings } from '../gameSettings.js';
 
 const shotBodySchema = z.object({
   shot_index: z.number().int().min(1),
@@ -80,10 +69,7 @@ interface DailyStateResponse {
   training_cooldown_ends_at: string | null;
 }
 
-async function fetchUserTimezone(
-  client: PoolClient,
-  userId: string,
-): Promise<string> {
+async function fetchUserTimezone(client: PoolClient, userId: string): Promise<string> {
   const { rows } = await client.query<{ timezone: string }>(
     'select timezone from users where id = $1',
     [userId],
@@ -217,6 +203,7 @@ async function buildState(
   pool: DayPoolRow | null,
   localToday: string,
   userId: string,
+  settings: GameSettings,
   now = new Date(),
 ): Promise<DailyStateResponse> {
   const timezone = await fetchUserTimezone(client, userId);
@@ -241,9 +228,9 @@ async function buildState(
       day_date: localToday,
       next_day_starts_at: nextDay,
       daily_seed: null,
-      goalie_id: DAILY_GOALIE_ID,
-      shots_per_period: SHOTS_PER_PERIOD,
-      total_periods: TOTAL_PERIODS,
+      goalie_id: settings.daily.goalieId,
+      shots_per_period: settings.daily.shotsPerPeriod,
+      total_periods: settings.daily.totalPeriods,
       recent_periods: [],
       previous_game: previousGame,
       training_cooldown_ends_at: trainingCooldownEndsAtIso,
@@ -265,11 +252,11 @@ async function buildState(
 
   const periodEndsAt =
     pool.state === 'period_active' && pool.period_started_at !== null
-      ? new Date(pool.period_started_at.getTime() + PERIOD_DURATION_MS).toISOString()
+      ? new Date(pool.period_started_at.getTime() + settings.daily.periodDurationMs).toISOString()
       : null;
   const breakEndsAt =
     pool.state === 'break_active' && pool.break_started_at !== null
-      ? new Date(pool.break_started_at.getTime() + BREAK_DURATION_MS).toISOString()
+      ? new Date(pool.break_started_at.getTime() + settings.daily.breakDurationMs).toISOString()
       : null;
 
   return {
@@ -286,9 +273,9 @@ async function buildState(
     day_date: pool.day_date,
     next_day_starts_at: nextDay,
     daily_seed: pool.daily_seed,
-    goalie_id: DAILY_GOALIE_ID,
-    shots_per_period: SHOTS_PER_PERIOD,
-    total_periods: TOTAL_PERIODS,
+    goalie_id: settings.daily.goalieId,
+    shots_per_period: settings.daily.shotsPerPeriod,
+    total_periods: settings.daily.totalPeriods,
     recent_periods: recentPeriods,
     previous_game: previousGame,
     training_cooldown_ends_at: trainingCooldownEndsAtIso,
@@ -313,251 +300,221 @@ async function withTransaction<T>(
   }
 }
 
-export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = async (
-  app,
-  opts,
-) => {
+export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = async (app, opts) => {
   app.get('/duel/daily/state', { preHandler: [app.authenticate] }, async (req) => {
     return withTransaction(app, async (client) => {
+      const settings = await getGameSettings(client);
       const { pool, localToday } = await reconcileDayPool(
         client,
         req.user.id,
         new Date(),
+        settings.daily,
       );
-      return buildState(client, pool, localToday, req.user.id);
+      return buildState(client, pool, localToday, req.user.id, settings);
     });
   });
 
-  app.post(
-    '/duel/daily/period/start',
-    { preHandler: [app.authenticate] },
-    async (req) => {
-      return withTransaction(app, async (client) => {
-        const now = new Date();
-        const { pool, timezone, localToday } = await reconcileDayPool(
-          client,
-          req.user.id,
-          now,
-        );
-        const isFirstDailyPeriod = pool === null || pool.current_period === 0;
-        if (isFirstDailyPeriod) {
-          await assertTrainingCooldownExpired(client, req.user.id, now);
-        }
+  app.post('/duel/daily/period/start', { preHandler: [app.authenticate] }, async (req) => {
+    return withTransaction(app, async (client) => {
+      const now = new Date();
+      const settings = await getGameSettings(client);
+      const { pool, timezone, localToday } = await reconcileDayPool(
+        client,
+        req.user.id,
+        now,
+        settings.daily,
+      );
+      const isFirstDailyPeriod = pool === null || pool.current_period === 0;
+      if (isFirstDailyPeriod) {
+        await assertTrainingCooldownExpired(client, req.user.id, now);
+      }
 
-        if (pool !== null) {
-          if (pool.state !== 'idle') {
-            throw new AppError(
-              'conflict',
-              `cannot start period in state '${pool.state}'`,
-              409,
-            );
-          }
-          if (pool.current_period >= TOTAL_PERIODS) {
-            throw new AppError(
-              'conflict',
-              'all periods completed for this day',
-              409,
-            );
-          }
-          const { rows } = await client.query<DayPoolRow>(
-            `update day_pool
+      if (pool !== null) {
+        if (pool.state !== 'idle') {
+          throw new AppError('conflict', `cannot start period in state '${pool.state}'`, 409);
+        }
+        if (pool.current_period >= settings.daily.totalPeriods) {
+          throw new AppError('conflict', 'all periods completed for this day', 409);
+        }
+        const { rows } = await client.query<DayPoolRow>(
+          `update day_pool
                 set state='period_active',
                     current_period = current_period + 1,
                     period_started_at = $1,
                     break_started_at = null
               where id = $2
             returning *`,
-            [now, pool.id],
-          );
-          return buildState(client, rows[0]!, localToday, req.user.id);
-        }
-
-        // Lazy create new day_pool — first period of the day.
-        const dailySeed = deriveDailySeed(
-          req.user.id,
-          localToday,
-          opts.dailySeedSecret,
+          [now, pool.id],
         );
-        const { rows } = await client.query<DayPoolRow>(
-          `insert into day_pool
+        return buildState(client, rows[0]!, localToday, req.user.id, settings);
+      }
+
+      // Lazy create new day_pool — first period of the day.
+      const dailySeed = deriveDailySeed(req.user.id, localToday, opts.dailySeedSecret);
+      const { rows } = await client.query<DayPoolRow>(
+        `insert into day_pool
              (user_id, day_date, state, current_period,
               period_started_at, game_core_version, daily_seed)
            values ($1, $2, 'period_active', 1, $3, $4, $5)
         returning *`,
-          [req.user.id, localToday, now, GAME_CORE_VERSION, dailySeed],
-        );
-        await appendEvent(client, req.user.id, 'day_pool_created', {
-          day_pool_id: rows[0]!.id,
-          day_date: localToday,
-          timezone,
-          game_core_version: GAME_CORE_VERSION,
-        });
-        return buildState(client, rows[0]!, localToday, req.user.id);
+        [req.user.id, localToday, now, GAME_CORE_VERSION, dailySeed],
+      );
+      await appendEvent(client, req.user.id, 'day_pool_created', {
+        day_pool_id: rows[0]!.id,
+        day_date: localToday,
+        timezone,
+        game_core_version: GAME_CORE_VERSION,
       });
-    },
-  );
+      return buildState(client, rows[0]!, localToday, req.user.id, settings);
+    });
+  });
 
-  app.post(
-    '/duel/daily/shot',
-    { preHandler: [app.authenticate] },
-    async (req) => {
-      const parsed = shotBodySchema.safeParse(req.body);
-      if (!parsed.success) {
-        throw new AppError('bad_request', 'invalid shot payload', 400);
+  app.post('/duel/daily/shot', { preHandler: [app.authenticate] }, async (req) => {
+    const parsed = shotBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new AppError('bad_request', 'invalid shot payload', 400);
+    }
+    const body = parsed.data;
+
+    return withTransaction(app, async (client): Promise<ShotSubmitResponse> => {
+      const now = new Date();
+      const settings = await getGameSettings(client);
+      const { pool, localToday } = await reconcileDayPool(client, req.user.id, now, settings.daily);
+      if (pool === null) {
+        throw new AppError('conflict', 'no active day_pool', 409);
       }
-      const body = parsed.data;
+      if (pool.state !== 'period_active') {
+        throw new AppError('conflict', `cannot submit shot in state '${pool.state}'`, 409);
+      }
 
-      return withTransaction(app, async (client): Promise<ShotSubmitResponse> => {
-        const now = new Date();
-        const { pool, localToday } = await reconcileDayPool(
-          client,
-          req.user.id,
-          now,
+      const cur = await aggregateCurrentPeriod(client, pool.id, pool.current_period);
+      const expectedShotIndex = cur.shots + 1;
+      if (body.shot_index !== expectedShotIndex) {
+        throw new AppError(
+          'conflict',
+          `shot_index mismatch: expected ${expectedShotIndex}, got ${body.shot_index}`,
+          409,
         );
-        if (pool === null) {
-          throw new AppError('conflict', 'no active day_pool', 409);
-        }
-        if (pool.state !== 'period_active') {
-          throw new AppError(
-            'conflict',
-            `cannot submit shot in state '${pool.state}'`,
-            409,
-          );
-        }
+      }
+      if (cur.shots >= settings.daily.shotsPerPeriod) {
+        throw new AppError('conflict', 'shot quota for this period exhausted', 409);
+      }
 
-        const cur = await aggregateCurrentPeriod(client, pool.id, pool.current_period);
-        const expectedShotIndex = cur.shots + 1;
-        if (body.shot_index !== expectedShotIndex) {
-          throw new AppError(
-            'conflict',
-            `shot_index mismatch: expected ${expectedShotIndex}, got ${body.shot_index}`,
-            409,
-          );
-        }
-        if (cur.shots >= SHOTS_PER_PERIOD) {
-          throw new AppError('conflict', 'shot quota for this period exhausted', 409);
-        }
+      const shotSeed = deriveShotSeed(pool.daily_seed, pool.current_period, body.shot_index);
+      const goalieCfg = getGoalie(settings.daily.goalieId);
+      const phaseOffsets = getSessionPhaseOffsets(pool.daily_seed);
+      const periodSpeeds = getDailyPeriodSpeedPreset(pool.current_period);
+      const shotInput = {
+        tapTime: body.input.tapTime,
+        ...(body.input.shooterTapTime !== undefined
+          ? { shooterTapTime: body.input.shooterTapTime }
+          : {}),
+        puckSpeedPerMs: periodSpeeds.puckSpeedPerMs,
+        shooterFrequency: periodSpeeds.shooterFrequency,
+        goalieFrequency: periodSpeeds.goalieFrequency,
+        goalFrequency: periodSpeeds.goalFrequency,
+      };
+      const result = resolveShot(
+        shotInput,
+        goalieCfg,
+        shotSeed,
+        body.shot_index,
+        STICK_NEUTRAL,
+        phaseOffsets,
+      );
+      const serverResult: 'goal' | 'save' | 'miss' = result.type;
 
-        const shotSeed = deriveShotSeed(
-          pool.daily_seed,
-          pool.current_period,
-          body.shot_index,
-        );
-        const goalieCfg = getGoalie(DAILY_GOALIE_ID);
-        const phaseOffsets = getSessionPhaseOffsets(pool.daily_seed);
-        const periodSpeeds = getDailyPeriodSpeedPreset(pool.current_period);
-        const shotInput = {
-          tapTime: body.input.tapTime,
-          ...(body.input.shooterTapTime !== undefined
-            ? { shooterTapTime: body.input.shooterTapTime }
-            : {}),
-          puckSpeedPerMs: periodSpeeds.puckSpeedPerMs,
-          shooterFrequency: periodSpeeds.shooterFrequency,
-          goalieFrequency: periodSpeeds.goalieFrequency,
-          goalFrequency: periodSpeeds.goalFrequency,
-        };
-        const result = resolveShot(
-          shotInput,
-          goalieCfg,
-          shotSeed,
-          body.shot_index,
-          STICK_NEUTRAL,
-          phaseOffsets,
-        );
-        const serverResult: 'goal' | 'save' | 'miss' = result.type;
-
-        await client.query(
-          `insert into shot_session
+      await client.query(
+        `insert into shot_session
              (user_id, mode, day_pool_id, period_number, shot_index, seed,
               input_payload, server_result, game_core_version)
            values ($1, 'daily', $2, $3, $4, $5, $6, $7, $8)`,
-          [
-            req.user.id,
-            pool.id,
-            pool.current_period,
-            body.shot_index,
-            shotSeed,
-            JSON.stringify(shotInput),
-            serverResult,
-            pool.game_core_version,
-          ],
-        );
+        [
+          req.user.id,
+          pool.id,
+          pool.current_period,
+          body.shot_index,
+          shotSeed,
+          JSON.stringify(shotInput),
+          serverResult,
+          pool.game_core_version,
+        ],
+      );
 
-        if (body.claimed_result !== serverResult) {
-          await appendEvent(client, req.user.id, 'shot_mismatch', {
-            day_pool_id: pool.id,
-            period_number: pool.current_period,
-            shot_index: body.shot_index,
-            claimed: body.claimed_result,
-            server: serverResult,
-          });
-        }
+      if (body.claimed_result !== serverResult) {
+        await appendEvent(client, req.user.id, 'shot_mismatch', {
+          day_pool_id: pool.id,
+          period_number: pool.current_period,
+          shot_index: body.shot_index,
+          claimed: body.claimed_result,
+          server: serverResult,
+        });
+      }
 
-        // Quota reached — close period, enter break.
-        let currentPool: DayPoolRow = pool;
-        if (body.shot_index === SHOTS_PER_PERIOD) {
-          const periodEndedAt = now;
-          const goals = cur.goals + (serverResult === 'goal' ? 1 : 0);
-          await client.query(
-            `insert into period_log
+      // Quota reached — close period, enter break.
+      let currentPool: DayPoolRow = pool;
+      if (body.shot_index === settings.daily.shotsPerPeriod) {
+        const periodEndedAt = now;
+        const goals = cur.goals + (serverResult === 'goal' ? 1 : 0);
+        await client.query(
+          `insert into period_log
                (day_pool_id, period_number, started_at, ended_at, shots_taken, goals, closed_reason)
              values ($1, $2, $3, $4, $5, $6, 'quota')`,
-            [
-              pool.id,
-              pool.current_period,
-              pool.period_started_at,
-              periodEndedAt,
-              SHOTS_PER_PERIOD,
-              goals,
-            ],
-          );
-          await client.query(
-            `update users
+          [
+            pool.id,
+            pool.current_period,
+            pool.period_started_at,
+            periodEndedAt,
+            settings.daily.shotsPerPeriod,
+            goals,
+          ],
+        );
+        await client.query(
+          `update users
                 set lifetime_shots_total = lifetime_shots_total + $1,
                     lifetime_goals_total = lifetime_goals_total + $2
               where id = $3`,
-            [SHOTS_PER_PERIOD, goals, req.user.id],
-          );
-          await appendEvent(client, req.user.id, 'period_closed', {
-            day_pool_id: pool.id,
-            period_number: pool.current_period,
-            closed_reason: 'quota',
-            shots_taken: SHOTS_PER_PERIOD,
-            goals,
-          });
-          if (goals === SHOTS_PER_PERIOD) {
-            await grantAchievements(client, req.user.id, ['sniper-hand']);
-          }
-          // After the LAST period — close the day directly. Otherwise enter
-          // the regular break.
-          const isFinalPeriod = pool.current_period >= TOTAL_PERIODS;
-          const updateSql = isFinalPeriod
-            ? `update day_pool
+          [settings.daily.shotsPerPeriod, goals, req.user.id],
+        );
+        await appendEvent(client, req.user.id, 'period_closed', {
+          day_pool_id: pool.id,
+          period_number: pool.current_period,
+          closed_reason: 'quota',
+          shots_taken: settings.daily.shotsPerPeriod,
+          goals,
+        });
+        if (goals === settings.daily.shotsPerPeriod) {
+          await grantAchievements(client, req.user.id, ['sniper-hand']);
+        }
+        // After the LAST period — close the day directly. Otherwise enter
+        // the regular break.
+        const isFinalPeriod = pool.current_period >= settings.daily.totalPeriods;
+        const updateSql = isFinalPeriod
+          ? `update day_pool
                   set state='closed',
                       closed_at=$1,
                       period_started_at=null
                 where id=$2
               returning *`
-            : `update day_pool
+          : `update day_pool
                   set state='break_active',
                       break_started_at=$1,
                       period_started_at=null
                 where id=$2
               returning *`;
-          const { rows } = await client.query<DayPoolRow>(updateSql, [periodEndedAt, pool.id]);
-          currentPool = rows[0]!;
-          if (isFinalPeriod) {
-            await grantAchievements(client, req.user.id, ['first-game']);
-            await appendEvent(client, req.user.id, 'day_pool_closed', {
-              day_pool_id: pool.id,
-              reason: 'completed',
-            });
-          }
+        const { rows } = await client.query<DayPoolRow>(updateSql, [periodEndedAt, pool.id]);
+        currentPool = rows[0]!;
+        if (isFinalPeriod) {
+          await grantAchievements(client, req.user.id, ['first-game']);
+          await appendEvent(client, req.user.id, 'day_pool_closed', {
+            day_pool_id: pool.id,
+            reason: 'completed',
+          });
         }
+      }
 
-        const state = await buildState(client, currentPool, localToday, req.user.id);
-        return { server_result: serverResult, state };
-      });
-    },
-  );
+      const state = await buildState(client, currentPool, localToday, req.user.id, settings);
+      return { server_result: serverResult, state };
+    });
+  });
 };
