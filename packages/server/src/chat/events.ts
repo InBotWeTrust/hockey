@@ -85,23 +85,29 @@ export async function publishMessageUpdated(
   await fanOut(pool, publisher, chatId, chatType, { type: 'message:updated', chatId, message });
 }
 
-// chat:read is intentionally NOT broadcast to all members — read-receipts of
-// the form "Alice has read this" are out of scope (spec §2). We only notify
-// the reader's own other tabs so their unread badge resets in sync.
+// For DMs, chat:read is also the read-receipt signal for the other participant:
+// the client only renders it as ticks on outgoing one-on-one messages. For
+// group/system/channel reads we keep the old reader-only behavior so we don't
+// expose broad read receipts.
 export async function publishChatRead(
-  _pool: Pool,
+  pool: Pool,
   publisher: EventPublisher,
   chatId: string,
-  _chatType: ChatType,
+  chatType: ChatType,
   userId: string,
   lastReadAt: string,
 ): Promise<void> {
-  await safePublish(publisher, userChannel(userId), {
+  const event: ChatEvent = {
     type: 'chat:read',
     chatId,
     userId,
     lastReadAt,
-  });
+  };
+  if (chatType === 'direct') {
+    await fanOut(pool, publisher, chatId, chatType, event);
+    return;
+  }
+  await safePublish(publisher, userChannel(userId), event);
 }
 
 export async function publishReactionAdded(

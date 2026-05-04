@@ -146,6 +146,8 @@ export function ChatRoomScreen(): JSX.Element {
   // so the bubble structure stays stable while tests/cold-loads warm up.
   const showAuthorOnBubbles =
     chatMeta !== undefined && chatMeta.type !== 'direct' && chatMeta.type !== 'channel';
+  const counterpartLastReadAt =
+    chatMeta?.type === 'direct' ? (chatMeta.dmCounterpart?.lastReadAt ?? null) : null;
 
   useEffect(() => {
     if (!chatId) return;
@@ -689,6 +691,9 @@ export function ChatRoomScreen(): JSX.Element {
             );
           }
           const isOwn = m.senderId === meId;
+          const isReadByCounterpart =
+            counterpartLastReadAt !== null &&
+            Date.parse(counterpartLastReadAt) >= Date.parse(m.createdAt);
           const replyParent = m.replyToId ? messageById.get(m.replyToId) : undefined;
           const replyTo = replyParent
             ? { senderName: senderNameOf(replyParent), content: replyParent.content }
@@ -699,6 +704,13 @@ export function ChatRoomScreen(): JSX.Element {
               message={m}
               isOwn={isOwn}
               showAuthor={showAuthorOnBubbles}
+              deliveryStatus={
+                chatMeta?.type === 'direct' && isOwn
+                  ? isReadByCounterpart
+                    ? 'read'
+                    : 'delivered'
+                  : undefined
+              }
               replyTo={replyTo}
               onRequestActions={onRequestActions}
               onReact={onToggleReaction}

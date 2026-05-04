@@ -140,12 +140,15 @@ describe.skipIf(!hasIntegrationEnv)('chat events fan-out', () => {
     expect(records[0]!.channel).toBe(`chat:system:${systemChat}`);
   });
 
-  it('publishChatRead DM → notifies the reader only (other tabs of same user)', async () => {
+  it('publishChatRead DM → notifies both members for read receipts', async () => {
     const { publisher, records } = recorder();
     await publishChatRead(pool, publisher, dmAB, 'direct', userA, '2026-04-26T00:00:00.000Z');
-    expect(records).toHaveLength(1);
-    expect(records[0]!.channel).toBe(`chat:user:${userA}`);
-    expect(records[0]!.event.type).toBe('chat:read');
+    expect(records.map((r) => r.channel).sort()).toEqual(
+      [`chat:user:${userA}`, `chat:user:${userB}`].sort(),
+    );
+    for (const r of records) {
+      expect(r.event.type).toBe('chat:read');
+    }
   });
 
   it('publishChatRead system → reader-only too', async () => {

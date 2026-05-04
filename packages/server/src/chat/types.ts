@@ -95,6 +95,9 @@ export interface ChatDTO {
     displayName: string;
     avatarUrl: string | null;
     lastSeenAt: string | null;
+    // ISO timestamp of the counterpart's last read marker for this DM.
+    // Used by the client to render delivered/read ticks on outgoing messages.
+    lastReadAt: string | null;
   } | null;
   // For system chats — total active users (everyone has access).
   // For group/direct — count of chat_members rows.

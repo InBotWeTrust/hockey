@@ -37,8 +37,18 @@ describe('ChatBubble — author tap', () => {
     });
     const time = screen.getByText(expectedTime);
 
-    expect(time.tagName).toBe('TIME');
+    expect(time.closest('time')).not.toBeNull();
     expect(time.closest('.glass')).not.toBeNull();
+  });
+
+  it('renders delivered and read indicators next to own message time', () => {
+    const { rerender } = render(<ChatBubble {...defaults()} isOwn deliveryStatus="delivered" />);
+
+    expect(screen.getByLabelText('Доставлено')).toBeInTheDocument();
+
+    rerender(<ChatBubble {...defaults()} isOwn deliveryStatus="read" />);
+    expect(screen.getByLabelText('Прочитано')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Доставлено')).toBeNull();
   });
 
   it('clicking the author name calls onOpenProfile with sender info', () => {

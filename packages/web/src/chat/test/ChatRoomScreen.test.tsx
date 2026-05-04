@@ -150,6 +150,7 @@ describe('ChatRoomScreen', () => {
           displayName: 'Иван',
           avatarUrl: null,
           lastSeenAt: null,
+          lastReadAt: null,
         },
         memberCount: 2,
         pinnedAt: null,
@@ -162,6 +163,36 @@ describe('ChatRoomScreen', () => {
 
     expect(await screen.findByTestId('profile-sheet-backdrop')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /написать в личку/i })).toBeInTheDocument();
+  });
+
+  it('shows delivered/read ticks only on own messages in direct chats', async () => {
+    vi.mocked(api.fetchChatList).mockResolvedValue([
+      {
+        id: 'c1',
+        type: 'direct',
+        name: null,
+        entityType: null,
+        entityId: null,
+        lastMessageAt: null,
+        unreadCount: 0,
+        lastMessage: null,
+        lastMessageSenderName: null,
+        dmCounterpart: {
+          userId: OTHER_ID,
+          displayName: 'Иван',
+          avatarUrl: null,
+          lastSeenAt: null,
+          lastReadAt: '2026-04-26T10:01:30.000Z',
+        },
+        memberCount: 2,
+        pinnedAt: null,
+      },
+    ]);
+
+    renderRoom('c1');
+
+    expect(await screen.findByLabelText('Прочитано')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Доставлено')).toBeNull();
   });
 
   it('marks the chat as read on mount once messages have loaded', async () => {

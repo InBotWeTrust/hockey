@@ -31,6 +31,7 @@ function makeChat(overrides: Partial<ChatDTO> = {}): ChatDTO {
       displayName: 'Friend',
       avatarUrl: null,
       lastSeenAt: null,
+      lastReadAt: null,
     },
     memberCount: 2,
     pinnedAt: null,

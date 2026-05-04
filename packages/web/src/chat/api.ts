@@ -62,6 +62,7 @@ export interface ChatDTO {
     displayName: string;
     avatarUrl: string | null;
     lastSeenAt: string | null;
+    lastReadAt: string | null;
   } | null;
   memberCount: number;
   pinnedAt: string | null;

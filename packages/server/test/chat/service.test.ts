@@ -65,6 +65,7 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
       expect(dmChat.type).toBe('direct');
       expect(dmChat.dmCounterpart?.userId).toBe(userB);
       expect(dmChat.dmCounterpart?.displayName).toBe('Bob');
+      expect(dmChat.dmCounterpart?.lastReadAt).toEqual(expect.any(String));
       expect(dmChat.unreadCount).toBe(0);
       expect(dmChat.lastMessage).toBeNull();
     });

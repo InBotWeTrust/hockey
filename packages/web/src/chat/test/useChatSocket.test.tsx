@@ -6,7 +6,7 @@ import { useChatSocket } from '../useChatSocket.js';
 import { useChatStore } from '../chatStore.js';
 import { useAuthStore } from '../../auth/authStore.js';
 import { chatKeys } from '../../lib/queryKeys.js';
-import type { ChatEvent, ChatEventFrame, ChatMessageDTO } from '../api.js';
+import type { ChatDTO, ChatEvent, ChatEventFrame, ChatMessageDTO } from '../api.js';
 
 // --- Reuse the MockWebSocket pattern from ws.test.ts ----------------------
 
@@ -275,6 +275,48 @@ describe('useChatSocket dispatch', () => {
     });
     expect(useChatStore.getState().unreadByChat['c1']).toBe(0);
     expect(invalSpy).toHaveBeenCalledWith({ queryKey: chatKeys.unread() });
+  });
+
+  it('chat:read from a DM counterpart updates read receipt state without resetting my unread', async () => {
+    useChatStore.getState().setUnread({ c1: 5 });
+    qc.setQueryData<ChatDTO[]>(chatKeys.list(), [
+      {
+        id: 'c1',
+        type: 'direct',
+        name: null,
+        entityType: null,
+        entityId: null,
+        lastMessageAt: null,
+        unreadCount: 5,
+        lastMessage: null,
+        lastMessageSenderName: null,
+        dmCounterpart: {
+          userId: OTHER,
+          displayName: 'Other',
+          avatarUrl: null,
+          lastSeenAt: null,
+          lastReadAt: null,
+        },
+        memberCount: 2,
+        pinnedAt: null,
+      },
+    ]);
+
+    await act(async () => {
+      MockWebSocket.instances[0]?.fireMessage({
+        v: 1,
+        event: {
+          type: 'chat:read',
+          chatId: 'c1',
+          userId: OTHER,
+          lastReadAt: '2026-04-26T11:00:00.000Z',
+        },
+      });
+    });
+
+    expect(useChatStore.getState().unreadByChat['c1']).toBe(5);
+    const list = qc.getQueryData<ChatDTO[]>(chatKeys.list());
+    expect(list?.[0]?.dmCounterpart?.lastReadAt).toBe('2026-04-26T11:00:00.000Z');
   });
 
   it('reaction:added (stranger): inserts pill in chatKeys.messages cache, count 1, reactedByMe=false', async () => {

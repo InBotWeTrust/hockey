@@ -26,6 +26,7 @@ interface DmCounterpartRow {
   display_name: string;
   avatar_url: string | null;
   last_seen_at: Date | null;
+  last_read_at: Date | null;
 }
 
 interface MyChatsRow {
@@ -177,7 +178,8 @@ export async function getMyChats(pool: Pool, userId: string): Promise<ChatDTO[]>
   const counterparts = new Map<string, ChatDTO['dmCounterpart']>();
   if (dmChatIds.length > 0) {
     const cpSql = `
-      select cm.chat_id, u.id as user_id, u.display_name, u.avatar_url, u.last_seen_at
+      select cm.chat_id, u.id as user_id, u.display_name, u.avatar_url, u.last_seen_at,
+             cm.last_read_at
       from chat_members cm
       join users u on u.id = cm.user_id
       where cm.chat_id = any($1::uuid[]) and cm.user_id != $2
@@ -189,6 +191,7 @@ export async function getMyChats(pool: Pool, userId: string): Promise<ChatDTO[]>
         displayName: row.display_name,
         avatarUrl: row.avatar_url,
         lastSeenAt: row.last_seen_at !== null ? row.last_seen_at.toISOString() : null,
+        lastReadAt: row.last_read_at !== null ? row.last_read_at.toISOString() : null,
       });
     }
   }

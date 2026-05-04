@@ -6,7 +6,7 @@ import { useChatStore } from './chatStore.js';
 import { refreshAccessToken } from '../api/apiFetch.js';
 import { chatKeys } from '../lib/queryKeys.js';
 import { applyReactionEventToMessage } from './reactionsState.js';
-import type { ChatEvent, ChatMessageDTO } from './api.js';
+import type { ChatDTO, ChatEvent, ChatMessageDTO } from './api.js';
 
 interface InfinitePages {
   pages: ChatMessageDTO[][];
@@ -75,8 +75,37 @@ function applyMessageUpdated(qc: QueryClient, chatId: string, message: ChatMessa
   if (didPatch) void qc.invalidateQueries({ queryKey: chatKeys.list() });
 }
 
-function applyChatRead(qc: QueryClient): void {
-  void qc.invalidateQueries({ queryKey: chatKeys.unread() });
+function applyChatRead(
+  qc: QueryClient,
+  event: Extract<ChatEvent, { type: 'chat:read' }>,
+  meId: string | null,
+): void {
+  if (event.userId === meId) {
+    void qc.invalidateQueries({ queryKey: chatKeys.unread() });
+    return;
+  }
+  qc.setQueryData<ChatDTO[] | undefined>(chatKeys.list(), (old) => {
+    if (!old) return old;
+    let touched = false;
+    const next = old.map((chat) => {
+      if (
+        chat.id !== event.chatId ||
+        chat.type !== 'direct' ||
+        chat.dmCounterpart?.userId !== event.userId
+      ) {
+        return chat;
+      }
+      touched = true;
+      return {
+        ...chat,
+        dmCounterpart: {
+          ...chat.dmCounterpart,
+          lastReadAt: event.lastReadAt,
+        },
+      };
+    });
+    return touched ? next : old;
+  });
 }
 
 function applyReactionEvent(
@@ -117,7 +146,10 @@ export function useChatSocket(): ChatSocketStatus {
       getToken: () => useAuthStore.getState().accessToken,
       refresh: () => refreshAccessToken(),
       onEvent: (event: ChatEvent) => {
-        useChatStore.getState().applyEvent(event);
+        const meId = useAuthStore.getState().user?.id ?? null;
+        if (event.type !== 'chat:read' || event.userId === meId) {
+          useChatStore.getState().applyEvent(event);
+        }
         switch (event.type) {
           case 'message:new':
             applyMessageNew(qc, event.chatId, event.message);
@@ -129,11 +161,11 @@ export function useChatSocket(): ChatSocketStatus {
             applyMessageUpdated(qc, event.chatId, event.message);
             return;
           case 'chat:read':
-            applyChatRead(qc);
+            applyChatRead(qc, event, meId);
             return;
           case 'reaction:added':
           case 'reaction:removed':
-            applyReactionEvent(qc, useAuthStore.getState().user?.id ?? null, event);
+            applyReactionEvent(qc, meId, event);
             return;
           case 'connection:ready':
             // Server finished registering Redis SUBSCRIBEs. Pure transport

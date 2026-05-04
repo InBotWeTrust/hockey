@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import { Check, CheckCheck } from 'lucide-react';
 import type { ChatMessageDTO } from '../api.js';
 import { ReplyPreview } from './ReplyPreview.js';
 import { ReactionBar } from './ReactionBar.js';
@@ -12,6 +13,7 @@ interface ChatBubbleProps {
   // DM chats keep the cleaner layout where the counterpart is shown in the
   // room header, not on every bubble.
   showAuthor?: boolean;
+  deliveryStatus?: 'delivered' | 'read' | undefined;
   replyTo?: { senderName: string; content: string } | null;
   onRequestActions: (message: ChatMessageDTO, anchorRect: DOMRect) => void;
   // Receives messageId so the parent can pass a stable useCallback reference
@@ -31,6 +33,7 @@ function ChatBubbleImpl({
   message,
   isOwn,
   showAuthor = false,
+  deliveryStatus,
   replyTo,
   onRequestActions,
   onReact,
@@ -70,6 +73,21 @@ function ChatBubbleImpl({
     { delayMs: 500 },
   );
 
+  const deliveryIndicator =
+    deliveryStatus !== undefined ? (
+      <span
+        aria-label={deliveryStatus === 'read' ? 'Прочитано' : 'Доставлено'}
+        title={deliveryStatus === 'read' ? 'Прочитано' : 'Доставлено'}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          color: deliveryStatus === 'read' ? 'rgba(186, 225, 255, 0.95)' : 'currentColor',
+        }}
+      >
+        {deliveryStatus === 'read' ? <CheckCheck size={14} /> : <Check size={13} />}
+      </span>
+    ) : null;
+
   const timestamp = (
     <time
       dateTime={message.createdAt}
@@ -77,6 +95,9 @@ function ChatBubbleImpl({
         float: 'right',
         marginLeft: 12,
         transform: 'translateY(2px)',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 3,
         fontSize: 10,
         lineHeight: '18px',
         fontWeight: 600,
@@ -84,7 +105,8 @@ function ChatBubbleImpl({
         whiteSpace: 'nowrap',
       }}
     >
-      {formatTime(message.createdAt)}
+      <span>{formatTime(message.createdAt)}</span>
+      {deliveryIndicator}
     </time>
   );
 
@@ -223,6 +245,7 @@ function areEqual(prev: ChatBubbleProps, next: ChatBubbleProps): boolean {
     prev.message.senderAvatarUrl === next.message.senderAvatarUrl &&
     prev.isOwn === next.isOwn &&
     prev.showAuthor === next.showAuthor &&
+    prev.deliveryStatus === next.deliveryStatus &&
     prev.replyTo?.content === next.replyTo?.content &&
     prev.replyTo?.senderName === next.replyTo?.senderName &&
     prev.onRequestActions === next.onRequestActions &&
