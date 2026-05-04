@@ -81,6 +81,7 @@ function renderWith(initialEntries: string[] = ['/']) {
 }
 
 beforeEach(() => {
+  localStorage.clear();
   useAuthStore.getState().setSession({
     accessToken: 'token',
     refreshToken: 'r',
@@ -315,6 +316,114 @@ describe('DailyScreen', () => {
     expect(breakControl).toBeDisabled();
     expect(screen.getByRole('button', { name: 'К режимам' })).toBeEnabled();
     expect(screen.getByTestId('pixi-stage-stub')).toBeInTheDocument();
+  });
+
+  it('shows the period summary modal on the rink for an unseen finished period', async () => {
+    const future = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ...baseState,
+          state: 'break_active',
+          current_period: 1,
+          daily_total_shots: 30,
+          daily_total_goals: 12,
+          break_ends_at: future,
+          daily_seed: 'seed-abc',
+          recent_periods: [
+            {
+              period_number: 1,
+              shots_taken: 30,
+              goals: 12,
+              closed_reason: 'quota' as const,
+              duration_ms: 1_200_000,
+              ended_at: '2026-04-25T12:20:00.000Z',
+            },
+          ],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+
+    renderWith(['/?view=daily']);
+
+    expect(await screen.findByRole('dialog', { name: '1-й период завершён' })).toBeInTheDocument();
+    expect(screen.getByText('Лимит бросков выполнен')).toBeInTheDocument();
+    expect(
+      screen.getByLabelText('Итого за период: 12 голов из 30 бросков, точность 40%'),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Продолжить' }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: '1-й период завершён' })).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', { name: 'ПЕРЕРЫВ' })).toBeDisabled();
+  });
+
+  it('shows the full game stats modal after the final period instead of a period-only summary', async () => {
+    const previousGame = {
+      day_date: '2026-04-25',
+      total_shots: 90,
+      total_goals: 42,
+      total_duration_ms: 3_600_000,
+      periods: [
+        {
+          period_number: 1,
+          shots_taken: 30,
+          goals: 14,
+          closed_reason: 'quota' as const,
+          duration_ms: 1_200_000,
+          ended_at: '2026-04-25T12:20:00.000Z',
+        },
+        {
+          period_number: 2,
+          shots_taken: 30,
+          goals: 13,
+          closed_reason: 'quota' as const,
+          duration_ms: 1_200_000,
+          ended_at: '2026-04-25T12:55:00.000Z',
+        },
+        {
+          period_number: 3,
+          shots_taken: 30,
+          goals: 15,
+          closed_reason: 'quota' as const,
+          duration_ms: 1_200_000,
+          ended_at: '2026-04-25T13:30:00.000Z',
+        },
+      ],
+    };
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ...baseState,
+          state: 'closed',
+          current_period: 3,
+          daily_total_shots: 90,
+          daily_total_goals: 42,
+          daily_seed: 'seed-abc',
+          recent_periods: previousGame.periods,
+          previous_game: previousGame,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+
+    renderWith(['/?view=daily']);
+
+    expect(await screen.findByRole('dialog', { name: 'Игра завершена' })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: '3-й период завершён' })).not.toBeInTheDocument();
+    expect(screen.getByText('Дата: 25.04.2026')).toBeInTheDocument();
+    expect(screen.getByLabelText('Итого: 42 голов из 90 бросков')).toBeInTheDocument();
+    expect(
+      screen.getByLabelText('3-й период: 15 голов из 30 бросков за 20:00'),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Продолжить' }));
+
+    expect(await screen.findByRole('dialog', { name: 'День завершён' })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Игра завершена' })).not.toBeInTheDocument();
   });
 
   it('can leave the daily rink start modal without starting a period', async () => {

@@ -60,6 +60,8 @@ import type {
 } from '../api/duel.js';
 import type { TrainingStateResponse } from '../api/training.js';
 import { StartPeriodModal } from '../components/StartPeriodModal.js';
+import { PeriodSummaryModal } from '../components/PeriodSummaryModal.js';
+import { getLastSeenAt, setLastSeenAt } from '../stores/seenPeriods.js';
 
 const PAUSE_MS = 1000;
 const HUB_PERIOD_DURATION_MS = 20 * 60 * 1000;
@@ -204,16 +206,27 @@ function formatDurationMs(ms: number): string {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
+function lastClosedPeriod(data: DailyStateResponse): PeriodLogEntry | null {
+  if (data.recent_periods.length === 0) return null;
+  return data.recent_periods[data.recent_periods.length - 1] ?? null;
+}
+
+function findUnseenPeriodSummary(data: DailyStateResponse, userId: string): PeriodLogEntry | null {
+  if (!userId) return null;
+  const watermark = getLastSeenAt(userId);
+  for (const period of data.recent_periods) {
+    if (watermark === null || period.ended_at > watermark) return period;
+  }
+  return null;
+}
+
 export function DailyScreen(): JSX.Element {
   const location = useLocation();
   const navigate = useNavigate();
   const data = useDailyStore((s) => s.data);
-  const deferredState = useDailyStore((s) => s.deferredState);
   const error = useDailyStore((s) => s.error);
   const loading = useDailyStore((s) => s.loading);
   const refresh = useDailyStore((s) => s.refresh);
-  const applyDeferredState = useDailyStore((s) => s.applyDeferredState);
-  const userId = useAuthStore((s) => s.user?.id ?? '');
   const [selectedLevel, setSelectedLevel] = useState<GameLevel>('beginner');
   const [beginnerMode, setBeginnerMode] = useState<BeginnerMode>(() => {
     const view = new URLSearchParams(location.search).get('view');
@@ -246,10 +259,6 @@ export function DailyScreen(): JSX.Element {
       setBeginnerMode('training');
     }
   }, [location.search]);
-
-  void deferredState;
-  void applyDeferredState;
-  void userId;
 
   if (!data) {
     return (
@@ -1170,10 +1179,16 @@ function ModeInfoModal({
 function DailyGameStatsModal({
   stats,
   totalPeriods,
+  title = 'Статистика прошлой игры',
+  ariaLabel = 'Статистика последней игры',
+  closeLabel = 'Понятно',
   onClose,
 }: {
   stats: DailyGameStats | null;
   totalPeriods: number;
+  title?: string;
+  ariaLabel?: string;
+  closeLabel?: string;
   onClose: () => void;
 }): JSX.Element {
   const periodsByNumber = new Map<number, PeriodLogEntry>(
@@ -1185,7 +1200,7 @@ function DailyGameStatsModal({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Статистика последней игры"
+      aria-label={ariaLabel}
       onClick={onClose}
       style={{
         position: 'fixed',
@@ -1229,7 +1244,7 @@ function DailyGameStatsModal({
                 color: 'var(--ink)',
               }}
             >
-              Статистика прошлой игры
+              {title}
             </div>
             <div
               style={{
@@ -1306,7 +1321,7 @@ function DailyGameStatsModal({
           onClick={onClose}
           style={{ marginTop: 18, width: '100%', padding: '12px 0', fontSize: 14 }}
         >
-          Понятно
+          {closeLabel}
         </button>
       </div>
     </div>
@@ -1887,6 +1902,7 @@ interface PlayViewProps<TState> {
     claimedResult: ShotResultType;
   }) => Promise<{ serverResult: ShotResultType; state: TState } | null>;
   applyState: (next: TState) => void;
+  applyResolvedState?: ((next: TState) => void) | undefined;
 }
 
 interface PlaySessionSnapshot {
@@ -1916,16 +1932,19 @@ function computeInitialElapsedMs(timing: PlaySessionTiming): number {
 
 function DailyPlayView({ onBack }: { onBack: () => void }): JSX.Element {
   const data = useDailyStore((s) => s.data)!;
+  const deferredState = useDailyStore((s) => s.deferredState);
   const startPeriod = useDailyStore((s) => s.startPeriod);
   const pending = useDailyStore((s) => s.inFlight);
   const optimisticAddShot = useDailyStore((s) => s.optimisticAddShot);
   const submitShot = useDailyStore((s) => s.submitShot);
   const refresh = useDailyStore((s) => s.refresh);
   const applyState = useDailyStore((s) => s.applyState);
+  const setDeferredState = useDailyStore((s) => s.setDeferredState);
+  const applyDeferredState = useDailyStore((s) => s.applyDeferredState);
+  const userId = useAuthStore((s) => s.user?.id ?? '');
   const isBreak = data.state === 'break_active';
   const isClosed = data.state === 'closed';
   const canStartPeriod = data.state === 'idle' && data.current_period < data.total_periods;
-  const shouldSuppressRink = data.state !== 'period_active';
   const periodNumber = isBreak
     ? Math.min(data.current_period + 1, data.total_periods)
     : data.state === 'period_active'
@@ -1940,6 +1959,74 @@ function DailyPlayView({ onBack }: { onBack: () => void }): JSX.Element {
   const periodEndsAt = data.period_ends_at ? new Date(data.period_ends_at).getTime() : undefined;
   const breakEndsAt = data.break_ends_at ? new Date(data.break_ends_at).getTime() : undefined;
   const [now, setNow] = useState(Date.now());
+  const [periodSummary, setPeriodSummary] = useState<PeriodLogEntry | null>(null);
+  const [periodSummarySource, setPeriodSummarySource] = useState<'deferred' | 'state' | null>(null);
+  const [finishedGameStats, setFinishedGameStats] = useState<DailyGameStats | null>(null);
+  const [finishedGameSource, setFinishedGameSource] = useState<'deferred' | 'state' | null>(null);
+
+  useEffect(() => {
+    if (periodSummary !== null || finishedGameStats !== null) return;
+
+    if (deferredState?.state === 'closed' && deferredState.previous_game) {
+      setFinishedGameStats(deferredState.previous_game);
+      setFinishedGameSource('deferred');
+      return;
+    }
+
+    const deferredPeriod =
+      deferredState && deferredState.state !== 'closed' ? lastClosedPeriod(deferredState) : null;
+    if (deferredPeriod && deferredState?.state === 'break_active') {
+      setPeriodSummary(deferredPeriod);
+      setPeriodSummarySource('deferred');
+      return;
+    }
+
+    const unseenPeriod = findUnseenPeriodSummary(data, userId);
+    if (!unseenPeriod) return;
+
+    if (data.state === 'closed' && data.previous_game) {
+      setFinishedGameStats(data.previous_game);
+      setFinishedGameSource('state');
+      return;
+    }
+
+    if (data.state === 'break_active') {
+      setPeriodSummary(unseenPeriod);
+      setPeriodSummarySource('state');
+    }
+  }, [data, deferredState, finishedGameStats, periodSummary, userId]);
+
+  const applyDailyResolvedState = useCallback(
+    (next: DailyStateResponse): void => {
+      const closedPeriod = lastClosedPeriod(next);
+      if (next.state !== 'period_active' && closedPeriod) {
+        setDeferredState(next);
+        return;
+      }
+      applyState(next);
+    },
+    [applyState, setDeferredState],
+  );
+
+  const handlePeriodSummaryClose = useCallback((): void => {
+    if (periodSummary && userId) setLastSeenAt(userId, periodSummary.ended_at);
+    const source = periodSummarySource;
+    setPeriodSummary(null);
+    setPeriodSummarySource(null);
+    if (source === 'deferred') applyDeferredState();
+  }, [applyDeferredState, periodSummary, periodSummarySource, userId]);
+
+  const handleFinishedGameClose = useCallback((): void => {
+    const latestPeriod = finishedGameStats?.periods.at(-1);
+    if (latestPeriod && userId) setLastSeenAt(userId, latestPeriod.ended_at);
+    const source = finishedGameSource;
+    setFinishedGameStats(null);
+    setFinishedGameSource(null);
+    if (source === 'deferred') applyDeferredState();
+  }, [applyDeferredState, finishedGameSource, finishedGameStats, userId]);
+
+  const hasBlockingSummary = periodSummary !== null || finishedGameStats !== null;
+  const shouldSuppressRink = data.state !== 'period_active' || hasBlockingSummary;
 
   useEffect(() => {
     if ((!isBreak || !breakEndsAt) && !isClosed) return undefined;
@@ -1991,8 +2078,28 @@ function DailyPlayView({ onBack }: { onBack: () => void }): JSX.Element {
         optimisticAddShot={optimisticAddShot}
         submitShot={submitShot}
         applyState={applyState}
+        applyResolvedState={applyDailyResolvedState}
       />
-      {canStartPeriod && (
+      {periodSummary && (
+        <PeriodSummaryModal
+          periodNumber={periodSummary.period_number}
+          goals={periodSummary.goals}
+          shots={periodSummary.shots_taken}
+          closedReason={periodSummary.closed_reason}
+          onClose={handlePeriodSummaryClose}
+        />
+      )}
+      {finishedGameStats && (
+        <DailyGameStatsModal
+          stats={finishedGameStats}
+          totalPeriods={data.total_periods}
+          title="Игра завершена"
+          ariaLabel="Игра завершена"
+          closeLabel="Продолжить"
+          onClose={handleFinishedGameClose}
+        />
+      )}
+      {canStartPeriod && !hasBlockingSummary && (
         <StartPeriodModal
           nextPeriod={periodNumber}
           totalPeriods={data.total_periods}
@@ -2003,7 +2110,9 @@ function DailyPlayView({ onBack }: { onBack: () => void }): JSX.Element {
           onStart={() => void startPeriod()}
         />
       )}
-      {isClosed && <DailyClosedModal timer={formatHms(nextDayRemaining)} onBack={onBack} />}
+      {isClosed && !hasBlockingSummary && (
+        <DailyClosedModal timer={formatHms(nextDayRemaining)} onBack={onBack} />
+      )}
     </>
   );
 }
@@ -2369,6 +2478,7 @@ function PlayView<TState>({
   optimisticAddShot,
   submitShot,
   applyState,
+  applyResolvedState,
 }: PlayViewProps<TState>): JSX.Element {
   const session: PlaySessionSnapshot = useMemo(
     () => ({
@@ -2812,9 +2922,9 @@ function PlayView<TState>({
     }).then((res) => {
       if (!mountedRef.current) return;
       if (res === null) return;
-      pendingMidShotApplyRef.current = () => applyState(res.state);
+      pendingMidShotApplyRef.current = () => (applyResolvedState ?? applyState)(res.state);
     });
-  }, [flightDurationMs, optimisticAddShot, submitShot, applyState]);
+  }, [flightDurationMs, optimisticAddShot, submitShot, applyState, applyResolvedState]);
 
   const timerValue = timer ?? formatMs(remaining);
 
