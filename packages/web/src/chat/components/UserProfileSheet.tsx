@@ -19,6 +19,7 @@ import {
   ProfileAchievementsSection,
   ProfileStatsGrid,
 } from '../../screens/profileSections.js';
+import { useAuthStore } from '../../auth/authStore.js';
 
 interface UserProfileSheetProps {
   sender: UserPickerItem | null;
@@ -28,6 +29,7 @@ interface UserProfileSheetProps {
 export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JSX.Element | null {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const meId = useAuthStore((s) => s.user?.id ?? null);
   const senderId = sender?.userId ?? '';
   const [selectedAchievement, setSelectedAchievement] = useState<ProfileAchievement | null>(null);
 
@@ -65,6 +67,7 @@ export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JS
 
   const displayName = profile?.displayName ?? sender.displayName;
   const avatarUrl = profile?.avatarUrl ?? sender.avatarUrl;
+  const isSelf = sender.userId === meId;
 
   return createPortal(
     <div
@@ -95,7 +98,7 @@ export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JS
           borderRadius: '24px 24px 0 0',
           display: 'flex',
           flexDirection: 'column',
-          gap: 14,
+          gap: 0,
           transform: entered ? 'translateY(0)' : 'translateY(100%)',
           transition: 'transform 0.2s ease',
         }}
@@ -107,7 +110,7 @@ export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JS
             height: 4,
             borderRadius: 2,
             background: 'rgba(15,23,42,0.2)',
-            margin: '0 auto',
+            margin: '0 auto 14px',
           }}
         />
         <button
@@ -148,7 +151,7 @@ export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JS
           </div>
         </div>
 
-        <div className="section-label" style={{ marginTop: 4 }}>
+        <div className="section-label" style={{ margin: '18px 0 6px', padding: '2px 6px' }}>
           Статистика
         </div>
         {profile ? (
@@ -174,19 +177,35 @@ export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JS
           <ProfileAchievementsSection
             achievements={profile.achievements ?? []}
             onOpenAchievement={setSelectedAchievement}
+            labelStyle={{ margin: '18px 0 6px', padding: '2px 6px' }}
             style={{ margin: 0 }}
           />
         )}
 
-        <button
-          type="button"
-          className="btn btn--cta"
-          onClick={() => mutate(sender.userId)}
-          disabled={isPending}
-          style={{ marginTop: 6, padding: '14px 0', fontSize: 15, fontWeight: 600 }}
-        >
-          {isPending ? 'Открываем чат…' : 'Написать в личку'}
-        </button>
+        {isSelf ? (
+          <div
+            className="btn btn--ghost"
+            style={{
+              marginTop: 14,
+              padding: '14px 0',
+              fontSize: 15,
+              fontWeight: 600,
+              justifyContent: 'center',
+            }}
+          >
+            Это ваш профиль
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="btn btn--cta"
+            onClick={() => mutate(sender.userId)}
+            disabled={isPending}
+            style={{ marginTop: 14, padding: '14px 0', fontSize: 15, fontWeight: 600 }}
+          >
+            {isPending ? 'Открываем чат…' : 'Написать в личку'}
+          </button>
+        )}
         {selectedAchievement !== null && (
           <AchievementDetailsSheet
             achievement={selectedAchievement}

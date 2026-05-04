@@ -10,6 +10,7 @@ import {
   removeChannelCommentReaction,
   sendChannelPostComment,
   type ChannelPostCommentDTO,
+  type UserPickerItem,
 } from '../api.js';
 import { ChatInput } from '../components/ChatInput.js';
 import { MessageActionsMenu } from '../components/MessageActionsMenu.js';
@@ -17,6 +18,7 @@ import { ReactionBar } from '../components/ReactionBar.js';
 import { ReactionPicker } from '../components/ReactionPicker.js';
 import { ReplyPreview } from '../components/ReplyPreview.js';
 import { UserAvatar } from '../components/UserAvatar.js';
+import { UserProfileSheet } from '../components/UserProfileSheet.js';
 import { chatKeys } from '../../lib/queryKeys.js';
 import { useAuthStore } from '../../auth/authStore.js';
 import { useChatStore } from '../chatStore.js';
@@ -33,11 +35,13 @@ function CommentRow({
   replyTo,
   onRequestActions,
   onToggleReaction,
+  onOpenProfile,
 }: {
   comment: ChannelPostCommentDTO;
   replyTo: ChannelPostCommentDTO | null;
   onRequestActions: (comment: ChannelPostCommentDTO, anchorRect: DOMRect) => void;
   onToggleReaction: (commentId: string, emoji: string) => void;
+  onOpenProfile: (sender: UserPickerItem) => void;
 }): JSX.Element {
   const longPress = useLongPress(
     (rect) => {
@@ -45,15 +49,36 @@ function CommentRow({
     },
     { delayMs: 500 },
   );
+  const authorName = comment.authorDisplayName ?? 'Участник';
 
   return (
     <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-      <UserAvatar
-        avatarUrl={comment.authorAvatarUrl}
-        name={comment.authorDisplayName}
-        size={30}
-        fontSize={12}
-      />
+      <button
+        type="button"
+        aria-label={`Аватар: ${authorName}`}
+        onClick={() =>
+          onOpenProfile({
+            userId: comment.authorId,
+            displayName: authorName,
+            avatarUrl: comment.authorAvatarUrl,
+          })
+        }
+        style={{
+          flexShrink: 0,
+          padding: 0,
+          border: 'none',
+          background: 'transparent',
+          color: 'inherit',
+          cursor: 'pointer',
+        }}
+      >
+        <UserAvatar
+          avatarUrl={comment.authorAvatarUrl}
+          name={comment.authorDisplayName}
+          size={30}
+          fontSize={12}
+        />
+      </button>
       <div style={{ minWidth: 0, maxWidth: '82%' }}>
         <div
           {...longPress}
@@ -87,7 +112,7 @@ function CommentRow({
               whiteSpace: 'nowrap',
             }}
           >
-            {comment.authorDisplayName ?? 'Участник'}
+            {authorName}
           </div>
           <div style={{ fontSize: 14, lineHeight: 1.4, wordBreak: 'break-word' }}>
             {comment.content}
@@ -148,6 +173,7 @@ export function ChannelPostCommentsScreen(): JSX.Element {
     commentId: string;
     anchorRect: DOMRect;
   } | null>(null);
+  const [previewSender, setPreviewSender] = useState<UserPickerItem | null>(null);
 
   useEffect(() => {
     if (!chatId) return;
@@ -380,7 +406,7 @@ export function ChannelPostCommentsScreen(): JSX.Element {
           display: 'flex',
           flexDirection: 'column',
           gap: 10,
-          padding: 'calc(112px + var(--app-safe-top)) 14px calc(128px + var(--app-safe-bottom))',
+          padding: 'calc(112px + var(--app-safe-top)) 14px calc(96px + var(--app-safe-bottom))',
         }}
       >
         {postQuery.data && (
@@ -415,6 +441,7 @@ export function ChannelPostCommentsScreen(): JSX.Element {
             replyTo={comment.replyToId ? (commentById.get(comment.replyToId) ?? null) : null}
             onRequestActions={handleRequestActions}
             onToggleReaction={handleToggleReaction}
+            onOpenProfile={setPreviewSender}
           />
         ))}
       </div>
@@ -446,6 +473,7 @@ export function ChannelPostCommentsScreen(): JSX.Element {
         onMoreEmoji={handleMoreEmoji}
         onClose={handleCloseActions}
       />
+      <UserProfileSheet sender={previewSender} onClose={() => setPreviewSender(null)} />
     </main>
   );
 }

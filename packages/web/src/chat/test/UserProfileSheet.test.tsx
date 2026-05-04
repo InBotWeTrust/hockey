@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { UserProfileSheet } from '../components/UserProfileSheet.js';
 import * as api from '../api.js';
+import { useAuthStore } from '../../auth/authStore.js';
 
 const publicProfile: api.UserPublicProfileDTO = {
   id: 'u1',
@@ -50,11 +51,13 @@ function renderSheet(props: Parameters<typeof UserProfileSheet>[0]): { qc: Query
 
 describe('UserProfileSheet', () => {
   beforeEach(() => {
+    useAuthStore.setState({ accessToken: null, refreshToken: null, user: null });
     vi.spyOn(api, 'findOrCreateDM').mockResolvedValue({ chatId: 'dm1', created: false });
     vi.spyOn(api, 'fetchUserProfile').mockResolvedValue(publicProfile);
   });
   afterEach(() => {
     vi.restoreAllMocks();
+    useAuthStore.setState({ accessToken: null, refreshToken: null, user: null });
   });
 
   it('returns null when sender is null', () => {
@@ -94,6 +97,22 @@ describe('UserProfileSheet', () => {
     fireEvent.click(screen.getByRole('button', { name: /написать в личку/i }));
     await waitFor(() => expect(api.findOrCreateDM).toHaveBeenCalledWith('u1'));
     await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  it('does not show a DM action when the sheet is opened for myself', async () => {
+    useAuthStore.setState({
+      accessToken: 'tok',
+      refreshToken: 'rtok',
+      user: { id: 'u1', displayName: 'Иван Петров' },
+    });
+
+    renderSheet({
+      sender: { userId: 'u1', displayName: 'Иван Петров', avatarUrl: null },
+      onClose: () => {},
+    });
+
+    expect(await screen.findByText('Это ваш профиль')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /написать в личку/i })).not.toBeInTheDocument();
   });
 
   it('clicking the backdrop calls onClose', () => {

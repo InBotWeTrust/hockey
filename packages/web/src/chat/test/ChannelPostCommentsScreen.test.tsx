@@ -143,4 +143,32 @@ describe('ChannelPostCommentsScreen', () => {
 
     await waitFor(() => expect(deleteSpy).toHaveBeenCalledWith('comment-1'));
   });
+
+  it('opens author profile from a channel comment avatar', async () => {
+    vi.spyOn(api, 'fetchChannelPost').mockResolvedValue(post);
+    vi.spyOn(api, 'fetchChannelPostComments').mockResolvedValue([parentComment, childComment]);
+    vi.spyOn(api, 'fetchUserProfile').mockResolvedValue({
+      id: 'user-2',
+      displayName: 'Bob',
+      avatarUrl: null,
+      competitionLevel: 'beginner',
+      stats: {
+        shots: 0,
+        goals: 0,
+        accuracy: 0,
+        playStreakDays: 0,
+        bestPlayStreakDays: 0,
+      },
+      achievements: [],
+      createdAt: '2026-05-04T09:00:00.000Z',
+      lastSeenAt: null,
+    });
+
+    renderScreen();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Аватар: Bob' }));
+
+    expect(await screen.findByTestId('profile-sheet-backdrop')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /написать в личку/i })).toBeInTheDocument();
+  });
 });

@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
-import { fetchChatInfo, type ChatInfoDTO } from '../api.js';
+import { fetchChatInfo, type ChatInfoDTO, type UserPickerItem } from '../api.js';
 import { chatKeys } from '../../lib/queryKeys.js';
 import { UserAvatar } from '../components/UserAvatar.js';
+import { UserProfileSheet } from '../components/UserProfileSheet.js';
 
 function formatMemberCount(n: number): string {
   const mod10 = n % 10;
@@ -25,6 +27,7 @@ export function ChatInfoScreen(): JSX.Element {
   const params = useParams<{ chatId: string }>();
   const chatId = params.chatId ?? '';
   const navigate = useNavigate();
+  const [previewSender, setPreviewSender] = useState<UserPickerItem | null>(null);
 
   const { data, isLoading, isError, refetch } = useQuery<ChatInfoDTO>({
     queryKey: chatKeys.info(chatId),
@@ -158,7 +161,13 @@ export function ChatInfoScreen(): JSX.Element {
                 key={m.userId}
                 type="button"
                 className="glass"
-                onClick={() => navigate(`/users/${m.userId}`)}
+                onClick={() =>
+                  setPreviewSender({
+                    userId: m.userId,
+                    displayName: m.displayName,
+                    avatarUrl: m.avatarUrl,
+                  })
+                }
                 style={{
                   display: 'grid',
                   gridTemplateColumns: '40px 1fr',
@@ -201,6 +210,7 @@ export function ChatInfoScreen(): JSX.Element {
           </div>
         </>
       )}
+      <UserProfileSheet sender={previewSender} onClose={() => setPreviewSender(null)} />
     </main>
   );
 }

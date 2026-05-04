@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { ChatInfoScreen } from '../screens/ChatInfoScreen.js';
@@ -52,5 +52,39 @@ describe('ChatInfoScreen', () => {
       overflowY: 'auto',
       paddingBottom: '24px',
     });
+  });
+
+  it('opens member profile in the shared profile sheet', async () => {
+    vi.spyOn(api, 'fetchChatInfo').mockResolvedValue({
+      id: 'chat-1',
+      type: 'group',
+      name: 'Командный чат',
+      description: null,
+      memberCount: 1,
+      members: [{ userId: 'user-12', displayName: 'Player 12', avatarUrl: null }],
+    });
+    vi.spyOn(api, 'fetchUserProfile').mockResolvedValue({
+      id: 'user-12',
+      displayName: 'Player 12',
+      avatarUrl: null,
+      competitionLevel: 'beginner',
+      stats: {
+        shots: 0,
+        goals: 0,
+        accuracy: 0,
+        playStreakDays: 0,
+        bestPlayStreakDays: 0,
+      },
+      achievements: [],
+      createdAt: '2026-05-04T09:00:00.000Z',
+      lastSeenAt: null,
+    });
+
+    renderScreen();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Player 12' }));
+
+    expect(await screen.findByTestId('profile-sheet-backdrop')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /написать в личку/i })).toBeInTheDocument();
   });
 });

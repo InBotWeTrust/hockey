@@ -603,7 +603,7 @@ export function ChatRoomScreen(): JSX.Element {
           onBack={() => navigate('/chat')}
           {...(dmCounterpart
             ? {
-                onTitleClick: () => navigate(`/users/${dmCounterpart.userId}`),
+                onTitleClick: () => setPreviewSender(dmCounterpart),
                 onTitleClickLabel: 'Открыть профиль игрока',
               }
             : chatMeta && chatMeta.type !== 'direct'
@@ -645,8 +645,8 @@ export function ChatRoomScreen(): JSX.Element {
           padding: `${searchOpen ? 'calc(158px + var(--app-safe-top))' : 'calc(112px + var(--app-safe-top))'} 14px ${
             showComposer
               ? isChannel && isAdmin
-                ? 'calc(172px + var(--app-safe-bottom))'
-                : 'calc(128px + var(--app-safe-bottom))'
+                ? 'calc(140px + var(--app-safe-bottom))'
+                : 'calc(96px + var(--app-safe-bottom))'
               : '24px'
           }`,
           display: 'flex',

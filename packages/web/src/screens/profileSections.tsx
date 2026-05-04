@@ -216,16 +216,18 @@ export function ProfileAchievementsSection({
   achievements,
   onOpenAchievement,
   style,
+  labelStyle,
 }: {
   achievements: ProfileAchievement[];
   onOpenAchievement: (achievement: ProfileAchievement) => void;
   style?: CSSProperties;
+  labelStyle?: CSSProperties;
 }): JSX.Element {
   const unlockedAchievements = achievements.filter((achievement) => achievement.isUnlocked).length;
 
   return (
     <>
-      <div className="section-label" style={{ marginBottom: 8 }}>
+      <div className="section-label" style={{ marginBottom: 8, ...labelStyle }}>
         Достижения
         {achievements.length > 0 ? ` (${unlockedAchievements}/${achievements.length})` : ''}
       </div>
