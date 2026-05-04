@@ -42,8 +42,8 @@
   overflow-y: auto;
 }
 
-.app-shell:has(.bottom-nav-shell) .app-content > .screen {
-  --bottom-nav-scroll-reserve: 128px;
+.app-shell--bottom-nav-visible .app-content > .screen {
+  --bottom-nav-scroll-reserve: 96px;
   padding-bottom: calc(var(--bottom-nav-scroll-reserve) + var(--app-safe-bottom)) !important;
   scroll-padding-bottom: calc(var(--bottom-nav-scroll-reserve) + var(--app-safe-bottom));
 }

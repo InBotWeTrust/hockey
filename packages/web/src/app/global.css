@@ -18,8 +18,10 @@
 :root {
   --app-bg-top: #c9dcf0;
   --app-bg-bottom: #9cbfdf;
-  --app-safe-top: env(safe-area-inset-top, 0px);
-  --app-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --app-safe-top-raw: env(safe-area-inset-top, 0px);
+  --app-safe-bottom-raw: env(safe-area-inset-bottom, 0px);
+  --app-safe-top: var(--app-safe-top-raw);
+  --app-safe-bottom: var(--app-safe-bottom-raw);
 
   --ink: #0f172a;
   --muted: #475569;
@@ -58,8 +60,8 @@
 @supports (-webkit-touch-callout: none) {
   @media (hover: none) and (pointer: coarse) {
     :root {
-      --app-safe-top: max(44px, env(safe-area-inset-top, 0px));
-      --app-safe-bottom: max(22px, env(safe-area-inset-bottom, 0px));
+      --app-safe-top: max(44px, var(--app-safe-top-raw));
+      --app-safe-bottom: max(22px, var(--app-safe-bottom-raw));
     }
   }
 }
@@ -78,7 +80,11 @@ html,
 body {
   margin: 0;
   padding: 0;
-  background: linear-gradient(180deg, var(--app-bg-top) 0%, var(--app-bg-bottom) 100%) fixed;
+  background-color: var(--app-bg-bottom);
+  background-image: linear-gradient(180deg, var(--app-bg-top) 0%, var(--app-bg-bottom) 100%);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
   font-family: var(--font-sans);
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
@@ -94,7 +100,11 @@ body {
 #root {
   min-height: 100vh;
   min-height: 100dvh;
-  background: linear-gradient(180deg, var(--app-bg-top) 0%, var(--app-bg-bottom) 100%) fixed;
+  background-color: var(--app-bg-bottom);
+  background-image: linear-gradient(180deg, var(--app-bg-top) 0%, var(--app-bg-bottom) 100%);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
 }
 
 .app-shell {

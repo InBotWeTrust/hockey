@@ -13,6 +13,12 @@ export const NAV_HEIGHT = 68;
 
 const ICON_SIZE = 22;
 
+export function isBottomNavVisible(pathname: string, user: AuthUser | null): boolean {
+  const isDemo = pathname === '/demo';
+  const isInChatRoom = /^\/chat\/[^/]+(?:\/posts\/[^/]+\/comments)?$/.test(pathname);
+  return pathname !== '/login' && !isInChatRoom && (Boolean(user) || isDemo);
+}
+
 export function BottomNav(): JSX.Element | null {
   const user = useAuthStore((s) => s.user);
   const updateUser = useAuthStore((s) => s.updateUser);
@@ -67,8 +73,7 @@ export function BottomNav(): JSX.Element | null {
   }
 
   // Hide nav inside a chat room — composer takes the nav's spot.
-  const isInChatRoom = /^\/chat\/[^/]+(?:\/posts\/[^/]+\/comments)?$/.test(location.pathname);
-  if (location.pathname === '/login' || isInChatRoom || (!user && !isDemo)) {
+  if (!isBottomNavVisible(location.pathname, user)) {
     return null;
   }
 
