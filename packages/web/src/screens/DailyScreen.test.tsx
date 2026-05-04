@@ -49,6 +49,8 @@ const trainingIdleState: TrainingStateResponse = {
   day_date: '2026-04-25',
   next_day_starts_at: '2026-04-26T00:00:00.000Z',
   training_seed: null,
+  started_at: null,
+  server_now: '2026-04-25T12:00:00.000Z',
   goalie_id: 'rookie',
   period_speed_presets: [...DAILY_PERIOD_SPEED_PRESETS],
 };
@@ -60,6 +62,7 @@ const trainingActiveState: TrainingStateResponse = {
   shots_taken: 12,
   goals: 5,
   training_seed: 'a'.repeat(64),
+  started_at: '2026-04-25T11:55:00.000Z',
 };
 
 function renderWith(initialEntries: string[] = ['/']) {

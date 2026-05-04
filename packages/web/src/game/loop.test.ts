@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Ticker } from 'pixi.js';
 import { createGameLoop } from './loop.js';
 
-function makeLoop() {
+function makeLoop(overrides: Partial<Parameters<typeof createGameLoop>[0]> = {}) {
   return createGameLoop({
     goalRenderer: { update: vi.fn() } as never,
     goalieRenderer: { update: vi.fn() } as never,
@@ -17,6 +17,7 @@ function makeLoop() {
     getSeed: () => 'seed',
     getShotIndex: () => 1,
     getGoalieId: () => null,
+    ...overrides,
   });
 }
 
@@ -47,5 +48,18 @@ describe('createGameLoop', () => {
 
     expect(() => loop.detach()).not.toThrow();
     expect(() => loop.detach()).not.toThrow();
+  });
+
+  it('starts from the provided session elapsed time', () => {
+    const nowSpy = vi.spyOn(performance, 'now');
+    nowSpy.mockReturnValue(1000);
+    const loop = makeLoop({ getInitialElapsedMs: () => 5000 });
+
+    expect(loop.getSceneT()).toBe(5000);
+
+    nowSpy.mockReturnValue(1250);
+    expect(loop.getSceneT()).toBe(5250);
+
+    nowSpy.mockRestore();
   });
 });

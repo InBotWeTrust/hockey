@@ -37,6 +37,10 @@ const shotBodySchema = z.object({
   claimed_result: z.enum(['goal', 'save', 'miss']),
 });
 
+const TAP_TIME_FUTURE_TOLERANCE_MS = 2500;
+const TAP_TIME_STALE_TOLERANCE_MS = 12_000;
+const TAP_TIME_PAUSE_ALLOWANCE_PER_SHOT_MS = 2_000;
+
 interface TrainingSessionRow {
   id: string;
   user_id: string;
@@ -58,6 +62,8 @@ interface TrainingStateResponse {
   day_date: string;
   next_day_starts_at: string;
   training_seed: string | null;
+  started_at: string | null;
+  server_now: string;
   goalie_id: string;
   period_speed_presets: DailyPeriodSpeedPreset[];
 }
@@ -175,6 +181,7 @@ async function buildTrainingState(
   localToday: string,
   timezone: string,
   settings: GameSettings,
+  now: Date,
 ): Promise<TrainingStateResponse> {
   const nextDay = await nextDayStartsAt(client, localToday, timezone);
   if (session === null) {
@@ -187,6 +194,8 @@ async function buildTrainingState(
       day_date: localToday,
       next_day_starts_at: nextDay,
       training_seed: null,
+      started_at: null,
+      server_now: now.toISOString(),
       goalie_id: settings.training.goalieId,
       period_speed_presets: settings.daily.periodSpeedPresets,
     };
@@ -202,9 +211,33 @@ async function buildTrainingState(
     day_date: session.day_date,
     next_day_starts_at: nextDay,
     training_seed: session.training_seed,
+    started_at: session.started_at.toISOString(),
+    server_now: now.toISOString(),
     goalie_id: settings.training.goalieId,
     period_speed_presets: settings.daily.periodSpeedPresets,
   };
+}
+
+function assertTrainingTapTimeFresh(
+  session: TrainingSessionRow,
+  previousShots: number,
+  tapTime: number,
+  now: Date,
+): void {
+  if (!Number.isFinite(tapTime) || tapTime < 0) {
+    throw new AppError('bad_request', 'invalid training shot tapTime', 400);
+  }
+
+  const elapsedMs = Math.max(0, now.getTime() - session.started_at.getTime());
+  const futureLimit = elapsedMs + TAP_TIME_FUTURE_TOLERANCE_MS;
+  const staleLimit = Math.max(
+    0,
+    elapsedMs - TAP_TIME_STALE_TOLERANCE_MS - previousShots * TAP_TIME_PAUSE_ALLOWANCE_PER_SHOT_MS,
+  );
+
+  if (tapTime > futureLimit || tapTime < staleLimit) {
+    throw new AppError('conflict', 'training shot tapTime is stale', 409);
+  }
 }
 
 async function assertTrainingAvailableDuringDaily(
@@ -225,13 +258,14 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
 ) => {
   app.get('/duel/training/state', { preHandler: [app.authenticate] }, async (req) =>
     withTransaction(app, async (client): Promise<TrainingStateResponse> => {
+      const now = new Date();
       const settings = await getGameSettings(client);
       const { session, localToday, timezone } = await reconcileTrainingSession(
         client,
         req.user.id,
-        new Date(),
+        now,
       );
-      return buildTrainingState(client, session, localToday, timezone, settings);
+      return buildTrainingState(client, session, localToday, timezone, settings, now);
     }),
   );
 
@@ -252,18 +286,7 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
         now,
       );
       if (session !== null) {
-        if (session.state === 'active' && session.selected_period !== selectedPeriod) {
-          const { rows } = await client.query<TrainingSessionRow>(
-            `update training_session
-                  set selected_period = $1
-                where id = $2
-                returning id, user_id, day_date::text as day_date, selected_period, state,
-                          game_core_version, training_seed, started_at, closed_at`,
-            [selectedPeriod, session.id],
-          );
-          return buildTrainingState(client, rows[0]!, localToday, timezone, settings);
-        }
-        return buildTrainingState(client, session, localToday, timezone, settings);
+        return buildTrainingState(client, session, localToday, timezone, settings, now);
       }
 
       const trainingSeed = deriveTrainingSeed(
@@ -287,7 +310,7 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
         day_date: localToday,
         selected_period: selectedPeriod,
       });
-      return buildTrainingState(client, created, localToday, timezone, settings);
+      return buildTrainingState(client, created, localToday, timezone, settings, now);
     });
   });
 
@@ -326,6 +349,7 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
           409,
         );
       }
+      assertTrainingTapTimeFresh(session, stats.shots, body.input.tapTime, now);
 
       const shotSeed = deriveShotSeed(
         session.training_seed,
@@ -399,7 +423,14 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
       }
 
       const nextSession = await fetchTodayTrainingSession(client, req.user.id, localToday);
-      const state = await buildTrainingState(client, nextSession, localToday, timezone, settings);
+      const state = await buildTrainingState(
+        client,
+        nextSession,
+        localToday,
+        timezone,
+        settings,
+        now,
+      );
       return { server_result: serverResult, state };
     });
   });

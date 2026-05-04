@@ -189,7 +189,10 @@ export function DailyScreen(): JSX.Element {
   const applyDeferredState = useDailyStore((s) => s.applyDeferredState);
   const userId = useAuthStore((s) => s.user?.id ?? '');
   const [selectedLevel, setSelectedLevel] = useState<GameLevel>('beginner');
-  const [beginnerMode, setBeginnerMode] = useState<BeginnerMode>('daily');
+  const [beginnerMode, setBeginnerMode] = useState<BeginnerMode>(() => {
+    const view = new URLSearchParams(location.search).get('view');
+    return view === 'training' ? 'training' : 'daily';
+  });
   const [dailyView, setDailyView] = useState<DailyView>(() => {
     const view = new URLSearchParams(location.search).get('view');
     return view === 'daily' ? 'play' : 'hub';
@@ -210,6 +213,11 @@ export function DailyScreen(): JSX.Element {
       setDailyView('play');
       setSelectedLevel('beginner');
       setBeginnerMode('daily');
+    }
+    if (view === 'training') {
+      setDailyView('hub');
+      setSelectedLevel('beginner');
+      setBeginnerMode('training');
     }
   }, [location.search]);
 
@@ -270,6 +278,13 @@ export function DailyScreen(): JSX.Element {
     navigate('/?view=daily', { replace: true });
   };
 
+  const openTraining = (): void => {
+    setDailyView('hub');
+    setSelectedLevel('beginner');
+    setBeginnerMode('training');
+    navigate('/?view=training', { replace: true });
+  };
+
   if (selectedLevel === 'beginner' && beginnerMode === 'daily' && dailyView === 'play') {
     return <DailyPlayView onBack={openHub} />;
   }
@@ -293,7 +308,7 @@ export function DailyScreen(): JSX.Element {
   return (
     <GameHub
       onOpenDailyPlay={openDailyPlay}
-      onOpenTraining={() => setBeginnerMode('training')}
+      onOpenTraining={openTraining}
       onOpenAmateurs={() => setSelectedLevel('amateur')}
     />
   );
@@ -303,11 +318,13 @@ function SegmentedControl({
   ariaLabel,
   items,
   value,
+  disabled = false,
   onChange,
 }: {
   ariaLabel: string;
   items: readonly { id: string; label: string }[];
   value: string;
+  disabled?: boolean;
   onChange: (id: string) => void;
 }): JSX.Element {
   return (
@@ -331,6 +348,7 @@ function SegmentedControl({
             type="button"
             role="tab"
             aria-selected={active}
+            disabled={disabled}
             onClick={() => onChange(item.id)}
             style={{
               minWidth: 0,
@@ -341,8 +359,9 @@ function SegmentedControl({
               color: active ? '#ffffff' : 'var(--ink)',
               fontSize: 12,
               fontWeight: 800,
-              cursor: 'pointer',
+              cursor: disabled ? 'default' : 'pointer',
               padding: '0 8px',
+              opacity: disabled && !active ? 0.52 : 1,
             }}
           >
             {item.label}
@@ -1557,7 +1576,9 @@ function TrainingPlaceholder({ onBack }: { onBack: () => void }): JSX.Element {
   }, [data?.next_day_starts_at, nextDayAt, nextDayRemaining, now, refresh]);
 
   const handleTrainingAction = async (): Promise<void> => {
-    const next = await start(selectedPeriod);
+    const period =
+      data?.state === 'active' ? (data.selected_period ?? selectedPeriod) : selectedPeriod;
+    const next = await start(period);
     if (next?.state === 'active') setPlayTraining(true);
   };
 
@@ -1595,6 +1616,7 @@ function TrainingPlaceholder({ onBack }: { onBack: () => void }): JSX.Element {
                   { id: '3', label: '3 период' },
                 ]}
                 value={String(selectedPeriod)}
+                disabled={data?.state === 'active'}
                 onChange={(id) => setSelectedPeriod(Number(id) as 1 | 2 | 3)}
               />
               <PeriodSpeedSummary
@@ -1792,6 +1814,9 @@ interface PlayViewProps<TState> {
   shotButtonLabel?: string | undefined;
   backLabel?: string | undefined;
   bottomInset?: string | undefined;
+  sessionStartedAt?: string | null | undefined;
+  serverNow?: string | null | undefined;
+  receivedAtPerformanceMs?: number | undefined;
   periodEndsAt?: number | undefined;
   onTimerExpired?: (() => void | Promise<void>) | undefined;
   optimisticAddShot: (claimed: ShotResultType) => void;
@@ -1810,6 +1835,22 @@ interface PlaySessionSnapshot {
   periodNumber: number;
   shots: number;
   shotsTotal: number;
+}
+
+interface PlaySessionTiming {
+  sessionStartedAt: string | null;
+  serverNow: string | null;
+  receivedAtPerformanceMs: number | null;
+}
+
+function computeInitialElapsedMs(timing: PlaySessionTiming): number {
+  if (!timing.sessionStartedAt || !timing.serverNow) return 0;
+  const started = Date.parse(timing.sessionStartedAt);
+  const serverNowMs = Date.parse(timing.serverNow);
+  if (!Number.isFinite(started) || !Number.isFinite(serverNowMs)) return 0;
+  const syncedElapsed = Math.max(0, serverNowMs - started);
+  const receivedAt = timing.receivedAtPerformanceMs ?? performance.now();
+  return syncedElapsed + Math.max(0, performance.now() - receivedAt);
 }
 
 function DailyPlayView({ onBack }: { onBack: () => void }): JSX.Element {
@@ -1981,6 +2022,9 @@ function TrainingPlayView({ onBack }: { onBack: () => void }): JSX.Element | nul
       goalieId={data.goalie_id}
       periodNumber={data.selected_period ?? 1}
       periodSpeedPresets={data.period_speed_presets}
+      sessionStartedAt={data.started_at}
+      serverNow={data.server_now}
+      receivedAtPerformanceMs={data.received_at_performance_ms}
       goals={data.goals}
       shots={data.shots_taken}
       shotsTotal={data.shots_limit}
@@ -2249,7 +2293,6 @@ function DemoCompletionModal({
                   : vkError}
             </div>
           )}
-
         </div>
       </div>
     </div>
@@ -2274,6 +2317,9 @@ function PlayView<TState>({
   shotButtonLabel = 'БРОСОК',
   backLabel = 'К режимам',
   bottomInset = 'calc(76px + var(--app-safe-bottom))',
+  sessionStartedAt,
+  serverNow,
+  receivedAtPerformanceMs,
   periodEndsAt,
   onTimerExpired,
   optimisticAddShot,
@@ -2293,6 +2339,16 @@ function PlayView<TState>({
   );
   const sessionRef = useRef(session);
   sessionRef.current = session;
+  const sessionTimingRef = useRef<PlaySessionTiming>({
+    sessionStartedAt: sessionStartedAt ?? null,
+    serverNow: serverNow ?? null,
+    receivedAtPerformanceMs: receivedAtPerformanceMs ?? null,
+  });
+  sessionTimingRef.current = {
+    sessionStartedAt: sessionStartedAt ?? null,
+    serverNow: serverNow ?? null,
+    receivedAtPerformanceMs: receivedAtPerformanceMs ?? null,
+  };
 
   const scaleRef = useRef<Scale>({ factor: 1, offsetX: 0, offsetY: 0 });
   const loopRef = useRef<GameLoop | null>(null);
@@ -2452,6 +2508,7 @@ function PlayView<TState>({
       getShotIndex: () => sessionRef.current.shots + 1,
       getGoalieId: () => sessionRef.current.goalieId,
       getSpeedOverrides: () => speedsRef.current,
+      getInitialElapsedMs: () => computeInitialElapsedMs(sessionTimingRef.current),
     });
     tickerRef.current = app.ticker;
     loopRef.current = loop;

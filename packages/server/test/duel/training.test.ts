@@ -103,14 +103,28 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
     });
   }
 
+  async function trainingTapTime() {
+    const { rows } = await pool.query<{ started_at: Date }>(
+      `select started_at
+         from training_session
+        where user_id = $1
+        order by started_at desc
+        limit 1`,
+      [userId],
+    );
+    const startedAt = rows[0]?.started_at;
+    return startedAt ? Math.max(0, Date.now() - startedAt.getTime()) : 0;
+  }
+
   async function submitShot(shotIndex: number, claimedResult = 'goal') {
+    const tapTime = await trainingTapTime();
     return app.inject({
       method: 'POST',
       url: '/duel/training/shot',
       headers: authHeader(),
       payload: {
         shot_index: shotIndex,
-        input: { tapTime: 1000 + shotIndex * 50 },
+        input: { tapTime },
         claimed_result: claimedResult,
       },
     });
@@ -138,10 +152,36 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
     expect(state.state).toBe('active');
     expect(state.selected_period).toBe(3);
     expect(state.training_seed).toMatch(/^[0-9a-f]{64}$/);
+    expect(state.started_at).toEqual(expect.any(String));
+    expect(state.server_now).toEqual(expect.any(String));
 
     const second = await startTraining(1);
     expect(second.statusCode).toBe(200);
-    expect(second.json().selected_period).toBe(1);
+    expect(second.json().selected_period).toBe(3);
+  });
+
+  it('rejects stale training tapTime after the session has moved on', async () => {
+    const training = await startTraining(2);
+    expect(training.statusCode).toBe(200);
+    await pool.query(
+      `update training_session
+          set started_at = now() - interval '1 minute'
+        where user_id = $1`,
+      [userId],
+    );
+
+    const shot = await app.inject({
+      method: 'POST',
+      url: '/duel/training/shot',
+      headers: authHeader(),
+      payload: {
+        shot_index: 1,
+        input: { tapTime: 1000 },
+        claimed_result: 'goal',
+      },
+    });
+
+    expect(shot.statusCode).toBe(409);
   });
 
   it('rejects training start while a daily period is active', async () => {
@@ -196,7 +236,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
     expect(rows[0].day_pool_id).toBeNull();
     const periodSpeeds = getDailyPeriodSpeedPreset(2);
     expect(rows[0].input_payload).toEqual({
-      tapTime: 1050,
+      tapTime: expect.any(Number),
       puckSpeedPerMs: periodSpeeds.puckSpeedPerMs,
       shooterFrequency: periodSpeeds.shooterFrequency,
       goalieFrequency: periodSpeeds.goalieFrequency,

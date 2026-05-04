@@ -13,6 +13,9 @@ export interface TrainingStateResponse {
   day_date: string;
   next_day_starts_at: string;
   training_seed: string | null;
+  started_at: string | null;
+  server_now: string;
+  received_at_performance_ms?: number;
   goalie_id: string;
   period_speed_presets: DailyPeriodSpeedPreset[];
 }
@@ -32,15 +35,22 @@ export interface SubmitTrainingShotResponse {
   state: TrainingStateResponse;
 }
 
+function stampTrainingState(state: TrainingStateResponse): TrainingStateResponse {
+  return {
+    ...state,
+    received_at_performance_ms: performance.now(),
+  };
+}
+
 export function fetchTrainingState(): Promise<TrainingStateResponse> {
-  return apiFetch<TrainingStateResponse>('/duel/training/state');
+  return apiFetch<TrainingStateResponse>('/duel/training/state').then(stampTrainingState);
 }
 
 export function startTraining(body: StartTrainingRequest): Promise<TrainingStateResponse> {
   return apiFetch<TrainingStateResponse>('/duel/training/start', {
     method: 'POST',
     body: JSON.stringify(body),
-  });
+  }).then(stampTrainingState);
 }
 
 export function submitTrainingShot(
@@ -49,5 +59,5 @@ export function submitTrainingShot(
   return apiFetch<SubmitTrainingShotResponse>('/duel/training/shot', {
     method: 'POST',
     body: JSON.stringify(body),
-  });
+  }).then((res) => ({ ...res, state: stampTrainingState(res.state) }));
 }

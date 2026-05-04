@@ -35,15 +35,16 @@ export interface GameLoopOpts {
   getShotIndex: () => number;
   getGoalieId: () => string | null;
   getSpeedOverrides?: () => SpeedOverrides;
+  getInitialElapsedMs?: () => number;
 }
 
 export interface GameLoop {
   attach: (ticker: Ticker) => void;
   detach: () => void;
-  // Resets accumulated simulation time so the scene picks up from t=0 — used
-  // when the loop is re-attached after a long pause (period start) so goal
-  // and goalie don't snap to a "future" position on the first tick.
-  resetTime: () => void;
+  // Resets accumulated simulation time so the scene picks up from the active
+  // session's base elapsed time. For daily periods this is usually t=0; for
+  // persisted training sessions it is derived from the server's started_at.
+  resetTime: (elapsedMs?: number) => void;
   sessionStartMs: number;
   getShooterX: (tMs: number, shooterFreq?: number) => number;
   // Шутер и сцена паузятся независимо. Каждая пауза вычитает своё real-time
@@ -61,13 +62,14 @@ export interface GameLoop {
 
 function shooterX(t: number, freq: number): number {
   const period = 1000 / freq;
-  const phase = ((t % period) + period) % period / period;
+  const phase = (((t % period) + period) % period) / period;
   const tri = phase < 0.5 ? phase * 4 - 1 : 3 - phase * 4;
   return SHOOTER_CENTER_X + SHOOTER_AMPLITUDE * tri;
 }
 
 export function createGameLoop(opts: GameLoopOpts): GameLoop {
-  let sessionStartMs = performance.now();
+  const initialElapsedMs = (): number => Math.max(0, opts.getInitialElapsedMs?.() ?? 0);
+  let sessionStartMs = performance.now() - initialElapsedMs();
   let offsets: SessionPhaseOffsets | null = null;
   let offsetSeed: string | null = null;
 
@@ -162,14 +164,16 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
     detach() {
       detachFromTicker();
     },
-    resetTime() {
-      sessionStartMs = performance.now();
+    resetTime(elapsedMs = initialElapsedMs()) {
+      sessionStartMs = performance.now() - Math.max(0, elapsedMs);
       shooterPausedTotal = 0;
       scenePausedTotal = 0;
       shooterPauseStartedAt = null;
       scenePauseStartedAt = null;
     },
-    sessionStartMs,
+    get sessionStartMs() {
+      return sessionStartMs;
+    },
     getShooterX(tMs, freq = 0.45) {
       return shooterX(tMs, freq);
     },
@@ -191,7 +195,11 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
         scenePauseStartedAt = null;
       }
     },
-    getShooterT() { return shooterT(performance.now()); },
-    getSceneT() { return sceneT(performance.now()); },
+    getShooterT() {
+      return shooterT(performance.now());
+    },
+    getSceneT() {
+      return sceneT(performance.now());
+    },
   };
 }
