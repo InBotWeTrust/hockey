@@ -699,9 +699,11 @@ function GameHub({
                     width: DAILY_HUB_ARTWORK_SIZE,
                     height: DAILY_HUB_ARTWORK_SIZE,
                     borderRadius: 20,
+                    border: '1px solid rgba(255,255,255,0.82)',
+                    boxSizing: 'border-box',
                     objectFit: 'cover',
                     boxShadow:
-                      '0 16px 28px rgba(15,23,42,0.24), inset 0 1px 0 rgba(255,255,255,0.16)',
+                      'inset 0 1px 0 rgba(255,255,255,0.9), 0 16px 28px rgba(15,23,42,0.24)',
                   }}
                 />
                 <div
@@ -845,14 +847,14 @@ function DailyHubScoreboard({
     <div
       aria-label={ariaLabel}
       style={{
-        width: '100%',
-        maxWidth: 280,
+        width: align === 'left' ? 'auto' : '100%',
+        maxWidth: align === 'left' ? 'none' : 280,
         padding: '2px 0 0',
         display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
+        gridTemplateColumns: align === 'left' ? 'max-content max-content' : '1fr 1fr',
         alignItems: 'center',
         justifyItems: align === 'left' ? 'start' : 'center',
-        gap: 12,
+        gap: align === 'left' ? 36 : 12,
       }}
     >
       <DailyEventScoreboardColumn align={align} label={timerLabel} value={timer} />
