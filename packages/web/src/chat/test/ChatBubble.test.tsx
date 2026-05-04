@@ -39,6 +39,7 @@ describe('ChatBubble — author tap', () => {
 
     expect(time.closest('time')).not.toBeNull();
     expect(time.closest('.glass')).not.toBeNull();
+    expect(time.closest('time')).toHaveStyle({ position: 'absolute' });
   });
 
   it('renders delivered and read indicators next to own message time', () => {

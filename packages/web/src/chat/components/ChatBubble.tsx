@@ -87,14 +87,15 @@ function ChatBubbleImpl({
         {deliveryStatus === 'read' ? <CheckCheck size={14} /> : <Check size={13} />}
       </span>
     ) : null;
+  const timestampReserveWidth = deliveryStatus !== undefined ? 54 : 36;
 
   const timestamp = (
     <time
       dateTime={message.createdAt}
       style={{
-        float: 'right',
-        marginLeft: 12,
-        transform: 'translateY(2px)',
+        position: 'absolute',
+        right: 0,
+        bottom: 1,
         display: 'inline-flex',
         alignItems: 'center',
         gap: 3,
@@ -163,8 +164,17 @@ function ChatBubbleImpl({
         {message.replyToId && replyTo && (
           <ReplyPreview senderName={replyTo.senderName} content={replyTo.content} />
         )}
-        <div>
+        <div style={{ position: 'relative' }}>
           <span>{text}</span>
+          <span
+            aria-hidden="true"
+            style={{
+              display: 'inline-block',
+              width: timestampReserveWidth,
+              height: 14,
+              verticalAlign: 'baseline',
+            }}
+          />
           {timestamp}
         </div>
         <ReactionBar
