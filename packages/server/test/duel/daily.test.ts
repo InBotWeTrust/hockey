@@ -149,6 +149,8 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     expect(s.current_period).toBe(0);
     expect(s.shots_per_period).toBe(30);
     expect(s.total_periods).toBe(3);
+    expect(s.period_started_at).toBeNull();
+    expect(s.server_now).toEqual(expect.any(String));
     expect(s.previous_game).toBeNull();
     expect(s.training_cooldown_ends_at).toBeNull();
 
@@ -188,18 +190,41 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     const s = res.json();
     expect(s.state).toBe('period_active');
     expect(s.current_period).toBe(1);
+    expect(s.period_started_at).toEqual(expect.any(String));
     expect(s.period_ends_at).not.toBeNull();
+    expect(s.server_now).toEqual(expect.any(String));
     expect(s.current_period_shots).toBe(0);
 
-    const { rows } = await pool.query(
-      'select * from day_pool where user_id=$1',
-      [userId],
-    );
+    const { rows } = await pool.query('select * from day_pool where user_id=$1', [userId]);
     expect(rows.length).toBe(1);
     expect(rows[0].state).toBe('period_active');
     expect(rows[0].current_period).toBe(1);
     expect(rows[0].daily_seed).toMatch(/^[0-9a-f]{64}$/);
     expect(rows[0].game_core_version).toBeGreaterThan(0);
+  });
+
+  it('rejects stale shot tapTime after an active period has moved on', async () => {
+    const start = await startPeriod();
+    expect(start.statusCode).toBe(200);
+    await pool.query(
+      `update day_pool
+          set period_started_at = now() - interval '1 minute'
+        where user_id = $1`,
+      [userId],
+    );
+
+    const shot = await app.inject({
+      method: 'POST',
+      url: '/duel/daily/shot',
+      headers: authHeader(),
+      payload: {
+        shot_index: 1,
+        input: { tapTime: 1000 },
+        claimed_result: 'goal',
+      },
+    });
+
+    expect(shot.statusCode).toBe(409);
   });
 
   it('rejects starting period when state is period_active', async () => {
@@ -369,9 +394,9 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     expect(s.previous_game.periods.map((p: { period_number: number }) => p.period_number)).toEqual([
       1, 2, 3,
     ]);
-    expect(
-      s.previous_game.periods.every((p: { duration_ms: number }) => p.duration_ms >= 0),
-    ).toBe(true);
+    expect(s.previous_game.periods.every((p: { duration_ms: number }) => p.duration_ms >= 0)).toBe(
+      true,
+    );
 
     const start4 = await startPeriod();
     expect(start4.statusCode).toBe(409);

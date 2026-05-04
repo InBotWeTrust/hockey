@@ -34,6 +34,10 @@ const shotBodySchema = z.object({
   claimed_result: z.enum(['goal', 'save', 'miss']),
 });
 
+const TAP_TIME_FUTURE_TOLERANCE_MS = 2500;
+const TAP_TIME_STALE_TOLERANCE_MS = 12_000;
+const TAP_TIME_PAUSE_ALLOWANCE_PER_SHOT_MS = 2_000;
+
 interface PeriodLogEntry {
   period_number: number;
   shots_taken: number;
@@ -60,10 +64,12 @@ interface DailyStateResponse {
   daily_total_goals: number;
   lifetime_total_shots: number;
   lifetime_total_goals: number;
+  period_started_at: string | null;
   period_ends_at: string | null;
   break_ends_at: string | null;
   day_date: string | null;
   next_day_starts_at: string;
+  server_now: string;
   daily_seed: string | null;
   goalie_id: string;
   shots_per_period: number;
@@ -228,10 +234,12 @@ async function buildState(
       daily_total_goals: 0,
       lifetime_total_shots: lifetime.shots,
       lifetime_total_goals: lifetime.goals,
+      period_started_at: null,
       period_ends_at: null,
       break_ends_at: null,
       day_date: localToday,
       next_day_starts_at: nextDay,
+      server_now: now.toISOString(),
       daily_seed: null,
       goalie_id: settings.daily.goalieId,
       shots_per_period: settings.daily.shotsPerPeriod,
@@ -260,6 +268,10 @@ async function buildState(
     pool.state === 'period_active' && pool.period_started_at !== null
       ? new Date(pool.period_started_at.getTime() + settings.daily.periodDurationMs).toISOString()
       : null;
+  const periodStartedAt =
+    pool.state === 'period_active' && pool.period_started_at !== null
+      ? pool.period_started_at.toISOString()
+      : null;
   const breakEndsAt =
     pool.state === 'break_active' && pool.break_started_at !== null
       ? new Date(pool.break_started_at.getTime() + settings.daily.breakDurationMs).toISOString()
@@ -274,10 +286,12 @@ async function buildState(
     daily_total_goals: archived.goals + currentGoals,
     lifetime_total_shots: lifetimeStored.shots + currentShots,
     lifetime_total_goals: lifetimeStored.goals + currentGoals,
+    period_started_at: periodStartedAt,
     period_ends_at: periodEndsAt,
     break_ends_at: breakEndsAt,
     day_date: pool.day_date,
     next_day_starts_at: nextDay,
+    server_now: now.toISOString(),
     daily_seed: pool.daily_seed,
     goalie_id: settings.daily.goalieId,
     shots_per_period: settings.daily.shotsPerPeriod,
@@ -287,6 +301,31 @@ async function buildState(
     previous_game: previousGame,
     training_cooldown_ends_at: trainingCooldownEndsAtIso,
   };
+}
+
+function assertDailyTapTimeFresh(
+  pool: DayPoolRow,
+  previousShots: number,
+  tapTime: number,
+  now: Date,
+): void {
+  if (!Number.isFinite(tapTime) || tapTime < 0) {
+    throw new AppError('bad_request', 'invalid shot tapTime', 400);
+  }
+  if (pool.period_started_at === null) {
+    throw new AppError('conflict', 'active period has no start timestamp', 409);
+  }
+
+  const elapsedMs = Math.max(0, now.getTime() - pool.period_started_at.getTime());
+  const futureLimit = elapsedMs + TAP_TIME_FUTURE_TOLERANCE_MS;
+  const staleLimit = Math.max(
+    0,
+    elapsedMs - TAP_TIME_STALE_TOLERANCE_MS - previousShots * TAP_TIME_PAUSE_ALLOWANCE_PER_SHOT_MS,
+  );
+
+  if (tapTime > futureLimit || tapTime < staleLimit) {
+    throw new AppError('conflict', 'shot tapTime is stale', 409);
+  }
 }
 
 async function withTransaction<T>(
@@ -310,14 +349,10 @@ async function withTransaction<T>(
 export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = async (app, opts) => {
   app.get('/duel/daily/state', { preHandler: [app.authenticate] }, async (req) => {
     return withTransaction(app, async (client) => {
+      const now = new Date();
       const settings = await getGameSettings(client);
-      const { pool, localToday } = await reconcileDayPool(
-        client,
-        req.user.id,
-        new Date(),
-        settings.daily,
-      );
-      return buildState(client, pool, localToday, req.user.id, settings);
+      const { pool, localToday } = await reconcileDayPool(client, req.user.id, now, settings.daily);
+      return buildState(client, pool, localToday, req.user.id, settings, now);
     });
   });
 
@@ -353,7 +388,7 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
             returning *`,
           [now, pool.id],
         );
-        return buildState(client, rows[0]!, localToday, req.user.id, settings);
+        return buildState(client, rows[0]!, localToday, req.user.id, settings, now);
       }
 
       // Lazy create new day_pool — first period of the day.
@@ -372,7 +407,7 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
         timezone,
         game_core_version: GAME_CORE_VERSION,
       });
-      return buildState(client, rows[0]!, localToday, req.user.id, settings);
+      return buildState(client, rows[0]!, localToday, req.user.id, settings, now);
     });
   });
 
@@ -406,6 +441,7 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
       if (cur.shots >= settings.daily.shotsPerPeriod) {
         throw new AppError('conflict', 'shot quota for this period exhausted', 409);
       }
+      assertDailyTapTimeFresh(pool, cur.shots, body.input.tapTime, now);
 
       const shotSeed = deriveShotSeed(pool.daily_seed, pool.current_period, body.shot_index);
       const goalieCfg = getGoalie(settings.daily.goalieId);
@@ -526,7 +562,7 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
         }
       }
 
-      const state = await buildState(client, currentPool, localToday, req.user.id, settings);
+      const state = await buildState(client, currentPool, localToday, req.user.id, settings, now);
       return { server_result: serverResult, state };
     });
   });

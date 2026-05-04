@@ -33,10 +33,13 @@ export interface DailyStateResponse {
   daily_total_goals: number;
   lifetime_total_shots: number;
   lifetime_total_goals: number;
+  period_started_at: string | null;
   period_ends_at: string | null; // ISO ts
   break_ends_at: string | null;
   day_date: string | null; // YYYY-MM-DD
   next_day_starts_at: string;
+  server_now: string;
+  received_at_performance_ms?: number;
   daily_seed: string | null;
   goalie_id: string;
   shots_per_period: number;
@@ -67,19 +70,26 @@ export interface SubmitShotResponse {
   state: DailyStateResponse;
 }
 
+function stampDailyState(state: DailyStateResponse): DailyStateResponse {
+  return {
+    ...state,
+    received_at_performance_ms: performance.now(),
+  };
+}
+
 export function fetchDailyState(): Promise<DailyStateResponse> {
-  return apiFetch<DailyStateResponse>('/duel/daily/state');
+  return apiFetch<DailyStateResponse>('/duel/daily/state').then(stampDailyState);
 }
 
 export function startDailyPeriod(): Promise<DailyStateResponse> {
   return apiFetch<DailyStateResponse>('/duel/daily/period/start', {
     method: 'POST',
-  });
+  }).then(stampDailyState);
 }
 
 export function submitDailyShot(body: SubmitShotRequest): Promise<SubmitShotResponse> {
   return apiFetch<SubmitShotResponse>('/duel/daily/shot', {
     method: 'POST',
     body: JSON.stringify(body),
-  });
+  }).then((res) => ({ ...res, state: stampDailyState(res.state) }));
 }
