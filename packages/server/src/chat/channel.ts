@@ -1,6 +1,7 @@
 import type { Pool } from 'pg';
 import type {
   AddReactionResult,
+  ChannelPollDTO,
   ChannelPostCommentDTO,
   ChannelPostCommentReactionRow,
   ChannelPostCommentRow,
@@ -19,6 +20,17 @@ import {
 import { MessageNotFoundError } from './errors.js';
 import { AppError } from '../plugins/errors.js';
 
+type Queryable = Pick<Pool, 'query'>;
+
+interface ChannelPollOptionAggregateRow {
+  post_message_id: string;
+  id: string;
+  text: string;
+  position: number;
+  vote_count: string;
+  selected_by_me: boolean | null;
+}
+
 export async function isAdminUser(pool: Pool, userId: string): Promise<boolean> {
   const r = await pool.query<{ role: 'player' | 'admin' }>(`select role from users where id = $1`, [
     userId,
@@ -30,6 +42,66 @@ export async function assertAdminUser(pool: Pool, userId: string): Promise<void>
   if (!(await isAdminUser(pool, userId))) {
     throw new AppError('forbidden', 'admin role required', 403);
   }
+}
+
+export async function hydrateChannelPolls<T extends ChatMessageDTO>(
+  pool: Queryable,
+  posts: T[],
+  currentUserId: string,
+): Promise<T[]> {
+  if (posts.length === 0) return posts;
+  const postIds = posts.map((post) => post.id);
+  const rows = await pool.query<ChannelPollOptionAggregateRow>(
+    `select o.post_message_id,
+            o.id,
+            o.text,
+            o.position,
+            count(v.user_id)::bigint as vote_count,
+            bool_or(v.user_id = $2) as selected_by_me
+       from channel_post_poll_options o
+       left join channel_post_poll_votes v
+         on v.post_message_id = o.post_message_id
+        and v.option_id = o.id
+      where o.post_message_id = any($1::uuid[])
+      group by o.post_message_id, o.id, o.text, o.position
+      order by o.post_message_id, o.position asc`,
+    [postIds, currentUserId],
+  );
+  if (rows.rowCount === 0) return posts;
+
+  const byPost = new Map<string, ChannelPollOptionAggregateRow[]>();
+  for (const row of rows.rows) {
+    const existing = byPost.get(row.post_message_id);
+    if (existing) existing.push(row);
+    else byPost.set(row.post_message_id, [row]);
+  }
+
+  return posts.map((post) => {
+    const options = byPost.get(post.id);
+    if (!options) return post;
+    const totalVotes = options.reduce((sum, option) => sum + Number(option.vote_count), 0);
+    let myOptionId: string | null = null;
+    const pollOptions: ChannelPollDTO['options'] = options.map((option) => {
+      const voteCount = Number(option.vote_count);
+      const selectedByMe = option.selected_by_me === true;
+      if (selectedByMe) myOptionId = option.id;
+      return {
+        id: option.id,
+        text: option.text,
+        voteCount,
+        percent: totalVotes === 0 ? 0 : Math.round((voteCount / totalVotes) * 100),
+        selectedByMe,
+      };
+    });
+    return {
+      ...post,
+      poll: {
+        totalVotes,
+        myOptionId,
+        options: pollOptions,
+      },
+    };
+  });
 }
 
 export async function getChannelPost(
@@ -63,7 +135,12 @@ export async function getChannelPost(
     [postId],
   );
   const grouped = groupReactions(reactions.rows, currentUserId);
-  return toChatMessageDTO(post.rows[0]!, grouped.get(postId) ?? []);
+  const hydrated = await hydrateChannelPolls(
+    pool,
+    [toChatMessageDTO(post.rows[0]!, grouped.get(postId) ?? [])],
+    currentUserId,
+  );
+  return hydrated[0]!;
 }
 
 export async function recordChannelPostViews(
@@ -285,10 +362,12 @@ export async function updateChannelPostContent(
     [postId],
   );
   const grouped = groupReactions(reactions.rows, editorUserId);
-  return {
+  const dto = {
     ...toChatMessageDTO(updated.rows[0]!, grouped.get(postId) ?? []),
     chatId: existing.chatId,
   };
+  const hydrated = await hydrateChannelPolls(pool, [dto], editorUserId);
+  return hydrated[0]!;
 }
 
 export async function deleteChannelPost(pool: Pool, postId: string): Promise<{ chatId: string }> {
@@ -374,4 +453,56 @@ export async function getChannelPostReactionUsers(
     emoji: row.emoji,
     reactedAt: row.created_at.toISOString(),
   }));
+}
+
+export async function setChannelPollVote(
+  pool: Pool,
+  postId: string,
+  userId: string,
+  optionId: string,
+): Promise<ChatMessageDTO> {
+  const result = await pool.query<{ post_message_id: string }>(
+    `insert into channel_post_poll_votes (post_message_id, user_id, option_id)
+     select o.post_message_id, $2, o.id
+       from channel_post_poll_options o
+       join messages m on m.id = o.post_message_id and m.is_deleted = false
+       join chats c on c.id = m.chat_id and c.type = 'channel' and c.is_active = true
+      where o.post_message_id = $1
+        and o.id = $3
+     on conflict (post_message_id, user_id)
+       do update set option_id = excluded.option_id,
+                     updated_at = now()
+     returning post_message_id`,
+    [postId, userId, optionId],
+  );
+  if (result.rowCount === 0) {
+    throw new AppError('poll_option_not_found', `Poll option ${optionId} not found`, 404);
+  }
+  return await getChannelPost(pool, postId, userId);
+}
+
+export async function clearChannelPollVote(
+  pool: Pool,
+  postId: string,
+  userId: string,
+): Promise<ChatMessageDTO> {
+  const poll = await pool.query<{ post_message_id: string }>(
+    `select p.post_message_id
+       from channel_post_polls p
+       join messages m on m.id = p.post_message_id and m.is_deleted = false
+       join chats c on c.id = m.chat_id and c.type = 'channel' and c.is_active = true
+      where p.post_message_id = $1
+      limit 1`,
+    [postId],
+  );
+  if (poll.rowCount === 0) {
+    throw new AppError('poll_not_found', `Poll ${postId} not found`, 404);
+  }
+  await pool.query(
+    `delete from channel_post_poll_votes
+      where post_message_id = $1
+        and user_id = $2`,
+    [postId, userId],
+  );
+  return await getChannelPost(pool, postId, userId);
 }

@@ -25,6 +25,7 @@ import {
   addChannelPostCommentReaction,
   addChannelPostComment,
   assertAdminUser,
+  clearChannelPollVote,
   deleteChannelPost,
   deleteChannelPostComment,
   getChannelPost,
@@ -33,6 +34,7 @@ import {
   getChannelPostViewers,
   recordChannelPostViews,
   removeChannelPostCommentReaction,
+  setChannelPollVote,
   updateChannelPostContent,
 } from './channel.js';
 import { assertCanAccessChat, assertOwnsMessage } from './guards.js';
@@ -115,6 +117,7 @@ export const chatRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, push
       .object({
         content: z.string().trim().min(1).max(4000),
         replyToId: uuid.optional(),
+        pollOptions: z.array(z.string().trim().min(1).max(160)).min(1).max(3).optional(),
       })
       .parse(req.body);
     const userId = req.user.id;
@@ -124,10 +127,13 @@ export const chatRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, push
       if (body.replyToId !== undefined) {
         throw new InvalidInputError('channel posts do not support replies');
       }
+    } else if (body.pollOptions !== undefined) {
+      throw new InvalidInputError('polls are only supported in channels');
     }
     await checkAndConsumeRateLimit(app.redis, userId);
     const sendOpts: SendMessageOpts = { chatId, senderId: userId, content: body.content };
     if (body.replyToId !== undefined) sendOpts.replyToId = body.replyToId;
+    if (body.pollOptions !== undefined) sendOpts.pollOptions = body.pollOptions;
     const dto = await sendMessage(app.pg, sendOpts);
     // Invalidate unread cache for all current members so they see fresh counts.
     const members = await app.pg.query<{ user_id: string }>(
@@ -237,6 +243,25 @@ export const chatRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, push
       await publishMessageDeleted(app.pg, app.realtime, chatId, 'channel', postId);
       reply.code(204);
       return null;
+    },
+  );
+
+  app.post(
+    '/chat/channel/posts/:postId/poll/vote',
+    { preHandler: [app.authenticate] },
+    async (req) => {
+      const { postId } = z.object({ postId: uuid }).parse(req.params);
+      const { optionId } = z.object({ optionId: uuid }).parse(req.body);
+      return await setChannelPollVote(app.pg, postId, req.user.id, optionId);
+    },
+  );
+
+  app.delete(
+    '/chat/channel/posts/:postId/poll/vote',
+    { preHandler: [app.authenticate] },
+    async (req) => {
+      const { postId } = z.object({ postId: uuid }).parse(req.params);
+      return await clearChannelPollVote(app.pg, postId, req.user.id);
     },
   );
 

@@ -120,12 +120,27 @@ export interface ChatMessageDTO {
   // Present for channel posts; omitted for regular chat messages.
   commentCount?: number;
   viewCount?: number;
+  poll?: ChannelPollDTO;
 }
 
 export interface ReactionGroupDTO {
   emoji: string;
   count: number;
   reactedByMe: boolean;
+}
+
+export interface ChannelPollOptionDTO {
+  id: string;
+  text: string;
+  voteCount: number;
+  percent: number;
+  selectedByMe: boolean;
+}
+
+export interface ChannelPollDTO {
+  totalVotes: number;
+  myOptionId: string | null;
+  options: ChannelPollOptionDTO[];
 }
 
 export interface ChatMemberSummaryDTO {

@@ -9,6 +9,7 @@ import type {
   UserPublicProfileDTO,
 } from './types.js';
 import { toChatDTO, type ChatListAggregate, toChatMessageDTO, groupReactions } from './dto.js';
+import { hydrateChannelPolls } from './channel.js';
 import {
   ChatNotFoundError,
   InvalidInputError,
@@ -507,7 +508,8 @@ export async function getMessages(
   );
   const grouped = groupReactions(rxns.rows, currentUserId);
 
-  return rows.map((row) => toChatMessageDTO(row, grouped.get(row.id) ?? []));
+  const dtos = rows.map((row) => toChatMessageDTO(row, grouped.get(row.id) ?? []));
+  return await hydrateChannelPolls(pool, dtos, currentUserId);
 }
 
 export interface SendMessageOpts {
@@ -515,31 +517,62 @@ export interface SendMessageOpts {
   senderId: string;
   content: string;
   replyToId?: string;
+  pollOptions?: string[];
 }
 
 export async function sendMessage(pool: Pool, opts: SendMessageOpts): Promise<ChatMessageDTO> {
-  // Lazy-upsert membership so unread/lastRead works for system-channel senders.
-  await pool.query(
-    `insert into chat_members (chat_id, user_id) values ($1, $2)
-     on conflict (chat_id, user_id) do nothing`,
-    [opts.chatId, opts.senderId],
-  );
-  const r = await pool.query<MessageRow>(
-    `with ins as (
-       insert into messages (chat_id, sender_id, content, reply_to_id)
-       values ($1, $2, $3, $4)
-       returning *
-     )
-     select ins.*,
-            u.display_name as sender_display_name,
-            u.avatar_url as sender_avatar_url,
-            '0'::bigint as comment_count,
-            '0'::bigint as view_count
-       from ins
-       left join users u on u.id = ins.sender_id`,
-    [opts.chatId, opts.senderId, opts.content, opts.replyToId ?? null],
-  );
-  return toChatMessageDTO(r.rows[0]!);
+  const pollOptions = opts.pollOptions ?? [];
+  if (pollOptions.length > 3) {
+    throw new InvalidInputError('Poll can have at most 3 options');
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    // Lazy-upsert membership so unread/lastRead works for system-channel senders.
+    await client.query(
+      `insert into chat_members (chat_id, user_id) values ($1, $2)
+       on conflict (chat_id, user_id) do nothing`,
+      [opts.chatId, opts.senderId],
+    );
+    const r = await client.query<MessageRow>(
+      `with ins as (
+         insert into messages (chat_id, sender_id, content, reply_to_id)
+         values ($1, $2, $3, $4)
+         returning *
+       )
+       select ins.*,
+              u.display_name as sender_display_name,
+              u.avatar_url as sender_avatar_url,
+              '0'::bigint as comment_count,
+              '0'::bigint as view_count
+         from ins
+         left join users u on u.id = ins.sender_id`,
+      [opts.chatId, opts.senderId, opts.content, opts.replyToId ?? null],
+    );
+    const row = r.rows[0]!;
+    if (pollOptions.length > 0) {
+      await client.query(`insert into channel_post_polls (post_message_id) values ($1)`, [row.id]);
+      for (const [index, text] of pollOptions.entries()) {
+        await client.query(
+          `insert into channel_post_poll_options (post_message_id, position, text)
+           values ($1, $2, $3)`,
+          [row.id, index + 1, text],
+        );
+      }
+    }
+    await client.query('commit');
+
+    const dto = toChatMessageDTO(row);
+    if (pollOptions.length === 0) return dto;
+    const hydrated = await hydrateChannelPolls(pool, [dto], opts.senderId);
+    return hydrated[0]!;
+  } catch (err) {
+    await client.query('rollback').catch(() => undefined);
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 export async function deleteMessage(pool: Pool, messageId: string): Promise<void> {

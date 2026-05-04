@@ -29,6 +29,21 @@ export interface ChatMessageDTO {
   reactions: ReactionGroupDTO[];
   commentCount?: number;
   viewCount?: number;
+  poll?: ChannelPollDTO;
+}
+
+export interface ChannelPollOptionDTO {
+  id: string;
+  text: string;
+  voteCount: number;
+  percent: number;
+  selectedByMe: boolean;
+}
+
+export interface ChannelPollDTO {
+  totalVotes: number;
+  myOptionId: string | null;
+  options: ChannelPollOptionDTO[];
 }
 
 export interface ChatDTO {
@@ -169,6 +184,19 @@ export function deleteChannelPost(postId: string): Promise<void> {
   return apiFetch<void>(`/chat/channel/posts/${postId}`, { method: 'DELETE' });
 }
 
+export function voteChannelPoll(postId: string, optionId: string): Promise<ChatMessageDTO> {
+  return apiFetch<ChatMessageDTO>(`/chat/channel/posts/${postId}/poll/vote`, {
+    method: 'POST',
+    body: JSON.stringify({ optionId }),
+  });
+}
+
+export function clearChannelPollVote(postId: string): Promise<ChatMessageDTO> {
+  return apiFetch<ChatMessageDTO>(`/chat/channel/posts/${postId}/poll/vote`, {
+    method: 'DELETE',
+  });
+}
+
 export function fetchChannelPostComments(postId: string): Promise<ChannelPostCommentDTO[]> {
   return apiFetch<ChannelPostCommentDTO[]>(`/chat/channel/posts/${postId}/comments`);
 }
@@ -226,6 +254,7 @@ export function fetchChannelPostReactionUsers(
 export interface SendMessageBody {
   content: string;
   replyToId?: string;
+  pollOptions?: string[];
 }
 
 export function sendMessage(chatId: string, body: SendMessageBody): Promise<ChatMessageDTO> {

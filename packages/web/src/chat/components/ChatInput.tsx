@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { Bold, Italic, Send } from 'lucide-react';
 import { ReplyPreview } from './ReplyPreview.js';
 
@@ -13,6 +14,7 @@ interface ChatInputProps {
   replyToSenderName?: string | undefined;
   placeholder?: string;
   formattingTools?: boolean;
+  extraTools?: ReactNode;
   onClearReply: () => void;
   onSend: (content: string, replyToId: string | null) => void | Promise<void>;
 }
@@ -35,6 +37,7 @@ export function ChatInput({
   replyToSenderName,
   placeholder = 'Сообщение...',
   formattingTools = false,
+  extraTools,
   onClearReply,
   onSend,
 }: ChatInputProps): JSX.Element {
@@ -122,46 +125,51 @@ export function ChatInput({
           onClear={onClearReply}
         />
       )}
-      {formattingTools && (
+      {(formattingTools || extraTools) && (
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <button
-            type="button"
-            className="icon-btn"
-            title="Жирный"
-            aria-label="Жирный"
-            disabled={disabled}
-            onClick={() => applyInlineFormat('**')}
-            style={{
-              width: 32,
-              height: 32,
-              minWidth: 32,
-              minHeight: 32,
-              borderRadius: 10,
-              background: 'rgba(255,255,255,0.88)',
-              color: 'var(--ink)',
-            }}
-          >
-            <Bold size={16} />
-          </button>
-          <button
-            type="button"
-            className="icon-btn"
-            title="Курсив"
-            aria-label="Курсив"
-            disabled={disabled}
-            onClick={() => applyInlineFormat('__')}
-            style={{
-              width: 32,
-              height: 32,
-              minWidth: 32,
-              minHeight: 32,
-              borderRadius: 10,
-              background: 'rgba(255,255,255,0.88)',
-              color: 'var(--ink)',
-            }}
-          >
-            <Italic size={16} />
-          </button>
+          {formattingTools && (
+            <>
+              <button
+                type="button"
+                className="icon-btn"
+                title="Жирный"
+                aria-label="Жирный"
+                disabled={disabled}
+                onClick={() => applyInlineFormat('**')}
+                style={{
+                  width: 32,
+                  height: 32,
+                  minWidth: 32,
+                  minHeight: 32,
+                  borderRadius: 10,
+                  background: 'rgba(255,255,255,0.88)',
+                  color: 'var(--ink)',
+                }}
+              >
+                <Bold size={16} />
+              </button>
+              <button
+                type="button"
+                className="icon-btn"
+                title="Курсив"
+                aria-label="Курсив"
+                disabled={disabled}
+                onClick={() => applyInlineFormat('__')}
+                style={{
+                  width: 32,
+                  height: 32,
+                  minWidth: 32,
+                  minHeight: 32,
+                  borderRadius: 10,
+                  background: 'rgba(255,255,255,0.88)',
+                  color: 'var(--ink)',
+                }}
+              >
+                <Italic size={16} />
+              </button>
+            </>
+          )}
+          {extraTools && <div style={{ marginLeft: 'auto' }}>{extraTools}</div>}
         </div>
       )}
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>

@@ -44,6 +44,9 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     expect(names).toContain('push_notification_templates');
     expect(names).toContain('channel_post_comments');
     expect(names).toContain('channel_post_comment_reactions');
+    expect(names).toContain('channel_post_polls');
+    expect(names).toContain('channel_post_poll_options');
+    expect(names).toContain('channel_post_poll_votes');
     expect(names).toContain('channel_post_views');
     expect(names).toContain('feedback_messages');
     expect(names).toContain('_migrations');
@@ -102,6 +105,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '022_seed_admin_inventory_items.sql',
       '023_channel_comment_threads.sql',
       '024_push_notification_templates.sql',
+      '026_channel_post_polls.sql',
     ]);
   });
 });

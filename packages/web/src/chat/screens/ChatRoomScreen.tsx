@@ -1,7 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { ListChecks } from 'lucide-react';
 import {
+  clearChannelPollVote,
   deleteChannelPost,
   deleteMessage,
   fetchChatList,
@@ -11,6 +13,7 @@ import {
   updateChannelPost,
   addReaction,
   removeReaction,
+  voteChannelPoll,
   type ChatDTO,
   type ChatMessageDTO,
   type UserPickerItem,
@@ -27,6 +30,7 @@ import { ReactionPicker } from '../components/ReactionPicker.js';
 import { UserProfileSheet } from '../components/UserProfileSheet.js';
 import { ChannelPostCard } from '../components/ChannelPostCard.js';
 import { ChannelPostEditorSheet } from '../components/ChannelPostEditorSheet.js';
+import { ChannelPollComposerSheet } from '../components/ChannelPollComposerSheet.js';
 import { formatLastSeen } from '../lastSeen.js';
 import { switchMyReactionTo, removeMyReaction } from '../reactionsState.js';
 
@@ -82,6 +86,7 @@ export function ChatRoomScreen(): JSX.Element {
   } | null>(null);
   const [previewSender, setPreviewSender] = useState<UserPickerItem | null>(null);
   const [editingPost, setEditingPost] = useState<ChatMessageDTO | null>(null);
+  const [pollComposerOpen, setPollComposerOpen] = useState(false);
   const [gotoError, setGotoError] = useState<string | null>(null);
   const gotoRef = useRef<string | null>(null);
   const messagesListRef = useRef<HTMLDivElement | null>(null);
@@ -276,11 +281,14 @@ export function ChatRoomScreen(): JSX.Element {
   );
 
   const sendMut = useMutation({
-    mutationFn: (vars: { content: string; replyToId: string | null }) =>
-      sendMessage(chatId, {
+    mutationFn: (vars: { content: string; replyToId: string | null; pollOptions?: string[] }) => {
+      const body: { content: string; replyToId?: string; pollOptions?: string[] } = {
         content: vars.content,
-        ...(vars.replyToId !== null ? { replyToId: vars.replyToId } : {}),
-      }),
+      };
+      if (vars.replyToId !== null) body.replyToId = vars.replyToId;
+      if (vars.pollOptions !== undefined) body.pollOptions = vars.pollOptions;
+      return sendMessage(chatId, body);
+    },
     onSuccess: (msg) => {
       queryClient.setQueryData<InfinitePages | undefined>(chatKeys.messages(chatId), (old) => {
         if (!old) {
@@ -307,10 +315,8 @@ export function ChatRoomScreen(): JSX.Element {
     },
   });
 
-  const editChannelPostMut = useMutation({
-    mutationFn: ({ postId, content }: { postId: string; content: string }) =>
-      updateChannelPost(postId, content),
-    onSuccess: (post) => {
+  const replacePostInCaches = useCallback(
+    (post: ChatMessageDTO): void => {
       queryClient.setQueryData<InfinitePages | undefined>(chatKeys.messages(chatId), (old) => {
         if (!old) return old;
         let touched = false;
@@ -327,8 +333,28 @@ export function ChatRoomScreen(): JSX.Element {
         old ? post : old,
       );
       void queryClient.invalidateQueries({ queryKey: chatKeys.list() });
+    },
+    [queryClient, chatId],
+  );
+
+  const editChannelPostMut = useMutation({
+    mutationFn: ({ postId, content }: { postId: string; content: string }) =>
+      updateChannelPost(postId, content),
+    onSuccess: (post) => {
+      replacePostInCaches(post);
       setEditingPost(null);
     },
+  });
+
+  const votePollMut = useMutation({
+    mutationFn: ({ postId, optionId }: { postId: string; optionId: string }) =>
+      voteChannelPoll(postId, optionId),
+    onSuccess: replacePostInCaches,
+  });
+
+  const clearPollVoteMut = useMutation({
+    mutationFn: (postId: string) => clearChannelPollVote(postId),
+    onSuccess: replacePostInCaches,
   });
 
   const deleteChannelPostMut = useMutation({
@@ -492,6 +518,13 @@ export function ChatRoomScreen(): JSX.Element {
     [sendMut],
   );
 
+  const handleSendPoll = useCallback(
+    (question: string, pollOptions: string[]): void => {
+      sendMut.mutate({ content: question, replyToId: null, pollOptions });
+    },
+    [sendMut],
+  );
+
   const trimmedQuery = searchQuery.trim().toLowerCase();
   const visibleMessages = useMemo<ChatMessageDTO[]>(() => {
     const base = isChannel ? messages.filter((message) => !message.isDeleted) : messages;
@@ -526,6 +559,20 @@ export function ChatRoomScreen(): JSX.Element {
       deleteChannelPostMut.mutate(postId);
     },
     [deleteChannelPostMut],
+  );
+
+  const onVoteChannelPoll = useCallback(
+    (postId: string, optionId: string): void => {
+      votePollMut.mutate({ postId, optionId });
+    },
+    [votePollMut],
+  );
+
+  const onClearChannelPollVote = useCallback(
+    (postId: string): void => {
+      clearPollVoteMut.mutate(postId);
+    },
+    [clearPollVoteMut],
   );
 
   return (
@@ -622,7 +669,10 @@ export function ChatRoomScreen(): JSX.Element {
                 onReact={onToggleReaction}
                 onOpenReactionPicker={onOpenChannelReactionPicker}
                 onOpenComments={onOpenChannelComments}
+                onPollVote={onVoteChannelPoll}
+                onPollClearVote={onClearChannelPollVote}
                 onEdit={setEditingPost}
+                pollDisabled={votePollMut.isPending || clearPollVoteMut.isPending}
               />
             );
           }
@@ -653,6 +703,29 @@ export function ChatRoomScreen(): JSX.Element {
             replyToSenderName={replyTo ? senderNameOf(replyTo) : undefined}
             placeholder={isChannel ? 'Новость...' : 'Сообщение...'}
             formattingTools={isChannel && isAdmin}
+            extraTools={
+              isChannel && isAdmin ? (
+                <button
+                  type="button"
+                  className="icon-btn"
+                  title="Опрос"
+                  aria-label="Опрос"
+                  disabled={sendMut.isPending}
+                  onClick={() => setPollComposerOpen(true)}
+                  style={{
+                    width: 32,
+                    height: 32,
+                    minWidth: 32,
+                    minHeight: 32,
+                    borderRadius: 10,
+                    background: 'rgba(255,255,255,0.88)',
+                    color: 'var(--ink)',
+                  }}
+                >
+                  <ListChecks size={16} />
+                </button>
+              ) : undefined
+            }
             onClearReply={() => setReplyTo(null)}
             disabled={sendMut.isPending}
             onSend={handleSend}
@@ -684,6 +757,12 @@ export function ChatRoomScreen(): JSX.Element {
         onSave={onSaveChannelPost}
         onDelete={onDeleteChannelPost}
         onClose={() => setEditingPost(null)}
+      />
+      <ChannelPollComposerSheet
+        open={pollComposerOpen}
+        disabled={sendMut.isPending}
+        onSubmit={handleSendPoll}
+        onClose={() => setPollComposerOpen(false)}
       />
     </main>
   );

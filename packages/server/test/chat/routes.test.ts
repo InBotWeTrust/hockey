@@ -265,6 +265,132 @@ describe.skipIf(!hasIntegrationEnv)('chat routes', () => {
     expect(afterDeleteIds).not.toContain(childId);
   });
 
+  it('lets admins publish channel polls and users change or clear one vote', async () => {
+    await app.pg.query(`update users set role = 'admin' where id = $1`, [userA]);
+    await app.redis.del(`chat:rate:${userA}`, `chat:rate:${userB}`, `chat:rate:${userC}`);
+
+    const chats = await app.inject({
+      method: 'GET',
+      url: '/chat/list',
+      headers: { authorization: `Bearer ${tokenA}` },
+    });
+    expect(chats.statusCode).toBe(200);
+    const news = (
+      chats.json() as Array<{ id: string; type: string; channelSlug?: string | null }>
+    ).find((chat) => chat.type === 'channel' && chat.channelSlug === 'news');
+    expect(news).toBeDefined();
+
+    const denied = await app.inject({
+      method: 'POST',
+      url: `/chat/${news!.id}/messages`,
+      headers: { authorization: `Bearer ${tokenB}` },
+      payload: { content: 'Опрос без прав', pollOptions: ['Да'] },
+    });
+    expect(denied.statusCode).toBe(403);
+
+    const created = await app.inject({
+      method: 'POST',
+      url: `/chat/${news.id}/messages`,
+      headers: { authorization: `Bearer ${tokenA}` },
+      payload: { content: 'Кто победит?', pollOptions: ['Первые', 'Вторые'] },
+    });
+    expect(created.statusCode).toBe(201);
+    const createdBody = created.json() as {
+      id: string;
+      poll: {
+        totalVotes: number;
+        myOptionId: string | null;
+        options: Array<{ id: string; text: string; percent: number; selectedByMe: boolean }>;
+      };
+    };
+    expect(createdBody.poll).toEqual(
+      expect.objectContaining({
+        totalVotes: 0,
+        myOptionId: null,
+      }),
+    );
+    expect(createdBody.poll.options.map((option) => option.text)).toEqual(['Первые', 'Вторые']);
+    expect(createdBody.poll.options.map((option) => option.percent)).toEqual([0, 0]);
+    const firstOptionId = createdBody.poll.options[0]!.id;
+    const secondOptionId = createdBody.poll.options[1]!.id;
+
+    const firstVote = await app.inject({
+      method: 'POST',
+      url: `/chat/channel/posts/${createdBody.id}/poll/vote`,
+      headers: { authorization: `Bearer ${tokenB}` },
+      payload: { optionId: firstOptionId },
+    });
+    expect(firstVote.statusCode).toBe(200);
+    expect(firstVote.json().poll).toEqual(
+      expect.objectContaining({
+        totalVotes: 1,
+        myOptionId: firstOptionId,
+      }),
+    );
+    expect(
+      firstVote.json().poll.options.map((option: { percent: number }) => option.percent),
+    ).toEqual([100, 0]);
+
+    const changedVote = await app.inject({
+      method: 'POST',
+      url: `/chat/channel/posts/${createdBody.id}/poll/vote`,
+      headers: { authorization: `Bearer ${tokenB}` },
+      payload: { optionId: secondOptionId },
+    });
+    expect(changedVote.statusCode).toBe(200);
+    expect(changedVote.json().poll).toEqual(
+      expect.objectContaining({
+        totalVotes: 1,
+        myOptionId: secondOptionId,
+      }),
+    );
+    expect(
+      changedVote.json().poll.options.map((option: { percent: number }) => option.percent),
+    ).toEqual([0, 100]);
+
+    const otherVote = await app.inject({
+      method: 'POST',
+      url: `/chat/channel/posts/${createdBody.id}/poll/vote`,
+      headers: { authorization: `Bearer ${tokenC}` },
+      payload: { optionId: firstOptionId },
+    });
+    expect(otherVote.statusCode).toBe(200);
+
+    const postForB = await app.inject({
+      method: 'GET',
+      url: `/chat/channel/posts/${createdBody.id}`,
+      headers: { authorization: `Bearer ${tokenB}` },
+    });
+    expect(postForB.statusCode).toBe(200);
+    expect(postForB.json().poll).toEqual(
+      expect.objectContaining({
+        totalVotes: 2,
+        myOptionId: secondOptionId,
+      }),
+    );
+    expect(postForB.json().poll.options).toEqual([
+      expect.objectContaining({ id: firstOptionId, percent: 50, selectedByMe: false }),
+      expect.objectContaining({ id: secondOptionId, percent: 50, selectedByMe: true }),
+    ]);
+
+    const cleared = await app.inject({
+      method: 'DELETE',
+      url: `/chat/channel/posts/${createdBody.id}/poll/vote`,
+      headers: { authorization: `Bearer ${tokenB}` },
+    });
+    expect(cleared.statusCode).toBe(200);
+    expect(cleared.json().poll).toEqual(
+      expect.objectContaining({
+        totalVotes: 1,
+        myOptionId: null,
+      }),
+    );
+    expect(cleared.json().poll.options).toEqual([
+      expect.objectContaining({ id: firstOptionId, percent: 100, selectedByMe: false }),
+      expect.objectContaining({ id: secondOptionId, percent: 0, selectedByMe: false }),
+    ]);
+  });
+
   it('POST /chat/dm + GET /chat/list flow', async () => {
     const dm = await app.inject({
       method: 'POST',

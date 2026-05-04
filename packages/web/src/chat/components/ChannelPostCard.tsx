@@ -2,6 +2,7 @@ import { MessageCircle, Pencil, SmilePlus } from 'lucide-react';
 import type { ChatMessageDTO } from '../api.js';
 import { ReactionBar } from './ReactionBar.js';
 import { RichText } from '../richText.js';
+import { ChannelPoll } from './ChannelPoll.js';
 
 interface ChannelPostCardProps {
   post: ChatMessageDTO;
@@ -10,7 +11,10 @@ interface ChannelPostCardProps {
   onReact: (postId: string, emoji: string) => void;
   onOpenReactionPicker: (postId: string, anchorRect: DOMRect) => void;
   onOpenComments: (postId: string) => void;
+  onPollVote: (postId: string, optionId: string) => void;
+  onPollClearVote: (postId: string) => void;
   onEdit?: (post: ChatMessageDTO) => void;
+  pollDisabled?: boolean;
 }
 
 function formatPostTime(iso: string): string {
@@ -29,7 +33,10 @@ export function ChannelPostCard({
   onReact,
   onOpenReactionPicker,
   onOpenComments,
+  onPollVote,
+  onPollClearVote,
   onEdit,
+  pollDisabled = false,
 }: ChannelPostCardProps): JSX.Element {
   return (
     <article
@@ -52,6 +59,16 @@ export function ChannelPostCard({
       >
         <RichText text={post.content} />
       </div>
+
+      {post.poll && (
+        <ChannelPoll
+          postId={post.id}
+          poll={post.poll}
+          disabled={pollDisabled}
+          onVote={onPollVote}
+          onClearVote={onPollClearVote}
+        />
+      )}
 
       <ReactionBar reactions={post.reactions} onToggle={(emoji) => onReact(post.id, emoji)} />
 
