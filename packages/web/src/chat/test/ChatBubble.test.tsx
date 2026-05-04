@@ -28,6 +28,19 @@ function defaults() {
 }
 
 describe('ChatBubble — author tap', () => {
+  it('renders message time inside the bubble surface', () => {
+    render(<ChatBubble {...defaults()} />);
+
+    const expectedTime = new Date(baseMessage.createdAt).toLocaleTimeString('ru-RU', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    const time = screen.getByText(expectedTime);
+
+    expect(time.tagName).toBe('TIME');
+    expect(time.closest('.glass')).not.toBeNull();
+  });
+
   it('clicking the author name calls onOpenProfile with sender info', () => {
     const onOpenProfile = vi.fn();
     render(<ChatBubble {...defaults()} onOpenProfile={onOpenProfile} />);

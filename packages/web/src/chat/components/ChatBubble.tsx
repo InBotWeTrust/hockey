@@ -70,7 +70,25 @@ function ChatBubbleImpl({
     { delayMs: 500 },
   );
 
-  // Bubble body + author label + timestamp. Wrapped in a row layout (with
+  const timestamp = (
+    <time
+      dateTime={message.createdAt}
+      style={{
+        float: 'right',
+        marginLeft: 12,
+        transform: 'translateY(2px)',
+        fontSize: 10,
+        lineHeight: '18px',
+        fontWeight: 600,
+        color: isOwn ? 'rgba(255, 255, 255, 0.72)' : 'rgba(71, 85, 105, 0.74)',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {formatTime(message.createdAt)}
+    </time>
+  );
+
+  // Bubble body + author label. Wrapped in a row layout (with
   // avatar) when showAvatarAndName is true; otherwise rendered directly so
   // the long-press handler stays on the first descendant <div> (existing
   // tests rely on that selector). Order of children matches the previous
@@ -123,19 +141,16 @@ function ChatBubbleImpl({
         {message.replyToId && replyTo && (
           <ReplyPreview senderName={replyTo.senderName} content={replyTo.content} />
         )}
-        <div>{text}</div>
+        <div>
+          <span>{text}</span>
+          {timestamp}
+        </div>
         <ReactionBar
           reactions={message.reactions}
           onToggle={(emoji) => onReact(message.id, emoji)}
         />
       </div>
     </div>
-  );
-
-  const timestamp = (
-    <span style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2, padding: '0 4px' }}>
-      {formatTime(message.createdAt)}
-    </span>
   );
 
   if (!showAvatarAndName) {
@@ -151,7 +166,6 @@ function ChatBubbleImpl({
         }}
       >
         {body}
-        {timestamp}
       </div>
     );
   }
@@ -194,7 +208,6 @@ function ChatBubbleImpl({
       {avatar}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: align, minWidth: 0 }}>
         {body}
-        {timestamp}
       </div>
     </div>
   );

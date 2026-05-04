@@ -176,8 +176,8 @@
 .chat-edge-top {
   flex: 0 0 auto;
   z-index: 4;
-  padding: 10px 0 38px;
-  margin-bottom: -34px;
+  padding: 10px 0 20px;
+  margin-bottom: -20px;
 }
 
 .chat-edge-bottom {
@@ -194,7 +194,7 @@
   left: 0;
   padding-top: calc(10px + var(--app-safe-top));
   margin-bottom: 0;
-  --glass-edge-inset: 0 0 -56px;
+  --glass-edge-inset: 0 0 -22px;
 }
 
 .chat-edge-bottom--overlay {
