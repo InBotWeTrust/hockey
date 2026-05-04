@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type MouseEvent, type PointerEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, ChevronDown, MessageSquare, Send, Settings, X } from 'lucide-react';
+import { Bell, ChevronDown, MessageSquare, Settings, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../api/apiFetch.js';
 import { createFeedback, type FeedbackKind } from '../api/feedback.js';
@@ -471,7 +471,6 @@ function FeedbackModal({ onClose }: { onClose: () => void }): JSX.Element {
                 cursor: canSubmit ? 'pointer' : 'not-allowed',
               }}
             >
-              <Send size={18} />
               {feedback.isPending ? 'Отправляем...' : 'Отправить'}
             </button>
           </>

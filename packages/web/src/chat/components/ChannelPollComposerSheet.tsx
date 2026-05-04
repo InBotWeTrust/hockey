@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, ListChecks, Plus, Trash2, X } from 'lucide-react';
+import { ListChecks, Trash2, X } from 'lucide-react';
 
 interface ChannelPollComposerSheetProps {
   open: boolean;
@@ -211,7 +211,6 @@ export function ChannelPollComposerSheet({
             onClick={() => setOptions((current) => [...current, ''])}
             style={{ minHeight: 40, letterSpacing: 0 }}
           >
-            <Plus size={16} />
             Добавить вариант
           </button>
         )}
@@ -224,7 +223,6 @@ export function ChannelPollComposerSheet({
             onClick={onClose}
             style={{ flex: 1, minHeight: 44, letterSpacing: 0 }}
           >
-            <X size={16} />
             Отмена
           </button>
           <button
@@ -237,7 +235,6 @@ export function ChannelPollComposerSheet({
             }}
             style={{ flex: 1, minHeight: 44, letterSpacing: 0 }}
           >
-            <Check size={16} />
             Опубликовать
           </button>
         </div>

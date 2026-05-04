@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, MessageSquare } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import {
   fetchUserProfile,
   findOrCreateDM,
@@ -174,14 +174,12 @@ export function UserProfileScreen(): JSX.Element {
                   display: 'inline-flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: 8,
                   padding: '12px 16px',
                   borderRadius: 14,
                   fontSize: 14,
                   fontWeight: 700,
                 }}
               >
-                <MessageSquare size={16} />
                 {dmMut.isPending ? 'Открываем…' : 'Написать сообщение'}
               </button>
             </div>

@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Gamepad2, Send } from 'lucide-react';
 import { TelegramLoginButton, type TelegramAuthPayload } from '../auth/TelegramLoginButton.js';
 import { apiFetch, ApiError } from '../api/apiFetch.js';
 import { useAuthStore, type AuthSession } from '../auth/authStore.js';
@@ -129,7 +128,6 @@ export function LoginScreen(): JSX.Element {
             background: '#0077ff',
             color: '#ffffff',
             justifyContent: 'center',
-            gap: 10,
             fontSize: 16,
             fontWeight: 700,
             letterSpacing: 0,
@@ -137,25 +135,6 @@ export function LoginScreen(): JSX.Element {
             whiteSpace: 'nowrap',
           }}
         >
-          <span
-            aria-hidden="true"
-            style={{
-              width: 24,
-              height: 24,
-              borderRadius: 7,
-              background: '#ffffff',
-              color: '#0077ff',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 13,
-              fontWeight: 900,
-              lineHeight: 1,
-              flexShrink: 0,
-            }}
-          >
-            VK
-          </span>
           Войти через ВКонтакте
         </button>
 
@@ -170,14 +149,12 @@ export function LoginScreen(): JSX.Element {
             padding: '0 14px',
             borderRadius: 12,
             justifyContent: 'center',
-            gap: 10,
             fontSize: 15,
             fontWeight: 800,
             letterSpacing: 0,
             whiteSpace: 'nowrap',
           }}
         >
-          <Gamepad2 size={17} />
           Демо-режим
         </button>
 
@@ -227,7 +204,6 @@ export function LoginScreen(): JSX.Element {
               }}
               style={{ justifyContent: 'center' }}
             >
-              <Send size={16} />
               Войти как Dev
             </button>
             {devError && (

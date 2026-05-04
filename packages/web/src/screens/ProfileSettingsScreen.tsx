@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Info, Link as LinkIcon, LogOut } from 'lucide-react';
+import { ArrowLeft, Info, LogOut } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../api/apiFetch.js';
 import { TelegramLoginButton, type TelegramAuthPayload } from '../auth/TelegramLoginButton.js';
@@ -264,7 +264,6 @@ export function ProfileSettingsScreen(): JSX.Element {
                 }}
                 style={{ justifyContent: 'center', padding: '11px 0', fontSize: 13 }}
               >
-                <LinkIcon size={15} />
                 Привязать ВКонтакте
               </button>
             )}

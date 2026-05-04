@@ -71,6 +71,8 @@ pnpm workspaces, `packages/*`, TS project references (`composite: true`):
 
 **UI-инвариант для одиночных иконок.** Кликабельные иконки вне нижнего меню/табов должны использовать базовый `.icon-btn`: круглая 34px light-surface кнопка с очень мягким серым фоном, тонкой slate-рамкой и приглушённой иконкой. Не делать квадратные/полупрямоугольные overrides для таких действий (пример: шестерёнка настроек в профиле). Тёмный вариант `.icon-btn--dark` использовать только для явного primary/CTA действия вроде сохранения или основного действия в игровом HUD.
 
+**UI-инвариант для текстовых кнопок.** Обычные текстовые кнопки (`.btn`, `.btn--cta`, `.btn--ghost`) должны быть без иконок. Не добавлять lucide/SVG/emoji-иконки внутрь таких кнопок; для самостоятельных икон-действий использовать отдельный `.icon-btn`.
+
 ### Ключевой инвариант: гибридная симуляция
 
 `game-core` шерится между клиентом и сервером. Клиент симулирует бросок локально для мгновенной отрисовки, сервер параллельно симулирует на том же seed и валидирует. Отсюда **жёсткие правила** для всего что попадает в `game-core`:
@@ -108,6 +110,7 @@ pnpm workspaces, `packages/*`, TS project references (`composite: true`):
 **Web.** `chatKeys.{list,messages,info,users,unread,profile}` — single source of truth. `useChatSocket` держит один WS на сессию: exponential-backoff reconnect 1s → 30s, на 4401 — refresh access JWT через in-flight promise и повторное подключение, на 4408 — реконнект. `applyEvent` точечно патчит cache (`message:new` дедуп по id, `message:deleted` → `is_deleted=true, content=''`, `reaction:*` через `applyReactionEventToMessage` с дедуп по `event.userId === meId`). `MessageActionsMenu` (portal, clamp 12px) на long-press 500ms — reply/delete + 6 favorite emoji + ⊕ → `ReactionPicker` 3×8. Список чатов: глобальный поиск с дебаунсом 300ms через `SearchResultsDropdown`; тап результата → `/chat/:id?goto=<msgId>`, ChatRoomScreen грузит around-страницу + `chat-bubble--flash`. DM-шапка показывает avatar + display name + `formatLastSeen` (см. ниже). Кликабельная аватарка/имя автора в group/system bubble открывает `UserProfileSheet` с кнопкой «Написать в личку» (`POST /chat/dm`).
 
 **WS race-conditions, на которых горели** (берегите фиксы, легко регрессировать):
+
 1. **Race subscribe vs publish** — клиент шлёт `connection:ready`, на 'open' ничего не отправляет (#48).
 2. **WS-message пропадает при холодной загрузке** — если первый `fetchMessages` ещё в полёте, `applyMessageNew` пишет shell `{pages:[[msg]]}`, который TanStack потом перезатирает; вместо этого триггерим `invalidateQueries` (`useChatSocket.applyMessageNew`, #55).
 3. **Двойная отправка по тапу** — `disabled` пропом обновляется через React, между двумя тапами успевает только один render → sync-ref guard в composer (#47).
@@ -137,10 +140,12 @@ Fastify generic `FastifyInstance` резолвится к union http/http2/https
 ### CI/CD
 
 `.github/workflows/ci.yml` — два джоба:
+
 1. `build-and-test` — pnpm install → typecheck → lint → `game-core build` → остальные сборки → test (с postgres+redis services).
 2. `docker-build` — билдит оба Dockerfile через buildx с GHA cache, не пушит.
 
 `.github/workflows/deploy.yml` (только на push в `main`):
+
 1. Билд образов с тегами `sha-<short>` и `latest`, пуш в GHCR. Web билд получает `VITE_TELEGRAM_BOT_USERNAME` через `build-args` из repo variable.
 2. SSH на VPS → `scp docker-compose.yml Caddyfile` → внутри heredoc'а: `docker login` (с retry), `docker compose pull` (с retry), `docker compose run --rm -T server ... migrate-cli.js < /dev/null`, `docker compose up -d --force-recreate --remove-orphans server web caddy < /dev/null`, `image prune`. **`-T < /dev/null` обязательны на обеих compose-командах** — без них `docker compose run` наследует stdin родителя (= сам heredoc), глотает остаток скрипта, и `up --force-recreate` молча не выполняется. Прод тогда зависает на старом IMAGE_TAG, а Actions репортит success (smoke-тест бьёт уже живой старый сервер). Корректное поведение PR #22; не убирай редиректы.
 3. Smoke test `GET /api/health` с 5 retries. Если валится — вся ветка деплоя красная.

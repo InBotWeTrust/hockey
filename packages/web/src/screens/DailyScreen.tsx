@@ -3,7 +3,7 @@ import { useMutation } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Container } from 'pixi.js';
 import type { Application, Ticker } from 'pixi.js';
-import { ArrowLeft, BarChart3, ChevronRight, Home, Info, Play, VolumeX, X } from 'lucide-react';
+import { ArrowLeft, BarChart3, ChevronRight, Home, Info, VolumeX, X } from 'lucide-react';
 import {
   GOALIE_SIZE,
   GOALIE_Y,
@@ -64,11 +64,13 @@ import { StartPeriodModal } from '../components/StartPeriodModal.js';
 const PAUSE_MS = 1000;
 const HUB_PERIOD_DURATION_MS = 20 * 60 * 1000;
 const MODE_ARTWORK_SIZE = 104;
+const DAILY_HUB_ARTWORK_SIZE = 104;
 
 type GameLevel = 'beginner' | 'amateur' | 'pro';
 type BeginnerMode = 'daily' | 'training';
 type DailyView = 'hub' | 'play';
 type LevelArtwork = 'beginner' | 'amateur' | 'pro';
+type DailyHubArtwork = 'period-1' | 'period-2' | 'period-3' | 'break' | 'finished' | 'start';
 type ModeInfoModalContent = { title: string; text: string };
 
 const MODE_ARTWORK_IMAGES: Record<LevelArtwork, string | null> = {
@@ -76,6 +78,30 @@ const MODE_ARTWORK_IMAGES: Record<LevelArtwork, string | null> = {
   amateur: '/modes/amateur.webp',
   pro: '/modes/pro.webp',
 };
+
+const DAILY_HUB_ARTWORK_IMAGES: Record<DailyHubArtwork, string> = {
+  'period-1': '/daily-game/period-1.webp',
+  'period-2': '/daily-game/period-2.webp',
+  'period-3': '/daily-game/period-3.webp',
+  break: '/daily-game/break.webp',
+  finished: '/daily-game/finished.webp',
+  start: '/daily-game/start.webp',
+};
+
+function dailyHubArtworkFor(
+  data: DailyStateResponse,
+  isDailyLockedByTraining: boolean,
+): DailyHubArtwork {
+  if (isDailyLockedByTraining || data.state === 'break_active') return 'break';
+  if (data.state === 'closed') return 'finished';
+  if (data.state === 'period_active') {
+    const period = Math.min(3, Math.max(1, data.current_period));
+    return `period-${period}` as DailyHubArtwork;
+  }
+  if (data.current_period === 0) return 'start';
+  const nextPeriod = Math.min(3, Math.max(1, data.current_period + 1));
+  return `period-${nextPeriod}` as DailyHubArtwork;
+}
 
 function periodSpeedPresetFor(
   periodNumber: number,
@@ -410,6 +436,7 @@ function GameHub({
     data.current_period === 0 &&
     trainingCooldownEndsAt > 0 &&
     trainingCooldownRemaining > 0;
+  const dailyHubArtwork = dailyHubArtworkFor(data, isDailyLockedByTraining);
 
   useEffect(() => {
     if (
@@ -657,30 +684,55 @@ function GameHub({
               <div
                 aria-label="Статус ежедневной игры"
                 style={{
-                  display: 'flex',
-                  flexDirection: 'column',
+                  display: 'grid',
+                  gridTemplateColumns: `${DAILY_HUB_ARTWORK_SIZE}px minmax(0, 1fr)`,
                   alignItems: 'center',
-                  gap: 7,
+                  gap: 14,
                 }}
               >
+                <img
+                  src={DAILY_HUB_ARTWORK_IMAGES[dailyHubArtwork]}
+                  alt=""
+                  aria-hidden="true"
+                  style={{
+                    display: 'block',
+                    width: DAILY_HUB_ARTWORK_SIZE,
+                    height: DAILY_HUB_ARTWORK_SIZE,
+                    borderRadius: 20,
+                    objectFit: 'cover',
+                    boxShadow:
+                      '0 16px 28px rgba(15,23,42,0.24), inset 0 1px 0 rgba(255,255,255,0.16)',
+                  }}
+                />
                 <div
                   style={{
-                    color: '#10192d',
-                    fontSize: 26,
-                    lineHeight: 1.05,
-                    fontWeight: 900,
-                    textAlign: 'center',
+                    minWidth: 0,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    gap: 8,
                   }}
                 >
-                  {dailyEventTitle}
+                  <div
+                    style={{
+                      color: '#10192d',
+                      fontSize: 25,
+                      lineHeight: 1.05,
+                      fontWeight: 900,
+                      textAlign: 'left',
+                    }}
+                  >
+                    {dailyEventTitle}
+                  </div>
+                  <DailyHubScoreboard
+                    activePeriod={dailyHubScoreboard.activePeriod}
+                    align="left"
+                    ariaLabel={dailyHubScoreboard.ariaLabel}
+                    periodsTotal={data.total_periods}
+                    timer={dailyHubScoreboard.timer}
+                    timerLabel={dailyHubScoreboard.timerLabel}
+                  />
                 </div>
-                <DailyHubScoreboard
-                  activePeriod={dailyHubScoreboard.activePeriod}
-                  ariaLabel={dailyHubScoreboard.ariaLabel}
-                  periodsTotal={data.total_periods}
-                  timer={dailyHubScoreboard.timer}
-                  timerLabel={dailyHubScoreboard.timerLabel}
-                />
               </div>
             </div>
 
@@ -706,10 +758,7 @@ function GameHub({
                     : '0 20px 34px rgba(15,23,42,0.28), inset 0 1px 0 rgba(255,255,255,0.12)',
                 }}
               >
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
-                  <Play size={19} fill="currentColor" />
-                  {dailyActionLabel}
-                </span>
+                {dailyActionLabel}
               </button>
             </div>
           </div>
@@ -779,12 +828,14 @@ function GameHub({
 
 function DailyHubScoreboard({
   activePeriod,
+  align = 'center',
   ariaLabel,
   periodsTotal,
   timer,
   timerLabel,
 }: {
   activePeriod: number | null;
+  align?: 'center' | 'left';
   ariaLabel: string;
   periodsTotal: number;
   timer: string;
@@ -800,22 +851,23 @@ function DailyHubScoreboard({
         display: 'grid',
         gridTemplateColumns: '1fr 1fr',
         alignItems: 'center',
+        justifyItems: align === 'left' ? 'start' : 'center',
         gap: 12,
       }}
     >
-      <DailyEventScoreboardColumn label={timerLabel} value={timer} />
+      <DailyEventScoreboardColumn align={align} label={timerLabel} value={timer} />
       <div
         style={{
           display: 'flex',
           flexDirection: 'column',
-          alignItems: 'center',
+          alignItems: align === 'left' ? 'flex-start' : 'center',
           gap: 5,
           minWidth: 0,
           lineHeight: 1,
         }}
       >
         <DailyEventScoreboardLabel>Период</DailyEventScoreboardLabel>
-        <DailyPeriodTabs activePeriod={activePeriod} periodsTotal={periodsTotal} />
+        <DailyPeriodTabs activePeriod={activePeriod} align={align} periodsTotal={periodsTotal} />
       </div>
     </div>
   );
@@ -823,14 +875,22 @@ function DailyHubScoreboard({
 
 function DailyPeriodTabs({
   activePeriod,
+  align = 'center',
   periodsTotal,
 }: {
   activePeriod: number | null;
+  align?: 'center' | 'left';
   periodsTotal: number;
 }): JSX.Element {
   const periodNums = Array.from({ length: periodsTotal }, (_, i) => i + 1);
   return (
-    <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+    <div
+      style={{
+        display: 'flex',
+        gap: 4,
+        justifyContent: align === 'left' ? 'flex-start' : 'center',
+      }}
+    >
       {periodNums.map((n) => (
         <DailyPeriodTab key={n} active={activePeriod !== null && n === activePeriod}>
           {n}
@@ -871,9 +931,11 @@ function DailyPeriodTab({
 }
 
 function DailyEventScoreboardColumn({
+  align = 'center',
   label,
   value,
 }: {
+  align?: 'center' | 'left';
   label: string;
   value: string;
 }): JSX.Element {
@@ -883,7 +945,7 @@ function DailyEventScoreboardColumn({
       style={{
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'center',
+        alignItems: align === 'left' ? 'flex-start' : 'center',
         gap: 5,
         minWidth: 0,
         lineHeight: 1,
@@ -2236,7 +2298,6 @@ function DemoCompletionModal({
               background: '#0077ff',
               color: '#ffffff',
               justifyContent: 'center',
-              gap: 10,
               fontSize: 16,
               fontWeight: 700,
               letterSpacing: 0,
@@ -2244,25 +2305,6 @@ function DemoCompletionModal({
               whiteSpace: 'nowrap',
             }}
           >
-            <span
-              aria-hidden="true"
-              style={{
-                width: 24,
-                height: 24,
-                borderRadius: 7,
-                background: '#ffffff',
-                color: '#0077ff',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 13,
-                fontWeight: 900,
-                lineHeight: 1,
-                flexShrink: 0,
-              }}
-            >
-              VK
-            </span>
             Войти через ВКонтакте
           </button>
 

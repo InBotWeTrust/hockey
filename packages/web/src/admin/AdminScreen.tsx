@@ -11,7 +11,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowDown,
   ArrowUp,
-  Ban,
   BarChart3,
   Bell,
   BellOff,
@@ -1257,8 +1256,7 @@ function MiniLineChart({
     activePoint === null
       ? 0
       : Math.min(width - tooltipWidth - 4, Math.max(4, activePoint.x - tooltipWidth / 2));
-  const tooltipY =
-    activePoint === null ? 0 : Math.max(4, activePoint.y - tooltipHeight - 10);
+  const tooltipY = activePoint === null ? 0 : Math.max(4, activePoint.y - tooltipHeight - 10);
 
   function pointerIndex(event: ReactPointerEvent<SVGSVGElement>): number | null {
     if (series.length === 0) return null;
@@ -2091,7 +2089,6 @@ function UserDetailsModal({
             disabled={pending}
             style={{ padding: '12px 10px', fontSize: 12, letterSpacing: 0 }}
           >
-            {user.isBlocked ? <UserCheck size={15} /> : <Ban size={15} />}
             {user.isBlocked ? 'Разблокировать' : 'Заблокировать'}
           </button>
           {editMode ? (
@@ -2102,7 +2099,6 @@ function UserDetailsModal({
               disabled={pending}
               style={{ padding: '12px 10px', fontSize: 12, letterSpacing: 0 }}
             >
-              <Save size={15} />
               Сохранить
             </button>
           ) : (
@@ -2113,7 +2109,6 @@ function UserDetailsModal({
               disabled={pending}
               style={{ padding: '12px 10px', fontSize: 12, letterSpacing: 0 }}
             >
-              <Pencil size={15} />
               Редактировать
             </button>
           )}
@@ -2760,7 +2755,10 @@ function PushMonitoringPanel({
       <div className="section-label" style={{ margin: '8px 0 -4px -14px' }}>
         Мониторинг доставок
       </div>
-      <section className="glass" style={{ borderRadius: 20, padding: 12, display: 'grid', gap: 10 }}>
+      <section
+        className="glass"
+        style={{ borderRadius: 20, padding: 12, display: 'grid', gap: 10 }}
+      >
         {loading && monitoring === null ? (
           <AdminPlainState>Загрузка очереди...</AdminPlainState>
         ) : (
@@ -2899,7 +2897,9 @@ function PushMonitoringPanel({
                         {item.eventType}
                       </div>
                     </div>
-                    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', justifyContent: 'end' }}>
+                    <div
+                      style={{ display: 'flex', gap: 5, flexWrap: 'wrap', justifyContent: 'end' }}
+                    >
                       <span className="pill" style={{ fontSize: 10 }}>
                         {numberText(item.sent + item.partial)}/{numberText(item.total)}
                       </span>
@@ -2971,7 +2971,9 @@ function PushMonitoringPanel({
                         </div>
                       )}
                     </div>
-                    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', justifyContent: 'end' }}>
+                    <div
+                      style={{ display: 'flex', gap: 5, flexWrap: 'wrap', justifyContent: 'end' }}
+                    >
                       <span className={item.status === 'sent' ? 'pill pill--dark' : 'pill'}>
                         {pushDeliveryStatusLabels[item.status]}
                       </span>
@@ -3210,7 +3212,6 @@ function NotificationEditor({
           disabled={mutation.isPending || !canSave}
           style={{ padding: '10px', fontSize: 12, letterSpacing: 0 }}
         >
-          <Save size={14} />
           Сохранить
         </button>
       </div>
@@ -3388,7 +3389,9 @@ function ChannelPanel({
               </div>
             </button>
           ))}
-          {loading && <AdminPlainState style={{ gridColumn: '1 / -1' }}>Загрузка...</AdminPlainState>}
+          {loading && (
+            <AdminPlainState style={{ gridColumn: '1 / -1' }}>Загрузка...</AdminPlainState>
+          )}
         </section>
       )}
 
@@ -3431,9 +3434,7 @@ function ChannelPanel({
                 >
                   {loading ? '-' : card.value}
                 </div>
-                <div
-                  style={{ marginTop: 3, color: 'var(--muted)', fontSize: 10, fontWeight: 800 }}
-                >
+                <div style={{ marginTop: 3, color: 'var(--muted)', fontSize: 10, fontWeight: 800 }}>
                   {card.hint}
                 </div>
               </div>
@@ -4440,7 +4441,6 @@ function InventoryItemCard({
             onClick={onEdit}
             style={{ padding: '10px', fontSize: 12, letterSpacing: 0 }}
           >
-            <Pencil size={14} />
             Редактировать
           </button>
           <button
@@ -4553,7 +4553,6 @@ function InventoryEditor({
           disabled={mutation.isPending || !canSave}
           style={{ padding: '10px', fontSize: 12, letterSpacing: 0 }}
         >
-          <Save size={14} />
           Сохранить
         </button>
       </div>

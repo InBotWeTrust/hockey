@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Bold, Check, Italic, Trash2, X } from 'lucide-react';
+import { Bold, Italic, Trash2, X } from 'lucide-react';
 interface ChannelPostEditorSheetProps {
   post: { id: string; content: string } | null;
   disabled?: boolean;
@@ -247,7 +247,6 @@ export function ChannelPostEditorSheet({
                   color: '#ffffff',
                 }}
               >
-                <Trash2 size={15} />
                 Удалить
               </button>
             </div>
@@ -262,7 +261,6 @@ export function ChannelPostEditorSheet({
             onClick={onClose}
             style={{ flex: 1, minHeight: 44, letterSpacing: 0 }}
           >
-            <X size={16} />
             Отмена
           </button>
           <button
@@ -272,7 +270,6 @@ export function ChannelPostEditorSheet({
             onClick={() => onSave(post.id, trimmed)}
             style={{ flex: 1, minHeight: 44, letterSpacing: 0 }}
           >
-            <Check size={16} />
             Сохранить
           </button>
         </div>
