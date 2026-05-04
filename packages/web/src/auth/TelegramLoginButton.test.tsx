@@ -78,4 +78,67 @@ describe('TelegramLoginButton', () => {
       'Вход через Telegram доступен с VPN. Включите и обновите страницу.',
     );
   });
+
+  it('keeps the telegram iframe hidden until it loads', async () => {
+    vi.useFakeTimers();
+    render(<TelegramLoginButton botUsername="test_bot" onAuth={() => {}} />);
+    const container = screen.getByTestId('telegram-login-container');
+    const frame = document.createElement('iframe');
+
+    await act(async () => {
+      container.appendChild(frame);
+      await Promise.resolve();
+    });
+
+    expect(container).toHaveStyle({ visibility: 'hidden' });
+
+    fireEvent.load(frame);
+
+    expect(container).toHaveStyle({ visibility: 'visible' });
+
+    act(() => {
+      vi.advanceTimersByTime(4000);
+    });
+
+    expect(screen.queryByTestId('telegram-login-fallback')).not.toBeInTheDocument();
+  });
+
+  it('shows a VPN refresh fallback when the telegram iframe never loads', async () => {
+    vi.useFakeTimers();
+    render(<TelegramLoginButton botUsername="test_bot" onAuth={() => {}} />);
+    const container = screen.getByTestId('telegram-login-container');
+    const frame = document.createElement('iframe');
+
+    await act(async () => {
+      container.appendChild(frame);
+      await Promise.resolve();
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(4000);
+    });
+
+    expect(screen.getByTestId('telegram-login-fallback')).toHaveTextContent(
+      'Вход через Telegram доступен с VPN. Включите и обновите страницу.',
+    );
+    expect(container).toHaveStyle({ display: 'none' });
+  });
+
+  it('shows a VPN refresh fallback when the telegram iframe reports an error', async () => {
+    render(<TelegramLoginButton botUsername="test_bot" onAuth={() => {}} />);
+    const container = screen.getByTestId('telegram-login-container');
+    const frame = document.createElement('iframe');
+
+    await act(async () => {
+      container.appendChild(frame);
+      await Promise.resolve();
+    });
+
+    fireEvent.error(frame);
+
+    expect(screen.getByTestId('telegram-login-fallback')).toHaveTextContent(
+      'Вход через Telegram доступен с VPN. Включите и обновите страницу.',
+    );
+    expect(container).toHaveStyle({ display: 'none' });
+  });
 });

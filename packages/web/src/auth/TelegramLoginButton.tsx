@@ -24,10 +24,6 @@ type WindowWithCallbacks = typeof window & Record<string, AuthCallback | undefin
 const TELEGRAM_WIDGET_TIMEOUT_MS = 4000;
 const TELEGRAM_VPN_MESSAGE = 'Вход через Telegram доступен с VPN. Включите и обновите страницу.';
 
-function hasTelegramWidget(container: HTMLDivElement): boolean {
-  return Boolean(container.querySelector('iframe'));
-}
-
 export function TelegramLoginButton({
   botUsername,
   onAuth,
@@ -36,6 +32,7 @@ export function TelegramLoginButton({
 }: TelegramLoginButtonProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [widgetUnavailable, setWidgetUnavailable] = useState(false);
+  const [widgetReady, setWidgetReady] = useState(false);
   const rawId = useId();
   const callbackName = `onTelegramAuth_${rawId.replace(/[^a-zA-Z0-9_]/g, '_')}`;
   const fallbackHeight = size === 'large' ? 40 : size === 'medium' ? 36 : 32;
@@ -49,6 +46,7 @@ export function TelegramLoginButton({
     const container = containerRef.current;
     if (!container) return;
 
+    setWidgetReady(false);
     setWidgetUnavailable(false);
     const w = window as WindowWithCallbacks;
     w[callbackName] = (payload) => onAuth(payload);
@@ -56,17 +54,32 @@ export function TelegramLoginButton({
     const script = document.createElement('script');
     let timeoutId: number | undefined;
     let observer: MutationObserver | undefined;
+    let isReady = false;
+    const watchedFrames = new Set<HTMLIFrameElement>();
+
     const markReady = () => {
+      isReady = true;
       if (timeoutId !== undefined) {
         window.clearTimeout(timeoutId);
         timeoutId = undefined;
       }
+      setWidgetReady(true);
       setWidgetUnavailable(false);
     };
-    const checkReady = () => {
-      if (hasTelegramWidget(container)) {
-        markReady();
-      }
+    const markUnavailable = () => {
+      if (isReady) return;
+      setWidgetReady(false);
+      setWidgetUnavailable(true);
+    };
+
+    const watchFrames = () => {
+      const frames = container.querySelectorAll('iframe');
+      frames.forEach((frame) => {
+        if (watchedFrames.has(frame)) return;
+        watchedFrames.add(frame);
+        frame.addEventListener('load', markReady, { once: true });
+        frame.addEventListener('error', markUnavailable, { once: true });
+      });
     };
 
     script.src = 'https://telegram.org/js/telegram-widget.js?22';
@@ -76,26 +89,29 @@ export function TelegramLoginButton({
     script.setAttribute('data-radius', String(cornerRadius));
     script.setAttribute('data-onauth', `${callbackName}(user)`);
     script.setAttribute('data-request-access', 'write');
-    script.onerror = () => setWidgetUnavailable(true);
+    script.onerror = markUnavailable;
 
     if ('MutationObserver' in window) {
-      observer = new MutationObserver(checkReady);
+      observer = new MutationObserver(watchFrames);
       observer.observe(container, { childList: true, subtree: true });
     }
 
     timeoutId = window.setTimeout(() => {
-      if (!hasTelegramWidget(container)) {
-        setWidgetUnavailable(true);
-      }
+      markUnavailable();
     }, TELEGRAM_WIDGET_TIMEOUT_MS);
 
     container.appendChild(script);
+    watchFrames();
 
     return () => {
       if (timeoutId !== undefined) {
         window.clearTimeout(timeoutId);
       }
       observer?.disconnect();
+      watchedFrames.forEach((frame) => {
+        frame.removeEventListener('load', markReady);
+        frame.removeEventListener('error', markUnavailable);
+      });
       script.onerror = null;
       w[callbackName] = undefined;
       if (script.parentNode === container) {
@@ -122,7 +138,12 @@ export function TelegramLoginButton({
       <div
         ref={containerRef}
         data-testid="telegram-login-container"
-        style={{ display: widgetUnavailable ? 'none' : 'block' }}
+        aria-hidden={!widgetReady}
+        style={{
+          display: widgetUnavailable ? 'none' : 'block',
+          minHeight: widgetReady ? undefined : fallbackHeight,
+          visibility: widgetReady ? 'visible' : 'hidden',
+        }}
       />
       {widgetUnavailable && (
         <div
