@@ -1576,9 +1576,7 @@ function TrainingPlaceholder({ onBack }: { onBack: () => void }): JSX.Element {
   }, [data?.next_day_starts_at, nextDayAt, nextDayRemaining, now, refresh]);
 
   const handleTrainingAction = async (): Promise<void> => {
-    const period =
-      data?.state === 'active' ? (data.selected_period ?? selectedPeriod) : selectedPeriod;
-    const next = await start(period);
+    const next = await start(selectedPeriod);
     if (next?.state === 'active') setPlayTraining(true);
   };
 
@@ -1616,7 +1614,6 @@ function TrainingPlaceholder({ onBack }: { onBack: () => void }): JSX.Element {
                   { id: '3', label: '3 период' },
                 ]}
                 value={String(selectedPeriod)}
-                disabled={data?.state === 'active'}
                 onChange={(id) => setSelectedPeriod(Number(id) as 1 | 2 | 3)}
               />
               <PeriodSpeedSummary

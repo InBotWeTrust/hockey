@@ -54,13 +54,14 @@ import {
 } from './events.js';
 import { EMOJI_WHITELIST } from './whitelist.js';
 import { InvalidInputError } from './errors.js';
+import { enqueueFirstDialogMessagePush } from '../push/chat.js';
 import { sendNewsPostPush } from '../push/news.js';
 import type { PushVapidOptions } from '../push/service.js';
 
 const uuid = z.string().uuid();
 const isoDate = z.string().datetime({ offset: true });
 
-export const chatRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, pushOptions) => {
+export const chatRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, _pushOptions) => {
   app.get('/chat/list', { preHandler: [app.authenticate] }, async (req) => {
     return await getMyChats(app.pg, req.user.id);
   });
@@ -131,6 +132,16 @@ export const chatRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, push
       throw new InvalidInputError('polls are only supported in channels');
     }
     await checkAndConsumeRateLimit(app.redis, userId);
+    let isFirstDirectMessage = false;
+    if (chat.type === 'direct') {
+      const firstMessage = await app.pg.query<{ is_first: boolean }>(
+        `select not exists(
+           select 1 from messages where chat_id = $1
+         ) as is_first`,
+        [chatId],
+      );
+      isFirstDirectMessage = firstMessage.rows[0]?.is_first === true;
+    }
     const sendOpts: SendMessageOpts = { chatId, senderId: userId, content: body.content };
     if (body.replyToId !== undefined) sendOpts.replyToId = body.replyToId;
     if (body.pollOptions !== undefined) sendOpts.pollOptions = body.pollOptions;
@@ -142,8 +153,16 @@ export const chatRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, push
     );
     await Promise.all(members.rows.map((m) => invalidateUnreadCache(app.redis, m.user_id)));
     await publishMessageNew(app.pg, app.realtime, chatId, chat.type, dto);
+    if (chat.type === 'direct' && isFirstDirectMessage) {
+      void enqueueFirstDialogMessagePush(app.pg, {
+        chatId,
+        senderId: userId,
+        messageId: dto.id,
+        content: dto.content,
+      }).catch((err) => app.log.warn({ err, chatId }, 'first dialog push failed'));
+    }
     if (chat.type === 'channel' && chat.channel_slug === DEFAULT_NEWS_CHANNEL_SLUG) {
-      void sendNewsPostPush(app.pg, pushOptions, {
+      void sendNewsPostPush(app.pg, {
         senderUserId: userId,
         title: 'Новости игры',
         body: dto.content,

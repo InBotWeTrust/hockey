@@ -4,21 +4,12 @@ import {
   mapPushPreferencesRow,
   type PushPreferencesRow,
 } from './preferences.js';
-import {
-  resolvePushVapidOptions,
-  sendWebPush,
-  type PushVapidOptions,
-  type WebPushPayload,
-  type WebPushSubscription,
-} from './service.js';
+import { enqueuePushDelivery } from './queue.js';
+import type { WebPushPayload } from './service.js';
 import { renderPushNotificationPayload } from './templates.js';
 
-interface NewsPushSubscriptionRow extends PushPreferencesRow {
-  id: string;
+interface NewsPushRecipientRow extends PushPreferencesRow {
   user_id: string;
-  endpoint: string;
-  p256dh: string;
-  auth: string;
 }
 
 export interface SendNewsPostPushInput {
@@ -31,20 +22,11 @@ export interface SendNewsPostPushInput {
 
 export interface SendNewsPostPushResult {
   total: number;
-  sent: number;
+  queued: number;
   skipped: number;
-  failed: number;
 }
 
 const BODY_LIMIT = 180;
-
-function toSubscription(row: NewsPushSubscriptionRow): WebPushSubscription {
-  return {
-    endpoint: row.endpoint,
-    p256dh: row.p256dh,
-    auth: row.auth,
-  };
-}
 
 function compactBody(body: string): string {
   const normalized = body.replace(/\*\*|__/g, '').replace(/\s+/g, ' ').trim();
@@ -64,24 +46,21 @@ function buildPayload(base: WebPushPayload, input: SendNewsPostPushInput): WebPu
 
 export async function sendNewsPostPush(
   pool: Pool,
-  options: PushVapidOptions,
   input: SendNewsPostPushInput,
 ): Promise<SendNewsPostPushResult> {
-  const config = resolvePushVapidOptions(options);
-  if (config === null) {
-    return { total: 0, sent: 0, skipped: 0, failed: 0 };
-  }
-
-  const { rows } = await pool.query<NewsPushSubscriptionRow>(
-    `select ps.id, ps.user_id, ps.endpoint, ps.p256dh, ps.auth,
+  const { rows } = await pool.query<NewsPushRecipientRow>(
+    `select ps.user_id::text,
             pref.chat_new_dialog_message,
             pref.daily_game,
             pref.training_available,
             pref.game_news
-       from push_subscriptions ps
+       from (
+         select distinct user_id
+           from push_subscriptions
+          where user_id <> $1
+       ) ps
        left join user_push_preferences pref on pref.user_id = ps.user_id
-      where ps.user_id <> $1
-      order by ps.updated_at desc`,
+      order by ps.user_id`,
     [input.senderUserId],
   );
 
@@ -99,13 +78,12 @@ export async function sendNewsPostPush(
     },
   );
   if (rendered === null) {
-    return { total: rows.length, sent: 0, skipped: rows.length, failed: 0 };
+    return { total: rows.length, queued: 0, skipped: rows.length };
   }
 
   const payload = buildPayload(rendered, input);
-  let sent = 0;
+  let queued = 0;
   let skipped = 0;
-  let failed = 0;
 
   for (const row of rows) {
     const preferences = mapPushPreferencesRow(row);
@@ -114,44 +92,14 @@ export async function sendNewsPostPush(
       continue;
     }
 
-    try {
-      const result = await sendWebPush(toSubscription(row), config, payload);
-      if (result.ok) {
-        sent += 1;
-        await pool.query(
-          `update push_subscriptions
-              set last_success_at = now(),
-                  last_error_at = null,
-                  last_error_message = null
-            where id = $1`,
-          [row.id],
-        );
-        continue;
-      }
-
-      failed += 1;
-      if (result.gone) {
-        await pool.query('delete from push_subscriptions where id = $1', [row.id]);
-      } else {
-        await pool.query(
-          `update push_subscriptions
-              set last_error_at = now(),
-                  last_error_message = $2
-            where id = $1`,
-          [row.id, `HTTP ${result.status}: ${result.body.slice(0, 400)}`],
-        );
-      }
-    } catch (err) {
-      failed += 1;
-      await pool.query(
-        `update push_subscriptions
-            set last_error_at = now(),
-                last_error_message = $2
-          where id = $1`,
-        [row.id, err instanceof Error ? err.message : 'push send failed'],
-      );
-    }
+    const didQueue = await enqueuePushDelivery(pool, {
+      userId: row.user_id,
+      eventType: 'news.posted',
+      eventKey: `news:${input.tag ?? input.url}`,
+      payload,
+    });
+    if (didQueue) queued += 1;
   }
 
-  return { total: rows.length, sent, skipped, failed };
+  return { total: rows.length, queued, skipped };
 }

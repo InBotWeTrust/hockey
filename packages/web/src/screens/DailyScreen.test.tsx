@@ -573,7 +573,15 @@ describe('DailyScreen', () => {
       await screen.findByRole('button', { name: /Продолжить тренировку/ }),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: '3 период' }));
+    expect(screen.getByRole('tab', { name: '3 период' })).toHaveAttribute('aria-selected', 'true');
     fireEvent.click(screen.getByRole('button', { name: /Продолжить тренировку/ }));
+    await waitFor(() => {
+      const startCall = fetchMock.mock.calls.find((call) =>
+        String(call[0]).includes('/duel/training/start'),
+      );
+      expect(startCall?.[1]?.body).toBe(JSON.stringify({ period_number: 3 }));
+    });
     expect(await screen.findByRole('button', { name: 'БРОСОК' })).toBeInTheDocument();
     expect(screen.getByText('12/500')).toBeInTheDocument();
     expect(screen.getByText('ЛИМИТ')).toBeInTheDocument();

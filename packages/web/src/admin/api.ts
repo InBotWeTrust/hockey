@@ -10,11 +10,19 @@ export type AdminMismatchPeriod = AdminDashboardPeriod;
 export type AdminPushNotificationKey =
   | 'chat.new_dialog_message'
   | 'daily.available'
+  | 'daily.unlocked_after_training'
   | 'daily.period_ending'
   | 'daily.break_finished'
   | 'training.available'
   | 'news.posted';
 export type AdminPushNotificationCategory = 'chat' | 'daily' | 'training' | 'news';
+export type AdminPushDeliveryStatus =
+  | 'queued'
+  | 'processing'
+  | 'sent'
+  | 'partial'
+  | 'failed'
+  | 'skipped';
 export type AdminSort =
   | 'name_asc'
   | 'name_desc'
@@ -348,6 +356,78 @@ export interface AdminPushNotificationPatch {
   isEnabled?: boolean;
 }
 
+export interface AdminPushMonitoringResponse {
+  generatedAt: string;
+  overview: {
+    totalDeliveries: number;
+    queued: number;
+    processing: number;
+    sent: number;
+    partial: number;
+    failed: number;
+    skipped: number;
+    dueQueued: number;
+    staleProcessing: number;
+    subscriptionCount: number;
+    subscriptionSentCount: number;
+    subscriptionFailedCount: number;
+    clickedDeliveryCount: number;
+    clickCount: number;
+    failed24h: number;
+    partial24h: number;
+    sent24h: number;
+    skipped24h: number;
+    deliveryClickRate: number;
+    subscriptionClickRate: number;
+    oldestQueuedAt: string | null;
+    oldestQueuedAgeSeconds: number;
+  };
+  alerts: Array<{
+    key: string;
+    severity: 'warning' | 'danger';
+    title: string;
+    body: string;
+  }>;
+  byStatus: Array<{ status: AdminPushDeliveryStatus; count: number }>;
+  byEventType: Array<{
+    eventType: AdminPushNotificationKey;
+    total: number;
+    queued: number;
+    processing: number;
+    sent: number;
+    partial: number;
+    failed: number;
+    skipped: number;
+    subscriptionCount: number;
+    subscriptionSentCount: number;
+    subscriptionFailedCount: number;
+    clickedDeliveryCount: number;
+    clickCount: number;
+    deliveryClickRate: number;
+    subscriptionClickRate: number;
+    lastCreatedAt: string | null;
+    lastUpdatedAt: string | null;
+  }>;
+  recent: Array<{
+    id: string;
+    userId: string;
+    userDisplayName: string;
+    eventType: AdminPushNotificationKey;
+    eventKey: string;
+    status: AdminPushDeliveryStatus;
+    attemptCount: number;
+    subscriptionCount: number;
+    sentCount: number;
+    failedCount: number;
+    clickCount: number;
+    clickedAt: string | null;
+    lastErrorMessage: string | null;
+    nextAttemptAt: string;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+}
+
 export interface AdminChannelPost {
   id: string;
   chatId: string;
@@ -498,6 +578,10 @@ export function fetchAdminMismatches(period: AdminMismatchPeriod): Promise<Admin
 
 export function fetchAdminNotifications(): Promise<{ notifications: AdminPushNotification[] }> {
   return apiFetch<{ notifications: AdminPushNotification[] }>('/admin/notifications');
+}
+
+export function fetchAdminPushMonitoring(): Promise<AdminPushMonitoringResponse> {
+  return apiFetch<AdminPushMonitoringResponse>('/admin/push-monitoring');
 }
 
 export function patchAdminNotification(

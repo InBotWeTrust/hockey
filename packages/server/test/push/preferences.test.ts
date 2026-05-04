@@ -15,6 +15,7 @@ describe('push preferences', () => {
   it('groups daily game events under the daily preference', () => {
     const preferences = { ...DEFAULT_PUSH_PREFERENCES, dailyGame: false };
     expect(isPushEventAllowed(preferences, 'daily.available')).toBe(false);
+    expect(isPushEventAllowed(preferences, 'daily.unlocked_after_training')).toBe(false);
     expect(isPushEventAllowed(preferences, 'daily.period_ending')).toBe(false);
     expect(isPushEventAllowed(preferences, 'daily.break_finished')).toBe(false);
   });

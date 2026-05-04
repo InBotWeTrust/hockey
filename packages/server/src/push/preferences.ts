@@ -12,6 +12,7 @@ export type PushPreferencePatch = Partial<PushPreferences>;
 export type PushEventType =
   | 'chat.new_dialog_message'
   | 'daily.available'
+  | 'daily.unlocked_after_training'
   | 'daily.period_ending'
   | 'daily.break_finished'
   | 'training.available'
@@ -95,6 +96,7 @@ export function isPushEventAllowed(
     case 'chat.new_dialog_message':
       return preferences.chatNewDialogMessage;
     case 'daily.available':
+    case 'daily.unlocked_after_training':
     case 'daily.period_ending':
     case 'daily.break_finished':
       return preferences.dailyGame;

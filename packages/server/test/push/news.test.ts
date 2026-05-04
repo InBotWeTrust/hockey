@@ -1,10 +1,9 @@
-import { createECDH, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { applyMigrations } from '../../src/db/migrations.js';
 import { sendNewsPostPush } from '../../src/push/news.js';
-import type { ResolvedPushVapidOptions } from '../../src/push/service.js';
 import {
   createTestPool,
   getTestUrls,
@@ -14,13 +13,6 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
-
-function createP256KeyPair(): { publicKey: string; privateKey: string } {
-  const ecdh = createECDH('prime256v1');
-  const publicKey = ecdh.generateKeys().toString('base64url');
-  const privateKey = ecdh.getPrivateKey().toString('base64url');
-  return { publicKey, privateKey };
-}
 
 describe.skipIf(!hasIntegrationEnv)('news push delivery', () => {
   let pool: ReturnType<typeof createTestPool>;
@@ -33,20 +25,10 @@ describe.skipIf(!hasIntegrationEnv)('news push delivery', () => {
   });
 
   afterEach(async () => {
-    vi.unstubAllGlobals();
     await pool.end();
   });
 
-  it('skips subscriptions when game news notifications are disabled', async () => {
-    const vapid: ResolvedPushVapidOptions = {
-      ...createP256KeyPair(),
-      subject: 'mailto:test@example.com',
-    };
-    const enabledKeys = createP256KeyPair();
-    const disabledKeys = createP256KeyPair();
-    const fetchMock = vi.fn(async () => new Response('', { status: 201 }));
-    vi.stubGlobal('fetch', fetchMock);
-
+  it('queues deliveries and skips users when game news notifications are disabled', async () => {
     const users = await pool.query<{ id: string; display_name: string }>(
       `insert into users (id, display_name, timezone)
        values (gen_random_uuid(), 'Admin', 'UTC'),
@@ -69,15 +51,15 @@ describe.skipIf(!hasIntegrationEnv)('news push delivery', () => {
               ($4, 'https://push.example.test/send/muted', $5, $6)`,
       [
         enabled.id,
-        enabledKeys.publicKey,
+        randomBytes(65).toString('base64url'),
         randomBytes(16).toString('base64url'),
         muted.id,
-        disabledKeys.publicKey,
+        randomBytes(65).toString('base64url'),
         randomBytes(16).toString('base64url'),
       ],
     );
 
-    const result = await sendNewsPostPush(pool, vapid, {
+    const result = await sendNewsPostPush(pool, {
       senderUserId: admin.id,
       title: 'Новости игры',
       body: 'Большое обновление уже на льду',
@@ -85,8 +67,25 @@ describe.skipIf(!hasIntegrationEnv)('news push delivery', () => {
       tag: 'news-test',
     });
 
-    expect(result).toEqual({ total: 2, sent: 1, skipped: 1, failed: 0 });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0]?.[0]).toBe('https://push.example.test/send/enabled');
+    expect(result).toEqual({ total: 2, queued: 1, skipped: 1 });
+    const queued = await pool.query<{
+      user_id: string;
+      event_type: string;
+      event_key: string;
+      payload: { title: string; body: string; url: string; tag: string };
+    }>(`select user_id::text, event_type, event_key, payload from push_delivery_log`);
+    expect(queued.rows).toEqual([
+      expect.objectContaining({
+        user_id: enabled.id,
+        event_type: 'news.posted',
+        event_key: 'news:news-test',
+        payload: expect.objectContaining({
+          title: 'Новости игры',
+          body: 'Большое обновление уже на льду',
+          url: '/chat/news',
+          tag: 'news-test',
+        }),
+      }),
+    ]);
   });
 });

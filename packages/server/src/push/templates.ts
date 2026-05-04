@@ -49,6 +49,7 @@ export type PushTemplateVariables = Record<string, string | number | null | unde
 const TEMPLATE_ORDER: PushEventType[] = [
   'chat.new_dialog_message',
   'daily.available',
+  'daily.unlocked_after_training',
   'daily.period_ending',
   'daily.break_finished',
   'training.available',
@@ -66,10 +67,10 @@ const DEFAULT_PUSH_NOTIFICATION_TEMPLATES: Array<{
   {
     key: 'chat.new_dialog_message',
     category: 'chat',
-    title: 'Новое сообщение',
-    body: 'Вам написали в личку',
+    title: 'Новое сообщение от {{senderName}}',
+    body: '{{messagePreview}}',
     trigger: 'Первое сообщение в новом личном диалоге.',
-    clickUrl: '/chat',
+    clickUrl: '/chat/{{chatId}}',
   },
   {
     key: 'daily.available',
@@ -77,7 +78,15 @@ const DEFAULT_PUSH_NOTIFICATION_TEMPLATES: Array<{
     title: 'Ежедневная игра доступна',
     body: 'Новый игровой день уже открыт.',
     trigger: 'Начало нового дня по часовому поясу игрока.',
-    clickUrl: '/',
+    clickUrl: '/?view=hub',
+  },
+  {
+    key: 'daily.unlocked_after_training',
+    category: 'daily',
+    title: 'Ежедневная игра открыта',
+    body: 'Восстановление после тренировки завершено.',
+    trigger: 'Через 2 часа после последнего тренировочного броска, если дневная игра ещё не начата.',
+    clickUrl: '/?view=hub',
   },
   {
     key: 'daily.period_ending',
@@ -85,7 +94,7 @@ const DEFAULT_PUSH_NOTIFICATION_TEMPLATES: Array<{
     title: 'Период скоро закончится',
     body: 'Осталось немного времени на броски.',
     trigger: 'Перед окончанием активного периода ежедневной игры.',
-    clickUrl: '/',
+    clickUrl: '/?view=daily',
   },
   {
     key: 'daily.break_finished',
@@ -93,7 +102,7 @@ const DEFAULT_PUSH_NOTIFICATION_TEMPLATES: Array<{
     title: 'Перерыв окончен',
     body: 'Следующий период можно начинать.',
     trigger: 'После окончания перерыва между периодами.',
-    clickUrl: '/',
+    clickUrl: '/?view=hub',
   },
   {
     key: 'training.available',
@@ -101,7 +110,7 @@ const DEFAULT_PUSH_NOTIFICATION_TEMPLATES: Array<{
     title: 'Тренировка доступна',
     body: 'Можно снова потренироваться.',
     trigger: 'Через 24 часа после прошлой тренировки.',
-    clickUrl: '/',
+    clickUrl: '/?view=training',
   },
   {
     key: 'news.posted',

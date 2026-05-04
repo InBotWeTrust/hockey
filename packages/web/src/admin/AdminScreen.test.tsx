@@ -413,6 +413,88 @@ describe('AdminScreen', () => {
           { status: 200, headers: { 'content-type': 'application/json' } },
         );
       }
+      if (url.includes('/admin/push-monitoring')) {
+        return new Response(
+          JSON.stringify({
+            generatedAt: '2026-05-03T08:15:00.000Z',
+            overview: {
+              totalDeliveries: 3,
+              queued: 1,
+              processing: 0,
+              sent: 2,
+              partial: 0,
+              failed: 0,
+              skipped: 0,
+              dueQueued: 1,
+              staleProcessing: 0,
+              subscriptionCount: 2,
+              subscriptionSentCount: 2,
+              subscriptionFailedCount: 0,
+              clickedDeliveryCount: 1,
+              clickCount: 1,
+              failed24h: 0,
+              partial24h: 0,
+              sent24h: 2,
+              skipped24h: 0,
+              deliveryClickRate: 50,
+              subscriptionClickRate: 50,
+              oldestQueuedAt: '2026-05-03T08:00:00.000Z',
+              oldestQueuedAgeSeconds: 900,
+            },
+            alerts: [],
+            byStatus: [
+              { status: 'queued', count: 1 },
+              { status: 'processing', count: 0 },
+              { status: 'sent', count: 2 },
+              { status: 'partial', count: 0 },
+              { status: 'failed', count: 0 },
+              { status: 'skipped', count: 0 },
+            ],
+            byEventType: [
+              {
+                eventType: 'news.posted',
+                total: 2,
+                queued: 0,
+                processing: 0,
+                sent: 2,
+                partial: 0,
+                failed: 0,
+                skipped: 0,
+                subscriptionCount: 2,
+                subscriptionSentCount: 2,
+                subscriptionFailedCount: 0,
+                clickedDeliveryCount: 1,
+                clickCount: 1,
+                deliveryClickRate: 50,
+                subscriptionClickRate: 50,
+                lastCreatedAt: '2026-05-03T08:00:00.000Z',
+                lastUpdatedAt: '2026-05-03T08:10:00.000Z',
+              },
+            ],
+            recent: [
+              {
+                id: 'delivery-1',
+                userId: 'u1',
+                userDisplayName: 'Regular Player',
+                eventType: 'news.posted',
+                eventKey: 'news:p1:u1',
+                status: 'sent',
+                attemptCount: 1,
+                subscriptionCount: 1,
+                sentCount: 1,
+                failedCount: 0,
+                clickCount: 1,
+                clickedAt: '2026-05-03T08:12:00.000Z',
+                lastErrorMessage: null,
+                nextAttemptAt: '2026-05-03T08:00:00.000Z',
+                createdAt: '2026-05-03T08:00:00.000Z',
+                updatedAt: '2026-05-03T08:12:00.000Z',
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
       if (url.includes('/admin/notifications')) {
         return new Response(
           JSON.stringify({
@@ -607,7 +689,9 @@ describe('AdminScreen', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Уведомления' }));
     expect(await screen.findByText('Уведомления (2)')).toBeInTheDocument();
-    expect(await screen.findByText('Новости игры')).toBeInTheDocument();
+    expect(await screen.findByText('Мониторинг доставок')).toBeInTheDocument();
+    expect(screen.getByText('CTR 50%')).toBeInTheDocument();
+    expect((await screen.findAllByText('Новости игры')).length).toBeGreaterThan(0);
     expect(screen.getByText('/chat/{{chatId}}')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Редактировать Новости игры' }));
     fireEvent.change(await screen.findByLabelText('Заголовок'), {

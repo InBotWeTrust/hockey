@@ -16,9 +16,12 @@ import { chatRoutes } from './chat/routes.js';
 import { chatWs } from './chat/ws.js';
 import { adminRoutes } from './admin/routes.js';
 import { pushRoutes } from './push/routes.js';
+import { pushSchedulerPlugin } from './plugins/pushScheduler.js';
 
 export interface BuildAppOptions {
   config?: AppConfig;
+  pushSchedulerEnabled?: boolean;
+  pushWorkerEnabled?: boolean;
 }
 
 export async function buildApp(options: BuildAppOptions = {}) {
@@ -73,6 +76,17 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await app.register(chatWs, { accessSecret: config.JWT_SECRET });
   await app.register(pushRoutes, pushVapidOptions);
   await app.register(adminRoutes);
+  await app.register(pushSchedulerPlugin, {
+    ...pushVapidOptions,
+    scheduleEnabled:
+      options.pushSchedulerEnabled ??
+      config.PUSH_SCHEDULER_ENABLED ??
+      config.NODE_ENV === 'production',
+    workerEnabled:
+      options.pushWorkerEnabled ?? config.PUSH_WORKER_ENABLED ?? config.NODE_ENV === 'production',
+    workerConcurrency: config.PUSH_WORKER_CONCURRENCY,
+    workerBatchSize: config.PUSH_WORKER_BATCH_SIZE,
+  });
 
   return app;
 }

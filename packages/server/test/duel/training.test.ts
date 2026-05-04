@@ -157,7 +157,10 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
 
     const second = await startTraining(1);
     expect(second.statusCode).toBe(200);
-    expect(second.json().selected_period).toBe(3);
+    const switched = second.json();
+    expect(switched.selected_period).toBe(1);
+    expect(switched.training_seed).toBe(state.training_seed);
+    expect(switched.started_at).toBe(state.started_at);
   });
 
   it('rejects stale training tapTime after the session has moved on', async () => {

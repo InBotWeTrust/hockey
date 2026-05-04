@@ -589,12 +589,12 @@ export function ChatRoomScreen(): JSX.Element {
         // (where 100dvh on Android often does not), so the composer stays
         // visible while typing. Fallback to 100dvh on browsers without
         // visualViewport.
+        position: 'relative',
         height: viewportHeight !== null ? `${viewportHeight}px` : '100dvh',
-        paddingTop: 'var(--app-safe-top)',
         overflow: 'hidden',
       }}
     >
-      <div className="chat-edge-top glass-edge-fade glass-edge-fade--top">
+      <div className="chat-edge-top chat-edge-top--overlay glass-edge-fade glass-edge-fade--top">
         <ChatRoomHeader
           title={chatTitle}
           {...(chatSubtitle !== undefined ? { subtitle: chatSubtitle } : {})}
@@ -636,7 +636,13 @@ export function ChatRoomScreen(): JSX.Element {
         style={{
           flex: 1,
           minHeight: 0,
-          padding: '20px 14px 52px',
+          padding: `${searchOpen ? 'calc(158px + var(--app-safe-top))' : 'calc(112px + var(--app-safe-top))'} 14px ${
+            showComposer
+              ? isChannel && isAdmin
+                ? 'calc(172px + var(--app-safe-bottom))'
+                : 'calc(128px + var(--app-safe-bottom))'
+              : '24px'
+          }`,
           display: 'flex',
           flexDirection: 'column',
           overflowY: 'auto',
@@ -697,7 +703,7 @@ export function ChatRoomScreen(): JSX.Element {
       </div>
 
       {showComposer && (
-        <div className="chat-edge-bottom glass-edge-fade glass-edge-fade--bottom">
+        <div className="chat-edge-bottom chat-edge-bottom--overlay glass-edge-fade glass-edge-fade--bottom">
           <ChatInput
             replyTo={isChannel ? null : replyTo}
             replyToSenderName={replyTo ? senderNameOf(replyTo) : undefined}

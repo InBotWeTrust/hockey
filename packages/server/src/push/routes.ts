@@ -35,6 +35,10 @@ const deleteSubscriptionSchema = z.object({
   endpoint: z.string().url(),
 });
 
+const clickSchema = z.object({
+  deliveryId: z.string().uuid(),
+});
+
 const testPushSchema = z
   .object({
     title: z.string().trim().min(1).max(80).optional(),
@@ -140,6 +144,24 @@ export const pushRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, opts
     );
 
     return reply.status(201).send({ ok: true });
+  });
+
+  app.post('/push/click', async (req) => {
+    const body = clickSchema.safeParse(req.body);
+    if (!body.success) {
+      throw new AppError('bad_request', 'invalid push click payload', 400);
+    }
+
+    await app.pg.query(
+      `update push_delivery_log
+          set click_count = click_count + 1,
+              clicked_at = now(),
+              updated_at = now()
+        where id = $1`,
+      [body.data.deliveryId],
+    );
+
+    return { ok: true };
   });
 
   app.delete('/push/subscriptions', { preHandler: [app.authenticate] }, async (req) => {

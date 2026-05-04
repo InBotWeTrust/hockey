@@ -16,11 +16,13 @@ import {
   type PushNotificationTemplatePatch,
 } from '../push/templates.js';
 import type { PushEventType } from '../push/preferences.js';
+import { PUSH_QUEUE_PROCESSING_STALE_MS } from '../push/queue.js';
 
 type UserRole = 'player' | 'admin';
 type DisplaySource = 'custom' | 'telegram' | 'vk';
 type FeedbackKind = 'review' | 'suggestion' | 'question';
 type AdminDashboardPeriod = '7d' | '30d' | '90d' | '365d';
+type PushDeliveryStatus = 'queued' | 'processing' | 'sent' | 'partial' | 'failed' | 'skipped';
 
 interface AdminSummaryRow {
   total_users: string;
@@ -41,6 +43,80 @@ interface AdminPushNotificationStatsRow {
   daily_game_users: string;
   training_available_users: string;
   game_news_users: string;
+}
+
+interface AdminPushDeliveryOverviewRow {
+  total_deliveries: number;
+  queued: number;
+  processing: number;
+  sent: number;
+  partial: number;
+  failed: number;
+  skipped: number;
+  due_queued: number;
+  stale_processing: number;
+  subscription_count: number;
+  subscription_sent_count: number;
+  subscription_failed_count: number;
+  clicked_delivery_count: number;
+  click_count: number;
+  failed_24h: number;
+  partial_24h: number;
+  sent_24h: number;
+  skipped_24h: number;
+  oldest_queued_at: Date | null;
+  oldest_queued_age_seconds: number;
+}
+
+interface AdminPushDeliveryStatusRow {
+  status: PushDeliveryStatus;
+  count: number;
+}
+
+interface AdminPushDeliveryEventRow {
+  event_type: PushEventType;
+  total: number;
+  queued: number;
+  processing: number;
+  sent: number;
+  partial: number;
+  failed: number;
+  skipped: number;
+  subscription_count: number;
+  subscription_sent_count: number;
+  subscription_failed_count: number;
+  clicked_delivery_count: number;
+  click_count: number;
+  last_created_at: Date | null;
+  last_updated_at: Date | null;
+}
+
+interface AdminPushDeliveryRecentRow {
+  id: string;
+  user_id: string;
+  user_display_name: string | null;
+  event_type: PushEventType;
+  event_key: string;
+  status: PushDeliveryStatus;
+  attempt_count: number;
+  subscription_count: number;
+  sent_count: number;
+  failed_count: number;
+  click_count: number;
+  clicked_at: Date | null;
+  last_error_message: string | null;
+  next_attempt_at: Date;
+  created_at: Date;
+  updated_at: Date;
+}
+
+type AdminPushMonitoringAlertSeverity = 'warning' | 'danger';
+
+interface AdminPushMonitoringAlert {
+  key: string;
+  severity: AdminPushMonitoringAlertSeverity;
+  title: string;
+  body: string;
 }
 
 interface AdminDashboardCoreRow {
@@ -395,11 +471,26 @@ const mismatchQuerySchema = z.object({
 const pushEventTypeSchema = z.enum([
   'chat.new_dialog_message',
   'daily.available',
+  'daily.unlocked_after_training',
   'daily.period_ending',
   'daily.break_finished',
   'training.available',
   'news.posted',
 ]);
+
+const pushDeliveryStatuses = [
+  'queued',
+  'processing',
+  'sent',
+  'partial',
+  'failed',
+  'skipped',
+] as const satisfies readonly PushDeliveryStatus[];
+
+const PUSH_ALERT_OLDEST_QUEUED_SECONDS = 15 * 60;
+const PUSH_ALERT_FAILED_24H = 10;
+const PUSH_ALERT_FAILURE_RATE_PERCENT = 20;
+const PUSH_ALERT_FAILURE_RATE_MIN_FINALIZED_24H = 20;
 
 const feedbackPatchSchema = z
   .object({
@@ -528,6 +619,268 @@ function mapPushNotificationStats(row: AdminPushNotificationStatsRow) {
         percent: percent(gameNews, totalUsers),
       },
     },
+  };
+}
+
+function isoOrNull(value: Date | null): string | null {
+  return value ? value.toISOString() : null;
+}
+
+function deliveryClickRate(clicked: number, delivered: number): number {
+  return ratioPercent(clicked, delivered);
+}
+
+function buildPushMonitoringAlerts(
+  overview: AdminPushDeliveryOverviewRow,
+): AdminPushMonitoringAlert[] {
+  const alerts: AdminPushMonitoringAlert[] = [];
+  if (overview.stale_processing > 0) {
+    alerts.push({
+      key: 'stale_processing',
+      severity: 'danger',
+      title: 'Есть зависшие доставки',
+      body: `${overview.stale_processing} доставок в processing дольше таймаута worker-а.`,
+    });
+  }
+  if (
+    overview.due_queued > 0 &&
+    overview.oldest_queued_age_seconds >= PUSH_ALERT_OLDEST_QUEUED_SECONDS
+  ) {
+    alerts.push({
+      key: 'queue_delayed',
+      severity: 'warning',
+      title: 'Очередь копится',
+      body: `${overview.due_queued} доставок ждут отправки, старейшая в очереди ${Math.ceil(
+        overview.oldest_queued_age_seconds / 60,
+      )} мин.`,
+    });
+  }
+  if (overview.failed_24h >= PUSH_ALERT_FAILED_24H) {
+    alerts.push({
+      key: 'failed_24h',
+      severity: 'warning',
+      title: 'Много ошибок за сутки',
+      body: `${overview.failed_24h} доставок завершились ошибкой за последние 24 часа.`,
+    });
+  }
+
+  const finalized24h =
+    overview.sent_24h + overview.partial_24h + overview.failed_24h + overview.skipped_24h;
+  const failedOrPartial24h = overview.failed_24h + overview.partial_24h;
+  const failureRate = ratioPercent(failedOrPartial24h, finalized24h);
+  if (
+    finalized24h >= PUSH_ALERT_FAILURE_RATE_MIN_FINALIZED_24H &&
+    failureRate >= PUSH_ALERT_FAILURE_RATE_PERCENT
+  ) {
+    alerts.push({
+      key: 'failure_rate_24h',
+      severity: 'danger',
+      title: 'Высокий процент ошибок',
+      body: `${failureRate}% финализированных доставок за 24 часа завершились ошибкой или частично.`,
+    });
+  }
+
+  return alerts;
+}
+
+async function fetchAdminPushMonitoring(client: Pool | PoolClient) {
+  const [overviewResult, statusResult, eventResult, recentResult] = await Promise.all([
+    client.query<AdminPushDeliveryOverviewRow>(
+      `select count(*)::int as total_deliveries,
+              count(*) filter (where status = 'queued')::int as queued,
+              count(*) filter (where status = 'processing')::int as processing,
+              count(*) filter (where status = 'sent')::int as sent,
+              count(*) filter (where status = 'partial')::int as partial,
+              count(*) filter (where status = 'failed')::int as failed,
+              count(*) filter (where status = 'skipped')::int as skipped,
+              count(*) filter (
+                where status = 'queued'
+                  and next_attempt_at <= now()
+              )::int as due_queued,
+              count(*) filter (
+                where status = 'processing'
+                  and updated_at < now() - ($1::bigint * interval '1 millisecond')
+              )::int as stale_processing,
+              coalesce(sum(subscription_count), 0)::int as subscription_count,
+              coalesce(sum(sent_count), 0)::int as subscription_sent_count,
+              coalesce(sum(failed_count), 0)::int as subscription_failed_count,
+              count(*) filter (where click_count > 0)::int as clicked_delivery_count,
+              coalesce(sum(click_count), 0)::int as click_count,
+              count(*) filter (
+                where status = 'failed'
+                  and updated_at >= now() - interval '24 hours'
+              )::int as failed_24h,
+              count(*) filter (
+                where status = 'partial'
+                  and updated_at >= now() - interval '24 hours'
+              )::int as partial_24h,
+              count(*) filter (
+                where status = 'sent'
+                  and updated_at >= now() - interval '24 hours'
+              )::int as sent_24h,
+              count(*) filter (
+                where status = 'skipped'
+                  and updated_at >= now() - interval '24 hours'
+              )::int as skipped_24h,
+              min(created_at) filter (where status = 'queued') as oldest_queued_at,
+              coalesce(
+                extract(
+                  epoch from (now() - min(created_at) filter (where status = 'queued'))
+                )::int,
+                0
+              ) as oldest_queued_age_seconds
+         from push_delivery_log`,
+      [PUSH_QUEUE_PROCESSING_STALE_MS],
+    ),
+    client.query<AdminPushDeliveryStatusRow>(
+      `select status::text as status,
+              count(*)::int as count
+         from push_delivery_log
+        group by status`,
+    ),
+    client.query<AdminPushDeliveryEventRow>(
+      `select event_type,
+              count(*)::int as total,
+              count(*) filter (where status = 'queued')::int as queued,
+              count(*) filter (where status = 'processing')::int as processing,
+              count(*) filter (where status = 'sent')::int as sent,
+              count(*) filter (where status = 'partial')::int as partial,
+              count(*) filter (where status = 'failed')::int as failed,
+              count(*) filter (where status = 'skipped')::int as skipped,
+              coalesce(sum(subscription_count), 0)::int as subscription_count,
+              coalesce(sum(sent_count), 0)::int as subscription_sent_count,
+              coalesce(sum(failed_count), 0)::int as subscription_failed_count,
+              count(*) filter (where click_count > 0)::int as clicked_delivery_count,
+              coalesce(sum(click_count), 0)::int as click_count,
+              max(created_at) as last_created_at,
+              max(updated_at) as last_updated_at
+         from push_delivery_log
+        group by event_type
+        order by max(updated_at) desc nulls last, event_type asc`,
+    ),
+    client.query<AdminPushDeliveryRecentRow>(
+      `select pdl.id::text,
+              pdl.user_id::text,
+              u.display_name as user_display_name,
+              pdl.event_type,
+              pdl.event_key,
+              pdl.status::text as status,
+              pdl.attempt_count,
+              pdl.subscription_count,
+              pdl.sent_count,
+              pdl.failed_count,
+              pdl.click_count,
+              pdl.clicked_at,
+              pdl.last_error_message,
+              pdl.next_attempt_at,
+              pdl.created_at,
+              pdl.updated_at
+         from push_delivery_log pdl
+         left join users u on u.id = pdl.user_id
+        order by pdl.updated_at desc, pdl.created_at desc
+        limit 50`,
+    ),
+  ]);
+
+  const overview = overviewResult.rows[0] ?? {
+    total_deliveries: 0,
+    queued: 0,
+    processing: 0,
+    sent: 0,
+    partial: 0,
+    failed: 0,
+    skipped: 0,
+    due_queued: 0,
+    stale_processing: 0,
+    subscription_count: 0,
+    subscription_sent_count: 0,
+    subscription_failed_count: 0,
+    clicked_delivery_count: 0,
+    click_count: 0,
+    failed_24h: 0,
+    partial_24h: 0,
+    sent_24h: 0,
+    skipped_24h: 0,
+    oldest_queued_at: null,
+    oldest_queued_age_seconds: 0,
+  };
+  const deliveredDeliveries = overview.sent + overview.partial;
+  const byStatus = new Map(statusResult.rows.map((row) => [row.status, row.count]));
+
+  return {
+    generatedAt: new Date().toISOString(),
+    overview: {
+      totalDeliveries: overview.total_deliveries,
+      queued: overview.queued,
+      processing: overview.processing,
+      sent: overview.sent,
+      partial: overview.partial,
+      failed: overview.failed,
+      skipped: overview.skipped,
+      dueQueued: overview.due_queued,
+      staleProcessing: overview.stale_processing,
+      subscriptionCount: overview.subscription_count,
+      subscriptionSentCount: overview.subscription_sent_count,
+      subscriptionFailedCount: overview.subscription_failed_count,
+      clickedDeliveryCount: overview.clicked_delivery_count,
+      clickCount: overview.click_count,
+      failed24h: overview.failed_24h,
+      partial24h: overview.partial_24h,
+      sent24h: overview.sent_24h,
+      skipped24h: overview.skipped_24h,
+      deliveryClickRate: deliveryClickRate(overview.clicked_delivery_count, deliveredDeliveries),
+      subscriptionClickRate: deliveryClickRate(
+        overview.click_count,
+        overview.subscription_sent_count,
+      ),
+      oldestQueuedAt: isoOrNull(overview.oldest_queued_at),
+      oldestQueuedAgeSeconds: overview.oldest_queued_age_seconds,
+    },
+    alerts: buildPushMonitoringAlerts(overview),
+    byStatus: pushDeliveryStatuses.map((status) => ({
+      status,
+      count: byStatus.get(status) ?? 0,
+    })),
+    byEventType: eventResult.rows.map((row) => {
+      const delivered = row.sent + row.partial;
+      return {
+        eventType: row.event_type,
+        total: row.total,
+        queued: row.queued,
+        processing: row.processing,
+        sent: row.sent,
+        partial: row.partial,
+        failed: row.failed,
+        skipped: row.skipped,
+        subscriptionCount: row.subscription_count,
+        subscriptionSentCount: row.subscription_sent_count,
+        subscriptionFailedCount: row.subscription_failed_count,
+        clickedDeliveryCount: row.clicked_delivery_count,
+        clickCount: row.click_count,
+        deliveryClickRate: deliveryClickRate(row.clicked_delivery_count, delivered),
+        subscriptionClickRate: deliveryClickRate(row.click_count, row.subscription_sent_count),
+        lastCreatedAt: isoOrNull(row.last_created_at),
+        lastUpdatedAt: isoOrNull(row.last_updated_at),
+      };
+    }),
+    recent: recentResult.rows.map((row) => ({
+      id: row.id,
+      userId: row.user_id,
+      userDisplayName: row.user_display_name ?? 'Игрок',
+      eventType: row.event_type,
+      eventKey: row.event_key,
+      status: row.status,
+      attemptCount: row.attempt_count,
+      subscriptionCount: row.subscription_count,
+      sentCount: row.sent_count,
+      failedCount: row.failed_count,
+      clickCount: row.click_count,
+      clickedAt: isoOrNull(row.clicked_at),
+      lastErrorMessage: row.last_error_message,
+      nextAttemptAt: row.next_attempt_at.toISOString(),
+      createdAt: row.created_at.toISOString(),
+      updatedAt: row.updated_at.toISOString(),
+    })),
   };
 }
 
@@ -1452,6 +1805,10 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
   app.get('/admin/notifications', { preHandler: adminPreHandlers }, async () => {
     const templates = await listPushNotificationTemplates(app.pg);
     return { notifications: templates.map(mapPushNotificationTemplate) };
+  });
+
+  app.get('/admin/push-monitoring', { preHandler: adminPreHandlers }, async () => {
+    return fetchAdminPushMonitoring(app.pg);
   });
 
   app.patch('/admin/notifications/:key', { preHandler: adminPreHandlers }, async (req) => {

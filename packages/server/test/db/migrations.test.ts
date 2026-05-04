@@ -42,6 +42,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     expect(names).toContain('push_subscriptions');
     expect(names).toContain('user_push_preferences');
     expect(names).toContain('push_notification_templates');
+    expect(names).toContain('push_delivery_log');
     expect(names).toContain('channel_post_comments');
     expect(names).toContain('channel_post_comment_reactions');
     expect(names).toContain('channel_post_polls');
@@ -71,7 +72,9 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     expect(notifications.rows).toEqual(
       expect.arrayContaining([
         { key: 'news.posted', click_url: '/chat/{{chatId}}' },
-        { key: 'training.available', click_url: '/' },
+        { key: 'daily.unlocked_after_training', click_url: '/?view=hub' },
+        { key: 'daily.period_ending', click_url: '/?view=daily' },
+        { key: 'training.available', click_url: '/?view=training' },
       ]),
     );
   });
@@ -105,6 +108,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '022_seed_admin_inventory_items.sql',
       '023_channel_comment_threads.sql',
       '024_push_notification_templates.sql',
+      '025_push_delivery_log.sql',
       '026_channel_post_polls.sql',
     ]);
   });

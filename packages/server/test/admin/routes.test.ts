@@ -69,7 +69,7 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
       `truncate users, auth_providers, user_wallet, user_equipment, user_sticks,
               training_session, day_pool, period_log, shot_session, event_log,
               payments, admin_inventory_items, feedback_messages,
-              push_subscriptions, user_push_preferences
+              push_delivery_log, push_subscriptions, user_push_preferences
               restart identity cascade`,
     );
 
@@ -284,6 +284,107 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
       payload: { clickUrl: 'https://example.com' },
     });
     expect(invalid.statusCode).toBe(400);
+
+    const delivery = await pool.query<{ id: string }>(
+      `insert into push_delivery_log
+         (user_id, event_type, event_key, status, payload, subscription_count, sent_count)
+       values
+         ($1, 'news.posted', 'news:p1:player', 'sent', $2::jsonb, 1, 1)
+       returning id`,
+      [
+        playerId,
+        JSON.stringify({
+          title: 'Новости игры',
+          body: 'Матч уже в игре',
+          url: '/chat/news',
+        }),
+      ],
+    );
+    await pool.query(
+      `insert into push_delivery_log
+         (user_id, event_type, event_key, status, payload, next_attempt_at, created_at, updated_at)
+       values (
+         $1,
+         'daily.period_ending',
+         'daily:player:period-ending',
+         'queued',
+         $2::jsonb,
+         now() - interval '1 minute',
+         now() - interval '20 minutes',
+         now() - interval '20 minutes'
+       )`,
+      [
+        playerId,
+        JSON.stringify({
+          title: 'Период заканчивается',
+          body: 'Осталось 5 минут.',
+          url: '/?view=daily',
+        }),
+      ],
+    );
+
+    const click = await app.inject({
+      method: 'POST',
+      url: '/push/click',
+      payload: { deliveryId: delivery.rows[0]!.id },
+    });
+    expect(click.statusCode).toBe(200);
+
+    const monitoringDenied = await app.inject({
+      method: 'GET',
+      url: '/admin/push-monitoring',
+      headers: auth(playerToken),
+    });
+    expect(monitoringDenied.statusCode).toBe(403);
+
+    const monitoring = await app.inject({
+      method: 'GET',
+      url: '/admin/push-monitoring',
+      headers: auth(adminToken),
+    });
+    expect(monitoring.statusCode).toBe(200);
+    expect(monitoring.json()).toMatchObject({
+      overview: {
+        totalDeliveries: 2,
+        queued: 1,
+        sent: 1,
+        dueQueued: 1,
+        clickedDeliveryCount: 1,
+        clickCount: 1,
+        failed24h: 0,
+        partial24h: 0,
+        sent24h: 1,
+        skipped24h: 0,
+        deliveryClickRate: 100,
+      },
+      alerts: expect.arrayContaining([
+        expect.objectContaining({
+          key: 'queue_delayed',
+          severity: 'warning',
+        }),
+      ]),
+      byStatus: expect.arrayContaining([
+        { status: 'queued', count: 1 },
+        { status: 'sent', count: 1 },
+      ]),
+      byEventType: expect.arrayContaining([
+        expect.objectContaining({
+          eventType: 'news.posted',
+          total: 1,
+          sent: 1,
+          clickCount: 1,
+          deliveryClickRate: 100,
+        }),
+      ]),
+      recent: expect.arrayContaining([
+        expect.objectContaining({
+          id: delivery.rows[0]!.id,
+          eventType: 'news.posted',
+          status: 'sent',
+          clickCount: 1,
+        }),
+      ]),
+    });
   });
 
   it('stores player feedback and lets admins mark it read manually', async () => {

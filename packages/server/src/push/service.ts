@@ -30,6 +30,7 @@ export interface WebPushPayload {
   title: string;
   body: string;
   url: string;
+  deliveryId?: string;
   tag?: string;
   icon?: string;
   badge?: string;
@@ -38,6 +39,7 @@ export interface WebPushPayload {
 
 const DEFAULT_VAPID_SUBJECT = 'mailto:push@hockey.inbotwetrust.ru';
 const WEB_PUSH_TTL_SECONDS = 60;
+const WEB_PUSH_TIMEOUT_MS = 10_000;
 const WEB_PUSH_RECORD_SIZE = 4096;
 const MAX_WEB_PUSH_PAYLOAD_BYTES = 3800;
 
@@ -165,17 +167,28 @@ export async function sendWebPush(
     headers['Content-Length'] = String(body.length);
   }
 
-  const response = await fetch(subscription.endpoint, {
-    method: 'POST',
-    headers,
-    ...(body ? { body } : {}),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => {
+    controller.abort();
+  }, WEB_PUSH_TIMEOUT_MS);
+  timeout.unref();
 
-  const responseBody = await response.text().catch(() => '');
-  return {
-    ok: response.ok,
-    status: response.status,
-    gone: response.status === 404 || response.status === 410,
-    body: responseBody,
-  };
+  try {
+    const response = await fetch(subscription.endpoint, {
+      method: 'POST',
+      headers,
+      ...(body ? { body } : {}),
+      signal: controller.signal,
+    });
+
+    const responseBody = await response.text().catch(() => '');
+    return {
+      ok: response.ok,
+      status: response.status,
+      gone: response.status === 404 || response.status === 410,
+      body: responseBody,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 }

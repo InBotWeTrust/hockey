@@ -58,6 +58,7 @@ import {
   fetchAdminMismatches,
   fetchAdminNotifications,
   fetchAdminPayments,
+  fetchAdminPushMonitoring,
   fetchAdminSummary,
   fetchAdminUser,
   fetchAdminUsers,
@@ -87,6 +88,7 @@ import {
   type AdminPushNotificationCategory,
   type AdminPushNotificationKey,
   type AdminPushNotificationPatch,
+  type AdminPushMonitoringResponse,
   type AdminUserDetail,
   type AdminLevelFilter,
   type AdminPayment,
@@ -151,6 +153,18 @@ const pushNotificationCategoryLabels: Record<AdminPushNotificationCategory, stri
   daily: 'Ежедневная игра',
   training: 'Тренировка',
   news: 'Новости',
+};
+
+const pushDeliveryStatusLabels: Record<
+  AdminPushMonitoringResponse['byStatus'][number]['status'],
+  string
+> = {
+  queued: 'Очередь',
+  processing: 'В работе',
+  sent: 'Доставлено',
+  partial: 'Частично',
+  failed: 'Ошибка',
+  skipped: 'Пропущено',
 };
 
 const settingSections: Array<{
@@ -423,6 +437,11 @@ function minutesText(value: number): string {
   return minutes > 0 ? `${numberText(hours)} ч ${minutes} мин` : `${numberText(hours)} ч`;
 }
 
+function secondsAgeText(value: number): string {
+  if (value <= 0) return 'нет';
+  return minutesText(Math.ceil(value / 60));
+}
+
 function shortDateText(iso: string): string {
   const date = new Date(`${iso}T00:00:00.000Z`);
   if (Number.isNaN(date.getTime())) return iso.slice(5);
@@ -548,6 +567,12 @@ export function AdminScreen(): JSX.Element {
     queryKey: ['admin', 'notifications'],
     queryFn: fetchAdminNotifications,
     enabled: canTryAdmin && tab === 'notifications',
+  });
+  const pushMonitoring = useQuery({
+    queryKey: ['admin', 'push-monitoring'],
+    queryFn: fetchAdminPushMonitoring,
+    enabled: canTryAdmin && tab === 'notifications',
+    refetchInterval: tab === 'notifications' ? 30_000 : false,
   });
   const channel = useQuery({
     queryKey: ['admin', 'channel', channelPeriod],
@@ -691,8 +716,11 @@ export function AdminScreen(): JSX.Element {
         <NotificationsPanel
           loading={notifications.isLoading}
           notifications={notifications.data?.notifications ?? []}
+          monitoring={pushMonitoring.data ?? null}
+          monitoringLoading={pushMonitoring.isLoading}
           onChanged={() => {
             void queryClient.invalidateQueries({ queryKey: ['admin', 'notifications'] });
+            void queryClient.invalidateQueries({ queryKey: ['admin', 'push-monitoring'] });
           }}
         />
       )}
@@ -2621,10 +2649,14 @@ function ConfirmAction({
 function NotificationsPanel({
   loading,
   notifications,
+  monitoring,
+  monitoringLoading,
   onChanged,
 }: {
   loading: boolean;
   notifications: AdminPushNotification[];
+  monitoring: AdminPushMonitoringResponse | null;
+  monitoringLoading: boolean;
   onChanged: () => void;
 }): JSX.Element {
   const [editing, setEditing] = useState<AdminPushNotification | null>(null);
@@ -2672,6 +2704,11 @@ function NotificationsPanel({
           </div>
         </div>
       </section>
+      <PushMonitoringPanel
+        loading={monitoringLoading}
+        monitoring={monitoring}
+        notifications={notifications}
+      />
       {editing !== null && (
         <NotificationEditor
           notification={editing}
@@ -2694,6 +2731,263 @@ function NotificationsPanel({
             onEdit={() => setEditing(notification)}
           />
         ))}
+      </section>
+    </>
+  );
+}
+
+function PushMonitoringPanel({
+  loading,
+  monitoring,
+  notifications,
+}: {
+  loading: boolean;
+  monitoring: AdminPushMonitoringResponse | null;
+  notifications: AdminPushNotification[];
+}): JSX.Element {
+  const titleByKey = new Map(notifications.map((item) => [item.key, item.title]));
+  const overview = monitoring?.overview ?? null;
+  const eventStats = monitoring?.byEventType.slice(0, 6) ?? [];
+  const recent = monitoring?.recent.slice(0, 6) ?? [];
+  const delivered = overview ? overview.sent + overview.partial : 0;
+
+  function eventTitle(key: AdminPushNotificationKey): string {
+    return titleByKey.get(key) ?? key;
+  }
+
+  return (
+    <>
+      <div className="section-label" style={{ margin: '8px 0 -4px -14px' }}>
+        Мониторинг доставок
+      </div>
+      <section className="glass" style={{ borderRadius: 20, padding: 12, display: 'grid', gap: 10 }}>
+        {loading && monitoring === null ? (
+          <AdminPlainState>Загрузка очереди...</AdminPlainState>
+        ) : (
+          <>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                gap: 8,
+              }}
+            >
+              <DashboardMiniStat
+                label="В очереди"
+                value={numberText(overview?.queued ?? 0)}
+                note={`к отправке ${numberText(overview?.dueQueued ?? 0)}`}
+              />
+              <DashboardMiniStat
+                label="Доставлено"
+                value={numberText(delivered)}
+                note={`${numberText(overview?.subscriptionSentCount ?? 0)} подпискам`}
+              />
+              <DashboardMiniStat
+                label="Ошибки"
+                value={numberText((overview?.failed ?? 0) + (overview?.partial ?? 0))}
+                note={`зависло ${numberText(overview?.staleProcessing ?? 0)}`}
+              />
+              <DashboardMiniStat
+                label="Клики"
+                value={numberText(overview?.clickCount ?? 0)}
+                note={`CTR ${percentText(overview?.deliveryClickRate ?? 0)}`}
+              />
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {monitoring?.byStatus.map((item) => (
+                <span key={item.status} className="pill" style={{ fontSize: 10 }}>
+                  {pushDeliveryStatusLabels[item.status]}: {numberText(item.count)}
+                </span>
+              ))}
+              <span className="pill" style={{ fontSize: 10 }}>
+                Старейшая очередь: {secondsAgeText(overview?.oldestQueuedAgeSeconds ?? 0)}
+              </span>
+              <span className="pill" style={{ fontSize: 10 }}>
+                Обновлено {dateTimeText(monitoring?.generatedAt)}
+              </span>
+            </div>
+            {monitoring && (
+              <div style={{ display: 'grid', gap: 7 }}>
+                {monitoring.alerts.length === 0 ? (
+                  <div
+                    style={{
+                      border: '1px solid rgba(255, 255, 255, 0.72)',
+                      borderRadius: 15,
+                      padding: '9px 10px',
+                      background: 'rgba(255, 255, 255, 0.24)',
+                      color: 'var(--muted)',
+                      fontSize: 11,
+                      fontWeight: 850,
+                    }}
+                  >
+                    Очередь работает штатно, критичных alert-ов нет.
+                  </div>
+                ) : (
+                  monitoring.alerts.map((alert) => (
+                    <div
+                      key={alert.key}
+                      style={{
+                        border:
+                          alert.severity === 'danger'
+                            ? '1px solid rgba(185, 28, 28, 0.42)'
+                            : '1px solid rgba(180, 83, 9, 0.42)',
+                        borderRadius: 15,
+                        padding: '9px 10px',
+                        background:
+                          alert.severity === 'danger'
+                            ? 'rgba(254, 226, 226, 0.56)'
+                            : 'rgba(254, 243, 199, 0.56)',
+                      }}
+                    >
+                      <div style={{ color: 'var(--ink)', fontSize: 12, fontWeight: 950 }}>
+                        {alert.title}
+                      </div>
+                      <div
+                        style={{
+                          marginTop: 3,
+                          color: 'rgba(15, 23, 42, 0.72)',
+                          fontSize: 11,
+                          fontWeight: 800,
+                          lineHeight: 1.35,
+                        }}
+                      >
+                        {alert.body}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+            {eventStats.length > 0 ? (
+              <div style={{ display: 'grid', gap: 7 }}>
+                {eventStats.map((item) => (
+                  <div
+                    key={item.eventType}
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'minmax(0, 1fr) auto',
+                      gap: 8,
+                      alignItems: 'center',
+                      border: '1px solid rgba(255, 255, 255, 0.72)',
+                      borderRadius: 15,
+                      padding: '9px 10px',
+                      background: 'rgba(255, 255, 255, 0.26)',
+                    }}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <div
+                        style={{
+                          color: 'var(--ink)',
+                          fontSize: 12,
+                          fontWeight: 950,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {eventTitle(item.eventType)}
+                      </div>
+                      <div
+                        style={{
+                          marginTop: 3,
+                          color: 'var(--muted)',
+                          fontSize: 10,
+                          fontWeight: 800,
+                          overflowWrap: 'anywhere',
+                        }}
+                      >
+                        {item.eventType}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', justifyContent: 'end' }}>
+                      <span className="pill" style={{ fontSize: 10 }}>
+                        {numberText(item.sent + item.partial)}/{numberText(item.total)}
+                      </span>
+                      <span className="pill" style={{ fontSize: 10 }}>
+                        {numberText(item.clickCount)} кликов
+                      </span>
+                      <span className="pill" style={{ fontSize: 10 }}>
+                        {percentText(item.deliveryClickRate)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <AdminPlainState>Доставок пока нет</AdminPlainState>
+            )}
+            {recent.length > 0 && (
+              <div style={{ display: 'grid', gap: 7 }}>
+                <div style={{ color: 'var(--muted)', fontSize: 10, fontWeight: 900 }}>
+                  Последние доставки
+                </div>
+                {recent.map((item) => (
+                  <div
+                    key={item.id}
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'minmax(0, 1fr) auto',
+                      gap: 8,
+                      alignItems: 'center',
+                      borderBottom: '1px solid rgba(255, 255, 255, 0.42)',
+                      paddingBottom: 7,
+                    }}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <div
+                        style={{
+                          color: 'var(--ink)',
+                          fontSize: 12,
+                          fontWeight: 900,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {item.userDisplayName} · {eventTitle(item.eventType)}
+                      </div>
+                      <div
+                        style={{
+                          marginTop: 3,
+                          color: 'var(--muted)',
+                          fontSize: 10,
+                          fontWeight: 800,
+                          overflowWrap: 'anywhere',
+                        }}
+                      >
+                        {item.eventKey}
+                      </div>
+                      {item.lastErrorMessage && (
+                        <div
+                          style={{
+                            marginTop: 3,
+                            color: '#b91c1c',
+                            fontSize: 10,
+                            fontWeight: 850,
+                            overflowWrap: 'anywhere',
+                          }}
+                        >
+                          {item.lastErrorMessage}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', justifyContent: 'end' }}>
+                      <span className={item.status === 'sent' ? 'pill pill--dark' : 'pill'}>
+                        {pushDeliveryStatusLabels[item.status]}
+                      </span>
+                      <span className="pill" style={{ fontSize: 10 }}>
+                        {numberText(item.sentCount)}/{numberText(item.subscriptionCount)}
+                      </span>
+                      <span className="pill" style={{ fontSize: 10 }}>
+                        {numberText(item.clickCount)} кликов
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
       </section>
     </>
   );

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { randomBytes } from 'node:crypto';
 import { buildApp } from '../../src/app.js';
 import type { AppConfig } from '../../src/config.js';
 import { createJwt } from '../../src/auth/jwt.js';
@@ -16,6 +17,8 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
+const JWT_SECRET = 'test-jwt-secret-at-least-16-chars';
+const REFRESH_SECRET = 'test-refresh-secret-at-least-16-chars';
 
 describe.skipIf(!hasIntegrationEnv)('chat routes', () => {
   let app: Awaited<ReturnType<typeof buildApp>>;
@@ -45,8 +48,8 @@ describe.skipIf(!hasIntegrationEnv)('chat routes', () => {
       LOG_LEVEL: 'warn',
       DATABASE_URL: databaseUrl,
       REDIS_URL: redisUrl,
-      JWT_SECRET: 'test-jwt-secret-at-least-16-chars',
-      REFRESH_SECRET: 'test-refresh-secret-at-least-16-chars',
+      JWT_SECRET,
+      REFRESH_SECRET,
       TELEGRAM_BOT_TOKEN: 'test-telegram-bot-token',
       DAILY_SEED_SECRET: 'test-daily-seed-secret-at-least-16',
     };
@@ -59,8 +62,8 @@ describe.skipIf(!hasIntegrationEnv)('chat routes', () => {
     userC = (await app.pg.query(ins, ['Charlie'])).rows[0].id;
 
     const jwt = createJwt({
-      accessSecret: config.JWT_SECRET,
-      refreshSecret: config.REFRESH_SECRET,
+      accessSecret: JWT_SECRET,
+      refreshSecret: REFRESH_SECRET,
     });
     tokenA = await jwt.issueAccessToken({ sub: userA });
     tokenB = await jwt.issueAccessToken({ sub: userB });
@@ -70,6 +73,20 @@ describe.skipIf(!hasIntegrationEnv)('chat routes', () => {
   afterAll(async () => {
     await app.close();
   });
+
+  async function waitForPushDeliveryRows(eventType: string): Promise<Array<{ id: string }>> {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const { rows } = await app.pg.query<{ id: string }>(
+        `select id::text from push_delivery_log where event_type = $1`,
+        [eventType],
+      );
+      if (rows.length > 0) return rows;
+      await new Promise((resolve) => {
+        setTimeout(resolve, 10);
+      });
+    }
+    return [];
+  }
 
   it('GET /chat/list returns the default news channel for new user', async () => {
     const res = await app.inject({
@@ -435,6 +452,85 @@ describe.skipIf(!hasIntegrationEnv)('chat routes', () => {
     const list = msgs.json();
     expect(list.length).toBeGreaterThanOrEqual(1);
     expect(list[0].content).toBe('hi B');
+  });
+
+  it('queues a push only when a user sends the first direct message', async () => {
+    const first = await app.pg.query<{ id: string }>(
+      `insert into users (id, display_name, timezone)
+       values (gen_random_uuid(), 'Push Sender', 'UTC')
+       returning id`,
+    );
+    const second = await app.pg.query<{ id: string }>(
+      `insert into users (id, display_name, timezone)
+       values (gen_random_uuid(), 'Push Recipient', 'UTC')
+       returning id`,
+    );
+    const senderId = first.rows[0]!.id;
+    const recipientId = second.rows[0]!.id;
+    const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+    const senderToken = await jwt.issueAccessToken({ sub: senderId });
+
+    await app.pg.query(
+      `insert into push_subscriptions (user_id, endpoint, p256dh, auth)
+       values ($1, $2, $3, $4)`,
+      [
+        recipientId,
+        `https://push.example.test/send/${recipientId}`,
+        randomBytes(65).toString('base64url'),
+        randomBytes(16).toString('base64url'),
+      ],
+    );
+
+    const dm = await app.inject({
+      method: 'POST',
+      url: '/chat/dm',
+      headers: { authorization: `Bearer ${senderToken}`, 'content-type': 'application/json' },
+      payload: { otherUserId: recipientId },
+    });
+    expect(dm.statusCode).toBe(200);
+    const { chatId } = dm.json();
+
+    const firstMessage = await app.inject({
+      method: 'POST',
+      url: `/chat/${chatId}/messages`,
+      headers: { authorization: `Bearer ${senderToken}`, 'content-type': 'application/json' },
+      payload: { content: 'Привет, сыграем?' },
+    });
+    expect(firstMessage.statusCode).toBe(201);
+
+    const firstRows = await waitForPushDeliveryRows('chat.new_dialog_message');
+    expect(firstRows).toHaveLength(1);
+    const queued = await app.pg.query<{
+      user_id: string;
+      event_key: string;
+      payload: { title: string; body: string; url: string; tag: string };
+    }>(
+      `select user_id::text, event_key, payload
+         from push_delivery_log
+        where event_type = 'chat.new_dialog_message'`,
+    );
+    expect(queued.rows[0]).toMatchObject({
+      user_id: recipientId,
+      event_key: `chat:new-dialog:${chatId}`,
+      payload: expect.objectContaining({
+        title: 'Новое сообщение от Push Sender',
+        body: 'Привет, сыграем?',
+        url: `/chat/${chatId}`,
+        tag: `ultimate-hockey-dm-${chatId}`,
+      }),
+    });
+
+    const secondMessage = await app.inject({
+      method: 'POST',
+      url: `/chat/${chatId}/messages`,
+      headers: { authorization: `Bearer ${senderToken}`, 'content-type': 'application/json' },
+      payload: { content: 'Я уже на льду' },
+    });
+    expect(secondMessage.statusCode).toBe(201);
+    const afterSecond = await app.pg.query<{ count: string }>(
+      `select count(*) from push_delivery_log where event_type = 'chat.new_dialog_message'`,
+    );
+    expect(Number(afterSecond.rows[0]!.count)).toBe(1);
   });
 
   it('GET /chat/:id/messages 403 for non-member', async () => {

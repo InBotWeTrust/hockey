@@ -46,6 +46,40 @@ services:
       PUSH_VAPID_PUBLIC_KEY: ${PUSH_VAPID_PUBLIC_KEY:-}
       PUSH_VAPID_PRIVATE_KEY: ${PUSH_VAPID_PRIVATE_KEY:-}
       PUSH_VAPID_SUBJECT: ${PUSH_VAPID_SUBJECT:-}
+      PUSH_SCHEDULER_ENABLED: ${PUSH_SCHEDULER_ENABLED:-false}
+      PUSH_WORKER_ENABLED: ${PUSH_WORKER_ENABLED:-false}
+      PUSH_WORKER_CONCURRENCY: ${PUSH_WORKER_CONCURRENCY:-5}
+      PUSH_WORKER_BATCH_SIZE: ${PUSH_WORKER_BATCH_SIZE:-50}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  push-worker:
+    image: ghcr.io/inbotwetrust/hockey-server:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    command: ['node', 'packages/server/dist/push/worker-cli.js']
+    environment:
+      NODE_ENV: ${NODE_ENV}
+      HOST: 0.0.0.0
+      PORT: 3000
+      LOG_LEVEL: ${LOG_LEVEL}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      REFRESH_SECRET: ${REFRESH_SECRET}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      DAILY_SEED_SECRET: ${DAILY_SEED_SECRET}
+      VK_APP_ID: ${VK_APP_ID:-54571497}
+      ACCOUNT_RECOVERY_TELEGRAM_PROVIDER_UIDS: ${ACCOUNT_RECOVERY_TELEGRAM_PROVIDER_UIDS:-}
+      PUSH_VAPID_PUBLIC_KEY: ${PUSH_VAPID_PUBLIC_KEY:-}
+      PUSH_VAPID_PRIVATE_KEY: ${PUSH_VAPID_PRIVATE_KEY:-}
+      PUSH_VAPID_SUBJECT: ${PUSH_VAPID_SUBJECT:-}
+      PUSH_WORKER_CONCURRENCY: ${PUSH_WORKER_CONCURRENCY:-5}
+      PUSH_WORKER_BATCH_SIZE: ${PUSH_WORKER_BATCH_SIZE:-50}
+    healthcheck:
+      disable: true
     depends_on:
       postgres:
         condition: service_healthy

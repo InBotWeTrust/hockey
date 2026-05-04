@@ -343,12 +343,12 @@ export function ChannelPostCommentsScreen(): JSX.Element {
     <main
       className="screen"
       style={{
+        position: 'relative',
         height: viewportHeight !== null ? `${viewportHeight}px` : '100dvh',
-        paddingTop: 'var(--app-safe-top)',
         overflow: 'hidden',
       }}
     >
-      <div className="chat-edge-top glass-edge-fade glass-edge-fade--top">
+      <div className="chat-edge-top chat-edge-top--overlay glass-edge-fade glass-edge-fade--top">
         <div
           className="chat-dock-header glass-dock-surface"
           style={{
@@ -380,7 +380,7 @@ export function ChannelPostCommentsScreen(): JSX.Element {
           display: 'flex',
           flexDirection: 'column',
           gap: 10,
-          padding: '20px 14px 52px',
+          padding: 'calc(112px + var(--app-safe-top)) 14px calc(128px + var(--app-safe-bottom))',
         }}
       >
         {postQuery.data && (
@@ -419,7 +419,7 @@ export function ChannelPostCommentsScreen(): JSX.Element {
         ))}
       </div>
 
-      <div className="chat-edge-bottom glass-edge-fade glass-edge-fade--bottom">
+      <div className="chat-edge-bottom chat-edge-bottom--overlay glass-edge-fade glass-edge-fade--bottom">
         <ChatInput
           replyTo={replyToComment}
           replyToSenderName={replyToComment?.authorDisplayName ?? undefined}

@@ -286,6 +286,17 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
         now,
       );
       if (session !== null) {
+        if (session.state === 'active' && session.selected_period !== selectedPeriod) {
+          const { rows } = await client.query<TrainingSessionRow>(
+            `update training_session
+                set selected_period = $1
+              where id = $2
+              returning id, user_id, day_date::text as day_date, selected_period, state,
+                        game_core_version, training_seed, started_at, closed_at`,
+            [selectedPeriod, session.id],
+          );
+          return buildTrainingState(client, rows[0]!, localToday, timezone, settings, now);
+        }
         return buildTrainingState(client, session, localToday, timezone, settings, now);
       }
 
