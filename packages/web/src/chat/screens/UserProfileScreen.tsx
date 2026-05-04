@@ -184,6 +184,10 @@ export function UserProfileScreen(): JSX.Element {
               </button>
             </div>
           )}
+          <div
+            aria-hidden="true"
+            style={{ height: 'calc(128px + var(--app-safe-bottom))', flexShrink: 0 }}
+          />
           {selectedAchievement !== null && (
             <AchievementDetailsSheet
               achievement={selectedAchievement}
