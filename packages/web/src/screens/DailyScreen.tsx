@@ -1340,6 +1340,7 @@ function DailyGameStatsModal({
 }
 
 function DailyStatsMetric({ label, value }: { label: string; value: string }): JSX.Element {
+  const isTime = label === 'Время';
   return (
     <div
       style={{
@@ -1367,7 +1368,7 @@ function DailyStatsMetric({ label, value }: { label: string; value: string }): J
           marginTop: 7,
           color: 'var(--ink)',
           fontFamily: 'var(--font-mono)',
-          fontSize: 20,
+          fontSize: isTime ? 17 : 20,
           fontWeight: 800,
           lineHeight: 1,
           fontVariantNumeric: 'tabular-nums',
