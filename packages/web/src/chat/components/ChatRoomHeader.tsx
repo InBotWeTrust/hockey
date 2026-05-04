@@ -6,9 +6,10 @@ interface Props {
   subtitle?: string;
   avatarUrl: string | null;
   onBack: () => void;
-  // Optional: when provided, the avatar+title cluster becomes a button that
-  // navigates to the chat info screen. Skipped for DMs (no info screen yet).
+  // Optional: when provided, the avatar+title cluster becomes a button.
+  // Group/system/channel chats use it for chat info, DMs use it for counterpart profile.
   onTitleClick?: () => void;
+  onTitleClickLabel?: string;
   searchOpen: boolean;
   onToggleSearch: () => void;
 }
@@ -19,6 +20,7 @@ export function ChatRoomHeader({
   avatarUrl,
   onBack,
   onTitleClick,
+  onTitleClickLabel,
   searchOpen,
   onToggleSearch,
 }: Props): JSX.Element {
@@ -93,7 +95,7 @@ export function ChatRoomHeader({
             <button
               type="button"
               onClick={onTitleClick}
-              aria-label="Открыть информацию о чате"
+              aria-label={onTitleClickLabel ?? 'Открыть информацию о чате'}
               style={{
                 flex: 1,
                 display: 'flex',

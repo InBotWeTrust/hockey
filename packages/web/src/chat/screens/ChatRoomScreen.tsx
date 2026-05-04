@@ -121,19 +121,20 @@ export function ChatRoomScreen(): JSX.Element {
   });
   const chatMeta = chatListQuery.data?.find((c) => c.id === chatId);
   const isChannel = chatMeta?.type === 'channel';
+  const dmCounterpart = chatMeta?.type === 'direct' ? chatMeta.dmCounterpart : null;
   const chatTitle =
     chatMeta?.type === 'direct'
-      ? (chatMeta.dmCounterpart?.displayName ?? 'Диалог')
+      ? (dmCounterpart?.displayName ?? 'Диалог')
       : (chatMeta?.name ??
         (chatMeta?.type === 'channel'
           ? 'Канал'
           : chatMeta?.type === 'system'
             ? 'Системный канал'
             : 'Чат'));
-  const chatAvatarUrl = chatMeta?.dmCounterpart?.avatarUrl ?? null;
+  const chatAvatarUrl = dmCounterpart?.avatarUrl ?? null;
   const chatSubtitle =
     chatMeta?.type === 'direct'
-      ? formatLastSeen(chatMeta.dmCounterpart?.lastSeenAt ?? null)
+      ? formatLastSeen(dmCounterpart?.lastSeenAt ?? null)
       : chatMeta
         ? chatMeta.type === 'channel'
           ? `Канал · ${formatSubscriberCount(chatMeta.memberCount)}`
@@ -600,9 +601,14 @@ export function ChatRoomScreen(): JSX.Element {
           {...(chatSubtitle !== undefined ? { subtitle: chatSubtitle } : {})}
           avatarUrl={chatAvatarUrl}
           onBack={() => navigate('/chat')}
-          {...(chatMeta && chatMeta.type !== 'direct'
-            ? { onTitleClick: () => navigate(`/chat/${chatId}/info`) }
-            : {})}
+          {...(dmCounterpart
+            ? {
+                onTitleClick: () => navigate(`/users/${dmCounterpart.userId}`),
+                onTitleClickLabel: 'Открыть профиль игрока',
+              }
+            : chatMeta && chatMeta.type !== 'direct'
+              ? { onTitleClick: () => navigate(`/chat/${chatId}/info`) }
+              : {})}
           searchOpen={searchOpen}
           onToggleSearch={() => setSearchOpen((o) => !o)}
         />

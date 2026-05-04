@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useParams } from 'react-router-dom';
 import { ChatRoomScreen } from '../screens/ChatRoomScreen.js';
 import { useAuthStore, type AuthUser } from '../../auth/authStore.js';
 import { chatKeys } from '../../lib/queryKeys.js';
@@ -18,11 +18,17 @@ function renderRoom(chatId: string, search = ''): { queryClient: QueryClient } {
         <Routes>
           <Route path="/chat/:chatId" element={<ChatRoomScreen />} />
           <Route path="/chat" element={<div>list</div>} />
+          <Route path="/users/:userId" element={<UserRouteProbe />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   );
   return { queryClient };
+}
+
+function UserRouteProbe(): JSX.Element {
+  const params = useParams<{ userId: string }>();
+  return <div>profile:{params.userId}</div>;
 }
 
 const SELF_ID = '00000000-0000-0000-0000-00000000aaaa';
@@ -131,6 +137,36 @@ describe('ChatRoomScreen', () => {
     renderRoom('c1');
 
     expect(await screen.findByText('Канал · 10 подписчиков')).toBeInTheDocument();
+  });
+
+  it('opens the direct counterpart profile from the header avatar or name', async () => {
+    vi.mocked(api.fetchChatList).mockResolvedValue([
+      {
+        id: 'c1',
+        type: 'direct',
+        name: null,
+        entityType: null,
+        entityId: null,
+        lastMessageAt: null,
+        unreadCount: 0,
+        lastMessage: null,
+        lastMessageSenderName: null,
+        dmCounterpart: {
+          userId: OTHER_ID,
+          displayName: 'Иван',
+          avatarUrl: null,
+          lastSeenAt: null,
+        },
+        memberCount: 2,
+        pinnedAt: null,
+      },
+    ]);
+
+    renderRoom('c1');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть профиль игрока' }));
+
+    expect(await screen.findByText(`profile:${OTHER_ID}`)).toBeInTheDocument();
   });
 
   it('marks the chat as read on mount once messages have loaded', async () => {
