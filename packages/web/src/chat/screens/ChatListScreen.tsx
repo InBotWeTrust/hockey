@@ -160,23 +160,15 @@ export function ChatListScreen(): JSX.Element {
         style={{ paddingTop: 'calc(10px + var(--app-safe-top))' }}
       >
         <div
+          className="chat-dock-header glass-dock-surface"
           style={{
-            display: 'flex',
-            alignItems: 'center',
             gap: 8,
-            margin: '0 14px',
           }}
         >
           <div
-            className="glass"
+            className="glass-dock-field"
             style={{
               flex: 1,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '0 12px',
-              height: 40,
-              borderRadius: 999,
             }}
           >
             <Search size={14} color="var(--muted)" aria-hidden />

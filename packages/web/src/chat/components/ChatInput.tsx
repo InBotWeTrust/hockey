@@ -106,17 +106,7 @@ export function ChatInput({
   }
 
   return (
-    <div
-      className="glass-dark"
-      style={{
-        margin: '0 14px 0',
-        padding: 10,
-        borderRadius: 20,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 6,
-      }}
-    >
+    <div className="chat-dock-composer glass-dock-surface">
       {replyTo && (
         <ReplyPreview
           variant="composer"

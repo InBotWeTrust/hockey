@@ -350,16 +350,14 @@ export function ChannelPostCommentsScreen(): JSX.Element {
     >
       <div className="chat-edge-top glass-edge-fade glass-edge-fade--top">
         <div
+          className="chat-dock-header glass-dock-surface"
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            margin: '0 12px',
+            minHeight: 54,
           }}
         >
           <button
             type="button"
-            className="icon-btn glass"
+            className="icon-btn glass-dock-icon"
             aria-label="К посту"
             onClick={() => navigate(`/chat/${chatId}`)}
             style={{ width: 40, height: 40, minWidth: 40, minHeight: 40 }}

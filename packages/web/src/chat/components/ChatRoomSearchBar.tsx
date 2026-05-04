@@ -31,14 +31,9 @@ export function ChatRoomSearchBar({ open, value, placeholder, onChange }: Props)
       }}
     >
       <div
-        className="glass"
+        className="glass-dock-field"
         style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          padding: '0 12px',
-          height: 40,
-          borderRadius: 999,
+          width: '100%',
         }}
       >
         <Search size={14} color="var(--muted)" aria-hidden />

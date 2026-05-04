@@ -23,17 +23,10 @@ export function ChatRoomHeader({
   onToggleSearch,
 }: Props): JSX.Element {
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 10,
-        margin: '0 12px',
-      }}
-    >
+    <div className="chat-dock-header glass-dock-surface">
       <button
         type="button"
-        className="icon-btn glass"
+        className="icon-btn glass-dock-icon"
         aria-label="К списку чатов"
         onClick={onBack}
         style={{
@@ -131,7 +124,7 @@ export function ChatRoomHeader({
 
       <button
         type="button"
-        className="icon-btn glass"
+        className="icon-btn glass-dock-icon"
         aria-label={searchOpen ? 'Закрыть поиск' : 'Поиск по чату'}
         aria-pressed={searchOpen}
         onClick={onToggleSearch}

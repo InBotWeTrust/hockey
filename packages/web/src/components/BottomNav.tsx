@@ -87,12 +87,13 @@ export function BottomNav(): JSX.Element | null {
         left: 0,
         right: 0,
         bottom: 0,
-        padding: '28px 12px max(12px, var(--app-safe-bottom))',
+        padding: '40px 12px max(12px, var(--app-safe-bottom))',
         zIndex: 5,
         pointerEvents: 'none',
       }}
     >
       <nav
+        className="glass-dock-surface"
         aria-label={isDemo ? 'Демо-навигация' : 'Навигация'}
         style={{
           position: 'relative',
@@ -106,12 +107,6 @@ export function BottomNav(): JSX.Element | null {
           alignItems: 'center',
           padding: '0 6px',
           zIndex: 500,
-          background: 'rgba(232, 242, 255, 0.62)',
-          backdropFilter: 'blur(24px) saturate(135%)',
-          WebkitBackdropFilter: 'blur(24px) saturate(135%)',
-          boxShadow:
-            '0 18px 36px rgba(42, 91, 132, 0.22), 0 -1px 0 rgba(255, 255, 255, 0.5) inset',
-          border: '1px solid rgba(255,255,255,0.78)',
           pointerEvents: isDemo ? 'none' : 'auto',
         }}
       >
