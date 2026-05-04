@@ -3,6 +3,21 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { ChatInput } from '../components/ChatInput.js';
 
 describe('ChatInput', () => {
+  it('keeps the send action as an icon-only button', () => {
+    render(
+      <ChatInput
+        replyTo={null}
+        onClearReply={vi.fn()}
+        onSend={vi.fn()}
+      />,
+    );
+
+    const button = screen.getByLabelText('Отправить');
+
+    expect(button).toBeInTheDocument();
+    expect(button).toHaveTextContent('');
+  });
+
   it('wraps selected channel post text with rich text markers', async () => {
     const onSend = vi.fn();
     render(

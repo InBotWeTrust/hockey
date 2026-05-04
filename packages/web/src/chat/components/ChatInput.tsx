@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Bold, Italic } from 'lucide-react';
+import { Bold, Italic, Send } from 'lucide-react';
 import { ReplyPreview } from './ReplyPreview.js';
 
 export interface ChatInputReplyTarget {
@@ -206,18 +206,17 @@ export function ChatInput({
           disabled={disabled || !hasMeaningfulContent(value)}
           aria-label="Отправить"
           style={{
-            padding: '0 14px',
+            padding: 0,
             borderRadius: 999,
-            width: 'auto',
+            width: ROW_HEIGHT,
             height: ROW_HEIGHT,
-            minWidth: 88,
+            minWidth: ROW_HEIGHT,
             minHeight: ROW_HEIGHT,
             flexShrink: 0,
             letterSpacing: 0,
-            fontSize: 13,
           }}
         >
-          Отправить
+          <Send size={16} aria-hidden="true" />
         </button>
       </div>
     </div>
