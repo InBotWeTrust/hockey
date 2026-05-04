@@ -60,7 +60,6 @@ import type {
 } from '../api/duel.js';
 import type { TrainingStateResponse } from '../api/training.js';
 import { StartPeriodModal } from '../components/StartPeriodModal.js';
-import { PeriodSummaryModal } from '../components/PeriodSummaryModal.js';
 import { getLastSeenAt, setLastSeenAt } from '../stores/seenPeriods.js';
 
 const PAUSE_MS = 1000;
@@ -206,11 +205,6 @@ function formatDurationMs(ms: number): string {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
-function lastClosedPeriod(data: DailyStateResponse): PeriodLogEntry | null {
-  if (data.recent_periods.length === 0) return null;
-  return data.recent_periods[data.recent_periods.length - 1] ?? null;
-}
-
 function findUnseenPeriodSummary(data: DailyStateResponse, userId: string): PeriodLogEntry | null {
   if (!userId) return null;
   const watermark = getLastSeenAt(userId);
@@ -218,6 +212,23 @@ function findUnseenPeriodSummary(data: DailyStateResponse, userId: string): Peri
     if (watermark === null || period.ended_at > watermark) return period;
   }
   return null;
+}
+
+function dailyGameStatsFromState(data: DailyStateResponse): DailyGameStats | null {
+  if (data.state === 'closed' && data.previous_game) return data.previous_game;
+  if (!data.day_date || data.recent_periods.length === 0) return null;
+  const periods = data.recent_periods;
+  return {
+    day_date: data.day_date,
+    total_shots: periods.reduce((sum, period) => sum + period.shots_taken, 0),
+    total_goals: periods.reduce((sum, period) => sum + period.goals, 0),
+    total_duration_ms: periods.reduce((sum, period) => sum + period.duration_ms, 0),
+    periods,
+  };
+}
+
+function latestPeriodFromStats(stats: DailyGameStats | null): PeriodLogEntry | null {
+  return stats?.periods.at(-1) ?? null;
 }
 
 export function DailyScreen(): JSX.Element {
@@ -1920,6 +1931,12 @@ interface PlaySessionTiming {
   receivedAtPerformanceMs: number | null;
 }
 
+interface DailyStatsModalState {
+  stats: DailyGameStats;
+  source: 'deferred' | 'state';
+  state: DailyStateResponse['state'];
+}
+
 function computeInitialElapsedMs(timing: PlaySessionTiming): number {
   if (!timing.sessionStartedAt || !timing.serverNow) return 0;
   const started = Date.parse(timing.sessionStartedAt);
@@ -1959,47 +1976,32 @@ function DailyPlayView({ onBack }: { onBack: () => void }): JSX.Element {
   const periodEndsAt = data.period_ends_at ? new Date(data.period_ends_at).getTime() : undefined;
   const breakEndsAt = data.break_ends_at ? new Date(data.break_ends_at).getTime() : undefined;
   const [now, setNow] = useState(Date.now());
-  const [periodSummary, setPeriodSummary] = useState<PeriodLogEntry | null>(null);
-  const [periodSummarySource, setPeriodSummarySource] = useState<'deferred' | 'state' | null>(null);
-  const [finishedGameStats, setFinishedGameStats] = useState<DailyGameStats | null>(null);
-  const [finishedGameSource, setFinishedGameSource] = useState<'deferred' | 'state' | null>(null);
+  const [statsModal, setStatsModal] = useState<DailyStatsModalState | null>(null);
 
   useEffect(() => {
-    if (periodSummary !== null || finishedGameStats !== null) return;
+    if (statsModal !== null) return;
 
-    if (deferredState?.state === 'closed' && deferredState.previous_game) {
-      setFinishedGameStats(deferredState.previous_game);
-      setFinishedGameSource('deferred');
-      return;
-    }
-
-    const deferredPeriod =
-      deferredState && deferredState.state !== 'closed' ? lastClosedPeriod(deferredState) : null;
-    if (deferredPeriod && deferredState?.state === 'break_active') {
-      setPeriodSummary(deferredPeriod);
-      setPeriodSummarySource('deferred');
+    if (deferredState && deferredState.state !== 'period_active') {
+      const stats = dailyGameStatsFromState(deferredState);
+      if (stats) {
+        setStatsModal({ stats, source: 'deferred', state: deferredState.state });
+      }
       return;
     }
 
     const unseenPeriod = findUnseenPeriodSummary(data, userId);
     if (!unseenPeriod) return;
 
-    if (data.state === 'closed' && data.previous_game) {
-      setFinishedGameStats(data.previous_game);
-      setFinishedGameSource('state');
-      return;
+    if (data.state === 'break_active' || data.state === 'closed') {
+      const stats = dailyGameStatsFromState(data);
+      if (stats) setStatsModal({ stats, source: 'state', state: data.state });
     }
-
-    if (data.state === 'break_active') {
-      setPeriodSummary(unseenPeriod);
-      setPeriodSummarySource('state');
-    }
-  }, [data, deferredState, finishedGameStats, periodSummary, userId]);
+  }, [data, deferredState, statsModal, userId]);
 
   const applyDailyResolvedState = useCallback(
     (next: DailyStateResponse): void => {
-      const closedPeriod = lastClosedPeriod(next);
-      if (next.state !== 'period_active' && closedPeriod) {
+      const stats = dailyGameStatsFromState(next);
+      if (next.state !== 'period_active' && stats) {
         setDeferredState(next);
         return;
       }
@@ -2008,25 +2010,16 @@ function DailyPlayView({ onBack }: { onBack: () => void }): JSX.Element {
     [applyState, setDeferredState],
   );
 
-  const handlePeriodSummaryClose = useCallback((): void => {
-    if (periodSummary && userId) setLastSeenAt(userId, periodSummary.ended_at);
-    const source = periodSummarySource;
-    setPeriodSummary(null);
-    setPeriodSummarySource(null);
-    if (source === 'deferred') applyDeferredState();
-  }, [applyDeferredState, periodSummary, periodSummarySource, userId]);
-
-  const handleFinishedGameClose = useCallback((): void => {
-    const latestPeriod = finishedGameStats?.periods.at(-1);
+  const handleStatsModalClose = useCallback((): void => {
+    const latestPeriod = latestPeriodFromStats(statsModal?.stats ?? null);
     if (latestPeriod && userId) setLastSeenAt(userId, latestPeriod.ended_at);
-    const source = finishedGameSource;
-    setFinishedGameStats(null);
-    setFinishedGameSource(null);
+    const source = statsModal?.source;
+    setStatsModal(null);
     if (source === 'deferred') applyDeferredState();
-  }, [applyDeferredState, finishedGameSource, finishedGameStats, userId]);
+  }, [applyDeferredState, statsModal, userId]);
 
-  const hasBlockingSummary = periodSummary !== null || finishedGameStats !== null;
-  const shouldSuppressRink = data.state !== 'period_active' || hasBlockingSummary;
+  const hasStatsModal = statsModal !== null;
+  const shouldSuppressRink = data.state !== 'period_active' || hasStatsModal;
 
   useEffect(() => {
     if ((!isBreak || !breakEndsAt) && !isClosed) return undefined;
@@ -2047,7 +2040,7 @@ function DailyPlayView({ onBack }: { onBack: () => void }): JSX.Element {
     <>
       <PlayView<DailyStateResponse>
         suppressedByModal={shouldSuppressRink}
-        showIceCar={isBreak || isClosed}
+        showIceCar={isBreak || isClosed || hasStatsModal}
         onBack={onBack}
         active={data.state === 'period_active'}
         seed={data.daily_seed}
@@ -2080,26 +2073,17 @@ function DailyPlayView({ onBack }: { onBack: () => void }): JSX.Element {
         applyState={applyState}
         applyResolvedState={applyDailyResolvedState}
       />
-      {periodSummary && (
-        <PeriodSummaryModal
-          periodNumber={periodSummary.period_number}
-          goals={periodSummary.goals}
-          shots={periodSummary.shots_taken}
-          closedReason={periodSummary.closed_reason}
-          onClose={handlePeriodSummaryClose}
-        />
-      )}
-      {finishedGameStats && (
+      {statsModal && (
         <DailyGameStatsModal
-          stats={finishedGameStats}
+          stats={statsModal.stats}
           totalPeriods={data.total_periods}
-          title="Игра завершена"
-          ariaLabel="Игра завершена"
+          title={statsModal.state === 'closed' ? 'Игра завершена' : 'Итоги ежедневной игры'}
+          ariaLabel={statsModal.state === 'closed' ? 'Игра завершена' : 'Итоги ежедневной игры'}
           closeLabel="Продолжить"
-          onClose={handleFinishedGameClose}
+          onClose={handleStatsModalClose}
         />
       )}
-      {canStartPeriod && !hasBlockingSummary && (
+      {canStartPeriod && !hasStatsModal && (
         <StartPeriodModal
           nextPeriod={periodNumber}
           totalPeriods={data.total_periods}
@@ -2110,7 +2094,7 @@ function DailyPlayView({ onBack }: { onBack: () => void }): JSX.Element {
           onStart={() => void startPeriod()}
         />
       )}
-      {isClosed && !hasBlockingSummary && (
+      {isClosed && !hasStatsModal && (
         <DailyClosedModal timer={formatHms(nextDayRemaining)} onBack={onBack} />
       )}
     </>

@@ -318,7 +318,7 @@ describe('DailyScreen', () => {
     expect(screen.getByTestId('pixi-stage-stub')).toBeInTheDocument();
   });
 
-  it('shows the period summary modal on the rink for an unseen finished period', async () => {
+  it('shows the shared game stats modal on the rink for an unseen finished period', async () => {
     const future = new Date(Date.now() + 5 * 60 * 1000).toISOString();
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(
@@ -347,16 +347,22 @@ describe('DailyScreen', () => {
 
     renderWith(['/?view=daily']);
 
-    expect(await screen.findByRole('dialog', { name: '1-й период завершён' })).toBeInTheDocument();
-    expect(screen.getByText('Лимит бросков выполнен')).toBeInTheDocument();
     expect(
-      screen.getByLabelText('Итого за период: 12 голов из 30 бросков, точность 40%'),
+      await screen.findByRole('dialog', { name: 'Итоги ежедневной игры' }),
     ).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: '1-й период завершён' })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Итого: 12 голов из 30 бросков')).toBeInTheDocument();
+    expect(
+      screen.getByLabelText('1-й период: 12 голов из 30 бросков за 20:00'),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('pixi-stage-stub')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Продолжить' }));
 
     await waitFor(() => {
-      expect(screen.queryByRole('dialog', { name: '1-й период завершён' })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('dialog', { name: 'Итоги ежедневной игры' }),
+      ).not.toBeInTheDocument();
     });
     expect(screen.getByRole('button', { name: 'ПЕРЕРЫВ' })).toBeDisabled();
   });
