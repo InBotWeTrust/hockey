@@ -1000,10 +1000,6 @@ export function ProfileScreen(): JSX.Element {
           Написать
         </button>
       </div>
-      <div
-        aria-hidden="true"
-        style={{ height: 'calc(112px + var(--app-safe-bottom))', flexShrink: 0 }}
-      />
       {selectedAchievement !== null && (
         <AchievementDetailsSheet
           achievement={selectedAchievement}

@@ -43,8 +43,9 @@
 }
 
 .app-shell:has(.bottom-nav-shell) .app-content > .screen {
-  padding-bottom: calc(112px + var(--app-safe-bottom)) !important;
-  scroll-padding-bottom: calc(112px + var(--app-safe-bottom));
+  --bottom-nav-scroll-reserve: 128px;
+  padding-bottom: calc(var(--bottom-nav-scroll-reserve) + var(--app-safe-bottom)) !important;
+  scroll-padding-bottom: calc(var(--bottom-nav-scroll-reserve) + var(--app-safe-bottom));
 }
 
 /* === Glass surfaces === */
