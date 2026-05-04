@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { TelegramLoginButton } from './TelegramLoginButton.js';
 
 type AuthCallback = (payload: Record<string, unknown>) => void;
@@ -13,6 +13,10 @@ describe('TelegramLoginButton', () => {
       .forEach((k) => {
         w[k] = undefined;
       });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('renders a container with the telegram script attributes', () => {
@@ -46,5 +50,32 @@ describe('TelegramLoginButton', () => {
   it('renders fallback when botUsername is empty', () => {
     render(<TelegramLoginButton botUsername="" onAuth={() => {}} />);
     expect(screen.getByText('Вход через Telegram не настроен.')).toBeInTheDocument();
+  });
+
+  it('shows a VPN refresh fallback when the telegram script cannot load', () => {
+    render(<TelegramLoginButton botUsername="test_bot" onAuth={() => {}} />);
+    const container = screen.getByTestId('telegram-login-container');
+    const script = container.querySelector('script')!;
+
+    fireEvent.error(script);
+
+    expect(screen.getByTestId('telegram-login-fallback')).toHaveTextContent(
+      'Вход через Telegram доступен с VPN. Включите и обновите страницу.',
+    );
+    expect(screen.getByRole('button', { name: 'Обновить страницу' })).toBeInTheDocument();
+    expect(container).toHaveStyle({ display: 'none' });
+  });
+
+  it('shows a VPN refresh fallback when the telegram widget does not render in time', () => {
+    vi.useFakeTimers();
+    render(<TelegramLoginButton botUsername="test_bot" onAuth={() => {}} />);
+
+    act(() => {
+      vi.advanceTimersByTime(4000);
+    });
+
+    expect(screen.getByTestId('telegram-login-fallback')).toHaveTextContent(
+      'Вход через Telegram доступен с VPN. Включите и обновите страницу.',
+    );
   });
 });
