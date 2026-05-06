@@ -16,6 +16,24 @@ export interface ReactionGroupDTO {
   reactedByMe: boolean;
 }
 
+export interface AmateurDuelInviteMessageMetadata extends Record<string, unknown> {
+  type: 'amateur_duel_invite';
+  matchId: string;
+  templateTitle: string;
+  challengerName: string;
+  startsAt: string;
+  endsAt: string;
+  totalPeriods: number;
+  shotsPerPeriod: number;
+  periodDurationMs: number;
+  breakDurationMs: number;
+  stakeAmount: number;
+  entryFeeAmount: number;
+  bankAmount: number;
+}
+
+export type ChatMessageMetadata = AmateurDuelInviteMessageMetadata | Record<string, unknown>;
+
 export interface ChatMessageDTO {
   id: string;
   chatId: string;
@@ -27,6 +45,7 @@ export interface ChatMessageDTO {
   isDeleted: boolean;
   createdAt: string; // ISO
   reactions: ReactionGroupDTO[];
+  metadata?: ChatMessageMetadata;
   commentCount?: number;
   viewCount?: number;
   poll?: ChannelPollDTO;

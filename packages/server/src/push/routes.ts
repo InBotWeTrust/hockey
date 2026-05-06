@@ -58,6 +58,7 @@ const preferencesPatchSchema = z
     chatNewDialogMessage: z.boolean().optional(),
     dailyGame: z.boolean().optional(),
     trainingAvailable: z.boolean().optional(),
+    duelEvents: z.boolean().optional(),
     gameNews: z.boolean().optional(),
   })
   .strict()
@@ -112,6 +113,9 @@ export const pushRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, opts
     }
     if (body.data.trainingAvailable !== undefined) {
       patch.trainingAvailable = body.data.trainingAvailable;
+    }
+    if (body.data.duelEvents !== undefined) {
+      patch.duelEvents = body.data.duelEvents;
     }
     if (body.data.gameNews !== undefined) {
       patch.gameNews = body.data.gameNews;

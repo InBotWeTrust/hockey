@@ -48,9 +48,12 @@ import { useDebouncedValue } from '../lib/useDebouncedValue.js';
 import { AchievementDetailsSheet, AchievementTile } from '../screens/profileSections.js';
 import {
   createAdminInventoryItem,
+  createAdminDuelTemplate,
+  deleteAdminDuelTemplate,
   deleteAdminChannelPost,
   deleteAdminInventoryItem,
   fetchAdminChannelNews,
+  fetchAdminDuelTemplates,
   fetchAdminFeedback,
   fetchAdminGameSettings,
   fetchAdminInventory,
@@ -63,6 +66,8 @@ import {
   fetchAdminUsers,
   patchAdminChannelPost,
   patchAdminFeedback,
+  patchAdminDuelTemplate,
+  patchAdminInventoryGameplay,
   patchAdminInventoryItem,
   patchAdminGameSetting,
   patchAdminNotification,
@@ -70,6 +75,9 @@ import {
   type AdminDashboard,
   type AdminDashboardPeriod,
   type AdminDashboardSeriesPoint,
+  type AdminDuelPeriodSpeedPreset,
+  type AdminDuelTemplate,
+  type AdminDuelTemplateInput,
   type AdminChannelPeriod,
   type AdminChannelPost,
   type AdminChannelResponse,
@@ -78,6 +86,8 @@ import {
   type AdminFeedbackQuery,
   type AdminGameSetting,
   type AdminInventoryItem,
+  type AdminInventoryGameplayPatch,
+  type AdminInventoryItemKind,
   type AdminInventoryItemPatch,
   type AdminMismatchLog,
   type AdminMismatchPeriod,
@@ -108,6 +118,7 @@ type AdminTab =
   | 'anticheat'
   | 'payments'
   | 'inventory'
+  | 'duels'
   | 'feedback'
   | 'settings';
 type SortField = 'name' | 'goals' | 'accuracy';
@@ -125,6 +136,7 @@ const tabs: Array<{ id: AdminTab; label: string; icon: JSX.Element }> = [
   { id: 'anticheat', label: 'Античит', icon: <ShieldAlert size={15} /> },
   { id: 'payments', label: 'Платежи', icon: <CreditCard size={15} /> },
   { id: 'inventory', label: 'Инвентарь', icon: <Package size={15} /> },
+  { id: 'duels', label: 'Дуэли', icon: <Trophy size={15} /> },
   { id: 'feedback', label: 'Отзывы', icon: <MessageSquare size={15} /> },
   { id: 'settings', label: 'Параметры', icon: <SlidersHorizontal size={15} /> },
 ];
@@ -151,6 +163,7 @@ const pushNotificationCategoryLabels: Record<AdminPushNotificationCategory, stri
   chat: 'Чат',
   daily: 'Ежедневная игра',
   training: 'Тренировка',
+  duel: 'Дуэли',
   news: 'Новости',
 };
 
@@ -208,6 +221,14 @@ const gripOptions: Array<GlassSelectOption<'right' | 'left'>> = [
   { value: 'left', label: 'Левый' },
 ];
 
+const inventoryItemKindOptions: Array<GlassSelectOption<AdminInventoryItemKind>> = [
+  { value: 'bundle', label: 'Набор' },
+  { value: 'stick', label: 'Клюшка' },
+  { value: 'skates', label: 'Коньки' },
+  { value: 'nutrition', label: 'Питание' },
+  { value: 'consumable', label: 'Расходник' },
+];
+
 const roleOptions: Array<GlassSelectOption<AdminRole>> = [
   { value: 'player', label: 'player' },
   { value: 'admin', label: 'admin' },
@@ -252,6 +273,7 @@ const pushNotificationTypeItems: Array<{
   { key: 'chatNewDialogMessage', label: 'Первое сообщение в личке', shortLabel: 'Личка' },
   { key: 'dailyGame', label: 'Ежедневная игра', shortLabel: 'Дневная' },
   { key: 'trainingAvailable', label: 'Тренировка доступна', shortLabel: 'Тренировка' },
+  { key: 'duelEvents', label: 'Дуэли', shortLabel: 'Дуэли' },
   { key: 'gameNews', label: 'Новости игры', shortLabel: 'Новости' },
 ];
 
@@ -323,6 +345,18 @@ function paymentStatusLabel(status: AdminPaymentStatus): string {
   return paymentStatusOptions.find((option) => option.value === status)?.label ?? status;
 }
 
+function inventoryItemKindLabel(kind: AdminInventoryItemKind): string {
+  return inventoryItemKindOptions.find((option) => option.value === kind)?.label ?? kind;
+}
+
+function msToMinutes(value: number): number {
+  return Math.round(value / 60_000);
+}
+
+function minutesToMs(value: string): number {
+  return Math.max(0, Math.round(Number(value) * 60_000));
+}
+
 function gameModeLabel(mode: string | null | undefined): string {
   if (mode === 'daily') return 'Ежедневная игра';
   if (mode === 'training') return 'Тренировка';
@@ -389,6 +423,18 @@ function dateTimeText(iso: string | null | undefined): string {
     hour: '2-digit',
     minute: '2-digit',
   }).format(date);
+}
+
+function dateTimeInputValue(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+}
+
+function dateTimeInputToIso(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
 }
 
 function fieldNumber(value: number | undefined): string {
@@ -581,7 +627,12 @@ export function AdminScreen(): JSX.Element {
   const inventory = useQuery({
     queryKey: ['admin', 'inventory'],
     queryFn: fetchAdminInventory,
-    enabled: canTryAdmin && tab === 'inventory',
+    enabled: canTryAdmin && (tab === 'inventory' || tab === 'duels'),
+  });
+  const duelTemplates = useQuery({
+    queryKey: ['admin', 'duel-templates'],
+    queryFn: fetchAdminDuelTemplates,
+    enabled: canTryAdmin && tab === 'duels',
   });
 
   const denied =
@@ -592,6 +643,7 @@ export function AdminScreen(): JSX.Element {
       settings.error,
       payments.error,
       inventory.error,
+      duelTemplates.error,
       feedback.error,
       mismatches.error,
       notifications.error,
@@ -768,6 +820,16 @@ export function AdminScreen(): JSX.Element {
           items={inventory.data?.items ?? []}
           onChanged={() => {
             void queryClient.invalidateQueries({ queryKey: ['admin', 'inventory'] });
+          }}
+        />
+      )}
+      {tab === 'duels' && (
+        <DuelTemplatesPanel
+          loading={duelTemplates.isLoading}
+          templates={duelTemplates.data?.templates ?? []}
+          inventoryItems={inventory.data?.items ?? []}
+          onChanged={() => {
+            void queryClient.invalidateQueries({ queryKey: ['admin', 'duel-templates'] });
           }}
         />
       )}
@@ -4428,6 +4490,15 @@ function InventoryItemCard({
         </div>
         <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <span className="pill" style={{ fontSize: 10, padding: '4px 8px' }}>
+            {inventoryItemKindLabel(item.itemKind)}
+          </span>
+          <span className="pill" style={{ fontSize: 10, padding: '4px 8px' }}>
+            Зарядов {numberText(item.chargesPerPurchase)}
+          </span>
+          <span className="pill" style={{ fontSize: 10, padding: '4px 8px' }}>
+            Дуэль {numberText(item.duelPeriodCost)}/период
+          </span>
+          <span className="pill" style={{ fontSize: 10, padding: '4px 8px' }}>
             Покупок {numberText(item.paymentsCount)}
           </span>
           <span className="pill" style={{ fontSize: 10, padding: '4px 8px' }}>
@@ -4500,21 +4571,74 @@ function InventoryEditor({
   const [title, setTitle] = useState(item?.title ?? '');
   const [description, setDescription] = useState(item?.description ?? '');
   const [priceRub, setPriceRub] = useState(item ? String(item.priceRub) : '');
+  const [itemKind, setItemKind] = useState<AdminInventoryItemKind>(item?.itemKind ?? 'consumable');
+  const [currencyPrice, setCurrencyPrice] = useState(fieldNumber(item?.currencyPrice ?? 0));
+  const [chargesPerPurchase, setChargesPerPurchase] = useState(
+    fieldNumber(item?.chargesPerPurchase ?? 1),
+  );
+  const [duelPeriodCost, setDuelPeriodCost] = useState(fieldNumber(item?.duelPeriodCost ?? 0));
+  const [effectPuckSpeedDelta, setEffectPuckSpeedDelta] = useState(
+    fieldNumber(item?.effectPuckSpeedDelta ?? 0),
+  );
+  const [effectShooterFrequencyDelta, setEffectShooterFrequencyDelta] = useState(
+    fieldNumber(item?.effectShooterFrequencyDelta ?? 0),
+  );
+  const [effectGoalieFrequencyDelta, setEffectGoalieFrequencyDelta] = useState(
+    fieldNumber(item?.effectGoalieFrequencyDelta ?? 0),
+  );
+  const [effectGoalFrequencyDelta, setEffectGoalFrequencyDelta] = useState(
+    fieldNumber(item?.effectGoalFrequencyDelta ?? 0),
+  );
+  const [effectShotZoneMultiplier, setEffectShotZoneMultiplier] = useState(
+    fieldNumber(item?.effectShotZoneMultiplier ?? 1),
+  );
   const mutation = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       const body: Required<AdminInventoryItemPatch> = {
         photoUrl,
         title,
         description,
         priceRub: Number(priceRub),
       };
-      return item === null
-        ? createAdminInventoryItem(body)
-        : patchAdminInventoryItem(item.id, body);
+      const gameplay: Required<AdminInventoryGameplayPatch> = {
+        itemKind,
+        currencyPrice: Number(currencyPrice),
+        chargesPerPurchase: Number(chargesPerPurchase),
+        duelPeriodCost: Number(duelPeriodCost),
+        effectPuckSpeedDelta: Number(effectPuckSpeedDelta),
+        effectShooterFrequencyDelta: Number(effectShooterFrequencyDelta),
+        effectGoalieFrequencyDelta: Number(effectGoalieFrequencyDelta),
+        effectGoalFrequencyDelta: Number(effectGoalFrequencyDelta),
+        effectShotZoneMultiplier: Number(effectShotZoneMultiplier),
+      };
+      const saved =
+        item === null
+          ? await createAdminInventoryItem(body)
+          : await patchAdminInventoryItem(item.id, body);
+      await patchAdminInventoryGameplay(saved.item.id, gameplay);
+      return saved;
     },
     onSuccess: onSaved,
   });
-  const canSave = title.trim() !== '' && Number.isFinite(Number(priceRub)) && Number(priceRub) >= 0;
+  const numericValues = [
+    priceRub,
+    currencyPrice,
+    chargesPerPurchase,
+    duelPeriodCost,
+    effectPuckSpeedDelta,
+    effectShooterFrequencyDelta,
+    effectGoalieFrequencyDelta,
+    effectGoalFrequencyDelta,
+    effectShotZoneMultiplier,
+  ].map(Number);
+  const canSave =
+    title.trim() !== '' &&
+    numericValues.every(Number.isFinite) &&
+    Number(priceRub) >= 0 &&
+    Number(currencyPrice) >= 0 &&
+    Number(chargesPerPurchase) >= 0 &&
+    Number(duelPeriodCost) >= 0 &&
+    Number(effectShotZoneMultiplier) >= 1;
 
   return (
     <section className="glass" style={{ borderRadius: 20, padding: 14, display: 'grid', gap: 10 }}>
@@ -4537,6 +4661,542 @@ function InventoryEditor({
           onChange={(event) => setPriceRub(event.target.value)}
         />
       </AdminField>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+        <AdminField label="Тип">
+          <GlassSelect
+            value={itemKind}
+            options={inventoryItemKindOptions}
+            onChange={setItemKind}
+            ariaLabel="Тип предмета"
+          />
+        </AdminField>
+        <AdminField label="Цена в валюте">
+          <input
+            type="number"
+            value={currencyPrice}
+            onChange={(event) => setCurrencyPrice(event.target.value)}
+          />
+        </AdminField>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+        <AdminField label="Зарядов при покупке">
+          <input
+            type="number"
+            value={chargesPerPurchase}
+            onChange={(event) => setChargesPerPurchase(event.target.value)}
+          />
+        </AdminField>
+        <AdminField label="Расход за период">
+          <input
+            type="number"
+            value={duelPeriodCost}
+            onChange={(event) => setDuelPeriodCost(event.target.value)}
+          />
+        </AdminField>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+        <AdminField label="Шайба Δ">
+          <input
+            type="number"
+            step="0.01"
+            value={effectPuckSpeedDelta}
+            onChange={(event) => setEffectPuckSpeedDelta(event.target.value)}
+          />
+        </AdminField>
+        <AdminField label="Игрок Δ">
+          <input
+            type="number"
+            step="0.01"
+            value={effectShooterFrequencyDelta}
+            onChange={(event) => setEffectShooterFrequencyDelta(event.target.value)}
+          />
+        </AdminField>
+        <AdminField label="Вратарь Δ">
+          <input
+            type="number"
+            step="0.01"
+            value={effectGoalieFrequencyDelta}
+            onChange={(event) => setEffectGoalieFrequencyDelta(event.target.value)}
+          />
+        </AdminField>
+        <AdminField label="Ворота Δ">
+          <input
+            type="number"
+            step="0.01"
+            value={effectGoalFrequencyDelta}
+            onChange={(event) => setEffectGoalFrequencyDelta(event.target.value)}
+          />
+        </AdminField>
+      </div>
+      <AdminField label="Множитель зоны броска">
+        <input
+          type="number"
+          step="0.01"
+          min="1"
+          value={effectShotZoneMultiplier}
+          onChange={(event) => setEffectShotZoneMultiplier(event.target.value)}
+        />
+      </AdminField>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        <button
+          type="button"
+          className="btn btn--ghost"
+          onClick={onCancel}
+          style={{ padding: '10px', fontSize: 12, letterSpacing: 0 }}
+        >
+          Отмена
+        </button>
+        <button
+          type="button"
+          className="btn btn--cta"
+          onClick={() => mutation.mutate()}
+          disabled={mutation.isPending || !canSave}
+          style={{ padding: '10px', fontSize: 12, letterSpacing: 0 }}
+        >
+          Сохранить
+        </button>
+      </div>
+      {mutation.isError && (
+        <div role="alert" style={{ color: 'var(--red-deep)', fontSize: 12 }}>
+          {mutation.error instanceof Error ? mutation.error.message : 'Ошибка сохранения'}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function makeDefaultDuelPresets(totalPeriods: number): AdminDuelPeriodSpeedPreset[] {
+  return Array.from({ length: totalPeriods }, (_, index) => ({
+    periodNumber: index + 1,
+    goalFrequency: index === 0 ? 0.55 : index === 1 ? 0.72 : 0.9,
+    goalieFrequency: index === 0 ? 0.65 : index === 1 ? 0.84 : 1.05,
+    shooterFrequency: index === 0 ? 0.8 : index === 1 ? 1 : 1.18,
+    puckSpeedPerMs: index === 0 ? 1.3 : index === 1 ? 1.55 : 1.8,
+  }));
+}
+
+function parseDuelPresets(value: string): AdminDuelPeriodSpeedPreset[] | null {
+  try {
+    const raw = JSON.parse(value) as unknown;
+    if (!Array.isArray(raw)) return null;
+    const presets = raw.map((item) => {
+      if (typeof item !== 'object' || item === null) return null;
+      const record = item as Record<string, unknown>;
+      const preset = {
+        periodNumber: Number(record.periodNumber),
+        goalFrequency: Number(record.goalFrequency),
+        goalieFrequency: Number(record.goalieFrequency),
+        shooterFrequency: Number(record.shooterFrequency),
+        puckSpeedPerMs: Number(record.puckSpeedPerMs),
+      };
+      return Object.values(preset).every(Number.isFinite) ? preset : null;
+    });
+    return presets.every((item): item is AdminDuelPeriodSpeedPreset => item !== null)
+      ? presets
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function DuelTemplatesPanel({
+  loading,
+  templates,
+  inventoryItems,
+  onChanged,
+}: {
+  loading: boolean;
+  templates: AdminDuelTemplate[];
+  inventoryItems: AdminInventoryItem[];
+  onChanged: () => void;
+}): JSX.Element {
+  const [editingTemplate, setEditingTemplate] = useState<AdminDuelTemplate | 'new' | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<AdminDuelTemplate | null>(null);
+  const deleteMutation = useMutation({
+    mutationFn: (templateId: string) => deleteAdminDuelTemplate(templateId),
+    onSuccess: () => {
+      setDeleteTarget(null);
+      onChanged();
+    },
+  });
+
+  return (
+    <>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 10,
+        }}
+      >
+        <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+          Шаблоны дуэлей ({numberText(templates.length)})
+        </div>
+        <button
+          type="button"
+          className="chip chip--active"
+          onClick={() => setEditingTemplate('new')}
+          style={{ padding: '8px 12px', display: 'inline-flex', gap: 6, alignItems: 'center' }}
+        >
+          <Plus size={14} />
+          Создать
+        </button>
+      </div>
+      {editingTemplate !== null && (
+        <DuelTemplateEditor
+          template={editingTemplate === 'new' ? null : editingTemplate}
+          inventoryItems={inventoryItems}
+          onCancel={() => setEditingTemplate(null)}
+          onSaved={() => {
+            setEditingTemplate(null);
+            onChanged();
+          }}
+        />
+      )}
+      <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {loading && <AdminPlainState>Загрузка шаблонов...</AdminPlainState>}
+        {!loading && templates.length === 0 && <AdminPlainState>Шаблонов пока нет</AdminPlainState>}
+        {templates.map((template) => (
+          <DuelTemplateCard
+            key={template.id}
+            template={template}
+            inventoryItems={inventoryItems}
+            onEdit={() => setEditingTemplate(template)}
+            onDelete={() => setDeleteTarget(template)}
+          />
+        ))}
+      </section>
+      {deleteTarget !== null && (
+        <ConfirmAction
+          title="Удалить шаблон"
+          text={`Шаблон “${deleteTarget.title}” исчезнет из новых вызовов. Активные матчи продолжат играть по snapshot правил.`}
+          confirmLabel="Удалить"
+          pending={deleteMutation.isPending}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => deleteMutation.mutate(deleteTarget.id)}
+        />
+      )}
+    </>
+  );
+}
+
+function DuelTemplateCard({
+  template,
+  inventoryItems,
+  onEdit,
+  onDelete,
+}: {
+  template: AdminDuelTemplate;
+  inventoryItems: AdminInventoryItem[];
+  onEdit: () => void;
+  onDelete: () => void;
+}): JSX.Element {
+  const inventoryTitle =
+    inventoryItems.find((item) => item.id === template.requiredInventoryItemId)?.title ?? null;
+  return (
+    <article className="glass" style={{ borderRadius: 18, padding: 12, display: 'grid', gap: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 8 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ color: 'var(--ink)', fontSize: 15, fontWeight: 950 }}>
+            {template.title}
+          </div>
+          <div style={{ marginTop: 4, color: 'var(--muted)', fontSize: 11, fontWeight: 750 }}>
+            {template.description || 'Без описания'}
+          </div>
+        </div>
+        <span className={template.isActive ? 'pill pill--dark' : 'pill'}>
+          {template.isActive ? 'Активен' : 'Выключен'}
+        </span>
+      </div>
+      <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+        <span className="pill" style={{ fontSize: 10 }}>
+          {template.totalPeriods} x {template.shotsPerPeriod}
+        </span>
+        <span className="pill" style={{ fontSize: 10 }}>
+          Период {minutesText(msToMinutes(template.periodDurationMs))}
+        </span>
+        <span className="pill" style={{ fontSize: 10 }}>
+          Перерыв {minutesText(msToMinutes(template.breakDurationMs))}
+        </span>
+        <span className="pill" style={{ fontSize: 10 }}>
+          Ставка {numberText(template.stakeAmount)}
+        </span>
+        <span className="pill" style={{ fontSize: 10 }}>
+          Взнос {numberText(template.entryFeeAmount)}
+        </span>
+        {inventoryTitle && (
+          <span className="pill" style={{ fontSize: 10 }}>
+            {inventoryTitle}: {numberText(template.inventoryChargesPerPeriod)}/период
+          </span>
+        )}
+      </div>
+      <div style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 800 }}>
+        Окно: {dateTimeText(template.startsAt)} - {dateTimeText(template.endsAt)}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 44px', gap: 8 }}>
+        <button
+          type="button"
+          className="btn btn--ghost"
+          onClick={onEdit}
+          style={{ padding: '10px', fontSize: 12, letterSpacing: 0 }}
+        >
+          Редактировать
+        </button>
+        <button
+          type="button"
+          className="icon-btn"
+          onClick={onDelete}
+          title="Удалить"
+          aria-label={`Удалить ${template.title}`}
+          style={{ width: 44, height: 44 }}
+        >
+          <Trash2 size={15} />
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function DuelTemplateEditor({
+  template,
+  inventoryItems,
+  onCancel,
+  onSaved,
+}: {
+  template: AdminDuelTemplate | null;
+  inventoryItems: AdminInventoryItem[];
+  onCancel: () => void;
+  onSaved: () => void;
+}): JSX.Element {
+  const defaultStartsAt = new Date().toISOString();
+  const defaultEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  const [title, setTitle] = useState(template?.title ?? 'Классическая дуэль');
+  const [description, setDescription] = useState(template?.description ?? '');
+  const [isActive, setIsActive] = useState(template?.isActive ?? true);
+  const [startsAt, setStartsAt] = useState(dateTimeInputValue(template?.startsAt ?? defaultStartsAt));
+  const [endsAt, setEndsAt] = useState(dateTimeInputValue(template?.endsAt ?? defaultEndsAt));
+  const [totalPeriods, setTotalPeriods] = useState(fieldNumber(template?.totalPeriods ?? 3));
+  const [shotsPerPeriod, setShotsPerPeriod] = useState(fieldNumber(template?.shotsPerPeriod ?? 30));
+  const [periodMinutes, setPeriodMinutes] = useState(
+    fieldNumber(template ? msToMinutes(template.periodDurationMs) : 20),
+  );
+  const [breakMinutes, setBreakMinutes] = useState(
+    fieldNumber(template ? msToMinutes(template.breakDurationMs) : 15),
+  );
+  const [goalieId, setGoalieId] = useState(template?.goalieId ?? 'rookie');
+  const [stakeAmount, setStakeAmount] = useState(fieldNumber(template?.stakeAmount ?? 0));
+  const [entryFeeAmount, setEntryFeeAmount] = useState(fieldNumber(template?.entryFeeAmount ?? 0));
+  const [requiredInventoryItemId, setRequiredInventoryItemId] = useState(
+    template?.requiredInventoryItemId ?? '',
+  );
+  const [inventoryChargesPerPeriod, setInventoryChargesPerPeriod] = useState(
+    fieldNumber(template?.inventoryChargesPerPeriod ?? 0),
+  );
+  const [presetsJson, setPresetsJson] = useState(
+    JSON.stringify(template?.periodSpeedPresets ?? makeDefaultDuelPresets(3), null, 2),
+  );
+  const parsedPresets = parseDuelPresets(presetsJson);
+  const inventoryOptions: Array<GlassSelectOption<string>> = [
+    { value: '', label: 'Без предмета' },
+    ...inventoryItems.map((item) => ({ value: item.id, label: item.title })),
+  ];
+  const numericValues = [
+    totalPeriods,
+    shotsPerPeriod,
+    periodMinutes,
+    breakMinutes,
+    stakeAmount,
+    entryFeeAmount,
+    inventoryChargesPerPeriod,
+  ].map(Number);
+  const startsIso = dateTimeInputToIso(startsAt);
+  const endsIso = dateTimeInputToIso(endsAt);
+  const canSave =
+    title.trim() !== '' &&
+    goalieId.trim() !== '' &&
+    numericValues.every(Number.isFinite) &&
+    Number(totalPeriods) >= 1 &&
+    Number(shotsPerPeriod) >= 1 &&
+    Number(periodMinutes) > 0 &&
+    Number(breakMinutes) >= 0 &&
+    Number(stakeAmount) >= 0 &&
+    Number(entryFeeAmount) >= 0 &&
+    Number(inventoryChargesPerPeriod) >= 0 &&
+    new Date(startsIso).getTime() < new Date(endsIso).getTime() &&
+    parsedPresets !== null &&
+    parsedPresets.length >= Number(totalPeriods);
+  const mutation = useMutation({
+    mutationFn: () => {
+      const body: AdminDuelTemplateInput = {
+        title: title.trim(),
+        description: description.trim(),
+        isActive,
+        startsAt: startsIso,
+        endsAt: endsIso,
+        totalPeriods: Number(totalPeriods),
+        shotsPerPeriod: Number(shotsPerPeriod),
+        periodDurationMs: minutesToMs(periodMinutes),
+        breakDurationMs: minutesToMs(breakMinutes),
+        goalieId: goalieId.trim(),
+        periodSpeedPresets: parsedPresets ?? [],
+        stakeAmount: Number(stakeAmount),
+        entryFeeAmount: Number(entryFeeAmount),
+        requiredInventoryItemId: requiredInventoryItemId === '' ? null : requiredInventoryItemId,
+        inventoryChargesPerPeriod: Number(inventoryChargesPerPeriod),
+      };
+      return template === null
+        ? createAdminDuelTemplate(body)
+        : patchAdminDuelTemplate(template.id, body);
+    },
+    onSuccess: onSaved,
+  });
+
+  return (
+    <section className="glass" style={{ borderRadius: 20, padding: 14, display: 'grid', gap: 10 }}>
+      <div style={{ color: 'var(--ink)', fontSize: 15, fontWeight: 950 }}>
+        {template === null ? 'Новый шаблон дуэли' : 'Редактирование дуэли'}
+      </div>
+      <AdminField label="Название">
+        <input value={title} onChange={(event) => setTitle(event.target.value)} />
+      </AdminField>
+      <AdminField label="Описание">
+        <textarea
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+          rows={3}
+          style={{ resize: 'vertical', minHeight: 78, lineHeight: 1.35 }}
+        />
+      </AdminField>
+      <label
+        className="glass"
+        style={{
+          borderRadius: 16,
+          padding: '10px 12px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 10,
+        }}
+      >
+        <span style={{ color: 'var(--ink)', fontSize: 12, fontWeight: 900 }}>Активен</span>
+        <input
+          type="checkbox"
+          checked={isActive}
+          onChange={(event) => setIsActive(event.target.checked)}
+          style={{ width: 18, height: 18 }}
+        />
+      </label>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+        <AdminField label="Старт">
+          <input
+            type="datetime-local"
+            value={startsAt}
+            onChange={(event) => setStartsAt(event.target.value)}
+          />
+        </AdminField>
+        <AdminField label="Финиш">
+          <input
+            type="datetime-local"
+            value={endsAt}
+            onChange={(event) => setEndsAt(event.target.value)}
+          />
+        </AdminField>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+        <AdminField label="Периодов">
+          <input
+            type="number"
+            min="1"
+            max="9"
+            value={totalPeriods}
+            onChange={(event) => setTotalPeriods(event.target.value)}
+          />
+        </AdminField>
+        <AdminField label="Бросков">
+          <input
+            type="number"
+            min="1"
+            max="100"
+            value={shotsPerPeriod}
+            onChange={(event) => setShotsPerPeriod(event.target.value)}
+          />
+        </AdminField>
+        <AdminField label="Минут период">
+          <input
+            type="number"
+            min="1"
+            value={periodMinutes}
+            onChange={(event) => setPeriodMinutes(event.target.value)}
+          />
+        </AdminField>
+        <AdminField label="Минут перерыв">
+          <input
+            type="number"
+            min="0"
+            value={breakMinutes}
+            onChange={(event) => setBreakMinutes(event.target.value)}
+          />
+        </AdminField>
+      </div>
+      <AdminField label="Вратарь">
+        <input value={goalieId} onChange={(event) => setGoalieId(event.target.value)} />
+      </AdminField>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+        <AdminField label="Ставка">
+          <input
+            type="number"
+            min="0"
+            value={stakeAmount}
+            onChange={(event) => setStakeAmount(event.target.value)}
+          />
+        </AdminField>
+        <AdminField label="Взнос">
+          <input
+            type="number"
+            min="0"
+            value={entryFeeAmount}
+            onChange={(event) => setEntryFeeAmount(event.target.value)}
+          />
+        </AdminField>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 120px', gap: 8 }}>
+        <AdminField label="Предмет">
+          <GlassSelect
+            value={requiredInventoryItemId}
+            options={inventoryOptions}
+            onChange={setRequiredInventoryItemId}
+            ariaLabel="Предмет для дуэли"
+          />
+        </AdminField>
+        <AdminField label="Зарядов/период">
+          <input
+            type="number"
+            min="0"
+            value={inventoryChargesPerPeriod}
+            onChange={(event) => setInventoryChargesPerPeriod(event.target.value)}
+          />
+        </AdminField>
+      </div>
+      <AdminField label="Скорости">
+        <textarea
+          value={presetsJson}
+          onChange={(event) => setPresetsJson(event.target.value)}
+          rows={8}
+          style={{
+            resize: 'vertical',
+            minHeight: 160,
+            fontFamily: 'var(--font-mono)',
+            fontSize: 11,
+            lineHeight: 1.45,
+          }}
+        />
+      </AdminField>
+      {parsedPresets === null && (
+        <div role="alert" style={{ color: 'var(--red-deep)', fontSize: 12 }}>
+          Скорости заполнены некорректно
+        </div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         <button
           type="button"

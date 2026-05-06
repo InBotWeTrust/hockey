@@ -42,6 +42,7 @@ interface AdminPushNotificationStatsRow {
   chat_new_dialog_message_users: string;
   daily_game_users: string;
   training_available_users: string;
+  duel_events_users: string;
   game_news_users: string;
 }
 
@@ -232,6 +233,7 @@ interface AdminUserRow {
   push_chat_new_dialog_message: boolean;
   push_daily_game: boolean;
   push_training_available: boolean;
+  push_duel_events: boolean;
   push_game_news: boolean;
   total_count?: string;
 }
@@ -307,6 +309,15 @@ interface AdminInventoryItemRow {
   title: string;
   description: string;
   price_rub: number;
+  item_kind: 'bundle' | 'stick' | 'skates' | 'nutrition' | 'consumable';
+  currency_price: number;
+  charges_per_purchase: number;
+  duel_period_cost: number;
+  effect_puck_speed_delta: number;
+  effect_shooter_frequency_delta: number;
+  effect_goalie_frequency_delta: number;
+  effect_goal_frequency_delta: number;
+  effect_shot_zone_multiplier: number;
   created_at: Date;
   updated_at: Date;
   payments_count?: string;
@@ -475,6 +486,8 @@ const pushEventTypeSchema = z.enum([
   'daily.period_ending',
   'daily.break_finished',
   'training.available',
+  'duel.challenge_received',
+  'duel.result_ready',
   'news.posted',
 ]);
 
@@ -594,6 +607,7 @@ function mapPushNotificationStats(row: AdminPushNotificationStatsRow) {
   const chatNewDialogMessage = Number(row.chat_new_dialog_message_users);
   const dailyGame = Number(row.daily_game_users);
   const trainingAvailable = Number(row.training_available_users);
+  const duelEvents = Number(row.duel_events_users);
   const gameNews = Number(row.game_news_users);
   return {
     totalUsers,
@@ -613,6 +627,10 @@ function mapPushNotificationStats(row: AdminPushNotificationStatsRow) {
       trainingAvailable: {
         count: trainingAvailable,
         percent: percent(trainingAvailable, totalUsers),
+      },
+      duelEvents: {
+        count: duelEvents,
+        percent: percent(duelEvents, totalUsers),
       },
       gameNews: {
         count: gameNews,
@@ -1093,6 +1111,7 @@ function mapUser(row: AdminUserRow) {
         chatNewDialogMessage: row.push_chat_new_dialog_message,
         dailyGame: row.push_daily_game,
         trainingAvailable: row.push_training_available,
+        duelEvents: row.push_duel_events,
         gameNews: row.push_game_news,
       },
     },
@@ -1123,6 +1142,15 @@ function mapInventoryItem(row: AdminInventoryItemRow) {
     title: row.title,
     description: row.description,
     priceRub: row.price_rub,
+    itemKind: row.item_kind,
+    currencyPrice: row.currency_price,
+    chargesPerPurchase: row.charges_per_purchase,
+    duelPeriodCost: row.duel_period_cost,
+    effectPuckSpeedDelta: row.effect_puck_speed_delta,
+    effectShooterFrequencyDelta: row.effect_shooter_frequency_delta,
+    effectGoalieFrequencyDelta: row.effect_goalie_frequency_delta,
+    effectGoalFrequencyDelta: row.effect_goal_frequency_delta,
+    effectShotZoneMultiplier: row.effect_shot_zone_multiplier,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
     paymentsCount: Number(row.payments_count ?? 0),
@@ -1222,6 +1250,8 @@ async function fetchPushNotificationStats(
               coalesce(s.subscription_count, 0) > 0
                 and coalesce(pref.training_available, true) as training_available,
               coalesce(s.subscription_count, 0) > 0
+                and coalesce(pref.duel_events, true) as duel_events,
+              coalesce(s.subscription_count, 0) > 0
                 and coalesce(pref.game_news, true) as game_news
          from users u
          left join subscribed s on s.user_id = u.id
@@ -1232,6 +1262,7 @@ async function fetchPushNotificationStats(
             count(*) filter (where chat_new_dialog_message)::int as chat_new_dialog_message_users,
             count(*) filter (where daily_game)::int as daily_game_users,
             count(*) filter (where training_available)::int as training_available_users,
+            count(*) filter (where duel_events)::int as duel_events_users,
             count(*) filter (where game_news)::int as game_news_users
        from prepared`,
   );
@@ -1242,6 +1273,7 @@ async function fetchPushNotificationStats(
       chat_new_dialog_message_users: '0',
       daily_game_users: '0',
       training_available_users: '0',
+      duel_events_users: '0',
       game_news_users: '0',
     }
   );
@@ -1622,6 +1654,8 @@ async function fetchAdminUser(client: Pool | PoolClient, userId: string): Promis
               and coalesce(pref.daily_game, true) as push_daily_game,
             coalesce(push.subscription_count, 0) > 0
               and coalesce(pref.training_available, true) as push_training_available,
+            coalesce(push.subscription_count, 0) > 0
+              and coalesce(pref.duel_events, true) as push_duel_events,
             coalesce(push.subscription_count, 0) > 0
               and coalesce(pref.game_news, true) as push_game_news
        from users u
@@ -2416,6 +2450,15 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
               i.title,
               i.description,
               i.price_rub,
+              i.item_kind,
+              i.currency_price,
+              i.charges_per_purchase,
+              i.duel_period_cost,
+              i.effect_puck_speed_delta,
+              i.effect_shooter_frequency_delta,
+              i.effect_goalie_frequency_delta,
+              i.effect_goal_frequency_delta,
+              i.effect_shot_zone_multiplier,
               i.created_at,
               i.updated_at,
               count(p.id)::int as payments_count,
@@ -2437,7 +2480,11 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
     const { rows } = await app.pg.query<AdminInventoryItemRow>(
       `insert into admin_inventory_items (photo_url, title, description, price_rub)
        values ($1, $2, $3, $4)
-       returning id, photo_url, title, description, price_rub, created_at, updated_at`,
+       returning id, photo_url, title, description, price_rub, item_kind, currency_price,
+                 charges_per_purchase, duel_period_cost, effect_puck_speed_delta,
+                 effect_shooter_frequency_delta, effect_goalie_frequency_delta,
+                 effect_goal_frequency_delta, effect_shot_zone_multiplier,
+                 created_at, updated_at`,
       [body.data.photoUrl, body.data.title, body.data.description, body.data.priceRub],
     );
     await appendEvent(app.pg, req.user.id, 'admin_inventory_item_created', {
@@ -2472,7 +2519,11 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
           set ${assignments.join(', ')},
               updated_at = now()
         where id = $${values.length} and deleted_at is null
-      returning id, photo_url, title, description, price_rub, created_at, updated_at`,
+      returning id, photo_url, title, description, price_rub, item_kind, currency_price,
+                charges_per_purchase, duel_period_cost, effect_puck_speed_delta,
+                effect_shooter_frequency_delta, effect_goalie_frequency_delta,
+                effect_goal_frequency_delta, effect_shot_zone_multiplier,
+                created_at, updated_at`,
       values,
     );
     if (rows.length === 0) {
@@ -2573,6 +2624,8 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
                         and coalesce(pref.daily_game, true) as push_daily_game,
                       coalesce(push.subscription_count, 0) > 0
                         and coalesce(pref.training_available, true) as push_training_available,
+                      coalesce(push.subscription_count, 0) > 0
+                        and coalesce(pref.duel_events, true) as push_duel_events,
                       coalesce(push.subscription_count, 0) > 0
                         and coalesce(pref.game_news, true) as push_game_news
                  from users u

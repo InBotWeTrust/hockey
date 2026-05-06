@@ -357,7 +357,7 @@ describe('DailyScreen', () => {
     ).toBeInTheDocument();
     expect(screen.getByTestId('pixi-stage-stub')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Продолжить' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Понятно' }));
 
     await waitFor(() => {
       expect(
@@ -426,7 +426,7 @@ describe('DailyScreen', () => {
       screen.getByLabelText('3-й период: 15 голов из 30 бросков за 20:00'),
     ).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Продолжить' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Понятно' }));
 
     expect(await screen.findByRole('dialog', { name: 'День завершён' })).toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: 'Игра завершена' })).not.toBeInTheDocument();

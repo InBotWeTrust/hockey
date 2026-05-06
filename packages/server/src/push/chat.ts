@@ -53,6 +53,7 @@ export async function enqueueFirstDialogMessagePush(
             pref.chat_new_dialog_message,
             pref.daily_game,
             pref.training_available,
+            pref.duel_events,
             pref.game_news
        from chat_members cm
        join users sender on sender.id = $2

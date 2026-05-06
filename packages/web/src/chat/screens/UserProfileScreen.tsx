@@ -8,6 +8,7 @@ import {
   type UserPublicProfileDTO,
   type FindOrCreateDMResult,
 } from '../api.js';
+import { challengeAmateurDuel, fetchAmateurTemplates } from '../../api/amateurDuel.js';
 import { userKeys } from '../../lib/queryKeys.js';
 import { useAuthStore } from '../../auth/authStore.js';
 import { formatLastSeen } from '../lastSeen.js';
@@ -51,6 +52,18 @@ export function UserProfileScreen(): JSX.Element {
   });
 
   const isSelf = meId !== null && data?.id === meId;
+  const canDuel =
+    !isSelf &&
+    (data?.competitionLevel === 'amateur' || data?.competitionLevel === 'professional');
+  const duelMut = useMutation({
+    mutationFn: async () => {
+      const { templates } = await fetchAmateurTemplates();
+      const template = templates[0];
+      if (!template) throw new Error('Нет активных шаблонов дуэлей');
+      return challengeAmateurDuel({ template_id: template.id, opponent_user_id: userId });
+    },
+    onSuccess: () => navigate('/?view=amateur'),
+  });
 
   return (
     <main
@@ -163,10 +176,30 @@ export function UserProfileScreen(): JSX.Element {
           />
 
           {!isSelf && (
-            <div style={{ padding: '4px 14px 0' }}>
+            <div style={{ padding: '4px 14px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {canDuel && (
+                <button
+                  type="button"
+                  className="btn btn--cta"
+                  disabled={duelMut.isPending}
+                  onClick={() => duelMut.mutate()}
+                  style={{
+                    width: '100%',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '12px 16px',
+                    borderRadius: 14,
+                    fontSize: 14,
+                    fontWeight: 700,
+                  }}
+                >
+                  {duelMut.isPending ? 'Отправляем…' : 'Вызвать на дуэль'}
+                </button>
+              )}
               <button
                 type="button"
-                className="btn btn--cta"
+                className={canDuel ? 'btn btn--ghost' : 'btn btn--cta'}
                 disabled={dmMut.isPending}
                 onClick={() => dmMut.mutate(data.id)}
                 style={{

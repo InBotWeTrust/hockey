@@ -49,6 +49,14 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     expect(names).toContain('channel_post_poll_options');
     expect(names).toContain('channel_post_poll_votes');
     expect(names).toContain('channel_post_views');
+    expect(names).toContain('amateur_duel_template');
+    expect(names).toContain('amateur_duel_match');
+    expect(names).toContain('amateur_duel_participant');
+    expect(names).toContain('amateur_duel_period_log');
+    expect(names).toContain('amateur_duel_rating');
+    expect(names).toContain('user_currency_account');
+    expect(names).toContain('currency_ledger');
+    expect(names).toContain('user_inventory_item');
     expect(names).toContain('feedback_messages');
     expect(names).toContain('_migrations');
 
@@ -75,6 +83,8 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         { key: 'daily.unlocked_after_training', click_url: '/?view=hub' },
         { key: 'daily.period_ending', click_url: '/?view=daily' },
         { key: 'training.available', click_url: '/?view=training' },
+        { key: 'duel.challenge_received', click_url: '/?view=amateur' },
+        { key: 'duel.result_ready', click_url: '/?view=amateur' },
       ]),
     );
   });
@@ -110,6 +120,8 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '024_push_notification_templates.sql',
       '025_push_delivery_log.sql',
       '026_channel_post_polls.sql',
+      '027_amateur_duels.sql',
+      '028_chat_message_metadata.sql',
     ]);
   });
 });

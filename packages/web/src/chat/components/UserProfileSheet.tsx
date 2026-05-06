@@ -9,6 +9,7 @@ import {
   type UserPickerItem,
   type UserPublicProfileDTO,
 } from '../api.js';
+import { challengeAmateurDuel, fetchAmateurTemplates } from '../../api/amateurDuel.js';
 import { chatKeys, userKeys } from '../../lib/queryKeys.js';
 import { UserAvatar } from './UserAvatar.js';
 import type { ProfileAchievement } from '../../screens/profileTypes.js';
@@ -63,11 +64,27 @@ export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JS
     staleTime: 60_000,
   });
 
+  const isSelf = sender?.userId === meId;
+  const canDuel =
+    !isSelf &&
+    (profile?.competitionLevel === 'amateur' || profile?.competitionLevel === 'professional');
+  const duelMut = useMutation({
+    mutationFn: async () => {
+      const { templates } = await fetchAmateurTemplates();
+      const template = templates[0];
+      if (!template) throw new Error('Нет активных шаблонов дуэлей');
+      return challengeAmateurDuel({ template_id: template.id, opponent_user_id: senderId });
+    },
+    onSuccess: () => {
+      navigate('/?view=amateur');
+      onClose();
+    },
+  });
+
   if (!sender) return null;
 
   const displayName = profile?.displayName ?? sender.displayName;
   const avatarUrl = profile?.avatarUrl ?? sender.avatarUrl;
-  const isSelf = sender.userId === meId;
 
   return createPortal(
     <div
@@ -196,15 +213,28 @@ export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JS
             Это ваш профиль
           </div>
         ) : (
-          <button
-            type="button"
-            className="btn btn--cta"
-            onClick={() => mutate(sender.userId)}
-            disabled={isPending}
-            style={{ marginTop: 14, padding: '14px 0', fontSize: 15, fontWeight: 600 }}
-          >
-            {isPending ? 'Открываем чат…' : 'Написать в личку'}
-          </button>
+          <>
+            {canDuel && (
+              <button
+                type="button"
+                className="btn btn--cta"
+                onClick={() => duelMut.mutate()}
+                disabled={duelMut.isPending}
+                style={{ marginTop: 14, padding: '14px 0', fontSize: 15, fontWeight: 600 }}
+              >
+                {duelMut.isPending ? 'Отправляем вызов…' : 'Вызвать на дуэль'}
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => mutate(sender.userId)}
+              disabled={isPending}
+              style={{ marginTop: canDuel ? 8 : 14, padding: '14px 0', fontSize: 15, fontWeight: 600 }}
+            >
+              {isPending ? 'Открываем чат…' : 'Написать в личку'}
+            </button>
+          </>
         )}
         {selectedAchievement !== null && (
           <AchievementDetailsSheet

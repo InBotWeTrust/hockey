@@ -39,6 +39,7 @@ export interface MessageRow {
   content: string;
   reply_to_id: string | null;
   is_deleted: boolean;
+  metadata?: Record<string, unknown>;
   created_at: Date;
   updated_at: Date;
   // Optional: hydrated by getMessages / sendMessage via LEFT JOIN users so
@@ -120,6 +121,7 @@ export interface ChatMessageDTO {
   isDeleted: boolean;
   createdAt: string; // ISO
   reactions: ReactionGroupDTO[];
+  metadata?: Record<string, unknown>;
   // Present for channel posts; omitted for regular chat messages.
   commentCount?: number;
   viewCount?: number;

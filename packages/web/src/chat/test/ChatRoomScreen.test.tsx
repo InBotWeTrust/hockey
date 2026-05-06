@@ -6,6 +6,7 @@ import { ChatRoomScreen } from '../screens/ChatRoomScreen.js';
 import { useAuthStore, type AuthUser } from '../../auth/authStore.js';
 import { chatKeys } from '../../lib/queryKeys.js';
 import * as api from '../api.js';
+import * as amateurDuelApi from '../../api/amateurDuel.js';
 import type { ChatMessageDTO } from '../api.js';
 
 function renderRoom(chatId: string, search = ''): { queryClient: QueryClient } {
@@ -107,6 +108,47 @@ describe('ChatRoomScreen', () => {
     expect(bubbles[1]?.getAttribute('data-message-id')).toBe('m2');
     expect(screen.getByText('привет')).toBeInTheDocument();
     expect(screen.getByText('хай')).toBeInTheDocument();
+  });
+
+  it('renders duel invite actions and declines from the message card', async () => {
+    const decline = vi.spyOn(amateurDuelApi, 'declineAmateurDuel').mockResolvedValue({
+      match: {} as Awaited<ReturnType<typeof amateurDuelApi.declineAmateurDuel>>['match'],
+    });
+    vi.spyOn(amateurDuelApi, 'acceptAmateurDuel').mockResolvedValue({
+      match: {} as Awaited<ReturnType<typeof amateurDuelApi.acceptAmateurDuel>>['match'],
+    });
+    vi.mocked(api.fetchMessages).mockResolvedValue([
+      {
+        ...msgFromOther,
+        id: 'duel-invite',
+        content: 'Иван вызывает вас на дуэль «Классическая дуэль».',
+        metadata: {
+          type: 'amateur_duel_invite',
+          matchId: '11111111-1111-1111-1111-111111111111',
+          templateTitle: 'Классическая дуэль',
+          challengerName: 'Иван',
+          startsAt: '2026-05-04T10:00:00.000Z',
+          endsAt: '2026-05-04T12:00:00.000Z',
+          totalPeriods: 3,
+          shotsPerPeriod: 30,
+          periodDurationMs: 1_200_000,
+          breakDurationMs: 900_000,
+          stakeAmount: 5,
+          entryFeeAmount: 1,
+          bankAmount: 10,
+        },
+      },
+    ]);
+
+    renderRoom('c1');
+
+    expect(await screen.findByRole('button', { name: 'Принять' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Отказаться' }));
+
+    await waitFor(() =>
+      expect(decline).toHaveBeenCalledWith('11111111-1111-1111-1111-111111111111'),
+    );
+    expect(await screen.findByText('Вы отказались')).toBeInTheDocument();
   });
 
   it('uses subscribers wording in channel header', async () => {

@@ -14,8 +14,10 @@ export type AdminPushNotificationKey =
   | 'daily.period_ending'
   | 'daily.break_finished'
   | 'training.available'
+  | 'duel.challenge_received'
+  | 'duel.result_ready'
   | 'news.posted';
-export type AdminPushNotificationCategory = 'chat' | 'daily' | 'training' | 'news';
+export type AdminPushNotificationCategory = 'chat' | 'daily' | 'training' | 'duel' | 'news';
 export type AdminPushDeliveryStatus =
   | 'queued'
   | 'processing'
@@ -138,6 +140,7 @@ export interface AdminNotificationStats {
     chatNewDialogMessage: { count: number; percent: number };
     dailyGame: { count: number; percent: number };
     trainingAvailable: { count: number; percent: number };
+    duelEvents: { count: number; percent: number };
     gameNews: { count: number; percent: number };
   };
 }
@@ -192,6 +195,7 @@ export interface AdminUser {
       chatNewDialogMessage: boolean;
       dailyGame: boolean;
       trainingAvailable: boolean;
+      duelEvents: boolean;
       gameNews: boolean;
     };
   };
@@ -270,10 +274,50 @@ export interface AdminInventoryItem {
   title: string;
   description: string;
   priceRub: number;
+  itemKind: AdminInventoryItemKind;
+  currencyPrice: number;
+  chargesPerPurchase: number;
+  duelPeriodCost: number;
+  effectPuckSpeedDelta: number;
+  effectShooterFrequencyDelta: number;
+  effectGoalieFrequencyDelta: number;
+  effectGoalFrequencyDelta: number;
+  effectShotZoneMultiplier: number;
   createdAt: string;
   updatedAt: string;
   paymentsCount: number;
   paidRevenueRub: number;
+}
+
+export type AdminInventoryItemKind = 'bundle' | 'stick' | 'skates' | 'nutrition' | 'consumable';
+
+export interface AdminDuelPeriodSpeedPreset {
+  periodNumber: number;
+  goalFrequency: number;
+  goalieFrequency: number;
+  shooterFrequency: number;
+  puckSpeedPerMs: number;
+}
+
+export interface AdminDuelTemplate {
+  id: string;
+  title: string;
+  description: string;
+  isActive: boolean;
+  startsAt: string;
+  endsAt: string;
+  totalPeriods: number;
+  shotsPerPeriod: number;
+  periodDurationMs: number;
+  breakDurationMs: number;
+  goalieId: string;
+  periodSpeedPresets: AdminDuelPeriodSpeedPreset[];
+  stakeAmount: number;
+  entryFeeAmount: number;
+  requiredInventoryItemId: string | null;
+  inventoryChargesPerPeriod: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface AdminFeedback {
@@ -484,6 +528,21 @@ export interface AdminInventoryItemPatch {
   priceRub?: number;
 }
 
+export interface AdminInventoryGameplayPatch {
+  itemKind?: AdminInventoryItemKind;
+  currencyPrice?: number;
+  chargesPerPurchase?: number;
+  duelPeriodCost?: number;
+  effectPuckSpeedDelta?: number;
+  effectShooterFrequencyDelta?: number;
+  effectGoalieFrequencyDelta?: number;
+  effectGoalFrequencyDelta?: number;
+  effectShotZoneMultiplier?: number;
+}
+
+export type AdminDuelTemplateInput = Omit<AdminDuelTemplate, 'id' | 'createdAt' | 'updatedAt'>;
+export type AdminDuelTemplatePatch = Partial<AdminDuelTemplateInput>;
+
 export interface AdminGameSetting {
   key: string;
   label: string;
@@ -651,8 +710,47 @@ export function patchAdminInventoryItem(
   });
 }
 
+export function patchAdminInventoryGameplay(
+  itemId: string,
+  body: AdminInventoryGameplayPatch,
+): Promise<{ ok: true }> {
+  return apiFetch<{ ok: true }>(`/admin/inventory/${itemId}/gameplay`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+}
+
 export function deleteAdminInventoryItem(itemId: string): Promise<{ ok: true }> {
   return apiFetch<{ ok: true }>(`/admin/inventory/${itemId}`, {
+    method: 'DELETE',
+  });
+}
+
+export function fetchAdminDuelTemplates(): Promise<{ templates: AdminDuelTemplate[] }> {
+  return apiFetch<{ templates: AdminDuelTemplate[] }>('/admin/duel-templates');
+}
+
+export function createAdminDuelTemplate(
+  body: AdminDuelTemplateInput,
+): Promise<{ template: AdminDuelTemplate }> {
+  return apiFetch<{ template: AdminDuelTemplate }>('/admin/duel-templates', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export function patchAdminDuelTemplate(
+  templateId: string,
+  body: AdminDuelTemplatePatch,
+): Promise<{ template: AdminDuelTemplate }> {
+  return apiFetch<{ template: AdminDuelTemplate }>(`/admin/duel-templates/${templateId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteAdminDuelTemplate(templateId: string): Promise<{ ok: true }> {
+  return apiFetch<{ ok: true }>(`/admin/duel-templates/${templateId}`, {
     method: 'DELETE',
   });
 }

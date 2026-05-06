@@ -1,5 +1,5 @@
 export interface DailyPeriodSpeedPreset {
-  periodNumber: 1 | 2 | 3;
+  periodNumber: number;
   goalFrequency: number;
   goalieFrequency: number;
   shooterFrequency: number;

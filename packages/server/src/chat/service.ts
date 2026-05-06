@@ -44,6 +44,7 @@ interface MyChatsRow {
   updated_at: Date;
   last_message_id: string | null;
   last_message_content: string | null;
+  last_message_metadata: Record<string, unknown> | null;
   last_message_sender_id: string | null;
   last_message_sender_name: string | null;
   last_message_created_at: Date | null;
@@ -127,6 +128,7 @@ export async function getMyChats(pool: Pool, userId: string): Promise<ChatDTO[]>
       c.*,
       lm.id as last_message_id,
       lm.content as last_message_content,
+      lm.metadata as last_message_metadata,
       lm.sender_id as last_message_sender_id,
       lu.display_name as last_message_sender_name,
       lm.created_at as last_message_created_at,
@@ -140,7 +142,7 @@ export async function getMyChats(pool: Pool, userId: string): Promise<ChatDTO[]>
     left join chat_members cm_self
       on cm_self.chat_id = c.id and cm_self.user_id = $1
     left join lateral (
-      select id, content, sender_id, created_at, is_deleted, reply_to_id, updated_at
+      select id, content, metadata, sender_id, created_at, is_deleted, reply_to_id, updated_at
       from messages
       where chat_id = c.id and is_deleted = false
       order by created_at desc
@@ -217,6 +219,7 @@ export async function getMyChats(pool: Pool, userId: string): Promise<ChatDTO[]>
           chat_id: row.id,
           sender_id: row.last_message_sender_id!,
           content: row.last_message_content!,
+          metadata: row.last_message_metadata ?? {},
           reply_to_id: row.last_message_reply_to_id,
           is_deleted: row.last_message_is_deleted!,
           created_at: row.last_message_created_at!,
@@ -521,6 +524,7 @@ export interface SendMessageOpts {
   content: string;
   replyToId?: string;
   pollOptions?: string[];
+  metadata?: Record<string, unknown>;
 }
 
 export async function sendMessage(pool: Pool, opts: SendMessageOpts): Promise<ChatMessageDTO> {
@@ -540,8 +544,8 @@ export async function sendMessage(pool: Pool, opts: SendMessageOpts): Promise<Ch
     );
     const r = await client.query<MessageRow>(
       `with ins as (
-         insert into messages (chat_id, sender_id, content, reply_to_id)
-         values ($1, $2, $3, $4)
+         insert into messages (chat_id, sender_id, content, reply_to_id, metadata)
+         values ($1, $2, $3, $4, $5::jsonb)
          returning *
        )
        select ins.*,
@@ -551,7 +555,13 @@ export async function sendMessage(pool: Pool, opts: SendMessageOpts): Promise<Ch
               '0'::bigint as view_count
          from ins
          left join users u on u.id = ins.sender_id`,
-      [opts.chatId, opts.senderId, opts.content, opts.replyToId ?? null],
+      [
+        opts.chatId,
+        opts.senderId,
+        opts.content,
+        opts.replyToId ?? null,
+        JSON.stringify(opts.metadata ?? {}),
+      ],
     );
     const row = r.rows[0]!;
     if (pollOptions.length > 0) {

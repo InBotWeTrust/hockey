@@ -16,8 +16,10 @@ import {
   voteChannelPoll,
   type ChatDTO,
   type ChatMessageDTO,
+  type AmateurDuelInviteMessageMetadata,
   type UserPickerItem,
 } from '../api.js';
+import { acceptAmateurDuel, declineAmateurDuel } from '../../api/amateurDuel.js';
 import { chatKeys } from '../../lib/queryKeys.js';
 import { useChatStore } from '../chatStore.js';
 import { useAuthStore } from '../../auth/authStore.js';
@@ -63,6 +65,159 @@ interface ActionTarget {
   anchorRect: DOMRect;
 }
 
+type DuelInviteResolution = 'accepted' | 'declined' | 'unavailable';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function parseDuelInviteMetadata(
+  metadata: ChatMessageDTO['metadata'],
+): AmateurDuelInviteMessageMetadata | null {
+  if (!isRecord(metadata) || metadata.type !== 'amateur_duel_invite') return null;
+  const strings = [
+    metadata.matchId,
+    metadata.templateTitle,
+    metadata.challengerName,
+    metadata.startsAt,
+    metadata.endsAt,
+  ];
+  const numbers = [
+    metadata.totalPeriods,
+    metadata.shotsPerPeriod,
+    metadata.periodDurationMs,
+    metadata.breakDurationMs,
+    metadata.stakeAmount,
+    metadata.entryFeeAmount,
+    metadata.bankAmount,
+  ];
+  if (!strings.every((value) => typeof value === 'string' && value.length > 0)) return null;
+  if (!numbers.every((value) => typeof value === 'number' && Number.isFinite(value))) return null;
+  return metadata as AmateurDuelInviteMessageMetadata;
+}
+
+function formatInviteDate(iso: string): string {
+  return new Date(iso).toLocaleString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function formatInviteMoney(amount: number): string {
+  return amount > 0 ? String(amount) : 'нет';
+}
+
+function DuelInviteMetric({ label, value }: { label: string; value: string }): JSX.Element {
+  return (
+    <div
+      style={{
+        minWidth: 0,
+        padding: '7px 8px',
+        borderRadius: 12,
+        background: 'rgba(255,255,255,0.5)',
+        border: '1px solid rgba(148, 163, 184, 0.28)',
+      }}
+    >
+      <div
+        style={{
+          color: 'rgba(71, 85, 105, 0.72)',
+          fontSize: 9,
+          fontWeight: 900,
+          letterSpacing: 0,
+          textTransform: 'uppercase',
+        }}
+      >
+        {label}
+      </div>
+      <div style={{ color: 'var(--ink)', fontSize: 13, fontWeight: 900 }}>{value}</div>
+    </div>
+  );
+}
+
+function DuelInviteActions({
+  invite,
+  resolution,
+  pending,
+  onAccept,
+  onDecline,
+}: {
+  invite: AmateurDuelInviteMessageMetadata;
+  resolution: DuelInviteResolution | undefined;
+  pending: boolean;
+  onAccept: () => void;
+  onDecline: () => void;
+}): JSX.Element {
+  const status =
+    resolution === 'accepted'
+      ? 'Дуэль принята'
+      : resolution === 'declined'
+        ? 'Вы отказались'
+        : resolution === 'unavailable'
+          ? 'Вызов уже недоступен'
+          : null;
+
+  return (
+    <div
+      onPointerDown={(event) => event.stopPropagation()}
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+        paddingTop: 8,
+        borderTop: '1px solid rgba(148, 163, 184, 0.24)',
+      }}
+    >
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+        <DuelInviteMetric
+          label="Формат"
+          value={`${invite.totalPeriods}×${invite.shotsPerPeriod}`}
+        />
+        <DuelInviteMetric label="Банк" value={formatInviteMoney(invite.bankAmount)} />
+        <DuelInviteMetric label="До" value={formatInviteDate(invite.endsAt)} />
+        <DuelInviteMetric label="Взнос" value={formatInviteMoney(invite.entryFeeAmount)} />
+      </div>
+      {status ? (
+        <div
+          style={{
+            padding: '8px 10px',
+            borderRadius: 999,
+            background: 'rgba(15, 23, 42, 0.08)',
+            color: 'var(--ink)',
+            fontSize: 12,
+            fontWeight: 900,
+            textAlign: 'center',
+          }}
+        >
+          {status}
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+          <button
+            type="button"
+            className="btn btn--cta"
+            disabled={pending}
+            onClick={onAccept}
+            style={{ minHeight: 36, padding: '8px 10px', fontSize: 12 }}
+          >
+            Принять
+          </button>
+          <button
+            type="button"
+            className="btn btn--ghost"
+            disabled={pending}
+            onClick={onDecline}
+            style={{ minHeight: 36, padding: '8px 10px', fontSize: 12 }}
+          >
+            Отказаться
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ChatRoomScreen(): JSX.Element {
   const params = useParams<{ chatId: string }>();
   const chatId = params.chatId ?? '';
@@ -88,6 +243,9 @@ export function ChatRoomScreen(): JSX.Element {
   const [editingPost, setEditingPost] = useState<ChatMessageDTO | null>(null);
   const [pollComposerOpen, setPollComposerOpen] = useState(false);
   const [gotoError, setGotoError] = useState<string | null>(null);
+  const [duelInviteResolutionByMatch, setDuelInviteResolutionByMatch] = useState<
+    Record<string, DuelInviteResolution>
+  >({});
   const gotoRef = useRef<string | null>(null);
   const messagesListRef = useRef<HTMLDivElement | null>(null);
   // Android (especially MIUI WebView) and some iOS Safari builds don't shrink
@@ -453,6 +611,31 @@ export function ChatRoomScreen(): JSX.Element {
     },
   });
 
+  const acceptDuelInviteMut = useMutation({
+    mutationFn: (matchId: string) => acceptAmateurDuel(matchId),
+    onSuccess: (_data, matchId) => {
+      setDuelInviteResolutionByMatch((prev) => ({ ...prev, [matchId]: 'accepted' }));
+      void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+      navigate('/?view=amateur');
+    },
+    onError: (_err, matchId) => {
+      setDuelInviteResolutionByMatch((prev) => ({ ...prev, [matchId]: 'unavailable' }));
+      void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+    },
+  });
+
+  const declineDuelInviteMut = useMutation({
+    mutationFn: (matchId: string) => declineAmateurDuel(matchId),
+    onSuccess: (_data, matchId) => {
+      setDuelInviteResolutionByMatch((prev) => ({ ...prev, [matchId]: 'declined' }));
+      void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+    },
+    onError: (_err, matchId) => {
+      setDuelInviteResolutionByMatch((prev) => ({ ...prev, [matchId]: 'unavailable' }));
+      void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+    },
+  });
+
   const onRequestActions = useCallback((message: ChatMessageDTO, anchorRect: DOMRect): void => {
     setActionTarget({ message, anchorRect });
   }, []);
@@ -691,6 +874,22 @@ export function ChatRoomScreen(): JSX.Element {
             );
           }
           const isOwn = m.senderId === meId;
+          const duelInvite = parseDuelInviteMetadata(m.metadata);
+          const inviteActionSlot =
+            duelInvite && !isOwn && !m.isDeleted ? (
+              <DuelInviteActions
+                invite={duelInvite}
+                resolution={duelInviteResolutionByMatch[duelInvite.matchId]}
+                pending={
+                  (acceptDuelInviteMut.isPending &&
+                    acceptDuelInviteMut.variables === duelInvite.matchId) ||
+                  (declineDuelInviteMut.isPending &&
+                    declineDuelInviteMut.variables === duelInvite.matchId)
+                }
+                onAccept={() => acceptDuelInviteMut.mutate(duelInvite.matchId)}
+                onDecline={() => declineDuelInviteMut.mutate(duelInvite.matchId)}
+              />
+            ) : undefined;
           const isReadByCounterpart =
             counterpartLastReadAt !== null &&
             Date.parse(counterpartLastReadAt) >= Date.parse(m.createdAt);
@@ -714,6 +913,7 @@ export function ChatRoomScreen(): JSX.Element {
               replyTo={replyTo}
               onRequestActions={onRequestActions}
               onReact={onToggleReaction}
+              actionSlot={inviteActionSlot}
               onOpenProfile={onOpenProfile}
             />
           );

@@ -10,6 +10,13 @@ import type {
   ChannelPostCommentReactionRow,
 } from './types.js';
 
+function metadataFromUnknown(value: unknown): Record<string, unknown> {
+  if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+}
+
 export function toChatMessageDTO(
   row: MessageRow,
   reactions: ReactionGroupDTO[] = [],
@@ -26,6 +33,8 @@ export function toChatMessageDTO(
     createdAt: row.created_at.toISOString(),
     reactions,
   };
+  const metadata = metadataFromUnknown(row.metadata);
+  if (Object.keys(metadata).length > 0) dto.metadata = metadata;
   if (row.comment_count !== undefined) dto.commentCount = Number(row.comment_count);
   if (row.view_count !== undefined) dto.viewCount = Number(row.view_count);
   return dto;

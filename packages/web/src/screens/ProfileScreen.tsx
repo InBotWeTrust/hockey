@@ -63,6 +63,11 @@ const PUSH_PREFERENCE_ITEMS: Array<{
     hint: 'Когда обновился лимит тренировки',
   },
   {
+    key: 'duelEvents',
+    label: 'Дуэли',
+    hint: 'Вызовы и результаты любительских матчей',
+  },
+  {
     key: 'gameNews',
     label: 'Новости игры',
     hint: 'Редкие системные объявления',

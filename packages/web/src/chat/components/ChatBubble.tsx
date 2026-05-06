@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, type ReactNode } from 'react';
 import { Check, CheckCheck } from 'lucide-react';
 import type { ChatMessageDTO } from '../api.js';
 import { ReplyPreview } from './ReplyPreview.js';
@@ -19,10 +19,15 @@ interface ChatBubbleProps {
   // Receives messageId so the parent can pass a stable useCallback reference
   // (without a per-bubble closure) — preserves React.memo across parent renders.
   onReact: (messageId: string, emoji: string) => void;
+  actionSlot?: ReactNode;
   // Foreign group/system bubbles call this when the user taps the avatar or
   // author name — parent opens a profile preview sheet. Optional: if undefined,
   // the avatar and name render as non-interactive plain elements.
-  onOpenProfile?: (sender: { userId: string; displayName: string; avatarUrl: string | null }) => void;
+  onOpenProfile?: (sender: {
+    userId: string;
+    displayName: string;
+    avatarUrl: string | null;
+  }) => void;
 }
 
 function formatTime(iso: string): string {
@@ -37,6 +42,7 @@ function ChatBubbleImpl({
   replyTo,
   onRequestActions,
   onReact,
+  actionSlot,
   onOpenProfile,
 }: ChatBubbleProps): JSX.Element {
   const className = isOwn ? 'glass-dark' : 'glass';
@@ -181,6 +187,7 @@ function ChatBubbleImpl({
           reactions={message.reactions}
           onToggle={(emoji) => onReact(message.id, emoji)}
         />
+        {actionSlot && <div style={{ marginTop: 8 }}>{actionSlot}</div>}
       </div>
     </div>
   );
@@ -258,6 +265,7 @@ function areEqual(prev: ChatBubbleProps, next: ChatBubbleProps): boolean {
     prev.deliveryStatus === next.deliveryStatus &&
     prev.replyTo?.content === next.replyTo?.content &&
     prev.replyTo?.senderName === next.replyTo?.senderName &&
+    prev.actionSlot === next.actionSlot &&
     prev.onRequestActions === next.onRequestActions &&
     prev.onReact === next.onReact &&
     prev.onOpenProfile === next.onOpenProfile

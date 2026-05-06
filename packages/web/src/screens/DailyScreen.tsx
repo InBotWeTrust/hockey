@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Container } from 'pixi.js';
 import type { Application, Ticker } from 'pixi.js';
@@ -22,6 +22,7 @@ import {
   simulateGoalie,
   type DailyPeriodSpeedPreset,
   type ShotResult,
+  type StickEffects,
 } from '@hockey/game-core';
 import { PixiStage } from '../game/PixiStage.js';
 import { RinkSvg } from '../game/RinkSvg.js';
@@ -49,6 +50,7 @@ import {
   type DemoSessionState,
 } from '../stores/demoSession.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
+import { useAmateurDuelStore } from '../stores/amateurDuelStore.js';
 import { ScoreBoard } from '../components/ScoreBoard.js';
 import { ResultModal } from '../components/ResultModal.js';
 import type {
@@ -59,6 +61,19 @@ import type {
   ShotResultType,
 } from '../api/duel.js';
 import type { TrainingStateResponse } from '../api/training.js';
+import {
+  acceptAmateurDuel,
+  challengeAmateurDuel,
+  fetchAmateurEvents,
+  fetchAmateurMatches,
+  fetchAmateurRating,
+  fetchAmateurTemplates,
+  searchAmateurOpponents,
+  settleAmateurDuel,
+  type AmateurDuelMatch,
+  type AmateurDuelMatchState,
+  type AmateurOpponent,
+} from '../api/amateurDuel.js';
 import { StartPeriodModal } from '../components/StartPeriodModal.js';
 import { getLastSeenAt, setLastSeenAt } from '../stores/seenPeriods.js';
 
@@ -79,6 +94,7 @@ const MODE_ARTWORK_IMAGES: Record<LevelArtwork, string | null> = {
   amateur: '/modes/amateur.webp',
   pro: '/modes/pro.webp',
 };
+const DUEL_EVENT_ARTWORK_IMAGE = '/modes/amateur-duel-card.webp';
 
 const DAILY_HUB_ARTWORK_IMAGES: Record<DailyHubArtwork, string> = {
   'period-1': '/daily-game/period-1.webp',
@@ -108,6 +124,8 @@ function periodSpeedPresetFor(
   periodNumber: number,
   presets?: readonly DailyPeriodSpeedPreset[],
 ): DailyPeriodSpeedPreset {
+  const exact = presets?.find((preset) => preset.periodNumber === periodNumber);
+  if (exact) return exact;
   const normalized = Math.min(3, Math.max(1, Math.trunc(periodNumber))) as 1 | 2 | 3;
   return (
     presets?.find((preset) => preset.periodNumber === normalized) ??
@@ -183,6 +201,18 @@ function formatHms(ms: number): string {
   return `${h}:${m}:${s}`;
 }
 
+function formatEventRemaining(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const days = Math.floor(total / 86400);
+  if (days > 99) return `${days} дн`;
+  if (days > 0) {
+    const hours = String(Math.floor((total % 86400) / 3600)).padStart(2, '0');
+    const minutes = String(Math.floor((total % 3600) / 60)).padStart(2, '0');
+    return `${days}д ${hours}:${minutes}`;
+  }
+  return formatHms(ms);
+}
+
 function formatSpeedValue(value: number): string {
   return value.toFixed(2).replace('.', ',');
 }
@@ -239,6 +269,7 @@ export function DailyScreen(): JSX.Element {
   const loading = useDailyStore((s) => s.loading);
   const refresh = useDailyStore((s) => s.refresh);
   const [selectedLevel, setSelectedLevel] = useState<GameLevel>('beginner');
+  const [activeAmateurMatchId, setActiveAmateurMatchId] = useState<string | null>(null);
   const [beginnerMode, setBeginnerMode] = useState<BeginnerMode>(() => {
     const view = new URLSearchParams(location.search).get('view');
     return view === 'training' ? 'training' : 'daily';
@@ -268,6 +299,12 @@ export function DailyScreen(): JSX.Element {
       setDailyView('hub');
       setSelectedLevel('beginner');
       setBeginnerMode('training');
+    }
+    if (view === 'amateur') {
+      setDailyView('hub');
+      setSelectedLevel('amateur');
+      setBeginnerMode('daily');
+      setActiveAmateurMatchId(null);
     }
   }, [location.search]);
 
@@ -336,6 +373,25 @@ export function DailyScreen(): JSX.Element {
   }
 
   if (selectedLevel !== 'beginner') {
+    if (selectedLevel === 'amateur') {
+      if (activeAmateurMatchId) {
+        return (
+          <AmateurDuelPlayView
+            matchId={activeAmateurMatchId}
+            onBack={() => setActiveAmateurMatchId(null)}
+          />
+        );
+      }
+      return (
+        <AmateurHub
+          onBack={() => {
+            setSelectedLevel('beginner');
+            setBeginnerMode('daily');
+          }}
+          onOpenMatch={setActiveAmateurMatchId}
+        />
+      );
+    }
     return (
       <LevelPlaceholder
         level={selectedLevel}
@@ -355,7 +411,10 @@ export function DailyScreen(): JSX.Element {
     <GameHub
       onOpenDailyPlay={openDailyPlay}
       onOpenTraining={openTraining}
-      onOpenAmateurs={() => setSelectedLevel('amateur')}
+      onOpenAmateurs={() => {
+        setSelectedLevel('amateur');
+        navigate('/?view=amateur', { replace: true });
+      }}
     />
   );
 }
@@ -432,6 +491,7 @@ function GameHub({
   const trainingData = useTrainingSessionStore((s) => s.data);
   const [modeInfoModal, setModeInfoModal] = useState<ModeInfoModalContent | null>(null);
   const [dailyStatsOpen, setDailyStatsOpen] = useState(false);
+  const [duelStatsMatch, setDuelStatsMatch] = useState<AmateurDuelMatch | null>(null);
   const pending = useDailyStore((s) => s.inFlight);
   const nextPeriod = data.current_period === 0 ? 1 : data.current_period + 1;
   const dailyAvailableTitle = `${nextPeriod}-й период доступен`;
@@ -457,19 +517,73 @@ function GameHub({
     trainingCooldownEndsAt > 0 &&
     trainingCooldownRemaining > 0;
   const dailyHubArtwork = dailyHubArtworkFor(data, isDailyLockedByTraining);
+  const amateurEvents = useQuery({
+    queryKey: ['amateur-duel', 'events'],
+    queryFn: fetchAmateurEvents,
+    enabled: data.lifetime_total_goals >= 1000,
+    refetchInterval: 30_000,
+  });
+  const amateurEventItems = amateurEvents.data?.events ?? [];
+  const hasTimedAmateurEvents = amateurEventItems.some(
+    (event) => event.status !== 'settled' && event.status !== 'expired',
+  );
+  const duelStatsCurrentMatch = duelStatsMatch
+    ? (amateurEventItems.find((event) => event.id === duelStatsMatch.id) ?? duelStatsMatch)
+    : null;
+  const eventCardsCount = 1 + amateurEventItems.length;
+  const canSwipeEvents = eventCardsCount > 1;
+  const eventCardWidth = canSwipeEvents ? 'calc(100% - 30px)' : '100%';
+  const eventCarouselRef = useRef<HTMLDivElement | null>(null);
+  const [activeEventIndex, setActiveEventIndex] = useState(0);
+
+  const eventScrollStep = useCallback((): number => {
+    const carousel = eventCarouselRef.current;
+    const firstCard = carousel?.firstElementChild as HTMLElement | null;
+    return (firstCard?.offsetWidth ?? carousel?.clientWidth ?? 0) + 10;
+  }, []);
+
+  const setEventCarouselScroll = useCallback((left: number, behavior: ScrollBehavior): void => {
+    const carousel = eventCarouselRef.current;
+    if (!carousel) return;
+    if (typeof carousel.scrollTo === 'function') {
+      carousel.scrollTo({ left, behavior });
+      return;
+    }
+    carousel.scrollLeft = left;
+  }, []);
+
+  const handleEventCarouselScroll = useCallback((): void => {
+    const carousel = eventCarouselRef.current;
+    const step = eventScrollStep();
+    if (!carousel || step <= 0) return;
+    const index = Math.round(carousel.scrollLeft / step);
+    setActiveEventIndex(Math.min(eventCardsCount - 1, Math.max(0, index)));
+  }, [eventCardsCount, eventScrollStep]);
+
+  const scrollToEventCard = useCallback(
+    (index: number): void => {
+      const carousel = eventCarouselRef.current;
+      const step = eventScrollStep();
+      if (!carousel || step <= 0) return;
+      setEventCarouselScroll(step * index, 'smooth');
+      setActiveEventIndex(index);
+    },
+    [eventScrollStep, setEventCarouselScroll],
+  );
 
   useEffect(() => {
     if (
       data.state !== 'period_active' &&
       data.state !== 'break_active' &&
       data.state !== 'closed' &&
-      !isDailyLockedByTraining
+      !isDailyLockedByTraining &&
+      !hasTimedAmateurEvents
     ) {
       return undefined;
     }
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
-  }, [data.state, isDailyLockedByTraining]);
+  }, [data.state, hasTimedAmateurEvents, isDailyLockedByTraining]);
 
   useEffect(() => {
     if (data.state === 'period_active' && periodEndsAt > 0 && periodRemaining === 0) void refresh();
@@ -491,6 +605,15 @@ function GameHub({
     trainingCooldownRemaining,
     refresh,
   ]);
+
+  useEffect(() => {
+    if (!canSwipeEvents) {
+      setActiveEventIndex(0);
+      setEventCarouselScroll(0, 'auto');
+      return;
+    }
+    setActiveEventIndex((index) => Math.min(index, eventCardsCount - 1));
+  }, [canSwipeEvents, eventCardsCount, setEventCarouselScroll]);
 
   const isDailyInProgress = data.state === 'period_active' || data.state === 'break_active';
   const isDailyClosed = data.state === 'closed';
@@ -622,13 +745,16 @@ function GameHub({
           <div
             className="section-label"
             style={{
-              display: 'inline-flex',
+              display: 'flex',
               alignItems: 'center',
+              justifyContent: 'space-between',
               gap: 6,
-              margin: '0 0 6px -14px',
+              margin: '0 0 6px',
             }}
           >
-            <span>События</span>
+            <span style={{ transform: 'translateX(-14px)' }}>
+              События{eventCardsCount > 1 ? ` (${eventCardsCount})` : ''}
+            </span>
             <button
               type="button"
               onClick={() =>
@@ -644,6 +770,9 @@ function GameHub({
                 cursor: 'pointer',
                 display: 'inline-flex',
                 alignItems: 'center',
+                justifyContent: 'center',
+                width: 28,
+                height: 28,
               }}
               aria-label="Об описании страницы"
             >
@@ -652,138 +781,199 @@ function GameHub({
           </div>
 
           <div
+            ref={eventCarouselRef}
+            aria-label="Карусель событий"
+            onScroll={canSwipeEvents ? handleEventCarouselScroll : undefined}
             style={{
-              position: 'relative',
-              overflow: 'hidden',
-              borderRadius: 28,
-              padding: 18,
-              minHeight: 206,
               display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'space-between',
-              gap: 18,
-              background:
-                'linear-gradient(180deg, rgba(255,255,255,0.82) 0%, rgba(226,238,249,0.74) 100%)',
-              border: '1px solid rgba(255,255,255,0.82)',
-              boxShadow: '0 18px 42px rgba(15,23,42,0.18), inset 0 1px 0 rgba(255,255,255,0.95)',
+              gap: 10,
+              overflowX: canSwipeEvents ? 'auto' : 'hidden',
+              scrollSnapType: canSwipeEvents ? 'x mandatory' : 'none',
+              WebkitOverflowScrolling: 'touch',
+              paddingRight: canSwipeEvents ? 18 : 0,
+              paddingBottom: 2,
             }}
           >
-            <button
-              type="button"
-              aria-label="Статистика последней игры"
-              title="Статистика последней игры"
-              onClick={() => setDailyStatsOpen(true)}
-              className="icon-btn"
-              style={{
-                position: 'absolute',
-                top: 16,
-                right: 16,
-                zIndex: 2,
-                width: 30,
-                height: 30,
-              }}
-            >
-              <BarChart3 size={15} strokeWidth={2.35} />
-            </button>
-
-            <div
-              style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 14 }}
-            >
-              <div
-                style={{
-                  color: 'rgba(15, 23, 42, 0.58)',
-                  fontSize: 10,
-                  fontWeight: 900,
-                  letterSpacing: '0.2em',
-                  textTransform: 'uppercase',
-                }}
-              >
-                Ежедневная игра
-              </div>
-
-              <div
-                aria-label="Статус ежедневной игры"
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: `${DAILY_HUB_ARTWORK_SIZE}px minmax(0, 1fr)`,
-                  alignItems: 'center',
-                  gap: 14,
-                }}
-              >
-                <img
-                  src={DAILY_HUB_ARTWORK_IMAGES[dailyHubArtwork]}
-                  alt=""
-                  aria-hidden="true"
-                  style={{
-                    display: 'block',
-                    width: DAILY_HUB_ARTWORK_SIZE,
-                    height: DAILY_HUB_ARTWORK_SIZE,
-                    borderRadius: 20,
-                    border: '1px solid rgba(255,255,255,0.82)',
-                    boxSizing: 'border-box',
-                    objectFit: 'cover',
-                    boxShadow:
-                      'inset 0 1px 0 rgba(255,255,255,0.9), 0 16px 28px rgba(15,23,42,0.24)',
-                  }}
-                />
-                <div
-                  style={{
-                    minWidth: 0,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'flex-start',
-                    gap: 8,
-                  }}
-                >
-                  <div
-                    style={{
-                      color: '#10192d',
-                      fontSize: 25,
-                      lineHeight: 1.05,
-                      fontWeight: 900,
-                      textAlign: 'left',
-                    }}
-                  >
-                    {dailyEventTitle}
-                  </div>
-                  <DailyHubScoreboard
-                    activePeriod={dailyHubScoreboard.activePeriod}
-                    align="left"
-                    ariaLabel={dailyHubScoreboard.ariaLabel}
-                    periodsTotal={data.total_periods}
-                    timer={dailyHubScoreboard.timer}
-                    timerLabel={dailyHubScoreboard.timerLabel}
-                  />
-                </div>
-              </div>
-            </div>
-
             <div
               style={{
                 position: 'relative',
+                overflow: 'hidden',
+                borderRadius: 28,
+                padding: 18,
+                minHeight: 206,
+                minWidth: eventCardWidth,
+                scrollSnapAlign: 'start',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                gap: 18,
+                background:
+                  'linear-gradient(180deg, rgba(255,255,255,0.82) 0%, rgba(226,238,249,0.74) 100%)',
+                border: '1px solid rgba(255,255,255,0.82)',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.95)',
               }}
             >
               <button
                 type="button"
-                className="btn btn--cta"
-                disabled={dailyActionDisabled}
-                onClick={() => void handleDailyAction()}
+                aria-label="Статистика последней игры"
+                title="Статистика последней игры"
+                onClick={() => setDailyStatsOpen(true)}
+                className="icon-btn"
                 style={{
-                  width: '100%',
-                  minHeight: 62,
-                  padding: '0 18px',
-                  justifyContent: 'center',
-                  letterSpacing: 0,
-                  fontSize: 17,
-                  boxShadow: dailyActionDisabled
-                    ? 'none'
-                    : '0 20px 34px rgba(15,23,42,0.28), inset 0 1px 0 rgba(255,255,255,0.12)',
+                  position: 'absolute',
+                  top: 16,
+                  right: 16,
+                  zIndex: 2,
+                  width: 30,
+                  height: 30,
                 }}
               >
-                {dailyActionLabel}
+                <BarChart3 size={15} strokeWidth={2.35} />
               </button>
+
+              <div
+                style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 14 }}
+              >
+                <div
+                  style={{
+                    color: 'rgba(15, 23, 42, 0.58)',
+                    fontSize: 10,
+                    fontWeight: 900,
+                    letterSpacing: '0.2em',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  Ежедневная игра
+                </div>
+
+                <div
+                  aria-label="Статус ежедневной игры"
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: `${DAILY_HUB_ARTWORK_SIZE}px minmax(0, 1fr)`,
+                    alignItems: 'center',
+                    gap: 14,
+                  }}
+                >
+                  <img
+                    src={DAILY_HUB_ARTWORK_IMAGES[dailyHubArtwork]}
+                    alt=""
+                    aria-hidden="true"
+                    style={{
+                      display: 'block',
+                      width: DAILY_HUB_ARTWORK_SIZE,
+                      height: DAILY_HUB_ARTWORK_SIZE,
+                      borderRadius: 20,
+                      border: '1px solid rgba(255,255,255,0.82)',
+                      boxSizing: 'border-box',
+                      objectFit: 'cover',
+                      boxShadow:
+                        'inset 0 1px 0 rgba(255,255,255,0.9), 0 16px 28px rgba(15,23,42,0.24)',
+                    }}
+                  />
+                  <div
+                    style={{
+                      minWidth: 0,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'flex-start',
+                      gap: 8,
+                    }}
+                  >
+                    <div
+                      style={{
+                        color: '#10192d',
+                        fontSize: 25,
+                        lineHeight: 1.05,
+                        fontWeight: 900,
+                        textAlign: 'left',
+                      }}
+                    >
+                      {dailyEventTitle}
+                    </div>
+                    <DailyHubScoreboard
+                      activePeriod={dailyHubScoreboard.activePeriod}
+                      align="left"
+                      ariaLabel={dailyHubScoreboard.ariaLabel}
+                      periodsTotal={data.total_periods}
+                      timer={dailyHubScoreboard.timer}
+                      timerLabel={dailyHubScoreboard.timerLabel}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  position: 'relative',
+                }}
+              >
+                <button
+                  type="button"
+                  className="btn btn--cta"
+                  disabled={dailyActionDisabled}
+                  onClick={() => void handleDailyAction()}
+                  style={{
+                    width: '100%',
+                    minHeight: 62,
+                    padding: '0 18px',
+                    justifyContent: 'center',
+                    letterSpacing: 0,
+                    fontSize: 17,
+                    boxShadow: dailyActionDisabled
+                      ? 'none'
+                      : '0 20px 34px rgba(15,23,42,0.28), inset 0 1px 0 rgba(255,255,255,0.12)',
+                  }}
+                >
+                  {dailyActionLabel}
+                </button>
+              </div>
             </div>
+            {amateurEventItems.map((event) => (
+              <DuelEventCard
+                key={event.id}
+                cardWidth={eventCardWidth}
+                match={event}
+                now={now}
+                onOpen={handleOpenAmateurs}
+                onOpenStats={() => setDuelStatsMatch(event)}
+              />
+            ))}
           </div>
+          {canSwipeEvents && (
+            <div
+              aria-label="Страницы событий"
+              style={{
+                display: 'flex',
+                justifyContent: 'center',
+                gap: 6,
+                marginTop: 8,
+                minHeight: 10,
+              }}
+            >
+              {Array.from({ length: eventCardsCount }, (_, index) => {
+                const active = index === activeEventIndex;
+                return (
+                  <button
+                    key={index}
+                    type="button"
+                    aria-label={`Событие ${index + 1}`}
+                    onClick={() => scrollToEventCard(index)}
+                    style={{
+                      width: active ? 18 : 7,
+                      height: 7,
+                      borderRadius: 999,
+                      border: 'none',
+                      padding: 0,
+                      background: active ? 'rgba(15, 23, 42, 0.72)' : 'rgba(15, 23, 42, 0.2)',
+                      cursor: 'pointer',
+                      transition: 'width 160ms ease, background 160ms ease',
+                    }}
+                  />
+                );
+              })}
+            </div>
+          )}
         </section>
 
         <section
@@ -844,6 +1034,9 @@ function GameHub({
           onClose={() => setDailyStatsOpen(false)}
         />
       )}
+      {duelStatsCurrentMatch && (
+        <DuelStatsModal match={duelStatsCurrentMatch} onClose={() => setDuelStatsMatch(null)} />
+      )}
     </main>
   );
 }
@@ -892,6 +1085,261 @@ function DailyHubScoreboard({
         <DailyPeriodTabs activePeriod={activePeriod} align={align} periodsTotal={periodsTotal} />
       </div>
     </div>
+  );
+}
+
+interface DuelEventTiming {
+  activePeriod: number | null;
+  ariaLabel: string;
+  label: string;
+  value: string;
+}
+
+function timestampMs(iso: string | null): number {
+  if (!iso) return 0;
+  const value = new Date(iso).getTime();
+  return Number.isFinite(value) ? value : 0;
+}
+
+function duelMatchNowMs(match: AmateurDuelMatch, fallbackNow: number): number {
+  const serverNow = timestampMs(match.server_now);
+  const receivedAt = match.received_at_performance_ms;
+  if (serverNow > 0 && typeof receivedAt === 'number' && typeof performance !== 'undefined') {
+    return serverNow + Math.max(0, performance.now() - receivedAt);
+  }
+  return fallbackNow;
+}
+
+function duelNextPeriod(match: AmateurDuelMatch): number {
+  if (match.me.state === 'period_active') return match.me.current_period;
+  return Math.min(match.rules.totalPeriods, Math.max(1, match.me.current_period + 1));
+}
+
+function duelEventTiming(match: AmateurDuelMatch, fallbackNow: number): DuelEventTiming {
+  const now = duelMatchNowMs(match, fallbackNow);
+  const startsAt = timestampMs(match.starts_at);
+  const endsAt = timestampMs(match.ends_at);
+  const periodEndsAt = timestampMs(match.period_ends_at);
+  const breakEndsAt = timestampMs(match.break_ends_at);
+  const score = `${match.me.goals}:${match.opponent.goals}`;
+
+  if (match.status === 'settled' || match.status === 'expired') {
+    return {
+      activePeriod: null,
+      ariaLabel: `${duelOutcomeText(match)}. Счёт ${score}`,
+      label: 'Счёт',
+      value: score,
+    };
+  }
+
+  if (startsAt > now) {
+    const value = formatEventRemaining(startsAt - now);
+    return {
+      activePeriod: 1,
+      ariaLabel: `До старта ${value}. Счёт ${score}`,
+      label: 'До старта',
+      value,
+    };
+  }
+
+  if (match.me.state === 'accepted' || match.me.state === 'invited') {
+    return {
+      activePeriod: duelNextPeriod(match),
+      ariaLabel: `До старта 00:00. Счёт ${score}`,
+      label: 'До старта',
+      value: '00:00',
+    };
+  }
+
+  if (match.me.state === 'period_active' && periodEndsAt > 0) {
+    const value = formatMs(periodEndsAt - now);
+    return {
+      activePeriod: match.me.current_period,
+      ariaLabel: `${match.me.current_period}-й период. До конца ${value}. Счёт ${score}`,
+      label: 'До конца',
+      value,
+    };
+  }
+
+  if (match.me.state === 'break_active' && breakEndsAt > 0) {
+    const value = formatMs(breakEndsAt - now);
+    return {
+      activePeriod: duelNextPeriod(match),
+      ariaLabel: `Перерыв. До конца ${value}. Счёт ${score}`,
+      label: 'Перерыв',
+      value,
+    };
+  }
+
+  if ((match.me.state === 'completed' || match.me.state === 'forfeit') && endsAt > now) {
+    const value = formatEventRemaining(endsAt - now);
+    return {
+      activePeriod: match.rules.totalPeriods,
+      ariaLabel: `До итога ${value}. Счёт ${score}`,
+      label: 'До итога',
+      value,
+    };
+  }
+
+  return {
+    activePeriod: duelNextPeriod(match),
+    ariaLabel: `Счёт ${score}`,
+    label: 'Счёт',
+    value: score,
+  };
+}
+
+function DuelEventCard({
+  cardWidth,
+  match,
+  now,
+  onOpen,
+  onOpenStats,
+}: {
+  cardWidth: string;
+  match: AmateurDuelMatch;
+  now: number;
+  onOpen: () => void;
+  onOpenStats: () => void;
+}): JSX.Element {
+  const status = duelOutcomeText(match);
+  const timing = duelEventTiming(match, now);
+  const actionLabel =
+    match.status === 'pending' && match.me.state === 'invited'
+      ? 'Ответить на вызов'
+      : match.status === 'pending'
+        ? 'Открыть вызов'
+        : match.status === 'settled'
+          ? 'Открыть итог'
+          : 'Открыть дуэль';
+
+  return (
+    <article
+      style={{
+        position: 'relative',
+        overflow: 'hidden',
+        borderRadius: 28,
+        padding: 18,
+        minHeight: 206,
+        minWidth: cardWidth,
+        scrollSnapAlign: 'start',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        gap: 18,
+        background:
+          'linear-gradient(180deg, rgba(255,255,255,0.82) 0%, rgba(226,238,249,0.74) 100%)',
+        border: '1px solid rgba(255,255,255,0.82)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.95)',
+      }}
+    >
+      <button
+        type="button"
+        aria-label={`Статистика дуэли против ${match.opponent.display_name}`}
+        title="Статистика дуэли"
+        onClick={onOpenStats}
+        className="icon-btn"
+        style={{
+          position: 'absolute',
+          top: 16,
+          right: 16,
+          zIndex: 2,
+          width: 30,
+          height: 30,
+        }}
+      >
+        <BarChart3 size={15} strokeWidth={2.35} />
+      </button>
+
+      <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div
+          style={{
+            color: 'rgba(15, 23, 42, 0.58)',
+            fontSize: 10,
+            fontWeight: 900,
+            letterSpacing: '0.2em',
+            textTransform: 'uppercase',
+          }}
+        >
+          Любительская дуэль
+        </div>
+
+        <div
+          aria-label={`Статус дуэли против ${match.opponent.display_name}`}
+          style={{
+            display: 'grid',
+            gridTemplateColumns: `${DAILY_HUB_ARTWORK_SIZE}px minmax(0, 1fr)`,
+            alignItems: 'center',
+            gap: 14,
+          }}
+        >
+          <img
+            src={DUEL_EVENT_ARTWORK_IMAGE}
+            alt=""
+            aria-hidden="true"
+            style={{
+              display: 'block',
+              width: DAILY_HUB_ARTWORK_SIZE,
+              height: DAILY_HUB_ARTWORK_SIZE,
+              borderRadius: 20,
+              border: '1px solid rgba(255,255,255,0.82)',
+              boxSizing: 'border-box',
+              objectFit: 'cover',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9), 0 16px 28px rgba(15,23,42,0.24)',
+            }}
+          />
+          <div
+            style={{
+              minWidth: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              gap: 8,
+            }}
+          >
+            <div
+              style={{
+                color: '#10192d',
+                fontSize: 25,
+                lineHeight: 1.05,
+                fontWeight: 900,
+                textAlign: 'left',
+                overflowWrap: 'anywhere',
+              }}
+            >
+              Дуэль: {match.opponent.display_name}
+            </div>
+            <DailyHubScoreboard
+              activePeriod={timing.activePeriod}
+              align="left"
+              ariaLabel={`${status}. ${timing.ariaLabel}. Периодов ${match.rules.totalPeriods}`}
+              periodsTotal={match.rules.totalPeriods}
+              timer={timing.value}
+              timerLabel={timing.label}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div style={{ position: 'relative' }}>
+        <button
+          type="button"
+          className="btn btn--cta"
+          onClick={onOpen}
+          style={{
+            width: '100%',
+            minHeight: 62,
+            padding: '0 18px',
+            justifyContent: 'center',
+            letterSpacing: 0,
+            fontSize: 17,
+            boxShadow: '0 20px 34px rgba(15,23,42,0.28), inset 0 1px 0 rgba(255,255,255,0.12)',
+          }}
+        >
+          {actionLabel}
+        </button>
+      </div>
+    </article>
   );
 }
 
@@ -1339,6 +1787,304 @@ function DailyGameStatsModal({
   );
 }
 
+function DuelStatsModal({
+  match,
+  onClose,
+}: {
+  match: AmateurDuelMatch;
+  onClose: () => void;
+}): JSX.Element {
+  const economyItems = [
+    match.stake_amount > 0 ? { label: 'Ставка', value: String(match.stake_amount) } : null,
+    match.bank_amount > 0 ? { label: 'Банк', value: String(match.bank_amount) } : null,
+    match.entry_fee_amount > 0 ? { label: 'Взнос', value: String(match.entry_fee_amount) } : null,
+  ].filter((item): item is { label: string; value: string } => item !== null);
+  const inventoryLabel =
+    match.rules.requiredInventoryItemId && match.rules.inventoryChargesPerPeriod > 0
+      ? `${match.rules.inventoryChargesPerPeriod}/период`
+      : 'нет';
+  const currentPeriod = Math.max(match.me.current_period, match.opponent.current_period);
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Статистика дуэли"
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(15, 23, 42, 0.35)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+        zIndex: 260,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      <div
+        className="glass"
+        onClick={(event) => event.stopPropagation()}
+        style={{
+          borderRadius: 24,
+          padding: '18px 18px 20px',
+          maxHeight: 'min(82vh, 720px)',
+          maxWidth: 420,
+          overflowY: 'auto',
+          width: '100%',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            marginBottom: 16,
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 14,
+                fontWeight: 900,
+                letterSpacing: '0.1em',
+                textTransform: 'uppercase',
+                color: 'var(--ink)',
+              }}
+            >
+              Статистика дуэли
+            </div>
+            <div
+              style={{
+                marginTop: 5,
+                color: 'rgba(15, 23, 42, 0.55)',
+                fontSize: 12,
+                fontWeight: 800,
+                overflowWrap: 'anywhere',
+              }}
+            >
+              против {match.opponent.display_name} · {duelOutcomeText(match)}
+            </div>
+          </div>
+          <button type="button" className="icon-btn" onClick={onClose} aria-label="Закрыть">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div
+          aria-label={`Счёт дуэли ${match.me.goals}:${match.opponent.goals}`}
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+            gap: 8,
+            marginBottom: 14,
+          }}
+        >
+          <DailyStatsMetric label="Счёт" value={`${match.me.goals}:${match.opponent.goals}`} />
+          <DailyStatsMetric label="Банк" value={String(match.bank_amount)} />
+          <DailyStatsMetric label="Период" value={`${currentPeriod}/${match.rules.totalPeriods}`} />
+        </div>
+
+        <DuelStatsInfoGrid
+          items={[
+            { label: 'Формат', value: `${match.rules.totalPeriods}x${match.rules.shotsPerPeriod}` },
+            {
+              label: 'Окно',
+              value: `${formatShortDateTime(match.starts_at)} - ${formatShortDateTime(
+                match.ends_at,
+              )}`,
+            },
+            { label: 'Расходник', value: inventoryLabel },
+          ]}
+        />
+
+        {economyItems.length > 0 && <DuelStatsInfoGrid items={economyItems} />}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 }}>
+          <DuelStatsParticipantRow label="Вы" participant={match.me} />
+          <DuelStatsParticipantRow
+            label={match.opponent.display_name}
+            participant={match.opponent}
+          />
+        </div>
+
+        <button
+          type="button"
+          className="btn btn--cta"
+          onClick={onClose}
+          style={{ marginTop: 18, width: '100%', padding: '12px 0', fontSize: 14 }}
+        >
+          Закрыть
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function DuelStatsInfoGrid({
+  items,
+}: {
+  items: Array<{ label: string; value: string }>;
+}): JSX.Element {
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+        gap: 8,
+        marginTop: 8,
+      }}
+    >
+      {items.map((item) => (
+        <div
+          key={item.label}
+          style={{
+            minWidth: 0,
+            borderRadius: 14,
+            padding: '10px 9px',
+            background: 'rgba(255, 255, 255, 0.42)',
+            border: '1px solid rgba(255, 255, 255, 0.58)',
+          }}
+        >
+          <div
+            style={{
+              color: 'rgba(15, 23, 42, 0.52)',
+              fontSize: 9,
+              fontWeight: 900,
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {item.label}
+          </div>
+          <div
+            style={{
+              marginTop: 6,
+              color: 'var(--ink)',
+              fontSize: item.value.length > 14 ? 11 : 13,
+              fontWeight: 900,
+              lineHeight: 1.15,
+              overflowWrap: 'anywhere',
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            {item.value}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DuelStatsParticipantRow({
+  label,
+  participant,
+}: {
+  label: string;
+  participant: AmateurDuelMatch['me'];
+}): JSX.Element {
+  const items = [
+    { label: 'Голы', value: String(participant.goals) },
+    { label: 'Броски', value: String(participant.shots_taken) },
+    { label: 'Точность', value: `${participant.accuracy}%` },
+    { label: 'Время', value: formatDurationMs(participant.active_duration_ms) },
+  ];
+
+  return (
+    <div
+      aria-label={`${label}: ${participant.goals} голов, ${participant.shots_taken} бросков, точность ${participant.accuracy}%`}
+      style={{
+        borderRadius: 16,
+        padding: '11px 12px',
+        background: 'rgba(255, 255, 255, 0.42)',
+        border: '1px solid rgba(255, 255, 255, 0.58)',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          gap: 10,
+          marginBottom: 10,
+        }}
+      >
+        <div
+          style={{
+            minWidth: 0,
+            color: 'var(--ink)',
+            fontSize: 13,
+            fontWeight: 900,
+            overflowWrap: 'anywhere',
+          }}
+        >
+          {label}
+        </div>
+        <div
+          style={{
+            color: 'rgba(15, 23, 42, 0.5)',
+            fontSize: 10,
+            fontWeight: 900,
+            textTransform: 'uppercase',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {duelParticipantStateText(participant.state)}
+        </div>
+      </div>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+          gap: 7,
+        }}
+      >
+        {items.map((item) => (
+          <div key={item.label} style={{ minWidth: 0 }}>
+            <div
+              style={{
+                color: 'rgba(15, 23, 42, 0.46)',
+                fontSize: 8,
+                fontWeight: 900,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+              }}
+            >
+              {item.label}
+            </div>
+            <div
+              style={{
+                marginTop: 4,
+                color: 'var(--ink)',
+                fontFamily: 'var(--font-mono)',
+                fontSize: item.label === 'Время' ? 13 : 15,
+                fontWeight: 800,
+                fontVariantNumeric: 'tabular-nums',
+                lineHeight: 1,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {item.value}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function duelParticipantStateText(state: AmateurDuelMatch['me']['state']): string {
+  if (state === 'invited') return 'вызов';
+  if (state === 'accepted') return 'готов';
+  if (state === 'period_active') return 'период';
+  if (state === 'break_active') return 'перерыв';
+  if (state === 'completed') return 'завершил';
+  return 'неявка';
+}
+
 function DailyStatsMetric({ label, value }: { label: string; value: string }): JSX.Element {
   const isTime = label === 'Время';
   return (
@@ -1739,6 +2485,465 @@ function TrainingPlaceholder({ onBack }: { onBack: () => void }): JSX.Element {
   );
 }
 
+function formatShortDateTime(iso: string): string {
+  return new Date(iso).toLocaleString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function duelOutcomeText(match: AmateurDuelMatch): string {
+  if (match.outcome === 'draw') return 'Ничья';
+  if (match.outcome === 'double_loss') return 'Оба проиграли';
+  if (match.winner_user_id === match.me.user_id) return 'Победа';
+  if (match.winner_user_id === match.opponent.user_id) return 'Поражение';
+  if (match.status === 'pending' && match.me.state === 'invited') return 'Вас вызвали';
+  if (match.status === 'pending') return 'Ожидает ответа';
+  if (match.status === 'scheduled') return 'Ждёт старта';
+  if (match.status === 'active') return 'Активна';
+  if (match.status === 'expired' && match.settled_reason === 'declined') {
+    return match.me.state === 'forfeit' ? 'Вы отказались' : 'Отказ';
+  }
+  return 'Истекла';
+}
+
+function AmateurHub({
+  onBack,
+  onOpenMatch,
+}: {
+  onBack: () => void;
+  onOpenMatch: (matchId: string) => void;
+}): JSX.Element {
+  const queryClient = useQueryClient();
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [opponentQuery, setOpponentQuery] = useState('');
+  const [selectedOpponent, setSelectedOpponent] = useState<AmateurOpponent | null>(null);
+
+  const templates = useQuery({
+    queryKey: ['amateur-duel', 'templates'],
+    queryFn: fetchAmateurTemplates,
+  });
+  const matches = useQuery({
+    queryKey: ['amateur-duel', 'matches'],
+    queryFn: fetchAmateurMatches,
+  });
+  const opponents = useQuery({
+    queryKey: ['amateur-duel', 'opponents', opponentQuery],
+    queryFn: () => searchAmateurOpponents(opponentQuery, 12),
+  });
+  const rating = useQuery({
+    queryKey: ['amateur-duel', 'rating'],
+    queryFn: fetchAmateurRating,
+  });
+
+  const acceptMut = useMutation({
+    mutationFn: (matchId: string) => acceptAmateurDuel(matchId),
+    onSuccess: ({ match }) => {
+      void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+      onOpenMatch(match.id);
+    },
+  });
+  const settleMut = useMutation({
+    mutationFn: (matchId: string) => settleAmateurDuel(matchId),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] }),
+  });
+  const challengeMut = useMutation({
+    mutationFn: (body: { template_id: string; opponent_user_id: string }) =>
+      challengeAmateurDuel(body),
+    onSuccess: () => {
+      setSelectedOpponent(null);
+      void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+    },
+  });
+
+  const templateItems = templates.data?.templates ?? [];
+  const activeMatches = (matches.data?.matches ?? []).filter(
+    (match) =>
+      match.status === 'pending' || match.status === 'scheduled' || match.status === 'active',
+  );
+  const history = (matches.data?.matches ?? []).filter(
+    (match) => match.status === 'settled' || match.status === 'expired',
+  );
+  const selectedTemplate = selectedTemplateId
+    ? (templateItems.find((item) => item.id === selectedTemplateId) ?? null)
+    : (templateItems[0] ?? null);
+
+  useEffect(() => {
+    if (!selectedTemplateId && templateItems[0]) setSelectedTemplateId(templateItems[0].id);
+  }, [selectedTemplateId, templateItems]);
+
+  const canChallenge =
+    selectedTemplate !== null && selectedOpponent !== null && !challengeMut.isPending;
+
+  return (
+    <ModeShell title="Любители" onBack={onBack}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+        <TotalCell label="МАТЧИ" value={String(matches.data?.matches.length ?? 0)} />
+        <TotalCell label="АКТИВНЫЕ" value={String(activeMatches.length)} />
+        <TotalCell label="РЕЙТИНГ" value={String(rating.data?.rating[0]?.points ?? 0)} />
+      </div>
+
+      <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div className="section-label" style={{ margin: 0 }}>
+          Вызов
+        </div>
+        {templateItems.length > 0 ? (
+          <select
+            aria-label="Шаблон дуэли"
+            value={selectedTemplate?.id ?? ''}
+            onChange={(event) => setSelectedTemplateId(event.target.value)}
+            style={{
+              minHeight: 44,
+              borderRadius: 14,
+              border: '1px solid rgba(15,23,42,0.12)',
+              padding: '0 12px',
+              background: 'rgba(255,255,255,0.72)',
+              color: 'var(--ink)',
+              fontWeight: 700,
+            }}
+          >
+            {templateItems.map((template) => (
+              <option key={template.id} value={template.id}>
+                {template.title}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <div style={{ color: 'var(--muted)', fontSize: 14 }}>Нет активных шаблонов</div>
+        )}
+        {selectedTemplate && (
+          <div style={{ color: 'var(--muted)', fontSize: 13, lineHeight: 1.45 }}>
+            {selectedTemplate.total_periods}×{selectedTemplate.shots_per_period}, окно{' '}
+            {formatShortDateTime(selectedTemplate.starts_at)} -{' '}
+            {formatShortDateTime(selectedTemplate.ends_at)}, банк{' '}
+            {selectedTemplate.stake_amount * 2}
+          </div>
+        )}
+        <input
+          aria-label="Поиск соперника"
+          value={opponentQuery}
+          onChange={(event) => setOpponentQuery(event.target.value)}
+          placeholder="Найти любителя или профи"
+          style={{
+            minHeight: 44,
+            borderRadius: 14,
+            border: '1px solid rgba(15,23,42,0.12)',
+            padding: '0 12px',
+            background: 'rgba(255,255,255,0.72)',
+            color: 'var(--ink)',
+            fontWeight: 700,
+          }}
+        />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {(opponents.data?.users ?? []).slice(0, 4).map((opponent) => (
+            <button
+              key={opponent.userId}
+              type="button"
+              className={
+                selectedOpponent?.userId === opponent.userId ? 'btn btn--cta' : 'btn btn--ghost'
+              }
+              onClick={() => setSelectedOpponent(opponent)}
+              style={{ justifyContent: 'center' }}
+            >
+              {opponent.displayName}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          className="btn btn--cta"
+          disabled={!canChallenge}
+          onClick={() => {
+            if (!selectedTemplate || !selectedOpponent) return;
+            challengeMut.mutate({
+              template_id: selectedTemplate.id,
+              opponent_user_id: selectedOpponent.userId,
+            });
+          }}
+        >
+          {challengeMut.isPending ? 'Отправляем...' : 'Вызвать на дуэль'}
+        </button>
+        {challengeMut.error && (
+          <div style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 700 }}>
+            {challengeMut.error.message}
+          </div>
+        )}
+      </section>
+
+      <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div className="section-label" style={{ margin: 0 }}>
+          Активные дуэли
+        </div>
+        {activeMatches.length === 0 && (
+          <div style={{ color: 'var(--muted)', fontSize: 14 }}>Активных дуэлей пока нет.</div>
+        )}
+        {activeMatches.map((match) => (
+          <DuelListCard
+            key={match.id}
+            match={match}
+            pending={acceptMut.isPending || settleMut.isPending}
+            onAccept={() => acceptMut.mutate(match.id)}
+            onOpen={() => onOpenMatch(match.id)}
+            onSettle={() => settleMut.mutate(match.id)}
+          />
+        ))}
+      </section>
+
+      <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div className="section-label" style={{ margin: 0 }}>
+          Рейтинг
+        </div>
+        {(rating.data?.rating ?? []).slice(0, 5).map((row, index) => (
+          <div
+            key={row.user_id}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '28px minmax(0, 1fr) auto',
+              alignItems: 'center',
+              gap: 8,
+              color: 'var(--ink)',
+              fontSize: 14,
+              fontWeight: 800,
+            }}
+          >
+            <span>{index + 1}</span>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {row.display_name}
+            </span>
+            <span>{row.points}</span>
+          </div>
+        ))}
+      </section>
+
+      {history.length > 0 && (
+        <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div className="section-label" style={{ margin: 0 }}>
+            История
+          </div>
+          {history.slice(0, 4).map((match) => (
+            <DuelListCard
+              key={match.id}
+              match={match}
+              pending={false}
+              onAccept={() => {}}
+              onOpen={() => onOpenMatch(match.id)}
+              onSettle={() => {}}
+            />
+          ))}
+        </section>
+      )}
+    </ModeShell>
+  );
+}
+
+function DuelListCard({
+  match,
+  pending,
+  onAccept,
+  onOpen,
+  onSettle,
+}: {
+  match: AmateurDuelMatch;
+  pending: boolean;
+  onAccept: () => void;
+  onOpen: () => void;
+  onSettle: () => void;
+}): JSX.Element {
+  const invited = match.status === 'pending' && match.me.state === 'invited';
+  const playable = match.status === 'scheduled' || match.status === 'active';
+  return (
+    <div
+      className="glass"
+      style={{ borderRadius: 18, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 900, color: 'var(--ink)', fontSize: 15 }}>
+            {match.rules.title}
+          </div>
+          <div style={{ color: 'var(--muted)', fontSize: 12 }}>
+            против {match.opponent.display_name}
+          </div>
+        </div>
+        <span className="pill pill--dark">{duelOutcomeText(match)}</span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+        <TotalCell label="ГОЛЫ" value={`${match.me.goals}:${match.opponent.goals}`} />
+        <TotalCell label="БАНК" value={String(match.bank_amount)} />
+        <TotalCell label="ДО" value={formatShortDateTime(match.ends_at)} />
+      </div>
+      {invited ? (
+        <button type="button" className="btn btn--cta" disabled={pending} onClick={onAccept}>
+          Принять вызов
+        </button>
+      ) : playable ? (
+        <button type="button" className="btn btn--cta" disabled={pending} onClick={onOpen}>
+          Открыть дуэль
+        </button>
+      ) : match.status !== 'settled' && match.status !== 'expired' ? (
+        <button type="button" className="btn btn--ghost" disabled={pending} onClick={onSettle}>
+          Обновить итог
+        </button>
+      ) : (
+        <button type="button" className="btn btn--ghost" onClick={onOpen}>
+          Детали
+        </button>
+      )}
+    </div>
+  );
+}
+
+function AmateurDuelPlayView({
+  matchId,
+  onBack,
+}: {
+  matchId: string;
+  onBack: () => void;
+}): JSX.Element {
+  const match = useAmateurDuelStore((s) => s.match);
+  const loading = useAmateurDuelStore((s) => s.loading);
+  const error = useAmateurDuelStore((s) => s.error);
+  const inFlight = useAmateurDuelStore((s) => s.inFlight);
+  const load = useAmateurDuelStore((s) => s.load);
+  const refresh = useAmateurDuelStore((s) => s.refresh);
+  const startPeriod = useAmateurDuelStore((s) => s.startPeriod);
+  const optimisticAddShot = useAmateurDuelStore((s) => s.optimisticAddShot);
+  const submitShot = useAmateurDuelStore((s) => s.submitShot);
+  const applyState = useAmateurDuelStore((s) => s.applyState);
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    void load(matchId);
+  }, [load, matchId]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    if (!match || match.id !== matchId) return;
+    const startsAtMs = new Date(match.starts_at).getTime();
+    const endsAtMs = new Date(match.ends_at).getTime();
+    const breakEndsAtMs = match.break_ends_at ? new Date(match.break_ends_at).getTime() : 0;
+    if (match.status === 'scheduled' && now >= startsAtMs) void refresh();
+    if (match.me.state === 'break_active' && breakEndsAtMs > 0 && now >= breakEndsAtMs) {
+      void refresh();
+    }
+    if (match.status !== 'settled' && now >= endsAtMs) {
+      void settleAmateurDuel(match.id).then(({ match: next }) => applyState(next));
+    }
+  }, [applyState, match, matchId, now, refresh]);
+
+  if (!match || match.id !== matchId) {
+    return (
+      <ModeShell title="Дуэль" onBack={onBack}>
+        <div style={{ color: error ? 'var(--red-deep)' : 'var(--muted)', fontSize: 14 }}>
+          {error ?? (loading ? 'Загрузка...' : 'Открываем матч...')}
+        </div>
+      </ModeShell>
+    );
+  }
+
+  const startsAt = new Date(match.starts_at).getTime();
+  const endsAt = new Date(match.ends_at).getTime();
+  const breakEndsAt = match.break_ends_at ? new Date(match.break_ends_at).getTime() : 0;
+  const periodEndsAt = match.period_ends_at ? new Date(match.period_ends_at).getTime() : undefined;
+  const canStart =
+    match.status === 'active' &&
+    match.me.state === 'accepted' &&
+    now >= startsAt &&
+    now < endsAt &&
+    match.me.current_period < match.rules.totalPeriods;
+  const nextPeriod =
+    match.me.state === 'period_active'
+      ? match.me.current_period
+      : Math.min(match.rules.totalPeriods, match.me.current_period + 1);
+
+  if (match.me.state === 'period_active') {
+    return (
+      <PlayView<AmateurDuelMatchState>
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={onBack}
+        active={match.status === 'active'}
+        seed={match.match_seed}
+        goalieId={match.rules.goalieId}
+        periodNumber={match.me.current_period}
+        periodSpeedPresets={match.period_speed_presets}
+        stickEffects={match.stick_effects}
+        periodsTotal={match.rules.totalPeriods}
+        sessionStartedAt={match.period_started_at}
+        serverNow={match.server_now}
+        receivedAtPerformanceMs={match.received_at_performance_ms}
+        goals={match.current_period_goals}
+        shots={match.current_period_shots}
+        shotsTotal={match.rules.shotsPerPeriod}
+        periodEndsAt={periodEndsAt}
+        onTimerExpired={refresh}
+        backLabel="К дуэлям"
+        optimisticAddShot={optimisticAddShot}
+        submitShot={submitShot}
+        applyState={applyState}
+      />
+    );
+  }
+
+  const statusText =
+    match.status === 'settled'
+      ? duelOutcomeText(match)
+      : match.status === 'scheduled'
+        ? `Старт через ${formatHms(Math.max(0, startsAt - now))}`
+        : match.me.state === 'break_active'
+          ? `Перерыв ${formatMs(Math.max(0, breakEndsAt - now))}`
+          : match.status === 'expired'
+            ? match.settled_reason === 'declined'
+              ? 'Вызов отклонён'
+              : 'Вызов истёк'
+            : 'Готово к периоду';
+
+  return (
+    <ModeShell title="Дуэль" onBack={onBack}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+        <TotalCell label="ГОЛЫ" value={`${match.me.goals}:${match.opponent.goals}`} />
+        <TotalCell label="ВРЕМЯ" value={formatDurationMs(match.me.active_duration_ms)} />
+        <TotalCell
+          label="ПЕРИОД"
+          value={`${match.me.current_period}/${match.rules.totalPeriods}`}
+        />
+      </div>
+      <div style={{ color: 'var(--muted)', fontSize: 14, lineHeight: 1.45 }}>
+        {statusText}. Соперник: {match.opponent.display_name}. При равных голах решает суммарное
+        активное время периодов.
+      </div>
+      {error && (
+        <div style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 700 }}>{error}</div>
+      )}
+      {canStart && (
+        <StartPeriodModal
+          nextPeriod={nextPeriod}
+          totalPeriods={match.rules.totalPeriods}
+          shotsPerPeriod={match.rules.shotsPerPeriod}
+          isFirstPeriod={match.me.current_period === 0}
+          pending={inFlight}
+          onHome={onBack}
+          onStart={() => void startPeriod()}
+        />
+      )}
+      <button
+        type="button"
+        className="btn btn--cta"
+        disabled={!canStart || inFlight}
+        onClick={() => void startPeriod()}
+      >
+        {canStart ? 'Начать период' : 'Период недоступен'}
+      </button>
+    </ModeShell>
+  );
+}
+
 function LevelPlaceholder({
   level,
   onBack,
@@ -1893,6 +3098,7 @@ interface PlayViewProps<TState> {
   goalieId: string;
   periodNumber: number;
   periodSpeedPresets?: readonly DailyPeriodSpeedPreset[] | undefined;
+  stickEffects?: StickEffects | undefined;
   periodsTotal?: number;
   goals: number;
   shots: number;
@@ -2080,7 +3286,7 @@ function DailyPlayView({ onBack }: { onBack: () => void }): JSX.Element {
           totalPeriods={data.total_periods}
           title={statsModal.state === 'closed' ? 'Игра завершена' : 'Итоги ежедневной игры'}
           ariaLabel={statsModal.state === 'closed' ? 'Игра завершена' : 'Итоги ежедневной игры'}
-          closeLabel="Продолжить"
+          closeLabel="Понятно"
           onClose={handleStatsModalClose}
         />
       )}
@@ -2446,6 +3652,7 @@ function PlayView<TState>({
   goalieId,
   periodNumber,
   periodSpeedPresets,
+  stickEffects = STICK_NEUTRAL,
   periodsTotal = 3,
   goals,
   shots,
@@ -2527,6 +3734,8 @@ function PlayView<TState>({
   );
   const speedsRef = useRef<SpeedOverrides>(speeds);
   speedsRef.current = speeds;
+  const stickEffectsRef = useRef<StickEffects>(stickEffects);
+  stickEffectsRef.current = stickEffects;
 
   const flightDurationMs = useMemo(
     () => (PUCK_START.y - GOAL_OPENING.y) / speeds.puckSpeed,
@@ -2812,7 +4021,7 @@ function PlayView<TState>({
       activeCfg,
       seed,
       shotIndex,
-      STICK_NEUTRAL,
+      stickEffectsRef.current,
       offsets,
     );
 

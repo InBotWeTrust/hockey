@@ -24,6 +24,7 @@ export interface PushPreferences {
   chatNewDialogMessage: boolean;
   dailyGame: boolean;
   trainingAvailable: boolean;
+  duelEvents: boolean;
   gameNews: boolean;
 }
 

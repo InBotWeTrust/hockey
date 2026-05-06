@@ -2,7 +2,7 @@ import type { Pool, PoolClient } from 'pg';
 import type { PushEventType } from './preferences.js';
 import type { WebPushPayload } from './service.js';
 
-export type PushNotificationCategory = 'chat' | 'daily' | 'training' | 'news';
+export type PushNotificationCategory = 'chat' | 'daily' | 'training' | 'duel' | 'news';
 
 export interface PushNotificationTemplateRow {
   key: PushEventType;
@@ -53,6 +53,8 @@ const TEMPLATE_ORDER: PushEventType[] = [
   'daily.period_ending',
   'daily.break_finished',
   'training.available',
+  'duel.challenge_received',
+  'duel.result_ready',
   'news.posted',
 ];
 
@@ -111,6 +113,22 @@ const DEFAULT_PUSH_NOTIFICATION_TEMPLATES: Array<{
     body: 'Можно снова потренироваться.',
     trigger: 'Через 24 часа после прошлой тренировки.',
     clickUrl: '/?view=training',
+  },
+  {
+    key: 'duel.challenge_received',
+    category: 'duel',
+    title: 'Вас вызвали на дуэль',
+    body: '{{challengerName}} ждёт ответа в любительской лиге.',
+    trigger: 'Игрок-любитель отправляет вызов на дуэль.',
+    clickUrl: '/?view=amateur',
+  },
+  {
+    key: 'duel.result_ready',
+    category: 'duel',
+    title: 'Дуэль завершена',
+    body: '{{resultText}}',
+    trigger: 'Дуэль получила итог: победа, поражение, ничья или двойная неявка.',
+    clickUrl: '/?view=amateur',
   },
   {
     key: 'news.posted',
