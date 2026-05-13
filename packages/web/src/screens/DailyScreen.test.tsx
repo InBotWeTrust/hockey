@@ -592,7 +592,7 @@ describe('DailyScreen', () => {
     expect(screen.getByText('0/500')).toBeInTheDocument();
     expect(screen.getByText('ДО ОБНОВЛЕНИЯ')).toBeInTheDocument();
     expect(screen.getByText('Скорости 1-го периода')).toBeInTheDocument();
-    expect(screen.getByText('0,55/с')).toBeInTheDocument();
+    expect(screen.getByText('0,50/с')).toBeInTheDocument();
   });
 
   it('shows why training is locked while the daily game is in progress', async () => {
