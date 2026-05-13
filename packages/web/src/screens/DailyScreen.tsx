@@ -2012,12 +2012,17 @@ function DailyPlayView({ onBack }: { onBack: () => void }): JSX.Element {
   );
 
   const handleStatsModalClose = useCallback((): void => {
-    const latestPeriod = latestPeriodFromStats(statsModal?.stats ?? null);
-    if (latestPeriod && userId) setLastSeenAt(userId, latestPeriod.ended_at);
     const source = statsModal?.source;
     setStatsModal(null);
-    if (source === 'deferred') applyDeferredState();
-  }, [applyDeferredState, statsModal, userId]);
+    if (source === 'deferred') {
+      applyDeferredState();
+      onBack();
+      return;
+    }
+
+    const latestPeriod = latestPeriodFromStats(statsModal?.stats ?? null);
+    if (latestPeriod && userId) setLastSeenAt(userId, latestPeriod.ended_at);
+  }, [applyDeferredState, onBack, statsModal, userId]);
 
   const hasStatsModal = statsModal !== null;
   const shouldSuppressRink = data.state !== 'period_active' || hasStatsModal;
@@ -2080,7 +2085,7 @@ function DailyPlayView({ onBack }: { onBack: () => void }): JSX.Element {
           totalPeriods={data.total_periods}
           title={statsModal.state === 'closed' ? 'Игра завершена' : 'Итоги ежедневной игры'}
           ariaLabel={statsModal.state === 'closed' ? 'Игра завершена' : 'Итоги ежедневной игры'}
-          closeLabel="Продолжить"
+          closeLabel="Понятно"
           onClose={handleStatsModalClose}
         />
       )}
