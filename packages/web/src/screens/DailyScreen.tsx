@@ -46,6 +46,26 @@ import { Player, type PlayerOptions } from '../game/renderer/Player.js';
 import { Puck, type PuckOptions } from '../game/renderer/Puck.js';
 import { createGameLoop, type GameLoop, type SpeedOverrides } from '../game/loop.js';
 import type { Scale } from '../game/coords.js';
+import {
+  TRAINING_NEW_COURT_BACKGROUND,
+  TRAINING_NEW_COURT_BG_CROP_BOTTOM,
+  TRAINING_NEW_COURT_GOALIE_VISUAL_X_SCALE,
+  TRAINING_NEW_COURT_GOALIE_VISUAL_Y_OFFSET,
+  TRAINING_NEW_COURT_GOAL_VISUAL_OFFSET_X_SCALE,
+  TRAINING_NEW_COURT_GOAL_VISUAL_Y_OFFSET,
+  TRAINING_NEW_COURT_HITBOX_GOALIE_HEIGHT_SCALE,
+  TRAINING_NEW_COURT_HITBOX_GOALIE_INSET,
+  TRAINING_NEW_COURT_HITBOX_GOALIE_WIDTH_SCALE,
+  TRAINING_NEW_COURT_HITBOX_GOAL_HEIGHT_SCALE,
+  TRAINING_NEW_COURT_HITBOX_GOAL_INSET,
+  TRAINING_NEW_COURT_HITBOX_GOAL_WIDTH_SCALE,
+  TRAINING_NEW_COURT_PUCK_BLADE_OFFSET_X,
+  TRAINING_NEW_COURT_PUCK_BLADE_OFFSET_Y,
+  TRAINING_NEW_COURT_PUCK_FLIGHT_VISUAL_Y_OFFSET,
+  TRAINING_NEW_COURT_VISUAL_Y_OFFSET,
+  TRAINING_NEW_COURT_VISUAL_Y_SCALE,
+  resolveNewTrainingCourtShot,
+} from '../game/trainingNewCourt.js';
 import { TelegramLoginButton, type TelegramAuthPayload } from '../auth/TelegramLoginButton.js';
 import { useAuthStore, type AuthSession } from '../auth/authStore.js';
 import { startVkOAuth } from '../auth/vkAuth.js';
@@ -127,17 +147,7 @@ const DAILY_HUB_ARTWORK_IMAGES: Record<DailyHubArtwork, string> = {
   start: '/daily-game/start.webp',
 };
 const TRAINING_COURT_DESIGN_STORAGE_KEY = 'hockey.trainingCourtDesign';
-const TRAINING_NEW_COURT_BACKGROUND = '/sprites/test-court-bg.webp';
-const TRAINING_NEW_COURT_BG_CROP_BOTTOM = '7%';
-const TRAINING_NEW_COURT_VISUAL_Y_SCALE = 0.72;
-const TRAINING_NEW_COURT_VISUAL_Y_OFFSET = 205;
-const TRAINING_NEW_COURT_GOAL_VISUAL_Y_OFFSET = 88;
-const TRAINING_NEW_COURT_GOALIE_VISUAL_Y_OFFSET = 62;
-const TRAINING_NEW_COURT_GOAL_VISUAL_OFFSET_X_SCALE = 0.9;
-const TRAINING_NEW_COURT_GOALIE_VISUAL_X_SCALE = 0.9;
-const TRAINING_NEW_COURT_PUCK_BLADE_OFFSET_X = 28;
-const TRAINING_NEW_COURT_PUCK_BLADE_OFFSET_Y = 17;
-const TRAINING_NEW_COURT_PUCK_FLIGHT_VISUAL_Y_OFFSET = -127;
+const TRAINING_HITBOX_TOGGLE_STORAGE_KEY = 'hockey.trainingHitboxesVisible';
 
 function readTrainingCourtDesign(): TrainingCourtDesign {
   if (typeof window === 'undefined') return 'standard';
@@ -154,6 +164,24 @@ function saveTrainingCourtDesign(value: TrainingCourtDesign): void {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.setItem(TRAINING_COURT_DESIGN_STORAGE_KEY, value);
+  } catch {
+    // The toggle is a local admin aid; storage failure should not block gameplay.
+  }
+}
+
+function readTrainingHitboxesVisible(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(TRAINING_HITBOX_TOGGLE_STORAGE_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function saveTrainingHitboxesVisible(value: boolean): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(TRAINING_HITBOX_TOGGLE_STORAGE_KEY, String(value));
   } catch {
     // The toggle is a local admin aid; storage failure should not block gameplay.
   }
@@ -3501,6 +3529,52 @@ function TrainingCourtDesignSwitch({
   );
 }
 
+function TrainingHitboxesToggle({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}): JSX.Element {
+  return (
+    <label
+      style={{
+        position: 'fixed',
+        top: 'calc(var(--app-safe-top) + 132px)',
+        left: 12,
+        zIndex: 540,
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 9,
+        minHeight: 46,
+        padding: '9px 16px',
+        borderRadius: 999,
+        background: 'rgba(8, 24, 43, 0.72)',
+        border: '1px solid rgba(255, 255, 255, 0.24)',
+        boxShadow: '0 12px 28px rgba(7, 19, 33, 0.2)',
+        backdropFilter: 'blur(14px)',
+        color: '#ffffff',
+        fontSize: 15,
+        fontWeight: 900,
+        letterSpacing: 0,
+      }}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.currentTarget.checked)}
+        style={{
+          width: 14,
+          height: 14,
+          margin: 0,
+          accentColor: '#22cc66',
+        }}
+      />
+      Хитбоксы
+    </label>
+  );
+}
+
 function TrainingPerspectiveRink(): JSX.Element {
   return (
     <div
@@ -3542,12 +3616,17 @@ function TrainingPlayView({ onBack }: { onBack: () => void }): JSX.Element | nul
   const [courtDesign, setCourtDesign] = useState<TrainingCourtDesign>(() =>
     readTrainingCourtDesign(),
   );
+  const [hitboxesVisible, setHitboxesVisible] = useState(() => readTrainingHitboxesVisible());
   const canSwitchCourtDesign = userRole === 'admin' || experimentalTrainingCourt === true;
   const activeCourtDesign = canSwitchCourtDesign ? courtDesign : 'standard';
   const useNewCourt = activeCourtDesign === 'new';
   const handleCourtDesignChange = useCallback((next: TrainingCourtDesign): void => {
     setCourtDesign(next);
     saveTrainingCourtDesign(next);
+  }, []);
+  const handleHitboxesChange = useCallback((next: boolean): void => {
+    setHitboxesVisible(next);
+    saveTrainingHitboxesVisible(next);
   }, []);
 
   if (!data) return null;
@@ -3556,6 +3635,9 @@ function TrainingPlayView({ onBack }: { onBack: () => void }): JSX.Element | nul
     <>
       {canSwitchCourtDesign ? (
         <TrainingCourtDesignSwitch value={courtDesign} onChange={handleCourtDesignChange} />
+      ) : null}
+      {canSwitchCourtDesign && useNewCourt ? (
+        <TrainingHitboxesToggle checked={hitboxesVisible} onChange={handleHitboxesChange} />
       ) : null}
       <PlayView<TrainingStateResponse>
         key={activeCourtDesign}
@@ -3586,6 +3668,7 @@ function TrainingPlayView({ onBack }: { onBack: () => void }): JSX.Element | nul
                 shotMaxRotation: 0.24,
                 visualYScale: TRAINING_NEW_COURT_VISUAL_Y_SCALE,
                 visualYOffset: TRAINING_NEW_COURT_VISUAL_Y_OFFSET,
+                shadow: true,
               }
             : undefined
         }
@@ -3605,10 +3688,16 @@ function TrainingPlayView({ onBack }: { onBack: () => void }): JSX.Element | nul
         goalieOptions={
           useNewCourt
             ? {
+                idleSpriteUrl: '/sprites/test-goalie-black.webp',
+                saveSpriteUrl: '/sprites/test-goalie-black-save.webp',
                 visualYScale: TRAINING_NEW_COURT_VISUAL_Y_SCALE,
                 visualYOffset: TRAINING_NEW_COURT_GOALIE_VISUAL_Y_OFFSET,
                 visualXScale: TRAINING_NEW_COURT_GOALIE_VISUAL_X_SCALE,
-                sizeScale: 1.22,
+                sizeScale: 1.26,
+                idleSizeScale: 1.22,
+                saveSizeScale: 0.96,
+                saveVisualYOffset: 10,
+                shadow: true,
               }
             : undefined
         }
@@ -3632,6 +3721,20 @@ function TrainingPlayView({ onBack }: { onBack: () => void }): JSX.Element | nul
         rinkAspectRatio={useNewCourt ? '1024 / 1428' : undefined}
         rinkBorderRadius={useNewCourt ? 36 : undefined}
         rinkLayer={useNewCourt ? <TrainingPerspectiveRink /> : undefined}
+        hitboxesVisible={useNewCourt && hitboxesVisible}
+        hitboxesOptions={
+          useNewCourt
+            ? {
+                goalWidthScale: TRAINING_NEW_COURT_HITBOX_GOAL_WIDTH_SCALE,
+                goalHeightScale: TRAINING_NEW_COURT_HITBOX_GOAL_HEIGHT_SCALE,
+                goalInset: TRAINING_NEW_COURT_HITBOX_GOAL_INSET,
+                goalieWidthScale: TRAINING_NEW_COURT_HITBOX_GOALIE_WIDTH_SCALE,
+                goalieHeightScale: TRAINING_NEW_COURT_HITBOX_GOALIE_HEIGHT_SCALE,
+                goalieInset: TRAINING_NEW_COURT_HITBOX_GOALIE_INSET,
+              }
+            : undefined
+        }
+        shotResolver={useNewCourt ? resolveNewTrainingCourtShot : undefined}
       />
     </>
   );

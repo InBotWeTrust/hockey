@@ -829,6 +829,11 @@ describe('DailyScreen', () => {
       'true',
     );
     expect(screen.getByRole('img', { name: 'Новая тренировочная площадка' })).toBeInTheDocument();
+    const hitboxesToggle = screen.getByRole('checkbox', { name: 'Хитбоксы' });
+    expect(hitboxesToggle).not.toBeChecked();
+    fireEvent.click(hitboxesToggle);
+    expect(hitboxesToggle).toBeChecked();
+    expect(localStorage.getItem('hockey.trainingHitboxesVisible')).toBe('true');
   });
 
   it('allows non-admin testers with the experimental training court flag to switch designs', async () => {
