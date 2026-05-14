@@ -101,7 +101,7 @@ export function BottomNav(): JSX.Element | null {
         left: 0,
         right: 0,
         bottom: 0,
-        padding: '40px 12px max(12px, var(--app-safe-bottom))',
+        padding: '40px 12px var(--bottom-nav-bottom-gap)',
         zIndex: 5,
         pointerEvents: 'none',
       }}
@@ -242,7 +242,7 @@ export function BottomNav(): JSX.Element | null {
               position: 'fixed',
               left: '50%',
               transform: 'translateX(-50%)',
-              bottom: 'calc(66px + max(12px, var(--app-safe-bottom)))',
+              bottom: 'calc(66px + var(--bottom-nav-bottom-gap))',
               padding: '10px 18px',
               borderRadius: 999,
               background: 'rgba(15, 23, 42, 0.92)',

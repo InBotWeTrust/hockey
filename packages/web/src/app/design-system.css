@@ -44,8 +44,8 @@
 
 .app-shell--bottom-nav-visible .app-content > .screen {
   --bottom-nav-scroll-reserve: 96px;
-  padding-bottom: calc(var(--bottom-nav-scroll-reserve) + var(--app-safe-bottom)) !important;
-  scroll-padding-bottom: calc(var(--bottom-nav-scroll-reserve) + var(--app-safe-bottom));
+  padding-bottom: calc(var(--bottom-nav-scroll-reserve) + var(--bottom-nav-bottom-gap)) !important;
+  scroll-padding-bottom: calc(var(--bottom-nav-scroll-reserve) + var(--bottom-nav-bottom-gap));
 }
 
 /* === Glass surfaces === */
@@ -345,13 +345,20 @@
 .btn--cta {
   background: rgba(15, 23, 42, 0.92);
   color: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.92);
   backdrop-filter: var(--blur-sm);
   -webkit-backdrop-filter: var(--blur-sm);
-  box-shadow: var(--shadow-cta);
+  box-shadow:
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.22),
+    inset 0 -8px 18px rgba(3, 7, 18, 0.08),
+    var(--shadow-cta);
 }
 .btn--cta:disabled {
   background: rgba(15, 23, 42, 0.35);
-  box-shadow: none;
+  border-color: rgba(15, 23, 42, 0.16);
+  box-shadow:
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -8px 18px rgba(3, 7, 18, 0.04);
 }
 
 .btn--primary {

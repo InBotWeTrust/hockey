@@ -211,6 +211,22 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
     });
   });
 
+  it('enables the experimental training court for allowlisted Telegram users', async () => {
+    const { accessToken } = await loginTelegram({ id: '8579300717', first_name: 'Sirius' });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/me',
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      displayName: 'Sirius',
+      experimentalTrainingCourt: true,
+    });
+  });
+
   it('unlocks stat achievements from lifetime totals', async () => {
     const { accessToken, user } = await loginTelegram({ id: '45' });
     await app.pg.query(

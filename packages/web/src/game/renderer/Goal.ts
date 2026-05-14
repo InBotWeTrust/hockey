@@ -80,10 +80,10 @@ export class Goal {
     const cx = rawX * s;
     const cy = goalLineY * s;
     this.sprite.position.set(cx, cy);
-    // light sits at the back of the net (top edge of goal rect)
+    // Light sits behind the net, closer to the back bar than to the ice in front.
     this.light.position.set(
       cx,
-      (GOAL.y * this.visualYScale + this.visualYOffset + this.gateHeight * 0.3) * s,
+      (GOAL.y * this.visualYScale + this.visualYOffset - this.gateHeight * 0.52) * s,
     );
     this.light.scale.set(s);
     this.container.position.set(scale.offsetX, scale.offsetY);

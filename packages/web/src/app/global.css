@@ -22,6 +22,7 @@
   --app-safe-bottom-raw: env(safe-area-inset-bottom, 0px);
   --app-safe-top: var(--app-safe-top-raw);
   --app-safe-bottom: var(--app-safe-bottom-raw);
+  --bottom-nav-bottom-gap: max(8px, calc(var(--app-safe-bottom-raw) - 18px));
 
   --ink: #0f172a;
   --muted: #475569;
