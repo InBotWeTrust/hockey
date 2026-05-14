@@ -3540,23 +3540,24 @@ function TrainingHitboxesToggle({
     <label
       style={{
         position: 'fixed',
-        top: 'calc(var(--app-safe-top) + 132px)',
+        top: 'calc(var(--app-safe-top) + 78px)',
         left: 12,
         zIndex: 540,
         display: 'inline-flex',
         alignItems: 'center',
-        gap: 9,
-        minHeight: 46,
-        padding: '9px 16px',
+        gap: 8,
+        minHeight: 40,
+        padding: '4px 13px',
         borderRadius: 999,
         background: 'rgba(8, 24, 43, 0.72)',
         border: '1px solid rgba(255, 255, 255, 0.24)',
         boxShadow: '0 12px 28px rgba(7, 19, 33, 0.2)',
         backdropFilter: 'blur(14px)',
-        color: '#ffffff',
-        fontSize: 15,
+        color: 'rgba(255, 255, 255, 0.88)',
+        fontSize: 11,
         fontWeight: 900,
         letterSpacing: 0,
+        lineHeight: 1,
       }}
     >
       <input
@@ -3564,8 +3565,8 @@ function TrainingHitboxesToggle({
         checked={checked}
         onChange={(event) => onChange(event.currentTarget.checked)}
         style={{
-          width: 14,
-          height: 14,
+          width: 13,
+          height: 13,
           margin: 0,
           accentColor: '#22cc66',
         }}
