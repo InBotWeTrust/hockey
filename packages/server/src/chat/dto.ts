@@ -31,6 +31,8 @@ export function toChatMessageDTO(
     replyToId: row.reply_to_id,
     isDeleted: row.is_deleted,
     createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
+    isEdited: !row.is_deleted && row.updated_at.getTime() > row.created_at.getTime(),
     reactions,
   };
   const metadata = metadataFromUnknown(row.metadata);

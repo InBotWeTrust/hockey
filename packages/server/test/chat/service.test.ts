@@ -503,6 +503,50 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
     });
   });
 
+  describe('updateMessage', () => {
+    it('updates content, returns edited DTO, and preserves reactions', async () => {
+      const { updateMessage } = await import('../../src/chat/service.js');
+      const dm = await pool.query(
+        `insert into chats (type, created_by) values ('direct', $1) returning id`,
+        [userA],
+      );
+      const msg = await pool.query(
+        `insert into messages (chat_id, sender_id, content, created_at, updated_at)
+         values ($1, $2, 'old', now() - interval '1 minute', now() - interval '1 minute')
+         returning id`,
+        [dm.rows[0].id, userA],
+      );
+      const messageId = msg.rows[0].id;
+      await pool.query(
+        `insert into message_reactions (message_id, user_id, emoji) values ($1, $2, '👍')`,
+        [messageId, userB],
+      );
+
+      const dto = await updateMessage(pool, messageId, 'new', userA);
+
+      expect(dto.content).toBe('new');
+      expect(dto.isEdited).toBe(true);
+      expect(dto.reactions).toEqual([{ emoji: '👍', count: 1, reactedByMe: false }]);
+    });
+
+    it('does not update soft-deleted messages', async () => {
+      const { updateMessage } = await import('../../src/chat/service.js');
+      const { MessageNotFoundError } = await import('../../src/chat/errors.js');
+      const dm = await pool.query(
+        `insert into chats (type, created_by) values ('direct', $1) returning id`,
+        [userA],
+      );
+      const msg = await pool.query(
+        `insert into messages (chat_id, sender_id, content, is_deleted) values ($1, $2, '', true) returning id`,
+        [dm.rows[0].id, userA],
+      );
+
+      await expect(updateMessage(pool, msg.rows[0].id, 'new', userA)).rejects.toBeInstanceOf(
+        MessageNotFoundError,
+      );
+    });
+  });
+
   describe('markChatAsRead', () => {
     it('updates last_read_at when membership exists', async () => {
       const { markChatAsRead } = await import('../../src/chat/service.js');

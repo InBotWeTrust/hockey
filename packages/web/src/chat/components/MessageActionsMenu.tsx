@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Reply, Trash2, SmilePlus } from 'lucide-react';
+import { Pencil, Reply, Trash2, SmilePlus } from 'lucide-react';
 import { FAVORITE_EMOJI } from '../reactions.js';
 
 interface Props {
@@ -8,6 +8,7 @@ interface Props {
   anchorRect: DOMRect | null;
   isOwn: boolean;
   onReply: () => void;
+  onEdit?: () => void;
   onDelete: () => void;
   onPickEmoji?: (emoji: string) => void;
   onMoreEmoji?: () => void;
@@ -18,7 +19,7 @@ const PANEL_GAP = 8;
 const SAFE_MARGIN = 12;
 const PANEL_WIDTH = 320;
 // Heights include the new 44px shelf (emojis + `+` button + dividers).
-const PANEL_HEIGHT_OWN = 140;
+const PANEL_HEIGHT_OWN = 184;
 const PANEL_HEIGHT_OTHER = 92;
 
 function panelPosition(anchor: DOMRect, height: number): { top: number; left: number } {
@@ -40,6 +41,7 @@ export function MessageActionsMenu({
   anchorRect,
   isOwn,
   onReply,
+  onEdit,
   onDelete,
   onPickEmoji,
   onMoreEmoji,
@@ -56,7 +58,7 @@ export function MessageActionsMenu({
 
   if (!open || !anchorRect) return null;
 
-  const height = isOwn ? PANEL_HEIGHT_OWN : PANEL_HEIGHT_OTHER;
+  const height = isOwn ? (onEdit ? PANEL_HEIGHT_OWN : 140) : PANEL_HEIGHT_OTHER;
   const pos = panelPosition(anchorRect, height);
 
   return createPortal(
@@ -169,30 +171,58 @@ export function MessageActionsMenu({
           Ответить
         </button>
         {isOwn && (
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              onDelete();
-              onClose();
-            }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              padding: '10px 12px',
-              border: 'none',
-              background: 'transparent',
-              color: 'rgb(220, 38, 38)',
-              fontSize: 14,
-              cursor: 'pointer',
-              borderRadius: 12,
-              textAlign: 'left',
-            }}
-          >
-            <Trash2 size={16} />
-            Удалить
-          </button>
+          <>
+            {onEdit && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  onEdit();
+                  onClose();
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '10px 12px',
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'var(--ink)',
+                  fontSize: 14,
+                  cursor: 'pointer',
+                  borderRadius: 12,
+                  textAlign: 'left',
+                }}
+              >
+                <Pencil size={16} />
+                Редактировать
+              </button>
+            )}
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onDelete();
+                onClose();
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '10px 12px',
+                border: 'none',
+                background: 'transparent',
+                color: 'rgb(220, 38, 38)',
+                fontSize: 14,
+                cursor: 'pointer',
+                borderRadius: 12,
+                textAlign: 'left',
+              }}
+            >
+              <Trash2 size={16} />
+              Удалить
+            </button>
+          </>
         )}
       </div>
     </>,

@@ -94,6 +94,7 @@ function ChatBubbleImpl({
       </span>
     ) : null;
   const timestampReserveWidth = deliveryStatus !== undefined ? 54 : 36;
+  const showEdited = message.isEdited === true && !message.isDeleted;
 
   const timestamp = (
     <time
@@ -183,6 +184,19 @@ function ChatBubbleImpl({
           />
           {timestamp}
         </div>
+        {showEdited && (
+          <div
+            style={{
+              marginTop: 2,
+              fontSize: 10,
+              lineHeight: 1.2,
+              fontWeight: 700,
+              color: isOwn ? 'rgba(255, 255, 255, 0.62)' : 'rgba(71, 85, 105, 0.62)',
+            }}
+          >
+            изменено
+          </div>
+        )}
         <ReactionBar
           reactions={message.reactions}
           onToggle={(emoji) => onReact(message.id, emoji)}
@@ -257,6 +271,7 @@ function areEqual(prev: ChatBubbleProps, next: ChatBubbleProps): boolean {
     prev.message.id === next.message.id &&
     prev.message.content === next.message.content &&
     prev.message.isDeleted === next.message.isDeleted &&
+    prev.message.isEdited === next.message.isEdited &&
     prev.message.reactions === next.message.reactions &&
     prev.message.senderDisplayName === next.message.senderDisplayName &&
     prev.message.senderAvatarUrl === next.message.senderAvatarUrl &&

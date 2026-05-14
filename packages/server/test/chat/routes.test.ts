@@ -148,6 +148,51 @@ describe.skipIf(!hasIntegrationEnv)('chat routes', () => {
     expect(deletedPost.statusCode).toBe(404);
   });
 
+  it('lets a sender edit their own regular chat message', async () => {
+    const dm = await app.pg.query(
+      `insert into chats (type, created_by) values ('direct', $1) returning id`,
+      [userA],
+    );
+    const chatId = dm.rows[0].id as string;
+    await app.pg.query(`insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`, [
+      chatId,
+      userA,
+      userB,
+    ]);
+
+    const created = await app.inject({
+      method: 'POST',
+      url: `/chat/${chatId}/messages`,
+      headers: { authorization: `Bearer ${tokenA}` },
+      payload: { content: 'old' },
+    });
+    expect(created.statusCode).toBe(201);
+    const messageId = created.json().id as string;
+
+    const denied = await app.inject({
+      method: 'PATCH',
+      url: `/chat/messages/${messageId}`,
+      headers: { authorization: `Bearer ${tokenB}` },
+      payload: { content: 'stolen' },
+    });
+    expect(denied.statusCode).toBe(403);
+
+    const edited = await app.inject({
+      method: 'PATCH',
+      url: `/chat/messages/${messageId}`,
+      headers: { authorization: `Bearer ${tokenA}` },
+      payload: { content: 'new' },
+    });
+    expect(edited.statusCode).toBe(200);
+    expect(edited.json()).toEqual(
+      expect.objectContaining({
+        id: messageId,
+        content: 'new',
+        isEdited: true,
+      }),
+    );
+  });
+
   it('supports replies and one reaction per channel comment', async () => {
     await app.pg.query(`update users set role = 'admin' where id = $1`, [userA]);
     const chats = await app.inject({

@@ -11,6 +11,7 @@ import {
   markChatAsRead,
   sendMessage,
   updateChannelPost,
+  updateMessage,
   addReaction,
   removeReaction,
   voteChannelPoll,
@@ -240,6 +241,7 @@ export function ChatRoomScreen(): JSX.Element {
     anchorRect: DOMRect;
   } | null>(null);
   const [previewSender, setPreviewSender] = useState<UserPickerItem | null>(null);
+  const [editingMessage, setEditingMessage] = useState<ChatMessageDTO | null>(null);
   const [editingPost, setEditingPost] = useState<ChatMessageDTO | null>(null);
   const [pollComposerOpen, setPollComposerOpen] = useState(false);
   const [gotoError, setGotoError] = useState<string | null>(null);
@@ -353,6 +355,7 @@ export function ChatRoomScreen(): JSX.Element {
       return oldest;
     },
     staleTime: Infinity,
+    refetchOnMount: 'always',
   });
 
   // When ?goto changes (or appears), wipe the cache for this chat so the queryFn
@@ -379,8 +382,9 @@ export function ChatRoomScreen(): JSX.Element {
   useEffect(() => {
     if (chatId.length === 0) return;
     if (!query.data) return;
+    if (!query.isSuccess || query.isFetching) return;
     markRead();
-  }, [chatId, query.data, markRead]);
+  }, [chatId, query.data, query.isSuccess, query.isFetching, markRead]);
 
   // After the goto-page is loaded, scroll to the target bubble, flash it,
   // then strip ?goto from the URL so a refresh doesn't re-trigger.
@@ -498,12 +502,65 @@ export function ChatRoomScreen(): JSX.Element {
     [queryClient, chatId],
   );
 
+  const replaceMessageInCaches = useCallback(
+    (message: ChatMessageDTO): void => {
+      queryClient.setQueryData<InfinitePages | undefined>(chatKeys.messages(chatId), (old) => {
+        if (!old) return old;
+        let touched = false;
+        const pages = old.pages.map((page) =>
+          page.map((item) => {
+            if (item.id !== message.id) return item;
+            touched = true;
+            return message;
+          }),
+        );
+        return touched ? { ...old, pages } : old;
+      });
+      void queryClient.invalidateQueries({ queryKey: chatKeys.list() });
+    },
+    [queryClient, chatId],
+  );
+
   const editChannelPostMut = useMutation({
     mutationFn: ({ postId, content }: { postId: string; content: string }) =>
       updateChannelPost(postId, content),
     onSuccess: (post) => {
       replacePostInCaches(post);
       setEditingPost(null);
+    },
+  });
+
+  const editMessageMut = useMutation<
+    ChatMessageDTO,
+    Error,
+    { messageId: string; content: string },
+    { prev: InfinitePages | undefined }
+  >({
+    mutationFn: ({ messageId, content }) => updateMessage(messageId, content),
+    onMutate: async ({ messageId, content }) => {
+      await queryClient.cancelQueries({ queryKey: chatKeys.messages(chatId) });
+      const prev = queryClient.getQueryData<InfinitePages>(chatKeys.messages(chatId));
+      const updatedAt = new Date().toISOString();
+      queryClient.setQueryData<InfinitePages | undefined>(chatKeys.messages(chatId), (old) => {
+        if (!old) return old;
+        let touched = false;
+        const pages = old.pages.map((page) =>
+          page.map((message) => {
+            if (message.id !== messageId) return message;
+            touched = true;
+            return { ...message, content, updatedAt, isEdited: true };
+          }),
+        );
+        return touched ? { ...old, pages } : old;
+      });
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(chatKeys.messages(chatId), ctx.prev);
+    },
+    onSuccess: (message) => {
+      replaceMessageInCaches(message);
+      setEditingMessage(null);
     },
   });
 
@@ -653,14 +710,27 @@ export function ChatRoomScreen(): JSX.Element {
   );
   const onCloseProfile = useCallback(() => setPreviewSender(null), []);
 
-  const onReplyTo = useCallback((m: ChatMessageDTO) => setReplyTo(m), []);
+  const onReplyTo = useCallback((m: ChatMessageDTO) => {
+    setEditingMessage(null);
+    setReplyTo(m);
+  }, []);
+  const onEditMessage = useCallback((m: ChatMessageDTO) => {
+    setReplyTo(null);
+    setEditingMessage(m);
+  }, []);
   // TanStack Query v5 returns a fresh result-object identity every render but
   // the .mutate function itself is memoized — depend on it directly so our
   // useCallback returns a stable ref that React.memo on ChatBubble can rely on.
   const deleteMutate = deleteMut.mutate;
   const addMutate = addMut.mutate;
   const removeMutate = removeMut.mutate;
-  const onDeleteId = useCallback((id: string) => deleteMutate(id), [deleteMutate]);
+  const onDeleteId = useCallback(
+    (id: string) => {
+      if (editingMessage?.id === id) setEditingMessage(null);
+      deleteMutate(id);
+    },
+    [deleteMutate, editingMessage?.id],
+  );
 
   const onToggleReaction = useCallback(
     (messageId: string, emoji: string): void => {
@@ -702,6 +772,13 @@ export function ChatRoomScreen(): JSX.Element {
       sendMut.mutate({ content, replyToId });
     },
     [sendMut],
+  );
+
+  const handleEditMessage = useCallback(
+    (messageId: string, content: string): void => {
+      editMessageMut.mutate({ messageId, content });
+    },
+    [editMessageMut],
   );
 
   const handleSendPoll = useCallback(
@@ -924,6 +1001,11 @@ export function ChatRoomScreen(): JSX.Element {
         <div className="chat-edge-bottom chat-edge-bottom--overlay glass-edge-fade glass-edge-fade--bottom">
           <ChatInput
             replyTo={isChannel ? null : replyTo}
+            editing={
+              !isChannel && editingMessage
+                ? { id: editingMessage.id, content: editingMessage.content }
+                : null
+            }
             replyToSenderName={replyTo ? senderNameOf(replyTo) : undefined}
             placeholder={isChannel ? 'Новость...' : 'Сообщение...'}
             formattingTools={isChannel && isAdmin}
@@ -951,8 +1033,10 @@ export function ChatRoomScreen(): JSX.Element {
               ) : undefined
             }
             onClearReply={() => setReplyTo(null)}
-            disabled={sendMut.isPending}
+            onClearEditing={() => setEditingMessage(null)}
+            disabled={sendMut.isPending || editMessageMut.isPending}
             onSend={handleSend}
+            onEdit={handleEditMessage}
           />
         </div>
       )}
@@ -962,6 +1046,7 @@ export function ChatRoomScreen(): JSX.Element {
         anchorRect={actionTarget?.anchorRect ?? null}
         isOwn={actionIsOwn}
         onReply={() => actionMessage && onReplyTo(actionMessage)}
+        onEdit={() => actionMessage && onEditMessage(actionMessage)}
         onDelete={() => actionMessage && onDeleteId(actionMessage.id)}
         onPickEmoji={onPickEmojiFromMenu}
         onMoreEmoji={onMoreEmoji}

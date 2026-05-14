@@ -8,15 +8,23 @@ export interface ChatInputReplyTarget {
   content: string;
 }
 
+export interface ChatInputEditTarget {
+  id: string;
+  content: string;
+}
+
 interface ChatInputProps {
   disabled?: boolean;
   replyTo: ChatInputReplyTarget | null;
+  editing?: ChatInputEditTarget | null;
   replyToSenderName?: string | undefined;
   placeholder?: string;
   formattingTools?: boolean;
   extraTools?: ReactNode;
   onClearReply: () => void;
+  onClearEditing?: () => void;
   onSend: (content: string, replyToId: string | null) => void | Promise<void>;
+  onEdit?: (messageId: string, content: string) => void | Promise<void>;
 }
 
 const MAX_LEN = 4000;
@@ -34,12 +42,15 @@ function hasMeaningfulContent(value: string): boolean {
 export function ChatInput({
   disabled = false,
   replyTo,
+  editing = null,
   replyToSenderName,
   placeholder = 'Сообщение...',
   formattingTools = false,
   extraTools,
   onClearReply,
+  onClearEditing,
   onSend,
+  onEdit,
 }: ChatInputProps): JSX.Element {
   const [value, setValue] = useState('');
   const ref = useRef<HTMLTextAreaElement | null>(null);
@@ -55,6 +66,24 @@ export function ChatInput({
   useEffect(() => {
     if (!disabled) sendingRef.current = false;
   }, [disabled]);
+
+  useEffect(() => {
+    if (!replyTo) return;
+    ref.current?.focus();
+  }, [replyTo]);
+
+  useEffect(() => {
+    if (!editing) return;
+    setValue(editing.content.slice(0, MAX_LEN));
+    ref.current?.focus();
+    window.setTimeout(() => {
+      const el = ref.current;
+      if (!el) return;
+      el.focus();
+      const end = el.value.length;
+      el.setSelectionRange(end, end);
+    }, 0);
+  }, [editing]);
 
   // Auto-grow: single-row uses line-height=40 for vertical centering. Once the
   // content needs more than one row, switch to padded multi-line mode capped
@@ -101,12 +130,29 @@ export function ChatInput({
     if (!hasMeaningfulContent(trimmed)) return;
     sendingRef.current = true;
     setValue('');
+    if (editing && onEdit) {
+      onClearReply();
+      onClearEditing?.();
+      void onEdit(editing.id, trimmed);
+      return;
+    }
     onClearReply();
     void onSend(trimmed, replyTo?.id ?? null);
   }
 
   return (
     <div className="chat-dock-composer glass-dock-surface">
+      {editing && (
+        <ReplyPreview
+          variant="composer"
+          senderName="Редактирование"
+          content={editing.content}
+          onClear={() => {
+            setValue('');
+            onClearEditing?.();
+          }}
+        />
+      )}
       {replyTo && (
         <ReplyPreview
           variant="composer"

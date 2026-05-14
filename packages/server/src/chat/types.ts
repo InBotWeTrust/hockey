@@ -120,6 +120,8 @@ export interface ChatMessageDTO {
   replyToId: string | null;
   isDeleted: boolean;
   createdAt: string; // ISO
+  updatedAt: string; // ISO
+  isEdited: boolean;
   reactions: ReactionGroupDTO[];
   metadata?: Record<string, unknown>;
   // Present for channel posts; omitted for regular chat messages.

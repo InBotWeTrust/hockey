@@ -259,6 +259,35 @@ describe('useChatSocket dispatch', () => {
     expect(m0?.content).toBe('');
   });
 
+  it('message:updated patches cached content and marks it edited', async () => {
+    const updated = { ...fixtureMsg('m0', 'c1', OTHER), content: 'edited', isEdited: true };
+    await act(async () => {
+      MockWebSocket.instances[0]?.fireMessage({
+        v: 1,
+        event: { type: 'message:updated', chatId: 'c1', message: updated },
+      });
+    });
+    const cached = qc.getQueryData<InfinitePages>(chatKeys.messages('c1'));
+    const m0 = cached?.pages.flat().find((m) => m.id === 'm0');
+    expect(m0?.content).toBe('edited');
+    expect(m0?.isEdited).toBe(true);
+  });
+
+  it('message:updated with no cache invalidates messages so the room refetches from REST', async () => {
+    const invalSpy = vi.spyOn(qc, 'invalidateQueries');
+    const updated = fixtureMsg('m-missing', 'c-fresh-update', OTHER);
+    await act(async () => {
+      MockWebSocket.instances[0]?.fireMessage({
+        v: 1,
+        event: { type: 'message:updated', chatId: 'c-fresh-update', message: updated },
+      });
+    });
+    expect(invalSpy).toHaveBeenCalledWith({
+      queryKey: chatKeys.messages('c-fresh-update'),
+    });
+    expect(invalSpy).toHaveBeenCalledWith({ queryKey: chatKeys.list() });
+  });
+
   it('chat:read: resets unread for that chat and invalidates /chat/unread', async () => {
     useChatStore.getState().setUnread({ c1: 5 });
     const invalSpy = vi.spyOn(qc, 'invalidateQueries');

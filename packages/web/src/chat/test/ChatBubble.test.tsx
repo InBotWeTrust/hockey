@@ -52,6 +52,11 @@ describe('ChatBubble — author tap', () => {
     expect(screen.queryByLabelText('Доставлено')).toBeNull();
   });
 
+  it('shows an edited marker for changed non-deleted messages', () => {
+    render(<ChatBubble {...defaults()} message={{ ...baseMessage, isEdited: true }} />);
+    expect(screen.getByText('изменено')).toBeInTheDocument();
+  });
+
   it('clicking the author name calls onOpenProfile with sender info', () => {
     const onOpenProfile = vi.fn();
     render(<ChatBubble {...defaults()} onOpenProfile={onOpenProfile} />);

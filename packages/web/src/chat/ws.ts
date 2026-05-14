@@ -16,6 +16,7 @@ const MAX_BACKOFF_MS = 30_000;
 
 const KNOWN_EVENT_TYPES: ReadonlySet<string> = new Set([
   'message:new',
+  'message:updated',
   'message:deleted',
   'reaction:added',
   'reaction:removed',

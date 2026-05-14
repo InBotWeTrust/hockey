@@ -55,9 +55,11 @@ function applyMessageDeleted(qc: QueryClient, chatId: string, messageId: string)
 }
 
 function applyMessageUpdated(qc: QueryClient, chatId: string, message: ChatMessageDTO): void {
-  let didPatch = false;
   qc.setQueryData<InfinitePages | undefined>(chatKeys.messages(chatId), (old) => {
-    if (!old) return old;
+    if (!old) {
+      void qc.invalidateQueries({ queryKey: chatKeys.messages(chatId) });
+      return old;
+    }
     let touched = false;
     const pages = old.pages.map((page) =>
       page.map((m) => {
@@ -66,13 +68,12 @@ function applyMessageUpdated(qc: QueryClient, chatId: string, message: ChatMessa
         return message;
       }),
     );
-    if (touched) didPatch = true;
     return touched ? { ...old, pages } : old;
   });
   qc.setQueryData<ChatMessageDTO | undefined>(chatKeys.channelPost(message.id), (old) =>
     old ? message : old,
   );
-  if (didPatch) void qc.invalidateQueries({ queryKey: chatKeys.list() });
+  void qc.invalidateQueries({ queryKey: chatKeys.list() });
 }
 
 function applyChatRead(

@@ -14,6 +14,7 @@ function defaults() {
     anchorRect: anchor,
     isOwn: true,
     onReply: vi.fn(),
+    onEdit: vi.fn(),
     onDelete: vi.fn(),
     onPickEmoji: vi.fn(),
     onMoreEmoji: vi.fn(),
@@ -30,14 +31,16 @@ describe('MessageActionsMenu', () => {
     expect(screen.getByRole('button', { name: /ещё реакции/i })).toBeInTheDocument();
   });
 
-  it('still renders Ответить + Удалить for own messages', () => {
+  it('still renders Ответить + Редактировать + Удалить for own messages', () => {
     render(<MessageActionsMenu {...defaults()} />);
     expect(screen.getByRole('menuitem', { name: /ответить/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /редактировать/i })).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: /удалить/i })).toBeInTheDocument();
   });
 
-  it('hides Удалить for non-own messages', () => {
+  it('hides edit/delete for non-own messages', () => {
     render(<MessageActionsMenu {...defaults()} isOwn={false} />);
+    expect(screen.queryByRole('menuitem', { name: /редактировать/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('menuitem', { name: /удалить/i })).not.toBeInTheDocument();
   });
 
@@ -69,6 +72,14 @@ describe('MessageActionsMenu', () => {
     render(<MessageActionsMenu {...props} />);
     fireEvent.click(screen.getByRole('menuitem', { name: /удалить/i }));
     expect(props.onDelete).toHaveBeenCalled();
+    expect(props.onClose).toHaveBeenCalled();
+  });
+
+  it('clicking Редактировать calls onEdit + onClose', () => {
+    const props = defaults();
+    render(<MessageActionsMenu {...props} />);
+    fireEvent.click(screen.getByRole('menuitem', { name: /редактировать/i }));
+    expect(props.onEdit).toHaveBeenCalled();
     expect(props.onClose).toHaveBeenCalled();
   });
 });

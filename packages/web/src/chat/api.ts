@@ -44,6 +44,8 @@ export interface ChatMessageDTO {
   replyToId: string | null;
   isDeleted: boolean;
   createdAt: string; // ISO
+  updatedAt?: string; // ISO
+  isEdited?: boolean;
   reactions: ReactionGroupDTO[];
   metadata?: ChatMessageMetadata;
   commentCount?: number;
@@ -195,6 +197,13 @@ export function fetchChannelPost(postId: string): Promise<ChatMessageDTO> {
 
 export function updateChannelPost(postId: string, content: string): Promise<ChatMessageDTO> {
   return apiFetch<ChatMessageDTO>(`/chat/channel/posts/${postId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ content }),
+  });
+}
+
+export function updateMessage(messageId: string, content: string): Promise<ChatMessageDTO> {
+  return apiFetch<ChatMessageDTO>(`/chat/messages/${messageId}`, {
     method: 'PATCH',
     body: JSON.stringify({ content }),
   });

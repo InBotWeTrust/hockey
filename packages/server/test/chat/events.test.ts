@@ -89,10 +89,14 @@ describe.skipIf(!hasIntegrationEnv)('chat events fan-out', () => {
     id: '00000000-0000-0000-0000-000000000001',
     chatId,
     senderId: '00000000-0000-0000-0000-000000000002',
+    senderDisplayName: 'Sender',
+    senderAvatarUrl: null,
     content: 'hi',
     replyToId: null,
     isDeleted: false,
     createdAt: '2026-04-26T00:00:00.000Z',
+    updatedAt: '2026-04-26T00:00:00.000Z',
+    isEdited: false,
     reactions: [],
   });
 

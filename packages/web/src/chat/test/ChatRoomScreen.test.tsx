@@ -9,10 +9,15 @@ import * as api from '../api.js';
 import * as amateurDuelApi from '../../api/amateurDuel.js';
 import type { ChatMessageDTO } from '../api.js';
 
-function renderRoom(chatId: string, search = ''): { queryClient: QueryClient } {
+function renderRoom(
+  chatId: string,
+  search = '',
+  configure?: (queryClient: QueryClient) => void,
+): { queryClient: QueryClient } {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
+  configure?.(queryClient);
   render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[`/chat/${chatId}${search}`]}>
@@ -242,6 +247,24 @@ describe('ChatRoomScreen', () => {
     await waitFor(() => expect(api.markChatAsRead).toHaveBeenCalledWith('c1'));
   });
 
+  it('refetches a stale room cache before marking the chat read', async () => {
+    const fetchSpy = vi.mocked(api.fetchMessages);
+
+    renderRoom('c1', '', (queryClient) => {
+      queryClient.setQueryData(chatKeys.messages('c1'), {
+        pages: [[{ ...msgFromSelf, id: 'stale', content: 'старое' }]],
+        pageParams: [undefined],
+      });
+    });
+
+    expect(screen.getByText('старое')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('привет')).toBeInTheDocument());
+    await waitFor(() => expect(api.markChatAsRead).toHaveBeenCalledWith('c1'));
+    expect(fetchSpy.mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(api.markChatAsRead).mock.invocationCallOrder[0]!,
+    );
+  });
+
   it('search toggle: header search button reveals the input below; typing filters messages', async () => {
     renderRoom('c1');
     await waitFor(() => expect(screen.getAllByTestId('chat-bubble').length).toBe(2));
@@ -427,6 +450,33 @@ describe('ChatRoomScreen', () => {
 
     await waitFor(() => expect(delSpy).toHaveBeenCalledWith('m2'));
     await waitFor(() => expect(screen.getByText('Сообщение удалено')).toBeInTheDocument());
+  });
+
+  it('long-press on own bubble can edit the message and shows the edited marker', async () => {
+    vi.useFakeTimers();
+    const edited: ChatMessageDTO = {
+      ...msgFromSelf,
+      content: 'исправлено',
+      updatedAt: '2026-04-26T10:03:00.000Z',
+      isEdited: true,
+    };
+    const updateSpy = vi.spyOn(api, 'updateMessage').mockResolvedValue(edited);
+
+    renderRoom('c1');
+    await vi.runAllTimersAsync();
+
+    longPressBubble('m2');
+    fireEvent.click(screen.getByRole('menuitem', { name: /редактировать/i }));
+    vi.useRealTimers();
+
+    const textarea = screen.getByLabelText('Текст сообщения') as HTMLTextAreaElement;
+    await waitFor(() => expect(document.activeElement).toBe(textarea));
+    expect(textarea.value).toBe('хай');
+    fireEvent.change(textarea, { target: { value: 'исправлено' } });
+    fireEvent.click(screen.getByLabelText('Отправить'));
+
+    await waitFor(() => expect(updateSpy).toHaveBeenCalledWith('m2', 'исправлено'));
+    await waitFor(() => expect(screen.getByText('изменено')).toBeInTheDocument());
   });
 
   it('long-press → menu shelf → tap favorite → POST sent + optimistic count+1', async () => {

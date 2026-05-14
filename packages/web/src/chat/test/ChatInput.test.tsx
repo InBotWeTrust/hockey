@@ -57,4 +57,38 @@ describe('ChatInput', () => {
     expect(textarea.value).toBe('____');
     expect(screen.getByLabelText('Отправить')).toBeDisabled();
   });
+
+  it('focuses the textarea when reply mode is selected', async () => {
+    const props = {
+      onClearReply: vi.fn(),
+      onSend: vi.fn(),
+    };
+    const { rerender } = render(<ChatInput replyTo={null} {...props} />);
+    const textarea = screen.getByLabelText('Текст сообщения') as HTMLTextAreaElement;
+
+    rerender(<ChatInput replyTo={{ id: 'm1', content: 'привет' }} {...props} />);
+
+    await waitFor(() => expect(document.activeElement).toBe(textarea));
+  });
+
+  it('prefills and submits edit mode through onEdit', async () => {
+    const onEdit = vi.fn();
+    render(
+      <ChatInput
+        replyTo={null}
+        editing={{ id: 'm1', content: 'старый текст' }}
+        onClearReply={vi.fn()}
+        onClearEditing={vi.fn()}
+        onSend={vi.fn()}
+        onEdit={onEdit}
+      />,
+    );
+
+    const textarea = screen.getByLabelText('Текст сообщения') as HTMLTextAreaElement;
+    await waitFor(() => expect(textarea.value).toBe('старый текст'));
+    fireEvent.change(textarea, { target: { value: 'новый текст' } });
+    fireEvent.click(screen.getByLabelText('Отправить'));
+
+    expect(onEdit).toHaveBeenCalledWith('m1', 'новый текст');
+  });
 });

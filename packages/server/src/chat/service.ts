@@ -595,6 +595,50 @@ export async function deleteMessage(pool: Pool, messageId: string): Promise<void
   );
 }
 
+export async function updateMessage(
+  pool: Pool,
+  messageId: string,
+  content: string,
+  currentUserId: string,
+): Promise<ChatMessageDTO> {
+  const updated = await pool.query<MessageRow>(
+    `with upd as (
+       update messages
+          set content = $2,
+              updated_at = now()
+        where id = $1
+          and is_deleted = false
+        returning *
+     )
+     select upd.*,
+            u.display_name as sender_display_name,
+            u.avatar_url as sender_avatar_url,
+            (select count(*)::bigint
+               from channel_post_comments cpc
+              where cpc.post_message_id = upd.id
+                and cpc.is_deleted = false) as comment_count,
+            (select count(*)::bigint
+               from channel_post_views cpv
+              where cpv.post_message_id = upd.id) as view_count
+       from upd
+       left join users u on u.id = upd.sender_id`,
+    [messageId, content],
+  );
+  if (updated.rowCount === 0) {
+    throw new MessageNotFoundError(messageId);
+  }
+
+  const row = updated.rows[0]!;
+  const rxns = await pool.query<MessageReactionRow>(
+    `select * from message_reactions where message_id = $1`,
+    [messageId],
+  );
+  const grouped = groupReactions(rxns.rows, currentUserId);
+  const dto = toChatMessageDTO(row, grouped.get(messageId) ?? []);
+  const hydrated = await hydrateChannelPolls(pool, [dto], currentUserId);
+  return hydrated[0]!;
+}
+
 export async function markChatAsRead(pool: Pool, chatId: string, userId: string): Promise<void> {
   await pool.query(
     `insert into chat_members (chat_id, user_id, last_read_at)

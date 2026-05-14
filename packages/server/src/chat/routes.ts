@@ -20,6 +20,7 @@ import {
   unpinChat,
   getChatInfo,
   getUserPublicProfile,
+  updateMessage,
 } from './service.js';
 import {
   addChannelPostCommentReaction,
@@ -198,6 +199,26 @@ export const chatRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, _pus
       return null;
     },
   );
+
+  app.patch('/chat/messages/:messageId', { preHandler: [app.authenticate] }, async (req) => {
+    const { messageId } = z.object({ messageId: uuid }).parse(req.params);
+    const body = z.object({ content: z.string().trim().min(1).max(4000) }).parse(req.body);
+    const message = await assertOwnsMessage(app.pg, req.user.id, messageId);
+    const chatRow = await app.pg.query<{ type: 'direct' | 'group' | 'system' | 'channel' }>(
+      `select type from chats where id = $1 and is_active = true`,
+      [message.chat_id],
+    );
+    if (!chatRow.rowCount || chatRow.rowCount === 0) {
+      throw new InvalidInputError('chat is not active');
+    }
+    const chatType = chatRow.rows[0]!.type;
+    if (chatType === 'channel') {
+      throw new InvalidInputError('channel posts must be edited through channel endpoint');
+    }
+    const dto = await updateMessage(app.pg, messageId, body.content, req.user.id);
+    await publishMessageUpdated(app.pg, app.realtime, message.chat_id, chatType, dto);
+    return dto;
+  });
 
   app.post('/chat/:chatId/read', { preHandler: [app.authenticate] }, async (req, reply) => {
     const { chatId } = z.object({ chatId: uuid }).parse(req.params);
