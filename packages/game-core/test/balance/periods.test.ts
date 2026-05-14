@@ -15,9 +15,7 @@ describe('daily period speed presets', () => {
     const p3 = getDailyPeriodSpeedPreset(3);
 
     expect([p1.shooterFrequency, p2.shooterFrequency, p3.shooterFrequency]).toEqual([
-      0.8,
-      0.75,
-      0.7,
+      0.75, 0.7, 0.65,
     ]);
     expect(p2.goalFrequency).toBe(p1.goalFrequency);
     expect(p3.goalFrequency).toBe(p1.goalFrequency);

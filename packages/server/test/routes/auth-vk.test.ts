@@ -121,6 +121,19 @@ describe.skipIf(!hasIntegrationEnv)('POST /auth/vk', () => {
     });
   });
 
+  it('enables the experimental training court for the allowlisted VK user', async () => {
+    mockVkFetch(600725087, {
+      first_name: 'Dmitry',
+      last_name: 'Arkaim',
+    });
+
+    const res = await app.inject({ method: 'POST', url: '/auth/vk', payload: baseBody });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { user: { experimentalTrainingCourt: boolean } };
+
+    expect(body.user.experimentalTrainingCourt).toBe(true);
+  });
+
   it('logs in an existing VK user and refreshes VK profile fields', async () => {
     mockVkFetch(2002, { first_name: 'Old', last_name: 'Name' });
     const first = await app.inject({ method: 'POST', url: '/auth/vk', payload: baseBody });

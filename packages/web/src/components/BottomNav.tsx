@@ -39,7 +39,10 @@ export function BottomNav(): JSX.Element | null {
   const { data: refreshedUser } = useQuery<AuthUser>({
     queryKey: ['auth', 'me-role'],
     queryFn: () => apiFetch<AuthUser>('/me'),
-    enabled: Boolean(user) && !isDemo && user?.role === undefined,
+    enabled:
+      Boolean(user) &&
+      !isDemo &&
+      (user?.role === undefined || user?.experimentalTrainingCourt === undefined),
   });
 
   useEffect(() => {
@@ -47,8 +50,14 @@ export function BottomNav(): JSX.Element | null {
   }, [unreadMap, setUnread]);
 
   useEffect(() => {
-    if (refreshedUser?.role !== undefined) {
-      updateUser({ role: refreshedUser.role });
+    if (!refreshedUser) return;
+    const patch: Partial<AuthUser> = {};
+    if (refreshedUser.role !== undefined) patch.role = refreshedUser.role;
+    if (refreshedUser.experimentalTrainingCourt !== undefined) {
+      patch.experimentalTrainingCourt = refreshedUser.experimentalTrainingCourt;
+    }
+    if (Object.keys(patch).length > 0) {
+      updateUser(patch);
     }
   }, [refreshedUser, updateUser]);
 

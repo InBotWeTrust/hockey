@@ -9,24 +9,24 @@ export interface DailyPeriodSpeedPreset {
 export const DAILY_PERIOD_SPEED_PRESETS: readonly DailyPeriodSpeedPreset[] = [
   {
     periodNumber: 1,
-    goalFrequency: 0.55,
-    goalieFrequency: 0.65,
-    shooterFrequency: 0.8,
-    puckSpeedPerMs: 1.3,
+    goalFrequency: 0.5,
+    goalieFrequency: 0.6,
+    shooterFrequency: 0.75,
+    puckSpeedPerMs: 1.25,
   },
   {
     periodNumber: 2,
-    goalFrequency: 0.55,
-    goalieFrequency: 0.65,
-    shooterFrequency: 0.75,
-    puckSpeedPerMs: 1.3,
+    goalFrequency: 0.5,
+    goalieFrequency: 0.6,
+    shooterFrequency: 0.7,
+    puckSpeedPerMs: 1.25,
   },
   {
     periodNumber: 3,
-    goalFrequency: 0.55,
-    goalieFrequency: 0.65,
-    shooterFrequency: 0.7,
-    puckSpeedPerMs: 1.3,
+    goalFrequency: 0.5,
+    goalieFrequency: 0.6,
+    shooterFrequency: 0.65,
+    puckSpeedPerMs: 1.25,
   },
 ];
 

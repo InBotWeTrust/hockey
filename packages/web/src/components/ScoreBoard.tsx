@@ -5,7 +5,7 @@ export interface ScoreBoardProps {
   timerLabel?: string | undefined;
   goals: number;
   shots: number;
-  shotsTotal?: number;
+  shotsTotal?: number | undefined;
 }
 
 const LABEL_COLOR = 'rgba(148, 163, 184, 0.85)';
@@ -23,9 +23,10 @@ export function ScoreBoard({
 }: ScoreBoardProps): JSX.Element {
   const periodNums = Array.from({ length: periodsTotal }, (_, i) => i + 1);
   const goalsStr = String(goals).padStart(2, '0');
-  const shotsStr = typeof shotsTotal === 'number'
-    ? `${String(shots).padStart(2, '0')}/${String(shotsTotal).padStart(2, '0')}`
-    : String(shots).padStart(2, '0');
+  const shotsStr =
+    typeof shotsTotal === 'number'
+      ? `${String(shots).padStart(2, '0')}/${String(shotsTotal).padStart(2, '0')}`
+      : String(shots).padStart(2, '0');
 
   return (
     <div
@@ -36,8 +37,7 @@ export function ScoreBoard({
         backdropFilter: 'blur(14px) saturate(140%)',
         WebkitBackdropFilter: 'blur(14px) saturate(140%)',
         border: `1px solid ${BORDER}`,
-        boxShadow:
-          '0 10px 28px rgba(15, 23, 42, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08)',
+        boxShadow: '0 10px 28px rgba(15, 23, 42, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08)',
         display: 'grid',
         gridTemplateColumns: '1.3fr 1fr 1.1fr 1.1fr',
         alignItems: 'center',
@@ -89,7 +89,15 @@ export function ScoreBoard({
 
 function Column({ label, children }: { label: string; children: React.ReactNode }): JSX.Element {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, lineHeight: 1 }}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 5,
+        lineHeight: 1,
+      }}
+    >
       <span
         style={{
           fontSize: 9,

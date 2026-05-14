@@ -9,23 +9,46 @@ const GATE_H = 53; // 99 / 1.86
 const LIGHT_DURATION_MS = 900;
 const LIGHT_PEAK_ALPHA = 0.4;
 
+export interface GoalOptions {
+  spriteUrl?: string | undefined;
+  gateWidth?: number | undefined;
+  gateAspect?: number | undefined;
+  visualYScale?: number | undefined;
+  visualYOffset?: number | undefined;
+  visualOffsetXScale?: number | undefined;
+  visualMaxOffsetX?: number | undefined;
+  spriteAnchorY?: number | undefined;
+}
+
 export class Goal {
   readonly container = new Container();
   private readonly light: Graphics;
   private readonly sprite: Sprite;
+  private readonly gateWidth: number;
+  private readonly gateHeight: number;
+  private readonly visualYScale: number;
+  private readonly visualYOffset: number;
+  private readonly visualOffsetXScale: number;
+  private readonly visualMaxOffsetX: number | undefined;
   private lightStartedAt: number | null = null;
   private destroyed = false;
 
-  constructor() {
+  constructor(options: GoalOptions = {}) {
+    this.gateWidth = options.gateWidth ?? GATE_W;
+    this.gateHeight = this.gateWidth / (options.gateAspect ?? GATE_W / GATE_H);
+    this.visualYScale = options.visualYScale ?? 1;
+    this.visualYOffset = options.visualYOffset ?? 0;
+    this.visualOffsetXScale = options.visualOffsetXScale ?? 1;
+    this.visualMaxOffsetX = options.visualMaxOffsetX;
     this.light = new Graphics()
-      .ellipse(0, 0, GATE_W * 0.36, GATE_H * 0.55)
+      .ellipse(0, 0, this.gateWidth * 0.36, this.gateHeight * 0.55)
       .fill({ color: 0xff1a1a });
     this.light.filters = [new BlurFilter({ strength: 14 })];
     this.light.alpha = 0;
 
     this.sprite = new Sprite(Texture.EMPTY);
-    this.sprite.anchor.set(0.5, 0.5);
-    Assets.load<Texture>('/sprites/gate.webp')
+    this.sprite.anchor.set(0.5, options.spriteAnchorY ?? 0.5);
+    Assets.load<Texture>(options.spriteUrl ?? '/sprites/gate.webp')
       .then((tex) => {
         if (this.destroyed) return;
         this.sprite.texture = tex;
@@ -45,14 +68,23 @@ export class Goal {
   update(scale: Scale, offsetRinkX = 0): void {
     if (this.destroyed) return;
     const s = scale.factor;
-    this.sprite.width = GATE_W * s;
-    this.sprite.height = GATE_H * s;
-    const rawX = GOAL.x + GOAL.width / 2 + offsetRinkX;
+    this.sprite.width = this.gateWidth * s;
+    this.sprite.height = this.gateHeight * s;
+    const scaledOffsetX = offsetRinkX * this.visualOffsetXScale;
+    const visualOffsetX =
+      this.visualMaxOffsetX === undefined
+        ? scaledOffsetX
+        : Math.max(-this.visualMaxOffsetX, Math.min(this.visualMaxOffsetX, scaledOffsetX));
+    const rawX = GOAL.x + GOAL.width / 2 + visualOffsetX;
+    const goalLineY = (GOAL.y + GOAL.height) * this.visualYScale + this.visualYOffset;
     const cx = rawX * s;
-    const cy = (GOAL.y + GOAL.height) * s;
+    const cy = goalLineY * s;
     this.sprite.position.set(cx, cy);
     // light sits at the back of the net (top edge of goal rect)
-    this.light.position.set(cx, (GOAL.y + GATE_H * 0.3) * s);
+    this.light.position.set(
+      cx,
+      (GOAL.y * this.visualYScale + this.visualYOffset + this.gateHeight * 0.3) * s,
+    );
     this.light.scale.set(s);
     this.container.position.set(scale.offsetX, scale.offsetY);
 

@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { recomputeEffectiveProfile, type DisplaySource } from '../auth/profile.js';
+import { canUseExperimentalTrainingCourt } from '../auth/featureAccess.js';
 import { AppError } from '../plugins/errors.js';
 import { buildProfileProgress } from '../profile/summary.js';
 
@@ -51,12 +52,17 @@ async function getMe(app: Parameters<FastifyPluginAsync>[0], userId: string) {
   }
   const row = rows[0]!;
   const profileProgress = await buildProfileProgress(app.pg, row);
+  const experimentalTrainingCourt = await canUseExperimentalTrainingCourt(app.pg, {
+    id: row.id,
+    role: row.role,
+  });
 
   return {
     id: row.id,
     displayName: row.display_name,
     ...(row.avatar_url !== null ? { avatarUrl: row.avatar_url } : {}),
     role: row.role,
+    experimentalTrainingCourt,
     grip: row.grip as 'right' | 'left',
     competitionLevel: profileProgress.competitionLevel,
     stats: profileProgress.stats,

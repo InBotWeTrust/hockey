@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { DAILY_PERIOD_SPEED_PRESETS } from '@hockey/game-core';
@@ -367,6 +367,78 @@ describe('DailyScreen', () => {
     expect(screen.getByRole('button', { name: 'ПЕРЕРЫВ' })).toBeDisabled();
   });
 
+  it('returns to the hub after dismissing fresh period stats and shows them again on break re-entry', async () => {
+    const future = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    const activeState: DailyStateResponse = {
+      ...baseState,
+      state: 'period_active',
+      current_period: 1,
+      current_period_shots: 30,
+      current_period_goals: 14,
+      daily_total_shots: 30,
+      daily_total_goals: 14,
+      daily_seed: 'seed-abc',
+      period_ends_at: future,
+    };
+    const breakState: DailyStateResponse = {
+      ...baseState,
+      state: 'break_active',
+      current_period: 1,
+      current_period_shots: 0,
+      current_period_goals: 0,
+      daily_total_shots: 30,
+      daily_total_goals: 14,
+      daily_seed: 'seed-abc',
+      period_ends_at: null,
+      break_ends_at: future,
+      recent_periods: [
+        {
+          period_number: 1,
+          shots_taken: 30,
+          goals: 14,
+          closed_reason: 'quota' as const,
+          duration_ms: 1_200_000,
+          ended_at: '2026-04-25T12:20:00.000Z',
+        },
+      ],
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      return new Response(
+        JSON.stringify(url.includes('/duel/training/state') ? trainingIdleState : activeState),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        },
+      );
+    });
+
+    renderWith(['/?view=daily']);
+
+    expect(await screen.findByRole('button', { name: 'БРОСОК' })).toBeInTheDocument();
+
+    act(() => {
+      useDailyStore.getState().setDeferredState(breakState);
+    });
+
+    expect(
+      await screen.findByRole('dialog', { name: 'Итоги ежедневной игры' }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Понятно' }));
+
+    expect(
+      await screen.findByRole('button', { name: 'Вернуться на площадку' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Итоги ежедневной игры' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Вернуться на площадку' }));
+
+    expect(
+      await screen.findByRole('dialog', { name: 'Итоги ежедневной игры' }),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('pixi-stage-stub')).toBeInTheDocument();
+  });
+
   it('shows the full game stats modal after the final period instead of a period-only summary', async () => {
     const previousGame = {
       day_date: '2026-04-25',
@@ -592,7 +664,7 @@ describe('DailyScreen', () => {
     expect(screen.getByText('0/500')).toBeInTheDocument();
     expect(screen.getByText('ДО ОБНОВЛЕНИЯ')).toBeInTheDocument();
     expect(screen.getByText('Скорости 1-го периода')).toBeInTheDocument();
-    expect(screen.getByText('0,55/с')).toBeInTheDocument();
+    expect(screen.getByText('0,50/с')).toBeInTheDocument();
   });
 
   it('shows why training is locked while the daily game is in progress', async () => {
@@ -702,7 +774,108 @@ describe('DailyScreen', () => {
     expect(screen.getByText('ЛИМИТ')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Звук в разработке' }));
     expect(screen.getByRole('status')).toHaveTextContent('Звук в разработке');
+    expect(
+      screen.queryByRole('group', { name: 'Дизайн тренировочной площадки' }),
+    ).not.toBeInTheDocument();
     expect(screen.getByTestId('pixi-stage-stub')).toBeInTheDocument();
+  });
+
+  it('allows admins to switch the active training court design', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'token',
+      refreshToken: 'r',
+      user: { id: 'u1', displayName: 'Tester', role: 'admin' },
+    });
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingActiveState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/training/start')) {
+        return new Response(JSON.stringify(trainingActiveState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify(baseState), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    renderWith();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Тренировка' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: /Продолжить тренировку/ }),
+    );
+
+    expect(
+      await screen.findByRole('group', { name: 'Дизайн тренировочной площадки' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Стандарт' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Новая' }));
+
+    expect(localStorage.getItem('hockey.trainingCourtDesign')).toBe('new');
+    expect(screen.getByRole('button', { name: 'Новая' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(screen.getByRole('img', { name: 'Новая тренировочная площадка' })).toBeInTheDocument();
+  });
+
+  it('allows non-admin testers with the experimental training court flag to switch designs', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'token',
+      refreshToken: 'r',
+      user: {
+        id: 'u2',
+        displayName: 'Dmitry Arkaim',
+        role: 'player',
+        experimentalTrainingCourt: true,
+      },
+    });
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingActiveState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/training/start')) {
+        return new Response(JSON.stringify(trainingActiveState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify(baseState), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    renderWith();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Тренировка' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: /Продолжить тренировку/ }),
+    );
+
+    expect(
+      await screen.findByRole('group', { name: 'Дизайн тренировочной площадки' }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Новая' }));
+
+    expect(localStorage.getItem('hockey.trainingCourtDesign')).toBe('new');
   });
 
   it('shows a modal for locked amateur level from the card', async () => {

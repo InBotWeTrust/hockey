@@ -150,7 +150,7 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
     const poolInsert = await pool.query<{ id: string }>(
       `insert into day_pool
          (user_id, day_date, state, current_period, game_core_version, daily_seed)
-       values ($1, current_date, 'closed', 1, 42, 'daily-seed')
+       values ($1, current_date, 'closed', 1, 43, 'daily-seed')
        returning id`,
       [playerId],
     );
@@ -159,7 +159,7 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
       `insert into shot_session
          (user_id, mode, day_pool_id, period_number, shot_index, seed,
           input_payload, server_result, game_core_version)
-       values ($1, 'daily', $2, 1, 3, 'shot-seed', '{}'::jsonb, 'save', 42)
+       values ($1, 'daily', $2, 1, 3, 'shot-seed', '{}'::jsonb, 'save', 43)
        returning id`,
       [playerId, dayPoolId],
     );
@@ -211,7 +211,7 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
           shotIndex: 3,
           claimedResult: 'goal',
           serverResult: 'save',
-          gameCoreVersion: 42,
+          gameCoreVersion: 43,
         }),
       ],
     });

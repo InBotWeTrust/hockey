@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Container } from 'pixi.js';
@@ -26,12 +35,12 @@ import {
 } from '@hockey/game-core';
 import { PixiStage } from '../game/PixiStage.js';
 import { RinkSvg } from '../game/RinkSvg.js';
-import { Goal } from '../game/renderer/Goal.js';
-import { Goalie } from '../game/renderer/Goalie.js';
+import { Goal, type GoalOptions } from '../game/renderer/Goal.js';
+import { Goalie, type GoalieOptions } from '../game/renderer/Goalie.js';
 import { Hitboxes } from '../game/renderer/Hitboxes.js';
 import { IceCar, iceCarPosAt } from '../game/renderer/IceCar.js';
-import { Player } from '../game/renderer/Player.js';
-import { Puck } from '../game/renderer/Puck.js';
+import { Player, type PlayerOptions } from '../game/renderer/Player.js';
+import { Puck, type PuckOptions } from '../game/renderer/Puck.js';
 import { createGameLoop, type GameLoop, type SpeedOverrides } from '../game/loop.js';
 import type { Scale } from '../game/coords.js';
 import { TelegramLoginButton, type TelegramAuthPayload } from '../auth/TelegramLoginButton.js';
@@ -88,6 +97,7 @@ type DailyView = 'hub' | 'play';
 type LevelArtwork = 'beginner' | 'amateur' | 'pro';
 type DailyHubArtwork = 'period-1' | 'period-2' | 'period-3' | 'break' | 'finished' | 'start';
 type ModeInfoModalContent = { title: string; text: string };
+type TrainingCourtDesign = 'standard' | 'new';
 
 const MODE_ARTWORK_IMAGES: Record<LevelArtwork, string | null> = {
   beginner: '/modes/beginner.webp',
@@ -104,6 +114,38 @@ const DAILY_HUB_ARTWORK_IMAGES: Record<DailyHubArtwork, string> = {
   finished: '/daily-game/finished.webp',
   start: '/daily-game/start.webp',
 };
+const TRAINING_COURT_DESIGN_STORAGE_KEY = 'hockey.trainingCourtDesign';
+const TRAINING_NEW_COURT_BACKGROUND = '/sprites/test-court-bg.webp';
+const TRAINING_NEW_COURT_BG_CROP_BOTTOM = '7%';
+const TRAINING_NEW_COURT_VISUAL_Y_SCALE = 0.72;
+const TRAINING_NEW_COURT_VISUAL_Y_OFFSET = 205;
+const TRAINING_NEW_COURT_GOAL_VISUAL_Y_OFFSET = 88;
+const TRAINING_NEW_COURT_GOALIE_VISUAL_Y_OFFSET = 72;
+const TRAINING_NEW_COURT_GOAL_VISUAL_OFFSET_X_SCALE = 0.9;
+const TRAINING_NEW_COURT_GOALIE_VISUAL_X_SCALE = 0.9;
+const TRAINING_NEW_COURT_PUCK_BLADE_OFFSET_X = 28;
+const TRAINING_NEW_COURT_PUCK_BLADE_OFFSET_Y = 17;
+const TRAINING_NEW_COURT_PUCK_FLIGHT_VISUAL_Y_OFFSET = -127;
+
+function readTrainingCourtDesign(): TrainingCourtDesign {
+  if (typeof window === 'undefined') return 'standard';
+  try {
+    return window.localStorage.getItem(TRAINING_COURT_DESIGN_STORAGE_KEY) === 'new'
+      ? 'new'
+      : 'standard';
+  } catch {
+    return 'standard';
+  }
+}
+
+function saveTrainingCourtDesign(value: TrainingCourtDesign): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(TRAINING_COURT_DESIGN_STORAGE_KEY, value);
+  } catch {
+    // The toggle is a local admin aid; storage failure should not block gameplay.
+  }
+}
 
 function dailyHubArtworkFor(
   data: DailyStateResponse,
@@ -3102,7 +3144,7 @@ interface PlayViewProps<TState> {
   periodsTotal?: number;
   goals: number;
   shots: number;
-  shotsTotal: number;
+  shotsTotal?: number | undefined;
   timer?: string | undefined;
   timerLabel?: string | undefined;
   shotButtonLabel?: string | undefined;
@@ -3121,6 +3163,16 @@ interface PlayViewProps<TState> {
   }) => Promise<{ serverResult: ShotResultType; state: TState } | null>;
   applyState: (next: TState) => void;
   applyResolvedState?: ((next: TState) => void) | undefined;
+  rinkLayer?: ReactNode;
+  rinkAspectRatio?: string | undefined;
+  rinkBorderRadius?: number | string | undefined;
+  rinkBorder?: string | undefined;
+  gameLayerStyle?: CSSProperties | undefined;
+  playerGrip?: 'left' | 'right' | undefined;
+  playerOptions?: PlayerOptions | undefined;
+  goalOptions?: GoalOptions | undefined;
+  goalieOptions?: GoalieOptions | undefined;
+  puckOptions?: PuckOptions | undefined;
 }
 
 interface PlaySessionSnapshot {
@@ -3129,7 +3181,7 @@ interface PlaySessionSnapshot {
   goalieId: string;
   periodNumber: number;
   shots: number;
-  shotsTotal: number;
+  shotsTotal: number | undefined;
 }
 
 interface PlaySessionTiming {
@@ -3218,12 +3270,17 @@ function DailyPlayView({ onBack }: { onBack: () => void }): JSX.Element {
   );
 
   const handleStatsModalClose = useCallback((): void => {
-    const latestPeriod = latestPeriodFromStats(statsModal?.stats ?? null);
-    if (latestPeriod && userId) setLastSeenAt(userId, latestPeriod.ended_at);
     const source = statsModal?.source;
     setStatsModal(null);
-    if (source === 'deferred') applyDeferredState();
-  }, [applyDeferredState, statsModal, userId]);
+    if (source === 'deferred') {
+      applyDeferredState();
+      onBack();
+      return;
+    }
+
+    const latestPeriod = latestPeriodFromStats(statsModal?.stats ?? null);
+    if (latestPeriod && userId) setLastSeenAt(userId, latestPeriod.ended_at);
+  }, [applyDeferredState, onBack, statsModal, userId]);
 
   const hasStatsModal = statsModal !== null;
   const shouldSuppressRink = data.state !== 'period_active' || hasStatsModal;
@@ -3368,37 +3425,200 @@ function DailyClosedModal({ timer, onBack }: { timer: string; onBack: () => void
   );
 }
 
+function TrainingCourtDesignSwitch({
+  value,
+  onChange,
+}: {
+  value: TrainingCourtDesign;
+  onChange: (value: TrainingCourtDesign) => void;
+}): JSX.Element {
+  const options: Array<{ value: TrainingCourtDesign; label: string }> = [
+    { value: 'standard', label: 'Стандарт' },
+    { value: 'new', label: 'Новая' },
+  ];
+
+  return (
+    <div
+      role="group"
+      aria-label="Дизайн тренировочной площадки"
+      style={{
+        position: 'fixed',
+        top: 'calc(var(--app-safe-top) + 78px)',
+        right: 12,
+        zIndex: 540,
+        display: 'flex',
+        gap: 3,
+        padding: 4,
+        borderRadius: 999,
+        background: 'rgba(8, 24, 43, 0.72)',
+        border: '1px solid rgba(255, 255, 255, 0.24)',
+        boxShadow: '0 12px 28px rgba(7, 19, 33, 0.2)',
+        backdropFilter: 'blur(14px)',
+      }}
+    >
+      {options.map((option) => {
+        const selected = option.value === value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            aria-pressed={selected}
+            onClick={() => onChange(option.value)}
+            style={{
+              minWidth: 74,
+              minHeight: 30,
+              border: 0,
+              borderRadius: 999,
+              padding: '7px 11px',
+              background: selected ? 'rgba(255, 255, 255, 0.95)' : 'transparent',
+              color: selected ? '#12304d' : 'rgba(255, 255, 255, 0.82)',
+              fontSize: 11,
+              fontWeight: 900,
+              lineHeight: 1,
+              cursor: 'pointer',
+            }}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function TrainingPerspectiveRink(): JSX.Element {
+  return (
+    <div
+      role="img"
+      aria-label="Новая тренировочная площадка"
+      style={{
+        position: 'absolute',
+        inset: 0,
+        width: '100%',
+        height: '100%',
+        pointerEvents: 'none',
+        overflow: 'hidden',
+        background: '#dceaf5',
+      }}
+    >
+      <img
+        src={TRAINING_NEW_COURT_BACKGROUND}
+        alt=""
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: `calc(100% + ${TRAINING_NEW_COURT_BG_CROP_BOTTOM})`,
+          objectFit: 'cover',
+        }}
+      />
+    </div>
+  );
+}
+
 function TrainingPlayView({ onBack }: { onBack: () => void }): JSX.Element | null {
   const data = useTrainingSessionStore((s) => s.data);
   const optimisticAddShot = useTrainingSessionStore((s) => s.optimisticAddShot);
   const submitShot = useTrainingSessionStore((s) => s.submitShot);
   const applyState = useTrainingSessionStore((s) => s.applyState);
+  const userRole = useAuthStore((s) => s.user?.role);
+  const experimentalTrainingCourt = useAuthStore((s) => s.user?.experimentalTrainingCourt);
+  const [courtDesign, setCourtDesign] = useState<TrainingCourtDesign>(() =>
+    readTrainingCourtDesign(),
+  );
+  const canSwitchCourtDesign = userRole === 'admin' || experimentalTrainingCourt === true;
+  const activeCourtDesign = canSwitchCourtDesign ? courtDesign : 'standard';
+  const useNewCourt = activeCourtDesign === 'new';
+  const handleCourtDesignChange = useCallback((next: TrainingCourtDesign): void => {
+    setCourtDesign(next);
+    saveTrainingCourtDesign(next);
+  }, []);
 
   if (!data) return null;
 
   return (
-    <PlayView<TrainingStateResponse>
-      suppressedByModal={false}
-      showIceCar={false}
-      onBack={onBack}
-      active={data.state === 'active'}
-      seed={data.training_seed}
-      goalieId={data.goalie_id}
-      periodNumber={data.selected_period ?? 1}
-      periodSpeedPresets={data.period_speed_presets}
-      sessionStartedAt={data.started_at}
-      serverNow={data.server_now}
-      receivedAtPerformanceMs={data.received_at_performance_ms}
-      goals={data.goals}
-      shots={data.shots_taken}
-      shotsTotal={data.shots_limit}
-      timer={String(data.shots_limit)}
-      timerLabel="ЛИМИТ"
-      backLabel="К тренировке"
-      optimisticAddShot={optimisticAddShot}
-      submitShot={submitShot}
-      applyState={applyState}
-    />
+    <>
+      {canSwitchCourtDesign ? (
+        <TrainingCourtDesignSwitch value={courtDesign} onChange={handleCourtDesignChange} />
+      ) : null}
+      <PlayView<TrainingStateResponse>
+        key={activeCourtDesign}
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={onBack}
+        active={data.state === 'active'}
+        seed={data.training_seed}
+        goalieId={data.goalie_id}
+        periodNumber={data.selected_period ?? 1}
+        periodSpeedPresets={data.period_speed_presets}
+        sessionStartedAt={data.started_at}
+        serverNow={data.server_now}
+        receivedAtPerformanceMs={data.received_at_performance_ms}
+        goals={data.goals}
+        shots={data.shots_taken}
+        shotsTotal={data.shots_limit}
+        timer={String(data.shots_limit)}
+        timerLabel="ЛИМИТ"
+        backLabel="К тренировке"
+        playerOptions={
+          useNewCourt
+            ? {
+                spriteUrl: '/sprites/test-hockey-player.webp',
+                spriteWidth: 100,
+                spriteAspect: 941 / 1062,
+                baseRotation: 0,
+                shotMaxRotation: 0.24,
+                visualYScale: TRAINING_NEW_COURT_VISUAL_Y_SCALE,
+                visualYOffset: TRAINING_NEW_COURT_VISUAL_Y_OFFSET,
+              }
+            : undefined
+        }
+        goalOptions={
+          useNewCourt
+            ? {
+                spriteUrl: '/sprites/test-goal-clean.webp',
+                gateWidth: 102,
+                gateAspect: 1097 / 734,
+                visualYScale: TRAINING_NEW_COURT_VISUAL_Y_SCALE,
+                visualYOffset: TRAINING_NEW_COURT_GOAL_VISUAL_Y_OFFSET,
+                visualOffsetXScale: TRAINING_NEW_COURT_GOAL_VISUAL_OFFSET_X_SCALE,
+                spriteAnchorY: 1,
+              }
+            : undefined
+        }
+        goalieOptions={
+          useNewCourt
+            ? {
+                visualYScale: TRAINING_NEW_COURT_VISUAL_Y_SCALE,
+                visualYOffset: TRAINING_NEW_COURT_GOALIE_VISUAL_Y_OFFSET,
+                visualXScale: TRAINING_NEW_COURT_GOALIE_VISUAL_X_SCALE,
+                sizeScale: 1.14,
+              }
+            : undefined
+        }
+        puckOptions={
+          useNewCourt
+            ? {
+                radiusScaleX: 1.16,
+                radiusScaleY: 0.82,
+                rotation: 0,
+                visualYScale: TRAINING_NEW_COURT_VISUAL_Y_SCALE,
+                visualYOffset: TRAINING_NEW_COURT_VISUAL_Y_OFFSET,
+                bladeOffsetX: TRAINING_NEW_COURT_PUCK_BLADE_OFFSET_X,
+                bladeOffsetY: TRAINING_NEW_COURT_PUCK_BLADE_OFFSET_Y,
+                flightVisualYOffset: TRAINING_NEW_COURT_PUCK_FLIGHT_VISUAL_Y_OFFSET,
+              }
+            : undefined
+        }
+        optimisticAddShot={optimisticAddShot}
+        submitShot={submitShot}
+        applyState={applyState}
+        rinkAspectRatio={useNewCourt ? '1024 / 1428' : undefined}
+        rinkBorderRadius={useNewCourt ? 36 : undefined}
+        rinkLayer={useNewCourt ? <TrainingPerspectiveRink /> : undefined}
+      />
+    </>
   );
 }
 
@@ -3643,7 +3863,7 @@ function DemoCompletionModal({
   );
 }
 
-function PlayView<TState>({
+export function PlayView<TState>({
   suppressedByModal,
   showIceCar,
   onBack,
@@ -3671,6 +3891,16 @@ function PlayView<TState>({
   submitShot,
   applyState,
   applyResolvedState,
+  rinkLayer = <RinkSvg />,
+  rinkAspectRatio = '572 / 700',
+  rinkBorderRadius = 64,
+  rinkBorder = '3px solid #1e3a5f',
+  gameLayerStyle,
+  playerGrip,
+  playerOptions,
+  goalOptions,
+  goalieOptions,
+  puckOptions,
 }: PlayViewProps<TState>): JSX.Element {
   const session: PlaySessionSnapshot = useMemo(
     () => ({
@@ -3727,6 +3957,16 @@ function PlayView<TState>({
   suppressedRef.current = suppressedByModal;
   const showIceCarRef = useRef(showIceCar);
   showIceCarRef.current = showIceCar;
+  const playerGripRef = useRef(playerGrip);
+  playerGripRef.current = playerGrip;
+  const playerOptionsRef = useRef(playerOptions);
+  playerOptionsRef.current = playerOptions;
+  const goalOptionsRef = useRef(goalOptions);
+  goalOptionsRef.current = goalOptions;
+  const goalieOptionsRef = useRef(goalieOptions);
+  goalieOptionsRef.current = goalieOptions;
+  const puckOptionsRef = useRef(puckOptions);
+  puckOptionsRef.current = puckOptions;
 
   const speeds = useMemo(
     () => speedOverridesForPeriod(periodNumber, periodSpeedPresets),
@@ -3811,12 +4051,12 @@ function PlayView<TState>({
   const handleReady = useCallback((app: Application, initialScale: Scale): void => {
     scaleRef.current = initialScale;
 
-    const goal = new Goal();
-    const goalie = new Goalie();
+    const goal = new Goal(goalOptionsRef.current);
+    const goalie = new Goalie(goalieOptionsRef.current);
     const hitboxes = new Hitboxes();
-    const grip = useAuthStore.getState().user?.grip ?? 'left';
-    const puck = new Puck(grip);
-    const player = new Player(grip);
+    const grip = playerGripRef.current ?? useAuthStore.getState().user?.grip ?? 'left';
+    const puck = new Puck(grip, puckOptionsRef.current);
+    const player = new Player(grip, playerOptionsRef.current);
     puckRef.current = puck;
     playerRef.current = player;
     goalRef.current = goal;
@@ -3988,7 +4228,7 @@ function PlayView<TState>({
     if (puck.isFlying() || puck.isHeld()) return;
     if (!cur.active) return;
     if (!cur.seed) return;
-    if (cur.shots >= cur.shotsTotal) return;
+    if (typeof cur.shotsTotal === 'number' && cur.shots >= cur.shotsTotal) return;
 
     const shotIndex = cur.shots + 1;
     const goalieCfg = getGoalie(cur.goalieId);
@@ -4159,17 +4399,17 @@ function PlayView<TState>({
         <div
           style={{
             position: 'relative',
-            aspectRatio: '572 / 700',
+            aspectRatio: rinkAspectRatio,
             width: '100%',
             maxHeight: '100%',
-            borderRadius: 64,
+            borderRadius: rinkBorderRadius,
             overflow: 'hidden',
-            border: '3px solid #1e3a5f',
+            border: rinkBorder,
             background: '#EAF1F8',
           }}
         >
-          <RinkSvg />
-          <div style={{ position: 'absolute', inset: 0 }}>
+          {rinkLayer}
+          <div style={{ position: 'absolute', inset: 0, ...gameLayerStyle }}>
             <PixiStage onReady={handleReady} onResize={handleResize} />
           </div>
         </div>
@@ -4210,7 +4450,7 @@ function PlayView<TState>({
             isShotInProgress ||
             isShowingResult ||
             !active ||
-            shots >= shotsTotal
+            (typeof shotsTotal === 'number' && shots >= shotsTotal)
           }
           style={{
             width: '100%',

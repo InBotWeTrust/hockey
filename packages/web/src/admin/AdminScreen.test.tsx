@@ -368,7 +368,7 @@ describe('AdminScreen', () => {
                 shotIndex: 7,
                 claimedResult: 'goal',
                 serverResult: 'save',
-                gameCoreVersion: 42,
+                gameCoreVersion: 43,
                 payload: {
                   mode: 'daily',
                   day_pool_id: 'session-1',
@@ -390,21 +390,17 @@ describe('AdminScreen', () => {
               key: 'news.posted',
               category: 'news',
               title:
-                typeof init?.body === 'string'
-                  ? JSON.parse(init.body).title
-                  : 'Большая новость',
-              body:
-                typeof init?.body === 'string'
-                  ? JSON.parse(init.body).body
-                  : '{{postContent}}',
+                typeof init?.body === 'string' ? JSON.parse(init.body).title : 'Большая новость',
+              body: typeof init?.body === 'string' ? JSON.parse(init.body).body : '{{postContent}}',
               trigger:
                 typeof init?.body === 'string'
                   ? JSON.parse(init.body).trigger
                   : 'Публикация новости',
               clickUrl:
-                typeof init?.body === 'string' ? JSON.parse(init.body).clickUrl : '/chat/{{chatId}}',
-              isEnabled:
-                typeof init?.body === 'string' ? JSON.parse(init.body).isEnabled : true,
+                typeof init?.body === 'string'
+                  ? JSON.parse(init.body).clickUrl
+                  : '/chat/{{chatId}}',
+              isEnabled: typeof init?.body === 'string' ? JSON.parse(init.body).isEnabled : true,
               updatedAt: '2026-05-03T08:10:00.000Z',
               updatedBy: 'admin',
               updatedByDisplayName: 'Egor',
@@ -563,11 +559,11 @@ describe('AdminScreen', () => {
                 label: 'Скорость ворот',
                 description: '',
                 type: 'number',
-                defaultValue: 0.55,
+                defaultValue: 0.5,
                 min: 0.1,
                 max: 3,
                 step: 0.01,
-                value: 0.55,
+                value: 0.5,
                 updatedAt: null,
                 updatedBy: null,
               },
@@ -576,11 +572,11 @@ describe('AdminScreen', () => {
                 label: 'Скорость вратаря',
                 description: '',
                 type: 'number',
-                defaultValue: 0.65,
+                defaultValue: 0.6,
                 min: 0.1,
                 max: 3,
                 step: 0.01,
-                value: 0.65,
+                value: 0.6,
                 updatedAt: null,
                 updatedBy: null,
               },
@@ -589,11 +585,11 @@ describe('AdminScreen', () => {
                 label: 'Скорость игрока',
                 description: '',
                 type: 'number',
-                defaultValue: 0.8,
+                defaultValue: 0.75,
                 min: 0.1,
                 max: 3,
                 step: 0.01,
-                value: 0.8,
+                value: 0.75,
                 updatedAt: null,
                 updatedBy: null,
               },
@@ -602,11 +598,11 @@ describe('AdminScreen', () => {
                 label: 'Скорость шайбы',
                 description: '',
                 type: 'number',
-                defaultValue: 1.3,
+                defaultValue: 1.25,
                 min: 0.2,
                 max: 5,
                 step: 0.01,
-                value: 1.3,
+                value: 1.25,
                 updatedAt: null,
                 updatedBy: null,
               },

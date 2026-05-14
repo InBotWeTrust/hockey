@@ -7,25 +7,49 @@ import type { Scale } from '../coords.js';
 // offset from the body by Puck.BLADE_OFFSET. Width +10% сверх предыдущих 60.
 const SPRITE_WIDTH = 66;
 const SPRITE_ASPECT = 700 / 950;
-const SPRITE_HEIGHT = SPRITE_WIDTH / SPRITE_ASPECT;
 
 const SHOT_DURATION_MS = 240;
 const BASE_ROTATION = 0.32; // resting "ready" pose, ~18.3 deg (opposite shot dir)
 const SHOT_MAX = 0.24; // follow-through peak, ~13.7 deg
 
+export interface PlayerOptions {
+  spriteUrl?: string | undefined;
+  spriteWidth?: number | undefined;
+  spriteAspect?: number | undefined;
+  fixedRotation?: number | undefined;
+  baseRotation?: number | undefined;
+  shotMaxRotation?: number | undefined;
+  visualYScale?: number | undefined;
+  visualYOffset?: number | undefined;
+}
+
 export class Player {
   readonly container = new Container();
   private readonly sprite: Sprite;
   private readonly shotDir: 1 | -1;
+  private readonly spriteWidth: number;
+  private readonly spriteAspect: number;
+  private readonly fixedRotation: number | undefined;
+  private readonly baseRotation: number;
+  private readonly shotMaxRotation: number;
+  private readonly visualYScale: number;
+  private readonly visualYOffset: number;
   private shotStartedAt: number | null = null;
   private destroyed = false;
 
-  constructor(grip: 'left' | 'right' = 'left') {
+  constructor(grip: 'left' | 'right' = 'left', options: PlayerOptions = {}) {
     this.shotDir = grip === 'right' ? -1 : 1;
+    this.spriteWidth = options.spriteWidth ?? SPRITE_WIDTH;
+    this.spriteAspect = options.spriteAspect ?? SPRITE_ASPECT;
+    this.fixedRotation = options.fixedRotation;
+    this.baseRotation = options.baseRotation ?? BASE_ROTATION;
+    this.shotMaxRotation = options.shotMaxRotation ?? SHOT_MAX;
+    this.visualYScale = options.visualYScale ?? 1;
+    this.visualYOffset = options.visualYOffset ?? 0;
     this.sprite = new Sprite(Texture.EMPTY);
     this.sprite.anchor.set(0.5, 0.5);
     this.container.addChild(this.sprite);
-    Assets.load<Texture>(`/sprites/${grip}hand.webp`)
+    Assets.load<Texture>(options.spriteUrl ?? `/sprites/${grip}hand.webp`)
       .then((tex) => {
         if (this.destroyed) return;
         this.sprite.texture = tex;
@@ -41,28 +65,34 @@ export class Player {
   update(scale: Scale, shooterX = PUCK_START.x, shooterY = PUCK_START.y): void {
     if (this.destroyed) return;
     const s = scale.factor;
-    this.sprite.width = SPRITE_WIDTH * s;
-    this.sprite.height = SPRITE_HEIGHT * s;
-    this.sprite.position.set(shooterX * s, shooterY * s);
+    this.sprite.width = this.spriteWidth * s;
+    this.sprite.height = (this.spriteWidth / this.spriteAspect) * s;
+    this.sprite.position.set(shooterX * s, (shooterY * this.visualYScale + this.visualYOffset) * s);
     this.container.position.set(scale.offsetX, scale.offsetY);
+
+    if (this.fixedRotation !== undefined) {
+      this.sprite.rotation = this.fixedRotation;
+      return;
+    }
 
     if (this.shotStartedAt !== null) {
       const t = (performance.now() - this.shotStartedAt) / SHOT_DURATION_MS;
       if (t >= 1) {
-        this.sprite.rotation = this.shotDir * -BASE_ROTATION;
+        this.sprite.rotation = this.shotDir * -this.baseRotation;
         this.shotStartedAt = null;
       } else {
         // swing from base pose (-BASE) through peak (+MAX) and back to base (-BASE)
         let r: number;
         if (t < 0.35) {
-          r = -BASE_ROTATION + (BASE_ROTATION + SHOT_MAX) * (t / 0.35);
+          r = -this.baseRotation + (this.baseRotation + this.shotMaxRotation) * (t / 0.35);
         } else {
-          r = SHOT_MAX - (SHOT_MAX + BASE_ROTATION) * ((t - 0.35) / 0.65);
+          r =
+            this.shotMaxRotation - (this.shotMaxRotation + this.baseRotation) * ((t - 0.35) / 0.65);
         }
         this.sprite.rotation = this.shotDir * r;
       }
     } else {
-      this.sprite.rotation = this.shotDir * -BASE_ROTATION;
+      this.sprite.rotation = this.shotDir * -this.baseRotation;
     }
   }
 

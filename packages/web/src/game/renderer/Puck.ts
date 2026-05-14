@@ -5,6 +5,17 @@ import type { Scale } from '../coords.js';
 const PUCK_RADIUS = 3.3;
 const PUCK_BLACK = 0x111111;
 
+export interface PuckOptions {
+  radiusScaleX?: number | undefined;
+  radiusScaleY?: number | undefined;
+  rotation?: number | undefined;
+  visualYScale?: number | undefined;
+  visualYOffset?: number | undefined;
+  flightVisualYOffset?: number | undefined;
+  bladeOffsetX?: number | undefined;
+  bladeOffsetY?: number | undefined;
+}
+
 // Puck sits at the blade toe, offset from the body centre.
 // Left grip carries the puck on the left side of the body (negative x),
 // right grip — on the right (positive x). Y is the same: puck is in front.
@@ -20,6 +31,11 @@ export class Puck {
   private readonly shadow = new Graphics();
   private readonly body = new Graphics();
   private readonly offset: Vec2;
+  private readonly radiusScaleX: number;
+  private readonly radiusScaleY: number;
+  private readonly visualYScale: number;
+  private readonly visualYOffset: number;
+  private readonly flightVisualYOffset: number;
   private flight: {
     start: Vec2;
     end: Vec2;
@@ -29,8 +45,20 @@ export class Puck {
   private held: Vec2 | null = null;
   private destroyed = false;
 
-  constructor(grip: 'left' | 'right' = 'left') {
+  constructor(grip: 'left' | 'right' = 'left', options: PuckOptions = {}) {
     this.offset = BLADE_OFFSET[grip];
+    if (options.bladeOffsetX !== undefined || options.bladeOffsetY !== undefined) {
+      this.offset = {
+        x: options.bladeOffsetX ?? this.offset.x,
+        y: options.bladeOffsetY ?? this.offset.y,
+      };
+    }
+    this.radiusScaleX = options.radiusScaleX ?? 1;
+    this.radiusScaleY = options.radiusScaleY ?? 1;
+    this.visualYScale = options.visualYScale ?? 1;
+    this.visualYOffset = options.visualYOffset ?? 0;
+    this.flightVisualYOffset = options.flightVisualYOffset ?? 0;
+    this.container.rotation = options.rotation ?? 0;
     this.container.addChild(this.shadow);
     this.container.addChild(this.body);
   }
@@ -64,14 +92,14 @@ export class Puck {
   update(now: number, scale: Scale): void {
     if (this.destroyed) return;
     if (this.held) {
-      this.draw(this.held, scale);
+      this.draw(this.held, scale, this.flightVisualYOffset);
       return;
     }
     if (!this.flight) return;
     const t = Math.min(1, (now - this.flight.startedAt) / this.flight.durationMs);
     const x = this.flight.start.x + (this.flight.end.x - this.flight.start.x) * t;
     const y = this.flight.start.y + (this.flight.end.y - this.flight.start.y) * t;
-    this.draw({ x, y }, scale);
+    this.draw({ x, y }, scale, this.flightVisualYOffset * t);
     if (t >= 1) this.flight = null;
   }
 
@@ -83,15 +111,17 @@ export class Puck {
     return this.held !== null;
   }
 
-  private draw(p: Vec2, scale: Scale): void {
-    const r = PUCK_RADIUS * scale.factor;
+  private draw(p: Vec2, scale: Scale, extraVisualYOffset = 0): void {
+    const rx = PUCK_RADIUS * scale.factor * this.radiusScaleX;
+    const ry = PUCK_RADIUS * scale.factor * this.radiusScaleY;
     this.shadow.clear();
     this.body.clear();
-    this.body.circle(0, 0, r).fill(PUCK_BLACK);
+    this.body.ellipse(0, 0, rx, ry).fill(PUCK_BLACK);
 
     this.container.position.set(
       p.x * scale.factor + scale.offsetX,
-      p.y * scale.factor + scale.offsetY,
+      (p.y * this.visualYScale + this.visualYOffset + extraVisualYOffset) * scale.factor +
+        scale.offsetY,
     );
   }
 
