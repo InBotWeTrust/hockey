@@ -30,6 +30,9 @@ import {
   simulateGoal,
   simulateGoalie,
   type DailyPeriodSpeedPreset,
+  type GoalieConfig,
+  type SessionPhaseOffsets,
+  type ShotInput,
   type ShotResult,
   type StickEffects,
 } from '@hockey/game-core';
@@ -37,7 +40,7 @@ import { PixiStage } from '../game/PixiStage.js';
 import { RinkSvg } from '../game/RinkSvg.js';
 import { Goal, type GoalOptions } from '../game/renderer/Goal.js';
 import { Goalie, type GoalieOptions } from '../game/renderer/Goalie.js';
-import { Hitboxes } from '../game/renderer/Hitboxes.js';
+import { Hitboxes, type HitboxesOptions } from '../game/renderer/Hitboxes.js';
 import { IceCar, iceCarPosAt } from '../game/renderer/IceCar.js';
 import { Player, type PlayerOptions } from '../game/renderer/Player.js';
 import { Puck, type PuckOptions } from '../game/renderer/Puck.js';
@@ -98,6 +101,15 @@ type LevelArtwork = 'beginner' | 'amateur' | 'pro';
 type DailyHubArtwork = 'period-1' | 'period-2' | 'period-3' | 'break' | 'finished' | 'start';
 type ModeInfoModalContent = { title: string; text: string };
 type TrainingCourtDesign = 'standard' | 'new';
+export type PlayShotResolver = (context: {
+  input: ShotInput;
+  goalieConfig: GoalieConfig;
+  seed: string;
+  shotIndex: number;
+  stickEffects: StickEffects;
+  phaseOffsets: SessionPhaseOffsets;
+  shooterX: number;
+}) => ShotResult;
 
 const MODE_ARTWORK_IMAGES: Record<LevelArtwork, string | null> = {
   beginner: '/modes/beginner.webp',
@@ -120,7 +132,7 @@ const TRAINING_NEW_COURT_BG_CROP_BOTTOM = '7%';
 const TRAINING_NEW_COURT_VISUAL_Y_SCALE = 0.72;
 const TRAINING_NEW_COURT_VISUAL_Y_OFFSET = 205;
 const TRAINING_NEW_COURT_GOAL_VISUAL_Y_OFFSET = 88;
-const TRAINING_NEW_COURT_GOALIE_VISUAL_Y_OFFSET = 72;
+const TRAINING_NEW_COURT_GOALIE_VISUAL_Y_OFFSET = 62;
 const TRAINING_NEW_COURT_GOAL_VISUAL_OFFSET_X_SCALE = 0.9;
 const TRAINING_NEW_COURT_GOALIE_VISUAL_X_SCALE = 0.9;
 const TRAINING_NEW_COURT_PUCK_BLADE_OFFSET_X = 28;
@@ -3173,6 +3185,9 @@ interface PlayViewProps<TState> {
   goalOptions?: GoalOptions | undefined;
   goalieOptions?: GoalieOptions | undefined;
   puckOptions?: PuckOptions | undefined;
+  hitboxesVisible?: boolean | undefined;
+  hitboxesOptions?: HitboxesOptions | undefined;
+  shotResolver?: PlayShotResolver | undefined;
 }
 
 interface PlaySessionSnapshot {
@@ -3565,7 +3580,7 @@ function TrainingPlayView({ onBack }: { onBack: () => void }): JSX.Element | nul
           useNewCourt
             ? {
                 spriteUrl: '/sprites/test-hockey-player.webp',
-                spriteWidth: 100,
+                spriteWidth: 112,
                 spriteAspect: 941 / 1062,
                 baseRotation: 0,
                 shotMaxRotation: 0.24,
@@ -3593,7 +3608,7 @@ function TrainingPlayView({ onBack }: { onBack: () => void }): JSX.Element | nul
                 visualYScale: TRAINING_NEW_COURT_VISUAL_Y_SCALE,
                 visualYOffset: TRAINING_NEW_COURT_GOALIE_VISUAL_Y_OFFSET,
                 visualXScale: TRAINING_NEW_COURT_GOALIE_VISUAL_X_SCALE,
-                sizeScale: 1.14,
+                sizeScale: 1.22,
               }
             : undefined
         }
@@ -3901,6 +3916,9 @@ export function PlayView<TState>({
   goalOptions,
   goalieOptions,
   puckOptions,
+  hitboxesVisible = false,
+  hitboxesOptions,
+  shotResolver,
 }: PlayViewProps<TState>): JSX.Element {
   const session: PlaySessionSnapshot = useMemo(
     () => ({
@@ -3967,6 +3985,12 @@ export function PlayView<TState>({
   goalieOptionsRef.current = goalieOptions;
   const puckOptionsRef = useRef(puckOptions);
   puckOptionsRef.current = puckOptions;
+  const hitboxesVisibleRef = useRef(hitboxesVisible);
+  hitboxesVisibleRef.current = hitboxesVisible;
+  const hitboxesOptionsRef = useRef(hitboxesOptions);
+  hitboxesOptionsRef.current = hitboxesOptions;
+  const shotResolverRef = useRef(shotResolver);
+  shotResolverRef.current = shotResolver;
 
   const speeds = useMemo(
     () => speedOverridesForPeriod(periodNumber, periodSpeedPresets),
@@ -4012,6 +4036,10 @@ export function PlayView<TState>({
   const remaining = periodEndsAt ? Math.max(0, periodEndsAt - now) : 0;
 
   useEffect(() => {
+    hitboxesRef.current?.setVisible(hitboxesVisible);
+  }, [hitboxesVisible]);
+
+  useEffect(() => {
     if (remaining === 0 && periodEndsAt) void onTimerExpired?.();
   }, [remaining, periodEndsAt, onTimerExpired]);
 
@@ -4053,7 +4081,26 @@ export function PlayView<TState>({
 
     const goal = new Goal(goalOptionsRef.current);
     const goalie = new Goalie(goalieOptionsRef.current);
-    const hitboxes = new Hitboxes();
+    const goalOptions = goalOptionsRef.current;
+    const goalieOptions = goalieOptionsRef.current;
+    const hitboxes = new Hitboxes({
+      goalVisualYScale: goalOptions?.visualYScale,
+      goalVisualYOffset: goalOptions?.visualYOffset,
+      goalVisualOffsetXScale: goalOptions?.visualOffsetXScale,
+      goalWidthScale: hitboxesOptionsRef.current?.goalWidthScale,
+      goalHeightScale: hitboxesOptionsRef.current?.goalHeightScale,
+      goalInset: hitboxesOptionsRef.current?.goalInset,
+      goalieVisualYScale: goalieOptions?.visualYScale,
+      goalieVisualYOffset: goalieOptions?.visualYOffset,
+      goalieVisualXScale: goalieOptions?.visualXScale,
+      goalieVisualXCenter: goalieOptions?.visualXCenter,
+      goalieVisualMinX: goalieOptions?.visualMinX,
+      goalieVisualMaxX: goalieOptions?.visualMaxX,
+      goalieWidthScale: hitboxesOptionsRef.current?.goalieWidthScale,
+      goalieHeightScale: hitboxesOptionsRef.current?.goalieHeightScale,
+      goalieInset: hitboxesOptionsRef.current?.goalieInset,
+    });
+    hitboxes.setVisible(hitboxesVisibleRef.current);
     const grip = playerGripRef.current ?? useAuthStore.getState().user?.grip ?? 'left';
     const puck = new Puck(grip, puckOptionsRef.current);
     const player = new Player(grip, playerOptionsRef.current);
@@ -4256,14 +4303,16 @@ export function PlayView<TState>({
       goalieFrequency: overrides.goalieFreq,
       goalFrequency: overrides.goalFreq,
     };
-    const result: ShotResult = resolveShot(
-      input,
-      activeCfg,
-      seed,
-      shotIndex,
-      stickEffectsRef.current,
-      offsets,
-    );
+    const result: ShotResult =
+      shotResolverRef.current?.({
+        input,
+        goalieConfig: activeCfg,
+        seed,
+        shotIndex,
+        stickEffects: stickEffectsRef.current,
+        phaseOffsets: offsets,
+        shooterX: sx,
+      }) ?? resolveShot(input, activeCfg, seed, shotIndex, stickEffectsRef.current, offsets);
 
     let subText: string | null = null;
     const flightMs = (PUCK_START.y - GOAL_OPENING.y) / overrides.puckSpeed;

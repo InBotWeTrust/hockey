@@ -30,7 +30,7 @@ const THEMES: Record<ShotResult['type'], Theme> = {
   },
 };
 
-export function ResultModal({ result, durationMs, subText }: ResultModalProps): JSX.Element {
+export function ResultModal({ result, durationMs }: ResultModalProps): JSX.Element {
   const theme = THEMES[result.type];
 
   return (
@@ -55,7 +55,7 @@ export function ResultModal({ result, durationMs, subText }: ResultModalProps): 
           top: '50%',
           left: '50%',
           zIndex: 300,
-          padding: '28px 48px',
+          padding: '22px 48px',
           borderRadius: 28,
           textAlign: 'center',
           pointerEvents: 'none',
@@ -76,21 +76,6 @@ export function ResultModal({ result, durationMs, subText }: ResultModalProps): 
         >
           {theme.title}
         </div>
-        {subText && (
-          <div
-            style={{
-              marginTop: 10,
-              fontFamily: 'var(--font-sans)',
-              fontWeight: 600,
-              fontSize: 'clamp(13px, 3vw, 16px)',
-              color: '#0f172a',
-              opacity: 0.85,
-              letterSpacing: '0.02em',
-            }}
-          >
-            {subText}
-          </div>
-        )}
       </div>
     </>
   );
