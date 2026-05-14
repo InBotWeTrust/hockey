@@ -5,6 +5,7 @@ export interface AuthUser {
   id: string;
   displayName: string;
   role?: 'player' | 'admin';
+  experimentalTrainingCourt?: boolean;
   avatarUrl?: string | null;
   grip?: 'left' | 'right';
   displaySource?: 'telegram' | 'vk';

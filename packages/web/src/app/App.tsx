@@ -7,6 +7,7 @@ import { InventoryScreen } from '../screens/InventoryScreen.js';
 import { LoginScreen } from '../screens/LoginScreen.js';
 import { ProfileScreen } from '../screens/ProfileScreen.js';
 import { ProfileSettingsScreen } from '../screens/ProfileSettingsScreen.js';
+import { TestCourtScreen } from '../screens/TestCourtScreen.js';
 import { VkAuthCallbackScreen } from '../screens/VkAuthCallbackScreen.js';
 import { PrivateRoute } from '../auth/PrivateRoute.js';
 import { useAuthStore } from '../auth/authStore.js';
@@ -108,6 +109,10 @@ function AppFrame(): JSX.Element {
                   <AdminScreen />
                 </PrivateRoute>
               }
+            />
+            <Route
+              path="/test-court"
+              element={<TestCourtScreen />}
             />
             <Route
               path="/chat"

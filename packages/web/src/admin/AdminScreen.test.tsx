@@ -390,21 +390,17 @@ describe('AdminScreen', () => {
               key: 'news.posted',
               category: 'news',
               title:
-                typeof init?.body === 'string'
-                  ? JSON.parse(init.body).title
-                  : 'Большая новость',
-              body:
-                typeof init?.body === 'string'
-                  ? JSON.parse(init.body).body
-                  : '{{postContent}}',
+                typeof init?.body === 'string' ? JSON.parse(init.body).title : 'Большая новость',
+              body: typeof init?.body === 'string' ? JSON.parse(init.body).body : '{{postContent}}',
               trigger:
                 typeof init?.body === 'string'
                   ? JSON.parse(init.body).trigger
                   : 'Публикация новости',
               clickUrl:
-                typeof init?.body === 'string' ? JSON.parse(init.body).clickUrl : '/chat/{{chatId}}',
-              isEnabled:
-                typeof init?.body === 'string' ? JSON.parse(init.body).isEnabled : true,
+                typeof init?.body === 'string'
+                  ? JSON.parse(init.body).clickUrl
+                  : '/chat/{{chatId}}',
+              isEnabled: typeof init?.body === 'string' ? JSON.parse(init.body).isEnabled : true,
               updatedAt: '2026-05-03T08:10:00.000Z',
               updatedBy: 'admin',
               updatedByDisplayName: 'Egor',

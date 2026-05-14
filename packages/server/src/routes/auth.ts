@@ -4,6 +4,7 @@ import { verifyTelegramLoginPayload } from '../auth/telegram.js';
 import { createJwt, verifyAccessToken, verifyRefreshToken } from '../auth/jwt.js';
 import { exchangeVkCode, fetchVkProfile, type VkProfile } from '../auth/vk.js';
 import { findOrCreateTelegramUser, findOrLinkOrCreateVkUser } from '../auth/users.js';
+import { canUseExperimentalTrainingCourt } from '../auth/featureAccess.js';
 import { saveRefresh, consumeRefresh, revokeRefresh } from '../auth/session.js';
 import { AppError } from '../plugins/errors.js';
 
@@ -64,6 +65,22 @@ function safeIanaTimezone(input: unknown): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+async function buildAuthUser(app: Parameters<FastifyPluginAsync>[0], user: {
+  id: string;
+  displayName: string;
+  role: 'player' | 'admin';
+}) {
+  return {
+    id: user.id,
+    displayName: user.displayName,
+    role: user.role,
+    experimentalTrainingCourt: await canUseExperimentalTrainingCourt(app.pg, {
+      id: user.id,
+      role: user.role,
+    }),
+  };
 }
 
 export async function tryReadAccessTokenFromHeader(
@@ -138,7 +155,7 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (app, opt
     reply.send({
       accessToken,
       refreshToken: refresh.token,
-      user: { id: user.id, displayName: user.displayName, role: user.role },
+      user: await buildAuthUser(app, user),
     });
   });
 
@@ -205,7 +222,7 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (app, opt
     reply.send({
       accessToken,
       refreshToken: refresh.token,
-      user: { id: user.id, displayName: user.displayName, role: user.role },
+      user: await buildAuthUser(app, user),
     });
   });
 
@@ -262,7 +279,7 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (app, opt
       reply.send({
         accessToken,
         refreshToken: refresh.token,
-        user: { id: user.id, displayName: user.displayName, role: user.role },
+        user: await buildAuthUser(app, user),
       });
     });
   }

@@ -774,7 +774,108 @@ describe('DailyScreen', () => {
     expect(screen.getByText('ЛИМИТ')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Звук в разработке' }));
     expect(screen.getByRole('status')).toHaveTextContent('Звук в разработке');
+    expect(
+      screen.queryByRole('group', { name: 'Дизайн тренировочной площадки' }),
+    ).not.toBeInTheDocument();
     expect(screen.getByTestId('pixi-stage-stub')).toBeInTheDocument();
+  });
+
+  it('allows admins to switch the active training court design', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'token',
+      refreshToken: 'r',
+      user: { id: 'u1', displayName: 'Tester', role: 'admin' },
+    });
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingActiveState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/training/start')) {
+        return new Response(JSON.stringify(trainingActiveState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify(baseState), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    renderWith();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Тренировка' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: /Продолжить тренировку/ }),
+    );
+
+    expect(
+      await screen.findByRole('group', { name: 'Дизайн тренировочной площадки' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Стандарт' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Новая' }));
+
+    expect(localStorage.getItem('hockey.trainingCourtDesign')).toBe('new');
+    expect(screen.getByRole('button', { name: 'Новая' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(screen.getByRole('img', { name: 'Новая тренировочная площадка' })).toBeInTheDocument();
+  });
+
+  it('allows non-admin testers with the experimental training court flag to switch designs', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'token',
+      refreshToken: 'r',
+      user: {
+        id: 'u2',
+        displayName: 'Dmitry Arkaim',
+        role: 'player',
+        experimentalTrainingCourt: true,
+      },
+    });
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingActiveState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/training/start')) {
+        return new Response(JSON.stringify(trainingActiveState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify(baseState), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    renderWith();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Тренировка' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: /Продолжить тренировку/ }),
+    );
+
+    expect(
+      await screen.findByRole('group', { name: 'Дизайн тренировочной площадки' }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Новая' }));
+
+    expect(localStorage.getItem('hockey.trainingCourtDesign')).toBe('new');
   });
 
   it('shows a modal for locked amateur level from the card', async () => {
