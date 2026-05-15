@@ -1760,6 +1760,15 @@ async function fetchAdminFeedbackById(
 }
 
 export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, opts) => {
+  app.addContentTypeParser(
+    /^image\/webp$/i,
+    {
+      parseAs: 'buffer',
+      bodyLimit: adminChatAvatarMaxBytes,
+    },
+    (_req, body, done) => done(null, body),
+  );
+
   const adminPreHandlers = [
     app.authenticate,
     async (req: FastifyRequest) => requireAdmin(app, req),
