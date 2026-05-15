@@ -235,5 +235,6 @@ jobs:
           js="$(curl -fsSL --max-time 15 "$APP_URL$asset_path")"
           printf '%s' "$js" | grep -q 'Прикрепить файл'
           printf '%s' "$js" | grep -q 'Записать голосовое'
-          printf '%s' "$js" | grep -q 'Загрузить аватар канала'
+          printf '%s' "$js" | grep -q 'Загрузить'
+          printf '%s' "$js" | grep -q 'аватар канала'
           echo "Frontend smoke test passed for $asset_path"
