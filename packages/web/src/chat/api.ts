@@ -423,6 +423,7 @@ export interface ChatInfoDTO {
   type: ChatType;
   name: string | null;
   description: string | null;
+  avatarUrl: string | null;
   memberCount: number;
   members: ChatMemberSummaryDTO[];
 }

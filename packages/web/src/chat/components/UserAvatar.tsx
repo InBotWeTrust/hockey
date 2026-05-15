@@ -6,12 +6,20 @@ interface UserAvatarProps {
   size: number;
   /** Override font-size for the initial letter. Defaults to size * 0.4. */
   fontSize?: number;
+  alt?: string;
   style?: React.CSSProperties;
 }
 
-export function UserAvatar({ avatarUrl, name, size, fontSize, style }: UserAvatarProps): JSX.Element {
+export function UserAvatar({
+  avatarUrl,
+  name,
+  size,
+  fontSize,
+  alt = '',
+  style,
+}: UserAvatarProps): JSX.Element {
   const [imgError, setImgError] = useState(false);
-  const initial = ((name?.trim() || '?').charAt(0).toUpperCase());
+  const initial = (name?.trim() || '?').charAt(0).toUpperCase();
   const fs = fontSize ?? Math.round(size * 0.4);
 
   if (!avatarUrl || imgError) {
@@ -41,7 +49,7 @@ export function UserAvatar({ avatarUrl, name, size, fontSize, style }: UserAvata
   return (
     <img
       src={avatarUrl}
-      alt=""
+      alt={alt}
       onError={() => setImgError(true)}
       style={{
         width: size,

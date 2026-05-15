@@ -287,6 +287,7 @@ export async function getChatInfo(
   type: 'direct' | 'group' | 'system' | 'channel';
   name: string | null;
   description: string | null;
+  avatarUrl: string | null;
   memberCount: number;
   members: { userId: string; displayName: string; avatarUrl: string | null }[];
 }> {
@@ -299,7 +300,11 @@ export async function getChatInfo(
     type: 'direct' | 'group' | 'system' | 'channel';
     name: string | null;
     description: string | null;
-  }>(`select id, type, name, description from chats where id = $1 and is_active = true`, [chatId]);
+    avatar_url: string | null;
+  }>(
+    `select id, type, name, description, avatar_url from chats where id = $1 and is_active = true`,
+    [chatId],
+  );
   if (chatRes.rowCount === 0) {
     throw new ChatNotFoundError(chatId);
   }
@@ -348,6 +353,7 @@ export async function getChatInfo(
     type: chat.type,
     name: chat.name,
     description: chat.description,
+    avatarUrl: chat.avatar_url,
     memberCount,
     members,
   };

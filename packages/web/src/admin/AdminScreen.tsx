@@ -45,6 +45,7 @@ import { useAuthStore } from '../auth/authStore.js';
 import { ChannelPostEditorSheet } from '../chat/components/ChannelPostEditorSheet.js';
 import { RichText } from '../chat/richText.js';
 import { GlassSelect, type GlassSelectOption } from '../components/GlassSelect.js';
+import { convertChatAvatarToWebp } from '../lib/chatAvatarImage.js';
 import { useDebouncedValue } from '../lib/useDebouncedValue.js';
 import { AchievementDetailsSheet, AchievementTile } from '../screens/profileSections.js';
 import {
@@ -149,73 +150,6 @@ const channelPeriodOptions: Array<GlassSelectOption<AdminChannelPeriod>> = [
   { value: '30d', label: '30 дней' },
   { value: '90d', label: '90 дней' },
 ];
-
-const CHAT_AVATAR_SOURCE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
-const CHAT_AVATAR_SOURCE_MAX_BYTES = 8 * 1024 * 1024;
-const CHAT_AVATAR_WEBP_MAX_BYTES = 2 * 1024 * 1024;
-const CHAT_AVATAR_SIZE = 512;
-const chatAvatarWebpQualities = [0.9, 0.82, 0.74, 0.66, 0.58];
-
-function loadAdminImage(file: File): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    const url = URL.createObjectURL(file);
-    image.onload = () => {
-      URL.revokeObjectURL(url);
-      resolve(image);
-    };
-    image.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error('Не удалось прочитать изображение.'));
-    };
-    image.src = url;
-  });
-}
-
-function canvasToWebpBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob | null> {
-  return new Promise((resolve) => {
-    canvas.toBlob((blob) => resolve(blob), 'image/webp', quality);
-  });
-}
-
-async function convertChatAvatarToWebp(file: File): Promise<File> {
-  if (!CHAT_AVATAR_SOURCE_TYPES.has(file.type)) {
-    throw new Error('Аватар должен быть изображением JPG, PNG или WebP.');
-  }
-  if (file.size > CHAT_AVATAR_SOURCE_MAX_BYTES) {
-    throw new Error('Аватар слишком большой. Лимит: 8 МБ.');
-  }
-
-  const image = await loadAdminImage(file);
-  const sourceWidth = image.naturalWidth || image.width;
-  const sourceHeight = image.naturalHeight || image.height;
-  const cropSize = Math.min(sourceWidth, sourceHeight);
-  if (!Number.isFinite(cropSize) || cropSize <= 0) {
-    throw new Error('Не удалось прочитать размер изображения.');
-  }
-
-  const canvas = document.createElement('canvas');
-  const outputSize = Math.min(CHAT_AVATAR_SIZE, cropSize);
-  canvas.width = outputSize;
-  canvas.height = outputSize;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('Браузер не смог подготовить аватар.');
-  const sx = Math.max(0, (sourceWidth - cropSize) / 2);
-  const sy = Math.max(0, (sourceHeight - cropSize) / 2);
-  ctx.drawImage(image, sx, sy, cropSize, cropSize, 0, 0, outputSize, outputSize);
-
-  let lastBlob: Blob | null = null;
-  for (const quality of chatAvatarWebpQualities) {
-    const blob = await canvasToWebpBlob(canvas, quality);
-    if (!blob) continue;
-    lastBlob = blob;
-    if (blob.size <= CHAT_AVATAR_WEBP_MAX_BYTES) {
-      return new File([blob], 'chat-avatar.webp', { type: 'image/webp' });
-    }
-  }
-  if (!lastBlob) throw new Error('Браузер не поддерживает сохранение WebP.');
-  throw new Error('Не удалось ужать аватар до 2 МБ.');
-}
 
 const dashboardPeriodOptions: Array<GlassSelectOption<AdminDashboardPeriod>> = [
   { value: '7d', label: '7 дней' },
@@ -5136,9 +5070,7 @@ function DuelTemplateCard({
     <article className="glass" style={{ borderRadius: 18, padding: 12, display: 'grid', gap: 10 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 8 }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ color: 'var(--ink)', fontSize: 15, fontWeight: 950 }}>
-            {template.title}
-          </div>
+          <div style={{ color: 'var(--ink)', fontSize: 15, fontWeight: 950 }}>{template.title}</div>
           <div style={{ marginTop: 4, color: 'var(--muted)', fontSize: 11, fontWeight: 750 }}>
             {template.description || 'Без описания'}
           </div>
@@ -5212,7 +5144,9 @@ function DuelTemplateEditor({
   const [title, setTitle] = useState(template?.title ?? 'Классическая дуэль');
   const [description, setDescription] = useState(template?.description ?? '');
   const [isActive, setIsActive] = useState(template?.isActive ?? true);
-  const [startsAt, setStartsAt] = useState(dateTimeInputValue(template?.startsAt ?? defaultStartsAt));
+  const [startsAt, setStartsAt] = useState(
+    dateTimeInputValue(template?.startsAt ?? defaultStartsAt),
+  );
   const [endsAt, setEndsAt] = useState(dateTimeInputValue(template?.endsAt ?? defaultEndsAt));
   const [totalPeriods, setTotalPeriods] = useState(fieldNumber(template?.totalPeriods ?? 3));
   const [shotsPerPeriod, setShotsPerPeriod] = useState(fieldNumber(template?.shotsPerPeriod ?? 30));

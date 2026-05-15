@@ -1,9 +1,12 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useRef, useState, type ChangeEvent } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { fetchChatInfo, type ChatInfoDTO, type UserPickerItem } from '../api.js';
+import { resetAdminChatAvatar, uploadAdminChatAvatar } from '../../admin/api.js';
+import { useAuthStore } from '../../auth/authStore.js';
 import { chatKeys } from '../../lib/queryKeys.js';
+import { convertChatAvatarToWebp } from '../../lib/chatAvatarImage.js';
 import { UserAvatar } from '../components/UserAvatar.js';
 import { UserProfileSheet } from '../components/UserProfileSheet.js';
 
@@ -15,10 +18,6 @@ function formatMemberCount(n: number): string {
   return `${n} участников`;
 }
 
-function avatarInitial(name: string | null): string {
-  return (name?.trim() || '?').charAt(0).toUpperCase();
-}
-
 function chatTitle(info: ChatInfoDTO): string {
   return info.name ?? (info.type === 'system' ? 'Системный канал' : 'Чат');
 }
@@ -27,7 +26,11 @@ export function ChatInfoScreen(): JSX.Element {
   const params = useParams<{ chatId: string }>();
   const chatId = params.chatId ?? '';
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const me = useAuthStore((s) => s.user);
   const [previewSender, setPreviewSender] = useState<UserPickerItem | null>(null);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
   const { data, isLoading, isError, refetch } = useQuery<ChatInfoDTO>({
     queryKey: chatKeys.info(chatId),
@@ -35,6 +38,44 @@ export function ChatInfoScreen(): JSX.Element {
     enabled: chatId.length > 0,
     staleTime: 30_000,
   });
+  const canManageAvatar =
+    me?.role === 'admin' &&
+    data !== undefined &&
+    (data.type === 'channel' || data.type === 'system');
+  const avatarLabel = data?.type === 'channel' ? 'аватар канала' : 'аватар чата';
+  const uploadAvatarMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const webp = await convertChatAvatarToWebp(file);
+      return uploadAdminChatAvatar(chatId, webp);
+    },
+    onSuccess: async () => {
+      setAvatarError(null);
+      await queryClient.invalidateQueries({ queryKey: chatKeys.list() });
+      await refetch();
+    },
+    onError: (err) => {
+      setAvatarError(err instanceof Error ? err.message : 'Не удалось загрузить аватар.');
+    },
+  });
+  const resetAvatarMutation = useMutation({
+    mutationFn: () => resetAdminChatAvatar(chatId),
+    onSuccess: async () => {
+      setAvatarError(null);
+      await queryClient.invalidateQueries({ queryKey: chatKeys.list() });
+      await refetch();
+    },
+    onError: (err) => {
+      setAvatarError(err instanceof Error ? err.message : 'Не удалось сбросить аватар.');
+    },
+  });
+
+  const onAvatarFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = '';
+    if (!file) return;
+    setAvatarError(null);
+    uploadAvatarMutation.mutate(file);
+  };
 
   return (
     <main
@@ -49,32 +90,6 @@ export function ChatInfoScreen(): JSX.Element {
         WebkitOverflowScrolling: 'touch',
       }}
     >
-      <div className="chat-edge-top glass-edge-fade glass-edge-fade--top">
-        <div className="chat-dock-header glass-dock-surface">
-          <button
-            type="button"
-            className="icon-btn glass-dock-icon"
-            aria-label="Назад"
-            onClick={() => navigate(-1)}
-            style={{
-              width: 40,
-              height: 40,
-              minWidth: 40,
-              minHeight: 40,
-              borderRadius: 999,
-              padding: 0,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >
-            <ArrowLeft size={16} />
-          </button>
-          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>Информация</div>
-        </div>
-      </div>
-
       {isLoading && (
         <div style={{ padding: 24, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
           Загрузка...
@@ -96,8 +111,9 @@ export function ChatInfoScreen(): JSX.Element {
           <div
             className="glass"
             style={{
+              position: 'relative',
               margin: '12px 14px',
-              padding: 16,
+              padding: '26px 16px 16px',
               borderRadius: 20,
               display: 'flex',
               flexDirection: 'column',
@@ -106,23 +122,34 @@ export function ChatInfoScreen(): JSX.Element {
               gap: 8,
             }}
           >
-            <div
-              aria-hidden
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Назад"
+              onClick={() => navigate(-1)}
               style={{
-                width: 72,
-                height: 72,
-                borderRadius: '50%',
-                background: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)',
-                color: '#ffffff',
-                display: 'flex',
+                position: 'absolute',
+                top: 12,
+                left: 12,
+                width: 40,
+                height: 40,
+                minWidth: 40,
+                minHeight: 40,
+                borderRadius: 999,
+                padding: 0,
+                display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontSize: 28,
-                fontWeight: 800,
               }}
             >
-              {avatarInitial(chatTitle(data))}
-            </div>
+              <ArrowLeft size={16} />
+            </button>
+            <UserAvatar
+              avatarUrl={data.avatarUrl}
+              name={chatTitle(data)}
+              size={72}
+              alt={data.avatarUrl ? chatTitle(data) : ''}
+            />
             <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--ink)' }}>
               {chatTitle(data)}
             </div>
@@ -141,6 +168,50 @@ export function ChatInfoScreen(): JSX.Element {
                 }}
               >
                 {data.description}
+              </div>
+            )}
+            {canManageAvatar && (
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 8,
+                  width: '100%',
+                  marginTop: 8,
+                }}
+              >
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={onAvatarFileChange}
+                  style={{ display: 'none' }}
+                />
+                <button
+                  type="button"
+                  className="btn btn--cta"
+                  disabled={uploadAvatarMutation.isPending || resetAvatarMutation.isPending}
+                  onClick={() => avatarInputRef.current?.click()}
+                  style={{ width: '100%' }}
+                >
+                  {uploadAvatarMutation.isPending ? 'Загружаю...' : `Загрузить ${avatarLabel}`}
+                </button>
+                {data.avatarUrl && (
+                  <button
+                    type="button"
+                    className="btn btn--ghost"
+                    disabled={uploadAvatarMutation.isPending || resetAvatarMutation.isPending}
+                    onClick={() => resetAvatarMutation.mutate()}
+                    style={{ width: '100%' }}
+                  >
+                    {resetAvatarMutation.isPending ? 'Сбрасываю...' : 'Сбросить аватар'}
+                  </button>
+                )}
+                {avatarError && (
+                  <div style={{ fontSize: 12, color: 'rgb(220, 38, 38)', textAlign: 'left' }}>
+                    {avatarError}
+                  </div>
+                )}
               </div>
             )}
           </div>
