@@ -17,6 +17,7 @@ export interface ChatRow {
   entity_type: EntityType | null;
   entity_id: string | null;
   channel_slug: string | null;
+  avatar_url: string | null;
   last_message_at: Date | null;
   is_active: boolean;
   created_at: Date;
@@ -82,6 +83,7 @@ export interface ChatDTO {
   entityType: EntityType | null;
   entityId: string | null;
   channelSlug?: string | null;
+  avatarUrl: string | null;
   lastMessageAt: string | null; // ISO
   unreadCount: number;
   lastMessage: ChatMessageDTO | null;

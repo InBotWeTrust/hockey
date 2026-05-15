@@ -68,4 +68,32 @@ describe('loadConfig', () => {
       'public',
     );
   });
+
+  it('requires object storage config as a complete group', () => {
+    expect(
+      loadConfig({ ...base, OBJECT_STORAGE_ENDPOINT: '' }).OBJECT_STORAGE_ENDPOINT,
+    ).toBeUndefined();
+    expect(() =>
+      loadConfig({
+        ...base,
+        OBJECT_STORAGE_ENDPOINT: 'https://s3.cloud.ru',
+        OBJECT_STORAGE_BUCKET: 'bucket',
+      }),
+    ).toThrow();
+    expect(
+      loadConfig({
+        ...base,
+        OBJECT_STORAGE_ENDPOINT: 'https://s3.cloud.ru',
+        OBJECT_STORAGE_REGION: 'ru-central-1',
+        OBJECT_STORAGE_BUCKET: 'bucket',
+        OBJECT_STORAGE_ACCESS_KEY_ID: 'key',
+        OBJECT_STORAGE_SECRET_ACCESS_KEY: 'secret',
+      }),
+    ).toMatchObject({
+      OBJECT_STORAGE_ENDPOINT: 'https://s3.cloud.ru',
+      OBJECT_STORAGE_REGION: 'ru-central-1',
+      OBJECT_STORAGE_BUCKET: 'bucket',
+      OBJECT_STORAGE_MAX_UPLOAD_BYTES: 25 * 1024 * 1024,
+    });
+  });
 });

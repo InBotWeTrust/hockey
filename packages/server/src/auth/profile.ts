@@ -3,7 +3,7 @@ import { AppError } from '../plugins/errors.js';
 
 type Queryable = Pool | PoolClient;
 
-export type DisplaySource = 'telegram' | 'vk';
+export type DisplaySource = 'telegram' | 'vk' | 'custom';
 
 export interface EffectiveProfile {
   id: string;
@@ -14,7 +14,13 @@ export interface EffectiveProfile {
 
 interface UserProfileRow {
   id: string;
+  display_name: string;
+  avatar_url: string | null;
   display_source: DisplaySource;
+  custom_display_name: string | null;
+  custom_first_name: string | null;
+  custom_last_name: string | null;
+  custom_avatar_url: string | null;
   tg_first_name: string | null;
   tg_last_name: string | null;
   tg_username: string | null;
@@ -38,7 +44,8 @@ export async function recomputeEffectiveProfile(
   userId: string,
 ): Promise<EffectiveProfile> {
   const { rows } = await pool.query<UserProfileRow>(
-    `select id, display_source,
+    `select id, display_name, avatar_url, display_source,
+            custom_display_name, custom_first_name, custom_last_name, custom_avatar_url,
             tg_first_name, tg_last_name, tg_username, tg_avatar_url,
             vk_first_name, vk_last_name, vk_username, vk_avatar_url
        from users
@@ -51,10 +58,18 @@ export async function recomputeEffectiveProfile(
   }
 
   const displayName =
-    row.display_source === 'vk'
+    row.display_source === 'custom'
+      ? (row.custom_display_name ??
+        buildDisplayName(row.custom_first_name, row.custom_last_name, null))
+      : row.display_source === 'vk'
       ? buildDisplayName(row.vk_first_name, row.vk_last_name, row.vk_username)
       : buildDisplayName(row.tg_first_name, row.tg_last_name, row.tg_username);
-  const avatarUrl = row.display_source === 'vk' ? row.vk_avatar_url : row.tg_avatar_url;
+  const avatarUrl =
+    row.display_source === 'custom'
+      ? (row.custom_avatar_url ?? row.avatar_url)
+      : row.display_source === 'vk'
+        ? row.vk_avatar_url
+        : row.tg_avatar_url;
 
   await pool.query('update users set display_name = $1, avatar_url = $2 where id = $3', [
     displayName,

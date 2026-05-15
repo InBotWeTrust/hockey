@@ -62,6 +62,48 @@ import type { PushVapidOptions } from '../push/service.js';
 const uuid = z.string().uuid();
 const isoDate = z.string().datetime({ offset: true });
 
+interface ChatAttachmentRow {
+  id: string;
+  url: string;
+  content_type: string;
+  size_bytes: number;
+  original_name: string;
+}
+
+function attachmentKind(contentType: string): 'image' | 'voice' | 'file' {
+  if (contentType.startsWith('image/')) return 'image';
+  if (contentType.startsWith('audio/')) return 'voice';
+  return 'file';
+}
+
+async function loadChatAttachments(
+  app: Parameters<FastifyPluginAsync>[0],
+  userId: string,
+  ids: string[],
+): Promise<Array<Record<string, unknown>>> {
+  if (ids.length === 0) return [];
+  const { rows } = await app.pg.query<ChatAttachmentRow>(
+    `select id, url, content_type, size_bytes, original_name
+       from media_objects
+      where owner_user_id = $1
+        and purpose = 'chat_attachment'
+        and id = any($2::uuid[])
+      order by array_position($2::uuid[], id)`,
+    [userId, ids],
+  );
+  if (rows.length !== ids.length) {
+    throw new InvalidInputError('invalid attachment');
+  }
+  return rows.map((row) => ({
+    id: row.id,
+    url: row.url,
+    kind: attachmentKind(row.content_type),
+    contentType: row.content_type,
+    size: row.size_bytes,
+    originalName: row.original_name,
+  }));
+}
+
 export const chatRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, _pushOptions) => {
   app.get('/chat/list', { preHandler: [app.authenticate] }, async (req) => {
     return await getMyChats(app.pg, req.user.id);
@@ -117,10 +159,17 @@ export const chatRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, _pus
     const { chatId } = z.object({ chatId: uuid }).parse(req.params);
     const body = z
       .object({
-        content: z.string().trim().min(1).max(4000),
+        content: z.string().trim().max(4000).default(''),
         replyToId: uuid.optional(),
         pollOptions: z.array(z.string().trim().min(1).max(160)).min(1).max(3).optional(),
+        attachmentIds: z.array(uuid).max(10).optional(),
       })
+      .refine(
+        (value) =>
+          value.content.length > 0 ||
+          (value.attachmentIds !== undefined && value.attachmentIds.length > 0),
+        { message: 'message content or attachment required' },
+      )
       .parse(req.body);
     const userId = req.user.id;
     const chat = await assertCanAccessChat(app.pg, userId, chatId);
@@ -133,6 +182,7 @@ export const chatRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, _pus
       throw new InvalidInputError('polls are only supported in channels');
     }
     await checkAndConsumeRateLimit(app.redis, userId);
+    const attachments = await loadChatAttachments(app, userId, body.attachmentIds ?? []);
     let isFirstDirectMessage = false;
     if (chat.type === 'direct') {
       const firstMessage = await app.pg.query<{ is_first: boolean }>(
@@ -146,6 +196,7 @@ export const chatRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, _pus
     const sendOpts: SendMessageOpts = { chatId, senderId: userId, content: body.content };
     if (body.replyToId !== undefined) sendOpts.replyToId = body.replyToId;
     if (body.pollOptions !== undefined) sendOpts.pollOptions = body.pollOptions;
+    if (attachments.length > 0) sendOpts.metadata = { attachments };
     const dto = await sendMessage(app.pg, sendOpts);
     // Invalidate unread cache for all current members so they see fresh counts.
     const members = await app.pg.query<{ user_id: string }>(

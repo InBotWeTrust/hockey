@@ -122,6 +122,8 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '026_channel_post_polls.sql',
       '027_amateur_duels.sql',
       '028_chat_message_metadata.sql',
+      '029_amateur_duel_rooms_inventory.sql',
+      '030_media_objects.sql',
     ]);
   });
 });

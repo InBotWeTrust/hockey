@@ -32,7 +32,23 @@ export interface AmateurDuelInviteMessageMetadata extends Record<string, unknown
   bankAmount: number;
 }
 
-export type ChatMessageMetadata = AmateurDuelInviteMessageMetadata | Record<string, unknown>;
+export interface ChatAttachmentDTO {
+  id: string;
+  url: string;
+  kind: 'image' | 'voice' | 'file';
+  contentType: string;
+  size: number;
+  originalName: string;
+}
+
+export interface ChatAttachmentMessageMetadata extends Record<string, unknown> {
+  attachments: ChatAttachmentDTO[];
+}
+
+export type ChatMessageMetadata =
+  | AmateurDuelInviteMessageMetadata
+  | ChatAttachmentMessageMetadata
+  | Record<string, unknown>;
 
 export interface ChatMessageDTO {
   id: string;
@@ -74,6 +90,7 @@ export interface ChatDTO {
   entityType: EntityType | null;
   entityId: string | null;
   channelSlug?: string | null;
+  avatarUrl?: string | null;
   lastMessageAt: string | null;
   unreadCount: number;
   lastMessage: ChatMessageDTO | null;
@@ -284,12 +301,50 @@ export interface SendMessageBody {
   content: string;
   replyToId?: string;
   pollOptions?: string[];
+  attachmentIds?: string[];
+}
+
+const MB = 1024 * 1024;
+const CHAT_IMAGE_MAX_BYTES = 10 * MB;
+const CHAT_AUDIO_MAX_BYTES = 25 * MB;
+const CHAT_FILE_MAX_BYTES = 25 * MB;
+
+function formatUploadLimit(bytes: number): string {
+  return `${Math.round(bytes / MB)} МБ`;
+}
+
+function chatUploadLimit(file: File): number {
+  if (file.type.startsWith('image/')) return CHAT_IMAGE_MAX_BYTES;
+  if (file.type.startsWith('audio/')) return CHAT_AUDIO_MAX_BYTES;
+  return CHAT_FILE_MAX_BYTES;
+}
+
+function assertChatUploadAllowed(file: File): void {
+  const limit = chatUploadLimit(file);
+  if (file.size > limit) {
+    throw new Error(`Файл слишком большой. Лимит: ${formatUploadLimit(limit)}.`);
+  }
 }
 
 export function sendMessage(chatId: string, body: SendMessageBody): Promise<ChatMessageDTO> {
   return apiFetch<ChatMessageDTO>(`/chat/${chatId}/messages`, {
     method: 'POST',
     body: JSON.stringify(body),
+  });
+}
+
+export function uploadChatAttachment(
+  chatId: string,
+  file: File,
+): Promise<{ media: ChatAttachmentDTO }> {
+  assertChatUploadAllowed(file);
+  return apiFetch<{ media: ChatAttachmentDTO }>(`/chat/${chatId}/uploads`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': file.type || 'application/octet-stream',
+      'X-File-Name': file.name,
+    },
+    body: file,
   });
 }
 

@@ -5,6 +5,7 @@ import { useAuthStore } from '../../auth/authStore.js';
 import { useLongPress } from '../useLongPress.js';
 import { UserAvatar } from './UserAvatar.js';
 import { stripRichTextSyntax } from '../richText.js';
+import { chatAvatarUrl } from '../chatAvatar.js';
 
 interface ChatListItemProps {
   chat: ChatDTO;
@@ -72,7 +73,7 @@ function ChatListItemImpl({ chat, onOpen, onRequestActions }: ChatListItemProps)
   const isSystem = chat.type === 'system';
   const isChannel = chat.type === 'channel';
   const isPinned = chat.pinnedAt !== null;
-  const avatarUrl = chat.dmCounterpart?.avatarUrl ?? null;
+  const avatarUrl = chat.type === 'direct' ? (chat.dmCounterpart?.avatarUrl ?? null) : chatAvatarUrl(chat);
   const unread = chat.unreadCount;
 
   const onLongPress = useCallback(

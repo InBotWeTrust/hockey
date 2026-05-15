@@ -34,6 +34,7 @@ export default defineConfig({
         clientsClaim: true,
         importScripts: ['/push-sw.js'],
         globPatterns: ['**/*.{js,css,html,ico,png,webp,svg,woff2}'],
+        globIgnores: ['**/icons/app-logo.png'],
         runtimeCaching: [
           {
             urlPattern: /^\/api\//,

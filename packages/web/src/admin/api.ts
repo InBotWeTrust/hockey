@@ -504,7 +504,19 @@ export interface AdminChannelPeriodPoint {
 }
 
 export interface AdminChannelResponse {
-  channel: { id: string; name: string | null; slug: string | null; createdAt: string } | null;
+  channel: {
+    id: string;
+    name: string | null;
+    slug: string | null;
+    avatarUrl?: string | null;
+    createdAt: string;
+  } | null;
+  mainChat?: {
+    id: string;
+    name: string | null;
+    avatarUrl?: string | null;
+    createdAt: string;
+  } | null;
   period: AdminChannelPeriod;
   summary: {
     totalUsers: number;
@@ -673,6 +685,26 @@ export function patchAdminChannelPost(
 
 export function deleteAdminChannelPost(postId: string): Promise<{ ok: true }> {
   return apiFetch<{ ok: true }>(`/admin/channel/posts/${postId}`, {
+    method: 'DELETE',
+  });
+}
+
+export function uploadAdminChatAvatar(
+  chatId: string,
+  file: File,
+): Promise<{ chatId: string; avatarUrl: string }> {
+  return apiFetch<{ chatId: string; avatarUrl: string }>(`/admin/chats/${chatId}/avatar`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'image/webp',
+      'X-File-Name': file.name,
+    },
+    body: file,
+  });
+}
+
+export function resetAdminChatAvatar(chatId: string): Promise<{ chatId: string; avatarUrl: null }> {
+  return apiFetch<{ chatId: string; avatarUrl: null }>(`/admin/chats/${chatId}/avatar`, {
     method: 'DELETE',
   });
 }

@@ -18,6 +18,71 @@ describe('ChatInput', () => {
     expect(button).toHaveTextContent('');
   });
 
+  it('renders attachment on the left and voice on the right while the draft is empty', () => {
+    const onAttach = vi.fn();
+    const onVoice = vi.fn();
+    render(
+      <ChatInput
+        replyTo={null}
+        onClearReply={vi.fn()}
+        onSend={vi.fn()}
+        onAttach={onAttach}
+        onVoice={onVoice}
+      />,
+    );
+
+    const attach = screen.getByRole('button', { name: 'Прикрепить файл' });
+    const voice = screen.getByRole('button', { name: 'Записать голосовое' });
+
+    expect(attach).toBeInTheDocument();
+    expect(voice).toBeInTheDocument();
+    expect(attach.compareDocumentPosition(screen.getByLabelText('Текст сообщения'))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    fireEvent.click(attach);
+    fireEvent.click(voice);
+    expect(onAttach).toHaveBeenCalledTimes(1);
+    expect(onVoice).toHaveBeenCalledTimes(1);
+  });
+
+  it('switches the right-side action from voice to send when text is typed', () => {
+    render(
+      <ChatInput
+        replyTo={null}
+        onClearReply={vi.fn()}
+        onSend={vi.fn()}
+        onAttach={vi.fn()}
+        onVoice={vi.fn()}
+      />,
+    );
+
+    const textarea = screen.getByLabelText('Текст сообщения') as HTMLTextAreaElement;
+    expect(screen.getByRole('button', { name: 'Записать голосовое' })).toBeInTheDocument();
+
+    fireEvent.change(textarea, { target: { value: 'привет' } });
+
+    expect(screen.queryByRole('button', { name: 'Записать голосовое' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Отправить' })).toBeEnabled();
+  });
+
+  it('shows a stop action while voice recording is active', () => {
+    const onVoice = vi.fn();
+    render(
+      <ChatInput
+        replyTo={null}
+        onClearReply={vi.fn()}
+        onSend={vi.fn()}
+        onVoice={onVoice}
+        voiceState="recording"
+      />,
+    );
+
+    const stop = screen.getByRole('button', { name: 'Остановить запись' });
+    expect(stop).toHaveTextContent('');
+    fireEvent.click(stop);
+    expect(onVoice).toHaveBeenCalledTimes(1);
+  });
+
   it('wraps selected channel post text with rich text markers', async () => {
     const onSend = vi.fn();
     render(

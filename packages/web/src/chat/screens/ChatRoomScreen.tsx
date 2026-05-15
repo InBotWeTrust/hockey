@@ -10,6 +10,7 @@ import {
   fetchMessages,
   markChatAsRead,
   sendMessage,
+  uploadChatAttachment,
   updateChannelPost,
   updateMessage,
   addReaction,
@@ -36,8 +37,11 @@ import { ChannelPostEditorSheet } from '../components/ChannelPostEditorSheet.js'
 import { ChannelPollComposerSheet } from '../components/ChannelPollComposerSheet.js';
 import { formatLastSeen } from '../lastSeen.js';
 import { switchMyReactionTo, removeMyReaction } from '../reactionsState.js';
+import { chatAvatarUrl } from '../chatAvatar.js';
 
 const PAGE_SIZE = 50;
+const VOICE_MAX_DURATION_MS = 120_000;
+const VOICE_FILE_NAME = 'voice-message.webm';
 
 function formatMemberCount(n: number): string {
   // Russian plural rules for "участник".
@@ -67,6 +71,7 @@ interface ActionTarget {
 }
 
 type DuelInviteResolution = 'accepted' | 'declined' | 'unavailable';
+type VoiceRecordingState = 'idle' | 'recording' | 'uploading';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -95,6 +100,19 @@ function parseDuelInviteMetadata(
   if (!strings.every((value) => typeof value === 'string' && value.length > 0)) return null;
   if (!numbers.every((value) => typeof value === 'number' && Number.isFinite(value))) return null;
   return metadata as AmateurDuelInviteMessageMetadata;
+}
+
+function preferredVoiceMimeType(): string {
+  if (
+    typeof MediaRecorder !== 'undefined' &&
+    MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+  ) {
+    return 'audio/webm;codecs=opus';
+  }
+  if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported('audio/webm')) {
+    return 'audio/webm';
+  }
+  return '';
 }
 
 function formatInviteDate(iso: string): string {
@@ -245,11 +263,19 @@ export function ChatRoomScreen(): JSX.Element {
   const [editingPost, setEditingPost] = useState<ChatMessageDTO | null>(null);
   const [pollComposerOpen, setPollComposerOpen] = useState(false);
   const [gotoError, setGotoError] = useState<string | null>(null);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [duelInviteResolutionByMatch, setDuelInviteResolutionByMatch] = useState<
     Record<string, DuelInviteResolution>
   >({});
   const gotoRef = useRef<string | null>(null);
   const messagesListRef = useRef<HTMLDivElement | null>(null);
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const voiceRecorderRef = useRef<MediaRecorder | null>(null);
+  const voiceStreamRef = useRef<MediaStream | null>(null);
+  const voiceChunksRef = useRef<Blob[]>([]);
+  const voiceTimeoutRef = useRef<number | null>(null);
+  const voiceCancelRef = useRef(false);
+  const [voiceState, setVoiceState] = useState<VoiceRecordingState>('idle');
   // Android (especially MIUI WebView) and some iOS Safari builds don't shrink
   // `100dvh` when the soft keyboard opens, so the composer ends up beneath
   // the keyboard. visualViewport.height is the source of truth — track it
@@ -291,7 +317,7 @@ export function ChatRoomScreen(): JSX.Element {
           : chatMeta?.type === 'system'
             ? 'Системный канал'
             : 'Чат'));
-  const chatAvatarUrl = dmCounterpart?.avatarUrl ?? null;
+  const headerAvatarUrl = dmCounterpart?.avatarUrl ?? (chatMeta ? chatAvatarUrl(chatMeta) : null);
   const chatSubtitle =
     chatMeta?.type === 'direct'
       ? formatLastSeen(dmCounterpart?.lastSeenAt ?? null)
@@ -446,12 +472,23 @@ export function ChatRoomScreen(): JSX.Element {
   );
 
   const sendMut = useMutation({
-    mutationFn: (vars: { content: string; replyToId: string | null; pollOptions?: string[] }) => {
-      const body: { content: string; replyToId?: string; pollOptions?: string[] } = {
+    mutationFn: (vars: {
+      content: string;
+      replyToId: string | null;
+      pollOptions?: string[];
+      attachmentIds?: string[];
+    }) => {
+      const body: {
+        content: string;
+        replyToId?: string;
+        pollOptions?: string[];
+        attachmentIds?: string[];
+      } = {
         content: vars.content,
       };
       if (vars.replyToId !== null) body.replyToId = vars.replyToId;
       if (vars.pollOptions !== undefined) body.pollOptions = vars.pollOptions;
+      if (vars.attachmentIds !== undefined) body.attachmentIds = vars.attachmentIds;
       return sendMessage(chatId, body);
     },
     onSuccess: (msg) => {
@@ -479,6 +516,112 @@ export function ChatRoomScreen(): JSX.Element {
       });
     },
   });
+
+  const uploadAttachmentMut = useMutation({
+    mutationFn: (file: File) => uploadChatAttachment(chatId, file),
+    onMutate: () => {
+      setAttachmentError(null);
+    },
+    onSuccess: ({ media }) => {
+      sendMut.mutate({ content: '', replyToId: replyTo?.id ?? null, attachmentIds: [media.id] });
+      setReplyTo(null);
+    },
+    onError: (err) => {
+      setAttachmentError(err instanceof Error ? err.message : 'Не удалось загрузить файл');
+    },
+  });
+
+  const stopVoiceTracks = useCallback((): void => {
+    voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
+    voiceStreamRef.current = null;
+    if (voiceTimeoutRef.current !== null) {
+      window.clearTimeout(voiceTimeoutRef.current);
+      voiceTimeoutRef.current = null;
+    }
+  }, []);
+
+  const stopVoiceRecording = useCallback((): void => {
+    const recorder = voiceRecorderRef.current;
+    if (!recorder || recorder.state === 'inactive') return;
+    recorder.stop();
+  }, []);
+
+  const startVoiceRecording = useCallback(async (): Promise<void> => {
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setAttachmentError('Запись голоса недоступна в этом браузере');
+      return;
+    }
+    setAttachmentError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = preferredVoiceMimeType();
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      voiceStreamRef.current = stream;
+      voiceChunksRef.current = [];
+      voiceCancelRef.current = false;
+      voiceRecorderRef.current = recorder;
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) voiceChunksRef.current.push(event.data);
+      };
+      recorder.onerror = () => {
+        setAttachmentError('Не удалось записать голосовое');
+        setVoiceState('idle');
+        stopVoiceTracks();
+      };
+      recorder.onstop = () => {
+        const chunks = voiceChunksRef.current;
+        voiceRecorderRef.current = null;
+        stopVoiceTracks();
+        if (voiceCancelRef.current) {
+          voiceChunksRef.current = [];
+          setVoiceState('idle');
+          return;
+        }
+        if (chunks.length === 0) {
+          setVoiceState('idle');
+          setAttachmentError('Голосовое получилось пустым');
+          return;
+        }
+        const blobType = recorder.mimeType || 'audio/webm';
+        const file = new File([new Blob(chunks, { type: blobType })], VOICE_FILE_NAME, {
+          type: blobType,
+        });
+        setVoiceState('uploading');
+        uploadAttachmentMut.mutate(file, {
+          onSettled: () => setVoiceState('idle'),
+        });
+      };
+      recorder.start();
+      setVoiceState('recording');
+      voiceTimeoutRef.current = window.setTimeout(() => {
+        stopVoiceRecording();
+      }, VOICE_MAX_DURATION_MS);
+    } catch {
+      setVoiceState('idle');
+      stopVoiceTracks();
+      setAttachmentError('Не удалось получить доступ к микрофону');
+    }
+  }, [stopVoiceRecording, stopVoiceTracks, uploadAttachmentMut]);
+
+  const handleVoiceAction = useCallback((): void => {
+    if (voiceState === 'recording') {
+      stopVoiceRecording();
+      return;
+    }
+    if (voiceState === 'idle') {
+      void startVoiceRecording();
+    }
+  }, [startVoiceRecording, stopVoiceRecording, voiceState]);
+
+  useEffect(() => {
+    return () => {
+      if (voiceRecorderRef.current?.state === 'recording') {
+        voiceCancelRef.current = true;
+        voiceRecorderRef.current.stop();
+      }
+      stopVoiceTracks();
+    };
+  }, [stopVoiceTracks]);
 
   const replacePostInCaches = useCallback(
     (post: ChatMessageDTO): void => {
@@ -861,7 +1004,7 @@ export function ChatRoomScreen(): JSX.Element {
         <ChatRoomHeader
           title={chatTitle}
           {...(chatSubtitle !== undefined ? { subtitle: chatSubtitle } : {})}
-          avatarUrl={chatAvatarUrl}
+          avatarUrl={headerAvatarUrl}
           onBack={() => navigate('/chat')}
           {...(dmCounterpart
             ? {
@@ -999,6 +1142,19 @@ export function ChatRoomScreen(): JSX.Element {
 
       {showComposer && (
         <div className="chat-edge-bottom chat-edge-bottom--overlay glass-edge-fade glass-edge-fade--bottom">
+          <input
+            ref={attachmentInputRef}
+            type="file"
+            accept="image/*,audio/*,.pdf,.zip,.txt"
+            hidden
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              event.currentTarget.value = '';
+              if (!file) return;
+              setAttachmentError(null);
+              uploadAttachmentMut.mutate(file);
+            }}
+          />
           <ChatInput
             replyTo={isChannel ? null : replyTo}
             editing={
@@ -1009,35 +1165,60 @@ export function ChatRoomScreen(): JSX.Element {
             replyToSenderName={replyTo ? senderNameOf(replyTo) : undefined}
             placeholder={isChannel ? 'Новость...' : 'Сообщение...'}
             formattingTools={isChannel && isAdmin}
+            onAttach={() => attachmentInputRef.current?.click()}
+            voiceState={voiceState}
+            {...(!isChannel ? { onVoice: handleVoiceAction } : {})}
             extraTools={
               isChannel && isAdmin ? (
-                <button
-                  type="button"
-                  className="icon-btn"
-                  title="Опрос"
-                  aria-label="Опрос"
-                  disabled={sendMut.isPending}
-                  onClick={() => setPollComposerOpen(true)}
-                  style={{
-                    width: 32,
-                    height: 32,
-                    minWidth: 32,
-                    minHeight: 32,
-                    borderRadius: 10,
-                    background: 'rgba(255,255,255,0.88)',
-                    color: 'var(--ink)',
-                  }}
-                >
-                  <ListChecks size={16} />
-                </button>
-              ) : undefined
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    title="Опрос"
+                    aria-label="Опрос"
+                    disabled={sendMut.isPending}
+                    onClick={() => setPollComposerOpen(true)}
+                    style={{
+                      width: 32,
+                      height: 32,
+                      minWidth: 32,
+                      minHeight: 32,
+                      borderRadius: 10,
+                      background: 'rgba(255,255,255,0.88)',
+                      color: 'var(--ink)',
+                    }}
+                  >
+                    <ListChecks size={16} />
+                  </button>
+                </div>
+              ) : null
             }
             onClearReply={() => setReplyTo(null)}
             onClearEditing={() => setEditingMessage(null)}
-            disabled={sendMut.isPending || editMessageMut.isPending}
+            disabled={
+              sendMut.isPending ||
+              editMessageMut.isPending ||
+              uploadAttachmentMut.isPending ||
+              voiceState === 'uploading'
+            }
             onSend={handleSend}
             onEdit={handleEditMessage}
           />
+          {attachmentError !== null && (
+            <div
+              role="alert"
+              style={{
+                marginTop: 6,
+                padding: '0 4px',
+                color: 'var(--red-deep)',
+                fontSize: 11,
+                fontWeight: 800,
+                textAlign: 'center',
+              }}
+            >
+              {attachmentError}
+            </div>
+          )}
         </div>
       )}
 

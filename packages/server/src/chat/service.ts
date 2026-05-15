@@ -38,6 +38,7 @@ interface MyChatsRow {
   entity_type: 'team' | 'tournament' | null;
   entity_id: string | null;
   channel_slug: string | null;
+  avatar_url: string | null;
   last_message_at: Date | null;
   is_active: boolean;
   created_at: Date;
@@ -208,6 +209,7 @@ export async function getMyChats(pool: Pool, userId: string): Promise<ChatDTO[]>
       entity_type: row.entity_type,
       entity_id: row.entity_id,
       channel_slug: row.channel_slug,
+      avatar_url: row.avatar_url,
       last_message_at: row.last_message_at,
       is_active: row.is_active,
       created_at: row.created_at,

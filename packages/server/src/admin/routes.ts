@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
+import { Buffer } from 'node:buffer';
 import type { Pool, PoolClient } from 'pg';
 import { z } from 'zod';
 import { DAILY_PERIOD_SPEED_PRESETS, GAME_CORE_VERSION, GOALIES, STICKS } from '@hockey/game-core';
@@ -9,6 +10,7 @@ import { buildProfileProgress } from '../profile/summary.js';
 import { deleteChannelPost, updateChannelPostContent } from '../chat/channel.js';
 import { publishMessageDeleted, publishMessageUpdated } from '../chat/events.js';
 import { DEFAULT_NEWS_CHANNEL_SLUG } from '../chat/service.js';
+import { createMediaObjectKey, type ObjectStorageClient } from '../storage/objectStorage.js';
 import {
   listPushNotificationTemplates,
   mapPushNotificationTemplate,
@@ -23,6 +25,12 @@ type DisplaySource = 'custom' | 'telegram' | 'vk';
 type FeedbackKind = 'review' | 'suggestion' | 'question';
 type AdminDashboardPeriod = '7d' | '30d' | '90d' | '365d';
 type PushDeliveryStatus = 'queued' | 'processing' | 'sent' | 'partial' | 'failed' | 'skipped';
+
+interface AdminRoutesOptions {
+  objectStorage?: ObjectStorageClient;
+}
+
+const uuid = z.string().uuid();
 
 interface AdminSummaryRow {
   total_users: string;
@@ -349,6 +357,7 @@ interface AdminChannelRow {
   id: string;
   name: string | null;
   channel_slug: string | null;
+  avatar_url: string | null;
   created_at: Date;
 }
 
@@ -1185,6 +1194,27 @@ function channelPeriodInterval(period: '7d' | '30d' | '90d'): string {
   )[period];
 }
 
+const adminChatAvatarContentTypes = new Set(['image/webp']);
+const adminChatAvatarMaxBytes = 2 * 1024 * 1024;
+
+function normalizeUploadContentType(value: string | string[] | undefined): string {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw?.split(';')[0]?.trim().toLowerCase() ?? '';
+}
+
+function assertAdminChatAvatarBody(body: unknown, contentType: string): Buffer {
+  if (!adminChatAvatarContentTypes.has(contentType)) {
+    throw new AppError('unsupported_media_type', 'chat avatar must be webp', 415);
+  }
+  if (!(body instanceof Buffer) || body.byteLength === 0) {
+    throw new AppError('bad_request', 'empty upload body', 400);
+  }
+  if (body.byteLength > adminChatAvatarMaxBytes) {
+    throw new AppError('payload_too_large', 'chat avatar is too large', 413);
+  }
+  return body;
+}
+
 function dashboardPeriodDays(period: AdminDashboardPeriod): number {
   return (
     {
@@ -1727,7 +1757,7 @@ async function fetchAdminFeedbackById(
   return row;
 }
 
-export const adminRoutes: FastifyPluginAsync = async (app) => {
+export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, opts) => {
   const adminPreHandlers = [
     app.authenticate,
     async (req: FastifyRequest) => requireAdmin(app, req),
@@ -1923,7 +1953,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
     const interval = channelPeriodInterval(parsed.data.period);
 
     const channel = await app.pg.query<AdminChannelRow>(
-      `select id, name, channel_slug, created_at
+      `select id, name, channel_slug, avatar_url, created_at
          from chats
         where type = 'channel'
           and channel_slug = $1
@@ -1932,9 +1962,28 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       [DEFAULT_NEWS_CHANNEL_SLUG],
     );
     const channelRow = channel.rows[0] ?? null;
+    const mainChat = await app.pg.query<AdminChannelRow>(
+      `select id, name, channel_slug, avatar_url, created_at
+         from chats
+        where type = 'system'
+          and name = 'Общий чат'
+          and is_active = true
+        order by created_at asc
+        limit 1`,
+    );
+    const mainChatRow = mainChat.rows[0] ?? null;
     if (channelRow === null) {
       return {
         channel: null,
+        mainChat:
+          mainChatRow === null
+            ? null
+            : {
+                id: mainChatRow.id,
+                name: mainChatRow.name,
+                avatarUrl: mainChatRow.avatar_url,
+                createdAt: mainChatRow.created_at.toISOString(),
+              },
         period: parsed.data.period,
         summary: {
           totalUsers: 0,
@@ -2165,8 +2214,18 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
         id: channelRow.id,
         name: channelRow.name,
         slug: channelRow.channel_slug,
+        avatarUrl: channelRow.avatar_url,
         createdAt: channelRow.created_at.toISOString(),
       },
+      mainChat:
+        mainChatRow === null
+          ? null
+          : {
+              id: mainChatRow.id,
+              name: mainChatRow.name,
+              avatarUrl: mainChatRow.avatar_url,
+              createdAt: mainChatRow.created_at.toISOString(),
+            },
       period: parsed.data.period,
       summary: {
         totalUsers,
@@ -2198,6 +2257,79 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       }),
       posts: posts.rows.map(mapChannelPost),
     };
+  });
+
+  app.post('/admin/chats/:chatId/avatar', { preHandler: adminPreHandlers }, async (req) => {
+    if (opts.objectStorage === undefined) {
+      throw new AppError('storage_not_configured', 'object storage is not configured', 503);
+    }
+    const { chatId } = z.object({ chatId: uuid }).parse(req.params);
+    const chat = await app.pg.query<{ id: string }>(
+      `select id
+         from chats
+        where id = $1
+          and is_active = true
+          and (
+            (type = 'channel' and channel_slug = $2)
+            or (type = 'system' and name = 'Общий чат')
+          )
+        limit 1`,
+      [chatId, DEFAULT_NEWS_CHANNEL_SLUG],
+    );
+    if (chat.rowCount === 0) throw new AppError('not_found', 'chat not found', 404);
+
+    const contentType = normalizeUploadContentType(req.headers['content-type']);
+    const body = assertAdminChatAvatarBody(req.body, contentType);
+    const uploaded = await opts.objectStorage.uploadObject({
+      key: createMediaObjectKey({ prefix: `chat-avatars/${chatId}`, contentType }),
+      body,
+      contentType,
+    });
+    await app.pg.query(
+      `insert into media_objects
+         (owner_user_id, purpose, object_key, url, content_type, size_bytes, original_name)
+       values ($1, 'chat_avatar', $2, $3, $4, $5, $6)`,
+      [
+        req.user.id,
+        uploaded.key,
+        uploaded.url,
+        uploaded.contentType,
+        uploaded.size,
+        `chat-avatar-${chatId}.webp`,
+      ],
+    );
+    await app.pg.query('update chats set avatar_url = $1, updated_at = now() where id = $2', [
+      uploaded.url,
+      chatId,
+    ]);
+    await appendEvent(app.pg, req.user.id, 'admin_chat_avatar_updated', {
+      chat_id: chatId,
+      key: uploaded.key,
+      size: uploaded.size,
+      content_type: uploaded.contentType,
+    });
+
+    return { chatId, avatarUrl: uploaded.url };
+  });
+
+  app.delete('/admin/chats/:chatId/avatar', { preHandler: adminPreHandlers }, async (req) => {
+    const { chatId } = z.object({ chatId: uuid }).parse(req.params);
+    const updated = await app.pg.query<{ id: string }>(
+      `update chats
+          set avatar_url = null,
+              updated_at = now()
+        where id = $1
+          and is_active = true
+          and (
+            (type = 'channel' and channel_slug = $2)
+            or (type = 'system' and name = 'Общий чат')
+          )
+        returning id`,
+      [chatId, DEFAULT_NEWS_CHANNEL_SLUG],
+    );
+    if (updated.rowCount === 0) throw new AppError('not_found', 'chat not found', 404);
+    await appendEvent(app.pg, req.user.id, 'admin_chat_avatar_reset', { chat_id: chatId });
+    return { chatId, avatarUrl: null };
   });
 
   app.patch('/admin/channel/posts/:postId', { preHandler: adminPreHandlers }, async (req) => {

@@ -28,6 +28,10 @@ const telegramProfile = {
   grip: 'right',
   displaySource: 'telegram',
   linkedProviders: ['telegram', 'vk'],
+  customFirstName: null,
+  customLastName: null,
+  customDisplayName: null,
+  customAvatarUrl: null,
   tgFirstName: 'Alice',
   tgLastName: 'T',
   tgAvatarUrl: 'tg.png',
@@ -45,6 +49,10 @@ const vkOnlyProfile = {
   grip: 'right',
   displaySource: 'vk',
   linkedProviders: ['vk'],
+  customFirstName: null,
+  customLastName: null,
+  customDisplayName: null,
+  customAvatarUrl: null,
   vkFirstName: 'Vera',
   vkLastName: 'V',
   vkAvatarUrl: 'vk.png',
@@ -147,5 +155,49 @@ describe('ProfileSettingsScreen', () => {
       photo_url: 'tg.png',
     });
     expect(useAuthStore.getState().accessToken).toBe('next-a');
+  });
+
+  it('saves custom profile name through PATCH /me', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(telegramProfile), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            ...telegramProfile,
+            displayName: 'Егор Гуменюк',
+            displaySource: 'custom',
+            customDisplayName: 'Егор Гуменюк',
+            customFirstName: 'Егор',
+            customLastName: 'Гуменюк',
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      );
+
+    renderProfileSettings();
+    fireEvent.change(await screen.findByLabelText('Кастомное имя'), {
+      target: { value: 'Егор' },
+    });
+    fireEvent.change(screen.getByLabelText('Кастомная фамилия'), {
+      target: { value: 'Гуменюк' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /сохранить кастомный профиль/i }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    const patchCall = fetchMock.mock.calls[1]!;
+    expect(patchCall[0]).toBe('/api/me');
+    expect((patchCall[1] as RequestInit).method).toBe('PATCH');
+    expect(JSON.parse((patchCall[1] as RequestInit).body as string)).toMatchObject({
+      displaySource: 'custom',
+      customFirstName: 'Егор',
+      customLastName: 'Гуменюк',
+    });
+    await waitFor(() => expect(screen.getAllByText('Егор Гуменюк').length).toBeGreaterThan(0));
   });
 });

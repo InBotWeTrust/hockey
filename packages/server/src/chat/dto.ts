@@ -60,6 +60,7 @@ export function toChatDTO(agg: ChatListAggregate): ChatDTO {
     entityType: agg.chat.entity_type,
     entityId: agg.chat.entity_id,
     channelSlug: agg.chat.channel_slug,
+    avatarUrl: agg.chat.avatar_url,
     lastMessageAt: agg.chat.last_message_at?.toISOString() ?? null,
     unreadCount: agg.unreadCount,
     lastMessage: agg.lastMessage ? toChatMessageDTO(agg.lastMessage) : null,

@@ -4,6 +4,7 @@ import {
   type ReactNode,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
@@ -65,6 +66,7 @@ import {
   fetchAdminUser,
   fetchAdminUsers,
   patchAdminChannelPost,
+  resetAdminChatAvatar,
   patchAdminFeedback,
   patchAdminDuelTemplate,
   patchAdminInventoryGameplay,
@@ -72,6 +74,7 @@ import {
   patchAdminGameSetting,
   patchAdminNotification,
   patchAdminUser,
+  uploadAdminChatAvatar,
   type AdminDashboard,
   type AdminDashboardPeriod,
   type AdminDashboardSeriesPoint,
@@ -146,6 +149,73 @@ const channelPeriodOptions: Array<GlassSelectOption<AdminChannelPeriod>> = [
   { value: '30d', label: '30 дней' },
   { value: '90d', label: '90 дней' },
 ];
+
+const CHAT_AVATAR_SOURCE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const CHAT_AVATAR_SOURCE_MAX_BYTES = 8 * 1024 * 1024;
+const CHAT_AVATAR_WEBP_MAX_BYTES = 2 * 1024 * 1024;
+const CHAT_AVATAR_SIZE = 512;
+const chatAvatarWebpQualities = [0.9, 0.82, 0.74, 0.66, 0.58];
+
+function loadAdminImage(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    const url = URL.createObjectURL(file);
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Не удалось прочитать изображение.'));
+    };
+    image.src = url;
+  });
+}
+
+function canvasToWebpBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), 'image/webp', quality);
+  });
+}
+
+async function convertChatAvatarToWebp(file: File): Promise<File> {
+  if (!CHAT_AVATAR_SOURCE_TYPES.has(file.type)) {
+    throw new Error('Аватар должен быть изображением JPG, PNG или WebP.');
+  }
+  if (file.size > CHAT_AVATAR_SOURCE_MAX_BYTES) {
+    throw new Error('Аватар слишком большой. Лимит: 8 МБ.');
+  }
+
+  const image = await loadAdminImage(file);
+  const sourceWidth = image.naturalWidth || image.width;
+  const sourceHeight = image.naturalHeight || image.height;
+  const cropSize = Math.min(sourceWidth, sourceHeight);
+  if (!Number.isFinite(cropSize) || cropSize <= 0) {
+    throw new Error('Не удалось прочитать размер изображения.');
+  }
+
+  const canvas = document.createElement('canvas');
+  const outputSize = Math.min(CHAT_AVATAR_SIZE, cropSize);
+  canvas.width = outputSize;
+  canvas.height = outputSize;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Браузер не смог подготовить аватар.');
+  const sx = Math.max(0, (sourceWidth - cropSize) / 2);
+  const sy = Math.max(0, (sourceHeight - cropSize) / 2);
+  ctx.drawImage(image, sx, sy, cropSize, cropSize, 0, 0, outputSize, outputSize);
+
+  let lastBlob: Blob | null = null;
+  for (const quality of chatAvatarWebpQualities) {
+    const blob = await canvasToWebpBlob(canvas, quality);
+    if (!blob) continue;
+    lastBlob = blob;
+    if (blob.size <= CHAT_AVATAR_WEBP_MAX_BYTES) {
+      return new File([blob], 'chat-avatar.webp', { type: 'image/webp' });
+    }
+  }
+  if (!lastBlob) throw new Error('Браузер не поддерживает сохранение WebP.');
+  throw new Error('Не удалось ужать аватар до 2 МБ.');
+}
 
 const dashboardPeriodOptions: Array<GlassSelectOption<AdminDashboardPeriod>> = [
   { value: '7d', label: '7 дней' },
@@ -3286,6 +3356,91 @@ function NotificationEditor({
   );
 }
 
+function AdminChatAvatarControl({
+  title,
+  name,
+  avatarUrl,
+  busy,
+  onUpload,
+  onReset,
+}: {
+  title: string;
+  name: string;
+  avatarUrl: string | null;
+  busy: boolean;
+  onUpload: () => void;
+  onReset: () => void;
+}): JSX.Element {
+  const initial = name.charAt(0).toUpperCase() || '?';
+  return (
+    <div
+      style={{
+        borderRadius: 16,
+        padding: 10,
+        background: 'rgba(255,255,255,0.44)',
+        border: '1px solid rgba(255,255,255,0.7)',
+        display: 'grid',
+        gap: 8,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+        {avatarUrl ? (
+          <img
+            src={avatarUrl}
+            alt=""
+            style={{ width: 38, height: 38, borderRadius: 999, objectFit: 'cover', flexShrink: 0 }}
+          />
+        ) : (
+          <div
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 999,
+              background: 'var(--dark)',
+              color: '#fff',
+              display: 'grid',
+              placeItems: 'center',
+              fontWeight: 950,
+              flexShrink: 0,
+            }}
+          >
+            {initial}
+          </div>
+        )}
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 12, fontWeight: 950, color: 'var(--ink)' }}>{title}</div>
+          <div
+            style={{
+              marginTop: 2,
+              fontSize: 11,
+              fontWeight: 800,
+              color: 'var(--muted)',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {name}
+          </div>
+        </div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+        <button type="button" className="btn btn--cta" disabled={busy} onClick={onUpload}>
+          Заменить
+        </button>
+        <button
+          type="button"
+          className="btn btn--ghost"
+          disabled={busy || !avatarUrl}
+          onClick={onReset}
+        >
+          Сбросить
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ChannelPanel({
   loading,
   data,
@@ -3302,6 +3457,9 @@ function ChannelPanel({
   const [channelView, setChannelView] = useState<'root' | 'engagement' | 'posts'>('root');
   const [editingPost, setEditingPost] = useState<AdminChannelPost | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<AdminChannelPost | null>(null);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+  const [avatarTarget, setAvatarTarget] = useState<'channel' | 'mainChat' | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const editMutation = useMutation({
     mutationFn: (input: { postId: string; content: string }) =>
       patchAdminChannelPost(input.postId, input.content),
@@ -3316,6 +3474,29 @@ function ChannelPanel({
       setDeleteTarget(null);
       setEditingPost(null);
       onChanged();
+    },
+  });
+  const uploadAvatarMutation = useMutation({
+    mutationFn: async (input: { chatId: string; file: File }) => {
+      const webp = await convertChatAvatarToWebp(input.file);
+      return uploadAdminChatAvatar(input.chatId, webp);
+    },
+    onSuccess: () => {
+      setAvatarError(null);
+      onChanged();
+    },
+    onError: (err) => {
+      setAvatarError(err instanceof Error ? err.message : 'Не удалось загрузить аватар.');
+    },
+  });
+  const resetAvatarMutation = useMutation({
+    mutationFn: (chatId: string) => resetAdminChatAvatar(chatId),
+    onSuccess: () => {
+      setAvatarError(null);
+      onChanged();
+    },
+    onError: (err) => {
+      setAvatarError(err instanceof Error ? err.message : 'Не удалось сбросить аватар.');
     },
   });
   const summary = data?.summary;
@@ -3366,6 +3547,20 @@ function ChannelPanel({
 
   return (
     <>
+      <input
+        ref={avatarInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        hidden
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0] ?? null;
+          event.currentTarget.value = '';
+          if (!file || avatarTarget === null) return;
+          const chatId = avatarTarget === 'channel' ? data?.channel?.id : data?.mainChat?.id;
+          if (!chatId) return;
+          uploadAvatarMutation.mutate({ chatId, file });
+        }}
+      />
       <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
         Новостной канал
       </div>
@@ -3391,6 +3586,47 @@ function ChannelPanel({
             />
           </AdminField>
         </div>
+        {(data?.channel || data?.mainChat) && (
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+              gap: 10,
+            }}
+          >
+            {data?.channel && (
+              <AdminChatAvatarControl
+                title="Аватар канала"
+                name={data.channel.name ?? 'Новости игры'}
+                avatarUrl={data.channel.avatarUrl ?? null}
+                busy={uploadAvatarMutation.isPending || resetAvatarMutation.isPending}
+                onUpload={() => {
+                  setAvatarTarget('channel');
+                  avatarInputRef.current?.click();
+                }}
+                onReset={() => resetAvatarMutation.mutate(data.channel!.id)}
+              />
+            )}
+            {data?.mainChat && (
+              <AdminChatAvatarControl
+                title="Аватар чата"
+                name={data.mainChat.name ?? 'Общий чат'}
+                avatarUrl={data.mainChat.avatarUrl ?? null}
+                busy={uploadAvatarMutation.isPending || resetAvatarMutation.isPending}
+                onUpload={() => {
+                  setAvatarTarget('mainChat');
+                  avatarInputRef.current?.click();
+                }}
+                onReset={() => resetAvatarMutation.mutate(data.mainChat!.id)}
+              />
+            )}
+          </div>
+        )}
+        {avatarError && (
+          <div style={{ color: 'var(--red-deep)', fontSize: 11, fontWeight: 800 }}>
+            {avatarError}
+          </div>
+        )}
       </section>
 
       {channelView === 'root' && (

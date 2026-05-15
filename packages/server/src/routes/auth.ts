@@ -3,7 +3,11 @@ import { z } from 'zod';
 import { verifyTelegramLoginPayload } from '../auth/telegram.js';
 import { createJwt, verifyAccessToken, verifyRefreshToken } from '../auth/jwt.js';
 import { exchangeVkCode, fetchVkProfile, type VkProfile } from '../auth/vk.js';
-import { findOrCreateTelegramUser, findOrLinkOrCreateVkUser } from '../auth/users.js';
+import {
+  findOrCreateTelegramUser,
+  findOrLinkOrCreateVkUser,
+  type AppUser,
+} from '../auth/users.js';
 import { canUseExperimentalTrainingCourt } from '../auth/featureAccess.js';
 import { saveRefresh, consumeRefresh, revokeRefresh } from '../auth/session.js';
 import { AppError } from '../plugins/errors.js';
@@ -67,15 +71,13 @@ function safeIanaTimezone(input: unknown): string | undefined {
   }
 }
 
-async function buildAuthUser(app: Parameters<FastifyPluginAsync>[0], user: {
-  id: string;
-  displayName: string;
-  role: 'player' | 'admin';
-}) {
+async function buildAuthUser(app: Parameters<FastifyPluginAsync>[0], user: AppUser) {
   return {
     id: user.id,
     displayName: user.displayName,
     role: user.role,
+    ...(user.avatarUrl !== undefined ? { avatarUrl: user.avatarUrl } : {}),
+    ...(user.displaySource !== undefined ? { displaySource: user.displaySource } : {}),
     experimentalTrainingCourt: await canUseExperimentalTrainingCourt(app.pg, {
       id: user.id,
       role: user.role,

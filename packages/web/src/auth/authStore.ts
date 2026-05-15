@@ -8,8 +8,13 @@ export interface AuthUser {
   experimentalTrainingCourt?: boolean;
   avatarUrl?: string | null;
   grip?: 'left' | 'right';
-  displaySource?: 'telegram' | 'vk';
+  currencyBalance?: number;
+  displaySource?: 'telegram' | 'vk' | 'custom';
   linkedProviders?: Array<'telegram' | 'vk'>;
+  customDisplayName?: string | null;
+  customFirstName?: string | null;
+  customLastName?: string | null;
+  customAvatarUrl?: string | null;
   tgFirstName?: string | null;
   tgLastName?: string | null;
   tgAvatarUrl?: string | null;

@@ -1,6 +1,6 @@
 import { memo, type ReactNode } from 'react';
-import { Check, CheckCheck } from 'lucide-react';
-import type { ChatMessageDTO } from '../api.js';
+import { Check, CheckCheck, FileText } from 'lucide-react';
+import type { ChatAttachmentDTO, ChatMessageDTO } from '../api.js';
 import { ReplyPreview } from './ReplyPreview.js';
 import { ReactionBar } from './ReactionBar.js';
 import { useLongPress } from '../useLongPress.js';
@@ -34,6 +34,30 @@ function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 }
 
+function attachmentsFromMetadata(metadata: ChatMessageDTO['metadata']): ChatAttachmentDTO[] {
+  if (metadata === undefined || typeof metadata !== 'object' || metadata === null) return [];
+  const raw = (metadata as { attachments?: unknown }).attachments;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((item): item is ChatAttachmentDTO => {
+    if (typeof item !== 'object' || item === null) return false;
+    const record = item as Partial<ChatAttachmentDTO>;
+    return (
+      typeof record.id === 'string' &&
+      typeof record.url === 'string' &&
+      (record.kind === 'image' || record.kind === 'voice' || record.kind === 'file') &&
+      typeof record.contentType === 'string' &&
+      typeof record.size === 'number' &&
+      typeof record.originalName === 'string'
+    );
+  });
+}
+
+function formatAttachmentSize(size: number): string {
+  if (size >= 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} МБ`;
+  if (size >= 1024) return `${Math.round(size / 1024)} КБ`;
+  return `${size} Б`;
+}
+
 function ChatBubbleImpl({
   message,
   isOwn,
@@ -49,6 +73,7 @@ function ChatBubbleImpl({
   const align = isOwn ? 'flex-end' : 'flex-start';
   const radius = isOwn ? '20px 20px 4px 20px' : '20px 20px 20px 4px';
   const text = message.isDeleted ? 'Сообщение удалено' : message.content;
+  const attachments = message.isDeleted ? [] : attachmentsFromMetadata(message.metadata);
   const showAvatarAndName = showAuthor && !isOwn;
 
   const displayLabel = message.senderDisplayName ?? 'Участник';
@@ -171,8 +196,85 @@ function ChatBubbleImpl({
         {message.replyToId && replyTo && (
           <ReplyPreview senderName={replyTo.senderName} content={replyTo.content} />
         )}
+        {attachments.length > 0 && (
+          <div style={{ display: 'grid', gap: 6, marginBottom: text ? 6 : 0 }}>
+            {attachments.map((attachment) => {
+              if (attachment.kind === 'image') {
+                return (
+                  <a
+                    key={attachment.id}
+                    href={attachment.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ display: 'block', color: 'inherit' }}
+                  >
+                    <img
+                      src={attachment.url}
+                      alt={attachment.originalName || 'Изображение'}
+                      style={{
+                        display: 'block',
+                        width: '100%',
+                        maxWidth: 240,
+                        maxHeight: 260,
+                        objectFit: 'cover',
+                        borderRadius: 14,
+                      }}
+                    />
+                  </a>
+                );
+              }
+              if (attachment.kind === 'voice') {
+                return (
+                  <audio
+                    key={attachment.id}
+                    controls
+                    src={attachment.url}
+                    style={{ width: 230, maxWidth: '100%' }}
+                  />
+                );
+              }
+              return (
+                <a
+                  key={attachment.id}
+                  href={attachment.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '8px 10px',
+                    borderRadius: 14,
+                    background: isOwn ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.65)',
+                    color: 'inherit',
+                    textDecoration: 'none',
+                  }}
+                >
+                  <FileText size={16} />
+                  <span style={{ minWidth: 0 }}>
+                    <span
+                      style={{
+                        display: 'block',
+                        fontSize: 12,
+                        fontWeight: 800,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {attachment.originalName || 'Файл'}
+                    </span>
+                    <span style={{ display: 'block', fontSize: 10, opacity: 0.72 }}>
+                      {formatAttachmentSize(attachment.size)}
+                    </span>
+                  </span>
+                </a>
+              );
+            })}
+          </div>
+        )}
         <div style={{ position: 'relative' }}>
-          <span>{text}</span>
+          {text && <span>{text}</span>}
           <span
             aria-hidden="true"
             style={{
@@ -273,6 +375,7 @@ function areEqual(prev: ChatBubbleProps, next: ChatBubbleProps): boolean {
     prev.message.isDeleted === next.message.isDeleted &&
     prev.message.isEdited === next.message.isEdited &&
     prev.message.reactions === next.message.reactions &&
+    prev.message.metadata === next.message.metadata &&
     prev.message.senderDisplayName === next.message.senderDisplayName &&
     prev.message.senderAvatarUrl === next.message.senderAvatarUrl &&
     prev.isOwn === next.isOwn &&
