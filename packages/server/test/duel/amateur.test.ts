@@ -33,6 +33,13 @@ const SPEEDS = [
   },
 ];
 
+function speedsFor(totalPeriods: number) {
+  return Array.from({ length: totalPeriods }, (_, index) => ({
+    ...SPEEDS[0]!,
+    periodNumber: index + 1,
+  }));
+}
+
 describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
   const { databaseUrl, redisUrl } = hasIntegrationEnv
     ? getTestUrls()
@@ -123,29 +130,40 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       fee?: number;
       ranked?: boolean;
       variant?: 'classic' | 'time_attack';
+      duelKind?: 'express' | 'express_plus' | 'classic';
+      periodRules?: Array<{
+        periodNumber: number;
+        mode: 'quota' | 'time_attack';
+        durationMs: number;
+        shotsLimit: number | null;
+      }>;
       totalPeriods?: number;
       periodDurationMs?: number;
+      breakDurationMs?: number;
     } = {},
   ) {
     const startsAt = opts.startsAt ?? '2026-01-01T00:00:00.000Z';
     const endsAt = opts.endsAt ?? '2100-01-01T00:00:00.000Z';
     const { rows } = await pool.query<{ id: string }>(
       `insert into amateur_duel_template
-         (title, description, starts_at, ends_at, total_periods, shots_per_period,
+         (title, description, starts_at, ends_at, duel_kind, total_periods, shots_per_period,
           period_duration_ms, break_duration_ms, goalie_id, period_speed_presets,
-          stake_amount, entry_fee_amount, ranked_enabled, duel_variant)
-       values ('Test duel', '', $1, $2, $6, 1, $7, 0, 'rookie', $3, $4, $5, $8, $9)
+          stake_amount, entry_fee_amount, ranked_enabled, duel_variant, period_rules)
+       values ('Test duel', '', $1, $2, $10, $6, 1, $7, $12, 'rookie', $3, $4, $5, $8, $9, $11)
        returning id`,
       [
         startsAt,
         endsAt,
-        JSON.stringify(SPEEDS),
+        JSON.stringify(speedsFor(opts.totalPeriods ?? 1)),
         opts.stake ?? 0,
         opts.fee ?? 0,
         opts.totalPeriods ?? 1,
         opts.periodDurationMs ?? 1200000,
         opts.ranked ?? true,
         opts.variant ?? 'classic',
+        opts.duelKind ?? 'classic',
+        opts.periodRules ? JSON.stringify(opts.periodRules) : null,
+        opts.breakDurationMs ?? (opts.duelKind === 'express_plus' ? 120000 : 0),
       ],
     );
     return rows[0]!.id;
@@ -203,7 +221,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     ]);
   });
 
-  it('starts an active duel only after both players are ready and then reserves stake plus fee', async () => {
+  it('starts an active duel only after both players are ready without touching balances', async () => {
     const templateId = await createTemplate({ stake: 10, fee: 2 });
     const created = await challenge(templateId);
     const matchId = created.json().match.id;
@@ -241,8 +259,8 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       [[userA, userB]],
     );
     expect(accounts.rows).toEqual([
-      { balance: 88, reserved_balance: 10 },
-      { balance: 88, reserved_balance: 10 },
+      { balance: 100, reserved_balance: 0 },
+      { balance: 100, reserved_balance: 0 },
     ]);
   });
 
@@ -310,6 +328,51 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(second.json().match.opponent.user_id).toBe(userA);
   });
 
+  it('pairs matchmaking players only when duel kind preferences overlap', async () => {
+    await createTemplate({ duelKind: 'express' });
+    await createTemplate({ duelKind: 'classic' });
+    const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+    const userC = await findOrCreateTelegramUser(pool, {
+      providerUid: 'amateur-c',
+      displayName: 'Player C',
+      timezone: 'Europe/Moscow',
+    });
+    await pool.query(`update users set level = 2 where id = $1`, [userC.id]);
+    await pool.query(`insert into user_currency_account (user_id, balance) values ($1, 100)`, [
+      userC.id,
+    ]);
+    const tokenC = await jwt.issueAccessToken({ sub: userC.id });
+
+    const first = await app.inject({
+      method: 'POST',
+      url: '/duel/amateur/matchmaking/join',
+      headers: auth(tokenA),
+      payload: { duel_kinds: ['express'] },
+    });
+    expect(first.statusCode).toBe(200);
+    expect(first.json().ticket.status).toBe('queued');
+
+    const second = await app.inject({
+      method: 'POST',
+      url: '/duel/amateur/matchmaking/join',
+      headers: auth(tokenB),
+      payload: { duel_kinds: ['classic'] },
+    });
+    expect(second.statusCode).toBe(200);
+    expect(second.json().ticket.status).toBe('queued');
+
+    const third = await app.inject({
+      method: 'POST',
+      url: '/duel/amateur/matchmaking/join',
+      headers: auth(tokenC),
+      payload: { duel_kinds: ['express_plus', 'classic'] },
+    });
+    expect(third.statusCode).toBe(200);
+    expect(third.json().match.status).toBe('ready_check');
+    expect(third.json().match.rules.duelKind).toBe('classic');
+    expect(third.json().match.opponent.user_id).toBe(userB);
+  });
+
   it('settles no-show as a win for the player who completed the duel', async () => {
     const templateId = await createTemplate();
     const created = await challenge(templateId);
@@ -369,5 +432,70 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(settled.json().match.status).toBe('settled');
     expect(settled.json().match.winner_user_id).toBe(userA);
     expect(settled.json().match.outcome).toBe('challenger_win');
+  });
+
+  it('snapshots express plus with mixed period rules and completes time attack on timeout', async () => {
+    const templateId = await createTemplate({
+      duelKind: 'express_plus',
+      variant: 'classic',
+      totalPeriods: 2,
+      periodDurationMs: 180000,
+      periodRules: [
+        { periodNumber: 1, mode: 'quota', durationMs: 180000, shotsLimit: 30 },
+        { periodNumber: 2, mode: 'time_attack', durationMs: 180000, shotsLimit: null },
+      ],
+    });
+    const created = await challenge(templateId);
+    const matchId = created.json().match.id;
+    await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/accept`,
+      headers: auth(tokenB),
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/ready`,
+      headers: auth(tokenA),
+      payload: { loadout: {} },
+    });
+    const ready = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/ready`,
+      headers: auth(tokenB),
+      payload: { loadout: {} },
+    });
+
+    expect(ready.statusCode).toBe(200);
+    expect(ready.json().match.rules).toMatchObject({
+      duelKind: 'express_plus',
+      totalPeriods: 2,
+      breakDurationMs: 120000,
+      periodRules: [
+        { periodNumber: 1, mode: 'quota', durationMs: 180000, shotsLimit: 30 },
+        { periodNumber: 2, mode: 'time_attack', durationMs: 180000, shotsLimit: null },
+      ],
+    });
+
+    await pool.query(
+      `update amateur_duel_participant
+          set state = 'period_active',
+              current_period = 2,
+              period_started_at = now() - interval '4 minutes'
+        where match_id = $1 and user_id = $2`,
+      [matchId, userA],
+    );
+
+    const reconciled = await app.inject({
+      method: 'GET',
+      url: `/duel/amateur/matches/${matchId}`,
+      headers: auth(tokenA),
+    });
+    expect(reconciled.statusCode).toBe(200);
+    expect(reconciled.json().match.me.state).toBe('completed');
+    expect(reconciled.json().match.recent_periods[0]).toMatchObject({
+      period_number: 2,
+      closed_reason: 'timeout',
+      duration_ms: 180000,
+    });
   });
 });

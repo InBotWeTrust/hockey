@@ -299,11 +299,22 @@ export interface AdminDuelPeriodSpeedPreset {
   puckSpeedPerMs: number;
 }
 
+export type AdminDuelKind = 'express' | 'express_plus' | 'classic';
+
+export interface AdminDuelPeriodRule {
+  periodNumber: number;
+  mode: 'quota' | 'time_attack';
+  durationMs: number;
+  shotsLimit: number | null;
+}
+
 export interface AdminDuelTemplate {
   id: string;
   title: string;
   description: string;
   isActive: boolean;
+  duelKind: AdminDuelKind;
+  duelVariant: 'classic' | 'time_attack';
   startsAt: string;
   endsAt: string;
   totalPeriods: number;
@@ -312,6 +323,7 @@ export interface AdminDuelTemplate {
   breakDurationMs: number;
   goalieId: string;
   periodSpeedPresets: AdminDuelPeriodSpeedPreset[];
+  periodRules: AdminDuelPeriodRule[];
   stakeAmount: number;
   entryFeeAmount: number;
   requiredInventoryItemId: string | null;
@@ -540,7 +552,12 @@ export interface AdminInventoryGameplayPatch {
   effectShotZoneMultiplier?: number;
 }
 
-export type AdminDuelTemplateInput = Omit<AdminDuelTemplate, 'id' | 'createdAt' | 'updatedAt'>;
+export type AdminDuelTemplateInput = Omit<
+  AdminDuelTemplate,
+  'id' | 'createdAt' | 'updatedAt' | 'periodRules'
+> & {
+  periodRules?: AdminDuelPeriodRule[] | null;
+};
 export type AdminDuelTemplatePatch = Partial<AdminDuelTemplateInput>;
 
 export interface AdminGameSetting {

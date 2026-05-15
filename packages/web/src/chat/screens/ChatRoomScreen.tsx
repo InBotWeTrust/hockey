@@ -88,9 +88,6 @@ function parseDuelInviteMetadata(
     metadata.shotsPerPeriod,
     metadata.periodDurationMs,
     metadata.breakDurationMs,
-    metadata.stakeAmount,
-    metadata.entryFeeAmount,
-    metadata.bankAmount,
   ];
   if (!strings.every((value) => typeof value === 'string' && value.length > 0)) return null;
   if (!numbers.every((value) => typeof value === 'number' && Number.isFinite(value))) return null;
@@ -104,10 +101,6 @@ function formatInviteDate(iso: string): string {
     hour: '2-digit',
     minute: '2-digit',
   });
-}
-
-function formatInviteMoney(amount: number): string {
-  return amount > 0 ? String(amount) : 'нет';
 }
 
 function DuelInviteMetric({ label, value }: { label: string; value: string }): JSX.Element {
@@ -175,9 +168,7 @@ function DuelInviteActions({
           label="Формат"
           value={`${invite.totalPeriods}×${invite.shotsPerPeriod}`}
         />
-        <DuelInviteMetric label="Банк" value={formatInviteMoney(invite.bankAmount)} />
         <DuelInviteMetric label="До" value={formatInviteDate(invite.endsAt)} />
-        <DuelInviteMetric label="Взнос" value={formatInviteMoney(invite.entryFeeAmount)} />
       </div>
       {status ? (
         <div
