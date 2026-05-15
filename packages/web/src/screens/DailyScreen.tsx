@@ -85,6 +85,7 @@ import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
 import { useAmateurDuelStore } from '../stores/amateurDuelStore.js';
 import { ScoreBoard } from '../components/ScoreBoard.js';
 import { ResultModal } from '../components/ResultModal.js';
+import { GlassSelect } from '../components/GlassSelect.js';
 import type {
   DailyGameStats,
   DailyStateResponse,
@@ -119,6 +120,7 @@ const DAILY_HUB_ARTWORK_SIZE = 104;
 type GameLevel = 'beginner' | 'amateur' | 'pro';
 type BeginnerMode = 'daily' | 'training';
 type DailyView = 'hub' | 'play';
+type AmateurView = 'home' | 'duels' | 'tournaments';
 type LevelArtwork = 'beginner' | 'amateur' | 'pro';
 type DailyHubArtwork = 'period-1' | 'period-2' | 'period-3' | 'break' | 'finished' | 'start';
 type ModeInfoModalContent = { title: string; text: string };
@@ -354,6 +356,7 @@ export function DailyScreen(): JSX.Element {
   const refresh = useDailyStore((s) => s.refresh);
   const [selectedLevel, setSelectedLevel] = useState<GameLevel>('beginner');
   const [activeAmateurMatchId, setActiveAmateurMatchId] = useState<string | null>(null);
+  const [amateurView, setAmateurView] = useState<AmateurView>('home');
   const [beginnerMode, setBeginnerMode] = useState<BeginnerMode>(() => {
     const view = new URLSearchParams(location.search).get('view');
     return view === 'training' ? 'training' : 'daily';
@@ -368,7 +371,8 @@ export function DailyScreen(): JSX.Element {
   }, [refresh]);
 
   useEffect(() => {
-    const view = new URLSearchParams(location.search).get('view');
+    const params = new URLSearchParams(location.search);
+    const view = params.get('view');
     if (view === 'hub') {
       setDailyView('hub');
       setSelectedLevel('beginner');
@@ -385,10 +389,18 @@ export function DailyScreen(): JSX.Element {
       setBeginnerMode('training');
     }
     if (view === 'amateur') {
+      const matchId = params.get('match');
+      const section = params.get('section');
       setDailyView('hub');
       setSelectedLevel('amateur');
       setBeginnerMode('daily');
-      setActiveAmateurMatchId(null);
+      if (matchId) {
+        setAmateurView('duels');
+        setActiveAmateurMatchId(matchId);
+      } else {
+        setActiveAmateurMatchId(null);
+        setAmateurView(section === 'duels' || section === 'tournaments' ? section : 'home');
+      }
     }
   }, [location.search]);
 
@@ -462,7 +474,37 @@ export function DailyScreen(): JSX.Element {
         return (
           <AmateurDuelPlayView
             matchId={activeAmateurMatchId}
-            onBack={() => setActiveAmateurMatchId(null)}
+            onBack={() => {
+              setActiveAmateurMatchId(null);
+              setAmateurView('duels');
+              navigate('/?view=amateur&section=duels', { replace: true });
+            }}
+          />
+        );
+      }
+      if (amateurView === 'duels') {
+        return (
+          <AmateurDuelsPage
+            onBack={() => {
+              setAmateurView('home');
+              navigate('/?view=amateur', { replace: true });
+            }}
+            onOpenMatch={(matchId) => {
+              setActiveAmateurMatchId(matchId);
+              navigate(`/?view=amateur&match=${encodeURIComponent(matchId)}`, {
+                replace: true,
+              });
+            }}
+          />
+        );
+      }
+      if (amateurView === 'tournaments') {
+        return (
+          <AmateurTournamentsPage
+            onBack={() => {
+              setAmateurView('home');
+              navigate('/?view=amateur', { replace: true });
+            }}
           />
         );
       }
@@ -471,8 +513,17 @@ export function DailyScreen(): JSX.Element {
           onBack={() => {
             setSelectedLevel('beginner');
             setBeginnerMode('daily');
+            setAmateurView('home');
+            navigate('/?view=hub', { replace: true });
           }}
-          onOpenMatch={setActiveAmateurMatchId}
+          onOpenDuels={() => {
+            setAmateurView('duels');
+            navigate('/?view=amateur&section=duels', { replace: true });
+          }}
+          onOpenTournaments={() => {
+            setAmateurView('tournaments');
+            navigate('/?view=amateur&section=tournaments', { replace: true });
+          }}
         />
       );
     }
@@ -497,7 +548,16 @@ export function DailyScreen(): JSX.Element {
       onOpenTraining={openTraining}
       onOpenAmateurs={() => {
         setSelectedLevel('amateur');
+        setAmateurView('home');
         navigate('/?view=amateur', { replace: true });
+      }}
+      onOpenAmateurMatch={(matchId) => {
+        setSelectedLevel('amateur');
+        setBeginnerMode('daily');
+        setDailyView('hub');
+        setAmateurView('duels');
+        setActiveAmateurMatchId(matchId);
+        navigate(`/?view=amateur&match=${encodeURIComponent(matchId)}`, { replace: true });
       }}
     />
   );
@@ -565,10 +625,12 @@ function GameHub({
   onOpenDailyPlay,
   onOpenTraining,
   onOpenAmateurs,
+  onOpenAmateurMatch,
 }: {
   onOpenDailyPlay: () => void;
   onOpenTraining: () => void;
   onOpenAmateurs: () => void;
+  onOpenAmateurMatch: (matchId: string) => void;
 }): JSX.Element {
   const data = useDailyStore((s) => s.data)!;
   const refresh = useDailyStore((s) => s.refresh);
@@ -1019,7 +1081,7 @@ function GameHub({
                 cardWidth={eventCardWidth}
                 match={event}
                 now={now}
-                onOpen={handleOpenAmateurs}
+                onOpen={() => onOpenAmateurMatch(event.id)}
                 onOpenStats={() => setDuelStatsMatch(event)}
               />
             ))}
@@ -1311,9 +1373,9 @@ function DuelEventCard({
         ? 'Открыть вызов'
         : match.status === 'ready_check'
           ? 'Открыть комнату'
-        : match.status === 'settled'
-          ? 'Открыть итог'
-          : 'Открыть дуэль';
+          : match.status === 'settled'
+            ? 'Открыть итог'
+            : 'Открыть дуэль';
 
   return (
     <article
@@ -2422,15 +2484,15 @@ function ModeShell({
     <main
       className="screen"
       style={{
-        padding: 'calc(16px + var(--app-safe-top)) 14px 24px',
+        padding: 'calc(22px + var(--app-safe-top)) 24px 24px',
         gap: 14,
       }}
     >
       <section
-        className="glass"
         style={{
-          borderRadius: 24,
-          padding: 20,
+          width: '100%',
+          maxWidth: 760,
+          margin: '0 auto',
           display: 'flex',
           flexDirection: 'column',
           gap: 14,
@@ -2439,7 +2501,7 @@ function ModeShell({
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button
             type="button"
-            className="icon-btn glass"
+            className="icon-btn"
             onClick={onBack}
             aria-label="Назад"
             title="Назад"
@@ -2619,6 +2681,99 @@ function duelOutcomeText(match: AmateurDuelMatch): string {
 
 function AmateurHub({
   onBack,
+  onOpenDuels,
+  onOpenTournaments,
+}: {
+  onBack: () => void;
+  onOpenDuels: () => void;
+  onOpenTournaments: () => void;
+}): JSX.Element {
+  const matches = useQuery({
+    queryKey: ['amateur-duel', 'matches'],
+    queryFn: fetchAmateurMatches,
+  });
+  const rating = useQuery({
+    queryKey: ['amateur-duel', 'rating'],
+    queryFn: fetchAmateurRating,
+  });
+
+  const allMatches = matches.data?.matches ?? [];
+  const activeMatches = allMatches.filter(
+    (match) =>
+      match.status === 'invited' || match.status === 'ready_check' || match.status === 'active',
+  );
+  const leaderPoints = rating.data?.rating[0]?.points ?? 0;
+
+  return (
+    <ModeShell title="Любители" onBack={onBack}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+        <TotalCell label="МАТЧИ" value={String(allMatches.length)} />
+        <TotalCell label="АКТИВНЫЕ" value={String(activeMatches.length)} />
+        <TotalCell label="ТОП" value={String(leaderPoints)} />
+      </div>
+
+      <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div className="section-label" style={{ margin: 0 }}>
+          Разделы
+        </div>
+        <LevelHubCard
+          title="Дуэли"
+          description="Поиск соперника, вызовы, рейтинг"
+          meta={
+            activeMatches.length > 0
+              ? `${activeMatches.length} активных комнат`
+              : 'Лёгкая, средняя и сложная дуэль'
+          }
+          artwork="amateur"
+          tone="active"
+          onClick={onOpenDuels}
+        />
+        <LevelHubCard
+          title="Турниры"
+          description="Месячные сетки и бесплатные места"
+          meta="Раздел в разработке"
+          artwork="pro"
+          tone="muted"
+          onClick={onOpenTournaments}
+        />
+      </section>
+    </ModeShell>
+  );
+}
+
+function AmateurTournamentsPage({ onBack }: { onBack: () => void }): JSX.Element {
+  return (
+    <ModeShell title="Турниры" onBack={onBack}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+        <TotalCell label="СТАТУС" value="скоро" />
+        <TotalCell label="МЕСТА" value="топ" />
+      </div>
+
+      <section
+        className="glass"
+        style={{ borderRadius: 22, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}
+      >
+        <div className="section-label" style={{ margin: 0 }}>
+          Турнирный путь
+        </div>
+        <div style={{ color: 'var(--ink)', fontSize: 18, fontWeight: 900 }}>
+          Лидеры дуэлей попадут в турнир бесплатно
+        </div>
+        <div style={{ color: 'var(--muted)', fontSize: 14, lineHeight: 1.45, fontWeight: 700 }}>
+          Здесь позже появятся сетки, регламент месяца и список квалифицированных игроков. Сейчас
+          рейтинг дуэлей уже готовится под этот сценарий.
+        </div>
+      </section>
+
+      <button type="button" className="btn btn--cta" disabled>
+        Турниры скоро
+      </button>
+    </ModeShell>
+  );
+}
+
+function AmateurDuelsPage({
+  onBack,
   onOpenMatch,
 }: {
   onBack: () => void;
@@ -2698,7 +2853,7 @@ function AmateurHub({
     selectedTemplate !== null && selectedOpponent !== null && !challengeMut.isPending;
 
   return (
-    <ModeShell title="Любители" onBack={onBack}>
+    <ModeShell title="Дуэли" onBack={onBack}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
         <TotalCell label="МАТЧИ" value={String(matches.data?.matches.length ?? 0)} />
         <TotalCell label="АКТИВНЫЕ" value={String(activeMatches.length)} />
@@ -2709,27 +2864,16 @@ function AmateurHub({
         <div className="section-label" style={{ margin: 0 }}>
           Вызов
         </div>
-        {templateItems.length > 0 ? (
-          <select
-            aria-label="Шаблон дуэли"
-            value={selectedTemplate?.id ?? ''}
-            onChange={(event) => setSelectedTemplateId(event.target.value)}
-            style={{
-              minHeight: 44,
-              borderRadius: 14,
-              border: '1px solid rgba(15,23,42,0.12)',
-              padding: '0 12px',
-              background: 'rgba(255,255,255,0.72)',
-              color: 'var(--ink)',
-              fontWeight: 700,
-            }}
-          >
-            {templateItems.map((template) => (
-              <option key={template.id} value={template.id}>
-                {template.title}
-              </option>
-            ))}
-          </select>
+        {templateItems.length > 0 && selectedTemplate ? (
+          <GlassSelect
+            ariaLabel="Шаблон дуэли"
+            value={selectedTemplate.id}
+            options={templateItems.map((template) => ({
+              value: template.id,
+              label: template.title,
+            }))}
+            onChange={setSelectedTemplateId}
+          />
         ) : (
           <div style={{ color: 'var(--muted)', fontSize: 14 }}>Нет активных шаблонов</div>
         )}
@@ -2927,7 +3071,9 @@ function DuelListCard({
         <button type="button" className="btn btn--cta" disabled={pending} onClick={onOpen}>
           {match.status === 'ready_check' ? 'Открыть комнату' : 'Открыть дуэль'}
         </button>
-      ) : match.status !== 'settled' && match.status !== 'expired' && match.status !== 'cancelled' ? (
+      ) : match.status !== 'settled' &&
+        match.status !== 'expired' &&
+        match.status !== 'cancelled' ? (
         <button type="button" className="btn btn--ghost" disabled={pending} onClick={onSettle}>
           Обновить итог
         </button>
@@ -3018,7 +3164,10 @@ function AmateurDuelPlayView({
       <ModeShell title="Комната дуэли" onBack={onBack}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
           <TotalCell label="ФОРМАТ" value={`${match.rules.totalPeriods}П`} />
-          <TotalCell label="ТИП" value={match.rules.duelVariant === 'time_attack' ? 'Время' : 'Классика'} />
+          <TotalCell
+            label="ТИП"
+            value={match.rules.duelVariant === 'time_attack' ? 'Время' : 'Классика'}
+          />
           <TotalCell label="ГОТОВ" value={readyText} />
         </div>
         <div className="glass" style={{ borderRadius: 18, padding: 14 }}>
@@ -3083,14 +3232,14 @@ function AmateurDuelPlayView({
     match.status === 'settled'
       ? duelOutcomeText(match)
       : match.me.state === 'break_active'
-          ? `Перерыв ${formatMs(Math.max(0, breakEndsAt - now))}`
-          : match.status === 'expired' || match.status === 'cancelled'
-            ? match.settled_reason === 'declined'
-              ? 'Вызов отклонён'
-              : match.status === 'cancelled'
-                ? 'Дуэль отменена'
-                : 'Вызов истёк'
-            : 'Готово к периоду';
+        ? `Перерыв ${formatMs(Math.max(0, breakEndsAt - now))}`
+        : match.status === 'expired' || match.status === 'cancelled'
+          ? match.settled_reason === 'declined'
+            ? 'Вызов отклонён'
+            : match.status === 'cancelled'
+              ? 'Дуэль отменена'
+              : 'Вызов истёк'
+          : 'Готово к периоду';
 
   return (
     <ModeShell title="Дуэль" onBack={onBack}>
