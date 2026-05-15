@@ -2721,7 +2721,7 @@ function AmateurHub({
     <ModeShell title="Любители" onBack={onBack}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
         <TotalCell label="ДУЭЛИ" value={String(allMatches.length)} />
-        <TotalCell label="АКТИВНЫЕ" value={String(activeMatches.length)} />
+        <TotalCell label="ТЕКУЩИЕ" value={String(activeMatches.length)} />
         <TotalCell label="ОЧКИ" value={String(myRating?.points ?? 0)} />
       </div>
 
@@ -2736,9 +2736,9 @@ function AmateurHub({
             activeMatches.length > 0
               ? formatRuCount(
                   activeMatches.length,
-                  'активная дуэль',
-                  'активные дуэли',
-                  'активных дуэлей',
+                  'текущая дуэль',
+                  'текущие дуэли',
+                  'текущих дуэлей',
                 )
               : 'Лёгкая, средняя и сложная дуэль'
           }
@@ -2874,7 +2874,7 @@ function AmateurDuelsPage({
     <ModeShell title="Дуэли" onBack={onBack}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
         <TotalCell label="МАТЧИ" value={String(matches.data?.matches.length ?? 0)} />
-        <TotalCell label="АКТИВНЫЕ" value={String(activeMatches.length)} />
+        <TotalCell label="ТЕКУЩИЕ" value={String(activeMatches.length)} />
         <TotalCell label="РЕЙТИНГ" value={String(rating.data?.rating[0]?.points ?? 0)} />
       </div>
 
@@ -2972,10 +2972,10 @@ function AmateurDuelsPage({
 
       <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div className="section-label" style={{ margin: 0 }}>
-          Активные дуэли
+          Текущие дуэли
         </div>
         {activeMatches.length === 0 && (
-          <div style={{ color: 'var(--muted)', fontSize: 14 }}>Активных дуэлей пока нет.</div>
+          <div style={{ color: 'var(--muted)', fontSize: 14 }}>Текущих дуэлей пока нет.</div>
         )}
         {activeMatches.map((match) => (
           <DuelListCard
