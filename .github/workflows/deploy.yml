@@ -68,6 +68,7 @@ jobs:
           build-args: |
             VITE_TELEGRAM_BOT_USERNAME=${{ env.BOT_USERNAME }}
             VITE_VK_APP_ID=${{ env.VK_APP_ID }}
+            APP_BUILD_SHA=${{ github.sha }}
           tags: |
             ${{ env.WEB_IMAGE }}:latest
             ${{ env.WEB_IMAGE }}:${{ steps.meta.outputs.tag }}
@@ -217,10 +218,22 @@ jobs:
           for i in 1 2 3 4 5; do
             if curl -fsSL --max-time 10 "$HEALTH_URL" | tee /dev/stderr | grep -q '"ok":true'; then
               echo "Smoke test passed on attempt $i"
-              exit 0
+              break
             fi
             echo "Attempt $i failed, retrying in 10s..."
             sleep 10
+            [ "$i" = 5 ] && echo "Smoke test failed after 5 attempts" && exit 1
           done
-          echo "Smoke test failed after 5 attempts"
-          exit 1
+
+          APP_URL="${HEALTH_URL%/api/health}"
+          html="$(curl -fsSL --max-time 10 "$APP_URL/")"
+          asset_path="$(printf '%s' "$html" | sed -n 's/.*src="\([^"]*\/assets\/index-[^"]*\.js\)".*/\1/p')"
+          if [ -z "$asset_path" ]; then
+            echo "Could not find web entry asset in index.html"
+            exit 1
+          fi
+          js="$(curl -fsSL --max-time 15 "$APP_URL$asset_path")"
+          printf '%s' "$js" | grep -q 'Прикрепить файл'
+          printf '%s' "$js" | grep -q 'Записать голосовое'
+          printf '%s' "$js" | grep -q 'Загрузить аватар канала'
+          echo "Frontend smoke test passed for $asset_path"
