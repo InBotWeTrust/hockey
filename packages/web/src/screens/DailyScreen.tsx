@@ -2661,6 +2661,18 @@ function formatShortDateTime(iso: string): string {
   });
 }
 
+function formatRuCount(value: number, one: string, few: string, many: string): string {
+  const mod10 = value % 10;
+  const mod100 = value % 100;
+  const word =
+    mod10 === 1 && mod100 !== 11
+      ? one
+      : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)
+        ? few
+        : many;
+  return `${value} ${word}`;
+}
+
 function duelOutcomeText(match: AmateurDuelMatch): string {
   if (match.outcome === 'draw') return 'Ничья';
   if (match.outcome === 'double_loss') return 'Оба проиграли';
@@ -2688,6 +2700,7 @@ function AmateurHub({
   onOpenDuels: () => void;
   onOpenTournaments: () => void;
 }): JSX.Element {
+  const currentUserId = useAuthStore((s) => s.user?.id ?? null);
   const matches = useQuery({
     queryKey: ['amateur-duel', 'matches'],
     queryFn: fetchAmateurMatches,
@@ -2702,14 +2715,14 @@ function AmateurHub({
     (match) =>
       match.status === 'invited' || match.status === 'ready_check' || match.status === 'active',
   );
-  const leaderPoints = rating.data?.rating[0]?.points ?? 0;
+  const myRating = rating.data?.rating.find((row) => row.user_id === currentUserId) ?? null;
 
   return (
     <ModeShell title="Любители" onBack={onBack}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-        <TotalCell label="МАТЧИ" value={String(allMatches.length)} />
+        <TotalCell label="ДУЭЛИ" value={String(allMatches.length)} />
         <TotalCell label="АКТИВНЫЕ" value={String(activeMatches.length)} />
-        <TotalCell label="ТОП" value={String(leaderPoints)} />
+        <TotalCell label="ОЧКИ" value={String(myRating?.points ?? 0)} />
       </div>
 
       <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -2721,7 +2734,12 @@ function AmateurHub({
           description="Поиск соперника, вызовы, рейтинг"
           meta={
             activeMatches.length > 0
-              ? `${activeMatches.length} активных комнат`
+              ? formatRuCount(
+                  activeMatches.length,
+                  'активная дуэль',
+                  'активные дуэли',
+                  'активных дуэлей',
+                )
               : 'Лёгкая, средняя и сложная дуэль'
           }
           artwork="amateur"
