@@ -93,14 +93,24 @@ export async function buildApp(options: BuildAppOptions = {}) {
   });
   await app.register(feedbackRoutes);
   await app.register(meRoutes);
-  await app.register(mediaRoutes, objectStorage !== undefined ? { objectStorage } : {});
+  await app.register(
+    mediaRoutes,
+    objectStorage !== undefined
+      ? { objectStorage, mediaAccessSecret: config.JWT_SECRET }
+      : { mediaAccessSecret: config.JWT_SECRET },
+  );
   await app.register(dailyRoutes, { dailySeedSecret: config.DAILY_SEED_SECRET });
   await app.register(trainingRoutes, { trainingSeedSecret: config.DAILY_SEED_SECRET });
   await app.register(amateurDuelRoutes, { duelSeedSecret: config.DAILY_SEED_SECRET });
-  await app.register(chatRoutes, pushVapidOptions);
+  await app.register(chatRoutes, { ...pushVapidOptions, mediaAccessSecret: config.JWT_SECRET });
   await app.register(chatWs, { accessSecret: config.JWT_SECRET });
   await app.register(pushRoutes, pushVapidOptions);
-  await app.register(adminRoutes, objectStorage !== undefined ? { objectStorage } : {});
+  await app.register(
+    adminRoutes,
+    objectStorage !== undefined
+      ? { objectStorage, mediaAccessSecret: config.JWT_SECRET }
+      : { mediaAccessSecret: config.JWT_SECRET },
+  );
   await app.register(pushSchedulerPlugin, {
     ...pushVapidOptions,
     scheduleEnabled:

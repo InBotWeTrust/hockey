@@ -58,6 +58,8 @@ import { InvalidInputError } from './errors.js';
 import { enqueueFirstDialogMessagePush } from '../push/chat.js';
 import { sendNewsPostPush } from '../push/news.js';
 import type { PushVapidOptions } from '../push/service.js';
+import { createMediaProxyUrl } from '../storage/mediaAccess.js';
+import type { ChatMessageDTO } from './types.js';
 
 const uuid = z.string().uuid();
 const isoDate = z.string().datetime({ offset: true });
@@ -70,6 +72,10 @@ interface ChatAttachmentRow {
   original_name: string;
 }
 
+interface ChatRoutesOptions extends PushVapidOptions {
+  mediaAccessSecret: string;
+}
+
 function attachmentKind(contentType: string): 'image' | 'voice' | 'file' {
   if (contentType.startsWith('image/')) return 'image';
   if (contentType.startsWith('audio/')) return 'voice';
@@ -80,6 +86,7 @@ async function loadChatAttachments(
   app: Parameters<FastifyPluginAsync>[0],
   userId: string,
   ids: string[],
+  mediaAccessSecret: string,
 ): Promise<Array<Record<string, unknown>>> {
   if (ids.length === 0) return [];
   const { rows } = await app.pg.query<ChatAttachmentRow>(
@@ -96,7 +103,7 @@ async function loadChatAttachments(
   }
   return rows.map((row) => ({
     id: row.id,
-    url: row.url,
+    url: createMediaProxyUrl(mediaAccessSecret, row.id),
     kind: attachmentKind(row.content_type),
     contentType: row.content_type,
     size: row.size_bytes,
@@ -104,7 +111,32 @@ async function loadChatAttachments(
   }));
 }
 
-export const chatRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, _pushOptions) => {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function signMessageAttachmentUrls(
+  message: ChatMessageDTO,
+  mediaAccessSecret: string,
+): ChatMessageDTO {
+  if (!isRecord(message.metadata) || !Array.isArray(message.metadata.attachments)) return message;
+  const attachments = message.metadata.attachments.map((attachment) => {
+    if (!isRecord(attachment) || typeof attachment.id !== 'string') return attachment;
+    return {
+      ...attachment,
+      url: createMediaProxyUrl(mediaAccessSecret, attachment.id),
+    };
+  });
+  return {
+    ...message,
+    metadata: {
+      ...message.metadata,
+      attachments,
+    },
+  };
+}
+
+export const chatRoutes: FastifyPluginAsync<ChatRoutesOptions> = async (app, options) => {
   app.get('/chat/list', { preHandler: [app.authenticate] }, async (req) => {
     return await getMyChats(app.pg, req.user.id);
   });
@@ -144,7 +176,9 @@ export const chatRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, _pus
     if (query.after !== undefined) opts.after = query.after;
     if (query.around !== undefined) opts.around = query.around;
     if (query.radius !== undefined) opts.radius = query.radius;
-    const messages = await getMessages(app.pg, chatId, req.user.id, opts);
+    const messages = (await getMessages(app.pg, chatId, req.user.id, opts)).map((message) =>
+      signMessageAttachmentUrls(message, options.mediaAccessSecret),
+    );
     if (chat.type === 'channel') {
       await recordChannelPostViews(
         app.pg,
@@ -182,7 +216,12 @@ export const chatRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, _pus
       throw new InvalidInputError('polls are only supported in channels');
     }
     await checkAndConsumeRateLimit(app.redis, userId);
-    const attachments = await loadChatAttachments(app, userId, body.attachmentIds ?? []);
+    const attachments = await loadChatAttachments(
+      app,
+      userId,
+      body.attachmentIds ?? [],
+      options.mediaAccessSecret,
+    );
     let isFirstDirectMessage = false;
     if (chat.type === 'direct') {
       const firstMessage = await app.pg.query<{ is_first: boolean }>(

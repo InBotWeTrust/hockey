@@ -24,9 +24,16 @@ export interface ObjectStorageUploadResult {
   size: number;
 }
 
+export interface ObjectStorageGetResult {
+  body: Buffer;
+  contentType: string;
+  size: number;
+}
+
 export interface ObjectStorageClient {
   maxUploadBytes: number;
   uploadObject(input: ObjectStorageUploadInput): Promise<ObjectStorageUploadResult>;
+  getObject(input: { key: string }): Promise<ObjectStorageGetResult>;
   publicUrlForKey(key: string): string;
 }
 
@@ -117,19 +124,20 @@ function authorizationHeader({
   config,
   method,
   url,
-  contentType,
+  extraHeaders = {},
   payloadHash,
   date,
 }: {
   config: ObjectStorageConfig;
   method: string;
   url: URL;
-  contentType: string;
+  extraHeaders?: Record<string, string>;
   payloadHash: string;
   date: Date;
 }): {
   authorization: string;
   amzDate: string;
+  signedHeaders: Record<string, string>;
 } {
   const { dateStamp, amzDate } = amzDateParts(date);
   const credentialAccessKeyId =
@@ -137,9 +145,8 @@ function authorizationHeader({
       ? `${config.tenantId}:${config.accessKeyId}`
       : config.accessKeyId;
   const headers = {
-    'content-type': contentType,
+    ...extraHeaders,
     host: url.host,
-    'x-amz-acl': 'public-read',
     'x-amz-content-sha256': payloadHash,
     'x-amz-date': amzDate,
   };
@@ -165,6 +172,7 @@ function authorizationHeader({
 
   return {
     amzDate,
+    signedHeaders: headers,
     authorization: `${algorithm} Credential=${credentialAccessKeyId}/${credentialScope}, SignedHeaders=${signedHeaderNames}, Signature=${signature}`,
   };
 }
@@ -186,7 +194,10 @@ export function createObjectStorageClient(
         config,
         method: 'PUT',
         url,
-        contentType: input.contentType,
+        extraHeaders: {
+          'content-type': input.contentType,
+          'x-amz-acl': 'public-read',
+        },
         payloadHash,
         date: now(),
       });
@@ -209,6 +220,34 @@ export function createObjectStorageClient(
         url: buildPublicObjectUrl(config, input.key),
         contentType: input.contentType,
         size: input.body.byteLength,
+      };
+    },
+    async getObject(input: { key: string }): Promise<ObjectStorageGetResult> {
+      const url = objectUrl(config, input.key);
+      const payloadHash = sha256Hex('');
+      const signature = authorizationHeader({
+        config,
+        method: 'GET',
+        url,
+        payloadHash,
+        date: now(),
+      });
+      const res = await fetchImpl(url, {
+        method: 'GET',
+        headers: {
+          Authorization: signature.authorization,
+          'x-amz-content-sha256': payloadHash,
+          'x-amz-date': signature.amzDate,
+        },
+      });
+      if (!res.ok) {
+        throw new Error(`object storage get failed: ${res.status}`);
+      }
+      const body = Buffer.from(await res.arrayBuffer());
+      return {
+        body,
+        contentType: res.headers.get('content-type')?.split(';')[0]?.trim() || 'application/octet-stream',
+        size: Number(res.headers.get('content-length') ?? body.byteLength),
       };
     },
   };

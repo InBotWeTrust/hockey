@@ -11,6 +11,7 @@ import { deleteChannelPost, updateChannelPostContent } from '../chat/channel.js'
 import { publishMessageDeleted, publishMessageUpdated } from '../chat/events.js';
 import { DEFAULT_NEWS_CHANNEL_SLUG } from '../chat/service.js';
 import { createMediaObjectKey, type ObjectStorageClient } from '../storage/objectStorage.js';
+import { createMediaProxyUrl } from '../storage/mediaAccess.js';
 import {
   listPushNotificationTemplates,
   mapPushNotificationTemplate,
@@ -28,6 +29,7 @@ type PushDeliveryStatus = 'queued' | 'processing' | 'sent' | 'partial' | 'failed
 
 interface AdminRoutesOptions {
   objectStorage?: ObjectStorageClient;
+  mediaAccessSecret: string;
 }
 
 const uuid = z.string().uuid();
@@ -2291,10 +2293,11 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
       app.log.error({ err, chatId, userId: req.user.id }, 'admin chat avatar upload failed');
       throw new AppError('storage_upload_failed', 'Не удалось загрузить аватар', 502);
     }
-    await app.pg.query(
+    const media = await app.pg.query<{ id: string }>(
       `insert into media_objects
          (owner_user_id, purpose, object_key, url, content_type, size_bytes, original_name)
-       values ($1, 'chat_avatar', $2, $3, $4, $5, $6)`,
+       values ($1, 'chat_avatar', $2, $3, $4, $5, $6)
+       returning id`,
       [
         req.user.id,
         uploaded.key,
@@ -2304,8 +2307,13 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
         `chat-avatar-${chatId}.webp`,
       ],
     );
+    const mediaId = media.rows[0]?.id;
+    if (mediaId === undefined) {
+      throw new AppError('internal_error', 'chat avatar media was not saved', 500);
+    }
+    const avatarUrl = createMediaProxyUrl(opts.mediaAccessSecret, mediaId);
     await app.pg.query('update chats set avatar_url = $1, updated_at = now() where id = $2', [
-      uploaded.url,
+      avatarUrl,
       chatId,
     ]);
     await appendEvent(app.pg, req.user.id, 'admin_chat_avatar_updated', {
@@ -2315,7 +2323,7 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
       content_type: uploaded.contentType,
     });
 
-    return { chatId, avatarUrl: uploaded.url };
+    return { chatId, avatarUrl };
   });
 
   app.delete('/admin/chats/:chatId/avatar', { preHandler: adminPreHandlers }, async (req) => {

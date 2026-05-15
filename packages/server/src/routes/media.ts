@@ -5,12 +5,14 @@ import { AppError } from '../plugins/errors.js';
 import { assertCanAccessChat } from '../chat/guards.js';
 import { appendEvent } from '../duel/eventLog.js';
 import { createMediaObjectKey, type ObjectStorageClient } from '../storage/objectStorage.js';
+import { createMediaProxyUrl, verifyMediaAccessToken } from '../storage/mediaAccess.js';
 
 type MediaPurpose = 'chat_attachment' | 'profile_avatar' | 'chat_avatar';
 type MediaKind = 'image' | 'voice' | 'file';
 
 interface MediaRoutesOptions {
   objectStorage?: ObjectStorageClient;
+  mediaAccessSecret: string;
 }
 
 interface MediaObjectRow {
@@ -78,10 +80,10 @@ function chatUploadLimit(contentType: string): number {
   return mediaLimits.chatFileBytes;
 }
 
-function mapMedia(row: MediaObjectRow) {
+function mapMedia(row: MediaObjectRow, mediaAccessSecret: string) {
   return {
     id: row.id,
-    url: row.url,
+    url: createMediaProxyUrl(mediaAccessSecret, row.id),
     key: row.object_key,
     kind: mediaKind(row.content_type),
     contentType: row.content_type,
@@ -130,6 +132,7 @@ async function uploadMedia({
   body,
   contentType,
   originalName,
+  mediaAccessSecret,
 }: {
   app: Parameters<FastifyPluginAsync>[0];
   objectStorage: ObjectStorageClient;
@@ -139,6 +142,7 @@ async function uploadMedia({
   body: Buffer;
   contentType: string;
   originalName: string;
+  mediaAccessSecret: string;
 }) {
   const key = createMediaObjectKey({ prefix, contentType });
   let uploaded;
@@ -158,7 +162,7 @@ async function uploadMedia({
     size: uploaded.size,
     originalName,
   });
-  return mapMedia(row);
+  return mapMedia(row, mediaAccessSecret);
 }
 
 function assertUploadBody(
@@ -182,9 +186,50 @@ function assertUploadBody(
 export const mediaRoutes: FastifyPluginAsync<MediaRoutesOptions> = async (app, options) => {
   app.addContentTypeParser(
     /^(?:image\/(?:jpeg|png|webp|gif)|audio\/(?:mpeg|mp4|wav|ogg|webm)|application\/(?:pdf|zip|octet-stream)|text\/plain)$/i,
-    { parseAs: 'buffer', bodyLimit: options.objectStorage?.maxUploadBytes ?? mediaLimits.chatFileBytes },
+    {
+      parseAs: 'buffer',
+      bodyLimit: options.objectStorage?.maxUploadBytes ?? mediaLimits.chatFileBytes,
+    },
     (_req, body, done) => done(null, body),
   );
+
+  app.get('/media/:mediaId', async (req, reply) => {
+    if (options.objectStorage === undefined) {
+      throw new AppError('storage_not_configured', 'object storage is not configured', 503);
+    }
+
+    const { mediaId } = z.object({ mediaId: uuid }).parse(req.params);
+    const token = z.object({ t: z.string().min(1) }).parse(req.query).t;
+    if (!verifyMediaAccessToken(options.mediaAccessSecret, mediaId, token)) {
+      throw new AppError('forbidden', 'invalid media token', 403);
+    }
+
+    const { rows } = await app.pg.query<MediaObjectRow>(
+      `select id, owner_user_id, purpose, object_key, url, content_type,
+              size_bytes, original_name, created_at
+         from media_objects
+        where id = $1`,
+      [mediaId],
+    );
+    const row = rows[0];
+    if (row === undefined) throw new AppError('not_found', 'media not found', 404);
+
+    let object;
+    try {
+      object = await options.objectStorage.getObject({ key: row.object_key });
+    } catch (err) {
+      app.log.error({ err, mediaId, key: row.object_key }, 'object storage media read failed');
+      throw new AppError('storage_read_failed', 'Не удалось открыть файл', 502);
+    }
+
+    const filename = encodeURIComponent(row.original_name || 'media');
+    reply
+      .header('Cache-Control', 'private, max-age=86400')
+      .header('Content-Length', String(object.body.byteLength))
+      .header('Content-Disposition', `inline; filename*=UTF-8''${filename}`)
+      .type(row.content_type || object.contentType);
+    return object.body;
+  });
 
   app.post('/me/avatar', { preHandler: [app.authenticate] }, async (req) => {
     if (options.objectStorage === undefined) {
@@ -207,6 +252,7 @@ export const mediaRoutes: FastifyPluginAsync<MediaRoutesOptions> = async (app, o
       body,
       contentType,
       originalName: cleanOriginalName(req.headers['x-file-name']),
+      mediaAccessSecret: options.mediaAccessSecret,
     });
 
     await app.pg.query(
@@ -257,6 +303,7 @@ export const mediaRoutes: FastifyPluginAsync<MediaRoutesOptions> = async (app, o
       body,
       contentType,
       originalName: cleanOriginalName(req.headers['x-file-name']),
+      mediaAccessSecret: options.mediaAccessSecret,
     });
     await appendEvent(app.pg, req.user.id, 'chat_attachment_uploaded', {
       chat_id: chatId,
