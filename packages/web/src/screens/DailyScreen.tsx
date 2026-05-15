@@ -86,6 +86,7 @@ import { useAmateurDuelStore } from '../stores/amateurDuelStore.js';
 import { ScoreBoard } from '../components/ScoreBoard.js';
 import { ResultModal } from '../components/ResultModal.js';
 import { GlassSelect } from '../components/GlassSelect.js';
+import { UserAvatar } from '../chat/components/UserAvatar.js';
 import type {
   DailyGameStats,
   DailyStateResponse,
@@ -2712,6 +2713,51 @@ function duelProgressText(match: AmateurDuelMatch): string {
   return 'истёк';
 }
 
+function DuelStatusBadge({ match }: { match: AmateurDuelMatch }): JSX.Element {
+  const status = duelOutcomeText(match);
+  const dotColor =
+    match.status === 'active'
+      ? 'var(--red)'
+      : match.status === 'ready_check'
+        ? 'var(--blue-accent)'
+        : match.status === 'invited'
+          ? '#f59e0b'
+          : 'rgba(15,23,42,0.38)';
+
+  return (
+    <span
+      aria-label={`Статус: ${status}`}
+      style={{
+        minHeight: 30,
+        borderRadius: 999,
+        padding: '0 10px',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 7,
+        background: 'rgba(255,255,255,0.48)',
+        border: '1px solid rgba(255,255,255,0.68)',
+        color: 'rgba(15,23,42,0.68)',
+        fontSize: 12,
+        fontWeight: 900,
+        whiteSpace: 'nowrap',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.72)',
+      }}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          width: 7,
+          height: 7,
+          borderRadius: 999,
+          background: dotColor,
+          boxShadow: match.status === 'active' ? '0 0 8px rgba(225, 29, 72, 0.45)' : 'none',
+        }}
+      />
+      {status}
+    </span>
+  );
+}
+
 function AmateurHub({
   onBack,
   onOpenDuels,
@@ -3204,16 +3250,41 @@ function DuelListCard({
       className="glass"
       style={{ borderRadius: 18, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '42px minmax(0, 1fr) auto',
+          alignItems: 'center',
+          gap: 10,
+        }}
+      >
+        <UserAvatar
+          avatarUrl={match.opponent.avatar_url}
+          name={match.opponent.display_name}
+          size={42}
+          fontSize={16}
+          style={{
+            border: '1px solid rgba(255,255,255,0.78)',
+            boxShadow: '0 10px 18px rgba(15,23,42,0.16)',
+          }}
+        />
         <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 900, color: 'var(--ink)', fontSize: 15 }}>
             {match.rules.title}
           </div>
-          <div style={{ color: 'var(--muted)', fontSize: 12 }}>
+          <div
+            style={{
+              color: 'var(--muted)',
+              fontSize: 12,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
             против {match.opponent.display_name}
           </div>
         </div>
-        <span className="pill pill--dark">{duelOutcomeText(match)}</span>
+        <DuelStatusBadge match={match} />
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
         <TotalCell label="СЧЁТ" value={`${match.me.goals}:${match.opponent.goals}`} />
