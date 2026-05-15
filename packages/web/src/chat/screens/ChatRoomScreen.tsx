@@ -74,12 +74,20 @@ interface ActionTarget {
 interface PendingAttachment {
   token: number;
   fileName: string;
+  previewUrl: string | null;
+  previewKind: 'image' | 'file';
   media: ChatAttachmentDTO | null;
   isUploading: boolean;
 }
 
 type DuelInviteResolution = 'accepted' | 'declined' | 'unavailable';
 type VoiceRecordingState = 'idle' | 'recording' | 'uploading';
+
+function createAttachmentPreviewUrl(file: File): string | null {
+  if (!file.type.startsWith('image/')) return null;
+  if (typeof URL.createObjectURL !== 'function') return null;
+  return URL.createObjectURL(file);
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -533,20 +541,29 @@ export function ChatRoomScreen(): JSX.Element {
     mutationFn: ({ file }: { file: File; token: number }) => uploadChatAttachment(chatId, file),
     onMutate: ({ file, token }) => {
       setAttachmentError(null);
+      const previewKind = file.type.startsWith('image/') ? 'image' : 'file';
+      const previewUrl = createAttachmentPreviewUrl(file);
       setPendingAttachment({
         token,
         fileName: file.name || 'Файл',
+        previewUrl,
+        previewKind,
         media: null,
         isUploading: true,
       });
     },
     onSuccess: ({ media }, { token, file }) => {
       if (attachmentUploadTokenRef.current !== token) return;
-      setPendingAttachment({
-        token,
-        fileName: media.originalName || file.name || 'Файл',
-        media,
-        isUploading: false,
+      setPendingAttachment((current) => {
+        if (current?.token !== token) return current;
+        return {
+          token,
+          fileName: media.originalName || file.name || 'Файл',
+          previewUrl: current.previewUrl,
+          previewKind: current.previewKind,
+          media,
+          isUploading: false,
+        };
       });
     },
     onError: (err, { token }) => {
@@ -555,6 +572,15 @@ export function ChatRoomScreen(): JSX.Element {
       setAttachmentError(err instanceof Error ? err.message : 'Не удалось загрузить файл');
     },
   });
+
+  useEffect(() => {
+    const previewUrl = pendingAttachment?.previewUrl;
+    return () => {
+      if (previewUrl && typeof URL.revokeObjectURL === 'function') {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [pendingAttachment?.previewUrl]);
 
   const uploadVoiceMut = useMutation({
     mutationFn: (file: File) => uploadChatAttachment(chatId, file),
@@ -1238,7 +1264,21 @@ export function ChatRoomScreen(): JSX.Element {
                     border: '1px solid rgba(255,255,255,0.74)',
                   }}
                 >
-                  <FileText size={16} color="var(--muted)" />
+                  {pendingAttachment.previewKind === 'image' && pendingAttachment.previewUrl ? (
+                    <img
+                      src={pendingAttachment.previewUrl}
+                      alt=""
+                      style={{
+                        display: 'block',
+                        width: 42,
+                        height: 42,
+                        borderRadius: 12,
+                        objectFit: 'cover',
+                      }}
+                    />
+                  ) : (
+                    <FileText size={16} color="var(--muted)" />
+                  )}
                   <div style={{ minWidth: 0 }}>
                     <div
                       style={{

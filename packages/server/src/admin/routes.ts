@@ -2280,11 +2280,17 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
 
     const contentType = normalizeUploadContentType(req.headers['content-type']);
     const body = assertAdminChatAvatarBody(req.body, contentType);
-    const uploaded = await opts.objectStorage.uploadObject({
-      key: createMediaObjectKey({ prefix: `chat-avatars/${chatId}`, contentType }),
-      body,
-      contentType,
-    });
+    let uploaded;
+    try {
+      uploaded = await opts.objectStorage.uploadObject({
+        key: createMediaObjectKey({ prefix: `chat-avatars/${chatId}`, contentType }),
+        body,
+        contentType,
+      });
+    } catch (err) {
+      app.log.error({ err, chatId, userId: req.user.id }, 'admin chat avatar upload failed');
+      throw new AppError('storage_upload_failed', 'Не удалось загрузить аватар', 502);
+    }
     await app.pg.query(
       `insert into media_objects
          (owner_user_id, purpose, object_key, url, content_type, size_bytes, original_name)

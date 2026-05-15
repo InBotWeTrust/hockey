@@ -1,4 +1,4 @@
-import { memo, type ReactNode } from 'react';
+import { memo, useState, type ReactNode } from 'react';
 import { Check, CheckCheck, FileText } from 'lucide-react';
 import type { ChatAttachmentDTO, ChatMessageDTO } from '../api.js';
 import { ReplyPreview } from './ReplyPreview.js';
@@ -57,6 +57,68 @@ function formatAttachmentSize(size: number): string {
   if (size >= 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} МБ`;
   if (size >= 1024) return `${Math.round(size / 1024)} КБ`;
   return `${size} Б`;
+}
+
+function ImageAttachment({
+  attachment,
+  onOpenImage,
+}: {
+  attachment: ChatAttachmentDTO;
+  onOpenImage?: (attachment: ChatAttachmentDTO) => void;
+}): JSX.Element {
+  const [failed, setFailed] = useState(false);
+  const imageLabel = attachment.originalName || 'Изображение';
+
+  return (
+    <button
+      type="button"
+      aria-label={`Открыть изображение: ${imageLabel}`}
+      onClick={() => onOpenImage?.(attachment)}
+      style={{
+        display: 'block',
+        width: '100%',
+        color: 'inherit',
+        background: 'none',
+        border: 'none',
+        padding: 0,
+        cursor: 'pointer',
+        textAlign: 'left',
+      }}
+    >
+      {failed ? (
+        <span
+          style={{
+            display: 'grid',
+            placeItems: 'center',
+            width: '100%',
+            maxWidth: 240,
+            minHeight: 150,
+            borderRadius: 14,
+            background: 'rgba(255,255,255,0.14)',
+            color: 'rgba(255,255,255,0.82)',
+            fontSize: 12,
+            fontWeight: 800,
+          }}
+        >
+          Изображение недоступно
+        </span>
+      ) : (
+        <img
+          src={attachment.url}
+          alt=""
+          onError={() => setFailed(true)}
+          style={{
+            display: 'block',
+            width: '100%',
+            maxWidth: 240,
+            maxHeight: 260,
+            objectFit: 'cover',
+            borderRadius: 14,
+          }}
+        />
+      )}
+    </button>
+  );
 }
 
 function ChatBubbleImpl({
@@ -202,37 +264,12 @@ function ChatBubbleImpl({
           <div style={{ display: 'grid', gap: 6, marginBottom: text ? 6 : 0 }}>
             {attachments.map((attachment) => {
               if (attachment.kind === 'image') {
-                const imageLabel = attachment.originalName || 'Изображение';
                 return (
-                  <button
+                  <ImageAttachment
                     key={attachment.id}
-                    type="button"
-                    aria-label={`Открыть изображение: ${imageLabel}`}
-                    onClick={() => onOpenImage?.(attachment)}
-                    style={{
-                      display: 'block',
-                      width: '100%',
-                      color: 'inherit',
-                      background: 'none',
-                      border: 'none',
-                      padding: 0,
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                    }}
-                  >
-                    <img
-                      src={attachment.url}
-                      alt={`Миниатюра: ${imageLabel}`}
-                      style={{
-                        display: 'block',
-                        width: '100%',
-                        maxWidth: 240,
-                        maxHeight: 260,
-                        objectFit: 'cover',
-                        borderRadius: 14,
-                      }}
-                    />
-                  </button>
+                    attachment={attachment}
+                    {...(onOpenImage !== undefined ? { onOpenImage } : {})}
+                  />
                 );
               }
               if (attachment.kind === 'voice') {

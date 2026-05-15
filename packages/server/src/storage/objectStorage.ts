@@ -139,6 +139,7 @@ function authorizationHeader({
   const headers = {
     'content-type': contentType,
     host: url.host,
+    'x-amz-acl': 'public-read',
     'x-amz-content-sha256': payloadHash,
     'x-amz-date': amzDate,
   };
@@ -195,6 +196,7 @@ export function createObjectStorageClient(
         headers: {
           Authorization: signature.authorization,
           'Content-Type': input.contentType,
+          'x-amz-acl': 'public-read',
           'x-amz-content-sha256': payloadHash,
           'x-amz-date': signature.amzDate,
         },

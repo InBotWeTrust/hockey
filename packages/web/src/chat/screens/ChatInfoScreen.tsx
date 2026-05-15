@@ -1,7 +1,7 @@
 import { useRef, useState, type ChangeEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Trash2, Upload } from 'lucide-react';
 import { fetchChatInfo, type ChatInfoDTO, type UserPickerItem } from '../api.js';
 import { resetAdminChatAvatar, uploadAdminChatAvatar } from '../../admin/api.js';
 import { useAuthStore } from '../../auth/authStore.js';
@@ -174,9 +174,8 @@ export function ChatInfoScreen(): JSX.Element {
               <div
                 style={{
                   display: 'flex',
-                  flexDirection: 'column',
+                  justifyContent: 'center',
                   gap: 8,
-                  width: '100%',
                   marginTop: 8,
                 }}
               >
@@ -189,29 +188,42 @@ export function ChatInfoScreen(): JSX.Element {
                 />
                 <button
                   type="button"
-                  className="btn btn--cta"
+                  className="icon-btn"
                   disabled={uploadAvatarMutation.isPending || resetAvatarMutation.isPending}
                   onClick={() => avatarInputRef.current?.click()}
-                  style={{ width: '100%' }}
+                  aria-label={`Загрузить ${avatarLabel}`}
+                  title={`Загрузить ${avatarLabel}`}
+                  style={{ width: 38, height: 38, minWidth: 38, minHeight: 38 }}
                 >
-                  {uploadAvatarMutation.isPending ? 'Загружаю...' : `Загрузить ${avatarLabel}`}
+                  <Upload size={16} />
                 </button>
-                {data.avatarUrl && (
-                  <button
-                    type="button"
-                    className="btn btn--ghost"
-                    disabled={uploadAvatarMutation.isPending || resetAvatarMutation.isPending}
-                    onClick={() => resetAvatarMutation.mutate()}
-                    style={{ width: '100%' }}
-                  >
-                    {resetAvatarMutation.isPending ? 'Сбрасываю...' : 'Сбросить аватар'}
-                  </button>
-                )}
-                {avatarError && (
-                  <div style={{ fontSize: 12, color: 'rgb(220, 38, 38)', textAlign: 'left' }}>
-                    {avatarError}
-                  </div>
-                )}
+                <button
+                  type="button"
+                  className="icon-btn"
+                  disabled={
+                    !data.avatarUrl ||
+                    uploadAvatarMutation.isPending ||
+                    resetAvatarMutation.isPending
+                  }
+                  onClick={() => resetAvatarMutation.mutate()}
+                  aria-label={`Удалить ${avatarLabel}`}
+                  title={`Удалить ${avatarLabel}`}
+                  style={{ width: 38, height: 38, minWidth: 38, minHeight: 38 }}
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            )}
+            {canManageAvatar && avatarError && (
+              <div
+                style={{
+                  width: '100%',
+                  fontSize: 12,
+                  color: 'rgb(220, 38, 38)',
+                  textAlign: 'left',
+                }}
+              >
+                {avatarError}
               </div>
             )}
           </div>
