@@ -6,7 +6,7 @@ self.addEventListener('push', (event) => {
     payload = {};
   }
 
-  const title = payload.title || 'Ultimate Hockey';
+  const title = payload.title || 'Хоккейный Ультиматум';
   const options = {
     body: payload.body || 'Проверка уведомлений',
     icon: payload.icon || '/icons/icon-192.png',

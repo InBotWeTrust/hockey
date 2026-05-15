@@ -631,7 +631,7 @@ describe('AdminScreen', () => {
 
     expect(screen.queryByRole('button', { name: 'Обзор' })).not.toBeInTheDocument();
     expect((await screen.findAllByText('Дашборд')).length).toBeGreaterThan(0);
-    expect(await screen.findByText('Ultimate Hockey')).toBeInTheDocument();
+    expect(await screen.findByText('Хоккейный Ультиматум')).toBeInTheDocument();
     expect(await screen.findByText('Активные пользователи')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Период дашборда' }));
     fireEvent.click(await screen.findByRole('option', { name: '90 дней' }));
