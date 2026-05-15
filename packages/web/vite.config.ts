@@ -14,8 +14,8 @@ export default defineConfig({
         'push-sw.js',
       ],
       manifest: {
-        name: 'Ultimate Hockey',
-        short_name: 'Hockey',
+        name: 'Хоккейный Ультиматум',
+        short_name: 'Ультиматум',
         description: 'Хоккейная игра в стиле OVI Universe',
         theme_color: '#9cbfdf',
         background_color: '#9cbfdf',

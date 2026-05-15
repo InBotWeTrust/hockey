@@ -41,26 +41,22 @@ export function LoginScreen(): JSX.Element {
       }}
     >
       <div style={{ padding: 'clamp(24px, 5dvh, 40px) 20px 8px' }}>
-        <div
-          className="glass-dark"
+        <img
+          src="/icons/app-logo.webp"
+          alt="Хоккейный Ультиматум"
           style={{
-            width: 76,
-            height: 76,
-            borderRadius: 'var(--r-pill)',
-            fontSize: 28,
-            fontWeight: 900,
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginBottom: 14,
-            boxShadow: '0 12px 30px rgba(15, 23, 42, 0.35)',
-            letterSpacing: 0,
+            width: 'clamp(94px, 22dvh, 128px)',
+            height: 'clamp(94px, 22dvh, 128px)',
+            borderRadius: 28,
+            objectFit: 'cover',
+            display: 'inline-block',
+            marginBottom: 12,
+            boxShadow:
+              '0 18px 44px rgba(15, 23, 42, 0.24), 0 0 0 1px rgba(255,255,255,0.72)',
           }}
-        >
-          UH
-        </div>
+        />
         <h1 style={{ fontSize: 29, fontWeight: 800, letterSpacing: 0, margin: '0 0 8px' }}>
-          Ultimate Hockey
+          Хоккейный Ультиматум
         </h1>
         <div style={{ fontSize: 14, color: 'var(--muted)', lineHeight: 1.42 }}>
           Живи жизнью профессионального хоккеиста
