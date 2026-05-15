@@ -21,6 +21,8 @@ interface ChatInputProps {
   placeholder?: string;
   formattingTools?: boolean;
   extraTools?: ReactNode;
+  attachmentPreview?: ReactNode;
+  canSendEmpty?: boolean;
   onAttach?: () => void;
   onVoice?: () => void;
   voiceState?: 'idle' | 'recording' | 'uploading';
@@ -50,6 +52,8 @@ export function ChatInput({
   placeholder = 'Сообщение...',
   formattingTools = false,
   extraTools,
+  attachmentPreview,
+  canSendEmpty = false,
   onAttach,
   onVoice,
   voiceState = 'idle',
@@ -133,7 +137,9 @@ export function ChatInput({
   function submit(): void {
     if (disabled || sendingRef.current) return;
     const trimmed = value.trim();
-    if (!hasMeaningfulContent(trimmed)) return;
+    const hasText = hasMeaningfulContent(trimmed);
+    if (!hasText && !canSendEmpty) return;
+    if (editing && !hasText) return;
     sendingRef.current = true;
     setValue('');
     if (editing && onEdit) {
@@ -146,7 +152,7 @@ export function ChatInput({
     void onSend(trimmed, replyTo?.id ?? null);
   }
 
-  const canSend = hasMeaningfulContent(value);
+  const canSend = hasMeaningfulContent(value) || canSendEmpty;
   const showVoiceAction = onVoice !== undefined && !editing && !canSend;
   const voiceLabel =
     voiceState === 'recording'
@@ -188,6 +194,7 @@ export function ChatInput({
           onClear={onClearReply}
         />
       )}
+      {attachmentPreview}
       {(formattingTools || extraTools) && (
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           {formattingTools && (

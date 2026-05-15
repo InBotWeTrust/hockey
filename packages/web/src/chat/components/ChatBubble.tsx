@@ -28,6 +28,7 @@ interface ChatBubbleProps {
     displayName: string;
     avatarUrl: string | null;
   }) => void;
+  onOpenImage?: (attachment: ChatAttachmentDTO) => void;
 }
 
 function formatTime(iso: string): string {
@@ -68,6 +69,7 @@ function ChatBubbleImpl({
   onReact,
   actionSlot,
   onOpenProfile,
+  onOpenImage,
 }: ChatBubbleProps): JSX.Element {
   const className = isOwn ? 'glass-dark' : 'glass';
   const align = isOwn ? 'flex-end' : 'flex-start';
@@ -200,17 +202,27 @@ function ChatBubbleImpl({
           <div style={{ display: 'grid', gap: 6, marginBottom: text ? 6 : 0 }}>
             {attachments.map((attachment) => {
               if (attachment.kind === 'image') {
+                const imageLabel = attachment.originalName || 'Изображение';
                 return (
-                  <a
+                  <button
                     key={attachment.id}
-                    href={attachment.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{ display: 'block', color: 'inherit' }}
+                    type="button"
+                    aria-label={`Открыть изображение: ${imageLabel}`}
+                    onClick={() => onOpenImage?.(attachment)}
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      color: 'inherit',
+                      background: 'none',
+                      border: 'none',
+                      padding: 0,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                    }}
                   >
                     <img
                       src={attachment.url}
-                      alt={attachment.originalName || 'Изображение'}
+                      alt={`Миниатюра: ${imageLabel}`}
                       style={{
                         display: 'block',
                         width: '100%',
@@ -220,7 +232,7 @@ function ChatBubbleImpl({
                         borderRadius: 14,
                       }}
                     />
-                  </a>
+                  </button>
                 );
               }
               if (attachment.kind === 'voice') {
@@ -386,7 +398,8 @@ function areEqual(prev: ChatBubbleProps, next: ChatBubbleProps): boolean {
     prev.actionSlot === next.actionSlot &&
     prev.onRequestActions === next.onRequestActions &&
     prev.onReact === next.onReact &&
-    prev.onOpenProfile === next.onOpenProfile
+    prev.onOpenProfile === next.onOpenProfile &&
+    prev.onOpenImage === next.onOpenImage
   );
 }
 

@@ -316,6 +316,84 @@ describe('ChatRoomScreen', () => {
     await waitFor(() => expect(screen.getByText('тест')).toBeInTheDocument());
   });
 
+  it('keeps an attached image pending and sends it together with message text', async () => {
+    const media = {
+      id: 'att-1',
+      url: 'https://cdn.example/photo.webp',
+      kind: 'image' as const,
+      contentType: 'image/webp',
+      size: 1234,
+      originalName: 'photo.png',
+    };
+    const uploadSpy = vi.spyOn(api, 'uploadChatAttachment').mockResolvedValue({ media });
+    const sendSpy = vi.spyOn(api, 'sendMessage').mockResolvedValue({
+      ...msgFromSelf,
+      id: 'm-with-image',
+      content: 'смотри',
+      metadata: { attachments: [media] },
+    });
+
+    renderRoom('c1');
+    await waitFor(() => expect(screen.getAllByTestId('chat-bubble').length).toBe(2));
+
+    const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]');
+    expect(fileInput).not.toBeNull();
+    const file = new File(['image'], 'photo.png', { type: 'image/png' });
+    fireEvent.change(fileInput!, { target: { files: [file] } });
+
+    await waitFor(() => expect(uploadSpy).toHaveBeenCalledWith('c1', file));
+    expect(await screen.findByText('photo.png')).toBeInTheDocument();
+    expect(sendSpy).not.toHaveBeenCalled();
+
+    const textarea = screen.getByLabelText('Текст сообщения') as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: 'смотри' } });
+    fireEvent.click(screen.getByLabelText('Отправить'));
+
+    await waitFor(() =>
+      expect(sendSpy).toHaveBeenCalledWith('c1', {
+        content: 'смотри',
+        attachmentIds: ['att-1'],
+      }),
+    );
+  });
+
+  it('opens image attachments in a modal viewer from the chat bubble', async () => {
+    vi.mocked(api.fetchMessages).mockResolvedValue([
+      {
+        ...msgFromOther,
+        id: 'm-image',
+        content: 'картинка',
+        metadata: {
+          attachments: [
+            {
+              id: 'att-1',
+              url: 'https://cdn.example/photo.webp',
+              kind: 'image',
+              contentType: 'image/webp',
+              size: 1234,
+              originalName: 'photo.webp',
+            },
+          ],
+        },
+      },
+    ]);
+
+    renderRoom('c1');
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Открыть изображение: photo.webp' }),
+    );
+
+    const dialog = await screen.findByRole('dialog', { name: 'photo.webp' });
+    expect(dialog).toBeInTheDocument();
+    expect(screen.getByAltText('photo.webp')).toHaveAttribute('src', 'https://cdn.example/photo.webp');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть просмотр изображения' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'photo.webp' })).not.toBeInTheDocument(),
+    );
+  });
+
   it('regression: double-tap on send only fires sendMessage once', async () => {
     const newMsg: ChatMessageDTO = {
       id: 'm-dt',

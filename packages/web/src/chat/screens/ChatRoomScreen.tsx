@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ListChecks } from 'lucide-react';
+import { FileText, ListChecks, X } from 'lucide-react';
 import {
   clearChannelPollVote,
   deleteChannelPost,
@@ -17,6 +17,7 @@ import {
   removeReaction,
   voteChannelPoll,
   type ChatDTO,
+  type ChatAttachmentDTO,
   type ChatMessageDTO,
   type AmateurDuelInviteMessageMetadata,
   type UserPickerItem,
@@ -68,6 +69,13 @@ interface InfinitePages {
 interface ActionTarget {
   message: ChatMessageDTO;
   anchorRect: DOMRect;
+}
+
+interface PendingAttachment {
+  token: number;
+  fileName: string;
+  media: ChatAttachmentDTO | null;
+  isUploading: boolean;
 }
 
 type DuelInviteResolution = 'accepted' | 'declined' | 'unavailable';
@@ -264,12 +272,15 @@ export function ChatRoomScreen(): JSX.Element {
   const [pollComposerOpen, setPollComposerOpen] = useState(false);
   const [gotoError, setGotoError] = useState<string | null>(null);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [pendingAttachment, setPendingAttachment] = useState<PendingAttachment | null>(null);
+  const [imageViewer, setImageViewer] = useState<ChatAttachmentDTO | null>(null);
   const [duelInviteResolutionByMatch, setDuelInviteResolutionByMatch] = useState<
     Record<string, DuelInviteResolution>
   >({});
   const gotoRef = useRef<string | null>(null);
   const messagesListRef = useRef<HTMLDivElement | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const attachmentUploadTokenRef = useRef(0);
   const voiceRecorderRef = useRef<MediaRecorder | null>(null);
   const voiceStreamRef = useRef<MediaStream | null>(null);
   const voiceChunksRef = useRef<Blob[]>([]);
@@ -492,6 +503,7 @@ export function ChatRoomScreen(): JSX.Element {
       return sendMessage(chatId, body);
     },
     onSuccess: (msg) => {
+      setPendingAttachment(null);
       queryClient.setQueryData<InfinitePages | undefined>(chatKeys.messages(chatId), (old) => {
         if (!old) {
           // Same race as in useChatSocket.applyMessageNew: a {pages:[[msg]]}
@@ -518,16 +530,40 @@ export function ChatRoomScreen(): JSX.Element {
   });
 
   const uploadAttachmentMut = useMutation({
-    mutationFn: (file: File) => uploadChatAttachment(chatId, file),
-    onMutate: () => {
+    mutationFn: ({ file }: { file: File; token: number }) => uploadChatAttachment(chatId, file),
+    onMutate: ({ file, token }) => {
       setAttachmentError(null);
+      setPendingAttachment({
+        token,
+        fileName: file.name || 'Файл',
+        media: null,
+        isUploading: true,
+      });
     },
+    onSuccess: ({ media }, { token, file }) => {
+      if (attachmentUploadTokenRef.current !== token) return;
+      setPendingAttachment({
+        token,
+        fileName: media.originalName || file.name || 'Файл',
+        media,
+        isUploading: false,
+      });
+    },
+    onError: (err, { token }) => {
+      if (attachmentUploadTokenRef.current !== token) return;
+      setPendingAttachment(null);
+      setAttachmentError(err instanceof Error ? err.message : 'Не удалось загрузить файл');
+    },
+  });
+
+  const uploadVoiceMut = useMutation({
+    mutationFn: (file: File) => uploadChatAttachment(chatId, file),
     onSuccess: ({ media }) => {
       sendMut.mutate({ content: '', replyToId: replyTo?.id ?? null, attachmentIds: [media.id] });
       setReplyTo(null);
     },
     onError: (err) => {
-      setAttachmentError(err instanceof Error ? err.message : 'Не удалось загрузить файл');
+      setAttachmentError(err instanceof Error ? err.message : 'Не удалось загрузить голосовое');
     },
   });
 
@@ -587,7 +623,7 @@ export function ChatRoomScreen(): JSX.Element {
           type: blobType,
         });
         setVoiceState('uploading');
-        uploadAttachmentMut.mutate(file, {
+        uploadVoiceMut.mutate(file, {
           onSettled: () => setVoiceState('idle'),
         });
       };
@@ -601,7 +637,7 @@ export function ChatRoomScreen(): JSX.Element {
       stopVoiceTracks();
       setAttachmentError('Не удалось получить доступ к микрофону');
     }
-  }, [stopVoiceRecording, stopVoiceTracks, uploadAttachmentMut]);
+  }, [stopVoiceRecording, stopVoiceTracks, uploadVoiceMut]);
 
   const handleVoiceAction = useCallback((): void => {
     if (voiceState === 'recording') {
@@ -622,6 +658,15 @@ export function ChatRoomScreen(): JSX.Element {
       stopVoiceTracks();
     };
   }, [stopVoiceTracks]);
+
+  useEffect(() => {
+    if (imageViewer === null) return undefined;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setImageViewer(null);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [imageViewer]);
 
   const replacePostInCaches = useCallback(
     (post: ChatMessageDTO): void => {
@@ -910,11 +955,22 @@ export function ChatRoomScreen(): JSX.Element {
     [pickerTarget, addMutate],
   );
 
+  const clearPendingAttachment = useCallback((): void => {
+    attachmentUploadTokenRef.current += 1;
+    setPendingAttachment(null);
+    setAttachmentError(null);
+  }, []);
+
   const handleSend = useCallback(
     (content: string, replyToId: string | null): void => {
-      sendMut.mutate({ content, replyToId });
+      const vars: { content: string; replyToId: string | null; attachmentIds?: string[] } = {
+        content,
+        replyToId,
+      };
+      if (pendingAttachment?.media) vars.attachmentIds = [pendingAttachment.media.id];
+      sendMut.mutate(vars);
     },
-    [sendMut],
+    [pendingAttachment, sendMut],
   );
 
   const handleEditMessage = useCallback(
@@ -1135,6 +1191,7 @@ export function ChatRoomScreen(): JSX.Element {
               onReact={onToggleReaction}
               actionSlot={inviteActionSlot}
               onOpenProfile={onOpenProfile}
+              onOpenImage={setImageViewer}
             />
           );
         })}
@@ -1152,7 +1209,9 @@ export function ChatRoomScreen(): JSX.Element {
               event.currentTarget.value = '';
               if (!file) return;
               setAttachmentError(null);
-              uploadAttachmentMut.mutate(file);
+              const token = attachmentUploadTokenRef.current + 1;
+              attachmentUploadTokenRef.current = token;
+              uploadAttachmentMut.mutate({ file, token });
             }}
           />
           <ChatInput
@@ -1165,6 +1224,52 @@ export function ChatRoomScreen(): JSX.Element {
             replyToSenderName={replyTo ? senderNameOf(replyTo) : undefined}
             placeholder={isChannel ? 'Новость...' : 'Сообщение...'}
             formattingTools={isChannel && isAdmin}
+            attachmentPreview={
+              pendingAttachment ? (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'auto minmax(0, 1fr) auto',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '8px 10px',
+                    borderRadius: 16,
+                    background: 'rgba(255,255,255,0.72)',
+                    border: '1px solid rgba(255,255,255,0.74)',
+                  }}
+                >
+                  <FileText size={16} color="var(--muted)" />
+                  <div style={{ minWidth: 0 }}>
+                    <div
+                      style={{
+                        color: 'var(--ink)',
+                        fontSize: 12,
+                        fontWeight: 900,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {pendingAttachment.fileName}
+                    </div>
+                    <div style={{ color: 'var(--muted)', fontSize: 10, fontWeight: 800 }}>
+                      {pendingAttachment.isUploading ? 'Загружаем...' : 'Готово к отправке'}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    aria-label="Убрать вложение"
+                    title="Убрать вложение"
+                    onClick={clearPendingAttachment}
+                    style={{ width: 30, height: 30, minWidth: 30, minHeight: 30 }}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ) : null
+            }
+            canSendEmpty={pendingAttachment !== null}
             onAttach={() => attachmentInputRef.current?.click()}
             voiceState={voiceState}
             {...(!isChannel ? { onVoice: handleVoiceAction } : {})}
@@ -1199,6 +1304,7 @@ export function ChatRoomScreen(): JSX.Element {
               sendMut.isPending ||
               editMessageMut.isPending ||
               uploadAttachmentMut.isPending ||
+              pendingAttachment?.isUploading === true ||
               voiceState === 'uploading'
             }
             onSend={handleSend}
@@ -1219,6 +1325,71 @@ export function ChatRoomScreen(): JSX.Element {
               {attachmentError}
             </div>
           )}
+        </div>
+      )}
+
+      {imageViewer && (
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label={imageViewer.originalName || 'Изображение'}
+          onClick={(event) => {
+            if (event.currentTarget === event.target) setImageViewer(null);
+          }}
+          style={{ zIndex: 320 }}
+        >
+          <div
+            className="modal-card"
+            style={{
+              width: 'min(100%, 720px)',
+              padding: 12,
+              display: 'grid',
+              gap: 10,
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 10,
+              }}
+            >
+              <div
+                className="modal-title"
+                style={{
+                  minWidth: 0,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {imageViewer.originalName || 'Изображение'}
+              </div>
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Закрыть просмотр изображения"
+                title="Закрыть"
+                onClick={() => setImageViewer(null)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <img
+              src={imageViewer.url}
+              alt={imageViewer.originalName || 'Изображение'}
+              style={{
+                display: 'block',
+                width: '100%',
+                maxHeight: 'min(70dvh, 680px)',
+                objectFit: 'contain',
+                borderRadius: 18,
+                background: 'rgba(15, 23, 42, 0.08)',
+              }}
+            />
+          </div>
         </div>
       )}
 
