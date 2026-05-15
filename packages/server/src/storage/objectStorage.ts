@@ -196,7 +196,6 @@ export function createObjectStorageClient(
         url,
         extraHeaders: {
           'content-type': input.contentType,
-          'x-amz-acl': 'public-read',
         },
         payloadHash,
         date: now(),
@@ -207,7 +206,6 @@ export function createObjectStorageClient(
         headers: {
           Authorization: signature.authorization,
           'Content-Type': input.contentType,
-          'x-amz-acl': 'public-read',
           'x-amz-content-sha256': payloadHash,
           'x-amz-date': signature.amzDate,
         },

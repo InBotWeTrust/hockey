@@ -68,11 +68,10 @@ describe('object storage client', () => {
     expect(init?.method).toBe('PUT');
     expect(init?.headers).toMatchObject({
       'Content-Type': 'audio/ogg',
-      'x-amz-acl': 'public-read',
       'x-amz-date': '20260515T102030Z',
     });
     expect(String((init?.headers as Record<string, string>).Authorization)).toContain(
-      'AWS4-HMAC-SHA256 Credential=tenant:access/20260515/ru-central-1/s3/aws4_request, SignedHeaders=content-type;host;x-amz-acl;x-amz-content-sha256;x-amz-date',
+      'AWS4-HMAC-SHA256 Credential=tenant:access/20260515/ru-central-1/s3/aws4_request, SignedHeaders=content-type;host;x-amz-content-sha256;x-amz-date',
     );
   });
 
