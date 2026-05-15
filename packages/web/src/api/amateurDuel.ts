@@ -2,9 +2,17 @@ import type { DailyPeriodSpeedPreset, StickEffects } from '@hockey/game-core';
 import { apiFetch } from './apiFetch.js';
 import type { ShotInputPayload, ShotResultType } from './duel.js';
 
-export type AmateurDuelMatchStatus = 'pending' | 'scheduled' | 'active' | 'settled' | 'expired';
+export type AmateurDuelMatchStatus =
+  | 'invited'
+  | 'ready_check'
+  | 'active'
+  | 'settled'
+  | 'cancelled'
+  | 'expired';
 export type AmateurDuelParticipantState =
   | 'invited'
+  | 'loadout_pending'
+  | 'ready'
   | 'accepted'
   | 'period_active'
   | 'break_active'
@@ -16,12 +24,23 @@ export interface AmateurDuelTemplate {
   id: string;
   title: string;
   description: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+  duel_variant: 'classic' | 'time_attack';
+  ranked_enabled: boolean;
+  matchmaking_enabled: boolean;
   starts_at: string;
   ends_at: string;
   total_periods: number;
   shots_per_period: number;
   period_duration_ms: number;
   break_duration_ms: number;
+  challenge_ttl_ms: number;
+  ready_duration_ms: number;
+  ready_no_show_cooldown_ms: number;
+  matchmaking_timeout_ms: number;
+  ranked_daily_limit: number;
+  ranked_same_opponent_limit: number;
+  power_cap: number;
   goalie_id: string;
   period_speed_presets: DailyPeriodSpeedPreset[];
   stake_amount: number;
@@ -34,10 +53,21 @@ export interface AmateurDuelRules {
   templateId: string;
   title: string;
   description: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+  duelVariant: 'classic' | 'time_attack';
+  rankedEnabled: boolean;
+  matchmakingEnabled: boolean;
   totalPeriods: number;
   shotsPerPeriod: number;
   periodDurationMs: number;
   breakDurationMs: number;
+  challengeTtlMs: number;
+  readyDurationMs: number;
+  readyNoShowCooldownMs: number;
+  matchmakingTimeoutMs: number;
+  rankedDailyLimit: number;
+  rankedSameOpponentLimit: number;
+  powerCap: number;
   goalieId: string;
   periodSpeedPresets: DailyPeriodSpeedPreset[];
   stakeAmount: number;
@@ -59,6 +89,36 @@ export interface AmateurDuelParticipant {
   active_duration_ms: number;
   active_duration_seconds: number;
   result_points: number;
+  ready_at: string | null;
+  loadout: AmateurDuelLoadout;
+  inventory_report: AmateurDuelInventoryPeriodReport[];
+}
+
+export interface AmateurDuelLoadoutItem {
+  id: string;
+  kind: 'stick' | 'skates' | 'nutrition';
+  title: string;
+  rarity: 'common' | 'rare' | 'epic' | 'legendary';
+  powerScore: number;
+  duelPeriodCost: number;
+  chargesReserved: number;
+}
+
+export interface AmateurDuelLoadout {
+  items: AmateurDuelLoadoutItem[];
+  powerScore: number;
+  powerCap: number;
+}
+
+export interface AmateurDuelInventoryPeriodReport {
+  periodNumber: number;
+  consumed: Array<{
+    id: string;
+    kind: 'stick' | 'skates' | 'nutrition';
+    title: string;
+    charges: number;
+    remainingReserved: number;
+  }>;
 }
 
 export interface AmateurDuelPeriodLog {
@@ -74,8 +134,14 @@ export interface AmateurDuelMatch {
   id: string;
   template_id: string | null;
   status: AmateurDuelMatchStatus;
+  source: 'challenge' | 'matchmaking';
+  ranked: boolean;
+  season_key: string;
   starts_at: string;
   ends_at: string;
+  ready_expires_at: string | null;
+  cooldown_user_id: string | null;
+  cooldown_until: string | null;
   stake_amount: number;
   entry_fee_amount: number;
   bank_amount: number;
@@ -135,6 +201,12 @@ export interface SubmitAmateurDuelShotResponse {
   match: AmateurDuelMatchState;
 }
 
+export interface AmateurDuelLoadoutSelection {
+  stick?: string | null;
+  skates?: string | null;
+  nutrition?: string | null;
+}
+
 function stampMatch<T extends AmateurDuelMatch>(match: T): T {
   return {
     ...match,
@@ -185,10 +257,45 @@ export function acceptAmateurDuel(matchId: string): Promise<{ match: AmateurDuel
   }).then((res) => ({ match: stampMatch(res.match) }));
 }
 
+export function cancelAmateurDuel(matchId: string): Promise<{ match: AmateurDuelMatchState }> {
+  return apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}/cancel`, {
+    method: 'POST',
+  }).then((res) => ({ match: stampMatch(res.match) }));
+}
+
 export function declineAmateurDuel(matchId: string): Promise<{ match: AmateurDuelMatchState }> {
   return apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}/decline`, {
     method: 'POST',
   }).then((res) => ({ match: stampMatch(res.match) }));
+}
+
+export function readyAmateurDuel(
+  matchId: string,
+  loadout: AmateurDuelLoadoutSelection,
+): Promise<{ match: AmateurDuelMatchState }> {
+  return apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}/ready`, {
+    method: 'POST',
+    body: JSON.stringify({ loadout }),
+  }).then((res) => ({ match: stampMatch(res.match) }));
+}
+
+export function joinAmateurMatchmaking(
+  templateId: string,
+): Promise<{ ticket?: { id: string; status: string; expires_at: string }; match?: AmateurDuelMatch }> {
+  return apiFetch<{ ticket?: { id: string; status: string; expires_at: string }; match?: AmateurDuelMatch }>(
+    '/duel/amateur/matchmaking/join',
+    {
+      method: 'POST',
+      body: JSON.stringify({ template_id: templateId }),
+    },
+  ).then((res) => (res.match ? { ...res, match: stampMatch(res.match) } : res));
+}
+
+export function leaveAmateurMatchmaking(templateId: string): Promise<{ ok: true }> {
+  return apiFetch<{ ok: true }>('/duel/amateur/matchmaking/leave', {
+    method: 'POST',
+    body: JSON.stringify({ template_id: templateId }),
+  });
 }
 
 export function startAmateurDuelPeriod(matchId: string): Promise<{ match: AmateurDuelMatchState }> {

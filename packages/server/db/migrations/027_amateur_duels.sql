@@ -4,15 +4,24 @@
 alter table admin_inventory_items
   add column item_kind text not null default 'bundle'
     check (item_kind in ('bundle', 'stick', 'skates', 'nutrition', 'consumable')),
+  add column rarity text not null default 'common'
+    check (rarity in ('common', 'rare', 'epic', 'legendary')),
   add column currency_price int not null default 0 check (currency_price >= 0),
   add column charges_per_purchase int not null default 0 check (charges_per_purchase >= 0),
   add column duel_period_cost int not null default 0 check (duel_period_cost >= 0),
+  add column power_score int not null default 0 check (power_score >= 0),
   add column effect_puck_speed_delta numeric(8, 4) not null default 0,
   add column effect_shooter_frequency_delta numeric(8, 4) not null default 0,
   add column effect_goalie_frequency_delta numeric(8, 4) not null default 0,
   add column effect_goal_frequency_delta numeric(8, 4) not null default 0,
   add column effect_shot_zone_multiplier numeric(8, 4) not null default 1
-    check (effect_shot_zone_multiplier >= 1);
+    check (effect_shot_zone_multiplier >= 1),
+  add column effect_recovery_delay_ms int not null default 0 check (effect_recovery_delay_ms >= 0),
+  add column effect_stumble_chance numeric(8, 4) not null default 0
+    check (effect_stumble_chance between 0 and 1),
+  add column effect_stumble_ms int not null default 0 check (effect_stumble_ms >= 0),
+  add column effect_stumble_blocks_per_period int not null default 0
+    check (effect_stumble_blocks_per_period >= 0);
 
 create table user_currency_account (
   user_id uuid primary key references users(id) on delete cascade,
@@ -41,12 +50,23 @@ create table amateur_duel_template (
   title text not null check (length(title) between 1 and 120),
   description text not null default '',
   is_active boolean not null default true,
+  difficulty text not null default 'hard' check (difficulty in ('easy', 'medium', 'hard')),
+  duel_variant text not null default 'classic' check (duel_variant in ('classic', 'time_attack')),
+  ranked_enabled boolean not null default true,
+  matchmaking_enabled boolean not null default true,
   starts_at timestamptz not null,
   ends_at timestamptz not null,
   total_periods smallint not null default 3 check (total_periods between 1 and 9),
   shots_per_period smallint not null default 30 check (shots_per_period between 1 and 100),
-  period_duration_ms int not null default 1200000 check (period_duration_ms between 1000 and 10800000),
-  break_duration_ms int not null default 900000 check (break_duration_ms between 0 and 10800000),
+  period_duration_ms int not null default 60000 check (period_duration_ms between 1000 and 10800000),
+  break_duration_ms int not null default 60000 check (break_duration_ms between 0 and 10800000),
+  challenge_ttl_ms int not null default 1800000 check (challenge_ttl_ms between 1000 and 86400000),
+  ready_duration_ms int not null default 300000 check (ready_duration_ms between 1000 and 86400000),
+  ready_no_show_cooldown_ms int not null default 900000 check (ready_no_show_cooldown_ms >= 0),
+  matchmaking_timeout_ms int not null default 180000 check (matchmaking_timeout_ms between 1000 and 86400000),
+  ranked_daily_limit int not null default 10 check (ranked_daily_limit >= 0),
+  ranked_same_opponent_limit int not null default 2 check (ranked_same_opponent_limit >= 0),
+  power_cap int not null default 100 check (power_cap >= 0),
   goalie_id text not null default 'rookie',
   period_speed_presets jsonb not null,
   stake_amount int not null default 0 check (stake_amount >= 0),
@@ -70,11 +90,17 @@ create table amateur_duel_match (
   challenger_user_id uuid not null references users(id) on delete cascade,
   opponent_user_id uuid not null references users(id) on delete cascade,
   status text not null
-    check (status in ('pending', 'scheduled', 'active', 'settled', 'expired')),
+    check (status in ('invited', 'ready_check', 'active', 'settled', 'cancelled', 'expired')),
+  source text not null default 'challenge' check (source in ('challenge', 'matchmaking')),
+  ranked boolean not null default true,
+  season_key text not null default to_char((now() at time zone 'Europe/Moscow'), 'YYYY-MM'),
   rules_snapshot jsonb not null,
   match_seed text not null,
   starts_at timestamptz not null,
   ends_at timestamptz not null,
+  ready_expires_at timestamptz,
+  cooldown_user_id uuid references users(id) on delete set null,
+  cooldown_until timestamptz,
   stake_amount int not null default 0 check (stake_amount >= 0),
   entry_fee_amount int not null default 0 check (entry_fee_amount >= 0),
   bank_amount int not null default 0 check (bank_amount >= 0),
@@ -96,7 +122,7 @@ create unique index amateur_duel_match_one_open_pair_template_idx
     least(challenger_user_id, opponent_user_id),
     greatest(challenger_user_id, opponent_user_id)
   )
-  where status in ('pending', 'scheduled', 'active');
+  where status in ('invited', 'ready_check', 'active');
 
 create index amateur_duel_match_user_status_idx
   on amateur_duel_match (challenger_user_id, status, created_at desc);
@@ -109,7 +135,9 @@ create table amateur_duel_participant (
   user_id uuid not null references users(id) on delete cascade,
   side text not null check (side in ('challenger', 'opponent')),
   state text not null
-    check (state in ('invited', 'accepted', 'period_active', 'break_active', 'completed', 'forfeit')),
+    check (state in ('invited', 'loadout_pending', 'ready', 'accepted', 'period_active', 'break_active', 'completed', 'forfeit')),
+  ready_at timestamptz,
+  loadout_snapshot jsonb not null default '{}'::jsonb,
   current_period smallint not null default 0 check (current_period between 0 and 9),
   period_started_at timestamptz,
   break_started_at timestamptz,
@@ -123,6 +151,7 @@ create table amateur_duel_participant (
   reserved_inventory_charges int not null default 0 check (reserved_inventory_charges >= 0),
   consumed_inventory_charges int not null default 0 check (consumed_inventory_charges >= 0),
   inventory_effects_snapshot jsonb,
+  inventory_report jsonb not null default '[]'::jsonb,
   result_points smallint not null default 0 check (result_points between 0 and 3),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -149,7 +178,8 @@ create table amateur_duel_period_log (
 );
 
 create table amateur_duel_rating (
-  user_id uuid primary key references users(id) on delete cascade,
+  season_key text not null,
+  user_id uuid not null references users(id) on delete cascade,
   points int not null default 0,
   wins int not null default 0,
   draws int not null default 0,
@@ -158,8 +188,28 @@ create table amateur_duel_rating (
   goals_against int not null default 0,
   matches_played int not null default 0,
   active_duration_seconds int not null default 0,
+  updated_at timestamptz not null default now(),
+  primary key (season_key, user_id)
+);
+
+create table amateur_duel_matchmaking_ticket (
+  id uuid primary key default gen_random_uuid(),
+  template_id uuid not null references amateur_duel_template(id) on delete cascade,
+  user_id uuid not null references users(id) on delete cascade,
+  status text not null default 'queued' check (status in ('queued', 'matched', 'cancelled', 'expired')),
+  expires_at timestamptz not null,
+  matched_match_id uuid references amateur_duel_match(id) on delete set null,
+  created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+create index amateur_duel_matchmaking_open_idx
+  on amateur_duel_matchmaking_ticket (template_id, created_at)
+  where status = 'queued';
+
+create unique index amateur_duel_matchmaking_one_open_user_idx
+  on amateur_duel_matchmaking_ticket (template_id, user_id)
+  where status = 'queued';
 
 create table currency_ledger (
   id bigserial primary key,
@@ -217,6 +267,31 @@ create index shot_session_amateur_duel_idx
   on shot_session (amateur_duel_match_id, user_id, period_number, shot_index)
   where mode = 'amateur_duel';
 
+update admin_inventory_items
+   set item_kind = case
+         when lower(title) like '%клюш%' then 'stick'
+         when lower(title) like '%коньк%' then 'skates'
+         when lower(title) like '%питан%' then 'nutrition'
+         else item_kind
+       end,
+       duel_period_cost = case
+         when lower(title) like '%клюш%' then 1
+         when lower(title) like '%коньк%' then 1
+         when lower(title) like '%питан%' then 1
+         else duel_period_cost
+       end,
+       charges_per_purchase = case
+         when lower(title) like '%клюш%' or lower(title) like '%коньк%' or lower(title) like '%питан%'
+           then 10
+         else charges_per_purchase
+       end,
+       power_score = case
+         when lower(title) like '%клюш%' then 35
+         when lower(title) like '%коньк%' then 35
+         when lower(title) like '%питан%' then 20
+         else power_score
+       end;
+
 alter table user_push_preferences
   add column duel_events boolean not null default true;
 
@@ -252,6 +327,8 @@ insert into amateur_duel_template
   (
     title,
     description,
+    difficulty,
+    duel_variant,
     starts_at,
     ends_at,
     total_periods,
@@ -267,12 +344,14 @@ values
   (
     'Классическая дуэль',
     'Три периода по 30 бросков на одинаковых условиях.',
+    'hard',
+    'classic',
     '2026-01-01 00:00:00+00',
     '2100-01-01 00:00:00+00',
     3,
     30,
-    1200000,
-    900000,
+    60000,
+    60000,
     'rookie',
     '[
       {"periodNumber":1,"goalFrequency":0.55,"goalieFrequency":0.65,"shooterFrequency":0.8,"puckSpeedPerMs":1.3},

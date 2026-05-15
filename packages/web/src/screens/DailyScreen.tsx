@@ -95,11 +95,13 @@ import type {
 import type { TrainingStateResponse } from '../api/training.js';
 import {
   acceptAmateurDuel,
+  cancelAmateurDuel,
   challengeAmateurDuel,
   fetchAmateurEvents,
   fetchAmateurMatches,
   fetchAmateurRating,
   fetchAmateurTemplates,
+  joinAmateurMatchmaking,
   searchAmateurOpponents,
   settleAmateurDuel,
   type AmateurDuelMatch,
@@ -1205,7 +1207,7 @@ function duelEventTiming(match: AmateurDuelMatch, fallbackNow: number): DuelEven
   const breakEndsAt = timestampMs(match.break_ends_at);
   const score = `${match.me.goals}:${match.opponent.goals}`;
 
-  if (match.status === 'settled' || match.status === 'expired') {
+  if (match.status === 'settled' || match.status === 'expired' || match.status === 'cancelled') {
     return {
       activePeriod: null,
       ariaLabel: `${duelOutcomeText(match)}. Счёт ${score}`,
@@ -1224,7 +1226,23 @@ function duelEventTiming(match: AmateurDuelMatch, fallbackNow: number): DuelEven
     };
   }
 
-  if (match.me.state === 'accepted' || match.me.state === 'invited') {
+  if (
+    match.status === 'ready_check' ||
+    match.me.state === 'accepted' ||
+    match.me.state === 'invited' ||
+    match.me.state === 'loadout_pending' ||
+    match.me.state === 'ready'
+  ) {
+    const readyEndsAt = timestampMs(match.ready_expires_at);
+    if (match.status === 'ready_check' && readyEndsAt > now) {
+      const value = formatMs(readyEndsAt - now);
+      return {
+        activePeriod: duelNextPeriod(match),
+        ariaLabel: `Комната готовности. До закрытия ${value}. Счёт ${score}`,
+        label: 'Готовность',
+        value,
+      };
+    }
     return {
       activePeriod: duelNextPeriod(match),
       ariaLabel: `До старта 00:00. Счёт ${score}`,
@@ -1287,10 +1305,12 @@ function DuelEventCard({
   const status = duelOutcomeText(match);
   const timing = duelEventTiming(match, now);
   const actionLabel =
-    match.status === 'pending' && match.me.state === 'invited'
+    match.status === 'invited' && match.me.state === 'invited'
       ? 'Ответить на вызов'
-      : match.status === 'pending'
+      : match.status === 'invited'
         ? 'Открыть вызов'
+        : match.status === 'ready_check'
+          ? 'Открыть комнату'
         : match.status === 'settled'
           ? 'Открыть итог'
           : 'Открыть дуэль';
@@ -1882,8 +1902,8 @@ function DuelStatsModal({
     match.entry_fee_amount > 0 ? { label: 'Взнос', value: String(match.entry_fee_amount) } : null,
   ].filter((item): item is { label: string; value: string } => item !== null);
   const inventoryLabel =
-    match.rules.requiredInventoryItemId && match.rules.inventoryChargesPerPeriod > 0
-      ? `${match.rules.inventoryChargesPerPeriod}/период`
+    match.me.loadout.items.length > 0
+      ? `${match.me.loadout.items.length} предм. · ${match.me.loadout.powerScore}/${match.me.loadout.powerCap}`
       : 'нет';
   const currentPeriod = Math.max(match.me.current_period, match.opponent.current_period);
 
@@ -1980,6 +2000,7 @@ function DuelStatsModal({
               )}`,
             },
             { label: 'Расходник', value: inventoryLabel },
+            { label: 'Режим', value: match.ranked ? 'Рейтинг' : 'Товарищ.' },
           ]}
         />
 
@@ -1992,6 +2013,8 @@ function DuelStatsModal({
             participant={match.opponent}
           />
         </div>
+
+        <DuelLoadoutSummary match={match} />
 
         <button
           type="button"
@@ -2581,13 +2604,16 @@ function duelOutcomeText(match: AmateurDuelMatch): string {
   if (match.outcome === 'double_loss') return 'Оба проиграли';
   if (match.winner_user_id === match.me.user_id) return 'Победа';
   if (match.winner_user_id === match.opponent.user_id) return 'Поражение';
-  if (match.status === 'pending' && match.me.state === 'invited') return 'Вас вызвали';
-  if (match.status === 'pending') return 'Ожидает ответа';
-  if (match.status === 'scheduled') return 'Ждёт старта';
+  if (match.status === 'invited' && match.me.state === 'invited') return 'Вас вызвали';
+  if (match.status === 'invited') return 'Ожидает ответа';
+  if (match.status === 'ready_check') {
+    return match.me.state === 'ready' ? 'Ждём соперника' : 'Комната';
+  }
   if (match.status === 'active') return 'Активна';
-  if (match.status === 'expired' && match.settled_reason === 'declined') {
+  if (match.status === 'cancelled' && match.settled_reason === 'declined') {
     return match.me.state === 'forfeit' ? 'Вы отказались' : 'Отказ';
   }
+  if (match.status === 'cancelled') return 'Отменена';
   return 'Истекла';
 }
 
@@ -2631,6 +2657,17 @@ function AmateurHub({
     mutationFn: (matchId: string) => settleAmateurDuel(matchId),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] }),
   });
+  const cancelMut = useMutation({
+    mutationFn: (matchId: string) => cancelAmateurDuel(matchId),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] }),
+  });
+  const matchmakingMut = useMutation({
+    mutationFn: (templateId: string) => joinAmateurMatchmaking(templateId),
+    onSuccess: (res) => {
+      void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+      if (res.match) onOpenMatch(res.match.id);
+    },
+  });
   const challengeMut = useMutation({
     mutationFn: (body: { template_id: string; opponent_user_id: string }) =>
       challengeAmateurDuel(body),
@@ -2643,10 +2680,11 @@ function AmateurHub({
   const templateItems = templates.data?.templates ?? [];
   const activeMatches = (matches.data?.matches ?? []).filter(
     (match) =>
-      match.status === 'pending' || match.status === 'scheduled' || match.status === 'active',
+      match.status === 'invited' || match.status === 'ready_check' || match.status === 'active',
   );
   const history = (matches.data?.matches ?? []).filter(
-    (match) => match.status === 'settled' || match.status === 'expired',
+    (match) =>
+      match.status === 'settled' || match.status === 'expired' || match.status === 'cancelled',
   );
   const selectedTemplate = selectedTemplateId
     ? (templateItems.find((item) => item.id === selectedTemplateId) ?? null)
@@ -2747,6 +2785,22 @@ function AmateurHub({
         >
           {challengeMut.isPending ? 'Отправляем...' : 'Вызвать на дуэль'}
         </button>
+        <button
+          type="button"
+          className="btn btn--ghost"
+          disabled={!selectedTemplate || matchmakingMut.isPending}
+          onClick={() => {
+            if (!selectedTemplate) return;
+            matchmakingMut.mutate(selectedTemplate.id);
+          }}
+        >
+          {matchmakingMut.isPending ? 'Ищем соперника...' : 'Быстрый поиск'}
+        </button>
+        {matchmakingMut.data?.ticket && (
+          <div style={{ color: 'var(--muted)', fontSize: 13, fontWeight: 700 }}>
+            Комната поиска открыта до {formatShortDateTime(matchmakingMut.data.ticket.expires_at)}
+          </div>
+        )}
         {challengeMut.error && (
           <div style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 700 }}>
             {challengeMut.error.message}
@@ -2767,6 +2821,7 @@ function AmateurHub({
             match={match}
             pending={acceptMut.isPending || settleMut.isPending}
             onAccept={() => acceptMut.mutate(match.id)}
+            onCancel={() => cancelMut.mutate(match.id)}
             onOpen={() => onOpenMatch(match.id)}
             onSettle={() => settleMut.mutate(match.id)}
           />
@@ -2810,6 +2865,7 @@ function AmateurHub({
               match={match}
               pending={false}
               onAccept={() => {}}
+              onCancel={() => {}}
               onOpen={() => onOpenMatch(match.id)}
               onSettle={() => {}}
             />
@@ -2824,17 +2880,20 @@ function DuelListCard({
   match,
   pending,
   onAccept,
+  onCancel,
   onOpen,
   onSettle,
 }: {
   match: AmateurDuelMatch;
   pending: boolean;
   onAccept: () => void;
+  onCancel: () => void;
   onOpen: () => void;
   onSettle: () => void;
 }): JSX.Element {
-  const invited = match.status === 'pending' && match.me.state === 'invited';
-  const playable = match.status === 'scheduled' || match.status === 'active';
+  const incomingInvite = match.status === 'invited' && match.me.state === 'invited';
+  const outgoingInvite = match.status === 'invited' && match.me.state !== 'invited';
+  const playable = match.status === 'ready_check' || match.status === 'active';
   return (
     <div
       className="glass"
@@ -2856,15 +2915,19 @@ function DuelListCard({
         <TotalCell label="БАНК" value={String(match.bank_amount)} />
         <TotalCell label="ДО" value={formatShortDateTime(match.ends_at)} />
       </div>
-      {invited ? (
+      {incomingInvite ? (
         <button type="button" className="btn btn--cta" disabled={pending} onClick={onAccept}>
           Принять вызов
         </button>
+      ) : outgoingInvite ? (
+        <button type="button" className="btn btn--ghost" disabled={pending} onClick={onCancel}>
+          Отменить вызов
+        </button>
       ) : playable ? (
         <button type="button" className="btn btn--cta" disabled={pending} onClick={onOpen}>
-          Открыть дуэль
+          {match.status === 'ready_check' ? 'Открыть комнату' : 'Открыть дуэль'}
         </button>
-      ) : match.status !== 'settled' && match.status !== 'expired' ? (
+      ) : match.status !== 'settled' && match.status !== 'expired' && match.status !== 'cancelled' ? (
         <button type="button" className="btn btn--ghost" disabled={pending} onClick={onSettle}>
           Обновить итог
         </button>
@@ -2890,6 +2953,7 @@ function AmateurDuelPlayView({
   const inFlight = useAmateurDuelStore((s) => s.inFlight);
   const load = useAmateurDuelStore((s) => s.load);
   const refresh = useAmateurDuelStore((s) => s.refresh);
+  const ready = useAmateurDuelStore((s) => s.ready);
   const startPeriod = useAmateurDuelStore((s) => s.startPeriod);
   const optimisticAddShot = useAmateurDuelStore((s) => s.optimisticAddShot);
   const submitShot = useAmateurDuelStore((s) => s.submitShot);
@@ -2907,14 +2971,17 @@ function AmateurDuelPlayView({
 
   useEffect(() => {
     if (!match || match.id !== matchId) return;
-    const startsAtMs = new Date(match.starts_at).getTime();
     const endsAtMs = new Date(match.ends_at).getTime();
     const breakEndsAtMs = match.break_ends_at ? new Date(match.break_ends_at).getTime() : 0;
-    if (match.status === 'scheduled' && now >= startsAtMs) void refresh();
     if (match.me.state === 'break_active' && breakEndsAtMs > 0 && now >= breakEndsAtMs) {
       void refresh();
     }
-    if (match.status !== 'settled' && now >= endsAtMs) {
+    if (
+      match.status !== 'settled' &&
+      match.status !== 'cancelled' &&
+      match.status !== 'expired' &&
+      now >= endsAtMs
+    ) {
       void settleAmateurDuel(match.id).then(({ match: next }) => applyState(next));
     }
   }, [applyState, match, matchId, now, refresh]);
@@ -2944,6 +3011,44 @@ function AmateurDuelPlayView({
       ? match.me.current_period
       : Math.min(match.rules.totalPeriods, match.me.current_period + 1);
 
+  if (match.status === 'ready_check') {
+    const readyEndsAt = match.ready_expires_at ? new Date(match.ready_expires_at).getTime() : 0;
+    const readyText = readyEndsAt > now ? formatMs(readyEndsAt - now) : '00:00';
+    return (
+      <ModeShell title="Комната дуэли" onBack={onBack}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+          <TotalCell label="ФОРМАТ" value={`${match.rules.totalPeriods}П`} />
+          <TotalCell label="ТИП" value={match.rules.duelVariant === 'time_attack' ? 'Время' : 'Классика'} />
+          <TotalCell label="ГОТОВ" value={readyText} />
+        </div>
+        <div className="glass" style={{ borderRadius: 18, padding: 14 }}>
+          <div style={{ fontSize: 18, fontWeight: 900, color: 'var(--ink)', marginBottom: 6 }}>
+            {match.rules.title}
+          </div>
+          <div style={{ color: 'var(--muted)', fontSize: 13, lineHeight: 1.45 }}>
+            Против {match.opponent.display_name}. Ставка {match.stake_amount}, банк{' '}
+            {match.bank_amount}. Инвентарь выбирается здесь; в MVP можно выйти без предметов.
+          </div>
+        </div>
+        <DuelLoadoutSummary match={match} />
+        {error && (
+          <div style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 700 }}>{error}</div>
+        )}
+        <button
+          type="button"
+          className="btn btn--cta"
+          disabled={inFlight || match.me.state === 'ready'}
+          onClick={() => void ready({})}
+        >
+          {match.me.state === 'ready' ? 'Вы готовы' : inFlight ? 'Фиксируем...' : 'Готов'}
+        </button>
+        <button type="button" className="btn btn--ghost" onClick={refresh}>
+          Обновить комнату
+        </button>
+      </ModeShell>
+    );
+  }
+
   if (match.me.state === 'period_active') {
     return (
       <PlayView<AmateurDuelMatchState>
@@ -2969,6 +3074,7 @@ function AmateurDuelPlayView({
         optimisticAddShot={optimisticAddShot}
         submitShot={submitShot}
         applyState={applyState}
+        hudAddon={<DuelInventoryMiniHud match={match} />}
       />
     );
   }
@@ -2976,14 +3082,14 @@ function AmateurDuelPlayView({
   const statusText =
     match.status === 'settled'
       ? duelOutcomeText(match)
-      : match.status === 'scheduled'
-        ? `Старт через ${formatHms(Math.max(0, startsAt - now))}`
-        : match.me.state === 'break_active'
+      : match.me.state === 'break_active'
           ? `Перерыв ${formatMs(Math.max(0, breakEndsAt - now))}`
-          : match.status === 'expired'
+          : match.status === 'expired' || match.status === 'cancelled'
             ? match.settled_reason === 'declined'
               ? 'Вызов отклонён'
-              : 'Вызов истёк'
+              : match.status === 'cancelled'
+                ? 'Дуэль отменена'
+                : 'Вызов истёк'
             : 'Готово к периоду';
 
   return (
@@ -3003,6 +3109,7 @@ function AmateurDuelPlayView({
       {error && (
         <div style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 700 }}>{error}</div>
       )}
+      <DuelLoadoutSummary match={match} />
       {canStart && (
         <StartPeriodModal
           nextPeriod={nextPeriod}
@@ -3023,6 +3130,122 @@ function AmateurDuelPlayView({
         {canStart ? 'Начать период' : 'Период недоступен'}
       </button>
     </ModeShell>
+  );
+}
+
+function DuelLoadoutSummary({ match }: { match: AmateurDuelMatch }): JSX.Element {
+  const items = match.me.loadout.items;
+  return (
+    <div
+      className="glass"
+      style={{ borderRadius: 18, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+        <div style={{ fontWeight: 900, color: 'var(--ink)', fontSize: 14 }}>Ваш инвентарь</div>
+        <div style={{ color: 'var(--muted)', fontSize: 12, fontWeight: 900 }}>
+          {match.me.loadout.powerScore}/{match.me.loadout.powerCap}
+        </div>
+      </div>
+      {items.length === 0 ? (
+        <div style={{ color: 'var(--muted)', fontSize: 13, lineHeight: 1.45 }}>
+          Без предметов. Daily и тренировка инвентарь не используют.
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
+          {items.map((item) => (
+            <div
+              key={item.id}
+              style={{
+                minWidth: 0,
+                borderRadius: 14,
+                padding: '10px 8px',
+                background: 'rgba(255,255,255,0.5)',
+                border: '1px solid rgba(255,255,255,0.7)',
+              }}
+            >
+              <div style={{ fontSize: 12, lineHeight: 1, fontWeight: 900, color: 'var(--ink)' }}>
+                {item.kind === 'stick' ? 'ST' : item.kind === 'skates' ? 'SK' : 'NT'}
+              </div>
+              <div
+                style={{
+                  marginTop: 6,
+                  fontSize: 11,
+                  fontWeight: 900,
+                  color: 'var(--ink)',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {item.title}
+              </div>
+              <div style={{ color: 'var(--muted)', fontSize: 10, fontWeight: 800 }}>
+                {item.chargesReserved} зарядов
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {match.me.inventory_report.length > 0 && (
+        <div style={{ color: 'var(--muted)', fontSize: 12, lineHeight: 1.45 }}>
+          Последний отчёт: период {match.me.inventory_report.at(-1)?.periodNumber}, списано{' '}
+          {match.me.inventory_report
+            .at(-1)
+            ?.consumed.reduce((sum, item) => sum + item.charges, 0) ?? 0}{' '}
+          зарядов.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DuelInventoryMiniHud({ match }: { match: AmateurDuelMatch }): JSX.Element | null {
+  const items = match.me.loadout.items;
+  if (items.length === 0) return null;
+  return (
+    <div
+      aria-label="Инвентарь дуэли"
+      style={{
+        marginTop: 8,
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+        gap: 6,
+      }}
+    >
+      {(['skates', 'stick', 'nutrition'] as const).map((kind) => {
+        const item = items.find((cur) => cur.kind === kind);
+        return (
+          <div
+            key={kind}
+            style={{
+              minHeight: 34,
+              borderRadius: 12,
+              padding: '6px 7px',
+              background: item ? 'rgba(255,255,255,0.78)' : 'rgba(255,255,255,0.34)',
+              border: '1px solid rgba(255,255,255,0.74)',
+              color: item ? 'var(--ink)' : 'var(--muted)',
+              minWidth: 0,
+            }}
+          >
+            <div style={{ fontSize: 9, fontWeight: 900, letterSpacing: '0.08em' }}>
+              {kind === 'skates' ? 'КОНЬКИ' : kind === 'stick' ? 'КЛЮШКА' : 'ПИТАНИЕ'}
+            </div>
+            <div
+              style={{
+                marginTop: 2,
+                fontSize: 11,
+                fontWeight: 900,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {item ? `${item.chargesReserved} зар.` : 'нет'}
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -3216,6 +3439,7 @@ interface PlayViewProps<TState> {
   hitboxesVisible?: boolean | undefined;
   hitboxesOptions?: HitboxesOptions | undefined;
   shotResolver?: PlayShotResolver | undefined;
+  hudAddon?: ReactNode;
 }
 
 interface PlaySessionSnapshot {
@@ -4023,6 +4247,7 @@ export function PlayView<TState>({
   hitboxesVisible = false,
   hitboxesOptions,
   shotResolver,
+  hudAddon,
 }: PlayViewProps<TState>): JSX.Element {
   const session: PlaySessionSnapshot = useMemo(
     () => ({
@@ -4537,6 +4762,7 @@ export function PlayView<TState>({
           shots={shots}
           shotsTotal={shotsTotal}
         />
+        {hudAddon}
       </div>
 
       <div

@@ -10,6 +10,7 @@ export type EventType =
   | 'amateur_duel_challenge_created'
   | 'amateur_duel_challenge_accepted'
   | 'amateur_duel_challenge_declined'
+  | 'amateur_duel_challenge_cancelled'
   | 'amateur_duel_inventory_reserved'
   | 'amateur_duel_settled'
   | 'admin_user_updated'

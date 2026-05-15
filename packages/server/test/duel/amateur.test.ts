@@ -81,7 +81,8 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       `truncate users, auth_providers, user_wallet, user_equipment, user_sticks,
               user_currency_account, user_inventory_item,
               amateur_duel_template, amateur_duel_match, amateur_duel_participant,
-              amateur_duel_period_log, amateur_duel_rating, currency_ledger,
+              amateur_duel_period_log, amateur_duel_rating, amateur_duel_matchmaking_ticket,
+              currency_ledger,
               training_session, day_pool, period_log, shot_session, event_log,
               chats, chat_members, messages, message_reactions, push_delivery_log
               restart identity cascade`,
@@ -115,7 +116,16 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
   }
 
   async function createTemplate(
-    opts: { startsAt?: string; endsAt?: string; stake?: number; fee?: number } = {},
+    opts: {
+      startsAt?: string;
+      endsAt?: string;
+      stake?: number;
+      fee?: number;
+      ranked?: boolean;
+      variant?: 'classic' | 'time_attack';
+      totalPeriods?: number;
+      periodDurationMs?: number;
+    } = {},
   ) {
     const startsAt = opts.startsAt ?? '2026-01-01T00:00:00.000Z';
     const endsAt = opts.endsAt ?? '2100-01-01T00:00:00.000Z';
@@ -123,10 +133,20 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       `insert into amateur_duel_template
          (title, description, starts_at, ends_at, total_periods, shots_per_period,
           period_duration_ms, break_duration_ms, goalie_id, period_speed_presets,
-          stake_amount, entry_fee_amount)
-       values ('Test duel', '', $1, $2, 1, 1, 1200000, 0, 'rookie', $3, $4, $5)
+          stake_amount, entry_fee_amount, ranked_enabled, duel_variant)
+       values ('Test duel', '', $1, $2, $6, 1, $7, 0, 'rookie', $3, $4, $5, $8, $9)
        returning id`,
-      [startsAt, endsAt, JSON.stringify(SPEEDS), opts.stake ?? 0, opts.fee ?? 0],
+      [
+        startsAt,
+        endsAt,
+        JSON.stringify(SPEEDS),
+        opts.stake ?? 0,
+        opts.fee ?? 0,
+        opts.totalPeriods ?? 1,
+        opts.periodDurationMs ?? 1200000,
+        opts.ranked ?? true,
+        opts.variant ?? 'classic',
+      ],
     );
     return rows[0]!.id;
   }
@@ -145,13 +165,13 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     const templateId = await createTemplate();
     const first = await challenge(templateId);
     expect(first.statusCode).toBe(200);
-    expect(first.json().match.status).toBe('pending');
+    expect(first.json().match.status).toBe('invited');
 
     const duplicate = await challenge(templateId);
     expect(duplicate.statusCode).toBe(409);
   });
 
-  it('accepts before window start and reserves stake plus fee for both players', async () => {
+  it('accepts into a ready room without reserving stake or fee yet', async () => {
     const templateId = await createTemplate({
       startsAt: '2099-01-01T00:00:00.000Z',
       endsAt: '2100-01-01T00:00:00.000Z',
@@ -167,7 +187,51 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       headers: auth(tokenB),
     });
     expect(accepted.statusCode).toBe(200);
-    expect(accepted.json().match.status).toBe('scheduled');
+    expect(accepted.json().match.status).toBe('ready_check');
+    expect(accepted.json().match.ready_expires_at).toBeTruthy();
+
+    const accounts = await pool.query<{ balance: number; reserved_balance: number }>(
+      `select balance, reserved_balance
+         from user_currency_account
+        where user_id = any($1::uuid[])
+        order by user_id`,
+      [[userA, userB]],
+    );
+    expect(accounts.rows).toEqual([
+      { balance: 100, reserved_balance: 0 },
+      { balance: 100, reserved_balance: 0 },
+    ]);
+  });
+
+  it('starts an active duel only after both players are ready and then reserves stake plus fee', async () => {
+    const templateId = await createTemplate({ stake: 10, fee: 2 });
+    const created = await challenge(templateId);
+    const matchId = created.json().match.id;
+    await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/accept`,
+      headers: auth(tokenB),
+    });
+
+    const firstReady = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/ready`,
+      headers: auth(tokenA),
+      payload: { loadout: {} },
+    });
+    expect(firstReady.statusCode).toBe(200);
+    expect(firstReady.json().match.status).toBe('ready_check');
+    expect(firstReady.json().match.me.state).toBe('ready');
+
+    const secondReady = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/ready`,
+      headers: auth(tokenB),
+      payload: { loadout: {} },
+    });
+    expect(secondReady.statusCode).toBe(200);
+    expect(secondReady.json().match.status).toBe('active');
+    expect(secondReady.json().match.accepted_at).toBeTruthy();
 
     const accounts = await pool.query<{ balance: number; reserved_balance: number }>(
       `select balance, reserved_balance
@@ -182,6 +246,21 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     ]);
   });
 
+  it('lets a challenger cancel an unanswered challenge without cooldown or reserves', async () => {
+    const templateId = await createTemplate({ stake: 10, fee: 2 });
+    const created = await challenge(templateId);
+    const matchId = created.json().match.id;
+
+    const cancelled = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/cancel`,
+      headers: auth(tokenA),
+    });
+    expect(cancelled.statusCode).toBe(200);
+    expect(cancelled.json().match.status).toBe('cancelled');
+    expect(cancelled.json().match.settled_reason).toBe('cancelled_by_challenger');
+  });
+
   it('declines a pending challenge without reserving stake', async () => {
     const templateId = await createTemplate({ stake: 10, fee: 2 });
     const created = await challenge(templateId);
@@ -193,7 +272,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       headers: auth(tokenB),
     });
     expect(declined.statusCode).toBe(200);
-    expect(declined.json().match.status).toBe('expired');
+    expect(declined.json().match.status).toBe('cancelled');
     expect(declined.json().match.settled_reason).toBe('declined');
 
     const accounts = await pool.query<{ balance: number; reserved_balance: number }>(
@@ -209,6 +288,28 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     ]);
   });
 
+  it('pairs matchmaking players into a ready room', async () => {
+    const templateId = await createTemplate();
+    const first = await app.inject({
+      method: 'POST',
+      url: '/duel/amateur/matchmaking/join',
+      headers: auth(tokenA),
+      payload: { template_id: templateId },
+    });
+    expect(first.statusCode).toBe(200);
+    expect(first.json().ticket.status).toBe('queued');
+
+    const second = await app.inject({
+      method: 'POST',
+      url: '/duel/amateur/matchmaking/join',
+      headers: auth(tokenB),
+      payload: { template_id: templateId },
+    });
+    expect(second.statusCode).toBe(200);
+    expect(second.json().match.status).toBe('ready_check');
+    expect(second.json().match.opponent.user_id).toBe(userA);
+  });
+
   it('settles no-show as a win for the player who completed the duel', async () => {
     const templateId = await createTemplate();
     const created = await challenge(templateId);
@@ -220,6 +321,18 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       headers: auth(tokenB),
     });
     expect(accepted.statusCode).toBe(200);
+    await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/ready`,
+      headers: auth(tokenA),
+      payload: { loadout: {} },
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/ready`,
+      headers: auth(tokenB),
+      payload: { loadout: {} },
+    });
 
     const started = await app.inject({
       method: 'POST',
@@ -241,7 +354,10 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(shot.statusCode).toBe(200);
 
     await pool.query(
-      `update amateur_duel_match set ends_at = now() - interval '1 second' where id = $1`,
+      `update amateur_duel_match
+          set starts_at = now() - interval '2 seconds',
+              ends_at = now() - interval '1 second'
+        where id = $1`,
       [matchId],
     );
     const settled = await app.inject({
