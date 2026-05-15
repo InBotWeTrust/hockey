@@ -11,6 +11,7 @@ const config: ObjectStorageConfig = {
   endpoint: 'https://s3.cloud.ru',
   region: 'ru-central-1',
   bucket: 'hockey-bucket',
+  tenantId: 'tenant',
   accessKeyId: 'access',
   secretAccessKey: 'secret',
   publicBaseUrl: 'https://cdn.example/hockey',
@@ -70,7 +71,7 @@ describe('object storage client', () => {
       'x-amz-date': '20260515T102030Z',
     });
     expect(String((init?.headers as Record<string, string>).Authorization)).toContain(
-      'AWS4-HMAC-SHA256 Credential=access/20260515/ru-central-1/s3/aws4_request',
+      'AWS4-HMAC-SHA256 Credential=tenant:access/20260515/ru-central-1/s3/aws4_request',
     );
   });
 

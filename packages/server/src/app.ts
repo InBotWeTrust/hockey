@@ -51,12 +51,14 @@ export async function buildApp(options: BuildAppOptions = {}) {
     config.OBJECT_STORAGE_ENDPOINT !== undefined &&
     config.OBJECT_STORAGE_REGION !== undefined &&
     config.OBJECT_STORAGE_BUCKET !== undefined &&
+    config.OBJECT_STORAGE_TENANT_ID !== undefined &&
     config.OBJECT_STORAGE_ACCESS_KEY_ID !== undefined &&
     config.OBJECT_STORAGE_SECRET_ACCESS_KEY !== undefined
       ? createObjectStorageClient({
           endpoint: config.OBJECT_STORAGE_ENDPOINT,
           region: config.OBJECT_STORAGE_REGION,
           bucket: config.OBJECT_STORAGE_BUCKET,
+          tenantId: config.OBJECT_STORAGE_TENANT_ID,
           accessKeyId: config.OBJECT_STORAGE_ACCESS_KEY_ID,
           secretAccessKey: config.OBJECT_STORAGE_SECRET_ACCESS_KEY,
           ...(config.OBJECT_STORAGE_PUBLIC_BASE_URL !== undefined

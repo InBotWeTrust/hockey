@@ -4,6 +4,7 @@ export interface ObjectStorageConfig {
   endpoint: string;
   region: string;
   bucket: string;
+  tenantId?: string;
   accessKeyId: string;
   secretAccessKey: string;
   publicBaseUrl?: string;
@@ -131,6 +132,10 @@ function authorizationHeader({
   amzDate: string;
 } {
   const { dateStamp, amzDate } = amzDateParts(date);
+  const credentialAccessKeyId =
+    config.tenantId !== undefined && !config.accessKeyId.includes(':')
+      ? `${config.tenantId}:${config.accessKeyId}`
+      : config.accessKeyId;
   const headers = {
     'content-type': contentType,
     host: url.host,
@@ -159,7 +164,7 @@ function authorizationHeader({
 
   return {
     amzDate,
-    authorization: `${algorithm} Credential=${config.accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaderNames}, Signature=${signature}`,
+    authorization: `${algorithm} Credential=${credentialAccessKeyId}/${credentialScope}, SignedHeaders=${signedHeaderNames}, Signature=${signature}`,
   };
 }
 

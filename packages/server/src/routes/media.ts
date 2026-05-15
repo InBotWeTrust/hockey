@@ -141,7 +141,13 @@ async function uploadMedia({
   originalName: string;
 }) {
   const key = createMediaObjectKey({ prefix, contentType });
-  const uploaded = await objectStorage.uploadObject({ key, body, contentType });
+  let uploaded;
+  try {
+    uploaded = await objectStorage.uploadObject({ key, body, contentType });
+  } catch (err) {
+    app.log.error({ err, key, purpose, userId }, 'object storage media upload failed');
+    throw new AppError('storage_upload_failed', 'Не удалось загрузить файл в хранилище', 502);
+  }
   const row = await saveMediaObject({
     app,
     ownerUserId: userId,

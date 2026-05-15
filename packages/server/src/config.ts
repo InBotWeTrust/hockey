@@ -16,6 +16,7 @@ const objectStorageKeys = [
   'OBJECT_STORAGE_ENDPOINT',
   'OBJECT_STORAGE_REGION',
   'OBJECT_STORAGE_BUCKET',
+  'OBJECT_STORAGE_TENANT_ID',
   'OBJECT_STORAGE_ACCESS_KEY_ID',
   'OBJECT_STORAGE_SECRET_ACCESS_KEY',
 ] as const;
@@ -45,6 +46,7 @@ const schema = z
     OBJECT_STORAGE_ENDPOINT: optionalNonEmptyString,
     OBJECT_STORAGE_REGION: optionalNonEmptyString,
     OBJECT_STORAGE_BUCKET: optionalNonEmptyString,
+    OBJECT_STORAGE_TENANT_ID: optionalNonEmptyString,
     OBJECT_STORAGE_ACCESS_KEY_ID: optionalNonEmptyString,
     OBJECT_STORAGE_SECRET_ACCESS_KEY: optionalNonEmptyString,
     OBJECT_STORAGE_PUBLIC_BASE_URL: optionalNonEmptyString,
