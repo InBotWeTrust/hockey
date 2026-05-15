@@ -2700,14 +2700,9 @@ function AmateurHub({
   onOpenDuels: () => void;
   onOpenTournaments: () => void;
 }): JSX.Element {
-  const currentUserId = useAuthStore((s) => s.user?.id ?? null);
   const matches = useQuery({
     queryKey: ['amateur-duel', 'matches'],
     queryFn: fetchAmateurMatches,
-  });
-  const rating = useQuery({
-    queryKey: ['amateur-duel', 'rating'],
-    queryFn: fetchAmateurRating,
   });
 
   const allMatches = matches.data?.matches ?? [];
@@ -2715,16 +2710,9 @@ function AmateurHub({
     (match) =>
       match.status === 'invited' || match.status === 'ready_check' || match.status === 'active',
   );
-  const myRating = rating.data?.rating.find((row) => row.user_id === currentUserId) ?? null;
 
   return (
     <ModeShell title="Любители" onBack={onBack}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-        <TotalCell label="ДУЭЛИ" value={String(allMatches.length)} />
-        <TotalCell label="ТЕКУЩИЕ" value={String(activeMatches.length)} />
-        <TotalCell label="ОЧКИ" value={String(myRating?.points ?? 0)} />
-      </div>
-
       <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div className="section-label" style={{ margin: 0 }}>
           Разделы
