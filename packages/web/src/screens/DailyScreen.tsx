@@ -103,6 +103,7 @@ import {
   fetchAmateurRating,
   fetchAmateurTemplates,
   joinAmateurMatchmaking,
+  leaveAmateurMatchmaking,
   searchAmateurOpponents,
   settleAmateurDuel,
   type AmateurDuelMatch,
@@ -2810,6 +2811,7 @@ function AmateurDuelsPage({
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [opponentQuery, setOpponentQuery] = useState('');
   const [selectedOpponent, setSelectedOpponent] = useState<AmateurOpponent | null>(null);
+  const [matchmakingNow, setMatchmakingNow] = useState(Date.now());
 
   const templates = useQuery({
     queryKey: ['amateur-duel', 'templates'],
@@ -2850,6 +2852,13 @@ function AmateurDuelsPage({
       if (res.match) onOpenMatch(res.match.id);
     },
   });
+  const leaveMatchmakingMut = useMutation({
+    mutationFn: (templateId: string) => leaveAmateurMatchmaking(templateId),
+    onSuccess: () => {
+      matchmakingMut.reset();
+      void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+    },
+  });
   const challengeMut = useMutation({
     mutationFn: (body: { template_id: string; opponent_user_id: string }) =>
       challengeAmateurDuel(body),
@@ -2873,10 +2882,23 @@ function AmateurDuelsPage({
     : (templateItems[0] ?? null);
   const opponentOptions = opponentQuery.trim().length > 0 ? (opponents.data?.users ?? []) : [];
   const myRating = rating.data?.rating.find((row) => row.user_id === currentUserId) ?? null;
+  const matchmakingTicket = matchmakingMut.data?.ticket ?? null;
+  const matchmakingRemaining = matchmakingTicket
+    ? new Date(matchmakingTicket.expires_at).getTime() - matchmakingNow
+    : 0;
+  const isMatchmakingActive = matchmakingTicket !== null && matchmakingRemaining > 0;
+  const isMatchmakingExpired =
+    matchmakingTicket !== null && matchmakingRemaining <= 0 && !matchmakingMut.isPending;
 
   useEffect(() => {
     if (!selectedTemplateId && templateItems[0]) setSelectedTemplateId(templateItems[0].id);
   }, [selectedTemplateId, templateItems]);
+
+  useEffect(() => {
+    if (!matchmakingTicket) return undefined;
+    const id = window.setInterval(() => setMatchmakingNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [matchmakingTicket]);
 
   const canChallenge =
     selectedTemplate !== null && selectedOpponent !== null && !challengeMut.isPending;
@@ -2925,17 +2947,60 @@ function AmateurDuelsPage({
         <button
           type="button"
           className="btn btn--cta"
-          disabled={!selectedTemplate || matchmakingMut.isPending}
+          disabled={!selectedTemplate || matchmakingMut.isPending || isMatchmakingActive}
           onClick={() => {
             if (!selectedTemplate) return;
+            setMatchmakingNow(Date.now());
             matchmakingMut.mutate(selectedTemplate.id);
           }}
         >
-          {matchmakingMut.isPending ? 'Ищем соперника...' : 'Найти соперника'}
+          {matchmakingMut.isPending
+            ? 'Запускаем поиск...'
+            : isMatchmakingActive
+              ? 'Поиск запущен'
+              : isMatchmakingExpired
+                ? 'Искать снова'
+                : 'Начать поиск'}
         </button>
-        {matchmakingMut.data?.ticket && (
-          <div style={{ color: 'var(--muted)', fontSize: 13, fontWeight: 700 }}>
-            Поиск открыт до {formatShortDateTime(matchmakingMut.data.ticket.expires_at)}
+        {matchmakingTicket && (
+          <div
+            className="glass"
+            style={{
+              borderRadius: 18,
+              padding: 12,
+              display: 'grid',
+              gridTemplateColumns: 'minmax(0, 1fr) auto',
+              alignItems: 'center',
+              gap: 10,
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <div style={{ color: 'var(--ink)', fontSize: 15, fontWeight: 900 }}>
+                {isMatchmakingExpired
+                  ? 'Соперник не найден'
+                  : `Ищем соперника... ${formatMs(matchmakingRemaining)}`}
+              </div>
+              <div style={{ color: 'var(--muted)', fontSize: 12, fontWeight: 700 }}>
+                {isMatchmakingExpired
+                  ? 'Можно запустить поиск ещё раз.'
+                  : 'Подберём игрока с таким же форматом дуэли.'}
+              </div>
+            </div>
+            {isMatchmakingActive && (
+              <button
+                type="button"
+                className="btn btn--ghost"
+                disabled={leaveMatchmakingMut.isPending}
+                onClick={() => {
+                  const templateId = matchmakingMut.variables ?? selectedTemplate?.id;
+                  if (!templateId) return;
+                  leaveMatchmakingMut.mutate(templateId);
+                }}
+                style={{ minHeight: 38, padding: '0 14px', fontSize: 12 }}
+              >
+                {leaveMatchmakingMut.isPending ? 'Отмена...' : 'Отменить'}
+              </button>
+            )}
           </div>
         )}
         <div className="section-label" style={{ margin: '4px 0 0' }}>
