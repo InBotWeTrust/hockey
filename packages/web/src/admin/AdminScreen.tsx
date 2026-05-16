@@ -4,6 +4,7 @@ import {
   type ReactNode,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
@@ -44,6 +45,7 @@ import { useAuthStore } from '../auth/authStore.js';
 import { ChannelPostEditorSheet } from '../chat/components/ChannelPostEditorSheet.js';
 import { RichText } from '../chat/richText.js';
 import { GlassSelect, type GlassSelectOption } from '../components/GlassSelect.js';
+import { convertChatAvatarToWebp } from '../lib/chatAvatarImage.js';
 import { useDebouncedValue } from '../lib/useDebouncedValue.js';
 import { AchievementDetailsSheet, AchievementTile } from '../screens/profileSections.js';
 import {
@@ -65,6 +67,7 @@ import {
   fetchAdminUser,
   fetchAdminUsers,
   patchAdminChannelPost,
+  resetAdminChatAvatar,
   patchAdminFeedback,
   patchAdminDuelTemplate,
   patchAdminInventoryGameplay,
@@ -72,6 +75,7 @@ import {
   patchAdminGameSetting,
   patchAdminNotification,
   patchAdminUser,
+  uploadAdminChatAvatar,
   type AdminDashboard,
   type AdminDashboardPeriod,
   type AdminDashboardSeriesPoint,
@@ -3288,6 +3292,91 @@ function NotificationEditor({
   );
 }
 
+function AdminChatAvatarControl({
+  title,
+  name,
+  avatarUrl,
+  busy,
+  onUpload,
+  onReset,
+}: {
+  title: string;
+  name: string;
+  avatarUrl: string | null;
+  busy: boolean;
+  onUpload: () => void;
+  onReset: () => void;
+}): JSX.Element {
+  const initial = name.charAt(0).toUpperCase() || '?';
+  return (
+    <div
+      style={{
+        borderRadius: 16,
+        padding: 10,
+        background: 'rgba(255,255,255,0.44)',
+        border: '1px solid rgba(255,255,255,0.7)',
+        display: 'grid',
+        gap: 8,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+        {avatarUrl ? (
+          <img
+            src={avatarUrl}
+            alt=""
+            style={{ width: 38, height: 38, borderRadius: 999, objectFit: 'cover', flexShrink: 0 }}
+          />
+        ) : (
+          <div
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 999,
+              background: 'var(--dark)',
+              color: '#fff',
+              display: 'grid',
+              placeItems: 'center',
+              fontWeight: 950,
+              flexShrink: 0,
+            }}
+          >
+            {initial}
+          </div>
+        )}
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 12, fontWeight: 950, color: 'var(--ink)' }}>{title}</div>
+          <div
+            style={{
+              marginTop: 2,
+              fontSize: 11,
+              fontWeight: 800,
+              color: 'var(--muted)',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {name}
+          </div>
+        </div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+        <button type="button" className="btn btn--cta" disabled={busy} onClick={onUpload}>
+          Заменить
+        </button>
+        <button
+          type="button"
+          className="btn btn--ghost"
+          disabled={busy || !avatarUrl}
+          onClick={onReset}
+        >
+          Сбросить
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ChannelPanel({
   loading,
   data,
@@ -3304,6 +3393,9 @@ function ChannelPanel({
   const [channelView, setChannelView] = useState<'root' | 'engagement' | 'posts'>('root');
   const [editingPost, setEditingPost] = useState<AdminChannelPost | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<AdminChannelPost | null>(null);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+  const [avatarTarget, setAvatarTarget] = useState<'channel' | 'mainChat' | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const editMutation = useMutation({
     mutationFn: (input: { postId: string; content: string }) =>
       patchAdminChannelPost(input.postId, input.content),
@@ -3318,6 +3410,29 @@ function ChannelPanel({
       setDeleteTarget(null);
       setEditingPost(null);
       onChanged();
+    },
+  });
+  const uploadAvatarMutation = useMutation({
+    mutationFn: async (input: { chatId: string; file: File }) => {
+      const webp = await convertChatAvatarToWebp(input.file);
+      return uploadAdminChatAvatar(input.chatId, webp);
+    },
+    onSuccess: () => {
+      setAvatarError(null);
+      onChanged();
+    },
+    onError: (err) => {
+      setAvatarError(err instanceof Error ? err.message : 'Не удалось загрузить аватар.');
+    },
+  });
+  const resetAvatarMutation = useMutation({
+    mutationFn: (chatId: string) => resetAdminChatAvatar(chatId),
+    onSuccess: () => {
+      setAvatarError(null);
+      onChanged();
+    },
+    onError: (err) => {
+      setAvatarError(err instanceof Error ? err.message : 'Не удалось сбросить аватар.');
     },
   });
   const summary = data?.summary;
@@ -3368,6 +3483,20 @@ function ChannelPanel({
 
   return (
     <>
+      <input
+        ref={avatarInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        hidden
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0] ?? null;
+          event.currentTarget.value = '';
+          if (!file || avatarTarget === null) return;
+          const chatId = avatarTarget === 'channel' ? data?.channel?.id : data?.mainChat?.id;
+          if (!chatId) return;
+          uploadAvatarMutation.mutate({ chatId, file });
+        }}
+      />
       <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
         Новостной канал
       </div>
@@ -3393,6 +3522,47 @@ function ChannelPanel({
             />
           </AdminField>
         </div>
+        {(data?.channel || data?.mainChat) && (
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+              gap: 10,
+            }}
+          >
+            {data?.channel && (
+              <AdminChatAvatarControl
+                title="Аватар канала"
+                name={data.channel.name ?? 'Новости игры'}
+                avatarUrl={data.channel.avatarUrl ?? null}
+                busy={uploadAvatarMutation.isPending || resetAvatarMutation.isPending}
+                onUpload={() => {
+                  setAvatarTarget('channel');
+                  avatarInputRef.current?.click();
+                }}
+                onReset={() => resetAvatarMutation.mutate(data.channel!.id)}
+              />
+            )}
+            {data?.mainChat && (
+              <AdminChatAvatarControl
+                title="Аватар чата"
+                name={data.mainChat.name ?? 'Общий чат'}
+                avatarUrl={data.mainChat.avatarUrl ?? null}
+                busy={uploadAvatarMutation.isPending || resetAvatarMutation.isPending}
+                onUpload={() => {
+                  setAvatarTarget('mainChat');
+                  avatarInputRef.current?.click();
+                }}
+                onReset={() => resetAvatarMutation.mutate(data.mainChat!.id)}
+              />
+            )}
+          </div>
+        )}
+        {avatarError && (
+          <div style={{ color: 'var(--red-deep)', fontSize: 11, fontWeight: 800 }}>
+            {avatarError}
+          </div>
+        )}
       </section>
 
       {channelView === 'root' && (
@@ -4900,9 +5070,7 @@ function DuelTemplateCard({
     <article className="glass" style={{ borderRadius: 18, padding: 12, display: 'grid', gap: 10 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 8 }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ color: 'var(--ink)', fontSize: 15, fontWeight: 950 }}>
-            {template.title}
-          </div>
+          <div style={{ color: 'var(--ink)', fontSize: 15, fontWeight: 950 }}>{template.title}</div>
           <div style={{ marginTop: 4, color: 'var(--muted)', fontSize: 11, fontWeight: 750 }}>
             {template.description || 'Без описания'}
           </div>
@@ -4972,7 +5140,9 @@ function DuelTemplateEditor({
   const [isActive, setIsActive] = useState(template?.isActive ?? true);
   const [duelKind] = useState(template?.duelKind ?? 'classic');
   const [duelVariant] = useState(template?.duelVariant ?? 'classic');
-  const [startsAt, setStartsAt] = useState(dateTimeInputValue(template?.startsAt ?? defaultStartsAt));
+  const [startsAt, setStartsAt] = useState(
+    dateTimeInputValue(template?.startsAt ?? defaultStartsAt),
+  );
   const [endsAt, setEndsAt] = useState(dateTimeInputValue(template?.endsAt ?? defaultEndsAt));
   const [totalPeriods, setTotalPeriods] = useState(fieldNumber(template?.totalPeriods ?? 3));
   const [shotsPerPeriod, setShotsPerPeriod] = useState(fieldNumber(template?.shotsPerPeriod ?? 30));

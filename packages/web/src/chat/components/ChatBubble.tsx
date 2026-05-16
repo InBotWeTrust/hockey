@@ -1,6 +1,6 @@
-import { memo, type ReactNode } from 'react';
+import { memo, useState, type ReactNode } from 'react';
 import { Check, CheckCheck, FileText } from 'lucide-react';
-import type { ChatMessageDTO } from '../api.js';
+import type { ChatAttachmentDTO, ChatMessageDTO } from '../api.js';
 import { ReplyPreview } from './ReplyPreview.js';
 import { ReactionBar } from './ReactionBar.js';
 import { useLongPress } from '../useLongPress.js';
@@ -29,6 +29,7 @@ interface ChatBubbleProps {
     displayName: string;
     avatarUrl: string | null;
   }) => void;
+  onOpenImage?: (attachment: ChatAttachmentDTO) => void;
 }
 
 function formatTime(iso: string): string {
@@ -42,6 +43,68 @@ function formatAttachmentSize(size: number | undefined): string | null {
   return `${size} Б`;
 }
 
+function ImageAttachment({
+  attachment,
+  onOpenImage,
+}: {
+  attachment: ChatAttachmentDTO;
+  onOpenImage?: (attachment: ChatAttachmentDTO) => void;
+}): JSX.Element {
+  const [failed, setFailed] = useState(false);
+  const imageLabel = attachment.originalName || 'Изображение';
+
+  return (
+    <button
+      type="button"
+      aria-label={`Открыть изображение: ${imageLabel}`}
+      onClick={() => onOpenImage?.(attachment)}
+      style={{
+        display: 'block',
+        width: '100%',
+        color: 'inherit',
+        background: 'none',
+        border: 'none',
+        padding: 0,
+        cursor: 'pointer',
+        textAlign: 'left',
+      }}
+    >
+      {failed ? (
+        <span
+          style={{
+            display: 'grid',
+            placeItems: 'center',
+            width: '100%',
+            maxWidth: 240,
+            minHeight: 150,
+            borderRadius: 14,
+            background: 'rgba(255,255,255,0.14)',
+            color: 'rgba(255,255,255,0.82)',
+            fontSize: 12,
+            fontWeight: 800,
+          }}
+        >
+          Изображение недоступно
+        </span>
+      ) : (
+        <img
+          src={attachment.url}
+          alt=""
+          onError={() => setFailed(true)}
+          style={{
+            display: 'block',
+            width: '100%',
+            maxWidth: 240,
+            maxHeight: 260,
+            objectFit: 'cover',
+            borderRadius: 14,
+          }}
+        />
+      )}
+    </button>
+  );
+}
+
 function ChatBubbleImpl({
   message,
   isOwn,
@@ -52,6 +115,7 @@ function ChatBubbleImpl({
   onReact,
   actionSlot,
   onOpenProfile,
+  onOpenImage,
 }: ChatBubbleProps): JSX.Element {
   const className = isOwn ? 'glass-dark' : 'glass';
   const align = isOwn ? 'flex-end' : 'flex-start';
@@ -189,6 +253,15 @@ function ChatBubbleImpl({
         {attachments.length > 0 && (
           <div style={{ display: 'grid', gap: 6, marginBottom: text.length > 0 ? 6 : 0 }}>
             {attachments.map((attachment) => {
+              if (attachment.kind === 'image') {
+                return (
+                  <ImageAttachment
+                    key={attachment.id}
+                    attachment={attachment}
+                    {...(onOpenImage !== undefined ? { onOpenImage } : {})}
+                  />
+                );
+              }
               if (attachment.kind === 'voice') {
                 return (
                   <audio
@@ -204,32 +277,6 @@ function ChatBubbleImpl({
                       colorScheme: isOwn ? 'dark' : 'light',
                     }}
                   />
-                );
-              }
-              if (attachment.kind === 'image') {
-                const imageName = attachment.originalName ?? 'Изображение';
-                return (
-                  <a
-                    key={attachment.id}
-                    href={attachment.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    aria-label={`Открыть изображение: ${imageName}`}
-                    style={{ display: 'block', color: 'inherit' }}
-                  >
-                    <img
-                      src={attachment.url}
-                      alt={`Миниатюра: ${imageName}`}
-                      style={{
-                        display: 'block',
-                        width: '100%',
-                        maxWidth: 240,
-                        maxHeight: 260,
-                        objectFit: 'cover',
-                        borderRadius: 14,
-                      }}
-                    />
-                  </a>
                 );
               }
               const size = formatAttachmentSize(attachment.size);
@@ -376,6 +423,7 @@ function areEqual(prev: ChatBubbleProps, next: ChatBubbleProps): boolean {
     prev.message.isDeleted === next.message.isDeleted &&
     prev.message.isEdited === next.message.isEdited &&
     prev.message.reactions === next.message.reactions &&
+    prev.message.metadata === next.message.metadata &&
     prev.message.senderDisplayName === next.message.senderDisplayName &&
     prev.message.senderAvatarUrl === next.message.senderAvatarUrl &&
     prev.isOwn === next.isOwn &&
@@ -386,7 +434,8 @@ function areEqual(prev: ChatBubbleProps, next: ChatBubbleProps): boolean {
     prev.actionSlot === next.actionSlot &&
     prev.onRequestActions === next.onRequestActions &&
     prev.onReact === next.onReact &&
-    prev.onOpenProfile === next.onOpenProfile
+    prev.onOpenProfile === next.onOpenProfile &&
+    prev.onOpenImage === next.onOpenImage
   );
 }
 

@@ -27,8 +27,13 @@ export interface ProfileData {
   competitionLevel: CompetitionLevel;
   stats: ProfileStats;
   achievements: ProfileAchievement[];
-  displaySource?: 'telegram' | 'vk';
+  currencyBalance?: number;
+  displaySource?: 'telegram' | 'vk' | 'custom';
   linkedProviders?: Array<'telegram' | 'vk'>;
+  customDisplayName?: string | null;
+  customFirstName?: string | null;
+  customLastName?: string | null;
+  customAvatarUrl?: string | null;
   tgId?: string;
   username?: string;
   tgFirstName?: string | null;

@@ -17,6 +17,7 @@ export interface ChatRow {
   entity_type: EntityType | null;
   entity_id: string | null;
   channel_slug: string | null;
+  avatar_url: string | null;
   last_message_at: Date | null;
   is_active: boolean;
   created_at: Date;
@@ -82,6 +83,7 @@ export interface ChatDTO {
   entityType: EntityType | null;
   entityId: string | null;
   channelSlug?: string | null;
+  avatarUrl: string | null;
   lastMessageAt: string | null; // ISO
   unreadCount: number;
   lastMessage: ChatMessageDTO | null;
@@ -164,6 +166,7 @@ export interface ChatInfoDTO {
   type: ChatType;
   name: string | null;
   description: string | null;
+  avatarUrl: string | null;
   memberCount: number;
   members: ChatMemberSummaryDTO[];
 }
@@ -174,6 +177,7 @@ export interface ChannelPostCommentRow {
   author_id: string;
   reply_to_id: string | null;
   content: string;
+  metadata: unknown;
   is_deleted: boolean;
   created_at: Date;
   updated_at: Date;
@@ -189,6 +193,7 @@ export interface ChannelPostCommentDTO {
   authorAvatarUrl: string | null;
   replyToId: string | null;
   content: string;
+  metadata?: Record<string, unknown>;
   isDeleted: boolean;
   createdAt: string;
   reactions: ReactionGroupDTO[];

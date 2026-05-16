@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
-import { Bold, Italic, Send } from 'lucide-react';
+import type { CSSProperties, ReactNode } from 'react';
+import { Bold, Italic, Mic, Paperclip, Send, Square } from 'lucide-react';
 import { ReplyPreview } from './ReplyPreview.js';
 
 export interface ChatInputReplyTarget {
@@ -21,6 +21,11 @@ interface ChatInputProps {
   placeholder?: string;
   formattingTools?: boolean;
   extraTools?: ReactNode;
+  attachmentPreview?: ReactNode;
+  canSendEmpty?: boolean;
+  onAttach?: () => void;
+  onVoice?: () => void;
+  voiceState?: 'idle' | 'recording' | 'uploading';
   onClearReply: () => void;
   onClearEditing?: () => void;
   onSend: (content: string, replyToId: string | null) => void | Promise<void>;
@@ -52,6 +57,11 @@ export function ChatInput({
   placeholder = 'Сообщение...',
   formattingTools = false,
   extraTools,
+  attachmentPreview,
+  canSendEmpty = false,
+  onAttach,
+  onVoice,
+  voiceState = 'idle',
   onClearReply,
   onClearEditing,
   onSend,
@@ -132,7 +142,9 @@ export function ChatInput({
   function submit(): void {
     if (disabled || sendingRef.current) return;
     const trimmed = value.trim();
-    if (!hasMeaningfulContent(trimmed)) return;
+    const hasText = hasMeaningfulContent(trimmed);
+    if (!hasText && !canSendEmpty) return;
+    if (editing && !hasText) return;
     sendingRef.current = true;
     setValue('');
     if (editing && onEdit) {
@@ -144,6 +156,27 @@ export function ChatInput({
     onClearReply();
     void onSend(trimmed, replyTo?.id ?? null);
   }
+
+  const canSend = hasMeaningfulContent(value) || canSendEmpty;
+  const showVoiceAction = onVoice !== undefined && !editing && !canSend;
+  const voiceLabel =
+    voiceState === 'recording'
+      ? 'Остановить запись'
+      : voiceState === 'uploading'
+        ? 'Отправляем голосовое'
+        : 'Записать голосовое';
+  const iconButtonStyle = {
+    width: ROW_HEIGHT,
+    height: ROW_HEIGHT,
+    minWidth: ROW_HEIGHT,
+    minHeight: ROW_HEIGHT,
+    borderRadius: 999,
+    padding: 0,
+    flexShrink: 0,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  } satisfies CSSProperties;
 
   return (
     <div className="chat-dock-composer glass-dock-surface">
@@ -166,6 +199,7 @@ export function ChatInput({
           onClear={onClearReply}
         />
       )}
+      {attachmentPreview}
       {(formattingTools || extraTools) && (
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           {formattingTools && (
@@ -214,6 +248,19 @@ export function ChatInput({
         </div>
       )}
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+        {onAttach && (
+          <button
+            type="button"
+            className="icon-btn glass-dock-icon"
+            title="Прикрепить файл"
+            aria-label="Прикрепить файл"
+            disabled={disabled}
+            onClick={onAttach}
+            style={iconButtonStyle}
+          >
+            <Paperclip size={17} />
+          </button>
+        )}
         <textarea
           ref={ref}
           value={value}
@@ -250,25 +297,40 @@ export function ChatInput({
             boxSizing: 'border-box',
           }}
         />
-        <button
-          type="button"
-          className="btn btn--cta"
-          onClick={submit}
-          disabled={disabled || !hasMeaningfulContent(value)}
-          aria-label="Отправить"
-          style={{
-            padding: 0,
-            borderRadius: 999,
-            width: ROW_HEIGHT,
-            height: ROW_HEIGHT,
-            minWidth: ROW_HEIGHT,
-            minHeight: ROW_HEIGHT,
-            flexShrink: 0,
-            letterSpacing: 0,
-          }}
-        >
-          <Send size={16} aria-hidden="true" />
-        </button>
+        {showVoiceAction ? (
+          <button
+            type="button"
+            className={voiceState === 'recording' ? 'icon-btn icon-btn--dark' : 'icon-btn glass-dock-icon'}
+            onClick={onVoice}
+            disabled={disabled || voiceState === 'uploading'}
+            aria-label={voiceLabel}
+            title={voiceLabel}
+            style={{
+              ...iconButtonStyle,
+              letterSpacing: 0,
+            }}
+          >
+            {voiceState === 'recording' ? (
+              <Square size={15} fill="currentColor" aria-hidden="true" />
+            ) : (
+              <Mic size={17} aria-hidden="true" />
+            )}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="btn btn--cta"
+            onClick={submit}
+            disabled={disabled || !canSend}
+            aria-label="Отправить"
+            style={{
+              ...iconButtonStyle,
+              letterSpacing: 0,
+            }}
+          >
+            <Send size={16} aria-hidden="true" />
+          </button>
+        )}
       </div>
     </div>
   );

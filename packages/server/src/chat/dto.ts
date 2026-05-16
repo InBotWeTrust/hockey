@@ -60,6 +60,7 @@ export function toChatDTO(agg: ChatListAggregate): ChatDTO {
     entityType: agg.chat.entity_type,
     entityId: agg.chat.entity_id,
     channelSlug: agg.chat.channel_slug,
+    avatarUrl: agg.chat.avatar_url,
     lastMessageAt: agg.chat.last_message_at?.toISOString() ?? null,
     unreadCount: agg.unreadCount,
     lastMessage: agg.lastMessage ? toChatMessageDTO(agg.lastMessage) : null,
@@ -127,7 +128,7 @@ export function toChannelPostCommentDTO(
   row: ChannelPostCommentRow,
   reactions: ReactionGroupDTO[] = [],
 ): ChannelPostCommentDTO {
-  return {
+  const dto: ChannelPostCommentDTO = {
     id: row.id,
     postId: row.post_message_id,
     authorId: row.author_id,
@@ -139,4 +140,7 @@ export function toChannelPostCommentDTO(
     createdAt: row.created_at.toISOString(),
     reactions,
   };
+  const metadata = metadataFromUnknown(row.metadata);
+  if (!row.is_deleted && Object.keys(metadata).length > 0) dto.metadata = metadata;
+  return dto;
 }

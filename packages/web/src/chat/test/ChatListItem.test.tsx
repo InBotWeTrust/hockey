@@ -142,4 +142,27 @@ describe('ChatListItem', () => {
 
     expect(screen.getByText('Вы: Файл')).toBeInTheDocument();
   });
+
+  it('does not inject an app-logo avatar for news channels without a custom avatar', () => {
+    setMe();
+
+    render(
+      <ChatListItem
+        chat={makeChat({
+          type: 'channel',
+          name: 'Новости игры',
+          channelSlug: 'news',
+          avatarUrl: null,
+          dmCounterpart: null,
+          memberCount: 15,
+          lastMessage: null,
+          lastMessageSenderName: null,
+        })}
+        onOpen={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole('img')).toBeNull();
+    expect(document.querySelector('.lucide-megaphone')).not.toBeNull();
+  });
 });

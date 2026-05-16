@@ -9,6 +9,7 @@ import { lastSeenPlugin } from './plugins/lastSeen.js';
 import { realtimePlugin } from './plugins/realtime.js';
 import { authRoutes } from './routes/auth.js';
 import { feedbackRoutes } from './routes/feedback.js';
+import { mediaRoutes } from './routes/media.js';
 import { meRoutes } from './routes/me.js';
 import { dailyRoutes } from './duel/daily/routes.js';
 import { trainingRoutes } from './duel/training/routes.js';
@@ -18,6 +19,7 @@ import { chatWs } from './chat/ws.js';
 import { adminRoutes } from './admin/routes.js';
 import { pushRoutes } from './push/routes.js';
 import { pushSchedulerPlugin } from './plugins/pushScheduler.js';
+import { createObjectStorageClient } from './storage/objectStorage.js';
 
 export interface BuildAppOptions {
   config?: AppConfig;
@@ -45,6 +47,26 @@ export async function buildApp(options: BuildAppOptions = {}) {
       : {}),
     ...(config.PUSH_VAPID_SUBJECT !== undefined ? { subject: config.PUSH_VAPID_SUBJECT } : {}),
   };
+  const objectStorage =
+    config.OBJECT_STORAGE_ENDPOINT !== undefined &&
+    config.OBJECT_STORAGE_REGION !== undefined &&
+    config.OBJECT_STORAGE_BUCKET !== undefined &&
+    config.OBJECT_STORAGE_TENANT_ID !== undefined &&
+    config.OBJECT_STORAGE_ACCESS_KEY_ID !== undefined &&
+    config.OBJECT_STORAGE_SECRET_ACCESS_KEY !== undefined
+      ? createObjectStorageClient({
+          endpoint: config.OBJECT_STORAGE_ENDPOINT,
+          region: config.OBJECT_STORAGE_REGION,
+          bucket: config.OBJECT_STORAGE_BUCKET,
+          tenantId: config.OBJECT_STORAGE_TENANT_ID,
+          accessKeyId: config.OBJECT_STORAGE_ACCESS_KEY_ID,
+          secretAccessKey: config.OBJECT_STORAGE_SECRET_ACCESS_KEY,
+          ...(config.OBJECT_STORAGE_PUBLIC_BASE_URL !== undefined
+            ? { publicBaseUrl: config.OBJECT_STORAGE_PUBLIC_BASE_URL }
+            : {}),
+          maxUploadBytes: config.OBJECT_STORAGE_MAX_UPLOAD_BYTES,
+        })
+      : undefined;
 
   await app.register(errorsPlugin);
   await app.register(dbPlugin, { connectionString: config.DATABASE_URL });
@@ -71,13 +93,24 @@ export async function buildApp(options: BuildAppOptions = {}) {
   });
   await app.register(feedbackRoutes);
   await app.register(meRoutes);
+  await app.register(
+    mediaRoutes,
+    objectStorage !== undefined
+      ? { objectStorage, mediaAccessSecret: config.JWT_SECRET }
+      : { mediaAccessSecret: config.JWT_SECRET },
+  );
   await app.register(dailyRoutes, { dailySeedSecret: config.DAILY_SEED_SECRET });
   await app.register(trainingRoutes, { trainingSeedSecret: config.DAILY_SEED_SECRET });
   await app.register(amateurDuelRoutes, { duelSeedSecret: config.DAILY_SEED_SECRET });
-  await app.register(chatRoutes, pushVapidOptions);
+  await app.register(chatRoutes, { ...pushVapidOptions, mediaAccessSecret: config.JWT_SECRET });
   await app.register(chatWs, { accessSecret: config.JWT_SECRET });
   await app.register(pushRoutes, pushVapidOptions);
-  await app.register(adminRoutes);
+  await app.register(
+    adminRoutes,
+    objectStorage !== undefined
+      ? { objectStorage, mediaAccessSecret: config.JWT_SECRET }
+      : { mediaAccessSecret: config.JWT_SECRET },
+  );
   await app.register(pushSchedulerPlugin, {
     ...pushVapidOptions,
     scheduleEnabled:

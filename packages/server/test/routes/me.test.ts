@@ -337,4 +337,47 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
       linkedProviders: ['telegram', 'vk'],
     });
   });
+
+  it('saves custom profile names and switches display source to custom', async () => {
+    const { accessToken } = await loginTelegram({ id: '47' });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/me',
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: {
+        displaySource: 'custom',
+        customFirstName: 'Егор',
+        customLastName: 'Гуменюк',
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      displayName: 'Егор Гуменюк',
+      displaySource: 'custom',
+      customDisplayName: 'Егор Гуменюк',
+      customFirstName: 'Егор',
+      customLastName: 'Гуменюк',
+    });
+  });
+
+  it('rejects incomplete custom profile names', async () => {
+    const { accessToken } = await loginTelegram({ id: '48' });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/me',
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: {
+        displaySource: 'custom',
+        customFirstName: 'Егор',
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({
+      error: { code: 'bad_request', message: 'custom_profile_incomplete' },
+    });
+  });
 });

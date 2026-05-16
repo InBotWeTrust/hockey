@@ -60,4 +60,22 @@ describe.skipIf(!hasIntegrationEnv)('recomputeEffectiveProfile', () => {
       displaySource: 'vk',
     });
   });
+
+  it('uses custom name and avatar when display_source is custom', async () => {
+    const userId = randomUUID();
+    await pool.query(
+      `insert into users (
+         id, display_name, avatar_url, timezone, display_source,
+         custom_first_name, custom_last_name, custom_display_name, custom_avatar_url
+       ) values ($1, 'Old', 'old.png', 'UTC', 'custom', 'Egor', 'Gumenyuk', 'Egor Gumenyuk', 'custom.webp')`,
+      [userId],
+    );
+
+    const profile = await recomputeEffectiveProfile(pool, userId);
+    expect(profile).toMatchObject({
+      displayName: 'Egor Gumenyuk',
+      avatarUrl: 'custom.webp',
+      displaySource: 'custom',
+    });
+  });
 });

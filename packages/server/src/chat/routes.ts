@@ -58,11 +58,106 @@ import { InvalidInputError } from './errors.js';
 import { enqueueFirstDialogMessagePush } from '../push/chat.js';
 import { sendNewsPostPush } from '../push/news.js';
 import type { PushVapidOptions } from '../push/service.js';
+import { createMediaProxyUrl } from '../storage/mediaAccess.js';
+import type { ChannelPostCommentDTO, ChatMessageDTO } from './types.js';
 
 const uuid = z.string().uuid();
 const isoDate = z.string().datetime({ offset: true });
 
-export const chatRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, _pushOptions) => {
+interface ChatAttachmentRow {
+  id: string;
+  url: string;
+  content_type: string;
+  size_bytes: number;
+  original_name: string;
+}
+
+interface ChatRoutesOptions extends PushVapidOptions {
+  mediaAccessSecret: string;
+}
+
+function attachmentKind(contentType: string): 'image' | 'voice' | 'file' {
+  if (contentType.startsWith('image/')) return 'image';
+  if (contentType.startsWith('audio/')) return 'voice';
+  return 'file';
+}
+
+async function loadChatAttachments(
+  app: Parameters<FastifyPluginAsync>[0],
+  userId: string,
+  ids: string[],
+  mediaAccessSecret: string,
+): Promise<Array<Record<string, unknown>>> {
+  if (ids.length === 0) return [];
+  const { rows } = await app.pg.query<ChatAttachmentRow>(
+    `select id, url, content_type, size_bytes, original_name
+       from media_objects
+      where owner_user_id = $1
+        and purpose = 'chat_attachment'
+        and id = any($2::uuid[])
+      order by array_position($2::uuid[], id)`,
+    [userId, ids],
+  );
+  if (rows.length !== ids.length) {
+    throw new InvalidInputError('invalid attachment');
+  }
+  return rows.map((row) => ({
+    id: row.id,
+    url: createMediaProxyUrl(mediaAccessSecret, row.id),
+    kind: attachmentKind(row.content_type),
+    contentType: row.content_type,
+    size: row.size_bytes,
+    originalName: row.original_name,
+  }));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function signMessageAttachmentUrls(
+  message: ChatMessageDTO,
+  mediaAccessSecret: string,
+): ChatMessageDTO {
+  if (!isRecord(message.metadata) || !Array.isArray(message.metadata.attachments)) return message;
+  const attachments = message.metadata.attachments.map((attachment) => {
+    if (!isRecord(attachment) || typeof attachment.id !== 'string') return attachment;
+    return {
+      ...attachment,
+      url: createMediaProxyUrl(mediaAccessSecret, attachment.id),
+    };
+  });
+  return {
+    ...message,
+    metadata: {
+      ...message.metadata,
+      attachments,
+    },
+  };
+}
+
+function signCommentAttachmentUrls(
+  comment: ChannelPostCommentDTO,
+  mediaAccessSecret: string,
+): ChannelPostCommentDTO {
+  if (!isRecord(comment.metadata) || !Array.isArray(comment.metadata.attachments)) return comment;
+  const attachments = comment.metadata.attachments.map((attachment) => {
+    if (!isRecord(attachment) || typeof attachment.id !== 'string') return attachment;
+    return {
+      ...attachment,
+      url: createMediaProxyUrl(mediaAccessSecret, attachment.id),
+    };
+  });
+  return {
+    ...comment,
+    metadata: {
+      ...comment.metadata,
+      attachments,
+    },
+  };
+}
+
+export const chatRoutes: FastifyPluginAsync<ChatRoutesOptions> = async (app, options) => {
   app.get('/chat/list', { preHandler: [app.authenticate] }, async (req) => {
     return await getMyChats(app.pg, req.user.id);
   });
@@ -102,7 +197,9 @@ export const chatRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, _pus
     if (query.after !== undefined) opts.after = query.after;
     if (query.around !== undefined) opts.around = query.around;
     if (query.radius !== undefined) opts.radius = query.radius;
-    const messages = await getMessages(app.pg, chatId, req.user.id, opts);
+    const messages = (await getMessages(app.pg, chatId, req.user.id, opts)).map((message) =>
+      signMessageAttachmentUrls(message, options.mediaAccessSecret),
+    );
     if (chat.type === 'channel') {
       await recordChannelPostViews(
         app.pg,
@@ -117,10 +214,17 @@ export const chatRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, _pus
     const { chatId } = z.object({ chatId: uuid }).parse(req.params);
     const body = z
       .object({
-        content: z.string().trim().min(1).max(4000),
+        content: z.string().trim().max(4000).default(''),
         replyToId: uuid.optional(),
         pollOptions: z.array(z.string().trim().min(1).max(160)).min(1).max(3).optional(),
+        attachmentIds: z.array(uuid).max(10).optional(),
       })
+      .refine(
+        (value) =>
+          value.content.length > 0 ||
+          (value.attachmentIds !== undefined && value.attachmentIds.length > 0),
+        { message: 'message content or attachment required' },
+      )
       .parse(req.body);
     const userId = req.user.id;
     const chat = await assertCanAccessChat(app.pg, userId, chatId);
@@ -133,6 +237,12 @@ export const chatRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, _pus
       throw new InvalidInputError('polls are only supported in channels');
     }
     await checkAndConsumeRateLimit(app.redis, userId);
+    const attachments = await loadChatAttachments(
+      app,
+      userId,
+      body.attachmentIds ?? [],
+      options.mediaAccessSecret,
+    );
     let isFirstDirectMessage = false;
     if (chat.type === 'direct') {
       const firstMessage = await app.pg.query<{ is_first: boolean }>(
@@ -146,6 +256,7 @@ export const chatRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, _pus
     const sendOpts: SendMessageOpts = { chatId, senderId: userId, content: body.content };
     if (body.replyToId !== undefined) sendOpts.replyToId = body.replyToId;
     if (body.pollOptions !== undefined) sendOpts.pollOptions = body.pollOptions;
+    if (attachments.length > 0) sendOpts.metadata = { attachments };
     const dto = await sendMessage(app.pg, sendOpts);
     // Invalidate unread cache for all current members so they see fresh counts.
     const members = await app.pg.query<{ user_id: string }>(
@@ -261,7 +372,7 @@ export const chatRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, _pus
     const { postId } = z.object({ postId: uuid }).parse(req.params);
     const post = await getChannelPost(app.pg, postId, req.user.id);
     await recordChannelPostViews(app.pg, req.user.id, [postId]);
-    return post;
+    return signMessageAttachmentUrls(post, options.mediaAccessSecret);
   });
 
   app.patch('/chat/channel/posts/:postId', { preHandler: [app.authenticate] }, async (req) => {
@@ -269,8 +380,9 @@ export const chatRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, _pus
     const { postId } = z.object({ postId: uuid }).parse(req.params);
     const body = z.object({ content: z.string().trim().min(1).max(4000) }).parse(req.body);
     const post = await updateChannelPostContent(app.pg, postId, req.user.id, body.content);
-    await publishMessageUpdated(app.pg, app.realtime, post.chatId, 'channel', post);
-    return post;
+    const signedPost = signMessageAttachmentUrls(post, options.mediaAccessSecret);
+    await publishMessageUpdated(app.pg, app.realtime, post.chatId, 'channel', signedPost);
+    return signedPost;
   });
 
   app.delete(
@@ -292,7 +404,10 @@ export const chatRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, _pus
     async (req) => {
       const { postId } = z.object({ postId: uuid }).parse(req.params);
       const { optionId } = z.object({ optionId: uuid }).parse(req.body);
-      return await setChannelPollVote(app.pg, postId, req.user.id, optionId);
+      return signMessageAttachmentUrls(
+        await setChannelPollVote(app.pg, postId, req.user.id, optionId),
+        options.mediaAccessSecret,
+      );
     },
   );
 
@@ -301,7 +416,10 @@ export const chatRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, _pus
     { preHandler: [app.authenticate] },
     async (req) => {
       const { postId } = z.object({ postId: uuid }).parse(req.params);
-      return await clearChannelPollVote(app.pg, postId, req.user.id);
+      return signMessageAttachmentUrls(
+        await clearChannelPollVote(app.pg, postId, req.user.id),
+        options.mediaAccessSecret,
+      );
     },
   );
 
@@ -310,7 +428,9 @@ export const chatRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, _pus
     { preHandler: [app.authenticate] },
     async (req) => {
       const { postId } = z.object({ postId: uuid }).parse(req.params);
-      return await getChannelPostComments(app.pg, postId, req.user.id);
+      return (await getChannelPostComments(app.pg, postId, req.user.id)).map((comment) =>
+        signCommentAttachmentUrls(comment, options.mediaAccessSecret),
+      );
     },
   );
 
@@ -321,17 +441,34 @@ export const chatRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, _pus
       const { postId } = z.object({ postId: uuid }).parse(req.params);
       const body = z
         .object({
-          content: z.string().trim().min(1).max(4000),
+          content: z.string().trim().max(4000).default(''),
           replyToId: uuid.optional(),
+          attachmentIds: z.array(uuid).max(10).optional(),
         })
+        .refine(
+          (value) =>
+            value.content.length > 0 ||
+            (value.attachmentIds !== undefined && value.attachmentIds.length > 0),
+          { message: 'comment content or attachment required' },
+        )
         .parse(req.body);
       await checkAndConsumeRateLimit(app.redis, req.user.id);
+      const attachments = await loadChatAttachments(
+        app,
+        req.user.id,
+        body.attachmentIds ?? [],
+        options.mediaAccessSecret,
+      );
+      if (attachments.some((attachment) => attachment.kind === 'voice')) {
+        throw new InvalidInputError('voice comments are not supported');
+      }
       const comment = await addChannelPostComment(
         app.pg,
         postId,
         req.user.id,
         body.content,
         body.replyToId,
+        attachments.length > 0 ? { attachments } : {},
       );
       reply.code(201);
       return comment;

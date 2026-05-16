@@ -38,6 +38,7 @@ interface MyChatsRow {
   entity_type: 'team' | 'tournament' | null;
   entity_id: string | null;
   channel_slug: string | null;
+  avatar_url: string | null;
   last_message_at: Date | null;
   is_active: boolean;
   created_at: Date;
@@ -208,6 +209,7 @@ export async function getMyChats(pool: Pool, userId: string): Promise<ChatDTO[]>
       entity_type: row.entity_type,
       entity_id: row.entity_id,
       channel_slug: row.channel_slug,
+      avatar_url: row.avatar_url,
       last_message_at: row.last_message_at,
       is_active: row.is_active,
       created_at: row.created_at,
@@ -285,6 +287,7 @@ export async function getChatInfo(
   type: 'direct' | 'group' | 'system' | 'channel';
   name: string | null;
   description: string | null;
+  avatarUrl: string | null;
   memberCount: number;
   members: { userId: string; displayName: string; avatarUrl: string | null }[];
 }> {
@@ -297,7 +300,11 @@ export async function getChatInfo(
     type: 'direct' | 'group' | 'system' | 'channel';
     name: string | null;
     description: string | null;
-  }>(`select id, type, name, description from chats where id = $1 and is_active = true`, [chatId]);
+    avatar_url: string | null;
+  }>(
+    `select id, type, name, description, avatar_url from chats where id = $1 and is_active = true`,
+    [chatId],
+  );
   if (chatRes.rowCount === 0) {
     throw new ChatNotFoundError(chatId);
   }
@@ -346,6 +353,7 @@ export async function getChatInfo(
     type: chat.type,
     name: chat.name,
     description: chat.description,
+    avatarUrl: chat.avatar_url,
     memberCount,
     members,
   };

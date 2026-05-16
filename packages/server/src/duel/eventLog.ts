@@ -20,10 +20,14 @@ export type EventType =
   | 'admin_duel_template_deleted'
   | 'admin_channel_post_updated'
   | 'admin_channel_post_deleted'
+  | 'admin_chat_avatar_updated'
+  | 'admin_chat_avatar_reset'
   | 'admin_push_notification_updated'
   | 'admin_inventory_item_created'
   | 'admin_inventory_item_updated'
-  | 'admin_inventory_item_deleted';
+  | 'admin_inventory_item_deleted'
+  | 'profile_avatar_uploaded'
+  | 'chat_attachment_uploaded';
 
 export async function appendEvent(
   conn: Pool | PoolClient,

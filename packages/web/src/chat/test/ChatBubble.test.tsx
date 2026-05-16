@@ -151,4 +151,41 @@ describe('ChatBubble — author tap', () => {
     expect(screen.queryByRole('button', { name: 'Профиль: Иван' })).toBeNull();
     expect(screen.queryByText('Иван')).toBeNull();
   });
+
+  it('opens image attachments through the chat image viewer callback', () => {
+    const onOpenImage = vi.fn();
+    render(
+      <ChatBubble
+        {...defaults()}
+        onOpenImage={onOpenImage}
+        message={{
+          ...baseMessage,
+          content: 'смотри',
+          metadata: {
+            attachments: [
+              {
+                id: 'att-1',
+                url: 'https://cdn.example/photo.webp',
+                kind: 'image',
+                contentType: 'image/webp',
+                size: 1234,
+                originalName: 'photo.webp',
+              },
+            ],
+          },
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть изображение: photo.webp' }));
+
+    expect(onOpenImage).toHaveBeenCalledWith({
+      id: 'att-1',
+      url: 'https://cdn.example/photo.webp',
+      kind: 'image',
+      contentType: 'image/webp',
+      size: 1234,
+      originalName: 'photo.webp',
+    });
+  });
 });

@@ -118,6 +118,95 @@ describe.skipIf(!hasIntegrationEnv)('findOrCreateTelegramUser', () => {
     });
   });
 
+  it('keeps custom profile active when Telegram mirror fields change', async () => {
+    const first = await findOrCreateTelegramUser(pool, {
+      providerUid: '601',
+      displayName: 'Old Name',
+      firstName: 'Old',
+      lastName: 'Name',
+      avatarUrl: 'old.png',
+    });
+    await pool.query(
+      `update users
+          set display_source = 'custom',
+              custom_first_name = 'Custom',
+              custom_last_name = 'Player',
+              custom_display_name = 'Custom Player',
+              custom_avatar_url = 'custom.webp'
+        where id = $1`,
+      [first.id],
+    );
+
+    const second = await findOrCreateTelegramUser(pool, {
+      providerUid: '601',
+      displayName: 'New Name',
+      firstName: 'New',
+      lastName: 'Name',
+      avatarUrl: 'new.png',
+      username: 'new',
+    });
+
+    expect(second.id).toBe(first.id);
+    expect(second).toMatchObject({
+      displayName: 'Custom Player',
+      avatarUrl: 'custom.webp',
+      displaySource: 'custom',
+    });
+    const row = await pool.query(
+      `select display_source, display_name, avatar_url, tg_first_name, tg_avatar_url
+         from users where id=$1`,
+      [first.id],
+    );
+    expect(row.rows[0]).toMatchObject({
+      display_source: 'custom',
+      display_name: 'Custom Player',
+      avatar_url: 'custom.webp',
+      tg_first_name: 'New',
+      tg_avatar_url: 'new.png',
+    });
+  });
+
+  it('keeps custom profile active when VK mirror fields change', async () => {
+    const first = await findOrLinkOrCreateVkUser(pool, {
+      vkUserId: 905,
+      profile: { firstName: 'Old', lastName: 'Vk', avatarUrl: 'old-vk.png' },
+    });
+    await pool.query(
+      `update users
+          set display_source = 'custom',
+              custom_first_name = 'Custom',
+              custom_last_name = 'VK',
+              custom_display_name = 'Custom VK',
+              custom_avatar_url = 'custom-vk.webp'
+        where id = $1`,
+      [first.id],
+    );
+
+    const second = await findOrLinkOrCreateVkUser(pool, {
+      vkUserId: 905,
+      profile: { firstName: 'Fresh', lastName: 'Vk', avatarUrl: 'fresh-vk.png' },
+    });
+
+    expect(second.id).toBe(first.id);
+    expect(second).toMatchObject({
+      displayName: 'Custom VK',
+      avatarUrl: 'custom-vk.webp',
+      displaySource: 'custom',
+    });
+    const row = await pool.query(
+      `select display_source, display_name, avatar_url, vk_first_name, vk_avatar_url
+         from users where id=$1`,
+      [first.id],
+    );
+    expect(row.rows[0]).toMatchObject({
+      display_source: 'custom',
+      display_name: 'Custom VK',
+      avatar_url: 'custom-vk.webp',
+      vk_first_name: 'Fresh',
+      vk_avatar_url: 'fresh-vk.png',
+    });
+  });
+
   it('persists timezone on first creation', async () => {
     const user = await findOrCreateTelegramUser(pool, {
       providerUid: '300',
@@ -287,6 +376,61 @@ describe.skipIf(!hasIntegrationEnv)('findOrCreateTelegramUser', () => {
       display_source: 'telegram',
       display_name: 'Telegram Main',
       avatar_url: 'tg.png',
+      vk_first_name: 'Fresh',
+      vk_avatar_url: 'fresh.png',
+    });
+  });
+
+  it('keeps custom profile active when moving an already-owned VK identity', async () => {
+    const tg = await findOrCreateTelegramUser(pool, {
+      providerUid: 'tg-custom-target',
+      displayName: 'Telegram Main',
+      firstName: 'Telegram',
+      lastName: 'Main',
+      avatarUrl: 'tg.png',
+    });
+    await pool.query(
+      `update users
+          set display_source = 'custom',
+              custom_first_name = 'Custom',
+              custom_last_name = 'Merged',
+              custom_display_name = 'Custom Merged',
+              custom_avatar_url = 'custom-merged.webp'
+        where id = $1`,
+      [tg.id],
+    );
+    const vk = await findOrLinkOrCreateVkUser(pool, {
+      vkUserId: 906,
+      profile: { firstName: 'Old', lastName: 'Vk', avatarUrl: 'old.png' },
+    });
+
+    const merged = await findOrLinkOrCreateVkUser(pool, {
+      vkUserId: 906,
+      profile: { firstName: 'Fresh', lastName: 'Vk', avatarUrl: 'fresh.png' },
+      currentUserId: tg.id,
+      recoveryMergeTelegramProviderUids: ['tg-custom-target'],
+    });
+
+    expect(merged.id).toBe(tg.id);
+    expect(merged).toMatchObject({
+      displayName: 'Custom Merged',
+      avatarUrl: 'custom-merged.webp',
+      displaySource: 'custom',
+    });
+    const vkProviders = await pool.query(
+      'select provider from auth_providers where user_id=$1',
+      [vk.id],
+    );
+    expect(vkProviders.rowCount).toBe(0);
+    const row = await pool.query(
+      `select display_source, display_name, avatar_url, vk_first_name, vk_avatar_url
+         from users where id=$1`,
+      [tg.id],
+    );
+    expect(row.rows[0]).toMatchObject({
+      display_source: 'custom',
+      display_name: 'Custom Merged',
+      avatar_url: 'custom-merged.webp',
       vk_first_name: 'Fresh',
       vk_avatar_url: 'fresh.png',
     });

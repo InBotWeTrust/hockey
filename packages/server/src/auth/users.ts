@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import type { VkProfile } from './vk.js';
-import { recomputeEffectiveProfile } from './profile.js';
+import { recomputeEffectiveProfile, type DisplaySource } from './profile.js';
 import { AppError } from '../plugins/errors.js';
 
 export interface FindOrCreateInput {
@@ -20,6 +20,8 @@ export interface AppUser {
   id: string;
   displayName: string;
   role: UserRole;
+  avatarUrl?: string | null;
+  displaySource?: DisplaySource;
 }
 
 type Queryable = Pool | PoolClient;
@@ -200,7 +202,13 @@ export async function findOrCreateTelegramUser(
       const profile = await recomputeEffectiveProfile(client, linked.user_id);
       const role = await fetchAllowedUserRole(client, linked.user_id);
       await client.query('commit');
-      return { id: linked.user_id, displayName: profile.displayName, role };
+      return {
+        id: linked.user_id,
+        displayName: profile.displayName,
+        avatarUrl: profile.avatarUrl,
+        displaySource: profile.displaySource,
+        role,
+      };
     }
 
     if (linked) {
@@ -217,7 +225,13 @@ export async function findOrCreateTelegramUser(
       const profile = await recomputeEffectiveProfile(client, linked.user_id);
       const role = await fetchAllowedUserRole(client, linked.user_id);
       await client.query('commit');
-      return { id: linked.user_id, displayName: profile.displayName, role };
+      return {
+        id: linked.user_id,
+        displayName: profile.displayName,
+        avatarUrl: profile.avatarUrl,
+        displaySource: profile.displaySource,
+        role,
+      };
     }
 
     if (input.currentUserId) {
@@ -238,7 +252,13 @@ export async function findOrCreateTelegramUser(
       const profile = await recomputeEffectiveProfile(client, input.currentUserId);
       const role = await fetchAllowedUserRole(client, input.currentUserId);
       await client.query('commit');
-      return { id: input.currentUserId, displayName: profile.displayName, role };
+      return {
+        id: input.currentUserId,
+        displayName: profile.displayName,
+        avatarUrl: profile.avatarUrl,
+        displaySource: profile.displaySource,
+        role,
+      };
     }
 
     const userId = randomUUID();
@@ -275,6 +295,8 @@ export async function findOrCreateTelegramUser(
     return {
       id: userId,
       displayName: profile.displayName,
+      avatarUrl: profile.avatarUrl,
+      displaySource: profile.displaySource,
       role: roleForTelegramProviderUid(input.providerUid),
     };
   } catch (err) {
@@ -400,8 +422,7 @@ async function moveVkIdentityToTelegramUser(
         set vk_first_name = coalesce($2, source.vk_first_name, target.vk_first_name),
             vk_last_name = coalesce($3, source.vk_last_name, target.vk_last_name),
             vk_avatar_url = coalesce($4, source.vk_avatar_url, target.vk_avatar_url),
-            vk_username = coalesce($5, source.vk_username, target.vk_username),
-            display_source = 'telegram'
+            vk_username = coalesce($5, source.vk_username, target.vk_username)
        from users source
       where target.id = $1
         and source.id = $6`,
@@ -471,6 +492,8 @@ export async function findOrLinkOrCreateVkUser(
       return {
         id: input.currentUserId,
         displayName: profile.displayName,
+        avatarUrl: profile.avatarUrl,
+        displaySource: profile.displaySource,
         role,
       };
     }
@@ -481,7 +504,13 @@ export async function findOrLinkOrCreateVkUser(
       const profile = await recomputeEffectiveProfile(client, linked.user_id);
       const role = await fetchAllowedUserRole(client, linked.user_id);
       await client.query('commit');
-      return { id: linked.user_id, displayName: profile.displayName, role };
+      return {
+        id: linked.user_id,
+        displayName: profile.displayName,
+        avatarUrl: profile.avatarUrl,
+        displaySource: profile.displaySource,
+        role,
+      };
     }
 
     if (input.currentUserId) {
@@ -497,6 +526,8 @@ export async function findOrLinkOrCreateVkUser(
       return {
         id: input.currentUserId,
         displayName: profile.displayName,
+        avatarUrl: profile.avatarUrl,
+        displaySource: profile.displaySource,
         role,
       };
     }
@@ -535,7 +566,13 @@ export async function findOrLinkOrCreateVkUser(
     ]);
     const profile = await recomputeEffectiveProfile(client, userId);
     await client.query('commit');
-    return { id: userId, displayName: profile.displayName, role: 'player' };
+    return {
+      id: userId,
+      displayName: profile.displayName,
+      avatarUrl: profile.avatarUrl,
+      displaySource: profile.displaySource,
+      role: 'player',
+    };
   } catch (err) {
     await client.query('rollback');
     throw err;

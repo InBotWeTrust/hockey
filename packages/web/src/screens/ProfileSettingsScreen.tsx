@@ -9,16 +9,109 @@ import { useLogout } from '../auth/useLogout.js';
 import { startVkOAuth } from '../auth/vkAuth.js';
 import type { ProfileData } from './profileTypes.js';
 
-function providerName(data: ProfileData | undefined, source: 'telegram' | 'vk'): string {
+type DisplaySource = 'telegram' | 'vk' | 'custom';
+
+const MB = 1024 * 1024;
+const AVATAR_SOURCE_MAX_BYTES = 8 * MB;
+const AVATAR_WEBP_MAX_BYTES = 2 * MB;
+const AVATAR_SIZE = 512;
+const avatarSourceTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const avatarWebpQualities = [0.86, 0.76, 0.66, 0.56];
+
+function formatUploadLimit(bytes: number): string {
+  return `${Math.round(bytes / MB)} МБ`;
+}
+
+function avatarFileName(file: File): string {
+  const baseName = file.name.replace(/\.[^.]+$/, '').trim() || 'avatar';
+  return `${baseName}.webp`;
+}
+
+function loadImage(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Не удалось прочитать изображение.'));
+    };
+    image.src = url;
+  });
+}
+
+function canvasToWebpBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), 'image/webp', quality);
+  });
+}
+
+async function convertAvatarToWebp(file: File): Promise<File> {
+  if (!avatarSourceTypes.has(file.type)) {
+    throw new Error('Аватар должен быть изображением JPG, PNG или WebP.');
+  }
+  if (file.size > AVATAR_SOURCE_MAX_BYTES) {
+    throw new Error(`Аватар слишком большой. Лимит: ${formatUploadLimit(AVATAR_SOURCE_MAX_BYTES)}.`);
+  }
+
+  const image = await loadImage(file);
+  const sourceWidth = image.naturalWidth || image.width;
+  const sourceHeight = image.naturalHeight || image.height;
+  const cropSize = Math.min(sourceWidth, sourceHeight);
+  if (!Number.isFinite(cropSize) || cropSize <= 0) {
+    throw new Error('Не удалось прочитать размер изображения.');
+  }
+
+  const canvas = document.createElement('canvas');
+  const outputSize = Math.min(AVATAR_SIZE, cropSize);
+  canvas.width = outputSize;
+  canvas.height = outputSize;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('Браузер не смог подготовить аватар.');
+  }
+  const sx = Math.max(0, (sourceWidth - cropSize) / 2);
+  const sy = Math.max(0, (sourceHeight - cropSize) / 2);
+  ctx.drawImage(image, sx, sy, cropSize, cropSize, 0, 0, outputSize, outputSize);
+
+  let lastBlob: Blob | null = null;
+  for (const quality of avatarWebpQualities) {
+    const blob = await canvasToWebpBlob(canvas, quality);
+    if (!blob) continue;
+    lastBlob = blob;
+    if (blob.size <= AVATAR_WEBP_MAX_BYTES) {
+      return new File([blob], avatarFileName(file), { type: 'image/webp' });
+    }
+  }
+
+  if (!lastBlob) {
+    throw new Error('Браузер не поддерживает сохранение WebP.');
+  }
+  throw new Error(`Не удалось сжать аватар до ${formatUploadLimit(AVATAR_WEBP_MAX_BYTES)}.`);
+}
+
+function providerName(data: ProfileData | undefined, source: DisplaySource): string {
   if (!data) return '-';
+  if (source === 'custom') {
+    return (
+      [data.customFirstName, data.customLastName].filter(Boolean).join(' ') ||
+      data.customDisplayName ||
+      data.displayName ||
+      '-'
+    );
+  }
   const first = source === 'telegram' ? data.tgFirstName : data.vkFirstName;
   const last = source === 'telegram' ? data.tgLastName : data.vkLastName;
   const username = source === 'telegram' ? (data.tgUsername ?? data.username) : data.vkUsername;
   return [first, last].filter(Boolean).join(' ') || username || '-';
 }
 
-function providerAvatar(data: ProfileData | undefined, source: 'telegram' | 'vk'): string | null {
+function providerAvatar(data: ProfileData | undefined, source: DisplaySource): string | null {
   if (!data) return null;
+  if (source === 'custom') return data.customAvatarUrl ?? null;
   return source === 'telegram' ? (data.tgAvatarUrl ?? null) : (data.vkAvatarUrl ?? null);
 }
 
@@ -52,6 +145,8 @@ export function ProfileSettingsScreen(): JSX.Element {
   });
 
   const [grip, setGrip] = useState<'right' | 'left'>('right');
+  const [customFirstName, setCustomFirstName] = useState('');
+  const [customLastName, setCustomLastName] = useState('');
   const [gripInfoOpen, setGripInfoOpen] = useState(false);
   const [sourceError, setSourceError] = useState<string | null>(null);
   const [vkLinkPending, setVkLinkPending] = useState(false);
@@ -65,7 +160,15 @@ export function ProfileSettingsScreen(): JSX.Element {
         ...(data.avatarUrl !== undefined ? { avatarUrl: data.avatarUrl } : {}),
         ...(data.displaySource !== undefined ? { displaySource: data.displaySource } : {}),
         ...(data.linkedProviders !== undefined ? { linkedProviders: data.linkedProviders } : {}),
+        ...(data.customDisplayName !== undefined
+          ? { customDisplayName: data.customDisplayName }
+          : {}),
+        ...(data.customFirstName !== undefined ? { customFirstName: data.customFirstName } : {}),
+        ...(data.customLastName !== undefined ? { customLastName: data.customLastName } : {}),
+        ...(data.customAvatarUrl !== undefined ? { customAvatarUrl: data.customAvatarUrl } : {}),
       });
+      setCustomFirstName(data.customFirstName ?? '');
+      setCustomLastName(data.customLastName ?? '');
     }
   }, [data, updateUser]);
 
@@ -95,7 +198,7 @@ export function ProfileSettingsScreen(): JSX.Element {
   const { mutate: saveDisplaySource, isPending: savingDisplaySource } = useMutation<
     ProfileData,
     Error,
-    'telegram' | 'vk',
+    DisplaySource,
     { previous?: ProfileData }
   >({
     mutationFn: (displaySource) =>
@@ -128,12 +231,102 @@ export function ProfileSettingsScreen(): JSX.Element {
         ...(profile.linkedProviders !== undefined
           ? { linkedProviders: profile.linkedProviders }
           : {}),
+        ...(profile.customDisplayName !== undefined
+          ? { customDisplayName: profile.customDisplayName }
+          : {}),
+        ...(profile.customFirstName !== undefined
+          ? { customFirstName: profile.customFirstName }
+          : {}),
+        ...(profile.customLastName !== undefined ? { customLastName: profile.customLastName } : {}),
+        ...(profile.customAvatarUrl !== undefined
+          ? { customAvatarUrl: profile.customAvatarUrl }
+          : {}),
       });
     },
     onError: (err, _source, context) => {
       if (context?.previous) {
         queryClient.setQueryData<ProfileData>(['profile'], context.previous);
       }
+      setSourceError(err.message);
+    },
+  });
+
+  const { mutate: saveCustomProfile, isPending: savingCustomProfile } = useMutation<
+    ProfileData,
+    Error,
+    { firstName: string; lastName: string }
+  >({
+    mutationFn: ({ firstName, lastName }) =>
+      apiFetch<ProfileData>('/me', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          displaySource: 'custom',
+          customFirstName: firstName,
+          customLastName: lastName,
+        }),
+      }),
+    onSuccess: (profile) => {
+      queryClient.setQueryData<ProfileData>(['profile'], profile);
+      updateUser({
+        displayName: profile.displayName,
+        ...(profile.avatarUrl !== undefined ? { avatarUrl: profile.avatarUrl } : {}),
+        ...(profile.displaySource !== undefined ? { displaySource: profile.displaySource } : {}),
+        ...(profile.customDisplayName !== undefined
+          ? { customDisplayName: profile.customDisplayName }
+          : {}),
+        ...(profile.customFirstName !== undefined
+          ? { customFirstName: profile.customFirstName }
+          : {}),
+        ...(profile.customLastName !== undefined ? { customLastName: profile.customLastName } : {}),
+        ...(profile.customAvatarUrl !== undefined
+          ? { customAvatarUrl: profile.customAvatarUrl }
+          : {}),
+      });
+      setSourceError(null);
+    },
+    onError: (err) => {
+      setSourceError(err.message);
+    },
+  });
+
+  const uploadAvatar = useMutation<
+    { avatarUrl: string; customAvatarUrl: string; displaySource: 'custom' },
+    Error,
+    File
+  >({
+    mutationFn: async (file) => {
+      const avatar = await convertAvatarToWebp(file);
+      return apiFetch<{ avatarUrl: string; customAvatarUrl: string; displaySource: 'custom' }>(
+        '/me/avatar',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': avatar.type,
+            'X-File-Name': avatar.name,
+          },
+          body: avatar,
+        },
+      );
+    },
+    onSuccess: (uploaded) => {
+      queryClient.setQueryData<ProfileData>(['profile'], (old) =>
+        old
+          ? {
+              ...old,
+              avatarUrl: uploaded.avatarUrl,
+              customAvatarUrl: uploaded.customAvatarUrl,
+              displaySource: 'custom',
+            }
+          : old,
+      );
+      updateUser({
+        avatarUrl: uploaded.avatarUrl,
+        customAvatarUrl: uploaded.customAvatarUrl,
+        displaySource: 'custom',
+      });
+      setSourceError(null);
+    },
+    onError: (err) => {
       setSourceError(err.message);
     },
   });
@@ -171,6 +364,14 @@ export function ProfileSettingsScreen(): JSX.Element {
 
   const linkedProviders = data?.linkedProviders ?? ['telegram'];
   const displaySource = data?.displaySource ?? 'telegram';
+  const trimmedCustomFirstName = customFirstName.trim();
+  const trimmedCustomLastName = customLastName.trim();
+  const canSaveCustomProfile =
+    trimmedCustomFirstName.length > 0 &&
+    trimmedCustomLastName.length > 0 &&
+    !savingDisplaySource &&
+    !savingCustomProfile &&
+    !uploadAvatar.isPending;
 
   return (
     <main
@@ -221,6 +422,105 @@ export function ProfileSettingsScreen(): JSX.Element {
             Аккаунт
           </div>
           <div style={{ margin: '0 14px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <ProfileSourceOption
+              label="Кастом"
+              name={providerName(data, 'custom')}
+              avatarUrl={providerAvatar(data, 'custom')}
+              active={displaySource === 'custom'}
+              disabled={savingDisplaySource || savingCustomProfile || uploadAvatar.isPending}
+              onClick={() => {
+                if (displaySource === 'custom') return;
+                if (!canSaveCustomProfile) {
+                  setSourceError('Укажите имя и фамилию для кастомного профиля.');
+                  return;
+                }
+                saveCustomProfile({
+                  firstName: trimmedCustomFirstName,
+                  lastName: trimmedCustomLastName,
+                });
+              }}
+            />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <input
+                aria-label="Кастомное имя"
+                value={customFirstName}
+                onChange={(event) => setCustomFirstName(event.target.value)}
+                placeholder="Имя"
+                maxLength={60}
+                style={{
+                  minWidth: 0,
+                  height: 46,
+                  borderRadius: 16,
+                  border: '1px solid rgba(255,255,255,0.78)',
+                  background: 'rgba(248, 252, 255, 0.68)',
+                  padding: '0 14px',
+                  color: 'var(--ink)',
+                  font: 'inherit',
+                  fontSize: 14,
+                  fontWeight: 700,
+                  outline: 'none',
+                }}
+              />
+              <input
+                aria-label="Кастомная фамилия"
+                value={customLastName}
+                onChange={(event) => setCustomLastName(event.target.value)}
+                placeholder="Фамилия"
+                maxLength={60}
+                style={{
+                  minWidth: 0,
+                  height: 46,
+                  borderRadius: 16,
+                  border: '1px solid rgba(255,255,255,0.78)',
+                  background: 'rgba(248, 252, 255, 0.68)',
+                  padding: '0 14px',
+                  color: 'var(--ink)',
+                  font: 'inherit',
+                  fontSize: 14,
+                  fontWeight: 700,
+                  outline: 'none',
+                }}
+              />
+            </div>
+            <button
+              type="button"
+              className="btn btn--cta"
+              disabled={!canSaveCustomProfile}
+              onClick={() =>
+                saveCustomProfile({
+                  firstName: trimmedCustomFirstName,
+                  lastName: trimmedCustomLastName,
+                })
+              }
+              style={{ justifyContent: 'center', padding: '11px 0', fontSize: 13 }}
+            >
+              {savingCustomProfile ? 'Сохраняем...' : 'Сохранить кастомный профиль'}
+            </button>
+            <label
+              className="btn btn--ghost"
+              style={{
+                justifyContent: 'center',
+                padding: '11px 0',
+                fontSize: 13,
+                cursor: uploadAvatar.isPending ? 'wait' : 'pointer',
+              }}
+            >
+              {uploadAvatar.isPending ? 'Загружаем...' : 'Загрузить аватар'}
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                hidden
+                disabled={uploadAvatar.isPending}
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+                  event.currentTarget.value = '';
+                  if (file) {
+                    setSourceError(null);
+                    uploadAvatar.mutate(file);
+                  }
+                }}
+              />
+            </label>
             <ProfileSourceOption
               label="Из Telegram"
               name={providerName(data, 'telegram')}
