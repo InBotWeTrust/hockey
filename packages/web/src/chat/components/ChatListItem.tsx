@@ -1,10 +1,10 @@
 import { memo, useCallback } from 'react';
 import { Megaphone, MessageSquareMore, Pin } from 'lucide-react';
-import type { ChatDTO, ChatMessageDTO } from '../api.js';
+import type { ChatDTO } from '../api.js';
 import { useAuthStore } from '../../auth/authStore.js';
 import { useLongPress } from '../useLongPress.js';
 import { UserAvatar } from './UserAvatar.js';
-import { stripRichTextSyntax } from '../richText.js';
+import { messageBodyPreview } from '../messagePreview.js';
 
 interface ChatListItemProps {
   chat: ChatDTO;
@@ -13,8 +13,6 @@ interface ChatListItemProps {
 }
 
 const PREVIEW_LIMIT = 28;
-const VOICE_PREVIEW = 'Голосовое сообщение';
-const FILE_PREVIEW = 'Файл';
 
 function formatAuthor(fullName: string): string {
   const parts = fullName.trim().split(/\s+/);
@@ -23,70 +21,6 @@ function formatAuthor(fullName: string): string {
   if (parts.length === 1) return first;
   const lastInitial = (parts[parts.length - 1] ?? '').charAt(0).toUpperCase();
   return lastInitial ? `${first} ${lastInitial}` : first;
-}
-
-function truncate(s: string, max: number): string {
-  if (s.length <= max) return s;
-  return `${s.slice(0, max - 1).trimEnd()}…`;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-function valueContains(value: unknown, needles: string[]): boolean {
-  if (typeof value !== 'string') return false;
-  const normalized = value.toLowerCase();
-  return needles.some((needle) => normalized.includes(needle));
-}
-
-function collectAttachmentMetadata(metadata: ChatMessageDTO['metadata']): Record<string, unknown>[] {
-  if (!isRecord(metadata)) return [];
-  const items: Record<string, unknown>[] = [metadata];
-  for (const key of ['attachment', 'file', 'media']) {
-    const item = metadata[key];
-    if (isRecord(item)) items.push(item);
-  }
-  for (const key of ['attachments', 'files', 'mediaItems']) {
-    const list = metadata[key];
-    if (!Array.isArray(list)) continue;
-    for (const item of list) {
-      if (isRecord(item)) items.push(item);
-    }
-  }
-  return items;
-}
-
-function attachmentPreview(metadata: ChatMessageDTO['metadata']): string | null {
-  const items = collectAttachmentMetadata(metadata);
-  if (items.length === 0) return null;
-  const descriptorKeys = ['type', 'kind', 'mediaType', 'mimeType', 'mime', 'contentType', 'attachmentType'];
-  const hasVoice = items.some((item) =>
-    descriptorKeys.some((key) => valueContains(item[key], ['voice', 'audio'])),
-  );
-  if (hasVoice) return VOICE_PREVIEW;
-
-  const hasFile = items.some((item) => {
-    const hasFileDescriptor = descriptorKeys.some((key) =>
-      valueContains(item[key], ['file', 'document', 'attachment', 'image', 'video']),
-    );
-    return (
-      hasFileDescriptor ||
-      typeof item.url === 'string' ||
-      typeof item.fileName === 'string' ||
-      typeof item.filename === 'string' ||
-      typeof item.name === 'string' ||
-      typeof item.size === 'number'
-    );
-  });
-  return hasFile ? FILE_PREVIEW : null;
-}
-
-function messageBodyPreview(message: ChatMessageDTO, stripFormatting: boolean): string {
-  const text = stripFormatting ? stripRichTextSyntax(message.content) : message.content;
-  const normalized = text.trim();
-  if (normalized.length > 0) return truncate(normalized, PREVIEW_LIMIT);
-  return attachmentPreview(message.metadata) ?? 'Сообщение';
 }
 
 function formatTime(iso: string | null): string {
@@ -116,7 +50,7 @@ function lastMessagePreview(chat: ChatDTO, meId: string | null): string {
   if (!m) return 'Нет сообщений';
   if (m.isDeleted) return 'Сообщение удалено';
   if (chat.type === 'channel') {
-    return messageBodyPreview(m, true);
+    return messageBodyPreview(m, { stripFormatting: true, limit: PREVIEW_LIMIT });
   }
   const isMine = meId !== null && m.senderId === meId;
   const author = isMine
@@ -124,7 +58,7 @@ function lastMessagePreview(chat: ChatDTO, meId: string | null): string {
     : chat.lastMessageSenderName
       ? formatAuthor(chat.lastMessageSenderName)
       : '';
-  const body = messageBodyPreview(m, false);
+  const body = messageBodyPreview(m, { limit: PREVIEW_LIMIT });
   return author ? `${author}: ${body}` : body;
 }
 

@@ -32,7 +32,23 @@ export interface AmateurDuelInviteMessageMetadata extends Record<string, unknown
   bankAmount: number;
 }
 
-export type ChatMessageMetadata = AmateurDuelInviteMessageMetadata | Record<string, unknown>;
+export interface ChatAttachmentDTO {
+  id: string;
+  url: string;
+  kind: 'image' | 'voice' | 'file';
+  contentType?: string;
+  size?: number;
+  originalName?: string;
+}
+
+export interface ChatAttachmentMessageMetadata extends Record<string, unknown> {
+  attachments: ChatAttachmentDTO[];
+}
+
+export type ChatMessageMetadata =
+  | AmateurDuelInviteMessageMetadata
+  | ChatAttachmentMessageMetadata
+  | Record<string, unknown>;
 
 export interface ChatMessageDTO {
   id: string;

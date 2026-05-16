@@ -114,7 +114,14 @@ function CommentRow({
           >
             {authorName}
           </div>
-          <div style={{ fontSize: 14, lineHeight: 1.4, wordBreak: 'break-word' }}>
+          <div
+            style={{
+              fontSize: 14,
+              lineHeight: 1.4,
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+            }}
+          >
             {comment.content}
           </div>
           <div

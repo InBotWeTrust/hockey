@@ -57,6 +57,65 @@ describe('ChatBubble — author tap', () => {
     expect(screen.getByText('изменено')).toBeInTheDocument();
   });
 
+  it('preserves line breaks in message text', () => {
+    render(<ChatBubble {...defaults()} message={{ ...baseMessage, content: 'Раз\nДва\nТри' }} />);
+
+    const multilineText = Array.from(document.querySelectorAll('span')).find(
+      (element) => element.textContent === 'Раз\nДва\nТри',
+    );
+    expect(multilineText).toHaveStyle({ whiteSpace: 'pre-wrap' });
+  });
+
+  it('renders a player for empty audio messages', () => {
+    render(
+      <ChatBubble
+        {...defaults()}
+        message={{
+          ...baseMessage,
+          content: '',
+          metadata: {
+            attachment: {
+              type: 'voice',
+              mimeType: 'audio/webm',
+              url: '/uploads/voice.webm',
+            },
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByLabelText('Голосовое сообщение')).toHaveAttribute(
+      'src',
+      '/uploads/voice.webm',
+    );
+  });
+
+  it('renders a file link for empty file messages', () => {
+    render(
+      <ChatBubble
+        {...defaults()}
+        message={{
+          ...baseMessage,
+          content: '',
+          metadata: {
+            attachments: [
+              {
+                type: 'file',
+                fileName: 'report.pdf',
+                url: '/uploads/report.pdf',
+              },
+            ],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByRole('link', { name: /report\.pdf/ })).toHaveAttribute(
+      'href',
+      '/uploads/report.pdf',
+    );
+  });
+
   it('clicking the author name calls onOpenProfile with sender info', () => {
     const onOpenProfile = vi.fn();
     render(<ChatBubble {...defaults()} onOpenProfile={onOpenProfile} />);
