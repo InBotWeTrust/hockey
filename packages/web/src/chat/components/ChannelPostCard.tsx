@@ -47,6 +47,7 @@ export function ChannelPostCard({
   pollDisabled = false,
 }: ChannelPostCardProps): JSX.Element {
   const attachments = messageAttachments(post.metadata);
+  const hasText = post.content.trim().length > 0;
 
   return (
     <article
@@ -59,19 +60,8 @@ export function ChannelPostCard({
         color: 'var(--ink)',
       }}
     >
-      <div
-        style={{
-          fontSize: 15,
-          lineHeight: 1.45,
-          whiteSpace: 'pre-wrap',
-          wordBreak: 'break-word',
-        }}
-      >
-        <RichText text={post.content} />
-      </div>
-
       {attachments.length > 0 && (
-        <div style={{ display: 'grid', gap: 8, marginTop: post.content.trim() ? 12 : 0 }}>
+        <div style={{ display: 'grid', gap: 8, marginBottom: hasText ? 12 : 0 }}>
           {attachments.map((attachment) => {
             if (attachment.kind === 'image') {
               const imageName = attachment.originalName ?? 'Изображение';
@@ -150,6 +140,19 @@ export function ChannelPostCard({
               </a>
             );
           })}
+        </div>
+      )}
+
+      {hasText && (
+        <div
+          style={{
+            fontSize: 15,
+            lineHeight: 1.45,
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+          }}
+        >
+          <RichText text={post.content} />
         </div>
       )}
 

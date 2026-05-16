@@ -2897,14 +2897,14 @@ function DuelKindPreferencePicker({
   };
 
   return (
-    <div className="glass" style={{ borderRadius: 18, padding: 12 }}>
+    <div className="glass" style={{ borderRadius: 16, padding: '10px 10px 12px' }}>
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           gap: 10,
-          marginBottom: 10,
+          marginBottom: 8,
         }}
       >
         <div className="section-label" style={{ margin: 0, fontSize: 10 }}>
@@ -2919,7 +2919,15 @@ function DuelKindPreferencePicker({
           <Info size={16} strokeWidth={2.3} />
         </button>
       </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      <div
+        className="no-scrollbar"
+        style={{
+          display: 'flex',
+          gap: 6,
+          overflowX: 'auto',
+          paddingBottom: 1,
+        }}
+      >
         <DuelKindPreferenceButton
           label="Все"
           checked={allSelected}
@@ -2965,19 +2973,21 @@ function DuelKindPreferenceButton({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'flex-start',
-        gap: 8,
-        padding: '0 13px',
-        fontSize: 12,
+        gap: 6,
+        padding: '0 10px',
+        fontSize: 11,
         fontWeight: 900,
         letterSpacing: '0',
         boxShadow: active ? '0 8px 18px rgba(15, 23, 42, 0.08)' : 'none',
+        whiteSpace: 'nowrap',
+        flex: '0 0 auto',
       }}
     >
       <span
         aria-hidden="true"
         style={{
-          width: 8,
-          height: 8,
+          width: 7,
+          height: 7,
           borderRadius: 999,
           background: active ? 'rgba(15, 23, 42, 0.78)' : 'rgba(71,85,105,0.2)',
           boxShadow: active ? '0 0 0 4px rgba(15, 23, 42, 0.06)' : 'none',
@@ -3090,7 +3100,8 @@ function AmateurDuelsPage({
   const isMatchmakingActive = matchmakingTicket !== null && matchmakingRemaining > 0;
   const isMatchmakingExpired =
     matchmakingTicket !== null && matchmakingRemaining <= 0 && !matchmakingMut.isPending;
-  const canStartMatchmaking = matchmakingKinds.length > 0 && !matchmakingMut.isPending && !isMatchmakingActive;
+  const canStartMatchmaking =
+    matchmakingKinds.length > 0 && !matchmakingMut.isPending && !isMatchmakingActive;
 
   useEffect(() => {
     if (!selectedTemplateId && templateItems[0]) setSelectedTemplateId(templateItems[0].id);
@@ -3129,41 +3140,6 @@ function AmateurDuelsPage({
 
           <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div className="section-label section-label--page">Новая дуэль</div>
-            {duelCreationMode === 'challenge' && selectedTemplate && (
-              <>
-                {templateItems.length > 0 && selectedTemplate ? (
-                  <GlassSelect
-                    ariaLabel="Шаблон дуэли"
-                    value={selectedTemplate.id}
-                    options={templateItems.map((template) => ({
-                      value: template.id,
-                      label: template.title,
-                    }))}
-                    onChange={setSelectedTemplateId}
-                  />
-                ) : (
-                  <div style={{ color: 'var(--muted)', fontSize: 14 }}>
-                    Нет активных шаблонов
-                  </div>
-                )}
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  <span className="pill">
-                    {formatRuCount(
-                      selectedTemplate.total_periods,
-                      'период',
-                      'периода',
-                      'периодов',
-                    )}
-                  </span>
-                  <span className="pill">
-                    {duelPeriodDurationText(selectedTemplate.period_rules[0]!)}
-                  </span>
-                  <span className="pill">
-                    {duelPeriodModeText(selectedTemplate.period_rules[0]!)}
-                  </span>
-                </div>
-              </>
-            )}
             <SegmentedControl
               ariaLabel="Сценарий новой дуэли"
               value={duelCreationMode}
@@ -3239,6 +3215,37 @@ function AmateurDuelsPage({
               </>
             ) : (
               <>
+                {templateItems.length > 0 && selectedTemplate ? (
+                  <>
+                    <GlassSelect
+                      ariaLabel="Шаблон дуэли"
+                      value={selectedTemplate.id}
+                      options={templateItems.map((template) => ({
+                        value: template.id,
+                        label: template.title,
+                      }))}
+                      onChange={setSelectedTemplateId}
+                    />
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      <span className="pill">
+                        {formatRuCount(
+                          selectedTemplate.total_periods,
+                          'период',
+                          'периода',
+                          'периодов',
+                        )}
+                      </span>
+                      <span className="pill">
+                        {duelPeriodDurationText(selectedTemplate.period_rules[0]!)}
+                      </span>
+                      <span className="pill">
+                        {duelPeriodModeText(selectedTemplate.period_rules[0]!)}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ color: 'var(--muted)', fontSize: 14 }}>Нет активных шаблонов</div>
+                )}
                 <input
                   aria-label="Поиск соперника"
                   value={opponentQuery}
@@ -3416,17 +3423,19 @@ function AmateurDuelsPage({
               Архив появится после первых завершённых дуэлей.
             </div>
           ) : (
-            history.slice(0, 12).map((match) => (
-              <DuelListCard
-                key={match.id}
-                match={match}
-                pending={false}
-                onAccept={() => {}}
-                onCancel={() => {}}
-                onOpen={() => onOpenMatch(match.id)}
-                onSettle={() => {}}
-              />
-            ))
+            history
+              .slice(0, 12)
+              .map((match) => (
+                <DuelListCard
+                  key={match.id}
+                  match={match}
+                  pending={false}
+                  onAccept={() => {}}
+                  onCancel={() => {}}
+                  onOpen={() => onOpenMatch(match.id)}
+                  onSettle={() => {}}
+                />
+              ))
           )}
         </section>
       )}
@@ -3617,10 +3626,15 @@ function AmateurDuelPlayView({
   const submitShot = useAmateurDuelStore((s) => s.submitShot);
   const applyState = useAmateurDuelStore((s) => s.applyState);
   const [now, setNow] = useState(Date.now());
+  const [dismissedResultMatchId, setDismissedResultMatchId] = useState<string | null>(null);
 
   useEffect(() => {
     void load(matchId);
   }, [load, matchId]);
+
+  useEffect(() => {
+    setDismissedResultMatchId(null);
+  }, [matchId]);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
@@ -3643,6 +3657,17 @@ function AmateurDuelPlayView({
       void settleAmateurDuel(match.id).then(({ match: next }) => applyState(next));
     }
   }, [applyState, match, matchId, now, refresh]);
+
+  useEffect(() => {
+    if (!match || match.id !== matchId) return undefined;
+    if (match.status === 'settled' || match.status === 'cancelled' || match.status === 'expired') {
+      return undefined;
+    }
+    const id = window.setInterval(() => {
+      void refresh();
+    }, 3000);
+    return () => window.clearInterval(id);
+  }, [match, matchId, refresh]);
 
   if (!match || match.id !== matchId) {
     return (
@@ -3677,10 +3702,7 @@ function AmateurDuelPlayView({
       <ModeShell title="Комната дуэли" onBack={onBack}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
           <TotalCell label="ФОРМАТ" value={`${match.rules.totalPeriods}П`} />
-          <TotalCell
-            label="ТИП"
-            value={duelKindText(match.rules.duelKind)}
-          />
+          <TotalCell label="ТИП" value={duelKindText(match.rules.duelKind)} />
           <TotalCell label="ГОТОВ" value={readyText} />
         </div>
         <div className="glass" style={{ borderRadius: 18, padding: 14 }}>
@@ -3688,8 +3710,8 @@ function AmateurDuelPlayView({
             {match.rules.title}
           </div>
           <div style={{ color: 'var(--muted)', fontSize: 13, lineHeight: 1.45 }}>
-            Против {match.opponent.display_name}. Инвентарь выбирается здесь; в MVP можно выйти
-            без предметов.
+            Против {match.opponent.display_name}. Инвентарь выбирается здесь; в MVP можно выйти без
+            предметов.
           </div>
         </div>
         <DuelLoadoutSummary match={match} />
@@ -3730,7 +3752,9 @@ function AmateurDuelPlayView({
         receivedAtPerformanceMs={match.received_at_performance_ms}
         goals={match.current_period_goals}
         shots={match.current_period_shots}
-        shotsTotal={activePeriodRule.mode === 'quota' ? (activePeriodRule.shotsLimit ?? 30) : undefined}
+        shotsTotal={
+          activePeriodRule.mode === 'quota' ? (activePeriodRule.shotsLimit ?? 30) : undefined
+        }
         periodEndsAt={periodEndsAt}
         onTimerExpired={refresh}
         backLabel="К дуэлям"
@@ -3766,6 +3790,7 @@ function AmateurDuelPlayView({
       : match.me.state === 'completed'
         ? 'Ждём итог'
         : 'Период недоступен';
+  const showResultModal = match.status === 'settled' && dismissedResultMatchId !== match.id;
 
   return (
     <ModeShell title="Дуэль" onBack={onBack}>
@@ -3806,7 +3831,86 @@ function AmateurDuelPlayView({
       >
         {startButtonLabel}
       </button>
+      {showResultModal && (
+        <DuelResultModal
+          match={match}
+          onClose={() => setDismissedResultMatchId(match.id)}
+          onBack={onBack}
+        />
+      )}
     </ModeShell>
+  );
+}
+
+function DuelResultModal({
+  match,
+  onClose,
+  onBack,
+}: {
+  match: AmateurDuelMatch;
+  onClose: () => void;
+  onBack: () => void;
+}): JSX.Element {
+  const title =
+    match.outcome === 'draw'
+      ? 'Ничья'
+      : match.outcome === 'double_loss'
+        ? 'Дуэль не сыграна'
+        : match.winner_user_id === match.me.user_id
+          ? 'Победа в дуэли'
+          : 'Поражение в дуэли';
+  const points = match.me.result_points;
+  const pointsText = points > 0 ? `+${points}` : '0';
+  const resultCopy =
+    match.outcome === 'double_loss'
+      ? 'Оба игрока не завершили матч. Рейтинг не вырос.'
+      : match.outcome === 'draw'
+        ? 'Голы и активное время совпали. За ничью начисляется 1 очко.'
+        : match.winner_user_id === match.me.user_id
+          ? 'Соперник сыграл, сервер посчитал итог. Очки уже в рейтинге.'
+          : 'Сервер посчитал итог. Можно посмотреть детали и брать реванш позже.';
+
+  return (
+    <div
+      className="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Результат дуэли"
+      onClick={onClose}
+    >
+      <div className="modal-card" onClick={(event) => event.stopPropagation()}>
+        <div className="section-label" style={{ margin: 0, padding: 0 }}>
+          Результат
+        </div>
+        <h2 className="modal-title" style={{ marginTop: 8, fontSize: 26, lineHeight: 1.08 }}>
+          {title}
+        </h2>
+        <div
+          aria-label={`Итог дуэли ${match.me.goals}:${match.opponent.goals}`}
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+            gap: 8,
+            marginTop: 16,
+          }}
+        >
+          <DailyStatsMetric label="Счёт" value={`${match.me.goals}:${match.opponent.goals}`} />
+          <DailyStatsMetric label="Время" value={formatDurationMs(match.me.active_duration_ms)} />
+          <DailyStatsMetric label="Очки" value={pointsText} />
+        </div>
+        <p className="modal-copy">
+          {duelKindText(match.rules.duelKind)} против {match.opponent.display_name}. {resultCopy}
+        </p>
+        <div className="modal-actions">
+          <button type="button" className="modal-primary btn btn--cta" onClick={onClose}>
+            Смотреть детали
+          </button>
+          <button type="button" className="btn btn--ghost" onClick={onBack}>
+            К дуэлям
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -3818,7 +3922,9 @@ function DuelRulesPanel({ match }: { match: AmateurDuelMatch }): JSX.Element {
       const prefix = match.rules.totalPeriods > 1 ? `${rule.periodNumber}П: ` : '';
       return [`${prefix}${duelPeriodDurationText(rule)}`, duelPeriodModeText(rule)];
     }),
-    ...(match.rules.breakDurationMs > 0 ? [`перерыв ${formatMs(match.rules.breakDurationMs)}`] : []),
+    ...(match.rules.breakDurationMs > 0
+      ? [`перерыв ${formatMs(match.rules.breakDurationMs)}`]
+      : []),
   ];
 
   return (
@@ -4187,9 +4293,7 @@ function DuelInventorySlots({
                   overflowWrap: 'anywhere',
                 }}
               >
-                {item
-                  ? `${item.chargesReserved} зар.`
-                  : emptyText}
+                {item ? `${item.chargesReserved} зар.` : emptyText}
               </div>
             </div>
           </div>

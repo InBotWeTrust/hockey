@@ -1,14 +1,15 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { DAILY_PERIOD_SPEED_PRESETS } from '@hockey/game-core';
+import { DAILY_PERIOD_SPEED_PRESETS, STICK_NEUTRAL } from '@hockey/game-core';
 import { DailyScreen } from './DailyScreen.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
 import type { DailyStateResponse } from '../api/duel.js';
 import type { TrainingStateResponse } from '../api/training.js';
+import type { AmateurDuelMatchState } from '../api/amateurDuel.js';
 
 vi.mock('../game/PixiStage.js', () => ({
   PixiStage: () => <div data-testid="pixi-stage-stub" />,
@@ -65,6 +66,104 @@ const trainingActiveState: TrainingStateResponse = {
   goals: 5,
   training_seed: 'a'.repeat(64),
   started_at: '2026-04-25T11:55:00.000Z',
+};
+
+const settledDuelMatch: AmateurDuelMatchState = {
+  id: 'match-1',
+  template_id: 'template-1',
+  status: 'settled',
+  source: 'challenge',
+  ranked: true,
+  season_key: '2026-05',
+  duel_kind: 'express',
+  starts_at: '2026-05-16T10:00:00.000Z',
+  ends_at: '2026-05-16T12:00:00.000Z',
+  ready_expires_at: null,
+  cooldown_user_id: null,
+  cooldown_until: null,
+  stake_amount: 0,
+  entry_fee_amount: 0,
+  bank_amount: 0,
+  winner_user_id: 'u1',
+  outcome: 'challenger_win',
+  settled_reason: 'completed',
+  accepted_at: '2026-05-16T10:00:00.000Z',
+  settled_at: '2026-05-16T10:03:00.000Z',
+  created_at: '2026-05-16T09:55:00.000Z',
+  server_now: '2026-05-16T10:03:00.000Z',
+  period_started_at: null,
+  period_ends_at: null,
+  break_ends_at: null,
+  rules: {
+    templateId: 'template-1',
+    title: 'Экспресс',
+    description: '',
+    difficulty: 'easy',
+    duelKind: 'express',
+    duelVariant: 'time_attack',
+    rankedEnabled: true,
+    matchmakingEnabled: true,
+    totalPeriods: 1,
+    shotsPerPeriod: 30,
+    periodDurationMs: 180000,
+    breakDurationMs: 0,
+    periodRules: [{ periodNumber: 1, mode: 'time_attack', durationMs: 180000, shotsLimit: null }],
+    challengeTtlMs: 1800000,
+    readyDurationMs: 300000,
+    readyNoShowCooldownMs: 900000,
+    matchmakingTimeoutMs: 180000,
+    rankedDailyLimit: 100,
+    rankedSameOpponentLimit: 100,
+    powerCap: 100,
+    goalieId: 'rookie',
+    periodSpeedPresets: [...DAILY_PERIOD_SPEED_PRESETS],
+    stakeAmount: 0,
+    entryFeeAmount: 0,
+    requiredInventoryItemId: null,
+    inventoryChargesPerPeriod: 0,
+  },
+  me: {
+    user_id: 'u1',
+    display_name: 'Tester',
+    avatar_url: null,
+    side: 'challenger',
+    state: 'completed',
+    current_period: 1,
+    shots_taken: 12,
+    goals: 3,
+    accuracy: 25,
+    active_duration_ms: 180000,
+    active_duration_seconds: 180,
+    result_points: 3,
+    ready_at: null,
+    loadout: { items: [], powerScore: 0, powerCap: 100 },
+    inventory_available: [],
+    inventory_report: [],
+  },
+  opponent: {
+    user_id: 'u2',
+    display_name: 'Duel Opponent',
+    avatar_url: null,
+    side: 'opponent',
+    state: 'completed',
+    current_period: 1,
+    shots_taken: 10,
+    goals: 1,
+    accuracy: 10,
+    active_duration_ms: 180000,
+    active_duration_seconds: 180,
+    result_points: 0,
+    ready_at: null,
+    loadout: { items: [], powerScore: 0, powerCap: 100 },
+    inventory_available: [],
+    inventory_report: [],
+  },
+  match_seed: 'seed',
+  current_period_shots: 12,
+  current_period_goals: 3,
+  period_speed_presets: [...DAILY_PERIOD_SPEED_PRESETS],
+  stick_effects: STICK_NEUTRAL,
+  recent_periods: [],
 };
 
 function renderWith(initialEntries: string[] = ['/']) {
@@ -949,5 +1048,84 @@ describe('DailyScreen', () => {
       const calls = fetchMock.mock.calls.map((c) => String(c[0]));
       expect(calls.some((u) => u.includes('/duel/daily/period/start'))).toBe(true);
     });
+  });
+
+  it('shows a result modal for a settled amateur duel', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/matches/match-1')) {
+        return new Response(JSON.stringify({ match: settledDuelMatch }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=amateur&match=match-1']);
+
+    const dialog = await screen.findByRole('dialog', { name: 'Результат дуэли' });
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByText('Победа в дуэли')).toBeInTheDocument();
+    expect(within(dialog).getByText('3:1')).toBeInTheDocument();
+    expect(within(dialog).getByText('+3')).toBeInTheDocument();
+  });
+
+  it('polls an unfinished amateur duel and shows result when it settles', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    fetchMock.mockReset();
+    let matchFetches = 0;
+    fetchMock.mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/matches/match-1')) {
+        matchFetches += 1;
+        const waitingMatch: AmateurDuelMatchState = {
+          ...settledDuelMatch,
+          status: 'active',
+          outcome: null,
+          winner_user_id: null,
+          settled_at: null,
+          settled_reason: null,
+          me: { ...settledDuelMatch.me, state: 'completed' },
+          opponent: { ...settledDuelMatch.opponent, state: 'accepted', goals: 0, shots_taken: 0 },
+        };
+        return new Response(
+          JSON.stringify({ match: matchFetches >= 2 ? settledDuelMatch : waitingMatch }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=amateur&match=match-1']);
+
+    try {
+      expect(await screen.findByText('Ждём итог')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(matchFetches).toBeGreaterThanOrEqual(2);
+      });
+      expect(await screen.findByRole('dialog', { name: 'Результат дуэли' })).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
