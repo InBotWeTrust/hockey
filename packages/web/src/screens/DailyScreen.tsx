@@ -2683,12 +2683,6 @@ function duelKindText(kind: AmateurDuelKind): string {
   return 'Классика';
 }
 
-function duelPeriodRuleText(rule: AmateurDuelPeriodRule): string {
-  const duration = formatMs(rule.durationMs);
-  if (rule.mode === 'quota') return `${duration}, ${rule.shotsLimit ?? 30} бросков`;
-  return `${duration}, на скорость`;
-}
-
 function duelPeriodDurationText(rule: AmateurDuelPeriodRule): string {
   const minutes = Math.round(rule.durationMs / 60_000);
   if (minutes >= 1 && rule.durationMs % 60_000 === 0) return `${minutes} мин`;

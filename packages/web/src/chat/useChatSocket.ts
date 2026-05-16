@@ -13,6 +13,47 @@ interface InfinitePages {
   pageParams: unknown[];
 }
 
+function sortChatList(a: ChatDTO, b: ChatDTO): number {
+  const channelDiff = Number(b.type === 'channel') - Number(a.type === 'channel');
+  if (channelDiff !== 0) return channelDiff;
+
+  const pinnedA = a.pinnedAt ? new Date(a.pinnedAt).getTime() : Number.NEGATIVE_INFINITY;
+  const pinnedB = b.pinnedAt ? new Date(b.pinnedAt).getTime() : Number.NEGATIVE_INFINITY;
+  if (pinnedA !== pinnedB) return pinnedB - pinnedA;
+
+  const lastA = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : Number.NEGATIVE_INFINITY;
+  const lastB = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : Number.NEGATIVE_INFINITY;
+  return lastB - lastA;
+}
+
+function applyMessageNewToChatList(
+  qc: QueryClient,
+  chatId: string,
+  msg: ChatMessageDTO,
+  meId: string | null,
+  activeChatId: string | null,
+  silent: boolean,
+): void {
+  qc.setQueryData<ChatDTO[] | undefined>(chatKeys.list(), (old) => {
+    if (!old) return old;
+    let touched = false;
+    const next = old.map((chat) => {
+      if (chat.id !== chatId) return chat;
+      touched = true;
+      const shouldIncrementUnread =
+        !silent && msg.senderId !== meId && activeChatId !== chatId;
+      return {
+        ...chat,
+        lastMessageAt: msg.createdAt,
+        lastMessage: msg,
+        lastMessageSenderName: msg.senderDisplayName,
+        unreadCount: shouldIncrementUnread ? chat.unreadCount + 1 : chat.unreadCount,
+      };
+    });
+    return touched ? next.sort(sortChatList) : old;
+  });
+}
+
 function applyMessageNew(qc: QueryClient, chatId: string, msg: ChatMessageDTO): void {
   qc.setQueryData<InfinitePages | undefined>(chatKeys.messages(chatId), (old) => {
     if (!old) {
@@ -82,6 +123,16 @@ function applyChatRead(
   meId: string | null,
 ): void {
   if (event.userId === meId) {
+    qc.setQueryData<ChatDTO[] | undefined>(chatKeys.list(), (old) => {
+      if (!old) return old;
+      let touched = false;
+      const next = old.map((chat) => {
+        if (chat.id !== event.chatId || chat.unreadCount === 0) return chat;
+        touched = true;
+        return { ...chat, unreadCount: 0 };
+      });
+      return touched ? next : old;
+    });
     void qc.invalidateQueries({ queryKey: chatKeys.unread() });
     return;
   }
@@ -153,6 +204,14 @@ export function useChatSocket(): ChatSocketStatus {
         }
         switch (event.type) {
           case 'message:new':
+            applyMessageNewToChatList(
+              qc,
+              event.chatId,
+              event.message,
+              meId,
+              useChatStore.getState().activeChatId,
+              event.silent === true,
+            );
             applyMessageNew(qc, event.chatId, event.message);
             return;
           case 'message:deleted':
