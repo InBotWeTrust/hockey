@@ -1017,7 +1017,7 @@ export function ChatRoomScreen(): JSX.Element {
     onMutate: (matchId) => {
       setDuelInviteResolutionByMatch((prev) => ({ ...prev, [matchId]: 'declined' }));
     },
-    onSuccess: (_data, matchId) => {
+    onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
     },
     onError: (_err, matchId) => {

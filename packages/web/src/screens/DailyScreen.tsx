@@ -2811,18 +2811,6 @@ function duelOutcomeText(match: AmateurDuelMatch): string {
   return 'Истекла';
 }
 
-function duelProgressText(match: AmateurDuelMatch): string {
-  if (match.status === 'invited') return 'вызов';
-  if (match.status === 'ready_check') return 'комната';
-  if (match.status === 'active') {
-    const period = Math.max(1, match.me.current_period, match.opponent.current_period);
-    return `${period}/${match.rules.totalPeriods}`;
-  }
-  if (match.status === 'settled') return 'итог';
-  if (match.status === 'cancelled') return 'отмена';
-  return 'истёк';
-}
-
 function currentMoscowSeasonKey(): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Europe/Moscow',
