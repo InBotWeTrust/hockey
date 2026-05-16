@@ -45,7 +45,7 @@ describe('App routing + auth', () => {
 
   it('redirects unauthenticated users from / to /login', () => {
     renderAt('/');
-    expect(screen.getByRole('heading', { name: /хоккейный ультиматум/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /ультимейт хоккей/i })).toBeInTheDocument();
   });
 
   it('shows home content when authenticated', () => {
@@ -61,6 +61,6 @@ describe('App routing + auth', () => {
   it('guards /duel/:goalieId as well', () => {
     renderAt('/duel/rookie');
     expect(screen.queryByText('duel content')).toBeNull();
-    expect(screen.getByRole('heading', { name: /хоккейный ультиматум/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /ультимейт хоккей/i })).toBeInTheDocument();
   });
 });
