@@ -128,6 +128,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '030_media_objects.sql',
       '031_matchmaking_duel_kind_preferences.sql',
       '032_channel_comment_metadata.sql',
+      '033_relax_amateur_duel_ranked_limits.sql',
     ]);
   });
 });

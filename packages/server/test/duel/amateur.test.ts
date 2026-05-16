@@ -523,6 +523,55 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(settled.json().match.outcome).toBe('challenger_win');
   });
 
+  it('includes opponent live period shots in match state', async () => {
+    const templateId = await createTemplate({ duelKind: 'express', variant: 'time_attack' });
+    const created = await challenge(templateId);
+    const matchId = created.json().match.id;
+    await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/accept`,
+      headers: auth(tokenB),
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/ready`,
+      headers: auth(tokenA),
+      payload: { loadout: {} },
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/ready`,
+      headers: auth(tokenB),
+      payload: { loadout: {} },
+    });
+    const started = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/period/start`,
+      headers: auth(tokenB),
+    });
+    expect(started.statusCode).toBe(200);
+
+    await pool.query(
+      `insert into shot_session
+         (user_id, mode, amateur_duel_match_id, period_number, shot_index, seed,
+          input_payload, server_result, game_core_version)
+       values
+         ($1, 'amateur_duel', $2, 1, 1, 'opponent-live-1', '{}'::jsonb, 'goal', 1),
+         ($1, 'amateur_duel', $2, 1, 2, 'opponent-live-2', '{}'::jsonb, 'save', 1)`,
+      [userB, matchId],
+    );
+
+    const state = await app.inject({
+      method: 'GET',
+      url: `/duel/amateur/matches/${matchId}`,
+      headers: auth(tokenA),
+    });
+    expect(state.statusCode).toBe(200);
+    expect(state.json().match.opponent.state).toBe('period_active');
+    expect(state.json().match.opponent.shots_taken).toBe(2);
+    expect(state.json().match.opponent.goals).toBe(1);
+  });
+
   it('snapshots express plus with mixed period rules and completes time attack on timeout', async () => {
     const templateId = await createTemplate({
       duelKind: 'express_plus',
