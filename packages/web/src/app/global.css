@@ -60,9 +60,11 @@
 
 @supports (-webkit-touch-callout: none) {
   @media (hover: none) and (pointer: coarse) {
-    :root {
-      --app-safe-top: max(44px, var(--app-safe-top-raw));
-      --app-safe-bottom: max(22px, var(--app-safe-bottom-raw));
+    @media (display-mode: standalone), (display-mode: fullscreen) {
+      :root {
+        --app-safe-top: max(44px, var(--app-safe-top-raw));
+        --app-safe-bottom: max(22px, var(--app-safe-bottom-raw));
+      }
     }
   }
 }

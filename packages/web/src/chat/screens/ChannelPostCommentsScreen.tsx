@@ -370,6 +370,8 @@ export function ChannelPostCommentsScreen(): JSX.Element {
       className="screen"
       style={{
         position: 'relative',
+        display: 'flex',
+        flexDirection: 'column',
         height: viewportHeight !== null ? `${viewportHeight}px` : '100dvh',
         overflow: 'hidden',
       }}
@@ -398,6 +400,7 @@ export function ChannelPostCommentsScreen(): JSX.Element {
       </div>
 
       <div
+        data-testid="comments-scroll"
         className="no-scrollbar"
         style={{
           flex: 1,
@@ -406,7 +409,7 @@ export function ChannelPostCommentsScreen(): JSX.Element {
           display: 'flex',
           flexDirection: 'column',
           gap: 10,
-          padding: 'calc(112px + var(--app-safe-top)) 14px calc(96px + var(--app-safe-bottom))',
+          padding: 'calc(88px + var(--app-safe-top)) 14px calc(96px + var(--app-safe-bottom))',
         }}
       >
         {postQuery.data && (
