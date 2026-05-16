@@ -233,6 +233,20 @@ describe('useChatSocket dispatch', () => {
     expect(invalSpy).toHaveBeenCalledWith({ queryKey: chatKeys.unread() });
   });
 
+  it('message:new from myself on a non-active chat: prepends but does NOT bump unread', async () => {
+    qc.setQueryData<ChatDTO[]>(chatKeys.list(), [fixtureChat('c1')]);
+    const ownMsg = fixtureMsg('m-own', 'c1', SELF);
+    await act(async () => {
+      MockWebSocket.instances[0]?.fireMessage({
+        v: 1,
+        event: { type: 'message:new', chatId: 'c1', message: ownMsg },
+      });
+    });
+    expect(useChatStore.getState().unreadByChat['c1']).toBeUndefined();
+    expect(qc.getQueryData<ChatDTO[]>(chatKeys.list())?.[0]?.lastMessage?.id).toBe('m-own');
+    expect(qc.getQueryData<ChatDTO[]>(chatKeys.list())?.[0]?.unreadCount).toBe(0);
+  });
+
   it('regression: message:new with no cache yet does not write a shell — invalidates messages query so refetch picks it up', async () => {
     // Reproduces the "messages disappear" bug: a {pages:[[msg]]} shell here
     // would be overwritten when the in-flight initial fetchMessages resolves

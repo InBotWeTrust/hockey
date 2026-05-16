@@ -453,6 +453,23 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
       expect(dto.isDeleted).toBe(false);
     });
 
+    it('marks the sender membership as read when sending', async () => {
+      const { sendMessage } = await import('../../src/chat/service.js');
+      await pool.query(
+        `update chat_members set last_read_at = now() - interval '1 day'
+         where chat_id = $1 and user_id = $2`,
+        [dmId, userA],
+      );
+      await sendMessage(pool, { chatId: dmId, senderId: userA, content: 'hi' });
+      const r = await pool.query(
+        `select last_read_at > now() - interval '1 minute' as fresh
+           from chat_members
+          where chat_id = $1 and user_id = $2`,
+        [dmId, userA],
+      );
+      expect(r.rows[0].fresh).toBe(true);
+    });
+
     it('preserves replyToId when provided', async () => {
       const { sendMessage } = await import('../../src/chat/service.js');
       const first = await sendMessage(pool, { chatId: dmId, senderId: userA, content: 'parent' });

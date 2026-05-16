@@ -3,6 +3,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Plus, Search } from 'lucide-react';
 import {
+  fetchPushPreferences,
+  updatePushPreferences,
+  type PushPreferences,
+} from '../../api/push.js';
+import {
   fetchChatList,
   pinChat,
   unpinChat,
@@ -18,6 +23,8 @@ import { UserPickerModal } from '../components/UserPickerModal.js';
 import { SearchResultsDropdown } from '../components/SearchResultsDropdown.js';
 import { useDebouncedValue } from '../../lib/useDebouncedValue.js';
 import { NAV_HEIGHT } from '../../components/BottomNav.js';
+
+const PUSH_PREFERENCES_QUERY_KEY = ['push', 'preferences'] as const;
 
 function chatHaystack(chat: ChatDTO): string {
   const parts: string[] = [];
@@ -42,6 +49,11 @@ export function ChatListScreen(): JSX.Element {
     queryKey: chatKeys.list(),
     queryFn: fetchChatList,
     staleTime: 30_000,
+  });
+  const { data: pushPreferences } = useQuery<PushPreferences>({
+    queryKey: PUSH_PREFERENCES_QUERY_KEY,
+    queryFn: fetchPushPreferences,
+    staleTime: 60_000,
   });
 
   const [actionTarget, setActionTarget] = useState<{ chatId: string; anchorRect: DOMRect } | null>(
@@ -108,12 +120,43 @@ export function ChatListScreen(): JSX.Element {
     },
   });
 
+  function patchGameNewsPreference(enabled: boolean): void {
+    queryClient.setQueryData<PushPreferences | undefined>(PUSH_PREFERENCES_QUERY_KEY, (old) => {
+      if (!old) return old;
+      return { ...old, gameNews: enabled };
+    });
+  }
+
+  const pushPreferenceMut = useMutation<
+    PushPreferences,
+    Error,
+    boolean,
+    { prev: PushPreferences | undefined }
+  >({
+    mutationFn: (enabled) => updatePushPreferences({ gameNews: enabled }),
+    onMutate: async (enabled) => {
+      await queryClient.cancelQueries({ queryKey: PUSH_PREFERENCES_QUERY_KEY });
+      const prev = queryClient.getQueryData<PushPreferences>(PUSH_PREFERENCES_QUERY_KEY);
+      patchGameNewsPreference(enabled);
+      return { prev };
+    },
+    onError: (_err, _enabled, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(PUSH_PREFERENCES_QUERY_KEY, ctx.prev);
+      showToast('Не удалось обновить уведомления');
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: PUSH_PREFERENCES_QUERY_KEY });
+    },
+  });
+
   const onRequestActions = useCallback((chatId: string, anchorRect: DOMRect) => {
     setActionTarget({ chatId, anchorRect });
   }, []);
 
   const targetChat = actionTarget ? data?.find((c) => c.id === actionTarget.chatId) : undefined;
   const targetIsPinned = targetChat?.pinnedAt !== null && targetChat !== undefined;
+  const targetIsChannel = targetChat?.type === 'channel';
+  const targetNotificationsMuted = targetIsChannel && pushPreferences?.gameNews === false;
 
   const onTogglePin = useCallback((): void => {
     if (!actionTarget || !targetChat) return;
@@ -123,6 +166,12 @@ export function ChatListScreen(): JSX.Element {
       pinMut.mutate(actionTarget.chatId);
     }
   }, [actionTarget, targetChat, pinMut, unpinMut]);
+
+  const onToggleChannelNotifications = useCallback((): void => {
+    if (!targetIsChannel) return;
+    const currentEnabled = pushPreferences?.gameNews ?? true;
+    pushPreferenceMut.mutate(!currentEnabled);
+  }, [targetIsChannel, pushPreferences?.gameNews, pushPreferenceMut]);
 
   const [filter, setFilter] = useState('');
   const debouncedFilter = useDebouncedValue(filter, 300);
@@ -251,7 +300,8 @@ export function ChatListScreen(): JSX.Element {
               key={chat.id}
               chat={chat}
               onOpen={openChat}
-              {...(chat.type !== 'channel' ? { onRequestActions } : {})}
+              onRequestActions={onRequestActions}
+              notificationsMuted={chat.type === 'channel' && pushPreferences?.gameNews === false}
             />
           ))}
         </div>
@@ -261,7 +311,12 @@ export function ChatListScreen(): JSX.Element {
         open={actionTarget !== null}
         anchorRect={actionTarget?.anchorRect ?? null}
         isPinned={targetIsPinned}
+        showPinAction={targetChat !== undefined && targetChat.type !== 'channel'}
+        showNotificationAction={targetIsChannel}
+        notificationsMuted={targetNotificationsMuted}
+        notificationPending={pushPreferenceMut.isPending}
         onTogglePin={onTogglePin}
+        onToggleNotifications={onToggleChannelNotifications}
         onClose={() => setActionTarget(null)}
       />
 

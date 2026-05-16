@@ -303,6 +303,23 @@ function formatMs(ms: number): string {
   return `${m}:${s}`;
 }
 
+function parseAspectRatio(value: string): number {
+  const [widthRaw, heightRaw] = value.split('/');
+  const width = Number(widthRaw?.trim());
+  const height = Number(heightRaw?.trim());
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return RINK.width / RINK.height;
+  }
+  return width / height;
+}
+
+function outerBlockHeight(el: HTMLElement | null): number {
+  if (!el) return 0;
+  const rect = el.getBoundingClientRect();
+  const style = window.getComputedStyle(el);
+  return rect.height + parseFloat(style.marginTop) + parseFloat(style.marginBottom);
+}
+
 function formatHms(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
   const h = String(Math.floor(total / 3600)).padStart(2, '0');
@@ -2991,6 +3008,10 @@ function DuelKindPreferencePicker({
   const selectedSet = new Set(selected);
   const allSelected = DUEL_KIND_OPTIONS.every((kind) => selectedSet.has(kind));
   const toggleKind = (kind: AmateurDuelKind) => {
+    if (allSelected) {
+      onChange([kind]);
+      return;
+    }
     const next = selectedSet.has(kind)
       ? selected.filter((cur) => cur !== kind)
       : [...selected, kind];
@@ -3031,7 +3052,7 @@ function DuelKindPreferencePicker({
           label="Все"
           checked={allSelected}
           active={allSelected}
-          onClick={() => onChange(DUEL_KIND_OPTIONS)}
+          onClick={() => onChange(allSelected ? [] : DUEL_KIND_OPTIONS)}
         />
         {DUEL_KIND_OPTIONS.map((kind) => (
           <DuelKindPreferenceButton
@@ -4876,14 +4897,12 @@ const DUEL_INVENTORY_SLOTS = [
 
 function DuelInventorySlots({
   match,
-  compact = false,
 }: {
   match: AmateurDuelMatch;
-  compact?: boolean;
 }): JSX.Element {
   const items = match.me.loadout.items;
   const availableItems = match.me.inventory_available ?? [];
-  const iconSize = compact ? 30 : 42;
+  const iconSize = 42;
 
   return (
     <div
@@ -4891,7 +4910,7 @@ function DuelInventorySlots({
       style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-        gap: compact ? 6 : 8,
+        gap: 8,
       }}
     >
       {DUEL_INVENTORY_SLOTS.map((slot) => {
@@ -4913,15 +4932,15 @@ function DuelInventorySlots({
           <div
             key={slot.kind}
             style={{
-              minHeight: compact ? 42 : 98,
+              minHeight: 98,
               borderRadius: 12,
-              padding: compact ? '7px' : '9px',
+              padding: '9px',
               display: 'grid',
-              gridTemplateColumns: compact ? `${iconSize}px minmax(0, 1fr)` : '1fr',
-              gridTemplateRows: compact ? undefined : `${iconSize}px auto`,
-              gap: compact ? 6 : 7,
+              gridTemplateColumns: '1fr',
+              gridTemplateRows: `${iconSize}px auto`,
+              gap: 7,
               alignItems: 'center',
-              justifyItems: compact ? undefined : 'center',
+              justifyItems: 'center',
               background: item ? 'rgba(255,255,255,0.78)' : 'rgba(255,255,255,0.34)',
               border: '1px solid rgba(255,255,255,0.74)',
               color: item ? 'var(--ink)' : 'var(--muted)',
@@ -4955,17 +4974,17 @@ function DuelInventorySlots({
                 }}
               />
             </span>
-            <div style={{ minWidth: 0, width: '100%', textAlign: compact ? 'left' : 'center' }}>
+            <div style={{ minWidth: 0, width: '100%', textAlign: 'center' }}>
               <div
                 style={{
-                  fontSize: compact ? 9 : 10,
+                  fontSize: 10,
                   fontWeight: 900,
-                  letterSpacing: compact ? '0.08em' : '0.04em',
+                  letterSpacing: '0.04em',
                   textTransform: 'uppercase',
                   lineHeight: 1.08,
-                  whiteSpace: compact ? 'nowrap' : 'normal',
-                  overflow: compact ? 'hidden' : 'visible',
-                  textOverflow: compact ? 'ellipsis' : 'clip',
+                  whiteSpace: 'normal',
+                  overflow: 'visible',
+                  textOverflow: 'clip',
                   overflowWrap: 'anywhere',
                 }}
               >
@@ -4974,12 +4993,12 @@ function DuelInventorySlots({
               <div
                 style={{
                   marginTop: 2,
-                  fontSize: compact ? 10 : 11,
+                  fontSize: 11,
                   fontWeight: 900,
                   lineHeight: 1.08,
-                  whiteSpace: compact ? 'nowrap' : 'normal',
-                  overflow: compact ? 'hidden' : 'visible',
-                  textOverflow: compact ? 'ellipsis' : 'clip',
+                  whiteSpace: 'normal',
+                  overflow: 'visible',
+                  textOverflow: 'clip',
                   overflowWrap: 'anywhere',
                 }}
               >
@@ -4993,10 +5012,130 @@ function DuelInventorySlots({
   );
 }
 
-function DuelInventoryMiniHud({ match }: { match: AmateurDuelMatch }): JSX.Element {
+function duelInventoryRarityColor(
+  rarity: AmateurDuelMatch['me']['loadout']['items'][number]['rarity'] | undefined,
+): string {
+  return rarity === 'legendary'
+    ? '#f59e0b'
+    : rarity === 'epic'
+      ? '#a855f7'
+      : rarity === 'rare'
+        ? '#0ea5e9'
+        : '#64748b';
+}
+
+function duelInventoryRemaining(match: AmateurDuelMatch, itemId: string, fallback: number): number {
+  for (let index = match.me.inventory_report.length - 1; index >= 0; index -= 1) {
+    const report = match.me.inventory_report[index];
+    const consumed = report?.consumed.find((cur) => cur.id === itemId);
+    if (consumed) return consumed.remainingReserved;
+  }
+  return fallback;
+}
+
+function DuelInventoryMiniHud({ match }: { match: AmateurDuelMatch }): JSX.Element | null {
+  const availableItems = match.me.inventory_available ?? [];
+
   return (
-    <div style={{ marginTop: 8 }}>
-      <DuelInventorySlots match={match} compact />
+    <div
+      aria-label="Инвентарь дуэли"
+      style={{
+        display: 'flex',
+        justifyContent: 'center',
+        gap: 8,
+        pointerEvents: 'none',
+      }}
+    >
+      {DUEL_INVENTORY_SLOTS.map((slot) => {
+        const item = match.me.loadout.items.find((cur) => cur.kind === slot.kind);
+        const available = availableItems.find(
+          (cur) => cur.kind === slot.kind && cur.chargesAvailable > 0,
+        );
+        const totalCharges = item?.chargesReserved ?? 0;
+        const remainingCharges = item
+          ? duelInventoryRemaining(match, item.id, item.chargesReserved)
+          : 0;
+        const remainingRatio =
+          item && totalCharges > 0
+            ? Math.max(0, Math.min(1, remainingCharges / totalCharges))
+            : item
+              ? 1
+              : 0;
+        const usedPercent = Math.round((1 - remainingRatio) * 100);
+        const rarityColor = duelInventoryRarityColor(item?.rarity ?? available?.rarity);
+        const isSelected = item !== undefined;
+        const lineVisible = isSelected && usedPercent > 0 && usedPercent < 100;
+        const statusText = isSelected
+          ? totalCharges > 0
+            ? `${remainingCharges}/${totalCharges}`
+            : 'вкл'
+          : available
+            ? 'не выбрано'
+            : 'нет';
+
+        return (
+          <span
+            key={slot.kind}
+            aria-label={`${slot.label}: ${statusText}`}
+            style={{
+              position: 'relative',
+              width: 46,
+              height: 46,
+              borderRadius: 999,
+              overflow: 'hidden',
+              display: 'block',
+              background: 'rgba(255,255,255,0.72)',
+              border: isSelected ? `2px solid ${rarityColor}` : '1px solid rgba(255,255,255,0.78)',
+              boxShadow: isSelected
+                ? `0 0 0 1px rgba(255,255,255,0.7), 0 8px 18px ${rarityColor}45`
+                : '0 0 0 1px rgba(15,23,42,0.08), 0 6px 14px rgba(15,23,42,0.12)',
+            }}
+          >
+            <img
+              src={slot.artwork}
+              alt=""
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                filter: 'grayscale(1)',
+                opacity: isSelected ? 0.52 : available ? 0.46 : 0.28,
+              }}
+            />
+            {isSelected && (
+              <img
+                src={slot.artwork}
+                alt=""
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  clipPath: `inset(${usedPercent}% 0 0 0)`,
+                  opacity: 0.98,
+                }}
+              />
+            )}
+            {lineVisible && (
+              <span
+                style={{
+                  position: 'absolute',
+                  left: 5,
+                  right: 5,
+                  top: `${usedPercent}%`,
+                  height: 1,
+                  background: 'rgba(255,255,255,0.92)',
+                  boxShadow: '0 0 0 1px rgba(15,23,42,0.16)',
+                  transform: 'translateY(-0.5px)',
+                }}
+              />
+            )}
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -6028,6 +6167,11 @@ export function PlayView<TState>({
   };
 
   const scaleRef = useRef<Scale>({ factor: 1, offsetX: 0, offsetY: 0 });
+  const playRootRef = useRef<HTMLElement | null>(null);
+  const scoreboardShellRef = useRef<HTMLDivElement | null>(null);
+  const hudShellRef = useRef<HTMLDivElement | null>(null);
+  const rinkAreaRef = useRef<HTMLDivElement | null>(null);
+  const controlsRef = useRef<HTMLDivElement | null>(null);
   const loopRef = useRef<GameLoop | null>(null);
   const puckRef = useRef<Puck | null>(null);
   const playerRef = useRef<Player | null>(null);
@@ -6048,6 +6192,12 @@ export function PlayView<TState>({
   const soundToastTimerRef = useRef<number | null>(null);
   const [resultSubText, setResultSubText] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<ShotResult | null>(null);
+  const [playLayout, setPlayLayout] = useState<{
+    rinkWidth: number;
+    rinkHeight: number;
+    rinkSlotHeight: number;
+    bottomSpace: number;
+  } | null>(null);
   // Server state is held until shot animation ends, so ScoreBoard counters
   // don't jump while the puck is still flying.
   const pendingMidShotApplyRef = useRef<(() => void) | null>(null);
@@ -6079,6 +6229,7 @@ export function PlayView<TState>({
     () => speedOverridesForPeriod(periodNumber, periodSpeedPresets),
     [periodNumber, periodSpeedPresets],
   );
+  const rinkRatio = useMemo(() => parseAspectRatio(rinkAspectRatio), [rinkAspectRatio]);
   const speedsRef = useRef<SpeedOverrides>(speeds);
   speedsRef.current = speeds;
   const stickEffectsRef = useRef<StickEffects>(stickEffects);
@@ -6117,6 +6268,74 @@ export function PlayView<TState>({
     return () => window.clearInterval(id);
   }, [periodEndsAt]);
   const remaining = periodEndsAt ? Math.max(0, periodEndsAt - now) : 0;
+
+  useLayoutEffect(() => {
+      const root = playRootRef.current;
+      const node = rinkAreaRef.current;
+      const scoreboard = scoreboardShellRef.current;
+      const hud = hudShellRef.current;
+      const controls = controlsRef.current;
+      if (!root || !node || !scoreboard || !controls) return undefined;
+
+    const updatePlayLayout = (): void => {
+      const rootRect = root.getBoundingClientRect();
+      const rinkAreaRect = node.getBoundingClientRect();
+      const style = window.getComputedStyle(node);
+      const paddingX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+      const maxWidth = Math.max(0, rinkAreaRect.width - paddingX);
+      if (maxWidth <= 0 || rootRect.height <= 0) return;
+
+      const nav = document.querySelector<HTMLElement>('.bottom-nav-shell nav');
+      const navTop = nav?.getBoundingClientRect().top ?? window.innerHeight;
+      const navReserve = Math.max(54, window.innerHeight - navTop);
+      const minBottomSpace = navReserve + 8;
+      const preferredBottomSpace = navReserve + 24;
+      const fixedHeight =
+        outerBlockHeight(scoreboard) + outerBlockHeight(controls) + outerBlockHeight(hud);
+      const availableForRinkAndBottom = Math.max(0, rootRect.height - fixedHeight);
+      const fullWidthRinkHeight = maxWidth / rinkRatio;
+      const spareAfterFullRink = availableForRinkAndBottom - fullWidthRinkHeight;
+      const bottomSpace = Math.min(
+        preferredBottomSpace,
+        Math.max(minBottomSpace, spareAfterFullRink),
+      );
+      const rinkSlotHeight = Math.max(0, availableForRinkAndBottom - bottomSpace);
+      const rinkWidth = Math.min(maxWidth, rinkSlotHeight * rinkRatio);
+      const rinkHeight = rinkWidth / rinkRatio;
+
+      setPlayLayout((prev) => {
+        if (
+          prev &&
+          Math.abs(prev.rinkWidth - rinkWidth) < 0.5 &&
+          Math.abs(prev.rinkHeight - rinkHeight) < 0.5 &&
+          Math.abs(prev.rinkSlotHeight - rinkSlotHeight) < 0.5 &&
+          Math.abs(prev.bottomSpace - bottomSpace) < 0.5
+        ) {
+          return prev;
+        }
+        return { rinkWidth, rinkHeight, rinkSlotHeight, bottomSpace };
+      });
+    };
+
+    updatePlayLayout();
+
+    let observer: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      observer = new ResizeObserver(updatePlayLayout);
+      observer.observe(root);
+      observer.observe(node);
+      observer.observe(scoreboard);
+      if (hud) observer.observe(hud);
+      observer.observe(controls);
+    }
+    window.addEventListener('resize', updatePlayLayout);
+    window.visualViewport?.addEventListener('resize', updatePlayLayout);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', updatePlayLayout);
+      window.visualViewport?.removeEventListener('resize', updatePlayLayout);
+    };
+  }, [rinkRatio]);
 
   useEffect(() => {
     hitboxesRef.current?.setVisible(hitboxesVisible);
@@ -6496,6 +6715,7 @@ export function PlayView<TState>({
 
   return (
     <main
+      ref={playRootRef}
       className="screen"
       style={{
         position: 'fixed',
@@ -6504,9 +6724,10 @@ export function PlayView<TState>({
         right: 0,
         bottom: bottomInset,
         minHeight: 0,
+        overflow: 'hidden',
       }}
     >
-      <div style={{ margin: '12px 14px 10px' }}>
+      <div ref={scoreboardShellRef} style={{ margin: '12px 14px 10px' }}>
         <ScoreBoard
           period={periodNumber}
           periodsTotal={periodsTotal}
@@ -6517,25 +6738,44 @@ export function PlayView<TState>({
           shotsTotal={shotsTotal}
           opponent={scoreboardOpponent}
         />
-        {hudAddon}
       </div>
 
+      {hudAddon && (
+        <div
+          ref={hudShellRef}
+          style={{
+            margin: '0 14px 8px',
+            minHeight: 48,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            pointerEvents: 'none',
+          }}
+        >
+          {hudAddon}
+        </div>
+      )}
+
       <div
+        ref={rinkAreaRef}
         style={{
-          flex: 1,
+          flex: playLayout ? `0 0 ${playLayout.rinkSlotHeight}px` : '1 1 auto',
+          height: playLayout ? `${playLayout.rinkSlotHeight}px` : undefined,
           minHeight: 0,
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
-          padding: '0 14px 10px',
+          padding: '0 14px 8px',
         }}
       >
         <div
           style={{
             position: 'relative',
             aspectRatio: rinkAspectRatio,
-            width: '100%',
-            maxHeight: '100%',
+            width: playLayout ? `${playLayout.rinkWidth}px` : '100%',
+            height: playLayout ? `${playLayout.rinkHeight}px` : undefined,
+            maxWidth: '100%',
+            flex: '0 0 auto',
             borderRadius: rinkBorderRadius,
             overflow: 'hidden',
             border: rinkBorder,
@@ -6550,6 +6790,7 @@ export function PlayView<TState>({
       </div>
 
       <div
+        ref={controlsRef}
         style={{
           padding: '0 14px 10px',
           display: 'grid',
@@ -6615,6 +6856,14 @@ export function PlayView<TState>({
           <VolumeX size={22} />
         </button>
       </div>
+
+      <div
+        aria-hidden="true"
+        style={{
+          flex: playLayout ? `0 0 ${playLayout.bottomSpace}px` : '0 1 88px',
+          minHeight: 0,
+        }}
+      />
 
       {soundToastVisible && (
         <>

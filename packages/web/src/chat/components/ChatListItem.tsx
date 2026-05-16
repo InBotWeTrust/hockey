@@ -1,5 +1,5 @@
-import { memo, useCallback } from 'react';
-import { Megaphone, MessageSquareMore, Pin } from 'lucide-react';
+import { memo, useCallback, useRef } from 'react';
+import { Megaphone, MegaphoneOff, MessageSquareMore, Pin } from 'lucide-react';
 import type { ChatDTO } from '../api.js';
 import { useAuthStore } from '../../auth/authStore.js';
 import { useChatStore } from '../chatStore.js';
@@ -12,6 +12,7 @@ interface ChatListItemProps {
   chat: ChatDTO;
   onOpen: (chatId: string) => void;
   onRequestActions?: (chatId: string, anchorRect: DOMRect) => void;
+  notificationsMuted?: boolean;
 }
 
 const PREVIEW_LIMIT = 28;
@@ -64,7 +65,12 @@ function lastMessagePreview(chat: ChatDTO, meId: string | null): string {
   return author ? `${author}: ${body}` : body;
 }
 
-function ChatListItemImpl({ chat, onOpen, onRequestActions }: ChatListItemProps): JSX.Element {
+function ChatListItemImpl({
+  chat,
+  onOpen,
+  onRequestActions,
+  notificationsMuted = false,
+}: ChatListItemProps): JSX.Element {
   const meId = useAuthStore((s) => s.user?.id ?? null);
   const liveUnread = useChatStore((s) => s.unreadByChat[chat.id] ?? 0);
   const isSystem = chat.type === 'system';
@@ -73,10 +79,13 @@ function ChatListItemImpl({ chat, onOpen, onRequestActions }: ChatListItemProps)
   const avatarUrl =
     chat.type === 'direct' ? (chat.dmCounterpart?.avatarUrl ?? null) : chatAvatarUrl(chat);
   const unread = Math.max(chat.unreadCount, liveUnread);
+  const suppressNextOpenRef = useRef(false);
 
   const onLongPress = useCallback(
     (rect: DOMRect) => {
-      onRequestActions?.(chat.id, rect);
+      if (!onRequestActions) return;
+      suppressNextOpenRef.current = true;
+      onRequestActions(chat.id, rect);
     },
     [onRequestActions, chat.id],
   );
@@ -86,7 +95,13 @@ function ChatListItemImpl({ chat, onOpen, onRequestActions }: ChatListItemProps)
     <button
       type="button"
       className="glass"
-      onClick={() => onOpen(chat.id)}
+      onClick={() => {
+        if (suppressNextOpenRef.current) {
+          suppressNextOpenRef.current = false;
+          return;
+        }
+        onOpen(chat.id);
+      }}
       {...longPressHandlers}
       style={{
         position: 'relative',
@@ -183,6 +198,13 @@ function ChatListItemImpl({ chat, onOpen, onRequestActions }: ChatListItemProps)
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          {isChannel && notificationsMuted && (
+            <MegaphoneOff
+              size={12}
+              aria-label="Уведомления выключены"
+              style={{ color: 'var(--muted)' }}
+            />
+          )}
           {isPinned && (
             <Pin
               size={11}

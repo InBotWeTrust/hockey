@@ -1760,7 +1760,7 @@ function buildDuelInviteMessage(
   const bankAmount = rules.stakeAmount * 2;
   return {
     content: [
-      `${challengerName} вызывает вас на дуэль «${rules.title}».`,
+      `${challengerName} вызывает вас на дуэль.`,
       `Формат: ${duelKindLabel(rules.duelKind)}, ${rules.totalPeriods} период(а)`,
       `Ответить: в течение ${formatDuelInviteTtl(rules.challengeTtlMs)}`,
     ].join('\n'),

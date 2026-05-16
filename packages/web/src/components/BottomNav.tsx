@@ -12,6 +12,38 @@ import { chatKeys } from '../lib/queryKeys.js';
 export const NAV_HEIGHT = 68;
 
 const ICON_SIZE = 22;
+const LAST_GAME_ROUTE_KEY = 'hockey.nav.lastGameRoute';
+const LAST_CHAT_ROUTE_KEY = 'hockey.nav.lastChatRoute';
+const DEFAULT_GAME_ROUTE = '/?view=hub';
+const DEFAULT_CHAT_ROUTE = '/chat';
+
+function routeFromLocation(location: ReturnType<typeof useLocation>): string {
+  return `${location.pathname}${location.search}${location.hash}`;
+}
+
+function isGameRoute(pathname: string): boolean {
+  return pathname === '/' || pathname.startsWith('/duel');
+}
+
+function isChatRoute(pathname: string): boolean {
+  return pathname.startsWith('/chat');
+}
+
+function readRememberedRoute(key: string, fallback: string): string {
+  try {
+    return window.sessionStorage.getItem(key) || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function rememberRoute(key: string, route: string): void {
+  try {
+    window.sessionStorage.setItem(key, route);
+  } catch {
+    // Session storage can be blocked in some embedded browsers; navigation still works with defaults.
+  }
+}
 
 export function isBottomNavVisible(pathname: string, user: AuthUser | null): boolean {
   const isDemo = pathname === '/demo';
@@ -27,6 +59,8 @@ export function BottomNav(): JSX.Element | null {
   const isDemo = location.pathname === '/demo';
   const [toast, setToast] = useState<string | null>(null);
   const toastTimerRef = useRef<number | null>(null);
+  const lastGameRouteRef = useRef(readRememberedRoute(LAST_GAME_ROUTE_KEY, DEFAULT_GAME_ROUTE));
+  const lastChatRouteRef = useRef(readRememberedRoute(LAST_CHAT_ROUTE_KEY, DEFAULT_CHAT_ROUTE));
 
   const totalUnread = useChatStore((s) => s.totalUnread());
   const setUnread = useChatStore((s) => s.setUnread);
@@ -70,6 +104,19 @@ export function BottomNav(): JSX.Element | null {
     [],
   );
 
+  useEffect(() => {
+    if (isDemo) return;
+    const route = routeFromLocation(location);
+    if (isGameRoute(location.pathname)) {
+      lastGameRouteRef.current = route;
+      rememberRoute(LAST_GAME_ROUTE_KEY, route);
+    }
+    if (isChatRoute(location.pathname)) {
+      lastChatRouteRef.current = route;
+      rememberRoute(LAST_CHAT_ROUTE_KEY, route);
+    }
+  }, [isDemo, location]);
+
   function showToast(label: string): void {
     setToast(label);
     if (toastTimerRef.current !== null) {
@@ -86,12 +133,23 @@ export function BottomNav(): JSX.Element | null {
     return null;
   }
 
-  const isGame = isDemo || location.pathname === '/' || location.pathname.startsWith('/duel');
+  const isGame = isDemo || isGameRoute(location.pathname);
   const isInventory = location.pathname.startsWith('/inventory');
   const isProfile = location.pathname.startsWith('/profile');
   const isAdmin = location.pathname.startsWith('/admin');
+  const isChat = !isDemo && isChatRoute(location.pathname);
   const showAdmin = !isDemo && user?.role === 'admin';
   const inactiveIconColor = isDemo ? 'rgba(71, 85, 105, 0.48)' : 'var(--muted)';
+  const openLastGameRoute = (): void => {
+    navigate(
+      lastGameRouteRef.current || readRememberedRoute(LAST_GAME_ROUTE_KEY, DEFAULT_GAME_ROUTE),
+    );
+  };
+  const openLastChatRoute = (): void => {
+    navigate(
+      lastChatRouteRef.current || readRememberedRoute(LAST_CHAT_ROUTE_KEY, DEFAULT_CHAT_ROUTE),
+    );
+  };
 
   return (
     <div
@@ -135,7 +193,7 @@ export function BottomNav(): JSX.Element | null {
               strokeWidth={2}
             />
           }
-          onClick={() => navigate('/?view=hub')}
+          onClick={openLastGameRoute}
         />
         <NavTab
           label="Инвентарь"
@@ -160,14 +218,12 @@ export function BottomNav(): JSX.Element | null {
         <NavTab
           label="Чат"
           disabled={isDemo}
-          active={!isDemo && location.pathname.startsWith('/chat')}
+          active={isChat}
           icon={
             <span style={{ position: 'relative', display: 'inline-flex' }}>
               <MessageCircle
                 size={ICON_SIZE}
-                color={
-                  !isDemo && location.pathname.startsWith('/chat') ? '#ffffff' : inactiveIconColor
-                }
+                color={isChat ? '#ffffff' : inactiveIconColor}
                 strokeWidth={2}
               />
               {!isDemo && totalUnread > 0 && (
@@ -196,7 +252,7 @@ export function BottomNav(): JSX.Element | null {
               )}
             </span>
           }
-          onClick={() => navigate('/chat')}
+          onClick={openLastChatRoute}
         />
         <NavTab
           label="Профиль"

@@ -199,7 +199,13 @@ export function useChatSocket(): ChatSocketStatus {
       refresh: () => refreshAccessToken(),
       onEvent: (event: ChatEvent) => {
         const meId = useAuthStore.getState().user?.id ?? null;
-        if (event.type !== 'chat:read' || event.userId === meId) {
+        const shouldApplyStoreEvent =
+          event.type === 'chat:read'
+            ? event.userId === meId
+            : event.type === 'message:new'
+              ? event.message.senderId !== meId && event.silent !== true
+              : true;
+        if (shouldApplyStoreEvent) {
           useChatStore.getState().applyEvent(event);
         }
         switch (event.type) {

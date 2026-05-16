@@ -193,6 +193,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
         limit 1`,
     );
     expect(inviteMessage.rows[0]?.content).toContain('Ответить: в течение 30 мин');
+    expect(inviteMessage.rows[0]?.content.split('\n')[0]).toBe('Player A вызывает вас на дуэль.');
     expect(inviteMessage.rows[0]?.content).not.toContain('Окно:');
     expect(Date.parse(String(inviteMessage.rows[0]?.metadata.endsAt))).toBeLessThan(
       Date.parse('2100-01-01T00:00:00.000Z'),

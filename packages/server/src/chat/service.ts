@@ -572,6 +572,16 @@ export async function sendMessage(pool: Pool, opts: SendMessageOpts): Promise<Ch
       ],
     );
     const row = r.rows[0]!;
+    await client.query(
+      `insert into chat_members (chat_id, user_id, last_read_at)
+       values ($1, $2, $3)
+       on conflict (chat_id, user_id) do update
+          set last_read_at = greatest(
+            coalesce(chat_members.last_read_at, '-infinity'::timestamptz),
+            excluded.last_read_at
+          )`,
+      [opts.chatId, opts.senderId, row.created_at],
+    );
     if (pollOptions.length > 0) {
       await client.query(`insert into channel_post_polls (post_message_id) values ($1)`, [row.id]);
       for (const [index, text] of pollOptions.entries()) {

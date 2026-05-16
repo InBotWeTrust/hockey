@@ -168,6 +168,27 @@ describe('ChatListItem', () => {
     expect(document.querySelector('.lucide-megaphone')).not.toBeNull();
   });
 
+  it('shows a muted icon for channels with disabled notifications', () => {
+    setMe();
+
+    render(
+      <ChatListItem
+        chat={makeChat({
+          type: 'channel',
+          name: 'Новости игры',
+          channelSlug: 'news',
+          avatarUrl: null,
+          dmCounterpart: null,
+          memberCount: 15,
+        })}
+        notificationsMuted
+        onOpen={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText('Уведомления выключены')).toBeInTheDocument();
+  });
+
   it('shows unread badge from live unread store while the REST chat row is stale', () => {
     setMe();
     useChatStore.getState().setUnread({ 'chat-1': 1 });

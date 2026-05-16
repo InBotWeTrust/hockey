@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { ChatListScreen } from '../screens/ChatListScreen.js';
 import { useAuthStore, type AuthUser } from '../../auth/authStore.js';
 import * as api from '../api.js';
+import * as pushApi from '../../api/push.js';
 
 function renderScreen(): void {
   const qc = new QueryClient({
@@ -32,6 +33,20 @@ describe('ChatListScreen — global search dropdown', () => {
     useAuthStore.setState({ accessToken: 'tok', refreshToken: 'rtok', user });
     vi.spyOn(api, 'fetchChatList').mockResolvedValue([]);
     vi.spyOn(api, 'searchMessagesApi').mockResolvedValue([]);
+    vi.spyOn(pushApi, 'fetchPushPreferences').mockResolvedValue({
+      chatNewDialogMessage: true,
+      dailyGame: true,
+      trainingAvailable: true,
+      duelEvents: true,
+      gameNews: true,
+    });
+    vi.spyOn(pushApi, 'updatePushPreferences').mockResolvedValue({
+      chatNewDialogMessage: true,
+      dailyGame: true,
+      trainingAvailable: true,
+      duelEvents: true,
+      gameNews: false,
+    });
   });
 
   afterEach(() => {

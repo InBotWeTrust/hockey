@@ -38,7 +38,7 @@ function buildPayload(base: WebPushPayload, input: SendNewsPostPushInput): WebPu
   const payload: WebPushPayload = {
     title: base.title,
     body: compactBody(base.body),
-    url: base.url,
+    url: input.url,
   };
   if (input.tag !== undefined) payload.tag = input.tag;
   return payload;
