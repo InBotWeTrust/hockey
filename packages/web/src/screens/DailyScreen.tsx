@@ -97,6 +97,8 @@ import { ScoreBoard, type ScoreBoardOpponent } from '../components/ScoreBoard.js
 import { ResultModal } from '../components/ResultModal.js';
 import { GlassSelect } from '../components/GlassSelect.js';
 import { UserAvatar } from '../chat/components/UserAvatar.js';
+import { UserProfileSheet } from '../chat/components/UserProfileSheet.js';
+import type { UserPickerItem } from '../chat/api.js';
 import type {
   DailyGameStats,
   DailyStateResponse,
@@ -108,6 +110,7 @@ import type { TrainingStateResponse } from '../api/training.js';
 import {
   challengeAmateurDuel,
   fetchAmateurEvents,
+  fetchAmateurMatch,
   fetchAmateurMatches,
   fetchAmateurRating,
   fetchAmateurTemplates,
@@ -118,6 +121,7 @@ import {
   type AmateurDuelKind,
   type AmateurDuelMatch,
   type AmateurDuelMatchState,
+  type AmateurDuelPeriodLog,
   type AmateurDuelPeriodRule,
   type AmateurDuelTemplate,
   type AmateurOpponent,
@@ -2811,18 +2815,6 @@ function duelOutcomeText(match: AmateurDuelMatch): string {
   return 'Истекла';
 }
 
-function duelProgressText(match: AmateurDuelMatch): string {
-  if (match.status === 'invited') return 'вызов';
-  if (match.status === 'ready_check') return 'комната';
-  if (match.status === 'active') {
-    const period = Math.max(1, match.me.current_period, match.opponent.current_period);
-    return `${period}/${match.rules.totalPeriods}`;
-  }
-  if (match.status === 'settled') return 'итог';
-  if (match.status === 'cancelled') return 'отмена';
-  return 'истёк';
-}
-
 function currentMoscowSeasonKey(): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Europe/Moscow',
@@ -3132,6 +3124,7 @@ function AmateurDuelsPage({
   const [opponentSearchInfoOpen, setOpponentSearchInfoOpen] = useState(false);
   const [lockerInfoOpen, setLockerInfoOpen] = useState(false);
   const [historyResultMatch, setHistoryResultMatch] = useState<AmateurDuelMatch | null>(null);
+  const [ratingProfile, setRatingProfile] = useState<UserPickerItem | null>(null);
   const [opponentQuery, setOpponentQuery] = useState('');
   const [selectedOpponent, setSelectedOpponent] = useState<AmateurOpponent | null>(null);
   const [matchmakingNow, setMatchmakingNow] = useState(Date.now());
@@ -3157,6 +3150,11 @@ function AmateurDuelsPage({
   const rating = useQuery({
     queryKey: ['amateur-duel', 'rating'],
     queryFn: fetchAmateurRating,
+  });
+  const historyResultDetails = useQuery({
+    queryKey: ['amateur-duel', 'matches', historyResultMatch?.id],
+    queryFn: () => fetchAmateurMatch(historyResultMatch?.id ?? ''),
+    enabled: historyResultMatch !== null,
   });
 
   const matchmakingMut = useMutation({
@@ -3774,10 +3772,20 @@ function AmateurDuelsPage({
               {(rating.data?.rating ?? []).slice(0, 10).map((row, index) => {
                 const isMe = currentUserId === row.user_id;
                 return (
-                  <div
+                  <button
+                    type="button"
                     key={row.user_id}
                     className="glass"
+                    aria-label={`Открыть профиль ${row.display_name}`}
+                    onClick={() =>
+                      setRatingProfile({
+                        userId: row.user_id,
+                        displayName: row.display_name,
+                        avatarUrl: row.avatar_url,
+                      })
+                    }
                     style={{
+                      width: '100%',
                       borderRadius: 16,
                       padding: '12px 14px',
                       display: 'grid',
@@ -3787,6 +3795,8 @@ function AmateurDuelsPage({
                       color: 'var(--ink)',
                       fontSize: 14,
                       fontWeight: 800,
+                      textAlign: 'left',
+                      cursor: 'pointer',
                       border: isMe
                         ? '2px solid rgba(245, 158, 11, 0.92)'
                         : '1px solid rgba(255,255,255,0.8)',
@@ -3809,7 +3819,7 @@ function AmateurDuelsPage({
                       {row.display_name}
                     </span>
                     <span>{row.points}</span>
-                  </div>
+                  </button>
                 );
               })}
             </>
@@ -3855,7 +3865,8 @@ function AmateurDuelsPage({
       )}
       {historyResultMatch && (
         <DuelResultModal
-          match={historyResultMatch}
+          match={historyResultDetails.data?.match ?? historyResultMatch}
+          isLoadingDetails={historyResultDetails.isFetching && !historyResultDetails.data}
           closeLabel="Понятно"
           onClose={() => setHistoryResultMatch(null)}
         />
@@ -3888,6 +3899,7 @@ function AmateurDuelsPage({
           onClose={() => setLockerInfoOpen(false)}
         />
       )}
+      <UserProfileSheet sender={ratingProfile} onClose={() => setRatingProfile(null)} />
     </ModeShell>
   );
 }
@@ -4275,10 +4287,12 @@ function DuelResultModal({
   match,
   onClose,
   closeLabel = 'Понятно',
+  isLoadingDetails = false,
 }: {
   match: AmateurDuelMatch;
   onClose: () => void;
   closeLabel?: string;
+  isLoadingDetails?: boolean;
 }): JSX.Element {
   const title =
     match.status !== 'settled'
@@ -4300,6 +4314,9 @@ function DuelResultModal({
           : 'rgba(15, 23, 42, 0.38)';
   const points = match.me.result_points;
   const pointsText = points > 0 ? `+${points}` : '0';
+  const mePeriods = hasDuelPeriodDetails(match) ? match.recent_periods : [];
+  const opponentPeriods = hasDuelPeriodDetails(match) ? match.opponent_recent_periods : [];
+  const hasPeriodDetails = mePeriods.length > 0 || opponentPeriods.length > 0;
 
   return (
     <div
@@ -4309,7 +4326,11 @@ function DuelResultModal({
       aria-label="Результат дуэли"
       onClick={onClose}
     >
-      <div className="modal-card" onClick={(event) => event.stopPropagation()}>
+      <div
+        className="modal-card"
+        onClick={(event) => event.stopPropagation()}
+        style={{ maxHeight: 'calc(100dvh - 64px)', overflowY: 'auto' }}
+      >
         <div className="section-label" style={{ margin: 0, padding: 0 }}>
           Результат
         </div>
@@ -4360,11 +4381,195 @@ function DuelResultModal({
           <DuelResultDetailRow label="Соперник" value={match.opponent.display_name || 'Игрок'} />
           <DuelResultDetailRow label="Начало" value={formatShortDateTime(match.starts_at)} />
         </div>
+        <div style={{ marginTop: 16 }}>
+          <div className="section-label" style={{ margin: 0, padding: 0 }}>
+            Периоды
+          </div>
+          {hasPeriodDetails ? (
+            <DuelResultPeriodComparison
+              totalPeriods={match.rules.totalPeriods}
+              mePeriods={mePeriods}
+              opponentPeriods={opponentPeriods}
+              opponentName={match.opponent.display_name || 'Соперник'}
+            />
+          ) : (
+            <div
+              style={{
+                marginTop: 8,
+                borderRadius: 16,
+                padding: '12px 14px',
+                background: 'rgba(255,255,255,0.42)',
+                border: '1px solid rgba(255,255,255,0.62)',
+                color: 'rgba(15, 23, 42, 0.58)',
+                fontSize: 12,
+                fontWeight: 750,
+                lineHeight: 1.35,
+              }}
+            >
+              {isLoadingDetails
+                ? 'Загружаем статистику периодов...'
+                : 'Подробная статистика периодов пока недоступна.'}
+            </div>
+          )}
+        </div>
         <div className="modal-actions">
           <button type="button" className="modal-primary btn btn--cta" onClick={onClose}>
             {closeLabel}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function hasDuelPeriodDetails(match: AmateurDuelMatch): match is AmateurDuelMatchState {
+  return 'recent_periods' in match && 'opponent_recent_periods' in match;
+}
+
+function DuelResultPeriodComparison({
+  totalPeriods,
+  mePeriods,
+  opponentPeriods,
+  opponentName,
+}: {
+  totalPeriods: number;
+  mePeriods: AmateurDuelPeriodLog[];
+  opponentPeriods: AmateurDuelPeriodLog[];
+  opponentName: string;
+}): JSX.Element {
+  const meByPeriod = new Map(mePeriods.map((period) => [period.period_number, period]));
+  const opponentByPeriod = new Map(opponentPeriods.map((period) => [period.period_number, period]));
+  const periodNumbers = Array.from({ length: totalPeriods }, (_, index) => index + 1);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+      {periodNumbers.map((periodNumber) => (
+        <div
+          key={periodNumber}
+          aria-label={`${periodNumber}-й период: ваша статистика и статистика соперника`}
+          style={{
+            borderRadius: 16,
+            padding: 10,
+            background: 'rgba(255,255,255,0.42)',
+            border: '1px solid rgba(255,255,255,0.62)',
+          }}
+        >
+          <div
+            style={{
+              color: 'var(--ink)',
+              fontSize: 12,
+              fontWeight: 950,
+              marginBottom: 8,
+            }}
+          >
+            {periodNumber}-й период
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+            <DuelResultParticipantPeriodStats
+              title="Вы"
+              period={meByPeriod.get(periodNumber)}
+            />
+            <DuelResultParticipantPeriodStats
+              title={opponentName}
+              period={opponentByPeriod.get(periodNumber)}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DuelResultParticipantPeriodStats({
+  title,
+  period,
+}: {
+  title: string;
+  period: AmateurDuelPeriodLog | undefined;
+}): JSX.Element {
+  const goals = period?.goals ?? 0;
+  const shots = period?.shots_taken ?? 0;
+  const muted = period === undefined;
+  return (
+    <div
+      style={{
+        minWidth: 0,
+        borderRadius: 14,
+        padding: '9px 8px',
+        background: muted ? 'rgba(255,255,255,0.26)' : 'rgba(255,255,255,0.54)',
+        border: '1px solid rgba(255,255,255,0.62)',
+      }}
+    >
+      <div
+        style={{
+          color: muted ? 'rgba(15,23,42,0.38)' : 'rgba(15,23,42,0.72)',
+          fontSize: 9,
+          fontWeight: 950,
+          lineHeight: 1.1,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          textTransform: 'uppercase',
+          letterSpacing: '0.08em',
+        }}
+      >
+        {title}
+      </div>
+      <div
+        style={{
+          marginTop: 7,
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+          gap: '6px 8px',
+          color: muted ? 'rgba(15,23,42,0.35)' : 'var(--ink)',
+          fontSize: 11,
+          fontWeight: 850,
+        }}
+      >
+        <DuelResultTinyStat label="Голы" value={period ? String(goals) : '—'} />
+        <DuelResultTinyStat label="Броски" value={period ? String(shots) : '—'} />
+        <DuelResultTinyStat
+          label="Процент"
+          value={period ? formatGoalRate(goals, shots) : '—'}
+        />
+        <DuelResultTinyStat
+          label="Время"
+          value={period ? formatDurationMs(period.duration_ms) : '—'}
+        />
+      </div>
+    </div>
+  );
+}
+
+function DuelResultTinyStat({ label, value }: { label: string; value: string }): JSX.Element {
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div
+        style={{
+          color: 'rgba(15,23,42,0.46)',
+          fontSize: 8,
+          fontWeight: 900,
+          lineHeight: 1,
+          textTransform: 'uppercase',
+          letterSpacing: '0.06em',
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          marginTop: 4,
+          fontFamily: 'var(--font-mono)',
+          fontSize: label === 'Время' ? 10 : 12,
+          fontWeight: 850,
+          lineHeight: 1,
+          fontVariantNumeric: 'tabular-nums',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {value}
       </div>
     </div>
   );
