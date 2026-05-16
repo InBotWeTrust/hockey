@@ -185,8 +185,35 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(first.statusCode).toBe(200);
     expect(first.json().match.status).toBe('invited');
 
+    const inviteMessage = await pool.query<{ content: string; metadata: Record<string, unknown> }>(
+      `select content, metadata
+         from messages
+        where metadata->>'type' = 'amateur_duel_invite'
+        order by created_at desc
+        limit 1`,
+    );
+    expect(inviteMessage.rows[0]?.content).toContain('Ответить: в течение 30 мин');
+    expect(inviteMessage.rows[0]?.content).not.toContain('Окно:');
+    expect(Date.parse(String(inviteMessage.rows[0]?.metadata.endsAt))).toBeLessThan(
+      Date.parse('2100-01-01T00:00:00.000Z'),
+    );
+
     const duplicate = await challenge(templateId);
     expect(duplicate.statusCode).toBe(409);
+  });
+
+  it('limits one player to five open duel slots', async () => {
+    const templateIds = await Promise.all(Array.from({ length: 6 }, () => createTemplate()));
+
+    for (const templateId of templateIds.slice(0, 5)) {
+      const created = await challenge(templateId);
+      expect(created.statusCode).toBe(200);
+      expect(created.json().match.status).toBe('invited');
+    }
+
+    const blocked = await challenge(templateIds[5]!);
+    expect(blocked.statusCode).toBe(409);
+    expect(blocked.json().error.message).toBe('open duel slot limit reached');
   });
 
   it('rejects duel challenges from beginners and against beginners', async () => {
@@ -220,6 +247,23 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     });
     expect(opponents.statusCode).toBe(200);
     expect(opponents.json().users).toEqual([]);
+  });
+
+  it('uses relaxed ranked limits for new duel templates by default', async () => {
+    const templateId = await createTemplate();
+
+    const templates = await app.inject({
+      method: 'GET',
+      url: '/duel/amateur/templates',
+      headers: auth(tokenA),
+    });
+
+    expect(templates.statusCode).toBe(200);
+    const template = templates
+      .json()
+      .templates.find((item: { id: string }) => item.id === templateId);
+    expect(template.ranked_daily_limit).toBe(100);
+    expect(template.ranked_same_opponent_limit).toBe(100);
   });
 
   it('accepts into a ready room without reserving stake or fee yet', async () => {
@@ -337,6 +381,17 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       { balance: 100, reserved_balance: 0 },
       { balance: 100, reserved_balance: 0 },
     ]);
+
+    const notification = await pool.query<{ content: string }>(
+      `select content
+         from messages
+        where content like '%отклонил приглашение%'
+        order by created_at desc
+        limit 1`,
+    );
+    expect(notification.rows[0]?.content).toBe(
+      'Player B отклонил приглашение на дуэль «Test duel».',
+    );
   });
 
   it('pairs matchmaking players into a ready room', async () => {

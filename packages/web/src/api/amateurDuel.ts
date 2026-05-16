@@ -205,6 +205,7 @@ export interface AmateurOpponent {
   userId: string;
   displayName: string;
   avatarUrl: string | null;
+  lastSeenAt: string | null;
 }
 
 export interface AmateurRatingRow {
@@ -352,6 +353,6 @@ export function settleAmateurDuel(matchId: string): Promise<{ match: AmateurDuel
   }).then((res) => ({ match: stampMatch(res.match) }));
 }
 
-export function fetchAmateurRating(): Promise<{ rating: AmateurRatingRow[] }> {
-  return apiFetch<{ rating: AmateurRatingRow[] }>('/duel/amateur/rating');
+export function fetchAmateurRating(): Promise<{ season_key: string; rating: AmateurRatingRow[] }> {
+  return apiFetch<{ season_key: string; rating: AmateurRatingRow[] }>('/duel/amateur/rating');
 }

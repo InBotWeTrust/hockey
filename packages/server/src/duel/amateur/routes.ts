@@ -42,6 +42,7 @@ const TAP_TIME_FUTURE_TOLERANCE_MS = 2500;
 const TAP_TIME_STALE_TOLERANCE_MS = 12_000;
 const TAP_TIME_PAUSE_ALLOWANCE_PER_SHOT_MS = 2_000;
 const MATCHMAKING_TIMEOUT_MS = 120_000;
+const MAX_OPEN_DUEL_SLOTS = 5;
 
 const uuid = z.string().uuid();
 const isoDate = z.string().datetime({ offset: true });
@@ -98,8 +99,8 @@ const createTemplateSchema = z.object({
   readyDurationMs: z.number().int().min(1000).max(86_400_000).default(300_000),
   readyNoShowCooldownMs: z.number().int().min(0).max(86_400_000).default(900_000),
   matchmakingTimeoutMs: z.number().int().min(1000).max(86_400_000).default(180_000),
-  rankedDailyLimit: z.number().int().min(0).max(1000).default(10),
-  rankedSameOpponentLimit: z.number().int().min(0).max(1000).default(2),
+  rankedDailyLimit: z.number().int().min(0).max(1000).default(100),
+  rankedSameOpponentLimit: z.number().int().min(0).max(1000).default(100),
   powerCap: z.number().int().min(0).max(100_000).default(100),
   goalieId: z.string().trim().min(1).max(80).default('rookie'),
   periodSpeedPresets: z.array(periodPresetSchema).min(1).max(9),
@@ -561,8 +562,7 @@ function combineEffects(items: LoadoutItemSnapshot[]): InventoryItemEffects {
       recoveryDelayMs: acc.recoveryDelayMs + item.effects.recoveryDelayMs,
       stumbleChance: acc.stumbleChance + item.effects.stumbleChance,
       stumbleMs: acc.stumbleMs + item.effects.stumbleMs,
-      stumbleBlocksPerPeriod:
-        acc.stumbleBlocksPerPeriod + item.effects.stumbleBlocksPerPeriod,
+      stumbleBlocksPerPeriod: acc.stumbleBlocksPerPeriod + item.effects.stumbleBlocksPerPeriod,
     }),
     effectsFromUnknown(null),
   );
@@ -686,8 +686,8 @@ function parseRulesSnapshot(value: unknown): DuelRulesSnapshot {
       readyDurationMs: z.number().int().min(1000).default(300_000),
       readyNoShowCooldownMs: z.number().int().min(0).default(900_000),
       matchmakingTimeoutMs: z.number().int().min(1000).default(180_000),
-      rankedDailyLimit: z.number().int().min(0).default(10),
-      rankedSameOpponentLimit: z.number().int().min(0).default(2),
+      rankedDailyLimit: z.number().int().min(0).default(100),
+      rankedSameOpponentLimit: z.number().int().min(0).default(100),
       powerCap: z.number().int().min(0).default(100),
       goalieId: z.string(),
       periodSpeedPresets: z.array(periodPresetSchema).min(1).max(9),
@@ -995,7 +995,10 @@ async function consumeInventoryForPeriod(
       [participant.user_id, item.id, item.duelPeriodCost],
     );
     const alreadyConsumed = Number(participant.consumed_inventory_charges);
-    const remainingReserved = Math.max(0, item.chargesReserved - alreadyConsumed - item.duelPeriodCost);
+    const remainingReserved = Math.max(
+      0,
+      item.chargesReserved - alreadyConsumed - item.duelPeriodCost,
+    );
     consumed.push({
       id: item.id,
       kind: item.kind,
@@ -1028,7 +1031,10 @@ async function releaseRemainingInventoryReserve(
   for (const item of loadout.items) {
     const periodsConsumed = Math.floor(
       Number(participant.consumed_inventory_charges) /
-        Math.max(1, loadout.items.reduce((sum, cur) => sum + cur.duelPeriodCost, 0)),
+        Math.max(
+          1,
+          loadout.items.reduce((sum, cur) => sum + cur.duelPeriodCost, 0),
+        ),
     );
     const consumedForItem = Math.min(item.chargesReserved, periodsConsumed * item.duelPeriodCost);
     const remaining = Math.max(0, item.chargesReserved - consumedForItem);
@@ -1211,9 +1217,7 @@ async function cancelReadyNoShow(
   const notReady = participants.filter((participant) => participant.state !== 'ready');
   const cooldownUserId = notReady.length === 1 ? notReady[0]!.user_id : null;
   const cooldownUntil =
-    cooldownUserId !== null
-      ? new Date(now.getTime() + rules.readyNoShowCooldownMs)
-      : null;
+    cooldownUserId !== null ? new Date(now.getTime() + rules.readyNoShowCooldownMs) : null;
   await client.query(
     `update amateur_duel_match
         set status = 'cancelled',
@@ -1707,13 +1711,12 @@ async function fetchDisplayName(
   return rows[0]?.display_name ?? 'Соперник';
 }
 
-function formatDuelMessageDate(date: Date): string {
-  return date.toLocaleString('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+function formatDuelInviteTtl(ms: number): string {
+  const totalMinutes = Math.max(1, Math.round(ms / 60_000));
+  if (totalMinutes < 60) return `${totalMinutes} мин`;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return minutes > 0 ? `${hours} ч ${minutes} мин` : `${hours} ч`;
 }
 
 function duelKindLabel(kind: DuelKind): string {
@@ -1738,14 +1741,14 @@ function buildDuelInviteMessage(
   challengerName: string,
   rules: DuelRulesSnapshot,
   startsAt: Date,
-  endsAt: Date,
+  replyByAt: Date,
 ): { content: string; metadata: AmateurDuelInviteMessageMetadata } {
   const bankAmount = rules.stakeAmount * 2;
   return {
     content: [
       `${challengerName} вызывает вас на дуэль «${rules.title}».`,
       `Формат: ${duelKindLabel(rules.duelKind)}, ${rules.totalPeriods} период(а)`,
-      `Окно: ${formatDuelMessageDate(startsAt)} — ${formatDuelMessageDate(endsAt)}`,
+      `Ответить: в течение ${formatDuelInviteTtl(rules.challengeTtlMs)}`,
     ].join('\n'),
     metadata: {
       type: 'amateur_duel_invite',
@@ -1753,7 +1756,7 @@ function buildDuelInviteMessage(
       templateTitle: rules.title,
       challengerName,
       startsAt: startsAt.toISOString(),
-      endsAt: endsAt.toISOString(),
+      endsAt: replyByAt.toISOString(),
       totalPeriods: rules.totalPeriods,
       shotsPerPeriod: rules.shotsPerPeriod,
       periodDurationMs: rules.periodDurationMs,
@@ -1820,6 +1823,21 @@ async function assertRankedLimits(
   }
 }
 
+async function assertOpenDuelSlots(client: PoolClient, userIds: string[]): Promise<void> {
+  for (const userId of userIds) {
+    const { rows } = await client.query<{ total: string }>(
+      `select count(*)::text as total
+         from amateur_duel_match
+        where status in ('invited', 'ready_check', 'active')
+          and (challenger_user_id = $1 or opponent_user_id = $1)`,
+      [userId],
+    );
+    if (Number(rows[0]?.total ?? 0) >= MAX_OPEN_DUEL_SLOTS) {
+      throw new AppError('conflict', 'open duel slot limit reached', 409);
+    }
+  }
+}
+
 async function createOpenMatch(
   client: PoolClient,
   opts: {
@@ -1844,6 +1862,7 @@ async function createOpenMatch(
   if (duplicate.rows[0]) {
     throw new AppError('conflict', 'open duel already exists for this opponent and template', 409);
   }
+  await assertOpenDuelSlots(client, [opts.challengerUserId, opts.opponentUserId]);
   const inviteExpiresAt =
     opts.source === 'challenge'
       ? new Date(opts.now.getTime() + rules.challengeTtlMs)
@@ -1900,12 +1919,7 @@ async function activateReadyMatch(
 ): Promise<DuelMatchRow> {
   const participants = await fetchParticipants(client, match.id);
   if (participants.some((participant) => participant.state !== 'ready')) return match;
-  await assertRankedLimits(
-    client,
-    [match.challenger_user_id, match.opponent_user_id],
-    rules,
-    now,
-  );
+  await assertRankedLimits(client, [match.challenger_user_id, match.opponent_user_id], rules, now);
   const acceptedAtIso = now.toISOString();
   const matchSeed = deriveAmateurDuelSeed(
     match.id,
@@ -2088,10 +2102,11 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
         id: string;
         display_name: string;
         avatar_url: string | null;
+        last_seen_at: Date | null;
         lifetime_goals_total: number;
         level: number;
       }>(
-        `select id, display_name, avatar_url, lifetime_goals_total, level
+        `select id, display_name, avatar_url, last_seen_at, lifetime_goals_total, level
            from users
           where id <> $1
             and (level >= 2 or lifetime_goals_total >= 1000)
@@ -2105,6 +2120,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
           userId: row.id,
           displayName: row.display_name,
           avatarUrl: row.avatar_url,
+          lastSeenAt: row.last_seen_at?.toISOString() ?? null,
         })),
       };
     });
@@ -2197,7 +2213,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
         title: rules.title,
         rules,
         startsAt: match.starts_at,
-        endsAt: template.ends_at,
+        replyByAt: match.ready_expires_at ?? match.ends_at,
       };
     });
 
@@ -2207,7 +2223,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
       challengerName,
       result.rules,
       result.startsAt,
-      result.endsAt,
+      result.replyByAt,
     );
     await notifyDuelMessage(
       app,
@@ -2372,7 +2388,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
         app,
         req.user.id,
         declined.challengerUserId,
-        `${opponentName} отказался от дуэли «${declined.title}».`,
+        `${opponentName} отклонил приглашение на дуэль «${declined.title}».`,
       ).catch((err) =>
         app.log.warn({ err, matchId: declined.matchId }, 'duel decline DM notification failed'),
       );
@@ -2490,7 +2506,8 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
         ? await fetchTemplate(client, body.data.template_id)
         : null;
       const requestedKinds = normalizeDuelKinds(
-        body.data.duel_kinds ?? (templateFromLegacyPayload ? [templateFromLegacyPayload.duel_kind] : []),
+        body.data.duel_kinds ??
+          (templateFromLegacyPayload ? [templateFromLegacyPayload.duel_kind] : []),
       );
       if (requestedKinds.length === 0) {
         throw new AppError('bad_request', 'matchmaking duel kinds are required', 400);
@@ -2499,6 +2516,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
       if (templates.length === 0) {
         throw new AppError('conflict', 'matchmaking is unavailable for selected duels', 409);
       }
+      await assertOpenDuelSlots(client, [req.user.id]);
       const templatesByKind = new Map(templates.map((template) => [template.duel_kind, template]));
       await client.query(
         `update amateur_duel_matchmaking_ticket
@@ -2536,7 +2554,9 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
       );
       const opponentTicket = opponent.rows.find((ticket) => {
         const opponentKinds = duelKindsFromUnknown(ticket.duel_kinds, requestedKinds);
-        return requestedKinds.some((kind) => opponentKinds.includes(kind) && templatesByKind.has(kind));
+        return requestedKinds.some(
+          (kind) => opponentKinds.includes(kind) && templatesByKind.has(kind),
+        );
       });
       if (!opponentTicket) {
         const expiresAt = new Date(now.getTime() + MATCHMAKING_TIMEOUT_MS);
@@ -2955,12 +2975,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
       addPatch(assignments, values, 'break_duration_ms', body.data.breakDurationMs);
       addPatch(assignments, values, 'challenge_ttl_ms', body.data.challengeTtlMs);
       addPatch(assignments, values, 'ready_duration_ms', body.data.readyDurationMs);
-      addPatch(
-        assignments,
-        values,
-        'ready_no_show_cooldown_ms',
-        body.data.readyNoShowCooldownMs,
-      );
+      addPatch(assignments, values, 'ready_no_show_cooldown_ms', body.data.readyNoShowCooldownMs);
       addPatch(assignments, values, 'matchmaking_timeout_ms', body.data.matchmakingTimeoutMs);
       addPatch(assignments, values, 'ranked_daily_limit', body.data.rankedDailyLimit);
       addPatch(
