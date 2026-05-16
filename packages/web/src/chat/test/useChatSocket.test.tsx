@@ -68,6 +68,28 @@ const fixtureMsg = (id: string, chatId: string, senderId: string): ChatMessageDT
   reactions: [],
 });
 
+const fixtureChat = (id: string, overrides: Partial<ChatDTO> = {}): ChatDTO => ({
+  id,
+  type: 'direct',
+  name: null,
+  entityType: null,
+  entityId: null,
+  lastMessageAt: '2026-04-26T09:00:00.000Z',
+  unreadCount: 0,
+  lastMessage: fixtureMsg(`last-${id}`, id, OTHER),
+  lastMessageSenderName: 'Other',
+  dmCounterpart: {
+    userId: OTHER,
+    displayName: 'Other',
+    avatarUrl: null,
+    lastSeenAt: null,
+    lastReadAt: null,
+  },
+  memberCount: 2,
+  pinnedAt: null,
+  ...overrides,
+});
+
 function setup(): { qc: QueryClient; rerender: () => void; unmount: () => void } {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -190,6 +212,10 @@ describe('useChatSocket dispatch', () => {
 
   it('message:new on a non-active chat: prepends to messages cache, increments unread, invalidates list', async () => {
     const invalSpy = vi.spyOn(qc, 'invalidateQueries');
+    qc.setQueryData<ChatDTO[]>(chatKeys.list(), [
+      fixtureChat('c2', { lastMessageAt: '2026-04-26T09:30:00.000Z' }),
+      fixtureChat('c1'),
+    ]);
     const newMsg = fixtureMsg('m-new', 'c1', OTHER);
     const ev: ChatEvent = { type: 'message:new', chatId: 'c1', message: newMsg };
     await act(async () => {
@@ -198,6 +224,11 @@ describe('useChatSocket dispatch', () => {
     const cached = qc.getQueryData<InfinitePages>(chatKeys.messages('c1'));
     expect(cached?.pages[0]?.[0]?.id).toBe('m-new');
     expect(useChatStore.getState().unreadByChat['c1']).toBe(1);
+    const list = qc.getQueryData<ChatDTO[]>(chatKeys.list());
+    expect(list?.[0]?.id).toBe('c1');
+    expect(list?.[0]?.lastMessage?.id).toBe('m-new');
+    expect(list?.[0]?.lastMessageAt).toBe('2026-04-26T10:00:00.000Z');
+    expect(list?.[0]?.unreadCount).toBe(1);
     expect(invalSpy).toHaveBeenCalledWith({ queryKey: chatKeys.list() });
     expect(invalSpy).toHaveBeenCalledWith({ queryKey: chatKeys.unread() });
   });
@@ -236,6 +267,7 @@ describe('useChatSocket dispatch', () => {
 
   it('message:new on the active chat: prepends, but does NOT bump unread', async () => {
     useChatStore.getState().setActive('c1');
+    qc.setQueryData<ChatDTO[]>(chatKeys.list(), [fixtureChat('c1')]);
     const newMsg = fixtureMsg('m-active', 'c1', OTHER);
     await act(async () => {
       MockWebSocket.instances[0]?.fireMessage({
@@ -244,6 +276,8 @@ describe('useChatSocket dispatch', () => {
       });
     });
     expect(useChatStore.getState().unreadByChat['c1']).toBeUndefined();
+    expect(qc.getQueryData<ChatDTO[]>(chatKeys.list())?.[0]?.lastMessage?.id).toBe('m-active');
+    expect(qc.getQueryData<ChatDTO[]>(chatKeys.list())?.[0]?.unreadCount).toBe(0);
   });
 
   it('message:deleted: patches the cached message to is_deleted=true, content=""', async () => {
@@ -290,6 +324,7 @@ describe('useChatSocket dispatch', () => {
 
   it('chat:read: resets unread for that chat and invalidates /chat/unread', async () => {
     useChatStore.getState().setUnread({ c1: 5 });
+    qc.setQueryData<ChatDTO[]>(chatKeys.list(), [fixtureChat('c1', { unreadCount: 5 })]);
     const invalSpy = vi.spyOn(qc, 'invalidateQueries');
     await act(async () => {
       MockWebSocket.instances[0]?.fireMessage({
@@ -303,6 +338,7 @@ describe('useChatSocket dispatch', () => {
       });
     });
     expect(useChatStore.getState().unreadByChat['c1']).toBe(0);
+    expect(qc.getQueryData<ChatDTO[]>(chatKeys.list())?.[0]?.unreadCount).toBe(0);
     expect(invalSpy).toHaveBeenCalledWith({ queryKey: chatKeys.unread() });
   });
 

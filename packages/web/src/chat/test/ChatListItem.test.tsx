@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { ChatListItem } from '../components/ChatListItem.js';
 import { useAuthStore } from '../../auth/authStore.js';
+import { useChatStore } from '../chatStore.js';
 import type { ChatDTO } from '../api.js';
 
 function makeChat(overrides: Partial<ChatDTO> = {}): ChatDTO {
@@ -46,6 +47,7 @@ describe('ChatListItem', () => {
       refreshToken: 'rtok',
       user: { id: 'me', displayName: 'Me', grip: 'right' },
     });
+    useChatStore.setState({ unreadByChat: {}, activeChatId: null });
   }
 
   it('renders channel post previews without an author prefix', () => {
@@ -164,5 +166,14 @@ describe('ChatListItem', () => {
 
     expect(screen.queryByRole('img')).toBeNull();
     expect(document.querySelector('.lucide-megaphone')).not.toBeNull();
+  });
+
+  it('shows unread badge from live unread store while the REST chat row is stale', () => {
+    setMe();
+    useChatStore.getState().setUnread({ 'chat-1': 1 });
+
+    render(<ChatListItem chat={makeChat({ unreadCount: 0 })} onOpen={vi.fn()} />);
+
+    expect(screen.getByText('1')).toBeInTheDocument();
   });
 });

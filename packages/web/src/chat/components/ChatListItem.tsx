@@ -2,6 +2,7 @@ import { memo, useCallback } from 'react';
 import { Megaphone, MessageSquareMore, Pin } from 'lucide-react';
 import type { ChatDTO } from '../api.js';
 import { useAuthStore } from '../../auth/authStore.js';
+import { useChatStore } from '../chatStore.js';
 import { useLongPress } from '../useLongPress.js';
 import { UserAvatar } from './UserAvatar.js';
 import { messageBodyPreview } from '../messagePreview.js';
@@ -65,12 +66,13 @@ function lastMessagePreview(chat: ChatDTO, meId: string | null): string {
 
 function ChatListItemImpl({ chat, onOpen, onRequestActions }: ChatListItemProps): JSX.Element {
   const meId = useAuthStore((s) => s.user?.id ?? null);
+  const liveUnread = useChatStore((s) => s.unreadByChat[chat.id] ?? 0);
   const isSystem = chat.type === 'system';
   const isChannel = chat.type === 'channel';
   const isPinned = chat.pinnedAt !== null;
   const avatarUrl =
     chat.type === 'direct' ? (chat.dmCounterpart?.avatarUrl ?? null) : chatAvatarUrl(chat);
-  const unread = chat.unreadCount;
+  const unread = Math.max(chat.unreadCount, liveUnread);
 
   const onLongPress = useCallback(
     (rect: DOMRect) => {
