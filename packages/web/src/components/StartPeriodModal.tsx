@@ -7,6 +7,8 @@ export interface StartPeriodModalProps {
   shotsPerPeriod: number;
   isFirstPeriod: boolean;
   pending: boolean;
+  title?: string;
+  lead?: string;
   periodDescription?: string;
   topSlot?: ReactNode;
   onHome?: () => void;
@@ -27,12 +29,19 @@ export function StartPeriodModal({
   shotsPerPeriod,
   isFirstPeriod,
   pending,
+  title,
+  lead,
   periodDescription,
   topSlot,
   onHome,
   onStart,
 }: StartPeriodModalProps): JSX.Element {
-  const heading = isFirstPeriod ? 'Сегодняшняя игра' : 'Перерыв окончен';
+  const heading = title ?? (isFirstPeriod ? 'Сегодняшняя игра' : 'Перерыв окончен');
+  const leadText =
+    lead ??
+    `Сейчас начнётся ${nextPeriod}-й период из ${
+      ORDINAL_GENITIVE[totalPeriods] ?? `${totalPeriods}-х`
+    }`;
   return (
     <div
       role="dialog"
@@ -98,7 +107,7 @@ export function StartPeriodModal({
             color: 'var(--ink)',
           }}
         >
-          Сейчас начнётся {nextPeriod}-й период из {ORDINAL_GENITIVE[totalPeriods] ?? `${totalPeriods}-х`}
+          {leadText}
         </div>
 
         <div

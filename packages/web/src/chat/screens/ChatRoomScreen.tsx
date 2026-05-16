@@ -30,7 +30,12 @@ import {
   type AmateurDuelInviteMessageMetadata,
   type UserPickerItem,
 } from '../api.js';
-import { acceptAmateurDuel, declineAmateurDuel } from '../../api/amateurDuel.js';
+import {
+  acceptAmateurDuel,
+  declineAmateurDuel,
+  fetchAmateurMatches,
+  type AmateurDuelMatch,
+} from '../../api/amateurDuel.js';
 import { chatKeys } from '../../lib/queryKeys.js';
 import { useChatStore } from '../chatStore.js';
 import { useAuthStore } from '../../auth/authStore.js';
@@ -51,6 +56,7 @@ import { chatAvatarUrl } from '../chatAvatar.js';
 const PAGE_SIZE = 50;
 const VOICE_MAX_DURATION_MS = 120_000;
 const VOICE_FILE_NAME = 'voice-message.webm';
+const DUEL_INVITE_MATCHES_REFETCH_INTERVAL = import.meta.env.MODE === 'test' ? false : 5000;
 
 function formatMemberCount(n: number): string {
   // Russian plural rules for "участник".
@@ -136,13 +142,30 @@ function preferredVoiceMimeType(): string {
   return '';
 }
 
-function formatInviteDate(iso: string): string {
-  return new Date(iso).toLocaleString('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+function formatInviteTtl(ms: number): string {
+  const totalMinutes = Math.max(1, Math.round(ms / 60_000));
+  if (totalMinutes < 60) return `${totalMinutes} мин`;
+  const hours = Math.round(totalMinutes / 60);
+  return `${hours} ч`;
+}
+
+function formatInviteReplyWindow(invite: AmateurDuelInviteMessageMetadata): string {
+  const startsAt = Date.parse(invite.startsAt);
+  const endsAt = Date.parse(invite.endsAt);
+  const ttlMs = Number.isFinite(startsAt) && Number.isFinite(endsAt) ? endsAt - startsAt : 0;
+  return formatInviteTtl(ttlMs > 0 ? ttlMs : 30 * 60_000);
+}
+
+function duelInviteExternalResolution(
+  match: AmateurDuelMatch | undefined,
+): DuelInviteResolution | undefined {
+  if (!match) return undefined;
+  if (match.status === 'ready_check' || match.status === 'active' || match.status === 'settled') {
+    return 'accepted';
+  }
+  if (match.status === 'cancelled' || match.status === 'expired') return 'unavailable';
+  if (match.me.state !== 'invited') return 'accepted';
+  return undefined;
 }
 
 function isSameLocalDay(a: Date, b: Date): boolean {
@@ -269,7 +292,7 @@ function DuelInviteActions({
           label="Формат"
           value={`${invite.totalPeriods}×${invite.shotsPerPeriod}`}
         />
-        <DuelInviteMetric label="Ответ" value={formatInviteDate(invite.endsAt)} />
+        <DuelInviteMetric label="Ответить" value={formatInviteReplyWindow(invite)} />
       </div>
       {status ? (
         <div
@@ -297,9 +320,10 @@ function DuelInviteActions({
               padding: '8px 10px',
               fontSize: 12,
               color: '#fff',
-              background: 'linear-gradient(180deg, #34d399 0%, #059669 100%)',
-              border: '1px solid rgba(4, 120, 87, 0.42)',
-              boxShadow: '0 10px 20px rgba(5, 150, 105, 0.22)',
+              background:
+                'linear-gradient(180deg, rgba(34, 197, 94, 0.84), rgba(21, 128, 61, 0.88))',
+              border: '1px solid rgba(22, 101, 52, 0.38)',
+              boxShadow: '0 8px 16px rgba(22, 101, 52, 0.16)',
             }}
           >
             Принять
@@ -314,9 +338,10 @@ function DuelInviteActions({
               padding: '8px 10px',
               fontSize: 12,
               color: '#fff',
-              background: 'linear-gradient(180deg, #fb7185 0%, #e11d48 100%)',
-              border: '1px solid rgba(190, 18, 60, 0.42)',
-              boxShadow: '0 10px 20px rgba(225, 29, 72, 0.2)',
+              background:
+                'linear-gradient(180deg, rgba(244, 63, 94, 0.82), rgba(190, 18, 60, 0.88))',
+              border: '1px solid rgba(159, 18, 57, 0.38)',
+              boxShadow: '0 8px 16px rgba(159, 18, 57, 0.15)',
             }}
           >
             Отклонить
@@ -399,6 +424,19 @@ export function ChatRoomScreen(): JSX.Element {
     queryFn: fetchChatList,
     staleTime: 30_000,
   });
+  const duelMatchesQuery = useQuery({
+    queryKey: ['amateur-duel', 'matches'],
+    queryFn: fetchAmateurMatches,
+    refetchInterval: DUEL_INVITE_MATCHES_REFETCH_INTERVAL,
+    staleTime: 2000,
+  });
+  const duelInviteMatchById = useMemo(() => {
+    const map = new Map<string, AmateurDuelMatch>();
+    for (const match of duelMatchesQuery.data?.matches ?? []) {
+      map.set(match.id, match);
+    }
+    return map;
+  }, [duelMatchesQuery.data?.matches]);
   const chatMeta = chatListQuery.data?.find((c) => c.id === chatId);
   const isChannel = chatMeta?.type === 'channel';
   const dmCounterpart = chatMeta?.type === 'direct' ? chatMeta.dmCounterpart : null;
@@ -961,8 +999,10 @@ export function ChatRoomScreen(): JSX.Element {
 
   const acceptDuelInviteMut = useMutation({
     mutationFn: (matchId: string) => acceptAmateurDuel(matchId),
-    onSuccess: (_data, matchId) => {
+    onMutate: (matchId) => {
       setDuelInviteResolutionByMatch((prev) => ({ ...prev, [matchId]: 'accepted' }));
+    },
+    onSuccess: (_data, matchId) => {
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
       navigate(`/?view=amateur&match=${matchId}`);
     },
@@ -974,8 +1014,10 @@ export function ChatRoomScreen(): JSX.Element {
 
   const declineDuelInviteMut = useMutation({
     mutationFn: (matchId: string) => declineAmateurDuel(matchId),
-    onSuccess: (_data, matchId) => {
+    onMutate: (matchId) => {
       setDuelInviteResolutionByMatch((prev) => ({ ...prev, [matchId]: 'declined' }));
+    },
+    onSuccess: (_data, matchId) => {
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
     },
     onError: (_err, matchId) => {
@@ -1285,11 +1327,15 @@ export function ChatRoomScreen(): JSX.Element {
           }
           const isOwn = m.senderId === meId;
           const duelInvite = parseDuelInviteMetadata(m.metadata);
+          const duelInviteResolution = duelInvite
+            ? (duelInviteResolutionByMatch[duelInvite.matchId] ??
+              duelInviteExternalResolution(duelInviteMatchById.get(duelInvite.matchId)))
+            : undefined;
           const inviteActionSlot =
             duelInvite && !isOwn && !m.isDeleted ? (
               <DuelInviteActions
                 invite={duelInvite}
-                resolution={duelInviteResolutionByMatch[duelInvite.matchId]}
+                resolution={duelInviteResolution}
                 pending={
                   (acceptDuelInviteMut.isPending &&
                     acceptDuelInviteMut.variables === duelInvite.matchId) ||

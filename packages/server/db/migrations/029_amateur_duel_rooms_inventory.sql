@@ -15,8 +15,8 @@ alter table amateur_duel_template
   add column if not exists ready_duration_ms int not null default 300000,
   add column if not exists ready_no_show_cooldown_ms int not null default 900000,
   add column if not exists matchmaking_timeout_ms int not null default 180000,
-  add column if not exists ranked_daily_limit int not null default 10,
-  add column if not exists ranked_same_opponent_limit int not null default 2,
+  add column if not exists ranked_daily_limit int not null default 100,
+  add column if not exists ranked_same_opponent_limit int not null default 100,
   add column if not exists power_cap int not null default 100;
 
 alter table amateur_duel_match
