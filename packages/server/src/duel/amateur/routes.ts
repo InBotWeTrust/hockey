@@ -49,7 +49,7 @@ const isoDate = z.string().datetime({ offset: true });
 const duelKindSchema = z.enum(['express', 'express_plus', 'classic']);
 
 const periodPresetSchema = z.object({
-  periodNumber: z.number().int().min(1).max(9),
+  periodNumber: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   goalFrequency: z.number().min(0.1).max(3),
   goalieFrequency: z.number().min(0.1).max(3),
   shooterFrequency: z.number().min(0.1).max(3),
