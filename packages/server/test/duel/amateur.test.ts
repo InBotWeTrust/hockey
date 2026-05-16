@@ -621,6 +621,12 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
         where match_id = $1 and user_id = $2`,
       [matchId, userA],
     );
+    await pool.query(
+      `insert into amateur_duel_period_log
+         (match_id, user_id, period_number, started_at, ended_at, shots_taken, goals, duration_ms, closed_reason)
+       values ($1, $2, 1, now() - interval '3 minutes', now(), 30, 11, 180000, 'quota')`,
+      [matchId, userB],
+    );
 
     const reconciled = await app.inject({
       method: 'GET',
@@ -632,6 +638,12 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(reconciled.json().match.recent_periods[0]).toMatchObject({
       period_number: 2,
       closed_reason: 'timeout',
+      duration_ms: 180000,
+    });
+    expect(reconciled.json().match.opponent_recent_periods[0]).toMatchObject({
+      period_number: 1,
+      shots_taken: 30,
+      goals: 11,
       duration_ms: 180000,
     });
   });

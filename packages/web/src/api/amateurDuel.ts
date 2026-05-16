@@ -199,6 +199,7 @@ export interface AmateurDuelMatchState extends AmateurDuelMatch {
   period_speed_presets: DailyPeriodSpeedPreset[];
   stick_effects: StickEffects;
   recent_periods: AmateurDuelPeriodLog[];
+  opponent_recent_periods: AmateurDuelPeriodLog[];
 }
 
 export interface AmateurOpponent {

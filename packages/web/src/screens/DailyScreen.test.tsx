@@ -163,7 +163,26 @@ const settledDuelMatch: AmateurDuelMatchState = {
   current_period_goals: 3,
   period_speed_presets: [...DAILY_PERIOD_SPEED_PRESETS],
   stick_effects: STICK_NEUTRAL,
-  recent_periods: [],
+  recent_periods: [
+    {
+      period_number: 1,
+      shots_taken: 12,
+      goals: 3,
+      duration_ms: 180000,
+      closed_reason: 'quota',
+      ended_at: '2026-05-16T10:03:00.000Z',
+    },
+  ],
+  opponent_recent_periods: [
+    {
+      period_number: 1,
+      shots_taken: 10,
+      goals: 1,
+      duration_ms: 180000,
+      closed_reason: 'quota',
+      ended_at: '2026-05-16T10:03:00.000Z',
+    },
+  ],
 };
 
 function renderWith(initialEntries: string[] = ['/']) {
@@ -1004,6 +1023,96 @@ describe('DailyScreen', () => {
     ).toBeInTheDocument();
   });
 
+  it('opens player profile from amateur duel rating row', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/templates')) {
+        return new Response(JSON.stringify({ templates: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/matches')) {
+        return new Response(JSON.stringify({ matches: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/rating')) {
+        return new Response(
+          JSON.stringify({
+            season_key: '2026-05',
+            rating: [
+              {
+                user_id: 'u2',
+                display_name: 'Duel Opponent',
+                avatar_url: null,
+                points: 7,
+                wins: 2,
+                draws: 1,
+                losses: 0,
+                goals_for: 12,
+                goals_against: 8,
+                matches_played: 3,
+                active_duration_seconds: 540,
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.includes('/users/u2')) {
+        return new Response(
+          JSON.stringify({
+            id: 'u2',
+            displayName: 'Duel Opponent',
+            avatarUrl: null,
+            competitionLevel: 'amateur',
+            stats: { shots: 30, goals: 12, accuracy: 40, playStreakDays: 2, bestPlayStreakDays: 4 },
+            achievements: [],
+            createdAt: '2026-05-01T08:00:00.000Z',
+            lastSeenAt: null,
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.includes('/users/u1')) {
+        return new Response(
+          JSON.stringify({
+            id: 'u1',
+            displayName: 'Tester',
+            avatarUrl: null,
+            competitionLevel: 'amateur',
+            stats: { shots: 10, goals: 5, accuracy: 50, playStreakDays: 1, bestPlayStreakDays: 1 },
+            achievements: [],
+            createdAt: '2026-05-01T08:00:00.000Z',
+            lastSeenAt: null,
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=amateur&section=duels']);
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'Рейтинг' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть профиль Duel Opponent' }));
+
+    expect(await screen.findByTestId('profile-sheet-backdrop')).toBeInTheDocument();
+    expect(await screen.findByText('Любитель')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /написать в личку/i })).toBeInTheDocument();
+  });
+
   it('clicking start period triggers POST /duel/daily/period/start', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch');
     fetchMock.mockReset();
@@ -1071,6 +1180,9 @@ describe('DailyScreen', () => {
     expect(within(dialog).getByText('Победа')).toBeInTheDocument();
     expect(within(dialog).getByText('3:1')).toBeInTheDocument();
     expect(within(dialog).getByText('+3')).toBeInTheDocument();
+    expect(within(dialog).getByText('1-й период')).toBeInTheDocument();
+    expect(within(dialog).getByText('25%')).toBeInTheDocument();
+    expect(within(dialog).getByText('10%')).toBeInTheDocument();
   });
 
   it('polls an unfinished amateur duel and shows result when it settles', async () => {

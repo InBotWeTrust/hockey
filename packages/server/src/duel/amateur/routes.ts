@@ -414,6 +414,14 @@ interface DuelMatchStateDTO extends DuelMatchDTO {
     closed_reason: 'quota' | 'timeout' | 'window_end';
     ended_at: string;
   }>;
+  opponent_recent_periods: Array<{
+    period_number: number;
+    shots_taken: number;
+    goals: number;
+    duration_ms: number;
+    closed_reason: 'quota' | 'timeout' | 'window_end';
+    ended_at: string;
+  }>;
 }
 
 interface RatingRow {
@@ -1128,6 +1136,17 @@ async function fetchRecentPeriods(
   return rows;
 }
 
+function periodLogDto(period: PeriodLogRow): DuelMatchStateDTO['recent_periods'][number] {
+  return {
+    period_number: period.period_number,
+    shots_taken: period.shots_taken,
+    goals: period.goals,
+    duration_ms: period.duration_ms,
+    closed_reason: period.closed_reason,
+    ended_at: period.ended_at.toISOString(),
+  };
+}
+
 async function closeParticipantPeriod(
   client: PoolClient,
   participant: DuelParticipantRow,
@@ -1660,6 +1679,7 @@ async function buildMatchStateDto(
       ? new Date(me.break_started_at.getTime() + rules.breakDurationMs).toISOString()
       : null;
   const recentPeriods = await fetchRecentPeriods(client, match.id, currentUserId);
+  const opponentRecentPeriods = await fetchRecentPeriods(client, match.id, dto.opponent.user_id);
   return {
     ...dto,
     me: participantDto(
@@ -1681,14 +1701,8 @@ async function buildMatchStateDto(
     break_ends_at: breakEndsAt,
     period_speed_presets: effectivePeriodSpeedPresets(rules, effects),
     stick_effects: stickEffectsFromInventory(effects),
-    recent_periods: recentPeriods.map((period) => ({
-      period_number: period.period_number,
-      shots_taken: period.shots_taken,
-      goals: period.goals,
-      duration_ms: period.duration_ms,
-      closed_reason: period.closed_reason,
-      ended_at: period.ended_at.toISOString(),
-    })),
+    recent_periods: recentPeriods.map(periodLogDto),
+    opponent_recent_periods: opponentRecentPeriods.map(periodLogDto),
   };
 }
 
