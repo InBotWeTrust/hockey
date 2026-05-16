@@ -1546,6 +1546,7 @@ function participantDto(
   participant: DuelParticipantRow,
   match: DuelMatchRow,
   inventoryAvailable: InventoryAvailabilityItem[] = [],
+  liveStats: { shots: number; goals: number } | null = null,
 ): DuelParticipantDTO {
   const displayName =
     participant.side === 'challenger' ? (match.challenger_name ?? '') : (match.opponent_name ?? '');
@@ -1553,6 +1554,8 @@ function participantDto(
     participant.side === 'challenger'
       ? (match.challenger_avatar_url ?? null)
       : (match.opponent_avatar_url ?? null);
+  const shotsTaken = Number(participant.shots_taken) + (liveStats?.shots ?? 0);
+  const goals = Number(participant.goals) + (liveStats?.goals ?? 0);
   return {
     user_id: participant.user_id,
     display_name: displayName,
@@ -1560,12 +1563,9 @@ function participantDto(
     side: participant.side,
     state: participant.state,
     current_period: participant.current_period,
-    shots_taken: Number(participant.shots_taken),
-    goals: Number(participant.goals),
-    accuracy:
-      Number(participant.shots_taken) > 0
-        ? Math.round((Number(participant.goals) / Number(participant.shots_taken)) * 100)
-        : 0,
+    shots_taken: shotsTaken,
+    goals,
+    accuracy: shotsTaken > 0 ? Math.round((goals / shotsTaken) * 100) : 0,
     active_duration_ms: Number(participant.active_duration_ms),
     active_duration_seconds: durationSeconds(Number(participant.active_duration_ms)),
     result_points: Number(participant.result_points),
@@ -1638,10 +1638,15 @@ async function buildMatchStateDto(
   const dto = await buildMatchDto(client, match, currentUserId, now);
   const participants = await fetchParticipants(client, match.id);
   const me = participants.find((participant) => participant.user_id === currentUserId)!;
+  const opponent = participants.find((participant) => participant.user_id !== currentUserId)!;
   const currentStats =
     me.state === 'period_active'
       ? await fetchCurrentPeriodStats(client, match.id, currentUserId, me.current_period)
       : { shots: 0, goals: 0 };
+  const opponentCurrentStats =
+    opponent.state === 'period_active'
+      ? await fetchCurrentPeriodStats(client, match.id, opponent.user_id, opponent.current_period)
+      : null;
   const rules = parseRulesSnapshot(match.rules_snapshot);
   const effects = effectsFromUnknown(me.inventory_effects_snapshot);
   const periodEndsAt =
@@ -1657,6 +1662,13 @@ async function buildMatchStateDto(
   const recentPeriods = await fetchRecentPeriods(client, match.id, currentUserId);
   return {
     ...dto,
+    me: participantDto(
+      me,
+      match,
+      await fetchAvailableInventory(client, currentUserId),
+      me.state === 'period_active' ? currentStats : null,
+    ),
+    opponent: participantDto(opponent, match, [], opponentCurrentStats),
     server_now: now.toISOString(),
     match_seed:
       match.status === 'invited' || match.status === 'ready_check' || match.status === 'expired'

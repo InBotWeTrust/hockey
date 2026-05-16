@@ -909,9 +909,7 @@ describe('DailyScreen', () => {
     renderWith();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Тренировка' }));
-    fireEvent.click(
-      await screen.findByRole('button', { name: /Продолжить тренировку/ }),
-    );
+    fireEvent.click(await screen.findByRole('button', { name: /Продолжить тренировку/ }));
 
     expect(
       await screen.findByRole('group', { name: 'Дизайн тренировочной площадки' }),
@@ -923,10 +921,7 @@ describe('DailyScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Новая' }));
 
     expect(localStorage.getItem('hockey.trainingCourtDesign')).toBe('new');
-    expect(screen.getByRole('button', { name: 'Новая' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
+    expect(screen.getByRole('button', { name: 'Новая' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('img', { name: 'Новая тренировочная площадка' })).toBeInTheDocument();
     const hitboxesToggle = screen.getByRole('checkbox', { name: 'Хитбоксы' });
     expect(hitboxesToggle).not.toBeChecked();
@@ -970,9 +965,7 @@ describe('DailyScreen', () => {
     renderWith();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Тренировка' }));
-    fireEvent.click(
-      await screen.findByRole('button', { name: /Продолжить тренировку/ }),
-    );
+    fireEvent.click(await screen.findByRole('button', { name: /Продолжить тренировку/ }));
 
     expect(
       await screen.findByRole('group', { name: 'Дизайн тренировочной площадки' }),
@@ -1075,7 +1068,7 @@ describe('DailyScreen', () => {
 
     const dialog = await screen.findByRole('dialog', { name: 'Результат дуэли' });
     expect(dialog).toBeInTheDocument();
-    expect(within(dialog).getByText('Победа в дуэли')).toBeInTheDocument();
+    expect(within(dialog).getByText('Победа')).toBeInTheDocument();
     expect(within(dialog).getByText('3:1')).toBeInTheDocument();
     expect(within(dialog).getByText('+3')).toBeInTheDocument();
   });

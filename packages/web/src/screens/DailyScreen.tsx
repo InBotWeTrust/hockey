@@ -172,6 +172,8 @@ const DAILY_HUB_ARTWORK_IMAGES: Record<DailyHubArtwork, string> = {
 };
 const TRAINING_COURT_DESIGN_STORAGE_KEY = 'hockey.trainingCourtDesign';
 const TRAINING_HITBOX_TOGGLE_STORAGE_KEY = 'hockey.trainingHitboxesVisible';
+const OPPONENT_ONLINE_WINDOW_MS = 2 * 60 * 1000;
+const OPPONENT_RECENT_WINDOW_MS = 5 * 60 * 1000;
 
 function readTrainingCourtDesign(): TrainingCourtDesign {
   if (typeof window === 'undefined') return 'standard';
@@ -2683,6 +2685,23 @@ function formatShortDateTime(iso: string): string {
   });
 }
 
+function msSinceLastSeen(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  const seenAt = Date.parse(iso);
+  if (Number.isNaN(seenAt)) return null;
+  return Date.now() - seenAt;
+}
+
+function isOpponentOnlineNow(iso: string | null | undefined): boolean {
+  const ms = msSinceLastSeen(iso);
+  return ms !== null && ms <= OPPONENT_ONLINE_WINDOW_MS;
+}
+
+function isOpponentRecentlySeen(iso: string | null | undefined): boolean {
+  const ms = msSinceLastSeen(iso);
+  return ms !== null && ms <= OPPONENT_RECENT_WINDOW_MS;
+}
+
 function formatRuCount(value: number, one: string, few: string, many: string): string {
   const mod10 = value % 10;
   const mod100 = value % 100;
@@ -3195,8 +3214,7 @@ function AmateurDuelsPage({
     : [];
   const opponentOptions = opponentQuery.trim().length > 0 ? (opponents.data?.users ?? []) : [];
   const onlineOpponentOptions = (onlineOpponents.data?.users ?? []).filter((opponent) => {
-    if (!opponent.lastSeenAt) return false;
-    return Date.now() - Date.parse(opponent.lastSeenAt) <= 5 * 60 * 1000;
+    return isOpponentRecentlySeen(opponent.lastSeenAt);
   });
   const suggestedOpponentOptions =
     onlineOpponentOptions.length > 0 ? onlineOpponentOptions : (onlineOpponents.data?.users ?? []);
@@ -3446,11 +3464,9 @@ function AmateurDuelsPage({
                                   width: 11,
                                   height: 11,
                                   borderRadius: 999,
-                                  background:
-                                    opponent.lastSeenAt &&
-                                    Date.now() - Date.parse(opponent.lastSeenAt) <= 5 * 60 * 1000
-                                      ? '#22c55e'
-                                      : '#94a3b8',
+                                  background: isOpponentOnlineNow(opponent.lastSeenAt)
+                                    ? '#22c55e'
+                                    : '#94a3b8',
                                   border: '2px solid rgba(226, 240, 252, 0.98)',
                                 }}
                               />
@@ -3600,11 +3616,9 @@ function AmateurDuelsPage({
                             width: 11,
                             height: 11,
                             borderRadius: 999,
-                            background:
-                              opponent.lastSeenAt &&
-                              Date.now() - Date.parse(opponent.lastSeenAt) <= 5 * 60 * 1000
-                                ? '#22c55e'
-                                : '#94a3b8',
+                            background: isOpponentOnlineNow(opponent.lastSeenAt)
+                              ? '#22c55e'
+                              : '#94a3b8',
                             border: '2px solid rgba(226, 240, 252, 0.98)',
                           }}
                         />
@@ -3631,10 +3645,11 @@ function AmateurDuelsPage({
                             fontWeight: 800,
                           }}
                         >
-                          {opponent.lastSeenAt &&
-                          Date.now() - Date.parse(opponent.lastSeenAt) <= 5 * 60 * 1000
+                          {isOpponentOnlineNow(opponent.lastSeenAt)
                             ? 'сейчас в игре'
-                            : 'доступен для вызова'}
+                            : isOpponentRecentlySeen(opponent.lastSeenAt)
+                              ? 'недавно был'
+                              : 'доступен для вызова'}
                         </span>
                       </span>
                     </button>
@@ -4776,9 +4791,10 @@ function DuelInventorySlots({
   );
 }
 
-function DuelInventoryMiniHud({ match }: { match: AmateurDuelMatch }): JSX.Element {
+function DuelInventoryMiniHud({ match }: { match: AmateurDuelMatch }): JSX.Element | null {
+  if (match.me.loadout.items.length === 0) return null;
   return (
-    <div style={{ marginTop: 8 }}>
+    <div>
       <DuelInventorySlots match={match} compact />
     </div>
   );
@@ -6300,7 +6316,6 @@ export function PlayView<TState>({
           shotsTotal={shotsTotal}
           opponent={scoreboardOpponent}
         />
-        {hudAddon}
       </div>
 
       <div
@@ -6310,7 +6325,7 @@ export function PlayView<TState>({
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
-          padding: '0 14px 10px',
+          padding: '0 14px 8px',
         }}
       >
         <div
@@ -6318,7 +6333,7 @@ export function PlayView<TState>({
             position: 'relative',
             aspectRatio: rinkAspectRatio,
             width: '100%',
-            maxHeight: '100%',
+            flex: '0 0 auto',
             borderRadius: rinkBorderRadius,
             overflow: 'hidden',
             border: rinkBorder,
@@ -6326,6 +6341,20 @@ export function PlayView<TState>({
           }}
         >
           {rinkLayer}
+          {hudAddon && (
+            <div
+              style={{
+                position: 'absolute',
+                left: 8,
+                right: 8,
+                top: 8,
+                zIndex: 4,
+                pointerEvents: 'none',
+              }}
+            >
+              {hudAddon}
+            </div>
+          )}
           <div style={{ position: 'absolute', inset: 0, ...gameLayerStyle }}>
             <PixiStage onReady={handleReady} onResize={handleResize} />
           </div>
