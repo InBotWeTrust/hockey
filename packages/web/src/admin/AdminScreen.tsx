@@ -229,7 +229,7 @@ const inventoryItemKindOptions: Array<GlassSelectOption<AdminInventoryItemKind>>
   { value: 'bundle', label: 'Набор' },
   { value: 'stick', label: 'Клюшка' },
   { value: 'skates', label: 'Коньки' },
-  { value: 'nutrition', label: 'Питание' },
+  { value: 'nutrition', label: 'Энергия' },
   { value: 'consumable', label: 'Расходник' },
 ];
 
@@ -5089,12 +5089,6 @@ function DuelTemplateCard({
         <span className="pill" style={{ fontSize: 10 }}>
           Перерыв {minutesText(msToMinutes(template.breakDurationMs))}
         </span>
-        <span className="pill" style={{ fontSize: 10 }}>
-          Ставка {numberText(template.stakeAmount)}
-        </span>
-        <span className="pill" style={{ fontSize: 10 }}>
-          Взнос {numberText(template.entryFeeAmount)}
-        </span>
         {inventoryTitle && (
           <span className="pill" style={{ fontSize: 10 }}>
             {inventoryTitle}: {numberText(template.inventoryChargesPerPeriod)}/период
@@ -5144,6 +5138,8 @@ function DuelTemplateEditor({
   const [title, setTitle] = useState(template?.title ?? 'Классическая дуэль');
   const [description, setDescription] = useState(template?.description ?? '');
   const [isActive, setIsActive] = useState(template?.isActive ?? true);
+  const [duelKind] = useState(template?.duelKind ?? 'classic');
+  const [duelVariant] = useState(template?.duelVariant ?? 'classic');
   const [startsAt, setStartsAt] = useState(
     dateTimeInputValue(template?.startsAt ?? defaultStartsAt),
   );
@@ -5157,8 +5153,6 @@ function DuelTemplateEditor({
     fieldNumber(template ? msToMinutes(template.breakDurationMs) : 15),
   );
   const [goalieId, setGoalieId] = useState(template?.goalieId ?? 'rookie');
-  const [stakeAmount, setStakeAmount] = useState(fieldNumber(template?.stakeAmount ?? 0));
-  const [entryFeeAmount, setEntryFeeAmount] = useState(fieldNumber(template?.entryFeeAmount ?? 0));
   const [requiredInventoryItemId, setRequiredInventoryItemId] = useState(
     template?.requiredInventoryItemId ?? '',
   );
@@ -5178,8 +5172,6 @@ function DuelTemplateEditor({
     shotsPerPeriod,
     periodMinutes,
     breakMinutes,
-    stakeAmount,
-    entryFeeAmount,
     inventoryChargesPerPeriod,
   ].map(Number);
   const startsIso = dateTimeInputToIso(startsAt);
@@ -5192,8 +5184,6 @@ function DuelTemplateEditor({
     Number(shotsPerPeriod) >= 1 &&
     Number(periodMinutes) > 0 &&
     Number(breakMinutes) >= 0 &&
-    Number(stakeAmount) >= 0 &&
-    Number(entryFeeAmount) >= 0 &&
     Number(inventoryChargesPerPeriod) >= 0 &&
     new Date(startsIso).getTime() < new Date(endsIso).getTime() &&
     parsedPresets !== null &&
@@ -5204,6 +5194,8 @@ function DuelTemplateEditor({
         title: title.trim(),
         description: description.trim(),
         isActive,
+        duelKind,
+        duelVariant,
         startsAt: startsIso,
         endsAt: endsIso,
         totalPeriods: Number(totalPeriods),
@@ -5212,8 +5204,9 @@ function DuelTemplateEditor({
         breakDurationMs: minutesToMs(breakMinutes),
         goalieId: goalieId.trim(),
         periodSpeedPresets: parsedPresets ?? [],
-        stakeAmount: Number(stakeAmount),
-        entryFeeAmount: Number(entryFeeAmount),
+        ...(template ? { periodRules: template.periodRules } : {}),
+        stakeAmount: 0,
+        entryFeeAmount: 0,
         requiredInventoryItemId: requiredInventoryItemId === '' ? null : requiredInventoryItemId,
         inventoryChargesPerPeriod: Number(inventoryChargesPerPeriod),
       };
@@ -5314,24 +5307,6 @@ function DuelTemplateEditor({
       <AdminField label="Вратарь">
         <input value={goalieId} onChange={(event) => setGoalieId(event.target.value)} />
       </AdminField>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
-        <AdminField label="Ставка">
-          <input
-            type="number"
-            min="0"
-            value={stakeAmount}
-            onChange={(event) => setStakeAmount(event.target.value)}
-          />
-        </AdminField>
-        <AdminField label="Взнос">
-          <input
-            type="number"
-            min="0"
-            value={entryFeeAmount}
-            onChange={(event) => setEntryFeeAmount(event.target.value)}
-          />
-        </AdminField>
-      </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 120px', gap: 8 }}>
         <AdminField label="Предмет">
           <GlassSelect

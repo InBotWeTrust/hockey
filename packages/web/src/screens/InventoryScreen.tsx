@@ -1,4 +1,7 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Coins } from 'lucide-react';
+import { apiFetch } from '../api/apiFetch.js';
 
 const INVENTORY_ARTWORK_SIZE = 104;
 
@@ -22,14 +25,41 @@ const INVENTORY_SLOTS = [
     artwork: 'skates',
   },
   {
-    title: 'Спортпитание',
+    title: 'Энергия',
     description: 'Ускоренное восстановление и меньшая усталость',
     artwork: 'nutrition',
   },
 ] as const;
 
+interface InventoryProfile {
+  currencyBalance?: number;
+}
+
+function formatTokenBalance(balance: number): string {
+  const normalized = Math.max(0, Math.trunc(balance));
+  const mod10 = normalized % 10;
+  const mod100 = normalized % 100;
+  const noun =
+    mod10 === 1 && mod100 !== 11
+      ? 'токен'
+      : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)
+        ? 'токена'
+        : 'токенов';
+  return `${normalized} ${noun}`;
+}
+
+function normalizeBalance(balance: number | undefined): number {
+  return Math.max(0, Math.trunc(balance ?? 0));
+}
+
 export function InventoryScreen(): JSX.Element {
   const [lockedInfoOpen, setLockedInfoOpen] = useState(false);
+  const { data } = useQuery<InventoryProfile>({
+    queryKey: ['inventory', 'profile-balance'],
+    queryFn: () => apiFetch<InventoryProfile>('/me'),
+  });
+  const tokenAmount = normalizeBalance(data?.currencyBalance);
+  const tokenBalance = formatTokenBalance(tokenAmount);
 
   return (
     <main
@@ -45,15 +75,46 @@ export function InventoryScreen(): JSX.Element {
         </div>
         <div
           className="glass"
+          aria-label={`Баланс: ${tokenBalance}`}
           style={{
             borderRadius: 22,
-            padding: '18px 20px',
+            padding: '16px 20px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 14,
             color: 'var(--ink)',
-            fontSize: 18,
-            fontWeight: 900,
           }}
         >
-          У вас пока нет накопленных денег
+          <span
+            style={{
+              fontSize: 28,
+              lineHeight: 1,
+              fontWeight: 950,
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            {tokenAmount}
+          </span>
+          <span
+            aria-hidden="true"
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 999,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              color: '#92400e',
+              background:
+                'radial-gradient(circle at 34% 24%, #fff7ad 0%, #facc15 45%, #f59e0b 100%)',
+              border: '1px solid rgba(146, 64, 14, 0.28)',
+              boxShadow: '0 12px 22px rgba(180, 83, 9, 0.24), inset 0 1px 0 rgba(255,255,255,0.72)',
+            }}
+          >
+            <Coins size={23} strokeWidth={2.4} />
+          </span>
         </div>
       </section>
 

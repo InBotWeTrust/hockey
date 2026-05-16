@@ -69,7 +69,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     expect(inventory.rows).toEqual([
       { title: 'Клюшки', photo_url: '/inventory/sticks.webp' },
       { title: 'Коньки', photo_url: '/inventory/skates.webp' },
-      { title: 'Спортпитание', photo_url: '/inventory/nutrition.webp' },
+      { title: 'Энергия', photo_url: '/inventory/nutrition.webp' },
     ]);
 
     const notifications = await pool.query<{ key: string; click_url: string }>(
@@ -122,8 +122,12 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '026_channel_post_polls.sql',
       '027_amateur_duels.sql',
       '028_chat_message_metadata.sql',
+      '028_duel_kinds_period_rules.sql',
       '029_amateur_duel_rooms_inventory.sql',
+      '030_inventory_energy_label.sql',
       '030_media_objects.sql',
+      '031_matchmaking_duel_kind_preferences.sql',
+      '032_channel_comment_metadata.sql',
     ]);
   });
 });

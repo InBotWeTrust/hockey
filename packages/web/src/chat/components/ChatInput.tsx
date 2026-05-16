@@ -44,6 +44,11 @@ function hasMeaningfulContent(value: string): boolean {
   return value.replace(/\*\*|__/g, '').trim().length > 0;
 }
 
+function shouldSubmitOnEnter(): boolean {
+  if (typeof window.matchMedia !== 'function') return true;
+  return !window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+}
+
 export function ChatInput({
   disabled = false,
   replyTo,
@@ -261,7 +266,7 @@ export function ChatInput({
           value={value}
           onChange={(e) => setValue(e.target.value.slice(0, MAX_LEN))}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+            if (e.key === 'Enter' && !e.shiftKey && shouldSubmitOnEnter()) {
               e.preventDefault();
               submit();
             }

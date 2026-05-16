@@ -108,6 +108,25 @@ describe('ChannelPostCommentsScreen', () => {
     );
   });
 
+  it('keeps comments in an owned scroll area below the docked header', async () => {
+    vi.spyOn(api, 'fetchChannelPost').mockResolvedValue(post);
+    vi.spyOn(api, 'fetchChannelPostComments').mockResolvedValue([parentComment, childComment]);
+
+    renderScreen();
+
+    expect(await screen.findByText('Ответ на первый')).toBeInTheDocument();
+    const screenRoot = screen.getByText('Комментарии').closest('main');
+    expect(screenRoot).toHaveStyle({ display: 'flex', overflow: 'hidden' });
+
+    const scrollArea = screen.getByTestId('comments-scroll');
+    expect(scrollArea).toHaveStyle({
+      flex: '1',
+      minHeight: '0',
+      overflowY: 'auto',
+      padding: 'calc(88px + var(--app-safe-top)) 14px calc(96px + var(--app-safe-bottom))',
+    });
+  });
+
   it('adds a reaction from the picker and removes my existing reaction', async () => {
     vi.spyOn(api, 'fetchChannelPost').mockResolvedValue(post);
     vi.spyOn(api, 'fetchChannelPostComments').mockResolvedValue([parentComment, childComment]);

@@ -7,6 +7,7 @@ export interface StartPeriodModalProps {
   shotsPerPeriod: number;
   isFirstPeriod: boolean;
   pending: boolean;
+  periodDescription?: string;
   topSlot?: ReactNode;
   onHome?: () => void;
   onStart: () => void;
@@ -26,6 +27,7 @@ export function StartPeriodModal({
   shotsPerPeriod,
   isFirstPeriod,
   pending,
+  periodDescription,
   topSlot,
   onHome,
   onStart,
@@ -107,7 +109,7 @@ export function StartPeriodModal({
             lineHeight: 1.5,
           }}
         >
-          20 минут и {shotsPerPeriod} бросков.
+          {periodDescription ?? `20 минут и ${shotsPerPeriod} бросков.`}
         </div>
 
         <div

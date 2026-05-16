@@ -89,6 +89,60 @@ describe('ChatListItem', () => {
     expect(screen.getByText('Вы: Привет из лички')).toBeInTheDocument();
   });
 
+  it('shows voice message fallback when the last message has audio metadata', () => {
+    setMe();
+
+    render(
+      <ChatListItem
+        chat={makeChat({
+          lastMessage: {
+            ...makeChat().lastMessage!,
+            senderId: 'friend',
+            content: '',
+            metadata: {
+              attachment: {
+                type: 'voice',
+                mimeType: 'audio/webm',
+                url: '/uploads/voice.webm',
+              },
+            },
+          },
+          lastMessageSenderName: 'Dmitry Arkaim',
+        })}
+        onOpen={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Dmitry A: Голосовое сообщение')).toBeInTheDocument();
+  });
+
+  it('shows file fallback when the last message has file metadata', () => {
+    setMe();
+
+    render(
+      <ChatListItem
+        chat={makeChat({
+          lastMessage: {
+            ...makeChat().lastMessage!,
+            content: '',
+            metadata: {
+              attachments: [
+                {
+                  type: 'file',
+                  fileName: 'report.pdf',
+                  url: '/uploads/report.pdf',
+                },
+              ],
+            },
+          },
+        })}
+        onOpen={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Вы: Файл')).toBeInTheDocument();
+  });
+
   it('does not inject an app-logo avatar for news channels without a custom avatar', () => {
     setMe();
 

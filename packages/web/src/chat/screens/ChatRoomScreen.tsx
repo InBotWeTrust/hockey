@@ -1,7 +1,15 @@
-import { useEffect, useLayoutEffect, useMemo, useState, useCallback, useRef } from 'react';
+import {
+  Fragment,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  useCallback,
+  useRef,
+} from 'react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { FileText, ListChecks, X } from 'lucide-react';
+import { ArrowDown, FileText, ListChecks, X } from 'lucide-react';
 import {
   clearChannelPollVote,
   deleteChannelPost,
@@ -109,9 +117,6 @@ function parseDuelInviteMetadata(
     metadata.shotsPerPeriod,
     metadata.periodDurationMs,
     metadata.breakDurationMs,
-    metadata.stakeAmount,
-    metadata.entryFeeAmount,
-    metadata.bankAmount,
   ];
   if (!strings.every((value) => typeof value === 'string' && value.length > 0)) return null;
   if (!numbers.every((value) => typeof value === 'number' && Number.isFinite(value))) return null;
@@ -140,8 +145,63 @@ function formatInviteDate(iso: string): string {
   });
 }
 
-function formatInviteMoney(amount: number): string {
-  return amount > 0 ? String(amount) : 'нет';
+function isSameLocalDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+function formatMessageDayLabel(iso: string): string {
+  const date = new Date(iso);
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (isSameLocalDay(date, today)) return 'Сегодня';
+  if (isSameLocalDay(date, yesterday)) return 'Вчера';
+  return date.toLocaleDateString('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+    ...(date.getFullYear() !== today.getFullYear() ? { year: 'numeric' } : {}),
+  });
+}
+
+function messageDayKey(iso: string): string {
+  const date = new Date(iso);
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+function DateSeparator({ label }: { label: string }): JSX.Element {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'center',
+        margin: '10px 0',
+        pointerEvents: 'none',
+      }}
+    >
+      <span
+        className="glass"
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: 28,
+          padding: '6px 14px',
+          borderRadius: 999,
+          color: 'var(--muted)',
+          fontSize: 12,
+          lineHeight: 1,
+          fontWeight: 900,
+          letterSpacing: 0,
+        }}
+      >
+        {label}
+      </span>
+    </div>
+  );
 }
 
 function DuelInviteMetric({ label, value }: { label: string; value: string }): JSX.Element {
@@ -209,9 +269,7 @@ function DuelInviteActions({
           label="Формат"
           value={`${invite.totalPeriods}×${invite.shotsPerPeriod}`}
         />
-        <DuelInviteMetric label="Банк" value={formatInviteMoney(invite.bankAmount)} />
         <DuelInviteMetric label="До" value={formatInviteDate(invite.endsAt)} />
-        <DuelInviteMetric label="Взнос" value={formatInviteMoney(invite.entryFeeAmount)} />
       </div>
       {status ? (
         <div
@@ -282,6 +340,7 @@ export function ChatRoomScreen(): JSX.Element {
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [pendingAttachment, setPendingAttachment] = useState<PendingAttachment | null>(null);
   const [imageViewer, setImageViewer] = useState<ChatAttachmentDTO | null>(null);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [duelInviteResolutionByMatch, setDuelInviteResolutionByMatch] = useState<
     Record<string, DuelInviteResolution>
   >({});
@@ -460,7 +519,9 @@ export function ChatRoomScreen(): JSX.Element {
     const onScroll = (): void => {
       const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
       isNearBottomRef.current = dist < 80;
+      setShowScrollToBottom(dist > 360);
     };
+    onScroll();
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => el.removeEventListener('scroll', onScroll);
   }, []);
@@ -1063,6 +1124,28 @@ export function ChatRoomScreen(): JSX.Element {
     [clearPollVoteMut],
   );
 
+  const handleLoadOlderMessages = useCallback((): void => {
+    const el = messagesListRef.current;
+    const previousScrollHeight = el?.scrollHeight ?? 0;
+    const previousScrollTop = el?.scrollTop ?? 0;
+    void query.fetchNextPage().then(() => {
+      window.requestAnimationFrame(() => {
+        const current = messagesListRef.current;
+        if (!current) return;
+        const heightDelta = current.scrollHeight - previousScrollHeight;
+        current.scrollTop = previousScrollTop + Math.max(0, heightDelta);
+      });
+    });
+  }, [query.fetchNextPage]);
+
+  const handleScrollToBottom = useCallback((): void => {
+    const el = messagesListRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    isNearBottomRef.current = true;
+    setShowScrollToBottom(false);
+  }, []);
+
   return (
     <main
       className="screen"
@@ -1145,7 +1228,7 @@ export function ChatRoomScreen(): JSX.Element {
           <button
             type="button"
             className="btn btn--ghost"
-            onClick={() => void query.fetchNextPage()}
+            onClick={handleLoadOlderMessages}
             disabled={query.isFetchingNextPage}
             style={{ alignSelf: 'center', margin: '4px 0 12px', fontSize: 12, padding: '8px 14px' }}
           >
@@ -1157,22 +1240,31 @@ export function ChatRoomScreen(): JSX.Element {
             Ничего не найдено
           </div>
         )}
-        {visibleMessages.map((m) => {
+        {visibleMessages.map((m, index) => {
+          const previous = visibleMessages[index - 1];
+          const showDaySeparator =
+            previous === undefined ||
+            messageDayKey(previous.createdAt) !== messageDayKey(m.createdAt);
+          const separator = showDaySeparator ? (
+            <DateSeparator label={formatMessageDayLabel(m.createdAt)} />
+          ) : null;
           if (isChannel) {
             return (
-              <ChannelPostCard
-                key={m.id}
-                post={m}
-                showViews={isAdmin}
-                canEdit={isAdmin}
-                onReact={onToggleReaction}
-                onOpenReactionPicker={onOpenChannelReactionPicker}
-                onOpenComments={onOpenChannelComments}
-                onPollVote={onVoteChannelPoll}
-                onPollClearVote={onClearChannelPollVote}
-                onEdit={setEditingPost}
-                pollDisabled={votePollMut.isPending || clearPollVoteMut.isPending}
-              />
+              <Fragment key={m.id}>
+                {separator}
+                <ChannelPostCard
+                  post={m}
+                  showViews={isAdmin}
+                  canEdit={isAdmin}
+                  onReact={onToggleReaction}
+                  onOpenReactionPicker={onOpenChannelReactionPicker}
+                  onOpenComments={onOpenChannelComments}
+                  onPollVote={onVoteChannelPoll}
+                  onPollClearVote={onClearChannelPollVote}
+                  onEdit={setEditingPost}
+                  pollDisabled={votePollMut.isPending || clearPollVoteMut.isPending}
+                />
+              </Fragment>
             );
           }
           const isOwn = m.senderId === meId;
@@ -1200,28 +1292,59 @@ export function ChatRoomScreen(): JSX.Element {
             ? { senderName: senderNameOf(replyParent), content: replyParent.content }
             : null;
           return (
-            <ChatBubble
-              key={m.id}
-              message={m}
-              isOwn={isOwn}
-              showAuthor={showAuthorOnBubbles}
-              deliveryStatus={
-                chatMeta?.type === 'direct' && isOwn
-                  ? isReadByCounterpart
-                    ? 'read'
-                    : 'delivered'
-                  : undefined
-              }
-              replyTo={replyTo}
-              onRequestActions={onRequestActions}
-              onReact={onToggleReaction}
-              actionSlot={inviteActionSlot}
-              onOpenProfile={onOpenProfile}
-              onOpenImage={setImageViewer}
-            />
+            <Fragment key={m.id}>
+              {separator}
+              <ChatBubble
+                message={m}
+                isOwn={isOwn}
+                showAuthor={showAuthorOnBubbles}
+                deliveryStatus={
+                  chatMeta?.type === 'direct' && isOwn
+                    ? isReadByCounterpart
+                      ? 'read'
+                      : 'delivered'
+                    : undefined
+                }
+                replyTo={replyTo}
+                onRequestActions={onRequestActions}
+                onReact={onToggleReaction}
+                actionSlot={inviteActionSlot}
+                onOpenProfile={onOpenProfile}
+                onOpenImage={setImageViewer}
+              />
+            </Fragment>
           );
         })}
       </div>
+
+      {showScrollToBottom && (
+        <button
+          type="button"
+          className="icon-btn glass-dock-icon"
+          aria-label="К последним сообщениям"
+          title="К последним сообщениям"
+          onClick={handleScrollToBottom}
+          style={{
+            position: 'absolute',
+            right: 18,
+            bottom: showComposer
+              ? isChannel && isAdmin
+                ? 'calc(154px + var(--app-safe-bottom))'
+                : 'calc(110px + var(--app-safe-bottom))'
+              : 'calc(24px + var(--app-safe-bottom))',
+            zIndex: 25,
+            width: 42,
+            height: 42,
+            minWidth: 42,
+            minHeight: 42,
+            borderRadius: 999,
+            boxShadow:
+              '0 12px 28px rgba(15, 23, 42, 0.18), inset 0 1px 0 rgba(255,255,255,0.5)',
+          }}
+        >
+          <ArrowDown size={18} />
+        </button>
+      )}
 
       {showComposer && (
         <div className="chat-edge-bottom chat-edge-bottom--overlay glass-edge-fade glass-edge-fade--bottom">
@@ -1312,7 +1435,7 @@ export function ChatRoomScreen(): JSX.Element {
             canSendEmpty={pendingAttachment !== null}
             onAttach={() => attachmentInputRef.current?.click()}
             voiceState={voiceState}
-            {...(!isChannel ? { onVoice: handleVoiceAction } : {})}
+            onVoice={handleVoiceAction}
             extraTools={
               isChannel && isAdmin ? (
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>

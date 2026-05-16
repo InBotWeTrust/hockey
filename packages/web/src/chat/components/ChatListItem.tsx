@@ -4,7 +4,7 @@ import type { ChatDTO } from '../api.js';
 import { useAuthStore } from '../../auth/authStore.js';
 import { useLongPress } from '../useLongPress.js';
 import { UserAvatar } from './UserAvatar.js';
-import { stripRichTextSyntax } from '../richText.js';
+import { messageBodyPreview } from '../messagePreview.js';
 import { chatAvatarUrl } from '../chatAvatar.js';
 
 interface ChatListItemProps {
@@ -22,11 +22,6 @@ function formatAuthor(fullName: string): string {
   if (parts.length === 1) return first;
   const lastInitial = (parts[parts.length - 1] ?? '').charAt(0).toUpperCase();
   return lastInitial ? `${first} ${lastInitial}` : first;
-}
-
-function truncate(s: string, max: number): string {
-  if (s.length <= max) return s;
-  return `${s.slice(0, max - 1).trimEnd()}…`;
 }
 
 function formatTime(iso: string | null): string {
@@ -56,7 +51,7 @@ function lastMessagePreview(chat: ChatDTO, meId: string | null): string {
   if (!m) return 'Нет сообщений';
   if (m.isDeleted) return 'Сообщение удалено';
   if (chat.type === 'channel') {
-    return truncate(stripRichTextSyntax(m.content), PREVIEW_LIMIT);
+    return messageBodyPreview(m, { stripFormatting: true, limit: PREVIEW_LIMIT });
   }
   const isMine = meId !== null && m.senderId === meId;
   const author = isMine
@@ -64,7 +59,7 @@ function lastMessagePreview(chat: ChatDTO, meId: string | null): string {
     : chat.lastMessageSenderName
       ? formatAuthor(chat.lastMessageSenderName)
       : '';
-  const body = truncate(m.content, PREVIEW_LIMIT);
+  const body = messageBodyPreview(m, { limit: PREVIEW_LIMIT });
   return author ? `${author}: ${body}` : body;
 }
 

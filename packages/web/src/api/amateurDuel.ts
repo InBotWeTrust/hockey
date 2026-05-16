@@ -19,12 +19,29 @@ export type AmateurDuelParticipantState =
   | 'completed'
   | 'forfeit';
 export type AmateurDuelOutcome = 'challenger_win' | 'opponent_win' | 'draw' | 'double_loss';
+export type AmateurDuelKind = 'express' | 'express_plus' | 'classic';
+export type AmateurDuelPeriodMode = 'quota' | 'time_attack';
+
+export interface AmateurDuelMatchmakingTicket {
+  id: string;
+  status: string;
+  expires_at: string;
+  duel_kinds?: AmateurDuelKind[];
+}
+
+export interface AmateurDuelPeriodRule {
+  periodNumber: number;
+  mode: AmateurDuelPeriodMode;
+  durationMs: number;
+  shotsLimit: number | null;
+}
 
 export interface AmateurDuelTemplate {
   id: string;
   title: string;
   description: string;
   difficulty: 'easy' | 'medium' | 'hard';
+  duel_kind: AmateurDuelKind;
   duel_variant: 'classic' | 'time_attack';
   ranked_enabled: boolean;
   matchmaking_enabled: boolean;
@@ -43,6 +60,7 @@ export interface AmateurDuelTemplate {
   power_cap: number;
   goalie_id: string;
   period_speed_presets: DailyPeriodSpeedPreset[];
+  period_rules: AmateurDuelPeriodRule[];
   stake_amount: number;
   entry_fee_amount: number;
   required_inventory_item_id: string | null;
@@ -54,6 +72,7 @@ export interface AmateurDuelRules {
   title: string;
   description: string;
   difficulty: 'easy' | 'medium' | 'hard';
+  duelKind: AmateurDuelKind;
   duelVariant: 'classic' | 'time_attack';
   rankedEnabled: boolean;
   matchmakingEnabled: boolean;
@@ -61,6 +80,7 @@ export interface AmateurDuelRules {
   shotsPerPeriod: number;
   periodDurationMs: number;
   breakDurationMs: number;
+  periodRules: AmateurDuelPeriodRule[];
   challengeTtlMs: number;
   readyDurationMs: number;
   readyNoShowCooldownMs: number;
@@ -91,6 +111,7 @@ export interface AmateurDuelParticipant {
   result_points: number;
   ready_at: string | null;
   loadout: AmateurDuelLoadout;
+  inventory_available?: AmateurDuelInventoryAvailabilityItem[];
   inventory_report: AmateurDuelInventoryPeriodReport[];
 }
 
@@ -108,6 +129,15 @@ export interface AmateurDuelLoadout {
   items: AmateurDuelLoadoutItem[];
   powerScore: number;
   powerCap: number;
+}
+
+export interface AmateurDuelInventoryAvailabilityItem {
+  id: string;
+  kind: 'stick' | 'skates' | 'nutrition';
+  title: string;
+  rarity: 'common' | 'rare' | 'epic' | 'legendary';
+  chargesAvailable: number;
+  chargesReserved: number;
 }
 
 export interface AmateurDuelInventoryPeriodReport {
@@ -137,6 +167,7 @@ export interface AmateurDuelMatch {
   source: 'challenge' | 'matchmaking';
   ranked: boolean;
   season_key: string;
+  duel_kind: AmateurDuelKind;
   starts_at: string;
   ends_at: string;
   ready_expires_at: string | null;
@@ -280,21 +311,21 @@ export function readyAmateurDuel(
 }
 
 export function joinAmateurMatchmaking(
-  templateId: string,
-): Promise<{ ticket?: { id: string; status: string; expires_at: string }; match?: AmateurDuelMatch }> {
-  return apiFetch<{ ticket?: { id: string; status: string; expires_at: string }; match?: AmateurDuelMatch }>(
+  duelKinds: AmateurDuelKind[],
+): Promise<{ ticket?: AmateurDuelMatchmakingTicket; match?: AmateurDuelMatch }> {
+  return apiFetch<{ ticket?: AmateurDuelMatchmakingTicket; match?: AmateurDuelMatch }>(
     '/duel/amateur/matchmaking/join',
     {
       method: 'POST',
-      body: JSON.stringify({ template_id: templateId }),
+      body: JSON.stringify({ duel_kinds: duelKinds }),
     },
   ).then((res) => (res.match ? { ...res, match: stampMatch(res.match) } : res));
 }
 
-export function leaveAmateurMatchmaking(templateId: string): Promise<{ ok: true }> {
+export function leaveAmateurMatchmaking(templateId?: string): Promise<{ ok: true }> {
   return apiFetch<{ ok: true }>('/duel/amateur/matchmaking/leave', {
     method: 'POST',
-    body: JSON.stringify({ template_id: templateId }),
+    body: JSON.stringify(templateId ? { template_id: templateId } : {}),
   });
 }
 

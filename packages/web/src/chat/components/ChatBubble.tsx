@@ -5,6 +5,7 @@ import { ReplyPreview } from './ReplyPreview.js';
 import { ReactionBar } from './ReactionBar.js';
 import { useLongPress } from '../useLongPress.js';
 import { UserAvatar } from './UserAvatar.js';
+import { messageAttachments, messageBodyPreview } from '../messagePreview.js';
 
 interface ChatBubbleProps {
   message: ChatMessageDTO;
@@ -35,25 +36,8 @@ function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 }
 
-function attachmentsFromMetadata(metadata: ChatMessageDTO['metadata']): ChatAttachmentDTO[] {
-  if (metadata === undefined || typeof metadata !== 'object' || metadata === null) return [];
-  const raw = (metadata as { attachments?: unknown }).attachments;
-  if (!Array.isArray(raw)) return [];
-  return raw.filter((item): item is ChatAttachmentDTO => {
-    if (typeof item !== 'object' || item === null) return false;
-    const record = item as Partial<ChatAttachmentDTO>;
-    return (
-      typeof record.id === 'string' &&
-      typeof record.url === 'string' &&
-      (record.kind === 'image' || record.kind === 'voice' || record.kind === 'file') &&
-      typeof record.contentType === 'string' &&
-      typeof record.size === 'number' &&
-      typeof record.originalName === 'string'
-    );
-  });
-}
-
-function formatAttachmentSize(size: number): string {
+function formatAttachmentSize(size: number | undefined): string | null {
+  if (size === undefined) return null;
   if (size >= 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} МБ`;
   if (size >= 1024) return `${Math.round(size / 1024)} КБ`;
   return `${size} Б`;
@@ -136,8 +120,14 @@ function ChatBubbleImpl({
   const className = isOwn ? 'glass-dark' : 'glass';
   const align = isOwn ? 'flex-end' : 'flex-start';
   const radius = isOwn ? '20px 20px 4px 20px' : '20px 20px 20px 4px';
-  const text = message.isDeleted ? 'Сообщение удалено' : message.content;
-  const attachments = message.isDeleted ? [] : attachmentsFromMetadata(message.metadata);
+  const attachments = message.isDeleted ? [] : messageAttachments(message.metadata);
+  const text = message.isDeleted
+    ? 'Сообщение удалено'
+    : message.content.trim().length > 0
+      ? message.content.trim()
+      : attachments.length > 0
+        ? ''
+        : messageBodyPreview(message);
   const showAvatarAndName = showAuthor && !isOwn;
 
   const displayLabel = message.senderDisplayName ?? 'Участник';
@@ -261,7 +251,7 @@ function ChatBubbleImpl({
           <ReplyPreview senderName={replyTo.senderName} content={replyTo.content} />
         )}
         {attachments.length > 0 && (
-          <div style={{ display: 'grid', gap: 6, marginBottom: text ? 6 : 0 }}>
+          <div style={{ display: 'grid', gap: 6, marginBottom: text.length > 0 ? 6 : 0 }}>
             {attachments.map((attachment) => {
               if (attachment.kind === 'image') {
                 return (
@@ -277,11 +267,19 @@ function ChatBubbleImpl({
                   <audio
                     key={attachment.id}
                     controls
+                    preload="metadata"
                     src={attachment.url}
-                    style={{ width: 230, maxWidth: '100%' }}
+                    aria-label="Голосовое сообщение"
+                    style={{
+                      display: 'block',
+                      width: 230,
+                      maxWidth: '100%',
+                      colorScheme: isOwn ? 'dark' : 'light',
+                    }}
                   />
                 );
               }
+              const size = formatAttachmentSize(attachment.size);
               return (
                 <a
                   key={attachment.id}
@@ -311,11 +309,11 @@ function ChatBubbleImpl({
                         whiteSpace: 'nowrap',
                       }}
                     >
-                      {attachment.originalName || 'Файл'}
+                      {attachment.originalName ?? 'Файл'}
                     </span>
-                    <span style={{ display: 'block', fontSize: 10, opacity: 0.72 }}>
-                      {formatAttachmentSize(attachment.size)}
-                    </span>
+                    {size && (
+                      <span style={{ display: 'block', fontSize: 10, opacity: 0.72 }}>{size}</span>
+                    )}
                   </span>
                 </a>
               );
@@ -323,7 +321,7 @@ function ChatBubbleImpl({
           </div>
         )}
         <div style={{ position: 'relative' }}>
-          {text && <span>{text}</span>}
+          {text.length > 0 && <span style={{ whiteSpace: 'pre-wrap' }}>{text}</span>}
           <span
             aria-hidden="true"
             style={{
@@ -421,6 +419,7 @@ function areEqual(prev: ChatBubbleProps, next: ChatBubbleProps): boolean {
   return (
     prev.message.id === next.message.id &&
     prev.message.content === next.message.content &&
+    prev.message.metadata === next.message.metadata &&
     prev.message.isDeleted === next.message.isDeleted &&
     prev.message.isEdited === next.message.isEdited &&
     prev.message.reactions === next.message.reactions &&

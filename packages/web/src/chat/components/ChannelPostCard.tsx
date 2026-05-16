@@ -1,8 +1,9 @@
-import { MessageCircle, Pencil, SmilePlus } from 'lucide-react';
+import { FileText, MessageCircle, Pencil, SmilePlus } from 'lucide-react';
 import type { ChatMessageDTO } from '../api.js';
 import { ReactionBar } from './ReactionBar.js';
 import { RichText } from '../richText.js';
 import { ChannelPoll } from './ChannelPoll.js';
+import { messageAttachments } from '../messagePreview.js';
 
 interface ChannelPostCardProps {
   post: ChatMessageDTO;
@@ -26,6 +27,13 @@ function formatPostTime(iso: string): string {
   });
 }
 
+function formatAttachmentSize(size: number | undefined): string | null {
+  if (size === undefined) return null;
+  if (size >= 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} МБ`;
+  if (size >= 1024) return `${Math.round(size / 1024)} КБ`;
+  return `${size} Б`;
+}
+
 export function ChannelPostCard({
   post,
   showViews,
@@ -38,6 +46,8 @@ export function ChannelPostCard({
   onEdit,
   pollDisabled = false,
 }: ChannelPostCardProps): JSX.Element {
+  const attachments = messageAttachments(post.metadata);
+
   return (
     <article
       data-message-id={post.id}
@@ -59,6 +69,89 @@ export function ChannelPostCard({
       >
         <RichText text={post.content} />
       </div>
+
+      {attachments.length > 0 && (
+        <div style={{ display: 'grid', gap: 8, marginTop: post.content.trim() ? 12 : 0 }}>
+          {attachments.map((attachment) => {
+            if (attachment.kind === 'image') {
+              const imageName = attachment.originalName ?? 'Изображение';
+              return (
+                <a
+                  key={attachment.id}
+                  href={attachment.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={`Открыть изображение: ${imageName}`}
+                  style={{ display: 'block', color: 'inherit' }}
+                >
+                  <img
+                    src={attachment.url}
+                    alt=""
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      maxHeight: 320,
+                      objectFit: 'cover',
+                      borderRadius: 16,
+                      border: '1px solid rgba(255,255,255,0.62)',
+                    }}
+                  />
+                </a>
+              );
+            }
+            if (attachment.kind === 'voice') {
+              return (
+                <audio
+                  key={attachment.id}
+                  controls
+                  preload="metadata"
+                  src={attachment.url}
+                  aria-label="Голосовое сообщение"
+                  style={{ display: 'block', width: 260, maxWidth: '100%' }}
+                />
+              );
+            }
+            const size = formatAttachmentSize(attachment.size);
+            return (
+              <a
+                key={attachment.id}
+                href={attachment.url}
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '10px 12px',
+                  borderRadius: 16,
+                  background: 'rgba(255,255,255,0.65)',
+                  color: 'inherit',
+                  textDecoration: 'none',
+                }}
+              >
+                <FileText size={18} />
+                <span style={{ minWidth: 0 }}>
+                  <span
+                    style={{
+                      display: 'block',
+                      fontSize: 13,
+                      fontWeight: 900,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {attachment.originalName ?? 'Файл'}
+                  </span>
+                  {size && (
+                    <span style={{ display: 'block', fontSize: 11, opacity: 0.7 }}>{size}</span>
+                  )}
+                </span>
+              </a>
+            );
+          })}
+        </div>
+      )}
 
       {post.poll && (
         <ChannelPoll

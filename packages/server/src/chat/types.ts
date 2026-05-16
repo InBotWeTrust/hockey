@@ -177,6 +177,7 @@ export interface ChannelPostCommentRow {
   author_id: string;
   reply_to_id: string | null;
   content: string;
+  metadata: unknown;
   is_deleted: boolean;
   created_at: Date;
   updated_at: Date;
@@ -192,6 +193,7 @@ export interface ChannelPostCommentDTO {
   authorAvatarUrl: string | null;
   replyToId: string | null;
   content: string;
+  metadata?: Record<string, unknown>;
   isDeleted: boolean;
   createdAt: string;
   reactions: ReactionGroupDTO[];

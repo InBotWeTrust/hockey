@@ -59,7 +59,7 @@ import { enqueueFirstDialogMessagePush } from '../push/chat.js';
 import { sendNewsPostPush } from '../push/news.js';
 import type { PushVapidOptions } from '../push/service.js';
 import { createMediaProxyUrl } from '../storage/mediaAccess.js';
-import type { ChatMessageDTO } from './types.js';
+import type { ChannelPostCommentDTO, ChatMessageDTO } from './types.js';
 
 const uuid = z.string().uuid();
 const isoDate = z.string().datetime({ offset: true });
@@ -131,6 +131,27 @@ function signMessageAttachmentUrls(
     ...message,
     metadata: {
       ...message.metadata,
+      attachments,
+    },
+  };
+}
+
+function signCommentAttachmentUrls(
+  comment: ChannelPostCommentDTO,
+  mediaAccessSecret: string,
+): ChannelPostCommentDTO {
+  if (!isRecord(comment.metadata) || !Array.isArray(comment.metadata.attachments)) return comment;
+  const attachments = comment.metadata.attachments.map((attachment) => {
+    if (!isRecord(attachment) || typeof attachment.id !== 'string') return attachment;
+    return {
+      ...attachment,
+      url: createMediaProxyUrl(mediaAccessSecret, attachment.id),
+    };
+  });
+  return {
+    ...comment,
+    metadata: {
+      ...comment.metadata,
       attachments,
     },
   };
@@ -351,7 +372,7 @@ export const chatRoutes: FastifyPluginAsync<ChatRoutesOptions> = async (app, opt
     const { postId } = z.object({ postId: uuid }).parse(req.params);
     const post = await getChannelPost(app.pg, postId, req.user.id);
     await recordChannelPostViews(app.pg, req.user.id, [postId]);
-    return post;
+    return signMessageAttachmentUrls(post, options.mediaAccessSecret);
   });
 
   app.patch('/chat/channel/posts/:postId', { preHandler: [app.authenticate] }, async (req) => {
@@ -359,8 +380,9 @@ export const chatRoutes: FastifyPluginAsync<ChatRoutesOptions> = async (app, opt
     const { postId } = z.object({ postId: uuid }).parse(req.params);
     const body = z.object({ content: z.string().trim().min(1).max(4000) }).parse(req.body);
     const post = await updateChannelPostContent(app.pg, postId, req.user.id, body.content);
-    await publishMessageUpdated(app.pg, app.realtime, post.chatId, 'channel', post);
-    return post;
+    const signedPost = signMessageAttachmentUrls(post, options.mediaAccessSecret);
+    await publishMessageUpdated(app.pg, app.realtime, post.chatId, 'channel', signedPost);
+    return signedPost;
   });
 
   app.delete(
@@ -382,7 +404,10 @@ export const chatRoutes: FastifyPluginAsync<ChatRoutesOptions> = async (app, opt
     async (req) => {
       const { postId } = z.object({ postId: uuid }).parse(req.params);
       const { optionId } = z.object({ optionId: uuid }).parse(req.body);
-      return await setChannelPollVote(app.pg, postId, req.user.id, optionId);
+      return signMessageAttachmentUrls(
+        await setChannelPollVote(app.pg, postId, req.user.id, optionId),
+        options.mediaAccessSecret,
+      );
     },
   );
 
@@ -391,7 +416,10 @@ export const chatRoutes: FastifyPluginAsync<ChatRoutesOptions> = async (app, opt
     { preHandler: [app.authenticate] },
     async (req) => {
       const { postId } = z.object({ postId: uuid }).parse(req.params);
-      return await clearChannelPollVote(app.pg, postId, req.user.id);
+      return signMessageAttachmentUrls(
+        await clearChannelPollVote(app.pg, postId, req.user.id),
+        options.mediaAccessSecret,
+      );
     },
   );
 
@@ -400,7 +428,9 @@ export const chatRoutes: FastifyPluginAsync<ChatRoutesOptions> = async (app, opt
     { preHandler: [app.authenticate] },
     async (req) => {
       const { postId } = z.object({ postId: uuid }).parse(req.params);
-      return await getChannelPostComments(app.pg, postId, req.user.id);
+      return (await getChannelPostComments(app.pg, postId, req.user.id)).map((comment) =>
+        signCommentAttachmentUrls(comment, options.mediaAccessSecret),
+      );
     },
   );
 
@@ -411,17 +441,34 @@ export const chatRoutes: FastifyPluginAsync<ChatRoutesOptions> = async (app, opt
       const { postId } = z.object({ postId: uuid }).parse(req.params);
       const body = z
         .object({
-          content: z.string().trim().min(1).max(4000),
+          content: z.string().trim().max(4000).default(''),
           replyToId: uuid.optional(),
+          attachmentIds: z.array(uuid).max(10).optional(),
         })
+        .refine(
+          (value) =>
+            value.content.length > 0 ||
+            (value.attachmentIds !== undefined && value.attachmentIds.length > 0),
+          { message: 'comment content or attachment required' },
+        )
         .parse(req.body);
       await checkAndConsumeRateLimit(app.redis, req.user.id);
+      const attachments = await loadChatAttachments(
+        app,
+        req.user.id,
+        body.attachmentIds ?? [],
+        options.mediaAccessSecret,
+      );
+      if (attachments.some((attachment) => attachment.kind === 'voice')) {
+        throw new InvalidInputError('voice comments are not supported');
+      }
       const comment = await addChannelPostComment(
         app.pg,
         postId,
         req.user.id,
         body.content,
         body.replyToId,
+        attachments.length > 0 ? { attachments } : {},
       );
       reply.code(201);
       return comment;

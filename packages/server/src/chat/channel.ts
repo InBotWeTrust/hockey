@@ -193,6 +193,7 @@ export async function addChannelPostComment(
   authorId: string,
   content: string,
   replyToId?: string,
+  metadata: Record<string, unknown> = {},
 ): Promise<ChannelPostCommentDTO> {
   await getChannelPost(pool, postId, authorId);
   if (replyToId !== undefined) {
@@ -211,8 +212,8 @@ export async function addChannelPostComment(
   }
   const row = await pool.query<ChannelPostCommentRow>(
     `with ins as (
-       insert into channel_post_comments (post_message_id, author_id, content, reply_to_id)
-       values ($1, $2, $3, $4)
+       insert into channel_post_comments (post_message_id, author_id, content, reply_to_id, metadata)
+       values ($1, $2, $3, $4, $5::jsonb)
        returning *
      )
      select ins.*,
@@ -220,7 +221,7 @@ export async function addChannelPostComment(
             u.avatar_url as author_avatar_url
        from ins
        left join users u on u.id = ins.author_id`,
-    [postId, authorId, content, replyToId ?? null],
+    [postId, authorId, content, replyToId ?? null, JSON.stringify(metadata)],
   );
   return toChannelPostCommentDTO(row.rows[0]!, []);
 }

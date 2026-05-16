@@ -32,6 +32,8 @@ type ParticipantState =
 type ParticipantSide = 'challenger' | 'opponent';
 type DuelDifficulty = 'easy' | 'medium' | 'hard';
 type DuelVariant = 'classic' | 'time_attack';
+type DuelKind = 'express' | 'express_plus' | 'classic';
+type DuelPeriodMode = 'quota' | 'time_attack';
 type DuelOutcome = 'challenger_win' | 'opponent_win' | 'draw' | 'double_loss';
 type DuelShotResult = 'goal' | 'save' | 'miss';
 type InventoryKind = 'stick' | 'skates' | 'nutrition';
@@ -39,9 +41,11 @@ type InventoryKind = 'stick' | 'skates' | 'nutrition';
 const TAP_TIME_FUTURE_TOLERANCE_MS = 2500;
 const TAP_TIME_STALE_TOLERANCE_MS = 12_000;
 const TAP_TIME_PAUSE_ALLOWANCE_PER_SHOT_MS = 2_000;
+const MATCHMAKING_TIMEOUT_MS = 120_000;
 
 const uuid = z.string().uuid();
 const isoDate = z.string().datetime({ offset: true });
+const duelKindSchema = z.enum(['express', 'express_plus', 'classic']);
 
 const periodPresetSchema = z.object({
   periodNumber: z.number().int().min(1).max(9),
@@ -50,6 +54,17 @@ const periodPresetSchema = z.object({
   shooterFrequency: z.number().min(0.1).max(3),
   puckSpeedPerMs: z.number().min(0.2).max(5),
 });
+
+const periodRuleSchema = z
+  .object({
+    periodNumber: z.number().int().min(1).max(9),
+    mode: z.enum(['quota', 'time_attack']),
+    durationMs: z.number().int().min(1000).max(10_800_000),
+    shotsLimit: z.number().int().min(1).max(1000).nullable(),
+  })
+  .refine((rule) => (rule.mode === 'quota' ? rule.shotsLimit !== null : true), {
+    message: 'quota period requires shotsLimit',
+  });
 
 const shotBodySchema = z.object({
   shot_index: z.number().int().min(1),
@@ -69,6 +84,7 @@ const createTemplateSchema = z.object({
   description: z.string().trim().max(1000).default(''),
   isActive: z.boolean().default(true),
   difficulty: z.enum(['easy', 'medium', 'hard']).default('hard'),
+  duelKind: z.enum(['express', 'express_plus', 'classic']).default('classic'),
   duelVariant: z.enum(['classic', 'time_attack']).default('classic'),
   rankedEnabled: z.boolean().default(true),
   matchmakingEnabled: z.boolean().default(true),
@@ -87,6 +103,7 @@ const createTemplateSchema = z.object({
   powerCap: z.number().int().min(0).max(100_000).default(100),
   goalieId: z.string().trim().min(1).max(80).default('rookie'),
   periodSpeedPresets: z.array(periodPresetSchema).min(1).max(9),
+  periodRules: z.array(periodRuleSchema).min(1).max(9).nullable().default(null),
   stakeAmount: z.number().int().min(0).max(9_000_000_000).default(0),
   entryFeeAmount: z.number().int().min(0).max(9_000_000_000).default(0),
   requiredInventoryItemId: uuid.nullable().default(null),
@@ -96,6 +113,17 @@ const createTemplateSchema = z.object({
 const updateTemplateSchema = createTemplateSchema.partial().refine((value) => {
   return Object.keys(value).length > 0;
 }, 'no changes');
+
+const matchmakingJoinSchema = z
+  .object({
+    template_id: uuid.optional(),
+    duel_kinds: z.array(duelKindSchema).min(1).max(3).optional(),
+  })
+  .refine((value) => value.template_id !== undefined || value.duel_kinds !== undefined, {
+    message: 'template_id or duel_kinds is required',
+  });
+
+const matchmakingLeaveSchema = z.object({ template_id: uuid.optional() }).optional();
 
 const inventoryItemPatchSchema = z
   .object({
@@ -135,6 +163,7 @@ interface DuelTemplateRow {
   description: string;
   is_active: boolean;
   difficulty: DuelDifficulty;
+  duel_kind: DuelKind;
   duel_variant: DuelVariant;
   ranked_enabled: boolean;
   matchmaking_enabled: boolean;
@@ -153,6 +182,7 @@ interface DuelTemplateRow {
   power_cap: number;
   goalie_id: string;
   period_speed_presets: unknown;
+  period_rules: unknown | null;
   stake_amount: number;
   entry_fee_amount: number;
   required_inventory_item_id: string | null;
@@ -170,6 +200,7 @@ interface DuelMatchRow {
   source: 'challenge' | 'matchmaking';
   ranked: boolean;
   season_key: string;
+  duel_kind: DuelKind;
   rules_snapshot: unknown;
   match_seed: string;
   starts_at: Date;
@@ -192,6 +223,13 @@ interface DuelMatchRow {
   opponent_name?: string;
   challenger_avatar_url?: string | null;
   opponent_avatar_url?: string | null;
+}
+
+interface DuelPeriodRule {
+  periodNumber: number;
+  mode: DuelPeriodMode;
+  durationMs: number;
+  shotsLimit: number | null;
 }
 
 interface DuelParticipantRow {
@@ -262,6 +300,15 @@ interface LoadoutSnapshot {
   powerCap: number;
 }
 
+interface InventoryAvailabilityItem {
+  id: string;
+  kind: InventoryKind;
+  title: string;
+  rarity: 'common' | 'rare' | 'epic' | 'legendary';
+  chargesAvailable: number;
+  chargesReserved: number;
+}
+
 interface InventoryPeriodReport {
   periodNumber: number;
   consumed: Array<{
@@ -278,6 +325,7 @@ interface DuelRulesSnapshot {
   title: string;
   description: string;
   difficulty: DuelDifficulty;
+  duelKind: DuelKind;
   duelVariant: DuelVariant;
   rankedEnabled: boolean;
   matchmakingEnabled: boolean;
@@ -285,6 +333,7 @@ interface DuelRulesSnapshot {
   shotsPerPeriod: number;
   periodDurationMs: number;
   breakDurationMs: number;
+  periodRules: DuelPeriodRule[];
   challengeTtlMs: number;
   readyDurationMs: number;
   readyNoShowCooldownMs: number;
@@ -315,6 +364,7 @@ interface DuelParticipantDTO {
   result_points: number;
   ready_at: string | null;
   loadout: LoadoutSnapshot;
+  inventory_available: InventoryAvailabilityItem[];
   inventory_report: InventoryPeriodReport[];
 }
 
@@ -325,6 +375,7 @@ interface DuelMatchDTO {
   source: 'challenge' | 'matchmaking';
   ranked: boolean;
   season_key: string;
+  duel_kind: DuelKind;
   starts_at: string;
   ends_at: string;
   ready_expires_at: string | null;
@@ -530,11 +581,18 @@ function makeRulesSnapshot(template: DuelTemplateRow): DuelRulesSnapshot {
       throw new AppError('bad_request', `missing speed preset for period ${period}`, 400);
     }
   }
+  const periodRules = parseTemplatePeriodRules(template.period_rules, {
+    duelKind: template.duel_kind,
+    totalPeriods,
+    shotsPerPeriod: Number(template.shots_per_period),
+    periodDurationMs: Number(template.period_duration_ms),
+  });
   return {
     templateId: template.id,
     title: template.title,
     description: template.description,
     difficulty: template.difficulty,
+    duelKind: template.duel_kind,
     duelVariant: template.duel_variant,
     rankedEnabled: template.ranked_enabled,
     matchmakingEnabled: template.matchmaking_enabled,
@@ -542,6 +600,7 @@ function makeRulesSnapshot(template: DuelTemplateRow): DuelRulesSnapshot {
     shotsPerPeriod: Number(template.shots_per_period),
     periodDurationMs: Number(template.period_duration_ms),
     breakDurationMs: Number(template.break_duration_ms),
+    periodRules,
     challengeTtlMs: Number(template.challenge_ttl_ms),
     readyDurationMs: Number(template.ready_duration_ms),
     readyNoShowCooldownMs: Number(template.ready_no_show_cooldown_ms),
@@ -551,11 +610,60 @@ function makeRulesSnapshot(template: DuelTemplateRow): DuelRulesSnapshot {
     powerCap: Number(template.power_cap),
     goalieId: template.goalie_id,
     periodSpeedPresets: presets,
-    stakeAmount: Number(template.stake_amount),
-    entryFeeAmount: Number(template.entry_fee_amount),
+    stakeAmount: 0,
+    entryFeeAmount: 0,
     requiredInventoryItemId: template.required_inventory_item_id,
     inventoryChargesPerPeriod: Number(template.inventory_charges_per_period),
   };
+}
+
+function defaultPeriodRules({
+  duelKind,
+  totalPeriods,
+  shotsPerPeriod,
+  periodDurationMs,
+}: {
+  duelKind: DuelKind;
+  totalPeriods: number;
+  shotsPerPeriod: number;
+  periodDurationMs: number;
+}): DuelPeriodRule[] {
+  if (duelKind === 'express') {
+    return [{ periodNumber: 1, mode: 'time_attack', durationMs: 180_000, shotsLimit: null }];
+  }
+  if (duelKind === 'express_plus') {
+    return [
+      { periodNumber: 1, mode: 'quota', durationMs: 180_000, shotsLimit: 30 },
+      { periodNumber: 2, mode: 'time_attack', durationMs: 180_000, shotsLimit: null },
+    ];
+  }
+  return Array.from({ length: totalPeriods }, (_, index) => ({
+    periodNumber: index + 1,
+    mode: 'quota' as const,
+    durationMs: periodDurationMs,
+    shotsLimit: shotsPerPeriod,
+  }));
+}
+
+function parseTemplatePeriodRules(
+  value: unknown,
+  fallback: {
+    duelKind: DuelKind;
+    totalPeriods: number;
+    shotsPerPeriod: number;
+    periodDurationMs: number;
+  },
+): DuelPeriodRule[] {
+  if (value === null || value === undefined) return defaultPeriodRules(fallback);
+  const parsed = z.array(periodRuleSchema).min(1).max(9).safeParse(value);
+  if (!parsed.success) throw new AppError('bad_request', 'invalid duel period rules', 400);
+  const sorted = [...parsed.data].sort((a, b) => a.periodNumber - b.periodNumber);
+  sorted.forEach((rule, index) => {
+    if (rule.periodNumber !== index + 1) {
+      throw new AppError('bad_request', 'duel period rules must be sequential', 400);
+    }
+  });
+  return sorted;
 }
 
 function parseRulesSnapshot(value: unknown): DuelRulesSnapshot {
@@ -565,6 +673,7 @@ function parseRulesSnapshot(value: unknown): DuelRulesSnapshot {
       title: z.string(),
       description: z.string(),
       difficulty: z.enum(['easy', 'medium', 'hard']).default('hard'),
+      duelKind: z.enum(['express', 'express_plus', 'classic']).default('classic'),
       duelVariant: z.enum(['classic', 'time_attack']).default('classic'),
       rankedEnabled: z.boolean().default(true),
       matchmakingEnabled: z.boolean().default(true),
@@ -572,6 +681,7 @@ function parseRulesSnapshot(value: unknown): DuelRulesSnapshot {
       shotsPerPeriod: z.number().int().min(1).max(100),
       periodDurationMs: z.number().int().min(1000).max(10_800_000),
       breakDurationMs: z.number().int().min(0).max(10_800_000),
+      periodRules: z.array(periodRuleSchema).min(1).max(9).optional(),
       challengeTtlMs: z.number().int().min(1000).default(1_800_000),
       readyDurationMs: z.number().int().min(1000).default(300_000),
       readyNoShowCooldownMs: z.number().int().min(0).default(900_000),
@@ -590,7 +700,28 @@ function parseRulesSnapshot(value: unknown): DuelRulesSnapshot {
   if (!parsed.success) {
     throw new AppError('server_error', 'invalid duel rules snapshot', 500);
   }
-  return parsed.data;
+  return {
+    ...parsed.data,
+    periodRules:
+      parsed.data.periodRules ??
+      defaultPeriodRules({
+        duelKind: parsed.data.duelKind,
+        totalPeriods: parsed.data.totalPeriods,
+        shotsPerPeriod: parsed.data.shotsPerPeriod,
+        periodDurationMs: parsed.data.periodDurationMs,
+      }),
+  };
+}
+
+function getDuelPeriodRule(rules: DuelRulesSnapshot, periodNumber: number): DuelPeriodRule {
+  return (
+    rules.periodRules.find((rule) => rule.periodNumber === periodNumber) ?? {
+      periodNumber,
+      mode: rules.duelVariant === 'time_attack' ? 'time_attack' : 'quota',
+      durationMs: rules.periodDurationMs,
+      shotsLimit: rules.duelVariant === 'time_attack' ? null : rules.shotsPerPeriod,
+    }
+  );
 }
 
 function clampSpeed(value: number, min: number, max: number): number {
@@ -641,11 +772,11 @@ async function withTransaction<T>(
 
 async function fetchTemplate(client: PoolClient, templateId: string): Promise<DuelTemplateRow> {
   const { rows } = await client.query<DuelTemplateRow>(
-    `select id, title, description, is_active, difficulty, duel_variant, ranked_enabled,
+    `select id, title, description, is_active, difficulty, duel_kind, duel_variant, ranked_enabled,
             matchmaking_enabled, starts_at, ends_at, total_periods, shots_per_period,
             period_duration_ms, break_duration_ms, challenge_ttl_ms, ready_duration_ms,
             ready_no_show_cooldown_ms, matchmaking_timeout_ms, ranked_daily_limit,
-            ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets,
+            ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules,
             stake_amount, entry_fee_amount, required_inventory_item_id,
             inventory_charges_per_period, created_at, updated_at
        from amateur_duel_template
@@ -1026,8 +1157,9 @@ async function closeParticipantPeriod(
     ],
   );
 
+  const periodRule = getDuelPeriodRule(rules, participant.current_period);
   const periodCompleted =
-    reason === 'quota' || (reason === 'timeout' && rules.duelVariant === 'time_attack');
+    reason === 'quota' || (reason === 'timeout' && periodRule.mode === 'time_attack');
   const completedByQuota = periodCompleted && participant.current_period >= rules.totalPeriods;
   const nextState: ParticipantState = completedByQuota
     ? 'completed'
@@ -1307,6 +1439,31 @@ async function settleMatchIfReady(
   return rows[0]!;
 }
 
+async function fetchMatchmakingTemplates(
+  client: PoolClient,
+  duelKinds: DuelKind[],
+  now: Date,
+): Promise<DuelTemplateRow[]> {
+  const { rows } = await client.query<DuelTemplateRow>(
+    `select id, title, description, is_active, difficulty, duel_kind, duel_variant, ranked_enabled,
+            matchmaking_enabled, starts_at, ends_at, total_periods, shots_per_period,
+            period_duration_ms, break_duration_ms, challenge_ttl_ms, ready_duration_ms,
+            ready_no_show_cooldown_ms, matchmaking_timeout_ms, ranked_daily_limit,
+            ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules,
+            stake_amount, entry_fee_amount, required_inventory_item_id,
+            inventory_charges_per_period, created_at, updated_at
+       from amateur_duel_template
+      where deleted_at is null
+        and is_active
+        and matchmaking_enabled
+        and ends_at > $2
+        and duel_kind = any($1::text[])
+      order by array_position($1::text[], duel_kind), created_at desc`,
+    [duelKinds, now],
+  );
+  return rows;
+}
+
 async function reconcileMatch(
   client: PoolClient,
   match: DuelMatchRow,
@@ -1322,7 +1479,8 @@ async function reconcileMatch(
   const participants = await fetchParticipants(client, match.id);
   for (const participant of participants) {
     if (participant.state === 'period_active' && participant.period_started_at !== null) {
-      const timeoutAt = new Date(participant.period_started_at.getTime() + rules.periodDurationMs);
+      const periodRule = getDuelPeriodRule(rules, participant.current_period);
+      const timeoutAt = new Date(participant.period_started_at.getTime() + periodRule.durationMs);
       if (now >= match.ends_at) {
         await closeParticipantPeriod(client, participant, rules, match.ends_at, 'window_end');
       } else if (now >= timeoutAt) {
@@ -1347,7 +1505,44 @@ async function reconcileMatch(
   return settleMatchIfReady(client, refreshed, now);
 }
 
-function participantDto(participant: DuelParticipantRow, match: DuelMatchRow): DuelParticipantDTO {
+async function fetchAvailableInventory(
+  client: PoolClient,
+  userId: string,
+): Promise<InventoryAvailabilityItem[]> {
+  const { rows } = await client.query<{
+    id: string;
+    title: string;
+    item_kind: InventoryKind;
+    rarity: 'common' | 'rare' | 'epic' | 'legendary';
+    charges_available: number;
+    charges_reserved: number;
+  }>(
+    `select i.id, i.title, i.item_kind, i.rarity,
+            coalesce(ui.charges_available, 0)::int as charges_available,
+            coalesce(ui.charges_reserved, 0)::int as charges_reserved
+       from admin_inventory_items i
+       left join user_inventory_item ui
+         on ui.inventory_item_id = i.id and ui.user_id = $1
+      where i.deleted_at is null
+        and i.item_kind in ('stick', 'skates', 'nutrition')
+      order by i.item_kind, i.created_at desc`,
+    [userId],
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    kind: row.item_kind,
+    title: row.title,
+    rarity: row.rarity,
+    chargesAvailable: Number(row.charges_available),
+    chargesReserved: Number(row.charges_reserved),
+  }));
+}
+
+function participantDto(
+  participant: DuelParticipantRow,
+  match: DuelMatchRow,
+  inventoryAvailable: InventoryAvailabilityItem[] = [],
+): DuelParticipantDTO {
   const displayName =
     participant.side === 'challenger' ? (match.challenger_name ?? '') : (match.opponent_name ?? '');
   const avatarUrl =
@@ -1372,6 +1567,7 @@ function participantDto(participant: DuelParticipantRow, match: DuelMatchRow): D
     result_points: Number(participant.result_points),
     ready_at: participant.ready_at?.toISOString() ?? null,
     loadout: loadoutFromUnknown(participant.loadout_snapshot),
+    inventory_available: inventoryAvailable,
     inventory_report: inventoryReportFromUnknown(participant.inventory_report),
   };
 }
@@ -1389,7 +1585,9 @@ async function buildMatchDto(
   const rules = parseRulesSnapshot(match.rules_snapshot);
   const periodEndsAt =
     me.state === 'period_active' && me.period_started_at !== null
-      ? new Date(me.period_started_at.getTime() + rules.periodDurationMs).toISOString()
+      ? new Date(
+          me.period_started_at.getTime() + getDuelPeriodRule(rules, me.current_period).durationMs,
+        ).toISOString()
       : null;
   const breakEndsAt =
     me.state === 'break_active' && me.break_started_at !== null
@@ -1402,6 +1600,7 @@ async function buildMatchDto(
     source: match.source,
     ranked: match.ranked,
     season_key: match.season_key,
+    duel_kind: match.duel_kind,
     starts_at: match.starts_at.toISOString(),
     ends_at: match.ends_at.toISOString(),
     ready_expires_at: match.ready_expires_at?.toISOString() ?? null,
@@ -1421,7 +1620,7 @@ async function buildMatchDto(
     period_ends_at: periodEndsAt,
     break_ends_at: breakEndsAt,
     rules,
-    me: participantDto(me, match),
+    me: participantDto(me, match, await fetchAvailableInventory(client, currentUserId)),
     opponent: participantDto(opponent, match),
   };
 }
@@ -1443,7 +1642,9 @@ async function buildMatchStateDto(
   const effects = effectsFromUnknown(me.inventory_effects_snapshot);
   const periodEndsAt =
     me.state === 'period_active' && me.period_started_at !== null
-      ? new Date(me.period_started_at.getTime() + rules.periodDurationMs).toISOString()
+      ? new Date(
+          me.period_started_at.getTime() + getDuelPeriodRule(rules, me.current_period).durationMs,
+        ).toISOString()
       : null;
   const breakEndsAt =
     me.state === 'break_active' && me.break_started_at !== null
@@ -1515,8 +1716,21 @@ function formatDuelMessageDate(date: Date): string {
   });
 }
 
-function formatDuelMoney(amount: number): string {
-  return amount > 0 ? String(amount) : 'нет';
+function duelKindLabel(kind: DuelKind): string {
+  if (kind === 'express') return 'Экспресс';
+  if (kind === 'express_plus') return 'Экспресс+';
+  return 'Классика';
+}
+
+function normalizeDuelKinds(kinds: DuelKind[]): DuelKind[] {
+  const allowedOrder: DuelKind[] = ['express', 'express_plus', 'classic'];
+  const selected = new Set(kinds);
+  return allowedOrder.filter((kind) => selected.has(kind));
+}
+
+function duelKindsFromUnknown(value: unknown, fallback: DuelKind[]): DuelKind[] {
+  const parsed = z.array(duelKindSchema).min(1).max(3).safeParse(value);
+  return parsed.success ? normalizeDuelKinds(parsed.data) : fallback;
 }
 
 function buildDuelInviteMessage(
@@ -1530,10 +1744,8 @@ function buildDuelInviteMessage(
   return {
     content: [
       `${challengerName} вызывает вас на дуэль «${rules.title}».`,
-      `Формат: ${rules.totalPeriods}×${rules.shotsPerPeriod}`,
+      `Формат: ${duelKindLabel(rules.duelKind)}, ${rules.totalPeriods} период(а)`,
       `Окно: ${formatDuelMessageDate(startsAt)} — ${formatDuelMessageDate(endsAt)}`,
-      `Ставка: ${formatDuelMoney(rules.stakeAmount)}, банк: ${formatDuelMoney(bankAmount)}`,
-      `Взнос: ${formatDuelMoney(rules.entryFeeAmount)}`,
     ].join('\n'),
     metadata: {
       type: 'amateur_duel_invite',
@@ -1554,9 +1766,9 @@ function buildDuelInviteMessage(
 }
 
 function resultTextFor(match: DuelMatchRow, userId: string): string {
-  if (match.outcome === 'draw') return 'Ничья. Ставка возвращена.';
-  if (match.outcome === 'double_loss') return 'Оба игрока не завершили дуэль. Банк сгорел.';
-  if (match.winner_user_id === userId) return 'Победа в дуэли! Банк уже ваш.';
+  if (match.outcome === 'draw') return 'Ничья.';
+  if (match.outcome === 'double_loss') return 'Оба игрока не завершили дуэль.';
+  if (match.winner_user_id === userId) return 'Победа в дуэли!';
   return 'Поражение в дуэли. Можно взять реванш.';
 }
 
@@ -1644,11 +1856,11 @@ async function createOpenMatch(
   const seedBasis = `${opts.challengerUserId}:${opts.opponentUserId}:${opts.template.id}:${opts.now.toISOString()}`;
   const { rows } = await client.query<DuelMatchRow>(
     `insert into amateur_duel_match
-       (template_id, challenger_user_id, opponent_user_id, status, source, ranked, season_key,
-        rules_snapshot, match_seed, starts_at, ends_at, ready_expires_at, stake_amount,
+      (template_id, challenger_user_id, opponent_user_id, status, source, ranked, season_key,
+        duel_kind, rules_snapshot, match_seed, starts_at, ends_at, ready_expires_at, stake_amount,
         entry_fee_amount, bank_amount, game_core_version)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, greatest($10::timestamptz, $11::timestamptz),
-             $12, $13, $14, $15, 0, $16)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, greatest($11::timestamptz, $12::timestamptz),
+             $13, $14, $15, $16, 0, $17)
      returning *`,
     [
       opts.template.id,
@@ -1658,6 +1870,7 @@ async function createOpenMatch(
       opts.source,
       rules.rankedEnabled,
       seasonKeyMoscow(opts.now),
+      rules.duelKind,
       JSON.stringify(rules),
       seedBasis,
       opts.template.starts_at,
@@ -1745,6 +1958,7 @@ async function activateReadyMatch(
         set status = 'active',
             rules_snapshot = $2,
             match_seed = $3,
+            duel_kind = $8,
             stake_amount = $4,
             entry_fee_amount = $5,
             bank_amount = $4 * 2,
@@ -1762,6 +1976,7 @@ async function activateReadyMatch(
       rules.entryFeeAmount,
       GAME_CORE_VERSION,
       now,
+      rules.duelKind,
     ],
   );
   return rows[0]!;
@@ -1810,11 +2025,11 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
 ) => {
   app.get('/duel/amateur/templates', { preHandler: [app.authenticate] }, async () => {
     const { rows } = await app.pg.query<DuelTemplateRow>(
-      `select id, title, description, is_active, difficulty, duel_variant, ranked_enabled,
+      `select id, title, description, is_active, difficulty, duel_kind, duel_variant, ranked_enabled,
               matchmaking_enabled, starts_at, ends_at, total_periods, shots_per_period,
               period_duration_ms, break_duration_ms, challenge_ttl_ms, ready_duration_ms,
               ready_no_show_cooldown_ms, matchmaking_timeout_ms, ranked_daily_limit,
-              ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets,
+              ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules,
               stake_amount, entry_fee_amount, required_inventory_item_id,
               inventory_charges_per_period, created_at, updated_at
          from amateur_duel_template
@@ -1827,6 +2042,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
         title: template.title,
         description: template.description,
         difficulty: template.difficulty,
+        duel_kind: template.duel_kind,
         duel_variant: template.duel_variant,
         ranked_enabled: template.ranked_enabled,
         matchmaking_enabled: template.matchmaking_enabled,
@@ -1845,6 +2061,12 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
         power_cap: Number(template.power_cap),
         goalie_id: template.goalie_id,
         period_speed_presets: parsePeriodSpeedPresets(template.period_speed_presets),
+        period_rules: parseTemplatePeriodRules(template.period_rules, {
+          duelKind: template.duel_kind,
+          totalPeriods: Number(template.total_periods),
+          shotsPerPeriod: Number(template.shots_per_period),
+          periodDurationMs: Number(template.period_duration_ms),
+        }),
         stake_amount: Number(template.stake_amount),
         entry_fee_amount: Number(template.entry_fee_amount),
         required_inventory_item_id: template.required_inventory_item_id,
@@ -1860,29 +2082,32 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
         limit: z.coerce.number().int().min(1).max(50).default(20),
       })
       .parse(req.query);
-    const { rows } = await app.pg.query<{
-      id: string;
-      display_name: string;
-      avatar_url: string | null;
-      lifetime_goals_total: number;
-      level: number;
-    }>(
-      `select id, display_name, avatar_url, lifetime_goals_total, level
-         from users
-        where id <> $1
-          and (level >= 2 or lifetime_goals_total >= 1000)
-          and ($2 = '' or display_name ilike '%' || $2 || '%')
-        order by last_seen_at desc nulls last, display_name asc
-        limit $3`,
-      [req.user.id, query.q, query.limit],
-    );
-    return {
-      users: rows.map((row) => ({
-        userId: row.id,
-        displayName: row.display_name,
-        avatarUrl: row.avatar_url,
-      })),
-    };
+    return withTransaction(app, async (client) => {
+      await assertAmateurEligible(client, req.user.id);
+      const { rows } = await client.query<{
+        id: string;
+        display_name: string;
+        avatar_url: string | null;
+        lifetime_goals_total: number;
+        level: number;
+      }>(
+        `select id, display_name, avatar_url, lifetime_goals_total, level
+           from users
+          where id <> $1
+            and (level >= 2 or lifetime_goals_total >= 1000)
+            and ($2 = '' or display_name ilike '%' || $2 || '%')
+          order by last_seen_at desc nulls last, display_name asc
+          limit $3`,
+        [req.user.id, query.q, query.limit],
+      );
+      return {
+        users: rows.map((row) => ({
+          userId: row.id,
+          displayName: row.display_name,
+          avatarUrl: row.avatar_url,
+        })),
+      };
+    });
   });
 
   app.get('/duel/amateur/matches', { preHandler: [app.authenticate] }, async (req) => {
@@ -2038,6 +2263,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
           `update amateur_duel_match
             set status = 'ready_check',
                 rules_snapshot = $2,
+                duel_kind = $10,
                 starts_at = greatest($3::timestamptz, $4::timestamptz),
                 ends_at = $5,
                 ready_expires_at = $6,
@@ -2057,6 +2283,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
             rules.stakeAmount,
             rules.entryFeeAmount,
             GAME_CORE_VERSION,
+            rules.duelKind,
           ],
         );
         match = rows[0]!;
@@ -2254,66 +2481,92 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
   );
 
   app.post('/duel/amateur/matchmaking/join', { preHandler: [app.authenticate] }, async (req) => {
-    const body = z.object({ template_id: uuid }).safeParse(req.body);
+    const body = matchmakingJoinSchema.safeParse(req.body);
     if (!body.success) throw new AppError('bad_request', 'invalid matchmaking payload', 400);
     return withTransaction(app, async (client) => {
       const now = new Date();
       await assertAmateurEligible(client, req.user.id);
-      const template = await fetchTemplate(client, body.data.template_id);
-      if (!template.is_active || !template.matchmaking_enabled) {
-        throw new AppError('conflict', 'matchmaking is unavailable for this duel', 409);
+      const templateFromLegacyPayload = body.data.template_id
+        ? await fetchTemplate(client, body.data.template_id)
+        : null;
+      const requestedKinds = normalizeDuelKinds(
+        body.data.duel_kinds ?? (templateFromLegacyPayload ? [templateFromLegacyPayload.duel_kind] : []),
+      );
+      if (requestedKinds.length === 0) {
+        throw new AppError('bad_request', 'matchmaking duel kinds are required', 400);
       }
-      if (now >= template.ends_at) throw new AppError('conflict', 'duel template window is closed', 409);
+      const templates = await fetchMatchmakingTemplates(client, requestedKinds, now);
+      if (templates.length === 0) {
+        throw new AppError('conflict', 'matchmaking is unavailable for selected duels', 409);
+      }
+      const templatesByKind = new Map(templates.map((template) => [template.duel_kind, template]));
       await client.query(
         `update amateur_duel_matchmaking_ticket
             set status = 'expired', updated_at = now()
           where status = 'queued' and expires_at <= $1`,
         [now],
       );
-      const existing = await client.query<{ id: string }>(
-        `select id from amateur_duel_matchmaking_ticket
-          where template_id = $1 and user_id = $2 and status = 'queued'
+      const existing = await client.query<{ id: string; expires_at: Date; duel_kinds: unknown }>(
+        `select id, expires_at, duel_kinds
+           from amateur_duel_matchmaking_ticket
+          where user_id = $1 and status = 'queued'
           limit 1`,
-        [template.id, req.user.id],
+        [req.user.id],
       );
       if (existing.rows[0]) {
         return {
           ticket: {
             id: existing.rows[0].id,
             status: 'queued',
-            expires_at: new Date(now.getTime() + Number(template.matchmaking_timeout_ms)).toISOString(),
+            expires_at: existing.rows[0].expires_at.toISOString(),
+            duel_kinds: duelKindsFromUnknown(existing.rows[0].duel_kinds, requestedKinds),
           },
         };
       }
-      const opponent = await client.query<{ id: string; user_id: string }>(
-        `select id, user_id
+      const opponent = await client.query<{ id: string; user_id: string; duel_kinds: unknown }>(
+        `select id, user_id, duel_kinds
            from amateur_duel_matchmaking_ticket
-          where template_id = $1
-            and user_id <> $2
+          where user_id <> $1
             and status = 'queued'
-            and expires_at > $3
+            and expires_at > $2
           order by created_at asc
-          limit 1
+          limit 20
           for update skip locked`,
-        [template.id, req.user.id, now],
+        [req.user.id, now],
       );
-      const opponentTicket = opponent.rows[0];
+      const opponentTicket = opponent.rows.find((ticket) => {
+        const opponentKinds = duelKindsFromUnknown(ticket.duel_kinds, requestedKinds);
+        return requestedKinds.some((kind) => opponentKinds.includes(kind) && templatesByKind.has(kind));
+      });
       if (!opponentTicket) {
-        const expiresAt = new Date(now.getTime() + Number(template.matchmaking_timeout_ms));
-        const { rows } = await client.query<{ id: string; status: string; expires_at: Date }>(
-          `insert into amateur_duel_matchmaking_ticket (template_id, user_id, expires_at)
-           values ($1, $2, $3)
-           returning id, status, expires_at`,
-          [template.id, req.user.id, expiresAt],
+        const expiresAt = new Date(now.getTime() + MATCHMAKING_TIMEOUT_MS);
+        const primaryTemplate = templates[0]!;
+        const { rows } = await client.query<{
+          id: string;
+          status: string;
+          expires_at: Date;
+          duel_kinds: unknown;
+        }>(
+          `insert into amateur_duel_matchmaking_ticket (template_id, user_id, expires_at, duel_kinds)
+           values ($1, $2, $3, $4)
+           returning id, status, expires_at, duel_kinds`,
+          [primaryTemplate.id, req.user.id, expiresAt, JSON.stringify(requestedKinds)],
         );
         return {
           ticket: {
             id: rows[0]!.id,
             status: rows[0]!.status,
             expires_at: rows[0]!.expires_at.toISOString(),
+            duel_kinds: duelKindsFromUnknown(rows[0]!.duel_kinds, requestedKinds),
           },
         };
       }
+      const opponentKinds = duelKindsFromUnknown(opponentTicket.duel_kinds, requestedKinds);
+      const matchedKind = requestedKinds.find(
+        (kind) => opponentKinds.includes(kind) && templatesByKind.has(kind),
+      );
+      if (!matchedKind) throw new AppError('conflict', 'matchmaking opponent is unavailable', 409);
+      const template = templatesByKind.get(matchedKind)!;
       await assertAmateurEligible(client, opponentTicket.user_id);
       const { match } = await createOpenMatch(client, {
         template,
@@ -2333,13 +2586,15 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
   });
 
   app.post('/duel/amateur/matchmaking/leave', { preHandler: [app.authenticate] }, async (req) => {
-    const body = z.object({ template_id: uuid }).safeParse(req.body);
+    const body = matchmakingLeaveSchema.safeParse(req.body ?? {});
     if (!body.success) throw new AppError('bad_request', 'invalid matchmaking payload', 400);
+    const templateId = body.data?.template_id;
     await app.pg.query(
       `update amateur_duel_matchmaking_ticket
           set status = 'cancelled', updated_at = now()
-        where template_id = $1 and user_id = $2 and status = 'queued'`,
-      [body.data.template_id, req.user.id],
+        where user_id = $1 and status = 'queued'
+          and ($2::uuid is null or template_id = $2)`,
+      [req.user.id, templateId ?? null],
     );
     return { ok: true };
   });
@@ -2455,6 +2710,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
           req.user.id,
           participant.current_period,
         );
+        const periodRule = getDuelPeriodRule(rules, participant.current_period);
         const expectedShotIndex = cur.shots + 1;
         if (body.shot_index !== expectedShotIndex) {
           throw new AppError(
@@ -2463,7 +2719,11 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
             409,
           );
         }
-        if (rules.duelVariant === 'classic' && cur.shots >= rules.shotsPerPeriod) {
+        if (
+          periodRule.mode === 'quota' &&
+          periodRule.shotsLimit !== null &&
+          cur.shots >= periodRule.shotsLimit
+        ) {
           throw new AppError('conflict', 'shot quota for this duel period exhausted', 409);
         }
         assertDuelTapTimeFresh(participant, cur.shots, body.input.tapTime, now);
@@ -2527,7 +2787,11 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
           });
         }
 
-        if (rules.duelVariant === 'classic' && body.shot_index >= rules.shotsPerPeriod) {
+        if (
+          periodRule.mode === 'quota' &&
+          periodRule.shotsLimit !== null &&
+          body.shot_index >= periodRule.shotsLimit
+        ) {
           await closeParticipantPeriod(client, participant, rules, now, 'quota');
         }
         match = await reconcileMatch(client, await fetchMatchForUpdate(client, match.id), now);
@@ -2589,11 +2853,11 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
     { preHandler: [app.authenticate, requireAdmin(app)] },
     async () => {
       const { rows } = await app.pg.query<DuelTemplateRow>(
-        `select id, title, description, is_active, difficulty, duel_variant, ranked_enabled,
+        `select id, title, description, is_active, difficulty, duel_kind, duel_variant, ranked_enabled,
               matchmaking_enabled, starts_at, ends_at, total_periods, shots_per_period,
               period_duration_ms, break_duration_ms, challenge_ttl_ms, ready_duration_ms,
               ready_no_show_cooldown_ms, matchmaking_timeout_ms, ranked_daily_limit,
-              ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets,
+              ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules,
               stake_amount, entry_fee_amount, required_inventory_item_id,
               inventory_charges_per_period, created_at, updated_at
          from amateur_duel_template
@@ -2613,19 +2877,19 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
       const data = body.data;
       const { rows } = await app.pg.query<DuelTemplateRow>(
         `insert into amateur_duel_template
-         (title, description, is_active, difficulty, duel_variant, ranked_enabled,
+         (title, description, is_active, difficulty, duel_kind, duel_variant, ranked_enabled,
           matchmaking_enabled, starts_at, ends_at, total_periods, shots_per_period,
           period_duration_ms, break_duration_ms, challenge_ttl_ms, ready_duration_ms,
           ready_no_show_cooldown_ms, matchmaking_timeout_ms, ranked_daily_limit,
-          ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets,
+          ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules,
           stake_amount, entry_fee_amount, required_inventory_item_id, inventory_charges_per_period)
        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-               $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
-       returning id, title, description, is_active, difficulty, duel_variant, ranked_enabled,
+               $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
+       returning id, title, description, is_active, difficulty, duel_kind, duel_variant, ranked_enabled,
                  matchmaking_enabled, starts_at, ends_at, total_periods, shots_per_period,
                  period_duration_ms, break_duration_ms, challenge_ttl_ms, ready_duration_ms,
                  ready_no_show_cooldown_ms, matchmaking_timeout_ms, ranked_daily_limit,
-                 ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets,
+                 ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules,
                  stake_amount, entry_fee_amount, required_inventory_item_id,
                  inventory_charges_per_period, created_at, updated_at`,
         [
@@ -2633,6 +2897,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
           data.description,
           data.isActive,
           data.difficulty,
+          data.duelKind,
           data.duelVariant,
           data.rankedEnabled,
           data.matchmakingEnabled,
@@ -2651,6 +2916,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
           data.powerCap,
           data.goalieId,
           JSON.stringify(data.periodSpeedPresets),
+          data.periodRules ? JSON.stringify(data.periodRules) : null,
           data.stakeAmount,
           data.entryFeeAmount,
           data.requiredInventoryItemId,
@@ -2677,6 +2943,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
       addPatch(assignments, values, 'description', body.data.description);
       addPatch(assignments, values, 'is_active', body.data.isActive);
       addPatch(assignments, values, 'difficulty', body.data.difficulty);
+      addPatch(assignments, values, 'duel_kind', body.data.duelKind);
       addPatch(assignments, values, 'duel_variant', body.data.duelVariant);
       addPatch(assignments, values, 'ranked_enabled', body.data.rankedEnabled);
       addPatch(assignments, values, 'matchmaking_enabled', body.data.matchmakingEnabled);
@@ -2710,6 +2977,12 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
         'period_speed_presets',
         body.data.periodSpeedPresets ? JSON.stringify(body.data.periodSpeedPresets) : undefined,
       );
+      addPatch(
+        assignments,
+        values,
+        'period_rules',
+        body.data.periodRules !== undefined ? JSON.stringify(body.data.periodRules) : undefined,
+      );
       addPatch(assignments, values, 'stake_amount', body.data.stakeAmount);
       addPatch(assignments, values, 'entry_fee_amount', body.data.entryFeeAmount);
       addPatch(
@@ -2730,11 +3003,11 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
             set ${assignments.join(', ')},
                 updated_at = now()
           where id = $${values.length} and deleted_at is null
-          returning id, title, description, is_active, difficulty, duel_variant, ranked_enabled,
+          returning id, title, description, is_active, difficulty, duel_kind, duel_variant, ranked_enabled,
                     matchmaking_enabled, starts_at, ends_at, total_periods, shots_per_period,
                     period_duration_ms, break_duration_ms, challenge_ttl_ms, ready_duration_ms,
                     ready_no_show_cooldown_ms, matchmaking_timeout_ms, ranked_daily_limit,
-                    ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets,
+                    ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules,
                     stake_amount, entry_fee_amount, required_inventory_item_id,
                     inventory_charges_per_period, created_at, updated_at`,
         values,
@@ -2877,6 +3150,7 @@ function mapAdminTemplate(template: DuelTemplateRow) {
     description: template.description,
     isActive: template.is_active,
     difficulty: template.difficulty,
+    duelKind: template.duel_kind,
     duelVariant: template.duel_variant,
     rankedEnabled: template.ranked_enabled,
     matchmakingEnabled: template.matchmaking_enabled,
@@ -2895,6 +3169,12 @@ function mapAdminTemplate(template: DuelTemplateRow) {
     powerCap: Number(template.power_cap),
     goalieId: template.goalie_id,
     periodSpeedPresets: parsePeriodSpeedPresets(template.period_speed_presets),
+    periodRules: parseTemplatePeriodRules(template.period_rules, {
+      duelKind: template.duel_kind,
+      totalPeriods: Number(template.total_periods),
+      shotsPerPeriod: Number(template.shots_per_period),
+      periodDurationMs: Number(template.period_duration_ms),
+    }),
     stakeAmount: Number(template.stake_amount),
     entryFeeAmount: Number(template.entry_fee_amount),
     requiredInventoryItemId: template.required_inventory_item_id,

@@ -99,6 +99,28 @@ describe('UserProfileSheet', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 
+  it('does not show duel action when current user is a beginner', async () => {
+    useAuthStore.setState({
+      accessToken: 'tok',
+      refreshToken: 'rtok',
+      user: { id: 'me', displayName: 'Me' },
+    });
+    vi.mocked(api.fetchUserProfile).mockImplementation(async (userId) =>
+      userId === 'me'
+        ? { ...publicProfile, id: 'me', competitionLevel: 'beginner' }
+        : publicProfile,
+    );
+
+    renderSheet({
+      sender: { userId: 'u1', displayName: 'Иван', avatarUrl: null },
+      onClose: () => {},
+    });
+
+    expect(await screen.findByText('Любитель')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /вызвать на дуэль/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /написать в личку/i })).toBeInTheDocument();
+  });
+
   it('does not show a DM action when the sheet is opened for myself', async () => {
     useAuthStore.setState({
       accessToken: 'tok',

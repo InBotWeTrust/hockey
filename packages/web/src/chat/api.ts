@@ -36,9 +36,9 @@ export interface ChatAttachmentDTO {
   id: string;
   url: string;
   kind: 'image' | 'voice' | 'file';
-  contentType: string;
-  size: number;
-  originalName: string;
+  contentType?: string;
+  size?: number;
+  originalName?: string;
 }
 
 export interface ChatAttachmentMessageMetadata extends Record<string, unknown> {
@@ -186,6 +186,7 @@ export interface ChannelPostCommentDTO {
   authorAvatarUrl: string | null;
   replyToId: string | null;
   content: string;
+  metadata?: ChatMessageMetadata;
   isDeleted: boolean;
   createdAt: string;
   reactions: ReactionGroupDTO[];
@@ -251,9 +252,11 @@ export function sendChannelPostComment(
   postId: string,
   content: string,
   replyToId: string | null = null,
+  attachmentIds: string[] = [],
 ): Promise<ChannelPostCommentDTO> {
-  const body: { content: string; replyToId?: string } = { content };
+  const body: { content: string; replyToId?: string; attachmentIds?: string[] } = { content };
   if (replyToId !== null) body.replyToId = replyToId;
+  if (attachmentIds.length > 0) body.attachmentIds = attachmentIds;
   return apiFetch<ChannelPostCommentDTO>(`/chat/channel/posts/${postId}/comments`, {
     method: 'POST',
     body: JSON.stringify(body),

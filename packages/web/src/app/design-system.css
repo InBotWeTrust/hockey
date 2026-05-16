@@ -406,6 +406,25 @@
   color: #ffffff;
 }
 
+/* Section info icons match the main hub event header: glyph-only, no filled button chrome. */
+.section-info-btn {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: rgba(15, 23, 42, 0.62);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+.section-info-btn:active {
+  transform: scale(0.94);
+}
+
 .achievement-tile {
   outline: none;
 }
@@ -425,6 +444,11 @@
   color: rgba(15, 23, 42, 0.55);
   text-transform: uppercase;
   letter-spacing: 0.14em;
+}
+
+/* Page-level section headings align like the main hub labels above large mode cards. */
+.section-label--page {
+  margin: 0 0 -2px -14px;
 }
 
 /* === Header bar (top of each screen) === */

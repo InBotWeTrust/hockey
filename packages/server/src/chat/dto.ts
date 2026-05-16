@@ -128,7 +128,7 @@ export function toChannelPostCommentDTO(
   row: ChannelPostCommentRow,
   reactions: ReactionGroupDTO[] = [],
 ): ChannelPostCommentDTO {
-  return {
+  const dto: ChannelPostCommentDTO = {
     id: row.id,
     postId: row.post_message_id,
     authorId: row.author_id,
@@ -140,4 +140,7 @@ export function toChannelPostCommentDTO(
     createdAt: row.created_at.toISOString(),
     reactions,
   };
+  const metadata = metadataFromUnknown(row.metadata);
+  if (!row.is_deleted && Object.keys(metadata).length > 0) dto.metadata = metadata;
+  return dto;
 }
