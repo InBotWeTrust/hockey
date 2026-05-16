@@ -37,8 +37,8 @@ describe('LoginScreen', () => {
 
   it('renders the Telegram button', () => {
     renderWith();
-    expect(screen.getByRole('heading', { name: 'Хоккейный Ультиматум' })).toBeInTheDocument();
-    expect(screen.getByAltText('Хоккейный Ультиматум')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Ультимейт Хоккей' })).toBeInTheDocument();
+    expect(screen.getByAltText('Ультимейт Хоккей')).toBeInTheDocument();
     expect(screen.getByTestId('telegram-login-container')).toBeInTheDocument();
     const vkButton = screen.getByRole('button', { name: /войти через вконтакте/i });
     expect(vkButton).toBeInTheDocument();

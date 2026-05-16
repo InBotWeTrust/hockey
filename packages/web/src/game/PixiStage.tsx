@@ -3,7 +3,14 @@ import { Application, Assets } from 'pixi.js';
 import { RINK } from '@hockey/game-core';
 import { computeScale, type Scale } from './coords.js';
 
-const SPRITE_ASSETS = ['/sprites/gate.webp', '/sprites/goalkeeper.webp', '/sprites/save.webp', '/sprites/player.webp', '/sprites/ice_car.webp'];
+const SPRITE_ASSETS = [
+  '/sprites/gate.webp',
+  '/sprites/goalkeeper.webp',
+  '/sprites/save.webp',
+  '/sprites/lefthand.webp',
+  '/sprites/righthand.webp',
+  '/sprites/ice_car.webp',
+];
 
 export interface PixiStageProps {
   onReady: (app: Application, scale: Scale) => void;
@@ -34,7 +41,7 @@ export function PixiStage({ onReady, onResize }: PixiStageProps): JSX.Element {
         resolution: Math.min(window.devicePixelRatio ?? 1, 3),
         autoDensity: true,
       });
-      await Assets.load(SPRITE_ASSETS);
+      await Assets.load(SPRITE_ASSETS).catch(() => undefined);
       if (disposed) {
         try {
           app.destroy(true, { children: true });

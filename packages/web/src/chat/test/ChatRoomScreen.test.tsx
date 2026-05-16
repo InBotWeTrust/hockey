@@ -1,13 +1,18 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { ChatRoomScreen } from '../screens/ChatRoomScreen.js';
 import { useAuthStore, type AuthUser } from '../../auth/authStore.js';
 import { chatKeys } from '../../lib/queryKeys.js';
 import * as api from '../api.js';
 import * as amateurDuelApi from '../../api/amateurDuel.js';
 import type { ChatMessageDTO } from '../api.js';
+
+function LocationProbe(): JSX.Element {
+  const location = useLocation();
+  return <div data-testid="duel-location">{`${location.pathname}${location.search}`}</div>;
+}
 
 function renderRoom(
   chatId: string,
@@ -24,6 +29,7 @@ function renderRoom(
         <Routes>
           <Route path="/chat/:chatId" element={<ChatRoomScreen />} />
           <Route path="/chat" element={<div>list</div>} />
+          <Route path="/" element={<LocationProbe />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -148,12 +154,53 @@ describe('ChatRoomScreen', () => {
     renderRoom('c1');
 
     expect(await screen.findByRole('button', { name: 'Принять' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Отказаться' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Отклонить' }));
 
     await waitFor(() =>
       expect(decline).toHaveBeenCalledWith('11111111-1111-1111-1111-111111111111'),
     );
-    expect(await screen.findByText('Вы отказались')).toBeInTheDocument();
+    expect(await screen.findByText('Вы отклонили')).toBeInTheDocument();
+  });
+
+  it('accepts a duel invite and opens the duel room', async () => {
+    const matchId = '11111111-1111-1111-1111-111111111111';
+    const accept = vi.spyOn(amateurDuelApi, 'acceptAmateurDuel').mockResolvedValue({
+      match: {} as Awaited<ReturnType<typeof amateurDuelApi.acceptAmateurDuel>>['match'],
+    });
+    vi.spyOn(amateurDuelApi, 'declineAmateurDuel').mockResolvedValue({
+      match: {} as Awaited<ReturnType<typeof amateurDuelApi.declineAmateurDuel>>['match'],
+    });
+    vi.mocked(api.fetchMessages).mockResolvedValue([
+      {
+        ...msgFromOther,
+        id: 'duel-invite',
+        content: 'Иван вызывает вас на дуэль «Классическая дуэль».',
+        metadata: {
+          type: 'amateur_duel_invite',
+          matchId,
+          templateTitle: 'Классическая дуэль',
+          challengerName: 'Иван',
+          startsAt: '2026-05-04T10:00:00.000Z',
+          endsAt: '2026-05-04T12:00:00.000Z',
+          totalPeriods: 3,
+          shotsPerPeriod: 30,
+          periodDurationMs: 1_200_000,
+          breakDurationMs: 900_000,
+          stakeAmount: 0,
+          entryFeeAmount: 0,
+          bankAmount: 0,
+        },
+      },
+    ]);
+
+    renderRoom('c1');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Принять' }));
+
+    await waitFor(() => expect(accept).toHaveBeenCalledWith(matchId));
+    expect(await screen.findByTestId('duel-location')).toHaveTextContent(
+      `/?view=amateur&match=${matchId}`,
+    );
   });
 
   it('uses subscribers wording in channel header', async () => {
@@ -380,13 +427,14 @@ describe('ChatRoomScreen', () => {
 
     renderRoom('c1');
 
-    fireEvent.click(
-      await screen.findByRole('button', { name: 'Открыть изображение: photo.webp' }),
-    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть изображение: photo.webp' }));
 
     const dialog = await screen.findByRole('dialog', { name: 'photo.webp' });
     expect(dialog).toBeInTheDocument();
-    expect(screen.getByAltText('photo.webp')).toHaveAttribute('src', 'https://cdn.example/photo.webp');
+    expect(screen.getByAltText('photo.webp')).toHaveAttribute(
+      'src',
+      'https://cdn.example/photo.webp',
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть просмотр изображения' }));
     await waitFor(() =>

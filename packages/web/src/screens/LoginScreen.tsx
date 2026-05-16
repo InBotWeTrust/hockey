@@ -43,7 +43,7 @@ export function LoginScreen(): JSX.Element {
       <div style={{ padding: 'clamp(24px, 5dvh, 40px) 20px 8px' }}>
         <img
           src="/icons/app-logo.webp"
-          alt="Хоккейный Ультиматум"
+          alt="Ультимейт Хоккей"
           style={{
             width: 'clamp(94px, 22dvh, 128px)',
             height: 'clamp(94px, 22dvh, 128px)',
@@ -56,7 +56,7 @@ export function LoginScreen(): JSX.Element {
           }}
         />
         <h1 style={{ fontSize: 29, fontWeight: 800, letterSpacing: 0, margin: '0 0 8px' }}>
-          Хоккейный Ультиматум
+          Ультимейт Хоккей
         </h1>
         <div style={{ fontSize: 14, color: 'var(--muted)', lineHeight: 1.42 }}>
           Живи жизнью профессионального хоккеиста

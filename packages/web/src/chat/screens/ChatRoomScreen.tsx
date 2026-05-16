@@ -248,7 +248,7 @@ function DuelInviteActions({
     resolution === 'accepted'
       ? 'Дуэль принята'
       : resolution === 'declined'
-        ? 'Вы отказались'
+        ? 'Вы отклонили'
         : resolution === 'unavailable'
           ? 'Вызов уже недоступен'
           : null;
@@ -269,7 +269,7 @@ function DuelInviteActions({
           label="Формат"
           value={`${invite.totalPeriods}×${invite.shotsPerPeriod}`}
         />
-        <DuelInviteMetric label="До" value={formatInviteDate(invite.endsAt)} />
+        <DuelInviteMetric label="Ответ" value={formatInviteDate(invite.endsAt)} />
       </div>
       {status ? (
         <div
@@ -289,21 +289,37 @@ function DuelInviteActions({
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
           <button
             type="button"
-            className="btn btn--cta"
+            className="btn"
             disabled={pending}
             onClick={onAccept}
-            style={{ minHeight: 36, padding: '8px 10px', fontSize: 12 }}
+            style={{
+              minHeight: 36,
+              padding: '8px 10px',
+              fontSize: 12,
+              color: '#fff',
+              background: 'linear-gradient(180deg, #34d399 0%, #059669 100%)',
+              border: '1px solid rgba(4, 120, 87, 0.42)',
+              boxShadow: '0 10px 20px rgba(5, 150, 105, 0.22)',
+            }}
           >
             Принять
           </button>
           <button
             type="button"
-            className="btn btn--ghost"
+            className="btn"
             disabled={pending}
             onClick={onDecline}
-            style={{ minHeight: 36, padding: '8px 10px', fontSize: 12 }}
+            style={{
+              minHeight: 36,
+              padding: '8px 10px',
+              fontSize: 12,
+              color: '#fff',
+              background: 'linear-gradient(180deg, #fb7185 0%, #e11d48 100%)',
+              border: '1px solid rgba(190, 18, 60, 0.42)',
+              boxShadow: '0 10px 20px rgba(225, 29, 72, 0.2)',
+            }}
           >
-            Отказаться
+            Отклонить
           </button>
         </div>
       )}
@@ -948,7 +964,7 @@ export function ChatRoomScreen(): JSX.Element {
     onSuccess: (_data, matchId) => {
       setDuelInviteResolutionByMatch((prev) => ({ ...prev, [matchId]: 'accepted' }));
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
-      navigate('/?view=amateur');
+      navigate(`/?view=amateur&match=${matchId}`);
     },
     onError: (_err, matchId) => {
       setDuelInviteResolutionByMatch((prev) => ({ ...prev, [matchId]: 'unavailable' }));
@@ -1338,8 +1354,7 @@ export function ChatRoomScreen(): JSX.Element {
             minWidth: 42,
             minHeight: 42,
             borderRadius: 999,
-            boxShadow:
-              '0 12px 28px rgba(15, 23, 42, 0.18), inset 0 1px 0 rgba(255,255,255,0.5)',
+            boxShadow: '0 12px 28px rgba(15, 23, 42, 0.18), inset 0 1px 0 rgba(255,255,255,0.5)',
           }}
         >
           <ArrowDown size={18} />

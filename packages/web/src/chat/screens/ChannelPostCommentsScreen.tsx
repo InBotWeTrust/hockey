@@ -140,18 +140,8 @@ function CommentRow({
           >
             {authorName}
           </div>
-          <div
-            style={{
-              fontSize: 14,
-              lineHeight: 1.4,
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-            }}
-          >
-            {comment.content}
-          </div>
           {attachments.length > 0 && (
-            <div style={{ display: 'grid', gap: 6, marginTop: comment.content ? 7 : 0 }}>
+            <div style={{ display: 'grid', gap: 6, marginBottom: comment.content ? 7 : 0 }}>
               {attachments.map((attachment) => {
                 if (attachment.kind === 'image') {
                   const imageName = attachment.originalName ?? 'Изображение';
@@ -232,6 +222,18 @@ function CommentRow({
                   </a>
                 );
               })}
+            </div>
+          )}
+          {comment.content && (
+            <div
+              style={{
+                fontSize: 14,
+                lineHeight: 1.4,
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+              }}
+            >
+              {comment.content}
             </div>
           )}
           <div
@@ -589,13 +591,12 @@ export function ChannelPostCommentsScreen(): JSX.Element {
               wordBreak: 'break-word',
             }}
           >
-            <RichText text={postQuery.data.content} />
             {postAttachments.length > 0 && (
               <div
                 style={{
                   display: 'grid',
                   gap: 8,
-                  marginTop: postQuery.data.content.trim() ? 12 : 0,
+                  marginBottom: postQuery.data.content.trim() ? 12 : 0,
                 }}
               >
                 {postAttachments.map((attachment) => {
@@ -679,6 +680,7 @@ export function ChannelPostCommentsScreen(): JSX.Element {
                 })}
               </div>
             )}
+            {postQuery.data.content.trim() && <RichText text={postQuery.data.content} />}
           </div>
         )}
         {commentsQuery.isLoading && (

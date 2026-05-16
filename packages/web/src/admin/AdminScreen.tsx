@@ -983,7 +983,7 @@ function DashboardHero({
       >
         <div style={{ minWidth: 0 }}>
           <div style={{ color: 'var(--ink)', fontSize: 19, fontWeight: 950 }}>
-            Хоккейный Ультиматум
+            Ультимейт Хоккей
           </div>
           <div style={{ marginTop: 4, color: 'var(--muted)', fontSize: 12, fontWeight: 750 }}>
             Игроки, деньги, активность и игра
