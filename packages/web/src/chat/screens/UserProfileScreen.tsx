@@ -43,6 +43,12 @@ export function UserProfileScreen(): JSX.Element {
     enabled: userId.length > 0,
     staleTime: 60_000,
   });
+  const { data: myProfile } = useQuery<UserPublicProfileDTO>({
+    queryKey: userKeys.profile(meId ?? ''),
+    queryFn: () => fetchUserProfile(meId ?? ''),
+    enabled: meId !== null,
+    staleTime: 60_000,
+  });
 
   const dmMut = useMutation<FindOrCreateDMResult, Error, string>({
     mutationFn: (otherUserId) => findOrCreateDM(otherUserId),
@@ -52,8 +58,11 @@ export function UserProfileScreen(): JSX.Element {
   });
 
   const isSelf = meId !== null && data?.id === meId;
+  const canCurrentUserDuel =
+    myProfile?.competitionLevel === 'amateur' || myProfile?.competitionLevel === 'professional';
   const canDuel =
     !isSelf &&
+    canCurrentUserDuel &&
     (data?.competitionLevel === 'amateur' || data?.competitionLevel === 'professional');
   const duelMut = useMutation({
     mutationFn: async () => {

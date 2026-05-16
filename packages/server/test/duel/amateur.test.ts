@@ -189,6 +189,39 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(duplicate.statusCode).toBe(409);
   });
 
+  it('rejects duel challenges from beginners and against beginners', async () => {
+    const templateId = await createTemplate();
+
+    await pool.query(`update users set level = 1, lifetime_goals_total = 0 where id = $1`, [userA]);
+    const fromBeginner = await challenge(templateId);
+    expect(fromBeginner.statusCode).toBe(403);
+
+    await pool.query(`update users set level = 2 where id = $1`, [userA]);
+    await pool.query(`update users set level = 1, lifetime_goals_total = 0 where id = $1`, [userB]);
+    const againstBeginner = await challenge(templateId);
+    expect(againstBeginner.statusCode).toBe(403);
+  });
+
+  it('does not expose duel opponents to beginners or include beginners', async () => {
+    await pool.query(`update users set level = 1, lifetime_goals_total = 0 where id = $1`, [userA]);
+    const lockedSearch = await app.inject({
+      method: 'GET',
+      url: '/duel/amateur/opponents',
+      headers: auth(tokenA),
+    });
+    expect(lockedSearch.statusCode).toBe(403);
+
+    await pool.query(`update users set level = 2 where id = $1`, [userA]);
+    await pool.query(`update users set level = 1, lifetime_goals_total = 0 where id = $1`, [userB]);
+    const opponents = await app.inject({
+      method: 'GET',
+      url: '/duel/amateur/opponents',
+      headers: auth(tokenA),
+    });
+    expect(opponents.statusCode).toBe(200);
+    expect(opponents.json().users).toEqual([]);
+  });
+
   it('accepts into a ready room without reserving stake or fee yet', async () => {
     const templateId = await createTemplate({
       startsAt: '2099-01-01T00:00:00.000Z',

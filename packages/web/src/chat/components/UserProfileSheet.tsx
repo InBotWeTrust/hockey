@@ -63,10 +63,19 @@ export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JS
     enabled: senderId.length > 0,
     staleTime: 60_000,
   });
+  const { data: myProfile } = useQuery<UserPublicProfileDTO>({
+    queryKey: userKeys.profile(meId ?? ''),
+    queryFn: () => fetchUserProfile(meId ?? ''),
+    enabled: meId !== null,
+    staleTime: 60_000,
+  });
 
   const isSelf = sender?.userId === meId;
+  const canCurrentUserDuel =
+    myProfile?.competitionLevel === 'amateur' || myProfile?.competitionLevel === 'professional';
   const canDuel =
     !isSelf &&
+    canCurrentUserDuel &&
     (profile?.competitionLevel === 'amateur' || profile?.competitionLevel === 'professional');
   const duelMut = useMutation({
     mutationFn: async () => {

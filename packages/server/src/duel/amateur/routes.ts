@@ -2082,29 +2082,32 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
         limit: z.coerce.number().int().min(1).max(50).default(20),
       })
       .parse(req.query);
-    const { rows } = await app.pg.query<{
-      id: string;
-      display_name: string;
-      avatar_url: string | null;
-      lifetime_goals_total: number;
-      level: number;
-    }>(
-      `select id, display_name, avatar_url, lifetime_goals_total, level
-         from users
-        where id <> $1
-          and (level >= 2 or lifetime_goals_total >= 1000)
-          and ($2 = '' or display_name ilike '%' || $2 || '%')
-        order by last_seen_at desc nulls last, display_name asc
-        limit $3`,
-      [req.user.id, query.q, query.limit],
-    );
-    return {
-      users: rows.map((row) => ({
-        userId: row.id,
-        displayName: row.display_name,
-        avatarUrl: row.avatar_url,
-      })),
-    };
+    return withTransaction(app, async (client) => {
+      await assertAmateurEligible(client, req.user.id);
+      const { rows } = await client.query<{
+        id: string;
+        display_name: string;
+        avatar_url: string | null;
+        lifetime_goals_total: number;
+        level: number;
+      }>(
+        `select id, display_name, avatar_url, lifetime_goals_total, level
+           from users
+          where id <> $1
+            and (level >= 2 or lifetime_goals_total >= 1000)
+            and ($2 = '' or display_name ilike '%' || $2 || '%')
+          order by last_seen_at desc nulls last, display_name asc
+          limit $3`,
+        [req.user.id, query.q, query.limit],
+      );
+      return {
+        users: rows.map((row) => ({
+          userId: row.id,
+          displayName: row.display_name,
+          avatarUrl: row.avatar_url,
+        })),
+      };
+    });
   });
 
   app.get('/duel/amateur/matches', { preHandler: [app.authenticate] }, async (req) => {
