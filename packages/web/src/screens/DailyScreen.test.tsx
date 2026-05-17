@@ -1113,6 +1113,152 @@ describe('DailyScreen', () => {
     expect(screen.getByRole('button', { name: /написать в личку/i })).toBeInTheDocument();
   });
 
+  it('uses only concrete duel formats for matchmaking filters', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/templates')) {
+        return new Response(JSON.stringify({ templates: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/matches')) {
+        return new Response(JSON.stringify({ matches: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/rating')) {
+        return new Response(JSON.stringify({ season_key: '2026-05', rating: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/matchmaking/join')) {
+        return new Response(
+          JSON.stringify({
+            ticket: {
+              user_id: 'u1',
+              duel_kinds: ['express', 'classic'],
+              created_at: '2026-05-16T10:00:00.000Z',
+              expires_at: '2026-05-16T10:02:00.000Z',
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=amateur&section=duels']);
+
+    expect(screen.queryByRole('button', { name: 'Все' })).not.toBeInTheDocument();
+
+    const express = await screen.findByRole('button', { name: 'Экспресс' });
+    const expressPlus = await screen.findByRole('button', { name: 'Экспресс+' });
+    const classic = await screen.findByRole('button', { name: 'Классика' });
+    expect(express).toHaveAttribute('aria-pressed', 'true');
+    expect(expressPlus).toHaveAttribute('aria-pressed', 'true');
+    expect(classic).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.click(expressPlus);
+    expect(expressPlus).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Начать поиск' }));
+
+    await waitFor(() => {
+      const joinCall = fetchMock.mock.calls.find(([input]) =>
+        String(input).includes('/duel/amateur/matchmaking/join'),
+      );
+      expect(joinCall).toBeTruthy();
+      expect(JSON.parse(String(joinCall?.[1]?.body))).toEqual({
+        duel_kinds: ['express', 'classic'],
+      });
+    });
+  });
+
+  it('highlights the current user in amateur duel rating with a filled row', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/templates')) {
+        return new Response(JSON.stringify({ templates: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/matches')) {
+        return new Response(JSON.stringify({ matches: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/rating')) {
+        return new Response(
+          JSON.stringify({
+            season_key: '2026-05',
+            rating: [
+              {
+                user_id: 'u1',
+                display_name: 'Tester',
+                avatar_url: null,
+                points: 3,
+                wins: 1,
+                draws: 0,
+                losses: 0,
+                goals_for: 4,
+                goals_against: 2,
+                matches_played: 1,
+                active_duration_seconds: 180,
+              },
+              {
+                user_id: 'u2',
+                display_name: 'Duel Opponent',
+                avatar_url: null,
+                points: 0,
+                wins: 0,
+                draws: 0,
+                losses: 1,
+                goals_for: 2,
+                goals_against: 4,
+                matches_played: 1,
+                active_duration_seconds: 180,
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=amateur&section=duels']);
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'Рейтинг' }));
+    const myRow = await screen.findByRole('button', { name: 'Открыть профиль Tester' });
+    expect(myRow.getAttribute('style')).toContain('rgba(15, 23, 42');
+    expect(myRow.getAttribute('style')).not.toContain('245, 158, 11');
+  });
+
   it('clicking start period triggers POST /duel/daily/period/start', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch');
     fetchMock.mockReset();

@@ -1794,10 +1794,12 @@ function LevelHubCard({
 function ModeInfoModal({
   title,
   text,
+  children,
   onClose,
 }: {
   title: string;
-  text: string;
+  text?: string;
+  children?: ReactNode;
   onClose: () => void;
 }): JSX.Element {
   return (
@@ -1834,7 +1836,9 @@ function ModeInfoModal({
         >
           {title}
         </div>
-        <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>{text}</div>
+        {children ?? (
+          <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>{text}</div>
+        )}
         <button
           type="button"
           className="btn btn--cta"
@@ -3025,12 +3029,7 @@ function DuelKindPreferencePicker({
   onInfo: () => void;
 }): JSX.Element {
   const selectedSet = new Set(selected);
-  const allSelected = DUEL_KIND_OPTIONS.every((kind) => selectedSet.has(kind));
   const toggleKind = (kind: AmateurDuelKind) => {
-    if (allSelected) {
-      onChange([kind]);
-      return;
-    }
     const next = selectedSet.has(kind)
       ? selected.filter((cur) => cur !== kind)
       : [...selected, kind];
@@ -3063,22 +3062,16 @@ function DuelKindPreferencePicker({
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
           gap: 6,
         }}
       >
-        <DuelKindPreferenceButton
-          label="Все"
-          checked={allSelected}
-          active={allSelected}
-          onClick={() => onChange(allSelected ? [] : DUEL_KIND_OPTIONS)}
-        />
         {DUEL_KIND_OPTIONS.map((kind) => (
           <DuelKindPreferenceButton
             key={kind}
             label={duelKindText(kind)}
             checked={selectedSet.has(kind)}
-            active={!allSelected && selectedSet.has(kind)}
+            active={selectedSet.has(kind)}
             onClick={() => toggleKind(kind)}
           />
         ))}
@@ -3114,7 +3107,7 @@ function DuelKindPreferenceButton({
         justifyContent: 'flex-start',
         gap: 6,
         padding: '0 9px',
-        fontSize: 11,
+        fontSize: 10,
         fontWeight: 900,
         letterSpacing: '0',
         boxShadow: active ? '0 8px 18px rgba(15, 23, 42, 0.08)' : 'none',
@@ -3135,6 +3128,63 @@ function DuelKindPreferenceButton({
       />
       {label}
     </button>
+  );
+}
+
+function MatchmakingRulesContent(): JSX.Element {
+  const ruleItems: Array<{ title: string; text: string }> = [
+    { title: 'Экспресс', text: '1 период, 3 минуты. Нужно забить как можно больше шайб.' },
+    {
+      title: 'Экспресс+',
+      text: '2 периода: первый до 30 бросков, второй 3 минуты на скорость.',
+    },
+    {
+      title: 'Классика',
+      text: '3 периода как в ежедневной игре: 30 бросков в каждом, перерыв 2 минуты.',
+    },
+  ];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.45, fontWeight: 700 }}>
+        Поиск длится 2 минуты. Соперник подбирается среди игроков, у которых пересекается
+        хотя бы один выбранный формат.
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {ruleItems.map((item) => (
+          <div
+            key={item.title}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '92px minmax(0, 1fr)',
+              gap: 8,
+              alignItems: 'start',
+            }}
+          >
+            <div
+              style={{
+                color: 'var(--ink)',
+                fontSize: 12,
+                fontWeight: 950,
+                lineHeight: 1.25,
+              }}
+            >
+              {item.title}
+            </div>
+            <div
+              style={{
+                color: 'var(--muted)',
+                fontSize: 12,
+                fontWeight: 700,
+                lineHeight: 1.35,
+              }}
+            >
+              {item.text}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -3828,19 +3878,17 @@ function AmateurDuelsPage({
                       gridTemplateColumns: '28px minmax(0, 1fr) auto',
                       alignItems: 'center',
                       gap: 8,
-                      color: 'var(--ink)',
+                      color: isMe ? '#ffffff' : 'var(--ink)',
                       fontSize: 14,
                       fontWeight: 800,
                       textAlign: 'left',
                       cursor: 'pointer',
-                      border: isMe
-                        ? '2px solid rgba(245, 158, 11, 0.92)'
-                        : '1px solid rgba(255,255,255,0.8)',
+                      border: isMe ? '1px solid rgba(255,255,255,0.22)' : '1px solid rgba(255,255,255,0.8)',
                       background: isMe
-                        ? 'linear-gradient(180deg, rgba(255, 248, 224, 0.72), rgba(226, 240, 252, 0.72))'
+                        ? 'linear-gradient(180deg, rgba(15, 23, 42, 0.94), rgba(30, 41, 59, 0.94))'
                         : undefined,
                       boxShadow: isMe
-                        ? '0 0 0 3px rgba(245, 158, 11, 0.16), 0 12px 22px rgba(15, 23, 42, 0.12)'
+                        ? '0 12px 24px rgba(15, 23, 42, 0.2)'
                         : undefined,
                     }}
                   >
@@ -3910,9 +3958,10 @@ function AmateurDuelsPage({
       {matchmakingRulesOpen && (
         <ModeInfoModal
           title="Правила поиска"
-          text="Поиск длится 2 минуты. Можно выбрать один или несколько форматов. Если выбрано Все, соперник найдётся в любом формате; иначе подберём игрока с пересекающимся выбором. После подбора оба игрока попадут в комнату готовности."
           onClose={() => setMatchmakingRulesOpen(false)}
-        />
+        >
+          <MatchmakingRulesContent />
+        </ModeInfoModal>
       )}
       {quickPickInfoOpen && (
         <ModeInfoModal
