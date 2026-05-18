@@ -2,6 +2,8 @@ interface ReplyPreviewProps {
   senderName: string;
   content: string;
   variant?: 'in-bubble' | 'composer';
+  tone?: 'light' | 'dark';
+  onClick?: () => void;
   onClear?: () => void;
 }
 
@@ -9,26 +11,44 @@ export function ReplyPreview({
   senderName,
   content,
   variant = 'in-bubble',
+  tone = 'light',
+  onClick,
   onClear,
 }: ReplyPreviewProps): JSX.Element {
   const isComposer = variant === 'composer';
-  return (
-    <div
-      style={{
-        position: 'relative',
-        padding: '6px 10px 6px 12px',
-        marginBottom: isComposer ? 6 : 4,
-        borderRadius: 12,
-        background: isComposer ? 'rgba(255,255,255,0.55)' : 'rgba(15,23,42,0.06)',
-        opacity: isComposer ? 1 : 0.85,
-        fontSize: 11,
-        color: 'var(--ink)',
-        display: 'flex',
-        alignItems: 'flex-start',
-        gap: 8,
-        overflow: 'hidden',
-      }}
-    >
+  const isDark = !isComposer && tone === 'dark';
+  const isClickable = onClick !== undefined && !isComposer;
+  const previewBackground = isComposer
+    ? 'rgba(255,255,255,0.55)'
+    : isDark
+      ? 'rgba(226, 242, 255, 0.16)'
+      : 'rgba(15,23,42,0.06)';
+  const previewColor = isDark ? 'rgba(255, 255, 255, 0.9)' : 'var(--ink)';
+  const senderColor = isDark ? 'rgba(125, 211, 252, 0.98)' : 'var(--blue-accent)';
+  const contentColor = isDark ? 'rgba(255, 255, 255, 0.74)' : 'rgba(15, 23, 42, 0.72)';
+
+  const style = {
+    position: 'relative' as const,
+    padding: '6px 10px 6px 12px',
+    marginBottom: isComposer ? 6 : 4,
+    borderRadius: 12,
+    background: previewBackground,
+    border: 'none',
+    width: '100%',
+    font: 'inherit',
+    fontSize: 11,
+    color: previewColor,
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 8,
+    overflow: 'hidden',
+    boxShadow: isDark ? '0 0 0 1px rgba(255,255,255,0.08) inset' : undefined,
+    cursor: isClickable ? 'pointer' : 'default',
+    textAlign: 'left' as const,
+  };
+
+  const contentNode = (
+    <>
       <span
         aria-hidden
         style={{
@@ -42,15 +62,13 @@ export function ReplyPreview({
         }}
       />
       <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ fontWeight: 700, fontSize: 11, color: 'var(--blue-accent)' }}>
-          {senderName}
-        </div>
+        <div style={{ fontWeight: 700, fontSize: 11, color: senderColor }}>{senderName}</div>
         <div
           style={{
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
-            opacity: 0.8,
+            color: contentColor,
           }}
         >
           {content || '...'}
@@ -74,6 +92,29 @@ export function ReplyPreview({
           ×
         </button>
       )}
+    </>
+  );
+
+  if (isClickable) {
+    return (
+      <button
+        type="button"
+        data-testid="reply-preview"
+        aria-label="Перейти к сообщению"
+        onClick={onClick}
+        style={style}
+      >
+        {contentNode}
+      </button>
+    );
+  }
+
+  return (
+    <div
+      data-testid="reply-preview"
+      style={style}
+    >
+      {contentNode}
     </div>
   );
 }

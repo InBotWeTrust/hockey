@@ -57,6 +57,20 @@ const PAGE_SIZE = 50;
 const VOICE_MAX_DURATION_MS = 120_000;
 const VOICE_FILE_NAME = 'voice-message.webm';
 const DUEL_INVITE_MATCHES_REFETCH_INTERVAL = import.meta.env.MODE === 'test' ? false : 5000;
+const MESSAGE_FLASH_MS = 1200;
+
+function scrollToAndFlashMessage(messageId: string, onDone?: () => void): number | null {
+  const node = document.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`);
+  if (!node) return null;
+  node.scrollIntoView({ block: 'center' });
+  node.classList.remove('chat-bubble--flash');
+  void node.offsetWidth;
+  node.classList.add('chat-bubble--flash');
+  return window.setTimeout(() => {
+    node.classList.remove('chat-bubble--flash');
+    onDone?.();
+  }, MESSAGE_FLASH_MS);
+}
 
 function formatMemberCount(n: number): string {
   // Russian plural rules for "участник".
@@ -415,6 +429,7 @@ export function ChatRoomScreen(): JSX.Element {
   // Auto-follow only when the user is already near the bottom; pagination
   // (loading older messages) keeps the viewport stable instead of jumping.
   const isNearBottomRef = useRef(true);
+  const forceInitialBottomRef = useRef(true);
 
   // Lazy-fetch the chat list when entering by direct URL: without this the
   // header would render the "Чат" fallback until the user visits /chat.
@@ -548,14 +563,8 @@ export function ChatRoomScreen(): JSX.Element {
   // then strip ?goto from the URL so a refresh doesn't re-trigger.
   useEffect(() => {
     if (!goto || gotoError || !query.data) return;
-    const node = document.querySelector<HTMLElement>(`[data-message-id="${goto}"]`);
-    if (!node) return;
-    node.scrollIntoView({ block: 'center' });
-    node.classList.add('chat-bubble--flash');
-    const handle = window.setTimeout(() => {
-      node.classList.remove('chat-bubble--flash');
-      setSearchParams({}, { replace: true });
-    }, 1200);
+    const handle = scrollToAndFlashMessage(goto, () => setSearchParams({}, { replace: true }));
+    if (handle === null) return;
     return () => window.clearTimeout(handle);
   }, [goto, gotoError, query.data, setSearchParams]);
 
@@ -1047,6 +1056,18 @@ export function ChatRoomScreen(): JSX.Element {
     setEditingMessage(null);
     setReplyTo(m);
   }, []);
+  const onJumpToReply = useCallback(
+    (messageId: string): void => {
+      setSearchQuery('');
+      setSearchOpen(false);
+      setGotoError(null);
+      const flashHandle = scrollToAndFlashMessage(messageId);
+      if (flashHandle !== null) return;
+      forceInitialBottomRef.current = false;
+      setSearchParams({ goto: messageId });
+    },
+    [setSearchParams],
+  );
   const onEditMessage = useCallback((m: ChatMessageDTO) => {
     setReplyTo(null);
     setEditingMessage(m);
@@ -1370,6 +1391,7 @@ export function ChatRoomScreen(): JSX.Element {
                 replyTo={replyTo}
                 onRequestActions={onRequestActions}
                 onReact={onToggleReaction}
+                onJumpToReply={onJumpToReply}
                 actionSlot={inviteActionSlot}
                 onOpenProfile={onOpenProfile}
                 onOpenImage={setImageViewer}

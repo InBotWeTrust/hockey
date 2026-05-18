@@ -20,6 +20,7 @@ interface ChatBubbleProps {
   // Receives messageId so the parent can pass a stable useCallback reference
   // (without a per-bubble closure) — preserves React.memo across parent renders.
   onReact: (messageId: string, emoji: string) => void;
+  onJumpToReply?: (messageId: string) => void;
   actionSlot?: ReactNode;
   // Foreign group/system bubbles call this when the user taps the avatar or
   // author name — parent opens a profile preview sheet. Optional: if undefined,
@@ -113,6 +114,7 @@ function ChatBubbleImpl({
   replyTo,
   onRequestActions,
   onReact,
+  onJumpToReply,
   actionSlot,
   onOpenProfile,
   onOpenImage,
@@ -248,7 +250,14 @@ function ChatBubbleImpl({
           </button>
         )}
         {message.replyToId && replyTo && (
-          <ReplyPreview senderName={replyTo.senderName} content={replyTo.content} />
+          <ReplyPreview
+            senderName={replyTo.senderName}
+            content={replyTo.content}
+            tone={isOwn ? 'dark' : 'light'}
+            {...(onJumpToReply !== undefined
+              ? { onClick: () => onJumpToReply(message.replyToId!) }
+              : {})}
+          />
         )}
         {attachments.length > 0 && (
           <div style={{ display: 'grid', gap: 6, marginBottom: text.length > 0 ? 6 : 0 }}>
@@ -434,6 +443,7 @@ function areEqual(prev: ChatBubbleProps, next: ChatBubbleProps): boolean {
     prev.actionSlot === next.actionSlot &&
     prev.onRequestActions === next.onRequestActions &&
     prev.onReact === next.onReact &&
+    prev.onJumpToReply === next.onJumpToReply &&
     prev.onOpenProfile === next.onOpenProfile &&
     prev.onOpenImage === next.onOpenImage
   );

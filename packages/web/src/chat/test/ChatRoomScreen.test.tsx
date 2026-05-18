@@ -748,6 +748,49 @@ describe('ChatRoomScreen — ?goto=<messageId>', () => {
     expect(node?.classList.contains('chat-bubble--flash')).toBe(false);
   });
 
+  it('scrolls to the original message when a reply preview is tapped', async () => {
+    const parent: ChatMessageDTO = {
+      id: 'parent-message',
+      chatId: 'c1',
+      senderId: OTHER_ID,
+      senderDisplayName: null,
+      senderAvatarUrl: null,
+      content: 'исходное сообщение',
+      replyToId: null,
+      isDeleted: false,
+      createdAt: '2026-04-26T10:00:00.000Z',
+      reactions: [],
+    };
+    const reply: ChatMessageDTO = {
+      id: 'reply-message',
+      chatId: 'c1',
+      senderId: SELF_ID,
+      senderDisplayName: null,
+      senderAvatarUrl: null,
+      content: 'ответ',
+      replyToId: 'parent-message',
+      isDeleted: false,
+      createdAt: '2026-04-26T10:01:00.000Z',
+      reactions: [],
+    };
+    vi.spyOn(api, 'fetchMessages').mockResolvedValue([reply, parent]);
+
+    renderRoom('c1');
+
+    const preview = await screen.findByTestId('reply-preview');
+    vi.useFakeTimers();
+    fireEvent.click(preview);
+
+    const node = document.querySelector('[data-message-id="parent-message"]');
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ block: 'center' });
+    expect(node?.classList.contains('chat-bubble--flash')).toBe(true);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1200);
+    });
+    expect(node?.classList.contains('chat-bubble--flash')).toBe(false);
+  });
+
   it('falls back to default load and shows "Сообщение недоступно" banner on 404', async () => {
     const fallback: ChatMessageDTO = {
       id: 'm-existing',
