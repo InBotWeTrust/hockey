@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from 'pg';
 import { fetchProfileAchievements, type ProfileAchievementDTO } from '../achievements/service.js';
+import { getGameSettings } from '../duel/gameSettings.js';
 
 type Queryable = Pool | PoolClient;
 
@@ -31,9 +32,13 @@ function toNumber(value: number | string): number {
   return typeof value === 'number' ? value : Number(value);
 }
 
-export function resolveCompetitionLevel(level: number, lifetimeGoals: number): CompetitionLevel {
+export function resolveCompetitionLevel(
+  level: number,
+  lifetimeGoals: number,
+  amateurUnlockGoalsRequired = 1000,
+): CompetitionLevel {
   if (level >= 3) return 'professional';
-  if (level >= 2 || lifetimeGoals >= 1000) return 'amateur';
+  if (level >= 2 || lifetimeGoals >= amateurUnlockGoalsRequired) return 'amateur';
   return 'beginner';
 }
 
@@ -109,15 +114,18 @@ export async function buildProfileProgress(
   const shots = toNumber(row.lifetime_shots_total);
   const goals = toNumber(row.lifetime_goals_total);
   const accuracy = shots > 0 ? Math.round((goals / shots) * 100) : 0;
-  const playStreakStats = await fetchPlayStreakStats(db, row.id, row.timezone);
-  const achievements = await fetchProfileAchievements(db, row.id, {
-    lifetimeShots: shots,
-    lifetimeGoals: goals,
-    level,
-  });
+  const [settings, playStreakStats, achievements] = await Promise.all([
+    getGameSettings(db),
+    fetchPlayStreakStats(db, row.id, row.timezone),
+    fetchProfileAchievements(db, row.id, {
+      lifetimeShots: shots,
+      lifetimeGoals: goals,
+      level,
+    }),
+  ]);
 
   return {
-    competitionLevel: resolveCompetitionLevel(level, goals),
+    competitionLevel: resolveCompetitionLevel(level, goals, settings.amateur.unlockGoalsRequired),
     stats: {
       shots,
       goals,

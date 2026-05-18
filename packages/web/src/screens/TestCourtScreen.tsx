@@ -153,7 +153,7 @@ export function TestCourtScreen(): JSX.Element {
       <PlayView<TestCourtState>
         suppressedByModal={false}
         showIceCar={false}
-        onBack={() => navigate('/?view=hub')}
+        onBack={() => navigate('/?view=arena')}
         active
         seed={TEST_COURT_SEED}
         goalieId={TEST_COURT_GOALIE_ID}
@@ -166,11 +166,19 @@ export function TestCourtScreen(): JSX.Element {
         backLabel="К игре"
         playerGrip="right"
         playerOptions={{
-          spriteUrl: '/sprites/test-hockey-player.webp',
+          spriteUrls: {
+            left: '/sprites/ultimate-player-left.webp',
+            right: '/sprites/ultimate-player-right.webp',
+          },
+          shotSpriteUrls: {
+            left: '/sprites/ultimate-player-left-shoot.webp',
+            right: '/sprites/ultimate-player-right-shoot.webp',
+          },
           spriteWidth: 112,
-          spriteAspect: 941 / 1062,
+          spriteAspect: 942 / 1067,
           baseRotation: 0,
-          shotMaxRotation: 0.24,
+          shotMaxRotation: 0,
+          shotDurationMs: 500,
           visualYScale: TRAINING_NEW_COURT_VISUAL_Y_SCALE,
           visualYOffset: TRAINING_NEW_COURT_VISUAL_Y_OFFSET,
           shadow: true,

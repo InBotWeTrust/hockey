@@ -158,7 +158,18 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     expect(rows[0].n).toBe(0);
   });
 
-  it('locks daily start for 2 hours after a training shot', async () => {
+  it('locks daily start for the configured cooldown after a training shot', async () => {
+    await pool.query(
+      `insert into game_settings (key, value, label, description)
+       values (
+         'training.daily_cooldown_minutes',
+         to_jsonb(30),
+         'Блокировка дневной игры',
+         'test'
+       )
+       on conflict (key) do update set value = excluded.value`,
+    );
+
     const training = await startTraining(1);
     expect(training.statusCode).toBe(200);
     const shot = await submitTrainingShot(1);
@@ -172,7 +183,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
 
     await pool.query(
       `update shot_session
-          set created_at = now() - interval '121 minutes'
+          set created_at = now() - interval '31 minutes'
         where user_id = $1 and mode = 'training'`,
       [userId],
     );

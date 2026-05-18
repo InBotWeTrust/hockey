@@ -16,6 +16,7 @@
 }
 
 :root {
+  color-scheme: only light;
   --app-bg-top: #c9dcf0;
   --app-bg-bottom: #9cbfdf;
   --app-safe-top-raw: env(safe-area-inset-top, 0px);
@@ -67,6 +68,12 @@
       }
     }
   }
+}
+
+:root.app-standalone {
+  --app-safe-top: max(44px, var(--app-safe-top-raw));
+  --app-safe-bottom: clamp(12px, var(--app-safe-bottom-raw), 22px);
+  --bottom-nav-bottom-gap: 8px;
 }
 
 html,

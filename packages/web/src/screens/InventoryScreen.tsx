@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Coins } from 'lucide-react';
+import { Coins, Star } from 'lucide-react';
 import { apiFetch } from '../api/apiFetch.js';
 
 const INVENTORY_ARTWORK_SIZE = 104;
@@ -33,19 +33,28 @@ const INVENTORY_SLOTS = [
 
 interface InventoryProfile {
   currencyBalance?: number;
+  starBalance?: number;
 }
 
-function formatTokenBalance(balance: number): string {
+function formatCountLabel(balance: number, forms: [string, string, string]): string {
   const normalized = Math.max(0, Math.trunc(balance));
   const mod10 = normalized % 10;
   const mod100 = normalized % 100;
   const noun =
     mod10 === 1 && mod100 !== 11
-      ? 'токен'
+      ? forms[0]
       : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)
-        ? 'токена'
-        : 'токенов';
+        ? forms[1]
+        : forms[2];
   return `${normalized} ${noun}`;
+}
+
+function formatTokenBalance(balance: number): string {
+  return formatCountLabel(balance, ['токен', 'токена', 'токенов']);
+}
+
+function formatStarBalance(balance: number): string {
+  return formatCountLabel(balance, ['звезда', 'звезды', 'звёзд']);
 }
 
 function normalizeBalance(balance: number | undefined): number {
@@ -59,7 +68,9 @@ export function InventoryScreen(): JSX.Element {
     queryFn: () => apiFetch<InventoryProfile>('/me'),
   });
   const tokenAmount = normalizeBalance(data?.currencyBalance);
+  const starAmount = normalizeBalance(data?.starBalance);
   const tokenBalance = formatTokenBalance(tokenAmount);
+  const starBalance = formatStarBalance(starAmount);
 
   return (
     <main
@@ -73,48 +84,17 @@ export function InventoryScreen(): JSX.Element {
         <div className="section-label" style={{ margin: '0 0 6px -14px' }}>
           Валюта
         </div>
-        <div
-          className="glass"
-          aria-label={`Баланс: ${tokenBalance}`}
-          style={{
-            borderRadius: 22,
-            padding: '16px 20px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 14,
-            color: 'var(--ink)',
-          }}
-        >
-          <span
-            style={{
-              fontSize: 28,
-              lineHeight: 1,
-              fontWeight: 950,
-              fontVariantNumeric: 'tabular-nums',
-            }}
-          >
-            {tokenAmount}
-          </span>
-          <span
-            aria-hidden="true"
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 999,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-              color: '#92400e',
-              background:
-                'radial-gradient(circle at 34% 24%, #fff7ad 0%, #facc15 45%, #f59e0b 100%)',
-              border: '1px solid rgba(146, 64, 14, 0.28)',
-              boxShadow: '0 12px 22px rgba(180, 83, 9, 0.24), inset 0 1px 0 rgba(255,255,255,0.72)',
-            }}
-          >
-            <Coins size={23} strokeWidth={2.4} />
-          </span>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+          <CurrencyBalanceCard
+            ariaLabel={`Токены: ${tokenBalance}`}
+            amount={tokenAmount}
+            icon="tokens"
+          />
+          <CurrencyBalanceCard
+            ariaLabel={`Звёзды: ${starBalance}`}
+            amount={starAmount}
+            icon="stars"
+          />
         </div>
       </section>
 
@@ -191,6 +171,67 @@ export function InventoryScreen(): JSX.Element {
 
       {lockedInfoOpen && <InventoryLockedModal onClose={() => setLockedInfoOpen(false)} />}
     </main>
+  );
+}
+
+function CurrencyBalanceCard({
+  ariaLabel,
+  amount,
+  icon,
+}: {
+  ariaLabel: string;
+  amount: number;
+  icon: 'tokens' | 'stars';
+}): JSX.Element {
+  const isTokens = icon === 'tokens';
+  return (
+    <div
+      className="glass"
+      aria-label={ariaLabel}
+      style={{
+        minWidth: 0,
+        borderRadius: 22,
+        padding: '16px 16px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 10,
+        color: 'var(--ink)',
+      }}
+    >
+      <span
+        style={{
+          minWidth: 0,
+          fontSize: 28,
+          lineHeight: 1,
+          fontWeight: 950,
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        {amount}
+      </span>
+      <span
+        aria-hidden="true"
+        style={{
+          width: 44,
+          height: 44,
+          borderRadius: 999,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+          color: isTokens ? '#92400e' : '#713f12',
+          background: isTokens
+            ? 'radial-gradient(circle at 34% 24%, #fff7ad 0%, #facc15 45%, #f59e0b 100%)'
+            : 'radial-gradient(circle at 34% 24%, #fff7ad 0%, #fde047 42%, #f59e0b 100%)',
+          border: '1px solid rgba(146, 64, 14, 0.28)',
+          boxShadow:
+            '0 12px 22px rgba(180, 83, 9, 0.24), inset 0 1px 0 rgba(255,255,255,0.72)',
+        }}
+      >
+        {isTokens ? <Coins size={23} strokeWidth={2.4} /> : <Star size={23} strokeWidth={2.5} />}
+      </span>
+    </div>
   );
 }
 

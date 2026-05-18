@@ -9,6 +9,10 @@ const SPRITE_ASSETS = [
   '/sprites/save.webp',
   '/sprites/lefthand.webp',
   '/sprites/righthand.webp',
+  '/sprites/ultimate-player-left.webp',
+  '/sprites/ultimate-player-left-shoot.webp',
+  '/sprites/ultimate-player-right.webp',
+  '/sprites/ultimate-player-right-shoot.webp',
   '/sprites/ice_car.webp',
 ];
 

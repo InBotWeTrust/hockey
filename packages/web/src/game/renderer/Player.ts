@@ -2,9 +2,8 @@ import { Assets, BlurFilter, Container, Graphics, Sprite, Texture } from 'pixi.j
 import { PUCK_START } from '@hockey/game-core';
 import type { Scale } from '../coords.js';
 
-// lefthand/righthand.webp: 700×950 top-down view. Sprite centred at shooterX
-// so the body oscillates symmetrically regardless of grip; the puck is
-// offset from the body by Puck.BLADE_OFFSET. Width +10% сверх предыдущих 60.
+// Sprite is centred at shooterX so the body oscillates symmetrically
+// regardless of grip; the puck is offset from the body by Puck.BLADE_OFFSET.
 const SPRITE_WIDTH = 66;
 const SPRITE_ASPECT = 700 / 950;
 
@@ -14,11 +13,15 @@ const SHOT_MAX = 0.24; // follow-through peak, ~13.7 deg
 
 export interface PlayerOptions {
   spriteUrl?: string | undefined;
+  spriteUrls?: Partial<Record<'left' | 'right', string>> | undefined;
+  shotSpriteUrl?: string | undefined;
+  shotSpriteUrls?: Partial<Record<'left' | 'right', string>> | undefined;
   spriteWidth?: number | undefined;
   spriteAspect?: number | undefined;
   fixedRotation?: number | undefined;
   baseRotation?: number | undefined;
   shotMaxRotation?: number | undefined;
+  shotDurationMs?: number | undefined;
   visualYScale?: number | undefined;
   visualYOffset?: number | undefined;
   shadow?: boolean | undefined;
@@ -34,8 +37,11 @@ export class Player {
   private readonly fixedRotation: number | undefined;
   private readonly baseRotation: number;
   private readonly shotMaxRotation: number;
+  private readonly shotDurationMs: number;
   private readonly visualYScale: number;
   private readonly visualYOffset: number;
+  private idleTexture: Texture | null = null;
+  private shotTexture: Texture | null = null;
   private shotStartedAt: number | null = null;
   private destroyed = false;
 
@@ -46,6 +52,7 @@ export class Player {
     this.fixedRotation = options.fixedRotation;
     this.baseRotation = options.baseRotation ?? BASE_ROTATION;
     this.shotMaxRotation = options.shotMaxRotation ?? SHOT_MAX;
+    this.shotDurationMs = options.shotDurationMs ?? SHOT_DURATION_MS;
     this.visualYScale = options.visualYScale ?? 1;
     this.visualYOffset = options.visualYOffset ?? 0;
     this.shadow = options.shadow
@@ -58,12 +65,25 @@ export class Player {
     this.sprite = new Sprite(Texture.EMPTY);
     this.sprite.anchor.set(0.5, 0.5);
     this.container.addChild(this.sprite);
-    Assets.load<Texture>(options.spriteUrl ?? `/sprites/${grip}hand.webp`)
+
+    const idleSpriteUrl = options.spriteUrls?.[grip] ?? options.spriteUrl ?? `/sprites/${grip}hand.webp`;
+    const shotSpriteUrl = options.shotSpriteUrls?.[grip] ?? options.shotSpriteUrl;
+
+    Assets.load<Texture>(idleSpriteUrl)
       .then((tex) => {
         if (this.destroyed) return;
+        this.idleTexture = tex;
         this.sprite.texture = tex;
       })
       .catch(() => undefined);
+    if (shotSpriteUrl) {
+      Assets.load<Texture>(shotSpriteUrl)
+        .then((tex) => {
+          if (this.destroyed) return;
+          this.shotTexture = tex;
+        })
+        .catch(() => undefined);
+    }
   }
 
   playShot(): void {
@@ -95,11 +115,17 @@ export class Player {
     }
 
     if (this.shotStartedAt !== null) {
-      const t = (performance.now() - this.shotStartedAt) / SHOT_DURATION_MS;
+      const t = (performance.now() - this.shotStartedAt) / this.shotDurationMs;
       if (t >= 1) {
+        if (this.idleTexture && this.sprite.texture !== this.idleTexture) {
+          this.sprite.texture = this.idleTexture;
+        }
         this.sprite.rotation = this.shotDir * -this.baseRotation;
         this.shotStartedAt = null;
       } else {
+        if (this.shotTexture && this.sprite.texture !== this.shotTexture) {
+          this.sprite.texture = this.shotTexture;
+        }
         // swing from base pose (-BASE) through peak (+MAX) and back to base (-BASE)
         let r: number;
         if (t < 0.35) {
@@ -111,6 +137,9 @@ export class Player {
         this.sprite.rotation = this.shotDir * r;
       }
     } else {
+      if (this.idleTexture && this.sprite.texture !== this.idleTexture) {
+        this.sprite.texture = this.idleTexture;
+      }
       this.sprite.rotation = this.shotDir * -this.baseRotation;
     }
   }

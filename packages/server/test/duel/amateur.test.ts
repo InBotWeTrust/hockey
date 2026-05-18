@@ -140,6 +140,8 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       totalPeriods?: number;
       periodDurationMs?: number;
       breakDurationMs?: number;
+      readyDurationMs?: number;
+      winStarReward?: number;
     } = {},
   ) {
     const startsAt = opts.startsAt ?? '2026-01-01T00:00:00.000Z';
@@ -148,8 +150,10 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       `insert into amateur_duel_template
          (title, description, starts_at, ends_at, duel_kind, total_periods, shots_per_period,
           period_duration_ms, break_duration_ms, goalie_id, period_speed_presets,
-          stake_amount, entry_fee_amount, ranked_enabled, duel_variant, period_rules)
-       values ('Test duel', '', $1, $2, $10, $6, 1, $7, $12, 'rookie', $3, $4, $5, $8, $9, $11)
+          stake_amount, entry_fee_amount, ranked_enabled, duel_variant, period_rules,
+          ready_duration_ms, win_star_reward)
+       values ('Test duel', '', $1, $2, $10, $6, 1, $7, $12, 'rookie', $3, $4, $5, $8, $9, $11,
+               $13, $14)
        returning id`,
       [
         startsAt,
@@ -164,6 +168,8 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
         opts.duelKind ?? 'classic',
         opts.periodRules ? JSON.stringify(opts.periodRules) : null,
         opts.breakDurationMs ?? (opts.duelKind === 'express_plus' ? 120000 : 0),
+        opts.readyDurationMs ?? 900000,
+        opts.winStarReward ?? 0,
       ],
     );
     return rows[0]!.id;
@@ -328,6 +334,9 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(secondReady.statusCode).toBe(200);
     expect(secondReady.json().match.status).toBe('active');
     expect(secondReady.json().match.accepted_at).toBeTruthy();
+    const acceptedAt = Date.parse(String(secondReady.json().match.accepted_at));
+    const endsAt = Date.parse(String(secondReady.json().match.ends_at));
+    expect(endsAt - acceptedAt).toBe(900000);
 
     const accounts = await pool.query<{ balance: number; reserved_balance: number }>(
       `select balance, reserved_balance
@@ -340,6 +349,51 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       { balance: 100, reserved_balance: 0 },
       { balance: 100, reserved_balance: 0 },
     ]);
+  });
+
+  it('cancels an active duel without rating when both ready players never start', async () => {
+    const templateId = await createTemplate({ readyDurationMs: 15000 });
+    const created = await challenge(templateId);
+    const matchId = created.json().match.id;
+    await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/accept`,
+      headers: auth(tokenB),
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/ready`,
+      headers: auth(tokenA),
+      payload: { loadout: {} },
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/ready`,
+      headers: auth(tokenB),
+      payload: { loadout: {} },
+    });
+    await pool.query(
+      `update amateur_duel_match
+          set starts_at = now() - interval '2 seconds',
+              ends_at = now() - interval '1 second'
+        where id = $1`,
+      [matchId],
+    );
+
+    const settled = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/settle`,
+      headers: auth(tokenA),
+    });
+
+    expect(settled.statusCode).toBe(200);
+    expect(settled.json().match.status).toBe('cancelled');
+    expect(settled.json().match.settled_reason).toBe('no_play');
+    const rating = await pool.query(
+      `select * from amateur_duel_rating where user_id = any($1::uuid[])`,
+      [[userA, userB]],
+    );
+    expect(rating.rowCount).toBe(0);
   });
 
   it('lets a challenger cancel an unanswered challenge without cooldown or reserves', async () => {
@@ -463,7 +517,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
   });
 
   it('settles no-show as a win for the player who completed the duel', async () => {
-    const templateId = await createTemplate();
+    const templateId = await createTemplate({ winStarReward: 7 });
     const created = await challenge(templateId);
     const matchId = created.json().match.id;
 
@@ -521,6 +575,8 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(settled.json().match.status).toBe('settled');
     expect(settled.json().match.winner_user_id).toBe(userA);
     expect(settled.json().match.outcome).toBe('challenger_win');
+    const stars = await pool.query<{ xp: number }>(`select xp from users where id = $1`, [userA]);
+    expect(Number(stars.rows[0]?.xp)).toBe(7);
   });
 
   it('includes opponent live period shots in match state', async () => {

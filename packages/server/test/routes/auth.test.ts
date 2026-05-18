@@ -33,6 +33,16 @@ function signPayload(data: Record<string, string>, botToken: string): string {
   return createHmac('sha256', secretKey).update(checkString).digest('hex');
 }
 
+function signMiniAppInitData(data: Record<string, string>, botToken: string): string {
+  const secretKey = createHmac('sha256', 'WebAppData').update(botToken).digest();
+  const checkString = Object.keys(data)
+    .filter((k) => k !== 'hash')
+    .sort()
+    .map((k) => `${k}=${data[k]}`)
+    .join('\n');
+  return createHmac('sha256', secretKey).update(checkString).digest('hex');
+}
+
 function freshTgPayload(overrides: Partial<Record<string, string>> = {}) {
   const nowSec = Math.floor(Date.now() / 1000);
   const base: Record<string, string> = {
@@ -43,6 +53,18 @@ function freshTgPayload(overrides: Partial<Record<string, string>> = {}) {
   };
   base.hash = signPayload(base, BOT_TOKEN);
   return base;
+}
+
+function freshMiniAppInitData(overrides: Partial<Record<string, string>> = {}) {
+  const nowSec = Math.floor(Date.now() / 1000);
+  const data: Record<string, string> = {
+    auth_date: String(nowSec),
+    query_id: 'AAEtest-query',
+    user: JSON.stringify({ id: 200500, first_name: 'Mini', username: 'mini_player' }),
+    ...overrides,
+  };
+  data.hash = signMiniAppInitData(data, BOT_TOKEN);
+  return new URLSearchParams(data).toString();
 }
 
 describe.skipIf(!hasIntegrationEnv)('POST /auth/telegram', () => {
@@ -117,6 +139,38 @@ describe.skipIf(!hasIntegrationEnv)('POST /auth/telegram', () => {
       payload: { foo: 'bar' },
     });
     expect(res.statusCode).toBe(400);
+  });
+
+  it('issues tokens from valid Telegram Mini App initData', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/auth/telegram-mini-app',
+      payload: { initData: freshMiniAppInitData(), timezone: 'Europe/Moscow' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      accessToken: string;
+      refreshToken: string;
+      user: { id: string; displayName: string };
+    };
+    expect(body.user.displayName).toBe('Mini');
+    expect(body.accessToken.split('.')).toHaveLength(3);
+    expect(body.refreshToken.split('.')).toHaveLength(3);
+  });
+
+  it('returns 401 on invalid Telegram Mini App hash', async () => {
+    const params = new URLSearchParams(freshMiniAppInitData());
+    params.set('user', JSON.stringify({ id: 200501, first_name: 'Mallory' }));
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/auth/telegram-mini-app',
+      payload: { initData: params.toString() },
+    });
+
+    expect(res.statusCode).toBe(401);
+    expect(res.json()).toMatchObject({ error: { code: 'unauthenticated' } });
   });
 
   it('links Telegram identity to current Bearer VK user', async () => {

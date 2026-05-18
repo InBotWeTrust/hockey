@@ -408,7 +408,10 @@ export function ChatRoomScreen(): JSX.Element {
   const voiceChunksRef = useRef<Blob[]>([]);
   const voiceTimeoutRef = useRef<number | null>(null);
   const voiceCancelRef = useRef(false);
+  const latestGotoRef = useRef<string | null>(goto);
+  const emptyUnreadRefetchChatIdRef = useRef<string | null>(null);
   const [voiceState, setVoiceState] = useState<VoiceRecordingState>('idle');
+  latestGotoRef.current = goto;
   // Android (especially MIUI WebView) and some iOS Safari builds don't shrink
   // `100dvh` when the soft keyboard opens, so the composer ends up beneath
   // the keyboard. visualViewport.height is the source of truth — track it
@@ -484,6 +487,10 @@ export function ChatRoomScreen(): JSX.Element {
 
   useEffect(() => {
     if (!chatId) return;
+    forceInitialBottomRef.current = latestGotoRef.current === null;
+    emptyUnreadRefetchChatIdRef.current = null;
+    isNearBottomRef.current = true;
+    setShowScrollToBottom(false);
     setActive(chatId);
     return () => setActive(null);
   }, [chatId, setActive]);
@@ -537,6 +544,7 @@ export function ChatRoomScreen(): JSX.Element {
     if (goto !== gotoRef.current) {
       gotoRef.current = goto;
       if (goto !== null) {
+        forceInitialBottomRef.current = false;
         setGotoError(null);
         void queryClient.resetQueries({ queryKey: chatKeys.messages(chatId), exact: true });
       }
@@ -556,8 +564,24 @@ export function ChatRoomScreen(): JSX.Element {
     if (chatId.length === 0) return;
     if (!query.data) return;
     if (!query.isSuccess || query.isFetching) return;
+    const loadedMessageCount = query.data.pages.reduce((count, page) => count + page.length, 0);
+    if ((chatMeta?.unreadCount ?? 0) > 0 && loadedMessageCount === 0) {
+      if (emptyUnreadRefetchChatIdRef.current !== chatId) {
+        emptyUnreadRefetchChatIdRef.current = chatId;
+        void queryClient.invalidateQueries({ queryKey: chatKeys.messages(chatId), exact: true });
+      }
+      return;
+    }
     markRead();
-  }, [chatId, query.data, query.isSuccess, query.isFetching, markRead]);
+  }, [
+    chatId,
+    chatMeta?.unreadCount,
+    query.data,
+    query.isSuccess,
+    query.isFetching,
+    queryClient,
+    markRead,
+  ]);
 
   // After the goto-page is loaded, scroll to the target bubble, flash it,
   // then strip ?goto from the URL so a refresh doesn't re-trigger.
@@ -597,10 +621,28 @@ export function ChatRoomScreen(): JSX.Element {
   useLayoutEffect(() => {
     if (goto) return;
     if (lastMessageId === null) return;
-    if (!isNearBottomRef.current) return;
+    const forceInitialBottom = forceInitialBottomRef.current;
+    if (!forceInitialBottom && !isNearBottomRef.current) return;
     const el = messagesListRef.current;
     if (!el) return;
-    el.scrollTop = el.scrollHeight;
+    const scrollToBottomNow = (): void => {
+      const current = messagesListRef.current;
+      if (!current) return;
+      current.scrollTop = current.scrollHeight;
+      isNearBottomRef.current = true;
+      setShowScrollToBottom(false);
+    };
+    scrollToBottomNow();
+    let rafTwo: number | null = null;
+    const rafOne = window.requestAnimationFrame(() => {
+      scrollToBottomNow();
+      if (forceInitialBottom) forceInitialBottomRef.current = false;
+      rafTwo = window.requestAnimationFrame(scrollToBottomNow);
+    });
+    return () => {
+      window.cancelAnimationFrame(rafOne);
+      if (rafTwo !== null) window.cancelAnimationFrame(rafTwo);
+    };
   }, [lastMessageId, goto]);
 
   const messageById = useMemo(() => {
@@ -1160,6 +1202,19 @@ export function ChatRoomScreen(): JSX.Element {
     return base.filter((m) => !m.isDeleted && m.content.toLowerCase().includes(trimmedQuery));
   }, [isChannel, messages, trimmedQuery]);
 
+  const showInitialMessagesLoading =
+    trimmedQuery.length === 0 &&
+    visibleMessages.length === 0 &&
+    (query.isPending || query.isFetching);
+  const showInitialMessagesError =
+    trimmedQuery.length === 0 && visibleMessages.length === 0 && query.isError;
+  const showInitialMessagesEmpty =
+    trimmedQuery.length === 0 &&
+    visibleMessages.length === 0 &&
+    !query.isPending &&
+    !query.isFetching &&
+    !query.isError;
+
   const actionMessage = actionTarget?.message ?? null;
   const actionIsOwn = actionMessage ? actionMessage.senderId === meId : false;
   const showComposer = chatMeta === undefined || !isChannel || isAdmin;
@@ -1313,6 +1368,24 @@ export function ChatRoomScreen(): JSX.Element {
           >
             {query.isFetchingNextPage ? 'Загрузка...' : 'Загрузить ещё'}
           </button>
+        )}
+        {showInitialMessagesLoading && (
+          <div style={{ color: 'var(--muted)', fontSize: 13, textAlign: 'center', padding: 24 }}>
+            Загрузка сообщений...
+          </div>
+        )}
+        {showInitialMessagesError && (
+          <div
+            role="alert"
+            style={{ color: 'var(--muted)', fontSize: 13, textAlign: 'center', padding: 24 }}
+          >
+            Не удалось загрузить сообщения
+          </div>
+        )}
+        {showInitialMessagesEmpty && (
+          <div style={{ color: 'var(--muted)', fontSize: 13, textAlign: 'center', padding: 24 }}>
+            {isChannel ? 'Постов пока нет' : 'Сообщений пока нет'}
+          </div>
         )}
         {visibleMessages.length === 0 && trimmedQuery.length > 0 && (
           <div style={{ color: 'var(--muted)', fontSize: 13, textAlign: 'center', padding: 24 }}>
@@ -1583,15 +1656,21 @@ export function ChatRoomScreen(): JSX.Element {
           onClick={(event) => {
             if (event.currentTarget === event.target) setImageViewer(null);
           }}
-          style={{ zIndex: 320 }}
+          style={{
+            zIndex: 320,
+            padding: 'calc(14px + var(--app-safe-top)) 14px calc(14px + var(--app-safe-bottom))',
+          }}
         >
           <div
             className="modal-card"
             style={{
-              width: 'min(100%, 720px)',
-              padding: 12,
+              position: 'relative',
+              width: 'min(100%, 860px)',
+              maxHeight: 'calc(100dvh - var(--app-safe-top) - var(--app-safe-bottom) - 28px)',
+              padding: 10,
               display: 'grid',
-              gap: 10,
+              gap: 8,
+              overflow: 'hidden',
             }}
           >
             <div
@@ -1599,19 +1678,24 @@ export function ChatRoomScreen(): JSX.Element {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                gap: 10,
+                gap: 8,
+                minWidth: 0,
               }}
             >
               <div
                 className="modal-title"
                 style={{
+                  flex: '1 1 auto',
                   minWidth: 0,
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',
+                  fontSize: 12,
+                  color: 'var(--muted)',
                 }}
+                title={imageViewer.originalName || 'Изображение'}
               >
-                {imageViewer.originalName || 'Изображение'}
+                Изображение
               </div>
               <button
                 type="button"
@@ -1628,8 +1712,12 @@ export function ChatRoomScreen(): JSX.Element {
               alt={imageViewer.originalName || 'Изображение'}
               style={{
                 display: 'block',
-                width: '100%',
-                maxHeight: 'min(70dvh, 680px)',
+                width: 'auto',
+                height: 'auto',
+                maxWidth: '100%',
+                maxHeight:
+                  'calc(100dvh - var(--app-safe-top) - var(--app-safe-bottom) - 104px)',
+                margin: '0 auto',
                 objectFit: 'contain',
                 borderRadius: 18,
                 background: 'rgba(15, 23, 42, 0.08)',

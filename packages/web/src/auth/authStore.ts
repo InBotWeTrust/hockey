@@ -9,6 +9,7 @@ export interface AuthUser {
   avatarUrl?: string | null;
   grip?: 'left' | 'right';
   currencyBalance?: number;
+  starBalance?: number;
   displaySource?: 'telegram' | 'vk' | 'custom';
   linkedProviders?: Array<'telegram' | 'vk'>;
   customDisplayName?: string | null;

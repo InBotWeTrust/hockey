@@ -4,7 +4,6 @@ import { Container } from 'pixi.js';
 import type { Application } from 'pixi.js';
 import {
   getGoalie,
-  resolveShot,
   getSessionPhaseOffsets,
   simulateGoalie,
   simulateGoal,
@@ -18,7 +17,28 @@ import {
 } from '@hockey/game-core';
 import { Settings } from 'lucide-react';
 import { PixiStage } from '../game/PixiStage.js';
-import { RinkSvg } from '../game/RinkSvg.js';
+import {
+  TRAINING_NEW_COURT_BACKGROUND,
+  TRAINING_NEW_COURT_BG_CROP_BOTTOM,
+  TRAINING_NEW_COURT_GOALIE_VISUAL_X_SCALE,
+  TRAINING_NEW_COURT_GOALIE_VISUAL_Y_OFFSET,
+  TRAINING_NEW_COURT_GOAL_VISUAL_OFFSET_X_SCALE,
+  TRAINING_NEW_COURT_GOAL_VISUAL_Y_OFFSET,
+  TRAINING_NEW_COURT_HITBOX_GOALIE_HEIGHT_SCALE,
+  TRAINING_NEW_COURT_HITBOX_GOALIE_INSET,
+  TRAINING_NEW_COURT_HITBOX_GOALIE_WIDTH_SCALE,
+  TRAINING_NEW_COURT_HITBOX_GOAL_HEIGHT_SCALE,
+  TRAINING_NEW_COURT_HITBOX_GOAL_INSET,
+  TRAINING_NEW_COURT_HITBOX_GOAL_WIDTH_SCALE,
+  TRAINING_NEW_COURT_PUCK_BLADE_OFFSET_X,
+  TRAINING_NEW_COURT_PUCK_BLADE_OFFSET_Y,
+  TRAINING_NEW_COURT_PUCK_FLIGHT_VISUAL_Y_OFFSET,
+  TRAINING_NEW_COURT_VISUAL_Y_OFFSET,
+  TRAINING_NEW_COURT_VISUAL_Y_SCALE,
+  TRAINING_NEW_COURT_POST_EDGE_DISTANCE,
+  distanceToNewTrainingCourtGoalEdge,
+  resolveNewTrainingCourtShot,
+} from '../game/trainingNewCourt.js';
 import { Goal } from '../game/renderer/Goal.js';
 import { Goalie } from '../game/renderer/Goalie.js';
 import { Hitboxes } from '../game/renderer/Hitboxes.js';
@@ -28,7 +48,7 @@ import { createGameLoop, type GameLoop, type SpeedOverrides } from '../game/loop
 import type { Scale } from '../game/coords.js';
 import { useTrainingStore } from '../stores/trainingStore.js';
 import { useAuthStore } from '../auth/authStore.js';
-import { ResultModal } from '../components/ResultModal.js';
+import { ResultModal, type ResultModalKind } from '../components/ResultModal.js';
 import { ScoreBoard } from '../components/ScoreBoard.js';
 import { SettingsSheet } from '../components/SettingsSheet.js';
 import { SpeedInput } from '../components/SpeedInput.js';
@@ -41,6 +61,59 @@ const DEFAULT_SPEEDS: SpeedOverrides = {
   goalieFreq: 0.65,
   shooterFreq: 0.8,
   puckSpeed: 1.3,
+};
+
+const PERSPECTIVE_PLAYER_OPTIONS = {
+  spriteUrls: {
+    left: '/sprites/ultimate-player-left.webp',
+    right: '/sprites/ultimate-player-right.webp',
+  },
+  shotSpriteUrls: {
+    left: '/sprites/ultimate-player-left-shoot.webp',
+    right: '/sprites/ultimate-player-right-shoot.webp',
+  },
+  spriteWidth: 112,
+  spriteAspect: 942 / 1067,
+  baseRotation: 0,
+  shotMaxRotation: 0,
+  shotDurationMs: 500,
+  visualYScale: TRAINING_NEW_COURT_VISUAL_Y_SCALE,
+  visualYOffset: TRAINING_NEW_COURT_VISUAL_Y_OFFSET,
+  shadow: true,
+};
+
+const PERSPECTIVE_GOAL_OPTIONS = {
+  spriteUrl: '/sprites/test-goal-clean.webp',
+  gateWidth: 102,
+  gateAspect: 1097 / 734,
+  visualYScale: TRAINING_NEW_COURT_VISUAL_Y_SCALE,
+  visualYOffset: TRAINING_NEW_COURT_GOAL_VISUAL_Y_OFFSET,
+  visualOffsetXScale: TRAINING_NEW_COURT_GOAL_VISUAL_OFFSET_X_SCALE,
+  spriteAnchorY: 1,
+};
+
+const PERSPECTIVE_GOALIE_OPTIONS = {
+  idleSpriteUrl: '/sprites/test-goalie-black.webp',
+  saveSpriteUrl: '/sprites/test-goalie-black-save.webp',
+  visualYScale: TRAINING_NEW_COURT_VISUAL_Y_SCALE,
+  visualYOffset: TRAINING_NEW_COURT_GOALIE_VISUAL_Y_OFFSET,
+  visualXScale: TRAINING_NEW_COURT_GOALIE_VISUAL_X_SCALE,
+  sizeScale: 1.26,
+  idleSizeScale: 1.22,
+  saveSizeScale: 0.96,
+  saveVisualYOffset: 10,
+  shadow: true,
+};
+
+const PERSPECTIVE_PUCK_OPTIONS = {
+  radiusScaleX: 1.16,
+  radiusScaleY: 0.82,
+  rotation: 0,
+  visualYScale: TRAINING_NEW_COURT_VISUAL_Y_SCALE,
+  visualYOffset: TRAINING_NEW_COURT_VISUAL_Y_OFFSET,
+  bladeOffsetX: TRAINING_NEW_COURT_PUCK_BLADE_OFFSET_X,
+  bladeOffsetY: TRAINING_NEW_COURT_PUCK_BLADE_OFFSET_Y,
+  flightVisualYOffset: TRAINING_NEW_COURT_PUCK_FLIGHT_VISUAL_Y_OFFSET,
 };
 
 function computeShooterX(t: number, freq: number): number {
@@ -72,6 +145,7 @@ export function DuelScreen(): JSX.Element {
   const refreshRef = useRef<((s: Scale) => void) | null>(null);
   const [isShowingResult, setIsShowingResult] = useState(false);
   const [resultSubText, setResultSubText] = useState<string | null>(null);
+  const [resultDisplayKind, setResultDisplayKind] = useState<ResultModalKind | null>(null);
   const [showHitboxes, setShowHitboxes] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -107,12 +181,25 @@ export function DuelScreen(): JSX.Element {
   const handleReady = useCallback((app: Application, initialScale: Scale): void => {
     scaleRef.current = initialScale;
 
-    const goal = new Goal();
-    const goalie = new Goalie();
-    const hitboxes = new Hitboxes();
+    const goal = new Goal(PERSPECTIVE_GOAL_OPTIONS);
+    const goalie = new Goalie(PERSPECTIVE_GOALIE_OPTIONS);
+    const hitboxes = new Hitboxes({
+      goalVisualYScale: PERSPECTIVE_GOAL_OPTIONS.visualYScale,
+      goalVisualYOffset: PERSPECTIVE_GOAL_OPTIONS.visualYOffset,
+      goalVisualOffsetXScale: PERSPECTIVE_GOAL_OPTIONS.visualOffsetXScale,
+      goalWidthScale: TRAINING_NEW_COURT_HITBOX_GOAL_WIDTH_SCALE,
+      goalHeightScale: TRAINING_NEW_COURT_HITBOX_GOAL_HEIGHT_SCALE,
+      goalInset: TRAINING_NEW_COURT_HITBOX_GOAL_INSET,
+      goalieVisualYScale: PERSPECTIVE_GOALIE_OPTIONS.visualYScale,
+      goalieVisualYOffset: PERSPECTIVE_GOALIE_OPTIONS.visualYOffset,
+      goalieVisualXScale: PERSPECTIVE_GOALIE_OPTIONS.visualXScale,
+      goalieWidthScale: TRAINING_NEW_COURT_HITBOX_GOALIE_WIDTH_SCALE,
+      goalieHeightScale: TRAINING_NEW_COURT_HITBOX_GOALIE_HEIGHT_SCALE,
+      goalieInset: TRAINING_NEW_COURT_HITBOX_GOALIE_INSET,
+    });
     const grip = useAuthStore.getState().user?.grip ?? 'left';
-    const puck = new Puck(grip);
-    const player = new Player(grip);
+    const puck = new Puck(grip, PERSPECTIVE_PUCK_OPTIONS);
+    const player = new Player(grip, PERSPECTIVE_PLAYER_OPTIONS);
     puckRef.current = puck;
     playerRef.current = player;
     goalRef.current = goal;
@@ -178,22 +265,29 @@ export function DuelScreen(): JSX.Element {
     const shooterTapTime = loop.getShooterT();
     const offsets = getSessionPhaseOffsets(st.seed);
     const sx = computeShooterX(shooterTapTime + offsets.shooter, overrides.shooterFreq);
-    const result: ShotResult = resolveShot(
+    const input = {
+      tapTime,
+      shooterTapTime,
+      puckSpeedPerMs: overrides.puckSpeed,
+      shooterFrequency: overrides.shooterFreq,
+      goalieFrequency: overrides.goalieFreq,
+      goalFrequency: overrides.goalFreq,
+    };
+    const result: ShotResult = resolveNewTrainingCourtShot(
       {
-        tapTime,
-        shooterTapTime,
-        puckSpeedPerMs: overrides.puckSpeed,
-        shooterFrequency: overrides.shooterFreq,
+        input,
+        goalieConfig: activeCfg,
+        seed: st.seed,
+        shotIndex: st.shotIndex,
+        stickEffects: STICK_NEUTRAL,
+        phaseOffsets: offsets,
+        shooterX: sx,
       },
-      activeCfg,
-      st.seed,
-      st.shotIndex,
-      STICK_NEUTRAL,
-      offsets,
     );
 
     // Flavor text — deterministic, mirrors resolveShot internals
     let subText: string | null = null;
+    let displayKind: ResultModalKind = result.type;
     if (result.type === 'save') {
       const tGoalieCross = tapTime + (PUCK_START.y - GOALIE_Y) / overrides.puckSpeed;
       const gs = simulateGoalie(
@@ -224,11 +318,10 @@ export function DuelScreen(): JSX.Element {
     } else if (result.type === 'miss') {
       const tGoalCross = tapTime + (PUCK_START.y - GOAL_OPENING.y) / overrides.puckSpeed;
       const goalOffsetAtGoal = simulateGoal(activeCfg, tGoalCross, offsets.goal ?? 0).offsetX;
-      const oMin = GOAL_OPENING.xMin + goalOffsetAtGoal;
-      const oMax = GOAL_OPENING.xMax + goalOffsetAtGoal;
-      const dist = Math.max(oMin - sx, sx - oMax, 0);
+      const dist = distanceToNewTrainingCourtGoalEdge(sx, goalOffsetAtGoal);
+      if (dist <= TRAINING_NEW_COURT_POST_EDGE_DISTANCE) displayKind = 'post';
       subText =
-        dist <= 3
+        displayKind === 'post'
           ? 'Штанга спасает!'
           : dist < 18
             ? 'Рядом со штангой!'
@@ -250,9 +343,9 @@ export function DuelScreen(): JSX.Element {
       loop.beginScenePause();
       puck.holdAt({ x: sx, y: result.type === 'save' ? GOAL_OPENING.y + 20 : GOAL_OPENING.y });
       if (result.type === 'save') goalie.setSavePose(true);
-      if (result.type === 'goal') goalRef.current?.triggerGoalLight();
       useTrainingStore.getState().applyResult(result);
       setResultSubText(subText);
+      setResultDisplayKind(displayKind);
       setIsShowingResult(true);
     }, flightDurationMs);
 
@@ -262,6 +355,7 @@ export function DuelScreen(): JSX.Element {
       puck.release();
       if (result.type === 'save') goalie.setSavePose(false);
       setIsShowingResult(false);
+      setResultDisplayKind(null);
     }, flightDurationMs + PAUSE_MS);
   }, [flightDurationMs]);
 
@@ -307,16 +401,16 @@ export function DuelScreen(): JSX.Element {
         <div
           style={{
             position: 'relative',
-            aspectRatio: '572 / 700',
+            aspectRatio: '1024 / 1428',
             width: '100%',
             maxHeight: '100%',
-            borderRadius: 64,
+            borderRadius: 36,
             overflow: 'hidden',
             border: '3px solid #1e3a5f',
             background: '#EAF1F8',
           }}
         >
-          <RinkSvg />
+          <PerspectiveRink />
           <div style={{ position: 'absolute', inset: 0 }}>
             <PixiStage onReady={handleReady} onResize={handleResize} />
           </div>
@@ -429,8 +523,44 @@ export function DuelScreen(): JSX.Element {
       </SettingsSheet>
 
       {isShowingResult && state.lastResult && (
-        <ResultModal result={state.lastResult} durationMs={PAUSE_MS} subText={resultSubText} />
+        <ResultModal
+          result={state.lastResult}
+          durationMs={PAUSE_MS}
+          subText={resultSubText}
+          displayKind={resultDisplayKind ?? undefined}
+        />
       )}
     </main>
+  );
+}
+
+function PerspectiveRink(): JSX.Element {
+  return (
+    <div
+      role="img"
+      aria-label="Игровая площадка в перспективе"
+      style={{
+        position: 'absolute',
+        inset: 0,
+        width: '100%',
+        height: '100%',
+        pointerEvents: 'none',
+        overflow: 'hidden',
+        background: '#dceaf5',
+      }}
+    >
+      <img
+        src={TRAINING_NEW_COURT_BACKGROUND}
+        alt=""
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: `calc(100% + ${TRAINING_NEW_COURT_BG_CROP_BOTTOM})`,
+          objectFit: 'cover',
+        }}
+      />
+    </div>
   );
 }

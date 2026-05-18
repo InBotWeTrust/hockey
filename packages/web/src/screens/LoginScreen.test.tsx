@@ -7,6 +7,15 @@ import { useAuthStore } from '../auth/authStore.js';
 
 type AuthCallback = (payload: Record<string, unknown>) => void;
 type WindowWithCallbacks = typeof window & Record<string, AuthCallback | undefined>;
+type TelegramWebAppWindow = typeof window & {
+  Telegram?: {
+    WebApp?: {
+      initData?: string;
+      ready?: () => void;
+      expand?: () => void;
+    };
+  };
+};
 
 function renderWith(): { client: QueryClient } {
   const client = new QueryClient({
@@ -30,6 +39,7 @@ describe('LoginScreen', () => {
   beforeEach(() => {
     localStorage.clear();
     useAuthStore.getState().clearSession();
+    delete (window as TelegramWebAppWindow).Telegram;
     vi.unstubAllEnvs();
     vi.stubEnv('VITE_TELEGRAM_BOT_USERNAME', 'test_bot');
     vi.restoreAllMocks();
@@ -78,6 +88,42 @@ describe('LoginScreen', () => {
     await waitFor(() => {
       expect(screen.getByText('home')).toBeInTheDocument();
     });
+  });
+
+  it('automatically logs in with Telegram Mini App initData', async () => {
+    const ready = vi.fn();
+    const expand = vi.fn();
+    (window as TelegramWebAppWindow).Telegram = {
+      WebApp: {
+        initData: 'query_id=q&user=%7B%22id%22%3A42%7D&auth_date=1&hash=h',
+        ready,
+        expand,
+      },
+    };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          accessToken: 'mini-access',
+          refreshToken: 'mini-refresh',
+          user: { id: 'u-mini', displayName: 'Mini Player' },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+
+    renderWith();
+
+    await waitFor(() => expect(useAuthStore.getState().accessToken).toBe('mini-access'));
+    expect(fetchSpy).toHaveBeenCalledWith(
+      '/api/auth/telegram-mini-app',
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('query_id=q'),
+      }),
+    );
+    expect(ready).toHaveBeenCalled();
+    expect(expand).toHaveBeenCalled();
+    expect(screen.getByText('home')).toBeInTheDocument();
   });
 
   it('shows an error message on failed login', async () => {

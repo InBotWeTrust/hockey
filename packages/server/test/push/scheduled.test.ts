@@ -187,6 +187,17 @@ describe.skipIf(!hasIntegrationEnv)('scheduled push delivery', () => {
   });
 
   it('sends daily unlock after the training cooldown expires', async () => {
+    await pool.query(
+      `insert into game_settings (key, value, label, description)
+       values (
+         'training.daily_cooldown_minutes',
+         to_jsonb(30),
+         'Блокировка дневной игры',
+         'test'
+       )
+       on conflict (key) do update set value = excluded.value`,
+    );
+
     const userId = await createUser(pool, 'Training cooldown player');
     await pool.query(
       `insert into user_push_preferences (user_id, training_available)
@@ -194,13 +205,13 @@ describe.skipIf(!hasIntegrationEnv)('scheduled push delivery', () => {
       [userId],
     );
     await addSubscription(pool, userId, 'https://push.example.test/send/daily-unlock');
-    await addTrainingShot(pool, userId, new Date('2026-05-04T05:30:00.000Z'));
+    await addTrainingShot(pool, userId, new Date('2026-05-04T04:30:00.000Z'));
     const fetchMock = vi.fn(async () => new Response('', { status: 201 }));
     vi.stubGlobal('fetch', fetchMock);
 
     const result = await runScheduledPushes(pool, {
       ...vapid,
-      now: new Date('2026-05-04T07:30:00.000Z'),
+      now: new Date('2026-05-04T05:00:00.000Z'),
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);

@@ -27,6 +27,11 @@ interface MediaObjectRow {
   created_at: Date;
 }
 
+interface ByteRange {
+  start: number;
+  end: number;
+}
+
 const uuid = z.string().uuid();
 const MB = 1024 * 1024;
 const avatarContentTypes = new Set(['image/webp']);
@@ -78,6 +83,37 @@ function chatUploadLimit(contentType: string): number {
   if (kind === 'image') return mediaLimits.chatImageBytes;
   if (kind === 'voice') return mediaLimits.chatVoiceBytes;
   return mediaLimits.chatFileBytes;
+}
+
+function parseByteRange(value: string | string[] | undefined, size: number): ByteRange | null {
+  const header = readHeader(value);
+  if (header === undefined || header.trim().length === 0) return null;
+  const match = /^bytes=(\d*)-(\d*)$/i.exec(header.trim());
+  if (match === null) return null;
+
+  const rawStart = match[1] ?? '';
+  const rawEnd = match[2] ?? '';
+  if (rawStart.length === 0 && rawEnd.length === 0) return null;
+
+  if (rawStart.length === 0) {
+    const suffixLength = Number(rawEnd);
+    if (!Number.isInteger(suffixLength) || suffixLength <= 0) return null;
+    const start = Math.max(0, size - suffixLength);
+    return { start, end: size - 1 };
+  }
+
+  const start = Number(rawStart);
+  const end = rawEnd.length > 0 ? Number(rawEnd) : size - 1;
+  if (
+    !Number.isInteger(start) ||
+    !Number.isInteger(end) ||
+    start < 0 ||
+    end < start ||
+    start >= size
+  ) {
+    return null;
+  }
+  return { start, end: Math.min(end, size - 1) };
 }
 
 function mapMedia(row: MediaObjectRow, mediaAccessSecret: string) {
@@ -223,11 +259,29 @@ export const mediaRoutes: FastifyPluginAsync<MediaRoutesOptions> = async (app, o
     }
 
     const filename = encodeURIComponent(row.original_name || 'media');
+    const contentType = row.content_type || object.contentType;
+    const range = parseByteRange(req.headers.range, object.body.byteLength);
     reply
       .header('Cache-Control', 'private, max-age=86400')
-      .header('Content-Length', String(object.body.byteLength))
+      .header('Accept-Ranges', 'bytes')
       .header('Content-Disposition', `inline; filename*=UTF-8''${filename}`)
-      .type(row.content_type || object.contentType);
+      .type(contentType);
+
+    if (req.headers.range !== undefined && range === null) {
+      reply.header('Content-Range', `bytes */${object.body.byteLength}`).code(416);
+      return Buffer.alloc(0);
+    }
+
+    if (range !== null) {
+      const chunk = object.body.subarray(range.start, range.end + 1);
+      reply
+        .code(206)
+        .header('Content-Length', String(chunk.byteLength))
+        .header('Content-Range', `bytes ${range.start}-${range.end}/${object.body.byteLength}`);
+      return chunk;
+    }
+
+    reply.header('Content-Length', String(object.body.byteLength));
     return object.body;
   });
 

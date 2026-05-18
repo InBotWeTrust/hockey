@@ -15,6 +15,7 @@ import {
   type PushSubscriptionPayload,
 } from '../api/push.js';
 import { useAuthStore } from '../auth/authStore.js';
+import { getTelegramMiniApp } from '../auth/telegramMiniApp.js';
 import type { ProfileAchievement, ProfileData } from './profileTypes.js';
 import {
   AchievementDetailsSheet,
@@ -497,6 +498,7 @@ export function ProfileScreen(): JSX.Element {
   const [pendingPreference, setPendingPreference] = useState<PushPreferenceKey | null>(null);
   const [pushPreferencesOpen, setPushPreferencesOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const isTelegramMiniApp = getTelegramMiniApp() !== null;
 
   const { data, isLoading } = useQuery<ProfileData>({
     queryKey: ['profile'],
@@ -506,13 +508,13 @@ export function ProfileScreen(): JSX.Element {
   const { data: pushConfig, isLoading: isPushConfigLoading } = useQuery<PushConfig>({
     queryKey: ['push', 'config'],
     queryFn: fetchPushConfig,
-    enabled: data !== undefined,
+    enabled: data !== undefined && !isTelegramMiniApp,
   });
 
   const { data: pushPreferences } = useQuery<PushPreferences>({
     queryKey: PUSH_PREFERENCES_QUERY_KEY,
     queryFn: fetchPushPreferences,
-    enabled: data !== undefined,
+    enabled: data !== undefined && !isTelegramMiniApp,
   });
 
   useEffect(() => {
@@ -529,6 +531,7 @@ export function ProfileScreen(): JSX.Element {
   }, [data, updateUser]);
 
   useEffect(() => {
+    if (isTelegramMiniApp) return;
     if (!data) return;
 
     if (!supportsPushNotifications()) {
@@ -564,7 +567,7 @@ export function ProfileScreen(): JSX.Element {
     return () => {
       disposed = true;
     };
-  }, [data]);
+  }, [data, isTelegramMiniApp]);
 
   async function handleSubscribePush(): Promise<void> {
     if (!supportsPushNotifications()) {
@@ -841,127 +844,133 @@ export function ProfileScreen(): JSX.Element {
         }}
       />
 
-      <div className="section-label" style={{ marginBottom: 8 }}>
-        Уведомления
-      </div>
-      <div
-        className="glass"
-        style={{
-          margin: '0 14px 14px',
-          padding: 16,
-          borderRadius: 22,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 12,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-          <ProfileSectionIcon>
-            <Bell size={20} />
-          </ProfileSectionIcon>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--ink)' }}>
-              Пуш-уведомления
-            </div>
-            <div
-              role="status"
-              aria-live="polite"
-              style={{
-                marginTop: 3,
-                minHeight: 18,
-                fontSize: 12,
-                fontWeight: 700,
-                color:
-                  pushStatus === 'error' || pushStatus === 'denied' ? '#b42318' : 'var(--muted)',
-              }}
-            >
-              {pushStatusMessage}
-            </div>
+      {!isTelegramMiniApp && (
+        <>
+          <div className="section-label" style={{ marginBottom: 8 }}>
+            Уведомления
           </div>
-          <button
-            type="button"
-            className="btn btn--cta"
-            data-no-drag-scroll="true"
-            aria-label={pushButtonLabel}
-            disabled={pushButtonDisabled}
-            onClick={() =>
-              void (isPushSubscribed ? handleUnsubscribePush() : handleSubscribePush())
-            }
+          <div
+            className="glass"
             style={{
-              minHeight: 42,
-              padding: '0 14px',
-              borderRadius: 14,
-              fontSize: 12,
-              letterSpacing: 0,
-              flexShrink: 0,
+              margin: '0 14px 14px',
+              padding: 16,
+              borderRadius: 22,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
             }}
           >
-            {isPushSubscribed ? 'Выключить' : 'Включить'}
-          </button>
-        </div>
-
-        {pushPreferences ? (
-          <>
-            <button
-              type="button"
-              data-no-drag-scroll="true"
-              aria-expanded={pushPreferencesOpen}
-              onClick={() => setPushPreferencesOpen((value) => !value)}
-              style={{
-                width: '100%',
-                minHeight: 46,
-                padding: '0 12px',
-                border: '1px solid rgba(255,255,255,0.7)',
-                borderRadius: 16,
-                background: 'rgba(255, 255, 255, 0.34)',
-                color: 'var(--ink)',
-                outline: 'none',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 10,
-                cursor: 'pointer',
-                fontSize: 14,
-                fontWeight: 800,
-                WebkitTapHighlightColor: 'transparent',
-              }}
-            >
-              Настройки уведомлений
-              <ChevronDown
-                size={18}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+              <ProfileSectionIcon>
+                <Bell size={20} />
+              </ProfileSectionIcon>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--ink)' }}>
+                  Пуш-уведомления
+                </div>
+                <div
+                  role="status"
+                  aria-live="polite"
+                  style={{
+                    marginTop: 3,
+                    minHeight: 18,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color:
+                      pushStatus === 'error' || pushStatus === 'denied'
+                        ? '#b42318'
+                        : 'var(--muted)',
+                  }}
+                >
+                  {pushStatusMessage}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn btn--cta"
+                data-no-drag-scroll="true"
+                aria-label={pushButtonLabel}
+                disabled={pushButtonDisabled}
+                onClick={() =>
+                  void (isPushSubscribed ? handleUnsubscribePush() : handleSubscribePush())
+                }
                 style={{
-                  transform: pushPreferencesOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-                  transition: 'transform 0.15s',
+                  minHeight: 42,
+                  padding: '0 14px',
+                  borderRadius: 14,
+                  fontSize: 12,
+                  letterSpacing: 0,
                   flexShrink: 0,
                 }}
-              />
-            </button>
-            {pushPreferencesOpen ? (
-              <div
-                role="group"
-                aria-label="Категории уведомлений"
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 8,
-                  paddingTop: 2,
-                }}
               >
-                {PUSH_PREFERENCE_ITEMS.map((item) => (
-                  <PushPreferenceToggle
-                    key={item.key}
-                    label={item.label}
-                    hint={item.hint}
-                    checked={pushPreferences[item.key]}
-                    disabled={pendingPreference !== null}
-                    onToggle={() => void handleTogglePushPreference(item.key)}
+                {isPushSubscribed ? 'Выключить' : 'Включить'}
+              </button>
+            </div>
+
+            {pushPreferences ? (
+              <>
+                <button
+                  type="button"
+                  data-no-drag-scroll="true"
+                  aria-expanded={pushPreferencesOpen}
+                  onClick={() => setPushPreferencesOpen((value) => !value)}
+                  style={{
+                    width: '100%',
+                    minHeight: 46,
+                    padding: '0 12px',
+                    border: '1px solid rgba(255,255,255,0.7)',
+                    borderRadius: 16,
+                    background: 'rgba(255, 255, 255, 0.34)',
+                    color: 'var(--ink)',
+                    outline: 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 10,
+                    cursor: 'pointer',
+                    fontSize: 14,
+                    fontWeight: 800,
+                    WebkitTapHighlightColor: 'transparent',
+                  }}
+                >
+                  Настройки уведомлений
+                  <ChevronDown
+                    size={18}
+                    style={{
+                      transform: pushPreferencesOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                      transition: 'transform 0.15s',
+                      flexShrink: 0,
+                    }}
                   />
-                ))}
-              </div>
+                </button>
+                {pushPreferencesOpen ? (
+                  <div
+                    role="group"
+                    aria-label="Категории уведомлений"
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 8,
+                      paddingTop: 2,
+                    }}
+                  >
+                    {PUSH_PREFERENCE_ITEMS.map((item) => (
+                      <PushPreferenceToggle
+                        key={item.key}
+                        label={item.label}
+                        hint={item.hint}
+                        checked={pushPreferences[item.key]}
+                        disabled={pendingPreference !== null}
+                        onToggle={() => void handleTogglePushPreference(item.key)}
+                      />
+                    ))}
+                  </div>
+                ) : null}
+              </>
             ) : null}
-          </>
-        ) : null}
-      </div>
+          </div>
+        </>
+      )}
       <div className="section-label" style={{ marginBottom: 8 }}>
         Обратная связь
       </div>

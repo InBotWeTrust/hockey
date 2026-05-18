@@ -358,6 +358,7 @@ interface AdminFeedbackRatingStatsRow {
 interface AdminChannelRow {
   id: string;
   name: string | null;
+  description: string | null;
   channel_slug: string | null;
   avatar_url: string | null;
   created_at: Date;
@@ -585,6 +586,14 @@ const channelPostPatchSchema = z
     content: z.string().trim().min(1).max(4000),
   })
   .strict();
+
+const chatProfilePatchSchema = z
+  .object({
+    name: z.string().trim().min(1).max(120).optional(),
+    description: z.string().trim().max(1000).optional(),
+  })
+  .strict()
+  .refine((value) => value.name !== undefined || value.description !== undefined, 'no changes');
 
 async function withTransaction<T>(
   app: { pg: { connect: () => Promise<PoolClient> } },
@@ -1659,7 +1668,13 @@ async function fetchAdminUser(client: Pool | PoolClient, userId: string): Promis
             end as accuracy,
             case
               when u.level >= 3 then 'professional'
-              when u.level >= 2 or u.lifetime_goals_total >= 1000 then 'amateur'
+              when u.level >= 2
+                or u.lifetime_goals_total >= coalesce(
+                  (select (value #>> '{}')::int
+                     from game_settings
+                    where key = 'amateur.unlock_goals_required'),
+                  1000
+                ) then 'amateur'
               else 'beginner'
             end as competition_level,
             tg.provider_uid as tg_id,
@@ -1964,7 +1979,7 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
     const interval = channelPeriodInterval(parsed.data.period);
 
     const channel = await app.pg.query<AdminChannelRow>(
-      `select id, name, channel_slug, avatar_url, created_at
+      `select id, name, description, channel_slug, avatar_url, created_at
          from chats
         where type = 'channel'
           and channel_slug = $1
@@ -1974,10 +1989,9 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
     );
     const channelRow = channel.rows[0] ?? null;
     const mainChat = await app.pg.query<AdminChannelRow>(
-      `select id, name, channel_slug, avatar_url, created_at
-         from chats
-        where type = 'system'
-          and name = 'Общий чат'
+      `select id, name, description, channel_slug, avatar_url, created_at
+        from chats
+       where type = 'system'
           and is_active = true
         order by created_at asc
         limit 1`,
@@ -1992,6 +2006,7 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
             : {
                 id: mainChatRow.id,
                 name: mainChatRow.name,
+                description: mainChatRow.description,
                 avatarUrl: mainChatRow.avatar_url,
                 createdAt: mainChatRow.created_at.toISOString(),
               },
@@ -2224,6 +2239,7 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
       channel: {
         id: channelRow.id,
         name: channelRow.name,
+        description: channelRow.description,
         slug: channelRow.channel_slug,
         avatarUrl: channelRow.avatar_url,
         createdAt: channelRow.created_at.toISOString(),
@@ -2234,6 +2250,7 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
           : {
               id: mainChatRow.id,
               name: mainChatRow.name,
+              description: mainChatRow.description,
               avatarUrl: mainChatRow.avatar_url,
               createdAt: mainChatRow.created_at.toISOString(),
             },
@@ -2270,6 +2287,50 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
     };
   });
 
+  app.patch('/admin/chats/:chatId/profile', { preHandler: adminPreHandlers }, async (req) => {
+    const { chatId } = z.object({ chatId: z.string().uuid() }).parse(req.params);
+    const body = chatProfilePatchSchema.safeParse(req.body);
+    if (!body.success) {
+      throw new AppError('bad_request', 'invalid chat profile patch', 400);
+    }
+    const assignments: string[] = [];
+    const values: unknown[] = [];
+    if (body.data.name !== undefined) addAssignment(assignments, values, 'name', body.data.name);
+    if (body.data.description !== undefined) {
+      addAssignment(assignments, values, 'description', body.data.description);
+    }
+    values.push(chatId, DEFAULT_NEWS_CHANNEL_SLUG);
+    const { rows } = await app.pg.query<AdminChannelRow>(
+      `update chats
+          set ${assignments.join(', ')},
+              updated_at = now()
+        where id = $${values.length - 1}
+          and is_active = true
+          and (
+            (type = 'channel' and channel_slug = $${values.length})
+            or type = 'system'
+          )
+        returning id, name, description, channel_slug, avatar_url, created_at`,
+      values,
+    );
+    const chat = rows[0];
+    if (!chat) throw new AppError('not_found', 'chat not found', 404);
+    await appendEvent(app.pg, req.user.id, 'admin_chat_profile_updated', {
+      chat_id: chatId,
+      fields: Object.keys(body.data),
+    });
+    return {
+      chat: {
+        id: chat.id,
+        name: chat.name,
+        description: chat.description,
+        slug: chat.channel_slug,
+        avatarUrl: chat.avatar_url,
+        createdAt: chat.created_at.toISOString(),
+      },
+    };
+  });
+
   app.post('/admin/chats/:chatId/avatar', { preHandler: adminPreHandlers }, async (req) => {
     if (opts.objectStorage === undefined) {
       throw new AppError('storage_not_configured', 'object storage is not configured', 503);
@@ -2282,7 +2343,7 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
           and is_active = true
           and (
             (type = 'channel' and channel_slug = $2)
-            or (type = 'system' and name = 'Общий чат')
+            or type = 'system'
           )
         limit 1`,
       [chatId, DEFAULT_NEWS_CHANNEL_SLUG],
@@ -2345,7 +2406,7 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
           and is_active = true
           and (
             (type = 'channel' and channel_slug = $2)
-            or (type = 'system' and name = 'Общий чат')
+            or type = 'system'
           )
         returning id`,
       [chatId, DEFAULT_NEWS_CHANNEL_SLUG],
@@ -2752,7 +2813,13 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
                       end as accuracy,
                       case
                         when u.level >= 3 then 'professional'
-                        when u.level >= 2 or u.lifetime_goals_total >= 1000 then 'amateur'
+                        when u.level >= 2
+                          or u.lifetime_goals_total >= coalesce(
+                            (select (value #>> '{}')::int
+                               from game_settings
+                              where key = 'amateur.unlock_goals_required'),
+                            1000
+                          ) then 'amateur'
                         else 'beginner'
                       end as competition_level,
                       tg.provider_uid as tg_id,

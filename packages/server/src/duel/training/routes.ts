@@ -6,7 +6,7 @@ import {
   STICK_NEUTRAL,
   getGoalie,
   getSessionPhaseOffsets,
-  resolveShot,
+  resolvePerspectiveCourtShot,
   type DailyPeriodSpeedPreset,
 } from '@hockey/game-core';
 import { grantAchievements } from '../../achievements/service.js';
@@ -381,7 +381,7 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
         goalieFrequency: periodSpeeds.goalieFrequency,
         goalFrequency: periodSpeeds.goalFrequency,
       };
-      const result = resolveShot(
+      const result = resolvePerspectiveCourtShot(
         shotInput,
         getGoalie(settings.training.goalieId),
         shotSeed,

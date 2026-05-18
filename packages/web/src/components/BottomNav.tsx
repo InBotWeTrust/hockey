@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Gamepad2, MessageCircle, Package, ShieldCheck, Trophy, User } from 'lucide-react';
+import { Gamepad2, MessageCircle, Package, ShieldCheck, User } from 'lucide-react';
 import { apiFetch } from '../api/apiFetch.js';
 import { useAuthStore } from '../auth/authStore.js';
 import type { AuthUser } from '../auth/authStore.js';
@@ -14,8 +14,9 @@ export const NAV_HEIGHT = 68;
 const ICON_SIZE = 22;
 const LAST_GAME_ROUTE_KEY = 'hockey.nav.lastGameRoute';
 const LAST_CHAT_ROUTE_KEY = 'hockey.nav.lastChatRoute';
-const DEFAULT_GAME_ROUTE = '/?view=hub';
+const DEFAULT_GAME_ROUTE = '/?view=arena';
 const DEFAULT_CHAT_ROUTE = '/chat';
+export const ADMIN_NAV_HOME_EVENT = 'hockey:admin-nav-home';
 
 function routeFromLocation(location: ReturnType<typeof useLocation>): string {
   return `${location.pathname}${location.search}${location.hash}`;
@@ -27,6 +28,18 @@ function isGameRoute(pathname: string): boolean {
 
 function isChatRoute(pathname: string): boolean {
   return pathname.startsWith('/chat');
+}
+
+function isSectionContext(location: ReturnType<typeof useLocation>): boolean {
+  if (location.pathname.startsWith('/sections') || location.pathname.startsWith('/inventory')) {
+    return true;
+  }
+  if (location.pathname !== '/') return false;
+  const params = new URLSearchParams(location.search);
+  if (params.get('from') !== 'sections') return false;
+  if (params.get('play') === '1' || params.has('match')) return false;
+  const view = params.get('view');
+  return view === 'training' || view === 'amateur' || view === 'pro';
 }
 
 function readRememberedRoute(key: string, fallback: string): string {
@@ -57,9 +70,6 @@ export function BottomNav(): JSX.Element | null {
   const location = useLocation();
   const navigate = useNavigate();
   const isDemo = location.pathname === '/demo';
-  const [toast, setToast] = useState<string | null>(null);
-  const toastTimerRef = useRef<number | null>(null);
-  const lastGameRouteRef = useRef(readRememberedRoute(LAST_GAME_ROUTE_KEY, DEFAULT_GAME_ROUTE));
   const lastChatRouteRef = useRef(readRememberedRoute(LAST_CHAT_ROUTE_KEY, DEFAULT_CHAT_ROUTE));
 
   const totalUnread = useChatStore((s) => s.totalUnread());
@@ -95,60 +105,54 @@ export function BottomNav(): JSX.Element | null {
     }
   }, [refreshedUser, updateUser]);
 
-  useEffect(
-    () => () => {
-      if (toastTimerRef.current !== null) {
-        window.clearTimeout(toastTimerRef.current);
-      }
-    },
-    [],
-  );
-
   useEffect(() => {
     if (isDemo) return;
     const route = routeFromLocation(location);
-    if (isGameRoute(location.pathname)) {
-      lastGameRouteRef.current = route;
-      rememberRoute(LAST_GAME_ROUTE_KEY, route);
-    }
+    if (isGameRoute(location.pathname)) rememberRoute(LAST_GAME_ROUTE_KEY, DEFAULT_GAME_ROUTE);
     if (isChatRoute(location.pathname)) {
       lastChatRouteRef.current = route;
       rememberRoute(LAST_CHAT_ROUTE_KEY, route);
     }
   }, [isDemo, location]);
 
-  function showToast(label: string): void {
-    setToast(label);
-    if (toastTimerRef.current !== null) {
-      window.clearTimeout(toastTimerRef.current);
-    }
-    toastTimerRef.current = window.setTimeout(() => {
-      setToast(null);
-      toastTimerRef.current = null;
-    }, 1800);
-  }
-
   // Hide nav inside a chat room — composer takes the nav's spot.
   if (!isBottomNavVisible(location.pathname, user)) {
     return null;
   }
 
-  const isGame = isDemo || isGameRoute(location.pathname);
-  const isInventory = location.pathname.startsWith('/inventory');
+  const isSections = isSectionContext(location);
+  const isGame = isDemo || (isGameRoute(location.pathname) && !isSections);
   const isProfile = location.pathname.startsWith('/profile');
   const isAdmin = location.pathname.startsWith('/admin');
   const isChat = !isDemo && isChatRoute(location.pathname);
   const showAdmin = !isDemo && user?.role === 'admin';
   const inactiveIconColor = isDemo ? 'rgba(71, 85, 105, 0.48)' : 'var(--muted)';
   const openLastGameRoute = (): void => {
-    navigate(
-      lastGameRouteRef.current || readRememberedRoute(LAST_GAME_ROUTE_KEY, DEFAULT_GAME_ROUTE),
-    );
+    rememberRoute(LAST_GAME_ROUTE_KEY, DEFAULT_GAME_ROUTE);
+    navigate(DEFAULT_GAME_ROUTE);
   };
   const openLastChatRoute = (): void => {
+    if (isChat) {
+      lastChatRouteRef.current = DEFAULT_CHAT_ROUTE;
+      rememberRoute(LAST_CHAT_ROUTE_KEY, DEFAULT_CHAT_ROUTE);
+      navigate(DEFAULT_CHAT_ROUTE);
+      return;
+    }
     navigate(
       lastChatRouteRef.current || readRememberedRoute(LAST_CHAT_ROUTE_KEY, DEFAULT_CHAT_ROUTE),
     );
+  };
+  const openProfileRoute = (): void => {
+    navigate('/profile');
+  };
+  const openSectionsRoute = (): void => {
+    navigate('/sections');
+  };
+  const openAdminRoute = (): void => {
+    if (isAdmin) {
+      window.dispatchEvent(new Event(ADMIN_NAV_HOME_EVENT));
+    }
+    navigate('/admin');
   };
 
   return (
@@ -175,7 +179,7 @@ export function BottomNav(): JSX.Element | null {
           height: 54,
           borderRadius: 999,
           display: 'grid',
-          gridTemplateColumns: `repeat(${showAdmin ? 6 : 5}, 1fr)`,
+          gridTemplateColumns: `repeat(${showAdmin ? 5 : 4}, 1fr)`,
           alignItems: 'center',
           padding: '0 6px',
           zIndex: 500,
@@ -196,24 +200,17 @@ export function BottomNav(): JSX.Element | null {
           onClick={openLastGameRoute}
         />
         <NavTab
-          label="Инвентарь"
+          label="Разделы"
           disabled={isDemo}
-          active={isInventory}
+          active={isSections}
           icon={
             <Package
               size={ICON_SIZE}
-              color={isInventory ? '#ffffff' : inactiveIconColor}
+              color={isSections ? '#ffffff' : inactiveIconColor}
               strokeWidth={2}
             />
           }
-          onClick={() => navigate('/inventory')}
-        />
-        <NavTab
-          label="Рейтинг"
-          disabled={isDemo}
-          active={false}
-          icon={<Trophy size={ICON_SIZE} color={inactiveIconColor} strokeWidth={2} />}
-          onClick={() => showToast('Рейтинг — в разработке')}
+          onClick={openSectionsRoute}
         />
         <NavTab
           label="Чат"
@@ -265,7 +262,7 @@ export function BottomNav(): JSX.Element | null {
               strokeWidth={2}
             />
           }
-          onClick={() => navigate('/profile')}
+          onClick={openProfileRoute}
         />
         {showAdmin && (
           <NavTab
@@ -278,44 +275,11 @@ export function BottomNav(): JSX.Element | null {
                 strokeWidth={2}
               />
             }
-            onClick={() => navigate('/admin')}
+            onClick={openAdminRoute}
           />
         )}
       </nav>
 
-      {toast !== null && (
-        <>
-          <style>{`
-            @keyframes nav-toast-in {
-              from { opacity: 0; transform: translate(-50%, 8px); }
-              to   { opacity: 1; transform: translate(-50%, 0); }
-            }
-          `}</style>
-          <div
-            role="status"
-            aria-live="polite"
-            style={{
-              position: 'fixed',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              bottom: 'calc(66px + var(--bottom-nav-bottom-gap))',
-              padding: '10px 18px',
-              borderRadius: 999,
-              background: 'rgba(15, 23, 42, 0.92)',
-              color: '#ffffff',
-              fontSize: 13,
-              fontWeight: 600,
-              boxShadow: '0 12px 30px rgba(15, 23, 42, 0.35)',
-              zIndex: 600,
-              pointerEvents: 'none',
-              animation: 'nav-toast-in 180ms ease-out',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {toast}
-          </div>
-        </>
-      )}
     </div>
   );
 }

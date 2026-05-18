@@ -1,6 +1,6 @@
 import type { Pool, PoolClient } from 'pg';
 import { getGameSettings } from '../duel/gameSettings.js';
-import { TRAINING_TO_DAILY_COOLDOWN_MS } from '../duel/trainingCooldown.js';
+import { trainingDailyCooldownMs } from '../duel/trainingCooldown.js';
 import type { PushEventType } from './preferences.js';
 import { enqueuePushDelivery, processPushDeliveryQueue } from './queue.js';
 import { resolvePushVapidOptions, type PushVapidOptions, type WebPushPayload } from './service.js';
@@ -151,6 +151,7 @@ async function fetchDailyAvailableRows(
   pool: Queryable,
   now: Date,
   localHour: number,
+  trainingCooldownMs: number,
 ): Promise<ScheduledPushSubscriptionRow[]> {
   const { rows } = await pool.query<ScheduledPushSubscriptionRow>(
     `with candidates as (
@@ -202,7 +203,7 @@ async function fetchDailyAvailableRows(
              and pdl.event_key like 'daily-training-unlock:' || c.local_date || ':%'
         )
       order by ps.user_id, ps.updated_at desc`,
-    [now.toISOString(), localHour, TRAINING_TO_DAILY_COOLDOWN_MS],
+    [now.toISOString(), localHour, trainingCooldownMs],
   );
   return rows;
 }
@@ -467,12 +468,18 @@ async function schedulePushDeliveries(
     options.trainingAvailableLocalHour ?? TRAINING_AVAILABLE_LOCAL_HOUR;
   const periodEndingLeadMs = options.dailyPeriodEndingLeadMs ?? DAILY_PERIOD_ENDING_LEAD_MS;
   const lateWindowMs = options.lateWindowMs ?? SCHEDULED_PUSH_LATE_WINDOW_MS;
+  const trainingCooldownMs = trainingDailyCooldownMs(settings.training.dailyCooldownMinutes);
 
-  const dailyAvailableRows = await fetchDailyAvailableRows(client, now, dailyAvailableHour);
+  const dailyAvailableRows = await fetchDailyAvailableRows(
+    client,
+    now,
+    dailyAvailableHour,
+    trainingCooldownMs,
+  );
   const dailyUnlockedAfterTrainingRows = await fetchDailyUnlockedAfterTrainingRows(
     client,
     now,
-    TRAINING_TO_DAILY_COOLDOWN_MS,
+    trainingCooldownMs,
     lateWindowMs,
   );
   const periodEndingRows = await fetchDailyPeriodEndingRows(

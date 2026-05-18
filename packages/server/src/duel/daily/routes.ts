@@ -6,14 +6,18 @@ import {
   STICK_NEUTRAL,
   getGoalie,
   getSessionPhaseOffsets,
-  resolveShot,
+  resolvePerspectiveCourtShot,
   type DailyPeriodSpeedPreset,
 } from '@hockey/game-core';
 import { grantAchievements } from '../../achievements/service.js';
 import { AppError } from '../../plugins/errors.js';
 import { appendEvent } from '../eventLog.js';
 import { deriveDailySeed, deriveShotSeed } from '../seed.js';
-import { assertTrainingCooldownExpired, fetchTrainingCooldownEndsAt } from '../trainingCooldown.js';
+import {
+  assertTrainingCooldownExpired,
+  fetchTrainingCooldownEndsAt,
+  trainingDailyCooldownMs,
+} from '../trainingCooldown.js';
 import { reconcileDayPool, type DayPoolRow } from './reconcile.js';
 import {
   getConfiguredDailyPeriodSpeedPreset,
@@ -64,6 +68,7 @@ interface DailyStateResponse {
   daily_total_goals: number;
   lifetime_total_shots: number;
   lifetime_total_goals: number;
+  amateur_unlock_goals_required: number;
   period_started_at: string | null;
   period_ends_at: string | null;
   break_ends_at: string | null;
@@ -219,7 +224,12 @@ async function buildState(
 ): Promise<DailyStateResponse> {
   const timezone = await fetchUserTimezone(client, userId);
   const nextDay = await nextDayStartsAt(client, localToday, timezone);
-  const trainingCooldownEndsAt = await fetchTrainingCooldownEndsAt(client, userId, now);
+  const trainingCooldownEndsAt = await fetchTrainingCooldownEndsAt(
+    client,
+    userId,
+    now,
+    trainingDailyCooldownMs(settings.training.dailyCooldownMinutes),
+  );
   const trainingCooldownEndsAtIso = trainingCooldownEndsAt?.toISOString() ?? null;
   const previousGame = await fetchPreviousGameStats(client, userId);
 
@@ -234,6 +244,7 @@ async function buildState(
       daily_total_goals: 0,
       lifetime_total_shots: lifetime.shots,
       lifetime_total_goals: lifetime.goals,
+      amateur_unlock_goals_required: settings.amateur.unlockGoalsRequired,
       period_started_at: null,
       period_ends_at: null,
       break_ends_at: null,
@@ -286,6 +297,7 @@ async function buildState(
     daily_total_goals: archived.goals + currentGoals,
     lifetime_total_shots: lifetimeStored.shots + currentShots,
     lifetime_total_goals: lifetimeStored.goals + currentGoals,
+    amateur_unlock_goals_required: settings.amateur.unlockGoalsRequired,
     period_started_at: periodStartedAt,
     period_ends_at: periodEndsAt,
     break_ends_at: breakEndsAt,
@@ -368,7 +380,12 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
       );
       const isFirstDailyPeriod = pool === null || pool.current_period === 0;
       if (isFirstDailyPeriod) {
-        await assertTrainingCooldownExpired(client, req.user.id, now);
+        await assertTrainingCooldownExpired(
+          client,
+          req.user.id,
+          now,
+          trainingDailyCooldownMs(settings.training.dailyCooldownMinutes),
+        );
       }
 
       if (pool !== null) {
@@ -460,7 +477,7 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
         goalieFrequency: periodSpeeds.goalieFrequency,
         goalFrequency: periodSpeeds.goalFrequency,
       };
-      const result = resolveShot(
+      const result = resolvePerspectiveCourtShot(
         shotInput,
         goalieCfg,
         shotSeed,

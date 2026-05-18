@@ -12,6 +12,24 @@ export { simulateShooter } from './shooter/simulate.js';
 export type { ShotInput, ShotResult, StickEffects } from './shot/types.js';
 export { STICK_NEUTRAL, PUCK_SPEED_PER_MS } from './shot/types.js';
 export { resolveShot, GOAL_HITBOX_MARGIN, GOALIE_HITBOX_EXPAND } from './shot/resolve.js';
+export {
+  PERSPECTIVE_COURT_GOALIE_VISUAL_X_SCALE,
+  PERSPECTIVE_COURT_GOALIE_VISUAL_Y_OFFSET,
+  PERSPECTIVE_COURT_GOAL_VISUAL_OFFSET_X_SCALE,
+  PERSPECTIVE_COURT_GOAL_VISUAL_Y_OFFSET,
+  PERSPECTIVE_COURT_HITBOX_GOALIE_HEIGHT_SCALE,
+  PERSPECTIVE_COURT_HITBOX_GOALIE_INSET,
+  PERSPECTIVE_COURT_HITBOX_GOALIE_WIDTH_SCALE,
+  PERSPECTIVE_COURT_HITBOX_GOAL_HEIGHT_SCALE,
+  PERSPECTIVE_COURT_HITBOX_GOAL_INSET,
+  PERSPECTIVE_COURT_HITBOX_GOAL_WIDTH_SCALE,
+  PERSPECTIVE_COURT_PUCK_BLADE_OFFSET_X,
+  PERSPECTIVE_COURT_PUCK_BLADE_OFFSET_Y,
+  PERSPECTIVE_COURT_PUCK_FLIGHT_VISUAL_Y_OFFSET,
+  PERSPECTIVE_COURT_VISUAL_Y_OFFSET,
+  PERSPECTIVE_COURT_VISUAL_Y_SCALE,
+  resolvePerspectiveCourtShot,
+} from './court/perspective.js';
 export { GOALIES, getGoalie } from './balance/goalies.js';
 export { STICKS, getStick, TRAINING_STICK_ID, type Stick, type StickRarity } from './balance/sticks.js';
 export { calcShotReward } from './balance/rewards.js';

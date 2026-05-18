@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { TelegramLoginButton, type TelegramAuthPayload } from '../auth/TelegramLoginButton.js';
@@ -6,15 +6,18 @@ import { apiFetch, ApiError } from '../api/apiFetch.js';
 import { useAuthStore, type AuthSession } from '../auth/authStore.js';
 import { startVkOAuth } from '../auth/vkAuth.js';
 import { detectTimezone } from '../auth/timezone.js';
+import { useTelegramMiniAppAuth } from '../auth/useTelegramMiniAppAuth.js';
 
 export function LoginScreen(): JSX.Element {
   const navigate = useNavigate();
   const setSession = useAuthStore((s) => s.setSession);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const botUsername = import.meta.env.VITE_TELEGRAM_BOT_USERNAME ?? '';
   const [devError, setDevError] = useState<string | null>(null);
   const [devPending, setDevPending] = useState(false);
   const [vkError, setVkError] = useState<string | null>(null);
   const [vkPending, setVkPending] = useState(false);
+  const miniAppAuth = useTelegramMiniAppAuth();
 
   const mutation = useMutation<AuthSession, Error, TelegramAuthPayload>({
     mutationFn: (payload) =>
@@ -27,6 +30,22 @@ export function LoginScreen(): JSX.Element {
       navigate('/', { replace: true });
     },
   });
+
+  useEffect(() => {
+    if (miniAppAuth.isTelegramMiniApp && accessToken) {
+      navigate('/', { replace: true });
+    }
+  }, [accessToken, miniAppAuth.isTelegramMiniApp, navigate]);
+
+  if (miniAppAuth.isTelegramMiniApp) {
+    return (
+      <main className="screen" style={{ alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ color: 'var(--muted)', fontSize: 14 }}>
+          {miniAppAuth.isError ? 'Не удалось войти через Telegram' : 'Входим через Telegram...'}
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main

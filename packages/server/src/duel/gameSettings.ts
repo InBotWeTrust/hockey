@@ -45,6 +45,10 @@ export interface GameSettings {
   training: {
     goalieId: string;
     shotsLimit: number;
+    dailyCooldownMinutes: number;
+  };
+  amateur: {
+    unlockGoalsRequired: number;
   };
 }
 
@@ -165,12 +169,30 @@ export const GAME_SETTING_DEFINITIONS: readonly GameSettingDefinition[] = [
     max: 1000,
   },
   {
+    key: 'training.daily_cooldown_minutes',
+    label: 'Блокировка дневной игры',
+    description: 'Сколько минут дневная игра закрыта после первого броска в тренировке.',
+    type: 'number',
+    defaultValue: 120,
+    min: 0,
+    max: 1440,
+  },
+  {
     key: 'training.goalie_id',
     label: 'Вратарь тренировки',
     description: 'Вратарь, против которого играется тренировка.',
     type: 'select',
     defaultValue: 'rookie',
     options: goalieOptions,
+  },
+  {
+    key: 'amateur.unlock_goals_required',
+    label: 'Голов для любителей',
+    description: 'Сколько шайб нужно забить, чтобы открыть любительскую лигу.',
+    type: 'number',
+    defaultValue: 1000,
+    min: 0,
+    max: 1_000_000,
   },
 ];
 
@@ -254,6 +276,8 @@ export async function getGameSettings(pool: Queryable): Promise<GameSettings> {
   const dailyGoalieId = String(values.get('daily.goalie_id') ?? 'rookie');
   const trainingGoalieId = String(values.get('training.goalie_id') ?? 'rookie');
   const trainingShotsLimit = Number(values.get('training.shots_limit'));
+  const trainingDailyCooldownMinutes = Number(values.get('training.daily_cooldown_minutes'));
+  const amateurUnlockGoalsRequired = Number(values.get('amateur.unlock_goals_required'));
   const periodSpeedPresets = DAILY_PERIOD_SPEED_PRESETS.map((preset) => ({
     periodNumber: preset.periodNumber,
     goalFrequency: Number(
@@ -294,6 +318,14 @@ export async function getGameSettings(pool: Queryable): Promise<GameSettings> {
     training: {
       goalieId: trainingGoalieId,
       shotsLimit: Number.isFinite(trainingShotsLimit) ? trainingShotsLimit : 500,
+      dailyCooldownMinutes: Number.isFinite(trainingDailyCooldownMinutes)
+        ? Math.max(0, Math.trunc(trainingDailyCooldownMinutes))
+        : 120,
+    },
+    amateur: {
+      unlockGoalsRequired: Number.isFinite(amateurUnlockGoalsRequired)
+        ? Math.max(0, Math.trunc(amateurUnlockGoalsRequired))
+        : 1000,
     },
   };
 }

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AdminScreen } from './AdminScreen.js';
 import { useAuthStore } from '../auth/authStore.js';
@@ -383,6 +383,58 @@ describe('AdminScreen', () => {
           { status: 200, headers: { 'content-type': 'application/json' } },
         );
       }
+      if (url.includes('/admin/duels/history')) {
+        return new Response(JSON.stringify({ duels: [], total: 0, limit: 25, offset: 0 }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/admin/duel-templates')) {
+        return new Response(
+          JSON.stringify({
+            templates: [
+              {
+                id: 'duel-template-1',
+                title: 'Экспресс+',
+                description: 'Два периода: первый с лимитом 30 бросков, второй на скорость.',
+                duelKind: 'express_plus',
+                duelVariant: 'classic',
+                isActive: true,
+                startsAt: '2026-01-01T00:00:00.000Z',
+                endsAt: '2100-01-01T00:00:00.000Z',
+                totalPeriods: 2,
+                shotsPerPeriod: 30,
+                periodDurationMs: 180_000,
+                breakDurationMs: 120_000,
+                goalieId: 'rookie',
+                periodSpeedPresets: [],
+                periodRules: null,
+                stakeAmount: 0,
+                entryFeeAmount: 0,
+                requiredInventoryItemId: null,
+                inventoryChargesPerPeriod: 0,
+                rankedEnabled: true,
+                matchmakingEnabled: true,
+                challengeTtlMs: 1_800_000,
+                readyDurationMs: 300_000,
+                readyNoShowCooldownMs: 300_000,
+                matchmakingTimeoutMs: 300_000,
+                rankedDailyLimit: 20,
+                rankedSameOpponentLimit: 5,
+                powerCap: 100,
+                winPoints: 3,
+                drawPoints: 1,
+                winCurrencyReward: 5,
+                drawCurrencyReward: 1,
+                winStarReward: 2,
+                createdAt: '2026-05-03T08:00:00.000Z',
+                updatedAt: '2026-05-03T08:00:00.000Z',
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
       if (url.includes('/admin/notifications/news.posted')) {
         return new Response(
           JSON.stringify({
@@ -618,6 +670,19 @@ describe('AdminScreen', () => {
                 updatedAt: null,
                 updatedBy: null,
               },
+              {
+                key: 'training.daily_cooldown_minutes',
+                label: 'Блокировка дневной игры',
+                description:
+                  'Сколько минут дневная игра закрыта после первого броска в тренировке.',
+                type: 'number',
+                defaultValue: 120,
+                min: 0,
+                max: 1440,
+                value: 120,
+                updatedAt: null,
+                updatedBy: null,
+              },
             ],
             balance: { goalies: [], sticks: [], dailyPeriodSpeedPresets: [] },
           }),
@@ -682,6 +747,22 @@ describe('AdminScreen', () => {
     expect(screen.getByText('Ежедневная игра')).toBeInTheDocument();
     expect(screen.getByText('Бросок')).toBeInTheDocument();
     expect(screen.getByText('Сейв')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Дуэли' }));
+    expect(await screen.findByText('Шаблоны дуэлей (1)')).toBeInTheDocument();
+    expect(await screen.findByText('Экспресс+')).toBeInTheDocument();
+    const duelStatus = screen.getByText('Активен');
+    expect(duelStatus).toHaveStyle('align-self: start');
+    expect(duelStatus).toHaveStyle('min-height: 34px');
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать Экспресс+' }));
+    const duelDialog = await screen.findByRole('dialog', { name: 'Редактирование дуэли' });
+    expect(within(duelDialog).getByText('Скорости по периодам')).toBeInTheDocument();
+    expect(within(duelDialog).getAllByText('Скорость ворот')).toHaveLength(2);
+    expect(within(duelDialog).getAllByText('Скорость вратаря')).toHaveLength(2);
+    expect(within(duelDialog).getAllByText('Скорость игрока')).toHaveLength(2);
+    expect(within(duelDialog).getAllByText('Скорость шайбы')).toHaveLength(2);
+    expect(within(duelDialog).queryByText(/periodNumber/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Отмена' }));
 
     fireEvent.click(screen.getByRole('button', { name: 'Уведомления' }));
     expect(await screen.findByText('Уведомления (2)')).toBeInTheDocument();
@@ -755,6 +836,7 @@ describe('AdminScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Назад' }));
     fireEvent.click(await screen.findByText('Тренировка'));
     expect(await screen.findByText('Лимит тренировки')).toBeInTheDocument();
+    expect(await screen.findByText('Блокировка дневной игры')).toBeInTheDocument();
   });
 
   it('shows access denial for players', () => {

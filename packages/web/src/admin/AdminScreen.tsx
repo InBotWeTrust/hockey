@@ -35,6 +35,7 @@ import {
   Star,
   Trash2,
   Trophy,
+  Upload,
   UserCheck,
   Users,
   Wallet,
@@ -45,6 +46,7 @@ import { useAuthStore } from '../auth/authStore.js';
 import { ChannelPostEditorSheet } from '../chat/components/ChannelPostEditorSheet.js';
 import { RichText } from '../chat/richText.js';
 import { GlassSelect, type GlassSelectOption } from '../components/GlassSelect.js';
+import { ADMIN_NAV_HOME_EVENT } from '../components/BottomNav.js';
 import { convertChatAvatarToWebp } from '../lib/chatAvatarImage.js';
 import { useDebouncedValue } from '../lib/useDebouncedValue.js';
 import { AchievementDetailsSheet, AchievementTile } from '../screens/profileSections.js';
@@ -55,6 +57,7 @@ import {
   deleteAdminChannelPost,
   deleteAdminInventoryItem,
   fetchAdminChannelNews,
+  fetchAdminDuelHistory,
   fetchAdminDuelTemplates,
   fetchAdminFeedback,
   fetchAdminGameSettings,
@@ -67,6 +70,7 @@ import {
   fetchAdminUser,
   fetchAdminUsers,
   patchAdminChannelPost,
+  patchAdminChatProfile,
   resetAdminChatAvatar,
   patchAdminFeedback,
   patchAdminDuelTemplate,
@@ -79,6 +83,8 @@ import {
   type AdminDashboard,
   type AdminDashboardPeriod,
   type AdminDashboardSeriesPoint,
+  type AdminDuelHistoryItem,
+  type AdminDuelHistoryResponse,
   type AdminDuelPeriodSpeedPreset,
   type AdminDuelTemplate,
   type AdminDuelTemplateInput,
@@ -528,6 +534,14 @@ export function AdminScreen(): JSX.Element {
   const [dashboardPeriod, setDashboardPeriod] = useState<AdminDashboardPeriod>('30d');
   const [mismatchPeriod, setMismatchPeriod] = useState<AdminMismatchPeriod>('30d');
   const [channelPeriod, setChannelPeriod] = useState<AdminChannelPeriod>('30d');
+
+  useEffect(() => {
+    const resetToDashboard = (): void => {
+      setTab('dashboard');
+    };
+    window.addEventListener(ADMIN_NAV_HOME_EVENT, resetToDashboard);
+    return () => window.removeEventListener(ADMIN_NAV_HOME_EVENT, resetToDashboard);
+  }, []);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const filtersChanged =
     search !== '' ||
@@ -831,7 +845,6 @@ export function AdminScreen(): JSX.Element {
         <DuelTemplatesPanel
           loading={duelTemplates.isLoading}
           templates={duelTemplates.data?.templates ?? []}
-          inventoryItems={inventory.data?.items ?? []}
           onChanged={() => {
             void queryClient.invalidateQueries({ queryKey: ['admin', 'duel-templates'] });
           }}
@@ -982,9 +995,7 @@ function DashboardHero({
         }}
       >
         <div style={{ minWidth: 0 }}>
-          <div style={{ color: 'var(--ink)', fontSize: 19, fontWeight: 950 }}>
-            Ультимейт Хоккей
-          </div>
+          <div style={{ color: 'var(--ink)', fontSize: 19, fontWeight: 950 }}>Ультимейт Хоккей</div>
           <div style={{ marginTop: 4, color: 'var(--muted)', fontSize: 12, fontWeight: 750 }}>
             Игроки, деньги, активность и игра
           </div>
@@ -3316,7 +3327,10 @@ function AdminChatAvatarControl({
         background: 'rgba(255,255,255,0.44)',
         border: '1px solid rgba(255,255,255,0.7)',
         display: 'grid',
+        gridTemplateColumns: 'minmax(0, 1fr) auto',
         gap: 8,
+        alignItems: 'center',
+        minWidth: 0,
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
@@ -3360,20 +3374,122 @@ function AdminChatAvatarControl({
           </div>
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-        <button type="button" className="btn btn--cta" disabled={busy} onClick={onUpload}>
-          Заменить
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button
+          type="button"
+          className="icon-btn"
+          disabled={busy}
+          onClick={onUpload}
+          aria-label={`Загрузить ${title}`}
+          title={`Загрузить ${title}`}
+          style={{ width: 36, height: 36, minWidth: 36 }}
+        >
+          <Upload size={15} />
         </button>
         <button
           type="button"
-          className="btn btn--ghost"
+          className="icon-btn"
           disabled={busy || !avatarUrl}
           onClick={onReset}
+          aria-label={`Удалить ${title}`}
+          title={`Удалить ${title}`}
+          style={{ width: 36, height: 36, minWidth: 36 }}
         >
-          Сбросить
+          <Trash2 size={15} />
         </button>
       </div>
     </div>
+  );
+}
+
+function ChatProfileEditorModal({
+  profile,
+  pending,
+  error,
+  onCancel,
+  onSave,
+}: {
+  profile: { id: string; name: string | null; description: string | null; title: string };
+  pending: boolean;
+  error: unknown;
+  onCancel: () => void;
+  onSave: (name: string, description: string) => void;
+}): JSX.Element {
+  const [name, setName] = useState(profile.name ?? '');
+  const [description, setDescription] = useState(profile.description ?? '');
+  const canSave = name.trim().length > 0;
+
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Редактировать ${profile.title.toLowerCase()}`}
+      onClick={onCancel}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 1000,
+        background: 'rgba(15, 23, 42, 0.35)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 'calc(16px + var(--app-safe-top)) 14px calc(16px + var(--app-safe-bottom))',
+      }}
+    >
+      <section
+        className="glass"
+        onClick={(event) => event.stopPropagation()}
+        style={{
+          width: '100%',
+          maxWidth: 420,
+          borderRadius: 24,
+          padding: 16,
+          display: 'grid',
+          gap: 10,
+        }}
+      >
+        <div style={{ color: 'var(--ink)', fontSize: 16, fontWeight: 950 }}>{profile.title}</div>
+        <AdminField label="Название">
+          <input value={name} onChange={(event) => setName(event.target.value)} />
+        </AdminField>
+        <AdminField label="Описание">
+          <textarea
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            rows={4}
+            style={{ resize: 'vertical', minHeight: 96, lineHeight: 1.35 }}
+          />
+        </AdminField>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={onCancel}
+            disabled={pending}
+            style={{ padding: 10, fontSize: 12, letterSpacing: 0 }}
+          >
+            Отмена
+          </button>
+          <button
+            type="button"
+            className="btn btn--cta"
+            onClick={() => onSave(name.trim(), description.trim())}
+            disabled={pending || !canSave}
+            style={{ padding: 10, fontSize: 12, letterSpacing: 0 }}
+          >
+            Сохранить
+          </button>
+        </div>
+        {error != null && (
+          <div role="alert" style={{ color: 'var(--red-deep)', fontSize: 12 }}>
+            {error instanceof Error ? error.message : 'Ошибка сохранения'}
+          </div>
+        )}
+      </section>
+    </div>,
+    document.body,
   );
 }
 
@@ -3392,6 +3508,12 @@ function ChannelPanel({
 }): JSX.Element {
   const [channelView, setChannelView] = useState<'root' | 'engagement' | 'posts'>('root');
   const [editingPost, setEditingPost] = useState<AdminChannelPost | null>(null);
+  const [editingChatProfile, setEditingChatProfile] = useState<{
+    id: string;
+    name: string | null;
+    description: string | null;
+    title: string;
+  } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<AdminChannelPost | null>(null);
   const [avatarError, setAvatarError] = useState<string | null>(null);
   const [avatarTarget, setAvatarTarget] = useState<'channel' | 'mainChat' | null>(null);
@@ -3433,6 +3555,14 @@ function ChannelPanel({
     },
     onError: (err) => {
       setAvatarError(err instanceof Error ? err.message : 'Не удалось сбросить аватар.');
+    },
+  });
+  const profileMutation = useMutation({
+    mutationFn: (input: { chatId: string; name: string; description: string }) =>
+      patchAdminChatProfile(input.chatId, { name: input.name, description: input.description }),
+    onSuccess: () => {
+      setEditingChatProfile(null);
+      onChanged();
     },
   });
   const summary = data?.summary;
@@ -3509,8 +3639,16 @@ function ChannelPanel({
             <div style={{ color: 'var(--ink)', fontSize: 15, fontWeight: 950 }}>
               {data?.channel?.name ?? 'Новости игры'}
             </div>
-            <div style={{ marginTop: 4, color: 'var(--muted)', fontSize: 11, fontWeight: 800 }}>
-              Статистика, посты и вовлеченность игроков
+            <div
+              style={{
+                marginTop: 4,
+                color: 'var(--muted)',
+                fontSize: 11,
+                fontWeight: 800,
+                lineHeight: 1.3,
+              }}
+            >
+              {data?.channel?.description || 'Статистика, посты и вовлеченность игроков'}
             </div>
           </div>
           <AdminField label="Период">
@@ -3526,35 +3664,73 @@ function ChannelPanel({
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
               gap: 10,
             }}
           >
             {data?.channel && (
-              <AdminChatAvatarControl
-                title="Аватар канала"
-                name={data.channel.name ?? 'Новости игры'}
-                avatarUrl={data.channel.avatarUrl ?? null}
-                busy={uploadAvatarMutation.isPending || resetAvatarMutation.isPending}
-                onUpload={() => {
-                  setAvatarTarget('channel');
-                  avatarInputRef.current?.click();
-                }}
-                onReset={() => resetAvatarMutation.mutate(data.channel!.id)}
-              />
+              <div style={{ display: 'grid', gap: 8 }}>
+                <AdminChatAvatarControl
+                  title="Аватар канала"
+                  name={data.channel.name ?? 'Новости игры'}
+                  avatarUrl={data.channel.avatarUrl ?? null}
+                  busy={uploadAvatarMutation.isPending || resetAvatarMutation.isPending}
+                  onUpload={() => {
+                    setAvatarTarget('channel');
+                    avatarInputRef.current?.click();
+                  }}
+                  onReset={() => resetAvatarMutation.mutate(data.channel!.id)}
+                />
+                <button
+                  type="button"
+                  className="icon-btn"
+                  onClick={() =>
+                    setEditingChatProfile({
+                      id: data.channel!.id,
+                      name: data.channel!.name,
+                      description: data.channel!.description,
+                      title: 'Канал',
+                    })
+                  }
+                  aria-label="Редактировать канал"
+                  title="Редактировать канал"
+                  style={{ justifySelf: 'end', width: 34, height: 34 }}
+                >
+                  <Pencil size={14} />
+                </button>
+              </div>
             )}
             {data?.mainChat && (
-              <AdminChatAvatarControl
-                title="Аватар чата"
-                name={data.mainChat.name ?? 'Общий чат'}
-                avatarUrl={data.mainChat.avatarUrl ?? null}
-                busy={uploadAvatarMutation.isPending || resetAvatarMutation.isPending}
-                onUpload={() => {
-                  setAvatarTarget('mainChat');
-                  avatarInputRef.current?.click();
-                }}
-                onReset={() => resetAvatarMutation.mutate(data.mainChat!.id)}
-              />
+              <div style={{ display: 'grid', gap: 8 }}>
+                <AdminChatAvatarControl
+                  title="Аватар чата"
+                  name={data.mainChat.name ?? 'Общий чат'}
+                  avatarUrl={data.mainChat.avatarUrl ?? null}
+                  busy={uploadAvatarMutation.isPending || resetAvatarMutation.isPending}
+                  onUpload={() => {
+                    setAvatarTarget('mainChat');
+                    avatarInputRef.current?.click();
+                  }}
+                  onReset={() => resetAvatarMutation.mutate(data.mainChat!.id)}
+                />
+                <button
+                  type="button"
+                  className="icon-btn"
+                  onClick={() =>
+                    setEditingChatProfile({
+                      id: data.mainChat!.id,
+                      name: data.mainChat!.name,
+                      description: data.mainChat!.description,
+                      title: 'Чат',
+                    })
+                  }
+                  aria-label="Редактировать чат"
+                  title="Редактировать чат"
+                  style={{ justifySelf: 'end', width: 34, height: 34 }}
+                >
+                  <Pencil size={14} />
+                </button>
+              </div>
             )}
           </div>
         )}
@@ -3564,6 +3740,18 @@ function ChannelPanel({
           </div>
         )}
       </section>
+
+      {editingChatProfile !== null && (
+        <ChatProfileEditorModal
+          profile={editingChatProfile}
+          pending={profileMutation.isPending}
+          error={profileMutation.error}
+          onCancel={() => setEditingChatProfile(null)}
+          onSave={(name, description) =>
+            profileMutation.mutate({ chatId: editingChatProfile.id, name, description })
+          }
+        />
+      )}
 
       {channelView === 'root' && (
         <section
@@ -4947,41 +5135,55 @@ function makeDefaultDuelPresets(totalPeriods: number): AdminDuelPeriodSpeedPrese
   }));
 }
 
-function parseDuelPresets(value: string): AdminDuelPeriodSpeedPreset[] | null {
-  try {
-    const raw = JSON.parse(value) as unknown;
-    if (!Array.isArray(raw)) return null;
-    const presets = raw.map((item) => {
-      if (typeof item !== 'object' || item === null) return null;
-      const record = item as Record<string, unknown>;
-      const preset = {
-        periodNumber: Number(record.periodNumber),
-        goalFrequency: Number(record.goalFrequency),
-        goalieFrequency: Number(record.goalieFrequency),
-        shooterFrequency: Number(record.shooterFrequency),
-        puckSpeedPerMs: Number(record.puckSpeedPerMs),
-      };
-      return Object.values(preset).every(Number.isFinite) ? preset : null;
-    });
-    return presets.every((item): item is AdminDuelPeriodSpeedPreset => item !== null)
-      ? presets
-      : null;
-  } catch {
-    return null;
-  }
+const duelSpeedFields: Array<{
+  key: Exclude<keyof AdminDuelPeriodSpeedPreset, 'periodNumber'>;
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+}> = [
+  { key: 'goalFrequency', label: 'Скорость ворот', min: 0.1, max: 3, step: 0.01 },
+  { key: 'goalieFrequency', label: 'Скорость вратаря', min: 0.1, max: 3, step: 0.01 },
+  { key: 'shooterFrequency', label: 'Скорость игрока', min: 0.1, max: 3, step: 0.01 },
+  { key: 'puckSpeedPerMs', label: 'Скорость шайбы', min: 0.2, max: 5, step: 0.01 },
+];
+
+function normalizeDuelPresets(
+  value: AdminDuelPeriodSpeedPreset[] | undefined,
+  totalPeriods: number,
+): AdminDuelPeriodSpeedPreset[] {
+  const defaults = makeDefaultDuelPresets(totalPeriods);
+  return defaults.map((fallback, index) => {
+    const existing =
+      value?.find((preset) => preset.periodNumber === index + 1) ?? value?.[index] ?? fallback;
+    return {
+      periodNumber: index + 1,
+      goalFrequency: Number.isFinite(existing.goalFrequency)
+        ? existing.goalFrequency
+        : fallback.goalFrequency,
+      goalieFrequency: Number.isFinite(existing.goalieFrequency)
+        ? existing.goalieFrequency
+        : fallback.goalieFrequency,
+      shooterFrequency: Number.isFinite(existing.shooterFrequency)
+        ? existing.shooterFrequency
+        : fallback.shooterFrequency,
+      puckSpeedPerMs: Number.isFinite(existing.puckSpeedPerMs)
+        ? existing.puckSpeedPerMs
+        : fallback.puckSpeedPerMs,
+    };
+  });
 }
 
 function DuelTemplatesPanel({
   loading,
   templates,
-  inventoryItems,
   onChanged,
 }: {
   loading: boolean;
   templates: AdminDuelTemplate[];
-  inventoryItems: AdminInventoryItem[];
   onChanged: () => void;
 }): JSX.Element {
+  const [duelView, setDuelView] = useState<'templates' | 'history'>('templates');
   const [editingTemplate, setEditingTemplate] = useState<AdminDuelTemplate | 'new' | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<AdminDuelTemplate | null>(null);
   const deleteMutation = useMutation({
@@ -4994,6 +5196,22 @@ function DuelTemplatesPanel({
 
   return (
     <>
+      <div className="segmented" style={{ gridTemplateColumns: '1fr 1fr' }}>
+        <button
+          type="button"
+          className={duelView === 'templates' ? 'active' : ''}
+          onClick={() => setDuelView('templates')}
+        >
+          Шаблоны
+        </button>
+        <button
+          type="button"
+          className={duelView === 'history' ? 'active' : ''}
+          onClick={() => setDuelView('history')}
+        >
+          История
+        </button>
+      </div>
       <div
         style={{
           display: 'flex',
@@ -5003,22 +5221,25 @@ function DuelTemplatesPanel({
         }}
       >
         <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
-          Шаблоны дуэлей ({numberText(templates.length)})
+          {duelView === 'templates'
+            ? `Шаблоны дуэлей (${numberText(templates.length)})`
+            : 'История дуэлей'}
         </div>
-        <button
-          type="button"
-          className="chip chip--active"
-          onClick={() => setEditingTemplate('new')}
-          style={{ padding: '8px 12px', display: 'inline-flex', gap: 6, alignItems: 'center' }}
-        >
-          <Plus size={14} />
-          Создать
-        </button>
+        {duelView === 'templates' && (
+          <button
+            type="button"
+            className="chip chip--active"
+            onClick={() => setEditingTemplate('new')}
+            style={{ padding: '8px 12px', display: 'inline-flex', gap: 6, alignItems: 'center' }}
+          >
+            <Plus size={14} />
+            Создать
+          </button>
+        )}
       </div>
       {editingTemplate !== null && (
         <DuelTemplateEditor
           template={editingTemplate === 'new' ? null : editingTemplate}
-          inventoryItems={inventoryItems}
           onCancel={() => setEditingTemplate(null)}
           onSaved={() => {
             setEditingTemplate(null);
@@ -5026,19 +5247,24 @@ function DuelTemplatesPanel({
           }}
         />
       )}
-      <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {loading && <AdminPlainState>Загрузка шаблонов...</AdminPlainState>}
-        {!loading && templates.length === 0 && <AdminPlainState>Шаблонов пока нет</AdminPlainState>}
-        {templates.map((template) => (
-          <DuelTemplateCard
-            key={template.id}
-            template={template}
-            inventoryItems={inventoryItems}
-            onEdit={() => setEditingTemplate(template)}
-            onDelete={() => setDeleteTarget(template)}
-          />
-        ))}
-      </section>
+      {duelView === 'templates' ? (
+        <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {loading && <AdminPlainState>Загрузка шаблонов...</AdminPlainState>}
+          {!loading && templates.length === 0 && (
+            <AdminPlainState>Шаблонов пока нет</AdminPlainState>
+          )}
+          {templates.map((template) => (
+            <DuelTemplateCard
+              key={template.id}
+              template={template}
+              onEdit={() => setEditingTemplate(template)}
+              onDelete={() => setDeleteTarget(template)}
+            />
+          ))}
+        </section>
+      ) : (
+        <DuelHistoryPanel />
+      )}
       {deleteTarget !== null && (
         <ConfirmAction
           title="Удалить шаблон"
@@ -5055,27 +5281,34 @@ function DuelTemplatesPanel({
 
 function DuelTemplateCard({
   template,
-  inventoryItems,
   onEdit,
   onDelete,
 }: {
   template: AdminDuelTemplate;
-  inventoryItems: AdminInventoryItem[];
   onEdit: () => void;
   onDelete: () => void;
 }): JSX.Element {
-  const inventoryTitle =
-    inventoryItems.find((item) => item.id === template.requiredInventoryItemId)?.title ?? null;
+  const isAlwaysAvailable = new Date(template.endsAt).getFullYear() >= 2099;
   return (
     <article className="glass" style={{ borderRadius: 18, padding: 12, display: 'grid', gap: 10 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 8 }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'minmax(0, 1fr) auto',
+          alignItems: 'start',
+          gap: 8,
+        }}
+      >
         <div style={{ minWidth: 0 }}>
           <div style={{ color: 'var(--ink)', fontSize: 15, fontWeight: 950 }}>{template.title}</div>
           <div style={{ marginTop: 4, color: 'var(--muted)', fontSize: 11, fontWeight: 750 }}>
             {template.description || 'Без описания'}
           </div>
         </div>
-        <span className={template.isActive ? 'pill pill--dark' : 'pill'}>
+        <span
+          className={template.isActive ? 'pill pill--dark' : 'pill'}
+          style={{ alignSelf: 'start', minHeight: 34, padding: '0 14px', fontSize: 12 }}
+        >
           {template.isActive ? 'Активен' : 'Выключен'}
         </span>
       </div>
@@ -5089,23 +5322,38 @@ function DuelTemplateCard({
         <span className="pill" style={{ fontSize: 10 }}>
           Перерыв {minutesText(msToMinutes(template.breakDurationMs))}
         </span>
-        {inventoryTitle && (
+        <span className="pill" style={{ fontSize: 10 }}>
+          Ожидание {minutesText(msToMinutes(template.readyDurationMs))}
+        </span>
+        <span className="pill" style={{ fontSize: 10 }}>
+          Победа {numberText(template.winPoints)} очк. · {numberText(template.winCurrencyReward)}{' '}
+          шайб
+        </span>
+        {template.winStarReward > 0 && (
           <span className="pill" style={{ fontSize: 10 }}>
-            {inventoryTitle}: {numberText(template.inventoryChargesPerPeriod)}/период
+            Победа {numberText(template.winStarReward)} звёзд
           </span>
         )}
+        <span className="pill" style={{ fontSize: 10 }}>
+          Ничья {numberText(template.drawPoints)} очк. · {numberText(template.drawCurrencyReward)}{' '}
+          шайб
+        </span>
       </div>
       <div style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 800 }}>
-        Окно: {dateTimeText(template.startsAt)} - {dateTimeText(template.endsAt)}
+        {isAlwaysAvailable
+          ? `Доступен всегда, с ${dateTimeText(template.startsAt)}`
+          : `Окно: ${dateTimeText(template.startsAt)} - ${dateTimeText(template.endsAt)}`}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 44px', gap: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
         <button
           type="button"
-          className="btn btn--ghost"
+          className="icon-btn"
           onClick={onEdit}
-          style={{ padding: '10px', fontSize: 12, letterSpacing: 0 }}
+          title="Редактировать"
+          aria-label={`Редактировать ${template.title}`}
+          style={{ width: 40, height: 40 }}
         >
-          Редактировать
+          <Pencil size={15} />
         </button>
         <button
           type="button"
@@ -5113,7 +5361,7 @@ function DuelTemplateCard({
           onClick={onDelete}
           title="Удалить"
           aria-label={`Удалить ${template.title}`}
-          style={{ width: 44, height: 44 }}
+          style={{ width: 40, height: 40 }}
         >
           <Trash2 size={15} />
         </button>
@@ -5122,14 +5370,205 @@ function DuelTemplateCard({
   );
 }
 
+const duelHistoryStatusOptions: Array<GlassSelectOption<AdminDuelHistoryItem['status'] | 'all'>> = [
+  { value: 'all', label: 'Все статусы' },
+  { value: 'invited', label: 'Вызов' },
+  { value: 'ready_check', label: 'Ожидание' },
+  { value: 'active', label: 'Игра' },
+  { value: 'settled', label: 'Завершена' },
+  { value: 'cancelled', label: 'Отменена' },
+  { value: 'expired', label: 'Истекла' },
+];
+
+function dayStartIso(value: string): string | undefined {
+  if (!value) return undefined;
+  const date = new Date(`${value}T00:00:00`);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : undefined;
+}
+
+function dayEndIso(value: string): string | undefined {
+  if (!value) return undefined;
+  const date = new Date(`${value}T23:59:59`);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : undefined;
+}
+
+function duelStatusLabel(status: AdminDuelHistoryItem['status']): string {
+  return duelHistoryStatusOptions.find((option) => option.value === status)?.label ?? status;
+}
+
+function duelOutcomeText(duel: AdminDuelHistoryItem): string {
+  if (duel.outcome === 'draw') return 'Ничья';
+  if (duel.outcome === 'double_loss') return 'Без победителя';
+  if (duel.winnerUserId === duel.challenger.userId) return `Победил ${duel.challenger.displayName}`;
+  if (duel.winnerUserId === duel.opponent.userId) return `Победил ${duel.opponent.displayName}`;
+  return 'Исход пока не определен';
+}
+
+function DuelHistoryPanel(): JSX.Element {
+  const [query, setQuery] = useState('');
+  const [status, setStatus] = useState<AdminDuelHistoryItem['status'] | 'all'>('all');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [limit, setLimit] = useState(25);
+  const debouncedQuery = useDebouncedValue(query, 250);
+  const history = useQuery<AdminDuelHistoryResponse>({
+    queryKey: ['admin', 'duel-history', debouncedQuery, status, from, to, limit],
+    queryFn: () => {
+      const params: Parameters<typeof fetchAdminDuelHistory>[0] = {
+        q: debouncedQuery,
+        status,
+        limit,
+        offset: 0,
+      };
+      const fromIso = dayStartIso(from);
+      const toIso = dayEndIso(to);
+      if (fromIso) params.from = fromIso;
+      if (toIso) params.to = toIso;
+      return fetchAdminDuelHistory(params);
+    },
+    staleTime: 20_000,
+  });
+  const duels = history.data?.duels ?? [];
+  const total = history.data?.total ?? 0;
+
+  return (
+    <section style={{ display: 'grid', gap: 10 }}>
+      <div className="glass" style={{ borderRadius: 18, padding: 12, display: 'grid', gap: 10 }}>
+        <div className="search-shell" style={{ minHeight: 42 }}>
+          <Search size={16} />
+          <input
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setLimit(25);
+            }}
+            placeholder="Игрок"
+            aria-label="Поиск дуэлей по игроку"
+          />
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <AdminField label="Статус">
+            <GlassSelect
+              value={status}
+              options={duelHistoryStatusOptions}
+              onChange={(value) => {
+                setStatus(value);
+                setLimit(25);
+              }}
+              ariaLabel="Статус дуэли"
+            />
+          </AdminField>
+          <AdminField label="С даты">
+            <input
+              type="date"
+              value={from}
+              onChange={(event) => {
+                setFrom(event.target.value);
+                setLimit(25);
+              }}
+            />
+          </AdminField>
+          <AdminField label="По дату">
+            <input
+              type="date"
+              value={to}
+              onChange={(event) => {
+                setTo(event.target.value);
+                setLimit(25);
+              }}
+            />
+          </AdminField>
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={() => {
+              setQuery('');
+              setStatus('all');
+              setFrom('');
+              setTo('');
+              setLimit(25);
+            }}
+            style={{ alignSelf: 'end', padding: 12, fontSize: 12, letterSpacing: 0 }}
+          >
+            Сбросить
+          </button>
+        </div>
+      </div>
+      {history.isLoading && <AdminPlainState>Загрузка дуэлей...</AdminPlainState>}
+      {!history.isLoading && duels.length === 0 && (
+        <AdminPlainState>Дуэлей не найдено</AdminPlainState>
+      )}
+      {duels.map((duel) => (
+        <article key={duel.id} className="glass" style={{ borderRadius: 18, padding: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ color: 'var(--ink)', fontSize: 14, fontWeight: 950 }}>
+                {duel.templateTitle}
+              </div>
+              <div style={{ marginTop: 3, color: 'var(--muted)', fontSize: 11, fontWeight: 800 }}>
+                {dateTimeText(duel.createdAt)} · {duelStatusLabel(duel.status)}
+              </div>
+            </div>
+            <span className="pill pill--dark" style={{ whiteSpace: 'nowrap' }}>
+              {duel.challenger.goals}:{duel.opponent.goals}
+            </span>
+          </div>
+          <div style={{ marginTop: 10, display: 'grid', gap: 6 }}>
+            <DuelHistoryParticipantRow participant={duel.challenger} />
+            <DuelHistoryParticipantRow participant={duel.opponent} />
+          </div>
+          <div style={{ marginTop: 8, color: 'var(--muted)', fontSize: 11, fontWeight: 800 }}>
+            {duelOutcomeText(duel)}
+            {duel.settledReason ? ` · ${duel.settledReason}` : ''}
+          </div>
+        </article>
+      ))}
+      {duels.length < total && (
+        <button
+          type="button"
+          className="btn btn--ghost"
+          onClick={() => setLimit((value) => value + 25)}
+          disabled={history.isFetching}
+          style={{ padding: 12, fontSize: 12, letterSpacing: 0 }}
+        >
+          Загрузить еще {numberText(Math.min(25, total - duels.length))}
+        </button>
+      )}
+    </section>
+  );
+}
+
+function DuelHistoryParticipantRow({
+  participant,
+}: {
+  participant: AdminDuelHistoryItem['challenger'];
+}): JSX.Element {
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'minmax(0, 1fr) auto',
+        gap: 8,
+        alignItems: 'center',
+      }}
+    >
+      <div style={{ minWidth: 0, color: 'var(--ink)', fontSize: 12, fontWeight: 900 }}>
+        {participant.displayName}
+      </div>
+      <div style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 800 }}>
+        {numberText(participant.goals)} голов · {numberText(participant.shots)} бросков ·{' '}
+        {numberText(participant.resultPoints)} очк.
+      </div>
+    </div>
+  );
+}
+
 function DuelTemplateEditor({
   template,
-  inventoryItems,
   onCancel,
   onSaved,
 }: {
   template: AdminDuelTemplate | null;
-  inventoryItems: AdminInventoryItem[];
   onCancel: () => void;
   onSaved: () => void;
 }): JSX.Element {
@@ -5152,42 +5591,88 @@ function DuelTemplateEditor({
   const [breakMinutes, setBreakMinutes] = useState(
     fieldNumber(template ? msToMinutes(template.breakDurationMs) : 15),
   );
-  const [goalieId, setGoalieId] = useState(template?.goalieId ?? 'rookie');
-  const [requiredInventoryItemId, setRequiredInventoryItemId] = useState(
-    template?.requiredInventoryItemId ?? '',
+  const [readyMinutes, setReadyMinutes] = useState(
+    fieldNumber(template ? msToMinutes(template.readyDurationMs) : 15),
   );
-  const [inventoryChargesPerPeriod, setInventoryChargesPerPeriod] = useState(
-    fieldNumber(template?.inventoryChargesPerPeriod ?? 0),
+  const [winPoints, setWinPoints] = useState(fieldNumber(template?.winPoints ?? 3));
+  const [drawPoints, setDrawPoints] = useState(fieldNumber(template?.drawPoints ?? 1));
+  const [winCurrencyReward, setWinCurrencyReward] = useState(
+    fieldNumber(template?.winCurrencyReward ?? 0),
   );
-  const [presetsJson, setPresetsJson] = useState(
-    JSON.stringify(template?.periodSpeedPresets ?? makeDefaultDuelPresets(3), null, 2),
+  const [drawCurrencyReward, setDrawCurrencyReward] = useState(
+    fieldNumber(template?.drawCurrencyReward ?? 0),
   );
-  const parsedPresets = parseDuelPresets(presetsJson);
-  const inventoryOptions: Array<GlassSelectOption<string>> = [
-    { value: '', label: 'Без предмета' },
-    ...inventoryItems.map((item) => ({ value: item.id, label: item.title })),
-  ];
+  const [winStarReward, setWinStarReward] = useState(fieldNumber(template?.winStarReward ?? 0));
+  const [periodSpeedPresets, setPeriodSpeedPresets] = useState(() =>
+    normalizeDuelPresets(
+      template?.periodSpeedPresets,
+      Math.max(1, Math.trunc(template?.totalPeriods ?? 3)),
+    ),
+  );
   const numericValues = [
     totalPeriods,
     shotsPerPeriod,
     periodMinutes,
     breakMinutes,
-    inventoryChargesPerPeriod,
+    readyMinutes,
+    winPoints,
+    drawPoints,
+    winCurrencyReward,
+    drawCurrencyReward,
+    winStarReward,
   ].map(Number);
+  const totalPeriodsCount = Number.isFinite(Number(totalPeriods))
+    ? Math.max(1, Math.min(9, Math.trunc(Number(totalPeriods))))
+    : 0;
   const startsIso = dateTimeInputToIso(startsAt);
   const endsIso = dateTimeInputToIso(endsAt);
+  const speedPresetsForSave = periodSpeedPresets.slice(0, totalPeriodsCount).map(
+    (preset, index): AdminDuelPeriodSpeedPreset => ({
+      ...preset,
+      periodNumber: index + 1,
+    }),
+  );
+  const speedPresetsValid =
+    speedPresetsForSave.length === totalPeriodsCount &&
+    speedPresetsForSave.every((preset) =>
+      duelSpeedFields.every((field) => {
+        const value = preset[field.key];
+        return Number.isFinite(value) && value >= field.min && value <= field.max;
+      }),
+    );
   const canSave =
     title.trim() !== '' &&
-    goalieId.trim() !== '' &&
     numericValues.every(Number.isFinite) &&
     Number(totalPeriods) >= 1 &&
     Number(shotsPerPeriod) >= 1 &&
     Number(periodMinutes) > 0 &&
     Number(breakMinutes) >= 0 &&
-    Number(inventoryChargesPerPeriod) >= 0 &&
+    Number(readyMinutes) > 0 &&
+    Number(winPoints) >= 0 &&
+    Number(drawPoints) >= 0 &&
+    Number(winCurrencyReward) >= 0 &&
+    Number(drawCurrencyReward) >= 0 &&
+    Number(winStarReward) >= 0 &&
     new Date(startsIso).getTime() < new Date(endsIso).getTime() &&
-    parsedPresets !== null &&
-    parsedPresets.length >= Number(totalPeriods);
+    speedPresetsValid;
+  useEffect(() => {
+    if (totalPeriodsCount <= 0) return;
+    setPeriodSpeedPresets((current) => normalizeDuelPresets(current, totalPeriodsCount));
+  }, [totalPeriodsCount]);
+
+  function updateSpeedPreset(
+    periodNumber: number,
+    key: Exclude<keyof AdminDuelPeriodSpeedPreset, 'periodNumber'>,
+    value: string,
+  ): void {
+    const nextValue = Number(value);
+    setPeriodSpeedPresets((current) =>
+      current.map((preset) =>
+        preset.periodNumber === periodNumber ? { ...preset, [key]: nextValue } : preset,
+      ),
+    );
+  }
+
   const mutation = useMutation({
     mutationFn: () => {
       const body: AdminDuelTemplateInput = {
@@ -5196,19 +5681,33 @@ function DuelTemplateEditor({
         isActive,
         duelKind,
         duelVariant,
+        rankedEnabled: template?.rankedEnabled ?? true,
+        matchmakingEnabled: template?.matchmakingEnabled ?? true,
         startsAt: startsIso,
         endsAt: endsIso,
         totalPeriods: Number(totalPeriods),
         shotsPerPeriod: Number(shotsPerPeriod),
         periodDurationMs: minutesToMs(periodMinutes),
         breakDurationMs: minutesToMs(breakMinutes),
-        goalieId: goalieId.trim(),
-        periodSpeedPresets: parsedPresets ?? [],
-        ...(template ? { periodRules: template.periodRules } : {}),
+        challengeTtlMs: template?.challengeTtlMs ?? 1_800_000,
+        readyDurationMs: minutesToMs(readyMinutes),
+        readyNoShowCooldownMs: template?.readyNoShowCooldownMs ?? 900_000,
+        matchmakingTimeoutMs: template?.matchmakingTimeoutMs ?? 180_000,
+        rankedDailyLimit: template?.rankedDailyLimit ?? 100,
+        rankedSameOpponentLimit: template?.rankedSameOpponentLimit ?? 100,
+        powerCap: template?.powerCap ?? 100,
+        goalieId: template?.goalieId ?? 'rookie',
+        periodSpeedPresets: speedPresetsForSave,
+        periodRules: null,
         stakeAmount: 0,
         entryFeeAmount: 0,
-        requiredInventoryItemId: requiredInventoryItemId === '' ? null : requiredInventoryItemId,
-        inventoryChargesPerPeriod: Number(inventoryChargesPerPeriod),
+        requiredInventoryItemId: null,
+        inventoryChargesPerPeriod: 0,
+        winPoints: Number(winPoints),
+        drawPoints: Number(drawPoints),
+        winCurrencyReward: Number(winCurrencyReward),
+        drawCurrencyReward: Number(drawCurrencyReward),
+        winStarReward: Number(winStarReward),
       };
       return template === null
         ? createAdminDuelTemplate(body)
@@ -5217,158 +5716,259 @@ function DuelTemplateEditor({
     onSuccess: onSaved,
   });
 
-  return (
-    <section className="glass" style={{ borderRadius: 20, padding: 14, display: 'grid', gap: 10 }}>
-      <div style={{ color: 'var(--ink)', fontSize: 15, fontWeight: 950 }}>
-        {template === null ? 'Новый шаблон дуэли' : 'Редактирование дуэли'}
-      </div>
-      <AdminField label="Название">
-        <input value={title} onChange={(event) => setTitle(event.target.value)} />
-      </AdminField>
-      <AdminField label="Описание">
-        <textarea
-          value={description}
-          onChange={(event) => setDescription(event.target.value)}
-          rows={3}
-          style={{ resize: 'vertical', minHeight: 78, lineHeight: 1.35 }}
-        />
-      </AdminField>
-      <label
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={template === null ? 'Новый шаблон дуэли' : 'Редактирование дуэли'}
+      onClick={onCancel}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 1000,
+        background: 'rgba(15, 23, 42, 0.35)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 'calc(16px + var(--app-safe-top)) 14px calc(16px + var(--app-safe-bottom))',
+      }}
+    >
+      <section
         className="glass"
+        onClick={(event) => event.stopPropagation()}
         style={{
-          borderRadius: 16,
-          padding: '10px 12px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
+          width: '100%',
+          maxWidth: 430,
+          maxHeight: '100%',
+          overflowY: 'auto',
+          borderRadius: 24,
+          padding: 16,
+          display: 'grid',
           gap: 10,
         }}
       >
-        <span style={{ color: 'var(--ink)', fontSize: 12, fontWeight: 900 }}>Активен</span>
-        <input
-          type="checkbox"
-          checked={isActive}
-          onChange={(event) => setIsActive(event.target.checked)}
-          style={{ width: 18, height: 18 }}
-        />
-      </label>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
-        <AdminField label="Старт">
-          <input
-            type="datetime-local"
-            value={startsAt}
-            onChange={(event) => setStartsAt(event.target.value)}
+        <div style={{ color: 'var(--ink)', fontSize: 15, fontWeight: 950 }}>
+          {template === null ? 'Новый шаблон дуэли' : 'Редактирование дуэли'}
+        </div>
+        <AdminField label="Название">
+          <input value={title} onChange={(event) => setTitle(event.target.value)} />
+        </AdminField>
+        <AdminField label="Описание">
+          <textarea
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            rows={3}
+            style={{ resize: 'vertical', minHeight: 78, lineHeight: 1.35 }}
           />
         </AdminField>
-        <AdminField label="Финиш">
-          <input
-            type="datetime-local"
-            value={endsAt}
-            onChange={(event) => setEndsAt(event.target.value)}
-          />
-        </AdminField>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
-        <AdminField label="Периодов">
-          <input
-            type="number"
-            min="1"
-            max="9"
-            value={totalPeriods}
-            onChange={(event) => setTotalPeriods(event.target.value)}
-          />
-        </AdminField>
-        <AdminField label="Бросков">
-          <input
-            type="number"
-            min="1"
-            max="100"
-            value={shotsPerPeriod}
-            onChange={(event) => setShotsPerPeriod(event.target.value)}
-          />
-        </AdminField>
-        <AdminField label="Минут период">
-          <input
-            type="number"
-            min="1"
-            value={periodMinutes}
-            onChange={(event) => setPeriodMinutes(event.target.value)}
-          />
-        </AdminField>
-        <AdminField label="Минут перерыв">
-          <input
-            type="number"
-            min="0"
-            value={breakMinutes}
-            onChange={(event) => setBreakMinutes(event.target.value)}
-          />
-        </AdminField>
-      </div>
-      <AdminField label="Вратарь">
-        <input value={goalieId} onChange={(event) => setGoalieId(event.target.value)} />
-      </AdminField>
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 120px', gap: 8 }}>
-        <AdminField label="Предмет">
-          <GlassSelect
-            value={requiredInventoryItemId}
-            options={inventoryOptions}
-            onChange={setRequiredInventoryItemId}
-            ariaLabel="Предмет для дуэли"
-          />
-        </AdminField>
-        <AdminField label="Зарядов/период">
-          <input
-            type="number"
-            min="0"
-            value={inventoryChargesPerPeriod}
-            onChange={(event) => setInventoryChargesPerPeriod(event.target.value)}
-          />
-        </AdminField>
-      </div>
-      <AdminField label="Скорости">
-        <textarea
-          value={presetsJson}
-          onChange={(event) => setPresetsJson(event.target.value)}
-          rows={8}
+        <label
+          className="glass"
           style={{
-            resize: 'vertical',
-            minHeight: 160,
-            fontFamily: 'var(--font-mono)',
-            fontSize: 11,
-            lineHeight: 1.45,
+            borderRadius: 16,
+            padding: '10px 12px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 10,
           }}
-        />
-      </AdminField>
-      {parsedPresets === null && (
-        <div role="alert" style={{ color: 'var(--red-deep)', fontSize: 12 }}>
-          Скорости заполнены некорректно
-        </div>
-      )}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        <button
-          type="button"
-          className="btn btn--ghost"
-          onClick={onCancel}
-          style={{ padding: '10px', fontSize: 12, letterSpacing: 0 }}
         >
-          Отмена
-        </button>
-        <button
-          type="button"
-          className="btn btn--cta"
-          onClick={() => mutation.mutate()}
-          disabled={mutation.isPending || !canSave}
-          style={{ padding: '10px', fontSize: 12, letterSpacing: 0 }}
-        >
-          Сохранить
-        </button>
-      </div>
-      {mutation.isError && (
-        <div role="alert" style={{ color: 'var(--red-deep)', fontSize: 12 }}>
-          {mutation.error instanceof Error ? mutation.error.message : 'Ошибка сохранения'}
+          <span style={{ color: 'var(--ink)', fontSize: 12, fontWeight: 900 }}>Активен</span>
+          <input
+            type="checkbox"
+            checked={isActive}
+            onChange={(event) => setIsActive(event.target.checked)}
+            style={{ width: 18, height: 18 }}
+          />
+        </label>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+          <AdminField label="Старт">
+            <input
+              type="datetime-local"
+              value={startsAt}
+              onChange={(event) => setStartsAt(event.target.value)}
+            />
+          </AdminField>
+          <AdminField label="Финиш">
+            <input
+              type="datetime-local"
+              value={endsAt}
+              onChange={(event) => setEndsAt(event.target.value)}
+            />
+          </AdminField>
         </div>
-      )}
-    </section>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+          <AdminField label="Периодов">
+            <input
+              type="number"
+              min="1"
+              max="9"
+              value={totalPeriods}
+              onChange={(event) => setTotalPeriods(event.target.value)}
+            />
+          </AdminField>
+          <AdminField label="Бросков">
+            <input
+              type="number"
+              min="1"
+              max="100"
+              value={shotsPerPeriod}
+              onChange={(event) => setShotsPerPeriod(event.target.value)}
+            />
+          </AdminField>
+          <AdminField label="Минут период">
+            <input
+              type="number"
+              min="1"
+              value={periodMinutes}
+              onChange={(event) => setPeriodMinutes(event.target.value)}
+            />
+          </AdminField>
+          <AdminField label="Минут перерыв">
+            <input
+              type="number"
+              min="0"
+              value={breakMinutes}
+              onChange={(event) => setBreakMinutes(event.target.value)}
+            />
+          </AdminField>
+          <AdminField label="Минут ожидание">
+            <input
+              type="number"
+              min="1"
+              value={readyMinutes}
+              onChange={(event) => setReadyMinutes(event.target.value)}
+            />
+          </AdminField>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+          <AdminField label="Очки за победу">
+            <input
+              type="number"
+              min="0"
+              value={winPoints}
+              onChange={(event) => setWinPoints(event.target.value)}
+            />
+          </AdminField>
+          <AdminField label="Очки за ничью">
+            <input
+              type="number"
+              min="0"
+              value={drawPoints}
+              onChange={(event) => setDrawPoints(event.target.value)}
+            />
+          </AdminField>
+          <AdminField label="Валюта за победу">
+            <input
+              type="number"
+              min="0"
+              value={winCurrencyReward}
+              onChange={(event) => setWinCurrencyReward(event.target.value)}
+            />
+          </AdminField>
+          <AdminField label="Валюта за ничью">
+            <input
+              type="number"
+              min="0"
+              value={drawCurrencyReward}
+              onChange={(event) => setDrawCurrencyReward(event.target.value)}
+            />
+          </AdminField>
+          <AdminField label="Звёзды за победу">
+            <input
+              type="number"
+              min="0"
+              value={winStarReward}
+              onChange={(event) => setWinStarReward(event.target.value)}
+            />
+          </AdminField>
+        </div>
+        <section
+          className="glass"
+          style={{
+            borderRadius: 18,
+            padding: 12,
+            display: 'grid',
+            gap: 10,
+            background: 'rgba(255,255,255,0.34)',
+          }}
+        >
+          <div style={{ color: 'var(--muted)', fontSize: 12, fontWeight: 950 }}>
+            Скорости по периодам
+          </div>
+          {periodSpeedPresets.slice(0, totalPeriodsCount).map((preset) => (
+            <div
+              key={preset.periodNumber}
+              className="glass"
+              style={{
+                borderRadius: 16,
+                padding: 10,
+                display: 'grid',
+                gap: 8,
+                background: 'rgba(255,255,255,0.42)',
+              }}
+            >
+              <div style={{ color: 'var(--ink)', fontSize: 12, fontWeight: 950 }}>
+                {preset.periodNumber}-й период
+              </div>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                  gap: 8,
+                }}
+              >
+                {duelSpeedFields.map((field) => (
+                  <AdminField key={field.key} label={field.label}>
+                    <input
+                      type="number"
+                      min={field.min}
+                      max={field.max}
+                      step={field.step}
+                      value={preset[field.key]}
+                      onChange={(event) =>
+                        updateSpeedPreset(preset.periodNumber, field.key, event.target.value)
+                      }
+                    />
+                  </AdminField>
+                ))}
+              </div>
+            </div>
+          ))}
+        </section>
+        {!speedPresetsValid && (
+          <div role="alert" style={{ color: 'var(--red-deep)', fontSize: 12 }}>
+            Скорости заполнены некорректно
+          </div>
+        )}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={onCancel}
+            style={{ padding: '10px', fontSize: 12, letterSpacing: 0 }}
+          >
+            Отмена
+          </button>
+          <button
+            type="button"
+            className="btn btn--cta"
+            onClick={() => mutation.mutate()}
+            disabled={mutation.isPending || !canSave}
+            style={{ padding: '10px', fontSize: 12, letterSpacing: 0 }}
+          >
+            Сохранить
+          </button>
+        </div>
+        {mutation.isError && (
+          <div role="alert" style={{ color: 'var(--red-deep)', fontSize: 12 }}>
+            {mutation.error instanceof Error ? mutation.error.message : 'Ошибка сохранения'}
+          </div>
+        )}
+      </section>
+    </div>,
+    document.body,
   );
 }
 

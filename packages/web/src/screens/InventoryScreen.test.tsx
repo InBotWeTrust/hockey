@@ -3,9 +3,9 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { InventoryScreen } from './InventoryScreen.js';
 
-function mockMe(currencyBalance?: number): void {
+function mockMe(currencyBalance?: number, starBalance?: number): void {
   vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-    new Response(JSON.stringify({ currencyBalance }), {
+    new Response(JSON.stringify({ currencyBalance, starBalance }), {
       status: 200,
       headers: { 'content-type': 'application/json' },
     }),
@@ -33,8 +33,9 @@ describe('InventoryScreen', () => {
     renderInventory();
 
     expect(screen.getByLabelText('Валюта')).toBeInTheDocument();
-    expect(screen.getByLabelText('Баланс: 0 токенов')).toBeInTheDocument();
-    expect(screen.getByText('0')).toBeInTheDocument();
+    expect(screen.getByLabelText('Токены: 0 токенов')).toBeInTheDocument();
+    expect(screen.getByLabelText('Звёзды: 0 звёзд')).toBeInTheDocument();
+    expect(screen.getAllByText('0')).toHaveLength(2);
     expect(screen.getByLabelText('Инвентарь')).toBeInTheDocument();
     expect(screen.getByText('Валюта').compareDocumentPosition(screen.getByText('Инвентарь'))).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
@@ -70,12 +71,14 @@ describe('InventoryScreen', () => {
   });
 
   it('shows the user currency balance when it is available', async () => {
-    mockMe(23);
+    mockMe(23, 7);
 
     renderInventory();
 
-    expect(await screen.findByLabelText('Баланс: 23 токена')).toBeInTheDocument();
+    expect(await screen.findByLabelText('Токены: 23 токена')).toBeInTheDocument();
+    expect(screen.getByLabelText('Звёзды: 7 звёзд')).toBeInTheDocument();
     expect(screen.getByText('23')).toBeInTheDocument();
+    expect(screen.getByText('7')).toBeInTheDocument();
   });
 
   it('opens a locked modal from inventory cards', () => {

@@ -21,7 +21,7 @@ export interface ScoreBoardOpponent {
 const LABEL_COLOR = 'rgba(148, 163, 184, 0.85)';
 const DIM = 'rgba(148, 163, 184, 0.35)';
 const BORDER = 'rgba(255, 255, 255, 0.08)';
-const SCOREBOARD_COLUMNS = '1.55fr 0.85fr 1.05fr 1.05fr';
+const SCOREBOARD_COLUMNS = '1.32fr 0.78fr 0.98fr 1.36fr';
 
 export function ScoreBoard({
   period,
@@ -228,6 +228,8 @@ function OpponentMetric({ value }: { value: string }): JSX.Element {
 }
 
 function Column({ label, children }: { label: string; children: React.ReactNode }): JSX.Element {
+  const compactLabel = label.length > 8;
+
   return (
     <div
       style={{
@@ -236,13 +238,17 @@ function Column({ label, children }: { label: string; children: React.ReactNode 
         alignItems: 'center',
         gap: 5,
         lineHeight: 1,
+        minWidth: 0,
       }}
     >
       <span
         style={{
-          fontSize: 9,
+          maxWidth: '100%',
+          overflow: 'hidden',
+          whiteSpace: 'nowrap',
+          fontSize: compactLabel ? 7 : 9,
           fontWeight: 700,
-          letterSpacing: '0.22em',
+          letterSpacing: compactLabel ? '0.12em' : '0.22em',
           color: LABEL_COLOR,
           textTransform: 'uppercase',
         }}
@@ -255,13 +261,18 @@ function Column({ label, children }: { label: string; children: React.ReactNode 
 }
 
 function LedNumber({ value, color }: { value: string; color: string }): JSX.Element {
+  const compactValue = value.length >= 8;
+
   return (
     <span
       style={{
         fontFamily: 'var(--font-mono)',
-        fontSize: 20,
+        maxWidth: '100%',
+        overflow: 'hidden',
+        whiteSpace: 'nowrap',
+        fontSize: compactValue ? 'clamp(16px, 4.6vw, 19px)' : 20,
         fontWeight: 700,
-        letterSpacing: '0.04em',
+        letterSpacing: compactValue ? '0.015em' : '0.04em',
         fontVariantNumeric: 'tabular-nums',
         color,
         textShadow: `0 0 10px ${color}80, 0 0 2px ${color}`,

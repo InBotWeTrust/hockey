@@ -294,6 +294,98 @@ describe('ChatRoomScreen', () => {
     await waitFor(() => expect(api.markChatAsRead).toHaveBeenCalledWith('c1'));
   });
 
+  it('shows a loading state while the first page is still fetching', () => {
+    vi.mocked(api.fetchMessages).mockImplementation(() => new Promise<ChatMessageDTO[]>(() => {}));
+
+    renderRoom('c1');
+
+    expect(screen.getByText('Загрузка сообщений...')).toBeInTheDocument();
+    expect(api.markChatAsRead).not.toHaveBeenCalled();
+  });
+
+  it('retries an empty first page before clearing an unread counter', async () => {
+    vi.mocked(api.fetchMessages).mockResolvedValue([]);
+    vi.mocked(api.fetchChatList).mockResolvedValue([
+      {
+        id: 'c1',
+        type: 'direct',
+        name: null,
+        entityType: null,
+        entityId: null,
+        lastMessageAt: '2026-04-26T10:02:00.000Z',
+        unreadCount: 1,
+        lastMessage: msgFromOther,
+        lastMessageSenderName: 'Иван',
+        dmCounterpart: {
+          userId: OTHER_ID,
+          displayName: 'Иван',
+          avatarUrl: null,
+          lastSeenAt: null,
+          lastReadAt: null,
+        },
+        memberCount: 2,
+        pinnedAt: null,
+      },
+    ]);
+
+    renderRoom('c1');
+
+    await waitFor(() => expect(api.fetchMessages).toHaveBeenCalledTimes(2));
+    expect(screen.getByText('Сообщений пока нет')).toBeInTheDocument();
+    expect(api.markChatAsRead).not.toHaveBeenCalled();
+  });
+
+  it('pins the room to the very bottom on the initial load', async () => {
+    const originalScrollHeight = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      'scrollHeight',
+    );
+    const originalClientHeight = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      'clientHeight',
+    );
+    const originalScrollTop = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollTop');
+    let assignedScrollTop = 0;
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+      configurable: true,
+      get() {
+        return this.getAttribute('data-testid') === 'messages-list' ? 1200 : 0;
+      },
+    });
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+      configurable: true,
+      get() {
+        return this.getAttribute('data-testid') === 'messages-list' ? 400 : 0;
+      },
+    });
+    Object.defineProperty(HTMLElement.prototype, 'scrollTop', {
+      configurable: true,
+      get() {
+        return assignedScrollTop;
+      },
+      set(value: number) {
+        assignedScrollTop = value;
+      },
+    });
+
+    try {
+      renderRoom('c1');
+
+      await waitFor(() => expect(screen.getAllByTestId('chat-bubble').length).toBe(2));
+      expect(assignedScrollTop).toBe(1200);
+    } finally {
+      if (originalScrollHeight) {
+        Object.defineProperty(HTMLElement.prototype, 'scrollHeight', originalScrollHeight);
+      }
+      if (originalClientHeight) {
+        Object.defineProperty(HTMLElement.prototype, 'clientHeight', originalClientHeight);
+      }
+      if (originalScrollTop) {
+        Object.defineProperty(HTMLElement.prototype, 'scrollTop', originalScrollTop);
+      }
+    }
+  });
+
   it('refetches a stale room cache before marking the chat read', async () => {
     const fetchSpy = vi.mocked(api.fetchMessages);
 
@@ -435,6 +527,12 @@ describe('ChatRoomScreen', () => {
       'src',
       'https://cdn.example/photo.webp',
     );
+    expect(screen.getByAltText('photo.webp')).toHaveStyle({
+      maxWidth: '100%',
+      objectFit: 'contain',
+      margin: '0 auto',
+    });
+    expect(screen.queryByText('photo.webp')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть просмотр изображения' }));
     await waitFor(() =>

@@ -52,6 +52,24 @@ describe('ChatBubble — author tap', () => {
     expect(screen.queryByLabelText('Доставлено')).toBeNull();
   });
 
+  it('renders own-message reply previews with a dark-bubble contrast tone', () => {
+    render(
+      <ChatBubble
+        {...defaults()}
+        isOwn
+        message={{ ...baseMessage, replyToId: 'm0' }}
+        replyTo={{ senderName: 'Собеседник', content: 'Открыл игру в Mi browser' }}
+      />,
+    );
+
+    expect(screen.getByTestId('reply-preview')).toHaveStyle({
+      color: 'rgba(255, 255, 255, 0.9)',
+    });
+    expect(screen.getByText('Открыл игру в Mi browser')).toHaveStyle({
+      color: 'rgba(255, 255, 255, 0.74)',
+    });
+  });
+
   it('shows an edited marker for changed non-deleted messages', () => {
     render(<ChatBubble {...defaults()} message={{ ...baseMessage, isEdited: true }} />);
     expect(screen.getByText('изменено')).toBeInTheDocument();

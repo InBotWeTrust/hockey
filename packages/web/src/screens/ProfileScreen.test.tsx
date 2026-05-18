@@ -5,6 +5,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ProfileScreen } from './ProfileScreen.js';
 import { useAuthStore } from '../auth/authStore.js';
 
+type TelegramWebAppWindow = typeof window & {
+  Telegram?: {
+    WebApp?: {
+      initData?: string;
+    };
+  };
+};
+
 function renderProfile(): void {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -147,6 +155,7 @@ describe('ProfileScreen', () => {
   beforeEach(() => {
     localStorage.clear();
     vi.unstubAllGlobals();
+    delete (window as TelegramWebAppWindow).Telegram;
     Object.defineProperty(navigator, 'serviceWorker', {
       configurable: true,
       value: undefined,
@@ -233,6 +242,24 @@ describe('ProfileScreen', () => {
 
     expect(await screen.findByText('Уведомления выключены')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Включить уведомления/i })).toBeInTheDocument();
+  });
+
+  it('hides notification settings inside Telegram Mini App', async () => {
+    (window as TelegramWebAppWindow).Telegram = {
+      WebApp: {
+        initData: 'query_id=q&user=%7B%22id%22%3A42%7D&auth_date=1&hash=h',
+      },
+    };
+    const fetchMock = mockProfileFetch(telegramProfile);
+
+    renderProfile();
+
+    expect(await screen.findByText('Статистика')).toBeInTheDocument();
+    expect(screen.queryByText('Уведомления')).not.toBeInTheDocument();
+    expect(screen.queryByText('Пуш-уведомления')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /уведомления/i })).not.toBeInTheDocument();
+    const urls = fetchMock.mock.calls.map((call) => getFetchUrl(call[0]));
+    expect(urls.some((url) => url.includes('/api/push/'))).toBe(false);
   });
 
   it('does not render a redundant enabled push button', async () => {

@@ -65,6 +65,11 @@ export interface AmateurDuelTemplate {
   entry_fee_amount: number;
   required_inventory_item_id: string | null;
   inventory_charges_per_period: number;
+  win_points: number;
+  draw_points: number;
+  win_currency_reward: number;
+  draw_currency_reward: number;
+  win_star_reward: number;
 }
 
 export interface AmateurDuelRules {
@@ -94,6 +99,11 @@ export interface AmateurDuelRules {
   entryFeeAmount: number;
   requiredInventoryItemId: string | null;
   inventoryChargesPerPeriod: number;
+  winPoints: number;
+  drawPoints: number;
+  winCurrencyReward: number;
+  drawCurrencyReward: number;
+  winStarReward: number;
 }
 
 export interface AmateurDuelParticipant {
@@ -109,7 +119,12 @@ export interface AmateurDuelParticipant {
   active_duration_ms: number;
   active_duration_seconds: number;
   result_points: number;
+  current_period_shots: number;
+  current_period_goals: number;
   ready_at: string | null;
+  period_started_at: string | null;
+  period_ends_at: string | null;
+  break_ends_at: string | null;
   loadout: AmateurDuelLoadout;
   inventory_available?: AmateurDuelInventoryAvailabilityItem[];
   inventory_report: AmateurDuelInventoryPeriodReport[];

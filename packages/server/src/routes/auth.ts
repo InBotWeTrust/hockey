@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { verifyTelegramLoginPayload } from '../auth/telegram.js';
+import { verifyTelegramLoginPayload, verifyTelegramMiniAppInitData } from '../auth/telegram.js';
 import { createJwt, verifyAccessToken, verifyRefreshToken } from '../auth/jwt.js';
 import { exchangeVkCode, fetchVkProfile, type VkProfile } from '../auth/vk.js';
 import {
@@ -39,6 +39,11 @@ const vkBodySchema = z.object({
   redirectUri: z.string().url(),
   codeVerifier: z.string().min(1),
   deviceId: z.string().min(1),
+  timezone: z.string().optional(),
+});
+
+const tgMiniAppBodySchema = z.object({
+  initData: z.string().min(1),
   timezone: z.string().optional(),
 });
 
@@ -126,6 +131,58 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (app, opt
     const displayName =
       [tgUser.firstName, tgUser.lastName].filter(Boolean).join(' ') || tgUser.username || 'player';
     const tz = safeIanaTimezone(rawTimezone);
+    const currentUserId = await tryReadAccessTokenFromHeader(
+      req.headers.authorization,
+      opts.accessSecret,
+    );
+    const user = await findOrCreateTelegramUser(app.pg, {
+      providerUid: String(tgUser.id),
+      displayName,
+      ...(tgUser.photoUrl !== undefined ? { avatarUrl: tgUser.photoUrl } : {}),
+      ...(tgUser.username !== undefined ? { username: tgUser.username } : {}),
+      ...(tgUser.firstName ? { firstName: tgUser.firstName } : {}),
+      ...(tgUser.lastName !== undefined ? { lastName: tgUser.lastName } : {}),
+      ...(tz !== undefined ? { timezone: tz } : {}),
+      ...(currentUserId !== undefined ? { currentUserId } : {}),
+      ...(opts.accountRecoveryTelegramProviderUids !== undefined
+        ? { recoveryMergeTelegramProviderUids: opts.accountRecoveryTelegramProviderUids }
+        : {}),
+    });
+
+    const [accessToken, refresh] = await Promise.all([
+      jwt.issueAccessToken({ sub: user.id }),
+      jwt.issueRefreshToken({ sub: user.id }),
+    ]);
+    await saveRefresh(app.redis, {
+      jti: refresh.jti,
+      userId: user.id,
+      ttlSec: refresh.expSec,
+    });
+
+    reply.send({
+      accessToken,
+      refreshToken: refresh.token,
+      user: await buildAuthUser(app, user),
+    });
+  });
+
+  app.post('/auth/telegram-mini-app', async (req, reply) => {
+    const parsed = tgMiniAppBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new AppError('bad_request', 'invalid telegram mini app payload', 400);
+    }
+
+    let tgUser;
+    try {
+      tgUser = verifyTelegramMiniAppInitData(parsed.data.initData, opts.telegramBotToken);
+    } catch (err) {
+      req.log.warn({ err }, 'telegram mini app auth failed');
+      throw new AppError('unauthenticated', 'telegram hash invalid', 401);
+    }
+
+    const displayName =
+      [tgUser.firstName, tgUser.lastName].filter(Boolean).join(' ') || tgUser.username || 'player';
+    const tz = safeIanaTimezone(parsed.data.timezone);
     const currentUserId = await tryReadAccessTokenFromHeader(
       req.headers.authorization,
       opts.accessSecret,

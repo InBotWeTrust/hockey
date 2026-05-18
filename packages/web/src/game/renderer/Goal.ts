@@ -65,7 +65,7 @@ export class Goal {
     this.lightStartedAt = performance.now();
   }
 
-  update(scale: Scale, offsetRinkX = 0): void {
+  update(scale: Scale, offsetRinkX = 0, offsetRinkY = 0): void {
     if (this.destroyed) return;
     const s = scale.factor;
     this.sprite.width = this.gateWidth * s;
@@ -76,14 +76,18 @@ export class Goal {
         ? scaledOffsetX
         : Math.max(-this.visualMaxOffsetX, Math.min(this.visualMaxOffsetX, scaledOffsetX));
     const rawX = GOAL.x + GOAL.width / 2 + visualOffsetX;
-    const goalLineY = (GOAL.y + GOAL.height) * this.visualYScale + this.visualYOffset;
+    const goalLineY =
+      (GOAL.y + GOAL.height + offsetRinkY) * this.visualYScale + this.visualYOffset;
     const cx = rawX * s;
     const cy = goalLineY * s;
     this.sprite.position.set(cx, cy);
     // Light sits behind the net, closer to the back bar than to the ice in front.
     this.light.position.set(
       cx,
-      (GOAL.y * this.visualYScale + this.visualYOffset - this.gateHeight * 0.52) * s,
+      ((GOAL.y + offsetRinkY) * this.visualYScale +
+        this.visualYOffset -
+        this.gateHeight * 0.52) *
+        s,
     );
     this.light.scale.set(s);
     this.container.position.set(scale.offsetX, scale.offsetY);

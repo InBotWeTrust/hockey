@@ -315,12 +315,21 @@ export interface AdminDuelTemplate {
   isActive: boolean;
   duelKind: AdminDuelKind;
   duelVariant: 'classic' | 'time_attack';
+  rankedEnabled: boolean;
+  matchmakingEnabled: boolean;
   startsAt: string;
   endsAt: string;
   totalPeriods: number;
   shotsPerPeriod: number;
   periodDurationMs: number;
   breakDurationMs: number;
+  challengeTtlMs: number;
+  readyDurationMs: number;
+  readyNoShowCooldownMs: number;
+  matchmakingTimeoutMs: number;
+  rankedDailyLimit: number;
+  rankedSameOpponentLimit: number;
+  powerCap: number;
   goalieId: string;
   periodSpeedPresets: AdminDuelPeriodSpeedPreset[];
   periodRules: AdminDuelPeriodRule[];
@@ -328,8 +337,50 @@ export interface AdminDuelTemplate {
   entryFeeAmount: number;
   requiredInventoryItemId: string | null;
   inventoryChargesPerPeriod: number;
+  winPoints: number;
+  drawPoints: number;
+  winCurrencyReward: number;
+  drawCurrencyReward: number;
+  winStarReward: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AdminDuelHistoryItem {
+  id: string;
+  templateId: string | null;
+  templateTitle: string;
+  status: 'invited' | 'ready_check' | 'active' | 'settled' | 'cancelled' | 'expired';
+  source: 'challenge' | 'matchmaking';
+  ranked: boolean;
+  duelKind: AdminDuelKind;
+  outcome: 'challenger_win' | 'opponent_win' | 'draw' | 'double_loss' | null;
+  winnerUserId: string | null;
+  settledReason: string | null;
+  challenger: AdminDuelHistoryParticipant;
+  opponent: AdminDuelHistoryParticipant;
+  createdAt: string;
+  acceptedAt: string | null;
+  settledAt: string | null;
+  startsAt: string;
+  endsAt: string;
+}
+
+export interface AdminDuelHistoryParticipant {
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  goals: number;
+  shots: number;
+  state: string;
+  resultPoints: number;
+}
+
+export interface AdminDuelHistoryResponse {
+  duels: AdminDuelHistoryItem[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 export interface AdminFeedback {
@@ -519,6 +570,7 @@ export interface AdminChannelResponse {
   channel: {
     id: string;
     name: string | null;
+    description: string | null;
     slug: string | null;
     avatarUrl?: string | null;
     createdAt: string;
@@ -526,6 +578,7 @@ export interface AdminChannelResponse {
   mainChat?: {
     id: string;
     name: string | null;
+    description: string | null;
     avatarUrl?: string | null;
     createdAt: string;
   } | null;
@@ -659,7 +712,9 @@ export function fetchAdminFeedback(query: AdminFeedbackQuery): Promise<AdminFeed
   return apiFetch<AdminFeedbackResponse>(`/admin/feedback?${params.toString()}`);
 }
 
-export function fetchAdminMismatches(period: AdminMismatchPeriod): Promise<AdminMismatchesResponse> {
+export function fetchAdminMismatches(
+  period: AdminMismatchPeriod,
+): Promise<AdminMismatchesResponse> {
   const params = new URLSearchParams({ period, limit: '50' });
   return apiFetch<AdminMismatchesResponse>(`/admin/mismatches?${params.toString()}`);
 }
@@ -688,6 +743,25 @@ export function patchAdminNotification(
 export function fetchAdminChannelNews(period: AdminChannelPeriod): Promise<AdminChannelResponse> {
   const params = new URLSearchParams({ period });
   return apiFetch<AdminChannelResponse>(`/admin/channel/news?${params.toString()}`);
+}
+
+export function patchAdminChatProfile(
+  chatId: string,
+  body: { name?: string; description?: string },
+): Promise<{
+  chat: {
+    id: string;
+    name: string | null;
+    description: string | null;
+    slug: string | null;
+    avatarUrl: string | null;
+    createdAt: string;
+  };
+}> {
+  return apiFetch(`/admin/chats/${chatId}/profile`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
 }
 
 export function patchAdminChannelPost(
@@ -777,6 +851,24 @@ export function deleteAdminInventoryItem(itemId: string): Promise<{ ok: true }> 
 
 export function fetchAdminDuelTemplates(): Promise<{ templates: AdminDuelTemplate[] }> {
   return apiFetch<{ templates: AdminDuelTemplate[] }>('/admin/duel-templates');
+}
+
+export function fetchAdminDuelHistory(params: {
+  q?: string;
+  status?: AdminDuelHistoryItem['status'] | 'all';
+  from?: string;
+  to?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<AdminDuelHistoryResponse> {
+  const search = new URLSearchParams();
+  if (params.q) search.set('q', params.q);
+  if (params.status && params.status !== 'all') search.set('status', params.status);
+  if (params.from) search.set('from', params.from);
+  if (params.to) search.set('to', params.to);
+  search.set('limit', String(params.limit ?? 25));
+  search.set('offset', String(params.offset ?? 0));
+  return apiFetch<AdminDuelHistoryResponse>(`/admin/duels/history?${search.toString()}`);
 }
 
 export function createAdminDuelTemplate(
