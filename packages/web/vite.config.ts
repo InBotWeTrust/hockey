@@ -33,12 +33,23 @@ export default defineConfig({
         cleanupOutdatedCaches: true,
         clientsClaim: true,
         importScripts: ['/push-sw.js'],
-        globPatterns: ['**/*.{js,css,html,ico,png,webp,svg,woff2}'],
+        globPatterns: ['**/*.{js,css,html,ico,woff2,webmanifest}'],
         globIgnores: ['**/icons/app-logo.png'],
         runtimeCaching: [
           {
             urlPattern: /^\/api\//,
             handler: 'NetworkOnly',
+          },
+          {
+            urlPattern: ({ request }) => request.destination === 'image',
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'hockey-images',
+              expiration: {
+                maxEntries: 140,
+                maxAgeSeconds: 60 * 60 * 24 * 30,
+              },
+            },
           },
         ],
       },

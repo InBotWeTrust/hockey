@@ -1387,7 +1387,7 @@ function ArenaRinkBackdropLayer({
         transformOrigin: '50% 58%',
         transition,
       }
-      : {
+    : {
         position: 'fixed',
         left: viewportWidth / 2,
         top: viewportHeight * (launching ? 0.53 : 0.5),
@@ -1438,12 +1438,19 @@ function ArenaRinkBackdropLayer({
             'radial-gradient(circle at 50% 50%, transparent 0 28%, rgba(15,23,42,0.18) 62%, rgba(15,23,42,0.28) 100%)',
           opacity: launching ? 0 : isReturning ? 0.12 : 0.22,
           transform: launching ? 'scale(1.08)' : 'scale(1)',
-          transition:
-            `opacity ${ARENA_LAUNCH_TRANSITION_MS}ms cubic-bezier(.16,.84,.24,1), transform ${ARENA_LAUNCH_TRANSITION_MS}ms cubic-bezier(.16,.84,.24,1)`,
+          transition: `opacity ${ARENA_LAUNCH_TRANSITION_MS}ms cubic-bezier(.16,.84,.24,1), transform ${ARENA_LAUNCH_TRANSITION_MS}ms cubic-bezier(.16,.84,.24,1)`,
         }}
       />
     </div>
   );
+}
+
+function getArenaCarouselStep(carousel: HTMLDivElement | null): number {
+  if (!carousel) return 0;
+  const firstCard = carousel.firstElementChild as HTMLElement | null;
+  const styles = window.getComputedStyle(carousel);
+  const gap = Number.parseFloat(styles.columnGap || styles.gap || '0') || 0;
+  return (firstCard?.offsetWidth ?? carousel.clientWidth ?? 0) + gap;
 }
 
 function ArenaVideoCube({
@@ -1460,12 +1467,30 @@ function ArenaVideoCube({
   onStats: (entry: ArenaEntry) => void;
 }): JSX.Element {
   const carouselRef = useRef<HTMLDivElement | null>(null);
+  const activeIndexRef = useRef(activeIndex);
+  const scrollCommitTimerRef = useRef<number | null>(null);
+  const scrollRafRef = useRef<number | null>(null);
+  const programmaticScrollRef = useRef(false);
   const [scrollProgress, setScrollProgress] = useState(activeIndex);
+
+  useEffect(() => {
+    activeIndexRef.current = activeIndex;
+  }, [activeIndex]);
+
+  useEffect(() => {
+    return () => {
+      if (scrollCommitTimerRef.current !== null) {
+        window.clearTimeout(scrollCommitTimerRef.current);
+      }
+      if (scrollRafRef.current !== null) {
+        window.cancelAnimationFrame(scrollRafRef.current);
+      }
+    };
+  }, []);
 
   useLayoutEffect(() => {
     const carousel = carouselRef.current;
-    const firstCard = carousel?.firstElementChild as HTMLElement | null;
-    const step = (firstCard?.offsetWidth ?? carousel?.clientWidth ?? 0) + 12;
+    const step = getArenaCarouselStep(carousel);
     if (!carousel || step <= 0) {
       setScrollProgress(activeIndex);
       return;
@@ -1473,23 +1498,45 @@ function ArenaVideoCube({
     const nextLeft = activeIndex * step;
     const currentIndex = Math.round(carousel.scrollLeft / step);
     if (currentIndex !== activeIndex && Math.abs(carousel.scrollLeft - nextLeft) > 1) {
+      programmaticScrollRef.current = true;
       if (typeof carousel.scrollTo === 'function') {
         carousel.scrollTo({ left: nextLeft, behavior: 'auto' });
       } else {
         carousel.scrollLeft = nextLeft;
       }
+      window.requestAnimationFrame(() => {
+        programmaticScrollRef.current = false;
+      });
     }
     setScrollProgress(activeIndex);
   }, [activeIndex, entries.length]);
 
   const handleScroll = useCallback((): void => {
-    const carousel = carouselRef.current;
-    const firstCard = carousel?.firstElementChild as HTMLElement | null;
-    const step = (firstCard?.offsetWidth ?? carousel?.clientWidth ?? 0) + 12;
-    if (!carousel || step <= 0 || entries.length === 0) return;
-    const progress = Math.min(entries.length - 1, Math.max(0, carousel.scrollLeft / step));
-    setScrollProgress(progress);
-    onActiveIndexChange(Math.round(progress));
+    if (scrollRafRef.current !== null) {
+      window.cancelAnimationFrame(scrollRafRef.current);
+    }
+    scrollRafRef.current = window.requestAnimationFrame(() => {
+      scrollRafRef.current = null;
+      const carousel = carouselRef.current;
+      const step = getArenaCarouselStep(carousel);
+      if (!carousel || step <= 0 || entries.length === 0) return;
+      const progress = Math.min(entries.length - 1, Math.max(0, carousel.scrollLeft / step));
+      setScrollProgress(progress);
+
+      if (programmaticScrollRef.current) return;
+
+      if (scrollCommitTimerRef.current !== null) {
+        window.clearTimeout(scrollCommitTimerRef.current);
+      }
+      scrollCommitTimerRef.current = window.setTimeout(() => {
+        scrollCommitTimerRef.current = null;
+        const nextIndex = Math.min(entries.length - 1, Math.max(0, Math.round(progress)));
+        if (nextIndex !== activeIndexRef.current) {
+          activeIndexRef.current = nextIndex;
+          onActiveIndexChange(nextIndex);
+        }
+      }, 120);
+    });
   }, [entries.length, onActiveIndexChange]);
 
   return (
@@ -1500,8 +1547,8 @@ function ArenaVideoCube({
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'center',
-        gap: 10,
-        paddingTop: 48,
+        gap: 'clamp(6px, 1.4vh, 10px)',
+        paddingTop: 'clamp(0px, 4.5vh, 34px)',
         transform: launchingEntryId ? 'translate3d(0, 34px, 0) scale(0.82)' : 'none',
         opacity: launchingEntryId ? 0 : 1,
         filter: launchingEntryId ? 'blur(10px)' : 'none',
@@ -1515,7 +1562,7 @@ function ArenaVideoCube({
         style={{
           position: 'relative',
           width: '100%',
-          maxWidth: 430,
+          maxWidth: 462,
           margin: '0 auto',
           padding: '0',
         }}
@@ -1527,11 +1574,13 @@ function ArenaVideoCube({
             position: 'relative',
             zIndex: 2,
             display: 'flex',
-            gap: 12,
+            gap: 'clamp(10px, 3vw, 12px)',
             overflowX: 'auto',
             scrollSnapType: 'x mandatory',
+            scrollPaddingInline: 'clamp(12px, 3.8vw, 20px)',
+            overscrollBehaviorX: 'contain',
             WebkitOverflowScrolling: 'touch',
-            padding: '0 8px 14px',
+            padding: '0 clamp(12px, 3.8vw, 20px) 12px',
             scrollbarWidth: 'none',
             perspective: 920,
             perspectiveOrigin: '50% 50%',
@@ -1545,11 +1594,12 @@ function ArenaVideoCube({
                 key={entry.id}
                 aria-label={`${entry.eyebrow}: ${entry.title}`}
                 style={{
-                  minWidth: '100%',
+                  flex: '0 0 calc(100% - clamp(24px, 7vw, 40px))',
+                  minWidth: 0,
                   aspectRatio: '4 / 3',
                   scrollSnapAlign: 'center',
                   display: 'flex',
-                  overflow: 'hidden',
+                  overflow: 'visible',
                   perspective: 900,
                 }}
               >
@@ -1558,7 +1608,7 @@ function ArenaVideoCube({
                     width: '100%',
                     height: '100%',
                     display: 'flex',
-                    transform: `rotateY(${offset * 18}deg) translateZ(${-absOffset * 10}px) scale(${1 - absOffset * 0.018})`,
+                    transform: `rotateY(${offset * 10}deg) translateZ(${-absOffset * 7}px) scale(${1 - absOffset * 0.012})`,
                     transformOrigin: '50% 50%',
                     transformStyle: 'preserve-3d',
                     backfaceVisibility: 'hidden',
@@ -1572,7 +1622,7 @@ function ArenaVideoCube({
                     style={{
                       position: 'absolute',
                       inset: 0,
-                      borderRadius: 30,
+                      borderRadius: 'clamp(22px, 7vw, 30px)',
                       pointerEvents: 'none',
                       opacity: Math.min(0.18, absOffset * 0.24),
                       background:
@@ -1631,7 +1681,7 @@ function ArenaCubeFace({
       className="glass"
       style={{
         position: 'relative',
-        borderRadius: 30,
+        borderRadius: 'clamp(22px, 7vw, 30px)',
         padding: 0,
         overflow: 'hidden',
         boxSizing: 'border-box',
@@ -1680,13 +1730,26 @@ function ArenaCubeFace({
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'space-between',
-          gap: 10,
-          padding: 16,
+          gap: 'clamp(6px, 2vw, 10px)',
+          padding: 'clamp(12px, 4vw, 16px)',
           boxSizing: 'border-box',
         }}
       >
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 12 }}>
-          <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(0, 1fr) auto',
+            gap: 'clamp(8px, 2.8vw, 12px)',
+          }}
+        >
+          <div
+            style={{
+              minWidth: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 'clamp(5px, 1.8vw, 8px)',
+            }}
+          >
             {showDuelIdentity ? (
               <>
                 <div
@@ -1704,18 +1767,18 @@ function ArenaCubeFace({
                 <div
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: '54px minmax(0, 1fr)',
+                    gridTemplateColumns: 'clamp(46px, 14vw, 54px) minmax(0, 1fr)',
                     alignItems: 'center',
-                    gap: 14,
+                    gap: 'clamp(10px, 3vw, 14px)',
                     minWidth: 0,
-                    marginTop: 4,
+                    marginTop: 2,
                   }}
                 >
                   <UserAvatar
                     avatarUrl={entry.opponentAvatarUrl}
                     name={entry.opponentName}
                     size={54}
-                    fontSize={23}
+                    fontSize={22}
                     style={{
                       transform: 'translateY(4px)',
                       border: '2px solid rgba(255,255,255,0.7)',
@@ -1726,7 +1789,7 @@ function ArenaCubeFace({
                     <div
                       style={{
                         color: '#fff',
-                        fontSize: 'clamp(22px, 5.7vw, 32px)',
+                        fontSize: 'clamp(20px, 5.6vw, 30px)',
                         lineHeight: 0.98,
                         fontWeight: 950,
                         overflow: 'hidden',
@@ -1741,7 +1804,7 @@ function ArenaCubeFace({
                       <div
                         style={{
                           color: 'rgba(255,255,255,0.76)',
-                          fontSize: 12,
+                          fontSize: 'clamp(10px, 3vw, 12px)',
                           fontWeight: 900,
                           lineHeight: 1.1,
                           textShadow: '0 3px 12px rgba(0,0,0,0.4)',
@@ -1753,7 +1816,7 @@ function ArenaCubeFace({
                     <div
                       style={{
                         color: 'rgba(255,255,255,0.86)',
-                        fontSize: 14,
+                        fontSize: 'clamp(12px, 3.5vw, 14px)',
                         fontWeight: 900,
                         lineHeight: 1.08,
                         textShadow: '0 3px 14px rgba(0,0,0,0.42)',
@@ -1781,13 +1844,13 @@ function ArenaCubeFace({
                 <div
                   style={{
                     color: '#fff',
-                    fontSize: titleIsLong ? 'clamp(22px, 5.4vw, 30px)' : 'clamp(26px, 7vw, 36px)',
+                    fontSize: titleIsLong ? 'clamp(20px, 5.4vw, 29px)' : 'clamp(23px, 6.8vw, 34px)',
                     lineHeight: 0.96,
                     fontWeight: 950,
                     overflowWrap: 'break-word',
                     wordBreak: titleIsLong ? 'break-word' : 'normal',
                     hyphens: 'auto',
-                    maxWidth: entry.kind === 'daily' ? 270 : '100%',
+                    maxWidth: entry.kind === 'daily' ? 'min(100%, 270px)' : '100%',
                     textShadow: '0 4px 18px rgba(0,0,0,0.48)',
                   }}
                 >
@@ -1800,7 +1863,7 @@ function ArenaCubeFace({
                 style={{
                   maxWidth: 270,
                   color: 'rgba(255,255,255,0.78)',
-                  fontSize: 14,
+                  fontSize: 'clamp(12px, 3.5vw, 14px)',
                   fontWeight: 850,
                   lineHeight: 1.15,
                   textShadow: '0 3px 14px rgba(0,0,0,0.42)',
@@ -1839,9 +1902,9 @@ function ArenaCubeFace({
             <div
               style={{
                 width: '100%',
-                maxWidth: 292,
-                borderRadius: 22,
-                padding: '10px 14px',
+                maxWidth: 'min(292px, 100%)',
+                borderRadius: 'clamp(18px, 5vw, 22px)',
+                padding: 'clamp(7px, 2.5vw, 10px) clamp(10px, 3vw, 14px)',
                 background: 'rgba(226,239,249,0.78)',
                 border: '1px solid rgba(255,255,255,0.72)',
                 boxShadow: '0 18px 44px rgba(4,12,28,0.2)',
@@ -1854,14 +1917,14 @@ function ArenaCubeFace({
             <div
               style={{
                 width: '100%',
-                borderRadius: 22,
-                padding: '11px 14px',
+                borderRadius: 'clamp(18px, 5vw, 22px)',
+                padding: 'clamp(8px, 2.8vw, 11px) clamp(10px, 3vw, 14px)',
                 background: 'rgba(226,239,249,0.8)',
                 border: '1px solid rgba(255,255,255,0.72)',
                 boxShadow: '0 18px 44px rgba(4,12,28,0.18)',
                 backdropFilter: 'blur(14px)',
                 color: 'rgba(15,23,42,0.62)',
-                fontSize: 14,
+                fontSize: 'clamp(12px, 3.5vw, 14px)',
                 fontWeight: 850,
                 lineHeight: 1.2,
                 textAlign: 'center',
@@ -1877,9 +1940,10 @@ function ArenaCubeFace({
           disabled={entry.disabled}
           onClick={entry.onEnter}
           style={{
-            minHeight: 54,
+            minHeight: 'clamp(46px, 13vw, 54px)',
             justifyContent: 'center',
             width: '100%',
+            fontSize: 'clamp(14px, 4vw, 16px)',
             boxShadow: '0 18px 42px rgba(4,12,28,0.34)',
           }}
         >
@@ -5942,14 +6006,7 @@ function DuelInventoryMiniHud({ match }: { match: AmateurDuelMatch }): JSX.Eleme
       style={{
         display: 'flex',
         justifyContent: 'flex-start',
-        gap: 6,
-        padding: 6,
-        borderRadius: 999,
-        background: 'rgba(226, 238, 249, 0.62)',
-        border: '1px solid rgba(255, 255, 255, 0.74)',
-        boxShadow: '0 10px 24px rgba(15, 23, 42, 0.16)',
-        backdropFilter: 'blur(12px) saturate(112%)',
-        WebkitBackdropFilter: 'blur(12px) saturate(112%)',
+        gap: 5,
         pointerEvents: 'none',
       }}
     >
@@ -5986,16 +6043,16 @@ function DuelInventoryMiniHud({ match }: { match: AmateurDuelMatch }): JSX.Eleme
             aria-label={`${slot.label}: ${statusText}`}
             style={{
               position: 'relative',
-              width: 34,
-              height: 34,
+              width: 27,
+              height: 27,
               borderRadius: 999,
               overflow: 'hidden',
               display: 'block',
               background: 'rgba(255,255,255,0.72)',
               border: isSelected ? `2px solid ${rarityColor}` : '1px solid rgba(255,255,255,0.78)',
               boxShadow: isSelected
-                ? `0 0 0 1px rgba(255,255,255,0.7), 0 8px 18px ${rarityColor}45`
-                : '0 0 0 1px rgba(15,23,42,0.08), 0 6px 14px rgba(15,23,42,0.12)',
+                ? `0 0 0 1px rgba(255,255,255,0.72), 0 6px 14px ${rarityColor}42`
+                : '0 0 0 1px rgba(15,23,42,0.08), 0 5px 12px rgba(15,23,42,0.12)',
             }}
           >
             <img
@@ -7067,8 +7124,8 @@ export function PlayView<TState>({
   const [pixiReady, setPixiReady] = useState(false);
   const [isEntrancePlaying, setIsEntrancePlaying] = useState(false);
   const routeCameraRequestedRef = useRef(playRouteTransitionOnMount && !shouldReduceMotion());
-  const [routeCameraPhase, setRouteCameraPhase] = useState<RouteCameraPhase>(
-    () => (routeCameraRequestedRef.current ? 'zoomed' : 'settled'),
+  const [routeCameraPhase, setRouteCameraPhase] = useState<RouteCameraPhase>(() =>
+    routeCameraRequestedRef.current ? 'zoomed' : 'settled',
   );
   // Ref-mirror of suppressedByModal so handleReady (initialized once via
   // useCallback) can read the latest value when Pixi finishes loading.
@@ -7318,13 +7375,7 @@ export function PlayView<TState>({
     goalie.container.visible = true;
     puck.container.visible = false;
 
-    const drawAt = (
-      gx: number,
-      gy: number,
-      px: number,
-      py: number,
-      goalOffsetY: number,
-    ): void => {
+    const drawAt = (gx: number, gy: number, px: number, py: number, goalOffsetY: number): void => {
       goal.update(scaleRef.current, 0, goalOffsetY);
       player.update(scaleRef.current, px, py);
       goalie.update(
@@ -7782,10 +7833,10 @@ export function PlayView<TState>({
             <div
               style={{
                 position: 'absolute',
-                left: 'clamp(12px, 5.2%, 28px)',
-                bottom: 'clamp(34px, 7.8%, 58px)',
+                left: 'clamp(10px, 4.2%, 22px)',
+                bottom: 'clamp(16px, 3.4%, 30px)',
                 zIndex: 6,
-                maxWidth: '42%',
+                maxWidth: '34%',
                 pointerEvents: 'none',
                 ...routeGameStyle,
               }}
