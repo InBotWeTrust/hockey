@@ -315,6 +315,10 @@ export function ChannelPostCommentsScreen(): JSX.Element {
 
   useEffect(() => {
     const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+    const desktopPointer =
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(hover: hover) and (pointer: fine)').matches;
+    if (desktopPointer) return;
     if (!vv) return;
     const update = (): void => setViewportHeight(vv.height);
     update();

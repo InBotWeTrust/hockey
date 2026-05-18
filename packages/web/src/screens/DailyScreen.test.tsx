@@ -382,7 +382,7 @@ describe('DailyScreen', () => {
     });
   });
 
-  it('opens waiting amateur duel details from the arena instead of a dead-end message', async () => {
+  it('opens waiting amateur duel on the rink from the arena', async () => {
     const waitingMatch: AmateurDuelMatchState = {
       ...settledDuelMatch,
       status: 'active',
@@ -438,8 +438,9 @@ describe('DailyScreen', () => {
     const duelCard = await screen.findByRole('article', { name: 'Активная дуэль: Duel Opponent' });
     fireEvent.click(within(duelCard).getByRole('button', { name: 'Ждём соперника' }));
 
-    expect(await screen.findByRole('heading', { name: 'Дуэль' })).toBeInTheDocument();
-    expect(screen.getByText(/Вы завершили игру, ждём соперника/)).toBeInTheDocument();
+    expect(await screen.findByLabelText('Соперник: Duel Opponent')).toBeInTheDocument();
+    expect(screen.getByText('ЖДЁМ СОПЕРНИКА')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Дуэль' })).not.toBeInTheDocument();
     expect(screen.queryByText(/Эта дуэль сейчас не на площадке/)).not.toBeInTheDocument();
   });
 

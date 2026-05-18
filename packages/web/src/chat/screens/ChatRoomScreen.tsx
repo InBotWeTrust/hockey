@@ -419,6 +419,10 @@ export function ChatRoomScreen(): JSX.Element {
   const [viewportHeight, setViewportHeight] = useState<number | null>(null);
   useEffect(() => {
     const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+    const desktopPointer =
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(hover: hover) and (pointer: fine)').matches;
+    if (desktopPointer) return;
     if (!vv) return;
     const update = (): void => setViewportHeight(vv.height);
     update();
@@ -1295,6 +1299,8 @@ export function ChatRoomScreen(): JSX.Element {
         // visible while typing. Fallback to 100dvh on browsers without
         // visualViewport.
         position: 'relative',
+        display: 'flex',
+        flexDirection: 'column',
         height: viewportHeight !== null ? `${viewportHeight}px` : '100dvh',
         overflow: 'hidden',
       }}

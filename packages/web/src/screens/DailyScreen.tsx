@@ -772,6 +772,7 @@ export function DailyScreen(): JSX.Element {
       <TrainingPlaceholder
         autoPlay={routeParams.get('play') === '1'}
         onBack={fromSections ? openSections : openHub}
+        onPlayHome={openHub}
         playEntranceOnStart={pendingPlayEntrance === 'training'}
         onEntranceConsumed={() => setPendingPlayEntrance(null)}
         playRouteTransitionOnStart={pendingPlayRouteTransition === 'training'}
@@ -3159,6 +3160,7 @@ function ModeShell({
 function TrainingPlaceholder({
   autoPlay = false,
   onBack,
+  onPlayHome,
   onPlayStart,
   playEntranceOnStart = false,
   onEntranceConsumed,
@@ -3167,6 +3169,7 @@ function TrainingPlaceholder({
 }: {
   autoPlay?: boolean;
   onBack: () => void;
+  onPlayHome?: () => void;
   onPlayStart?: () => void;
   playEntranceOnStart?: boolean;
   onEntranceConsumed?: () => void;
@@ -3244,6 +3247,7 @@ function TrainingPlaceholder({
         onBack={() => {
           setLocalPlayEntrance(false);
           setPlayTraining(false);
+          (onPlayHome ?? onBack)();
         }}
         playEntranceOnMount={shouldPlayEntrance}
         onEntranceConsumed={() => {

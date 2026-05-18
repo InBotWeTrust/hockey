@@ -48,8 +48,12 @@ export class Puck {
   constructor(grip: 'left' | 'right' = 'left', options: PuckOptions = {}) {
     this.offset = BLADE_OFFSET[grip];
     if (options.bladeOffsetX !== undefined || options.bladeOffsetY !== undefined) {
+      const gripDirection = grip === 'left' ? -1 : 1;
       this.offset = {
-        x: options.bladeOffsetX ?? this.offset.x,
+        x:
+          options.bladeOffsetX !== undefined
+            ? Math.abs(options.bladeOffsetX) * gripDirection
+            : this.offset.x,
         y: options.bladeOffsetY ?? this.offset.y,
       };
     }

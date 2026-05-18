@@ -21,7 +21,8 @@ export interface ScoreBoardOpponent {
 const LABEL_COLOR = 'rgba(148, 163, 184, 0.85)';
 const DIM = 'rgba(148, 163, 184, 0.35)';
 const BORDER = 'rgba(255, 255, 255, 0.08)';
-const SCOREBOARD_COLUMNS = '1.32fr 0.78fr 0.98fr 1.36fr';
+const SCOREBOARD_COLUMNS =
+  'minmax(66px, 1.12fr) minmax(42px, 0.72fr) minmax(66px, 1.12fr) minmax(70px, 1.18fr)';
 
 export function ScoreBoard({
   period,
@@ -60,7 +61,7 @@ export function ScoreBoard({
           display: 'grid',
           gridTemplateColumns: SCOREBOARD_COLUMNS,
           alignItems: 'center',
-          gap: 10,
+          gap: 8,
         }}
       >
         <Column label="ПЕРИОД">
@@ -127,7 +128,7 @@ function OpponentRow({ opponent }: { opponent: ScoreBoardOpponent }): JSX.Elemen
         display: 'grid',
         gridTemplateColumns: SCOREBOARD_COLUMNS,
         alignItems: 'center',
-        gap: 10,
+        gap: 8,
         minWidth: 0,
       }}
     >
@@ -261,7 +262,7 @@ function Column({ label, children }: { label: string; children: React.ReactNode 
 }
 
 function LedNumber({ value, color }: { value: string; color: string }): JSX.Element {
-  const compactValue = value.length >= 8;
+  const compactValue = value.length >= 6;
 
   return (
     <span
@@ -270,9 +271,9 @@ function LedNumber({ value, color }: { value: string; color: string }): JSX.Elem
         maxWidth: '100%',
         overflow: 'hidden',
         whiteSpace: 'nowrap',
-        fontSize: compactValue ? 'clamp(16px, 4.6vw, 19px)' : 20,
+        fontSize: compactValue ? 'clamp(13px, 3.9vw, 18px)' : 20,
         fontWeight: 700,
-        letterSpacing: compactValue ? '0.015em' : '0.04em',
+        letterSpacing: compactValue ? 0 : '0.04em',
         fontVariantNumeric: 'tabular-nums',
         color,
         textShadow: `0 0 10px ${color}80, 0 0 2px ${color}`,

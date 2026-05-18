@@ -63,7 +63,7 @@
   @media (hover: none) and (pointer: coarse) {
     @media (display-mode: standalone), (display-mode: fullscreen) {
       :root {
-        --app-safe-top: max(44px, var(--app-safe-top-raw));
+        --app-safe-top: var(--app-safe-top-raw);
         --app-safe-bottom: max(22px, var(--app-safe-bottom-raw));
       }
     }
@@ -71,9 +71,17 @@
 }
 
 :root.app-standalone {
-  --app-safe-top: max(44px, var(--app-safe-top-raw));
+  --app-safe-top: var(--app-safe-top-raw);
   --app-safe-bottom: clamp(12px, var(--app-safe-bottom-raw), 22px);
   --bottom-nav-bottom-gap: 8px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  :root.app-standalone {
+    --app-safe-top: var(--app-safe-top-raw);
+    --app-safe-bottom: var(--app-safe-bottom-raw);
+    --bottom-nav-bottom-gap: 8px;
+  }
 }
 
 html,

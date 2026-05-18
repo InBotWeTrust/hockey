@@ -129,6 +129,10 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '031_matchmaking_duel_kind_preferences.sql',
       '032_channel_comment_metadata.sql',
       '033_relax_amateur_duel_ranked_limits.sql',
+      '034_duel_template_rewards.sql',
+      '035_training_daily_cooldown_setting.sql',
+      '036_repair_user_profile_columns.sql',
+      '037_duel_template_star_rewards.sql',
     ]);
   });
 });
