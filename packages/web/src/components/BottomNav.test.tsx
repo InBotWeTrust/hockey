@@ -101,14 +101,10 @@ describe('BottomNav remembered navigation', () => {
     expect(sectionsSurface?.getAttribute('style')).toContain('rgba(15, 23, 42, 0.92)');
   });
 
-  it('switches section-launched gameplay back to the game tab', () => {
+  it('hides the dock on the open rink screen', () => {
     renderBottomNav('/?view=training&play=1');
 
-    const gameSurface = screen.getByRole('button', { name: 'Игра' }).querySelector('div');
-    const sectionsSurface = screen.getByRole('button', { name: 'Разделы' }).querySelector('div');
-
-    expect(gameSurface?.getAttribute('style')).toContain('rgba(15, 23, 42, 0.92)');
-    expect(sectionsSurface?.getAttribute('style')).toContain('rgba(255, 255, 255, 0.55)');
+    expect(screen.queryByRole('button', { name: 'Игра' })).toBeNull();
   });
 
   it('resets the active chat section to the chat list', () => {

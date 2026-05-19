@@ -7033,7 +7033,7 @@ export function PlayView<TState>({
   timerLabel,
   shotButtonLabel = 'БРОСОК',
   backLabel = 'К режимам',
-  bottomInset = 'calc(76px + var(--app-safe-bottom))',
+  bottomInset = 'calc(8px + var(--app-safe-bottom))',
   sessionStartedAt,
   serverNow,
   receivedAtPerformanceMs,
@@ -7248,8 +7248,7 @@ export function PlayView<TState>({
       if (maxWidth <= 0 || rootRect.height <= 0) return;
 
       const nav = document.querySelector<HTMLElement>('.bottom-nav-shell nav');
-      const navTop = nav?.getBoundingClientRect().top ?? rootRect.bottom;
-      const navReserve = Math.max(54, rootRect.bottom - navTop);
+      const navReserve = nav ? Math.max(54, rootRect.bottom - nav.getBoundingClientRect().top) : 0;
       const minBottomSpace = navReserve + 8;
       const preferredBottomSpace = navReserve + 24;
       const fixedHeight = outerBlockHeight(scoreboard) + outerBlockHeight(controls);

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, type Location } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Gamepad2, MessageCircle, Package, ShieldCheck, User } from 'lucide-react';
 import { apiFetch } from '../api/apiFetch.js';
@@ -58,10 +58,31 @@ function rememberRoute(key: string, route: string): void {
   }
 }
 
-export function isBottomNavVisible(pathname: string, user: AuthUser | null): boolean {
+type NavLocation = Pick<Location, 'pathname' | 'search'>;
+
+function normalizeNavLocation(location: string | NavLocation): NavLocation {
+  return typeof location === 'string' ? { pathname: location, search: '' } : location;
+}
+
+function isOpenRinkRoute(location: NavLocation): boolean {
+  if (location.pathname !== '/') return false;
+  const params = new URLSearchParams(location.search);
+  const view = params.get('view');
+  if (view === 'daily') return true;
+  if (view === 'training' && params.get('play') === '1') return true;
+  return view === 'amateur' && params.has('match') && params.get('play') === '1';
+}
+
+export function isBottomNavVisible(location: string | NavLocation, user: AuthUser | null): boolean {
+  const { pathname } = normalizeNavLocation(location);
   const isDemo = pathname === '/demo';
   const isInChatRoom = /^\/chat\/[^/]+(?:\/posts\/[^/]+\/comments)?$/.test(pathname);
-  return pathname !== '/login' && !isInChatRoom && (Boolean(user) || isDemo);
+  return (
+    pathname !== '/login' &&
+    !isInChatRoom &&
+    !isOpenRinkRoute(normalizeNavLocation(location)) &&
+    (Boolean(user) || isDemo)
+  );
 }
 
 export function BottomNav(): JSX.Element | null {
@@ -116,7 +137,7 @@ export function BottomNav(): JSX.Element | null {
   }, [isDemo, location]);
 
   // Hide nav inside a chat room — composer takes the nav's spot.
-  if (!isBottomNavVisible(location.pathname, user)) {
+  if (!isBottomNavVisible(location, user)) {
     return null;
   }
 

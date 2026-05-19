@@ -38,7 +38,7 @@ function ChatRealtime(): JSX.Element {
 function AppFrame(): JSX.Element {
   const location = useLocation();
   const user = useAuthStore((s) => s.user);
-  const bottomNavVisible = isBottomNavVisible(location.pathname, user);
+  const bottomNavVisible = isBottomNavVisible(location, user);
 
   return (
     <>
