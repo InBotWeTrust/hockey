@@ -184,7 +184,7 @@
 .chat-edge-bottom {
   flex: 0 0 auto;
   z-index: 4;
-  padding: 20px 0 max(12px, var(--app-safe-bottom));
+  padding: 20px 0 max(10px, var(--app-dock-safe-bottom));
   margin-top: -20px;
 }
 

@@ -7059,7 +7059,7 @@ export function PlayView<TState>({
   timerLabel,
   shotButtonLabel = 'БРОСОК',
   backLabel = 'К режимам',
-  bottomInset = 'calc(8px + var(--app-safe-bottom))',
+  bottomInset = 'calc(8px + max(20px, var(--app-safe-bottom)))',
   sessionStartedAt,
   serverNow,
   receivedAtPerformanceMs,
@@ -7275,8 +7275,8 @@ export function PlayView<TState>({
 
       const nav = document.querySelector<HTMLElement>('.bottom-nav-shell nav');
       const navReserve = nav ? Math.max(54, rootRect.bottom - nav.getBoundingClientRect().top) : 0;
-      const minBottomSpace = navReserve + 8;
-      const preferredBottomSpace = navReserve + 24;
+      const minBottomSpace = navReserve + 6;
+      const preferredBottomSpace = navReserve + (navReserve > 0 ? 24 : 14);
       const fixedHeight = outerBlockHeight(scoreboard) + outerBlockHeight(controls);
       const availableForRinkAndBottom = Math.max(0, rootRect.height - fixedHeight);
       const fullWidthRinkHeight = maxWidth / rinkRatio;

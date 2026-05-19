@@ -1355,8 +1355,8 @@ export function ChatRoomScreen(): JSX.Element {
           padding: `${searchOpen ? 'calc(158px + var(--app-safe-top))' : 'calc(112px + var(--app-safe-top))'} 14px ${
             showComposer
               ? isChannel && isAdmin
-                ? 'calc(140px + var(--app-safe-bottom))'
-                : 'calc(96px + var(--app-safe-bottom))'
+                ? 'calc(140px + var(--app-dock-safe-bottom))'
+                : 'calc(96px + var(--app-dock-safe-bottom))'
               : '24px'
           }`,
           display: 'flex',
@@ -1492,9 +1492,9 @@ export function ChatRoomScreen(): JSX.Element {
             right: 18,
             bottom: showComposer
               ? isChannel && isAdmin
-                ? 'calc(154px + var(--app-safe-bottom))'
-                : 'calc(110px + var(--app-safe-bottom))'
-              : 'calc(24px + var(--app-safe-bottom))',
+                ? 'calc(154px + var(--app-dock-safe-bottom))'
+                : 'calc(110px + var(--app-dock-safe-bottom))'
+              : 'calc(24px + var(--app-dock-safe-bottom))',
             zIndex: 25,
             width: 42,
             height: 42,
@@ -1664,7 +1664,7 @@ export function ChatRoomScreen(): JSX.Element {
           }}
           style={{
             zIndex: 320,
-            padding: 'calc(14px + var(--app-safe-top)) 14px calc(14px + var(--app-safe-bottom))',
+            padding: 'calc(14px + var(--app-safe-top)) 14px calc(14px + var(--app-dock-safe-bottom))',
           }}
         >
           <div
@@ -1672,7 +1672,7 @@ export function ChatRoomScreen(): JSX.Element {
             style={{
               position: 'relative',
               width: 'min(100%, 860px)',
-              maxHeight: 'calc(100dvh - var(--app-safe-top) - var(--app-safe-bottom) - 28px)',
+              maxHeight: 'calc(100dvh - var(--app-safe-top) - var(--app-dock-safe-bottom) - 28px)',
               padding: 10,
               display: 'grid',
               gap: 8,
@@ -1722,7 +1722,7 @@ export function ChatRoomScreen(): JSX.Element {
                 height: 'auto',
                 maxWidth: '100%',
                 maxHeight:
-                  'calc(100dvh - var(--app-safe-top) - var(--app-safe-bottom) - 104px)',
+                  'calc(100dvh - var(--app-safe-top) - var(--app-dock-safe-bottom) - 104px)',
                 margin: '0 auto',
                 objectFit: 'contain',
                 borderRadius: 18,

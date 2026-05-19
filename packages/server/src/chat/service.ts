@@ -289,7 +289,7 @@ export async function getChatInfo(
   description: string | null;
   avatarUrl: string | null;
   memberCount: number;
-  members: { userId: string; displayName: string; avatarUrl: string | null }[];
+  members: { userId: string; displayName: string; avatarUrl: string | null; role?: 'admin' | 'member' }[];
 }> {
   // Caller is expected to have already passed assertCanAccessChat. This
   // returns chat metadata + a capped, alphabetised member list. For system
@@ -311,7 +311,7 @@ export async function getChatInfo(
   const chat = chatRes.rows[0]!;
 
   let memberCount: number;
-  let members: { userId: string; displayName: string; avatarUrl: string | null }[];
+  let members: { userId: string; displayName: string; avatarUrl: string | null; role?: 'admin' | 'member' }[];
 
   if (chat.type === 'system' || chat.type === 'channel') {
     const total = await pool.query<{ c: string }>(`select count(*)::bigint as c from users`);
@@ -332,12 +332,17 @@ export async function getChatInfo(
       [chatId],
     );
     memberCount = Number(total.rows[0]!.c);
-    const r = await pool.query<{ id: string; display_name: string; avatar_url: string | null }>(
-      `select u.id, u.display_name, u.avatar_url
+    const r = await pool.query<{
+      id: string;
+      display_name: string;
+      avatar_url: string | null;
+      role: 'admin' | 'member';
+    }>(
+      `select u.id, u.display_name, u.avatar_url, cm.role
          from chat_members cm
          join users u on u.id = cm.user_id
         where cm.chat_id = $1
-        order by u.display_name asc
+        order by (cm.role = 'admin') desc, u.display_name asc
         limit $2`,
       [chatId, CHAT_INFO_MEMBERS_LIMIT],
     );
@@ -345,6 +350,7 @@ export async function getChatInfo(
       userId: row.id,
       displayName: row.display_name,
       avatarUrl: row.avatar_url,
+      role: row.role,
     }));
   }
 
@@ -669,6 +675,99 @@ export async function markChatAsRead(pool: Pool, chatId: string, userId: string)
 export interface FindOrCreateDMResult {
   chatId: string;
   created: boolean;
+}
+
+export interface CreateGroupChatInput {
+  name: string;
+  description?: string | null;
+  memberUserIds: string[];
+}
+
+export async function createGroupChat(
+  pool: Pool,
+  adminUserId: string,
+  input: CreateGroupChatInput,
+): Promise<FindOrCreateDMResult> {
+  const name = input.name.trim();
+  if (name.length === 0) throw new InvalidInputError('group name is required');
+  const memberUserIds = Array.from(new Set(input.memberUserIds.filter((id) => id !== adminUserId)));
+  if (memberUserIds.length === 0) throw new InvalidInputError('at least one member is required');
+
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    const existingUsers = await client.query<{ id: string }>(
+      `select id from users where id = any($1::uuid[])`,
+      [memberUserIds],
+    );
+    if (existingUsers.rowCount !== memberUserIds.length) {
+      throw new InvalidInputError('invalid group member');
+    }
+    const created = await client.query<{ id: string }>(
+      `insert into chats (type, name, description, created_by)
+       values ('group', $1, $2, $3)
+       returning id`,
+      [name, input.description ?? null, adminUserId],
+    );
+    const chatId = created.rows[0]!.id;
+    await client.query(
+      `insert into chat_members (chat_id, user_id, role)
+       values ($1, $2, 'admin')`,
+      [chatId, adminUserId],
+    );
+    await client.query(
+      `insert into chat_members (chat_id, user_id, role)
+       select $1, unnest($2::uuid[]), 'member'`,
+      [chatId, memberUserIds],
+    );
+    await client.query('commit');
+    return { chatId, created: true };
+  } catch (err) {
+    await client.query('rollback').catch(() => undefined);
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+export async function addGroupChatMembers(
+  pool: Pool,
+  chatId: string,
+  userIds: string[],
+): Promise<void> {
+  const memberUserIds = Array.from(new Set(userIds));
+  if (memberUserIds.length === 0) throw new InvalidInputError('at least one member is required');
+  await pool.query(
+    `with existing_chat as (
+       select id from chats where id = $1 and type = 'group' and is_active = true
+     ),
+     valid_users as (
+       select id from users where id = any($2::uuid[])
+     )
+     insert into chat_members (chat_id, user_id, role)
+     select existing_chat.id, valid_users.id, 'member'
+       from existing_chat
+       cross join valid_users
+     on conflict (chat_id, user_id) do nothing`,
+    [chatId, memberUserIds],
+  );
+}
+
+export async function removeGroupChatMember(
+  pool: Pool,
+  chatId: string,
+  userId: string,
+): Promise<void> {
+  await pool.query(
+    `delete from chat_members
+      where chat_id = $1
+        and user_id = $2
+        and role <> 'admin'
+        and exists (
+          select 1 from chats where id = $1 and type = 'group' and is_active = true
+        )`,
+    [chatId, userId],
+  );
 }
 
 export async function findOrCreateDM(

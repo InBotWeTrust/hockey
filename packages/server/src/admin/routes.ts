@@ -2309,6 +2309,7 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
           and (
             (type = 'channel' and channel_slug = $${values.length})
             or type = 'system'
+            or type = 'group'
           )
         returning id, name, description, channel_slug, avatar_url, created_at`,
       values,
@@ -2344,6 +2345,7 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
           and (
             (type = 'channel' and channel_slug = $2)
             or type = 'system'
+            or type = 'group'
           )
         limit 1`,
       [chatId, DEFAULT_NEWS_CHANNEL_SLUG],
@@ -2407,6 +2409,7 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
           and (
             (type = 'channel' and channel_slug = $2)
             or type = 'system'
+            or type = 'group'
           )
         returning id`,
       [chatId, DEFAULT_NEWS_CHANNEL_SLUG],

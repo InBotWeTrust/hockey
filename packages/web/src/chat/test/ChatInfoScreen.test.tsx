@@ -143,4 +143,52 @@ describe('ChatInfoScreen', () => {
 
     await waitFor(() => expect(uploadSpy).toHaveBeenCalledWith('chat-1', file));
   });
+
+  it('lets admins edit group profile and remove members from the info screen', async () => {
+    useAuthStore.setState({
+      accessToken: 'tok',
+      refreshToken: 'rtok',
+      user: { id: 'admin-1', displayName: 'Admin', role: 'admin', grip: 'right' },
+    });
+    vi.spyOn(api, 'fetchChatInfo').mockResolvedValue({
+      id: 'chat-1',
+      type: 'group',
+      name: 'Старое имя',
+      description: null,
+      avatarUrl: null,
+      memberCount: 2,
+      members: [
+        { userId: 'admin-1', displayName: 'Admin', avatarUrl: null, role: 'admin' },
+        { userId: 'user-12', displayName: 'Player 12', avatarUrl: null, role: 'member' },
+      ],
+    });
+    const patchSpy = vi.spyOn(adminApi, 'patchAdminChatProfile').mockResolvedValue({
+      chat: {
+        id: 'chat-1',
+        name: 'Новое имя',
+        description: 'Описание',
+        slug: null,
+        avatarUrl: null,
+        createdAt: '2026-05-04T09:00:00.000Z',
+      },
+    });
+    const removeSpy = vi.spyOn(api, 'removeGroupChatMember').mockResolvedValue(undefined);
+
+    renderScreen();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Редактировать чат' }));
+    fireEvent.change(screen.getByLabelText('Название чата'), { target: { value: 'Новое имя' } });
+    fireEvent.change(screen.getByLabelText('Описание чата'), { target: { value: 'Описание' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+
+    await waitFor(() =>
+      expect(patchSpy).toHaveBeenCalledWith('chat-1', {
+        name: 'Новое имя',
+        description: 'Описание',
+      }),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Удалить Player 12 из чата' }));
+    await waitFor(() => expect(removeSpy).toHaveBeenCalledWith('chat-1', 'user-12'));
+  });
 });

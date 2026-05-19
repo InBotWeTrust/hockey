@@ -139,6 +139,12 @@ export interface FindOrCreateDMResult {
   created: boolean;
 }
 
+export interface CreateGroupChatInput {
+  name: string;
+  description?: string;
+  memberUserIds: string[];
+}
+
 // === REST wrappers ===
 
 export function fetchChatList(): Promise<ChatDTO[]> {
@@ -150,6 +156,24 @@ export function findOrCreateDM(otherUserId: string): Promise<FindOrCreateDMResul
     method: 'POST',
     body: JSON.stringify({ otherUserId }),
   });
+}
+
+export function createGroupChat(input: CreateGroupChatInput): Promise<FindOrCreateDMResult> {
+  return apiFetch<FindOrCreateDMResult>('/chat/groups', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function addGroupChatMembers(chatId: string, userIds: string[]): Promise<void> {
+  return apiFetch<void>(`/chat/${chatId}/members`, {
+    method: 'POST',
+    body: JSON.stringify({ userIds }),
+  });
+}
+
+export function removeGroupChatMember(chatId: string, userId: string): Promise<void> {
+  return apiFetch<void>(`/chat/${chatId}/members/${userId}`, { method: 'DELETE' });
 }
 
 export function searchUsers(q: string, limit = 20): Promise<UserPickerItem[]> {
@@ -419,6 +443,7 @@ export interface ChatMemberSummaryDTO {
   userId: string;
   displayName: string;
   avatarUrl: string | null;
+  role?: 'admin' | 'member';
 }
 
 export interface ChatInfoDTO {

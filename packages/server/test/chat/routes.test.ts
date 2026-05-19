@@ -104,6 +104,71 @@ describe.skipIf(!hasIntegrationEnv)('chat routes', () => {
     ]);
   });
 
+  it('allows only admins to create and manage group chats', async () => {
+    const denied = await app.inject({
+      method: 'POST',
+      url: '/chat/groups',
+      headers: { authorization: `Bearer ${tokenB}` },
+      payload: { name: 'Закрытый разбор', memberUserIds: [userA, userC] },
+    });
+    expect(denied.statusCode).toBe(403);
+
+    await app.pg.query(`update users set role = 'admin' where id = $1`, [userA]);
+    const created = await app.inject({
+      method: 'POST',
+      url: '/chat/groups',
+      headers: { authorization: `Bearer ${tokenA}` },
+      payload: { name: 'Закрытый разбор', memberUserIds: [userB, userC] },
+    });
+    expect(created.statusCode).toBe(201);
+    const chatId = created.json().chatId as string;
+
+    const info = await app.inject({
+      method: 'GET',
+      url: `/chat/${chatId}/info`,
+      headers: { authorization: `Bearer ${tokenA}` },
+    });
+    expect(info.statusCode).toBe(200);
+    expect(info.json()).toEqual(
+      expect.objectContaining({
+        id: chatId,
+        type: 'group',
+        name: 'Закрытый разбор',
+        memberCount: 3,
+        members: expect.arrayContaining([
+          expect.objectContaining({ userId: userA, role: 'admin' }),
+          expect.objectContaining({ userId: userB, role: 'member' }),
+          expect.objectContaining({ userId: userC, role: 'member' }),
+        ]),
+      }),
+    );
+
+    const patched = await app.inject({
+      method: 'PATCH',
+      url: `/admin/chats/${chatId}/profile`,
+      headers: { authorization: `Bearer ${tokenA}` },
+      payload: { name: 'Новый разбор', description: 'Для тестовой группы' },
+    });
+    expect(patched.statusCode).toBe(200);
+    expect(patched.json().chat).toEqual(
+      expect.objectContaining({ name: 'Новый разбор', description: 'Для тестовой группы' }),
+    );
+
+    const removed = await app.inject({
+      method: 'DELETE',
+      url: `/chat/${chatId}/members/${userC}`,
+      headers: { authorization: `Bearer ${tokenA}` },
+    });
+    expect(removed.statusCode).toBe(204);
+
+    const blocked = await app.inject({
+      method: 'GET',
+      url: `/chat/${chatId}/messages`,
+      headers: { authorization: `Bearer ${tokenC}` },
+    });
+    expect(blocked.statusCode).toBe(403);
+  });
+
   it('lets admins delete channel posts through the channel endpoint', async () => {
     await app.pg.query(`update users set role = 'admin' where id = $1`, [userA]);
     const chats = await app.inject({

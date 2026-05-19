@@ -77,4 +77,43 @@ describe('ChatListScreen — global search dropdown', () => {
       { timeout: 1500 },
     );
   });
+
+  it('lets admins create a group chat from the chat list', async () => {
+    useAuthStore.setState({
+      accessToken: 'tok',
+      refreshToken: 'rtok',
+      user: {
+        id: '00000000-0000-0000-0000-00000000aaaa',
+        displayName: 'Admin',
+        role: 'admin',
+        grip: 'right',
+      },
+    });
+    vi.spyOn(api, 'searchUsers').mockResolvedValue([
+      { userId: 'u1', displayName: 'Player One', avatarUrl: null },
+      { userId: 'u2', displayName: 'Player Two', avatarUrl: null },
+    ]);
+    const createSpy = vi
+      .spyOn(api, 'createGroupChat')
+      .mockResolvedValue({ chatId: 'group-1', created: true });
+
+    renderScreen();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Новый групповой чат' }));
+    fireEvent.change(screen.getByLabelText('Название группового чата'), {
+      target: { value: 'Команда теста' },
+    });
+    fireEvent.change(screen.getByLabelText('Поиск участников'), { target: { value: 'pla' } });
+
+    fireEvent.click(await screen.findByRole('button', { name: /Player One/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Player Two/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Создать чат' }));
+
+    await waitFor(() =>
+      expect(createSpy).toHaveBeenCalledWith({
+        name: 'Команда теста',
+        memberUserIds: ['u1', 'u2'],
+      }),
+    );
+  });
 });

@@ -10,6 +10,9 @@ import {
   deleteMessage,
   markChatAsRead,
   findOrCreateDM,
+  createGroupChat,
+  addGroupChatMembers,
+  removeGroupChatMember,
   searchUsers,
   searchMessages,
   getUnreadCounts,
@@ -166,6 +169,50 @@ export const chatRoutes: FastifyPluginAsync<ChatRoutesOptions> = async (app, opt
     const body = z.object({ otherUserId: uuid }).parse(req.body);
     return await findOrCreateDM(app.pg, req.user.id, body.otherUserId);
   });
+
+  app.post('/chat/groups', { preHandler: [app.authenticate] }, async (req, reply) => {
+    await assertAdminUser(app.pg, req.user.id);
+    const body = z
+      .object({
+        name: z.string().trim().min(1).max(80),
+        description: z.string().trim().max(500).optional(),
+        memberUserIds: z.array(uuid).min(1).max(100),
+      })
+      .parse(req.body);
+    const result = await createGroupChat(app.pg, req.user.id, {
+      name: body.name,
+      memberUserIds: body.memberUserIds,
+      ...(body.description !== undefined ? { description: body.description } : {}),
+    });
+    await Promise.all(
+      [req.user.id, ...body.memberUserIds].map((userId) => invalidateUnreadCache(app.redis, userId)),
+    );
+    reply.code(201);
+    return result;
+  });
+
+  app.post('/chat/:chatId/members', { preHandler: [app.authenticate] }, async (req, reply) => {
+    await assertAdminUser(app.pg, req.user.id);
+    const { chatId } = z.object({ chatId: uuid }).parse(req.params);
+    const body = z.object({ userIds: z.array(uuid).min(1).max(100) }).parse(req.body);
+    await addGroupChatMembers(app.pg, chatId, body.userIds);
+    await Promise.all(body.userIds.map((userId) => invalidateUnreadCache(app.redis, userId)));
+    reply.code(204);
+    return null;
+  });
+
+  app.delete(
+    '/chat/:chatId/members/:userId',
+    { preHandler: [app.authenticate] },
+    async (req, reply) => {
+      await assertAdminUser(app.pg, req.user.id);
+      const { chatId, userId } = z.object({ chatId: uuid, userId: uuid }).parse(req.params);
+      await removeGroupChatMember(app.pg, chatId, userId);
+      await invalidateUnreadCache(app.redis, userId);
+      reply.code(204);
+      return null;
+    },
+  );
 
   app.get('/chat/users', { preHandler: [app.authenticate] }, async (req) => {
     const query = z
