@@ -4545,9 +4545,9 @@ function AmateurDuelsPage({
                 aria-hidden="true"
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '28px 34px minmax(0, 1fr) auto',
+                  gridTemplateColumns: '20px minmax(0, 1fr) auto',
                   alignItems: 'center',
-                  gap: 10,
+                  gap: 8,
                   padding: '0 14px 0',
                   color: 'rgba(15, 23, 42, 0.55)',
                   fontSize: 10,
@@ -4557,8 +4557,7 @@ function AmateurDuelsPage({
                 }}
               >
                 <span>#</span>
-                <span />
-                <span>Игрок</span>
+                <span style={{ paddingLeft: 44 }}>Игрок</span>
                 <span>Очки</span>
               </div>
               {(rating.data?.rating ?? []).slice(0, 10).map((row, index) => {
@@ -4581,9 +4580,9 @@ function AmateurDuelsPage({
                       borderRadius: 16,
                       padding: '10px 14px',
                       display: 'grid',
-                      gridTemplateColumns: '28px 34px minmax(0, 1fr) auto',
+                      gridTemplateColumns: '20px minmax(0, 1fr) auto',
                       alignItems: 'center',
-                      gap: 10,
+                      gap: 8,
                       minHeight: 48,
                       color: isMe ? '#ffffff' : 'var(--ink)',
                       fontSize: 14,
@@ -4600,23 +4599,41 @@ function AmateurDuelsPage({
                     }}
                   >
                     <span>{index + 1}</span>
-                    <UserAvatar
-                      avatarUrl={row.avatar_url}
-                      name={row.display_name}
-                      size={34}
-                      fontSize={14}
-                      alt={`Аватар ${row.display_name}`}
-                    />
                     <span
                       style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10,
+                        minWidth: 0,
+                      }}
+                    >
+                      <UserAvatar
+                        avatarUrl={row.avatar_url}
+                        name={row.display_name}
+                        size={34}
+                        fontSize={14}
+                        alt={`Аватар ${row.display_name}`}
+                      />
+                      <span
+                        style={{
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {row.display_name}
+                      </span>
+                    </span>
+                    <span
+                      style={{
+                        justifySelf: 'end',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap',
                       }}
                     >
-                      {row.display_name}
+                      {row.points}
                     </span>
-                    <span>{row.points}</span>
                   </button>
                 );
               })}
