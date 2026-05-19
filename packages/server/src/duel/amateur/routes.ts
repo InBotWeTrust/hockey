@@ -774,6 +774,14 @@ function getDuelPeriodRule(rules: DuelRulesSnapshot, periodNumber: number): Duel
   );
 }
 
+function estimateDuelPlayWindowMs(rules: DuelRulesSnapshot): number {
+  const periodDurationMs = Array.from({ length: rules.totalPeriods }, (_, index) =>
+    getDuelPeriodRule(rules, index + 1),
+  ).reduce((sum, rule) => sum + rule.durationMs, 0);
+  const breakDurationMs = Math.max(0, rules.totalPeriods - 1) * rules.breakDurationMs;
+  return Math.max(rules.readyDurationMs, periodDurationMs + breakDurationMs);
+}
+
 function clampSpeed(value: number, min: number, max: number): number {
   return Number(Math.min(max, Math.max(min, value)).toFixed(4));
 }
@@ -2120,7 +2128,7 @@ async function activateReadyMatch(
     duelSeedSecret,
   );
   const activeEndsAt = new Date(
-    Math.min(match.ends_at.getTime(), now.getTime() + rules.readyDurationMs),
+    Math.min(match.ends_at.getTime(), now.getTime() + estimateDuelPlayWindowMs(rules)),
   );
 
   for (const participant of participants) {

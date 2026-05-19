@@ -336,7 +336,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(secondReady.json().match.accepted_at).toBeTruthy();
     const acceptedAt = Date.parse(String(secondReady.json().match.accepted_at));
     const endsAt = Date.parse(String(secondReady.json().match.ends_at));
-    expect(endsAt - acceptedAt).toBe(900000);
+    expect(endsAt - acceptedAt).toBe(1200000);
 
     const accounts = await pool.query<{ balance: number; reserved_balance: number }>(
       `select balance, reserved_balance
@@ -349,6 +349,40 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       { balance: 100, reserved_balance: 0 },
       { balance: 100, reserved_balance: 0 },
     ]);
+  });
+
+  it('keeps a classic duel active long enough for all periods and breaks', async () => {
+    const templateId = await createTemplate({
+      totalPeriods: 3,
+      periodDurationMs: 1200000,
+      breakDurationMs: 120000,
+      readyDurationMs: 900000,
+    });
+    const created = await challenge(templateId);
+    const matchId = created.json().match.id;
+    await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/accept`,
+      headers: auth(tokenB),
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/ready`,
+      headers: auth(tokenA),
+      payload: { loadout: {} },
+    });
+    const ready = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/ready`,
+      headers: auth(tokenB),
+      payload: { loadout: {} },
+    });
+
+    expect(ready.statusCode).toBe(200);
+    expect(ready.json().match.status).toBe('active');
+    const acceptedAt = Date.parse(String(ready.json().match.accepted_at));
+    const endsAt = Date.parse(String(ready.json().match.ends_at));
+    expect(endsAt - acceptedAt).toBe(3840000);
   });
 
   it('cancels an active duel without rating when both ready players never start', async () => {
