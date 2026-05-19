@@ -268,6 +268,48 @@
   letter-spacing: 0.12em;
 }
 
+.chat-create-field {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid rgba(255, 255, 255, 0.86);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 0 16px;
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.chat-create-field::placeholder {
+  color: rgba(15, 23, 42, 0.36);
+  font-weight: 400;
+  opacity: 1;
+}
+
+.chat-create-search {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 0 14px;
+  box-sizing: border-box;
+}
+
+.chat-create-field--bare {
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+}
+
 /* === Pills === */
 .pill {
   padding: 6px 12px;

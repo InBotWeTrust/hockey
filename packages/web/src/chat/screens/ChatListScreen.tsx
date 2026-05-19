@@ -456,7 +456,7 @@ function GroupChatCreateModal({
       <div
         className="modal-card"
         onClick={(event) => event.stopPropagation()}
-        style={{ width: 'min(420px, calc(100vw - 28px))', gap: 12 }}
+        style={{ width: 'min(420px, calc(100vw - 28px))', display: 'grid', gap: 16 }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ flex: 1 }}>
@@ -469,71 +469,44 @@ function GroupChatCreateModal({
         </div>
 
         <input
+          className="chat-create-field"
           value={name}
           onChange={(event) => setName(event.target.value)}
           aria-label="Название группового чата"
           placeholder="Название чата"
           maxLength={80}
-          style={{
-            width: '100%',
-            borderRadius: 16,
-            border: '1px solid rgba(255,255,255,0.85)',
-            background: 'rgba(255,255,255,0.55)',
-            padding: '12px 14px',
-            font: 'inherit',
-            fontWeight: 800,
-            color: 'var(--ink)',
-            outline: 'none',
-          }}
         />
 
-        <div
-          className="glass"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            borderRadius: 16,
-            padding: '8px 12px',
-          }}
-        >
-          <Search size={14} color="var(--muted)" />
-          <input
-            value={raw}
-            onChange={(event) => setRaw(event.target.value)}
-            aria-label="Поиск участников"
-            placeholder="Найти игрока"
-            style={{
-              flex: 1,
-              border: 'none',
-              background: 'transparent',
-              outline: 'none',
-              font: 'inherit',
-              color: 'var(--ink)',
-            }}
-          />
+        <div style={{ display: 'grid', gap: 10 }}>
+          <div className="chat-create-search">
+            <Search size={14} color="var(--muted)" />
+            <input
+              className="chat-create-field chat-create-field--bare"
+              value={raw}
+              onChange={(event) => setRaw(event.target.value)}
+              aria-label="Поиск участников"
+              placeholder="Найти игрока"
+            />
+          </div>
+
+          {selected.length > 0 && (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {selected.map((user) => (
+                <button
+                  key={user.userId}
+                  type="button"
+                  className="pill"
+                  onClick={() => toggleUser(user)}
+                  style={{ border: 'none', cursor: 'pointer' }}
+                >
+                  {user.displayName} ×
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
-        {selected.length > 0 && (
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {selected.map((user) => (
-              <button
-                key={user.userId}
-                type="button"
-                className="pill"
-                onClick={() => toggleUser(user)}
-                style={{ border: 'none', cursor: 'pointer' }}
-              >
-                {user.displayName} ×
-              </button>
-            ))}
-          </div>
-        )}
-
-        <div style={{ maxHeight: 220, overflowY: 'auto', display: 'grid', gap: 6 }}>
-          {query.length === 0 && (
-            <div style={{ color: 'var(--muted)', fontSize: 12 }}>Введите имя игрока.</div>
-          )}
+        <div style={{ maxHeight: 220, overflowY: 'auto', display: 'grid', gap: 8 }}>
           {query.length > 0 && users.isFetching && (
             <div style={{ color: 'var(--muted)', fontSize: 12 }}>Поиск...</div>
           )}
