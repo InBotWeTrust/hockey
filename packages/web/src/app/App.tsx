@@ -1,27 +1,72 @@
+import { lazy, Suspense } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import './global.css';
 import './design-system.css';
-import { DailyScreen, DemoScreen } from '../screens/DailyScreen.js';
-import { InventoryScreen } from '../screens/InventoryScreen.js';
 import { LoginScreen } from '../screens/LoginScreen.js';
-import { ProfileScreen } from '../screens/ProfileScreen.js';
-import { ProfileSettingsScreen } from '../screens/ProfileSettingsScreen.js';
-import { SectionsScreen } from '../screens/SectionsScreen.js';
-import { TestCourtScreen } from '../screens/TestCourtScreen.js';
-import { VkAuthCallbackScreen } from '../screens/VkAuthCallbackScreen.js';
 import { PrivateRoute } from '../auth/PrivateRoute.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { BottomNav, isBottomNavVisible } from '../components/BottomNav.js';
 import { UpdatePrompt } from '../components/UpdatePrompt.js';
-import { AdminScreen } from '../admin/AdminScreen.js';
 import { OfflineBanner } from '../chat/components/OfflineBanner.js';
-import { ChatListScreen } from '../chat/screens/ChatListScreen.js';
-import { ChatRoomScreen } from '../chat/screens/ChatRoomScreen.js';
-import { ChatInfoScreen } from '../chat/screens/ChatInfoScreen.js';
-import { ChannelPostCommentsScreen } from '../chat/screens/ChannelPostCommentsScreen.js';
-import { UserProfileScreen } from '../chat/screens/UserProfileScreen.js';
 import { useChatSocket } from '../chat/useChatSocket.js';
+
+const DailyScreen = lazy(() =>
+  import('../screens/DailyScreen.js').then((module) => ({ default: module.DailyScreen })),
+);
+const DemoScreen = lazy(() =>
+  import('../screens/DailyScreen.js').then((module) => ({ default: module.DemoScreen })),
+);
+const InventoryScreen = lazy(() =>
+  import('../screens/InventoryScreen.js').then((module) => ({ default: module.InventoryScreen })),
+);
+const ProfileScreen = lazy(() =>
+  import('../screens/ProfileScreen.js').then((module) => ({ default: module.ProfileScreen })),
+);
+const ProfileSettingsScreen = lazy(() =>
+  import('../screens/ProfileSettingsScreen.js').then((module) => ({
+    default: module.ProfileSettingsScreen,
+  })),
+);
+const SectionsScreen = lazy(() =>
+  import('../screens/SectionsScreen.js').then((module) => ({ default: module.SectionsScreen })),
+);
+const TestCourtScreen = lazy(() =>
+  import('../screens/TestCourtScreen.js').then((module) => ({ default: module.TestCourtScreen })),
+);
+const VkAuthCallbackScreen = lazy(() =>
+  import('../screens/VkAuthCallbackScreen.js').then((module) => ({
+    default: module.VkAuthCallbackScreen,
+  })),
+);
+const AdminScreen = lazy(() =>
+  import('../admin/AdminScreen.js').then((module) => ({ default: module.AdminScreen })),
+);
+const ChatListScreen = lazy(() =>
+  import('../chat/screens/ChatListScreen.js').then((module) => ({
+    default: module.ChatListScreen,
+  })),
+);
+const ChatRoomScreen = lazy(() =>
+  import('../chat/screens/ChatRoomScreen.js').then((module) => ({
+    default: module.ChatRoomScreen,
+  })),
+);
+const ChatInfoScreen = lazy(() =>
+  import('../chat/screens/ChatInfoScreen.js').then((module) => ({
+    default: module.ChatInfoScreen,
+  })),
+);
+const ChannelPostCommentsScreen = lazy(() =>
+  import('../chat/screens/ChannelPostCommentsScreen.js').then((module) => ({
+    default: module.ChannelPostCommentsScreen,
+  })),
+);
+const UserProfileScreen = lazy(() =>
+  import('../chat/screens/UserProfileScreen.js').then((module) => ({
+    default: module.UserProfileScreen,
+  })),
+);
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -33,6 +78,14 @@ const queryClient = new QueryClient({
 function ChatRealtime(): JSX.Element {
   const status = useChatSocket();
   return <OfflineBanner status={status} />;
+}
+
+function RouteLoading(): JSX.Element {
+  return (
+    <main className="screen" style={{ alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ color: 'var(--muted)', fontSize: 14 }}>Загрузка…</div>
+    </main>
+  );
 }
 
 function AppFrame(): JSX.Element {
@@ -59,112 +112,111 @@ function AppFrame(): JSX.Element {
         }}
       >
         <div className="app-content">
-          <Routes>
-            <Route path="/login" element={<LoginScreen />} />
-            <Route path="/demo" element={<DemoScreen />} />
-            <Route path="/auth/vk/callback" element={<VkAuthCallbackScreen />} />
-            <Route
-              path="/"
-              element={
-                <PrivateRoute>
-                  <DailyScreen />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/duel/:goalieId"
-              element={
-                <PrivateRoute>
-                  <DailyScreen />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/sections"
-              element={
-                <PrivateRoute>
-                  <SectionsScreen />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/inventory"
-              element={
-                <PrivateRoute>
-                  <InventoryScreen />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/profile"
-              element={
-                <PrivateRoute>
-                  <ProfileScreen />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/profile/settings"
-              element={
-                <PrivateRoute>
-                  <ProfileSettingsScreen />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/admin"
-              element={
-                <PrivateRoute>
-                  <AdminScreen />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/test-court"
-              element={<TestCourtScreen />}
-            />
-            <Route
-              path="/chat"
-              element={
-                <PrivateRoute>
-                  <ChatListScreen />
-                </PrivateRoute>
-              }
-            />
-            <Route path="/chat/new" element={<Navigate to="/chat?new=1" replace />} />
-            <Route
-              path="/chat/:chatId"
-              element={
-                <PrivateRoute>
-                  <ChatRoomScreen />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/chat/:chatId/info"
-              element={
-                <PrivateRoute>
-                  <ChatInfoScreen />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/chat/:chatId/posts/:postId/comments"
-              element={
-                <PrivateRoute>
-                  <ChannelPostCommentsScreen />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/users/:userId"
-              element={
-                <PrivateRoute>
-                  <UserProfileScreen />
-                </PrivateRoute>
-              }
-            />
-          </Routes>
+          <Suspense fallback={<RouteLoading />}>
+            <Routes>
+              <Route path="/login" element={<LoginScreen />} />
+              <Route path="/demo" element={<DemoScreen />} />
+              <Route path="/auth/vk/callback" element={<VkAuthCallbackScreen />} />
+              <Route
+                path="/"
+                element={
+                  <PrivateRoute>
+                    <DailyScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/duel/:goalieId"
+                element={
+                  <PrivateRoute>
+                    <DailyScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/sections"
+                element={
+                  <PrivateRoute>
+                    <SectionsScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/inventory"
+                element={
+                  <PrivateRoute>
+                    <InventoryScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/profile"
+                element={
+                  <PrivateRoute>
+                    <ProfileScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/profile/settings"
+                element={
+                  <PrivateRoute>
+                    <ProfileSettingsScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/admin"
+                element={
+                  <PrivateRoute>
+                    <AdminScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route path="/test-court" element={<TestCourtScreen />} />
+              <Route
+                path="/chat"
+                element={
+                  <PrivateRoute>
+                    <ChatListScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route path="/chat/new" element={<Navigate to="/chat?new=1" replace />} />
+              <Route
+                path="/chat/:chatId"
+                element={
+                  <PrivateRoute>
+                    <ChatRoomScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/chat/:chatId/info"
+                element={
+                  <PrivateRoute>
+                    <ChatInfoScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/chat/:chatId/posts/:postId/comments"
+                element={
+                  <PrivateRoute>
+                    <ChannelPostCommentsScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/users/:userId"
+                element={
+                  <PrivateRoute>
+                    <UserProfileScreen />
+                  </PrivateRoute>
+                }
+              />
+            </Routes>
+          </Suspense>
         </div>
         <BottomNav />
       </div>
