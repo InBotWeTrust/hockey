@@ -233,8 +233,11 @@ jobs:
             exit 1
           fi
           js="$(curl -fsSL --max-time 15 "$APP_URL$asset_path")"
-          printf '%s' "$js" | grep -q 'Прикрепить файл'
-          printf '%s' "$js" | grep -q 'Записать голосовое'
-          printf '%s' "$js" | grep -q 'Загрузить'
-          printf '%s' "$js" | grep -q 'аватар канала'
+          printf '%s' "$html" | grep -q 'rel="manifest"'
+          if printf '%s' "$html" | grep -q 'telegram.org/js/telegram-web-app'; then
+            echo "Telegram Mini App script must not block regular PWA startup"
+            exit 1
+          fi
+          printf '%s' "$js" | grep -q 'Загрузка'
+          printf '%s' "$js" | grep -q 'DailyScreen-'
           echo "Frontend smoke test passed for $asset_path"
