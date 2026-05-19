@@ -43,7 +43,7 @@
 }
 
 .app-shell--bottom-nav-visible .app-content > .screen {
-  --bottom-nav-scroll-reserve: 96px;
+  --bottom-nav-scroll-reserve: 128px;
   padding-bottom: calc(var(--bottom-nav-scroll-reserve) + var(--bottom-nav-bottom-gap)) !important;
   scroll-padding-bottom: calc(var(--bottom-nav-scroll-reserve) + var(--bottom-nav-bottom-gap));
 }

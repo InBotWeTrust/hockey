@@ -1220,7 +1220,7 @@ describe('DailyScreen', () => {
               {
                 user_id: 'u2',
                 display_name: 'Duel Opponent',
-                avatar_url: null,
+                avatar_url: '/avatars/opponent.webp',
                 points: 7,
                 wins: 2,
                 draws: 1,
@@ -1274,6 +1274,10 @@ describe('DailyScreen', () => {
     renderWith(['/?view=amateur&section=duels']);
 
     fireEvent.click(await screen.findByRole('tab', { name: 'Рейтинг' }));
+    expect(await screen.findByAltText('Аватар Duel Opponent')).toHaveAttribute(
+      'src',
+      '/avatars/opponent.webp',
+    );
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть профиль Duel Opponent' }));
 
     expect(await screen.findByTestId('profile-sheet-backdrop')).toBeInTheDocument();

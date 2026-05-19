@@ -4545,9 +4545,9 @@ function AmateurDuelsPage({
                 aria-hidden="true"
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '28px minmax(0, 1fr) auto',
+                  gridTemplateColumns: '28px 34px minmax(0, 1fr) auto',
                   alignItems: 'center',
-                  gap: 8,
+                  gap: 10,
                   padding: '0 14px 0',
                   color: 'rgba(15, 23, 42, 0.55)',
                   fontSize: 10,
@@ -4557,6 +4557,7 @@ function AmateurDuelsPage({
                 }}
               >
                 <span>#</span>
+                <span />
                 <span>Игрок</span>
                 <span>Очки</span>
               </div>
@@ -4578,11 +4579,12 @@ function AmateurDuelsPage({
                     style={{
                       width: '100%',
                       borderRadius: 16,
-                      padding: '12px 14px',
+                      padding: '10px 14px',
                       display: 'grid',
-                      gridTemplateColumns: '28px minmax(0, 1fr) auto',
+                      gridTemplateColumns: '28px 34px minmax(0, 1fr) auto',
                       alignItems: 'center',
-                      gap: 8,
+                      gap: 10,
+                      minHeight: 48,
                       color: isMe ? '#ffffff' : 'var(--ink)',
                       fontSize: 14,
                       fontWeight: 800,
@@ -4598,6 +4600,13 @@ function AmateurDuelsPage({
                     }}
                   >
                     <span>{index + 1}</span>
+                    <UserAvatar
+                      avatarUrl={row.avatar_url}
+                      name={row.display_name}
+                      size={34}
+                      fontSize={14}
+                      alt={`Аватар ${row.display_name}`}
+                    />
                     <span
                       style={{
                         overflow: 'hidden',
