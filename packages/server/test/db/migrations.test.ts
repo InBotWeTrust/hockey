@@ -133,6 +133,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '035_training_daily_cooldown_setting.sql',
       '036_repair_user_profile_columns.sql',
       '037_duel_template_star_rewards.sql',
+      '038_duel_one_open_pair.sql',
     ]);
   });
 });
