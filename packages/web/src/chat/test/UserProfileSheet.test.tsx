@@ -236,7 +236,7 @@ describe('UserProfileSheet', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /вызвать на дуэль/i }));
     expect(await screen.findByRole('dialog', { name: 'Выбор типа дуэли' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /Классика/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Классика/i }));
     fireEvent.click(screen.getByRole('button', { name: /^Вызвать$/i }));
 
     await waitFor(() =>

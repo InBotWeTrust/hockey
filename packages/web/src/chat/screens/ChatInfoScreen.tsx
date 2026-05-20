@@ -554,7 +554,7 @@ function GroupMembersModal({
       <div
         className="modal-card"
         onClick={(event) => event.stopPropagation()}
-        style={{ width: 'min(420px, calc(100vw - 28px))', gap: 12 }}
+        style={{ width: 'min(420px, calc(100vw - 28px))', display: 'grid', gap: 16 }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ flex: 1 }}>

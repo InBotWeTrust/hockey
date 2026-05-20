@@ -45,9 +45,30 @@ function sortTemplates(templates: AmateurDuelTemplate[]): AmateurDuelTemplate[] 
 }
 
 function templateMeta(template: AmateurDuelTemplate): string {
-  const minutes = Math.max(1, Math.round(template.period_duration_ms / 60_000));
-  const mode = template.duel_variant === 'time_attack' ? 'на скорость' : 'на голы';
-  return `${template.total_periods} период(а) · ${minutes} мин · ${mode}`;
+  const rules = template.period_rules.length > 0 ? template.period_rules : null;
+  if (rules === null) {
+    const minutes = Math.max(1, Math.round(template.period_duration_ms / 60_000));
+    return `${template.total_periods} период(а) · ${minutes} мин`;
+  }
+
+  const firstRule = rules[0];
+  if (!firstRule) return '';
+  if (rules.length === 1) return periodRuleText(firstRule);
+
+  const sameQuota = rules.every(
+    (rule) => rule.mode === 'quota' && rule.shotsLimit === firstRule.shotsLimit,
+  );
+  if (sameQuota && firstRule.shotsLimit !== null) {
+    return `${rules.length} периода по ${firstRule.shotsLimit} бросков`;
+  }
+
+  return rules.map((rule) => `${rule.periodNumber}-й: ${periodRuleText(rule)}`).join(' · ');
+}
+
+function periodRuleText(rule: AmateurDuelTemplate['period_rules'][number]): string {
+  if (rule.mode === 'quota' && rule.shotsLimit !== null) return `${rule.shotsLimit} бросков`;
+  const minutes = Math.max(1, Math.round(rule.durationMs / 60_000));
+  return `${minutes} мин`;
 }
 
 function challengeErrorText(error: unknown): string {
