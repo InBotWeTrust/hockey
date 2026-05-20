@@ -5,6 +5,7 @@ const API_BASE = '/api';
 const SERVER_ERROR_MESSAGES: Record<string, string> = {
   telegram_already_linked: 'Аккаунт уже занят',
   vk_already_linked: 'Аккаунт уже занят',
+  'open duel already exists for this opponent': 'С этим игроком уже есть открытая дуэль.',
 };
 
 export class ApiError extends Error {
@@ -106,10 +107,7 @@ async function rawRequest(
   });
 }
 
-export async function apiFetch<T = unknown>(
-  path: string,
-  init?: RequestInit,
-): Promise<T> {
+export async function apiFetch<T = unknown>(path: string, init?: RequestInit): Promise<T> {
   const token = useAuthStore.getState().accessToken;
   let res = await rawRequest(path, init, token);
 

@@ -449,7 +449,7 @@ function GroupChatProfileModal({
       <div
         className="modal-card"
         onClick={(event) => event.stopPropagation()}
-        style={{ width: 'min(420px, calc(100vw - 28px))', gap: 12 }}
+        style={{ width: 'min(420px, calc(100vw - 28px))', display: 'grid', gap: 16 }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ flex: 1 }}>
@@ -527,7 +527,11 @@ function GroupMembersModal({
     staleTime: 60_000,
   });
   const addMutation = useMutation({
-    mutationFn: () => addGroupChatMembers(chatId, selected.map((user) => user.userId)),
+    mutationFn: () =>
+      addGroupChatMembers(
+        chatId,
+        selected.map((user) => user.userId),
+      ),
     onSuccess: () => void onSaved(),
     onError: () => setError('Не удалось добавить участников'),
   });
@@ -561,43 +565,36 @@ function GroupMembersModal({
             <X size={15} />
           </button>
         </div>
-        <div className="glass" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Search size={14} color="var(--muted)" />
-          <input
-            value={raw}
-            onChange={(event) => setRaw(event.target.value)}
-            aria-label="Поиск новых участников"
-            placeholder="Найти игрока"
-            style={{
-              flex: 1,
-              border: 'none',
-              background: 'transparent',
-              outline: 'none',
-              font: 'inherit',
-              color: 'var(--ink)',
-              padding: '11px 4px',
-            }}
-          />
-        </div>
-        {selected.length > 0 && (
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {selected.map((user) => (
-              <button
-                key={user.userId}
-                type="button"
-                className="pill"
-                onClick={() => toggleUser(user)}
-                style={{ border: 'none', cursor: 'pointer' }}
-              >
-                {user.displayName} ×
-              </button>
-            ))}
+        <div style={{ display: 'grid', gap: 10 }}>
+          <div className="chat-create-search">
+            <Search size={14} color="var(--muted)" />
+            <input
+              className="chat-create-field chat-create-field--bare"
+              value={raw}
+              onChange={(event) => setRaw(event.target.value)}
+              aria-label="Поиск новых участников"
+              placeholder="Найти игрока"
+            />
           </div>
-        )}
-        <div style={{ maxHeight: 220, overflowY: 'auto', display: 'grid', gap: 6 }}>
-          {query.length === 0 && (
-            <div style={{ color: 'var(--muted)', fontSize: 12 }}>Введите имя игрока.</div>
+
+          {selected.length > 0 && (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {selected.map((user) => (
+                <button
+                  key={user.userId}
+                  type="button"
+                  className="pill"
+                  onClick={() => toggleUser(user)}
+                  style={{ border: 'none', cursor: 'pointer' }}
+                >
+                  {user.displayName} ×
+                </button>
+              ))}
+            </div>
           )}
+        </div>
+
+        <div style={{ maxHeight: 220, overflowY: 'auto', display: 'grid', gap: 8 }}>
           {query.length > 0 && users.isFetching && (
             <div style={{ color: 'var(--muted)', fontSize: 12 }}>Поиск...</div>
           )}
@@ -629,9 +626,7 @@ function GroupMembersModal({
                   size={32}
                   fontSize={13}
                 />
-                <span style={{ flex: 1, fontSize: 14, fontWeight: 800 }}>
-                  {user.displayName}
-                </span>
+                <span style={{ flex: 1, fontSize: 14, fontWeight: 800 }}>{user.displayName}</span>
                 <span style={{ fontSize: 12, color: picked ? '#ffffff' : 'var(--muted)' }}>
                   {alreadyInChat ? 'В чате' : picked ? 'Добавлен' : 'Добавить'}
                 </span>

@@ -175,12 +175,28 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     return rows[0]!.id;
   }
 
-  async function challenge(templateId: string) {
+  async function createOpponent(index: number) {
+    const user = await findOrCreateTelegramUser(pool, {
+      providerUid: `amateur-opponent-${index}`,
+      displayName: `Opponent ${index}`,
+      timezone: 'Europe/Moscow',
+    });
+    await pool.query(`update users set level = 2 where id = $1`, [user.id]);
+    await pool.query(
+      `insert into user_currency_account (user_id, balance)
+       values ($1, 100)
+       on conflict (user_id) do update set balance = excluded.balance, reserved_balance = 0`,
+      [user.id],
+    );
+    return user.id;
+  }
+
+  async function challenge(templateId: string, opponentUserId = userB) {
     const res = await app.inject({
       method: 'POST',
       url: '/duel/amateur/challenge',
       headers: auth(tokenA),
-      payload: { template_id: templateId, opponent_user_id: userB },
+      payload: { template_id: templateId, opponent_user_id: opponentUserId },
     });
     return res;
   }
@@ -207,18 +223,34 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
 
     const duplicate = await challenge(templateId);
     expect(duplicate.statusCode).toBe(409);
+    expect(duplicate.json().error.message).toBe('open duel already exists for this opponent');
+  });
+
+  it('rejects another open challenge against the same opponent with another template', async () => {
+    const templateId = await createTemplate({ duelKind: 'express' });
+    const anotherTemplateId = await createTemplate({ duelKind: 'classic' });
+
+    const first = await challenge(templateId);
+    expect(first.statusCode).toBe(200);
+
+    const duplicatePair = await challenge(anotherTemplateId);
+    expect(duplicatePair.statusCode).toBe(409);
+    expect(duplicatePair.json().error.message).toBe('open duel already exists for this opponent');
   });
 
   it('limits one player to five open duel slots', async () => {
     const templateIds = await Promise.all(Array.from({ length: 6 }, () => createTemplate()));
+    const opponentIds = await Promise.all(
+      Array.from({ length: 6 }, (_, index) => createOpponent(index)),
+    );
 
-    for (const templateId of templateIds.slice(0, 5)) {
-      const created = await challenge(templateId);
+    for (const [index, templateId] of templateIds.slice(0, 5).entries()) {
+      const created = await challenge(templateId, opponentIds[index]);
       expect(created.statusCode).toBe(200);
       expect(created.json().match.status).toBe('invited');
     }
 
-    const blocked = await challenge(templateIds[5]!);
+    const blocked = await challenge(templateIds[5]!, opponentIds[5]);
     expect(blocked.statusCode).toBe(409);
     expect(blocked.json().error.message).toBe('open duel slot limit reached');
   });

@@ -2051,15 +2051,14 @@ async function createOpenMatch(
   const duplicate = await client.query<{ id: string }>(
     `select id
        from amateur_duel_match
-      where template_id = $1
-        and least(challenger_user_id, opponent_user_id) = least($2::uuid, $3::uuid)
-        and greatest(challenger_user_id, opponent_user_id) = greatest($2::uuid, $3::uuid)
+      where least(challenger_user_id, opponent_user_id) = least($1::uuid, $2::uuid)
+        and greatest(challenger_user_id, opponent_user_id) = greatest($1::uuid, $2::uuid)
         and status in ('invited', 'ready_check', 'active')
       limit 1`,
-    [opts.template.id, opts.challengerUserId, opts.opponentUserId],
+    [opts.challengerUserId, opts.opponentUserId],
   );
   if (duplicate.rows[0]) {
-    throw new AppError('conflict', 'open duel already exists for this opponent and template', 409);
+    throw new AppError('conflict', 'open duel already exists for this opponent', 409);
   }
   await assertOpenDuelSlots(client, [opts.challengerUserId, opts.opponentUserId]);
   const inviteExpiresAt =

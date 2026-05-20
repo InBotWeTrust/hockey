@@ -9,7 +9,7 @@ import {
   type UserPickerItem,
   type UserPublicProfileDTO,
 } from '../api.js';
-import { challengeAmateurDuel, fetchAmateurTemplates } from '../../api/amateurDuel.js';
+import { fetchAmateurMatches } from '../../api/amateurDuel.js';
 import { chatKeys, userKeys } from '../../lib/queryKeys.js';
 import { UserAvatar } from './UserAvatar.js';
 import type { ProfileAchievement } from '../../screens/profileTypes.js';
@@ -21,6 +21,7 @@ import {
   ProfileStatsGrid,
 } from '../../screens/profileSections.js';
 import { useAuthStore } from '../../auth/authStore.js';
+import { DuelChallengeModal, hasOpenDuelWithUser } from './DuelChallengeModal.js';
 
 interface UserProfileSheetProps {
   sender: UserPickerItem | null;
@@ -33,6 +34,7 @@ export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JS
   const meId = useAuthStore((s) => s.user?.id ?? null);
   const senderId = sender?.userId ?? '';
   const [selectedAchievement, setSelectedAchievement] = useState<ProfileAchievement | null>(null);
+  const [duelPickerOpen, setDuelPickerOpen] = useState(false);
 
   // Slide-up: render off-screen on first frame, then animate in.
   const [entered, setEntered] = useState(false);
@@ -77,18 +79,13 @@ export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JS
     !isSelf &&
     canCurrentUserDuel &&
     (profile?.competitionLevel === 'amateur' || profile?.competitionLevel === 'professional');
-  const duelMut = useMutation({
-    mutationFn: async () => {
-      const { templates } = await fetchAmateurTemplates();
-      const template = templates[0];
-      if (!template) throw new Error('Нет активных шаблонов дуэлей');
-      return challengeAmateurDuel({ template_id: template.id, opponent_user_id: senderId });
-    },
-    onSuccess: () => {
-      navigate('/?view=amateur');
-      onClose();
-    },
+  const openMatchesQuery = useQuery({
+    queryKey: ['amateur-duel', 'matches'],
+    queryFn: fetchAmateurMatches,
+    enabled: canDuel,
+    staleTime: 10_000,
   });
+  const hasOpenDuel = hasOpenDuelWithUser(openMatchesQuery.data?.matches ?? [], senderId);
 
   if (!sender) return null;
 
@@ -227,11 +224,11 @@ export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JS
               <button
                 type="button"
                 className="btn btn--cta"
-                onClick={() => duelMut.mutate()}
-                disabled={duelMut.isPending}
+                onClick={() => setDuelPickerOpen(true)}
+                disabled={hasOpenDuel}
                 style={{ marginTop: 14, padding: '14px 0', fontSize: 15, fontWeight: 600 }}
               >
-                {duelMut.isPending ? 'Отправляем вызов…' : 'Вызвать на дуэль'}
+                {hasOpenDuel ? 'Дуэль уже открыта' : 'Вызвать на дуэль'}
               </button>
             )}
             <button
@@ -239,7 +236,12 @@ export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JS
               className="btn btn--ghost"
               onClick={() => mutate(sender.userId)}
               disabled={isPending}
-              style={{ marginTop: canDuel ? 8 : 14, padding: '14px 0', fontSize: 15, fontWeight: 600 }}
+              style={{
+                marginTop: canDuel ? 8 : 14,
+                padding: '14px 0',
+                fontSize: 15,
+                fontWeight: 600,
+              }}
             >
               {isPending ? 'Открываем чат…' : 'Написать в личку'}
             </button>
@@ -249,6 +251,18 @@ export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JS
           <AchievementDetailsSheet
             achievement={selectedAchievement}
             onClose={() => setSelectedAchievement(null)}
+          />
+        )}
+        {duelPickerOpen && (
+          <DuelChallengeModal
+            opponentUserId={senderId}
+            opponentName={displayName}
+            onClose={() => setDuelPickerOpen(false)}
+            onCreated={() => {
+              setDuelPickerOpen(false);
+              navigate('/?view=amateur');
+              onClose();
+            }}
           />
         )}
       </div>

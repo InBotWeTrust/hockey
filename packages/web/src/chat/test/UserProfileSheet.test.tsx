@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { UserProfileSheet } from '../components/UserProfileSheet.js';
 import * as api from '../api.js';
+import * as amateurDuelApi from '../../api/amateurDuel.js';
 import { useAuthStore } from '../../auth/authStore.js';
 
 const publicProfile: api.UserPublicProfileDTO = {
@@ -54,6 +55,86 @@ describe('UserProfileSheet', () => {
     useAuthStore.setState({ accessToken: null, refreshToken: null, user: null });
     vi.spyOn(api, 'findOrCreateDM').mockResolvedValue({ chatId: 'dm1', created: false });
     vi.spyOn(api, 'fetchUserProfile').mockResolvedValue(publicProfile);
+    vi.spyOn(amateurDuelApi, 'fetchAmateurMatches').mockResolvedValue({ matches: [] });
+    vi.spyOn(amateurDuelApi, 'fetchAmateurTemplates').mockResolvedValue({
+      templates: [
+        {
+          id: 'template-express',
+          title: 'Экспресс',
+          description: '',
+          difficulty: 'easy',
+          duel_kind: 'express',
+          duel_variant: 'time_attack',
+          ranked_enabled: true,
+          matchmaking_enabled: true,
+          starts_at: '2026-01-01T00:00:00.000Z',
+          ends_at: '2100-01-01T00:00:00.000Z',
+          total_periods: 1,
+          shots_per_period: 30,
+          period_duration_ms: 180_000,
+          break_duration_ms: 0,
+          challenge_ttl_ms: 900_000,
+          ready_duration_ms: 900_000,
+          ready_no_show_cooldown_ms: 900_000,
+          matchmaking_timeout_ms: 300_000,
+          ranked_daily_limit: 20,
+          ranked_same_opponent_limit: 5,
+          power_cap: 100,
+          goalie_id: 'rookie',
+          period_speed_presets: [],
+          period_rules: [
+            { periodNumber: 1, mode: 'time_attack', durationMs: 180_000, shotsLimit: null },
+          ],
+          stake_amount: 0,
+          entry_fee_amount: 0,
+          required_inventory_item_id: null,
+          inventory_charges_per_period: 0,
+          win_points: 3,
+          draw_points: 1,
+          win_currency_reward: 0,
+          draw_currency_reward: 0,
+          win_star_reward: 0,
+        },
+        {
+          id: 'template-classic',
+          title: 'Классика',
+          description: '',
+          difficulty: 'hard',
+          duel_kind: 'classic',
+          duel_variant: 'classic',
+          ranked_enabled: true,
+          matchmaking_enabled: true,
+          starts_at: '2026-01-01T00:00:00.000Z',
+          ends_at: '2100-01-01T00:00:00.000Z',
+          total_periods: 3,
+          shots_per_period: 30,
+          period_duration_ms: 1_200_000,
+          break_duration_ms: 120_000,
+          challenge_ttl_ms: 900_000,
+          ready_duration_ms: 900_000,
+          ready_no_show_cooldown_ms: 900_000,
+          matchmaking_timeout_ms: 300_000,
+          ranked_daily_limit: 20,
+          ranked_same_opponent_limit: 5,
+          power_cap: 100,
+          goalie_id: 'rookie',
+          period_speed_presets: [],
+          period_rules: [{ periodNumber: 1, mode: 'quota', durationMs: 1_200_000, shotsLimit: 30 }],
+          stake_amount: 0,
+          entry_fee_amount: 0,
+          required_inventory_item_id: null,
+          inventory_charges_per_period: 0,
+          win_points: 3,
+          draw_points: 1,
+          win_currency_reward: 0,
+          draw_currency_reward: 0,
+          win_star_reward: 0,
+        },
+      ],
+    });
+    vi.spyOn(amateurDuelApi, 'challengeAmateurDuel').mockResolvedValue({
+      match: {} as amateurDuelApi.AmateurDuelMatch,
+    });
   });
   afterEach(() => {
     vi.restoreAllMocks();
@@ -135,6 +216,36 @@ describe('UserProfileSheet', () => {
 
     expect(await screen.findByText('Это ваш профиль')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /написать в личку/i })).not.toBeInTheDocument();
+  });
+
+  it('lets amateur users choose duel type before challenging from the profile sheet', async () => {
+    useAuthStore.setState({
+      accessToken: 'tok',
+      refreshToken: 'rtok',
+      user: { id: 'me', displayName: 'Me' },
+    });
+    vi.mocked(api.fetchUserProfile).mockImplementation(async (userId) =>
+      userId === 'me' ? { ...publicProfile, id: 'me' } : publicProfile,
+    );
+    const onClose = vi.fn();
+
+    renderSheet({
+      sender: { userId: 'u1', displayName: 'Иван', avatarUrl: null },
+      onClose,
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: /вызвать на дуэль/i }));
+    expect(await screen.findByRole('dialog', { name: 'Выбор типа дуэли' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Классика/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Вызвать$/i }));
+
+    await waitFor(() =>
+      expect(amateurDuelApi.challengeAmateurDuel).toHaveBeenCalledWith({
+        template_id: 'template-classic',
+        opponent_user_id: 'u1',
+      }),
+    );
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 
   it('clicking the backdrop calls onClose', () => {
