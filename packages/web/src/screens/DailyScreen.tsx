@@ -7467,7 +7467,7 @@ export function PlayView<TState>({
         goalieInset: hitboxesOptionsRef.current?.goalieInset,
       });
       hitboxes.setVisible(hitboxesVisibleRef.current);
-      const grip = playerGripRef.current ?? useAuthStore.getState().user?.grip ?? 'left';
+      const grip = playerGripRef.current ?? useAuthStore.getState().user?.grip ?? 'right';
       const puck = new Puck(grip, puckOptionsRef.current);
       const player = new Player(grip, playerOptionsRef.current);
       puckRef.current = puck;
