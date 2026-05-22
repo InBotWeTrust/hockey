@@ -364,7 +364,12 @@ function msToMinutes(value: number): number {
 }
 
 function minutesToMs(value: string): number {
-  return Math.max(0, Math.round(Number(value) * 60_000));
+  return Math.max(0, Math.round(parseAdminNumberInput(value) * 60_000));
+}
+
+function parseAdminNumberInput(value: string | number): number {
+  if (typeof value === 'number') return value;
+  return Number(value.trim().replace(',', '.'));
 }
 
 function gameModeLabel(mode: string | null | undefined): string {
@@ -5620,9 +5625,10 @@ function DuelTemplateEditor({
     winCurrencyReward,
     drawCurrencyReward,
     winStarReward,
-  ].map(Number);
-  const totalPeriodsCount = Number.isFinite(Number(totalPeriods))
-    ? Math.max(1, Math.min(9, Math.trunc(Number(totalPeriods))))
+  ].map(parseAdminNumberInput);
+  const totalPeriodsNumber = parseAdminNumberInput(totalPeriods);
+  const totalPeriodsCount = Number.isFinite(totalPeriodsNumber)
+    ? Math.max(1, Math.min(9, Math.trunc(totalPeriodsNumber)))
     : 0;
   const startsIso = dateTimeInputToIso(startsAt);
   const endsIso = dateTimeInputToIso(endsAt);
@@ -5643,16 +5649,16 @@ function DuelTemplateEditor({
   const canSave =
     title.trim() !== '' &&
     numericValues.every(Number.isFinite) &&
-    Number(totalPeriods) >= 1 &&
-    Number(shotsPerPeriod) >= 1 &&
-    Number(periodMinutes) > 0 &&
-    Number(breakMinutes) >= 0 &&
-    Number(readyMinutes) > 0 &&
-    Number(winPoints) >= 0 &&
-    Number(drawPoints) >= 0 &&
-    Number(winCurrencyReward) >= 0 &&
-    Number(drawCurrencyReward) >= 0 &&
-    Number(winStarReward) >= 0 &&
+    parseAdminNumberInput(totalPeriods) >= 1 &&
+    parseAdminNumberInput(shotsPerPeriod) >= 1 &&
+    parseAdminNumberInput(periodMinutes) > 0 &&
+    parseAdminNumberInput(breakMinutes) >= 0 &&
+    parseAdminNumberInput(readyMinutes) > 0 &&
+    parseAdminNumberInput(winPoints) >= 0 &&
+    parseAdminNumberInput(drawPoints) >= 0 &&
+    parseAdminNumberInput(winCurrencyReward) >= 0 &&
+    parseAdminNumberInput(drawCurrencyReward) >= 0 &&
+    parseAdminNumberInput(winStarReward) >= 0 &&
     new Date(startsIso).getTime() < new Date(endsIso).getTime() &&
     speedPresetsValid;
   useEffect(() => {
@@ -5665,7 +5671,7 @@ function DuelTemplateEditor({
     key: Exclude<keyof AdminDuelPeriodSpeedPreset, 'periodNumber'>,
     value: string,
   ): void {
-    const nextValue = Number(value);
+    const nextValue = parseAdminNumberInput(value);
     setPeriodSpeedPresets((current) =>
       current.map((preset) =>
         preset.periodNumber === periodNumber ? { ...preset, [key]: nextValue } : preset,
@@ -5685,8 +5691,8 @@ function DuelTemplateEditor({
         matchmakingEnabled: template?.matchmakingEnabled ?? true,
         startsAt: startsIso,
         endsAt: endsIso,
-        totalPeriods: Number(totalPeriods),
-        shotsPerPeriod: Number(shotsPerPeriod),
+        totalPeriods: parseAdminNumberInput(totalPeriods),
+        shotsPerPeriod: parseAdminNumberInput(shotsPerPeriod),
         periodDurationMs: minutesToMs(periodMinutes),
         breakDurationMs: minutesToMs(breakMinutes),
         challengeTtlMs: template?.challengeTtlMs ?? 1_800_000,
@@ -5703,11 +5709,11 @@ function DuelTemplateEditor({
         entryFeeAmount: 0,
         requiredInventoryItemId: null,
         inventoryChargesPerPeriod: 0,
-        winPoints: Number(winPoints),
-        drawPoints: Number(drawPoints),
-        winCurrencyReward: Number(winCurrencyReward),
-        drawCurrencyReward: Number(drawCurrencyReward),
-        winStarReward: Number(winStarReward),
+        winPoints: parseAdminNumberInput(winPoints),
+        drawPoints: parseAdminNumberInput(drawPoints),
+        winCurrencyReward: parseAdminNumberInput(winCurrencyReward),
+        drawCurrencyReward: parseAdminNumberInput(drawCurrencyReward),
+        winStarReward: parseAdminNumberInput(winStarReward),
       };
       return template === null
         ? createAdminDuelTemplate(body)

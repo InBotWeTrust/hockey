@@ -3351,7 +3351,11 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
         assignments,
         values,
         'period_rules',
-        body.data.periodRules !== undefined ? JSON.stringify(body.data.periodRules) : undefined,
+        body.data.periodRules !== undefined
+          ? body.data.periodRules === null
+            ? null
+            : JSON.stringify(body.data.periodRules)
+          : undefined,
       );
       addPatch(assignments, values, 'stake_amount', body.data.stakeAmount);
       addPatch(assignments, values, 'entry_fee_amount', body.data.entryFeeAmount);

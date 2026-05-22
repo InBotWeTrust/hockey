@@ -305,6 +305,32 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(template.ranked_same_opponent_limit).toBe(100);
   });
 
+  it('keeps null period rules as SQL null when admin updates a duel template', async () => {
+    await pool.query(`update users set role = 'admin' where id = $1`, [userA]);
+    const templateId = await createTemplate({
+      totalPeriods: 2,
+      periodRules: [
+        { periodNumber: 1, mode: 'quota', durationMs: 180000, shotsLimit: 30 },
+        { periodNumber: 2, mode: 'time_attack', durationMs: 180000, shotsLimit: null },
+      ],
+    });
+
+    const patch = await app.inject({
+      method: 'PATCH',
+      url: `/admin/duel-templates/${templateId}`,
+      headers: auth(tokenA),
+      payload: { periodRules: null },
+    });
+
+    expect(patch.statusCode).toBe(200);
+    expect(patch.json().template.periodRules).toHaveLength(2);
+    const stored = await pool.query<{ period_rules: unknown }>(
+      `select period_rules from amateur_duel_template where id = $1`,
+      [templateId],
+    );
+    expect(stored.rows[0]?.period_rules).toBeNull();
+  });
+
   it('accepts into a ready room without reserving stake or fee yet', async () => {
     const templateId = await createTemplate({
       startsAt: '2099-01-01T00:00:00.000Z',
