@@ -8,7 +8,7 @@ import {
   type UserPublicProfileDTO,
   type FindOrCreateDMResult,
 } from '../api.js';
-import { challengeAmateurDuel, fetchAmateurTemplates } from '../../api/amateurDuel.js';
+import { fetchAmateurMatches } from '../../api/amateurDuel.js';
 import { userKeys } from '../../lib/queryKeys.js';
 import { useAuthStore } from '../../auth/authStore.js';
 import { formatLastSeen } from '../lastSeen.js';
@@ -21,6 +21,7 @@ import {
   ProfileAchievementsSection,
   ProfileStatsGrid,
 } from '../../screens/profileSections.js';
+import { DuelChallengeModal, hasOpenDuelWithUser } from '../components/DuelChallengeModal.js';
 
 function formatJoined(iso: string): string {
   return new Date(iso).toLocaleDateString('ru-RU', {
@@ -36,6 +37,7 @@ export function UserProfileScreen(): JSX.Element {
   const navigate = useNavigate();
   const meId = useAuthStore((s) => s.user?.id ?? null);
   const [selectedAchievement, setSelectedAchievement] = useState<ProfileAchievement | null>(null);
+  const [duelPickerOpen, setDuelPickerOpen] = useState(false);
 
   const { data, isLoading, isError, refetch } = useQuery<UserPublicProfileDTO>({
     queryKey: userKeys.profile(userId),
@@ -64,15 +66,13 @@ export function UserProfileScreen(): JSX.Element {
     !isSelf &&
     canCurrentUserDuel &&
     (data?.competitionLevel === 'amateur' || data?.competitionLevel === 'professional');
-  const duelMut = useMutation({
-    mutationFn: async () => {
-      const { templates } = await fetchAmateurTemplates();
-      const template = templates[0];
-      if (!template) throw new Error('Нет активных шаблонов дуэлей');
-      return challengeAmateurDuel({ template_id: template.id, opponent_user_id: userId });
-    },
-    onSuccess: () => navigate('/?view=amateur'),
+  const openMatchesQuery = useQuery({
+    queryKey: ['amateur-duel', 'matches'],
+    queryFn: fetchAmateurMatches,
+    enabled: canDuel,
+    staleTime: 10_000,
   });
+  const hasOpenDuel = hasOpenDuelWithUser(openMatchesQuery.data?.matches ?? [], userId);
 
   return (
     <main
@@ -185,13 +185,15 @@ export function UserProfileScreen(): JSX.Element {
           />
 
           {!isSelf && (
-            <div style={{ padding: '4px 14px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div
+              style={{ padding: '4px 14px 0', display: 'flex', flexDirection: 'column', gap: 8 }}
+            >
               {canDuel && (
                 <button
                   type="button"
                   className="btn btn--cta"
-                  disabled={duelMut.isPending}
-                  onClick={() => duelMut.mutate()}
+                  disabled={hasOpenDuel}
+                  onClick={() => setDuelPickerOpen(true)}
                   style={{
                     width: '100%',
                     display: 'inline-flex',
@@ -203,7 +205,7 @@ export function UserProfileScreen(): JSX.Element {
                     fontWeight: 700,
                   }}
                 >
-                  {duelMut.isPending ? 'Отправляем…' : 'Вызвать на дуэль'}
+                  {hasOpenDuel ? 'Дуэль уже открыта' : 'Вызвать на дуэль'}
                 </button>
               )}
               <button
@@ -234,6 +236,17 @@ export function UserProfileScreen(): JSX.Element {
             <AchievementDetailsSheet
               achievement={selectedAchievement}
               onClose={() => setSelectedAchievement(null)}
+            />
+          )}
+          {duelPickerOpen && (
+            <DuelChallengeModal
+              opponentUserId={userId}
+              opponentName={data.displayName}
+              onClose={() => setDuelPickerOpen(false)}
+              onCreated={() => {
+                setDuelPickerOpen(false);
+                navigate('/?view=amateur');
+              }}
             />
           )}
         </>

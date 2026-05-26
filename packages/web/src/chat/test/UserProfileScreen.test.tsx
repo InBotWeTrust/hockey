@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { UserProfileScreen } from '../screens/UserProfileScreen.js';
 import { useAuthStore } from '../../auth/authStore.js';
 import * as api from '../api.js';
+import * as amateurDuelApi from '../../api/amateurDuel.js';
 
 function renderPublicProfile(): void {
   const qc = new QueryClient({
@@ -57,6 +58,7 @@ describe('UserProfileScreen', () => {
       lastSeenAt: null,
     });
     vi.spyOn(api, 'findOrCreateDM').mockResolvedValue({ chatId: 'dm1', created: false });
+    vi.spyOn(amateurDuelApi, 'fetchAmateurMatches').mockResolvedValue({ matches: [] });
   });
 
   afterEach(() => {

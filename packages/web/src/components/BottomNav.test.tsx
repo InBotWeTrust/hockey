@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { useEffect, useState } from 'react';
@@ -105,6 +105,36 @@ describe('BottomNav remembered navigation', () => {
     renderBottomNav('/?view=training&play=1');
 
     expect(screen.queryByRole('button', { name: 'Игра' })).toBeNull();
+  });
+
+  it('refreshes missing grip for persisted auth sessions', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/me')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              id: 'u1',
+              displayName: 'Egor',
+              role: 'admin',
+              grip: 'right',
+              experimentalTrainingCourt: false,
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+
+    renderBottomNav('/');
+
+    await waitFor(() => expect(useAuthStore.getState().user?.grip).toBe('right'));
   });
 
   it('resets the active chat section to the chat list', () => {

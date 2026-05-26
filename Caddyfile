@@ -18,20 +18,3 @@
     format console
   }
 }
-
-{$DEV_APP_DOMAIN} {
-  encode gzip zstd
-
-  handle_path /api/* {
-    reverse_proxy server-dev:3000
-  }
-
-  handle {
-    reverse_proxy web-dev:8080
-  }
-
-  log {
-    output stdout
-    format console
-  }
-}

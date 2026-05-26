@@ -78,7 +78,7 @@ describe('PrivateRoute', () => {
         JSON.stringify({
           accessToken: 'mini-a',
           refreshToken: 'mini-r',
-          user: { id: 'u-mini', displayName: 'Mini Player' },
+          user: { id: 'u-mini', displayName: 'Mini Player', grip: 'right' },
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       ),
@@ -96,6 +96,7 @@ describe('PrivateRoute', () => {
         body: expect.stringContaining('query_id=q'),
       }),
     );
+    expect(useAuthStore.getState().user?.grip).toBe('right');
     expect(ready).toHaveBeenCalled();
     expect(expand).toHaveBeenCalled();
   });
@@ -113,7 +114,7 @@ describe('PrivateRoute', () => {
         JSON.stringify({
           accessToken: 'mini-a',
           refreshToken: 'mini-r',
-          user: { id: 'u-mini', displayName: 'Mini Player' },
+          user: { id: 'u-mini', displayName: 'Mini Player', grip: 'right' },
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       ),
@@ -147,6 +148,7 @@ describe('PrivateRoute', () => {
         body: expect.stringContaining('query_id=q'),
       }),
     );
+    expect(useAuthStore.getState().user?.grip).toBe('right');
     expect(ready).toHaveBeenCalled();
     expect(expand).toHaveBeenCalled();
   });

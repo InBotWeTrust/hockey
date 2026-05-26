@@ -105,7 +105,7 @@ describe('LoginScreen', () => {
         JSON.stringify({
           accessToken: 'mini-access',
           refreshToken: 'mini-refresh',
-          user: { id: 'u-mini', displayName: 'Mini Player' },
+          user: { id: 'u-mini', displayName: 'Mini Player', grip: 'right' },
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       ),
@@ -114,6 +114,7 @@ describe('LoginScreen', () => {
     renderWith();
 
     await waitFor(() => expect(useAuthStore.getState().accessToken).toBe('mini-access'));
+    expect(useAuthStore.getState().user?.grip).toBe('right');
     expect(fetchSpy).toHaveBeenCalledWith(
       '/api/auth/telegram-mini-app',
       expect.objectContaining({

@@ -45,7 +45,7 @@ export class Player {
   private shotStartedAt: number | null = null;
   private destroyed = false;
 
-  constructor(grip: 'left' | 'right' = 'left', options: PlayerOptions = {}) {
+  constructor(grip: 'left' | 'right' = 'right', options: PlayerOptions = {}) {
     this.shotDir = grip === 'right' ? -1 : 1;
     this.spriteWidth = options.spriteWidth ?? SPRITE_WIDTH;
     this.spriteAspect = options.spriteAspect ?? SPRITE_ASPECT;
@@ -66,7 +66,8 @@ export class Player {
     this.sprite.anchor.set(0.5, 0.5);
     this.container.addChild(this.sprite);
 
-    const idleSpriteUrl = options.spriteUrls?.[grip] ?? options.spriteUrl ?? `/sprites/${grip}hand.webp`;
+    const idleSpriteUrl =
+      options.spriteUrls?.[grip] ?? options.spriteUrl ?? `/sprites/${grip}hand.webp`;
     const shotSpriteUrl = options.shotSpriteUrls?.[grip] ?? options.shotSpriteUrl;
 
     Assets.load<Texture>(idleSpriteUrl)
