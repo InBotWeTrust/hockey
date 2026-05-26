@@ -102,7 +102,7 @@ export function SectionsScreen(): JSX.Element {
         <SectionCard
           title="Магазин"
           description="Валюта, инвентарь и предметы"
-          meta="Токены, звёзды и экипировка"
+          meta="Монеты, звёзды и экипировка"
           tone="default"
           icon={<ShoppingBag size={24} strokeWidth={2.3} />}
           onClick={() => navigate('/inventory')}

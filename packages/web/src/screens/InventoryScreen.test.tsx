@@ -33,7 +33,7 @@ describe('InventoryScreen', () => {
     renderInventory();
 
     expect(screen.getByLabelText('Валюта')).toBeInTheDocument();
-    expect(screen.getByLabelText('Токены: 0 токенов')).toBeInTheDocument();
+    expect(screen.getByLabelText('Монеты: 0 монет')).toBeInTheDocument();
     expect(screen.getByLabelText('Звёзды: 0 звёзд')).toBeInTheDocument();
     expect(screen.getAllByText('0')).toHaveLength(2);
     expect(screen.getByLabelText('Инвентарь')).toBeInTheDocument();
@@ -75,7 +75,7 @@ describe('InventoryScreen', () => {
 
     renderInventory();
 
-    expect(await screen.findByLabelText('Токены: 23 токена')).toBeInTheDocument();
+    expect(await screen.findByLabelText('Монеты: 23 монеты')).toBeInTheDocument();
     expect(screen.getByLabelText('Звёзды: 7 звёзд')).toBeInTheDocument();
     expect(screen.getByText('23')).toBeInTheDocument();
     expect(screen.getByText('7')).toBeInTheDocument();

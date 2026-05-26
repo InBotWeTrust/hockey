@@ -2042,14 +2042,27 @@ function canStartArenaDuelPeriod(
   );
 }
 
+function isDuelInviteForMe(match: AmateurDuelMatch): boolean {
+  return match.status === 'invited' && match.me.side === 'opponent' && match.me.state === 'invited';
+}
+
+function isDuelInviteFromMe(match: AmateurDuelMatch): boolean {
+  return match.status === 'invited' && match.me.side === 'challenger';
+}
+
 function arenaDuelCtaLabel(match: AmateurDuelMatch, fallbackNow: number): string {
   const nowMs = duelMatchNowMs(match, fallbackNow);
   if (match.me.state === 'period_active') return 'Продолжить дуэль';
+  if (match.status === 'settled') return 'Показать результат';
+  if (match.status === 'cancelled' || match.status === 'expired') return 'Дуэль завершена';
+  if (isDuelInviteFromMe(match)) return 'Ждём ответ';
   if (canStartArenaDuelPeriod(match, nowMs)) return 'Начать дуэль';
-  if (match.status === 'invited' && match.me.state === 'invited') return 'Принять вызов';
+  if (isDuelInviteForMe(match)) return 'Принять вызов';
   if (match.status === 'ready_check' && match.me.state !== 'ready') return 'Готов';
+  if (match.status === 'ready_check' && match.me.state === 'ready') return 'Ждём готовность';
+  if (match.status === 'active' && match.opponent.state === 'period_active') return 'Соперник играет';
   if (match.me.state === 'break_active') return 'Перерыв';
-  if (match.me.state === 'completed' || match.me.state === 'forfeit') return 'Ждём соперника';
+  if (match.me.state === 'completed' || match.me.state === 'forfeit') return 'Вы сыграли';
   return 'Статус дуэли';
 }
 
@@ -2080,6 +2093,7 @@ function duelEventTiming(match: AmateurDuelMatch, fallbackNow: number): DuelEven
   const now = duelMatchNowMs(match, fallbackNow);
   const startsAt = timestampMs(match.starts_at);
   const endsAt = timestampMs(match.ends_at);
+  const inviteEndsAt = timestampMs(match.ready_expires_at);
   const periodEndsAt = timestampMs(match.period_ends_at);
   const breakEndsAt = timestampMs(match.break_ends_at);
   const score = `${match.me.goals}:${match.opponent.goals}`;
@@ -2090,6 +2104,19 @@ function duelEventTiming(match: AmateurDuelMatch, fallbackNow: number): DuelEven
       ariaLabel: `${duelOutcomeText(match)}. Счёт ${score}`,
       label: 'Счёт',
       value: score,
+    };
+  }
+
+  if (match.status === 'invited') {
+    const value = inviteEndsAt > now ? formatMs(inviteEndsAt - now) : '00:00';
+    const isInvitee = isDuelInviteForMe(match);
+    const label = isInvitee ? 'До ответа' : 'До автоотмены';
+    const stateText = isInvitee ? 'Вас вызвали на дуэль' : 'Ждём ответ соперника';
+    return {
+      activePeriod: 1,
+      ariaLabel: `${stateText}. ${label} ${value}. Счёт ${score}`,
+      label,
+      value,
     };
   }
 
@@ -2937,12 +2964,14 @@ function DuelStatsParticipantRow({
 }
 
 function duelParticipantStateText(state: AmateurDuelMatch['me']['state']): string {
-  if (state === 'invited') return 'вызов';
-  if (state === 'accepted') return 'готов';
-  if (state === 'period_active') return 'период';
+  if (state === 'invited') return 'ждёт ответ';
+  if (state === 'loadout_pending') return 'выбор';
+  if (state === 'ready') return 'готов';
+  if (state === 'accepted') return 'можно играть';
+  if (state === 'period_active') return 'играет';
   if (state === 'break_active') return 'перерыв';
   if (state === 'completed') return 'завершил';
-  return 'неявка';
+  return 'не сыграл';
 }
 
 function DailyStatsMetric({ label, value }: { label: string; value: string }): JSX.Element {
@@ -3515,26 +3544,160 @@ function currentDuelPeriodRule(match: AmateurDuelMatch): AmateurDuelPeriodRule {
 
 function duelOutcomeText(match: AmateurDuelMatch): string {
   if (match.outcome === 'draw') return 'Ничья';
-  if (match.outcome === 'double_loss') return 'Оба проиграли';
+  if (match.outcome === 'double_loss') return 'Дуэль не сыграна';
   if (match.winner_user_id === match.me.user_id) return 'Победа';
   if (match.winner_user_id === match.opponent.user_id) return 'Поражение';
-  if (match.status === 'invited' && match.me.state === 'invited') return 'Вас вызвали';
-  if (match.status === 'invited') return 'Ожидает ответа';
+  if (match.status === 'invited') {
+    if (isDuelInviteForMe(match)) return 'Вас вызвали';
+    if (isDuelInviteFromMe(match)) return 'Ждём ответ соперника';
+    return 'Ждём подтверждение';
+  }
   if (match.status === 'ready_check') {
-    return match.me.state === 'ready' ? 'Ждём соперника' : 'Комната';
+    if (match.me.state === 'ready' && match.opponent.state === 'ready') return 'Оба готовы';
+    if (match.me.state === 'ready') return 'Вы готовы';
+    if (match.opponent.state === 'ready') return 'Соперник готов';
+    return 'Выбор экипировки';
   }
   if (match.status === 'active') {
-    if (match.me.state === 'completed' || match.me.state === 'forfeit') return 'Ждём соперника';
+    if (match.me.state === 'period_active') return 'Вы играете';
+    if (match.opponent.state === 'period_active') return 'Соперник играет';
+    if (match.me.state === 'break_active') return 'Перерыв';
+    if (
+      (match.me.state === 'completed' || match.me.state === 'forfeit') &&
+      (match.opponent.state === 'completed' || match.opponent.state === 'forfeit')
+    )
+      return 'Ждём расчёт';
+    if (match.me.state === 'completed' || match.me.state === 'forfeit') return 'Вы сыграли';
     if (match.opponent.state === 'completed' || match.opponent.state === 'forfeit')
       return 'Ваш ход';
     if (match.me.state === 'accepted') return 'Ваш ход';
-    return 'Идёт';
+    if (match.opponent.state === 'accepted') return 'Ждём соперника';
+    return 'Дуэль идёт';
   }
   if (match.status === 'cancelled' && match.settled_reason === 'declined') {
-    return match.me.state === 'forfeit' ? 'Вы отказались' : 'Отказ';
+    return match.me.state === 'forfeit' ? 'Вы отказались' : 'Соперник отказался';
   }
-  if (match.status === 'cancelled') return 'Отменена';
-  return 'Истекла';
+  if (match.status === 'cancelled' && match.settled_reason === 'cancelled_by_challenger') {
+    return match.me.side === 'challenger' ? 'Вы отменили вызов' : 'Вызов отменён';
+  }
+  if (match.status === 'cancelled') return 'Дуэль отменена';
+  if (match.status === 'expired' && match.me.side === 'challenger') return 'Ответа не было';
+  if (match.status === 'expired') return 'Вызов истёк';
+  return 'Статус дуэли';
+}
+
+function duelCurrentTimerLabel(match: AmateurDuelMatch): string {
+  if (match.status === 'invited') {
+    return isDuelInviteForMe(match) ? 'до ответа на вызов' : 'до автоотмены вызова';
+  }
+  if (match.status === 'ready_check') return 'до отмены комнаты';
+  if (match.status === 'active') {
+    if (match.me.state === 'period_active') return 'ваш период идёт';
+    if (match.opponent.state === 'period_active') return 'период соперника идёт';
+    if (match.opponent.state === 'completed' || match.opponent.state === 'forfeit')
+      return 'соперник завершил';
+    if (match.me.state === 'completed' || match.me.state === 'forfeit') return 'вы завершили';
+    if (match.me.state === 'accepted') return 'можно начинать период';
+    return 'активная дуэль';
+  }
+  if (match.status === 'settled') return 'результат готов';
+  if (match.status === 'cancelled') return 'дуэль отменена';
+  return 'вызов истёк';
+}
+
+function duelDevHint(match: AmateurDuelMatch, nowMs: number): string {
+  if (match.status === 'invited') {
+    return isDuelInviteForMe(match)
+      ? 'Нажми кнопку, чтобы принять вызов. Потом нужно нажать «Готов».'
+      : 'Ждём, пока соперник примет вызов. В разделе дуэлей вызов можно отменить вручную.';
+  }
+  if (match.status === 'ready_check') {
+    return match.me.state === 'ready'
+      ? 'Ты готов. Ждём готовность соперника, после этого период стартует с карточки или из раздела дуэлей.'
+      : 'Нажми кнопку, чтобы подтвердить готовность и зафиксировать экипировку.';
+  }
+  if (match.status === 'active') {
+    if (match.me.state === 'period_active') return 'Можно играть: кнопка броска активна.';
+    if (canStartArenaDuelPeriod(match, nowMs))
+      return 'Нажми кнопку, чтобы начать свой текущий период.';
+    if (match.opponent.state === 'period_active')
+      return 'Сейчас играет соперник. Твой бросок будет доступен после его периода или перерыва.';
+    if (match.me.state === 'completed' || match.me.state === 'forfeit')
+      return 'Ты уже завершил свою часть. Ждём соперника или авторасчёт.';
+    if (match.me.state === 'break_active') return 'Идёт перерыв между периодами.';
+    return 'Дуэль активна, но сейчас нет доступного действия для твоей стороны.';
+  }
+  if (match.status === 'settled') return 'Можно открыть результат дуэли.';
+  return 'Эта дуэль уже неигровая: она отменена или истекла.';
+}
+
+function DuelDevStatePanel({
+  match,
+  now,
+}: {
+  match: AmateurDuelMatch;
+  now: number;
+}): JSX.Element | null {
+  if (!import.meta.env.DEV) return null;
+  if (!new URLSearchParams(window.location.search).has('debugDuel')) return null;
+  const nowMs = duelMatchNowMs(match, now);
+  const timing = duelEventTiming(match, now);
+
+  return (
+    <aside
+      aria-label="Проверка состояния дуэли"
+      style={{
+        position: 'fixed',
+        left: 14,
+        right: 14,
+        bottom: 'calc(84px + max(10px, var(--app-safe-bottom)))',
+        zIndex: 720,
+        maxWidth: 480,
+        margin: '0 auto',
+        borderRadius: 18,
+        padding: '12px 14px',
+        background: 'rgba(225, 238, 249, 0.92)',
+        border: '1px solid rgba(255,255,255,0.82)',
+        boxShadow: '0 16px 38px rgba(15, 23, 42, 0.18)',
+        backdropFilter: 'blur(18px) saturate(140%)',
+        WebkitBackdropFilter: 'blur(18px) saturate(140%)',
+        color: 'var(--ink)',
+      }}
+    >
+      <div style={{ fontSize: 12, fontWeight: 950, letterSpacing: '0.1em', opacity: 0.62 }}>
+        DEV · СОСТОЯНИЕ ДУЭЛИ
+      </div>
+      <div
+        style={{
+          marginTop: 8,
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+          gap: 8,
+          fontSize: 12,
+          fontWeight: 850,
+          lineHeight: 1.25,
+        }}
+      >
+        <span>Матч: {duelOutcomeText(match)}</span>
+        <span>
+          Таймер: {timing.value} · {duelCurrentTimerLabel(match)}
+        </span>
+        <span>Вы: {duelParticipantStateText(match.me.state)}</span>
+        <span>Соперник: {duelParticipantStateText(match.opponent.state)}</span>
+      </div>
+      <div
+        style={{
+          marginTop: 8,
+          color: 'rgba(15, 23, 42, 0.68)',
+          fontSize: 12,
+          fontWeight: 750,
+          lineHeight: 1.35,
+        }}
+      >
+        {duelDevHint(match, nowMs)}
+      </div>
+    </aside>
+  );
 }
 
 function currentMoscowSeasonKey(): string {
@@ -4545,7 +4708,7 @@ function AmateurDuelsPage({
                 aria-hidden="true"
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '20px minmax(0, 1fr) auto',
+                  gridTemplateColumns: '24px minmax(0, 1fr) auto',
                   alignItems: 'center',
                   gap: 8,
                   padding: '0 14px 0',
@@ -4557,10 +4720,10 @@ function AmateurDuelsPage({
                 }}
               >
                 <span>#</span>
-                <span style={{ paddingLeft: 44 }}>Игрок</span>
+                <span>Игрок</span>
                 <span>Очки</span>
               </div>
-              {(rating.data?.rating ?? []).slice(0, 10).map((row, index) => {
+              {(rating.data?.rating ?? []).map((row, index) => {
                 const isMe = currentUserId === row.user_id;
                 return (
                   <button
@@ -4580,7 +4743,7 @@ function AmateurDuelsPage({
                       borderRadius: 16,
                       padding: '10px 14px',
                       display: 'grid',
-                      gridTemplateColumns: '20px minmax(0, 1fr) auto',
+                      gridTemplateColumns: '24px minmax(0, 1fr) auto',
                       alignItems: 'center',
                       gap: 8,
                       minHeight: 48,
@@ -5002,6 +5165,22 @@ function AmateurDuelPlayView({
     now >= startsAt &&
     now < endsAt &&
     match.me.current_period < match.rules.totalPeriods;
+  const handleDirectDuelAction = async (): Promise<void> => {
+    if (inFlight) return;
+    const matchNow = duelMatchNowMs(match, now);
+    if (match.status === 'invited' && match.me.state === 'invited') {
+      const { match: next } = await acceptAmateurDuel(match.id);
+      applyState(next);
+      return;
+    }
+    if (match.status === 'ready_check' && match.me.state !== 'ready') {
+      await ready({});
+      return;
+    }
+    if (canStartArenaDuelPeriod(match, matchNow)) {
+      await startPeriod();
+    }
+  };
   const nextPeriod =
     match.me.state === 'period_active'
       ? match.me.current_period
@@ -5012,36 +5191,46 @@ function AmateurDuelPlayView({
   if (directPlayOnly && match.me.state !== 'period_active') {
     const timing = duelEventTiming(match, now);
     const inactivePeriodRule = duelParticipantPeriodRule(match, match.me);
+    const showDirectResultModal = match.status === 'settled' && dismissedResultMatchId !== match.id;
+    const canRunDirectDuelAction =
+      (match.status === 'invited' && match.me.state === 'invited') ||
+      (match.status === 'ready_check' && match.me.state !== 'ready') ||
+      canStartArenaDuelPeriod(match, duelMatchNowMs(match, now));
     return (
-      <PlayView<AmateurDuelMatchState>
-        suppressedByModal={true}
-        showIceCar={true}
-        playRouteTransitionOnMount={playRouteTransitionOnMount}
-        onRouteTransitionConsumed={onRouteTransitionConsumed}
-        onBack={onBack}
-        active={false}
-        seed={match.match_seed}
-        goalieId={match.rules.goalieId}
-        periodNumber={duelNextPeriod(match)}
-        periodSpeedPresets={match.period_speed_presets}
-        stickEffects={match.stick_effects}
-        periodsTotal={match.rules.totalPeriods}
-        goals={match.me.goals}
-        shots={match.me.shots_taken}
-        shotsTotal={
-          inactivePeriodRule.mode === 'quota'
-            ? (inactivePeriodRule.shotsLimit ?? match.rules.shotsPerPeriod)
-            : undefined
-        }
-        timer={timing.value}
-        timerLabel={timing.label}
-        shotButtonLabel={inFlight ? 'ОТКРЫВАЕМ...' : arenaDuelCtaLabel(match, now).toUpperCase()}
-        backLabel="К арене"
-        optimisticAddShot={optimisticAddShot}
-        submitShot={submitShot}
-        applyState={applyState}
-        scoreboardOpponent={duelScoreboardOpponent(match)}
-      />
+      <>
+        <PlayView<AmateurDuelMatchState>
+          suppressedByModal={true}
+          showIceCar={true}
+          playRouteTransitionOnMount={playRouteTransitionOnMount}
+          onRouteTransitionConsumed={onRouteTransitionConsumed}
+          onBack={onBack}
+          active={false}
+          seed={match.match_seed}
+          goalieId={match.rules.goalieId}
+          periodNumber={duelNextPeriod(match)}
+          periodSpeedPresets={match.period_speed_presets}
+          stickEffects={match.stick_effects}
+          periodsTotal={match.rules.totalPeriods}
+          goals={match.me.goals}
+          shots={match.me.shots_taken}
+          shotsTotal={
+            inactivePeriodRule.mode === 'quota'
+              ? (inactivePeriodRule.shotsLimit ?? match.rules.shotsPerPeriod)
+              : undefined
+          }
+          timer={timing.value}
+          timerLabel={timing.label}
+          shotButtonLabel={inFlight ? 'ОТКРЫВАЕМ...' : arenaDuelCtaLabel(match, now).toUpperCase()}
+          inactiveAction={canRunDirectDuelAction ? handleDirectDuelAction : undefined}
+          backLabel="К арене"
+          optimisticAddShot={optimisticAddShot}
+          submitShot={submitShot}
+          applyState={applyState}
+          scoreboardOpponent={duelScoreboardOpponent(match)}
+        />
+        {showDirectResultModal && <DuelResultModal match={match} onClose={onBack} />}
+        <DuelDevStatePanel match={match} now={now} />
+      </>
     );
   }
 
@@ -6296,6 +6485,7 @@ interface PlayViewProps<TState> {
   timer?: string | undefined;
   timerLabel?: string | undefined;
   shotButtonLabel?: string | undefined;
+  inactiveAction?: (() => void | Promise<void>) | undefined;
   backLabel?: string | undefined;
   bottomInset?: string | undefined;
   sessionStartedAt?: string | null | undefined;
@@ -7058,6 +7248,7 @@ export function PlayView<TState>({
   timer,
   timerLabel,
   shotButtonLabel = 'БРОСОК',
+  inactiveAction,
   backLabel = 'К режимам',
   bottomInset = 'calc(8px + max(20px, var(--app-safe-bottom)))',
   sessionStartedAt,
@@ -7751,6 +7942,15 @@ export function PlayView<TState>({
     });
   }, [flightDurationMs, optimisticAddShot, submitShot, applyState, applyResolvedState]);
 
+  const handlePrimaryTap = useCallback((): void => {
+    const cur = sessionRef.current;
+    if (!cur.active && inactiveAction) {
+      void inactiveAction();
+      return;
+    }
+    handleShotTap();
+  }, [handleShotTap, inactiveAction]);
+
   const timerValue = timer ?? formatMs(remaining);
   const routeCameraEase = 'cubic-bezier(.16,.84,.24,1)';
   const routeCameraTransition = `transform ${PLAY_ROUTE_TRANSITION_MS}ms ${routeCameraEase}, filter ${PLAY_ROUTE_TRANSITION_MS}ms ${routeCameraEase}, border-color ${PLAY_ROUTE_TRANSITION_MS}ms ease`;
@@ -7904,14 +8104,14 @@ export function PlayView<TState>({
         <button
           type="button"
           className="btn btn--cta"
-          onClick={handleShotTap}
+          onClick={handlePrimaryTap}
           disabled={
-            suppressedByModal ||
+            (suppressedByModal && !inactiveAction) ||
             isRouteCameraZoomed ||
             isEntrancePlaying ||
             isShotInProgress ||
             isShowingResult ||
-            !active ||
+            (!active && !inactiveAction) ||
             (typeof shotsTotal === 'number' && shots >= shotsTotal)
           }
           style={{

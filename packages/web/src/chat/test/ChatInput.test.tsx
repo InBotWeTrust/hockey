@@ -58,7 +58,7 @@ describe('ChatInput', () => {
       />,
     );
 
-    const attach = screen.getByRole('button', { name: 'Прикрепить файл' });
+    const attach = screen.getByRole('button', { name: 'Прикрепить' });
     const voice = screen.getByRole('button', { name: 'Записать голосовое' });
 
     expect(attach).toBeInTheDocument();
@@ -70,6 +70,60 @@ describe('ChatInput', () => {
     fireEvent.click(voice);
     expect(onAttach).toHaveBeenCalledTimes(1);
     expect(onVoice).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens image and file attachment choices when both sources are available', () => {
+    const onAttachImage = vi.fn();
+    const onAttachFile = vi.fn();
+    render(
+      <ChatInput
+        replyTo={null}
+        onClearReply={vi.fn()}
+        onSend={vi.fn()}
+        onAttachImage={onAttachImage}
+        onAttachFile={onAttachFile}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Прикрепить' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Изображение' }));
+
+    expect(onAttachImage).toHaveBeenCalledTimes(1);
+    expect(onAttachFile).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Прикрепить' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Файл' }));
+
+    expect(onAttachFile).toHaveBeenCalledTimes(1);
+  });
+
+  it('attaches pasted clipboard images without sending text', () => {
+    const onPasteImage = vi.fn();
+    render(
+      <ChatInput
+        replyTo={null}
+        onClearReply={vi.fn()}
+        onSend={vi.fn()}
+        onPasteImage={onPasteImage}
+      />,
+    );
+
+    const textarea = screen.getByLabelText('Текст сообщения') as HTMLTextAreaElement;
+    const file = new File(['image'], 'clip.png', { type: 'image/png' });
+    fireEvent.paste(textarea, {
+      clipboardData: {
+        items: [
+          {
+            kind: 'file',
+            type: 'image/png',
+            getAsFile: () => file,
+          },
+        ],
+        files: [],
+      },
+    });
+
+    expect(onPasteImage).toHaveBeenCalledWith(file);
   });
 
   it('switches the right-side action from voice to send when text is typed', () => {

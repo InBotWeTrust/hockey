@@ -5,6 +5,7 @@ import { createHash, createHmac } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../../src/app.js';
 import { createJwt } from '../../src/auth/jwt.js';
+import { createDevAccessCode } from '../../src/auth/devAccessCode.js';
 import { findOrLinkOrCreateVkUser } from '../../src/auth/users.js';
 import { applyMigrations } from '../../src/db/migrations.js';
 import {
@@ -94,6 +95,7 @@ describe.skipIf(!hasIntegrationEnv)('POST /auth/telegram', () => {
         REFRESH_SECRET,
         TELEGRAM_BOT_TOKEN: BOT_TOKEN,
         ACCOUNT_RECOVERY_TELEGRAM_PROVIDER_UIDS: '7770102',
+        DEV_ACCESS_CODE_LOGIN_ENABLED: true,
         DAILY_SEED_SECRET: 'daily-seed-secret-at-least-16!!',
       },
     });
@@ -140,6 +142,38 @@ describe.skipIf(!hasIntegrationEnv)('POST /auth/telegram', () => {
       payload: { foo: 'bar' },
     });
     expect(res.statusCode).toBe(400);
+  });
+
+  it('issues tokens for valid dev access code when enabled', async () => {
+    const pool = createTestPool();
+    try {
+      const { code } = await createDevAccessCode(pool, {
+        label: 'Test admin',
+        displayName: 'Test Admin',
+        telegramProviderUid: '432014500',
+        role: 'admin',
+        code: 'TEST-DEV-100',
+      });
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/auth/dev-code',
+        payload: { code, timezone: 'Europe/Moscow' },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as {
+        accessToken: string;
+        refreshToken: string;
+        user: { displayName: string; role: string };
+      };
+      expect(body.user.displayName).toBe('Test Admin');
+      expect(body.user.role).toBe('admin');
+      expect(body.accessToken.split('.')).toHaveLength(3);
+      expect(body.refreshToken.split('.')).toHaveLength(3);
+    } finally {
+      await pool.end();
+    }
   });
 
   it('issues tokens from valid Telegram Mini App initData', async () => {

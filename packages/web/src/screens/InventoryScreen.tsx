@@ -50,7 +50,7 @@ function formatCountLabel(balance: number, forms: [string, string, string]): str
 }
 
 function formatTokenBalance(balance: number): string {
-  return formatCountLabel(balance, ['токен', 'токена', 'токенов']);
+  return formatCountLabel(balance, ['монета', 'монеты', 'монет']);
 }
 
 function formatStarBalance(balance: number): string {
@@ -86,7 +86,7 @@ export function InventoryScreen(): JSX.Element {
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
           <CurrencyBalanceCard
-            ariaLabel={`Токены: ${tokenBalance}`}
+            ariaLabel={`Монеты: ${tokenBalance}`}
             amount={tokenAmount}
             icon="tokens"
           />

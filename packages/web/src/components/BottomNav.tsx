@@ -276,7 +276,7 @@ export function BottomNav(): JSX.Element | null {
           onClick={openLastChatRoute}
         />
         <NavTab
-          label="Профиль"
+          label="Раздевалка"
           disabled={isDemo}
           active={isProfile}
           icon={

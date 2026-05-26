@@ -9,6 +9,7 @@ import { lastSeenPlugin } from './plugins/lastSeen.js';
 import { realtimePlugin } from './plugins/realtime.js';
 import { authRoutes } from './routes/auth.js';
 import { feedbackRoutes } from './routes/feedback.js';
+import { inventoryRoutes } from './routes/inventory.js';
 import { mediaRoutes } from './routes/media.js';
 import { meRoutes } from './routes/me.js';
 import { dailyRoutes } from './duel/daily/routes.js';
@@ -90,9 +91,11 @@ export async function buildApp(options: BuildAppOptions = {}) {
     accessSecret: config.JWT_SECRET,
     refreshSecret: config.REFRESH_SECRET,
     devLoginEnabled: config.NODE_ENV !== 'production',
+    devAccessCodeLoginEnabled: config.DEV_ACCESS_CODE_LOGIN_ENABLED === true,
   });
   await app.register(feedbackRoutes);
   await app.register(meRoutes);
+  await app.register(inventoryRoutes);
   await app.register(
     mediaRoutes,
     objectStorage !== undefined

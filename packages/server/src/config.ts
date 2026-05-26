@@ -34,6 +34,7 @@ const schema = z
     TELEGRAM_BOT_TOKEN: z.string().min(1),
     VK_APP_ID: optionalNonEmptyString,
     ACCOUNT_RECOVERY_TELEGRAM_PROVIDER_UIDS: optionalNonEmptyString,
+    DEV_ACCESS_CODE_LOGIN_ENABLED: optionalBoolean,
     DAILY_SEED_SECRET: z.string().min(16),
     SYSTEM_USER_ID: z.string().uuid().optional(),
     PUSH_VAPID_PUBLIC_KEY: optionalNonEmptyString,
@@ -50,7 +51,11 @@ const schema = z
     OBJECT_STORAGE_ACCESS_KEY_ID: optionalNonEmptyString,
     OBJECT_STORAGE_SECRET_ACCESS_KEY: optionalNonEmptyString,
     OBJECT_STORAGE_PUBLIC_BASE_URL: optionalNonEmptyString,
-    OBJECT_STORAGE_MAX_UPLOAD_BYTES: z.coerce.number().int().min(1).default(25 * 1024 * 1024),
+    OBJECT_STORAGE_MAX_UPLOAD_BYTES: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .default(25 * 1024 * 1024),
   })
   .superRefine((value, ctx) => {
     const configuredKeys = objectStorageKeys.filter((key) => value[key] !== undefined);

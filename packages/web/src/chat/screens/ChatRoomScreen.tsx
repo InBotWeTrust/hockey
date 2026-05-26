@@ -401,7 +401,8 @@ export function ChatRoomScreen(): JSX.Element {
   >({});
   const gotoRef = useRef<string | null>(null);
   const messagesListRef = useRef<HTMLDivElement | null>(null);
-  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const imageAttachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const fileAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const attachmentUploadTokenRef = useRef(0);
   const voiceRecorderRef = useRef<MediaRecorder | null>(null);
   const voiceStreamRef = useRef<MediaStream | null>(null);
@@ -1173,6 +1174,16 @@ export function ChatRoomScreen(): JSX.Element {
     setAttachmentError(null);
   }, []);
 
+  const attachFile = useCallback(
+    (file: File): void => {
+      setAttachmentError(null);
+      const token = attachmentUploadTokenRef.current + 1;
+      attachmentUploadTokenRef.current = token;
+      uploadAttachmentMut.mutate({ file, token });
+    },
+    [uploadAttachmentMut],
+  );
+
   const handleSend = useCallback(
     (content: string, replyToId: string | null): void => {
       const vars: { content: string; replyToId: string | null; attachmentIds?: string[] } = {
@@ -1511,18 +1522,26 @@ export function ChatRoomScreen(): JSX.Element {
       {showComposer && (
         <div className="chat-edge-bottom chat-edge-bottom--overlay glass-edge-fade glass-edge-fade--bottom">
           <input
-            ref={attachmentInputRef}
+            ref={imageAttachmentInputRef}
             type="file"
-            accept="image/*,audio/*,.pdf,.zip,.txt"
+            accept="image/*"
             hidden
             onChange={(event) => {
               const file = event.currentTarget.files?.[0];
               event.currentTarget.value = '';
               if (!file) return;
-              setAttachmentError(null);
-              const token = attachmentUploadTokenRef.current + 1;
-              attachmentUploadTokenRef.current = token;
-              uploadAttachmentMut.mutate({ file, token });
+              attachFile(file);
+            }}
+          />
+          <input
+            ref={fileAttachmentInputRef}
+            type="file"
+            hidden
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              event.currentTarget.value = '';
+              if (!file) return;
+              attachFile(file);
             }}
           />
           <ChatInput
@@ -1595,7 +1614,9 @@ export function ChatRoomScreen(): JSX.Element {
               ) : null
             }
             canSendEmpty={pendingAttachment !== null}
-            onAttach={() => attachmentInputRef.current?.click()}
+            onAttachImage={() => imageAttachmentInputRef.current?.click()}
+            onAttachFile={() => fileAttachmentInputRef.current?.click()}
+            onPasteImage={attachFile}
             voiceState={voiceState}
             onVoice={handleVoiceAction}
             extraTools={

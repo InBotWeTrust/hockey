@@ -7,6 +7,7 @@ import { TelegramLoginButton, type TelegramAuthPayload } from '../auth/TelegramL
 import { useAuthStore, type AuthSession } from '../auth/authStore.js';
 import { useLogout } from '../auth/useLogout.js';
 import { startVkOAuth } from '../auth/vkAuth.js';
+import { ProfileSupportSections } from './ProfileSupportSections.js';
 import type { ProfileData } from './profileTypes.js';
 
 type DisplaySource = 'telegram' | 'vk' | 'custom';
@@ -651,6 +652,8 @@ export function ProfileSettingsScreen(): JSX.Element {
               }}
             />
           </div>
+
+          <ProfileSupportSections profileReady={data !== undefined} />
 
           <div style={{ margin: '4px 14px 0' }}>
             <button

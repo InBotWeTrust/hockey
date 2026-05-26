@@ -134,6 +134,8 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '036_repair_user_profile_columns.sql',
       '037_duel_template_star_rewards.sql',
       '038_duel_one_open_pair.sql',
+      '039_user_equipment_inventory_items.sql',
+      '040_dev_access_codes.sql',
     ]);
   });
 });

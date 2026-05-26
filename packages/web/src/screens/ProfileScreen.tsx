@@ -1,25 +1,21 @@
-import { useEffect, useRef, useState, type MouseEvent, type PointerEvent } from 'react';
+import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, ChevronDown, MessageSquare, Settings, X } from 'lucide-react';
+import { Coins, Dumbbell, Settings, Sparkles, Trophy, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../api/apiFetch.js';
-import { createFeedback, type FeedbackKind } from '../api/feedback.js';
 import {
-  deletePushSubscription,
-  fetchPushConfig,
-  fetchPushPreferences,
-  savePushSubscription,
-  updatePushPreferences,
-  type PushConfig,
-  type PushPreferences,
-  type PushSubscriptionPayload,
-} from '../api/push.js';
+  fetchMyInventory,
+  patchEquipment,
+  type InventoryEquipmentKind,
+  type InventoryItem,
+  type InventoryState,
+} from '../api/inventory.js';
 import { useAuthStore } from '../auth/authStore.js';
-import { getTelegramMiniApp } from '../auth/telegramMiniApp.js';
 import type { ProfileAchievement, ProfileData } from './profileTypes.js';
 import {
   AchievementDetailsSheet,
   EMPTY_PROFILE_STATS,
+  formatProfileNumber,
   getLevelLabel,
   ProfileAchievementsSection,
   ProfileStatsGrid,
@@ -31,55 +27,6 @@ function canStartMouseDragScroll(target: EventTarget | null): boolean {
     target.closest('[data-no-drag-scroll], button, a, input, textarea, select') === null
   );
 }
-
-type PushStatus =
-  | 'idle'
-  | 'subscribing'
-  | 'subscribed'
-  | 'unsubscribing'
-  | 'unsupported'
-  | 'denied'
-  | 'error';
-type PushPreferenceKey = keyof PushPreferences;
-
-const PUSH_PREFERENCES_QUERY_KEY = ['push', 'preferences'] as const;
-const PUSH_PREFERENCE_ITEMS: Array<{
-  key: PushPreferenceKey;
-  label: string;
-  hint: string;
-}> = [
-  {
-    key: 'chatNewDialogMessage',
-    label: 'Первое сообщение в личке',
-    hint: 'Только когда новый пользователь начал диалог',
-  },
-  {
-    key: 'dailyGame',
-    label: 'Ежедневная игра',
-    hint: 'Новый день, перерывы и окончание периода',
-  },
-  {
-    key: 'trainingAvailable',
-    label: 'Тренировка доступна',
-    hint: 'Когда обновился лимит тренировки',
-  },
-  {
-    key: 'duelEvents',
-    label: 'Дуэли',
-    hint: 'Вызовы и результаты любительских матчей',
-  },
-  {
-    key: 'gameNews',
-    label: 'Новости игры',
-    hint: 'Редкие системные объявления',
-  },
-];
-
-const FEEDBACK_KIND_OPTIONS: Array<{ kind: FeedbackKind; label: string }> = [
-  { kind: 'review', label: 'Отзыв' },
-  { kind: 'suggestion', label: 'Пожелание' },
-  { kind: 'question', label: 'Вопрос' },
-];
 
 function ProfileSectionIcon({ children }: { children: JSX.Element }): JSX.Element {
   return (
@@ -105,381 +52,259 @@ function ProfileSectionIcon({ children }: { children: JSX.Element }): JSX.Elemen
   );
 }
 
-function supportsPushNotifications(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    'Notification' in window &&
-    'serviceWorker' in navigator &&
-    'PushManager' in window
-  );
-}
+const CURRENCY_TONES = {
+  tokens: {
+    color: 'rgba(138, 90, 10, 0.18)',
+    glow: 'radial-gradient(circle at 82% 72%, rgba(176, 124, 22, 0.18), transparent 62%)',
+  },
+  stars: {
+    color: 'rgba(37, 99, 168, 0.18)',
+    glow: 'radial-gradient(circle at 82% 72%, rgba(37, 99, 168, 0.16), transparent 62%)',
+  },
+  experience: {
+    color: 'rgba(15, 118, 110, 0.18)',
+    glow: 'radial-gradient(circle at 82% 72%, rgba(15, 118, 110, 0.16), transparent 62%)',
+  },
+} as const;
 
-function urlBase64ToArrayBuffer(value: string): ArrayBuffer {
-  const padding = '='.repeat((4 - (value.length % 4)) % 4);
-  const base64 = `${value}${padding}`.replace(/-/g, '+').replace(/_/g, '/');
-  const raw = window.atob(base64);
-  const buffer = new ArrayBuffer(raw.length);
-  const output = new Uint8Array(buffer);
-  for (let i = 0; i < raw.length; i += 1) {
-    output[i] = raw.charCodeAt(i);
-  }
-  return buffer;
-}
-
-function normalizePushSubscription(subscription: PushSubscription): PushSubscriptionPayload {
-  const json = subscription.toJSON();
-  const p256dh = json.keys?.p256dh;
-  const auth = json.keys?.auth;
-  if (!json.endpoint || !p256dh || !auth) {
-    throw new Error('invalid push subscription');
-  }
-  return {
-    endpoint: json.endpoint,
-    expirationTime: json.expirationTime ?? null,
-    keys: { p256dh, auth },
-  };
-}
-
-function getReadyServiceWorkerRegistration(): Promise<ServiceWorkerRegistration> {
-  return new Promise((resolve, reject) => {
-    const timeout = window.setTimeout(() => reject(new Error('service worker is not ready')), 8000);
-    navigator.serviceWorker.ready.then(
-      (registration) => {
-        window.clearTimeout(timeout);
-        resolve(registration);
-      },
-      (err: unknown) => {
-        window.clearTimeout(timeout);
-        reject(err);
-      },
-    );
-  });
-}
-
-function PushPreferenceToggle({
+function CurrencyCard({
   label,
-  hint,
-  checked,
-  disabled,
-  onToggle,
+  value,
+  tone,
+  children,
 }: {
   label: string;
-  hint: string;
-  checked: boolean;
-  disabled: boolean;
-  onToggle: () => void;
+  value: number;
+  tone: keyof typeof CURRENCY_TONES;
+  children: JSX.Element;
 }): JSX.Element {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      data-no-drag-scroll="true"
-      disabled={disabled}
-      onClick={onToggle}
-      style={{
-        width: '100%',
-        minHeight: 58,
-        padding: '10px 12px',
-        border: '1px solid rgba(255,255,255,0.7)',
-        borderRadius: 16,
-        background: 'rgba(255, 255, 255, 0.34)',
-        color: 'var(--ink)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: 12,
-        textAlign: 'left',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.62 : 1,
-        outline: 'none',
-        WebkitTapHighlightColor: 'transparent',
-      }}
-    >
-      <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
-        <span style={{ fontSize: 14, fontWeight: 800, lineHeight: 1.15 }}>{label}</span>
-        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', lineHeight: 1.2 }}>
-          {hint}
-        </span>
-      </span>
-      <span
-        aria-hidden="true"
-        style={{
-          width: 44,
-          height: 26,
-          borderRadius: 999,
-          padding: 3,
-          background: checked ? 'rgba(15, 23, 42, 0.9)' : 'rgba(100, 116, 139, 0.28)',
-          display: 'flex',
-          justifyContent: checked ? 'flex-end' : 'flex-start',
-          alignItems: 'center',
-          flexShrink: 0,
-          transition: 'background 0.15s',
-        }}
-      >
-        <span
-          style={{
-            width: 20,
-            height: 20,
-            borderRadius: 999,
-            background: '#ffffff',
-            boxShadow: '0 2px 8px rgba(15, 23, 42, 0.24)',
-          }}
-        />
-      </span>
-    </button>
-  );
-}
-
-function FeedbackModal({ onClose }: { onClose: () => void }): JSX.Element {
-  const [kind, setKind] = useState<FeedbackKind>('review');
-  const [rating, setRating] = useState(0);
-  const [message, setMessage] = useState('');
-  const feedback = useMutation({
-    mutationFn: () =>
-      createFeedback({
-        kind,
-        ...(kind === 'review' ? { rating } : {}),
-        message,
-      }),
-  });
-  const messageLength = message.trim().length;
-  const canSubmit = messageLength > 0 && messageLength <= 2000 && !feedback.isPending;
-
-  function handleKindChange(nextKind: FeedbackKind): void {
-    if (nextKind === kind) return;
-    feedback.reset();
-    setKind(nextKind);
-  }
-
-  function handleClose(event?: MouseEvent): void {
-    event?.stopPropagation();
-    onClose();
-  }
+  const colors = CURRENCY_TONES[tone];
 
   return (
     <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Обратная связь"
-      onClick={() => handleClose()}
+      className="glass"
       style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 1000,
-        background: 'rgba(15, 23, 42, 0.35)',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
+        minWidth: 0,
+        minHeight: 88,
+        padding: '13px 10px',
+        borderRadius: 16,
         display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 'calc(18px + var(--app-safe-top)) 14px calc(18px + var(--app-safe-bottom))',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        gap: 8,
+        position: 'relative',
+        overflow: 'hidden',
+        backgroundImage: colors.glow,
       }}
     >
-      <section
-        className="glass"
-        onClick={(event) => event.stopPropagation()}
+      <div
+        aria-hidden="true"
         style={{
-          width: '100%',
-          maxWidth: 420,
-          borderRadius: 24,
-          padding: 18,
-          color: 'var(--ink)',
+          position: 'absolute',
+          right: -5,
+          bottom: -9,
+          color: colors.color,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          pointerEvents: 'none',
+          transform: 'rotate(-8deg)',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        {children}
+      </div>
+      <div
+        style={{
+          minWidth: 0,
+          color: 'var(--muted)',
+          fontSize: 10,
+          fontWeight: 700,
+          lineHeight: 1.05,
+          textTransform: 'uppercase',
+          overflowWrap: 'anywhere',
+          position: 'relative',
+          zIndex: 1,
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          minWidth: 0,
+          color: 'var(--ink)',
+          fontSize: 24,
+          fontWeight: 800,
+          lineHeight: 1,
+          overflowWrap: 'anywhere',
+          position: 'relative',
+          zIndex: 1,
+        }}
+      >
+        {formatProfileNumber(value)}
+      </div>
+    </div>
+  );
+}
+
+const EQUIPMENT_META: Record<
+  InventoryEquipmentKind,
+  { title: string; empty: string; patchKey: 'stickItemId' | 'skatesItemId' | 'nutritionItemId' }
+> = {
+  stick: { title: 'Клюшка', empty: 'Без клюшки', patchKey: 'stickItemId' },
+  skates: { title: 'Коньки', empty: 'Без коньков', patchKey: 'skatesItemId' },
+  nutrition: { title: 'Энергия', empty: 'Без питания', patchKey: 'nutritionItemId' },
+};
+
+function equipmentIdFor(
+  inventory: InventoryState | undefined,
+  kind: InventoryEquipmentKind,
+): string | null {
+  if (!inventory) return null;
+  if (kind === 'stick') return inventory.equipped.stickItemId;
+  if (kind === 'skates') return inventory.equipped.skatesItemId;
+  return inventory.equipped.nutritionItemId;
+}
+
+function equippedItem(
+  inventory: InventoryState | undefined,
+  kind: InventoryEquipmentKind,
+): InventoryItem | null {
+  const id = equipmentIdFor(inventory, kind);
+  return inventory?.items[kind].find((item) => item.id === id) ?? null;
+}
+
+function EquipmentDetailsModal({
+  kind,
+  inventory,
+  isSaving,
+  error,
+  onSelect,
+  onClose,
+}: {
+  kind: InventoryEquipmentKind;
+  inventory: InventoryState | undefined;
+  isSaving: boolean;
+  error: string | null;
+  onSelect: (itemId: string | null) => void;
+  onClose: () => void;
+}): JSX.Element {
+  const meta = EQUIPMENT_META[kind];
+  const items = inventory?.items[kind] ?? [];
+  const activeId = equipmentIdFor(inventory, kind);
+
+  return (
+    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 420 }}>
+      <section
+        role="dialog"
+        aria-label={meta.title}
+        className="modal-card"
+        onClick={(event) => event.stopPropagation()}
+        style={{ width: 'min(430px, calc(100vw - 28px))', display: 'grid', gap: 14 }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div
-              style={{
-                fontSize: 14,
-                fontWeight: 900,
-                letterSpacing: '0.11em',
-                textTransform: 'uppercase',
-                color: 'var(--ink)',
-              }}
-            >
-              Обратная связь
-            </div>
-            <div style={{ marginTop: 5, color: 'var(--muted)', fontSize: 12, fontWeight: 800 }}>
-              {feedback.isSuccess ? 'Спасибо, сообщение сохранено' : 'Выберите тип сообщения'}
-            </div>
+            <div className="modal-title">{meta.title}</div>
+            <div className="modal-copy">Выберите активный предмет для раздевалки и дуэлей.</div>
           </div>
-          <button
-            type="button"
-            className="icon-btn"
-            data-no-drag-scroll="true"
-            onClick={handleClose}
-            aria-label="Закрыть"
-          >
-            <X size={16} />
+          <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
+            <X size={15} />
           </button>
         </div>
 
-        {feedback.isSuccess ? (
+        <div style={{ display: 'grid', gap: 8 }}>
           <button
             type="button"
-            className="btn btn--cta"
             data-no-drag-scroll="true"
-            onClick={handleClose}
-            style={{ marginTop: 18, width: '100%', minHeight: 52, letterSpacing: 0 }}
+            disabled={isSaving}
+            onClick={() => onSelect(null)}
+            className={activeId === null ? 'glass-dark' : 'glass'}
+            style={{
+              borderRadius: 18,
+              padding: 12,
+              color: activeId === null ? '#ffffff' : 'var(--ink)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 10,
+              textAlign: 'left',
+              cursor: isSaving ? 'wait' : 'pointer',
+            }}
           >
-            Понятно
+            <span style={{ fontSize: 15, fontWeight: 900 }}>{meta.empty}</span>
+            <span style={{ fontSize: 12, fontWeight: 800, opacity: 0.78 }}>Слот пустой</span>
           </button>
-        ) : (
-          <>
-            <div
-              style={{
-                marginTop: 16,
-                display: 'grid',
-                gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-                gap: 8,
-              }}
-            >
-              {FEEDBACK_KIND_OPTIONS.map((item) => (
-                <button
-                  key={item.kind}
-                  type="button"
-                  data-no-drag-scroll="true"
-                  className={kind === item.kind ? 'chip chip--active' : 'chip'}
-                  onClick={() => handleKindChange(item.kind)}
-                  style={{
-                    minHeight: 42,
-                    borderRadius: 14,
-                    justifyContent: 'center',
-                    padding: '8px 10px',
-                  }}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
 
-            {kind === 'review' && (
-              <div style={{ marginTop: 14 }}>
-                <div
-                  style={{
-                    color: 'var(--muted)',
-                    fontSize: 11,
-                    fontWeight: 900,
-                    letterSpacing: '0.12em',
-                    textTransform: 'uppercase',
-                    marginBottom: 8,
-                  }}
-                >
-                  Оценка
-                </div>
-                <div
-                  role="radiogroup"
-                  aria-label="Оценка отзыва"
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(6, minmax(0, 1fr))',
-                    gap: 6,
-                  }}
-                >
-                  {[0, 1, 2, 3, 4, 5].map((value) => (
-                    <button
-                      key={value}
-                      type="button"
-                      role="radio"
-                      aria-checked={rating === value}
-                      aria-label={`${value} из 5`}
-                      data-no-drag-scroll="true"
-                      onClick={() => setRating(value)}
-                      className={rating === value ? 'chip chip--active' : 'chip'}
-                      style={{
-                        minWidth: 0,
-                        height: 40,
-                        borderRadius: 13,
-                        padding: 0,
-                        justifyContent: 'center',
-                        textAlign: 'center',
-                      }}
-                    >
-                      {value}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <label style={{ marginTop: 14, display: 'block' }}>
-              <span
+          {items.map((item) => {
+            const selected = item.id === activeId;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                data-no-drag-scroll="true"
+                disabled={isSaving || item.chargesAvailable <= 0}
+                onClick={() => onSelect(item.id)}
+                className={selected ? 'glass-dark' : 'glass'}
                 style={{
-                  display: 'block',
-                  color: 'var(--muted)',
-                  fontSize: 11,
-                  fontWeight: 900,
-                  letterSpacing: '0.12em',
-                  textTransform: 'uppercase',
-                  marginBottom: 8,
+                  borderRadius: 18,
+                  padding: 12,
+                  color: selected ? '#ffffff' : 'var(--ink)',
+                  display: 'grid',
+                  gridTemplateColumns: '48px minmax(0, 1fr) auto',
+                  alignItems: 'center',
+                  gap: 10,
+                  textAlign: 'left',
+                  cursor: isSaving ? 'wait' : 'pointer',
+                  opacity: item.chargesAvailable > 0 ? 1 : 0.55,
                 }}
               >
-                Сообщение
-              </span>
-              <textarea
-                value={message}
-                onChange={(event) => setMessage(event.target.value.slice(0, 2000))}
-                placeholder={
-                  kind === 'review'
-                    ? 'Что понравилось или мешает?'
-                    : kind === 'suggestion'
-                      ? 'Что стоит добавить или поменять?'
-                      : 'Что хотите уточнить?'
-                }
-                rows={6}
-                style={{
-                  width: '100%',
-                  resize: 'vertical',
-                  minHeight: 132,
-                  border: '1px solid rgba(255,255,255,0.74)',
-                  borderRadius: 18,
-                  background: 'rgba(255, 255, 255, 0.46)',
-                  color: 'var(--ink)',
-                  padding: 12,
-                  outline: 'none',
-                  fontSize: 14,
-                  fontWeight: 700,
-                  lineHeight: 1.4,
-                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.72)',
-                }}
-              />
-            </label>
+                {item.imageUrl ? (
+                  <img
+                    src={item.imageUrl}
+                    alt=""
+                    style={{ width: 48, height: 48, borderRadius: 14, objectFit: 'cover' }}
+                  />
+                ) : (
+                  <ProfileSectionIcon>
+                    <Dumbbell size={20} />
+                  </ProfileSectionIcon>
+                )}
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ display: 'block', fontSize: 15, fontWeight: 900 }}>
+                    {item.title}
+                  </span>
+                  <span
+                    style={{
+                      display: 'block',
+                      marginTop: 3,
+                      fontSize: 12,
+                      fontWeight: 800,
+                      color: selected ? 'rgba(255,255,255,0.76)' : 'var(--muted)',
+                    }}
+                  >
+                    {item.chargesAvailable} зар. · сила {item.powerScore}
+                  </span>
+                </span>
+                <span
+                  className={selected ? 'pill pill--light' : 'pill'}
+                  style={{ minWidth: 72, justifyContent: 'center' }}
+                >
+                  {selected ? 'Активен' : 'Выбрать'}
+                </span>
+              </button>
+            );
+          })}
 
-            <div
-              style={{
-                marginTop: 6,
-                minHeight: 18,
-                color: feedback.isError ? 'var(--red-deep)' : 'var(--muted)',
-                fontSize: 11,
-                fontWeight: 800,
-              }}
-              role={feedback.isError ? 'alert' : undefined}
-            >
-              {feedback.isError
-                ? 'Не удалось отправить сообщение'
-                : `${messageLength}/2000 символов`}
+          {items.length === 0 && (
+            <div className="glass" style={{ borderRadius: 18, padding: 14, color: 'var(--muted)' }}>
+              Предметов этого типа пока нет.
             </div>
+          )}
+        </div>
 
-            <button
-              type="button"
-              className="btn btn--cta"
-              data-no-drag-scroll="true"
-              disabled={!canSubmit}
-              onClick={() => feedback.mutate()}
-              style={{
-                marginTop: 12,
-                width: '100%',
-                minHeight: 54,
-                letterSpacing: 0,
-                opacity: canSubmit ? 1 : 0.56,
-                cursor: canSubmit ? 'pointer' : 'not-allowed',
-              }}
-            >
-              {feedback.isPending ? 'Отправляем...' : 'Отправить'}
-            </button>
-          </>
+        {error !== null && (
+          <div role="alert" style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 800 }}>
+            {error}
+          </div>
         )}
       </section>
     </div>
@@ -493,28 +318,27 @@ export function ProfileScreen(): JSX.Element {
   const dragScrollRef = useRef<{ startY: number; scrollTop: number } | null>(null);
   const suppressClickRef = useRef(false);
   const [selectedAchievement, setSelectedAchievement] = useState<ProfileAchievement | null>(null);
-  const [pushStatus, setPushStatus] = useState<PushStatus>('idle');
-  const [pushMessage, setPushMessage] = useState('');
-  const [pendingPreference, setPendingPreference] = useState<PushPreferenceKey | null>(null);
-  const [pushPreferencesOpen, setPushPreferencesOpen] = useState(false);
-  const [feedbackOpen, setFeedbackOpen] = useState(false);
-  const isTelegramMiniApp = getTelegramMiniApp() !== null;
+  const [selectedEquipmentKind, setSelectedEquipmentKind] =
+    useState<InventoryEquipmentKind | null>(null);
 
   const { data, isLoading } = useQuery<ProfileData>({
     queryKey: ['profile'],
     queryFn: () => apiFetch<ProfileData>('/me'),
   });
-
-  const { data: pushConfig, isLoading: isPushConfigLoading } = useQuery<PushConfig>({
-    queryKey: ['push', 'config'],
-    queryFn: fetchPushConfig,
-    enabled: data !== undefined && !isTelegramMiniApp,
+  const inventoryQuery = useQuery<InventoryState>({
+    queryKey: ['inventory', 'me'],
+    queryFn: fetchMyInventory,
+    enabled: data !== undefined,
   });
-
-  const { data: pushPreferences } = useQuery<PushPreferences>({
-    queryKey: PUSH_PREFERENCES_QUERY_KEY,
-    queryFn: fetchPushPreferences,
-    enabled: data !== undefined && !isTelegramMiniApp,
+  const equipmentMut = useMutation<
+    InventoryState,
+    Error,
+    { kind: InventoryEquipmentKind; itemId: string | null }
+  >({
+    mutationFn: ({ kind, itemId }) => patchEquipment({ [EQUIPMENT_META[kind].patchKey]: itemId }),
+    onSuccess: (inventory) => {
+      queryClient.setQueryData(['inventory', 'me'], inventory);
+    },
   });
 
   useEffect(() => {
@@ -530,146 +354,6 @@ export function ProfileScreen(): JSX.Element {
     }
   }, [data, updateUser]);
 
-  useEffect(() => {
-    if (isTelegramMiniApp) return;
-    if (!data) return;
-
-    if (!supportsPushNotifications()) {
-      setPushStatus('unsupported');
-      setPushMessage('Недоступно в этом браузере');
-      return;
-    }
-
-    let disposed = false;
-    getReadyServiceWorkerRegistration()
-      .then((registration) => registration.pushManager.getSubscription())
-      .then((subscription) => {
-        if (disposed) return;
-        if (subscription) {
-          setPushStatus('subscribed');
-          setPushMessage('Уведомления включены');
-          return;
-        }
-        if (Notification.permission === 'denied') {
-          setPushStatus('denied');
-          setPushMessage('Запрещено в настройках браузера');
-        }
-      })
-      .catch(() => {
-        // The PWA service worker can be absent in local dev. The subscribe
-        // button will surface the actionable error if the user taps it.
-        if (!disposed && Notification.permission === 'denied') {
-          setPushStatus('denied');
-          setPushMessage('Запрещено в настройках браузера');
-        }
-      });
-
-    return () => {
-      disposed = true;
-    };
-  }, [data, isTelegramMiniApp]);
-
-  async function handleSubscribePush(): Promise<void> {
-    if (!supportsPushNotifications()) {
-      setPushStatus('unsupported');
-      setPushMessage('Недоступно в этом браузере');
-      return;
-    }
-
-    if (!pushConfig || isPushConfigLoading) {
-      setPushMessage('Пробуем еще раз через секунду');
-      return;
-    }
-
-    if (!pushConfig.supported || !pushConfig.publicKey) {
-      setPushStatus('error');
-      setPushMessage('Пуши не настроены на сервере');
-      return;
-    }
-
-    const permission =
-      Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
-
-    if (permission !== 'granted') {
-      setPushStatus(permission === 'denied' ? 'denied' : 'idle');
-      setPushMessage('Разрешение не выдано');
-      return;
-    }
-
-    setPushStatus('subscribing');
-    setPushMessage('');
-
-    try {
-      const registration = await getReadyServiceWorkerRegistration();
-      const existing = await registration.pushManager.getSubscription();
-      const subscription =
-        existing ??
-        (await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToArrayBuffer(pushConfig.publicKey),
-        }));
-
-      await savePushSubscription(normalizePushSubscription(subscription));
-      setPushStatus('subscribed');
-      setPushMessage('Уведомления включены');
-    } catch {
-      setPushStatus('error');
-      setPushMessage('Не удалось включить уведомления');
-    }
-  }
-
-  async function handleUnsubscribePush(): Promise<void> {
-    if (!supportsPushNotifications()) {
-      setPushStatus('unsupported');
-      setPushMessage('Недоступно в этом браузере');
-      return;
-    }
-
-    setPushStatus('unsubscribing');
-    setPushMessage('');
-
-    try {
-      const registration = await getReadyServiceWorkerRegistration();
-      const subscription = await registration.pushManager.getSubscription();
-      if (!subscription) {
-        setPushStatus('idle');
-        setPushMessage('Уведомления выключены');
-        return;
-      }
-
-      const endpoint = subscription.endpoint;
-      await subscription.unsubscribe();
-      await deletePushSubscription(endpoint);
-      setPushStatus('idle');
-      setPushMessage('Уведомления выключены');
-    } catch {
-      setPushStatus('error');
-      setPushMessage('Не удалось отключить уведомления');
-    }
-  }
-
-  async function handleTogglePushPreference(key: PushPreferenceKey): Promise<void> {
-    if (!pushPreferences || pendingPreference !== null) return;
-
-    const previous = pushPreferences;
-    const next = { ...previous, [key]: !previous[key] };
-    setPendingPreference(key);
-    setPushMessage('');
-    queryClient.setQueryData<PushPreferences>(PUSH_PREFERENCES_QUERY_KEY, next);
-
-    try {
-      const patch: Partial<PushPreferences> = { [key]: next[key] };
-      const updated = await updatePushPreferences(patch);
-      queryClient.setQueryData<PushPreferences>(PUSH_PREFERENCES_QUERY_KEY, updated);
-    } catch {
-      queryClient.setQueryData<PushPreferences>(PUSH_PREFERENCES_QUERY_KEY, previous);
-      setPushStatus('error');
-      setPushMessage('Не удалось сохранить настройки');
-    } finally {
-      setPendingPreference(null);
-    }
-  }
-
   if (isLoading) {
     return (
       <main className="screen" style={{ alignItems: 'center', justifyContent: 'center' }}>
@@ -681,22 +365,9 @@ export function ProfileScreen(): JSX.Element {
   const initial = (data?.displayName ?? '?').charAt(0).toUpperCase();
   const stats = data?.stats ?? EMPTY_PROFILE_STATS;
   const achievements = data?.achievements ?? [];
-  const isPushSubscribed = pushStatus === 'subscribed' || pushStatus === 'unsubscribing';
-  const pushButtonLabel =
-    pushStatus === 'unsubscribing'
-      ? 'Выключаем...'
-      : pushStatus === 'subscribing'
-        ? 'Включаем...'
-        : isPushSubscribed
-          ? 'Выключить уведомления'
-          : 'Включить уведомления';
-  const pushStatusMessage =
-    pushMessage || (pushStatus === 'subscribed' ? 'Уведомления включены' : 'Уведомления выключены');
-  const pushButtonDisabled =
-    pushStatus === 'subscribing' ||
-    pushStatus === 'unsubscribing' ||
-    (!isPushSubscribed &&
-      (pushStatus === 'unsupported' || pushStatus === 'denied' || isPushConfigLoading));
+  const tokenBalance = inventoryQuery.data?.balances.tokens ?? data?.currencyBalance ?? 0;
+  const starBalance = inventoryQuery.data?.balances.stars ?? data?.starBalance ?? 0;
+  const experienceBalance = inventoryQuery.data?.balances.experience ?? data?.experienceBalance ?? 0;
 
   function handlePointerDown(event: PointerEvent<HTMLElement>): void {
     if (
@@ -758,10 +429,11 @@ export function ProfileScreen(): JSX.Element {
         className="glass"
         style={{
           margin: 'calc(16px + var(--app-safe-top)) 14px 14px',
-          padding: 20,
+          padding: '14px 14px',
           borderRadius: 24,
-          display: 'flex',
-          flexDirection: 'column',
+          display: 'grid',
+          gridTemplateColumns: '64px minmax(0, 1fr) 44px',
+          gridTemplateAreas: '"avatar info settings"',
           alignItems: 'center',
           gap: 12,
           position: 'relative',
@@ -774,12 +446,10 @@ export function ProfileScreen(): JSX.Element {
           aria-label="Настройки"
           onClick={() => navigate('/profile/settings')}
           style={{
-            position: 'absolute',
-            top: 14,
-            right: 14,
             width: 40,
             height: 40,
-            zIndex: 1,
+            gridArea: 'settings',
+            justifySelf: 'end',
           }}
         >
           <Settings size={18} />
@@ -789,53 +459,279 @@ export function ProfileScreen(): JSX.Element {
             src={data.avatarUrl}
             alt="avatar"
             style={{
-              width: 88,
-              height: 88,
+              width: 64,
+              height: 64,
+              gridArea: 'avatar',
               borderRadius: 999,
               objectFit: 'cover',
-              boxShadow: '0 10px 26px rgba(15, 23, 42, 0.25)',
+              boxShadow: '0 8px 20px rgba(15, 23, 42, 0.22)',
             }}
           />
         ) : (
           <div
             style={{
-              width: 88,
-              height: 88,
+              width: 64,
+              height: 64,
+              gridArea: 'avatar',
               borderRadius: 999,
               background: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)',
               color: '#ffffff',
-              fontSize: 32,
+              fontSize: 25,
               fontWeight: 800,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 10px 26px rgba(15, 23, 42, 0.25)',
+              boxShadow: '0 8px 20px rgba(15, 23, 42, 0.22)',
             }}
           >
             {initial}
           </div>
         )}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', textAlign: 'center' }}>
+        <div style={{ minWidth: 0, gridArea: 'info', display: 'grid', gap: 4 }}>
+          <div
+            style={{
+              minWidth: 0,
+              fontSize: 20,
+              fontWeight: 800,
+              color: 'var(--ink)',
+              lineHeight: 1.08,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
             {data?.displayName ?? '-'}
           </div>
           {(data?.username || data?.tgId) && (
-            <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+            <div
+              style={{
+                minWidth: 0,
+                fontSize: 13,
+                fontWeight: 600,
+                color: 'var(--muted)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
               {data.username ? `@${data.username}` : `id ${data.tgId}`}
             </div>
           )}
+          <div
+            style={{
+              color: 'var(--muted)',
+              fontSize: 12,
+              fontWeight: 800,
+              letterSpacing: '0.08em',
+              lineHeight: 1.1,
+              textTransform: 'uppercase',
+            }}
+          >
+            Уровень: {getLevelLabel(data?.competitionLevel)}
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
-          <span className="pill pill--dark">
-            <small>Уровень</small> {getLevelLabel(data?.competitionLevel)}
-          </span>
-        </div>
+      </div>
+
+      <div className="section-label" style={{ marginBottom: 6 }}>
+        Валюта
+      </div>
+      <div
+        style={{
+          margin: '0 14px 14px',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+          gap: 8,
+        }}
+      >
+        <CurrencyCard label="Монеты" value={tokenBalance} tone="tokens">
+          <Coins size={58} strokeWidth={2.05} />
+        </CurrencyCard>
+        <CurrencyCard label="Звёзды" value={starBalance} tone="stars">
+          <Sparkles size={58} strokeWidth={2.05} />
+        </CurrencyCard>
+        <CurrencyCard label="Опыт" value={experienceBalance} tone="experience">
+          <Trophy size={58} strokeWidth={2.05} />
+        </CurrencyCard>
       </div>
 
       <div className="section-label" style={{ marginBottom: 6 }}>
         Статистика
       </div>
       <ProfileStatsGrid stats={stats} style={{ margin: '0 14px 14px' }} />
+
+      <div className="section-label" style={{ marginBottom: 8 }}>
+        Экипировка
+      </div>
+      <div
+        className="glass"
+        style={{
+          margin: '0 14px 14px',
+          padding: '14px 12px',
+          borderRadius: 22,
+          minHeight: 121,
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'stretch',
+            gap: 12,
+            minHeight: 95,
+            overflowX: 'auto',
+            overflowY: 'hidden',
+            overscrollBehaviorX: 'contain',
+            scrollSnapType: 'x proximity',
+          }}
+        >
+          {(['stick', 'skates', 'nutrition'] as InventoryEquipmentKind[]).flatMap((kind) => {
+            const activeId = equipmentIdFor(inventoryQuery.data, kind);
+            const items = inventoryQuery.data?.items[kind] ?? [];
+            const placeholder = (
+              <button
+                key={`${kind}:empty`}
+                type="button"
+                data-no-drag-scroll="true"
+                onClick={() => setSelectedEquipmentKind(kind)}
+                style={{
+                  width: 84,
+                  flex: '0 0 84px',
+                  padding: 0,
+                  border: 0,
+                  background: 'transparent',
+                  color: 'var(--ink)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 6,
+                  textAlign: 'center',
+                  cursor: 'pointer',
+                  scrollSnapAlign: 'start',
+                  WebkitTapHighlightColor: 'transparent',
+                }}
+              >
+                <ProfileSectionIcon>
+                  <Dumbbell size={20} />
+                </ProfileSectionIcon>
+                <span style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase' }}>
+                  {EQUIPMENT_META[kind].title}
+                </span>
+                <span
+                  style={{
+                    height: 30,
+                    color: 'var(--muted)',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    lineHeight: 1.2,
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical',
+                    overflow: 'hidden',
+                  }}
+                >
+                  {EQUIPMENT_META[kind].empty}
+                </span>
+              </button>
+            );
+
+            if (items.length === 0) return [placeholder];
+
+            return items.map((item) => {
+              const selected = item.id === activeId;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  data-no-drag-scroll="true"
+                  disabled={equipmentMut.isPending || item.chargesAvailable <= 0}
+                  onClick={() => equipmentMut.mutate({ kind, itemId: item.id })}
+                  aria-pressed={selected}
+                  style={{
+                    width: 92,
+                    flex: '0 0 92px',
+                    padding: 0,
+                    border: 0,
+                    background: 'transparent',
+                    color: 'var(--ink)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 6,
+                    textAlign: 'center',
+                    cursor: equipmentMut.isPending ? 'wait' : 'pointer',
+                    opacity: item.chargesAvailable > 0 ? 1 : 0.5,
+                    scrollSnapAlign: 'start',
+                    WebkitTapHighlightColor: 'transparent',
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 64,
+                      height: 64,
+                      borderRadius: 18,
+                      overflow: 'hidden',
+                      position: 'relative',
+                      background: 'rgba(15, 23, 42, 0.08)',
+                      flexShrink: 0,
+                      border: selected
+                        ? '2px solid var(--ink)'
+                        : '1px solid rgba(255,255,255,0.82)',
+                      boxShadow: selected
+                        ? '0 8px 18px rgba(15,23,42,0.2), inset 0 1px 0 rgba(255,255,255,0.9)'
+                        : 'inset 0 1px 0 rgba(255,255,255,0.9), 0 8px 18px rgba(15,23,42,0.12)',
+                    }}
+                  >
+                    {item.imageUrl ? (
+                      <img
+                        src={item.imageUrl}
+                        alt=""
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                          display: 'block',
+                        }}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: 'rgba(15, 23, 42, 0.62)',
+                        }}
+                      >
+                        <Dumbbell size={22} />
+                      </div>
+                    )}
+                  </div>
+                  <span style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase' }}>
+                    {EQUIPMENT_META[kind].title}
+                  </span>
+                  <span
+                    style={{
+                      height: 30,
+                      width: '100%',
+                      color: selected ? 'var(--ink)' : 'var(--muted)',
+                      fontSize: 10,
+                      fontWeight: 700,
+                      lineHeight: 1.2,
+                      display: '-webkit-box',
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {item.title}
+                  </span>
+                </button>
+              );
+            });
+          })}
+        </div>
+      </div>
 
       <ProfileAchievementsSection
         achievements={achievements}
@@ -844,183 +740,33 @@ export function ProfileScreen(): JSX.Element {
         }}
       />
 
-      {!isTelegramMiniApp && (
-        <>
-          <div className="section-label" style={{ marginBottom: 8 }}>
-            Уведомления
-          </div>
-          <div
-            className="glass"
-            style={{
-              margin: '0 14px 14px',
-              padding: 16,
-              borderRadius: 22,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 12,
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-              <ProfileSectionIcon>
-                <Bell size={20} />
-              </ProfileSectionIcon>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--ink)' }}>
-                  Пуш-уведомления
-                </div>
-                <div
-                  role="status"
-                  aria-live="polite"
-                  style={{
-                    marginTop: 3,
-                    minHeight: 18,
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color:
-                      pushStatus === 'error' || pushStatus === 'denied'
-                        ? '#b42318'
-                        : 'var(--muted)',
-                  }}
-                >
-                  {pushStatusMessage}
-                </div>
-              </div>
-              <button
-                type="button"
-                className="btn btn--cta"
-                data-no-drag-scroll="true"
-                aria-label={pushButtonLabel}
-                disabled={pushButtonDisabled}
-                onClick={() =>
-                  void (isPushSubscribed ? handleUnsubscribePush() : handleSubscribePush())
-                }
-                style={{
-                  minHeight: 42,
-                  padding: '0 14px',
-                  borderRadius: 14,
-                  fontSize: 12,
-                  letterSpacing: 0,
-                  flexShrink: 0,
-                }}
-              >
-                {isPushSubscribed ? 'Выключить' : 'Включить'}
-              </button>
-            </div>
-
-            {pushPreferences ? (
-              <>
-                <button
-                  type="button"
-                  data-no-drag-scroll="true"
-                  aria-expanded={pushPreferencesOpen}
-                  onClick={() => setPushPreferencesOpen((value) => !value)}
-                  style={{
-                    width: '100%',
-                    minHeight: 46,
-                    padding: '0 12px',
-                    border: '1px solid rgba(255,255,255,0.7)',
-                    borderRadius: 16,
-                    background: 'rgba(255, 255, 255, 0.34)',
-                    color: 'var(--ink)',
-                    outline: 'none',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 10,
-                    cursor: 'pointer',
-                    fontSize: 14,
-                    fontWeight: 800,
-                    WebkitTapHighlightColor: 'transparent',
-                  }}
-                >
-                  Настройки уведомлений
-                  <ChevronDown
-                    size={18}
-                    style={{
-                      transform: pushPreferencesOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-                      transition: 'transform 0.15s',
-                      flexShrink: 0,
-                    }}
-                  />
-                </button>
-                {pushPreferencesOpen ? (
-                  <div
-                    role="group"
-                    aria-label="Категории уведомлений"
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 8,
-                      paddingTop: 2,
-                    }}
-                  >
-                    {PUSH_PREFERENCE_ITEMS.map((item) => (
-                      <PushPreferenceToggle
-                        key={item.key}
-                        label={item.label}
-                        hint={item.hint}
-                        checked={pushPreferences[item.key]}
-                        disabled={pendingPreference !== null}
-                        onToggle={() => void handleTogglePushPreference(item.key)}
-                      />
-                    ))}
-                  </div>
-                ) : null}
-              </>
-            ) : null}
-          </div>
-        </>
-      )}
-      <div className="section-label" style={{ marginBottom: 8 }}>
-        Обратная связь
-      </div>
-      <div
-        className="glass"
-        style={{
-          margin: '0 14px 14px',
-          padding: 16,
-          borderRadius: 22,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-        }}
-      >
-        <ProfileSectionIcon>
-          <MessageSquare size={20} />
-        </ProfileSectionIcon>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--ink)' }}>
-            Форма обратной связи
-          </div>
-          <div style={{ marginTop: 3, fontSize: 12, fontWeight: 700, color: 'var(--muted)' }}>
-            Отзыв, пожелание или вопрос
-          </div>
-        </div>
-        <button
-          type="button"
-          className="btn btn--cta"
-          data-no-drag-scroll="true"
-          aria-label="Написать в обратную связь"
-          onClick={() => setFeedbackOpen(true)}
-          style={{
-            minHeight: 42,
-            padding: '0 14px',
-            borderRadius: 14,
-            fontSize: 12,
-            letterSpacing: 0,
-            flexShrink: 0,
-          }}
-        >
-          Написать
-        </button>
-      </div>
       {selectedAchievement !== null && (
         <AchievementDetailsSheet
           achievement={selectedAchievement}
           onClose={() => setSelectedAchievement(null)}
         />
       )}
-      {feedbackOpen && <FeedbackModal onClose={() => setFeedbackOpen(false)} />}
+      {selectedEquipmentKind !== null && (
+        <EquipmentDetailsModal
+          kind={selectedEquipmentKind}
+          inventory={inventoryQuery.data}
+          isSaving={equipmentMut.isPending}
+          error={equipmentMut.isError ? equipmentMut.error.message : null}
+          onClose={() => {
+            equipmentMut.reset();
+            setSelectedEquipmentKind(null);
+          }}
+          onSelect={(itemId) => {
+            const kind = selectedEquipmentKind;
+            equipmentMut.mutate(
+              { kind, itemId },
+              {
+                onSuccess: () => setSelectedEquipmentKind(null),
+              },
+            );
+          }}
+        />
+      )}
     </main>
   );
 }
