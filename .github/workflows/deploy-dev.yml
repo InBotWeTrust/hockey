@@ -210,7 +210,14 @@ jobs:
               --code "$STAGING_ADMIN_ACCESS_CODE" < /dev/null
 
           docker compose -f docker-compose.yml -f docker-compose.staging.yml \
-            up -d --force-recreate --remove-orphans server-dev push-worker-dev web-dev caddy < /dev/null
+            up -d --force-recreate server-dev push-worker-dev web-dev < /dev/null
+
+          # Caddy belongs to the shared compose file and depends on prod
+          # services there. Recreate only Caddy itself so a dev deploy cannot
+          # restart prod server/web with whatever IMAGE_TAG happens to be in
+          # the environment.
+          docker compose -f docker-compose.yml -f docker-compose.staging.yml \
+            up -d --force-recreate --no-deps caddy < /dev/null
           docker image prune -f
           docker logout ghcr.io
           ENDSSH
