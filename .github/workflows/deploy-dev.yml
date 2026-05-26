@@ -1,12 +1,12 @@
-name: Deploy Staging
+name: Deploy Dev
 
 on:
   push:
-    branches: [develop]
+    branches: [dev]
   workflow_dispatch:
 
 concurrency:
-  group: deploy-staging
+  group: deploy-dev
   cancel-in-progress: false
 
 env:
