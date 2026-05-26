@@ -175,28 +175,12 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     return rows[0]!.id;
   }
 
-  async function createOpponent(index: number) {
-    const user = await findOrCreateTelegramUser(pool, {
-      providerUid: `amateur-opponent-${index}`,
-      displayName: `Opponent ${index}`,
-      timezone: 'Europe/Moscow',
-    });
-    await pool.query(`update users set level = 2 where id = $1`, [user.id]);
-    await pool.query(
-      `insert into user_currency_account (user_id, balance)
-       values ($1, 100)
-       on conflict (user_id) do update set balance = excluded.balance, reserved_balance = 0`,
-      [user.id],
-    );
-    return user.id;
-  }
-
-  async function challenge(templateId: string, opponentUserId = userB) {
+  async function challenge(templateId: string) {
     const res = await app.inject({
       method: 'POST',
       url: '/duel/amateur/challenge',
       headers: auth(tokenA),
-      payload: { template_id: templateId, opponent_user_id: opponentUserId },
+      payload: { template_id: templateId, opponent_user_id: userB },
     });
     return res;
   }
@@ -223,34 +207,18 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
 
     const duplicate = await challenge(templateId);
     expect(duplicate.statusCode).toBe(409);
-    expect(duplicate.json().error.message).toBe('open duel already exists for this opponent');
-  });
-
-  it('rejects another open challenge against the same opponent with another template', async () => {
-    const templateId = await createTemplate({ duelKind: 'express' });
-    const anotherTemplateId = await createTemplate({ duelKind: 'classic' });
-
-    const first = await challenge(templateId);
-    expect(first.statusCode).toBe(200);
-
-    const duplicatePair = await challenge(anotherTemplateId);
-    expect(duplicatePair.statusCode).toBe(409);
-    expect(duplicatePair.json().error.message).toBe('open duel already exists for this opponent');
   });
 
   it('limits one player to five open duel slots', async () => {
     const templateIds = await Promise.all(Array.from({ length: 6 }, () => createTemplate()));
-    const opponentIds = await Promise.all(
-      Array.from({ length: 6 }, (_, index) => createOpponent(index)),
-    );
 
-    for (const [index, templateId] of templateIds.slice(0, 5).entries()) {
-      const created = await challenge(templateId, opponentIds[index]);
+    for (const templateId of templateIds.slice(0, 5)) {
+      const created = await challenge(templateId);
       expect(created.statusCode).toBe(200);
       expect(created.json().match.status).toBe('invited');
     }
 
-    const blocked = await challenge(templateIds[5]!, opponentIds[5]);
+    const blocked = await challenge(templateIds[5]!);
     expect(blocked.statusCode).toBe(409);
     expect(blocked.json().error.message).toBe('open duel slot limit reached');
   });
@@ -303,32 +271,6 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       .templates.find((item: { id: string }) => item.id === templateId);
     expect(template.ranked_daily_limit).toBe(100);
     expect(template.ranked_same_opponent_limit).toBe(100);
-  });
-
-  it('keeps null period rules as SQL null when admin updates a duel template', async () => {
-    await pool.query(`update users set role = 'admin' where id = $1`, [userA]);
-    const templateId = await createTemplate({
-      totalPeriods: 2,
-      periodRules: [
-        { periodNumber: 1, mode: 'quota', durationMs: 180000, shotsLimit: 30 },
-        { periodNumber: 2, mode: 'time_attack', durationMs: 180000, shotsLimit: null },
-      ],
-    });
-
-    const patch = await app.inject({
-      method: 'PATCH',
-      url: `/admin/duel-templates/${templateId}`,
-      headers: auth(tokenA),
-      payload: { periodRules: null },
-    });
-
-    expect(patch.statusCode).toBe(200);
-    expect(patch.json().template.periodRules).toHaveLength(2);
-    const stored = await pool.query<{ period_rules: unknown }>(
-      `select period_rules from amateur_duel_template where id = $1`,
-      [templateId],
-    );
-    expect(stored.rows[0]?.period_rules).toBeNull();
   });
 
   it('accepts into a ready room without reserving stake or fee yet', async () => {

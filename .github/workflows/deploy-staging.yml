@@ -1,0 +1,241 @@
+name: Deploy Staging
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+env:
+  SERVER_IMAGE: ghcr.io/inbotwetrust/hockey-server
+  WEB_IMAGE: ghcr.io/inbotwetrust/hockey-web
+  HEALTH_URL: https://dev.hockey.inbotwetrust.ru/api/health
+  DEV_APP_DOMAIN: dev.hockey.inbotwetrust.ru
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image tag
+        id: meta
+        env:
+          SHA: ${{ github.sha }}
+        run: echo "tag=dev-sha-${SHA:0:7}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push staging server image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: packages/server/Dockerfile
+          push: true
+          tags: |
+            ${{ env.SERVER_IMAGE }}:dev-latest
+            ${{ env.SERVER_IMAGE }}:${{ steps.meta.outputs.tag }}
+          cache-from: type=gha,scope=server
+          cache-to: type=gha,mode=max,scope=server
+
+      - name: Build and push staging web image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: packages/web/Dockerfile
+          push: true
+          build-args: |
+            VITE_TELEGRAM_BOT_USERNAME=
+            VITE_VK_APP_ID=${{ vars.VITE_VK_APP_ID || '54571497' }}
+            VITE_DEV_ACCESS_CODE_LOGIN_ENABLED=true
+            APP_BUILD_SHA=${{ github.sha }}
+          tags: |
+            ${{ env.WEB_IMAGE }}:dev-latest
+            ${{ env.WEB_IMAGE }}:${{ steps.meta.outputs.tag }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    timeout-minutes: 12
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup SSH key
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts
+
+      - name: Upload compose and Caddy config
+        env:
+          USER: ${{ secrets.DEPLOY_USER }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          REMOTE_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          scp -i ~/.ssh/id_ed25519 \
+            docker-compose.yml docker-compose.staging.yml Caddyfile \
+            "${USER}@${HOST}:${REMOTE_PATH}/"
+
+      - name: Pull staging images and restart services on VPS
+        env:
+          USER: ${{ secrets.DEPLOY_USER }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          REMOTE_PATH: ${{ secrets.DEPLOY_PATH }}
+          STAGING_IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEV_APP_DOMAIN: ${{ env.DEV_APP_DOMAIN }}
+          STAGING_POSTGRES_USER: ${{ vars.STAGING_POSTGRES_USER || 'hockey_dev' }}
+          STAGING_POSTGRES_PASSWORD: ${{ secrets.STAGING_POSTGRES_PASSWORD }}
+          STAGING_POSTGRES_DB: ${{ vars.STAGING_POSTGRES_DB || 'hockey_dev' }}
+          STAGING_JWT_SECRET: ${{ secrets.STAGING_JWT_SECRET }}
+          STAGING_REFRESH_SECRET: ${{ secrets.STAGING_REFRESH_SECRET }}
+          STAGING_DAILY_SEED_SECRET: ${{ secrets.STAGING_DAILY_SEED_SECRET }}
+          STAGING_ADMIN_ACCESS_CODE: ${{ secrets.STAGING_ADMIN_ACCESS_CODE }}
+          OBJECT_STORAGE_ENDPOINT: ${{ secrets.OBJECT_STORAGE_ENDPOINT }}
+          OBJECT_STORAGE_REGION: ${{ secrets.OBJECT_STORAGE_REGION }}
+          OBJECT_STORAGE_BUCKET: ${{ secrets.OBJECT_STORAGE_BUCKET }}
+          OBJECT_STORAGE_TENANT_ID: ${{ secrets.OBJECT_STORAGE_TENANT_ID }}
+          OBJECT_STORAGE_ACCESS_KEY_ID: ${{ secrets.OBJECT_STORAGE_ACCESS_KEY_ID }}
+          OBJECT_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.OBJECT_STORAGE_SECRET_ACCESS_KEY }}
+          OBJECT_STORAGE_PUBLIC_BASE_URL: ${{ secrets.OBJECT_STORAGE_PUBLIC_BASE_URL }}
+        run: |
+          ssh -i ~/.ssh/id_ed25519 "${USER}@${HOST}" \
+            STAGING_IMAGE_TAG="$STAGING_IMAGE_TAG" \
+            GHCR_USER="$GHCR_USER" \
+            GHCR_TOKEN="$GHCR_TOKEN" \
+            REMOTE_PATH="$REMOTE_PATH" \
+            DEV_APP_DOMAIN="$DEV_APP_DOMAIN" \
+            STAGING_POSTGRES_USER="$STAGING_POSTGRES_USER" \
+            STAGING_POSTGRES_PASSWORD="$STAGING_POSTGRES_PASSWORD" \
+            STAGING_POSTGRES_DB="$STAGING_POSTGRES_DB" \
+            STAGING_JWT_SECRET="$STAGING_JWT_SECRET" \
+            STAGING_REFRESH_SECRET="$STAGING_REFRESH_SECRET" \
+            STAGING_DAILY_SEED_SECRET="$STAGING_DAILY_SEED_SECRET" \
+            STAGING_ADMIN_ACCESS_CODE="$STAGING_ADMIN_ACCESS_CODE" \
+            OBJECT_STORAGE_ENDPOINT="$OBJECT_STORAGE_ENDPOINT" \
+            OBJECT_STORAGE_REGION="$OBJECT_STORAGE_REGION" \
+            OBJECT_STORAGE_BUCKET="$OBJECT_STORAGE_BUCKET" \
+            OBJECT_STORAGE_TENANT_ID="$OBJECT_STORAGE_TENANT_ID" \
+            OBJECT_STORAGE_ACCESS_KEY_ID="$OBJECT_STORAGE_ACCESS_KEY_ID" \
+            OBJECT_STORAGE_SECRET_ACCESS_KEY="$OBJECT_STORAGE_SECRET_ACCESS_KEY" \
+            OBJECT_STORAGE_PUBLIC_BASE_URL="$OBJECT_STORAGE_PUBLIC_BASE_URL" \
+            bash -s <<'ENDSSH'
+          set -euo pipefail
+          cd "$REMOTE_PATH"
+          for name in \
+            STAGING_POSTGRES_PASSWORD \
+            STAGING_JWT_SECRET \
+            STAGING_REFRESH_SECRET \
+            STAGING_DAILY_SEED_SECRET \
+            STAGING_ADMIN_ACCESS_CODE
+          do
+            if [ -z "${!name:-}" ]; then
+              echo "$name GitHub secret is required for staging deploy"
+              exit 1
+            fi
+          done
+
+          STAGING_DATABASE_URL="postgres://${STAGING_POSTGRES_USER}:${STAGING_POSTGRES_PASSWORD}@postgres-dev:5432/${STAGING_POSTGRES_DB}"
+          STAGING_REDIS_URL="redis://redis-dev:6379"
+          STAGING_OBJECT_STORAGE_ENDPOINT="${STAGING_OBJECT_STORAGE_ENDPOINT:-$OBJECT_STORAGE_ENDPOINT}"
+          STAGING_OBJECT_STORAGE_REGION="${STAGING_OBJECT_STORAGE_REGION:-$OBJECT_STORAGE_REGION}"
+          STAGING_OBJECT_STORAGE_BUCKET="${STAGING_OBJECT_STORAGE_BUCKET:-$OBJECT_STORAGE_BUCKET}"
+          STAGING_OBJECT_STORAGE_TENANT_ID="${STAGING_OBJECT_STORAGE_TENANT_ID:-$OBJECT_STORAGE_TENANT_ID}"
+          STAGING_OBJECT_STORAGE_ACCESS_KEY_ID="${STAGING_OBJECT_STORAGE_ACCESS_KEY_ID:-$OBJECT_STORAGE_ACCESS_KEY_ID}"
+          STAGING_OBJECT_STORAGE_SECRET_ACCESS_KEY="${STAGING_OBJECT_STORAGE_SECRET_ACCESS_KEY:-$OBJECT_STORAGE_SECRET_ACCESS_KEY}"
+          STAGING_OBJECT_STORAGE_PUBLIC_BASE_URL="${STAGING_OBJECT_STORAGE_PUBLIC_BASE_URL:-$OBJECT_STORAGE_PUBLIC_BASE_URL}"
+          export STAGING_IMAGE_TAG DEV_APP_DOMAIN
+          export STAGING_POSTGRES_USER STAGING_POSTGRES_PASSWORD STAGING_POSTGRES_DB
+          export STAGING_DATABASE_URL STAGING_REDIS_URL
+          export STAGING_JWT_SECRET STAGING_REFRESH_SECRET STAGING_DAILY_SEED_SECRET
+          export STAGING_OBJECT_STORAGE_ENDPOINT STAGING_OBJECT_STORAGE_REGION STAGING_OBJECT_STORAGE_BUCKET
+          export STAGING_OBJECT_STORAGE_TENANT_ID STAGING_OBJECT_STORAGE_ACCESS_KEY_ID
+          export STAGING_OBJECT_STORAGE_SECRET_ACCESS_KEY STAGING_OBJECT_STORAGE_PUBLIC_BASE_URL
+
+          for i in 1 2 3 4 5; do
+            if echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin; then
+              break
+            fi
+            [ "$i" = 5 ] && echo "docker login failed after 5 attempts" && exit 1
+            echo "docker login attempt $i failed, retry in 10s..."
+            sleep 10
+          done
+
+          for i in 1 2 3; do
+            if docker compose -f docker-compose.yml -f docker-compose.staging.yml pull server-dev push-worker-dev web-dev; then
+              break
+            fi
+            [ "$i" = 3 ] && echo "staging compose pull failed after 3 attempts" && exit 1
+            echo "staging compose pull attempt $i failed, retry in 10s..."
+            sleep 10
+          done
+
+          docker compose -f docker-compose.yml -f docker-compose.staging.yml \
+            run --rm -T server-dev node packages/server/dist/db/migrate-cli.js < /dev/null
+
+          docker compose -f docker-compose.yml -f docker-compose.staging.yml \
+            run --rm -T server-dev node packages/server/dist/auth/dev-access-code-cli.js \
+              --name "Егор Гуменюк" \
+              --tg-id 432014500 \
+              --role admin \
+              --label "Егор dev admin" \
+              --code "$STAGING_ADMIN_ACCESS_CODE" < /dev/null
+
+          docker compose -f docker-compose.yml -f docker-compose.staging.yml \
+            up -d --force-recreate --remove-orphans server-dev push-worker-dev web-dev caddy < /dev/null
+          docker image prune -f
+          docker logout ghcr.io
+          ENDSSH
+
+      - name: Smoke test staging
+        run: |
+          sleep 15
+          for i in 1 2 3 4 5; do
+            if curl -fsSL --max-time 10 "$HEALTH_URL" | tee /dev/stderr | grep -q '"ok":true'; then
+              echo "Staging smoke test passed on attempt $i"
+              break
+            fi
+            echo "Attempt $i failed, retrying in 10s..."
+            sleep 10
+            [ "$i" = 5 ] && echo "Staging smoke test failed after 5 attempts" && exit 1
+          done
+
+          APP_URL="${HEALTH_URL%/api/health}"
+          html="$(curl -fsSL --max-time 10 "$APP_URL/")"
+          asset_path="$(printf '%s' "$html" | sed -n 's/.*src="\([^"]*\/assets\/index-[^"]*\.js\)".*/\1/p')"
+          if [ -z "$asset_path" ]; then
+            echo "Could not find staging web entry asset in index.html"
+            exit 1
+          fi
+          js="$(curl -fsSL --max-time 15 "$APP_URL$asset_path")"
+          printf '%s' "$js" | grep -q 'Код доступа'
+          printf '%s' "$js" | grep -q 'Войти в dev'
+          echo "Staging frontend smoke test passed for $asset_path"

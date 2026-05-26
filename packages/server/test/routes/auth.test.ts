@@ -113,10 +113,9 @@ describe.skipIf(!hasIntegrationEnv)('POST /auth/telegram', () => {
     const body = res.json() as {
       accessToken: string;
       refreshToken: string;
-      user: { id: string; displayName: string; grip: 'left' | 'right' };
+      user: { id: string; displayName: string };
     };
     expect(body.user.displayName).toBe('Egor');
-    expect(body.user.grip).toBe('right');
     expect(body.accessToken.split('.')).toHaveLength(3);
     expect(body.refreshToken.split('.')).toHaveLength(3);
   });
@@ -153,10 +152,9 @@ describe.skipIf(!hasIntegrationEnv)('POST /auth/telegram', () => {
     const body = res.json() as {
       accessToken: string;
       refreshToken: string;
-      user: { id: string; displayName: string; grip: 'left' | 'right' };
+      user: { id: string; displayName: string };
     };
     expect(body.user.displayName).toBe('Mini');
-    expect(body.user.grip).toBe('right');
     expect(body.accessToken.split('.')).toHaveLength(3);
     expect(body.refreshToken.split('.')).toHaveLength(3);
   });

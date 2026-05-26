@@ -197,7 +197,7 @@ export function DuelScreen(): JSX.Element {
       goalieHeightScale: TRAINING_NEW_COURT_HITBOX_GOALIE_HEIGHT_SCALE,
       goalieInset: TRAINING_NEW_COURT_HITBOX_GOALIE_INSET,
     });
-    const grip = useAuthStore.getState().user?.grip ?? 'right';
+    const grip = useAuthStore.getState().user?.grip ?? 'left';
     const puck = new Puck(grip, PERSPECTIVE_PUCK_OPTIONS);
     const player = new Player(grip, PERSPECTIVE_PLAYER_OPTIONS);
     puckRef.current = puck;
@@ -273,15 +273,17 @@ export function DuelScreen(): JSX.Element {
       goalieFrequency: overrides.goalieFreq,
       goalFrequency: overrides.goalFreq,
     };
-    const result: ShotResult = resolveNewTrainingCourtShot({
-      input,
-      goalieConfig: activeCfg,
-      seed: st.seed,
-      shotIndex: st.shotIndex,
-      stickEffects: STICK_NEUTRAL,
-      phaseOffsets: offsets,
-      shooterX: sx,
-    });
+    const result: ShotResult = resolveNewTrainingCourtShot(
+      {
+        input,
+        goalieConfig: activeCfg,
+        seed: st.seed,
+        shotIndex: st.shotIndex,
+        stickEffects: STICK_NEUTRAL,
+        phaseOffsets: offsets,
+        shooterX: sx,
+      },
+    );
 
     // Flavor text — deterministic, mirrors resolveShot internals
     let subText: string | null = null;

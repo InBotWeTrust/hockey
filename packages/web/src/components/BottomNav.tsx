@@ -107,9 +107,7 @@ export function BottomNav(): JSX.Element | null {
     enabled:
       Boolean(user) &&
       !isDemo &&
-      (user?.role === undefined ||
-        user?.experimentalTrainingCourt === undefined ||
-        user?.grip === undefined),
+      (user?.role === undefined || user?.experimentalTrainingCourt === undefined),
   });
 
   useEffect(() => {
@@ -123,7 +121,6 @@ export function BottomNav(): JSX.Element | null {
     if (refreshedUser.experimentalTrainingCourt !== undefined) {
       patch.experimentalTrainingCourt = refreshedUser.experimentalTrainingCourt;
     }
-    if (refreshedUser.grip !== undefined) patch.grip = refreshedUser.grip;
     if (Object.keys(patch).length > 0) {
       updateUser(patch);
     }
@@ -303,6 +300,7 @@ export function BottomNav(): JSX.Element | null {
           />
         )}
       </nav>
+
     </div>
   );
 }
