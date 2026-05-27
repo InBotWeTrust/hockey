@@ -1348,6 +1348,7 @@ function ArenaRinkBackdropLayer({
   const viewportHeight = typeof window === 'undefined' ? 844 : window.innerHeight;
   const arenaWidth = Math.max(viewportWidth * 1.12, (viewportHeight * 1024) / 1428);
   const arenaHeight = (arenaWidth * 1428) / 1024;
+  const showPerspectiveRink = launching || activeReturnFrame !== null;
   const transition =
     `left ${ARENA_LAUNCH_TRANSITION_MS}ms cubic-bezier(.16,.84,.24,1), ` +
     `top ${ARENA_LAUNCH_TRANSITION_MS}ms cubic-bezier(.16,.84,.24,1), ` +
@@ -1373,7 +1374,7 @@ function ArenaRinkBackdropLayer({
   }, [returnFrame]);
 
   const isReturning = activeReturnFrame !== null;
-  const rinkFrameStyle: CSSProperties = activeReturnFrame
+  const perspectiveRinkFrameStyle: CSSProperties = activeReturnFrame
     ? {
         position: 'fixed',
         left: activeReturnFrame.left,
@@ -1381,7 +1382,7 @@ function ArenaRinkBackdropLayer({
         width: activeReturnFrame.width,
         height: activeReturnFrame.height,
         overflow: 'hidden',
-        opacity: 0.96,
+        opacity: 0.82,
         filter: 'blur(0.7px) saturate(1.02) contrast(1)',
         transform: 'translate3d(0, 0, 0)',
         transformOrigin: '50% 58%',
@@ -1394,7 +1395,7 @@ function ArenaRinkBackdropLayer({
         width: arenaWidth,
         height: arenaHeight,
         overflow: 'hidden',
-        opacity: launching ? 1 : 0.94,
+        opacity: launching ? 0.96 : 0,
         filter: launching
           ? 'blur(0.6px) saturate(1.02) contrast(1)'
           : 'blur(2.2px) saturate(0.96) contrast(0.98)',
@@ -1417,9 +1418,12 @@ function ArenaRinkBackdropLayer({
         pointerEvents: 'none',
       }}
     >
-      <div style={rinkFrameStyle}>
-        <TrainingPerspectiveRink />
-      </div>
+      <ArenaSettledIceBackdrop muted={launching || isReturning} />
+      {showPerspectiveRink && (
+        <div style={perspectiveRinkFrameStyle}>
+          <TrainingPerspectiveRink />
+        </div>
+      )}
       <div
         style={{
           position: 'absolute',
@@ -1439,6 +1443,49 @@ function ArenaRinkBackdropLayer({
           opacity: launching ? 0 : isReturning ? 0.12 : 0.22,
           transform: launching ? 'scale(1.08)' : 'scale(1)',
           transition: `opacity ${ARENA_LAUNCH_TRANSITION_MS}ms cubic-bezier(.16,.84,.24,1), transform ${ARENA_LAUNCH_TRANSITION_MS}ms cubic-bezier(.16,.84,.24,1)`,
+        }}
+      />
+    </div>
+  );
+}
+
+function ArenaSettledIceBackdrop({ muted }: { muted: boolean }): JSX.Element {
+  return (
+    <div
+      data-testid="arena-settled-ice-backdrop"
+      role="img"
+      aria-label="Ледовая подложка арены"
+      style={{
+        position: 'absolute',
+        inset: 0,
+        overflow: 'hidden',
+        opacity: muted ? 0.42 : 0.94,
+        transition: `opacity ${ARENA_LAUNCH_TRANSITION_MS}ms ease`,
+        background: '#dceaf5',
+      }}
+    >
+      <img
+        src={TRAINING_NEW_COURT_BACKGROUND}
+        alt=""
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover',
+          objectPosition: '50% 0%',
+          filter: 'blur(2.1px) saturate(0.96) contrast(0.98)',
+          transform: 'scale(1.01)',
+        }}
+      />
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background:
+            'linear-gradient(180deg, rgba(180,211,235,0.18) 0%, rgba(180,211,235,0.02) 28%, rgba(180,211,235,0.08) 100%), radial-gradient(circle at 50% 46%, rgba(255,255,255,0.12), transparent 38%)',
         }}
       />
     </div>

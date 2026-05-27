@@ -252,6 +252,8 @@ describe('DailyScreen', () => {
     expect(
       screen.getByRole('article', { name: 'Ежедневная игра: 1-й период доступен' }),
     ).toBeInTheDocument();
+    expect(screen.getByTestId('arena-settled-ice-backdrop')).toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: 'Игровая площадка в перспективе' })).toBeNull();
     expect(screen.getByText('Ежедневная игра')).toBeInTheDocument();
     expect(screen.getByText('1-й период доступен')).toBeInTheDocument();
     expect(screen.getByText('Время')).toBeInTheDocument();
@@ -495,7 +497,7 @@ describe('DailyScreen', () => {
     fireEvent.click(within(duelCard).getByRole('button', { name: 'Вы сыграли' }));
 
     expect(await screen.findByLabelText('Соперник: Duel Opponent')).toBeInTheDocument();
-    expect(screen.getByText('ЖДЁМ СОПЕРНИКА')).toBeInTheDocument();
+    expect(screen.getByText('До поражения соперника')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Дуэль' })).not.toBeInTheDocument();
     expect(screen.queryByText(/Эта дуэль сейчас не на площадке/)).not.toBeInTheDocument();
   });
