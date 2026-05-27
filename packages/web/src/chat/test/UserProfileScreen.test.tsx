@@ -76,7 +76,7 @@ describe('UserProfileScreen', () => {
     expect(screen.getByText('50%')).toBeInTheDocument();
     expect(screen.getByText('7')).toBeInTheDocument();
     expect(screen.getByText('(12)')).toBeInTheDocument();
-    expect(screen.getByText('Достижения (1/1)')).toBeInTheDocument();
+    expect(screen.getByText('Задания (1/1)')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Первая шайба.*получено/i }));
     expect(screen.getByRole('dialog', { name: 'Первая шайба' })).toBeInTheDocument();

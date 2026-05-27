@@ -24,6 +24,21 @@ export interface DailyGameStats {
   periods: PeriodLogEntry[];
 }
 
+export interface DailyHistorySummary {
+  possible_games: number;
+  played_games: number;
+  completed_games: number;
+  total_shots: number;
+  total_goals: number;
+}
+
+export interface DailyHistoryResponse {
+  games: DailyGameStats[];
+  hasMore: boolean;
+  nextOffset: number | null;
+  summary: DailyHistorySummary;
+}
+
 export interface DailyStateResponse {
   state: DailyState;
   current_period: number; // 0..3
@@ -82,8 +97,8 @@ export function fetchDailyState(): Promise<DailyStateResponse> {
   return apiFetch<DailyStateResponse>('/duel/daily/state').then(stampDailyState);
 }
 
-export function fetchDailyHistory(limit = 14): Promise<{ games: DailyGameStats[] }> {
-  return apiFetch<{ games: DailyGameStats[] }>(`/duel/daily/history?limit=${limit}`);
+export function fetchDailyHistory(limit = 20, offset = 0): Promise<DailyHistoryResponse> {
+  return apiFetch<DailyHistoryResponse>(`/duel/daily/history?limit=${limit}&offset=${offset}`);
 }
 
 export function startDailyPeriod(): Promise<DailyStateResponse> {

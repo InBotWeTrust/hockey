@@ -39,7 +39,8 @@ const shotBodySchema = z.object({
 });
 
 const historyQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(30).default(14),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
 });
 
 const TAP_TIME_FUTURE_TOLERANCE_MS = 2500;
@@ -61,6 +62,14 @@ interface DailyGameStats {
   total_goals: number;
   total_duration_ms: number;
   periods: PeriodLogEntry[];
+}
+
+interface DailyHistorySummary {
+  possible_games: number;
+  played_games: number;
+  completed_games: number;
+  total_shots: number;
+  total_goals: number;
 }
 
 interface DailyStateResponse {
@@ -169,19 +178,28 @@ async function fetchDailyHistoryStats(
   client: PoolClient,
   userId: string,
   limit: number,
-): Promise<DailyGameStats[]> {
+  offset: number,
+  localToday: string,
+  totalPeriods: number,
+): Promise<{
+  games: DailyGameStats[];
+  hasMore: boolean;
+  nextOffset: number | null;
+  summary: DailyHistorySummary;
+}> {
   const { rows } = await client.query<{ id: string; day_date: string }>(
     `select id, to_char(day_date, 'YYYY-MM-DD') as day_date
        from day_pool
       where user_id = $1
         and state = 'closed'
       order by closed_at desc nulls last, day_date desc, created_at desc
-      limit $2`,
-    [userId, limit],
+      limit $2
+      offset $3`,
+    [userId, limit + 1, offset],
   );
 
   const games: DailyGameStats[] = [];
-  for (const pool of rows) {
+  for (const pool of rows.slice(0, limit)) {
     const periods = await fetchRecentPeriods(client, pool.id);
     const totals = await aggregateDailyTotals(client, pool.id);
     games.push({
@@ -192,9 +210,70 @@ async function fetchDailyHistoryStats(
       periods,
     });
   }
-  return games;
+  const hasMore = rows.length > limit;
+  const { rows: summaryRows } = await client.query<{
+    possible_games: number;
+    played_games: number;
+    completed_games: number;
+    total_shots: number;
+    total_goals: number;
+  }>(
+    `with user_days as (
+       select greatest(1, ($2::date - (created_at at time zone timezone)::date + 1))::int
+              as possible_games
+         from users
+        where id = $1
+     ),
+     pool_shots as (
+       select dp.id,
+              count(ss.id)::int as shots,
+              count(ss.id) filter (where ss.server_result = 'goal')::int as goals
+         from day_pool dp
+         left join shot_session ss
+           on ss.day_pool_id = dp.id
+          and ss.user_id = dp.user_id
+          and ss.mode = 'daily'
+        where dp.user_id = $1
+        group by dp.id
+     ),
+     pool_periods as (
+       select dp.id,
+              count(pl.id)::int as closed_periods
+         from day_pool dp
+         left join period_log pl on pl.day_pool_id = dp.id
+        where dp.user_id = $1
+        group by dp.id
+     )
+     select coalesce((select possible_games from user_days), 1)::int as possible_games,
+            count(ps.id) filter (where ps.shots > 0)::int as played_games,
+            count(ps.id) filter (where ps.shots > 0 and coalesce(pp.closed_periods, 0) >= $3)::int
+              as completed_games,
+            coalesce(sum(ps.shots), 0)::int as total_shots,
+            coalesce(sum(ps.goals), 0)::int as total_goals
+       from pool_shots ps
+       left join pool_periods pp on pp.id = ps.id`,
+    [userId, localToday, totalPeriods],
+  );
+  const summary = summaryRows[0] ?? {
+    possible_games: 1,
+    played_games: 0,
+    completed_games: 0,
+    total_shots: 0,
+    total_goals: 0,
+  };
+  return {
+    games,
+    hasMore,
+    nextOffset: hasMore ? offset + games.length : null,
+    summary: {
+      possible_games: Number(summary.possible_games),
+      played_games: Number(summary.played_games),
+      completed_games: Number(summary.completed_games),
+      total_shots: Number(summary.total_shots),
+      total_goals: Number(summary.total_goals),
+    },
+  };
 }
-
 
 async function fetchLifetime(
   client: PoolClient,
@@ -406,9 +485,19 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
   app.get('/duel/daily/history', { preHandler: [app.authenticate] }, async (req) => {
     const parsed = historyQuerySchema.safeParse(req.query);
     if (!parsed.success) throw new AppError('bad_request', 'invalid daily history query', 400);
-    return withTransaction(app, (client) =>
-      fetchDailyHistoryStats(client, req.user.id, parsed.data.limit),
-    ).then((games) => ({ games }));
+    return withTransaction(app, async (client) => {
+      const now = new Date();
+      const settings = await getGameSettings(client);
+      const { localToday } = await reconcileDayPool(client, req.user.id, now, settings.daily);
+      return fetchDailyHistoryStats(
+        client,
+        req.user.id,
+        parsed.data.limit,
+        parsed.data.offset,
+        localToday,
+        settings.daily.totalPeriods,
+      );
+    });
   });
 
   app.post('/duel/daily/period/start', { preHandler: [app.authenticate] }, async (req) => {

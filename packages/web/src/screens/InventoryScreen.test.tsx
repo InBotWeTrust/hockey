@@ -79,6 +79,16 @@ const inventoryWithItems: InventoryState = {
       createdAt: '2026-05-27T10:15:00.000Z',
     },
   ],
+  bankHistory: [
+    {
+      id: 'payment-1',
+      title: 'Игровой запас',
+      amountRub: 299,
+      status: 'paid',
+      createdAt: '2026-05-27T10:10:00.000Z',
+      paidAt: '2026-05-27T10:11:00.000Z',
+    },
+  ],
 };
 
 function mockInventoryFetch(inventory: InventoryState, purchasedInventory = inventory): void {
@@ -149,10 +159,41 @@ describe('InventoryScreen', () => {
     expect(screen.queryByText(/Осталось/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/выбрано/i)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Купить Бронзовая клюшка за 120 монет' })).toBeEnabled();
-    expect(screen.getByText('История покупок')).toBeInTheDocument();
-    expect(screen.getByText('-120')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Товары' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Банк' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'История' })).toBeInTheDocument();
+    expect(screen.queryByText('-120')).not.toBeInTheDocument();
     expect(document.querySelector('img[src="/inventory/stick-bronze.webp"]')).toBeInTheDocument();
     expect(document.querySelector('img[src="/inventory/sticks.webp"]')).not.toBeInTheDocument();
+  });
+
+  it('shows bank packages on the bank tab', async () => {
+    mockInventoryFetch(inventoryWithItems);
+
+    renderInventory();
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
+
+    expect(screen.getByText('Стартовый набор')).toBeInTheDocument();
+    expect(screen.getByText('Игровой запас')).toBeInTheDocument();
+    expect(screen.getByText('Клубный банк')).toBeInTheDocument();
+    expect(screen.getByText('500')).toBeInTheDocument();
+    expect(screen.getByText('1 200')).toBeInTheDocument();
+    expect(screen.getByText('3 000')).toBeInTheDocument();
+  });
+
+  it('shows inventory and bank purchases on the history tab', async () => {
+    mockInventoryFetch(inventoryWithItems);
+
+    renderInventory();
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'История' }));
+
+    expect(screen.getByText('Бронзовая клюшка')).toBeInTheDocument();
+    expect(screen.getByText('-120')).toBeInTheDocument();
+    expect(screen.getByText('Игровой запас')).toBeInTheDocument();
+    expect(screen.getByText('299 ₽')).toBeInTheDocument();
+    expect(screen.getByText(/банк · Оплачено/)).toBeInTheDocument();
   });
 
   it('shows an empty shop state when no products exist', async () => {

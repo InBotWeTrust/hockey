@@ -191,7 +191,7 @@ describe('ProfileScreen', () => {
 
     const statsLabel = await screen.findByText('Статистика');
     const equipmentLabel = screen.getByText('Экипировка');
-    const achievementsLabel = screen.getByText('Достижения (1/2)');
+    const achievementsLabel = screen.getByText('Задания (1/2)');
     expect(screen.getByText('Уровень: Новичок')).toBeInTheDocument();
     expect(screen.getByText('Монеты')).toBeInTheDocument();
     expect(screen.getByText('Звёзды')).toBeInTheDocument();
@@ -269,14 +269,20 @@ describe('ProfileScreen', () => {
 
     renderProfile();
 
-    expect(await screen.findByRole('button', { name: /Клюшка.*Острая клюшка/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Коньки.*Обычные коньки.*Базовая/i })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: /Клюшка.*Острая клюшка/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Коньки.*Обычные коньки.*Базовая/i }),
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Питание.*Энергогель/i })).toBeInTheDocument();
     expect(screen.getByText('На 3 периода')).toBeInTheDocument();
     expect(screen.queryByText('Бросок +24')).not.toBeInTheDocument();
     expect(screen.queryByText('выбрано')).not.toBeInTheDocument();
     expect(document.querySelector('img[src="/inventory/stick-silver.webp"]')).toBeInTheDocument();
-    expect(document.querySelector('img[src="/inventory/nutrition-bronze.webp"]')).toBeInTheDocument();
+    expect(
+      document.querySelector('img[src="/inventory/nutrition-bronze.webp"]'),
+    ).toBeInTheDocument();
     expect(document.querySelector('img[src="/inventory/sticks.webp"]')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Клюшка.*Острая клюшка/i }));
@@ -303,7 +309,9 @@ describe('ProfileScreen', () => {
 
     renderProfile();
 
-    fireEvent.click(await screen.findByRole('button', { name: /Клюшка.*Обычная клюшка.*Базовая/i }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: /Клюшка.*Обычная клюшка.*Базовая/i }),
+    );
     const dialog = screen.getByRole('dialog', { name: 'Клюшка' });
     expect(within(dialog).getByText('Обычная клюшка')).toBeInTheDocument();
     expect(within(dialog).queryByText('Без клюшки')).not.toBeInTheDocument();

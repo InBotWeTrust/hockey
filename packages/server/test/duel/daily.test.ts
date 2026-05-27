@@ -214,6 +214,66 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     expect(rows[0].game_core_version).toBeGreaterThan(0);
   });
 
+  it('daily history includes all-time summary from registration day', async () => {
+    await pool.query(`update users set created_at = now() - interval '9 days' where id = $1`, [
+      userId,
+    ]);
+    const completed = await pool.query<{ id: string }>(
+      `insert into day_pool
+         (user_id, day_date, state, current_period, closed_at, game_core_version, daily_seed)
+       values ($1, ((now() at time zone 'Europe/Moscow')::date - 2), 'closed', 3, now(), 45, 'seed-completed')
+       returning id`,
+      [userId],
+    );
+    const partial = await pool.query<{ id: string }>(
+      `insert into day_pool
+         (user_id, day_date, state, current_period, closed_at, game_core_version, daily_seed)
+       values ($1, ((now() at time zone 'Europe/Moscow')::date - 1), 'closed', 1, now(), 45, 'seed-partial')
+       returning id`,
+      [userId],
+    );
+    await pool.query(
+      `insert into period_log
+         (day_pool_id, period_number, started_at, ended_at, shots_taken, goals, closed_reason)
+       values
+         ($1, 1, now() - interval '30 minutes', now() - interval '10 minutes', 10, 4, 'quota'),
+         ($1, 2, now() - interval '30 minutes', now() - interval '10 minutes', 10, 3, 'quota'),
+         ($1, 3, now() - interval '30 minutes', now() - interval '10 minutes', 10, 3, 'quota'),
+         ($2, 1, now() - interval '30 minutes', now() - interval '10 minutes', 5, 2, 'timeout')`,
+      [completed.rows[0]!.id, partial.rows[0]!.id],
+    );
+    await pool.query(
+      `insert into shot_session
+         (user_id, mode, day_pool_id, period_number, shot_index, seed, input_payload, server_result, game_core_version)
+       select $1::uuid, 'daily', $2::uuid, 1, n, 'seed-completed-' || n, '{}'::jsonb,
+              case when n <= 10 then 'goal' else 'save' end,
+              45
+         from generate_series(1, 30) as n
+       union all
+       select $1::uuid, 'daily', $3::uuid, 1, n, 'seed-partial-' || n, '{}'::jsonb,
+              case when n <= 2 then 'goal' else 'save' end,
+              45
+         from generate_series(1, 5) as n`,
+      [userId, completed.rows[0]!.id, partial.rows[0]!.id],
+    );
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/duel/daily/history?limit=20',
+      headers: authHeader(),
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().games).toHaveLength(2);
+    expect(res.json().summary).toMatchObject({
+      possible_games: 10,
+      played_games: 2,
+      completed_games: 1,
+      total_shots: 35,
+      total_goals: 12,
+    });
+  });
+
   it('rejects stale shot tapTime after an active period has moved on', async () => {
     const start = await startPeriod();
     expect(start.statusCode).toBe(200);

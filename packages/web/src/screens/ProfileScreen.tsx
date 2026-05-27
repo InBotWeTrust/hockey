@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent,
+  type ReactNode,
+} from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CircleDollarSign, Info, Settings, ShoppingBag, Star, Trophy, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -141,8 +148,8 @@ const PROFILE_SECTION_INFO: Record<ProfileInfoSection, { title: string; copy: st
     copy: 'В раздевалке выбирается уже купленный инвентарь: одна клюшка, одна пара коньков и одно питание. В дуэлях расход считается по периодам.',
   },
   achievements: {
-    title: 'Достижения',
-    copy: 'Достижения показывают важные игровые вехи. Открытые достижения подсвечены, закрытые остаются приглушёнными до выполнения условия.',
+    title: 'Задания',
+    copy: 'Задания показывают важные игровые цели. Выполненные задания подсвечены, невыполненные остаются приглушёнными до выполнения условия.',
   },
 };
 
@@ -319,8 +326,8 @@ function EquipmentSlotButton({
     : hasBaseEquipment
       ? baseEquipmentTitle(kind)
       : hasOwnedItems
-      ? meta.empty
-      : 'Нет купленных';
+        ? meta.empty
+        : 'Нет купленных';
   const action = hasOwnedItems || hasBaseEquipment ? onOpen : onOpenShop;
   const artworkSrc = activeItem
     ? artworkForInventoryItem(activeItem)
@@ -675,7 +682,10 @@ function EquipmentDetailsModal({
           })}
 
           {items.length === 0 && (
-            <div className="glass" style={{ borderRadius: 18, padding: 14, display: 'grid', gap: 10 }}>
+            <div
+              className="glass"
+              style={{ borderRadius: 18, padding: 14, display: 'grid', gap: 10 }}
+            >
               <div style={{ color: 'var(--muted)', fontSize: 13, fontWeight: 800 }}>
                 Купленных предметов этого типа пока нет.
               </div>
@@ -761,8 +771,9 @@ export function ProfileScreen(): JSX.Element {
   const suppressClickRef = useRef(false);
   const [selectedAchievement, setSelectedAchievement] = useState<ProfileAchievement | null>(null);
   const [selectedInfoSection, setSelectedInfoSection] = useState<ProfileInfoSection | null>(null);
-  const [selectedEquipmentKind, setSelectedEquipmentKind] =
-    useState<InventoryEquipmentKind | null>(null);
+  const [selectedEquipmentKind, setSelectedEquipmentKind] = useState<InventoryEquipmentKind | null>(
+    null,
+  );
 
   const { data, isLoading } = useQuery<ProfileData>({
     queryKey: ['profile'],
@@ -810,7 +821,8 @@ export function ProfileScreen(): JSX.Element {
   const achievements = data?.achievements ?? [];
   const tokenBalance = inventoryQuery.data?.balances.tokens ?? data?.currencyBalance ?? 0;
   const starBalance = inventoryQuery.data?.balances.stars ?? data?.starBalance ?? 0;
-  const experienceBalance = inventoryQuery.data?.balances.experience ?? data?.experienceBalance ?? 0;
+  const experienceBalance =
+    inventoryQuery.data?.balances.experience ?? data?.experienceBalance ?? 0;
 
   function handlePointerDown(event: PointerEvent<HTMLElement>): void {
     if (

@@ -33,6 +33,7 @@ interface InventoryState {
   };
   items: Record<EquipmentKind, InventoryItemDto[]>;
   purchaseHistory: InventoryPurchaseDto[];
+  bankHistory: BankPurchaseDto[];
 }
 
 interface InventoryItemDto {
@@ -58,6 +59,15 @@ interface InventoryPurchaseDto {
   tokensSpent: number;
   chargesAdded: number;
   createdAt: string;
+}
+
+interface BankPurchaseDto {
+  id: string;
+  title: string;
+  amountRub: number;
+  status: 'pending' | 'paid' | 'failed' | 'refunded' | 'canceled';
+  createdAt: string;
+  paidAt: string | null;
 }
 
 const equipmentPatchSchema = z
@@ -167,6 +177,22 @@ async function fetchInventoryState(client: DbClient, userId: string): Promise<In
     [userId],
   );
 
+  const { rows: bankHistoryRows } = await client.query<{
+    id: string;
+    title: string;
+    amount_rub: number;
+    status: BankPurchaseDto['status'];
+    created_at: Date;
+    paid_at: Date | null;
+  }>(
+    `select id::text, title, amount_rub, status, created_at, paid_at
+       from payments
+      where user_id = $1
+      order by created_at desc, id desc
+      limit 20`,
+    [userId],
+  );
+
   return {
     balances: {
       tokens: Number(account.balance),
@@ -186,6 +212,14 @@ async function fetchInventoryState(client: DbClient, userId: string): Promise<In
       tokensSpent: Math.abs(Number(row.available_delta)),
       chargesAdded: Number(row.metadata.charges_added ?? 0),
       createdAt: row.created_at.toISOString(),
+    })),
+    bankHistory: bankHistoryRows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      amountRub: Number(row.amount_rub),
+      status: row.status,
+      createdAt: row.created_at.toISOString(),
+      paidAt: row.paid_at?.toISOString() ?? null,
     })),
   };
 }

@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { UseMutationResult } from '@tanstack/react-query';
 import { ArrowLeft, CircleDollarSign, Star, Trophy, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
   fetchMyInventory,
   purchaseInventoryItem,
+  type BankPurchase,
   type InventoryEquipmentKind,
   type InventoryItem,
   type InventoryPurchase,
@@ -12,7 +14,38 @@ import {
 } from '../api/inventory.js';
 import { artworkForInventoryItem } from './inventoryArtwork.js';
 
+type ShopTab = 'goods' | 'bank' | 'history';
+
 const INVENTORY_KINDS: InventoryEquipmentKind[] = ['stick', 'skates', 'nutrition'];
+const SHOP_TABS: Array<{ id: ShopTab; label: string }> = [
+  { id: 'goods', label: 'Товары' },
+  { id: 'bank', label: 'Банк' },
+  { id: 'history', label: 'История' },
+];
+
+const BANK_PACKAGES = [
+  {
+    id: 'starter',
+    title: 'Стартовый набор',
+    tokens: 500,
+    priceRub: 149,
+    note: 'Для первых покупок',
+  },
+  {
+    id: 'player',
+    title: 'Игровой запас',
+    tokens: 1200,
+    priceRub: 299,
+    note: 'Оптимальный пакет',
+  },
+  {
+    id: 'club',
+    title: 'Клубный банк',
+    tokens: 3000,
+    priceRub: 699,
+    note: 'Максимум монет',
+  },
+] as const;
 
 const KIND_META: Record<InventoryEquipmentKind, { title: string }> = {
   stick: { title: 'Клюшки' },
@@ -22,6 +55,14 @@ const KIND_META: Record<InventoryEquipmentKind, { title: string }> = {
 
 function numberText(value: number): string {
   return new Intl.NumberFormat('ru-RU').format(value);
+}
+
+function rubText(value: number): string {
+  return new Intl.NumberFormat('ru-RU', {
+    style: 'currency',
+    currency: 'RUB',
+    maximumFractionDigits: 0,
+  }).format(value);
 }
 
 function periodWord(value: number): string {
@@ -50,9 +91,18 @@ function formatPurchaseDate(value: string): string {
   }).format(date);
 }
 
+function bankStatusText(status: BankPurchase['status']): string {
+  if (status === 'paid') return 'Оплачено';
+  if (status === 'pending') return 'Ожидает оплаты';
+  if (status === 'failed') return 'Ошибка оплаты';
+  if (status === 'refunded') return 'Возврат';
+  return 'Отменено';
+}
+
 export function InventoryScreen(): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState<ShopTab>('goods');
   const [detailsItem, setDetailsItem] = useState<InventoryItem | null>(null);
   const [purchaseItem, setPurchaseItem] = useState<InventoryItem | null>(null);
   const inventoryQuery = useQuery<InventoryState>({
@@ -72,6 +122,7 @@ export function InventoryScreen(): JSX.Element {
   const hasAnyItems = allItems.length > 0;
   const tokens = inventory?.balances.tokens ?? 0;
   const history = inventory?.purchaseHistory ?? [];
+  const bankHistory = inventory?.bankHistory ?? [];
 
   const openPurchase = (item: InventoryItem): void => {
     purchaseMutation.reset();
@@ -150,50 +201,26 @@ export function InventoryScreen(): JSX.Element {
           />
         </div>
 
+        <ShopTabs activeTab={activeTab} onChange={setActiveTab} />
+
         {inventoryQuery.isLoading ? (
           <div className="glass" style={{ borderRadius: 22, padding: 16, color: 'var(--muted)' }}>
             Загрузка...
           </div>
-        ) : !hasAnyItems ? (
+        ) : activeTab === 'goods' && !hasAnyItems ? (
           <InventoryEmptyState />
+        ) : activeTab === 'goods' ? (
+          <GoodsTab
+            inventory={inventory}
+            tokens={tokens}
+            purchaseMutation={purchaseMutation}
+            onDetails={setDetailsItem}
+            onBuy={openPurchase}
+          />
+        ) : activeTab === 'bank' ? (
+          <BankTab />
         ) : (
-          <>
-            <div style={{ display: 'grid', gap: 18 }}>
-              {INVENTORY_KINDS.map((kind) => {
-                const items = inventory?.items[kind] ?? [];
-                if (items.length === 0) return null;
-                return (
-                  <section key={kind} aria-label={KIND_META[kind].title}>
-                    <div className="section-label" style={{ margin: '0 0 8px -14px' }}>
-                      {KIND_META[kind].title}
-                    </div>
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-                        gap: 8,
-                      }}
-                    >
-                      {items.map((item) => {
-                        const canBuy = tokens >= item.currencyPrice;
-                        return (
-                          <InventoryProductCard
-                            key={item.id}
-                            item={item}
-                            canBuy={canBuy}
-                            isBuying={purchaseMutation.isPending && purchaseMutation.variables?.id === item.id}
-                            onDetails={() => setDetailsItem(item)}
-                            onBuy={() => openPurchase(item)}
-                          />
-                        );
-                      })}
-                    </div>
-                  </section>
-                );
-              })}
-            </div>
-            <PurchaseHistorySection history={history} />
-          </>
+          <PurchaseHistorySection inventoryHistory={history} bankHistory={bankHistory} />
         )}
       </section>
 
@@ -224,6 +251,207 @@ export function InventoryScreen(): JSX.Element {
         />
       )}
     </main>
+  );
+}
+
+function GoodsTab({
+  inventory,
+  tokens,
+  purchaseMutation,
+  onDetails,
+  onBuy,
+}: {
+  inventory: InventoryState | undefined;
+  tokens: number;
+  purchaseMutation: UseMutationResult<InventoryState, Error, InventoryItem>;
+  onDetails: (item: InventoryItem) => void;
+  onBuy: (item: InventoryItem) => void;
+}): JSX.Element {
+  return (
+    <div style={{ display: 'grid', gap: 18 }}>
+      {INVENTORY_KINDS.map((kind) => {
+        const items = inventory?.items[kind] ?? [];
+        if (items.length === 0) return null;
+        return (
+          <section key={kind} aria-label={KIND_META[kind].title}>
+            <div className="section-label" style={{ margin: '0 0 8px -14px' }}>
+              {KIND_META[kind].title}
+            </div>
+            <div style={{ display: 'grid', gap: 18 }}>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                  gap: 8,
+                }}
+              >
+                {items.map((item) => {
+                  const canBuy = tokens >= item.currencyPrice;
+                  return (
+                    <InventoryProductCard
+                      key={item.id}
+                      item={item}
+                      canBuy={canBuy}
+                      isBuying={
+                        purchaseMutation.isPending && purchaseMutation.variables?.id === item.id
+                      }
+                      onDetails={() => onDetails(item)}
+                      onBuy={() => onBuy(item)}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function ShopTabs({
+  activeTab,
+  onChange,
+}: {
+  activeTab: ShopTab;
+  onChange: (tab: ShopTab) => void;
+}): JSX.Element {
+  return (
+    <div
+      role="tablist"
+      aria-label="Разделы магазина"
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+        gap: 4,
+        padding: 4,
+        borderRadius: 999,
+        background: 'rgba(255,255,255,0.38)',
+        border: '1px solid rgba(255,255,255,0.62)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.74)',
+      }}
+    >
+      {SHOP_TABS.map((tab) => {
+        const active = tab.id === activeTab;
+        return (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => onChange(tab.id)}
+            style={{
+              minWidth: 0,
+              minHeight: 36,
+              borderRadius: 999,
+              border: active ? '1px solid rgba(15,23,42,0.92)' : '1px solid transparent',
+              background: active ? 'rgba(15,23,42,0.92)' : 'transparent',
+              color: active ? '#ffffff' : 'rgba(15,23,42,0.72)',
+              fontSize: 12,
+              fontWeight: 900,
+              cursor: 'pointer',
+            }}
+          >
+            {tab.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function BankTab(): JSX.Element {
+  return (
+    <section aria-label="Банк" style={{ display: 'grid', gap: 8 }}>
+      <div className="section-label" style={{ margin: '0 0 0 -14px' }}>
+        Банк
+      </div>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+          gap: 8,
+        }}
+      >
+        {BANK_PACKAGES.map((pack) => (
+          <BankPackageCard key={pack.id} pack={pack} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function BankPackageCard({ pack }: { pack: (typeof BANK_PACKAGES)[number] }): JSX.Element {
+  return (
+    <article
+      className="glass"
+      style={{
+        minWidth: 0,
+        minHeight: 178,
+        padding: 12,
+        borderRadius: 22,
+        display: 'grid',
+        gridTemplateRows: '1fr auto',
+        gap: 10,
+        overflow: 'hidden',
+      }}
+    >
+      <div style={{ display: 'grid', alignContent: 'start', gap: 8, minWidth: 0 }}>
+        <div
+          aria-hidden="true"
+          style={{
+            width: 42,
+            height: 42,
+            borderRadius: 16,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#C48A1D',
+            background: 'rgba(255,255,255,0.52)',
+            border: '1px solid rgba(255,255,255,0.72)',
+          }}
+        >
+          <CircleDollarSign size={22} strokeWidth={2.35} />
+        </div>
+        <h2
+          style={{
+            margin: 0,
+            color: 'var(--ink)',
+            fontSize: 13,
+            fontWeight: 950,
+            lineHeight: 1.1,
+          }}
+        >
+          {pack.title}
+        </h2>
+        <div style={{ color: 'var(--ink)', fontSize: 19, fontWeight: 950, lineHeight: 1 }}>
+          {numberText(pack.tokens)}
+        </div>
+        <div style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 800, lineHeight: 1.2 }}>
+          {pack.note}
+        </div>
+        <div style={{ color: 'var(--ink)', fontSize: 13, fontWeight: 950, lineHeight: 1.1 }}>
+          {rubText(pack.priceRub)}
+        </div>
+      </div>
+      <button
+        type="button"
+        className="btn btn--cta"
+        disabled
+        aria-label={`Купить ${numberText(pack.tokens)} монет за ${rubText(pack.priceRub)}`}
+        style={{
+          minWidth: 0,
+          width: '100%',
+          minHeight: 34,
+          padding: '0 10px',
+          fontSize: 12,
+          opacity: 0.5,
+          cursor: 'not-allowed',
+        }}
+      >
+        Скоро
+      </button>
+    </article>
   );
 }
 
@@ -437,7 +665,9 @@ function InventoryEmptyState(): JSX.Element {
       <h2 style={{ margin: 0, color: 'var(--ink)', fontSize: 18, fontWeight: 950 }}>
         Товары скоро появятся
       </h2>
-      <p style={{ margin: 0, color: 'var(--muted)', fontSize: 13, fontWeight: 750, lineHeight: 1.4 }}>
+      <p
+        style={{ margin: 0, color: 'var(--muted)', fontSize: 13, fontWeight: 750, lineHeight: 1.4 }}
+      >
         Здесь будут клюшки, коньки и питание за монеты.
       </p>
     </section>
@@ -466,7 +696,14 @@ function InventoryItemModal({
         aria-label={item.title}
         className="modal-card"
         onClick={(event) => event.stopPropagation()}
-        style={{ width: 'min(430px, calc(100vw - 28px))', display: 'grid', gap: 14 }}
+        style={{
+          width: 'min(430px, calc(100vw - 28px))',
+          maxHeight: 'calc(100dvh - 48px - var(--app-safe-top) - var(--app-safe-bottom))',
+          display: 'grid',
+          gap: 14,
+          overflowY: 'auto',
+          WebkitOverflowScrolling: 'touch',
+        }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -479,7 +716,8 @@ function InventoryItemModal({
 
         <div
           style={{
-            height: 154,
+            width: '100%',
+            aspectRatio: '1 / 1',
             borderRadius: 22,
             overflow: 'hidden',
             border: '1px solid rgba(255,255,255,0.78)',
@@ -497,7 +735,15 @@ function InventoryItemModal({
           <DetailRow label="Цена" value={`${numberText(item.currencyPrice)} монет`} />
         </div>
 
-        <p style={{ margin: 0, color: 'var(--muted)', fontSize: 13, fontWeight: 750, lineHeight: 1.4 }}>
+        <p
+          style={{
+            margin: 0,
+            color: 'var(--muted)',
+            fontSize: 13,
+            fontWeight: 750,
+            lineHeight: 1.4,
+          }}
+        >
           {item.description}
         </p>
 
@@ -556,7 +802,12 @@ function PurchaseConfirmModal({
           <button type="button" className="btn btn--ghost" onClick={onClose} disabled={isSaving}>
             Отмена
           </button>
-          <button type="button" className="modal-primary btn--cta" onClick={onConfirm} disabled={isSaving}>
+          <button
+            type="button"
+            className="modal-primary btn--cta"
+            onClick={onConfirm}
+            disabled={isSaving}
+          >
             {isSaving ? 'Покупка...' : 'Купить'}
           </button>
         </div>
@@ -565,21 +816,46 @@ function PurchaseConfirmModal({
   );
 }
 
-function PurchaseHistorySection({ history }: { history: InventoryPurchase[] }): JSX.Element {
+function PurchaseHistorySection({
+  inventoryHistory,
+  bankHistory,
+}: {
+  inventoryHistory: InventoryPurchase[];
+  bankHistory: BankPurchase[];
+}): JSX.Element {
+  const entries = [
+    ...inventoryHistory.map((purchase) => ({
+      id: `inventory-${purchase.id}`,
+      createdAt: purchase.createdAt,
+      title: purchase.title,
+      subtitle: `${formatPurchaseDate(purchase.createdAt)} · товар · ${numberText(purchase.chargesAdded)} ${periodWord(purchase.chargesAdded)}`,
+      value: `-${numberText(purchase.tokensSpent)}`,
+      tone: 'negative' as const,
+    })),
+    ...bankHistory.map((purchase) => ({
+      id: `bank-${purchase.id}`,
+      createdAt: purchase.createdAt,
+      title: purchase.title,
+      subtitle: `${formatPurchaseDate(purchase.createdAt)} · банк · ${bankStatusText(purchase.status)}`,
+      value: rubText(purchase.amountRub),
+      tone: purchase.status === 'paid' ? ('positive' as const) : ('default' as const),
+    })),
+  ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
   return (
     <section aria-label="История покупок" style={{ display: 'grid', gap: 8 }}>
       <div className="section-label" style={{ margin: '0 0 0 -14px' }}>
-        История покупок
+        История
       </div>
       <div className="glass" style={{ borderRadius: 22, padding: 14, display: 'grid', gap: 10 }}>
-        {history.length === 0 ? (
+        {entries.length === 0 ? (
           <div style={{ color: 'var(--muted)', fontSize: 13, fontWeight: 750 }}>
             Покупок пока нет.
           </div>
         ) : (
-          history.map((purchase) => (
+          entries.map((entry) => (
             <div
-              key={purchase.id}
+              key={entry.id}
               style={{
                 display: 'grid',
                 gridTemplateColumns: 'minmax(0, 1fr) auto',
@@ -598,15 +874,21 @@ function PurchaseHistorySection({ history }: { history: InventoryPurchase[] }): 
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  {purchase.title}
+                  {entry.title}
                 </div>
                 <div style={{ marginTop: 3, color: 'var(--muted)', fontSize: 11, fontWeight: 750 }}>
-                  {formatPurchaseDate(purchase.createdAt)} · {numberText(purchase.chargesAdded)}{' '}
-                  {periodWord(purchase.chargesAdded)}
+                  {entry.subtitle}
                 </div>
               </div>
-              <div style={{ color: 'var(--ink)', fontSize: 12, fontWeight: 950 }}>
-                -{numberText(purchase.tokensSpent)}
+              <div
+                style={{
+                  color: entry.tone === 'positive' ? '#0f766e' : 'var(--ink)',
+                  fontSize: 12,
+                  fontWeight: 950,
+                  textAlign: 'right',
+                }}
+              >
+                {entry.value}
               </div>
             </div>
           ))

@@ -2320,7 +2320,7 @@ function AdminAchievementsRow({
           textTransform: 'uppercase',
         }}
       >
-        Достижения{achievements.length > 0 ? ` (${unlocked}/${achievements.length})` : ''}
+        Задания{achievements.length > 0 ? ` (${unlocked}/${achievements.length})` : ''}
       </div>
       {achievements.length > 0 ? (
         <div
@@ -2346,7 +2346,7 @@ function AdminAchievementsRow({
         </div>
       ) : (
         <div style={{ marginTop: 8, color: 'var(--muted)', fontSize: 12 }}>
-          Достижения не загружены.
+          Задания не загружены.
         </div>
       )}
     </section>

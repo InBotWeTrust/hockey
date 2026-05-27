@@ -241,7 +241,7 @@ export function ProfileAchievementsSection({
         }}
       >
         <span style={{ minWidth: 0 }}>
-          Достижения
+          Задания
           {achievements.length > 0 ? ` (${unlockedAchievements}/${achievements.length})` : ''}
         </span>
         {labelAccessory}
@@ -289,7 +289,7 @@ export function AchievementDetailsSheet({
   achievement: ProfileAchievement;
   onClose: () => void;
 }): JSX.Element {
-  const status = achievement.isUnlocked ? 'Получено' : 'Не получено';
+  const status = achievement.isUnlocked ? 'Выполнено' : 'Не выполнено';
 
   return createPortal(
     <div

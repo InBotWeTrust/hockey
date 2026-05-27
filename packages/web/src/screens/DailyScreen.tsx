@@ -14,7 +14,6 @@ import { Container } from 'pixi.js';
 import type { Application, Ticker } from 'pixi.js';
 import {
   ArrowLeft,
-  BarChart3,
   ChevronRight,
   Home,
   Info,
@@ -892,7 +891,6 @@ function GameHub({
   const startTraining = useTrainingSessionStore((s) => s.start);
   const trainingInFlight = useTrainingSessionStore((s) => s.inFlight);
   const [modeInfoModal, setModeInfoModal] = useState<ModeInfoModalContent | null>(null);
-  const [dailyStatsOpen, setDailyStatsOpen] = useState(false);
   const [duelStatsMatch, setDuelStatsMatch] = useState<AmateurDuelMatch | null>(null);
   const [arenaActionId, setArenaActionId] = useState<string | null>(null);
   const [launchingArenaEntryId, setLaunchingArenaEntryId] = useState<string | null>(null);
@@ -1308,9 +1306,6 @@ function GameHub({
           activeIndex={activeCubeIndex}
           onActiveIndexChange={handleArenaActiveIndexChange}
           launchingEntryId={launchingArenaEntryId}
-          onStats={(entry) => {
-            if (entry.kind === 'daily') setDailyStatsOpen(true);
-          }}
         />
       </section>
 
@@ -1322,13 +1317,6 @@ function GameHub({
         />
       )}
 
-      {dailyStatsOpen && (
-        <DailyGameStatsModal
-          stats={data.previous_game}
-          totalPeriods={data.total_periods}
-          onClose={() => setDailyStatsOpen(false)}
-        />
-      )}
       {duelStatsCurrentMatch && (
         <DuelStatsModal match={duelStatsCurrentMatch} onClose={() => setDuelStatsMatch(null)} />
       )}
@@ -1505,13 +1493,11 @@ function ArenaVideoCube({
   activeIndex,
   onActiveIndexChange,
   launchingEntryId,
-  onStats,
 }: {
   entries: ArenaEntry[];
   activeIndex: number;
   onActiveIndexChange: (index: number) => void;
   launchingEntryId: string | null;
-  onStats: (entry: ArenaEntry) => void;
 }): JSX.Element {
   const carouselRef = useRef<HTMLDivElement | null>(null);
   const activeIndexRef = useRef(activeIndex);
@@ -1663,7 +1649,7 @@ function ArenaVideoCube({
                     filter: absOffset > 0.12 ? 'brightness(0.96)' : 'none',
                   }}
                 >
-                  <ArenaCubeFace entry={entry} onStats={() => onStats(entry)} />
+                  <ArenaCubeFace entry={entry} />
                   <div
                     aria-hidden="true"
                     style={{
@@ -1715,10 +1701,8 @@ function ArenaVideoCube({
 
 function ArenaCubeFace({
   entry,
-  onStats,
 }: {
   entry: ArenaEntry;
-  onStats: () => void;
 }): JSX.Element {
   const titleIsLong = entry.title.length > 12;
   const showDuelIdentity = entry.kind === 'duel' && Boolean(entry.opponentName);
@@ -1921,22 +1905,6 @@ function ArenaCubeFace({
               </div>
             )}
           </div>
-          {entry.kind === 'daily' && (
-            <button
-              type="button"
-              className="icon-btn"
-              aria-label="Статистика"
-              onClick={onStats}
-              style={{
-                width: 34,
-                height: 34,
-                background: 'rgba(230,239,248,0.78)',
-                backdropFilter: 'blur(12px)',
-              }}
-            >
-              <BarChart3 size={15} strokeWidth={2.35} />
-            </button>
-          )}
         </div>
         <div
           style={{

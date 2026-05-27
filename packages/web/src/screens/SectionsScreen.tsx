@@ -1,10 +1,19 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarDays, ChevronRight, Dumbbell, ShoppingBag, Swords, Trophy } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
 
 const DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED = 1000;
+const SECTION_ARTWORK_SIZE = 86;
+
+const SECTION_ARTWORK = {
+  daily: '/daily-game/start.webp',
+  training: '/modes/beginner.webp',
+  amateur: '/modes/amateur.webp',
+  pro: '/modes/pro.webp',
+  shop: '/modes/shop.webp',
+} as const;
 
 type SectionTone = 'active' | 'default' | 'muted';
 
@@ -72,7 +81,7 @@ export function SectionsScreen(): JSX.Element {
           description="Сегодняшняя игра и статистика прошедших дней"
           meta={`${numberText(dailyData?.daily_total_shots ?? 0)}/${numberText(dailyShotsLimit)} бросков сегодня`}
           tone="active"
-          icon={<CalendarDays size={24} strokeWidth={2.3} />}
+          artworkSrc={SECTION_ARTWORK.daily}
           onClick={() => navigate('/daily')}
         />
         <SectionCard
@@ -80,7 +89,7 @@ export function SectionsScreen(): JSX.Element {
           description="Периоды на выбор, броски без риска для дневной игры"
           meta={`${trainingShotsTaken}/${trainingShotsLimit} бросков сегодня`}
           tone="active"
-          icon={<Dumbbell size={24} strokeWidth={2.3} />}
+          artworkSrc={SECTION_ARTWORK.training}
           onClick={() => navigate('/?view=training&from=sections')}
         />
         <SectionCard
@@ -92,7 +101,7 @@ export function SectionsScreen(): JSX.Element {
               : `${numberText(amateurGoals)}/${numberText(amateurUnlockGoalsRequired)} шайб для открытия`
           }
           tone={isAmateurUnlocked ? 'default' : 'muted'}
-          icon={<Swords size={24} strokeWidth={2.3} />}
+          artworkSrc={SECTION_ARTWORK.amateur}
           progress={
             amateurUnlockGoalsRequired > 0
               ? Math.round((amateurGoals / amateurUnlockGoalsRequired) * 100)
@@ -105,7 +114,7 @@ export function SectionsScreen(): JSX.Element {
           description="Игры самого высокого уровня"
           meta="Раздел в разработке"
           tone="muted"
-          icon={<Trophy size={24} strokeWidth={2.3} />}
+          artworkSrc={SECTION_ARTWORK.pro}
           onClick={() => navigate('/?view=pro&from=sections')}
         />
         <SectionCard
@@ -113,7 +122,7 @@ export function SectionsScreen(): JSX.Element {
           description="Валюта, инвентарь и предметы"
           meta="Монеты, звёзды и экипировка"
           tone="default"
-          icon={<ShoppingBag size={24} strokeWidth={2.3} />}
+          artworkSrc={SECTION_ARTWORK.shop}
           onClick={() => navigate('/inventory')}
         />
       </section>
@@ -168,7 +177,7 @@ function SectionCard({
   description,
   meta,
   tone,
-  icon,
+  artworkSrc,
   progress,
   onClick,
 }: {
@@ -176,7 +185,7 @@ function SectionCard({
   description: string;
   meta: string;
   tone: SectionTone;
-  icon: JSX.Element;
+  artworkSrc: string;
   progress?: number;
   onClick: () => void;
 }): JSX.Element {
@@ -192,11 +201,11 @@ function SectionCard({
         borderRadius: 22,
         padding: 14,
         display: 'grid',
-        gridTemplateColumns: '58px minmax(0, 1fr) 20px',
+        gridTemplateColumns: `${SECTION_ARTWORK_SIZE}px minmax(0, 1fr) 20px`,
         gap: 12,
         alignItems: 'center',
         width: '100%',
-        minHeight: 108,
+        minHeight: 116,
         color: 'inherit',
         textAlign: 'left',
         cursor: 'pointer',
@@ -234,21 +243,32 @@ function SectionCard({
         </div>
       )}
       <span
-        aria-hidden="true"
+        aria-label={`Изображение раздела ${title}`}
         style={{
-          width: 58,
-          height: 58,
-          borderRadius: 18,
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: muted ? 'rgba(15,23,42,0.42)' : 'var(--ink)',
-          background: muted ? 'rgba(255,255,255,0.34)' : 'rgba(255,255,255,0.62)',
-          border: '1px solid rgba(255,255,255,0.72)',
-          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.72)',
+          width: SECTION_ARTWORK_SIZE,
+          height: SECTION_ARTWORK_SIZE,
+          aspectRatio: '1 / 1',
+          borderRadius: 22,
+          display: 'block',
+          overflow: 'hidden',
+          background: muted ? 'rgba(255,255,255,0.34)' : 'rgba(255,255,255,0.58)',
+          border: '1px solid rgba(255,255,255,0.78)',
+          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.8), 0 8px 18px rgba(15,23,42,0.12)',
         }}
       >
-        {icon}
+        <img
+          src={artworkSrc}
+          alt=""
+          draggable={false}
+          style={{
+            width: '100%',
+            height: '100%',
+            display: 'block',
+            objectFit: 'cover',
+            filter: muted ? 'grayscale(1) saturate(0.12)' : 'none',
+            opacity: muted ? 0.62 : 1,
+          }}
+        />
       </span>
       <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 7 }}>
         <span

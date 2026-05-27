@@ -27,6 +27,15 @@ export interface InventoryPurchase {
   createdAt: string;
 }
 
+export interface BankPurchase {
+  id: string;
+  title: string;
+  amountRub: number;
+  status: 'pending' | 'paid' | 'failed' | 'refunded' | 'canceled';
+  createdAt: string;
+  paidAt: string | null;
+}
+
 export interface InventoryState {
   balances: {
     tokens: number;
@@ -40,6 +49,7 @@ export interface InventoryState {
   };
   items: Record<InventoryEquipmentKind, InventoryItem[]>;
   purchaseHistory?: InventoryPurchase[];
+  bankHistory?: BankPurchase[];
 }
 
 export interface EquipmentPatch {

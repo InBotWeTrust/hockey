@@ -1,40 +1,29 @@
-import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, CalendarDays } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
   fetchDailyHistory,
   fetchDailyState,
   type DailyGameStats,
+  type DailyHistorySummary,
   type DailyStateResponse,
 } from '../api/duel.js';
+
+const HISTORY_PAGE_SIZE = 20;
 
 function numberText(value: number): string {
   return new Intl.NumberFormat('ru-RU').format(value);
 }
 
-function shotWord(value: number): string {
-  const abs = Math.abs(value);
-  const lastTwo = abs % 100;
-  const last = abs % 10;
-  if (lastTwo >= 11 && lastTwo <= 14) return 'бросков';
-  if (last === 1) return 'бросок';
-  if (last >= 2 && last <= 4) return 'броска';
-  return 'бросков';
-}
-
-function goalWord(value: number): string {
-  const abs = Math.abs(value);
-  const lastTwo = abs % 100;
-  const last = abs % 10;
-  if (lastTwo >= 11 && lastTwo <= 14) return 'голов';
-  if (last === 1) return 'гол';
-  if (last >= 2 && last <= 4) return 'гола';
-  return 'голов';
-}
-
 function formatGoalRate(goals: number, shots: number): string {
   if (shots <= 0) return '0%';
   return `${Math.round((goals / shots) * 100)}%`;
+}
+
+function formatPercent(part: number, total: number): string {
+  if (total <= 0) return '0%';
+  return `${Math.round((part / total) * 100)}%`;
 }
 
 function formatDailyGameDate(dayDate: string): string {
@@ -45,9 +34,28 @@ function formatDailyGameDate(dayDate: string): string {
 
 function formatDurationMs(ms: number): string {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  }
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+function timestampMs(iso: string | null | undefined): number {
+  if (!iso) return 0;
+  const value = new Date(iso).getTime();
+  return Number.isFinite(value) ? value : 0;
+}
+
+function dailyNowMs(state: DailyStateResponse | undefined, fallbackNow: number): number {
+  const serverNow = timestampMs(state?.server_now);
+  const receivedAt = state?.received_at_performance_ms;
+  if (serverNow > 0 && typeof receivedAt === 'number' && typeof performance !== 'undefined') {
+    return serverNow + Math.max(0, performance.now() - receivedAt);
+  }
+  return fallbackNow;
 }
 
 function todayTitle(state: DailyStateResponse | undefined): string {
@@ -59,29 +67,76 @@ function todayTitle(state: DailyStateResponse | undefined): string {
   return `${nextPeriod}-й период доступен`;
 }
 
-function todayMeta(state: DailyStateResponse | undefined): string {
-  if (!state) return 'Загрузка...';
-  const totalShots = state.shots_per_period * state.total_periods;
-  return `${numberText(state.daily_total_goals)} ${goalWord(state.daily_total_goals)} · ${numberText(state.daily_total_shots)}/${numberText(totalShots)} ${shotWord(totalShots)}`;
-}
-
 function stateDate(state: DailyStateResponse | undefined): string {
   if (!state?.day_date) return 'Сегодня';
   return formatDailyGameDate(state.day_date);
 }
 
+function todayArtwork(state: DailyStateResponse | undefined): string {
+  if (!state) return '/daily-game/start.webp';
+  if (state.state === 'break_active') return '/daily-game/break.webp';
+  if (state.state === 'closed') return '/daily-game/finished.webp';
+  const period =
+    state.state === 'period_active'
+      ? state.current_period
+      : Math.min(state.current_period + 1, state.total_periods);
+  if (period === 2) return '/daily-game/period-2.webp';
+  if (period === 3) return '/daily-game/period-3.webp';
+  return '/daily-game/period-1.webp';
+}
+
+function todayTimer(
+  state: DailyStateResponse | undefined,
+  nowMs: number,
+): { label: string; value: string } {
+  if (!state) return { label: 'Таймер', value: '--:--' };
+  if (state.state === 'period_active') {
+    return {
+      label: 'До конца периода',
+      value: formatDurationMs(timestampMs(state.period_ends_at) - nowMs),
+    };
+  }
+  if (state.state === 'break_active') {
+    return {
+      label: 'До конца перерыва',
+      value: formatDurationMs(timestampMs(state.break_ends_at) - nowMs),
+    };
+  }
+  if (state.state === 'closed') {
+    return {
+      label: 'До новой игры',
+      value: formatDurationMs(timestampMs(state.next_day_starts_at) - nowMs),
+    };
+  }
+  return {
+    label: 'До конца дня',
+    value: formatDurationMs(timestampMs(state.next_day_starts_at) - nowMs),
+  };
+}
+
 export function DailyOverviewScreen(): JSX.Element {
   const navigate = useNavigate();
+  const [now, setNow] = useState(() => Date.now());
   const state = useQuery({
     queryKey: ['daily', 'state'],
     queryFn: fetchDailyState,
   });
-  const history = useQuery({
+  const history = useInfiniteQuery({
     queryKey: ['daily', 'history'],
-    queryFn: () => fetchDailyHistory(14),
+    queryFn: ({ pageParam }) => fetchDailyHistory(HISTORY_PAGE_SIZE, pageParam),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => lastPage.nextOffset ?? undefined,
   });
   const today = state.data;
-  const games = history.data?.games ?? [];
+  const games = history.data?.pages.flatMap((page) => page.games) ?? [];
+  const historySummary = history.data?.pages[0]?.summary;
+  const syncedNow = dailyNowMs(today, now);
+  const timer = todayTimer(today, syncedNow);
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 500);
+    return () => window.clearInterval(id);
+  }, []);
 
   return (
     <main
@@ -124,9 +179,7 @@ export function DailyOverviewScreen(): JSX.Element {
           >
             <ArrowLeft size={16} />
           </button>
-          <h1 style={{ margin: 0, minWidth: 0, fontSize: 24, fontWeight: 800 }}>
-            Ежедневная игра
-          </h1>
+          <h1 style={{ margin: 0, minWidth: 0, fontSize: 24, fontWeight: 800 }}>Ежедневная игра</h1>
         </div>
 
         <section aria-label="Сегодняшняя игра" style={{ display: 'grid', gap: 8 }}>
@@ -143,32 +196,79 @@ export function DailyOverviewScreen(): JSX.Element {
               overflow: 'hidden',
             }}
           >
-            <div style={{ display: 'grid', gridTemplateColumns: '54px minmax(0, 1fr)', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '86px minmax(0, 1fr)', gap: 12 }}>
               <div
-                aria-hidden="true"
+                aria-label="Изображение ежедневной игры"
                 style={{
-                  width: 54,
-                  height: 54,
-                  borderRadius: 18,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: 'var(--ink)',
+                  width: 86,
+                  height: 86,
+                  aspectRatio: '1 / 1',
+                  borderRadius: 22,
+                  overflow: 'hidden',
                   background: 'rgba(255,255,255,0.48)',
                   border: '1px solid rgba(255,255,255,0.72)',
+                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.78), 0 8px 18px rgba(15,23,42,0.1)',
                 }}
               >
-                <CalendarDays size={24} strokeWidth={2.3} />
+                <img
+                  src={todayArtwork(today)}
+                  alt=""
+                  draggable={false}
+                  style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }}
+                />
               </div>
               <div style={{ minWidth: 0 }}>
                 <div style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 850 }}>
                   {stateDate(today)}
                 </div>
-                <h2 style={{ margin: '3px 0 0', color: 'var(--ink)', fontSize: 20, fontWeight: 950 }}>
+                <h2
+                  style={{ margin: '3px 0 0', color: 'var(--ink)', fontSize: 20, fontWeight: 950 }}
+                >
                   {todayTitle(today)}
                 </h2>
-                <div style={{ marginTop: 6, color: 'var(--muted)', fontSize: 13, fontWeight: 800 }}>
-                  {todayMeta(today)}
+                <div
+                  aria-label={`${timer.label}: ${timer.value}`}
+                  style={{
+                    marginTop: 9,
+                    display: 'inline-grid',
+                    gridTemplateColumns: 'minmax(0, 1fr) auto',
+                    alignItems: 'center',
+                    gap: 10,
+                    maxWidth: '100%',
+                    minHeight: 30,
+                    padding: '6px 10px',
+                    borderRadius: 999,
+                    background: 'rgba(255,255,255,0.48)',
+                    border: '1px solid rgba(255,255,255,0.66)',
+                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.72)',
+                  }}
+                >
+                  <span
+                    style={{
+                      minWidth: 0,
+                      color: 'rgba(15,23,42,0.56)',
+                      fontSize: 10,
+                      fontWeight: 900,
+                      textTransform: 'uppercase',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    {timer.label}
+                  </span>
+                  <span
+                    style={{
+                      color: 'var(--ink)',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 14,
+                      fontWeight: 900,
+                      lineHeight: 1,
+                      fontVariantNumeric: 'tabular-nums',
+                    }}
+                  >
+                    {timer.value}
+                  </span>
                 </div>
               </div>
             </div>
@@ -208,23 +308,183 @@ export function DailyOverviewScreen(): JSX.Element {
             <div className="glass" style={{ borderRadius: 22, padding: 16, color: 'var(--muted)' }}>
               Загрузка...
             </div>
-          ) : games.length === 0 ? (
-            <div
-              className="glass"
-              style={{ borderRadius: 22, padding: 16, color: 'var(--muted)', fontSize: 13, fontWeight: 750 }}
-            >
-              Завершённые ежедневные игры появятся здесь.
-            </div>
           ) : (
             <div style={{ display: 'grid', gap: 8 }}>
-              {games.map((game) => (
-                <HistoryCard key={game.day_date} game={game} />
-              ))}
+              {historySummary && <HistorySummaryCard summary={historySummary} />}
+              {games.length === 0 ? (
+                <div
+                  className="glass"
+                  style={{
+                    borderRadius: 22,
+                    padding: 16,
+                    color: 'var(--muted)',
+                    fontSize: 13,
+                    fontWeight: 750,
+                  }}
+                >
+                  Завершённые ежедневные игры появятся здесь.
+                </div>
+              ) : (
+                games.map((game) => <HistoryCard key={game.day_date} game={game} />)
+              )}
+              {history.hasNextPage && (
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  disabled={history.isFetchingNextPage}
+                  onClick={() => void history.fetchNextPage()}
+                  style={{ minHeight: 42, justifyContent: 'center' }}
+                >
+                  {history.isFetchingNextPage ? 'Загрузка...' : 'Загрузить ещё'}
+                </button>
+              )}
             </div>
           )}
         </section>
       </section>
     </main>
+  );
+}
+
+function HistorySummaryCard({ summary }: { summary: DailyHistorySummary }): JSX.Element {
+  const participationPercent = formatPercent(summary.played_games, summary.possible_games);
+  const goalRate = formatGoalRate(summary.total_goals, summary.total_shots);
+  return (
+    <article
+      className="glass"
+      aria-label="Общая статистика ежедневных игр"
+      style={{
+        borderRadius: 22,
+        padding: 14,
+        display: 'grid',
+        gap: 10,
+        background:
+          'linear-gradient(135deg, rgba(147,197,253,0.72), rgba(219,234,254,0.86) 52%, rgba(255,255,255,0.72))',
+        border: '1px solid rgba(255,255,255,0.94)',
+        boxShadow:
+          'inset 0 1px 0 rgba(255,255,255,0.92), 0 18px 42px rgba(37,99,235,0.2)',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'baseline',
+          justifyContent: 'space-between',
+          gap: 10,
+          minWidth: 0,
+        }}
+      >
+        <h2
+          style={{
+            minWidth: 0,
+            margin: 0,
+            color: 'var(--ink)',
+            fontSize: 15,
+            fontWeight: 950,
+            lineHeight: 1.05,
+          }}
+        >
+          За всё время
+        </h2>
+        <div
+          style={{
+            flex: '0 0 auto',
+            color: 'var(--ink)',
+            fontSize: 14,
+            fontWeight: 950,
+            lineHeight: 1.05,
+            textAlign: 'right',
+            fontVariantNumeric: 'tabular-nums',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {goalRate} ({numberText(summary.total_goals)} из {numberText(summary.total_shots)})
+        </div>
+      </div>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+          gap: 6,
+        }}
+      >
+        <SummaryTile
+          label="Игры"
+          value={`${numberText(summary.played_games)}/${numberText(summary.possible_games)}`}
+          note={participationPercent}
+        />
+        <SummaryTile
+          label="Доиграно"
+          value={`${numberText(summary.completed_games)}/${numberText(summary.played_games)}`}
+          note={formatPercent(summary.completed_games, summary.played_games)}
+        />
+        <SummaryTile label="Голы" value={numberText(summary.total_goals)} note="всего" />
+      </div>
+    </article>
+  );
+}
+
+function SummaryTile({
+  label,
+  value,
+  note,
+}: {
+  label: string;
+  value: string;
+  note: string;
+}): JSX.Element {
+  return (
+    <div
+      style={{
+        minWidth: 0,
+        borderRadius: 14,
+        padding: '9px 6px',
+        textAlign: 'center',
+        background: 'rgba(255,255,255,0.48)',
+        border: '1px solid rgba(255,255,255,0.7)',
+      }}
+    >
+      <div
+        style={{
+          color: 'var(--muted)',
+          fontSize: 8,
+          fontWeight: 900,
+          lineHeight: 1.05,
+          textTransform: 'uppercase',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          marginTop: 5,
+          color: 'var(--ink)',
+          fontSize: 12,
+          fontWeight: 950,
+          lineHeight: 1.05,
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        {value}
+      </div>
+      <div
+        style={{
+          marginTop: 3,
+          color: 'var(--muted)',
+          fontSize: 9,
+          fontWeight: 750,
+          lineHeight: 1.05,
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}
+      >
+        {note}
+      </div>
+    </div>
   );
 }
 
@@ -282,13 +542,10 @@ function HistoryCard({ game }: { game: DailyGameStats }): JSX.Element {
           <h2 style={{ margin: 0, color: 'var(--ink)', fontSize: 15, fontWeight: 950 }}>
             {formatDailyGameDate(game.day_date)}
           </h2>
-          <div style={{ marginTop: 4, color: 'var(--muted)', fontSize: 12, fontWeight: 800 }}>
-            {numberText(game.total_goals)} {goalWord(game.total_goals)} из{' '}
-            {numberText(game.total_shots)} {shotWord(game.total_shots)}
-          </div>
         </div>
-        <div style={{ color: 'var(--ink)', fontSize: 14, fontWeight: 950 }}>
-          {formatGoalRate(game.total_goals, game.total_shots)}
+        <div style={{ color: 'var(--ink)', fontSize: 14, fontWeight: 950, textAlign: 'right' }}>
+          {formatGoalRate(game.total_goals, game.total_shots)} ({numberText(game.total_goals)} из{' '}
+          {numberText(game.total_shots)})
         </div>
       </div>
       <div
