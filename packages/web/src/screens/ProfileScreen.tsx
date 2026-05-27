@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CircleDollarSign, Info, Settings, ShoppingBag, Star, Trophy, X } from 'lucide-react';
+import { CircleDollarSign, Info, Settings, Star, Trophy, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../api/apiFetch.js';
 import {
@@ -302,12 +302,10 @@ function EquipmentSlotButton({
   kind,
   inventory,
   onOpen,
-  onOpenShop,
 }: {
   kind: InventoryEquipmentKind;
   inventory: InventoryState | undefined;
   onOpen: () => void;
-  onOpenShop: () => void;
 }): JSX.Element {
   const meta = EQUIPMENT_META[kind];
   const items = (inventory?.items[kind] ?? []).filter(isAvailableLockerItem);
@@ -320,15 +318,12 @@ function EquipmentSlotButton({
       ? 'Базовая'
       : hasOwnedItems
         ? 'Выбрать'
-        : 'В магазин';
+        : 'Нет купленных';
   const title = activeItem
     ? equipmentDisplayTitle(activeItem)
     : hasBaseEquipment
       ? baseEquipmentTitle(kind)
-      : hasOwnedItems
-        ? meta.empty
-        : 'Нет купленных';
-  const action = hasOwnedItems || hasBaseEquipment ? onOpen : onOpenShop;
+      : meta.empty;
   const artworkSrc = activeItem
     ? artworkForInventoryItem(activeItem)
     : placeholderArtworkForKind(kind);
@@ -338,7 +333,7 @@ function EquipmentSlotButton({
     <button
       type="button"
       data-no-drag-scroll="true"
-      onClick={action}
+      onClick={onOpen}
       aria-label={`${meta.title}: ${title}. ${status}`}
       style={{
         minWidth: 0,
@@ -387,23 +382,6 @@ function EquipmentSlotButton({
         >
           {meta.title}
         </span>
-        {!hasOwnedItems && !hasBaseEquipment && (
-          <span
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 999,
-              flexShrink: 0,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'rgba(15, 23, 42, 0.58)',
-              background: 'rgba(15, 23, 42, 0.08)',
-            }}
-          >
-            <ShoppingBag size={15} />
-          </span>
-        )}
       </span>
 
       <span
@@ -689,7 +667,24 @@ function EquipmentDetailsModal({
               <div style={{ color: 'var(--muted)', fontSize: 13, fontWeight: 800 }}>
                 Купленных предметов этого типа пока нет.
               </div>
-              <button type="button" className="modal-primary btn--cta" onClick={onOpenShop}>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={onOpenShop}
+                style={{
+                  width: '100%',
+                  minHeight: 46,
+                  marginTop: 6,
+                  padding: '11px 0',
+                  fontSize: 13,
+                  fontWeight: 850,
+                  letterSpacing: '0.04em',
+                  background: 'rgba(255,255,255,0.54)',
+                  border: '1px solid rgba(15, 23, 42, 0.13)',
+                  boxShadow:
+                    'inset 0 1px 0 rgba(255,255,255,0.7), 0 8px 18px rgba(15,23,42,0.08)',
+                }}
+              >
                 В магазин
               </button>
             </div>
@@ -1052,7 +1047,6 @@ export function ProfileScreen(): JSX.Element {
             kind={kind}
             inventory={inventoryQuery.data}
             onOpen={() => setSelectedEquipmentKind(kind)}
-            onOpenShop={() => navigate('/inventory')}
           />
         ))}
       </div>

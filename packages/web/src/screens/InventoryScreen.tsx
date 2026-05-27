@@ -80,6 +80,18 @@ function purchaseBundleLabel(item: InventoryItem): string {
   return `${numberText(count)} ${periodWord(count)}`;
 }
 
+function uniqueShopItems(items: InventoryItem[]): InventoryItem[] {
+  const seen = new Set<string>();
+  const result: InventoryItem[] = [];
+  for (const item of items) {
+    const key = `${item.kind}:${item.rarity}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(item);
+  }
+  return result;
+}
+
 function formatPurchaseDate(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
@@ -270,7 +282,7 @@ function GoodsTab({
   return (
     <div style={{ display: 'grid', gap: 18 }}>
       {INVENTORY_KINDS.map((kind) => {
-        const items = inventory?.items[kind] ?? [];
+        const items = uniqueShopItems(inventory?.items[kind] ?? []);
         if (items.length === 0) return null;
         return (
           <section key={kind} aria-label={KIND_META[kind].title}>

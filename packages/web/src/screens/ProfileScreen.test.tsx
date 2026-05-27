@@ -304,7 +304,7 @@ describe('ProfileScreen', () => {
     );
   });
 
-  it('shows base required equipment and opens the shop only for missing nutrition', async () => {
+  it('shows base required equipment and offers the shop inside missing nutrition details', async () => {
     mockProfileFetch(telegramProfile, emptyInventoryState);
 
     renderProfile();
@@ -317,8 +317,13 @@ describe('ProfileScreen', () => {
     expect(within(dialog).queryByText('Без клюшки')).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Закрыть' }));
 
-    fireEvent.click(screen.getByRole('button', { name: /Питание.*Нет купленных.*В магазин/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Питание.*Нет купленных/i }));
 
+    const nutritionDialog = screen.getByRole('dialog', { name: 'Питание' });
+    expect(
+      within(nutritionDialog).getByText('Купленных предметов этого типа пока нет.'),
+    ).toBeInTheDocument();
+    fireEvent.click(within(nutritionDialog).getByRole('button', { name: 'В магазин' }));
     expect(screen.getByText('inventory screen')).toBeInTheDocument();
   });
 });

@@ -1485,6 +1485,82 @@ describe('DailyScreen', () => {
     });
   });
 
+  it('labels an outgoing duel detail as waiting from my perspective', async () => {
+    const invitedMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      status: 'invited',
+      outcome: null,
+      winner_user_id: null,
+      settled_at: null,
+      settled_reason: null,
+      ready_expires_at: '2026-05-16T10:25:00.000Z',
+      me: { ...settledDuelMatch.me, side: 'challenger', state: 'loadout_pending' },
+      opponent: { ...settledDuelMatch.opponent, side: 'opponent', state: 'invited' },
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/matches/match-1')) {
+        return new Response(JSON.stringify({ match: invitedMatch }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=amateur&match=match-1']);
+
+    expect(await screen.findByLabelText('Статус соперника: ждём ответ')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Статус соперника: ждёт ответ')).not.toBeInTheDocument();
+  });
+
+  it('labels an incoming duel detail as the opponent waiting for my answer', async () => {
+    const invitedMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      status: 'invited',
+      outcome: null,
+      winner_user_id: null,
+      settled_at: null,
+      settled_reason: null,
+      ready_expires_at: '2026-05-16T10:25:00.000Z',
+      me: { ...settledDuelMatch.me, side: 'opponent', state: 'invited' },
+      opponent: { ...settledDuelMatch.opponent, side: 'challenger', state: 'loadout_pending' },
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/matches/match-1')) {
+        return new Response(JSON.stringify({ match: invitedMatch }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=amateur&match=match-1']);
+
+    expect(await screen.findByLabelText('Статус соперника: ждёт ответ')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Статус соперника: ждём ответ')).not.toBeInTheDocument();
+  });
+
   it('highlights the current user in amateur duel rating with a filled row', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = input instanceof Request ? input.url : String(input);

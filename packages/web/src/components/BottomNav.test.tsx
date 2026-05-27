@@ -101,6 +101,16 @@ describe('BottomNav remembered navigation', () => {
     expect(sectionsSurface?.getAttribute('style')).toContain('rgba(15, 23, 42, 0.92)');
   });
 
+  it('keeps amateur duel setup screens on the sections tab', () => {
+    renderBottomNav('/?view=amateur&section=duels');
+
+    const gameSurface = screen.getByRole('button', { name: 'Игра' }).querySelector('div');
+    const sectionsSurface = screen.getByRole('button', { name: 'Разделы' }).querySelector('div');
+
+    expect(gameSurface?.getAttribute('style')).toContain('rgba(255, 255, 255, 0.55)');
+    expect(sectionsSurface?.getAttribute('style')).toContain('rgba(15, 23, 42, 0.92)');
+  });
+
   it('hides the dock on the open rink screen', () => {
     renderBottomNav('/?view=training&play=1');
 

@@ -167,6 +167,28 @@ describe('InventoryScreen', () => {
     expect(document.querySelector('img[src="/inventory/sticks.webp"]')).not.toBeInTheDocument();
   });
 
+  it('shows only one shop card per equipment rarity', async () => {
+    const duplicatedInventory: InventoryState = {
+      ...inventoryWithItems,
+      items: {
+        ...inventoryWithItems.items,
+        stick: [
+          inventoryWithItems.items.stick[0]!,
+          {
+            ...inventoryWithItems.items.stick[0]!,
+            id: 'stick-bronze-duplicate',
+          },
+        ],
+      },
+    };
+    mockInventoryFetch(duplicatedInventory);
+
+    renderInventory();
+
+    expect(await screen.findByRole('button', { name: /Подробнее о Бронзовая клюшка/i })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /Подробнее о Бронзовая клюшка/i })).toHaveLength(1);
+  });
+
   it('shows bank packages on the bank tab', async () => {
     mockInventoryFetch(inventoryWithItems);
 

@@ -1,6 +1,9 @@
 import type { InventoryEquipmentKind, InventoryItem } from '../api/inventory.js';
 
 type InventoryTier = 'bronze' | 'silver' | 'gold';
+type InventoryArtworkItem = Pick<InventoryItem, 'kind' | 'rarity'> & {
+  imageUrl?: string | null;
+};
 
 const FALLBACK_ARTWORK: Record<InventoryEquipmentKind, Record<InventoryTier, string>> = {
   stick: {
@@ -26,7 +29,7 @@ const LEGACY_GROUP_ARTWORK = new Set([
   '/inventory/nutrition.webp',
 ]);
 
-function tierFor(item: InventoryItem): InventoryTier {
+function tierFor(item: InventoryArtworkItem): InventoryTier {
   if (item.rarity === 'legendary' || item.rarity === 'epic') return 'gold';
   if (item.rarity === 'rare') return 'silver';
   return 'bronze';
@@ -36,7 +39,7 @@ export function placeholderArtworkForKind(kind: InventoryEquipmentKind): string 
   return FALLBACK_ARTWORK[kind].bronze;
 }
 
-export function artworkForInventoryItem(item: InventoryItem): string {
+export function artworkForInventoryItem(item: InventoryArtworkItem): string {
   if (item.imageUrl && !LEGACY_GROUP_ARTWORK.has(item.imageUrl)) return item.imageUrl;
   return FALLBACK_ARTWORK[item.kind][tierFor(item)];
 }

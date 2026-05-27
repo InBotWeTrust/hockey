@@ -40,9 +40,10 @@ function isSectionContext(location: ReturnType<typeof useLocation>): boolean {
   }
   if (location.pathname !== '/') return false;
   const params = new URLSearchParams(location.search);
-  if (params.get('from') !== 'sections') return false;
-  if (params.get('play') === '1' || params.has('match')) return false;
+  if (params.get('play') === '1') return false;
   const view = params.get('view');
+  if (view === 'amateur') return true;
+  if (params.get('from') !== 'sections') return false;
   return view === 'training' || view === 'amateur' || view === 'pro';
 }
 
