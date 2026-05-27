@@ -163,6 +163,29 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
     expect(switched.started_at).toBe(state.started_at);
   });
 
+  it('handles concurrent training starts for a fresh local day', async () => {
+    const responses = await Promise.all([
+      startTraining(1),
+      startTraining(1),
+      startTraining(1),
+      startTraining(1),
+      startTraining(1),
+    ]);
+
+    for (const res of responses) {
+      expect(res.statusCode).toBe(200);
+      expect(res.json().state).toBe('active');
+    }
+
+    const { rows } = await pool.query<{ sessions: string }>(
+      `select count(*)::int as sessions
+         from training_session
+        where user_id = $1`,
+      [userId],
+    );
+    expect(Number(rows[0]!.sessions)).toBe(1);
+  });
+
   it('rejects stale training tapTime after the session has moved on', async () => {
     const training = await startTraining(2);
     expect(training.statusCode).toBe(200);

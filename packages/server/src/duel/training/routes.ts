@@ -311,6 +311,11 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
              (user_id, day_date, selected_period, state, game_core_version,
               training_seed, started_at)
            values ($1, $2::date, $3, 'active', $4, $5, $6)
+           on conflict (user_id, day_date) do update
+             set selected_period = case
+                   when training_session.state = 'active' then excluded.selected_period
+                   else training_session.selected_period
+                 end
            returning id, user_id, day_date::text as day_date, selected_period, state,
                      game_core_version, training_seed, started_at, closed_at`,
         [req.user.id, localToday, selectedPeriod, GAME_CORE_VERSION, trainingSeed, now],
