@@ -38,6 +38,10 @@ const shotBodySchema = z.object({
   claimed_result: z.enum(['goal', 'save', 'miss']),
 });
 
+const historyQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(30).default(14),
+});
+
 const TAP_TIME_FUTURE_TOLERANCE_MS = 2500;
 const TAP_TIME_STALE_TOLERANCE_MS = 12_000;
 const TAP_TIME_PAUSE_ALLOWANCE_PER_SHOT_MS = 2_000;
@@ -160,6 +164,37 @@ async function fetchPreviousGameStats(
     periods,
   };
 }
+
+async function fetchDailyHistoryStats(
+  client: PoolClient,
+  userId: string,
+  limit: number,
+): Promise<DailyGameStats[]> {
+  const { rows } = await client.query<{ id: string; day_date: string }>(
+    `select id, to_char(day_date, 'YYYY-MM-DD') as day_date
+       from day_pool
+      where user_id = $1
+        and state = 'closed'
+      order by closed_at desc nulls last, day_date desc, created_at desc
+      limit $2`,
+    [userId, limit],
+  );
+
+  const games: DailyGameStats[] = [];
+  for (const pool of rows) {
+    const periods = await fetchRecentPeriods(client, pool.id);
+    const totals = await aggregateDailyTotals(client, pool.id);
+    games.push({
+      day_date: pool.day_date,
+      total_shots: totals.shots,
+      total_goals: totals.goals,
+      total_duration_ms: periods.reduce((sum, period) => sum + period.duration_ms, 0),
+      periods,
+    });
+  }
+  return games;
+}
+
 
 async function fetchLifetime(
   client: PoolClient,
@@ -366,6 +401,14 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
       const { pool, localToday } = await reconcileDayPool(client, req.user.id, now, settings.daily);
       return buildState(client, pool, localToday, req.user.id, settings, now);
     });
+  });
+
+  app.get('/duel/daily/history', { preHandler: [app.authenticate] }, async (req) => {
+    const parsed = historyQuerySchema.safeParse(req.query);
+    if (!parsed.success) throw new AppError('bad_request', 'invalid daily history query', 400);
+    return withTransaction(app, (client) =>
+      fetchDailyHistoryStats(client, req.user.id, parsed.data.limit),
+    ).then((games) => ({ games }));
   });
 
   app.post('/duel/daily/period/start', { preHandler: [app.authenticate] }, async (req) => {

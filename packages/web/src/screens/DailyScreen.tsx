@@ -1643,7 +1643,7 @@ function ArenaVideoCube({
                 style={{
                   flex: '0 0 calc(100% - clamp(24px, 7vw, 40px))',
                   minWidth: 0,
-                  aspectRatio: '4 / 3',
+                  aspectRatio: '1.28 / 1',
                   scrollSnapAlign: 'center',
                   display: 'flex',
                   overflow: 'visible',
@@ -1779,6 +1779,7 @@ function ArenaCubeFace({
           justifyContent: 'space-between',
           gap: 'clamp(6px, 2vw, 10px)',
           padding: 'clamp(12px, 4vw, 16px)',
+          paddingBottom: 'clamp(18px, 5vw, 24px)',
           boxSizing: 'border-box',
         }}
       >

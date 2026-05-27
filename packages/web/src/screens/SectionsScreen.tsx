@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronRight, Dumbbell, ShoppingBag, Swords, Trophy } from 'lucide-react';
+import { CalendarDays, ChevronRight, Dumbbell, ShoppingBag, Swords, Trophy } from 'lucide-react';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
 
@@ -34,6 +34,7 @@ export function SectionsScreen(): JSX.Element {
     (dailyData?.lifetime_total_goals ?? 0) >= amateurUnlockGoalsRequired;
   const trainingShotsLimit = trainingData?.shots_limit ?? 500;
   const trainingShotsTaken = trainingData?.shots_taken ?? 0;
+  const dailyShotsLimit = (dailyData?.shots_per_period ?? 30) * (dailyData?.total_periods ?? 3);
 
   const openAmateurs = (): void => {
     if (!isAmateurUnlocked) {
@@ -66,6 +67,14 @@ export function SectionsScreen(): JSX.Element {
       >
         <div className="section-label section-label--page">Разделы</div>
 
+        <SectionCard
+          title="Ежедневная игра"
+          description="Сегодняшняя игра и статистика прошедших дней"
+          meta={`${numberText(dailyData?.daily_total_shots ?? 0)}/${numberText(dailyShotsLimit)} бросков сегодня`}
+          tone="active"
+          icon={<CalendarDays size={24} strokeWidth={2.3} />}
+          onClick={() => navigate('/daily')}
+        />
         <SectionCard
           title="Тренировка"
           description="Периоды на выбор, броски без риска для дневной игры"

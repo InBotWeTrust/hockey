@@ -9,11 +9,22 @@ export interface InventoryItem {
   description: string;
   imageUrl: string | null;
   currencyPrice: number;
+  chargesPerPurchase: number;
   rarity: 'common' | 'rare' | 'epic' | 'legendary';
   powerScore: number;
   duelPeriodCost: number;
   chargesAvailable: number;
   chargesReserved: number;
+}
+
+export interface InventoryPurchase {
+  id: string;
+  itemId: string | null;
+  title: string;
+  kind: InventoryEquipmentKind | null;
+  tokensSpent: number;
+  chargesAdded: number;
+  createdAt: string;
 }
 
 export interface InventoryState {
@@ -28,6 +39,7 @@ export interface InventoryState {
     nutritionItemId: string | null;
   };
   items: Record<InventoryEquipmentKind, InventoryItem[]>;
+  purchaseHistory?: InventoryPurchase[];
 }
 
 export interface EquipmentPatch {
@@ -44,5 +56,11 @@ export function patchEquipment(patch: EquipmentPatch): Promise<InventoryState> {
   return apiFetch<InventoryState>('/inventory/equipment', {
     method: 'PATCH',
     body: JSON.stringify(patch),
+  });
+}
+
+export function purchaseInventoryItem(itemId: string): Promise<InventoryState> {
+  return apiFetch<InventoryState>(`/inventory/items/${itemId}/purchase`, {
+    method: 'POST',
   });
 }

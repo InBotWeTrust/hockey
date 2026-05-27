@@ -20,6 +20,11 @@ const DemoScreen = lazy(() =>
 const InventoryScreen = lazy(() =>
   import('../screens/InventoryScreen.js').then((module) => ({ default: module.InventoryScreen })),
 );
+const DailyOverviewScreen = lazy(() =>
+  import('../screens/DailyOverviewScreen.js').then((module) => ({
+    default: module.DailyOverviewScreen,
+  })),
+);
 const ProfileScreen = lazy(() =>
   import('../screens/ProfileScreen.js').then((module) => ({ default: module.ProfileScreen })),
 );
@@ -146,6 +151,14 @@ function AppFrame(): JSX.Element {
                 element={
                   <PrivateRoute>
                     <InventoryScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/daily"
+                element={
+                  <PrivateRoute>
+                    <DailyOverviewScreen />
                   </PrivateRoute>
                 }
               />

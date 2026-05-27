@@ -13,6 +13,7 @@ interface InventoryItemRow {
   description: string;
   photo_url: string | null;
   currency_price: number;
+  charges_per_purchase: number;
   rarity: 'common' | 'rare' | 'epic' | 'legendary';
   power_score: number;
   duel_period_cost: number;
@@ -31,6 +32,7 @@ interface InventoryState {
     nutritionItemId: string | null;
   };
   items: Record<EquipmentKind, InventoryItemDto[]>;
+  purchaseHistory: InventoryPurchaseDto[];
 }
 
 interface InventoryItemDto {
@@ -40,11 +42,22 @@ interface InventoryItemDto {
   description: string;
   imageUrl: string | null;
   currencyPrice: number;
+  chargesPerPurchase: number;
   rarity: 'common' | 'rare' | 'epic' | 'legendary';
   powerScore: number;
   duelPeriodCost: number;
   chargesAvailable: number;
   chargesReserved: number;
+}
+
+interface InventoryPurchaseDto {
+  id: string;
+  itemId: string | null;
+  title: string;
+  kind: EquipmentKind | null;
+  tokensSpent: number;
+  chargesAdded: number;
+  createdAt: string;
 }
 
 const equipmentPatchSchema = z
@@ -60,6 +73,10 @@ const equipmentPatchSchema = z
       value.nutritionItemId !== undefined,
     'no changes',
   );
+
+const itemParamsSchema = z.object({
+  itemId: z.string().uuid(),
+});
 
 async function ensureInventoryRows(client: DbClient, userId: string): Promise<void> {
   await client.query(
@@ -96,7 +113,7 @@ async function fetchInventoryState(client: DbClient, userId: string): Promise<In
 
   const { rows } = await client.query<InventoryItemRow>(
     `select i.id, i.item_kind, i.title, i.description, i.photo_url, i.currency_price,
-            i.rarity, i.power_score, i.duel_period_cost,
+            i.charges_per_purchase, i.rarity, i.power_score, i.duel_period_cost,
             coalesce(ui.charges_available, 0)::int as charges_available,
             coalesce(ui.charges_reserved, 0)::int as charges_reserved
        from admin_inventory_items i
@@ -121,6 +138,7 @@ async function fetchInventoryState(client: DbClient, userId: string): Promise<In
       description: row.description,
       imageUrl: row.photo_url,
       currencyPrice: Number(row.currency_price),
+      chargesPerPurchase: Number(row.charges_per_purchase),
       rarity: row.rarity,
       powerScore: Number(row.power_score),
       duelPeriodCost: Number(row.duel_period_cost),
@@ -128,6 +146,26 @@ async function fetchInventoryState(client: DbClient, userId: string): Promise<In
       chargesReserved: Number(row.charges_reserved),
     });
   }
+
+  const { rows: historyRows } = await client.query<{
+    id: string;
+    available_delta: number;
+    created_at: Date;
+    metadata: {
+      inventory_item_id?: string;
+      title?: string;
+      item_kind?: EquipmentKind;
+      charges_added?: number;
+    };
+  }>(
+    `select id::text, available_delta, created_at, metadata
+       from currency_ledger
+      where user_id = $1
+        and reason = 'inventory_purchase'
+      order by created_at desc, id desc
+      limit 10`,
+    [userId],
+  );
 
   return {
     balances: {
@@ -140,6 +178,15 @@ async function fetchInventoryState(client: DbClient, userId: string): Promise<In
       nutritionItemId: account.equipped_nutrition_item_id,
     },
     items,
+    purchaseHistory: historyRows.map((row) => ({
+      id: row.id,
+      itemId: row.metadata.inventory_item_id ?? null,
+      title: row.metadata.title ?? 'Покупка инвентаря',
+      kind: row.metadata.item_kind ?? null,
+      tokensSpent: Math.abs(Number(row.available_delta)),
+      chargesAdded: Number(row.metadata.charges_added ?? 0),
+      createdAt: row.created_at.toISOString(),
+    })),
   };
 }
 
@@ -165,9 +212,104 @@ async function assertCanEquipItem(
   }
 }
 
+async function purchaseInventoryItem(
+  client: PoolClient,
+  userId: string,
+  itemId: string,
+): Promise<InventoryState> {
+  await ensureInventoryRows(client, userId);
+
+  const { rows: itemRows } = await client.query<{
+    id: string;
+    title: string;
+    item_kind: EquipmentKind;
+    currency_price: number;
+    charges_per_purchase: number;
+  }>(
+    `select id, title, item_kind, currency_price, charges_per_purchase
+       from admin_inventory_items
+      where id = $1
+        and deleted_at is null
+        and item_kind in ('stick', 'skates', 'nutrition')`,
+    [itemId],
+  );
+  const item = itemRows[0];
+  if (!item) throw new AppError('not_found', 'inventory item not found', 404);
+
+  const price = Number(item.currency_price);
+  const charges = Number(item.charges_per_purchase);
+  if (charges <= 0) {
+    throw new AppError('conflict', 'inventory item is not purchasable', 409);
+  }
+
+  const { rows: accountRows } = await client.query<{
+    balance: number;
+    reserved_balance: number;
+  }>(
+    `update user_currency_account
+        set balance = balance - $2,
+            updated_at = now()
+      where user_id = $1
+        and balance >= $2
+      returning balance, reserved_balance`,
+    [userId, price],
+  );
+  const account = accountRows[0];
+  if (!account) throw new AppError('conflict', 'not enough currency balance', 409);
+
+  await client.query(
+    `insert into user_inventory_item
+       (user_id, inventory_item_id, charges_available, updated_at)
+     values ($1, $2, $3, now())
+     on conflict (user_id, inventory_item_id)
+     do update
+       set charges_available = user_inventory_item.charges_available + excluded.charges_available,
+           updated_at = now()`,
+    [userId, item.id, charges],
+  );
+
+  await client.query(
+    `insert into currency_ledger
+       (user_id, reason, available_delta, reserved_delta, balance_after, reserved_after, metadata)
+     values ($1, 'inventory_purchase', $2, 0, $3, $4, $5)`,
+    [
+      userId,
+      -price,
+      Number(account.balance),
+      Number(account.reserved_balance),
+      JSON.stringify({
+        inventory_item_id: item.id,
+        title: item.title,
+        item_kind: item.item_kind,
+        charges_added: charges,
+      }),
+    ],
+  );
+
+  return fetchInventoryState(client, userId);
+}
+
 export const inventoryRoutes: FastifyPluginAsync = async (app) => {
   app.get('/inventory/me', { preHandler: [app.authenticate] }, async (req) => {
     return fetchInventoryState(app.pg, req.user.id);
+  });
+
+  app.post('/inventory/items/:itemId/purchase', { preHandler: [app.authenticate] }, async (req) => {
+    const params = itemParamsSchema.safeParse(req.params);
+    if (!params.success) throw new AppError('bad_request', 'invalid inventory item id', 400);
+
+    const client = await app.pg.connect();
+    try {
+      await client.query('begin');
+      const state = await purchaseInventoryItem(client, req.user.id, params.data.itemId);
+      await client.query('commit');
+      return state;
+    } catch (err) {
+      await client.query('rollback').catch(() => undefined);
+      throw err;
+    } finally {
+      client.release();
+    }
   });
 
   app.patch('/inventory/equipment', { preHandler: [app.authenticate] }, async (req) => {

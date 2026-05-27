@@ -498,6 +498,68 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(stick?.chargesAvailable).toBe(3);
   });
 
+  it('purchases inventory with currency balance', async () => {
+    const stickId = await createInventoryItem('stick', 'Bronze shop stick');
+    await pool.query(
+      `update admin_inventory_items
+          set currency_price = 40,
+              charges_per_purchase = 5
+        where id = $1`,
+      [stickId],
+    );
+
+    const purchased = await app.inject({
+      method: 'POST',
+      url: `/inventory/items/${stickId}/purchase`,
+      headers: auth(tokenA),
+    });
+
+    expect(purchased.statusCode).toBe(200);
+    expect(purchased.json().balances.tokens).toBe(60);
+    const stick = purchased
+      .json()
+      .items.stick.find((item: { id: string }) => item.id === stickId);
+    expect(stick?.chargesAvailable).toBe(5);
+    expect(stick?.chargesPerPurchase).toBe(5);
+    expect(purchased.json().purchaseHistory[0]).toMatchObject({
+      title: 'Bronze shop stick',
+      tokensSpent: 40,
+      chargesAdded: 5,
+    });
+
+    const ledger = await pool.query<{ available_delta: number; balance_after: number }>(
+      `select available_delta, balance_after
+         from currency_ledger
+        where user_id = $1 and reason = 'inventory_purchase'`,
+      [userA],
+    );
+    expect(ledger.rows).toEqual([{ available_delta: -40, balance_after: 60 }]);
+  });
+
+  it('rejects inventory purchase when currency balance is too low', async () => {
+    const skatesId = await createInventoryItem('skates', 'Gold shop skates');
+    await pool.query(
+      `update admin_inventory_items
+          set currency_price = 140,
+              charges_per_purchase = 5
+        where id = $1`,
+      [skatesId],
+    );
+
+    const purchased = await app.inject({
+      method: 'POST',
+      url: `/inventory/items/${skatesId}/purchase`,
+      headers: auth(tokenA),
+    });
+
+    expect(purchased.statusCode).toBe(409);
+    const account = await pool.query<{ balance: number }>(
+      `select balance from user_currency_account where user_id = $1`,
+      [userA],
+    );
+    expect(account.rows[0]?.balance).toBe(100);
+  });
+
   it('keeps a classic duel active long enough for all periods and breaks', async () => {
     const templateId = await createTemplate({
       totalPeriods: 3,

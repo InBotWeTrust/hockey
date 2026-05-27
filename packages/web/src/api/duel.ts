@@ -82,6 +82,10 @@ export function fetchDailyState(): Promise<DailyStateResponse> {
   return apiFetch<DailyStateResponse>('/duel/daily/state').then(stampDailyState);
 }
 
+export function fetchDailyHistory(limit = 14): Promise<{ games: DailyGameStats[] }> {
+  return apiFetch<{ games: DailyGameStats[] }>(`/duel/daily/history?limit=${limit}`);
+}
+
 export function startDailyPeriod(): Promise<DailyStateResponse> {
   return apiFetch<DailyStateResponse>('/duel/daily/period/start', {
     method: 'POST',
