@@ -24,7 +24,7 @@ import {
   type StickEffects,
 } from '@hockey/game-core';
 
-export const TRAINING_NEW_COURT_BACKGROUND = '/sprites/test-court-bg.webp';
+export const TRAINING_NEW_COURT_BACKGROUND = '/sprites/new-light-court.webp';
 export const TRAINING_NEW_COURT_BG_CROP_BOTTOM = '7%';
 export const TRAINING_NEW_COURT_VISUAL_Y_SCALE = PERSPECTIVE_COURT_VISUAL_Y_SCALE;
 export const TRAINING_NEW_COURT_VISUAL_Y_OFFSET = PERSPECTIVE_COURT_VISUAL_Y_OFFSET;
