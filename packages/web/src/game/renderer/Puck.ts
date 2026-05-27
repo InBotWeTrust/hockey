@@ -5,8 +5,8 @@ import type { Scale } from '../coords.js';
 const PUCK_RADIUS = 3.3;
 const PUCK_BLACK = 0x111111;
 const PUCK_SHADOW = 0x0f172a;
-const PUCK_TRAIL_OUTER = 0x6bb6df;
-const PUCK_TRAIL_INNER = 0xffffff;
+const PUCK_TRAIL_OUTER = 0xd6dde8;
+const PUCK_TRAIL_INNER = 0xb6c2d2;
 const TRAIL_MAX_LENGTH = 154;
 const TRAIL_MIN_DISTANCE = 1;
 
@@ -183,7 +183,7 @@ export class Puck {
       .stroke({
         width: width * 1.7,
         color: PUCK_TRAIL_OUTER,
-        alpha: 0.18 * fade,
+        alpha: 0.24 * fade,
       });
     this.trail
       .moveTo(0, 0)
@@ -191,7 +191,7 @@ export class Puck {
       .stroke({
         width,
         color: PUCK_TRAIL_INNER,
-        alpha: 0.55 * fade,
+        alpha: 0.42 * fade,
       });
   }
 

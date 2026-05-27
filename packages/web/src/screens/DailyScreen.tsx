@@ -55,6 +55,7 @@ import { Puck, type PuckOptions } from '../game/renderer/Puck.js';
 import { createGameLoop, type GameLoop, type SpeedOverrides } from '../game/loop.js';
 import type { Scale } from '../game/coords.js';
 import {
+  TRAINING_LONG_COURT_BACKGROUND,
   TRAINING_NEW_COURT_BACKGROUND,
   TRAINING_NEW_COURT_BG_CROP_BOTTOM,
   TRAINING_NEW_COURT_GOALIE_VISUAL_X_SCALE,
@@ -73,8 +74,10 @@ import {
   TRAINING_NEW_COURT_VISUAL_Y_OFFSET,
   TRAINING_NEW_COURT_VISUAL_Y_SCALE,
   TRAINING_NEW_COURT_POST_EDGE_DISTANCE,
+  TRAINING_VIDEO_CUBE_IMAGE,
   distanceToNewTrainingCourtGoalEdge,
   resolveNewTrainingCourtShot,
+  type TrainingCourtDesign,
 } from '../game/trainingNewCourt.js';
 import { TelegramLoginButton, type TelegramAuthPayload } from '../auth/TelegramLoginButton.js';
 import { useAuthStore, type AuthSession } from '../auth/authStore.js';
@@ -195,6 +198,7 @@ const DAILY_HUB_ARTWORK_IMAGES: Record<DailyHubArtwork, string> = {
   start: '/daily-game/start.webp',
 };
 const TRAINING_HITBOX_TOGGLE_STORAGE_KEY = 'hockey.trainingHitboxesVisible';
+const TRAINING_COURT_DESIGN_STORAGE_KEY = 'hockey.trainingCourtDesign';
 const OPPONENT_ONLINE_WINDOW_MS = 2 * 60 * 1000;
 const OPPONENT_RECENT_WINDOW_MS = 5 * 60 * 1000;
 const DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED = 1000;
@@ -291,6 +295,26 @@ function readTrainingHitboxesVisible(): boolean {
     return window.localStorage.getItem(TRAINING_HITBOX_TOGGLE_STORAGE_KEY) === 'true';
   } catch {
     return false;
+  }
+}
+
+function readTrainingCourtDesign(): TrainingCourtDesign {
+  if (typeof window === 'undefined') return 'standard';
+  try {
+    return window.localStorage.getItem(TRAINING_COURT_DESIGN_STORAGE_KEY) === 'long'
+      ? 'long'
+      : 'standard';
+  } catch {
+    return 'standard';
+  }
+}
+
+function saveTrainingCourtDesign(value: TrainingCourtDesign): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(TRAINING_COURT_DESIGN_STORAGE_KEY, value);
+  } catch {
+    // The switch is a local visual aid; storage failure should not block gameplay.
   }
 }
 
@@ -6521,6 +6545,8 @@ interface PlayViewProps<TState> {
   rinkAspectRatio?: string | undefined;
   rinkBorderRadius?: number | string | undefined;
   rinkBorder?: string | undefined;
+  hideScoreboard?: boolean | undefined;
+  overlayControls?: ReactNode;
   gameLayerStyle?: CSSProperties | undefined;
   playerGrip?: 'left' | 'right' | undefined;
   playerOptions?: PlayerOptions | undefined;
@@ -6847,10 +6873,6 @@ function TrainingHitboxesToggle({
   return (
     <label
       style={{
-        position: 'fixed',
-        top: 'calc(var(--app-safe-top) + 78px)',
-        left: 12,
-        zIndex: 540,
         display: 'inline-flex',
         alignItems: 'center',
         gap: 8,
@@ -6884,7 +6906,74 @@ function TrainingHitboxesToggle({
   );
 }
 
-function TrainingPerspectiveRink(): JSX.Element {
+function TrainingCourtDesignSwitch({
+  value,
+  onChange,
+}: {
+  value: TrainingCourtDesign;
+  onChange: (value: TrainingCourtDesign) => void;
+}): JSX.Element {
+  const options: Array<{ value: TrainingCourtDesign; label: string }> = [
+    { value: 'standard', label: 'Обычная' },
+    { value: 'long', label: 'Длинная' },
+  ];
+
+  return (
+    <div
+      role="group"
+      aria-label="Вариант площадки"
+      style={{
+        display: 'inline-flex',
+        gap: 3,
+        minHeight: 40,
+        padding: 3,
+        borderRadius: 999,
+        background: 'rgba(8, 24, 43, 0.72)',
+        border: '1px solid rgba(255, 255, 255, 0.24)',
+        boxShadow: '0 12px 28px rgba(7, 19, 33, 0.2)',
+        backdropFilter: 'blur(14px)',
+      }}
+    >
+      {options.map((option) => {
+        const active = option.value === value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            aria-pressed={active}
+            onClick={() => onChange(option.value)}
+            style={{
+              minWidth: 72,
+              minHeight: 34,
+              padding: '0 10px',
+              border: 0,
+              borderRadius: 999,
+              background: active ? 'rgba(255,255,255,0.9)' : 'transparent',
+              color: active ? 'rgba(8, 24, 43, 0.92)' : 'rgba(255,255,255,0.82)',
+              fontFamily: 'inherit',
+              fontSize: 11,
+              fontWeight: 950,
+              lineHeight: 1,
+              whiteSpace: 'nowrap',
+              cursor: 'pointer',
+            }}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function TrainingPerspectiveRink({
+  design = 'standard',
+  cubeHud,
+}: {
+  design?: TrainingCourtDesign | undefined;
+  cubeHud?: ReactNode;
+}): JSX.Element {
+  const isLong = design === 'long';
   return (
     <div
       role="img"
@@ -6900,17 +6989,126 @@ function TrainingPerspectiveRink(): JSX.Element {
       }}
     >
       <img
-        src={TRAINING_NEW_COURT_BACKGROUND}
+        src={isLong ? TRAINING_LONG_COURT_BACKGROUND : TRAINING_NEW_COURT_BACKGROUND}
         alt=""
         aria-hidden="true"
         style={{
           position: 'absolute',
           inset: 0,
           width: '100%',
-          height: `calc(100% + ${TRAINING_NEW_COURT_BG_CROP_BOTTOM})`,
+          height: isLong ? '100%' : `calc(100% + ${TRAINING_NEW_COURT_BG_CROP_BOTTOM})`,
           objectFit: 'cover',
         }}
       />
+      {isLong && (
+        <div
+          aria-hidden={cubeHud ? undefined : true}
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: '50%',
+            width: '64.4%',
+            maxWidth: 391,
+            transform: 'translateX(-50%)',
+            filter: 'drop-shadow(0 18px 24px rgba(3, 10, 18, 0.34))',
+          }}
+        >
+          <img
+            src={TRAINING_VIDEO_CUBE_IMAGE}
+            alt=""
+            aria-hidden="true"
+            style={{ display: 'block', width: '100%', height: 'auto' }}
+          />
+          {cubeHud}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TrainingCubeScoreboard({
+  period,
+  periodsTotal,
+  timer,
+  timerLabel,
+  goals,
+  shots,
+  shotsTotal,
+}: {
+  period: number;
+  periodsTotal: number;
+  timer: string;
+  timerLabel: string;
+  goals: number;
+  shots: number;
+  shotsTotal?: number | undefined;
+}): JSX.Element {
+  const shotsText =
+    typeof shotsTotal === 'number'
+      ? `${String(shots).padStart(2, '0')}/${String(shotsTotal).padStart(2, '0')}`
+      : String(shots).padStart(2, '0');
+  const metrics = [
+    { label: 'Период', value: `${period}/${periodsTotal}` },
+    { label: 'Голы', value: String(goals).padStart(2, '0') },
+    { label: 'Броски', value: shotsText },
+    { label: timerLabel, value: timer },
+  ];
+
+  return (
+    <div
+      aria-label="Статистика на видеокубе"
+      style={{
+        position: 'absolute',
+        left: '9%',
+        right: '9%',
+        top: '22%',
+        bottom: '26%',
+        display: 'grid',
+        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+        gap: 'clamp(3px, 1.1vw, 8px)',
+        alignContent: 'center',
+        pointerEvents: 'none',
+      }}
+    >
+      {metrics.map((metric) => (
+        <div
+          key={metric.label}
+          style={{
+            minWidth: 0,
+            textAlign: 'center',
+            color: '#06213a',
+            textShadow: '0 1px 0 rgba(255,255,255,0.56)',
+          }}
+        >
+          <div
+            style={{
+              fontSize: 'clamp(5px, 1.25vw, 8px)',
+              fontWeight: 950,
+              lineHeight: 1,
+              textTransform: 'uppercase',
+              opacity: 0.64,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {metric.label}
+          </div>
+          <div
+            style={{
+              marginTop: 2,
+              fontFamily: 'var(--font-mono)',
+              fontSize: 'clamp(9px, 2.7vw, 18px)',
+              fontWeight: 950,
+              lineHeight: 1,
+              fontVariantNumeric: 'tabular-nums',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {metric.value}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -6935,11 +7133,18 @@ function TrainingPlayView({
   const userRole = useAuthStore((s) => s.user?.role);
   const experimentalTrainingCourt = useAuthStore((s) => s.user?.experimentalTrainingCourt);
   const [hitboxesVisible, setHitboxesVisible] = useState(() => readTrainingHitboxesVisible());
+  const [courtDesign, setCourtDesign] = useState<TrainingCourtDesign>(() =>
+    readTrainingCourtDesign(),
+  );
   const [now, setNow] = useState(Date.now());
   const canSwitchCourtDesign = userRole === 'admin' || experimentalTrainingCourt === true;
   const handleHitboxesChange = useCallback((next: boolean): void => {
     setHitboxesVisible(next);
     saveTrainingHitboxesVisible(next);
+  }, []);
+  const handleCourtDesignChange = useCallback((next: TrainingCourtDesign): void => {
+    setCourtDesign(next);
+    saveTrainingCourtDesign(next);
   }, []);
 
   useEffect(() => {
@@ -6967,9 +7172,6 @@ function TrainingPlayView({
 
   return (
     <>
-      {canSwitchCourtDesign ? (
-        <TrainingHitboxesToggle checked={hitboxesVisible} onChange={handleHitboxesChange} />
-      ) : null}
       <PlayView<TrainingStateResponse>
         suppressedByModal={!isTrainingActive}
         showIceCar={!isTrainingActive}
@@ -6997,6 +7199,47 @@ function TrainingPlayView({
         submitShot={submitShot}
         applyState={applyState}
         hitboxesVisible={hitboxesVisible}
+        overlayControls={
+          canSwitchCourtDesign ? (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 18,
+                pointerEvents: 'auto',
+              }}
+            >
+              <TrainingHitboxesToggle checked={hitboxesVisible} onChange={handleHitboxesChange} />
+              <TrainingCourtDesignSwitch value={courtDesign} onChange={handleCourtDesignChange} />
+            </div>
+          ) : undefined
+        }
+        rinkLayer={
+          <TrainingPerspectiveRink
+            design={courtDesign}
+            cubeHud={
+              courtDesign === 'long' ? (
+                <TrainingCubeScoreboard
+                  period={data.selected_period ?? 1}
+                  periodsTotal={3}
+                  timer={trainingTimer}
+                  timerLabel={trainingTimerLabel}
+                  goals={data.goals}
+                  shots={data.shots_taken}
+                  shotsTotal={data.shots_limit}
+                />
+              ) : undefined
+            }
+          />
+        }
+        rinkAspectRatio={courtDesign === 'long' ? '1212 / 2400' : undefined}
+        hideScoreboard={courtDesign === 'long'}
+        gameLayerStyle={
+          courtDesign === 'long'
+            ? { top: 'calc(31% - 20px)', height: '61.8%', bottom: 'auto' }
+            : undefined
+        }
       />
     </>
   );
@@ -7280,6 +7523,8 @@ export function PlayView<TState>({
   rinkAspectRatio = '1024 / 1428',
   rinkBorderRadius = 36,
   rinkBorder = '3px solid #1e3a5f',
+  hideScoreboard = false,
+  overlayControls,
   gameLayerStyle,
   playerGrip,
   playerOptions = PERSPECTIVE_PLAYER_OPTIONS,
@@ -8012,23 +8257,45 @@ export function PlayView<TState>({
         overflow: 'hidden',
       }}
     >
+      {overlayControls && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 'calc(var(--app-safe-top) + 30px)',
+            left: 14,
+            right: 14,
+            zIndex: 540,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 18,
+            pointerEvents: 'none',
+          }}
+        >
+          {overlayControls}
+        </div>
+      )}
       <div
         ref={scoreboardShellRef}
         style={{
-          margin: '12px 14px 10px',
+          display: hideScoreboard ? 'none' : 'grid',
+          gap: 8,
+          margin: hideScoreboard ? 0 : '12px 14px 10px',
           ...routeChromeStyle,
         }}
       >
-        <ScoreBoard
-          period={periodNumber}
-          periodsTotal={periodsTotal}
-          timer={timerValue}
-          timerLabel={timerLabel}
-          goals={goals}
-          shots={shots}
-          shotsTotal={shotsTotal}
-          opponent={scoreboardOpponent}
-        />
+        {!hideScoreboard && (
+          <ScoreBoard
+            period={periodNumber}
+            periodsTotal={periodsTotal}
+            timer={timerValue}
+            timerLabel={timerLabel}
+            goals={goals}
+            shots={shots}
+            shotsTotal={shotsTotal}
+            opponent={scoreboardOpponent}
+          />
+        )}
       </div>
 
       <div
