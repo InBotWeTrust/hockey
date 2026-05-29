@@ -155,7 +155,6 @@ type AmateurView = 'home' | 'duels' | 'tournaments';
 type AmateurDuelTab = 'game' | 'locker' | 'rating' | 'history';
 type DuelHistoryScope = 'current' | 'all';
 type LevelArtwork = 'beginner' | 'amateur' | 'pro';
-type DailyHubArtwork = 'period-1' | 'period-2' | 'period-3' | 'break' | 'finished' | 'start';
 type ModeInfoModalContent = { title: string; text: string };
 type ArenaEntryKind = 'daily' | 'training' | 'duel';
 interface ArenaEntry {
@@ -166,7 +165,6 @@ interface ArenaEntry {
   subtitle: string;
   meta: string;
   ctaLabel: string;
-  artworkSrc: string;
   disabled?: boolean;
   scoreboard?: JSX.Element;
   opponentName?: string;
@@ -190,39 +188,17 @@ const MODE_ARTWORK_IMAGES: Record<LevelArtwork, string | null> = {
   amateur: '/modes/amateur.webp',
   pro: '/modes/pro.webp',
 };
-const DUEL_EVENT_ARTWORK_IMAGE = '/modes/amateur-duel-card.webp';
 const DUEL_KIND_ARTWORK_IMAGES: Record<AmateurDuelKind, string> = {
   express: '/modes/amateur-duel-steal-clean.webp',
   express_plus: '/modes/amateur-duel-card.webp',
   classic: '/modes/amateur-duel.webp',
 };
-
-const DAILY_HUB_ARTWORK_IMAGES: Record<DailyHubArtwork, string> = {
-  'period-1': '/daily-game/period-1.webp',
-  'period-2': '/daily-game/period-2.webp',
-  'period-3': '/daily-game/period-3.webp',
-  break: '/daily-game/break.webp',
-  finished: '/daily-game/finished.webp',
-  start: '/daily-game/start.webp',
-};
 const TRAINING_HITBOX_TOGGLE_STORAGE_KEY = 'hockey.trainingHitboxesVisible';
 const OPPONENT_ONLINE_WINDOW_MS = 2 * 60 * 1000;
 const OPPONENT_RECENT_WINDOW_MS = 5 * 60 * 1000;
 const DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED = 1000;
-const ARENA_LAUNCH_TRANSITION_MS = 640;
 const PLAY_ROUTE_TRANSITION_MS = 580;
 const ARENA_SELECTED_ENTRY_STORAGE_KEY = 'hockey.arenaSelectedEntryId';
-const ARENA_RETURN_FRAME_STORAGE_KEY = 'hockey.arenaReturnFrame';
-
-interface ArenaReturnFrame {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-  viewportWidth: number;
-  viewportHeight: number;
-  savedAt: number;
-}
 
 function readArenaSelectedEntryId(): string | null {
   if (typeof window === 'undefined') return null;
@@ -243,59 +219,6 @@ function saveArenaSelectedEntryId(value: string | null): void {
   }
 }
 
-function readArenaReturnFrame(): ArenaReturnFrame | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = window.sessionStorage.getItem(ARENA_RETURN_FRAME_STORAGE_KEY);
-    window.sessionStorage.removeItem(ARENA_RETURN_FRAME_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<ArenaReturnFrame>;
-    const frame: ArenaReturnFrame = {
-      left: Number(parsed.left),
-      top: Number(parsed.top),
-      width: Number(parsed.width),
-      height: Number(parsed.height),
-      viewportWidth: Number(parsed.viewportWidth),
-      viewportHeight: Number(parsed.viewportHeight),
-      savedAt: Number(parsed.savedAt),
-    };
-    const isValid =
-      Number.isFinite(frame.left) &&
-      Number.isFinite(frame.top) &&
-      Number.isFinite(frame.width) &&
-      Number.isFinite(frame.height) &&
-      Number.isFinite(frame.viewportWidth) &&
-      Number.isFinite(frame.viewportHeight) &&
-      Number.isFinite(frame.savedAt) &&
-      frame.width > 0 &&
-      frame.height > 0 &&
-      Math.abs(frame.viewportWidth - window.innerWidth) < 2 &&
-      Math.abs(frame.viewportHeight - window.innerHeight) < 2 &&
-      Date.now() - frame.savedAt < 5000;
-    return isValid ? frame : null;
-  } catch {
-    return null;
-  }
-}
-
-function saveArenaReturnFrame(rect: DOMRect): void {
-  if (typeof window === 'undefined') return;
-  try {
-    const frame: ArenaReturnFrame = {
-      left: rect.left,
-      top: rect.top,
-      width: rect.width,
-      height: rect.height,
-      viewportWidth: window.innerWidth,
-      viewportHeight: window.innerHeight,
-      savedAt: Date.now(),
-    };
-    window.sessionStorage.setItem(ARENA_RETURN_FRAME_STORAGE_KEY, JSON.stringify(frame));
-  } catch {
-    // This is only for visual continuity between routes.
-  }
-}
-
 function readTrainingHitboxesVisible(): boolean {
   if (typeof window === 'undefined') return false;
   try {
@@ -313,6 +236,8 @@ const LONG_COURT_GAME_LAYER_STYLE: CSSProperties = {
 };
 const TRAINING_LED_TABLEAU_IMAGE = '/sprites/wide-tableau-led.webp';
 const DAILY_LONG_COURT_BACKGROUND = '/sprites/daily-long-court-people.webp';
+const ARENA_ICE_COURT_BACKGROUND = '/sprites/arena-ice-court.webp';
+const ARENA_ICE_TABLEAU_IMAGE = '/sprites/arena-ice-tableau.webp';
 
 function shouldReduceMotion(): boolean {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
@@ -326,21 +251,6 @@ function saveTrainingHitboxesVisible(value: boolean): void {
   } catch {
     // The toggle is a local admin aid; storage failure should not block gameplay.
   }
-}
-
-function dailyHubArtworkFor(
-  data: DailyStateResponse,
-  isDailyLockedByTraining: boolean,
-): DailyHubArtwork {
-  if (isDailyLockedByTraining || data.state === 'break_active') return 'break';
-  if (data.state === 'closed') return 'finished';
-  if (data.state === 'period_active') {
-    const period = Math.min(3, Math.max(1, data.current_period));
-    return `period-${period}` as DailyHubArtwork;
-  }
-  if (data.current_period === 0) return 'start';
-  const nextPeriod = Math.min(3, Math.max(1, data.current_period + 1));
-  return `period-${nextPeriod}` as DailyHubArtwork;
 }
 
 function periodSpeedPresetFor(
@@ -913,8 +823,6 @@ function GameHub({
   const [modeInfoModal, setModeInfoModal] = useState<ModeInfoModalContent | null>(null);
   const [duelStatsMatch, setDuelStatsMatch] = useState<AmateurDuelMatch | null>(null);
   const [arenaActionId, setArenaActionId] = useState<string | null>(null);
-  const [launchingArenaEntryId, setLaunchingArenaEntryId] = useState<string | null>(null);
-  const [arenaReturnFrame] = useState<ArenaReturnFrame | null>(readArenaReturnFrame);
   const pending = useDailyStore((s) => s.inFlight);
   const nextPeriod = data.current_period === 0 ? 1 : data.current_period + 1;
   const dailyAvailableTitle = `${nextPeriod}-й период доступен`;
@@ -939,7 +847,6 @@ function GameHub({
     data.current_period === 0 &&
     trainingCooldownEndsAt > 0 &&
     trainingCooldownRemaining > 0;
-  const dailyHubArtwork = dailyHubArtworkFor(data, isDailyLockedByTraining);
   const amateurUnlockGoalsRequired = Math.max(
     0,
     data.amateur_unlock_goals_required ?? DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED,
@@ -995,7 +902,7 @@ function GameHub({
   ]);
 
   const isDailyInProgress = data.state === 'period_active' || data.state === 'break_active';
-  const isArenaLaunching = launchingArenaEntryId !== null;
+  const isArenaLaunching = false;
   const dailyActionDisabled = pending || arenaActionId === 'daily' || isArenaLaunching;
   const dailyActionLabel = 'На площадку';
   const dailyEventTitle = isDailyLockedByTraining
@@ -1055,13 +962,8 @@ function GameHub({
       enter: (value: T) => void | Promise<void>,
     ): Promise<void> => {
       void _entryId;
-      try {
-        const value = await prepare();
-        await enter(value);
-      } catch (err) {
-        setLaunchingArenaEntryId(null);
-        throw err;
-      }
+      const value = await prepare();
+      await enter(value);
     },
     [],
   );
@@ -1080,9 +982,7 @@ function GameHub({
           () => startDailyPeriod(),
           (next) => {
             if (next?.state === 'period_active') {
-              onOpenDailyPlay({ entrance: true, routeTransition: true });
-            } else {
-              setLaunchingArenaEntryId(null);
+              onOpenDailyPlay({ entrance: true });
             }
           },
         );
@@ -1094,7 +994,7 @@ function GameHub({
     await runArenaLaunch(
       'daily',
       async () => null,
-      () => onOpenDailyPlay({ routeTransition: true }),
+      () => onOpenDailyPlay(),
     );
   };
 
@@ -1108,7 +1008,7 @@ function GameHub({
       await runArenaLaunch(
         'training',
         async () => null,
-        () => onOpenTrainingPlay({ routeTransition: true }),
+        () => onOpenTrainingPlay(),
       );
       return;
     }
@@ -1120,9 +1020,8 @@ function GameHub({
         () => startTraining(periodNumber),
         (next) => {
           if (next?.state === 'active') {
-            onOpenTrainingPlay({ entrance: true, routeTransition: true });
+            onOpenTrainingPlay({ entrance: true });
           } else {
-            setLaunchingArenaEntryId(null);
             onOpenTraining();
           }
         },
@@ -1175,11 +1074,10 @@ function GameHub({
             onOpenAmateurMatch(matchId, {
               entrance: false,
               directPlay: true,
-              routeTransition: true,
             });
             return;
           }
-          onOpenAmateurMatch(matchId, { entrance, directPlay: true, routeTransition: true });
+          onOpenAmateurMatch(matchId, { entrance, directPlay: true });
         },
       );
     } catch (err) {
@@ -1212,7 +1110,6 @@ function GameHub({
             ? 'Игра уже начата.'
             : `${data.total_periods} периода по ${data.shots_per_period} бросков.`,
     ctaLabel: dailyActionLabel,
-    artworkSrc: DAILY_HUB_ARTWORK_IMAGES[dailyHubArtwork],
     disabled: dailyActionDisabled,
     onEnter: () => void handleDailyAction(),
     scoreboard: (
@@ -1233,7 +1130,6 @@ function GameHub({
     subtitle: 'Период на выбор, броски для формы и скорости.',
     meta: trainingAvailability,
     ctaLabel: 'На площадку',
-    artworkSrc: MODE_ARTWORK_IMAGES.beginner ?? DAILY_HUB_ARTWORK_IMAGES.start,
     disabled: trainingInFlight || arenaActionId === 'training' || isArenaLaunching,
     onEnter: handleOpenTraining,
   };
@@ -1247,7 +1143,6 @@ function GameHub({
       subtitle: duelOutcomeText(event),
       meta: `${timing.label}: ${timing.value}`,
       ctaLabel: arenaDuelCtaLabel(event, now),
-      artworkSrc: DUEL_EVENT_ARTWORK_IMAGE,
       disabled: arenaActionId === `duel-${event.id}` || isArenaLaunching,
       opponentName: event.opponent.display_name,
       opponentAvatarUrl: event.opponent.avatar_url,
@@ -1297,35 +1192,31 @@ function GameHub({
     <main
       className="screen"
       style={{
-        position: 'relative',
-        padding: 'calc(18px + var(--app-safe-top)) 0 0',
+        position: 'fixed',
+        inset: 0,
+        width: '100%',
+        height: '100dvh',
+        padding: 0,
         overflow: 'hidden',
+        background: '#06111d',
       }}
     >
-      <ArenaRinkBackdropLayer launching={isArenaLaunching} returnFrame={arenaReturnFrame} />
-
       <section
         aria-label="Игровая арена"
         style={{
-          position: 'relative',
+          position: 'absolute',
+          inset: 0,
           zIndex: 2,
           width: '100%',
-          maxWidth: 760,
           height: '100%',
-          margin: '0 auto',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'center',
-          gap: 14,
-          padding: '0 14px',
-          paddingBottom: 'calc(92px + var(--bottom-nav-bottom-gap))',
+          display: 'block',
+          padding: 0,
         }}
       >
         <ArenaVideoCube
           entries={arenaEntries}
           activeIndex={activeCubeIndex}
           onActiveIndexChange={handleArenaActiveIndexChange}
-          launchingEntryId={launchingArenaEntryId}
         />
       </section>
 
@@ -1344,401 +1235,43 @@ function GameHub({
   );
 }
 
-function ArenaRinkBackdropLayer({
-  launching,
-  returnFrame,
-}: {
-  launching: boolean;
-  returnFrame: ArenaReturnFrame | null;
-}): JSX.Element {
-  const [activeReturnFrame, setActiveReturnFrame] = useState<ArenaReturnFrame | null>(returnFrame);
-  const viewportWidth = typeof window === 'undefined' ? 390 : window.innerWidth;
-  const viewportHeight = typeof window === 'undefined' ? 844 : window.innerHeight;
-  const arenaWidth = Math.max(viewportWidth * 1.12, (viewportHeight * 1024) / 1428);
-  const arenaHeight = (arenaWidth * 1428) / 1024;
-  const showPerspectiveRink = launching || activeReturnFrame !== null;
-  const transition =
-    `left ${ARENA_LAUNCH_TRANSITION_MS}ms cubic-bezier(.16,.84,.24,1), ` +
-    `top ${ARENA_LAUNCH_TRANSITION_MS}ms cubic-bezier(.16,.84,.24,1), ` +
-    `width ${ARENA_LAUNCH_TRANSITION_MS}ms cubic-bezier(.16,.84,.24,1), ` +
-    `height ${ARENA_LAUNCH_TRANSITION_MS}ms cubic-bezier(.16,.84,.24,1), ` +
-    `filter ${ARENA_LAUNCH_TRANSITION_MS}ms cubic-bezier(.16,.84,.24,1), ` +
-    `transform ${ARENA_LAUNCH_TRANSITION_MS}ms cubic-bezier(.16,.84,.24,1), ` +
-    `opacity ${ARENA_LAUNCH_TRANSITION_MS}ms ease`;
-
-  useEffect(() => {
-    if (!returnFrame) return undefined;
-
-    setActiveReturnFrame(returnFrame);
-    let secondFrame: number | null = null;
-    const firstFrame = window.requestAnimationFrame(() => {
-      secondFrame = window.requestAnimationFrame(() => setActiveReturnFrame(null));
-    });
-
-    return () => {
-      window.cancelAnimationFrame(firstFrame);
-      if (secondFrame !== null) window.cancelAnimationFrame(secondFrame);
-    };
-  }, [returnFrame]);
-
-  const isReturning = activeReturnFrame !== null;
-  const perspectiveRinkFrameStyle: CSSProperties = activeReturnFrame
-    ? {
-        position: 'fixed',
-        left: activeReturnFrame.left,
-        top: activeReturnFrame.top,
-        width: activeReturnFrame.width,
-        height: activeReturnFrame.height,
-        overflow: 'hidden',
-        opacity: 0.82,
-        filter: 'blur(0.7px) saturate(1.02) contrast(1)',
-        transform: 'translate3d(0, 0, 0)',
-        transformOrigin: '50% 58%',
-        transition,
-      }
-    : {
-        position: 'fixed',
-        left: viewportWidth / 2,
-        top: viewportHeight * (launching ? 0.53 : 0.5),
-        width: arenaWidth,
-        height: arenaHeight,
-        overflow: 'hidden',
-        opacity: launching ? 0.96 : 0,
-        filter: launching
-          ? 'blur(0.6px) saturate(1.02) contrast(1)'
-          : 'blur(2.2px) saturate(0.96) contrast(0.98)',
-        transform: launching
-          ? 'translate3d(-50%, -50%, 0) scale(0.76)'
-          : 'translate3d(-50%, -50%, 0) scale(1)',
-        transformOrigin: '50% 54%',
-        transition,
-      };
-  return (
-    <div
-      data-testid="arena-rink-backdrop"
-      data-launching={launching ? 'true' : 'false'}
-      aria-hidden="true"
-      style={{
-        position: 'absolute',
-        inset: 0,
-        zIndex: 0,
-        overflow: 'hidden',
-        pointerEvents: 'none',
-      }}
-    >
-      <ArenaSettledIceBackdrop muted={launching || isReturning} />
-      {showPerspectiveRink && (
-        <div style={perspectiveRinkFrameStyle}>
-          <TrainingPerspectiveRink />
-        </div>
-      )}
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background:
-            'linear-gradient(180deg, rgba(180,211,235,0.22) 0%, rgba(180,211,235,0.04) 28%, rgba(180,211,235,0.1) 100%), radial-gradient(circle at 50% 46%, rgba(255,255,255,0.14), transparent 38%)',
-          opacity: launching ? 0.06 : isReturning ? 0.18 : 0.46,
-          transition: `opacity ${ARENA_LAUNCH_TRANSITION_MS}ms ease`,
-        }}
-      />
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background:
-            'radial-gradient(circle at 50% 50%, transparent 0 28%, rgba(15,23,42,0.18) 62%, rgba(15,23,42,0.28) 100%)',
-          opacity: launching ? 0 : isReturning ? 0.12 : 0.22,
-          transform: launching ? 'scale(1.08)' : 'scale(1)',
-          transition: `opacity ${ARENA_LAUNCH_TRANSITION_MS}ms cubic-bezier(.16,.84,.24,1), transform ${ARENA_LAUNCH_TRANSITION_MS}ms cubic-bezier(.16,.84,.24,1)`,
-        }}
-      />
-    </div>
-  );
-}
-
-function ArenaSettledIceBackdrop({ muted }: { muted: boolean }): JSX.Element {
-  return (
-    <div
-      data-testid="arena-settled-ice-backdrop"
-      role="img"
-      aria-label="Ледовая подложка арены"
-      style={{
-        position: 'absolute',
-        inset: 0,
-        overflow: 'hidden',
-        opacity: muted ? 0.42 : 0.94,
-        transition: `opacity ${ARENA_LAUNCH_TRANSITION_MS}ms ease`,
-        background: '#dceaf5',
-      }}
-    >
-      <img
-        src={TRAINING_NEW_COURT_BACKGROUND}
-        alt=""
-        aria-hidden="true"
-        style={{
-          position: 'absolute',
-          inset: 0,
-          width: '100%',
-          height: '100%',
-          objectFit: 'cover',
-          objectPosition: '50% 0%',
-          filter: 'blur(2.1px) saturate(0.96) contrast(0.98)',
-          transform: 'scale(1.01)',
-        }}
-      />
-      <div
-        aria-hidden="true"
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background:
-            'linear-gradient(180deg, rgba(180,211,235,0.18) 0%, rgba(180,211,235,0.02) 28%, rgba(180,211,235,0.08) 100%), radial-gradient(circle at 50% 46%, rgba(255,255,255,0.12), transparent 38%)',
-        }}
-      />
-    </div>
-  );
-}
-
-function getArenaCarouselStep(carousel: HTMLDivElement | null): number {
-  if (!carousel) return 0;
-  const firstCard = carousel.firstElementChild as HTMLElement | null;
-  const styles = window.getComputedStyle(carousel);
-  const gap = Number.parseFloat(styles.columnGap || styles.gap || '0') || 0;
-  return (firstCard?.offsetWidth ?? carousel.clientWidth ?? 0) + gap;
-}
-
 function ArenaVideoCube({
   entries,
   activeIndex,
   onActiveIndexChange,
-  launchingEntryId,
 }: {
   entries: ArenaEntry[];
   activeIndex: number;
   onActiveIndexChange: (index: number) => void;
-  launchingEntryId: string | null;
 }): JSX.Element {
-  const carouselRef = useRef<HTMLDivElement | null>(null);
-  const activeIndexRef = useRef(activeIndex);
-  const scrollCommitTimerRef = useRef<number | null>(null);
-  const scrollRafRef = useRef<number | null>(null);
-  const programmaticScrollRef = useRef(false);
-  const [scrollProgress, setScrollProgress] = useState(activeIndex);
-
-  useEffect(() => {
-    activeIndexRef.current = activeIndex;
-  }, [activeIndex]);
-
-  useEffect(() => {
-    return () => {
-      if (scrollCommitTimerRef.current !== null) {
-        window.clearTimeout(scrollCommitTimerRef.current);
-      }
-      if (scrollRafRef.current !== null) {
-        window.cancelAnimationFrame(scrollRafRef.current);
-      }
-    };
-  }, []);
-
-  useLayoutEffect(() => {
-    const carousel = carouselRef.current;
-    const step = getArenaCarouselStep(carousel);
-    if (!carousel || step <= 0) {
-      setScrollProgress(activeIndex);
-      return;
-    }
-    const nextLeft = activeIndex * step;
-    const currentIndex = Math.round(carousel.scrollLeft / step);
-    if (currentIndex !== activeIndex && Math.abs(carousel.scrollLeft - nextLeft) > 1) {
-      programmaticScrollRef.current = true;
-      if (typeof carousel.scrollTo === 'function') {
-        carousel.scrollTo({ left: nextLeft, behavior: 'auto' });
-      } else {
-        carousel.scrollLeft = nextLeft;
-      }
-      window.requestAnimationFrame(() => {
-        programmaticScrollRef.current = false;
-      });
-    }
-    setScrollProgress(activeIndex);
-  }, [activeIndex, entries.length]);
-
-  const handleScroll = useCallback((): void => {
-    if (scrollRafRef.current !== null) {
-      window.cancelAnimationFrame(scrollRafRef.current);
-    }
-    scrollRafRef.current = window.requestAnimationFrame(() => {
-      scrollRafRef.current = null;
-      const carousel = carouselRef.current;
-      const step = getArenaCarouselStep(carousel);
-      if (!carousel || step <= 0 || entries.length === 0) return;
-      const progress = Math.min(entries.length - 1, Math.max(0, carousel.scrollLeft / step));
-      setScrollProgress(progress);
-
-      if (programmaticScrollRef.current) return;
-
-      if (scrollCommitTimerRef.current !== null) {
-        window.clearTimeout(scrollCommitTimerRef.current);
-      }
-      scrollCommitTimerRef.current = window.setTimeout(() => {
-        scrollCommitTimerRef.current = null;
-        const nextIndex = Math.min(entries.length - 1, Math.max(0, Math.round(progress)));
-        if (nextIndex !== activeIndexRef.current) {
-          activeIndexRef.current = nextIndex;
-          onActiveIndexChange(nextIndex);
-        }
-      }, 120);
-    });
-  }, [entries.length, onActiveIndexChange]);
-
-  return (
-    <div
-      style={{
-        minHeight: 0,
-        flex: '1 1 auto',
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'center',
-        gap: 'clamp(6px, 1.4vh, 10px)',
-        paddingTop: 'clamp(0px, 4.5vh, 34px)',
-        transform: launchingEntryId ? 'translate3d(0, 34px, 0) scale(0.82)' : 'none',
-        opacity: launchingEntryId ? 0 : 1,
-        filter: launchingEntryId ? 'blur(10px)' : 'none',
-        transition:
-          'transform 420ms cubic-bezier(.18,.82,.24,1), opacity 300ms ease, filter 420ms cubic-bezier(.18,.82,.24,1)',
-        pointerEvents: launchingEntryId ? 'none' : undefined,
-      }}
-    >
-      <div
-        aria-label="Разделы на площадке"
-        style={{
-          position: 'relative',
-          width: '100%',
-          maxWidth: 462,
-          margin: '0 auto',
-          padding: '0',
-        }}
-      >
-        <div
-          ref={carouselRef}
-          onScroll={handleScroll}
-          style={{
-            position: 'relative',
-            zIndex: 2,
-            display: 'flex',
-            gap: 'clamp(10px, 3vw, 12px)',
-            overflowX: 'auto',
-            scrollSnapType: 'x mandatory',
-            scrollPaddingInline: 'clamp(12px, 3.8vw, 20px)',
-            overscrollBehaviorX: 'contain',
-            WebkitOverflowScrolling: 'touch',
-            padding: '0 clamp(12px, 3.8vw, 20px) 12px',
-            scrollbarWidth: 'none',
-            perspective: 920,
-            perspectiveOrigin: '50% 50%',
-          }}
-        >
-          {entries.map((entry, index) => {
-            const offset = Math.max(-1, Math.min(1, index - scrollProgress));
-            const absOffset = Math.abs(offset);
-            return (
-              <article
-                key={entry.id}
-                aria-label={`${entry.eyebrow}: ${entry.title}`}
-                style={{
-                  flex: '0 0 calc(100% - clamp(24px, 7vw, 40px))',
-                  minWidth: 0,
-                  aspectRatio: '1.28 / 1',
-                  scrollSnapAlign: 'center',
-                  display: 'flex',
-                  overflow: 'visible',
-                  perspective: 900,
-                }}
-              >
-                <div
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    display: 'flex',
-                    transform: `rotateY(${offset * 10}deg) translateZ(${-absOffset * 7}px) scale(${1 - absOffset * 0.012})`,
-                    transformOrigin: '50% 50%',
-                    transformStyle: 'preserve-3d',
-                    backfaceVisibility: 'hidden',
-                    transition: 'transform 120ms ease-out, filter 120ms ease-out',
-                    filter: absOffset > 0.12 ? 'brightness(0.96)' : 'none',
-                  }}
-                >
-                  <ArenaCubeFace entry={entry} />
-                  <div
-                    aria-hidden="true"
-                    style={{
-                      position: 'absolute',
-                      inset: 0,
-                      borderRadius: 'clamp(22px, 7vw, 30px)',
-                      pointerEvents: 'none',
-                      opacity: Math.min(0.18, absOffset * 0.24),
-                      background:
-                        offset > 0
-                          ? 'linear-gradient(90deg, rgba(255,255,255,0.18), transparent 42%, rgba(0,0,0,0.2))'
-                          : 'linear-gradient(90deg, rgba(0,0,0,0.2), transparent 58%, rgba(255,255,255,0.18))',
-                      transform: 'translateZ(1px)',
-                    }}
-                  />
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      </div>
-      <div
-        aria-label="Страницы разделов"
-        style={{ display: 'flex', justifyContent: 'center', gap: 6, minHeight: 10 }}
-      >
-        {entries.map((entry, index) => {
-          const active = index === activeIndex;
-          const hiddenByLaunch = launchingEntryId !== null;
-          return (
-            <span
-              key={entry.id}
-              aria-label={`Выбрать ${entry.eyebrow}`}
-              style={{
-                width: active ? 20 : 7,
-                height: 7,
-                borderRadius: 999,
-                background: active ? 'rgba(15,23,42,0.76)' : 'rgba(15,23,42,0.2)',
-                display: 'block',
-                opacity: hiddenByLaunch ? 0 : 1,
-                transition: 'width 160ms ease, background 160ms ease',
-              }}
-            />
-          );
-        })}
-      </div>
-    </div>
+  const activeEntry = entries[Math.min(entries.length - 1, Math.max(0, activeIndex))] ?? entries[0];
+  const hasManyEntries = entries.length > 1;
+  const goTo = useCallback(
+    (nextIndex: number): void => {
+      if (entries.length === 0) return;
+      const normalized = (nextIndex + entries.length) % entries.length;
+      onActiveIndexChange(normalized);
+    },
+    [entries.length, onActiveIndexChange],
   );
-}
 
-function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
-  const titleIsLong = entry.title.length > 12;
-  const showDuelIdentity = entry.kind === 'duel' && Boolean(entry.opponentName);
+  if (!activeEntry) {
+    return <div style={{ minHeight: 320 }} />;
+  }
 
   return (
     <div
-      className="glass"
       style={{
-        position: 'relative',
-        borderRadius: 'clamp(22px, 7vw, 30px)',
-        padding: 0,
+        position: 'fixed',
+        inset: 0,
+        width: '100vw',
+        height: '100dvh',
         overflow: 'hidden',
-        boxSizing: 'border-box',
-        width: '100%',
-        height: '100%',
-        background: 'rgba(220,236,249,0.72)',
+        background: '#06111d',
       }}
     >
       <img
-        src={entry.artworkSrc}
+        src={ARENA_ICE_COURT_BACKGROUND}
         alt=""
         aria-hidden="true"
         style={{
@@ -1747,200 +1280,325 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
           width: '100%',
           height: '100%',
           objectFit: 'cover',
-          transform: 'scale(1.03)',
+          objectPosition: '50% 50%',
+          filter: 'blur(2px)',
+          transform: 'scale(1.015)',
         }}
       />
       <div
-        aria-hidden="true"
+        aria-label="Разделы на табло"
         style={{
           position: 'absolute',
-          inset: 0,
-          background:
-            'linear-gradient(180deg, rgba(8,14,28,0.18) 0%, rgba(8,14,28,0.42) 46%, rgba(8,14,28,0.74) 100%), linear-gradient(90deg, rgba(8,14,28,0.68) 0%, rgba(8,14,28,0.3) 52%, rgba(8,14,28,0.58) 100%)',
-        }}
-      />
-      <div
-        aria-hidden="true"
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background:
-            'radial-gradient(circle at 18% 14%, rgba(255,255,255,0.22), transparent 30%), linear-gradient(180deg, rgba(225,239,250,0.1), rgba(225,239,250,0.22))',
-          backdropFilter: 'blur(1px)',
-        }}
-      />
-      <div
-        style={{
-          position: 'relative',
-          zIndex: 1,
-          height: '100%',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'space-between',
-          gap: 'clamp(6px, 2vw, 10px)',
-          padding: 'clamp(12px, 4vw, 16px)',
-          paddingBottom: 'clamp(18px, 5vw, 24px)',
-          boxSizing: 'border-box',
+          left: '50%',
+          top: 'calc((100dvh - 92px - var(--bottom-nav-bottom-gap) - var(--app-safe-bottom) + var(--app-safe-top)) / 2)',
+          width: 'min(100vw, 620px)',
+          aspectRatio: '1024 / 1536',
+          overflow: 'hidden',
+          transform: 'translate3d(-50%, -74%, 0)',
         }}
       >
+        <img
+          src={ARENA_ICE_TABLEAU_IMAGE}
+          alt=""
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'fill',
+          }}
+        />
         <div
           style={{
+            position: 'absolute',
+            left: '8.3%',
+            right: '8.3%',
+            top: '58.8%',
+            bottom: '5.4%',
+            zIndex: 2,
             display: 'grid',
-            gridTemplateColumns: 'minmax(0, 1fr) auto',
-            gap: 'clamp(8px, 2.8vw, 12px)',
+            gridTemplateRows: 'auto minmax(0, 1fr) auto',
+            rowGap: 'clamp(16px, 2.5vh, 22px)',
+            padding: 'clamp(10px, 1.7vh, 15px) 0 clamp(12px, 2vh, 18px)',
+            boxSizing: 'border-box',
           }}
         >
           <div
             style={{
-              minWidth: 0,
+              position: 'absolute',
+              left: '1.2%',
+              right: '1.2%',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              zIndex: 4,
               display: 'flex',
-              flexDirection: 'column',
-              gap: 'clamp(5px, 1.8vw, 8px)',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              pointerEvents: 'none',
             }}
           >
-            {showDuelIdentity ? (
-              <>
-                <div
+            <ArenaTableauNavButton
+              disabled={!hasManyEntries}
+              label="Предыдущий экран табло"
+              onClick={() => goTo(activeIndex - 1)}
+            >
+              ‹
+            </ArenaTableauNavButton>
+            <ArenaTableauNavButton
+              disabled={!hasManyEntries}
+              label="Следующий экран табло"
+              onClick={() => goTo(activeIndex + 1)}
+            >
+              ›
+            </ArenaTableauNavButton>
+          </div>
+          <div
+            style={{
+              position: 'relative',
+              zIndex: 4,
+              minWidth: 0,
+              display: 'flex',
+              justifyContent: 'center',
+              gap: 6,
+              overflow: 'hidden',
+            }}
+          >
+            {entries.map((entry, index) => {
+              const active = index === activeIndex;
+              return (
+                <button
+                  key={entry.id}
+                  type="button"
+                  aria-label={`Выбрать ${entry.eyebrow}`}
+                  aria-pressed={active}
+                  onClick={() => goTo(index)}
                   style={{
-                    color: 'rgba(255,255,255,0.72)',
-                    fontSize: 10,
-                    fontWeight: 950,
-                    letterSpacing: '0.18em',
-                    textTransform: 'uppercase',
-                    textShadow: '0 2px 10px rgba(0,0,0,0.36)',
+                    width: 7,
+                    height: 7,
+                    flex: '0 0 7px',
+                    padding: 0,
+                    border: 0,
+                    borderRadius: 999,
+                    background: active ? 'rgba(244, 253, 255, 0.96)' : 'rgba(178, 232, 255, 0.42)',
+                    boxShadow: active
+                      ? '0 0 7px rgba(212, 249, 255, 0.74)'
+                      : '0 0 5px rgba(86, 205, 255, 0.24)',
+                    color: 'transparent',
+                    cursor: 'pointer',
                   }}
-                >
-                  {entry.eyebrow}
-                </div>
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'clamp(46px, 14vw, 54px) minmax(0, 1fr)',
-                    alignItems: 'center',
-                    gap: 'clamp(10px, 3vw, 14px)',
-                    minWidth: 0,
-                    marginTop: 2,
-                  }}
-                >
-                  <UserAvatar
-                    avatarUrl={entry.opponentAvatarUrl}
-                    name={entry.opponentName}
-                    size={54}
-                    fontSize={22}
-                    style={{
-                      transform: 'translateY(4px)',
-                      border: '2px solid rgba(255,255,255,0.7)',
-                      boxShadow: '0 12px 26px rgba(3,10,24,0.34)',
-                    }}
-                  />
-                  <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <div
-                      style={{
-                        color: '#fff',
-                        fontSize: 'clamp(20px, 5.6vw, 30px)',
-                        lineHeight: 0.98,
-                        fontWeight: 950,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        textShadow: '0 4px 18px rgba(0,0,0,0.48)',
-                      }}
-                    >
-                      {entry.title}
-                    </div>
-                    {entry.typeLabel && (
-                      <div
-                        style={{
-                          color: 'rgba(255,255,255,0.76)',
-                          fontSize: 'clamp(10px, 3vw, 12px)',
-                          fontWeight: 900,
-                          lineHeight: 1.1,
-                          textShadow: '0 3px 12px rgba(0,0,0,0.4)',
-                        }}
-                      >
-                        {entry.typeLabel}
-                      </div>
-                    )}
-                    <div
-                      style={{
-                        color: 'rgba(255,255,255,0.86)',
-                        fontSize: 'clamp(12px, 3.5vw, 14px)',
-                        fontWeight: 900,
-                        lineHeight: 1.08,
-                        textShadow: '0 3px 14px rgba(0,0,0,0.42)',
-                      }}
-                    >
-                      {entry.subtitle}
-                    </div>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <>
-                <div
-                  style={{
-                    color: 'rgba(255,255,255,0.72)',
-                    fontSize: 10,
-                    fontWeight: 950,
-                    letterSpacing: '0.18em',
-                    textTransform: 'uppercase',
-                    textShadow: '0 2px 10px rgba(0,0,0,0.36)',
-                  }}
-                >
-                  {entry.eyebrow}
-                </div>
-                <div
-                  style={{
-                    color: '#fff',
-                    fontSize: titleIsLong ? 'clamp(20px, 5.4vw, 29px)' : 'clamp(23px, 6.8vw, 34px)',
-                    lineHeight: 0.96,
-                    fontWeight: 950,
-                    overflowWrap: 'break-word',
-                    wordBreak: titleIsLong ? 'break-word' : 'normal',
-                    hyphens: 'auto',
-                    maxWidth: entry.kind === 'daily' ? 'min(100%, 270px)' : '100%',
-                    textShadow: '0 4px 18px rgba(0,0,0,0.48)',
-                  }}
-                >
-                  {entry.title}
-                </div>
-              </>
-            )}
-            {!showDuelIdentity && (
+                />
+              );
+            })}
+          </div>
+          <ArenaCubeFace entry={activeEntry} />
+          <button
+            type="button"
+            className="btn btn--cta"
+            disabled={activeEntry.disabled}
+            onClick={activeEntry.onEnter}
+            style={{
+              position: 'relative',
+              zIndex: 3,
+              width: '70%',
+              minWidth: 0,
+              minHeight: 'clamp(36px, 4.8vh, 44px)',
+              margin: '0 auto',
+              padding: '0 16px',
+              boxSizing: 'border-box',
+              justifyContent: 'center',
+              fontSize: 'clamp(12px, 1.65vh, 14px)',
+              fontWeight: 900,
+              letterSpacing: '0.06em',
+              lineHeight: 1,
+            }}
+          >
+            {activeEntry.ctaLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ArenaTableauNavButton({
+  children,
+  disabled,
+  label,
+  onClick,
+}: {
+  children: React.ReactNode;
+  disabled: boolean;
+  label: string;
+  onClick: () => void;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      style={{
+        width: 28,
+        height: 44,
+        border: 0,
+        borderRadius: 0,
+        background: 'transparent',
+        color: disabled ? 'rgba(202, 242, 255, 0.22)' : 'rgba(232, 251, 255, 0.92)',
+        textShadow: disabled ? 'none' : '0 0 8px rgba(96, 220, 255, 0.58)',
+        boxShadow: 'none',
+        fontSize: 30,
+        fontWeight: 950,
+        lineHeight: 1,
+        padding: 0,
+        outline: 'none',
+        WebkitTapHighlightColor: 'transparent',
+        cursor: disabled ? 'default' : 'pointer',
+        pointerEvents: 'auto',
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
+  const showDuelIdentity = entry.kind === 'duel' && Boolean(entry.opponentName);
+
+  return (
+    <div
+      role="article"
+      aria-label={`${entry.eyebrow}: ${entry.title}`}
+      style={{
+        position: 'relative',
+        width: '100%',
+        height: '100%',
+        minHeight: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        padding: '0 clamp(8px, 1.6vw, 12px)',
+        boxSizing: 'border-box',
+        color: '#e9fbff',
+        fontFamily: 'var(--font-mono)',
+        textShadow: '0 0 8px rgba(122, 229, 255, 0.36)',
+      }}
+    >
+      <div
+        style={{
+          minHeight: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          gap: 'clamp(10px, 1.8vh, 16px)',
+          textAlign: 'center',
+          padding: 0,
+        }}
+      >
+        <div
+          style={{
+            color: 'rgba(205, 246, 255, 0.88)',
+            fontSize: 'clamp(7px, 1.08vh, 9px)',
+            fontWeight: 950,
+            letterSpacing: '0.16em',
+            textTransform: 'uppercase',
+            lineHeight: 1.05,
+            textShadow: '0 0 8px rgba(99, 218, 255, 0.44)',
+          }}
+        >
+          {entry.eyebrow}
+        </div>
+        {showDuelIdentity ? (
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'clamp(38px, 6vh, 54px) minmax(0, 1fr)',
+              alignItems: 'center',
+              gap: 'clamp(8px, 1.8vh, 14px)',
+              textAlign: 'left',
+              minWidth: 0,
+              maxWidth: 'min(100%, 340px)',
+              margin: '0 auto',
+            }}
+          >
+            <UserAvatar
+              avatarUrl={entry.opponentAvatarUrl}
+              name={entry.opponentName}
+              size={46}
+              fontSize={19}
+              style={{
+                border: '1px solid rgba(122, 228, 255, 0.76)',
+                boxShadow: '0 0 12px rgba(72, 204, 255, 0.46)',
+              }}
+            />
+            <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
               <div
                 style={{
-                  maxWidth: 270,
-                  color: 'rgba(255,255,255,0.78)',
-                  fontSize: 'clamp(12px, 3.5vw, 14px)',
-                  fontWeight: 850,
-                  lineHeight: 1.15,
-                  textShadow: '0 3px 14px rgba(0,0,0,0.42)',
+                  color: '#f7feff',
+                  fontSize: 'clamp(14px, 2.46vh, 21px)',
+                  lineHeight: 0.95,
+                  fontWeight: 950,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
                 }}
               >
-                {entry.subtitle}
+                {entry.title}
               </div>
-            )}
+              {entry.typeLabel && (
+                <div
+                  style={{
+                    color: 'rgba(196, 242, 255, 0.82)',
+                    fontSize: 'clamp(8px, 1.16vh, 10px)',
+                    fontWeight: 900,
+                    lineHeight: 1,
+                  }}
+                >
+                  {entry.typeLabel}
+                </div>
+              )}
+            </div>
           </div>
+        ) : (
+          <div
+            style={{
+              color: '#f7feff',
+              fontSize: 'clamp(16px, 2.65vh, 22px)',
+              lineHeight: 0.95,
+              fontWeight: 950,
+              overflowWrap: 'break-word',
+              textTransform: 'uppercase',
+            }}
+          >
+            {entry.title}
+          </div>
+        )}
+        <div
+          style={{
+            maxWidth: 'min(72%, 280px)',
+            margin: '0 auto',
+            color: 'rgba(234, 246, 255, 0.9)',
+            fontSize: 'clamp(9px, 1.24vh, 10px)',
+            fontWeight: 850,
+            lineHeight: 1.12,
+            textShadow: '0 0 7px rgba(0, 12, 24, 0.88)',
+          }}
+        >
+          {entry.subtitle}
         </div>
         <div
           style={{
-            flex: '0 0 auto',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            width: '100%',
           }}
         >
           {entry.scoreboard ? (
             <div
               style={{
                 width: '100%',
-                maxWidth: 'min(292px, 100%)',
-                borderRadius: 'clamp(18px, 5vw, 22px)',
-                padding: 'clamp(7px, 2.5vw, 10px) clamp(10px, 3vw, 14px)',
-                background: 'rgba(226,239,249,0.78)',
-                border: '1px solid rgba(255,255,255,0.72)',
-                boxShadow: '0 18px 44px rgba(4,12,28,0.2)',
-                backdropFilter: 'blur(14px)',
+                maxWidth: 'min(300px, 92%)',
               }}
             >
               {entry.scoreboard}
@@ -1949,38 +1607,18 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
             <div
               style={{
                 width: '100%',
-                borderRadius: 'clamp(18px, 5vw, 22px)',
-                padding: 'clamp(8px, 2.8vw, 11px) clamp(10px, 3vw, 14px)',
-                background: 'rgba(226,239,249,0.8)',
-                border: '1px solid rgba(255,255,255,0.72)',
-                boxShadow: '0 18px 44px rgba(4,12,28,0.18)',
-                backdropFilter: 'blur(14px)',
-                color: 'rgba(15,23,42,0.62)',
-                fontSize: 'clamp(12px, 3.5vw, 14px)',
-                fontWeight: 850,
-                lineHeight: 1.2,
+                color: '#e9fbff',
+                fontSize: 'clamp(12px, 1.85vh, 16px)',
+                fontWeight: 950,
+                lineHeight: 1.05,
                 textAlign: 'center',
+                textShadow: '0 0 8px rgba(100, 218, 255, 0.38)',
               }}
             >
               {entry.meta}
             </div>
           )}
         </div>
-        <button
-          type="button"
-          className="btn btn--cta"
-          disabled={entry.disabled}
-          onClick={entry.onEnter}
-          style={{
-            minHeight: 'clamp(46px, 13vw, 54px)',
-            justifyContent: 'center',
-            width: '100%',
-            fontSize: 'clamp(14px, 4vw, 16px)',
-            boxShadow: '0 18px 42px rgba(4,12,28,0.34)',
-          }}
-        >
-          {entry.ctaLabel}
-        </button>
       </div>
     </div>
   );
@@ -2006,13 +1644,14 @@ function DailyHubScoreboard({
       aria-label={ariaLabel}
       style={{
         width: align === 'left' ? 'auto' : '100%',
-        maxWidth: align === 'left' ? 'none' : 280,
-        padding: '2px 0 0',
+        maxWidth: align === 'left' ? 'none' : 306,
+        padding: 'clamp(5px, 0.85vh, 8px) 0 0',
         display: 'grid',
-        gridTemplateColumns: align === 'left' ? 'max-content max-content' : '1fr 1fr',
+        gridTemplateColumns: align === 'left' ? 'max-content max-content' : 'minmax(0, 1fr) minmax(0, 1fr)',
         alignItems: 'center',
         justifyItems: align === 'left' ? 'start' : 'center',
-        gap: align === 'left' ? 36 : 12,
+        gap: align === 'left' ? 36 : 'clamp(6px, 1.1vh, 10px)',
+        margin: '0 auto',
       }}
     >
       <DailyEventScoreboardColumn align={align} label={timerLabel} value={timer} />
@@ -2305,11 +1944,13 @@ function DailyPeriodTab({
         justifyContent: 'center',
         fontFamily: 'var(--font-mono)',
         fontSize: 11,
-        fontWeight: 700,
-        background: active ? 'var(--red)' : 'transparent',
-        border: active ? 'none' : '1px solid rgba(15, 23, 42, 0.24)',
-        color: active ? '#ffffff' : 'rgba(15, 23, 42, 0.34)',
-        boxShadow: active ? '0 0 10px rgba(225, 29, 72, 0.55)' : 'none',
+        fontWeight: 900,
+        background: active ? 'rgba(107, 224, 255, 0.24)' : 'rgba(7, 32, 52, 0.28)',
+        border: active ? '1px solid rgba(182, 238, 255, 0.72)' : '1px solid rgba(118, 215, 255, 0.24)',
+        color: active ? '#e9fbff' : 'rgba(174, 233, 255, 0.46)',
+        boxShadow: active
+          ? '0 0 9px rgba(122, 229, 255, 0.54), inset 0 0 8px rgba(82, 205, 255, 0.24)'
+          : 'none',
       }}
     >
       {children}
@@ -2326,7 +1967,6 @@ function DailyEventScoreboardColumn({
   label: string;
   value: string;
 }): JSX.Element {
-  const color = '#10192d';
   return (
     <div
       style={{
@@ -2336,19 +1976,22 @@ function DailyEventScoreboardColumn({
         gap: 5,
         minWidth: 0,
         lineHeight: 1,
+        width: '100%',
       }}
     >
       <DailyEventScoreboardLabel>{label}</DailyEventScoreboardLabel>
       <span
         style={{
-          color,
+          color: '#e9fbff',
           fontFamily: 'var(--font-mono)',
-          fontSize: 20,
-          fontWeight: 700,
+          fontSize: 'clamp(13px, 2.05vh, 18px)',
+          fontWeight: 950,
           lineHeight: 1,
-          letterSpacing: '0.04em',
+          letterSpacing: '0.06em',
           fontVariantNumeric: 'tabular-nums',
           whiteSpace: 'nowrap',
+          textShadow:
+            '0 0 7px rgba(143, 232, 255, 0.72), 0 0 14px rgba(44, 177, 255, 0.38)',
         }}
       >
         {value}
@@ -2361,12 +2004,13 @@ function DailyEventScoreboardLabel({ children }: { children: React.ReactNode }):
   return (
     <span
       style={{
-        color: 'rgba(15, 23, 42, 0.52)',
-        fontSize: 8,
-        fontWeight: 700,
+        color: 'rgba(187, 238, 255, 0.72)',
+        fontSize: 'clamp(6px, 0.95vh, 8px)',
+        fontWeight: 900,
         letterSpacing: '0.16em',
         textTransform: 'uppercase',
         whiteSpace: 'nowrap',
+        textShadow: '0 0 7px rgba(88, 207, 255, 0.36)',
       }}
     >
       {children}
@@ -8433,16 +8077,7 @@ export function PlayView<TState>({
 
   const handleBackTap = useCallback((): void => {
     if (routeBackTimeoutRef.current !== null) return;
-    if (shouldReduceMotion()) {
-      onBack();
-      return;
-    }
-    const rect = rinkShellRef.current?.getBoundingClientRect();
-    if (rect) saveArenaReturnFrame(rect);
-    routeBackTimeoutRef.current = window.setTimeout(() => {
-      routeBackTimeoutRef.current = null;
-      onBack();
-    }, 30);
+    onBack();
   }, [onBack]);
 
   const handleShotTap = useCallback((): void => {
