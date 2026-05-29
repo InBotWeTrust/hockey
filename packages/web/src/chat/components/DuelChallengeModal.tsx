@@ -55,6 +55,15 @@ function templateMeta(template: AmateurDuelTemplate): string {
   if (!firstRule) return '';
   if (rules.length === 1) return periodRuleText(firstRule);
 
+  if (template.duel_kind === 'express_plus') {
+    return rules
+      .map((rule) => {
+        const label = rule.periodNumber === 1 ? '1-й период' : `${rule.periodNumber}-й период`;
+        return `${label}: ${periodRuleText(rule)}`;
+      })
+      .join(' · ');
+  }
+
   const sameQuota = rules.every(
     (rule) => rule.mode === 'quota' && rule.shotsLimit === firstRule.shotsLimit,
   );

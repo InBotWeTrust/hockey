@@ -96,7 +96,7 @@ const createTemplateSchema = z.object({
   shotsPerPeriod: z.number().int().min(1).max(100).default(30),
   periodDurationMs: z.number().int().min(1000).max(10_800_000).default(60_000),
   breakDurationMs: z.number().int().min(0).max(10_800_000).default(60_000),
-  challengeTtlMs: z.number().int().min(1000).max(86_400_000).default(1_800_000),
+  challengeTtlMs: z.number().int().min(1000).max(86_400_000).default(900_000),
   readyDurationMs: z.number().int().min(1000).max(86_400_000).default(900_000),
   readyNoShowCooldownMs: z.number().int().min(0).max(86_400_000).default(900_000),
   matchmakingTimeoutMs: z.number().int().min(1000).max(86_400_000).default(180_000),
@@ -727,7 +727,7 @@ function parseRulesSnapshot(value: unknown): DuelRulesSnapshot {
       periodDurationMs: z.number().int().min(1000).max(10_800_000),
       breakDurationMs: z.number().int().min(0).max(10_800_000),
       periodRules: z.array(periodRuleSchema).min(1).max(9).optional(),
-      challengeTtlMs: z.number().int().min(1000).default(1_800_000),
+      challengeTtlMs: z.number().int().min(1000).default(900_000),
       readyDurationMs: z.number().int().min(1000).default(900_000),
       readyNoShowCooldownMs: z.number().int().min(0).default(900_000),
       matchmakingTimeoutMs: z.number().int().min(1000).default(180_000),
@@ -921,10 +921,36 @@ async function buildLoadoutSnapshot(
   selection: LoadoutSelection,
   rules: DuelRulesSnapshot,
 ): Promise<LoadoutSnapshot> {
+  const hasExplicitSelection =
+    selection.stick !== undefined ||
+    selection.skates !== undefined ||
+    selection.nutrition !== undefined;
+  let resolvedSelection = selection;
+  if (!hasExplicitSelection) {
+    const { rows } = await client.query<{
+      equipped_stick_item_id: string | null;
+      equipped_skates_item_id: string | null;
+      equipped_nutrition_item_id: string | null;
+    }>(
+      `select equipped_stick_item_id, equipped_skates_item_id, equipped_nutrition_item_id
+         from user_equipment
+        where user_id = $1`,
+      [userId],
+    );
+    const equipment = rows[0];
+    if (equipment) {
+      resolvedSelection = {
+        stick: equipment.equipped_stick_item_id,
+        skates: equipment.equipped_skates_item_id,
+        nutrition: equipment.equipped_nutrition_item_id,
+      };
+    }
+  }
+
   const selectedIds = [
-    selection.stick ?? null,
-    selection.skates ?? null,
-    selection.nutrition ?? null,
+    resolvedSelection.stick ?? null,
+    resolvedSelection.skates ?? null,
+    resolvedSelection.nutrition ?? null,
   ].filter((id): id is string => id !== null);
   if (selectedIds.length === 0) return emptyLoadout(rules.powerCap);
 
@@ -962,19 +988,21 @@ async function buildLoadoutSnapshot(
 
   const byId = new Map(rows.map((row) => [row.id, row]));
   const requested: Array<{ kind: InventoryKind; id: string | null | undefined }> = [
-    { kind: 'stick', id: selection.stick },
-    { kind: 'skates', id: selection.skates },
-    { kind: 'nutrition', id: selection.nutrition },
+    { kind: 'stick', id: resolvedSelection.stick },
+    { kind: 'skates', id: resolvedSelection.skates },
+    { kind: 'nutrition', id: resolvedSelection.nutrition },
   ];
   const items: LoadoutItemSnapshot[] = [];
   for (const requestedItem of requested) {
     if (!requestedItem.id) continue;
     const row = byId.get(requestedItem.id);
     if (!row || row.item_kind !== requestedItem.kind) {
+      if (!hasExplicitSelection) continue;
       throw new AppError('conflict', `invalid ${requestedItem.kind} loadout item`, 409);
     }
     const chargesReserved = Number(row.duel_period_cost) * rules.totalPeriods;
     if (chargesReserved > 0 && Number(row.charges_available) < chargesReserved) {
+      if (!hasExplicitSelection) continue;
       throw new AppError('conflict', 'not enough inventory charges for duel loadout', 409);
     }
     items.push({
@@ -1001,6 +1029,7 @@ async function buildLoadoutSnapshot(
 
   const powerScore = items.reduce((sum, item) => sum + item.powerScore, 0);
   if (rules.rankedEnabled && powerScore > rules.powerCap) {
+    if (!hasExplicitSelection) return emptyLoadout(rules.powerCap);
     throw new AppError('conflict', 'duel loadout exceeds power cap', 409);
   }
   return { items, powerScore, powerCap: rules.powerCap };

@@ -1,324 +1,922 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Coins, Star } from 'lucide-react';
-import { apiFetch } from '../api/apiFetch.js';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { UseMutationResult } from '@tanstack/react-query';
+import { ArrowLeft, CircleDollarSign, Star, Trophy, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import {
+  fetchMyInventory,
+  purchaseInventoryItem,
+  type BankPurchase,
+  type InventoryEquipmentKind,
+  type InventoryItem,
+  type InventoryPurchase,
+  type InventoryState,
+} from '../api/inventory.js';
+import { artworkForInventoryItem } from './inventoryArtwork.js';
 
-const INVENTORY_ARTWORK_SIZE = 104;
+type ShopTab = 'goods' | 'bank' | 'history';
 
-type InventoryArtworkType = 'sticks' | 'skates' | 'nutrition';
+const INVENTORY_KINDS: InventoryEquipmentKind[] = ['stick', 'skates', 'nutrition'];
+const SHOP_TABS: Array<{ id: ShopTab; label: string }> = [
+  { id: 'goods', label: 'Товары' },
+  { id: 'bank', label: 'Банк' },
+  { id: 'history', label: 'История' },
+];
 
-const INVENTORY_ARTWORK_IMAGES: Record<InventoryArtworkType, string> = {
-  sticks: '/inventory/sticks.webp',
-  skates: '/inventory/skates.webp',
-  nutrition: '/inventory/nutrition.webp',
-};
-
-const INVENTORY_SLOTS = [
+const BANK_PACKAGES = [
   {
-    title: 'Клюшки',
-    description: 'Более точные и быстрые броски по воротам',
-    artwork: 'sticks',
+    id: 'starter',
+    title: 'Стартовый набор',
+    tokens: 500,
+    priceRub: 149,
+    note: 'Для первых покупок',
   },
   {
-    title: 'Коньки',
-    description: 'Управление скоростью перемещения игрока',
-    artwork: 'skates',
+    id: 'player',
+    title: 'Игровой запас',
+    tokens: 1200,
+    priceRub: 299,
+    note: 'Оптимальный пакет',
   },
   {
-    title: 'Энергия',
-    description: 'Ускоренное восстановление и меньшая усталость',
-    artwork: 'nutrition',
+    id: 'club',
+    title: 'Клубный банк',
+    tokens: 3000,
+    priceRub: 699,
+    note: 'Максимум монет',
   },
 ] as const;
 
-interface InventoryProfile {
-  currencyBalance?: number;
-  starBalance?: number;
+const KIND_META: Record<InventoryEquipmentKind, { title: string }> = {
+  stick: { title: 'Клюшки' },
+  skates: { title: 'Коньки' },
+  nutrition: { title: 'Питание' },
+};
+
+function numberText(value: number): string {
+  return new Intl.NumberFormat('ru-RU').format(value);
 }
 
-function formatCountLabel(balance: number, forms: [string, string, string]): string {
-  const normalized = Math.max(0, Math.trunc(balance));
-  const mod10 = normalized % 10;
-  const mod100 = normalized % 100;
-  const noun =
-    mod10 === 1 && mod100 !== 11
-      ? forms[0]
-      : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)
-        ? forms[1]
-        : forms[2];
-  return `${normalized} ${noun}`;
+function rubText(value: number): string {
+  return new Intl.NumberFormat('ru-RU', {
+    style: 'currency',
+    currency: 'RUB',
+    maximumFractionDigits: 0,
+  }).format(value);
 }
 
-function formatTokenBalance(balance: number): string {
-  return formatCountLabel(balance, ['токен', 'токена', 'токенов']);
+function periodWord(value: number): string {
+  const abs = Math.abs(value);
+  const lastTwo = abs % 100;
+  const last = abs % 10;
+  if (lastTwo >= 11 && lastTwo <= 14) return 'периодов';
+  if (last === 1) return 'период';
+  if (last >= 2 && last <= 4) return 'периода';
+  return 'периодов';
 }
 
-function formatStarBalance(balance: number): string {
-  return formatCountLabel(balance, ['звезда', 'звезды', 'звёзд']);
+function purchaseBundleLabel(item: InventoryItem): string {
+  const count = item.chargesPerPurchase || item.chargesAvailable || 5;
+  return `${numberText(count)} ${periodWord(count)}`;
 }
 
-function normalizeBalance(balance: number | undefined): number {
-  return Math.max(0, Math.trunc(balance ?? 0));
+function uniqueShopItems(items: InventoryItem[]): InventoryItem[] {
+  const seen = new Set<string>();
+  const result: InventoryItem[] = [];
+  for (const item of items) {
+    const key = `${item.kind}:${item.rarity}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(item);
+  }
+  return result;
+}
+
+function formatPurchaseDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
+function bankStatusText(status: BankPurchase['status']): string {
+  if (status === 'paid') return 'Оплачено';
+  if (status === 'pending') return 'Ожидает оплаты';
+  if (status === 'failed') return 'Ошибка оплаты';
+  if (status === 'refunded') return 'Возврат';
+  return 'Отменено';
 }
 
 export function InventoryScreen(): JSX.Element {
-  const [lockedInfoOpen, setLockedInfoOpen] = useState(false);
-  const { data } = useQuery<InventoryProfile>({
-    queryKey: ['inventory', 'profile-balance'],
-    queryFn: () => apiFetch<InventoryProfile>('/me'),
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState<ShopTab>('goods');
+  const [detailsItem, setDetailsItem] = useState<InventoryItem | null>(null);
+  const [purchaseItem, setPurchaseItem] = useState<InventoryItem | null>(null);
+  const inventoryQuery = useQuery<InventoryState>({
+    queryKey: ['inventory', 'me'],
+    queryFn: fetchMyInventory,
   });
-  const tokenAmount = normalizeBalance(data?.currencyBalance);
-  const starAmount = normalizeBalance(data?.starBalance);
-  const tokenBalance = formatTokenBalance(tokenAmount);
-  const starBalance = formatStarBalance(starAmount);
+  const purchaseMutation = useMutation<InventoryState, Error, InventoryItem>({
+    mutationFn: (item) => purchaseInventoryItem(item.id),
+    onSuccess: (inventory) => {
+      queryClient.setQueryData(['inventory', 'me'], inventory);
+      setPurchaseItem(null);
+    },
+  });
+
+  const inventory = inventoryQuery.data;
+  const allItems = INVENTORY_KINDS.flatMap((kind) => inventory?.items[kind] ?? []);
+  const hasAnyItems = allItems.length > 0;
+  const tokens = inventory?.balances.tokens ?? 0;
+  const history = inventory?.purchaseHistory ?? [];
+  const bankHistory = inventory?.bankHistory ?? [];
+
+  const openPurchase = (item: InventoryItem): void => {
+    purchaseMutation.reset();
+    setDetailsItem(null);
+    setPurchaseItem(item);
+  };
 
   return (
     <main
       className="screen"
       style={{
-        padding: 'calc(16px + var(--app-safe-top)) 14px 24px',
-        gap: 14,
+        padding: 'calc(22px + var(--app-safe-top)) 24px 24px',
+        overflowY: 'auto',
+        WebkitOverflowScrolling: 'touch',
       }}
     >
-      <section aria-label="Валюта" style={{ display: 'flex', flexDirection: 'column' }}>
-        <div className="section-label" style={{ margin: '0 0 6px -14px' }}>
-          Валюта
+      <section
+        style={{
+          width: '100%',
+          maxWidth: 760,
+          margin: '0 auto',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 14,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={() => navigate('/sections')}
+            aria-label="Назад"
+            title="Назад"
+            style={{
+              width: 40,
+              height: 40,
+              minWidth: 40,
+              minHeight: 40,
+              borderRadius: 999,
+              padding: 0,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <ArrowLeft size={16} />
+          </button>
+          <h1 style={{ margin: 0, minWidth: 0, fontSize: 24, fontWeight: 800 }}>Магазин</h1>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
-          <CurrencyBalanceCard
-            ariaLabel={`Токены: ${tokenBalance}`}
-            amount={tokenAmount}
-            icon="tokens"
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+            gap: 8,
+          }}
+        >
+          <BalanceCard
+            label="Монеты"
+            value={tokens}
+            icon={<CircleDollarSign size={16} strokeWidth={2.45} />}
+            iconColor="#C48A1D"
           />
-          <CurrencyBalanceCard
-            ariaLabel={`Звёзды: ${starBalance}`}
-            amount={starAmount}
-            icon="stars"
+          <BalanceCard
+            label="Звёзды"
+            value={inventory?.balances.stars ?? 0}
+            icon={<Star size={16} strokeWidth={2.45} fill="currentColor" />}
+            iconColor="#D9A21B"
+          />
+          <BalanceCard
+            label="Опыт"
+            value={inventory?.balances.experience ?? 0}
+            icon={<Trophy size={16} strokeWidth={2.45} />}
+            iconColor="#21A19A"
           />
         </div>
+
+        <ShopTabs activeTab={activeTab} onChange={setActiveTab} />
+
+        {inventoryQuery.isLoading ? (
+          <div className="glass" style={{ borderRadius: 22, padding: 16, color: 'var(--muted)' }}>
+            Загрузка...
+          </div>
+        ) : activeTab === 'goods' && !hasAnyItems ? (
+          <InventoryEmptyState />
+        ) : activeTab === 'goods' ? (
+          <GoodsTab
+            inventory={inventory}
+            tokens={tokens}
+            purchaseMutation={purchaseMutation}
+            onDetails={setDetailsItem}
+            onBuy={openPurchase}
+          />
+        ) : activeTab === 'bank' ? (
+          <BankTab />
+        ) : (
+          <PurchaseHistorySection inventoryHistory={history} bankHistory={bankHistory} />
+        )}
       </section>
 
-      <section aria-label="Инвентарь" style={{ display: 'flex', flexDirection: 'column' }}>
-        <div className="section-label" style={{ margin: '0 0 6px -14px' }}>
-          Инвентарь
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {INVENTORY_SLOTS.map((slot) => {
-            return (
-              <button
-                key={slot.title}
-                type="button"
-                aria-label={`${slot.title}: ${slot.description}. Недоступно`}
-                onClick={() => setLockedInfoOpen(true)}
-                style={{
-                  position: 'relative',
-                  overflow: 'hidden',
-                  borderRadius: 22,
-                  padding: 12,
-                  display: 'grid',
-                  gridTemplateColumns: `${INVENTORY_ARTWORK_SIZE}px minmax(0, 1fr)`,
-                  gap: 12,
-                  alignItems: 'center',
-                  background: 'rgba(255, 255, 255, 0.18)',
-                  border: '1px solid rgba(255,255,255,0.66)',
-                  boxShadow: '0 8px 22px rgba(15,23,42,0.1), inset 0 1px 0 rgba(255,255,255,0.78)',
-                  width: '100%',
-                  textAlign: 'left',
-                  color: 'inherit',
-                  appearance: 'none',
-                  WebkitAppearance: 'none',
-                  cursor: 'pointer',
-                }}
-              >
-                <InventoryArtwork label={slot.title} artwork={slot.artwork} />
-                <div
-                  style={{
-                    minWidth: 0,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'center',
-                    gap: 8,
-                  }}
-                >
-                  <h2
-                    style={{
-                      margin: 0,
-                      minWidth: 0,
-                      fontSize: 18,
-                      lineHeight: 1.05,
-                      fontWeight: 900,
-                      color: 'var(--ink)',
-                    }}
-                  >
-                    {slot.title}
-                  </h2>
-                  <div
-                    style={{
-                      color: 'rgba(15, 23, 42, 0.64)',
-                      fontSize: 12,
-                      fontWeight: 700,
-                      lineHeight: 1.25,
-                    }}
-                  >
-                    {slot.description}
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </section>
+      {detailsItem !== null && (
+        <InventoryItemModal
+          item={detailsItem}
+          canBuy={tokens >= detailsItem.currencyPrice}
+          isBuying={purchaseMutation.isPending && purchaseMutation.variables?.id === detailsItem.id}
+          error={purchaseMutation.isError ? purchaseMutation.error.message : null}
+          onClose={() => {
+            purchaseMutation.reset();
+            setDetailsItem(null);
+          }}
+          onBuy={() => openPurchase(detailsItem)}
+        />
+      )}
 
-      {lockedInfoOpen && <InventoryLockedModal onClose={() => setLockedInfoOpen(false)} />}
+      {purchaseItem !== null && (
+        <PurchaseConfirmModal
+          item={purchaseItem}
+          isSaving={purchaseMutation.isPending}
+          error={purchaseMutation.isError ? purchaseMutation.error.message : null}
+          onClose={() => {
+            purchaseMutation.reset();
+            setPurchaseItem(null);
+          }}
+          onConfirm={() => purchaseMutation.mutate(purchaseItem)}
+        />
+      )}
     </main>
   );
 }
 
-function CurrencyBalanceCard({
-  ariaLabel,
-  amount,
-  icon,
+function GoodsTab({
+  inventory,
+  tokens,
+  purchaseMutation,
+  onDetails,
+  onBuy,
 }: {
-  ariaLabel: string;
-  amount: number;
-  icon: 'tokens' | 'stars';
+  inventory: InventoryState | undefined;
+  tokens: number;
+  purchaseMutation: UseMutationResult<InventoryState, Error, InventoryItem>;
+  onDetails: (item: InventoryItem) => void;
+  onBuy: (item: InventoryItem) => void;
 }): JSX.Element {
-  const isTokens = icon === 'tokens';
+  return (
+    <div style={{ display: 'grid', gap: 18 }}>
+      {INVENTORY_KINDS.map((kind) => {
+        const items = uniqueShopItems(inventory?.items[kind] ?? []);
+        if (items.length === 0) return null;
+        return (
+          <section key={kind} aria-label={KIND_META[kind].title}>
+            <div className="section-label" style={{ margin: '0 0 8px -14px' }}>
+              {KIND_META[kind].title}
+            </div>
+            <div style={{ display: 'grid', gap: 18 }}>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                  gap: 8,
+                }}
+              >
+                {items.map((item) => {
+                  const canBuy = tokens >= item.currencyPrice;
+                  return (
+                    <InventoryProductCard
+                      key={item.id}
+                      item={item}
+                      canBuy={canBuy}
+                      isBuying={
+                        purchaseMutation.isPending && purchaseMutation.variables?.id === item.id
+                      }
+                      onDetails={() => onDetails(item)}
+                      onBuy={() => onBuy(item)}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function ShopTabs({
+  activeTab,
+  onChange,
+}: {
+  activeTab: ShopTab;
+  onChange: (tab: ShopTab) => void;
+}): JSX.Element {
+  return (
+    <div
+      role="tablist"
+      aria-label="Разделы магазина"
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+        gap: 4,
+        padding: 4,
+        borderRadius: 999,
+        background: 'rgba(255,255,255,0.38)',
+        border: '1px solid rgba(255,255,255,0.62)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.74)',
+      }}
+    >
+      {SHOP_TABS.map((tab) => {
+        const active = tab.id === activeTab;
+        return (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => onChange(tab.id)}
+            style={{
+              minWidth: 0,
+              minHeight: 36,
+              borderRadius: 999,
+              border: active ? '1px solid rgba(15,23,42,0.92)' : '1px solid transparent',
+              background: active ? 'rgba(15,23,42,0.92)' : 'transparent',
+              color: active ? '#ffffff' : 'rgba(15,23,42,0.72)',
+              fontSize: 12,
+              fontWeight: 900,
+              cursor: 'pointer',
+            }}
+          >
+            {tab.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function BankTab(): JSX.Element {
+  return (
+    <section aria-label="Банк" style={{ display: 'grid', gap: 8 }}>
+      <div className="section-label" style={{ margin: '0 0 0 -14px' }}>
+        Банк
+      </div>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+          gap: 8,
+        }}
+      >
+        {BANK_PACKAGES.map((pack) => (
+          <BankPackageCard key={pack.id} pack={pack} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function BankPackageCard({ pack }: { pack: (typeof BANK_PACKAGES)[number] }): JSX.Element {
+  return (
+    <article
+      className="glass"
+      style={{
+        minWidth: 0,
+        minHeight: 178,
+        padding: 12,
+        borderRadius: 22,
+        display: 'grid',
+        gridTemplateRows: '1fr auto',
+        gap: 10,
+        overflow: 'hidden',
+      }}
+    >
+      <div style={{ display: 'grid', alignContent: 'start', gap: 8, minWidth: 0 }}>
+        <div
+          aria-hidden="true"
+          style={{
+            width: 42,
+            height: 42,
+            borderRadius: 16,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#C48A1D',
+            background: 'rgba(255,255,255,0.52)',
+            border: '1px solid rgba(255,255,255,0.72)',
+          }}
+        >
+          <CircleDollarSign size={22} strokeWidth={2.35} />
+        </div>
+        <h2
+          style={{
+            margin: 0,
+            color: 'var(--ink)',
+            fontSize: 13,
+            fontWeight: 950,
+            lineHeight: 1.1,
+          }}
+        >
+          {pack.title}
+        </h2>
+        <div style={{ color: 'var(--ink)', fontSize: 19, fontWeight: 950, lineHeight: 1 }}>
+          {numberText(pack.tokens)}
+        </div>
+        <div style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 800, lineHeight: 1.2 }}>
+          {pack.note}
+        </div>
+        <div style={{ color: 'var(--ink)', fontSize: 13, fontWeight: 950, lineHeight: 1.1 }}>
+          {rubText(pack.priceRub)}
+        </div>
+      </div>
+      <button
+        type="button"
+        className="btn btn--cta"
+        disabled
+        aria-label={`Купить ${numberText(pack.tokens)} монет за ${rubText(pack.priceRub)}`}
+        style={{
+          minWidth: 0,
+          width: '100%',
+          minHeight: 34,
+          padding: '0 10px',
+          fontSize: 12,
+          opacity: 0.5,
+          cursor: 'not-allowed',
+        }}
+      >
+        Скоро
+      </button>
+    </article>
+  );
+}
+
+function BalanceCard({
+  label,
+  value,
+  icon,
+  iconColor,
+}: {
+  label: string;
+  value: number;
+  icon: JSX.Element;
+  iconColor: string;
+}): JSX.Element {
   return (
     <div
       className="glass"
-      aria-label={ariaLabel}
+      aria-label={`${label}: ${numberText(value)}`}
       style={{
         minWidth: 0,
-        borderRadius: 22,
-        padding: '16px 16px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: 10,
-        color: 'var(--ink)',
+        minHeight: 74,
+        borderRadius: 18,
+        padding: '12px 11px',
+        position: 'relative',
+        display: 'grid',
+        gridTemplateRows: 'auto 1fr',
+        gap: 8,
+        overflow: 'hidden',
       }}
     >
-      <span
-        style={{
-          minWidth: 0,
-          fontSize: 28,
-          lineHeight: 1,
-          fontWeight: 950,
-          fontVariantNumeric: 'tabular-nums',
-        }}
-      >
-        {amount}
-      </span>
       <span
         aria-hidden="true"
         style={{
-          width: 44,
-          height: 44,
-          borderRadius: 999,
+          position: 'absolute',
+          top: 10,
+          right: 12,
+          width: 18,
+          height: 18,
+          color: iconColor,
           display: 'inline-flex',
           alignItems: 'center',
           justifyContent: 'center',
-          flexShrink: 0,
-          color: isTokens ? '#92400e' : '#713f12',
-          background: isTokens
-            ? 'radial-gradient(circle at 34% 24%, #fff7ad 0%, #facc15 45%, #f59e0b 100%)'
-            : 'radial-gradient(circle at 34% 24%, #fff7ad 0%, #fde047 42%, #f59e0b 100%)',
-          border: '1px solid rgba(146, 64, 14, 0.28)',
-          boxShadow:
-            '0 12px 22px rgba(180, 83, 9, 0.24), inset 0 1px 0 rgba(255,255,255,0.72)',
         }}
       >
-        {isTokens ? <Coins size={23} strokeWidth={2.4} /> : <Star size={23} strokeWidth={2.5} />}
+        {icon}
+      </span>
+      <span
+        style={{
+          minWidth: 0,
+          maxWidth: 'calc(100% - 30px)',
+          color: 'var(--muted)',
+          fontSize: 10,
+          fontWeight: 700,
+          lineHeight: 1.05,
+          textTransform: 'uppercase',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}
+      >
+        {label}
+      </span>
+      <span
+        style={{
+          alignSelf: 'end',
+          color: 'var(--ink)',
+          fontSize: 22,
+          fontWeight: 800,
+          lineHeight: 1,
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        {numberText(value)}
       </span>
     </div>
   );
 }
 
-function InventoryLockedModal({ onClose }: { onClose: () => void }): JSX.Element {
+function InventoryProductCard({
+  item,
+  canBuy,
+  isBuying,
+  onDetails,
+  onBuy,
+}: {
+  item: InventoryItem;
+  canBuy: boolean;
+  isBuying: boolean;
+  onDetails: () => void;
+  onBuy: () => void;
+}): JSX.Element {
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Недоступно"
-      onClick={onClose}
+    <article
+      className="glass"
       style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(15, 23, 42, 0.35)',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
-        zIndex: 250,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 20,
+        minWidth: 0,
+        minHeight: 194,
+        padding: 10,
+        borderRadius: 22,
+        display: 'grid',
+        gridTemplateRows: '96px minmax(0, 1fr) auto',
+        gap: 8,
+        overflow: 'hidden',
       }}
     >
-      <div
-        className="glass"
-        onClick={(event) => event.stopPropagation()}
-        style={{ borderRadius: 24, padding: '22px 22px 18px', maxWidth: 320, width: '100%' }}
+      <button
+        type="button"
+        onClick={onDetails}
+        aria-label={`Подробнее о ${item.title}`}
+        style={{
+          minWidth: 0,
+          height: 96,
+          border: '1px solid rgba(255,255,255,0.78)',
+          borderRadius: 18,
+          padding: 0,
+          overflow: 'hidden',
+          background: 'rgba(255,255,255,0.3)',
+          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.78), 0 8px 14px rgba(15,23,42,0.08)',
+          cursor: 'pointer',
+        }}
       >
-        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)', marginBottom: 10 }}>
-          Недоступно
+        <img
+          src={artworkForInventoryItem(item)}
+          alt=""
+          style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }}
+        />
+      </button>
+      <button
+        type="button"
+        onClick={onDetails}
+        aria-label={`Открыть ${item.title}`}
+        style={{
+          minWidth: 0,
+          border: 0,
+          padding: 0,
+          background: 'transparent',
+          color: 'inherit',
+          display: 'grid',
+          gap: 5,
+          alignContent: 'start',
+          textAlign: 'left',
+          cursor: 'pointer',
+        }}
+      >
+        <h2
+          style={{
+            margin: 0,
+            minWidth: 0,
+            color: 'var(--ink)',
+            fontSize: 13,
+            fontWeight: 950,
+            lineHeight: 1.1,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+          }}
+        >
+          {item.title}
+        </h2>
+        <div style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 800, lineHeight: 1.2 }}>
+          {purchaseBundleLabel(item)}
         </div>
-        <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>
-          Инвентарь пока недоступен. Откроем его в следующих обновлениях.
+        <div style={{ color: 'var(--ink)', fontSize: 13, fontWeight: 950, lineHeight: 1.1 }}>
+          {numberText(item.currencyPrice)} монет
         </div>
+      </button>
+      <button
+        type="button"
+        className="btn btn--cta"
+        disabled={!canBuy || isBuying}
+        onClick={onBuy}
+        aria-label={
+          canBuy
+            ? `Купить ${item.title} за ${numberText(item.currencyPrice)} монет`
+            : `Не хватает монет на ${item.title}`
+        }
+        style={{
+          minWidth: 0,
+          width: '100%',
+          minHeight: 34,
+          padding: '0 10px',
+          fontSize: 12,
+          opacity: !canBuy ? 0.5 : undefined,
+          cursor: !canBuy ? 'not-allowed' : undefined,
+        }}
+      >
+        {isBuying ? 'Покупка...' : canBuy ? 'Купить' : 'Не хватает'}
+      </button>
+    </article>
+  );
+}
+
+function InventoryEmptyState(): JSX.Element {
+  return (
+    <section
+      aria-label="Пустой магазин"
+      className="glass"
+      style={{
+        borderRadius: 26,
+        padding: '22px 18px',
+        minHeight: 180,
+        display: 'grid',
+        alignContent: 'center',
+        justifyItems: 'center',
+        gap: 8,
+        textAlign: 'center',
+      }}
+    >
+      <h2 style={{ margin: 0, color: 'var(--ink)', fontSize: 18, fontWeight: 950 }}>
+        Товары скоро появятся
+      </h2>
+      <p
+        style={{ margin: 0, color: 'var(--muted)', fontSize: 13, fontWeight: 750, lineHeight: 1.4 }}
+      >
+        Здесь будут клюшки, коньки и питание за монеты.
+      </p>
+    </section>
+  );
+}
+
+function InventoryItemModal({
+  item,
+  canBuy,
+  isBuying,
+  error,
+  onClose,
+  onBuy,
+}: {
+  item: InventoryItem;
+  canBuy: boolean;
+  isBuying: boolean;
+  error: string | null;
+  onClose: () => void;
+  onBuy: () => void;
+}): JSX.Element {
+  return (
+    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 420 }}>
+      <section
+        role="dialog"
+        aria-label={item.title}
+        className="modal-card"
+        onClick={(event) => event.stopPropagation()}
+        style={{
+          width: 'min(430px, calc(100vw - 28px))',
+          maxHeight: 'calc(100dvh - 48px - var(--app-safe-top) - var(--app-safe-bottom))',
+          display: 'grid',
+          gap: 14,
+          overflowY: 'auto',
+          WebkitOverflowScrolling: 'touch',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="modal-title">{item.title}</div>
+          </div>
+          <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
+            <X size={15} />
+          </button>
+        </div>
+
+        <div
+          style={{
+            width: '100%',
+            aspectRatio: '1 / 1',
+            borderRadius: 22,
+            overflow: 'hidden',
+            border: '1px solid rgba(255,255,255,0.78)',
+            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.78), 0 10px 18px rgba(15,23,42,0.1)',
+          }}
+        >
+          <img
+            src={artworkForInventoryItem(item)}
+            alt=""
+            style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }}
+          />
+        </div>
+
+        <div className="glass" style={{ borderRadius: 18, padding: 14, display: 'grid', gap: 9 }}>
+          <DetailRow label="Цена" value={`${numberText(item.currencyPrice)} монет`} />
+        </div>
+
+        <p
+          style={{
+            margin: 0,
+            color: 'var(--muted)',
+            fontSize: 13,
+            fontWeight: 750,
+            lineHeight: 1.4,
+          }}
+        >
+          {item.description}
+        </p>
+
+        {error !== null && (
+          <div role="alert" style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 800 }}>
+            {error}
+          </div>
+        )}
+
         <button
           type="button"
-          className="btn btn--cta"
-          onClick={onClose}
-          style={{ marginTop: 18, width: '100%', padding: '12px 0', fontSize: 14 }}
+          className="modal-primary btn--cta"
+          disabled={!canBuy || isBuying}
+          onClick={onBuy}
         >
-          Понятно
+          {isBuying ? 'Покупка...' : canBuy ? 'Купить' : 'Не хватает монет'}
         </button>
-      </div>
+      </section>
     </div>
   );
 }
 
-function InventoryArtwork({
-  label,
-  artwork,
+function PurchaseConfirmModal({
+  item,
+  isSaving,
+  error,
+  onClose,
+  onConfirm,
 }: {
-  label: string;
-  artwork: InventoryArtworkType;
+  item: InventoryItem;
+  isSaving: boolean;
+  error: string | null;
+  onClose: () => void;
+  onConfirm: () => void;
 }): JSX.Element {
-  const imageSrc = INVENTORY_ARTWORK_IMAGES[artwork];
+  return (
+    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 430 }}>
+      <section
+        role="dialog"
+        aria-label={`Купить ${item.title}?`}
+        className="modal-card"
+        onClick={(event) => event.stopPropagation()}
+        style={{ width: 'min(390px, calc(100vw - 28px))', display: 'grid', gap: 14 }}
+      >
+        <div className="modal-title">Купить {item.title}?</div>
+        <p className="modal-copy" style={{ margin: 0 }}>
+          Будет списано {numberText(item.currencyPrice)} монет. В инвентарь добавится{' '}
+          {purchaseBundleLabel(item)}.
+        </p>
+        {error !== null && (
+          <div role="alert" style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 800 }}>
+            {error}
+          </div>
+        )}
+        <div className="modal-actions" style={{ gridTemplateColumns: '1fr 1fr' }}>
+          <button type="button" className="btn btn--ghost" onClick={onClose} disabled={isSaving}>
+            Отмена
+          </button>
+          <button
+            type="button"
+            className="modal-primary btn--cta"
+            onClick={onConfirm}
+            disabled={isSaving}
+          >
+            {isSaving ? 'Покупка...' : 'Купить'}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function PurchaseHistorySection({
+  inventoryHistory,
+  bankHistory,
+}: {
+  inventoryHistory: InventoryPurchase[];
+  bankHistory: BankPurchase[];
+}): JSX.Element {
+  const entries = [
+    ...inventoryHistory.map((purchase) => ({
+      id: `inventory-${purchase.id}`,
+      createdAt: purchase.createdAt,
+      title: purchase.title,
+      subtitle: `${formatPurchaseDate(purchase.createdAt)} · товар · ${numberText(purchase.chargesAdded)} ${periodWord(purchase.chargesAdded)}`,
+      value: `-${numberText(purchase.tokensSpent)}`,
+      tone: 'negative' as const,
+    })),
+    ...bankHistory.map((purchase) => ({
+      id: `bank-${purchase.id}`,
+      createdAt: purchase.createdAt,
+      title: purchase.title,
+      subtitle: `${formatPurchaseDate(purchase.createdAt)} · банк · ${bankStatusText(purchase.status)}`,
+      value: rubText(purchase.amountRub),
+      tone: purchase.status === 'paid' ? ('positive' as const) : ('default' as const),
+    })),
+  ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   return (
-    <div
-      aria-label={`Изображение инвентаря ${label}`}
-      style={{
-        position: 'relative',
-        width: INVENTORY_ARTWORK_SIZE,
-        height: INVENTORY_ARTWORK_SIZE,
-        aspectRatio: '1 / 1',
-        alignSelf: 'center',
-        justifySelf: 'center',
-        borderRadius: 22,
-        overflow: 'hidden',
-        background: 'linear-gradient(145deg, #dbeafe 0%, #f8fafc 48%, #bfdbfe 100%)',
-        border: '1px solid rgba(255,255,255,0.82)',
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9), 0 8px 18px rgba(15,23,42,0.12)',
-        opacity: 1,
-      }}
-    >
-      <img
-        src={imageSrc}
-        alt=""
-        style={{
-          position: 'absolute',
-          inset: 0,
-          width: '100%',
-          height: '100%',
-          objectFit: 'cover',
-          filter: 'grayscale(1) saturate(0.1)',
-          opacity: 0.58,
-        }}
-      />
+    <section aria-label="История покупок" style={{ display: 'grid', gap: 8 }}>
+      <div className="section-label" style={{ margin: '0 0 0 -14px' }}>
+        История
+      </div>
+      <div className="glass" style={{ borderRadius: 22, padding: 14, display: 'grid', gap: 10 }}>
+        {entries.length === 0 ? (
+          <div style={{ color: 'var(--muted)', fontSize: 13, fontWeight: 750 }}>
+            Покупок пока нет.
+          </div>
+        ) : (
+          entries.map((entry) => (
+            <div
+              key={entry.id}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'minmax(0, 1fr) auto',
+                gap: 10,
+                alignItems: 'center',
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <div
+                  style={{
+                    color: 'var(--ink)',
+                    fontSize: 13,
+                    fontWeight: 900,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {entry.title}
+                </div>
+                <div style={{ marginTop: 3, color: 'var(--muted)', fontSize: 11, fontWeight: 750 }}>
+                  {entry.subtitle}
+                </div>
+              </div>
+              <div
+                style={{
+                  color: entry.tone === 'positive' ? '#0f766e' : 'var(--ink)',
+                  fontSize: 12,
+                  fontWeight: 950,
+                  textAlign: 'right',
+                }}
+              >
+                {entry.value}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </section>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: string }): JSX.Element {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+      <span style={{ color: 'var(--muted)', fontSize: 12, fontWeight: 800 }}>{label}</span>
+      <span style={{ color: 'var(--ink)', fontSize: 12, fontWeight: 900, textAlign: 'right' }}>
+        {value}
+      </span>
     </div>
   );
 }

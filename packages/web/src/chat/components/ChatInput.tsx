@@ -1,6 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import type { CSSProperties, ReactNode } from 'react';
-import { Bold, Italic, Mic, Paperclip, Send, Square } from 'lucide-react';
+import type { ClipboardEvent, CSSProperties, ReactNode } from 'react';
+import {
+  Bold,
+  File as FileIcon,
+  Image as ImageIcon,
+  Italic,
+  Mic,
+  Paperclip,
+  Send,
+  Square,
+} from 'lucide-react';
 import { ReplyPreview } from './ReplyPreview.js';
 
 export interface ChatInputReplyTarget {
@@ -24,6 +33,9 @@ interface ChatInputProps {
   attachmentPreview?: ReactNode;
   canSendEmpty?: boolean;
   onAttach?: () => void;
+  onAttachImage?: () => void;
+  onAttachFile?: () => void;
+  onPasteImage?: (file: File) => void;
   onVoice?: () => void;
   voiceState?: 'idle' | 'recording' | 'uploading';
   onClearReply: () => void;
@@ -60,6 +72,9 @@ export function ChatInput({
   attachmentPreview,
   canSendEmpty = false,
   onAttach,
+  onAttachImage,
+  onAttachFile,
+  onPasteImage,
   onVoice,
   voiceState = 'idle',
   onClearReply,
@@ -68,7 +83,9 @@ export function ChatInput({
   onEdit,
 }: ChatInputProps): JSX.Element {
   const [value, setValue] = useState('');
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   const ref = useRef<HTMLTextAreaElement | null>(null);
+  const attachMenuRef = useRef<HTMLDivElement | null>(null);
   // Synchronous guard against double-tap: the parent flips `disabled` only
   // after the next render once `sendMut.isPending` propagates, leaving a
   // small window where two taps can fire submit() with the same closure
@@ -81,6 +98,17 @@ export function ChatInput({
   useEffect(() => {
     if (!disabled) sendingRef.current = false;
   }, [disabled]);
+
+  useEffect(() => {
+    if (!attachMenuOpen) return;
+    const close = (event: PointerEvent): void => {
+      const node = attachMenuRef.current;
+      if (node && event.target instanceof Node && node.contains(event.target)) return;
+      setAttachMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
+  }, [attachMenuOpen]);
 
   useEffect(() => {
     if (!replyTo) return;
@@ -139,6 +167,33 @@ export function ChatInput({
     }, 0);
   }
 
+  function fileFromClipboardItem(item: DataTransferItem, index: number): File | null {
+    if (item.kind !== 'file' || !item.type.startsWith('image/')) return null;
+    const file = item.getAsFile();
+    if (!file) return null;
+    if (file.name.length > 0) return file;
+    const extension = item.type === 'image/png' ? 'png' : item.type === 'image/webp' ? 'webp' : 'jpg';
+    return new File([file], `clipboard-image-${index + 1}.${extension}`, {
+      type: file.type || item.type || 'image/png',
+      lastModified: Date.now(),
+    });
+  }
+
+  function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>): void {
+    if (!onPasteImage || disabled || editing) return;
+    const items = Array.from(event.clipboardData.items ?? []);
+    const itemImage = items
+      .map((item, index) => fileFromClipboardItem(item, index))
+      .find((file): file is File => file !== null);
+    const fileImage =
+      itemImage ??
+      Array.from(event.clipboardData.files ?? []).find((file) => file.type.startsWith('image/')) ??
+      null;
+    if (!fileImage) return;
+    event.preventDefault();
+    onPasteImage(fileImage);
+  }
+
   function submit(): void {
     if (disabled || sendingRef.current) return;
     const trimmed = value.trim();
@@ -159,6 +214,8 @@ export function ChatInput({
 
   const canSend = hasMeaningfulContent(value) || canSendEmpty;
   const showVoiceAction = onVoice !== undefined && !editing && !canSend;
+  const hasAttachmentChoices = onAttachImage !== undefined || onAttachFile !== undefined;
+  const showAttachmentAction = onAttach !== undefined || hasAttachmentChoices;
   const voiceLabel =
     voiceState === 'recording'
       ? 'Остановить запись'
@@ -248,23 +305,107 @@ export function ChatInput({
         </div>
       )}
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
-        {onAttach && (
-          <button
-            type="button"
-            className="icon-btn glass-dock-icon"
-            title="Прикрепить файл"
-            aria-label="Прикрепить файл"
-            disabled={disabled}
-            onClick={onAttach}
-            style={iconButtonStyle}
-          >
-            <Paperclip size={17} />
-          </button>
+        {showAttachmentAction && (
+          <div ref={attachMenuRef} style={{ position: 'relative', flexShrink: 0 }}>
+            <button
+              type="button"
+              className="icon-btn glass-dock-icon"
+              title="Прикрепить"
+              aria-label="Прикрепить"
+              disabled={disabled}
+              onClick={() => {
+                if (hasAttachmentChoices) {
+                  setAttachMenuOpen((open) => !open);
+                  return;
+                }
+                onAttach?.();
+              }}
+              style={iconButtonStyle}
+            >
+              <Paperclip size={17} />
+            </button>
+            {hasAttachmentChoices && attachMenuOpen && (
+              <div
+                role="menu"
+                aria-label="Выбор вложения"
+                className="glass"
+                style={{
+                  position: 'absolute',
+                  left: 0,
+                  bottom: `calc(${ROW_HEIGHT}px + 8px)`,
+                  zIndex: 40,
+                  display: 'grid',
+                  gap: 6,
+                  minWidth: 176,
+                  padding: 8,
+                  borderRadius: 18,
+                  boxShadow:
+                    '0 16px 36px rgba(15, 23, 42, 0.22), inset 0 1px 0 rgba(255,255,255,0.55)',
+                }}
+              >
+                {onAttachImage && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="icon-btn"
+                    onClick={() => {
+                      setAttachMenuOpen(false);
+                      onAttachImage();
+                    }}
+                    style={{
+                      justifyContent: 'flex-start',
+                      width: '100%',
+                      minWidth: 0,
+                      height: 40,
+                      minHeight: 40,
+                      padding: '0 12px',
+                      gap: 10,
+                      borderRadius: 14,
+                      color: 'var(--ink)',
+                      fontSize: 13,
+                      fontWeight: 900,
+                    }}
+                  >
+                    <ImageIcon size={17} />
+                    Изображение
+                  </button>
+                )}
+                {onAttachFile && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="icon-btn"
+                    onClick={() => {
+                      setAttachMenuOpen(false);
+                      onAttachFile();
+                    }}
+                    style={{
+                      justifyContent: 'flex-start',
+                      width: '100%',
+                      minWidth: 0,
+                      height: 40,
+                      minHeight: 40,
+                      padding: '0 12px',
+                      gap: 10,
+                      borderRadius: 14,
+                      color: 'var(--ink)',
+                      fontSize: 13,
+                      fontWeight: 900,
+                    }}
+                  >
+                    <FileIcon size={17} />
+                    Файл
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         )}
         <textarea
           ref={ref}
           value={value}
           onChange={(e) => setValue(e.target.value.slice(0, MAX_LEN))}
+          onPaste={handlePaste}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey && shouldSubmitOnEnter()) {
               e.preventDefault();

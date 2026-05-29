@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ProfileScreen } from './ProfileScreen.js';
 import { useAuthStore } from '../auth/authStore.js';
+import type { InventoryState } from '../api/inventory.js';
 
 type TelegramWebAppWindow = typeof window & {
   Telegram?: {
@@ -11,6 +12,71 @@ type TelegramWebAppWindow = typeof window & {
       initData?: string;
     };
   };
+};
+
+const emptyInventoryState: InventoryState = {
+  balances: { tokens: 1000, stars: 3, experience: 77 },
+  items: { stick: [], skates: [], nutrition: [] },
+  equipped: { stickItemId: null, skatesItemId: null, nutritionItemId: null },
+};
+
+const consumableInventoryState: InventoryState = {
+  balances: { tokens: 1000, stars: 3, experience: 77 },
+  items: {
+    stick: [
+      {
+        id: 'stick-sharp',
+        kind: 'stick',
+        title: 'Острая клюшка',
+        description: 'Быстрее выпускает шайбу из неудобной позиции.',
+        imageUrl: '/inventory/sticks.webp',
+        currencyPrice: 120,
+        chargesPerPurchase: 5,
+        rarity: 'rare',
+        powerScore: 24,
+        duelPeriodCost: 1,
+        chargesAvailable: 3,
+        chargesReserved: 1,
+      },
+    ],
+    skates: [
+      {
+        id: 'skates-light',
+        kind: 'skates',
+        title: 'Лёгкие коньки',
+        description: 'Добавляют рывок перед броском.',
+        imageUrl: '/inventory/nutrition.webp',
+        currencyPrice: 90,
+        chargesPerPurchase: 5,
+        rarity: 'common',
+        powerScore: 12,
+        duelPeriodCost: 1,
+        chargesAvailable: 0,
+        chargesReserved: 0,
+      },
+    ],
+    nutrition: [
+      {
+        id: 'nutrition-gel',
+        kind: 'nutrition',
+        title: 'Энергогель',
+        description: 'Держит концентрацию в конце периода.',
+        imageUrl: null,
+        currencyPrice: 60,
+        chargesPerPurchase: 5,
+        rarity: 'common',
+        powerScore: 8,
+        duelPeriodCost: 1,
+        chargesAvailable: 5,
+        chargesReserved: 0,
+      },
+    ],
+  },
+  equipped: {
+    stickItemId: 'stick-sharp',
+    skatesItemId: null,
+    nutritionItemId: 'nutrition-gel',
+  },
 };
 
 function renderProfile(): void {
@@ -23,6 +89,7 @@ function renderProfile(): void {
         <Routes>
           <Route path="/profile" element={<ProfileScreen />} />
           <Route path="/profile/settings" element={<div>settings screen</div>} />
+          <Route path="/inventory" element={<div>inventory screen</div>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -80,7 +147,10 @@ function getFetchUrl(input: Parameters<typeof fetch>[0]): string {
   return input.url;
 }
 
-function mockProfileFetch(profile: typeof telegramProfile) {
+function mockProfileFetch(
+  profile: typeof telegramProfile,
+  inventory: InventoryState = emptyInventoryState,
+) {
   return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     const url = getFetchUrl(input);
     if (url.endsWith('/api/me')) {
@@ -89,42 +159,11 @@ function mockProfileFetch(profile: typeof telegramProfile) {
         headers: { 'content-type': 'application/json' },
       });
     }
-    if (url.endsWith('/api/push/config')) {
-      return new Response(JSON.stringify({ supported: true, publicKey: 'test-key' }), {
+    if (url.endsWith('/api/inventory/me')) {
+      return new Response(JSON.stringify(inventory), {
         status: 200,
         headers: { 'content-type': 'application/json' },
       });
-    }
-    if (url.endsWith('/api/push/preferences')) {
-      const preferences = {
-        chatNewDialogMessage: true,
-        dailyGame: true,
-        trainingAvailable: true,
-        gameNews: true,
-      };
-      const patch =
-        init?.method === 'PATCH' && typeof init.body === 'string'
-          ? (JSON.parse(init.body) as Partial<typeof preferences>)
-          : {};
-      return new Response(JSON.stringify({ ...preferences, ...patch }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    }
-    if (url.endsWith('/api/feedback') && init?.method === 'POST') {
-      const body = typeof init.body === 'string' ? JSON.parse(init.body) : {};
-      return new Response(
-        JSON.stringify({
-          feedback: {
-            id: 'feedback-1',
-            ...body,
-            rating: body.kind === 'review' ? body.rating : null,
-            isRead: false,
-            createdAt: '2026-05-03T08:00:00.000Z',
-          },
-        }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      );
     }
     return new Response(JSON.stringify({ error: { code: 'not_found', message: 'not found' } }), {
       status: 404,
@@ -133,33 +172,10 @@ function mockProfileFetch(profile: typeof telegramProfile) {
   });
 }
 
-function mockPushSupport(subscription: PushSubscription | null): void {
-  const registration = {
-    pushManager: {
-      getSubscription: vi.fn().mockResolvedValue(subscription),
-    },
-  };
-
-  vi.stubGlobal('Notification', {
-    permission: 'granted',
-    requestPermission: vi.fn().mockResolvedValue('granted'),
-  });
-  vi.stubGlobal('PushManager', class PushManager {});
-  Object.defineProperty(navigator, 'serviceWorker', {
-    configurable: true,
-    value: { ready: Promise.resolve(registration) },
-  });
-}
-
 describe('ProfileScreen', () => {
   beforeEach(() => {
     localStorage.clear();
-    vi.unstubAllGlobals();
     delete (window as TelegramWebAppWindow).Telegram;
-    Object.defineProperty(navigator, 'serviceWorker', {
-      configurable: true,
-      value: undefined,
-    });
     useAuthStore.getState().setSession({
       accessToken: 'a',
       refreshToken: 'r',
@@ -174,8 +190,16 @@ describe('ProfileScreen', () => {
     renderProfile();
 
     const statsLabel = await screen.findByText('Статистика');
-    const achievementsLabel = screen.getByText('Достижения (1/2)');
-    expect(screen.getByText('Новичок')).toBeInTheDocument();
+    const equipmentLabel = screen.getByText('Экипировка');
+    const achievementsLabel = screen.getByText('Задания (1/2)');
+    expect(screen.getByText('Уровень: Новичок')).toBeInTheDocument();
+    expect(screen.getByText('Монеты')).toBeInTheDocument();
+    expect(screen.getByText('Звёзды')).toBeInTheDocument();
+    expect(screen.getByText('Опыт')).toBeInTheDocument();
+    expect(
+      await screen.findByText((text) => text.replace(/\s/g, '') === '1000'),
+    ).toBeInTheDocument();
+    expect(await screen.findByText('77')).toBeInTheDocument();
     expect(screen.queryByText('Ранг')).not.toBeInTheDocument();
     expect(screen.getByText('Броски')).toBeInTheDocument();
     expect(screen.getByText('128')).toBeInTheDocument();
@@ -188,28 +212,10 @@ describe('ProfileScreen', () => {
     expect(screen.getByText('(12)')).toBeInTheDocument();
     expect(screen.queryByText('Вратарей пройдено')).not.toBeInTheDocument();
     expect(screen.queryByText('Аккаунт и хват игрока')).not.toBeInTheDocument();
-    expect(screen.getByText('Уведомления')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Включить уведомления/i })).toBeInTheDocument();
-    const notificationSettings = await screen.findByRole('button', {
-      name: 'Настройки уведомлений',
-    });
-    expect(notificationSettings).toHaveAttribute('aria-expanded', 'false');
-    expect(
-      screen.queryByRole('switch', { name: 'Первое сообщение в личке' }),
-    ).not.toBeInTheDocument();
-    fireEvent.click(notificationSettings);
-    expect(screen.getByRole('switch', { name: 'Первое сообщение в личке' })).toHaveAttribute(
-      'aria-checked',
-      'true',
-    );
-    expect(screen.getByRole('switch', { name: 'Ежедневная игра' })).toBeInTheDocument();
-    expect(screen.getByRole('switch', { name: 'Тренировка доступна' })).toBeInTheDocument();
-    expect(screen.getByRole('switch', { name: 'Новости игры' })).toBeInTheDocument();
-    expect(screen.getByText('Обратная связь')).toBeInTheDocument();
-    expect(screen.getByText('Форма обратной связи')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Написать в обратную связь' })).toHaveClass(
-      'btn--cta',
-    );
+    expect(screen.queryByText('Уведомления')).not.toBeInTheDocument();
+    expect(screen.queryByText('Пуш-уведомления')).not.toBeInTheDocument();
+    expect(screen.queryByText('Обратная связь')).not.toBeInTheDocument();
+    expect(screen.queryByText('Форма обратной связи')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Тестовый пуш/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Первая шайба.*получено/i })).toBeInTheDocument();
     expect(
@@ -217,6 +223,12 @@ describe('ProfileScreen', () => {
     ).toBeInTheDocument();
     expect(screen.queryByText('Первый гол всегда самый шумный.')).not.toBeInTheDocument();
     expect(statsLabel.compareDocumentPosition(achievementsLabel)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(statsLabel.compareDocumentPosition(equipmentLabel)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(equipmentLabel.compareDocumentPosition(achievementsLabel)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
 
@@ -232,16 +244,6 @@ describe('ProfileScreen', () => {
     fireEvent.click(settingsButton);
 
     expect(screen.getByText('settings screen')).toBeInTheDocument();
-  });
-
-  it('shows disabled push status when notifications are off', async () => {
-    mockPushSupport(null);
-    mockProfileFetch(telegramProfile);
-
-    renderProfile();
-
-    expect(await screen.findByText('Уведомления выключены')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Включить уведомления/i })).toBeInTheDocument();
   });
 
   it('hides notification settings inside Telegram Mini App', async () => {
@@ -262,92 +264,66 @@ describe('ProfileScreen', () => {
     expect(urls.some((url) => url.includes('/api/push/'))).toBe(false);
   });
 
-  it('does not render a redundant enabled push button', async () => {
-    mockPushSupport({} as PushSubscription);
-    mockProfileFetch(telegramProfile);
+  it('renders consumable equipment slots and picker details', async () => {
+    mockProfileFetch(telegramProfile, consumableInventoryState);
 
     renderProfile();
 
-    expect(await screen.findByText('Уведомления включены')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Уведомления включены' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Выключить уведомления' })).toBeInTheDocument();
-  });
+    expect(
+      await screen.findByRole('button', { name: /Клюшка.*Острая клюшка/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Коньки.*Обычные коньки.*Базовая/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Питание.*Энергогель/i })).toBeInTheDocument();
+    expect(screen.getByText('На 3 периода')).toBeInTheDocument();
+    expect(screen.queryByText('Бросок +24')).not.toBeInTheDocument();
+    expect(screen.queryByText('выбрано')).not.toBeInTheDocument();
+    expect(document.querySelector('img[src="/inventory/stick-silver.webp"]')).toBeInTheDocument();
+    expect(
+      document.querySelector('img[src="/inventory/nutrition-bronze.webp"]'),
+    ).toBeInTheDocument();
+    expect(document.querySelector('img[src="/inventory/sticks.webp"]')).not.toBeInTheDocument();
 
-  it('does not show a test push button for admins', async () => {
-    mockProfileFetch({ ...telegramProfile, role: 'admin' });
+    fireEvent.click(screen.getByRole('button', { name: /Клюшка.*Острая клюшка/i }));
 
-    renderProfile();
-
-    await screen.findByText('Пуш-уведомления');
-    expect(screen.queryByRole('button', { name: /Тестовый пуш/i })).not.toBeInTheDocument();
-  });
-
-  it('saves push preference switches', async () => {
-    const fetchMock = mockProfileFetch(telegramProfile);
-
-    renderProfile();
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Настройки уведомлений' }));
-    const chatSwitch = await screen.findByRole('switch', { name: 'Первое сообщение в личке' });
-    fireEvent.click(chatSwitch);
-
-    expect(await screen.findByRole('switch', { name: 'Первое сообщение в личке' })).toHaveAttribute(
-      'aria-checked',
-      'false',
-    );
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/push/preferences',
-      expect.objectContaining({
-        method: 'PATCH',
-        body: JSON.stringify({ chatNewDialogMessage: false }),
-      }),
+    const dialog = screen.getByRole('dialog', { name: 'Клюшка' });
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByText('Острая клюшка')).toBeInTheDocument();
+    expect(
+      within(dialog).getByText('Быстрее выпускает шайбу из неудобной позиции.'),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText(/Бросок \+24/)).toBeInTheDocument();
+    expect(within(dialog).getByText('Цена: 120')).toBeInTheDocument();
+    expect(within(dialog).getByText('1 забронирован')).toBeInTheDocument();
+    expect(within(dialog).queryByText('Экипировать')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('Не брать')).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: /Острая клюшка/i })).toHaveAttribute(
+      'aria-pressed',
+      'true',
     );
   });
 
-  it('submits feedback from the profile modal', async () => {
-    const fetchMock = mockProfileFetch(telegramProfile);
+  it('shows base required equipment and offers the shop inside missing nutrition details', async () => {
+    mockProfileFetch(telegramProfile, emptyInventoryState);
 
     renderProfile();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Написать в обратную связь' }));
-    expect(screen.getByRole('dialog', { name: 'Обратная связь' })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: '0 из 5' })).toHaveAttribute('aria-checked', 'true');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Пожелание' }));
-    expect(screen.queryByRole('radiogroup', { name: 'Оценка отзыва' })).not.toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Что стоит добавить или поменять?')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Вопрос' }));
-    expect(screen.getByPlaceholderText('Что хотите уточнить?')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
-    expect(screen.queryByRole('dialog', { name: 'Обратная связь' })).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Написать в обратную связь' }));
-    const ratingFive = screen.getByRole('radio', { name: '5 из 5' });
-    [0, 1, 2, 3, 4, 5].forEach((value) => {
-      const ratingButton = screen.getByRole('radio', { name: `${value} из 5` });
-      expect(ratingButton).toHaveTextContent(String(value));
-      expect(ratingButton.querySelector('svg')).toBeNull();
-    });
-
-    fireEvent.click(ratingFive);
-    fireEvent.change(screen.getByLabelText('Сообщение'), {
-      target: { value: 'Очень нравится новый режим.' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Отправить' }));
-
-    expect(await screen.findByText('Спасибо, сообщение сохранено')).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/feedback',
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({
-          kind: 'review',
-          rating: 5,
-          message: 'Очень нравится новый режим.',
-        }),
-      }),
+    fireEvent.click(
+      await screen.findByRole('button', { name: /Клюшка.*Обычная клюшка.*Базовая/i }),
     );
+    const dialog = screen.getByRole('dialog', { name: 'Клюшка' });
+    expect(within(dialog).getByText('Обычная клюшка')).toBeInTheDocument();
+    expect(within(dialog).queryByText('Без клюшки')).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Закрыть' }));
+
+    fireEvent.click(screen.getByRole('button', { name: /Питание.*Нет купленных/i }));
+
+    const nutritionDialog = screen.getByRole('dialog', { name: 'Питание' });
+    expect(
+      within(nutritionDialog).getByText('Купленных предметов этого типа пока нет.'),
+    ).toBeInTheDocument();
+    fireEvent.click(within(nutritionDialog).getByRole('button', { name: 'В магазин' }));
+    expect(screen.getByText('inventory screen')).toBeInTheDocument();
   });
 });

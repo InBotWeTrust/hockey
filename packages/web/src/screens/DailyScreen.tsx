@@ -14,8 +14,8 @@ import { Container } from 'pixi.js';
 import type { Application, Ticker } from 'pixi.js';
 import {
   ArrowLeft,
-  BarChart3,
   ChevronRight,
+  Crosshair,
   Home,
   Info,
   Search,
@@ -56,6 +56,7 @@ import { Puck, type PuckOptions } from '../game/renderer/Puck.js';
 import { createGameLoop, type GameLoop, type SpeedOverrides } from '../game/loop.js';
 import type { Scale } from '../game/coords.js';
 import {
+  TRAINING_LONG_COURT_BACKGROUND,
   TRAINING_NEW_COURT_BACKGROUND,
   TRAINING_NEW_COURT_BG_CROP_BOTTOM,
   TRAINING_NEW_COURT_GOALIE_VISUAL_X_SCALE,
@@ -76,6 +77,7 @@ import {
   TRAINING_NEW_COURT_POST_EDGE_DISTANCE,
   distanceToNewTrainingCourtGoalEdge,
   resolveNewTrainingCourtShot,
+  type TrainingCourtDesign,
 } from '../game/trainingNewCourt.js';
 import { TelegramLoginButton, type TelegramAuthPayload } from '../auth/TelegramLoginButton.js';
 import { useAuthStore, type AuthSession } from '../auth/authStore.js';
@@ -109,9 +111,17 @@ import type {
 } from '../api/duel.js';
 import type { TrainingStateResponse } from '../api/training.js';
 import {
+  fetchMyInventory,
+  patchEquipment,
+  type InventoryEquipmentKind,
+  type InventoryItem,
+  type InventoryState,
+} from '../api/inventory.js';
+import {
   challengeAmateurDuel,
   acceptAmateurDuel,
   cancelAmateurDuel,
+  declineAmateurDuel,
   fetchAmateurEvents,
   fetchAmateurMatch,
   fetchAmateurMatches,
@@ -124,6 +134,8 @@ import {
   settleAmateurDuel,
   startAmateurDuelPeriod,
   type AmateurDuelKind,
+  type AmateurDuelInventoryAvailabilityItem,
+  type AmateurDuelLoadoutSelection,
   type AmateurDuelMatch,
   type AmateurDuelMatchState,
   type AmateurDuelPeriodLog,
@@ -133,6 +145,7 @@ import {
 } from '../api/amateurDuel.js';
 import { StartPeriodModal } from '../components/StartPeriodModal.js';
 import { getLastSeenAt, setLastSeenAt } from '../stores/seenPeriods.js';
+import { artworkForInventoryItem, placeholderArtworkForKind } from './inventoryArtwork.js';
 
 const PAUSE_MS = 1000;
 const HUB_PERIOD_DURATION_MS = 20 * 60 * 1000;
@@ -145,7 +158,6 @@ type AmateurView = 'home' | 'duels' | 'tournaments';
 type AmateurDuelTab = 'game' | 'locker' | 'rating' | 'history';
 type DuelHistoryScope = 'current' | 'all';
 type LevelArtwork = 'beginner' | 'amateur' | 'pro';
-type DailyHubArtwork = 'period-1' | 'period-2' | 'period-3' | 'break' | 'finished' | 'start';
 type ModeInfoModalContent = { title: string; text: string };
 type ArenaEntryKind = 'daily' | 'training' | 'duel';
 interface ArenaEntry {
@@ -156,12 +168,12 @@ interface ArenaEntry {
   subtitle: string;
   meta: string;
   ctaLabel: string;
-  artworkSrc: string;
   disabled?: boolean;
   scoreboard?: JSX.Element;
   opponentName?: string;
   opponentAvatarUrl?: string | null;
   typeLabel?: string;
+  secondaryActions?: ReactNode;
   onEnter: () => void;
 }
 export type PlayShotResolver = (context: {
@@ -180,39 +192,17 @@ const MODE_ARTWORK_IMAGES: Record<LevelArtwork, string | null> = {
   amateur: '/modes/amateur.webp',
   pro: '/modes/pro.webp',
 };
-const DUEL_EVENT_ARTWORK_IMAGE = '/modes/amateur-duel-card.webp';
 const DUEL_KIND_ARTWORK_IMAGES: Record<AmateurDuelKind, string> = {
   express: '/modes/amateur-duel-steal-clean.webp',
   express_plus: '/modes/amateur-duel-card.webp',
   classic: '/modes/amateur-duel.webp',
 };
-
-const DAILY_HUB_ARTWORK_IMAGES: Record<DailyHubArtwork, string> = {
-  'period-1': '/daily-game/period-1.webp',
-  'period-2': '/daily-game/period-2.webp',
-  'period-3': '/daily-game/period-3.webp',
-  break: '/daily-game/break.webp',
-  finished: '/daily-game/finished.webp',
-  start: '/daily-game/start.webp',
-};
 const TRAINING_HITBOX_TOGGLE_STORAGE_KEY = 'hockey.trainingHitboxesVisible';
 const OPPONENT_ONLINE_WINDOW_MS = 2 * 60 * 1000;
 const OPPONENT_RECENT_WINDOW_MS = 5 * 60 * 1000;
 const DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED = 1000;
-const ARENA_LAUNCH_TRANSITION_MS = 640;
 const PLAY_ROUTE_TRANSITION_MS = 580;
 const ARENA_SELECTED_ENTRY_STORAGE_KEY = 'hockey.arenaSelectedEntryId';
-const ARENA_RETURN_FRAME_STORAGE_KEY = 'hockey.arenaReturnFrame';
-
-interface ArenaReturnFrame {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-  viewportWidth: number;
-  viewportHeight: number;
-  savedAt: number;
-}
 
 function readArenaSelectedEntryId(): string | null {
   if (typeof window === 'undefined') return null;
@@ -233,59 +223,6 @@ function saveArenaSelectedEntryId(value: string | null): void {
   }
 }
 
-function readArenaReturnFrame(): ArenaReturnFrame | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = window.sessionStorage.getItem(ARENA_RETURN_FRAME_STORAGE_KEY);
-    window.sessionStorage.removeItem(ARENA_RETURN_FRAME_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<ArenaReturnFrame>;
-    const frame: ArenaReturnFrame = {
-      left: Number(parsed.left),
-      top: Number(parsed.top),
-      width: Number(parsed.width),
-      height: Number(parsed.height),
-      viewportWidth: Number(parsed.viewportWidth),
-      viewportHeight: Number(parsed.viewportHeight),
-      savedAt: Number(parsed.savedAt),
-    };
-    const isValid =
-      Number.isFinite(frame.left) &&
-      Number.isFinite(frame.top) &&
-      Number.isFinite(frame.width) &&
-      Number.isFinite(frame.height) &&
-      Number.isFinite(frame.viewportWidth) &&
-      Number.isFinite(frame.viewportHeight) &&
-      Number.isFinite(frame.savedAt) &&
-      frame.width > 0 &&
-      frame.height > 0 &&
-      Math.abs(frame.viewportWidth - window.innerWidth) < 2 &&
-      Math.abs(frame.viewportHeight - window.innerHeight) < 2 &&
-      Date.now() - frame.savedAt < 5000;
-    return isValid ? frame : null;
-  } catch {
-    return null;
-  }
-}
-
-function saveArenaReturnFrame(rect: DOMRect): void {
-  if (typeof window === 'undefined') return;
-  try {
-    const frame: ArenaReturnFrame = {
-      left: rect.left,
-      top: rect.top,
-      width: rect.width,
-      height: rect.height,
-      viewportWidth: window.innerWidth,
-      viewportHeight: window.innerHeight,
-      savedAt: Date.now(),
-    };
-    window.sessionStorage.setItem(ARENA_RETURN_FRAME_STORAGE_KEY, JSON.stringify(frame));
-  } catch {
-    // This is only for visual continuity between routes.
-  }
-}
-
 function readTrainingHitboxesVisible(): boolean {
   if (typeof window === 'undefined') return false;
   try {
@@ -294,6 +231,17 @@ function readTrainingHitboxesVisible(): boolean {
     return false;
   }
 }
+
+const LONG_COURT_RINK_ASPECT_RATIO = '1212 / 2000';
+const LONG_COURT_GAME_LAYER_STYLE: CSSProperties = {
+  top: '24.55%',
+  height: '74.2%',
+  bottom: 'auto',
+};
+const TRAINING_LED_TABLEAU_IMAGE = '/sprites/wide-tableau-led-dark-v2.webp';
+const DAILY_LONG_COURT_BACKGROUND = '/sprites/daily-long-court-people.webp';
+const ARENA_ICE_COURT_BACKGROUND = '/sprites/arena-ice-court-v2.webp';
+const ARENA_ICE_TABLEAU_IMAGE = '/sprites/arena-ice-tableau-v2.webp';
 
 function shouldReduceMotion(): boolean {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
@@ -307,21 +255,6 @@ function saveTrainingHitboxesVisible(value: boolean): void {
   } catch {
     // The toggle is a local admin aid; storage failure should not block gameplay.
   }
-}
-
-function dailyHubArtworkFor(
-  data: DailyStateResponse,
-  isDailyLockedByTraining: boolean,
-): DailyHubArtwork {
-  if (isDailyLockedByTraining || data.state === 'break_active') return 'break';
-  if (data.state === 'closed') return 'finished';
-  if (data.state === 'period_active') {
-    const period = Math.min(3, Math.max(1, data.current_period));
-    return `period-${period}` as DailyHubArtwork;
-  }
-  if (data.current_period === 0) return 'start';
-  const nextPeriod = Math.min(3, Math.max(1, data.current_period + 1));
-  return `period-${nextPeriod}` as DailyHubArtwork;
 }
 
 function periodSpeedPresetFor(
@@ -700,7 +633,7 @@ export function DailyScreen(): JSX.Element {
             }}
             onOpenMatch={(matchId) => {
               setActiveAmateurMatchId(matchId);
-              navigate(`/?view=amateur&match=${encodeURIComponent(matchId)}`, {
+              navigate(`/?view=amateur&match=${encodeURIComponent(matchId)}&play=1`, {
                 replace: true,
               });
             }}
@@ -885,18 +818,14 @@ function GameHub({
   onOpenTrainingPlay: (options?: PlayOpenOptions) => void;
   onOpenAmateurMatch: (matchId: string, options?: PlayOpenOptions) => void;
 }): JSX.Element {
+  const queryClient = useQueryClient();
   const data = useDailyStore((s) => s.data)!;
   const refresh = useDailyStore((s) => s.refresh);
-  const startDailyPeriod = useDailyStore((s) => s.startPeriod);
   const trainingData = useTrainingSessionStore((s) => s.data);
-  const startTraining = useTrainingSessionStore((s) => s.start);
   const trainingInFlight = useTrainingSessionStore((s) => s.inFlight);
   const [modeInfoModal, setModeInfoModal] = useState<ModeInfoModalContent | null>(null);
-  const [dailyStatsOpen, setDailyStatsOpen] = useState(false);
   const [duelStatsMatch, setDuelStatsMatch] = useState<AmateurDuelMatch | null>(null);
   const [arenaActionId, setArenaActionId] = useState<string | null>(null);
-  const [launchingArenaEntryId, setLaunchingArenaEntryId] = useState<string | null>(null);
-  const [arenaReturnFrame] = useState<ArenaReturnFrame | null>(readArenaReturnFrame);
   const pending = useDailyStore((s) => s.inFlight);
   const nextPeriod = data.current_period === 0 ? 1 : data.current_period + 1;
   const dailyAvailableTitle = `${nextPeriod}-й период доступен`;
@@ -921,7 +850,6 @@ function GameHub({
     data.current_period === 0 &&
     trainingCooldownEndsAt > 0 &&
     trainingCooldownRemaining > 0;
-  const dailyHubArtwork = dailyHubArtworkFor(data, isDailyLockedByTraining);
   const amateurUnlockGoalsRequired = Math.max(
     0,
     data.amateur_unlock_goals_required ?? DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED,
@@ -977,7 +905,7 @@ function GameHub({
   ]);
 
   const isDailyInProgress = data.state === 'period_active' || data.state === 'break_active';
-  const isArenaLaunching = launchingArenaEntryId !== null;
+  const isArenaLaunching = false;
   const dailyActionDisabled = pending || arenaActionId === 'daily' || isArenaLaunching;
   const dailyActionLabel = 'На площадку';
   const dailyEventTitle = isDailyLockedByTraining
@@ -1037,46 +965,18 @@ function GameHub({
       enter: (value: T) => void | Promise<void>,
     ): Promise<void> => {
       void _entryId;
-      try {
-        const value = await prepare();
-        await enter(value);
-      } catch (err) {
-        setLaunchingArenaEntryId(null);
-        throw err;
-      }
+      const value = await prepare();
+      await enter(value);
     },
     [],
   );
 
   const handleDailyAction = async (): Promise<void> => {
     if (pending || arenaActionId === 'daily' || isArenaLaunching) return;
-    if (
-      data.state === 'idle' &&
-      data.current_period < data.total_periods &&
-      !isDailyLockedByTraining
-    ) {
-      setArenaActionId('daily');
-      try {
-        await runArenaLaunch(
-          'daily',
-          () => startDailyPeriod(),
-          (next) => {
-            if (next?.state === 'period_active') {
-              onOpenDailyPlay({ entrance: true, routeTransition: true });
-            } else {
-              setLaunchingArenaEntryId(null);
-            }
-          },
-        );
-      } finally {
-        setArenaActionId(null);
-      }
-      return;
-    }
     await runArenaLaunch(
       'daily',
       async () => null,
-      () => onOpenDailyPlay({ routeTransition: true }),
+      () => onOpenDailyPlay(),
     );
   };
 
@@ -1085,33 +985,22 @@ function GameHub({
     if (
       isTrainingLockedByDaily ||
       trainingData?.state === 'active' ||
-      trainingData?.state === 'closed'
+      trainingData?.state === 'closed' ||
+      trainingData?.state === 'idle' ||
+      !trainingData
     ) {
       await runArenaLaunch(
         'training',
         async () => null,
-        () => onOpenTrainingPlay({ routeTransition: true }),
+        () => onOpenTrainingPlay(),
       );
       return;
     }
-    setArenaActionId('training');
-    try {
-      const periodNumber = trainingData?.selected_period ?? 1;
-      await runArenaLaunch(
-        'training',
-        () => startTraining(periodNumber),
-        (next) => {
-          if (next?.state === 'active') {
-            onOpenTrainingPlay({ entrance: true, routeTransition: true });
-          } else {
-            setLaunchingArenaEntryId(null);
-            onOpenTraining();
-          }
-        },
-      );
-    } finally {
-      setArenaActionId(null);
-    }
+    await runArenaLaunch(
+      'training',
+      async () => null,
+      () => onOpenTraining(),
+    );
   };
 
   const handleOpenDuel = async (event: AmateurDuelMatch): Promise<void> => {
@@ -1120,48 +1009,12 @@ function GameHub({
     try {
       await runArenaLaunch(
         `duel-${event.id}`,
-        async () => {
-          let entrance = false;
-          let latest: AmateurDuelMatch | AmateurDuelMatchState = event;
-
-          if (latest.status === 'invited' && latest.me.state === 'invited') {
-            latest = (await acceptAmateurDuel(latest.id)).match;
-          }
-
-          if (latest.status === 'ready_check' && latest.me.state !== 'ready') {
-            latest = (await readyAmateurDuel(latest.id, {})).match;
-          }
-
-          const nowMs = duelMatchNowMs(latest, Date.now());
-          if (canStartArenaDuelPeriod(latest, nowMs)) {
-            latest = (await startAmateurDuelPeriod(latest.id)).match;
-            entrance = true;
-          }
-
-          if (latest.me.state !== 'period_active') {
-            return {
-              matchId: latest.id,
-              entrance: false,
-              playable: false,
-            };
-          }
-
-          return {
-            matchId: latest.id,
-            entrance,
-            playable: true,
-          };
-        },
-        ({ matchId, entrance, playable }) => {
-          if (!playable) {
-            onOpenAmateurMatch(matchId, {
-              entrance: false,
-              directPlay: true,
-              routeTransition: true,
-            });
-            return;
-          }
-          onOpenAmateurMatch(matchId, { entrance, directPlay: true, routeTransition: true });
+        async () => event.id,
+        (matchId) => {
+          onOpenAmateurMatch(matchId, {
+            entrance: false,
+            directPlay: true,
+          });
         },
       );
     } catch (err) {
@@ -1173,6 +1026,35 @@ function GameHub({
       setArenaActionId(null);
     }
   };
+
+  const acceptArenaDuelMut = useMutation({
+    mutationFn: (matchId: string) => acceptAmateurDuel(matchId),
+    onSuccess: (_res, matchId) => {
+      void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+      onOpenAmateurMatch(matchId, { entrance: false, directPlay: true });
+    },
+    onError: (err) => {
+      setModeInfoModal({
+        title: 'Не удалось принять дуэль',
+        text: err instanceof Error ? err.message : 'Попробуйте ещё раз.',
+      });
+      void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+    },
+  });
+
+  const declineArenaDuelMut = useMutation({
+    mutationFn: (matchId: string) => declineAmateurDuel(matchId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+    },
+    onError: (err) => {
+      setModeInfoModal({
+        title: 'Не удалось отклонить дуэль',
+        text: err instanceof Error ? err.message : 'Попробуйте ещё раз.',
+      });
+      void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+    },
+  });
 
   const dailyArenaEntry: ArenaEntry = {
     id: 'daily',
@@ -1194,7 +1076,6 @@ function GameHub({
             ? 'Игра уже начата.'
             : `${data.total_periods} периода по ${data.shots_per_period} бросков.`,
     ctaLabel: dailyActionLabel,
-    artworkSrc: DAILY_HUB_ARTWORK_IMAGES[dailyHubArtwork],
     disabled: dailyActionDisabled,
     onEnter: () => void handleDailyAction(),
     scoreboard: (
@@ -1215,12 +1096,15 @@ function GameHub({
     subtitle: 'Период на выбор, броски для формы и скорости.',
     meta: trainingAvailability,
     ctaLabel: 'На площадку',
-    artworkSrc: MODE_ARTWORK_IMAGES.beginner ?? DAILY_HUB_ARTWORK_IMAGES.start,
     disabled: trainingInFlight || arenaActionId === 'training' || isArenaLaunching,
     onEnter: handleOpenTraining,
   };
   const duelArenaEntries = activeDuelEvents.map<ArenaEntry>((event) => {
     const timing = duelEventTiming(event, now);
+    const isIncomingInvite = isDuelInviteForMe(event);
+    const invitePending =
+      (acceptArenaDuelMut.isPending && acceptArenaDuelMut.variables === event.id) ||
+      (declineArenaDuelMut.isPending && declineArenaDuelMut.variables === event.id);
     return {
       id: `duel-${event.id}`,
       kind: 'duel',
@@ -1229,11 +1113,44 @@ function GameHub({
       subtitle: duelOutcomeText(event),
       meta: `${timing.label}: ${timing.value}`,
       ctaLabel: arenaDuelCtaLabel(event, now),
-      artworkSrc: DUEL_EVENT_ARTWORK_IMAGE,
-      disabled: arenaActionId === `duel-${event.id}` || isArenaLaunching,
+      disabled:
+        isIncomingInvite ||
+        arenaActionId === `duel-${event.id}` ||
+        isArenaLaunching ||
+        invitePending,
       opponentName: event.opponent.display_name,
       opponentAvatarUrl: event.opponent.avatar_url,
       typeLabel: duelKindText(event.rules.duelKind),
+      secondaryActions: isIncomingInvite ? (
+        <div
+          style={{
+            width: '78%',
+            margin: '0 auto',
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: 8,
+          }}
+        >
+          <button
+            type="button"
+            className="btn btn--ghost"
+            disabled={invitePending}
+            onClick={() => declineArenaDuelMut.mutate(event.id)}
+            style={{ minHeight: 34, fontSize: 'clamp(10px, 1.45vh, 12px)', padding: '0 10px' }}
+          >
+            Отклонить
+          </button>
+          <button
+            type="button"
+            className="btn btn--cta"
+            disabled={invitePending}
+            onClick={() => acceptArenaDuelMut.mutate(event.id)}
+            style={{ minHeight: 34, fontSize: 'clamp(10px, 1.45vh, 12px)', padding: '0 10px' }}
+          >
+            Принять
+          </button>
+        </div>
+      ) : undefined,
       onEnter: () => void handleOpenDuel(event),
       scoreboard: (
         <DailyHubScoreboard
@@ -1279,38 +1196,31 @@ function GameHub({
     <main
       className="screen"
       style={{
-        position: 'relative',
-        padding: 'calc(18px + var(--app-safe-top)) 0 0',
+        position: 'fixed',
+        inset: 0,
+        width: '100%',
+        height: '100dvh',
+        padding: 0,
         overflow: 'hidden',
+        background: '#06111d',
       }}
     >
-      <ArenaRinkBackdropLayer launching={isArenaLaunching} returnFrame={arenaReturnFrame} />
-
       <section
         aria-label="Игровая арена"
         style={{
-          position: 'relative',
+          position: 'absolute',
+          inset: 0,
           zIndex: 2,
           width: '100%',
-          maxWidth: 760,
           height: '100%',
-          margin: '0 auto',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'center',
-          gap: 14,
-          padding: '0 14px',
-          paddingBottom: 'calc(92px + var(--bottom-nav-bottom-gap))',
+          display: 'block',
+          padding: 0,
         }}
       >
         <ArenaVideoCube
           entries={arenaEntries}
           activeIndex={activeCubeIndex}
           onActiveIndexChange={handleArenaActiveIndexChange}
-          launchingEntryId={launchingArenaEntryId}
-          onStats={(entry) => {
-            if (entry.kind === 'daily') setDailyStatsOpen(true);
-          }}
         />
       </section>
 
@@ -1322,13 +1232,6 @@ function GameHub({
         />
       )}
 
-      {dailyStatsOpen && (
-        <DailyGameStatsModal
-          stats={data.previous_game}
-          totalPeriods={data.total_periods}
-          onClose={() => setDailyStatsOpen(false)}
-        />
-      )}
       {duelStatsCurrentMatch && (
         <DuelStatsModal match={duelStatsCurrentMatch} onClose={() => setDuelStatsMatch(null)} />
       )}
@@ -1336,579 +1239,370 @@ function GameHub({
   );
 }
 
-function ArenaRinkBackdropLayer({
-  launching,
-  returnFrame,
-}: {
-  launching: boolean;
-  returnFrame: ArenaReturnFrame | null;
-}): JSX.Element {
-  const [activeReturnFrame, setActiveReturnFrame] = useState<ArenaReturnFrame | null>(returnFrame);
-  const viewportWidth = typeof window === 'undefined' ? 390 : window.innerWidth;
-  const viewportHeight = typeof window === 'undefined' ? 844 : window.innerHeight;
-  const arenaWidth = Math.max(viewportWidth * 1.12, (viewportHeight * 1024) / 1428);
-  const arenaHeight = (arenaWidth * 1428) / 1024;
-  const transition =
-    `left ${ARENA_LAUNCH_TRANSITION_MS}ms cubic-bezier(.16,.84,.24,1), ` +
-    `top ${ARENA_LAUNCH_TRANSITION_MS}ms cubic-bezier(.16,.84,.24,1), ` +
-    `width ${ARENA_LAUNCH_TRANSITION_MS}ms cubic-bezier(.16,.84,.24,1), ` +
-    `height ${ARENA_LAUNCH_TRANSITION_MS}ms cubic-bezier(.16,.84,.24,1), ` +
-    `filter ${ARENA_LAUNCH_TRANSITION_MS}ms cubic-bezier(.16,.84,.24,1), ` +
-    `transform ${ARENA_LAUNCH_TRANSITION_MS}ms cubic-bezier(.16,.84,.24,1), ` +
-    `opacity ${ARENA_LAUNCH_TRANSITION_MS}ms ease`;
-
-  useEffect(() => {
-    if (!returnFrame) return undefined;
-
-    setActiveReturnFrame(returnFrame);
-    let secondFrame: number | null = null;
-    const firstFrame = window.requestAnimationFrame(() => {
-      secondFrame = window.requestAnimationFrame(() => setActiveReturnFrame(null));
-    });
-
-    return () => {
-      window.cancelAnimationFrame(firstFrame);
-      if (secondFrame !== null) window.cancelAnimationFrame(secondFrame);
-    };
-  }, [returnFrame]);
-
-  const isReturning = activeReturnFrame !== null;
-  const rinkFrameStyle: CSSProperties = activeReturnFrame
-    ? {
-        position: 'fixed',
-        left: activeReturnFrame.left,
-        top: activeReturnFrame.top,
-        width: activeReturnFrame.width,
-        height: activeReturnFrame.height,
-        overflow: 'hidden',
-        opacity: 0.96,
-        filter: 'blur(0.7px) saturate(1.02) contrast(1)',
-        transform: 'translate3d(0, 0, 0)',
-        transformOrigin: '50% 58%',
-        transition,
-      }
-    : {
-        position: 'fixed',
-        left: viewportWidth / 2,
-        top: viewportHeight * (launching ? 0.53 : 0.5),
-        width: arenaWidth,
-        height: arenaHeight,
-        overflow: 'hidden',
-        opacity: launching ? 1 : 0.94,
-        filter: launching
-          ? 'blur(0.6px) saturate(1.02) contrast(1)'
-          : 'blur(2.2px) saturate(0.96) contrast(0.98)',
-        transform: launching
-          ? 'translate3d(-50%, -50%, 0) scale(0.76)'
-          : 'translate3d(-50%, -50%, 0) scale(1)',
-        transformOrigin: '50% 54%',
-        transition,
-      };
-  return (
-    <div
-      data-testid="arena-rink-backdrop"
-      data-launching={launching ? 'true' : 'false'}
-      aria-hidden="true"
-      style={{
-        position: 'absolute',
-        inset: 0,
-        zIndex: 0,
-        overflow: 'hidden',
-        pointerEvents: 'none',
-      }}
-    >
-      <div style={rinkFrameStyle}>
-        <TrainingPerspectiveRink />
-      </div>
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background:
-            'linear-gradient(180deg, rgba(180,211,235,0.22) 0%, rgba(180,211,235,0.04) 28%, rgba(180,211,235,0.1) 100%), radial-gradient(circle at 50% 46%, rgba(255,255,255,0.14), transparent 38%)',
-          opacity: launching ? 0.06 : isReturning ? 0.18 : 0.46,
-          transition: `opacity ${ARENA_LAUNCH_TRANSITION_MS}ms ease`,
-        }}
-      />
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background:
-            'radial-gradient(circle at 50% 50%, transparent 0 28%, rgba(15,23,42,0.18) 62%, rgba(15,23,42,0.28) 100%)',
-          opacity: launching ? 0 : isReturning ? 0.12 : 0.22,
-          transform: launching ? 'scale(1.08)' : 'scale(1)',
-          transition: `opacity ${ARENA_LAUNCH_TRANSITION_MS}ms cubic-bezier(.16,.84,.24,1), transform ${ARENA_LAUNCH_TRANSITION_MS}ms cubic-bezier(.16,.84,.24,1)`,
-        }}
-      />
-    </div>
-  );
-}
-
-function getArenaCarouselStep(carousel: HTMLDivElement | null): number {
-  if (!carousel) return 0;
-  const firstCard = carousel.firstElementChild as HTMLElement | null;
-  const styles = window.getComputedStyle(carousel);
-  const gap = Number.parseFloat(styles.columnGap || styles.gap || '0') || 0;
-  return (firstCard?.offsetWidth ?? carousel.clientWidth ?? 0) + gap;
-}
-
 function ArenaVideoCube({
   entries,
   activeIndex,
   onActiveIndexChange,
-  launchingEntryId,
-  onStats,
 }: {
   entries: ArenaEntry[];
   activeIndex: number;
   onActiveIndexChange: (index: number) => void;
-  launchingEntryId: string | null;
-  onStats: (entry: ArenaEntry) => void;
 }): JSX.Element {
-  const carouselRef = useRef<HTMLDivElement | null>(null);
-  const activeIndexRef = useRef(activeIndex);
-  const scrollCommitTimerRef = useRef<number | null>(null);
-  const scrollRafRef = useRef<number | null>(null);
-  const programmaticScrollRef = useRef(false);
-  const [scrollProgress, setScrollProgress] = useState(activeIndex);
+  const activeEntry = entries[Math.min(entries.length - 1, Math.max(0, activeIndex))] ?? entries[0];
+  const hasManyEntries = entries.length > 1;
+  const goTo = useCallback(
+    (nextIndex: number): void => {
+      if (entries.length === 0) return;
+      const normalized = (nextIndex + entries.length) % entries.length;
+      onActiveIndexChange(normalized);
+    },
+    [entries.length, onActiveIndexChange],
+  );
 
-  useEffect(() => {
-    activeIndexRef.current = activeIndex;
-  }, [activeIndex]);
-
-  useEffect(() => {
-    return () => {
-      if (scrollCommitTimerRef.current !== null) {
-        window.clearTimeout(scrollCommitTimerRef.current);
-      }
-      if (scrollRafRef.current !== null) {
-        window.cancelAnimationFrame(scrollRafRef.current);
-      }
-    };
-  }, []);
-
-  useLayoutEffect(() => {
-    const carousel = carouselRef.current;
-    const step = getArenaCarouselStep(carousel);
-    if (!carousel || step <= 0) {
-      setScrollProgress(activeIndex);
-      return;
-    }
-    const nextLeft = activeIndex * step;
-    const currentIndex = Math.round(carousel.scrollLeft / step);
-    if (currentIndex !== activeIndex && Math.abs(carousel.scrollLeft - nextLeft) > 1) {
-      programmaticScrollRef.current = true;
-      if (typeof carousel.scrollTo === 'function') {
-        carousel.scrollTo({ left: nextLeft, behavior: 'auto' });
-      } else {
-        carousel.scrollLeft = nextLeft;
-      }
-      window.requestAnimationFrame(() => {
-        programmaticScrollRef.current = false;
-      });
-    }
-    setScrollProgress(activeIndex);
-  }, [activeIndex, entries.length]);
-
-  const handleScroll = useCallback((): void => {
-    if (scrollRafRef.current !== null) {
-      window.cancelAnimationFrame(scrollRafRef.current);
-    }
-    scrollRafRef.current = window.requestAnimationFrame(() => {
-      scrollRafRef.current = null;
-      const carousel = carouselRef.current;
-      const step = getArenaCarouselStep(carousel);
-      if (!carousel || step <= 0 || entries.length === 0) return;
-      const progress = Math.min(entries.length - 1, Math.max(0, carousel.scrollLeft / step));
-      setScrollProgress(progress);
-
-      if (programmaticScrollRef.current) return;
-
-      if (scrollCommitTimerRef.current !== null) {
-        window.clearTimeout(scrollCommitTimerRef.current);
-      }
-      scrollCommitTimerRef.current = window.setTimeout(() => {
-        scrollCommitTimerRef.current = null;
-        const nextIndex = Math.min(entries.length - 1, Math.max(0, Math.round(progress)));
-        if (nextIndex !== activeIndexRef.current) {
-          activeIndexRef.current = nextIndex;
-          onActiveIndexChange(nextIndex);
-        }
-      }, 120);
-    });
-  }, [entries.length, onActiveIndexChange]);
+  if (!activeEntry) {
+    return <div style={{ minHeight: 320 }} />;
+  }
 
   return (
     <div
       style={{
-        minHeight: 0,
-        flex: '1 1 auto',
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'center',
-        gap: 'clamp(6px, 1.4vh, 10px)',
-        paddingTop: 'clamp(0px, 4.5vh, 34px)',
-        transform: launchingEntryId ? 'translate3d(0, 34px, 0) scale(0.82)' : 'none',
-        opacity: launchingEntryId ? 0 : 1,
-        filter: launchingEntryId ? 'blur(10px)' : 'none',
-        transition:
-          'transform 420ms cubic-bezier(.18,.82,.24,1), opacity 300ms ease, filter 420ms cubic-bezier(.18,.82,.24,1)',
-        pointerEvents: launchingEntryId ? 'none' : undefined,
+        position: 'fixed',
+        inset: 0,
+        width: '100vw',
+        height: '100dvh',
+        overflow: 'hidden',
+        background: '#06111d',
       }}
     >
+      <img
+        className="arena-video-cube__background"
+        src={ARENA_ICE_COURT_BACKGROUND}
+        alt=""
+        aria-hidden="true"
+      />
       <div
-        aria-label="Разделы на площадке"
+        aria-label="Разделы на табло"
         style={{
-          position: 'relative',
-          width: '100%',
-          maxWidth: 462,
-          margin: '0 auto',
-          padding: '0',
+          position: 'absolute',
+          left: '50%',
+          top: 'calc((100dvh - 92px - var(--bottom-nav-bottom-gap) - var(--app-safe-bottom) + var(--app-safe-top)) / 2)',
+          width: 'min(100vw, 620px)',
+          aspectRatio: '1024 / 1536',
+          overflow: 'hidden',
+          transform: 'translate3d(-50%, -74%, 0)',
         }}
       >
-        <div
-          ref={carouselRef}
-          onScroll={handleScroll}
+        <img
+          src={ARENA_ICE_TABLEAU_IMAGE}
+          alt=""
+          aria-hidden="true"
           style={{
-            position: 'relative',
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'fill',
+          }}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            left: '8.3%',
+            right: '8.3%',
+            top: '50.8%',
+            bottom: '5.4%',
             zIndex: 2,
-            display: 'flex',
-            gap: 'clamp(10px, 3vw, 12px)',
-            overflowX: 'auto',
-            scrollSnapType: 'x mandatory',
-            scrollPaddingInline: 'clamp(12px, 3.8vw, 20px)',
-            overscrollBehaviorX: 'contain',
-            WebkitOverflowScrolling: 'touch',
-            padding: '0 clamp(12px, 3.8vw, 20px) 12px',
-            scrollbarWidth: 'none',
-            perspective: 920,
-            perspectiveOrigin: '50% 50%',
+            display: 'grid',
+            gridTemplateRows: 'auto minmax(0, 1fr) auto',
+            rowGap: 'clamp(18px, 2.6vh, 24px)',
+            padding: 'clamp(30px, 4.2vh, 36px) 0 clamp(15px, 2.3vh, 20px)',
+            boxSizing: 'border-box',
           }}
         >
-          {entries.map((entry, index) => {
-            const offset = Math.max(-1, Math.min(1, index - scrollProgress));
-            const absOffset = Math.abs(offset);
-            return (
-              <article
-                key={entry.id}
-                aria-label={`${entry.eyebrow}: ${entry.title}`}
-                style={{
-                  flex: '0 0 calc(100% - clamp(24px, 7vw, 40px))',
-                  minWidth: 0,
-                  aspectRatio: '4 / 3',
-                  scrollSnapAlign: 'center',
-                  display: 'flex',
-                  overflow: 'visible',
-                  perspective: 900,
-                }}
-              >
-                <div
+          <div
+            style={{
+              position: 'absolute',
+              left: '1.2%',
+              right: '1.2%',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              zIndex: 4,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              pointerEvents: 'none',
+            }}
+          >
+            <ArenaTableauNavButton
+              disabled={!hasManyEntries}
+              label="Предыдущий экран табло"
+              onClick={() => goTo(activeIndex - 1)}
+            >
+              ‹
+            </ArenaTableauNavButton>
+            <ArenaTableauNavButton
+              disabled={!hasManyEntries}
+              label="Следующий экран табло"
+              onClick={() => goTo(activeIndex + 1)}
+            >
+              ›
+            </ArenaTableauNavButton>
+          </div>
+          <div
+            style={{
+              position: 'relative',
+              zIndex: 4,
+              minWidth: 0,
+              display: 'flex',
+              justifyContent: 'center',
+              gap: 6,
+              overflow: 'hidden',
+            }}
+          >
+            {entries.map((entry, index) => {
+              const active = index === activeIndex;
+              return (
+                <button
+                  key={entry.id}
+                  type="button"
+                  aria-label={`Выбрать ${entry.eyebrow}`}
+                  aria-pressed={active}
+                  onClick={() => goTo(index)}
                   style={{
-                    width: '100%',
-                    height: '100%',
-                    display: 'flex',
-                    transform: `rotateY(${offset * 10}deg) translateZ(${-absOffset * 7}px) scale(${1 - absOffset * 0.012})`,
-                    transformOrigin: '50% 50%',
-                    transformStyle: 'preserve-3d',
-                    backfaceVisibility: 'hidden',
-                    transition: 'transform 120ms ease-out, filter 120ms ease-out',
-                    filter: absOffset > 0.12 ? 'brightness(0.96)' : 'none',
+                    width: 7,
+                    height: 7,
+                    flex: '0 0 7px',
+                    padding: 0,
+                    border: 0,
+                    borderRadius: 999,
+                    background: active ? 'rgba(244, 253, 255, 0.96)' : 'rgba(178, 232, 255, 0.42)',
+                    boxShadow: active
+                      ? '0 0 7px rgba(212, 249, 255, 0.74)'
+                      : '0 0 5px rgba(86, 205, 255, 0.24)',
+                    color: 'transparent',
+                    cursor: 'pointer',
                   }}
-                >
-                  <ArenaCubeFace entry={entry} onStats={() => onStats(entry)} />
-                  <div
-                    aria-hidden="true"
-                    style={{
-                      position: 'absolute',
-                      inset: 0,
-                      borderRadius: 'clamp(22px, 7vw, 30px)',
-                      pointerEvents: 'none',
-                      opacity: Math.min(0.18, absOffset * 0.24),
-                      background:
-                        offset > 0
-                          ? 'linear-gradient(90deg, rgba(255,255,255,0.18), transparent 42%, rgba(0,0,0,0.2))'
-                          : 'linear-gradient(90deg, rgba(0,0,0,0.2), transparent 58%, rgba(255,255,255,0.18))',
-                      transform: 'translateZ(1px)',
-                    }}
-                  />
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      </div>
-      <div
-        aria-label="Страницы разделов"
-        style={{ display: 'flex', justifyContent: 'center', gap: 6, minHeight: 10 }}
-      >
-        {entries.map((entry, index) => {
-          const active = index === activeIndex;
-          const hiddenByLaunch = launchingEntryId !== null;
-          return (
-            <span
-              key={entry.id}
-              aria-label={`Выбрать ${entry.eyebrow}`}
+                />
+              );
+            })}
+          </div>
+          <ArenaCubeFace entry={activeEntry} />
+          {activeEntry.secondaryActions ?? (
+            <button
+              type="button"
+              className="btn btn--cta"
+              disabled={activeEntry.disabled}
+              onClick={activeEntry.onEnter}
               style={{
-                width: active ? 20 : 7,
-                height: 7,
-                borderRadius: 999,
-                background: active ? 'rgba(15,23,42,0.76)' : 'rgba(15,23,42,0.2)',
-                display: 'block',
-                opacity: hiddenByLaunch ? 0 : 1,
-                transition: 'width 160ms ease, background 160ms ease',
+                position: 'relative',
+                zIndex: 3,
+                width: '70%',
+                minWidth: 0,
+                minHeight: 'clamp(36px, 4.8vh, 44px)',
+                margin: '0 auto',
+                padding: '0 16px',
+                boxSizing: 'border-box',
+                justifyContent: 'center',
+                fontSize: 'clamp(12px, 1.65vh, 14px)',
+                fontWeight: 900,
+                letterSpacing: '0.06em',
+                lineHeight: 1,
+                background:
+                  'linear-gradient(180deg, rgba(246, 252, 255, 0.98), rgba(214, 234, 247, 0.96))',
+                color: '#132033',
+                border: '1px solid rgba(255, 255, 255, 0.78)',
+                boxShadow:
+                  '0 0 14px rgba(138, 221, 255, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.86)',
               }}
-            />
-          );
-        })}
+            >
+              {activeEntry.ctaLabel}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-function ArenaCubeFace({
-  entry,
-  onStats,
+function ArenaTableauNavButton({
+  children,
+  disabled,
+  label,
+  onClick,
 }: {
-  entry: ArenaEntry;
-  onStats: () => void;
+  children: React.ReactNode;
+  disabled: boolean;
+  label: string;
+  onClick: () => void;
 }): JSX.Element {
-  const titleIsLong = entry.title.length > 12;
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      style={{
+        width: 28,
+        height: 44,
+        border: 0,
+        borderRadius: 0,
+        background: 'transparent',
+        color: disabled ? 'rgba(202, 242, 255, 0.22)' : 'rgba(232, 251, 255, 0.92)',
+        textShadow: disabled ? 'none' : '0 0 8px rgba(96, 220, 255, 0.58)',
+        boxShadow: 'none',
+        fontSize: 30,
+        fontWeight: 950,
+        lineHeight: 1,
+        padding: 0,
+        outline: 'none',
+        WebkitTapHighlightColor: 'transparent',
+        cursor: disabled ? 'default' : 'pointer',
+        pointerEvents: 'auto',
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
   const showDuelIdentity = entry.kind === 'duel' && Boolean(entry.opponentName);
 
   return (
     <div
-      className="glass"
+      role="article"
+      aria-label={`${entry.eyebrow}: ${entry.title}`}
       style={{
         position: 'relative',
-        borderRadius: 'clamp(22px, 7vw, 30px)',
-        padding: 0,
-        overflow: 'hidden',
-        boxSizing: 'border-box',
         width: '100%',
         height: '100%',
-        background: 'rgba(220,236,249,0.72)',
+        minHeight: 0,
+        display: 'grid',
+        alignItems: 'stretch',
+        padding: '0 clamp(8px, 1.6vw, 12px)',
+        boxSizing: 'border-box',
+        color: '#e9fbff',
+        fontFamily: 'var(--font-mono)',
+        textShadow: '0 0 8px rgba(122, 229, 255, 0.36)',
       }}
     >
-      <img
-        src={entry.artworkSrc}
-        alt=""
-        aria-hidden="true"
+      <div
         style={{
-          position: 'absolute',
-          inset: 0,
-          width: '100%',
+          minHeight: 0,
           height: '100%',
-          objectFit: 'cover',
-          transform: 'scale(1.03)',
-        }}
-      />
-      <div
-        aria-hidden="true"
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background:
-            'linear-gradient(180deg, rgba(8,14,28,0.18) 0%, rgba(8,14,28,0.42) 46%, rgba(8,14,28,0.74) 100%), linear-gradient(90deg, rgba(8,14,28,0.68) 0%, rgba(8,14,28,0.3) 52%, rgba(8,14,28,0.58) 100%)',
-        }}
-      />
-      <div
-        aria-hidden="true"
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background:
-            'radial-gradient(circle at 18% 14%, rgba(255,255,255,0.22), transparent 30%), linear-gradient(180deg, rgba(225,239,250,0.1), rgba(225,239,250,0.22))',
-          backdropFilter: 'blur(1px)',
-        }}
-      />
-      <div
-        style={{
-          position: 'relative',
-          zIndex: 1,
-          height: '100%',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'space-between',
-          gap: 'clamp(6px, 2vw, 10px)',
-          padding: 'clamp(12px, 4vw, 16px)',
-          boxSizing: 'border-box',
+          display: 'grid',
+          gridTemplateRows: 'auto auto auto auto',
+          alignContent: 'space-evenly',
+          justifyItems: 'center',
+          gap: 'clamp(5px, 0.9vh, 8px)',
+          textAlign: 'center',
+          padding: 0,
         }}
       >
         <div
           style={{
-            display: 'grid',
-            gridTemplateColumns: 'minmax(0, 1fr) auto',
-            gap: 'clamp(8px, 2.8vw, 12px)',
+            color: 'rgba(205, 246, 255, 0.88)',
+            fontSize: 'clamp(7px, 1.08vh, 9px)',
+            fontWeight: 950,
+            letterSpacing: '0.16em',
+            textTransform: 'uppercase',
+            lineHeight: 1.05,
+            textShadow: '0 0 8px rgba(99, 218, 255, 0.44)',
           }}
         >
+          {entry.eyebrow}
+        </div>
+        {showDuelIdentity ? (
           <div
             style={{
+              display: 'grid',
+              gridTemplateColumns: 'clamp(38px, 6vh, 54px) minmax(0, 1fr)',
+              alignItems: 'center',
+              gap: 'clamp(8px, 1.8vh, 14px)',
+              textAlign: 'left',
               minWidth: 0,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 'clamp(5px, 1.8vw, 8px)',
+              maxWidth: 'min(100%, 340px)',
+              margin: '0 auto',
             }}
           >
-            {showDuelIdentity ? (
-              <>
-                <div
-                  style={{
-                    color: 'rgba(255,255,255,0.72)',
-                    fontSize: 10,
-                    fontWeight: 950,
-                    letterSpacing: '0.18em',
-                    textTransform: 'uppercase',
-                    textShadow: '0 2px 10px rgba(0,0,0,0.36)',
-                  }}
-                >
-                  {entry.eyebrow}
-                </div>
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'clamp(46px, 14vw, 54px) minmax(0, 1fr)',
-                    alignItems: 'center',
-                    gap: 'clamp(10px, 3vw, 14px)',
-                    minWidth: 0,
-                    marginTop: 2,
-                  }}
-                >
-                  <UserAvatar
-                    avatarUrl={entry.opponentAvatarUrl}
-                    name={entry.opponentName}
-                    size={54}
-                    fontSize={22}
-                    style={{
-                      transform: 'translateY(4px)',
-                      border: '2px solid rgba(255,255,255,0.7)',
-                      boxShadow: '0 12px 26px rgba(3,10,24,0.34)',
-                    }}
-                  />
-                  <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <div
-                      style={{
-                        color: '#fff',
-                        fontSize: 'clamp(20px, 5.6vw, 30px)',
-                        lineHeight: 0.98,
-                        fontWeight: 950,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        textShadow: '0 4px 18px rgba(0,0,0,0.48)',
-                      }}
-                    >
-                      {entry.title}
-                    </div>
-                    {entry.typeLabel && (
-                      <div
-                        style={{
-                          color: 'rgba(255,255,255,0.76)',
-                          fontSize: 'clamp(10px, 3vw, 12px)',
-                          fontWeight: 900,
-                          lineHeight: 1.1,
-                          textShadow: '0 3px 12px rgba(0,0,0,0.4)',
-                        }}
-                      >
-                        {entry.typeLabel}
-                      </div>
-                    )}
-                    <div
-                      style={{
-                        color: 'rgba(255,255,255,0.86)',
-                        fontSize: 'clamp(12px, 3.5vw, 14px)',
-                        fontWeight: 900,
-                        lineHeight: 1.08,
-                        textShadow: '0 3px 14px rgba(0,0,0,0.42)',
-                      }}
-                    >
-                      {entry.subtitle}
-                    </div>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <>
-                <div
-                  style={{
-                    color: 'rgba(255,255,255,0.72)',
-                    fontSize: 10,
-                    fontWeight: 950,
-                    letterSpacing: '0.18em',
-                    textTransform: 'uppercase',
-                    textShadow: '0 2px 10px rgba(0,0,0,0.36)',
-                  }}
-                >
-                  {entry.eyebrow}
-                </div>
-                <div
-                  style={{
-                    color: '#fff',
-                    fontSize: titleIsLong ? 'clamp(20px, 5.4vw, 29px)' : 'clamp(23px, 6.8vw, 34px)',
-                    lineHeight: 0.96,
-                    fontWeight: 950,
-                    overflowWrap: 'break-word',
-                    wordBreak: titleIsLong ? 'break-word' : 'normal',
-                    hyphens: 'auto',
-                    maxWidth: entry.kind === 'daily' ? 'min(100%, 270px)' : '100%',
-                    textShadow: '0 4px 18px rgba(0,0,0,0.48)',
-                  }}
-                >
-                  {entry.title}
-                </div>
-              </>
-            )}
-            {!showDuelIdentity && (
+            <UserAvatar
+              avatarUrl={entry.opponentAvatarUrl}
+              name={entry.opponentName}
+              size={46}
+              fontSize={19}
+              style={{
+                border: '1px solid rgba(122, 228, 255, 0.76)',
+                boxShadow: '0 0 12px rgba(72, 204, 255, 0.46)',
+              }}
+            />
+            <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
               <div
                 style={{
-                  maxWidth: 270,
-                  color: 'rgba(255,255,255,0.78)',
-                  fontSize: 'clamp(12px, 3.5vw, 14px)',
-                  fontWeight: 850,
-                  lineHeight: 1.15,
-                  textShadow: '0 3px 14px rgba(0,0,0,0.42)',
+                  color: '#f7feff',
+                  fontSize: 'clamp(14px, 2.46vh, 21px)',
+                  lineHeight: 0.95,
+                  fontWeight: 950,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
                 }}
               >
-                {entry.subtitle}
+                {entry.title}
               </div>
-            )}
+              {entry.typeLabel && (
+                <div
+                  style={{
+                    color: 'rgba(196, 242, 255, 0.82)',
+                    fontSize: 'clamp(8px, 1.16vh, 10px)',
+                    fontWeight: 900,
+                    lineHeight: 1,
+                  }}
+                >
+                  {entry.typeLabel}
+                </div>
+              )}
+            </div>
           </div>
-          {entry.kind === 'daily' && (
-            <button
-              type="button"
-              className="icon-btn"
-              aria-label="Статистика"
-              onClick={onStats}
-              style={{
-                width: 34,
-                height: 34,
-                background: 'rgba(230,239,248,0.78)',
-                backdropFilter: 'blur(12px)',
-              }}
-            >
-              <BarChart3 size={15} strokeWidth={2.35} />
-            </button>
-          )}
+        ) : (
+          <div
+            style={{
+              color: '#f7feff',
+              fontSize: 'clamp(16px, 2.65vh, 22px)',
+              lineHeight: 0.95,
+              fontWeight: 950,
+              overflowWrap: 'break-word',
+              textTransform: 'uppercase',
+            }}
+          >
+            {entry.title}
+          </div>
+        )}
+        <div
+          style={{
+            maxWidth: 'min(72%, 280px)',
+            margin: '0 auto',
+            color: 'rgba(234, 246, 255, 0.9)',
+            fontSize: 'clamp(9px, 1.24vh, 10px)',
+            fontWeight: 850,
+            lineHeight: 1.12,
+            textShadow: '0 0 7px rgba(0, 12, 24, 0.88)',
+          }}
+        >
+          {entry.subtitle}
         </div>
         <div
           style={{
-            flex: '0 0 auto',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            width: '100%',
           }}
         >
           {entry.scoreboard ? (
             <div
               style={{
                 width: '100%',
-                maxWidth: 'min(292px, 100%)',
-                borderRadius: 'clamp(18px, 5vw, 22px)',
-                padding: 'clamp(7px, 2.5vw, 10px) clamp(10px, 3vw, 14px)',
-                background: 'rgba(226,239,249,0.78)',
-                border: '1px solid rgba(255,255,255,0.72)',
-                boxShadow: '0 18px 44px rgba(4,12,28,0.2)',
-                backdropFilter: 'blur(14px)',
+                maxWidth: 'min(300px, 92%)',
               }}
             >
               {entry.scoreboard}
@@ -1917,38 +1611,18 @@ function ArenaCubeFace({
             <div
               style={{
                 width: '100%',
-                borderRadius: 'clamp(18px, 5vw, 22px)',
-                padding: 'clamp(8px, 2.8vw, 11px) clamp(10px, 3vw, 14px)',
-                background: 'rgba(226,239,249,0.8)',
-                border: '1px solid rgba(255,255,255,0.72)',
-                boxShadow: '0 18px 44px rgba(4,12,28,0.18)',
-                backdropFilter: 'blur(14px)',
-                color: 'rgba(15,23,42,0.62)',
-                fontSize: 'clamp(12px, 3.5vw, 14px)',
-                fontWeight: 850,
-                lineHeight: 1.2,
+                color: '#e9fbff',
+                fontSize: 'clamp(12px, 1.85vh, 16px)',
+                fontWeight: 950,
+                lineHeight: 1.05,
                 textAlign: 'center',
+                textShadow: '0 0 8px rgba(100, 218, 255, 0.38)',
               }}
             >
               {entry.meta}
             </div>
           )}
         </div>
-        <button
-          type="button"
-          className="btn btn--cta"
-          disabled={entry.disabled}
-          onClick={entry.onEnter}
-          style={{
-            minHeight: 'clamp(46px, 13vw, 54px)',
-            justifyContent: 'center',
-            width: '100%',
-            fontSize: 'clamp(14px, 4vw, 16px)',
-            boxShadow: '0 18px 42px rgba(4,12,28,0.34)',
-          }}
-        >
-          {entry.ctaLabel}
-        </button>
       </div>
     </div>
   );
@@ -1974,13 +1648,14 @@ function DailyHubScoreboard({
       aria-label={ariaLabel}
       style={{
         width: align === 'left' ? 'auto' : '100%',
-        maxWidth: align === 'left' ? 'none' : 280,
-        padding: '2px 0 0',
+        maxWidth: align === 'left' ? 'none' : 306,
+        padding: 0,
         display: 'grid',
-        gridTemplateColumns: align === 'left' ? 'max-content max-content' : '1fr 1fr',
+        gridTemplateColumns: align === 'left' ? 'max-content max-content' : 'minmax(0, 1fr) minmax(0, 1fr)',
         alignItems: 'center',
         justifyItems: align === 'left' ? 'start' : 'center',
-        gap: align === 'left' ? 36 : 12,
+        gap: align === 'left' ? 36 : 'clamp(6px, 1.1vh, 10px)',
+        margin: '0 auto',
       }}
     >
       <DailyEventScoreboardColumn align={align} label={timerLabel} value={timer} />
@@ -2042,15 +1717,42 @@ function canStartArenaDuelPeriod(
   );
 }
 
+function isDuelInviteForMe(match: AmateurDuelMatch): boolean {
+  return match.status === 'invited' && match.me.side === 'opponent' && match.me.state === 'invited';
+}
+
+function isDuelInviteFromMe(match: AmateurDuelMatch): boolean {
+  return match.status === 'invited' && match.me.side === 'challenger';
+}
+
 function arenaDuelCtaLabel(match: AmateurDuelMatch, fallbackNow: number): string {
   const nowMs = duelMatchNowMs(match, fallbackNow);
   if (match.me.state === 'period_active') return 'Продолжить дуэль';
+  if (match.status === 'settled') return 'Показать результат';
+  if (match.status === 'cancelled' || match.status === 'expired') return 'Дуэль завершена';
+  if (isDuelInviteFromMe(match)) return 'Ждём ответ';
   if (canStartArenaDuelPeriod(match, nowMs)) return 'Начать дуэль';
-  if (match.status === 'invited' && match.me.state === 'invited') return 'Принять вызов';
-  if (match.status === 'ready_check' && match.me.state !== 'ready') return 'Готов';
+  if (isDuelInviteForMe(match)) return 'Принять вызов';
+  if (match.status === 'ready_check' && match.me.state !== 'ready') return 'К дуэли';
+  if (match.status === 'ready_check' && match.me.state === 'ready') return 'Ждём готовность';
+  if (match.status === 'active' && match.opponent.state === 'period_active')
+    return 'Соперник играет';
   if (match.me.state === 'break_active') return 'Перерыв';
-  if (match.me.state === 'completed' || match.me.state === 'forfeit') return 'Ждём соперника';
-  return 'Статус дуэли';
+  if (match.me.state === 'completed' || match.me.state === 'forfeit') return 'Вы сыграли';
+  return 'К дуэли';
+}
+
+function duelRinkPrimaryLabel(match: AmateurDuelMatch, fallbackNow: number): string {
+  const nowMs = duelMatchNowMs(match, fallbackNow);
+  if (match.me.state === 'period_active') return 'Бросок';
+  if (canStartArenaDuelPeriod(match, nowMs)) return 'Начать';
+  if (match.status === 'ready_check' && match.me.state !== 'ready') return 'Готов';
+  if (match.status === 'ready_check' && match.me.state === 'ready') return 'Ждём соперника';
+  if (match.status === 'invited' && isDuelInviteForMe(match)) return 'Примите вызов';
+  if (match.status === 'invited') return 'Ждём ответ';
+  if (match.status === 'active' && match.me.state === 'accepted') return 'Начать';
+  if (match.status === 'active' && match.opponent.state === 'period_active') return 'Ждём соперника';
+  return arenaDuelCtaLabel(match, fallbackNow);
 }
 
 function duelNextPeriod(match: AmateurDuelMatch): number {
@@ -2080,6 +1782,7 @@ function duelEventTiming(match: AmateurDuelMatch, fallbackNow: number): DuelEven
   const now = duelMatchNowMs(match, fallbackNow);
   const startsAt = timestampMs(match.starts_at);
   const endsAt = timestampMs(match.ends_at);
+  const inviteEndsAt = timestampMs(match.ready_expires_at);
   const periodEndsAt = timestampMs(match.period_ends_at);
   const breakEndsAt = timestampMs(match.break_ends_at);
   const score = `${match.me.goals}:${match.opponent.goals}`;
@@ -2090,6 +1793,19 @@ function duelEventTiming(match: AmateurDuelMatch, fallbackNow: number): DuelEven
       ariaLabel: `${duelOutcomeText(match)}. Счёт ${score}`,
       label: 'Счёт',
       value: score,
+    };
+  }
+
+  if (match.status === 'invited') {
+    const value = inviteEndsAt > now ? formatMs(inviteEndsAt - now) : '00:00';
+    const isInvitee = isDuelInviteForMe(match);
+    const label = isInvitee ? 'До ответа' : 'До автоотмены';
+    const stateText = isInvitee ? 'Вас вызвали на дуэль' : 'Ждём ответ соперника';
+    return {
+      activePeriod: 1,
+      ariaLabel: `${stateText}. ${label} ${value}. Счёт ${score}`,
+      label,
+      value,
     };
   }
 
@@ -2245,11 +1961,13 @@ function DailyPeriodTab({
         justifyContent: 'center',
         fontFamily: 'var(--font-mono)',
         fontSize: 11,
-        fontWeight: 700,
-        background: active ? 'var(--red)' : 'transparent',
-        border: active ? 'none' : '1px solid rgba(15, 23, 42, 0.24)',
-        color: active ? '#ffffff' : 'rgba(15, 23, 42, 0.34)',
-        boxShadow: active ? '0 0 10px rgba(225, 29, 72, 0.55)' : 'none',
+        fontWeight: 900,
+        background: active ? 'rgba(107, 224, 255, 0.24)' : 'rgba(7, 32, 52, 0.28)',
+        border: active ? '1px solid rgba(182, 238, 255, 0.72)' : '1px solid rgba(118, 215, 255, 0.24)',
+        color: active ? '#e9fbff' : 'rgba(174, 233, 255, 0.46)',
+        boxShadow: active
+          ? '0 0 9px rgba(122, 229, 255, 0.54), inset 0 0 8px rgba(82, 205, 255, 0.24)'
+          : 'none',
       }}
     >
       {children}
@@ -2266,7 +1984,6 @@ function DailyEventScoreboardColumn({
   label: string;
   value: string;
 }): JSX.Element {
-  const color = '#10192d';
   return (
     <div
       style={{
@@ -2276,19 +1993,22 @@ function DailyEventScoreboardColumn({
         gap: 5,
         minWidth: 0,
         lineHeight: 1,
+        width: '100%',
       }}
     >
       <DailyEventScoreboardLabel>{label}</DailyEventScoreboardLabel>
       <span
         style={{
-          color,
+          color: '#e9fbff',
           fontFamily: 'var(--font-mono)',
-          fontSize: 20,
-          fontWeight: 700,
+          fontSize: 'clamp(13px, 2.05vh, 18px)',
+          fontWeight: 950,
           lineHeight: 1,
-          letterSpacing: '0.04em',
+          letterSpacing: '0.06em',
           fontVariantNumeric: 'tabular-nums',
           whiteSpace: 'nowrap',
+          textShadow:
+            '0 0 7px rgba(143, 232, 255, 0.72), 0 0 14px rgba(44, 177, 255, 0.38)',
         }}
       >
         {value}
@@ -2301,12 +2021,13 @@ function DailyEventScoreboardLabel({ children }: { children: React.ReactNode }):
   return (
     <span
       style={{
-        color: 'rgba(15, 23, 42, 0.52)',
-        fontSize: 8,
-        fontWeight: 700,
+        color: 'rgba(187, 238, 255, 0.72)',
+        fontSize: 'clamp(6px, 0.95vh, 8px)',
+        fontWeight: 900,
         letterSpacing: '0.16em',
         textTransform: 'uppercase',
         whiteSpace: 'nowrap',
+        textShadow: '0 0 7px rgba(88, 207, 255, 0.36)',
       }}
     >
       {children}
@@ -2937,12 +2658,14 @@ function DuelStatsParticipantRow({
 }
 
 function duelParticipantStateText(state: AmateurDuelMatch['me']['state']): string {
-  if (state === 'invited') return 'вызов';
-  if (state === 'accepted') return 'готов';
-  if (state === 'period_active') return 'период';
+  if (state === 'invited') return 'ждёт ответ';
+  if (state === 'loadout_pending') return 'выбор';
+  if (state === 'ready') return 'готов';
+  if (state === 'accepted') return 'можно играть';
+  if (state === 'period_active') return 'играет';
   if (state === 'break_active') return 'перерыв';
   if (state === 'completed') return 'завершил';
-  return 'неявка';
+  return 'не сыграл';
 }
 
 function DailyStatsMetric({ label, value }: { label: string; value: string }): JSX.Element {
@@ -3245,9 +2968,8 @@ function TrainingPlaceholder({
   const error = useTrainingSessionStore((s) => s.error);
   const inFlight = useTrainingSessionStore((s) => s.inFlight);
   const refresh = useTrainingSessionStore((s) => s.refresh);
-  const start = useTrainingSessionStore((s) => s.start);
   const [selectedPeriod, setSelectedPeriod] = useState<1 | 2 | 3>(1);
-  const [playTraining, setPlayTraining] = useState(false);
+  const [playTraining, setPlayTraining] = useState(() => autoPlay);
   const [localPlayEntrance, setLocalPlayEntrance] = useState(false);
   const [now, setNow] = useState(Date.now());
   const refreshedTrainingDayRef = useRef<string | null>(null);
@@ -3266,7 +2988,7 @@ function TrainingPlaceholder({
     if (!autoPlay && data?.state !== 'active') setPlayTraining(false);
   }, [autoPlay, data?.state]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (autoPlay && data) setPlayTraining(true);
   }, [autoPlay, data]);
 
@@ -3278,7 +3000,7 @@ function TrainingPlaceholder({
   const nextDayRemaining = Math.max(0, nextDayAt - now);
   const canConfigureTraining = !data || data.state === 'idle' || data.state === 'active';
   const trainingActionLabel =
-    data?.state === 'active' ? 'Продолжить тренировку' : 'Начать тренировку';
+    data?.state === 'active' ? 'Продолжить тренировку' : 'На площадку';
 
   useEffect(() => {
     if (!data) return undefined;
@@ -3296,18 +3018,16 @@ function TrainingPlaceholder({
   }, [data?.next_day_starts_at, nextDayAt, nextDayRemaining, now, refresh]);
 
   const handleTrainingAction = async (): Promise<void> => {
-    const next = await start(selectedPeriod);
-    if (next?.state === 'active') {
-      setLocalPlayEntrance(data?.state !== 'active');
-      setPlayTraining(true);
-      onPlayStart?.();
-    }
+    setLocalPlayEntrance(false);
+    setPlayTraining(true);
+    onPlayStart?.();
   };
 
   if (data && playTraining) {
     const shouldPlayEntrance = playEntranceOnStart || localPlayEntrance;
     return (
       <TrainingPlayView
+        selectedPeriod={selectedPeriod}
         onBack={() => {
           setLocalPlayEntrance(false);
           setPlayTraining(false);
@@ -3515,26 +3235,160 @@ function currentDuelPeriodRule(match: AmateurDuelMatch): AmateurDuelPeriodRule {
 
 function duelOutcomeText(match: AmateurDuelMatch): string {
   if (match.outcome === 'draw') return 'Ничья';
-  if (match.outcome === 'double_loss') return 'Оба проиграли';
+  if (match.outcome === 'double_loss') return 'Дуэль не сыграна';
   if (match.winner_user_id === match.me.user_id) return 'Победа';
   if (match.winner_user_id === match.opponent.user_id) return 'Поражение';
-  if (match.status === 'invited' && match.me.state === 'invited') return 'Вас вызвали';
-  if (match.status === 'invited') return 'Ожидает ответа';
+  if (match.status === 'invited') {
+    if (isDuelInviteForMe(match)) return 'Вас вызвали';
+    if (isDuelInviteFromMe(match)) return 'Ждём ответ соперника';
+    return 'Ждём подтверждение';
+  }
   if (match.status === 'ready_check') {
-    return match.me.state === 'ready' ? 'Ждём соперника' : 'Комната';
+    if (match.me.state === 'ready' && match.opponent.state === 'ready') return 'Оба готовы';
+    if (match.me.state === 'ready') return 'Вы готовы';
+    if (match.opponent.state === 'ready') return 'Соперник готов';
+    return 'Выбор экипировки';
   }
   if (match.status === 'active') {
-    if (match.me.state === 'completed' || match.me.state === 'forfeit') return 'Ждём соперника';
+    if (match.me.state === 'period_active') return 'Вы играете';
+    if (match.opponent.state === 'period_active') return 'Соперник играет';
+    if (match.me.state === 'break_active') return 'Перерыв';
+    if (
+      (match.me.state === 'completed' || match.me.state === 'forfeit') &&
+      (match.opponent.state === 'completed' || match.opponent.state === 'forfeit')
+    )
+      return 'Ждём расчёт';
+    if (match.me.state === 'completed' || match.me.state === 'forfeit') return 'Вы сыграли';
     if (match.opponent.state === 'completed' || match.opponent.state === 'forfeit')
       return 'Ваш ход';
     if (match.me.state === 'accepted') return 'Ваш ход';
-    return 'Идёт';
+    if (match.opponent.state === 'accepted') return 'Ждём соперника';
+    return 'Дуэль идёт';
   }
   if (match.status === 'cancelled' && match.settled_reason === 'declined') {
-    return match.me.state === 'forfeit' ? 'Вы отказались' : 'Отказ';
+    return match.me.state === 'forfeit' ? 'Вы отказались' : 'Соперник отказался';
   }
-  if (match.status === 'cancelled') return 'Отменена';
-  return 'Истекла';
+  if (match.status === 'cancelled' && match.settled_reason === 'cancelled_by_challenger') {
+    return match.me.side === 'challenger' ? 'Вы отменили вызов' : 'Вызов отменён';
+  }
+  if (match.status === 'cancelled') return 'Дуэль отменена';
+  if (match.status === 'expired' && match.me.side === 'challenger') return 'Ответа не было';
+  if (match.status === 'expired') return 'Вызов истёк';
+  return 'Статус дуэли';
+}
+
+function duelCurrentTimerLabel(match: AmateurDuelMatch): string {
+  if (match.status === 'invited') {
+    return isDuelInviteForMe(match) ? 'до ответа на вызов' : 'до автоотмены вызова';
+  }
+  if (match.status === 'ready_check') return 'до отмены комнаты';
+  if (match.status === 'active') {
+    if (match.me.state === 'period_active') return 'ваш период идёт';
+    if (match.opponent.state === 'period_active') return 'период соперника идёт';
+    if (match.opponent.state === 'completed' || match.opponent.state === 'forfeit')
+      return 'соперник завершил';
+    if (match.me.state === 'completed' || match.me.state === 'forfeit') return 'вы завершили';
+    if (match.me.state === 'accepted') return 'можно начинать период';
+    return 'активная дуэль';
+  }
+  if (match.status === 'settled') return 'результат готов';
+  if (match.status === 'cancelled') return 'дуэль отменена';
+  return 'вызов истёк';
+}
+
+function duelDevHint(match: AmateurDuelMatch, nowMs: number): string {
+  if (match.status === 'invited') {
+    return isDuelInviteForMe(match)
+      ? 'Нажми кнопку, чтобы принять вызов. Потом нужно нажать «Готов».'
+      : 'Ждём, пока соперник примет вызов. В разделе дуэлей вызов можно отменить вручную.';
+  }
+  if (match.status === 'ready_check') {
+    return match.me.state === 'ready'
+      ? 'Ты готов. Ждём готовность соперника, после этого период стартует с карточки или из раздела дуэлей.'
+      : 'Нажми кнопку, чтобы подтвердить готовность и зафиксировать экипировку.';
+  }
+  if (match.status === 'active') {
+    if (match.me.state === 'period_active') return 'Можно играть: кнопка броска активна.';
+    if (canStartArenaDuelPeriod(match, nowMs))
+      return 'Нажми кнопку, чтобы начать свой текущий период.';
+    if (match.opponent.state === 'period_active')
+      return 'Сейчас играет соперник. Твой бросок будет доступен после его периода или перерыва.';
+    if (match.me.state === 'completed' || match.me.state === 'forfeit')
+      return 'Ты уже завершил свою часть. Ждём соперника или авторасчёт.';
+    if (match.me.state === 'break_active') return 'Идёт перерыв между периодами.';
+    return 'Дуэль активна, но сейчас нет доступного действия для твоей стороны.';
+  }
+  if (match.status === 'settled') return 'Можно открыть результат дуэли.';
+  return 'Эта дуэль уже неигровая: она отменена или истекла.';
+}
+
+function DuelDevStatePanel({
+  match,
+  now,
+}: {
+  match: AmateurDuelMatch;
+  now: number;
+}): JSX.Element | null {
+  if (!import.meta.env.DEV) return null;
+  if (!new URLSearchParams(window.location.search).has('debugDuel')) return null;
+  const nowMs = duelMatchNowMs(match, now);
+  const timing = duelEventTiming(match, now);
+
+  return (
+    <aside
+      aria-label="Проверка состояния дуэли"
+      style={{
+        position: 'fixed',
+        left: 14,
+        right: 14,
+        bottom: 'calc(84px + max(10px, var(--app-safe-bottom)))',
+        zIndex: 720,
+        maxWidth: 480,
+        margin: '0 auto',
+        borderRadius: 18,
+        padding: '12px 14px',
+        background: 'rgba(225, 238, 249, 0.92)',
+        border: '1px solid rgba(255,255,255,0.82)',
+        boxShadow: '0 16px 38px rgba(15, 23, 42, 0.18)',
+        backdropFilter: 'blur(18px) saturate(140%)',
+        WebkitBackdropFilter: 'blur(18px) saturate(140%)',
+        color: 'var(--ink)',
+      }}
+    >
+      <div style={{ fontSize: 12, fontWeight: 950, letterSpacing: '0.1em', opacity: 0.62 }}>
+        DEV · СОСТОЯНИЕ ДУЭЛИ
+      </div>
+      <div
+        style={{
+          marginTop: 8,
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+          gap: 8,
+          fontSize: 12,
+          fontWeight: 850,
+          lineHeight: 1.25,
+        }}
+      >
+        <span>Матч: {duelOutcomeText(match)}</span>
+        <span>
+          Таймер: {timing.value} · {duelCurrentTimerLabel(match)}
+        </span>
+        <span>Вы: {duelParticipantStateText(match.me.state)}</span>
+        <span>Соперник: {duelParticipantStateText(match.opponent.state)}</span>
+      </div>
+      <div
+        style={{
+          marginTop: 8,
+          color: 'rgba(15, 23, 42, 0.68)',
+          fontSize: 12,
+          fontWeight: 750,
+          lineHeight: 1.35,
+        }}
+      >
+        {duelDevHint(match, nowMs)}
+      </div>
+    </aside>
+  );
 }
 
 function currentMoscowSeasonKey(): string {
@@ -3953,6 +3807,19 @@ function AmateurDuelsPage({
   });
   const cancelChallengeMut = useMutation({
     mutationFn: (matchId: string) => cancelAmateurDuel(matchId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+    },
+  });
+  const acceptInviteMut = useMutation({
+    mutationFn: (matchId: string) => acceptAmateurDuel(matchId),
+    onSuccess: (_res, matchId) => {
+      void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+      onOpenMatch(matchId);
+    },
+  });
+  const declineInviteMut = useMutation({
+    mutationFn: (matchId: string) => declineAmateurDuel(matchId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
     },
@@ -4506,11 +4373,21 @@ function AmateurDuelsPage({
                 match.status === 'invited' &&
                 match.source === 'challenge' &&
                 match.me.side === 'challenger';
+              const canAnswerInvite = isDuelInviteForMe(match);
               return (
                 <DuelListCard
                   key={match.id}
                   match={match}
                   onOpen={() => onOpenMatch(match.id)}
+                  {...(canAnswerInvite
+                    ? {
+                        onAcceptInvite: () => acceptInviteMut.mutate(match.id),
+                        onDeclineInvite: () => declineInviteMut.mutate(match.id),
+                        inviteAnswerPending:
+                          (acceptInviteMut.isPending && acceptInviteMut.variables === match.id) ||
+                          (declineInviteMut.isPending && declineInviteMut.variables === match.id),
+                      }
+                    : {})}
                   {...(canCancelInvite
                     ? {
                         onCancelInvite: () => cancelChallengeMut.mutate(match.id),
@@ -4545,7 +4422,7 @@ function AmateurDuelsPage({
                 aria-hidden="true"
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '20px minmax(0, 1fr) auto',
+                  gridTemplateColumns: '24px minmax(0, 1fr) auto',
                   alignItems: 'center',
                   gap: 8,
                   padding: '0 14px 0',
@@ -4557,10 +4434,10 @@ function AmateurDuelsPage({
                 }}
               >
                 <span>#</span>
-                <span style={{ paddingLeft: 44 }}>Игрок</span>
+                <span>Игрок</span>
                 <span>Очки</span>
               </div>
-              {(rating.data?.rating ?? []).slice(0, 10).map((row, index) => {
+              {(rating.data?.rating ?? []).map((row, index) => {
                 const isMe = currentUserId === row.user_id;
                 return (
                   <button
@@ -4580,7 +4457,7 @@ function AmateurDuelsPage({
                       borderRadius: 16,
                       padding: '10px 14px',
                       display: 'grid',
-                      gridTemplateColumns: '20px minmax(0, 1fr) auto',
+                      gridTemplateColumns: '24px minmax(0, 1fr) auto',
                       alignItems: 'center',
                       gap: 8,
                       minHeight: 48,
@@ -4660,7 +4537,14 @@ function AmateurDuelsPage({
             <TotalCell label="ОЧКИ" value={String(historyStats.points)} />
           </div>
           {filteredHistory.length === 0 ? (
-            <div className="glass" style={{ borderRadius: 18, padding: 14, color: 'var(--muted)' }}>
+            <div
+              style={{
+                color: 'rgba(15, 23, 42, 0.68)',
+                fontSize: 16,
+                fontWeight: 700,
+                lineHeight: 1.35,
+              }}
+            >
               {historyScope === 'current'
                 ? 'За текущий месяц дуэлей пока нет.'
                 : 'Архив появится после первых завершённых дуэлей.'}
@@ -4708,7 +4592,7 @@ function AmateurDuelsPage({
       {lockerInfoOpen && (
         <ModeInfoModal
           title="Раздевалка"
-          text="Здесь позже появится набор инвентаря по умолчанию для быстрых дуэлей. В текущем MVP предметы выбираются перед стартом матча в комнате готовности."
+          text="Здесь выбирается купленный инвентарь для дуэлей: одна клюшка, одна пара коньков и одно питание. Если предметов нет, их можно купить в магазине."
           onClose={() => setLockerInfoOpen(false)}
         />
       )}
@@ -4724,6 +4608,24 @@ function DuelLockerTab({
   onInfo: () => void;
   onOpenInventory: () => void;
 }): JSX.Element {
+  const queryClient = useQueryClient();
+  const [selectedKind, setSelectedKind] = useState<InventoryEquipmentKind | null>(null);
+  const inventoryQuery = useQuery<InventoryState>({
+    queryKey: ['inventory', 'me'],
+    queryFn: fetchMyInventory,
+  });
+  const equipmentMut = useMutation<
+    InventoryState,
+    Error,
+    { kind: InventoryEquipmentKind; itemId: string | null }
+  >({
+    mutationFn: ({ kind, itemId }) =>
+      patchEquipment({ [DUEL_EQUIPMENT_META[kind].patchKey]: itemId }),
+    onSuccess: (inventory) => {
+      queryClient.setQueryData(['inventory', 'me'], inventory);
+    },
+  });
+
   return (
     <>
       <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -4747,66 +4649,391 @@ function DuelLockerTab({
             <Info size={12} color="var(--muted)" />
           </button>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+            gap: 8,
+          }}
+        >
           {DUEL_INVENTORY_SLOTS.map((slot) => (
-            <div
+            <DuelLockerSlotButton
               key={slot.kind}
-              className="glass"
-              style={{
-                borderRadius: 16,
-                padding: 10,
-                minHeight: 112,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 8,
-                textAlign: 'center',
-              }}
-            >
-              <img
-                src={slot.artwork}
-                alt=""
-                style={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: 12,
-                  objectFit: 'cover',
-                  filter: 'grayscale(1)',
-                  opacity: 0.7,
-                }}
-              />
-              <div
-                style={{
-                  color: 'var(--ink)',
-                  fontSize: 12,
-                  fontWeight: 950,
-                  lineHeight: 1.1,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.08em',
-                }}
-              >
-                {slot.label}
-              </div>
-            </div>
+              kind={slot.kind}
+              inventory={inventoryQuery.data}
+              onOpen={() => setSelectedKind(slot.kind)}
+            />
           ))}
         </div>
       </section>
-      <button type="button" className="btn btn--ghost" onClick={onOpenInventory}>
-        Открыть инвентарь
+      <button type="button" className="btn btn--cta" onClick={onOpenInventory}>
+        В магазин
       </button>
+      {selectedKind !== null && (
+        <DuelEquipmentDetailsModal
+          kind={selectedKind}
+          inventory={inventoryQuery.data}
+          isSaving={equipmentMut.isPending}
+          error={equipmentMut.isError ? equipmentMut.error.message : null}
+          onOpenShop={() => {
+            equipmentMut.reset();
+            setSelectedKind(null);
+            onOpenInventory();
+          }}
+          onClose={() => {
+            equipmentMut.reset();
+            setSelectedKind(null);
+          }}
+          onSelect={(itemId) => {
+            const kind = selectedKind;
+            equipmentMut.mutate(
+              { kind, itemId },
+              {
+                onSuccess: () => setSelectedKind(null),
+              },
+            );
+          }}
+        />
+      )}
     </>
+  );
+}
+
+function DuelLockerSlotButton({
+  kind,
+  inventory,
+  onOpen,
+}: {
+  kind: InventoryEquipmentKind;
+  inventory: InventoryState | undefined;
+  onOpen: () => void;
+}): JSX.Element {
+  const meta = DUEL_EQUIPMENT_META[kind];
+  const items = (inventory?.items[kind] ?? []).filter(isDuelLockerItemAvailable);
+  const activeItem = duelEquippedItem(inventory, kind);
+  const hasBaseEquipment = isDuelRequiredEquipment(kind);
+  const hasOwnedItems = items.length > 0;
+  const title = activeItem
+    ? duelEquipmentDisplayTitle(activeItem)
+    : hasBaseEquipment
+      ? duelBaseEquipmentTitle(kind)
+      : meta.empty;
+  const status = activeItem
+    ? duelInventoryPeriodLabel(activeItem.chargesAvailable)
+    : hasBaseEquipment
+      ? 'Базовая'
+      : hasOwnedItems
+        ? 'Выбрать'
+        : 'Нет купленных';
+  const artwork = activeItem
+    ? artworkForInventoryItem(activeItem)
+    : placeholderArtworkForKind(kind);
+  const hasVisibleEquipment = activeItem !== null || hasBaseEquipment;
+
+  return (
+    <button
+      type="button"
+      className="glass"
+      onClick={onOpen}
+      aria-label={`${meta.title}: ${title}. ${status}`}
+      style={{
+        minWidth: 0,
+        minHeight: 158,
+        borderRadius: 22,
+        padding: 10,
+        border: hasVisibleEquipment
+          ? '1px solid rgba(255,255,255,0.82)'
+          : '1px solid rgba(255,255,255,0.62)',
+        display: 'grid',
+        gridTemplateRows: '1fr auto',
+        gap: 8,
+        color: 'var(--ink)',
+        textAlign: 'left',
+        cursor: 'pointer',
+        overflow: 'hidden',
+      }}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          width: '100%',
+          aspectRatio: '1 / 1',
+          borderRadius: 18,
+          overflow: 'hidden',
+          border: '1px solid rgba(255,255,255,0.78)',
+          background: 'rgba(255,255,255,0.28)',
+          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.78), 0 10px 18px rgba(15,23,42,0.1)',
+        }}
+      >
+        <img
+          src={artwork}
+          alt=""
+          style={{
+            width: '100%',
+            height: '100%',
+            display: 'block',
+            objectFit: 'cover',
+            filter: hasVisibleEquipment ? 'none' : 'grayscale(1)',
+            opacity: hasVisibleEquipment ? 1 : 0.46,
+          }}
+        />
+      </span>
+      <span style={{ minWidth: 0, display: 'grid', gap: 4 }}>
+        <span
+          style={{
+            minWidth: 0,
+            color: 'var(--ink)',
+            fontSize: 12,
+            fontWeight: 950,
+            lineHeight: 1.08,
+            overflowWrap: 'break-word',
+          }}
+        >
+          {title}
+        </span>
+        <span
+          style={{
+            color: 'rgba(15, 23, 42, 0.6)',
+            fontSize: 10,
+            fontWeight: 850,
+            lineHeight: 1.1,
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+          }}
+        >
+          {status}
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function DuelEquipmentDetailsModal({
+  kind,
+  inventory,
+  isSaving,
+  error,
+  onSelect,
+  onOpenShop,
+  onClose,
+}: {
+  kind: InventoryEquipmentKind;
+  inventory: InventoryState | undefined;
+  isSaving: boolean;
+  error: string | null;
+  onSelect: (itemId: string | null) => void;
+  onOpenShop: () => void;
+  onClose: () => void;
+}): JSX.Element {
+  const meta = DUEL_EQUIPMENT_META[kind];
+  const items = (inventory?.items[kind] ?? []).filter(isDuelLockerItemAvailable);
+  const activeId = duelEquipmentIdFor(inventory, kind);
+
+  return (
+    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 420 }}>
+      <section
+        role="dialog"
+        aria-label={meta.title}
+        className="modal-card"
+        onClick={(event) => event.stopPropagation()}
+        style={{
+          width: 'min(430px, calc(100vw - 28px))',
+          display: 'grid',
+          gap: 14,
+          position: 'relative',
+        }}
+      >
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label="Закрыть"
+          onClick={onClose}
+          style={{ position: 'absolute', top: 14, right: 14 }}
+        >
+          <X size={15} />
+        </button>
+        <div style={{ minWidth: 0, paddingRight: 42 }}>
+          <div className="modal-title">{meta.title}</div>
+          <div className="modal-copy">Выбор купленного инвентаря для дуэлей.</div>
+        </div>
+
+        <div style={{ display: 'grid', gap: 8 }}>
+          <button
+            type="button"
+            data-no-drag-scroll="true"
+            disabled={isSaving}
+            onClick={() => onSelect(null)}
+            className="glass"
+            aria-pressed={activeId === null}
+            style={{
+              borderRadius: 18,
+              padding: 12,
+              color: 'var(--ink)',
+              border:
+                activeId === null
+                  ? '1px solid rgba(15, 23, 42, 0.28)'
+                  : '1px solid rgba(255,255,255,0.76)',
+              background:
+                activeId === null
+                  ? 'linear-gradient(180deg, rgba(255,255,255,0.58), rgba(226, 239, 249, 0.24))'
+                  : 'rgba(255,255,255,0.22)',
+              display: 'block',
+              textAlign: 'left',
+              cursor: isSaving ? 'wait' : 'pointer',
+            }}
+          >
+            <span style={{ display: 'grid', gap: 4 }}>
+              <span style={{ fontSize: 15, fontWeight: 900 }}>{duelBaseEquipmentTitle(kind)}</span>
+              <span
+                style={{
+                  color: 'rgba(15, 23, 42, 0.62)',
+                  fontSize: 12,
+                  fontWeight: 760,
+                  lineHeight: 1.28,
+                }}
+              >
+                {duelBaseEquipmentDescription(kind)}
+              </span>
+            </span>
+          </button>
+
+          {items.map((item) => {
+            const selected = item.id === activeId;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                data-no-drag-scroll="true"
+                disabled={isSaving || item.chargesAvailable <= 0}
+                onClick={() => onSelect(item.id)}
+                aria-pressed={selected}
+                className="glass"
+                style={{
+                  borderRadius: 24,
+                  padding: 14,
+                  color: 'var(--ink)',
+                  border: selected
+                    ? '1px solid rgba(15, 23, 42, 0.28)'
+                    : '1px solid rgba(255,255,255,0.76)',
+                  background: selected
+                    ? 'linear-gradient(180deg, rgba(255,255,255,0.58), rgba(226, 239, 249, 0.24))'
+                    : 'rgba(255,255,255,0.22)',
+                  display: 'grid',
+                  gridTemplateColumns: '96px minmax(0, 1fr)',
+                  alignItems: 'start',
+                  gap: 12,
+                  textAlign: 'left',
+                  cursor: isSaving ? 'wait' : 'pointer',
+                  opacity: item.chargesAvailable > 0 ? 1 : 0.55,
+                }}
+              >
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: '100%',
+                    aspectRatio: '1 / 1',
+                    borderRadius: 22,
+                    overflow: 'hidden',
+                    border: '1px solid rgba(255,255,255,0.8)',
+                    background: 'rgba(255,255,255,0.28)',
+                    boxShadow:
+                      'inset 0 1px 0 rgba(255,255,255,0.8), 0 10px 18px rgba(15,23,42,0.12)',
+                  }}
+                >
+                  <img
+                    src={artworkForInventoryItem(item)}
+                    alt=""
+                    style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }}
+                  />
+                </span>
+                <span style={{ minWidth: 0 }}>
+                  <span
+                    style={{
+                      minWidth: 0,
+                      color: 'var(--ink)',
+                      fontSize: 18,
+                      fontWeight: 950,
+                      lineHeight: 1.08,
+                      overflowWrap: 'break-word',
+                    }}
+                  >
+                    {duelEquipmentDisplayTitle(item)}
+                  </span>
+                  <span
+                    style={{
+                      display: 'block',
+                      marginTop: 7,
+                      fontSize: 12,
+                      fontWeight: 760,
+                      lineHeight: 1.28,
+                      color: 'rgba(15, 23, 42, 0.62)',
+                    }}
+                  >
+                    {item.description}
+                  </span>
+                  <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 12 }}>
+                    <span
+                      className="pill"
+                      style={{ height: 26, justifyContent: 'center', fontSize: 11 }}
+                    >
+                      {duelInventoryPeriodLabel(item.chargesAvailable)}
+                    </span>
+                    <span
+                      className="pill"
+                      style={{ height: 26, justifyContent: 'center', fontSize: 11 }}
+                    >
+                      Расход {item.duelPeriodCost}/период
+                    </span>
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+
+          {items.length === 0 && (
+            <div
+              className="glass"
+              style={{ borderRadius: 18, padding: 14, display: 'grid', gap: 10 }}
+            >
+              <div style={{ color: 'var(--muted)', fontSize: 13, fontWeight: 800 }}>
+                Купленных предметов этого типа пока нет.
+              </div>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={onOpenShop}
+                style={{ width: '100%', minHeight: 46, fontSize: 13, fontWeight: 850 }}
+              >
+                В магазин
+              </button>
+            </div>
+          )}
+        </div>
+
+        {error !== null && (
+          <div role="alert" style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 800 }}>
+            {error}
+          </div>
+        )}
+      </section>
+    </div>
   );
 }
 
 function DuelListCard({
   match,
   onOpen,
+  onAcceptInvite,
+  onDeclineInvite,
+  inviteAnswerPending = false,
   onCancelInvite,
   cancelInvitePending = false,
 }: {
   match: AmateurDuelMatch;
   onOpen: () => void;
+  onAcceptInvite?: () => void;
+  onDeclineInvite?: () => void;
+  inviteAnswerPending?: boolean;
   onCancelInvite?: () => void;
   cancelInvitePending?: boolean;
 }): JSX.Element {
@@ -4876,6 +5103,37 @@ function DuelListCard({
         </div>
       </div>
       <DuelStatusBadge match={match} />
+      {onAcceptInvite && onDeclineInvite && (
+        <div
+          onClick={(event) => event.stopPropagation()}
+          style={{
+            gridColumn: '1 / -1',
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: 8,
+            marginTop: 2,
+          }}
+        >
+          <button
+            type="button"
+            className="btn btn--ghost"
+            disabled={inviteAnswerPending}
+            onClick={onDeclineInvite}
+            style={{ minHeight: 36, fontSize: 12 }}
+          >
+            Отклонить
+          </button>
+          <button
+            type="button"
+            className="btn btn--cta"
+            disabled={inviteAnswerPending}
+            onClick={onAcceptInvite}
+            style={{ minHeight: 36, fontSize: 12 }}
+          >
+            Принять
+          </button>
+        </div>
+      )}
       {onCancelInvite && (
         <button
           type="button"
@@ -4932,6 +5190,18 @@ function AmateurDuelPlayView({
   const applyState = useAmateurDuelStore((s) => s.applyState);
   const [now, setNow] = useState(Date.now());
   const [dismissedResultMatchId, setDismissedResultMatchId] = useState<string | null>(null);
+  const [selectedLoadout, setSelectedLoadout] = useState<AmateurDuelLoadoutSelection>({});
+  const [selectedLoadoutKind, setSelectedLoadoutKind] = useState<InventoryEquipmentKind | null>(
+    null,
+  );
+  const [playerReadyEntranceKey, setPlayerReadyEntranceKey] = useState<string | null>(null);
+  const [goalieReadyEntranceKey, setGoalieReadyEntranceKey] = useState<string | null>(null);
+  const previousReadyStateRef = useRef<{ me: boolean; opponent: boolean } | null>(null);
+  const inventoryQuery = useQuery<InventoryState>({
+    queryKey: ['inventory', 'me'],
+    queryFn: fetchMyInventory,
+    enabled: Boolean(matchId),
+  });
 
   useEffect(() => {
     void load(matchId);
@@ -4939,12 +5209,43 @@ function AmateurDuelPlayView({
 
   useEffect(() => {
     setDismissedResultMatchId(null);
+    setSelectedLoadout({});
+    previousReadyStateRef.current = null;
+    setPlayerReadyEntranceKey(null);
+    setGoalieReadyEntranceKey(null);
   }, [matchId]);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    const inventory = inventoryQuery.data;
+    if (!inventory) return;
+    setSelectedLoadout((current) => ({
+      stick:
+        current.stick === undefined ? duelEquipmentIdFor(inventory, 'stick') : current.stick,
+      skates:
+        current.skates === undefined ? duelEquipmentIdFor(inventory, 'skates') : current.skates,
+      nutrition:
+        current.nutrition === undefined
+          ? duelEquipmentIdFor(inventory, 'nutrition')
+          : current.nutrition,
+    }));
+  }, [inventoryQuery.data, matchId]);
+
+  useEffect(() => {
+    if (!match || match.id !== matchId) return;
+    const meReady = match.me.state === 'ready' || match.me.state === 'accepted';
+    const opponentReady = match.opponent.state === 'ready' || match.opponent.state === 'accepted';
+    const previous = previousReadyStateRef.current;
+    if (previous && !previous.me && meReady) setPlayerReadyEntranceKey(match.me.ready_at ?? match.id);
+    if (previous && !previous.opponent && opponentReady) {
+      setGoalieReadyEntranceKey(match.opponent.ready_at ?? match.id);
+    }
+    previousReadyStateRef.current = { me: meReady, opponent: opponentReady };
+  }, [match, matchId]);
 
   useEffect(() => {
     if (!match || match.id !== matchId) return;
@@ -4974,14 +5275,6 @@ function AmateurDuelPlayView({
     return () => window.clearInterval(id);
   }, [match, matchId, refresh]);
 
-  useEffect(() => {
-    if (!directPlayOnly || !match || match.id !== matchId || inFlight) return;
-    const matchNow = duelMatchNowMs(match, now);
-    if (canStartArenaDuelPeriod(match, matchNow)) {
-      void startPeriod();
-    }
-  }, [directPlayOnly, inFlight, match, matchId, now, startPeriod]);
-
   if (!match || match.id !== matchId) {
     return (
       <ModeShell title="Дуэль" onBack={onBack}>
@@ -5002,6 +5295,17 @@ function AmateurDuelPlayView({
     now >= startsAt &&
     now < endsAt &&
     match.me.current_period < match.rules.totalPeriods;
+  const handleDirectDuelAction = async (): Promise<void> => {
+    if (inFlight) return;
+    const matchNow = duelMatchNowMs(match, now);
+    if (match.status === 'ready_check' && match.me.state !== 'ready') {
+      await ready(selectedLoadout);
+      return;
+    }
+    if (canStartArenaDuelPeriod(match, matchNow)) {
+      await startPeriod();
+    }
+  };
   const nextPeriod =
     match.me.state === 'period_active'
       ? match.me.current_period
@@ -5012,56 +5316,116 @@ function AmateurDuelPlayView({
   if (directPlayOnly && match.me.state !== 'period_active') {
     const timing = duelEventTiming(match, now);
     const inactivePeriodRule = duelParticipantPeriodRule(match, match.me);
+    const showDirectResultModal = match.status === 'settled' && dismissedResultMatchId !== match.id;
+    const canRunDirectDuelAction =
+      (match.status === 'ready_check' && match.me.state !== 'ready') ||
+      canStartArenaDuelPeriod(match, duelMatchNowMs(match, now));
+    const meReady = match.me.state === 'ready' || match.me.state === 'accepted';
+    const opponentReady = match.opponent.state === 'ready' || match.opponent.state === 'accepted';
     return (
-      <PlayView<AmateurDuelMatchState>
-        suppressedByModal={true}
-        showIceCar={true}
-        playRouteTransitionOnMount={playRouteTransitionOnMount}
-        onRouteTransitionConsumed={onRouteTransitionConsumed}
-        onBack={onBack}
-        active={false}
-        seed={match.match_seed}
-        goalieId={match.rules.goalieId}
-        periodNumber={duelNextPeriod(match)}
-        periodSpeedPresets={match.period_speed_presets}
-        stickEffects={match.stick_effects}
-        periodsTotal={match.rules.totalPeriods}
-        goals={match.me.goals}
-        shots={match.me.shots_taken}
-        shotsTotal={
-          inactivePeriodRule.mode === 'quota'
-            ? (inactivePeriodRule.shotsLimit ?? match.rules.shotsPerPeriod)
-            : undefined
-        }
-        timer={timing.value}
-        timerLabel={timing.label}
-        shotButtonLabel={inFlight ? 'ОТКРЫВАЕМ...' : arenaDuelCtaLabel(match, now).toUpperCase()}
-        backLabel="К арене"
-        optimisticAddShot={optimisticAddShot}
-        submitShot={submitShot}
-        applyState={applyState}
-        scoreboardOpponent={duelScoreboardOpponent(match)}
-      />
+      <>
+        <PlayView<AmateurDuelMatchState>
+          suppressedByModal={false}
+          showIceCar={false}
+          playRouteTransitionOnMount={playRouteTransitionOnMount}
+          onRouteTransitionConsumed={onRouteTransitionConsumed}
+          onBack={onBack}
+          active={false}
+          seed={match.match_seed}
+          goalieId={match.rules.goalieId}
+          periodNumber={duelNextPeriod(match)}
+          periodSpeedPresets={match.period_speed_presets}
+          stickEffects={match.stick_effects}
+          periodsTotal={match.rules.totalPeriods}
+          goals={match.me.goals}
+          shots={match.me.shots_taken}
+          shotsTotal={
+            inactivePeriodRule.mode === 'quota'
+              ? (inactivePeriodRule.shotsLimit ?? match.rules.shotsPerPeriod)
+              : undefined
+          }
+          timer={timing.value}
+          timerLabel={timing.label}
+          shotButtonLabel={
+            inFlight ? 'ФИКСИРУЕМ...' : duelRinkPrimaryLabel(match, now).toUpperCase()
+          }
+          inactiveAction={canRunDirectDuelAction ? handleDirectDuelAction : undefined}
+          readyPresence={{
+            playerReady: meReady,
+            goalieReady: opponentReady,
+            playerEntranceKey: playerReadyEntranceKey,
+            goalieEntranceKey: goalieReadyEntranceKey,
+          }}
+          backLabel="К арене"
+          optimisticAddShot={optimisticAddShot}
+          submitShot={submitShot}
+          applyState={applyState}
+          hudAddon={
+            <DuelRinkLoadoutHud
+              match={match}
+              selectedLoadout={selectedLoadout}
+              locked={meReady || inFlight}
+              onSelectKind={setSelectedLoadoutKind}
+            />
+          }
+          scoreboardOpponent={duelScoreboardOpponent(match)}
+        />
+        {showDirectResultModal && <DuelResultModal match={match} onClose={onBack} />}
+        {selectedLoadoutKind !== null && (
+          <DuelRinkLoadoutModal
+            kind={selectedLoadoutKind}
+            match={match}
+            selectedId={selectedLoadout[selectedLoadoutKind] ?? null}
+            onClose={() => setSelectedLoadoutKind(null)}
+            onSelect={(itemId) => {
+              const kind = selectedLoadoutKind;
+              setSelectedLoadout((current) => ({ ...current, [kind]: itemId }));
+              setSelectedLoadoutKind(null);
+            }}
+          />
+        )}
+        <DuelDevStatePanel match={match} now={now} />
+      </>
     );
   }
 
   if (match.status === 'ready_check') {
     const readyEndsAt = match.ready_expires_at ? new Date(match.ready_expires_at).getTime() : 0;
     const readyText = readyEndsAt > now ? formatMs(readyEndsAt - now) : '00:00';
+    const meReady = match.me.state === 'ready';
+    const opponentReady = match.opponent.state === 'ready';
+    const readyTimerLabel = meReady ? 'ЖДЁМ' : opponentReady ? 'ДО ПОРАЖЕНИЯ' : 'ГОТОВ';
+    const readyLead = meReady
+      ? `Вы готовы. Ждём, пока ${opponentDisplayName} выберет инвентарь и нажмёт «Готов».`
+      : opponentReady
+        ? `${opponentDisplayName} уже готов. У вас идёт отсчёт до технического поражения: выберите инвентарь и нажмите «Готов».`
+        : `Соперник: ${opponentDisplayName}. Выберите инвентарь и нажмите «Готов».`;
     return (
       <ModeShell title="Комната дуэли" onBack={onBack}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
           <TotalCell label="ФОРМАТ" value={`${match.rules.totalPeriods}П`} />
           <TotalCell label="ТИП" value={duelKindText(match.rules.duelKind)} />
-          <TotalCell label="ГОТОВ" value={readyText} />
+          <TotalCell label={readyTimerLabel} value={readyText} />
         </div>
-        <div className="glass" style={{ borderRadius: 18, padding: 14 }}>
+        <div
+          className="glass"
+          style={{
+            borderRadius: 18,
+            padding: 14,
+            border:
+              opponentReady && !meReady
+                ? '1px solid rgba(245, 158, 11, 0.42)'
+                : '1px solid rgba(255,255,255,0.76)',
+            background:
+              opponentReady && !meReady
+                ? 'linear-gradient(180deg, rgba(255, 247, 237, 0.58), rgba(255,255,255,0.2))'
+                : undefined,
+          }}
+        >
           <div style={{ fontSize: 18, fontWeight: 900, color: 'var(--ink)', marginBottom: 6 }}>
             {match.rules.title}
           </div>
-          <div style={{ color: 'var(--muted)', fontSize: 13, lineHeight: 1.45 }}>
-            Соперник: {opponentDisplayName}. Выберите инвентарь и нажмите «Готов».
-          </div>
+          <div style={{ color: 'var(--muted)', fontSize: 13, lineHeight: 1.45 }}>{readyLead}</div>
         </div>
         <DuelLoadoutSummary match={match} />
         {error && (
@@ -5691,7 +6055,7 @@ function DuelRulesPanel({ match }: { match: AmateurDuelMatch }): JSX.Element {
 }
 
 function DuelOpponentPanel({ match }: { match: AmateurDuelMatch }): JSX.Element {
-  const opponentStatus = duelOpponentStatus(match.opponent);
+  const opponentStatus = duelOpponentStatus(match);
   const opponentName = splitOpponentName(match.opponent.display_name);
   return (
     <div
@@ -5787,11 +6151,19 @@ function splitOpponentName(displayName: string): { first: string; second: string
   return { first: first ?? 'Игрок', second: rest.join(' ') };
 }
 
-function duelOpponentStatus(participant: AmateurDuelMatch['opponent']): {
+function duelOpponentStatus(match: AmateurDuelMatch): {
   label: string;
   color: string;
   glow: string;
 } {
+  const participant = match.opponent;
+  if (match.status === 'invited') {
+    return {
+      label: match.me.side === 'challenger' ? 'ждём ответ' : 'ждёт ответ',
+      color: '#f59e0b',
+      glow: 'rgba(245, 158, 11, 0.2)',
+    };
+  }
   if (participant.state === 'period_active') {
     return {
       label: `играет ${participant.current_period}П`,
@@ -5884,10 +6256,95 @@ function duelScoreboardOpponent(match: AmateurDuelMatch): ScoreBoardOpponent {
 }
 
 const DUEL_INVENTORY_SLOTS = [
-  { kind: 'skates', label: 'Коньки', artwork: '/inventory/skates.webp' },
-  { kind: 'stick', label: 'Клюшка', artwork: '/inventory/sticks.webp' },
-  { kind: 'nutrition', label: 'Энергия', artwork: '/inventory/nutrition.webp' },
+  { kind: 'skates', label: 'Коньки' },
+  { kind: 'stick', label: 'Клюшка' },
+  { kind: 'nutrition', label: 'Энергия' },
 ] as const;
+
+const DUEL_EQUIPMENT_META: Record<
+  InventoryEquipmentKind,
+  { title: string; empty: string; patchKey: 'stickItemId' | 'skatesItemId' | 'nutritionItemId' }
+> = {
+  stick: { title: 'Клюшка', empty: 'Без клюшки', patchKey: 'stickItemId' },
+  skates: { title: 'Коньки', empty: 'Без коньков', patchKey: 'skatesItemId' },
+  nutrition: { title: 'Питание', empty: 'Без питания', patchKey: 'nutritionItemId' },
+};
+
+function duelEquipmentIdFor(
+  inventory: InventoryState | undefined,
+  kind: InventoryEquipmentKind,
+): string | null {
+  if (!inventory?.equipped) return null;
+  if (kind === 'stick') return inventory.equipped.stickItemId;
+  if (kind === 'skates') return inventory.equipped.skatesItemId;
+  return inventory.equipped.nutritionItemId;
+}
+
+function duelEquippedItem(
+  inventory: InventoryState | undefined,
+  kind: InventoryEquipmentKind,
+): InventoryItem | null {
+  const id = duelEquipmentIdFor(inventory, kind);
+  return inventory?.items[kind].find((item) => item.id === id) ?? null;
+}
+
+function isDuelRequiredEquipment(kind: InventoryEquipmentKind): boolean {
+  return kind === 'stick' || kind === 'skates';
+}
+
+function isDuelLockerItemAvailable(item: InventoryItem): boolean {
+  return item.chargesAvailable + item.chargesReserved > 0;
+}
+
+function duelBaseEquipmentTitle(kind: InventoryEquipmentKind): string {
+  if (kind === 'stick') return 'Обычная клюшка';
+  if (kind === 'skates') return 'Обычные коньки';
+  return 'Без питания';
+}
+
+function duelBaseEquipmentDescription(kind: InventoryEquipmentKind): string {
+  if (kind === 'stick') return 'Базовая клюшка доступна всегда и не расходуется в дуэлях.';
+  if (kind === 'skates') return 'Базовые коньки доступны всегда и не расходуются в дуэлях.';
+  return 'Можно выйти на матч без спортивного питания.';
+}
+
+function duelInventoryPeriodLabel(count: number): string {
+  const normalized = Math.max(0, Math.trunc(count));
+  if (normalized === 0) return 'Нет запаса';
+
+  const mod10 = normalized % 10;
+  const mod100 = normalized % 100;
+  const noun =
+    mod10 === 1 && mod100 !== 11
+      ? 'период'
+      : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)
+        ? 'периода'
+        : 'периодов';
+  return `На ${normalized} ${noun}`;
+}
+
+function duelEquipmentDisplayTitle(item: Pick<InventoryItem, 'kind' | 'rarity' | 'title'>): string {
+  const normalized = item.title.trim().toLowerCase();
+  const isGenericTitle = new Set(['клюшка', 'клюшки', 'коньки', 'питание', 'энергия']).has(
+    normalized,
+  );
+  if (!isGenericTitle) return item.title;
+
+  const tier = item.rarity === 'legendary' || item.rarity === 'epic' ? 'gold' : item.rarity;
+  if (item.kind === 'stick') {
+    if (tier === 'gold') return 'Золотая клюшка';
+    if (tier === 'rare') return 'Серебряная клюшка';
+    return 'Бронзовая клюшка';
+  }
+  if (item.kind === 'skates') {
+    if (tier === 'gold') return 'Золотые коньки';
+    if (tier === 'rare') return 'Серебряные коньки';
+    return 'Бронзовые коньки';
+  }
+  if (tier === 'gold') return 'Золотое питание';
+  if (tier === 'rare') return 'Серебряное питание';
+  return 'Бронзовое питание';
+}
 
 function DuelInventorySlots({ match }: { match: AmateurDuelMatch }): JSX.Element {
   const items = match.me.loadout.items;
@@ -5909,6 +6366,11 @@ function DuelInventorySlots({ match }: { match: AmateurDuelMatch }): JSX.Element
           (cur) => cur.kind === slot.kind && cur.chargesAvailable > 0,
         );
         const hasAvailable = available !== undefined;
+        const artwork = item
+          ? artworkForInventoryItem(item)
+          : available
+            ? artworkForInventoryItem(available)
+            : placeholderArtworkForKind(slot.kind);
         const rarityColor =
           (item?.rarity ?? available?.rarity) === 'legendary'
             ? '#f59e0b'
@@ -5953,14 +6415,14 @@ function DuelInventorySlots({ match }: { match: AmateurDuelMatch }): JSX.Element
               }}
             >
               <img
-                src={slot.artwork}
+                src={artwork}
                 alt=""
                 style={{
                   width: iconSize,
                   height: iconSize,
                   objectFit: 'cover',
-                  filter: item ? 'none' : 'grayscale(1)',
-                  opacity: item ? 1 : hasAvailable ? 0.68 : 0.44,
+                  filter: hasAvailable || item ? 'none' : 'grayscale(1)',
+                  opacity: item ? 1 : hasAvailable ? 0.78 : 0.42,
                 }}
               />
             </span>
@@ -5998,6 +6460,220 @@ function DuelInventorySlots({ match }: { match: AmateurDuelMatch }): JSX.Element
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function availableDuelItemsForKind(
+  match: AmateurDuelMatch,
+  kind: InventoryEquipmentKind,
+): AmateurDuelInventoryAvailabilityItem[] {
+  return (match.me.inventory_available ?? []).filter(
+    (item) => item.kind === kind && item.chargesAvailable > 0,
+  );
+}
+
+function selectedDuelAvailabilityItem(
+  match: AmateurDuelMatch,
+  kind: InventoryEquipmentKind,
+  selectedId: string | null | undefined,
+): AmateurDuelInventoryAvailabilityItem | null {
+  if (!selectedId) return null;
+  return availableDuelItemsForKind(match, kind).find((item) => item.id === selectedId) ?? null;
+}
+
+function DuelRinkLoadoutHud({
+  match,
+  selectedLoadout,
+  locked,
+  onSelectKind,
+}: {
+  match: AmateurDuelMatch;
+  selectedLoadout: AmateurDuelLoadoutSelection;
+  locked: boolean;
+  onSelectKind: (kind: InventoryEquipmentKind) => void;
+}): JSX.Element {
+  return (
+    <div
+      aria-label="Выбор инвентаря"
+      style={{
+        display: 'flex',
+        gap: 6,
+        pointerEvents: locked ? 'none' : 'auto',
+      }}
+    >
+      {DUEL_INVENTORY_SLOTS.map((slot) => {
+        const selectedId = selectedLoadout[slot.kind] ?? null;
+        const item = selectedDuelAvailabilityItem(match, slot.kind, selectedId);
+        const availableItems = availableDuelItemsForKind(match, slot.kind);
+        const hasBase = isDuelRequiredEquipment(slot.kind);
+        const hasVisibleEquipment = item !== null || hasBase;
+        const canOpen = !locked && availableItems.length > 0;
+        const title = item ? duelEquipmentDisplayTitle(item) : duelBaseEquipmentTitle(slot.kind);
+        return (
+          <button
+            key={slot.kind}
+            type="button"
+            aria-label={`${slot.label}: ${title}`}
+            disabled={!canOpen}
+            onClick={() => onSelectKind(slot.kind)}
+            style={{
+              width: 34,
+              height: 42,
+              border: '1px solid rgba(255,255,255,0.74)',
+              borderRadius: 12,
+              padding: 3,
+              background: hasVisibleEquipment ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.36)',
+              boxShadow: hasVisibleEquipment ? '0 6px 14px rgba(15,23,42,0.14)' : 'none',
+              opacity: hasVisibleEquipment ? 1 : 0.48,
+              cursor: canOpen ? 'pointer' : 'default',
+            }}
+          >
+            <img
+              src={item ? artworkForInventoryItem(item) : placeholderArtworkForKind(slot.kind)}
+              alt=""
+              style={{
+                width: '100%',
+                height: '100%',
+                display: 'block',
+                objectFit: 'cover',
+                borderRadius: 9,
+                filter: hasVisibleEquipment ? 'none' : 'grayscale(1)',
+              }}
+            />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function DuelRinkLoadoutModal({
+  kind,
+  match,
+  selectedId,
+  onClose,
+  onSelect,
+}: {
+  kind: InventoryEquipmentKind;
+  match: AmateurDuelMatch;
+  selectedId: string | null;
+  onClose: () => void;
+  onSelect: (itemId: string | null) => void;
+}): JSX.Element {
+  const meta = DUEL_EQUIPMENT_META[kind];
+  const items = availableDuelItemsForKind(match, kind);
+  const canUseBase = isDuelRequiredEquipment(kind) || kind === 'nutrition';
+
+  return (
+    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 420 }}>
+      <section
+        role="dialog"
+        aria-label={meta.title}
+        className="modal-card"
+        onClick={(event) => event.stopPropagation()}
+        style={{ width: 'min(420px, calc(100vw - 28px))', display: 'grid', gap: 12 }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="modal-title">{meta.title}</div>
+            <div className="modal-copy">Выберите предмет для этой дуэли.</div>
+          </div>
+          <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
+            <X size={15} />
+          </button>
+        </div>
+        <div style={{ display: 'grid', gap: 8 }}>
+          {canUseBase && (
+            <button
+              type="button"
+              className="glass"
+              aria-pressed={selectedId === null}
+              onClick={() => onSelect(null)}
+              style={{
+                minHeight: 54,
+                borderRadius: 16,
+                padding: 12,
+                color: 'var(--ink)',
+                textAlign: 'left',
+                border:
+                  selectedId === null
+                    ? '1px solid rgba(15, 23, 42, 0.3)'
+                    : '1px solid rgba(255,255,255,0.76)',
+              }}
+            >
+              <span style={{ display: 'block', fontSize: 15, fontWeight: 900 }}>
+                {duelBaseEquipmentTitle(kind)}
+              </span>
+              <span
+                style={{
+                  display: 'block',
+                  marginTop: 3,
+                  color: 'var(--muted)',
+                  fontSize: 12,
+                  fontWeight: 760,
+                }}
+              >
+                {duelBaseEquipmentDescription(kind)}
+              </span>
+            </button>
+          )}
+          {items.map((item) => {
+            const selected = item.id === selectedId;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                className="glass"
+                aria-pressed={selected}
+                onClick={() => onSelect(item.id)}
+                style={{
+                  minHeight: 72,
+                  borderRadius: 18,
+                  padding: 10,
+                  display: 'grid',
+                  gridTemplateColumns: '52px minmax(0, 1fr)',
+                  alignItems: 'center',
+                  gap: 10,
+                  color: 'var(--ink)',
+                  textAlign: 'left',
+                  border: selected
+                    ? '1px solid rgba(15, 23, 42, 0.3)'
+                    : '1px solid rgba(255,255,255,0.76)',
+                }}
+              >
+                <img
+                  src={artworkForInventoryItem(item)}
+                  alt=""
+                  style={{
+                    width: 52,
+                    height: 52,
+                    borderRadius: 14,
+                    objectFit: 'cover',
+                    border: '1px solid rgba(255,255,255,0.78)',
+                  }}
+                />
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ display: 'block', fontSize: 15, fontWeight: 950 }}>
+                    {duelEquipmentDisplayTitle(item)}
+                  </span>
+                  <span
+                    style={{
+                      display: 'block',
+                      marginTop: 4,
+                      color: 'var(--muted)',
+                      fontSize: 12,
+                      fontWeight: 800,
+                    }}
+                  >
+                    {duelInventoryPeriodLabel(item.chargesAvailable)}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
     </div>
   );
 }
@@ -6041,6 +6717,11 @@ function DuelInventoryMiniHud({ match }: { match: AmateurDuelMatch }): JSX.Eleme
         const available = availableItems.find(
           (cur) => cur.kind === slot.kind && cur.chargesAvailable > 0,
         );
+        const artwork = item
+          ? artworkForInventoryItem(item)
+          : available
+            ? artworkForInventoryItem(available)
+            : placeholderArtworkForKind(slot.kind);
         const totalCharges = item?.chargesReserved ?? 0;
         const remainingCharges = item
           ? duelInventoryRemaining(match, item.id, item.chargesReserved)
@@ -6082,7 +6763,7 @@ function DuelInventoryMiniHud({ match }: { match: AmateurDuelMatch }): JSX.Eleme
             }}
           >
             <img
-              src={slot.artwork}
+              src={artwork}
               alt=""
               style={{
                 position: 'absolute',
@@ -6090,13 +6771,13 @@ function DuelInventoryMiniHud({ match }: { match: AmateurDuelMatch }): JSX.Eleme
                 width: '100%',
                 height: '100%',
                 objectFit: 'cover',
-                filter: 'grayscale(1)',
-                opacity: isSelected ? 0.52 : available ? 0.46 : 0.28,
+                filter: isSelected || available ? 'none' : 'grayscale(1)',
+                opacity: isSelected ? 0.84 : available ? 0.64 : 0.28,
               }}
             />
             {isSelected && (
               <img
-                src={slot.artwork}
+                src={artwork}
                 alt=""
                 style={{
                   position: 'absolute',
@@ -6296,6 +6977,8 @@ interface PlayViewProps<TState> {
   timer?: string | undefined;
   timerLabel?: string | undefined;
   shotButtonLabel?: string | undefined;
+  inactiveAction?: (() => unknown | Promise<unknown>) | undefined;
+  entranceBeforeInactiveAction?: boolean | undefined;
   backLabel?: string | undefined;
   bottomInset?: string | undefined;
   sessionStartedAt?: string | null | undefined;
@@ -6312,9 +6995,12 @@ interface PlayViewProps<TState> {
   applyState: (next: TState) => void;
   applyResolvedState?: ((next: TState) => void) | undefined;
   rinkLayer?: ReactNode;
+  longCourtBackground?: string | undefined;
   rinkAspectRatio?: string | undefined;
   rinkBorderRadius?: number | string | undefined;
   rinkBorder?: string | undefined;
+  hideScoreboard?: boolean | undefined;
+  overlayControls?: ReactNode;
   gameLayerStyle?: CSSProperties | undefined;
   playerGrip?: 'left' | 'right' | undefined;
   playerOptions?: PlayerOptions | undefined;
@@ -6326,6 +7012,14 @@ interface PlayViewProps<TState> {
   shotResolver?: PlayShotResolver | undefined;
   hudAddon?: ReactNode;
   scoreboardOpponent?: ScoreBoardOpponent | undefined;
+  readyPresence?: ReadyPresence | undefined;
+}
+
+interface ReadyPresence {
+  playerReady: boolean;
+  goalieReady: boolean;
+  playerEntranceKey?: string | null | undefined;
+  goalieEntranceKey?: string | null | undefined;
 }
 
 interface PlaySessionSnapshot {
@@ -6519,6 +7213,10 @@ function DailyPlayView({
   const canStartPeriod = rawCanStartPeriod && !isDailyLockedByTraining;
   const shouldSuppressRink = data.state !== 'period_active' || hasStatsModal;
   const shouldShowIceCar = isBreak || isClosed || hasStatsModal || isDailyLockedByTraining;
+  const handleStartPeriod = useCallback(async (): Promise<DailyStateResponse | null> => {
+    if (!canStartPeriod || pending) return null;
+    return startPeriod();
+  }, [canStartPeriod, pending, startPeriod]);
 
   useEffect(() => {
     if ((!isBreak || !breakEndsAt) && !isClosed && !isDailyLockedByTraining) return undefined;
@@ -6593,18 +7291,25 @@ function DailyPlayView({
                 : undefined
         }
         shotButtonLabel={
-          isBreak || isDailyLockedByTraining
+          canStartPeriod
+            ? pending
+              ? 'НАЧИНАЕМ...'
+              : 'НАЧАТЬ'
+            : isBreak || isDailyLockedByTraining
             ? 'ЛЁД ГОТОВИТСЯ'
             : isClosed
               ? 'ИГРА ЗАВЕРШЕНА'
               : undefined
         }
+        inactiveAction={canStartPeriod ? handleStartPeriod : undefined}
+        entranceBeforeInactiveAction={true}
         periodEndsAt={data.state === 'period_active' ? periodEndsAt : undefined}
         onTimerExpired={refresh}
         optimisticAddShot={optimisticAddShot}
         submitShot={submitShot}
         applyState={applyState}
         applyResolvedState={applyDailyResolvedState}
+        longCourtBackground={DAILY_LONG_COURT_BACKGROUND}
       />
       {statsModal && (
         <DailyGameStatsModal
@@ -6614,17 +7319,6 @@ function DailyPlayView({
           ariaLabel={statsModal.state === 'closed' ? 'Игра завершена' : 'Итоги ежедневной игры'}
           closeLabel="Понятно"
           onClose={handleStatsModalClose}
-        />
-      )}
-      {canStartPeriod && !hasStatsModal && (
-        <StartPeriodModal
-          nextPeriod={periodNumber}
-          totalPeriods={data.total_periods}
-          shotsPerPeriod={data.shots_per_period}
-          isFirstPeriod={data.current_period === 0}
-          pending={pending}
-          onHome={onBack}
-          onStart={() => void startPeriod()}
         />
       )}
     </>
@@ -6640,45 +7334,61 @@ function TrainingHitboxesToggle({
 }): JSX.Element {
   return (
     <label
+      aria-label="Хитбоксы"
+      title="Хитбоксы"
       style={{
-        position: 'fixed',
-        top: 'calc(var(--app-safe-top) + 78px)',
-        left: 12,
-        zIndex: 540,
         display: 'inline-flex',
         alignItems: 'center',
-        gap: 8,
-        minHeight: 40,
-        padding: '4px 13px',
+        justifyContent: 'center',
+        position: 'relative',
+        width: 34,
+        height: 34,
+        padding: 0,
         borderRadius: 999,
-        background: 'rgba(8, 24, 43, 0.72)',
-        border: '1px solid rgba(255, 255, 255, 0.24)',
-        boxShadow: '0 12px 28px rgba(7, 19, 33, 0.2)',
-        backdropFilter: 'blur(14px)',
-        color: 'rgba(255, 255, 255, 0.88)',
-        fontSize: 11,
-        fontWeight: 900,
-        letterSpacing: 0,
-        lineHeight: 1,
+        background: checked ? 'rgba(8, 24, 43, 0.86)' : 'rgba(255, 255, 255, 0.82)',
+        border: checked
+          ? '1px solid rgba(255, 255, 255, 0.34)'
+          : '1px solid rgba(15, 23, 42, 0.12)',
+        boxShadow: checked
+          ? '0 10px 22px rgba(7, 19, 33, 0.22)'
+          : '0 8px 18px rgba(15, 23, 42, 0.12), inset 0 1px 0 rgba(255,255,255,0.86)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        color: checked ? '#ffffff' : 'rgba(15, 23, 42, 0.68)',
+        cursor: 'pointer',
       }}
     >
       <input
+        aria-label="Хитбоксы"
         type="checkbox"
         checked={checked}
         onChange={(event) => onChange(event.currentTarget.checked)}
         style={{
-          width: 13,
-          height: 13,
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
           margin: 0,
+          opacity: 0,
+          cursor: 'pointer',
           accentColor: '#22cc66',
         }}
       />
-      Хитбоксы
+      <Crosshair aria-hidden="true" size={17} strokeWidth={2.4} />
     </label>
   );
 }
 
-function TrainingPerspectiveRink(): JSX.Element {
+function TrainingPerspectiveRink({
+  design = 'standard',
+  cubeHud,
+  longBackground = TRAINING_LONG_COURT_BACKGROUND,
+}: {
+  design?: TrainingCourtDesign | undefined;
+  cubeHud?: ReactNode;
+  longBackground?: string | undefined;
+}): JSX.Element {
+  const isLong = design === 'long';
   return (
     <div
       role="img"
@@ -6694,35 +7404,217 @@ function TrainingPerspectiveRink(): JSX.Element {
       }}
     >
       <img
-        src={TRAINING_NEW_COURT_BACKGROUND}
+        src={isLong ? longBackground : TRAINING_NEW_COURT_BACKGROUND}
         alt=""
         aria-hidden="true"
         style={{
           position: 'absolute',
           inset: 0,
           width: '100%',
-          height: `calc(100% + ${TRAINING_NEW_COURT_BG_CROP_BOTTOM})`,
+          height: isLong ? '100%' : `calc(100% + ${TRAINING_NEW_COURT_BG_CROP_BOTTOM})`,
           objectFit: 'cover',
         }}
       />
+      {isLong && (
+        <div
+          aria-hidden={cubeHud ? undefined : true}
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: '50%',
+            width: '76%',
+            maxWidth: 456,
+            transform: 'translateX(-50%)',
+            filter: 'drop-shadow(0 18px 24px rgba(3, 10, 18, 0.34))',
+          }}
+        >
+          <img
+            src={TRAINING_LED_TABLEAU_IMAGE}
+            alt=""
+            aria-hidden="true"
+            style={{ display: 'block', width: '100%', height: 'auto' }}
+          />
+          {cubeHud}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TrainingCubeScoreboard({
+  period,
+  periodsTotal,
+  timer,
+  timerLabel,
+  goals,
+  shots,
+  shotsTotal,
+}: {
+  period: number;
+  periodsTotal: number;
+  timer: string;
+  timerLabel: string;
+  goals: number;
+  shots: number;
+  shotsTotal?: number | undefined;
+}): JSX.Element {
+  const shotsText =
+    typeof shotsTotal === 'number'
+      ? `${String(shots).padStart(2, '0')}/${String(shotsTotal).padStart(2, '0')}`
+      : String(shots).padStart(2, '0');
+  const isSinglePeriod = periodsTotal === 1;
+  const metrics = [
+    { label: 'Период', value: `${period}/${periodsTotal}` },
+    { label: 'Голы', value: String(goals).padStart(2, '0') },
+    { label: 'Броски', value: shotsText },
+    { label: timerLabel, value: timer },
+  ];
+
+  if (isSinglePeriod) {
+    return (
+      <div
+        aria-label="Статистика на видеокубе"
+        style={{
+          position: 'absolute',
+          left: '8%',
+          right: '8%',
+          top: '27%',
+          bottom: '24%',
+          display: 'grid',
+          gridTemplateRows: 'minmax(0, 1.05fr) minmax(0, 0.72fr) minmax(0, 1fr)',
+          alignItems: 'center',
+          justifyItems: 'center',
+          pointerEvents: 'none',
+        }}
+      >
+        <TrainingCubeMetric label={timerLabel} value={timer} emphasis="large" />
+        <TrainingCubeMetric label="Период" value={`${period}/${periodsTotal}`} emphasis="small" />
+        <div
+          style={{
+            width: '100%',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+            columnGap: 'clamp(26px, 11vw, 92px)',
+            alignItems: 'end',
+          }}
+        >
+          <TrainingCubeMetric label="Голы" value={String(goals).padStart(2, '0')} />
+          <TrainingCubeMetric label="Броски" value={shotsText} />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      aria-label="Статистика на видеокубе"
+      style={{
+        position: 'absolute',
+        left: '8%',
+        right: '8%',
+        top: '27%',
+        bottom: '24%',
+        display: 'grid',
+        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+        columnGap: 'clamp(16px, 6vw, 58px)',
+        rowGap: 'clamp(8px, 2.2vw, 15px)',
+        alignContent: 'center',
+        pointerEvents: 'none',
+      }}
+    >
+      {metrics.map((metric) => (
+        <TrainingCubeMetric key={metric.label} label={metric.label} value={metric.value} />
+      ))}
+    </div>
+  );
+}
+
+function TrainingCubeMetric({
+  label,
+  value,
+  emphasis = 'default',
+}: {
+  label: string;
+  value: string;
+  emphasis?: 'default' | 'large' | 'small';
+}): JSX.Element {
+  const labelIsLong = label.length > 8;
+  const valueIsLong = value.length > 5;
+  const valueFont =
+    emphasis === 'large'
+      ? valueIsLong
+        ? 'clamp(21px, 6.7vw, 40px)'
+        : 'clamp(23px, 7.2vw, 44px)'
+      : emphasis === 'small'
+        ? 'clamp(14px, 3.8vw, 22px)'
+        : valueIsLong
+          ? 'clamp(15px, 4.15vw, 25px)'
+          : 'clamp(17px, 5vw, 30px)';
+
+  return (
+    <div
+      style={{
+        minWidth: 0,
+        textAlign: 'center',
+        color: '#e9fbff',
+        textShadow: '0 0 8px rgba(122, 229, 255, 0.36)',
+      }}
+    >
+      <div
+        style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: labelIsLong ? 'clamp(6px, 1.42vw, 9px)' : 'clamp(7px, 1.7vw, 11px)',
+          fontWeight: 950,
+          lineHeight: 1,
+          textTransform: 'uppercase',
+          letterSpacing: labelIsLong ? '0.1em' : '0.16em',
+          color: 'rgba(205, 246, 255, 0.86)',
+          textShadow: '0 0 8px rgba(99, 218, 255, 0.4)',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          marginTop: 2,
+          fontFamily: 'var(--font-mono)',
+          fontSize: valueFont,
+          fontWeight: 950,
+          lineHeight: 0.96,
+          letterSpacing: valueIsLong ? '0.04em' : '0.08em',
+          fontVariantNumeric: 'tabular-nums',
+          color: '#f7feff',
+          textShadow: '0 0 7px rgba(143, 232, 255, 0.72), 0 0 14px rgba(44, 177, 255, 0.38)',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {value}
+      </div>
     </div>
   );
 }
 
 function TrainingPlayView({
   onBack,
+  selectedPeriod = 1,
   playEntranceOnMount = false,
   onEntranceConsumed,
   playRouteTransitionOnMount = false,
   onRouteTransitionConsumed,
 }: {
   onBack: () => void;
+  selectedPeriod?: 1 | 2 | 3;
   playEntranceOnMount?: boolean;
   onEntranceConsumed?: () => void;
   playRouteTransitionOnMount?: boolean;
   onRouteTransitionConsumed?: (() => void) | undefined;
 }): JSX.Element | null {
   const data = useTrainingSessionStore((s) => s.data);
+  const dailyData = useDailyStore((s) => s.data);
+  const start = useTrainingSessionStore((s) => s.start);
   const optimisticAddShot = useTrainingSessionStore((s) => s.optimisticAddShot);
   const submitShot = useTrainingSessionStore((s) => s.submitShot);
   const applyState = useTrainingSessionStore((s) => s.applyState);
@@ -6730,7 +7622,7 @@ function TrainingPlayView({
   const experimentalTrainingCourt = useAuthStore((s) => s.user?.experimentalTrainingCourt);
   const [hitboxesVisible, setHitboxesVisible] = useState(() => readTrainingHitboxesVisible());
   const [now, setNow] = useState(Date.now());
-  const canSwitchCourtDesign = userRole === 'admin' || experimentalTrainingCourt === true;
+  const canShowHitboxesToggle = userRole === 'admin' || experimentalTrainingCourt === true;
   const handleHitboxesChange = useCallback((next: boolean): void => {
     setHitboxesVisible(next);
     saveTrainingHitboxesVisible(next);
@@ -6746,27 +7638,31 @@ function TrainingPlayView({
 
   const isTrainingActive = data.state === 'active';
   const isTrainingClosed = data.state === 'closed';
+  const isTrainingLockedByDaily =
+    dailyData?.state === 'period_active' ||
+    dailyData?.state === 'break_active' ||
+    (dailyData?.state === 'idle' &&
+      dailyData.current_period > 0 &&
+      dailyData.current_period < dailyData.total_periods);
+  const canStartTraining = data.state === 'idle' && !isTrainingLockedByDaily;
   const nextDayAt = new Date(data.next_day_starts_at).getTime();
   const nextDayRemaining = Math.max(0, nextDayAt - now);
   const trainingTimer = isTrainingClosed
     ? formatHms(nextDayRemaining)
-    : isTrainingActive
-      ? String(data.shots_limit)
-      : '--:--';
+    : String(data.shots_limit);
   const trainingTimerLabel = isTrainingClosed
     ? 'ДО ОБНОВЛЕНИЯ'
-    : isTrainingActive
-      ? 'ЛИМИТ'
-      : 'НЕДОСТУПНО';
+    : 'ЛИМИТ';
+  const handleStartTraining = useCallback(async (): Promise<TrainingStateResponse | null> => {
+    if (!canStartTraining) return null;
+    return start(selectedPeriod);
+  }, [canStartTraining, selectedPeriod, start]);
 
   return (
     <>
-      {canSwitchCourtDesign ? (
-        <TrainingHitboxesToggle checked={hitboxesVisible} onChange={handleHitboxesChange} />
-      ) : null}
       <PlayView<TrainingStateResponse>
         suppressedByModal={!isTrainingActive}
-        showIceCar={!isTrainingActive}
+        showIceCar={isTrainingClosed || isTrainingLockedByDaily}
         playEntranceOnMount={isTrainingActive ? playEntranceOnMount : false}
         onEntranceConsumed={onEntranceConsumed}
         playRouteTransitionOnMount={playRouteTransitionOnMount}
@@ -6775,7 +7671,7 @@ function TrainingPlayView({
         active={isTrainingActive}
         seed={data.training_seed}
         goalieId={data.goalie_id}
-        periodNumber={data.selected_period ?? 1}
+        periodNumber={data.selected_period ?? selectedPeriod}
         periodSpeedPresets={data.period_speed_presets}
         sessionStartedAt={data.started_at}
         serverNow={data.server_now}
@@ -6785,12 +7681,27 @@ function TrainingPlayView({
         shotsTotal={data.shots_limit}
         timer={trainingTimer}
         timerLabel={trainingTimerLabel}
-        shotButtonLabel={isTrainingActive ? undefined : 'ЛЁД ГОТОВИТСЯ'}
+        shotButtonLabel={
+          isTrainingActive
+            ? undefined
+            : canStartTraining
+              ? 'НАЧАТЬ'
+              : isTrainingLockedByDaily
+                ? 'ЛЁД ГОТОВИТСЯ'
+                : 'ТРЕНИРОВКА ЗАВЕРШЕНА'
+        }
+        inactiveAction={canStartTraining ? handleStartTraining : undefined}
+        entranceBeforeInactiveAction={true}
         backLabel="К тренировке"
         optimisticAddShot={optimisticAddShot}
         submitShot={submitShot}
         applyState={applyState}
         hitboxesVisible={hitboxesVisible}
+        overlayControls={
+          canShowHitboxesToggle ? (
+            <TrainingHitboxesToggle checked={hitboxesVisible} onChange={handleHitboxesChange} />
+          ) : undefined
+        }
       />
     </>
   );
@@ -7058,6 +7969,8 @@ export function PlayView<TState>({
   timer,
   timerLabel,
   shotButtonLabel = 'БРОСОК',
+  inactiveAction,
+  entranceBeforeInactiveAction = false,
   backLabel = 'К режимам',
   bottomInset = 'calc(8px + max(20px, var(--app-safe-bottom)))',
   sessionStartedAt,
@@ -7069,11 +7982,14 @@ export function PlayView<TState>({
   submitShot,
   applyState,
   applyResolvedState,
-  rinkLayer = <TrainingPerspectiveRink />,
-  rinkAspectRatio = '1024 / 1428',
+  rinkLayer,
+  longCourtBackground,
+  rinkAspectRatio = LONG_COURT_RINK_ASPECT_RATIO,
   rinkBorderRadius = 36,
   rinkBorder = '3px solid #1e3a5f',
-  gameLayerStyle,
+  hideScoreboard = true,
+  overlayControls,
+  gameLayerStyle = LONG_COURT_GAME_LAYER_STYLE,
   playerGrip,
   playerOptions = PERSPECTIVE_PLAYER_OPTIONS,
   goalOptions = PERSPECTIVE_GOAL_OPTIONS,
@@ -7084,6 +8000,7 @@ export function PlayView<TState>({
   shotResolver = resolveNewTrainingCourtShot,
   hudAddon,
   scoreboardOpponent,
+  readyPresence,
 }: PlayViewProps<TState>): JSX.Element {
   const session: PlaySessionSnapshot = useMemo(
     () => ({
@@ -7126,6 +8043,7 @@ export function PlayView<TState>({
   const entranceRafRef = useRef<number | null>(null);
   const routeCameraRafRef = useRef<number | null>(null);
   const routeBackTimeoutRef = useRef<number | null>(null);
+  const skipNextUnsuppressedEntranceRef = useRef(false);
   const iceCarRef = useRef<IceCar | null>(null);
   const iceCarRafRef = useRef<number | null>(null);
   const shotTimeoutsRef = useRef<number[]>([]);
@@ -7133,6 +8051,8 @@ export function PlayView<TState>({
   const initializedRef = useRef(false);
   const [isShowingResult, setIsShowingResult] = useState(false);
   const [isShotInProgress, setIsShotInProgress] = useState(false);
+  const [isShotSubmitPending, setIsShotSubmitPending] = useState(false);
+  const [isInactiveActionPending, setIsInactiveActionPending] = useState(false);
   const [soundToastVisible, setSoundToastVisible] = useState(false);
   const soundToastTimerRef = useRef<number | null>(null);
   const [resultSubText, setResultSubText] = useState<string | null>(null);
@@ -7147,6 +8067,8 @@ export function PlayView<TState>({
   // Server state is held until shot animation ends, so ScoreBoard counters
   // don't jump while the puck is still flying.
   const pendingMidShotApplyRef = useRef<(() => void) | null>(null);
+  const shotAnimationInProgressRef = useRef(false);
+  const shotSubmitPendingRef = useRef(false);
   const [pixiReady, setPixiReady] = useState(false);
   const [isEntrancePlaying, setIsEntrancePlaying] = useState(false);
   const routeCameraRequestedRef = useRef(playRouteTransitionOnMount && !shouldReduceMotion());
@@ -7181,6 +8103,11 @@ export function PlayView<TState>({
   hitboxesOptionsRef.current = hitboxesOptions;
   const shotResolverRef = useRef(shotResolver);
   shotResolverRef.current = shotResolver;
+  const readyPresenceRef = useRef(readyPresence);
+  readyPresenceRef.current = readyPresence;
+  const wasReadyPresenceModeRef = useRef(false);
+  const lastReadyPlayerEntranceKeyRef = useRef(readyPresence?.playerEntranceKey ?? null);
+  const lastReadyGoalieEntranceKeyRef = useRef(readyPresence?.goalieEntranceKey ?? null);
 
   const speeds = useMemo(
     () => speedOverridesForPeriod(periodNumber, periodSpeedPresets),
@@ -7371,75 +8298,211 @@ export function PlayView<TState>({
     };
   }, []);
 
-  const startEntranceAnimation = useCallback((loop: GameLoop, ticker: Ticker): void => {
-    if (entranceRafRef.current !== null) {
-      cancelAnimationFrame(entranceRafRef.current);
-      entranceRafRef.current = null;
-    }
+  const startEntranceAnimation = useCallback(
+    (
+      loop: GameLoop,
+      ticker: Ticker,
+      options: { attachOnComplete?: boolean } = {},
+    ): Promise<void> =>
+      new Promise((resolve) => {
+        if (entranceRafRef.current !== null) {
+          cancelAnimationFrame(entranceRafRef.current);
+          entranceRafRef.current = null;
+        }
+        const goal = goalRef.current;
+        const player = playerRef.current;
+        const goalie = goalieRef.current;
+        const puck = puckRef.current;
+        if (!goal || !player || !goalie || !puck) {
+          resolve();
+          return;
+        }
+
+        loop.detach();
+        setIsEntrancePlaying(true);
+
+        const attachOnComplete = options.attachOnComplete ?? true;
+        const ENTRY_DURATION_MS = 1400;
+        const CENTER_RED_Y = 350;
+        const ENTRY_X = RINK.width + 50;
+        const goalieStartX = ENTRY_X;
+        const goalieStartY = CENTER_RED_Y - 30;
+        const playerStartX = ENTRY_X;
+        const playerStartY = CENTER_RED_Y + 30;
+        const goalStartOffsetY = -140;
+        const t0 = performance.now();
+
+        goal.container.visible = true;
+        player.container.visible = true;
+        goalie.container.visible = true;
+        puck.container.visible = false;
+
+        const drawAt = (
+          gx: number,
+          gy: number,
+          px: number,
+          py: number,
+          goalOffsetY: number,
+        ): void => {
+          goal.update(scaleRef.current, 0, goalOffsetY);
+          player.update(scaleRef.current, px, py);
+          goalie.update(
+            {
+              position: { x: gx, y: gy },
+              width: GOALIE_SIZE.width,
+              height: GOALIE_SIZE.height,
+            },
+            scaleRef.current,
+          );
+        };
+
+        drawAt(goalieStartX, goalieStartY, playerStartX, playerStartY, goalStartOffsetY);
+
+        const step = (): void => {
+          if (!mountedRef.current) {
+            resolve();
+            return;
+          }
+          const t = Math.min(1, (performance.now() - t0) / ENTRY_DURATION_MS);
+          const eased = 1 - Math.pow(1 - t, 3);
+          drawAt(
+            goalieStartX + (SHOOTER_CENTER_X - goalieStartX) * eased,
+            goalieStartY + (GOALIE_Y - goalieStartY) * eased,
+            playerStartX + (SHOOTER_CENTER_X - playerStartX) * eased,
+            playerStartY + (PUCK_START.y - playerStartY) * eased,
+            goalStartOffsetY * (1 - eased),
+          );
+          if (t < 1) {
+            entranceRafRef.current = requestAnimationFrame(step);
+            return;
+          }
+          entranceRafRef.current = null;
+          goal.update(scaleRef.current, 0, 0);
+          puck.container.visible = true;
+          loop.resetTime();
+          if (attachOnComplete) loop.attach(ticker);
+          setIsEntrancePlaying(false);
+          resolve();
+        };
+
+        entranceRafRef.current = requestAnimationFrame(step);
+      }),
+    [],
+  );
+
+  const drawReadyPresence = useCallback((presence: ReadyPresence): void => {
     const goal = goalRef.current;
     const player = playerRef.current;
     const goalie = goalieRef.current;
     const puck = puckRef.current;
     if (!goal || !player || !goalie || !puck) return;
 
-    loop.detach();
-    setIsEntrancePlaying(true);
-
-    const ENTRY_DURATION_MS = 1400;
-    const CENTER_RED_Y = 350;
-    const ENTRY_X = RINK.width + 50;
-    const goalieStartX = ENTRY_X;
-    const goalieStartY = CENTER_RED_Y - 30;
-    const playerStartX = ENTRY_X;
-    const playerStartY = CENTER_RED_Y + 30;
-    const goalStartOffsetY = -140;
-    const t0 = performance.now();
-
-    goal.container.visible = true;
-    player.container.visible = true;
-    goalie.container.visible = true;
-    puck.container.visible = false;
-
-    const drawAt = (gx: number, gy: number, px: number, py: number, goalOffsetY: number): void => {
-      goal.update(scaleRef.current, 0, goalOffsetY);
-      player.update(scaleRef.current, px, py);
+    goal.container.visible = presence.goalieReady;
+    goalie.container.visible = presence.goalieReady;
+    player.container.visible = presence.playerReady;
+    puck.container.visible = presence.playerReady;
+    goal.update(scaleRef.current, 0, 0);
+    if (presence.goalieReady) {
       goalie.update(
         {
-          position: { x: gx, y: gy },
+          position: { x: SHOOTER_CENTER_X, y: GOALIE_Y },
           width: GOALIE_SIZE.width,
           height: GOALIE_SIZE.height,
         },
         scaleRef.current,
       );
-    };
-
-    drawAt(goalieStartX, goalieStartY, playerStartX, playerStartY, goalStartOffsetY);
-
-    const step = (): void => {
-      if (!mountedRef.current) return;
-      const t = Math.min(1, (performance.now() - t0) / ENTRY_DURATION_MS);
-      const eased = 1 - Math.pow(1 - t, 3);
-      drawAt(
-        goalieStartX + (SHOOTER_CENTER_X - goalieStartX) * eased,
-        goalieStartY + (GOALIE_Y - goalieStartY) * eased,
-        playerStartX + (SHOOTER_CENTER_X - playerStartX) * eased,
-        playerStartY + (PUCK_START.y - playerStartY) * eased,
-        goalStartOffsetY * (1 - eased),
-      );
-      if (t < 1) {
-        entranceRafRef.current = requestAnimationFrame(step);
-        return;
-      }
-      entranceRafRef.current = null;
-      goal.update(scaleRef.current, 0, 0);
-      puck.container.visible = true;
-      loop.resetTime();
-      loop.attach(ticker);
-      setIsEntrancePlaying(false);
-    };
-
-    entranceRafRef.current = requestAnimationFrame(step);
+    }
+    if (presence.playerReady) {
+      player.update(scaleRef.current, SHOOTER_CENTER_X, PUCK_START.y);
+      puck.resetAtStart(scaleRef.current);
+    }
   }, []);
+
+  const startReadyPresenceEntrance = useCallback(
+    (part: 'player' | 'goalie'): void => {
+      if (entranceRafRef.current !== null) {
+        cancelAnimationFrame(entranceRafRef.current);
+        entranceRafRef.current = null;
+      }
+      const goal = goalRef.current;
+      const player = playerRef.current;
+      const goalie = goalieRef.current;
+      const puck = puckRef.current;
+      const loop = loopRef.current;
+      if (!goal || !player || !goalie || !puck) return;
+
+      loop?.detach();
+      wasReadyPresenceModeRef.current = true;
+      setIsEntrancePlaying(true);
+
+      const ENTRY_DURATION_MS = 900;
+      const CENTER_RED_Y = 350;
+      const ENTRY_X = RINK.width + 50;
+      const t0 = performance.now();
+      const existingPresence = readyPresenceRef.current ?? {
+        playerReady: false,
+        goalieReady: false,
+      };
+
+      if (part === 'player') {
+        player.container.visible = true;
+        puck.container.visible = false;
+      } else {
+        goal.container.visible = true;
+        goalie.container.visible = true;
+      }
+
+      const step = (): void => {
+        if (!mountedRef.current) return;
+        const t = Math.min(1, (performance.now() - t0) / ENTRY_DURATION_MS);
+        const eased = 1 - Math.pow(1 - t, 3);
+
+        if (part === 'player') {
+          const x = ENTRY_X + (SHOOTER_CENTER_X - ENTRY_X) * eased;
+          const y = CENTER_RED_Y + 30 + (PUCK_START.y - (CENTER_RED_Y + 30)) * eased;
+          player.update(scaleRef.current, x, y);
+          if (existingPresence.goalieReady) {
+            goal.update(scaleRef.current, 0, 0);
+            goalie.update(
+              {
+                position: { x: SHOOTER_CENTER_X, y: GOALIE_Y },
+                width: GOALIE_SIZE.width,
+                height: GOALIE_SIZE.height,
+              },
+              scaleRef.current,
+            );
+          }
+        } else {
+          const x = ENTRY_X + (SHOOTER_CENTER_X - ENTRY_X) * eased;
+          const y = CENTER_RED_Y - 30 + (GOALIE_Y - (CENTER_RED_Y - 30)) * eased;
+          const goalOffsetY = -140 * (1 - eased);
+          goal.update(scaleRef.current, 0, goalOffsetY);
+          goalie.update(
+            {
+              position: { x, y },
+              width: GOALIE_SIZE.width,
+              height: GOALIE_SIZE.height,
+            },
+            scaleRef.current,
+          );
+          if (existingPresence.playerReady) {
+            player.update(scaleRef.current, SHOOTER_CENTER_X, PUCK_START.y);
+          }
+        }
+
+        if (t < 1) {
+          entranceRafRef.current = requestAnimationFrame(step);
+          return;
+        }
+        entranceRafRef.current = null;
+        drawReadyPresence(readyPresenceRef.current ?? existingPresence);
+        setIsEntrancePlaying(false);
+      };
+
+      entranceRafRef.current = requestAnimationFrame(step);
+    },
+    [drawReadyPresence],
+  );
 
   const handleReady = useCallback(
     (app: Application, initialScale: Scale): void => {
@@ -7528,16 +8591,23 @@ export function PlayView<TState>({
         }
       } else {
         iceCar.container.visible = false;
+        if (readyPresenceRef.current && !sessionRef.current.active) {
+          loop.detach();
+          wasReadyPresenceModeRef.current = true;
+          drawReadyPresence(readyPresenceRef.current);
+          setPixiReady(true);
+          return;
+        }
         if (playEntranceOnMountRef.current && sessionRef.current.active) {
           onEntranceConsumedRef.current?.();
-          startEntranceAnimation(loop, app.ticker);
+          void startEntranceAnimation(loop, app.ticker);
         } else {
           loop.attach(app.ticker);
         }
       }
       setPixiReady(true);
     },
-    [startEntranceAnimation],
+    [drawReadyPresence, startEntranceAnimation],
   );
 
   // React to suppressedByModal flips after Pixi is up. handleReady applies
@@ -7575,7 +8645,33 @@ export function PlayView<TState>({
     }
 
     stopIceCarLoop(iceCarRef, iceCarRafRef);
-    startEntranceAnimation(loop, ticker);
+    if (readyPresence && !active) {
+      loop.detach();
+      wasReadyPresenceModeRef.current = true;
+      drawReadyPresence(readyPresence);
+      return;
+    }
+    if (active && wasReadyPresenceModeRef.current) {
+      wasReadyPresenceModeRef.current = false;
+      goal.container.visible = true;
+      player.container.visible = true;
+      goalie.container.visible = true;
+      puck.container.visible = true;
+      loop.resetTime();
+      loop.attach(ticker);
+      return;
+    }
+    if (skipNextUnsuppressedEntranceRef.current) {
+      skipNextUnsuppressedEntranceRef.current = false;
+      goal.container.visible = true;
+      player.container.visible = true;
+      goalie.container.visible = true;
+      puck.container.visible = true;
+      loop.resetTime();
+      loop.attach(ticker);
+      return;
+    }
+    void startEntranceAnimation(loop, ticker);
     return () => {
       if (entranceRafRef.current !== null) {
         cancelAnimationFrame(entranceRafRef.current);
@@ -7587,7 +8683,50 @@ export function PlayView<TState>({
         iceCarRafRef.current = null;
       }
     };
-  }, [suppressedByModal, showIceCar, pixiReady, startEntranceAnimation]);
+  }, [
+    active,
+    drawReadyPresence,
+    pixiReady,
+    readyPresence,
+    showIceCar,
+    startEntranceAnimation,
+    suppressedByModal,
+  ]);
+
+  useEffect(() => {
+    if (!pixiReady || !readyPresence || active || suppressedByModal) return;
+
+    const playerKey = readyPresence.playerEntranceKey ?? null;
+    const goalieKey = readyPresence.goalieEntranceKey ?? null;
+    const shouldAnimatePlayer =
+      readyPresence.playerReady &&
+      playerKey !== null &&
+      playerKey !== lastReadyPlayerEntranceKeyRef.current;
+    const shouldAnimateGoalie =
+      readyPresence.goalieReady &&
+      goalieKey !== null &&
+      goalieKey !== lastReadyGoalieEntranceKeyRef.current;
+
+    lastReadyPlayerEntranceKeyRef.current = playerKey;
+    lastReadyGoalieEntranceKeyRef.current = goalieKey;
+
+    if (shouldAnimatePlayer) {
+      startReadyPresenceEntrance('player');
+      return;
+    }
+    if (shouldAnimateGoalie) {
+      startReadyPresenceEntrance('goalie');
+      return;
+    }
+    drawReadyPresence(readyPresence);
+  }, [
+    active,
+    drawReadyPresence,
+    pixiReady,
+    readyPresence,
+    startReadyPresenceEntrance,
+    suppressedByModal,
+  ]);
 
   const handleResize = useCallback((s: Scale): void => {
     refreshRef.current?.(s);
@@ -7595,16 +8734,7 @@ export function PlayView<TState>({
 
   const handleBackTap = useCallback((): void => {
     if (routeBackTimeoutRef.current !== null) return;
-    if (shouldReduceMotion()) {
-      onBack();
-      return;
-    }
-    const rect = rinkShellRef.current?.getBoundingClientRect();
-    if (rect) saveArenaReturnFrame(rect);
-    routeBackTimeoutRef.current = window.setTimeout(() => {
-      routeBackTimeoutRef.current = null;
-      onBack();
-    }, 30);
+    onBack();
   }, [onBack]);
 
   const handleShotTap = useCallback((): void => {
@@ -7614,6 +8744,7 @@ export function PlayView<TState>({
     const cur = sessionRef.current;
     if (!loop || !puck || !goalie) return;
     if (puck.isFlying() || puck.isHeld()) return;
+    if (shotSubmitPendingRef.current) return;
     if (!cur.active) return;
     if (!cur.seed) return;
     if (typeof cur.shotsTotal === 'number' && cur.shots >= cur.shotsTotal) return;
@@ -7694,7 +8825,10 @@ export function PlayView<TState>({
     }
 
     optimisticAddShot(result.type);
+    shotSubmitPendingRef.current = true;
+    shotAnimationInProgressRef.current = true;
     setIsShotInProgress(true);
+    setIsShotSubmitPending(true);
     pendingMidShotApplyRef.current = null;
 
     loop.beginShooterPause();
@@ -7702,7 +8836,7 @@ export function PlayView<TState>({
     puck.playShot(
       puck.bladePoint(sx),
       { x: sx, y: GOAL_OPENING.y },
-      performance.now(),
+      loop.getRenderNow(),
       flightDurationMs,
     );
 
@@ -7732,6 +8866,7 @@ export function PlayView<TState>({
       if (result.type === 'save') goalie.setSavePose(false);
       setIsShowingResult(false);
       setResultDisplayKind(null);
+      shotAnimationInProgressRef.current = false;
       setIsShotInProgress(false);
       const applyPending = pendingMidShotApplyRef.current;
       if (applyPending) {
@@ -7746,12 +8881,84 @@ export function PlayView<TState>({
       claimedResult: result.type,
     }).then((res) => {
       if (!mountedRef.current) return;
+      shotSubmitPendingRef.current = false;
+      setIsShotSubmitPending(false);
       if (res === null) return;
-      pendingMidShotApplyRef.current = () => (applyResolvedState ?? applyState)(res.state);
+      const applyNextState = () => (applyResolvedState ?? applyState)(res.state);
+      if (shotAnimationInProgressRef.current) {
+        pendingMidShotApplyRef.current = applyNextState;
+        return;
+      }
+      applyNextState();
     });
   }, [flightDurationMs, optimisticAddShot, submitShot, applyState, applyResolvedState]);
 
+  const handleInactiveAction = useCallback(async (): Promise<void> => {
+    if (!inactiveAction || isInactiveActionPending) return;
+    setIsInactiveActionPending(true);
+    try {
+      const loop = loopRef.current;
+      const ticker = tickerRef.current;
+      if (entranceBeforeInactiveAction && loop && ticker) {
+        skipNextUnsuppressedEntranceRef.current = true;
+        await startEntranceAnimation(loop, ticker, { attachOnComplete: false });
+      }
+      const result = await inactiveAction();
+      if (entranceBeforeInactiveAction && result == null) {
+        skipNextUnsuppressedEntranceRef.current = false;
+        loop?.detach();
+        goalRef.current?.update(scaleRef.current, 0);
+        if (playerRef.current) playerRef.current.container.visible = false;
+        if (goalieRef.current) goalieRef.current.container.visible = false;
+        if (puckRef.current) puckRef.current.container.visible = false;
+      }
+    } finally {
+      setIsInactiveActionPending(false);
+    }
+  }, [
+    entranceBeforeInactiveAction,
+    inactiveAction,
+    isInactiveActionPending,
+    startEntranceAnimation,
+  ]);
+
+  const handlePrimaryTap = useCallback((): void => {
+    const cur = sessionRef.current;
+    if (!cur.active && inactiveAction) {
+      void handleInactiveAction();
+      return;
+    }
+    handleShotTap();
+  }, [handleInactiveAction, handleShotTap, inactiveAction]);
+
   const timerValue = timer ?? formatMs(remaining);
+  const primaryButtonDisabled =
+    (suppressedByModal && !inactiveAction) ||
+    isInactiveActionPending ||
+    isShotInProgress ||
+    isShotSubmitPending ||
+    isShowingResult ||
+    (!active && !inactiveAction) ||
+    (active &&
+      ((routeCameraPhase === 'zoomed' || routeCameraPhase === 'exiting') || isEntrancePlaying)) ||
+    (typeof shotsTotal === 'number' && shots >= shotsTotal);
+  const effectiveRinkLayer = rinkLayer ?? (
+    <TrainingPerspectiveRink
+      design="long"
+      longBackground={longCourtBackground}
+      cubeHud={
+        <TrainingCubeScoreboard
+          period={periodNumber}
+          periodsTotal={periodsTotal}
+          timer={timerValue}
+          timerLabel={timerLabel ?? 'ВРЕМЯ'}
+          goals={goals}
+          shots={shots}
+          shotsTotal={shotsTotal}
+        />
+      }
+    />
+  );
   const routeCameraEase = 'cubic-bezier(.16,.84,.24,1)';
   const routeCameraTransition = `transform ${PLAY_ROUTE_TRANSITION_MS}ms ${routeCameraEase}, filter ${PLAY_ROUTE_TRANSITION_MS}ms ${routeCameraEase}, border-color ${PLAY_ROUTE_TRANSITION_MS}ms ease`;
   const routeChromeTransition =
@@ -7799,20 +9006,24 @@ export function PlayView<TState>({
       <div
         ref={scoreboardShellRef}
         style={{
-          margin: '12px 14px 10px',
+          display: hideScoreboard ? 'none' : 'grid',
+          gap: 8,
+          margin: hideScoreboard ? 0 : '12px 14px 10px',
           ...routeChromeStyle,
         }}
       >
-        <ScoreBoard
-          period={periodNumber}
-          periodsTotal={periodsTotal}
-          timer={timerValue}
-          timerLabel={timerLabel}
-          goals={goals}
-          shots={shots}
-          shotsTotal={shotsTotal}
-          opponent={scoreboardOpponent}
-        />
+        {!hideScoreboard && (
+          <ScoreBoard
+            period={periodNumber}
+            periodsTotal={periodsTotal}
+            timer={timerValue}
+            timerLabel={timerLabel}
+            goals={goals}
+            shots={shots}
+            shotsTotal={shotsTotal}
+            opponent={scoreboardOpponent}
+          />
+        )}
       </div>
 
       <div
@@ -7843,7 +9054,7 @@ export function PlayView<TState>({
             ...routeRinkStyle,
           }}
         >
-          {rinkLayer}
+          {effectiveRinkLayer}
           <div
             style={{
               position: 'absolute',
@@ -7854,6 +9065,20 @@ export function PlayView<TState>({
           >
             <PixiStage onReady={handleReady} onResize={handleResize} />
           </div>
+          {overlayControls && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 'clamp(10px, 3.2%, 18px)',
+                left: 'clamp(10px, 3.4%, 18px)',
+                zIndex: 7,
+                pointerEvents: 'auto',
+                ...routeGameStyle,
+              }}
+            >
+              {overlayControls}
+            </div>
+          )}
           {hudAddon && (
             <div
               style={{
@@ -7904,16 +9129,8 @@ export function PlayView<TState>({
         <button
           type="button"
           className="btn btn--cta"
-          onClick={handleShotTap}
-          disabled={
-            suppressedByModal ||
-            isRouteCameraZoomed ||
-            isEntrancePlaying ||
-            isShotInProgress ||
-            isShowingResult ||
-            !active ||
-            (typeof shotsTotal === 'number' && shots >= shotsTotal)
-          }
+          onClick={handlePrimaryTap}
+          disabled={primaryButtonDisabled}
           style={{
             width: '100%',
             minHeight: 58,

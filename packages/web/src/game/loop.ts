@@ -17,6 +17,8 @@ import type { Hitboxes } from './renderer/Hitboxes.js';
 import type { Player } from './renderer/Player.js';
 import type { Puck } from './renderer/Puck.js';
 
+const MAX_RENDER_STEP_MS = 34;
+
 export interface SpeedOverrides {
   goalFreq: number;
   goalieFreq: number;
@@ -58,6 +60,7 @@ export interface GameLoop {
   endScenePause: () => void;
   getShooterT: () => number;
   getSceneT: () => number;
+  getRenderNow: () => number;
 }
 
 function shooterX(t: number, freq: number): number {
@@ -69,7 +72,9 @@ function shooterX(t: number, freq: number): number {
 
 export function createGameLoop(opts: GameLoopOpts): GameLoop {
   const initialElapsedMs = (): number => Math.max(0, opts.getInitialElapsedMs?.() ?? 0);
-  let sessionStartMs = performance.now() - initialElapsedMs();
+  let renderNowMs = performance.now();
+  let realNowMs = renderNowMs;
+  let sessionStartMs = renderNowMs - initialElapsedMs();
   let offsets: SessionPhaseOffsets | null = null;
   let offsetSeed: string | null = null;
 
@@ -97,11 +102,22 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
     return offsets!;
   }
 
-  const onTick = (): void => {
+  function advanceRenderClock(ticker?: Ticker): number {
+    const now = performance.now();
+    const tickerDelta =
+      typeof ticker?.elapsedMS === 'number' && Number.isFinite(ticker.elapsedMS)
+        ? ticker.elapsedMS
+        : now - realNowMs;
+    realNowMs = now;
+    renderNowMs += Math.min(Math.max(0, tickerDelta), MAX_RENDER_STEP_MS);
+    return renderNowMs;
+  }
+
+  const onTick = (ticker?: Ticker): void => {
     const id = opts.getGoalieId();
     if (!id) return;
     const cfg = getGoalie(id);
-    const now = performance.now();
+    const now = advanceRenderClock(ticker);
     const overrides = opts.getSpeedOverrides?.();
     const activeCfg = overrides
       ? { ...cfg, goalFrequency: overrides.goalFreq, frequency: overrides.goalieFreq }
@@ -165,7 +181,9 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
       detachFromTicker();
     },
     resetTime(elapsedMs = initialElapsedMs()) {
-      sessionStartMs = performance.now() - Math.max(0, elapsedMs);
+      renderNowMs = performance.now();
+      realNowMs = renderNowMs;
+      sessionStartMs = renderNowMs - Math.max(0, elapsedMs);
       shooterPausedTotal = 0;
       scenePausedTotal = 0;
       shooterPauseStartedAt = null;
@@ -178,28 +196,31 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
       return shooterX(tMs, freq);
     },
     beginShooterPause() {
-      if (shooterPauseStartedAt === null) shooterPauseStartedAt = performance.now();
+      if (shooterPauseStartedAt === null) shooterPauseStartedAt = renderNowMs;
     },
     endShooterPause() {
       if (shooterPauseStartedAt !== null) {
-        shooterPausedTotal += performance.now() - shooterPauseStartedAt;
+        shooterPausedTotal += renderNowMs - shooterPauseStartedAt;
         shooterPauseStartedAt = null;
       }
     },
     beginScenePause() {
-      if (scenePauseStartedAt === null) scenePauseStartedAt = performance.now();
+      if (scenePauseStartedAt === null) scenePauseStartedAt = renderNowMs;
     },
     endScenePause() {
       if (scenePauseStartedAt !== null) {
-        scenePausedTotal += performance.now() - scenePauseStartedAt;
+        scenePausedTotal += renderNowMs - scenePauseStartedAt;
         scenePauseStartedAt = null;
       }
     },
     getShooterT() {
-      return shooterT(performance.now());
+      return shooterT(renderNowMs);
     },
     getSceneT() {
-      return sceneT(performance.now());
+      return sceneT(renderNowMs);
+    },
+    getRenderNow() {
+      return renderNowMs;
     },
   };
 }

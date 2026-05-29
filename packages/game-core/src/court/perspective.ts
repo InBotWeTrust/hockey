@@ -6,7 +6,12 @@ import { GOAL_OPENING, PUCK_START } from '../rink.js';
 import type { SessionPhaseOffsets } from '../session.js';
 import { simulateShooter } from '../shooter/simulate.js';
 import { GOAL_HITBOX_MARGIN, GOALIE_HITBOX_EXPAND } from '../shot/resolve.js';
-import { PUCK_SPEED_PER_MS, type ShotInput, type ShotResult, type StickEffects } from '../shot/types.js';
+import {
+  PUCK_SPEED_PER_MS,
+  type ShotInput,
+  type ShotResult,
+  type StickEffects,
+} from '../shot/types.js';
 
 export const PERSPECTIVE_COURT_VISUAL_Y_SCALE = 0.72;
 export const PERSPECTIVE_COURT_VISUAL_Y_OFFSET = 205;
@@ -18,7 +23,7 @@ export const PERSPECTIVE_COURT_VISUAL_X_CENTER = 286;
 export const PERSPECTIVE_COURT_PUCK_BLADE_OFFSET_X = 41;
 export const PERSPECTIVE_COURT_PUCK_BLADE_OFFSET_Y = 29;
 export const PERSPECTIVE_COURT_PUCK_FLIGHT_VISUAL_Y_OFFSET = -127;
-export const PERSPECTIVE_COURT_HITBOX_GOAL_WIDTH_SCALE = 1.152;
+export const PERSPECTIVE_COURT_HITBOX_GOAL_WIDTH_SCALE = 1.1;
 export const PERSPECTIVE_COURT_HITBOX_GOAL_HEIGHT_SCALE = 1.215;
 export const PERSPECTIVE_COURT_HITBOX_GOAL_INSET = 3;
 export const PERSPECTIVE_COURT_HITBOX_GOALIE_WIDTH_SCALE = 1.215;

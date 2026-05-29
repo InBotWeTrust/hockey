@@ -13,6 +13,10 @@ export function LoginScreen(): JSX.Element {
   const setSession = useAuthStore((s) => s.setSession);
   const accessToken = useAuthStore((s) => s.accessToken);
   const botUsername = import.meta.env.VITE_TELEGRAM_BOT_USERNAME ?? '';
+  const devCodeLoginEnabled = import.meta.env.VITE_DEV_ACCESS_CODE_LOGIN_ENABLED === 'true';
+  const [devCode, setDevCode] = useState('');
+  const [devCodeError, setDevCodeError] = useState<string | null>(null);
+  const [devCodePending, setDevCodePending] = useState(false);
   const [devError, setDevError] = useState<string | null>(null);
   const [devPending, setDevPending] = useState(false);
   const [vkError, setVkError] = useState<string | null>(null);
@@ -47,6 +51,34 @@ export function LoginScreen(): JSX.Element {
     );
   }
 
+  const submitDevCode = async (): Promise<void> => {
+    const normalized = devCode.trim();
+    if (!normalized) {
+      setDevCodeError('Введите код доступа');
+      return;
+    }
+    setDevCodeError(null);
+    setDevCodePending(true);
+    try {
+      const session = await apiFetch<AuthSession>('/auth/dev-code', {
+        method: 'POST',
+        body: JSON.stringify({ code: normalized, timezone: detectTimezone() }),
+      });
+      setSession(session);
+      navigate('/', { replace: true });
+    } catch (err) {
+      setDevCodeError(
+        err instanceof ApiError && err.status === 401
+          ? 'Код не найден или уже отключён'
+          : err instanceof ApiError
+            ? err.message
+            : 'Не удалось войти по коду',
+      );
+    } finally {
+      setDevCodePending(false);
+    }
+  };
+
   return (
     <main
       className="screen"
@@ -70,8 +102,7 @@ export function LoginScreen(): JSX.Element {
             objectFit: 'cover',
             display: 'inline-block',
             marginBottom: 12,
-            boxShadow:
-              '0 18px 44px rgba(15, 23, 42, 0.24), 0 0 0 1px rgba(255,255,255,0.72)',
+            boxShadow: '0 18px 44px rgba(15, 23, 42, 0.24), 0 0 0 1px rgba(255,255,255,0.72)',
           }}
         />
         <h1 style={{ fontSize: 29, fontWeight: 800, letterSpacing: 0, margin: '0 0 8px' }}>
@@ -115,43 +146,96 @@ export function LoginScreen(): JSX.Element {
           gap: 9,
         }}
       >
-        <TelegramLoginButton
-          botUsername={botUsername}
-          onAuth={(payload) => mutation.mutate(payload)}
-        />
+        {devCodeLoginEnabled ? (
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submitDevCode();
+            }}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+              alignItems: 'stretch',
+              maxWidth: 360,
+              width: '100%',
+              margin: '0 auto',
+            }}
+          >
+            <input
+              value={devCode}
+              onChange={(event) => setDevCode(event.target.value)}
+              autoCapitalize="characters"
+              autoComplete="one-time-code"
+              inputMode="text"
+              placeholder="Код доступа"
+              aria-label="Код доступа"
+              style={{
+                width: '100%',
+                height: 58,
+                borderRadius: 24,
+                border: '1px solid rgba(255,255,255,0.82)',
+                background: 'rgba(246, 250, 255, 0.82)',
+                color: 'var(--ink)',
+                padding: '0 20px',
+                fontSize: 22,
+                fontWeight: 800,
+                letterSpacing: 1.8,
+                textAlign: 'center',
+                outline: 'none',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.74)',
+              }}
+            />
+            <button
+              type="submit"
+              className="btn btn--cta"
+              disabled={devCodePending}
+              style={{ justifyContent: 'center' }}
+            >
+              {devCodePending ? 'Проверяем…' : 'Войти в dev'}
+            </button>
+          </form>
+        ) : (
+          <>
+            <TelegramLoginButton
+              botUsername={botUsername}
+              onAuth={(payload) => mutation.mutate(payload)}
+            />
 
-        <button
-          type="button"
-          className="btn"
-          disabled={vkPending}
-          onClick={async () => {
-            setVkError(null);
-            setVkPending(true);
-            try {
-              await startVkOAuth();
-            } catch (err) {
-              setVkPending(false);
-              setVkError(err instanceof Error ? err.message : 'Ошибка входа через ВКонтакте');
-            }
-          }}
-          style={{
-            alignSelf: 'center',
-            width: 242,
-            height: 40,
-            padding: '0 14px',
-            borderRadius: 12,
-            background: '#0077ff',
-            color: '#ffffff',
-            justifyContent: 'center',
-            fontSize: 16,
-            fontWeight: 700,
-            letterSpacing: 0,
-            boxShadow: 'none',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          Войти через ВКонтакте
-        </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={vkPending}
+              onClick={async () => {
+                setVkError(null);
+                setVkPending(true);
+                try {
+                  await startVkOAuth();
+                } catch (err) {
+                  setVkPending(false);
+                  setVkError(err instanceof Error ? err.message : 'Ошибка входа через ВКонтакте');
+                }
+              }}
+              style={{
+                alignSelf: 'center',
+                width: 242,
+                height: 40,
+                padding: '0 14px',
+                borderRadius: 12,
+                background: '#0077ff',
+                color: '#ffffff',
+                justifyContent: 'center',
+                fontSize: 16,
+                fontWeight: 700,
+                letterSpacing: 0,
+                boxShadow: 'none',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Войти через ВКонтакте
+            </button>
+          </>
+        )}
 
         <button
           type="button"
@@ -186,8 +270,13 @@ export function LoginScreen(): JSX.Element {
             {vkError}
           </div>
         )}
+        {devCodeError && (
+          <div role="alert" style={{ fontSize: 13, color: 'var(--red-deep)' }}>
+            {devCodeError}
+          </div>
+        )}
 
-        {import.meta.env.DEV && (
+        {import.meta.env.DEV && !devCodeLoginEnabled && (
           <>
             <button
               type="button"

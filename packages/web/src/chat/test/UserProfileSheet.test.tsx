@@ -165,7 +165,7 @@ describe('UserProfileSheet', () => {
     expect(screen.getByText('Голы')).toBeInTheDocument();
     expect(screen.getByText('64')).toBeInTheDocument();
     expect(screen.getByText('(12)')).toBeInTheDocument();
-    expect(screen.getByText('Достижения (1/1)')).toBeInTheDocument();
+    expect(screen.getByText('Задания (1/1)')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Первая шайба.*получено/i })).toBeInTheDocument();
   });
 
@@ -245,7 +245,10 @@ describe('UserProfileSheet', () => {
         opponent_user_id: 'u1',
       }),
     );
-    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Выбор типа дуэли' })).not.toBeInTheDocument(),
+    );
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it('clicking the backdrop calls onClose', () => {

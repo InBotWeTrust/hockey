@@ -101,10 +101,65 @@ describe('BottomNav remembered navigation', () => {
     expect(sectionsSurface?.getAttribute('style')).toContain('rgba(15, 23, 42, 0.92)');
   });
 
+  it('keeps amateur duel setup screens on the sections tab', () => {
+    renderBottomNav('/?view=amateur&section=duels');
+
+    const gameSurface = screen.getByRole('button', { name: 'Игра' }).querySelector('div');
+    const sectionsSurface = screen.getByRole('button', { name: 'Разделы' }).querySelector('div');
+
+    expect(gameSurface?.getAttribute('style')).toContain('rgba(255, 255, 255, 0.55)');
+    expect(sectionsSurface?.getAttribute('style')).toContain('rgba(15, 23, 42, 0.92)');
+  });
+
   it('hides the dock on the open rink screen', () => {
     renderBottomNav('/?view=training&play=1');
 
     expect(screen.queryByRole('button', { name: 'Игра' })).toBeNull();
+  });
+
+  it('shows a game badge only for actionable duel events', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/duel/amateur/events')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              events: [
+                {
+                  id: 'incoming',
+                  status: 'invited',
+                  starts_at: '2026-05-29T10:00:00.000Z',
+                  ends_at: '2026-05-29T11:00:00.000Z',
+                  server_now: '2026-05-29T10:00:00.000Z',
+                  me: { side: 'opponent', state: 'invited' },
+                  opponent: { state: 'invited' },
+                },
+                {
+                  id: 'waiting',
+                  status: 'invited',
+                  starts_at: '2026-05-29T10:00:00.000Z',
+                  ends_at: '2026-05-29T11:00:00.000Z',
+                  server_now: '2026-05-29T10:00:00.000Z',
+                  me: { side: 'challenger', state: 'invited' },
+                  opponent: { state: 'invited' },
+                },
+              ],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+
+    renderBottomNav('/profile');
+
+    expect(await screen.findByLabelText('События игры: 1')).toHaveTextContent('1');
   });
 
   it('refreshes missing grip for persisted auth sessions', async () => {

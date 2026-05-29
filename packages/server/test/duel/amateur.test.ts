@@ -140,6 +140,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       totalPeriods?: number;
       periodDurationMs?: number;
       breakDurationMs?: number;
+      challengeTtlMs?: number;
       readyDurationMs?: number;
       winStarReward?: number;
     } = {},
@@ -151,9 +152,9 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
          (title, description, starts_at, ends_at, duel_kind, total_periods, shots_per_period,
           period_duration_ms, break_duration_ms, goalie_id, period_speed_presets,
           stake_amount, entry_fee_amount, ranked_enabled, duel_variant, period_rules,
-          ready_duration_ms, win_star_reward)
+          challenge_ttl_ms, ready_duration_ms, win_star_reward)
        values ('Test duel', '', $1, $2, $10, $6, 1, $7, $12, 'rookie', $3, $4, $5, $8, $9, $11,
-               $13, $14)
+               $13, $14, $15)
        returning id`,
       [
         startsAt,
@@ -168,6 +169,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
         opts.duelKind ?? 'classic',
         opts.periodRules ? JSON.stringify(opts.periodRules) : null,
         opts.breakDurationMs ?? (opts.duelKind === 'express_plus' ? 120000 : 0),
+        opts.challengeTtlMs ?? 900000,
         opts.readyDurationMs ?? 900000,
         opts.winStarReward ?? 0,
       ],
@@ -201,6 +203,18 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     return res;
   }
 
+  async function createInventoryItem(kind: 'stick' | 'skates' | 'nutrition', title: string) {
+    const { rows } = await pool.query<{ id: string }>(
+      `insert into admin_inventory_items
+         (photo_url, title, description, price_rub, item_kind, charges_per_purchase,
+          duel_period_cost, power_score)
+       values ('', $1, '', 0, $2, 10, 1, 10)
+       returning id`,
+      [title, kind],
+    );
+    return rows[0]!.id;
+  }
+
   it('creates a pending challenge and rejects duplicate open matches', async () => {
     const templateId = await createTemplate();
     const first = await challenge(templateId);
@@ -214,7 +228,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
         order by created_at desc
         limit 1`,
     );
-    expect(inviteMessage.rows[0]?.content).toContain('Ответить: в течение 30 мин');
+    expect(inviteMessage.rows[0]?.content).toContain('Ответить: в течение 15 мин');
     expect(inviteMessage.rows[0]?.content.split('\n')[0]).toBe('Player A вызывает вас на дуэль.');
     expect(inviteMessage.rows[0]?.content).not.toContain('Окно:');
     expect(Date.parse(String(inviteMessage.rows[0]?.metadata.endsAt))).toBeLessThan(
@@ -407,6 +421,143 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       { balance: 100, reserved_balance: 0 },
       { balance: 100, reserved_balance: 0 },
     ]);
+  });
+
+  it('uses active equipment as the default duel loadout', async () => {
+    const stickId = await createInventoryItem('stick', 'Test stick');
+    const skatesId = await createInventoryItem('skates', 'Test skates');
+    const nutritionId = await createInventoryItem('nutrition', 'Test nutrition');
+    await pool.query(
+      `insert into user_inventory_item (user_id, inventory_item_id, charges_available)
+       values ($1, $2, 10), ($1, $3, 10), ($1, $4, 10)
+       on conflict (user_id, inventory_item_id)
+       do update set charges_available = excluded.charges_available`,
+      [userA, stickId, skatesId, nutritionId],
+    );
+    await pool.query(
+      `insert into user_equipment
+         (user_id, equipped_stick_item_id, equipped_skates_item_id, equipped_nutrition_item_id)
+       values ($1, $2, $3, $4)
+       on conflict (user_id) do update
+          set equipped_stick_item_id = excluded.equipped_stick_item_id,
+              equipped_skates_item_id = excluded.equipped_skates_item_id,
+              equipped_nutrition_item_id = excluded.equipped_nutrition_item_id`,
+      [userA, stickId, skatesId, nutritionId],
+    );
+    const templateId = await createTemplate({ totalPeriods: 2 });
+    const created = await challenge(templateId);
+    const matchId = created.json().match.id;
+    await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/accept`,
+      headers: auth(tokenB),
+    });
+
+    const ready = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/ready`,
+      headers: auth(tokenA),
+      payload: { loadout: {} },
+    });
+
+    expect(ready.statusCode).toBe(200);
+    const itemIds = ready
+      .json()
+      .match.me.loadout.items.map((item: { id: string }) => item.id)
+      .sort();
+    expect(itemIds).toEqual([nutritionId, skatesId, stickId].sort());
+    expect(ready.json().match.me.loadout.powerScore).toBe(30);
+  });
+
+  it('returns inventory state and updates active equipment', async () => {
+    const stickId = await createInventoryItem('stick', 'Locker stick');
+    await pool.query(
+      `insert into user_inventory_item (user_id, inventory_item_id, charges_available)
+       values ($1, $2, 3)`,
+      [userA, stickId],
+    );
+
+    const saved = await app.inject({
+      method: 'PATCH',
+      url: '/inventory/equipment',
+      headers: auth(tokenA),
+      payload: { stickItemId: stickId },
+    });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json().equipped.stickItemId).toBe(stickId);
+
+    const state = await app.inject({
+      method: 'GET',
+      url: '/inventory/me',
+      headers: auth(tokenA),
+    });
+    expect(state.statusCode).toBe(200);
+    const stick = state
+      .json()
+      .items.stick.find((item: { id: string }) => item.id === stickId);
+    expect(stick?.chargesAvailable).toBe(3);
+  });
+
+  it('purchases inventory with currency balance', async () => {
+    const stickId = await createInventoryItem('stick', 'Bronze shop stick');
+    await pool.query(
+      `update admin_inventory_items
+          set currency_price = 40,
+              charges_per_purchase = 5
+        where id = $1`,
+      [stickId],
+    );
+
+    const purchased = await app.inject({
+      method: 'POST',
+      url: `/inventory/items/${stickId}/purchase`,
+      headers: auth(tokenA),
+    });
+
+    expect(purchased.statusCode).toBe(200);
+    expect(purchased.json().balances.tokens).toBe(60);
+    const stick = purchased
+      .json()
+      .items.stick.find((item: { id: string }) => item.id === stickId);
+    expect(stick?.chargesAvailable).toBe(5);
+    expect(stick?.chargesPerPurchase).toBe(5);
+    expect(purchased.json().purchaseHistory[0]).toMatchObject({
+      title: 'Bronze shop stick',
+      tokensSpent: 40,
+      chargesAdded: 5,
+    });
+
+    const ledger = await pool.query<{ available_delta: number; balance_after: number }>(
+      `select available_delta, balance_after
+         from currency_ledger
+        where user_id = $1 and reason = 'inventory_purchase'`,
+      [userA],
+    );
+    expect(ledger.rows).toEqual([{ available_delta: -40, balance_after: 60 }]);
+  });
+
+  it('rejects inventory purchase when currency balance is too low', async () => {
+    const skatesId = await createInventoryItem('skates', 'Gold shop skates');
+    await pool.query(
+      `update admin_inventory_items
+          set currency_price = 140,
+              charges_per_purchase = 5
+        where id = $1`,
+      [skatesId],
+    );
+
+    const purchased = await app.inject({
+      method: 'POST',
+      url: `/inventory/items/${skatesId}/purchase`,
+      headers: auth(tokenA),
+    });
+
+    expect(purchased.statusCode).toBe(409);
+    const account = await pool.query<{ balance: number }>(
+      `select balance from user_currency_account where user_id = $1`,
+      [userA],
+    );
+    expect(account.rows[0]?.balance).toBe(100);
   });
 
   it('keeps a classic duel active long enough for all periods and breaks', async () => {

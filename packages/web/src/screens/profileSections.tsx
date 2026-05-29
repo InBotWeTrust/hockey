@@ -215,11 +215,13 @@ export function AchievementTile({
 export function ProfileAchievementsSection({
   achievements,
   onOpenAchievement,
+  labelAccessory,
   style,
   labelStyle,
 }: {
   achievements: ProfileAchievement[];
   onOpenAchievement: (achievement: ProfileAchievement) => void;
+  labelAccessory?: ReactNode;
   style?: CSSProperties;
   labelStyle?: CSSProperties;
 }): JSX.Element {
@@ -227,9 +229,22 @@ export function ProfileAchievementsSection({
 
   return (
     <>
-      <div className="section-label" style={{ marginBottom: 8, ...labelStyle }}>
-        Достижения
-        {achievements.length > 0 ? ` (${unlockedAchievements}/${achievements.length})` : ''}
+      <div
+        className="section-label"
+        style={{
+          marginBottom: 8,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 10,
+          ...labelStyle,
+        }}
+      >
+        <span style={{ minWidth: 0 }}>
+          Задания
+          {achievements.length > 0 ? ` (${unlockedAchievements}/${achievements.length})` : ''}
+        </span>
+        {labelAccessory}
       </div>
       <div
         className="glass"
@@ -274,7 +289,7 @@ export function AchievementDetailsSheet({
   achievement: ProfileAchievement;
   onClose: () => void;
 }): JSX.Element {
-  const status = achievement.isUnlocked ? 'Получено' : 'Не получено';
+  const status = achievement.isUnlocked ? 'Выполнено' : 'Не выполнено';
 
   return createPortal(
     <div

@@ -1,29 +1,33 @@
-import { useEffect, useRef, useState, type MouseEvent, type PointerEvent } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent,
+  type ReactNode,
+} from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, ChevronDown, MessageSquare, Settings, X } from 'lucide-react';
+import { CircleDollarSign, Info, Settings, Star, Trophy, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../api/apiFetch.js';
-import { createFeedback, type FeedbackKind } from '../api/feedback.js';
 import {
-  deletePushSubscription,
-  fetchPushConfig,
-  fetchPushPreferences,
-  savePushSubscription,
-  updatePushPreferences,
-  type PushConfig,
-  type PushPreferences,
-  type PushSubscriptionPayload,
-} from '../api/push.js';
+  fetchMyInventory,
+  patchEquipment,
+  type InventoryEquipmentKind,
+  type InventoryItem,
+  type InventoryState,
+} from '../api/inventory.js';
 import { useAuthStore } from '../auth/authStore.js';
-import { getTelegramMiniApp } from '../auth/telegramMiniApp.js';
 import type { ProfileAchievement, ProfileData } from './profileTypes.js';
 import {
   AchievementDetailsSheet,
   EMPTY_PROFILE_STATS,
+  formatProfileNumber,
   getLevelLabel,
   ProfileAchievementsSection,
   ProfileStatsGrid,
 } from './profileSections.js';
+import { artworkForInventoryItem, placeholderArtworkForKind } from './inventoryArtwork.js';
 
 function canStartMouseDragScroll(target: EventTarget | null): boolean {
   return (
@@ -32,456 +36,724 @@ function canStartMouseDragScroll(target: EventTarget | null): boolean {
   );
 }
 
-type PushStatus =
-  | 'idle'
-  | 'subscribing'
-  | 'subscribed'
-  | 'unsubscribing'
-  | 'unsupported'
-  | 'denied'
-  | 'error';
-type PushPreferenceKey = keyof PushPreferences;
-
-const PUSH_PREFERENCES_QUERY_KEY = ['push', 'preferences'] as const;
-const PUSH_PREFERENCE_ITEMS: Array<{
-  key: PushPreferenceKey;
+function CurrencyCard({
+  label,
+  value,
+  icon,
+  iconColor,
+}: {
   label: string;
-  hint: string;
-}> = [
-  {
-    key: 'chatNewDialogMessage',
-    label: 'Первое сообщение в личке',
-    hint: 'Только когда новый пользователь начал диалог',
-  },
-  {
-    key: 'dailyGame',
-    label: 'Ежедневная игра',
-    hint: 'Новый день, перерывы и окончание периода',
-  },
-  {
-    key: 'trainingAvailable',
-    label: 'Тренировка доступна',
-    hint: 'Когда обновился лимит тренировки',
-  },
-  {
-    key: 'duelEvents',
-    label: 'Дуэли',
-    hint: 'Вызовы и результаты любительских матчей',
-  },
-  {
-    key: 'gameNews',
-    label: 'Новости игры',
-    hint: 'Редкие системные объявления',
-  },
-];
-
-const FEEDBACK_KIND_OPTIONS: Array<{ kind: FeedbackKind; label: string }> = [
-  { kind: 'review', label: 'Отзыв' },
-  { kind: 'suggestion', label: 'Пожелание' },
-  { kind: 'question', label: 'Вопрос' },
-];
-
-function ProfileSectionIcon({ children }: { children: JSX.Element }): JSX.Element {
+  value: number;
+  icon: ReactNode;
+  iconColor: string;
+}): JSX.Element {
   return (
     <div
-      aria-hidden="true"
+      className="glass"
       style={{
-        width: 44,
-        height: 44,
-        borderRadius: 14,
-        background: 'rgba(15, 23, 42, 0.08)',
-        color: 'rgba(15, 23, 42, 0.62)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexShrink: 0,
-        border: '1px solid rgba(15, 23, 42, 0.08)',
-        boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.35)',
-        pointerEvents: 'none',
+        minWidth: 0,
+        minHeight: 88,
+        padding: '13px 12px 12px',
+        borderRadius: 16,
+        display: 'grid',
+        gridTemplateRows: 'auto minmax(0, 1fr)',
+        alignItems: 'stretch',
+        gap: 8,
+        position: 'relative',
+        overflow: 'hidden',
       }}
     >
-      {children}
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          top: 10,
+          right: 12,
+          width: 18,
+          height: 18,
+          borderRadius: 999,
+          color: iconColor,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          pointerEvents: 'none',
+          zIndex: 0,
+        }}
+      >
+        {icon}
+      </div>
+      <div
+        style={{
+          minWidth: 0,
+          color: 'var(--muted)',
+          fontSize: 10,
+          fontWeight: 700,
+          lineHeight: 1.05,
+          textTransform: 'uppercase',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          position: 'relative',
+          zIndex: 1,
+          maxWidth: 'calc(100% - 36px)',
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          minWidth: 0,
+          color: 'var(--ink)',
+          fontSize: 23,
+          fontWeight: 800,
+          lineHeight: 1,
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'clip',
+          position: 'relative',
+          zIndex: 1,
+          alignSelf: 'end',
+        }}
+      >
+        {formatProfileNumber(value)}
+      </div>
     </div>
   );
 }
 
-function supportsPushNotifications(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    'Notification' in window &&
-    'serviceWorker' in navigator &&
-    'PushManager' in window
-  );
+const EQUIPMENT_META: Record<
+  InventoryEquipmentKind,
+  { title: string; empty: string; patchKey: 'stickItemId' | 'skatesItemId' | 'nutritionItemId' }
+> = {
+  stick: { title: 'Клюшка', empty: 'Без клюшки', patchKey: 'stickItemId' },
+  skates: { title: 'Коньки', empty: 'Без коньков', patchKey: 'skatesItemId' },
+  nutrition: { title: 'Питание', empty: 'Без питания', patchKey: 'nutritionItemId' },
+};
+
+const EQUIPMENT_KINDS: InventoryEquipmentKind[] = ['stick', 'skates', 'nutrition'];
+
+type ProfileInfoSection = 'currency' | 'stats' | 'equipment' | 'achievements';
+
+const PROFILE_SECTION_INFO: Record<ProfileInfoSection, { title: string; copy: string }> = {
+  currency: {
+    title: 'Валюта',
+    copy: 'Монеты нужны для покупок в магазине, звёзды показывают особый прогресс, а опыт отражает общий рост профиля.',
+  },
+  stats: {
+    title: 'Статистика',
+    copy: 'Здесь собраны броски, голы, точность и серия игровых дней. Эти числа обновляются по сыгранным режимам.',
+  },
+  equipment: {
+    title: 'Экипировка',
+    copy: 'В раздевалке выбирается уже купленный инвентарь: одна клюшка, одна пара коньков и одно питание. В дуэлях расход считается по периодам.',
+  },
+  achievements: {
+    title: 'Задания',
+    copy: 'Задания показывают важные игровые цели. Выполненные задания подсвечены, невыполненные остаются приглушёнными до выполнения условия.',
+  },
+};
+
+function equipmentIdFor(
+  inventory: InventoryState | undefined,
+  kind: InventoryEquipmentKind,
+): string | null {
+  if (!inventory) return null;
+  if (kind === 'stick') return inventory.equipped.stickItemId;
+  if (kind === 'skates') return inventory.equipped.skatesItemId;
+  return inventory.equipped.nutritionItemId;
 }
 
-function urlBase64ToArrayBuffer(value: string): ArrayBuffer {
-  const padding = '='.repeat((4 - (value.length % 4)) % 4);
-  const base64 = `${value}${padding}`.replace(/-/g, '+').replace(/_/g, '/');
-  const raw = window.atob(base64);
-  const buffer = new ArrayBuffer(raw.length);
-  const output = new Uint8Array(buffer);
-  for (let i = 0; i < raw.length; i += 1) {
-    output[i] = raw.charCodeAt(i);
-  }
-  return buffer;
+function equippedItem(
+  inventory: InventoryState | undefined,
+  kind: InventoryEquipmentKind,
+): InventoryItem | null {
+  const id = equipmentIdFor(inventory, kind);
+  return inventory?.items[kind].find((item) => item.id === id) ?? null;
 }
 
-function normalizePushSubscription(subscription: PushSubscription): PushSubscriptionPayload {
-  const json = subscription.toJSON();
-  const p256dh = json.keys?.p256dh;
-  const auth = json.keys?.auth;
-  if (!json.endpoint || !p256dh || !auth) {
-    throw new Error('invalid push subscription');
-  }
-  return {
-    endpoint: json.endpoint,
-    expirationTime: json.expirationTime ?? null,
-    keys: { p256dh, auth },
-  };
+function isRequiredEquipment(kind: InventoryEquipmentKind): boolean {
+  return kind === 'stick' || kind === 'skates';
 }
 
-function getReadyServiceWorkerRegistration(): Promise<ServiceWorkerRegistration> {
-  return new Promise((resolve, reject) => {
-    const timeout = window.setTimeout(() => reject(new Error('service worker is not ready')), 8000);
-    navigator.serviceWorker.ready.then(
-      (registration) => {
-        window.clearTimeout(timeout);
-        resolve(registration);
-      },
-      (err: unknown) => {
-        window.clearTimeout(timeout);
-        reject(err);
-      },
-    );
-  });
+function baseEquipmentTitle(kind: InventoryEquipmentKind): string {
+  if (kind === 'stick') return 'Обычная клюшка';
+  if (kind === 'skates') return 'Обычные коньки';
+  return 'Без питания';
 }
 
-function PushPreferenceToggle({
-  label,
-  hint,
-  checked,
-  disabled,
-  onToggle,
+function baseEquipmentDescription(kind: InventoryEquipmentKind): string {
+  if (kind === 'stick') return 'Базовая клюшка доступна всегда и не расходуется в дуэлях.';
+  if (kind === 'skates') return 'Базовые коньки доступны всегда и не расходуются в дуэлях.';
+  return 'Можно выйти на матч без спортивного питания.';
+}
+
+function ProfileSectionInfoButton({
+  infoSection,
+  onOpenInfo,
 }: {
-  label: string;
-  hint: string;
-  checked: boolean;
-  disabled: boolean;
-  onToggle: () => void;
+  infoSection: ProfileInfoSection;
+  onOpenInfo: (section: ProfileInfoSection) => void;
 }): JSX.Element {
   return (
     <button
       type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
+      className="section-info-btn"
       data-no-drag-scroll="true"
-      disabled={disabled}
-      onClick={onToggle}
+      aria-label={`О разделе: ${PROFILE_SECTION_INFO[infoSection].title}`}
+      onClick={() => onOpenInfo(infoSection)}
+    >
+      <Info size={12} color="var(--muted)" />
+    </button>
+  );
+}
+
+function ProfileSectionLabel({
+  children,
+  infoSection,
+  style,
+  onOpenInfo,
+}: {
+  children: ReactNode;
+  infoSection: ProfileInfoSection;
+  style?: CSSProperties;
+  onOpenInfo: (section: ProfileInfoSection) => void;
+}): JSX.Element {
+  return (
+    <div
+      className="section-label"
       style={{
-        width: '100%',
-        minHeight: 58,
-        padding: '10px 12px',
-        border: '1px solid rgba(255,255,255,0.7)',
-        borderRadius: 16,
-        background: 'rgba(255, 255, 255, 0.34)',
-        color: 'var(--ink)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        gap: 12,
+        gap: 10,
+        ...style,
+      }}
+    >
+      <span style={{ minWidth: 0 }}>{children}</span>
+      <ProfileSectionInfoButton infoSection={infoSection} onOpenInfo={onOpenInfo} />
+    </div>
+  );
+}
+
+function isAvailableLockerItem(item: InventoryItem): boolean {
+  return item.chargesAvailable + item.chargesReserved > 0;
+}
+
+function formatProfileUsageCountLabel(count: number): string {
+  const normalized = Math.max(0, Math.trunc(count));
+  if (normalized === 0) return 'Нет запаса';
+
+  const mod10 = normalized % 10;
+  const mod100 = normalized % 100;
+  const noun =
+    mod10 === 1 && mod100 !== 11
+      ? 'период'
+      : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)
+        ? 'периода'
+        : 'периодов';
+  return `На ${normalized} ${noun}`;
+}
+
+function formatReservedLabel(count: number): string | null {
+  const normalized = Math.max(0, Math.trunc(count));
+  if (normalized === 0) return null;
+
+  const mod10 = normalized % 10;
+  const mod100 = normalized % 100;
+  const noun =
+    mod10 === 1 && mod100 !== 11
+      ? 'забронирован'
+      : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)
+        ? 'забронировано'
+        : 'забронировано';
+  return `${normalized} ${noun}`;
+}
+
+function equipmentEffectLabel(kind: InventoryEquipmentKind, powerScore: number): string {
+  if (kind === 'stick') return `Бросок +${powerScore}`;
+  if (kind === 'skates') return `Скорость +${powerScore}`;
+  return `Энергия +${powerScore}`;
+}
+
+function equipmentDisplayTitle(item: InventoryItem): string {
+  const normalized = item.title.trim().toLowerCase();
+  const isGenericTitle = new Set(['клюшка', 'клюшки', 'коньки', 'питание', 'энергия']).has(
+    normalized,
+  );
+  if (!isGenericTitle) return item.title;
+
+  const tier = item.rarity === 'legendary' || item.rarity === 'epic' ? 'gold' : item.rarity;
+  if (item.kind === 'stick') {
+    if (tier === 'gold') return 'Золотая клюшка';
+    if (tier === 'rare') return 'Серебряная клюшка';
+    return 'Бронзовая клюшка';
+  }
+  if (item.kind === 'skates') {
+    if (tier === 'gold') return 'Золотые коньки';
+    if (tier === 'rare') return 'Серебряные коньки';
+    return 'Бронзовые коньки';
+  }
+  if (tier === 'gold') return 'Золотое питание';
+  if (tier === 'rare') return 'Серебряное питание';
+  return 'Бронзовое питание';
+}
+
+function EquipmentSlotButton({
+  kind,
+  inventory,
+  onOpen,
+}: {
+  kind: InventoryEquipmentKind;
+  inventory: InventoryState | undefined;
+  onOpen: () => void;
+}): JSX.Element {
+  const meta = EQUIPMENT_META[kind];
+  const items = (inventory?.items[kind] ?? []).filter(isAvailableLockerItem);
+  const activeItem = equippedItem(inventory, kind);
+  const hasOwnedItems = items.length > 0;
+  const hasBaseEquipment = isRequiredEquipment(kind);
+  const status = activeItem
+    ? formatProfileUsageCountLabel(activeItem.chargesAvailable)
+    : hasBaseEquipment
+      ? 'Базовая'
+      : hasOwnedItems
+        ? 'Выбрать'
+        : 'Нет купленных';
+  const title = activeItem
+    ? equipmentDisplayTitle(activeItem)
+    : hasBaseEquipment
+      ? baseEquipmentTitle(kind)
+      : meta.empty;
+  const artworkSrc = activeItem
+    ? artworkForInventoryItem(activeItem)
+    : placeholderArtworkForKind(kind);
+  const hasVisibleEquipment = activeItem !== null || hasBaseEquipment;
+
+  return (
+    <button
+      type="button"
+      data-no-drag-scroll="true"
+      onClick={onOpen}
+      aria-label={`${meta.title}: ${title}. ${status}`}
+      style={{
+        minWidth: 0,
+        minHeight: 154,
+        padding: '13px 11px 11px',
+        border: hasVisibleEquipment
+          ? '1px solid rgba(15, 23, 42, 0.28)'
+          : '1px solid rgba(255,255,255,0.76)',
+        borderRadius: 22,
+        background: hasVisibleEquipment
+          ? 'linear-gradient(180deg, rgba(255,255,255,0.42), rgba(255,255,255,0.18))'
+          : 'rgba(255,255,255,0.18)',
+        boxShadow: hasVisibleEquipment
+          ? '0 10px 22px rgba(15,23,42,0.16), inset 0 1px 0 rgba(255,255,255,0.86)'
+          : '0 8px 18px rgba(15,23,42,0.1), inset 0 1px 0 rgba(255,255,255,0.74)',
+        color: 'var(--ink)',
+        display: 'grid',
+        gridTemplateRows: 'auto auto minmax(0, 1fr)',
+        gap: 8,
         textAlign: 'left',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.62 : 1,
-        outline: 'none',
+        cursor: 'pointer',
         WebkitTapHighlightColor: 'transparent',
       }}
     >
-      <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
-        <span style={{ fontSize: 14, fontWeight: 800, lineHeight: 1.15 }}>{label}</span>
-        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', lineHeight: 1.2 }}>
-          {hint}
-        </span>
-      </span>
       <span
-        aria-hidden="true"
         style={{
-          width: 44,
-          height: 26,
-          borderRadius: 999,
-          padding: 3,
-          background: checked ? 'rgba(15, 23, 42, 0.9)' : 'rgba(100, 116, 139, 0.28)',
           display: 'flex',
-          justifyContent: checked ? 'flex-end' : 'flex-start',
           alignItems: 'center',
-          flexShrink: 0,
-          transition: 'background 0.15s',
+          justifyContent: 'space-between',
+          gap: 6,
+          minWidth: 0,
         }}
       >
         <span
           style={{
-            width: 20,
-            height: 20,
-            borderRadius: 999,
-            background: '#ffffff',
-            boxShadow: '0 2px 8px rgba(15, 23, 42, 0.24)',
+            minWidth: 0,
+            color: 'var(--muted)',
+            fontSize: 10,
+            fontWeight: 900,
+            lineHeight: 1.05,
+            textTransform: 'uppercase',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {meta.title}
+        </span>
+      </span>
+
+      <span
+        aria-hidden="true"
+        style={{
+          width: '100%',
+          aspectRatio: '1 / 1',
+          justifySelf: 'stretch',
+          borderRadius: 18,
+          overflow: 'hidden',
+          border: '1px solid rgba(255,255,255,0.74)',
+          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.72), 0 8px 16px rgba(15,23,42,0.1)',
+          background: 'rgba(255,255,255,0.26)',
+          opacity: hasVisibleEquipment ? 1 : 0.5,
+        }}
+      >
+        <img
+          src={artworkSrc}
+          alt=""
+          style={{
+            width: '100%',
+            height: '100%',
+            display: 'block',
+            objectFit: 'cover',
           }}
         />
+      </span>
+
+      <span style={{ display: 'grid', alignContent: 'center', gap: 6, minWidth: 0 }}>
+        <span
+          style={{
+            minWidth: 0,
+            color: 'var(--ink)',
+            fontSize: 13,
+            fontWeight: 950,
+            lineHeight: 1.08,
+            overflowWrap: 'anywhere',
+          }}
+        >
+          {title}
+        </span>
+        <span
+          style={{
+            color: hasVisibleEquipment ? 'rgba(15, 23, 42, 0.7)' : 'var(--muted)',
+            fontSize: 11,
+            fontWeight: 800,
+            lineHeight: 1.2,
+          }}
+        >
+          {status}
+        </span>
       </span>
     </button>
   );
 }
 
-function FeedbackModal({ onClose }: { onClose: () => void }): JSX.Element {
-  const [kind, setKind] = useState<FeedbackKind>('review');
-  const [rating, setRating] = useState(0);
-  const [message, setMessage] = useState('');
-  const feedback = useMutation({
-    mutationFn: () =>
-      createFeedback({
-        kind,
-        ...(kind === 'review' ? { rating } : {}),
-        message,
-      }),
-  });
-  const messageLength = message.trim().length;
-  const canSubmit = messageLength > 0 && messageLength <= 2000 && !feedback.isPending;
+function EquipmentDetailsModal({
+  kind,
+  inventory,
+  isSaving,
+  error,
+  onSelect,
+  onOpenShop,
+  onClose,
+}: {
+  kind: InventoryEquipmentKind;
+  inventory: InventoryState | undefined;
+  isSaving: boolean;
+  error: string | null;
+  onSelect: (itemId: string | null) => void;
+  onOpenShop: () => void;
+  onClose: () => void;
+}): JSX.Element {
+  const meta = EQUIPMENT_META[kind];
+  const items = (inventory?.items[kind] ?? []).filter(isAvailableLockerItem);
+  const activeId = equipmentIdFor(inventory, kind);
 
-  function handleKindChange(nextKind: FeedbackKind): void {
-    if (nextKind === kind) return;
-    feedback.reset();
-    setKind(nextKind);
-  }
+  return (
+    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 420 }}>
+      <section
+        role="dialog"
+        aria-label={meta.title}
+        className="modal-card"
+        onClick={(event) => event.stopPropagation()}
+        style={{
+          width: 'min(430px, calc(100vw - 28px))',
+          display: 'grid',
+          gap: 14,
+          position: 'relative',
+        }}
+      >
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label="Закрыть"
+          onClick={onClose}
+          style={{ position: 'absolute', top: 14, right: 14 }}
+        >
+          <X size={15} />
+        </button>
+        <div style={{ minWidth: 0, paddingRight: 42 }}>
+          <div className="modal-title">{meta.title}</div>
+          <div className="modal-copy">Купленные расходники для активного слота.</div>
+        </div>
 
-  function handleClose(event?: MouseEvent): void {
-    event?.stopPropagation();
-    onClose();
-  }
+        <div style={{ display: 'grid', gap: 8 }}>
+          <button
+            type="button"
+            data-no-drag-scroll="true"
+            disabled={isSaving}
+            onClick={() => onSelect(null)}
+            className="glass"
+            aria-pressed={activeId === null}
+            style={{
+              borderRadius: 18,
+              padding: 12,
+              color: 'var(--ink)',
+              border:
+                activeId === null
+                  ? '1px solid rgba(15, 23, 42, 0.28)'
+                  : '1px solid rgba(255,255,255,0.76)',
+              background:
+                activeId === null
+                  ? 'linear-gradient(180deg, rgba(255,255,255,0.58), rgba(226, 239, 249, 0.24))'
+                  : 'rgba(255,255,255,0.22)',
+              display: 'block',
+              alignItems: 'center',
+              textAlign: 'left',
+              cursor: isSaving ? 'wait' : 'pointer',
+              boxShadow:
+                activeId === null
+                  ? '0 10px 22px rgba(15,23,42,0.14), inset 0 1px 0 rgba(255,255,255,0.86)'
+                  : '0 8px 18px rgba(15,23,42,0.1), inset 0 1px 0 rgba(255,255,255,0.74)',
+            }}
+          >
+            <span style={{ display: 'grid', gap: 4 }}>
+              <span style={{ fontSize: 15, fontWeight: 900 }}>{baseEquipmentTitle(kind)}</span>
+              <span
+                style={{
+                  color: 'rgba(15, 23, 42, 0.62)',
+                  fontSize: 12,
+                  fontWeight: 760,
+                  lineHeight: 1.28,
+                }}
+              >
+                {baseEquipmentDescription(kind)}
+              </span>
+            </span>
+          </button>
+
+          {items.map((item) => {
+            const selected = item.id === activeId;
+            const reservedLabel = formatReservedLabel(item.chargesReserved);
+            const displayTitle = equipmentDisplayTitle(item);
+            return (
+              <button
+                key={item.id}
+                type="button"
+                data-no-drag-scroll="true"
+                disabled={isSaving || item.chargesAvailable <= 0}
+                onClick={() => onSelect(item.id)}
+                aria-pressed={selected}
+                className="glass"
+                style={{
+                  borderRadius: 24,
+                  padding: 14,
+                  color: 'var(--ink)',
+                  border: selected
+                    ? '1px solid rgba(15, 23, 42, 0.28)'
+                    : '1px solid rgba(255,255,255,0.76)',
+                  background: selected
+                    ? 'linear-gradient(180deg, rgba(255,255,255,0.58), rgba(226, 239, 249, 0.24))'
+                    : 'rgba(255,255,255,0.22)',
+                  display: 'grid',
+                  gridTemplateColumns: '96px minmax(0, 1fr)',
+                  alignItems: 'start',
+                  gap: 12,
+                  textAlign: 'left',
+                  cursor: isSaving ? 'wait' : 'pointer',
+                  opacity: item.chargesAvailable > 0 ? 1 : 0.55,
+                  boxShadow: selected
+                    ? '0 12px 24px rgba(15,23,42,0.14), inset 0 1px 0 rgba(255,255,255,0.86)'
+                    : '0 8px 18px rgba(15,23,42,0.1), inset 0 1px 0 rgba(255,255,255,0.74)',
+                }}
+              >
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: '100%',
+                    aspectRatio: '1 / 1',
+                    borderRadius: 22,
+                    overflow: 'hidden',
+                    border: '1px solid rgba(255,255,255,0.8)',
+                    background: 'rgba(255,255,255,0.28)',
+                    boxShadow:
+                      'inset 0 1px 0 rgba(255,255,255,0.8), 0 10px 18px rgba(15,23,42,0.12)',
+                  }}
+                >
+                  <img
+                    src={artworkForInventoryItem(item)}
+                    alt=""
+                    style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }}
+                  />
+                </span>
+                <span style={{ minWidth: 0 }}>
+                  <span
+                    style={{
+                      display: 'block',
+                      minWidth: 0,
+                    }}
+                  >
+                    <span
+                      style={{
+                        minWidth: 0,
+                        color: 'var(--ink)',
+                        fontSize: 18,
+                        fontWeight: 950,
+                        lineHeight: 1.08,
+                        overflowWrap: 'break-word',
+                      }}
+                    >
+                      {displayTitle}
+                    </span>
+                  </span>
+                  <span
+                    style={{
+                      display: 'block',
+                      marginTop: 7,
+                      fontSize: 12,
+                      fontWeight: 760,
+                      lineHeight: 1.28,
+                      color: 'rgba(15, 23, 42, 0.62)',
+                    }}
+                  >
+                    {item.description}
+                  </span>
+                  <span
+                    style={{
+                      display: 'flex',
+                      gap: 6,
+                      flexWrap: 'wrap',
+                      marginTop: 12,
+                    }}
+                  >
+                    <span
+                      className="pill"
+                      style={{ height: 26, justifyContent: 'center', fontSize: 11 }}
+                    >
+                      {formatProfileUsageCountLabel(item.chargesAvailable)}
+                    </span>
+                    <span
+                      className="pill"
+                      style={{ height: 26, justifyContent: 'center', fontSize: 11 }}
+                    >
+                      {equipmentEffectLabel(kind, item.powerScore)}
+                    </span>
+                  </span>
+                  <span
+                    style={{
+                      display: 'flex',
+                      gap: 8,
+                      flexWrap: 'wrap',
+                      marginTop: 10,
+                      fontSize: 11,
+                      fontWeight: 850,
+                      color: 'rgba(15, 23, 42, 0.66)',
+                    }}
+                  >
+                    <span>Расход: {item.duelPeriodCost}/период</span>
+                    <span>Цена: {item.currencyPrice}</span>
+                    {reservedLabel !== null && <span>{reservedLabel}</span>}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+
+          {items.length === 0 && (
+            <div
+              className="glass"
+              style={{ borderRadius: 18, padding: 14, display: 'grid', gap: 10 }}
+            >
+              <div style={{ color: 'var(--muted)', fontSize: 13, fontWeight: 800 }}>
+                Купленных предметов этого типа пока нет.
+              </div>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={onOpenShop}
+                style={{
+                  width: '100%',
+                  minHeight: 46,
+                  marginTop: 6,
+                  padding: '11px 0',
+                  fontSize: 13,
+                  fontWeight: 850,
+                  letterSpacing: '0.04em',
+                  background: 'rgba(255,255,255,0.54)',
+                  border: '1px solid rgba(15, 23, 42, 0.13)',
+                  boxShadow:
+                    'inset 0 1px 0 rgba(255,255,255,0.7), 0 8px 18px rgba(15,23,42,0.08)',
+                }}
+              >
+                В магазин
+              </button>
+            </div>
+          )}
+        </div>
+
+        {error !== null && (
+          <div role="alert" style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 800 }}>
+            {error}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function ProfileSectionInfoModal({
+  section,
+  onClose,
+}: {
+  section: ProfileInfoSection;
+  onClose: () => void;
+}): JSX.Element {
+  const info = PROFILE_SECTION_INFO[section];
 
   return (
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Обратная связь"
-      onClick={() => handleClose()}
+      aria-label={info.title}
+      onClick={onClose}
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 1000,
         background: 'rgba(15, 23, 42, 0.35)',
         backdropFilter: 'blur(8px)',
         WebkitBackdropFilter: 'blur(8px)',
+        zIndex: 430,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: 'calc(18px + var(--app-safe-top)) 14px calc(18px + var(--app-safe-bottom))',
+        padding: 20,
       }}
     >
-      <section
+      <div
         className="glass"
         onClick={(event) => event.stopPropagation()}
-        style={{
-          width: '100%',
-          maxWidth: 420,
-          borderRadius: 24,
-          padding: 18,
-          color: 'var(--ink)',
-        }}
+        style={{ borderRadius: 24, padding: '22px 22px 18px', maxWidth: 320, width: '100%' }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div
-              style={{
-                fontSize: 14,
-                fontWeight: 900,
-                letterSpacing: '0.11em',
-                textTransform: 'uppercase',
-                color: 'var(--ink)',
-              }}
-            >
-              Обратная связь
-            </div>
-            <div style={{ marginTop: 5, color: 'var(--muted)', fontSize: 12, fontWeight: 800 }}>
-              {feedback.isSuccess ? 'Спасибо, сообщение сохранено' : 'Выберите тип сообщения'}
-            </div>
-          </div>
-          <button
-            type="button"
-            className="icon-btn"
-            data-no-drag-scroll="true"
-            onClick={handleClose}
-            aria-label="Закрыть"
-          >
-            <X size={16} />
-          </button>
+        <div
+          style={{
+            fontSize: 15,
+            fontWeight: 700,
+            color: 'var(--ink)',
+            marginBottom: 10,
+          }}
+        >
+          {info.title}
         </div>
-
-        {feedback.isSuccess ? (
-          <button
-            type="button"
-            className="btn btn--cta"
-            data-no-drag-scroll="true"
-            onClick={handleClose}
-            style={{ marginTop: 18, width: '100%', minHeight: 52, letterSpacing: 0 }}
-          >
-            Понятно
-          </button>
-        ) : (
-          <>
-            <div
-              style={{
-                marginTop: 16,
-                display: 'grid',
-                gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-                gap: 8,
-              }}
-            >
-              {FEEDBACK_KIND_OPTIONS.map((item) => (
-                <button
-                  key={item.kind}
-                  type="button"
-                  data-no-drag-scroll="true"
-                  className={kind === item.kind ? 'chip chip--active' : 'chip'}
-                  onClick={() => handleKindChange(item.kind)}
-                  style={{
-                    minHeight: 42,
-                    borderRadius: 14,
-                    justifyContent: 'center',
-                    padding: '8px 10px',
-                  }}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-
-            {kind === 'review' && (
-              <div style={{ marginTop: 14 }}>
-                <div
-                  style={{
-                    color: 'var(--muted)',
-                    fontSize: 11,
-                    fontWeight: 900,
-                    letterSpacing: '0.12em',
-                    textTransform: 'uppercase',
-                    marginBottom: 8,
-                  }}
-                >
-                  Оценка
-                </div>
-                <div
-                  role="radiogroup"
-                  aria-label="Оценка отзыва"
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(6, minmax(0, 1fr))',
-                    gap: 6,
-                  }}
-                >
-                  {[0, 1, 2, 3, 4, 5].map((value) => (
-                    <button
-                      key={value}
-                      type="button"
-                      role="radio"
-                      aria-checked={rating === value}
-                      aria-label={`${value} из 5`}
-                      data-no-drag-scroll="true"
-                      onClick={() => setRating(value)}
-                      className={rating === value ? 'chip chip--active' : 'chip'}
-                      style={{
-                        minWidth: 0,
-                        height: 40,
-                        borderRadius: 13,
-                        padding: 0,
-                        justifyContent: 'center',
-                        textAlign: 'center',
-                      }}
-                    >
-                      {value}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <label style={{ marginTop: 14, display: 'block' }}>
-              <span
-                style={{
-                  display: 'block',
-                  color: 'var(--muted)',
-                  fontSize: 11,
-                  fontWeight: 900,
-                  letterSpacing: '0.12em',
-                  textTransform: 'uppercase',
-                  marginBottom: 8,
-                }}
-              >
-                Сообщение
-              </span>
-              <textarea
-                value={message}
-                onChange={(event) => setMessage(event.target.value.slice(0, 2000))}
-                placeholder={
-                  kind === 'review'
-                    ? 'Что понравилось или мешает?'
-                    : kind === 'suggestion'
-                      ? 'Что стоит добавить или поменять?'
-                      : 'Что хотите уточнить?'
-                }
-                rows={6}
-                style={{
-                  width: '100%',
-                  resize: 'vertical',
-                  minHeight: 132,
-                  border: '1px solid rgba(255,255,255,0.74)',
-                  borderRadius: 18,
-                  background: 'rgba(255, 255, 255, 0.46)',
-                  color: 'var(--ink)',
-                  padding: 12,
-                  outline: 'none',
-                  fontSize: 14,
-                  fontWeight: 700,
-                  lineHeight: 1.4,
-                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.72)',
-                }}
-              />
-            </label>
-
-            <div
-              style={{
-                marginTop: 6,
-                minHeight: 18,
-                color: feedback.isError ? 'var(--red-deep)' : 'var(--muted)',
-                fontSize: 11,
-                fontWeight: 800,
-              }}
-              role={feedback.isError ? 'alert' : undefined}
-            >
-              {feedback.isError
-                ? 'Не удалось отправить сообщение'
-                : `${messageLength}/2000 символов`}
-            </div>
-
-            <button
-              type="button"
-              className="btn btn--cta"
-              data-no-drag-scroll="true"
-              disabled={!canSubmit}
-              onClick={() => feedback.mutate()}
-              style={{
-                marginTop: 12,
-                width: '100%',
-                minHeight: 54,
-                letterSpacing: 0,
-                opacity: canSubmit ? 1 : 0.56,
-                cursor: canSubmit ? 'pointer' : 'not-allowed',
-              }}
-            >
-              {feedback.isPending ? 'Отправляем...' : 'Отправить'}
-            </button>
-          </>
-        )}
-      </section>
+        <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>{info.copy}</div>
+        <button
+          type="button"
+          className="btn btn--cta"
+          onClick={onClose}
+          style={{ marginTop: 18, width: '100%', padding: '12px 0', fontSize: 14 }}
+        >
+          Понятно
+        </button>
+      </div>
     </div>
   );
 }
@@ -493,28 +765,29 @@ export function ProfileScreen(): JSX.Element {
   const dragScrollRef = useRef<{ startY: number; scrollTop: number } | null>(null);
   const suppressClickRef = useRef(false);
   const [selectedAchievement, setSelectedAchievement] = useState<ProfileAchievement | null>(null);
-  const [pushStatus, setPushStatus] = useState<PushStatus>('idle');
-  const [pushMessage, setPushMessage] = useState('');
-  const [pendingPreference, setPendingPreference] = useState<PushPreferenceKey | null>(null);
-  const [pushPreferencesOpen, setPushPreferencesOpen] = useState(false);
-  const [feedbackOpen, setFeedbackOpen] = useState(false);
-  const isTelegramMiniApp = getTelegramMiniApp() !== null;
+  const [selectedInfoSection, setSelectedInfoSection] = useState<ProfileInfoSection | null>(null);
+  const [selectedEquipmentKind, setSelectedEquipmentKind] = useState<InventoryEquipmentKind | null>(
+    null,
+  );
 
   const { data, isLoading } = useQuery<ProfileData>({
     queryKey: ['profile'],
     queryFn: () => apiFetch<ProfileData>('/me'),
   });
-
-  const { data: pushConfig, isLoading: isPushConfigLoading } = useQuery<PushConfig>({
-    queryKey: ['push', 'config'],
-    queryFn: fetchPushConfig,
-    enabled: data !== undefined && !isTelegramMiniApp,
+  const inventoryQuery = useQuery<InventoryState>({
+    queryKey: ['inventory', 'me'],
+    queryFn: fetchMyInventory,
+    enabled: data !== undefined,
   });
-
-  const { data: pushPreferences } = useQuery<PushPreferences>({
-    queryKey: PUSH_PREFERENCES_QUERY_KEY,
-    queryFn: fetchPushPreferences,
-    enabled: data !== undefined && !isTelegramMiniApp,
+  const equipmentMut = useMutation<
+    InventoryState,
+    Error,
+    { kind: InventoryEquipmentKind; itemId: string | null }
+  >({
+    mutationFn: ({ kind, itemId }) => patchEquipment({ [EQUIPMENT_META[kind].patchKey]: itemId }),
+    onSuccess: (inventory) => {
+      queryClient.setQueryData(['inventory', 'me'], inventory);
+    },
   });
 
   useEffect(() => {
@@ -530,146 +803,6 @@ export function ProfileScreen(): JSX.Element {
     }
   }, [data, updateUser]);
 
-  useEffect(() => {
-    if (isTelegramMiniApp) return;
-    if (!data) return;
-
-    if (!supportsPushNotifications()) {
-      setPushStatus('unsupported');
-      setPushMessage('Недоступно в этом браузере');
-      return;
-    }
-
-    let disposed = false;
-    getReadyServiceWorkerRegistration()
-      .then((registration) => registration.pushManager.getSubscription())
-      .then((subscription) => {
-        if (disposed) return;
-        if (subscription) {
-          setPushStatus('subscribed');
-          setPushMessage('Уведомления включены');
-          return;
-        }
-        if (Notification.permission === 'denied') {
-          setPushStatus('denied');
-          setPushMessage('Запрещено в настройках браузера');
-        }
-      })
-      .catch(() => {
-        // The PWA service worker can be absent in local dev. The subscribe
-        // button will surface the actionable error if the user taps it.
-        if (!disposed && Notification.permission === 'denied') {
-          setPushStatus('denied');
-          setPushMessage('Запрещено в настройках браузера');
-        }
-      });
-
-    return () => {
-      disposed = true;
-    };
-  }, [data, isTelegramMiniApp]);
-
-  async function handleSubscribePush(): Promise<void> {
-    if (!supportsPushNotifications()) {
-      setPushStatus('unsupported');
-      setPushMessage('Недоступно в этом браузере');
-      return;
-    }
-
-    if (!pushConfig || isPushConfigLoading) {
-      setPushMessage('Пробуем еще раз через секунду');
-      return;
-    }
-
-    if (!pushConfig.supported || !pushConfig.publicKey) {
-      setPushStatus('error');
-      setPushMessage('Пуши не настроены на сервере');
-      return;
-    }
-
-    const permission =
-      Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
-
-    if (permission !== 'granted') {
-      setPushStatus(permission === 'denied' ? 'denied' : 'idle');
-      setPushMessage('Разрешение не выдано');
-      return;
-    }
-
-    setPushStatus('subscribing');
-    setPushMessage('');
-
-    try {
-      const registration = await getReadyServiceWorkerRegistration();
-      const existing = await registration.pushManager.getSubscription();
-      const subscription =
-        existing ??
-        (await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToArrayBuffer(pushConfig.publicKey),
-        }));
-
-      await savePushSubscription(normalizePushSubscription(subscription));
-      setPushStatus('subscribed');
-      setPushMessage('Уведомления включены');
-    } catch {
-      setPushStatus('error');
-      setPushMessage('Не удалось включить уведомления');
-    }
-  }
-
-  async function handleUnsubscribePush(): Promise<void> {
-    if (!supportsPushNotifications()) {
-      setPushStatus('unsupported');
-      setPushMessage('Недоступно в этом браузере');
-      return;
-    }
-
-    setPushStatus('unsubscribing');
-    setPushMessage('');
-
-    try {
-      const registration = await getReadyServiceWorkerRegistration();
-      const subscription = await registration.pushManager.getSubscription();
-      if (!subscription) {
-        setPushStatus('idle');
-        setPushMessage('Уведомления выключены');
-        return;
-      }
-
-      const endpoint = subscription.endpoint;
-      await subscription.unsubscribe();
-      await deletePushSubscription(endpoint);
-      setPushStatus('idle');
-      setPushMessage('Уведомления выключены');
-    } catch {
-      setPushStatus('error');
-      setPushMessage('Не удалось отключить уведомления');
-    }
-  }
-
-  async function handleTogglePushPreference(key: PushPreferenceKey): Promise<void> {
-    if (!pushPreferences || pendingPreference !== null) return;
-
-    const previous = pushPreferences;
-    const next = { ...previous, [key]: !previous[key] };
-    setPendingPreference(key);
-    setPushMessage('');
-    queryClient.setQueryData<PushPreferences>(PUSH_PREFERENCES_QUERY_KEY, next);
-
-    try {
-      const patch: Partial<PushPreferences> = { [key]: next[key] };
-      const updated = await updatePushPreferences(patch);
-      queryClient.setQueryData<PushPreferences>(PUSH_PREFERENCES_QUERY_KEY, updated);
-    } catch {
-      queryClient.setQueryData<PushPreferences>(PUSH_PREFERENCES_QUERY_KEY, previous);
-      setPushStatus('error');
-      setPushMessage('Не удалось сохранить настройки');
-    } finally {
-      setPendingPreference(null);
-    }
-  }
-
   if (isLoading) {
     return (
       <main className="screen" style={{ alignItems: 'center', justifyContent: 'center' }}>
@@ -681,22 +814,10 @@ export function ProfileScreen(): JSX.Element {
   const initial = (data?.displayName ?? '?').charAt(0).toUpperCase();
   const stats = data?.stats ?? EMPTY_PROFILE_STATS;
   const achievements = data?.achievements ?? [];
-  const isPushSubscribed = pushStatus === 'subscribed' || pushStatus === 'unsubscribing';
-  const pushButtonLabel =
-    pushStatus === 'unsubscribing'
-      ? 'Выключаем...'
-      : pushStatus === 'subscribing'
-        ? 'Включаем...'
-        : isPushSubscribed
-          ? 'Выключить уведомления'
-          : 'Включить уведомления';
-  const pushStatusMessage =
-    pushMessage || (pushStatus === 'subscribed' ? 'Уведомления включены' : 'Уведомления выключены');
-  const pushButtonDisabled =
-    pushStatus === 'subscribing' ||
-    pushStatus === 'unsubscribing' ||
-    (!isPushSubscribed &&
-      (pushStatus === 'unsupported' || pushStatus === 'denied' || isPushConfigLoading));
+  const tokenBalance = inventoryQuery.data?.balances.tokens ?? data?.currencyBalance ?? 0;
+  const starBalance = inventoryQuery.data?.balances.stars ?? data?.starBalance ?? 0;
+  const experienceBalance =
+    inventoryQuery.data?.balances.experience ?? data?.experienceBalance ?? 0;
 
   function handlePointerDown(event: PointerEvent<HTMLElement>): void {
     if (
@@ -758,10 +879,11 @@ export function ProfileScreen(): JSX.Element {
         className="glass"
         style={{
           margin: 'calc(16px + var(--app-safe-top)) 14px 14px',
-          padding: 20,
+          padding: '14px 14px',
           borderRadius: 24,
-          display: 'flex',
-          flexDirection: 'column',
+          display: 'grid',
+          gridTemplateColumns: '64px minmax(0, 1fr) 44px',
+          gridTemplateAreas: '"avatar info settings"',
           alignItems: 'center',
           gap: 12,
           position: 'relative',
@@ -774,12 +896,10 @@ export function ProfileScreen(): JSX.Element {
           aria-label="Настройки"
           onClick={() => navigate('/profile/settings')}
           style={{
-            position: 'absolute',
-            top: 14,
-            right: 14,
             width: 40,
             height: 40,
-            zIndex: 1,
+            gridArea: 'settings',
+            justifySelf: 'end',
           }}
         >
           <Settings size={18} />
@@ -789,238 +909,199 @@ export function ProfileScreen(): JSX.Element {
             src={data.avatarUrl}
             alt="avatar"
             style={{
-              width: 88,
-              height: 88,
+              width: 64,
+              height: 64,
+              gridArea: 'avatar',
               borderRadius: 999,
               objectFit: 'cover',
-              boxShadow: '0 10px 26px rgba(15, 23, 42, 0.25)',
+              boxShadow: '0 8px 20px rgba(15, 23, 42, 0.22)',
             }}
           />
         ) : (
           <div
             style={{
-              width: 88,
-              height: 88,
+              width: 64,
+              height: 64,
+              gridArea: 'avatar',
               borderRadius: 999,
               background: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)',
               color: '#ffffff',
-              fontSize: 32,
+              fontSize: 25,
               fontWeight: 800,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 10px 26px rgba(15, 23, 42, 0.25)',
+              boxShadow: '0 8px 20px rgba(15, 23, 42, 0.22)',
             }}
           >
             {initial}
           </div>
         )}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', textAlign: 'center' }}>
+        <div style={{ minWidth: 0, gridArea: 'info', display: 'grid', gap: 4 }}>
+          <div
+            style={{
+              minWidth: 0,
+              fontSize: 20,
+              fontWeight: 800,
+              color: 'var(--ink)',
+              lineHeight: 1.08,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
             {data?.displayName ?? '-'}
           </div>
           {(data?.username || data?.tgId) && (
-            <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+            <div
+              style={{
+                minWidth: 0,
+                fontSize: 13,
+                fontWeight: 600,
+                color: 'var(--muted)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
               {data.username ? `@${data.username}` : `id ${data.tgId}`}
             </div>
           )}
-        </div>
-        <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
-          <span className="pill pill--dark">
-            <small>Уровень</small> {getLevelLabel(data?.competitionLevel)}
-          </span>
+          <div
+            style={{
+              color: 'var(--muted)',
+              fontSize: 12,
+              fontWeight: 800,
+              letterSpacing: '0.08em',
+              lineHeight: 1.1,
+              textTransform: 'uppercase',
+            }}
+          >
+            Уровень: {getLevelLabel(data?.competitionLevel)}
+          </div>
         </div>
       </div>
 
-      <div className="section-label" style={{ marginBottom: 6 }}>
-        Статистика
+      <ProfileSectionLabel
+        infoSection="currency"
+        onOpenInfo={setSelectedInfoSection}
+        style={{ marginBottom: 6 }}
+      >
+        Валюта
+      </ProfileSectionLabel>
+      <div
+        style={{
+          margin: '0 14px 14px',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+          gap: 8,
+        }}
+      >
+        <CurrencyCard
+          label="Монеты"
+          value={tokenBalance}
+          icon={<CircleDollarSign size={16} strokeWidth={2.45} />}
+          iconColor="#C48A1D"
+        />
+        <CurrencyCard
+          label="Звёзды"
+          value={starBalance}
+          icon={<Star size={16} strokeWidth={2.45} fill="currentColor" />}
+          iconColor="#D9A21B"
+        />
+        <CurrencyCard
+          label="Опыт"
+          value={experienceBalance}
+          icon={<Trophy size={16} strokeWidth={2.45} />}
+          iconColor="#21A19A"
+        />
       </div>
+
+      <ProfileSectionLabel
+        infoSection="stats"
+        onOpenInfo={setSelectedInfoSection}
+        style={{ marginBottom: 6 }}
+      >
+        Статистика
+      </ProfileSectionLabel>
       <ProfileStatsGrid stats={stats} style={{ margin: '0 14px 14px' }} />
+
+      <ProfileSectionLabel
+        infoSection="equipment"
+        onOpenInfo={setSelectedInfoSection}
+        style={{ marginBottom: 8 }}
+      >
+        Экипировка
+      </ProfileSectionLabel>
+      <div
+        style={{
+          margin: '0 14px 14px',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+          gap: 8,
+        }}
+      >
+        {EQUIPMENT_KINDS.map((kind) => (
+          <EquipmentSlotButton
+            key={kind}
+            kind={kind}
+            inventory={inventoryQuery.data}
+            onOpen={() => setSelectedEquipmentKind(kind)}
+          />
+        ))}
+      </div>
 
       <ProfileAchievementsSection
         achievements={achievements}
+        labelAccessory={
+          <ProfileSectionInfoButton
+            infoSection="achievements"
+            onOpenInfo={setSelectedInfoSection}
+          />
+        }
         onOpenAchievement={(achievement) => {
           if (!suppressClickRef.current) setSelectedAchievement(achievement);
         }}
       />
 
-      {!isTelegramMiniApp && (
-        <>
-          <div className="section-label" style={{ marginBottom: 8 }}>
-            Уведомления
-          </div>
-          <div
-            className="glass"
-            style={{
-              margin: '0 14px 14px',
-              padding: 16,
-              borderRadius: 22,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 12,
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-              <ProfileSectionIcon>
-                <Bell size={20} />
-              </ProfileSectionIcon>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--ink)' }}>
-                  Пуш-уведомления
-                </div>
-                <div
-                  role="status"
-                  aria-live="polite"
-                  style={{
-                    marginTop: 3,
-                    minHeight: 18,
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color:
-                      pushStatus === 'error' || pushStatus === 'denied'
-                        ? '#b42318'
-                        : 'var(--muted)',
-                  }}
-                >
-                  {pushStatusMessage}
-                </div>
-              </div>
-              <button
-                type="button"
-                className="btn btn--cta"
-                data-no-drag-scroll="true"
-                aria-label={pushButtonLabel}
-                disabled={pushButtonDisabled}
-                onClick={() =>
-                  void (isPushSubscribed ? handleUnsubscribePush() : handleSubscribePush())
-                }
-                style={{
-                  minHeight: 42,
-                  padding: '0 14px',
-                  borderRadius: 14,
-                  fontSize: 12,
-                  letterSpacing: 0,
-                  flexShrink: 0,
-                }}
-              >
-                {isPushSubscribed ? 'Выключить' : 'Включить'}
-              </button>
-            </div>
-
-            {pushPreferences ? (
-              <>
-                <button
-                  type="button"
-                  data-no-drag-scroll="true"
-                  aria-expanded={pushPreferencesOpen}
-                  onClick={() => setPushPreferencesOpen((value) => !value)}
-                  style={{
-                    width: '100%',
-                    minHeight: 46,
-                    padding: '0 12px',
-                    border: '1px solid rgba(255,255,255,0.7)',
-                    borderRadius: 16,
-                    background: 'rgba(255, 255, 255, 0.34)',
-                    color: 'var(--ink)',
-                    outline: 'none',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 10,
-                    cursor: 'pointer',
-                    fontSize: 14,
-                    fontWeight: 800,
-                    WebkitTapHighlightColor: 'transparent',
-                  }}
-                >
-                  Настройки уведомлений
-                  <ChevronDown
-                    size={18}
-                    style={{
-                      transform: pushPreferencesOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-                      transition: 'transform 0.15s',
-                      flexShrink: 0,
-                    }}
-                  />
-                </button>
-                {pushPreferencesOpen ? (
-                  <div
-                    role="group"
-                    aria-label="Категории уведомлений"
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 8,
-                      paddingTop: 2,
-                    }}
-                  >
-                    {PUSH_PREFERENCE_ITEMS.map((item) => (
-                      <PushPreferenceToggle
-                        key={item.key}
-                        label={item.label}
-                        hint={item.hint}
-                        checked={pushPreferences[item.key]}
-                        disabled={pendingPreference !== null}
-                        onToggle={() => void handleTogglePushPreference(item.key)}
-                      />
-                    ))}
-                  </div>
-                ) : null}
-              </>
-            ) : null}
-          </div>
-        </>
-      )}
-      <div className="section-label" style={{ marginBottom: 8 }}>
-        Обратная связь
-      </div>
-      <div
-        className="glass"
-        style={{
-          margin: '0 14px 14px',
-          padding: 16,
-          borderRadius: 22,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-        }}
-      >
-        <ProfileSectionIcon>
-          <MessageSquare size={20} />
-        </ProfileSectionIcon>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--ink)' }}>
-            Форма обратной связи
-          </div>
-          <div style={{ marginTop: 3, fontSize: 12, fontWeight: 700, color: 'var(--muted)' }}>
-            Отзыв, пожелание или вопрос
-          </div>
-        </div>
-        <button
-          type="button"
-          className="btn btn--cta"
-          data-no-drag-scroll="true"
-          aria-label="Написать в обратную связь"
-          onClick={() => setFeedbackOpen(true)}
-          style={{
-            minHeight: 42,
-            padding: '0 14px',
-            borderRadius: 14,
-            fontSize: 12,
-            letterSpacing: 0,
-            flexShrink: 0,
-          }}
-        >
-          Написать
-        </button>
-      </div>
       {selectedAchievement !== null && (
         <AchievementDetailsSheet
           achievement={selectedAchievement}
           onClose={() => setSelectedAchievement(null)}
         />
       )}
-      {feedbackOpen && <FeedbackModal onClose={() => setFeedbackOpen(false)} />}
+      {selectedInfoSection !== null && (
+        <ProfileSectionInfoModal
+          section={selectedInfoSection}
+          onClose={() => setSelectedInfoSection(null)}
+        />
+      )}
+      {selectedEquipmentKind !== null && (
+        <EquipmentDetailsModal
+          kind={selectedEquipmentKind}
+          inventory={inventoryQuery.data}
+          isSaving={equipmentMut.isPending}
+          error={equipmentMut.isError ? equipmentMut.error.message : null}
+          onOpenShop={() => {
+            equipmentMut.reset();
+            setSelectedEquipmentKind(null);
+            navigate('/inventory');
+          }}
+          onClose={() => {
+            equipmentMut.reset();
+            setSelectedEquipmentKind(null);
+          }}
+          onSelect={(itemId) => {
+            const kind = selectedEquipmentKind;
+            equipmentMut.mutate(
+              { kind, itemId },
+              {
+                onSuccess: () => setSelectedEquipmentKind(null),
+              },
+            );
+          }}
+        />
+      )}
     </main>
   );
 }

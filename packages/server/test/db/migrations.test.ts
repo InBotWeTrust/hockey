@@ -67,9 +67,15 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         order by title`,
     );
     expect(inventory.rows).toEqual([
-      { title: 'Клюшки', photo_url: '/inventory/sticks.webp' },
-      { title: 'Коньки', photo_url: '/inventory/skates.webp' },
-      { title: 'Энергия', photo_url: '/inventory/nutrition.webp' },
+      { title: 'Бронзовая клюшка', photo_url: '/inventory/stick-bronze.webp' },
+      { title: 'Бронзовое питание', photo_url: '/inventory/nutrition-bronze.webp' },
+      { title: 'Бронзовые коньки', photo_url: '/inventory/skates-bronze.webp' },
+      { title: 'Золотая клюшка', photo_url: '/inventory/stick-gold.webp' },
+      { title: 'Золотое питание', photo_url: '/inventory/nutrition-gold.webp' },
+      { title: 'Золотые коньки', photo_url: '/inventory/skates-gold.webp' },
+      { title: 'Серебряная клюшка', photo_url: '/inventory/stick-silver.webp' },
+      { title: 'Серебряное питание', photo_url: '/inventory/nutrition-silver.webp' },
+      { title: 'Серебряные коньки', photo_url: '/inventory/skates-silver.webp' },
     ]);
 
     const notifications = await pool.query<{ key: string; click_url: string }>(
@@ -134,6 +140,10 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '036_repair_user_profile_columns.sql',
       '037_duel_template_star_rewards.sql',
       '038_duel_one_open_pair.sql',
+      '039_user_equipment_inventory_items.sql',
+      '040_dev_access_codes.sql',
+      '041_shop_inventory_variants.sql',
+      '042_dedupe_shop_inventory_variants.sql',
     ]);
   });
 });

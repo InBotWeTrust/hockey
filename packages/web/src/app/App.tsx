@@ -7,6 +7,7 @@ import { LoginScreen } from '../screens/LoginScreen.js';
 import { PrivateRoute } from '../auth/PrivateRoute.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { BottomNav, isBottomNavVisible } from '../components/BottomNav.js';
+import { DuelInviteToast } from '../components/DuelInviteToast.js';
 import { UpdatePrompt } from '../components/UpdatePrompt.js';
 import { OfflineBanner } from '../chat/components/OfflineBanner.js';
 import { useChatSocket } from '../chat/useChatSocket.js';
@@ -19,6 +20,11 @@ const DemoScreen = lazy(() =>
 );
 const InventoryScreen = lazy(() =>
   import('../screens/InventoryScreen.js').then((module) => ({ default: module.InventoryScreen })),
+);
+const DailyOverviewScreen = lazy(() =>
+  import('../screens/DailyOverviewScreen.js').then((module) => ({
+    default: module.DailyOverviewScreen,
+  })),
 );
 const ProfileScreen = lazy(() =>
   import('../screens/ProfileScreen.js').then((module) => ({ default: module.ProfileScreen })),
@@ -96,6 +102,7 @@ function AppFrame(): JSX.Element {
   return (
     <>
       <ChatRealtime />
+      <DuelInviteToast />
       <div
         className={`app-shell${bottomNavVisible ? ' app-shell--bottom-nav-visible' : ''}`}
         style={{
@@ -146,6 +153,14 @@ function AppFrame(): JSX.Element {
                 element={
                   <PrivateRoute>
                     <InventoryScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/daily"
+                element={
+                  <PrivateRoute>
+                    <DailyOverviewScreen />
                   </PrivateRoute>
                 }
               />

@@ -199,7 +199,7 @@ describe('ChatRoomScreen', () => {
 
     await waitFor(() => expect(accept).toHaveBeenCalledWith(matchId));
     expect(await screen.findByTestId('duel-location')).toHaveTextContent(
-      `/?view=amateur&match=${matchId}`,
+      `/?view=amateur&match=${matchId}&play=1`,
     );
   });
 

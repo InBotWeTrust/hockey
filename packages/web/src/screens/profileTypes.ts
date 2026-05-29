@@ -29,6 +29,7 @@ export interface ProfileData {
   achievements: ProfileAchievement[];
   currencyBalance?: number;
   starBalance?: number;
+  experienceBalance?: number;
   displaySource?: 'telegram' | 'vk' | 'custom';
   linkedProviders?: Array<'telegram' | 'vk'>;
   customDisplayName?: string | null;

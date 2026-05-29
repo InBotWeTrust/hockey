@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { verifyTelegramLoginPayload, verifyTelegramMiniAppInitData } from '../auth/telegram.js';
 import { createJwt, verifyAccessToken, verifyRefreshToken } from '../auth/jwt.js';
+import { authenticateDevAccessCode } from '../auth/devAccessCode.js';
 import { exchangeVkCode, fetchVkProfile, type VkProfile } from '../auth/vk.js';
 import { findOrCreateTelegramUser, findOrLinkOrCreateVkUser, type AppUser } from '../auth/users.js';
 import { canUseExperimentalTrainingCourt } from '../auth/featureAccess.js';
@@ -15,6 +16,7 @@ export interface AuthRoutesOptions {
   accessSecret: string;
   refreshSecret: string;
   devLoginEnabled?: boolean;
+  devAccessCodeLoginEnabled?: boolean;
 }
 
 const tgBodySchema = z
@@ -40,6 +42,11 @@ const vkBodySchema = z.object({
 
 const tgMiniAppBodySchema = z.object({
   initData: z.string().min(1),
+  timezone: z.string().optional(),
+});
+
+const devAccessCodeBodySchema = z.object({
+  code: z.string().min(6),
   timezone: z.string().optional(),
 });
 
@@ -328,6 +335,37 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (app, opt
         displayName: 'Dev Player',
         ...(tz !== undefined ? { timezone: tz } : {}),
       });
+      const [accessToken, refresh] = await Promise.all([
+        jwt.issueAccessToken({ sub: user.id }),
+        jwt.issueRefreshToken({ sub: user.id }),
+      ]);
+      await saveRefresh(app.redis, {
+        jti: refresh.jti,
+        userId: user.id,
+        ttlSec: refresh.expSec,
+      });
+      reply.send({
+        accessToken,
+        refreshToken: refresh.token,
+        user: await buildAuthUser(app, user),
+      });
+    });
+  }
+
+  if (opts.devAccessCodeLoginEnabled) {
+    app.post('/auth/dev-code', async (req, reply) => {
+      const body = devAccessCodeBodySchema.safeParse(req.body ?? {});
+      if (!body.success) {
+        throw new AppError('bad_request', 'code required', 400);
+      }
+
+      const tz = safeIanaTimezone(body.data.timezone);
+      const user = await authenticateDevAccessCode(app.pg, {
+        code: body.data.code,
+        ...(tz !== undefined ? { timezone: tz } : {}),
+      });
+      await assertUserCanAuthenticate(app, user.id);
+
       const [accessToken, refresh] = await Promise.all([
         jwt.issueAccessToken({ sub: user.id }),
         jwt.issueRefreshToken({ sub: user.id }),

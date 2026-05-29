@@ -24,13 +24,11 @@ interface DailyStoreState {
   setDeferredState: (next: DailyStateResponse) => void;
   applyDeferredState: () => void;
   optimisticAddShot: (claimed: ShotResultType) => void;
-  submitShot: (
-    args: {
-      shotIndex: number;
-      input: ShotInputPayload;
-      claimedResult: ShotResultType;
-    },
-  ) => Promise<{ serverResult: ShotResultType; state: DailyStateResponse } | null>;
+  submitShot: (args: {
+    shotIndex: number;
+    input: ShotInputPayload;
+    claimedResult: ShotResultType;
+  }) => Promise<{ serverResult: ShotResultType; state: DailyStateResponse } | null>;
 }
 
 export const useDailyStore = create<DailyStoreState>()((set, get) => ({
@@ -44,7 +42,7 @@ export const useDailyStore = create<DailyStoreState>()((set, get) => ({
     set({ loading: true, error: null });
     try {
       const data = await fetchDailyState();
-      set({ data, loading: false });
+      set({ data, loading: false, error: null });
     } catch (err) {
       set({
         loading: false,
@@ -57,7 +55,7 @@ export const useDailyStore = create<DailyStoreState>()((set, get) => ({
     set({ inFlight: true, error: null });
     try {
       const data = await startDailyPeriod();
-      set({ data, inFlight: false });
+      set({ data, inFlight: false, error: null });
       return data;
     } catch (err) {
       set({
@@ -68,13 +66,13 @@ export const useDailyStore = create<DailyStoreState>()((set, get) => ({
     }
   },
 
-  applyState: (next) => set({ data: next, deferredState: null }),
+  applyState: (next) => set({ data: next, deferredState: null, error: null }),
 
   setDeferredState: (next) => set({ deferredState: next }),
 
   applyDeferredState: () => {
     const pending = get().deferredState;
-    if (pending) set({ data: pending, deferredState: null });
+    if (pending) set({ data: pending, deferredState: null, error: null });
   },
 
   optimisticAddShot: (claimed) => {
@@ -84,11 +82,9 @@ export const useDailyStore = create<DailyStoreState>()((set, get) => ({
       data: {
         ...cur,
         current_period_shots: cur.current_period_shots + 1,
-        current_period_goals:
-          cur.current_period_goals + (claimed === 'goal' ? 1 : 0),
+        current_period_goals: cur.current_period_goals + (claimed === 'goal' ? 1 : 0),
         daily_total_shots: cur.daily_total_shots + 1,
-        daily_total_goals:
-          cur.daily_total_goals + (claimed === 'goal' ? 1 : 0),
+        daily_total_goals: cur.daily_total_goals + (claimed === 'goal' ? 1 : 0),
       },
     });
   },
