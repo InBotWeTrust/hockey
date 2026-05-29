@@ -1275,19 +1275,10 @@ function ArenaVideoCube({
       }}
     >
       <img
+        className="arena-video-cube__background"
         src={ARENA_ICE_COURT_BACKGROUND}
         alt=""
         aria-hidden="true"
-        style={{
-          position: 'absolute',
-          inset: 0,
-          width: '100%',
-          height: '100%',
-          objectFit: 'cover',
-          objectPosition: '50% 50%',
-          filter: 'blur(2px)',
-          transform: 'scale(1.015)',
-        }}
       />
       <div
         aria-label="Разделы на табло"
@@ -2978,7 +2969,7 @@ function TrainingPlaceholder({
   const inFlight = useTrainingSessionStore((s) => s.inFlight);
   const refresh = useTrainingSessionStore((s) => s.refresh);
   const [selectedPeriod, setSelectedPeriod] = useState<1 | 2 | 3>(1);
-  const [playTraining, setPlayTraining] = useState(false);
+  const [playTraining, setPlayTraining] = useState(() => autoPlay);
   const [localPlayEntrance, setLocalPlayEntrance] = useState(false);
   const [now, setNow] = useState(Date.now());
   const refreshedTrainingDayRef = useRef<string | null>(null);
@@ -2997,7 +2988,7 @@ function TrainingPlaceholder({
     if (!autoPlay && data?.state !== 'active') setPlayTraining(false);
   }, [autoPlay, data?.state]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (autoPlay && data) setPlayTraining(true);
   }, [autoPlay, data]);
 
@@ -8845,7 +8836,7 @@ export function PlayView<TState>({
     puck.playShot(
       puck.bladePoint(sx),
       { x: sx, y: GOAL_OPENING.y },
-      performance.now(),
+      loop.getRenderNow(),
       flightDurationMs,
     );
 

@@ -1184,6 +1184,7 @@ describe('DailyScreen', () => {
     const rinkButton = await findArenaCta('Тренировка: Тренировка');
     fireEvent.click(rinkButton);
 
+    expect(screen.queryByText('ЧАСТОТА')).not.toBeInTheDocument();
     expect(await screen.findByRole('button', { name: 'НАЧАТЬ' })).toBeInTheDocument();
     expect(
       fetchMock.mock.calls.some((call) => String(call[0]).includes('/duel/training/start')),

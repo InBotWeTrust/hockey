@@ -109,7 +109,7 @@ export class Puck {
       return;
     }
     if (!this.flight) return;
-    const t = Math.min(1, (now - this.flight.startedAt) / this.flight.durationMs);
+    const t = Math.min(1, Math.max(0, (now - this.flight.startedAt) / this.flight.durationMs));
     const x = this.flight.start.x + (this.flight.end.x - this.flight.start.x) * t;
     const y = this.flight.start.y + (this.flight.end.y - this.flight.start.y) * t;
     const flight = this.flight;

@@ -60,6 +60,7 @@ export interface GameLoop {
   endScenePause: () => void;
   getShooterT: () => number;
   getSceneT: () => number;
+  getRenderNow: () => number;
 }
 
 function shooterX(t: number, freq: number): number {
@@ -217,6 +218,9 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
     },
     getSceneT() {
       return sceneT(renderNowMs);
+    },
+    getRenderNow() {
+      return renderNowMs;
     },
   };
 }

@@ -74,6 +74,7 @@ describe('createGameLoop', () => {
     onTick?.(ticker);
 
     expect(loop.getSceneT()).toBe(5016);
+    expect(loop.getRenderNow()).toBe(1016);
 
     nowSpy.mockRestore();
   });

@@ -52,7 +52,7 @@ describe('TestCourtScreen', () => {
     };
     const input: ShotInput = {
       tapTime: 0,
-      shooterTapTime: ((335 - 286) / 231 + 1) * 250,
+      shooterTapTime: ((337 - 286) / 231 + 1) * 250,
       puckSpeedPerMs: PUCK_SPEED_PER_MS,
       shooterFrequency: 1,
       goalieFrequency: 1,
@@ -75,7 +75,7 @@ describe('TestCourtScreen', () => {
         shotIndex: 1,
         stickEffects: STICK_NEUTRAL,
         phaseOffsets,
-        shooterX: 335,
+        shooterX: 337,
       }).type,
     ).toBe('goal');
   });

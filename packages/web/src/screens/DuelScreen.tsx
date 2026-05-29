@@ -333,7 +333,7 @@ export function DuelScreen(): JSX.Element {
     puck.playShot(
       puck.bladePoint(sx),
       { x: sx, y: GOAL_OPENING.y },
-      performance.now(),
+      loop.getRenderNow(),
       flightDurationMs,
     );
 
