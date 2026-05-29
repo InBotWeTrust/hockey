@@ -75,7 +75,6 @@ import {
   TRAINING_NEW_COURT_VISUAL_Y_OFFSET,
   TRAINING_NEW_COURT_VISUAL_Y_SCALE,
   TRAINING_NEW_COURT_POST_EDGE_DISTANCE,
-  TRAINING_VIDEO_CUBE_IMAGE,
   distanceToNewTrainingCourtGoalEdge,
   resolveNewTrainingCourtShot,
   type TrainingCourtDesign,
@@ -312,6 +311,7 @@ const LONG_COURT_GAME_LAYER_STYLE: CSSProperties = {
   height: '74.2%',
   bottom: 'auto',
 };
+const TRAINING_LED_TABLEAU_IMAGE = '/sprites/wide-tableau-led.webp';
 
 function shouldReduceMotion(): boolean {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
@@ -7424,7 +7424,7 @@ function TrainingPerspectiveRink({
           }}
         >
           <img
-            src={TRAINING_VIDEO_CUBE_IMAGE}
+            src={TRAINING_LED_TABLEAU_IMAGE}
             alt=""
             aria-hidden="true"
             style={{ display: 'block', width: '100%', height: 'auto' }}
@@ -7469,56 +7469,66 @@ function TrainingCubeScoreboard({
       aria-label="Статистика на видеокубе"
       style={{
         position: 'absolute',
-        left: '9%',
-        right: '9%',
-        top: '22%',
-        bottom: '26%',
+        left: '10.5%',
+        right: '10.5%',
+        top: '31%',
+        bottom: '23%',
         display: 'grid',
         gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-        gap: 'clamp(3px, 1.1vw, 8px)',
+        columnGap: 'clamp(16px, 6vw, 54px)',
+        rowGap: 'clamp(6px, 1.8vw, 12px)',
         alignContent: 'center',
         pointerEvents: 'none',
       }}
     >
-      {metrics.map((metric) => (
-        <div
-          key={metric.label}
-          style={{
-            minWidth: 0,
-            textAlign: 'center',
-            color: '#06213a',
-            textShadow: '0 1px 0 rgba(255,255,255,0.56)',
-          }}
-        >
+      {metrics.map((metric) => {
+        const labelIsLong = metric.label.length > 8;
+        const valueIsLong = metric.value.length > 5;
+        return (
           <div
+            key={metric.label}
             style={{
-              fontSize: 'clamp(5px, 1.25vw, 8px)',
-              fontWeight: 950,
-              lineHeight: 1,
-              textTransform: 'uppercase',
-              opacity: 0.64,
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
+              minWidth: 0,
+              textAlign: 'center',
+              color: '#e8fbff',
+              textShadow:
+                '0 0 3px rgba(255,255,255,0.95), 0 0 8px rgba(82, 219, 255, 0.88), 0 0 18px rgba(10, 159, 255, 0.52)',
+              filter: 'drop-shadow(0 0 2px rgba(180, 244, 255, 0.65))',
             }}
           >
-            {metric.label}
+            <div
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: labelIsLong ? 'clamp(5px, 1.25vw, 8px)' : 'clamp(6px, 1.55vw, 10px)',
+                fontWeight: 950,
+                lineHeight: 1,
+                textTransform: 'uppercase',
+                letterSpacing: labelIsLong ? '0.1em' : '0.16em',
+                opacity: 0.9,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {metric.label}
+            </div>
+            <div
+              style={{
+                marginTop: 2,
+                fontFamily: 'var(--font-mono)',
+                fontSize: valueIsLong ? 'clamp(12px, 3.6vw, 22px)' : 'clamp(14px, 4.5vw, 26px)',
+                fontWeight: 950,
+                lineHeight: 0.96,
+                letterSpacing: valueIsLong ? '0.04em' : '0.08em',
+                fontVariantNumeric: 'tabular-nums',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {metric.value}
+            </div>
           </div>
-          <div
-            style={{
-              marginTop: 2,
-              fontFamily: 'var(--font-mono)',
-              fontSize: 'clamp(9px, 2.7vw, 18px)',
-              fontWeight: 950,
-              lineHeight: 1,
-              fontVariantNumeric: 'tabular-nums',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {metric.value}
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
