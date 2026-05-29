@@ -37,7 +37,7 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
     set({ loading: true, error: null });
     try {
       const { match } = await fetchAmateurMatch(matchId);
-      set({ match, loading: false });
+      set({ match, loading: false, error: null });
       return match;
     } catch (err) {
       set({
@@ -60,7 +60,7 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
     set({ inFlight: true, error: null });
     try {
       const { match } = await readyAmateurDuel(current.id, loadout);
-      set({ match, inFlight: false });
+      set({ match, inFlight: false, error: null });
       return match;
     } catch (err) {
       set({
@@ -77,7 +77,7 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
     set({ inFlight: true, error: null });
     try {
       const { match } = await startAmateurDuelPeriod(current.id);
-      set({ match, inFlight: false });
+      set({ match, inFlight: false, error: null });
       return match;
     } catch (err) {
       set({
@@ -88,7 +88,7 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
     }
   },
 
-  applyState: (next) => set({ match: next }),
+  applyState: (next) => set({ match: next, error: null }),
 
   optimisticAddShot: (claimed) => {
     const cur = get().match;

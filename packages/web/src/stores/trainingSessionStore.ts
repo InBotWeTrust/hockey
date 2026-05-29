@@ -33,7 +33,7 @@ export const useTrainingSessionStore = create<TrainingSessionStoreState>()((set,
     set({ loading: true, error: null });
     try {
       const data = await fetchTrainingState();
-      set({ data, loading: false });
+      set({ data, loading: false, error: null });
     } catch (err) {
       set({
         loading: false,
@@ -46,7 +46,7 @@ export const useTrainingSessionStore = create<TrainingSessionStoreState>()((set,
     set({ inFlight: true, error: null });
     try {
       const data = await startTraining({ period_number: periodNumber });
-      set({ data, inFlight: false });
+      set({ data, inFlight: false, error: null });
       return data;
     } catch (err) {
       set({
@@ -57,7 +57,7 @@ export const useTrainingSessionStore = create<TrainingSessionStoreState>()((set,
     }
   },
 
-  applyState: (next) => set({ data: next }),
+  applyState: (next) => set({ data: next, error: null }),
 
   optimisticAddShot: (claimed) => {
     const cur = get().data;

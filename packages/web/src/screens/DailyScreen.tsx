@@ -15,6 +15,7 @@ import type { Application, Ticker } from 'pixi.js';
 import {
   ArrowLeft,
   ChevronRight,
+  Crosshair,
   Home,
   Info,
   Search,
@@ -206,7 +207,6 @@ const DAILY_HUB_ARTWORK_IMAGES: Record<DailyHubArtwork, string> = {
   start: '/daily-game/start.webp',
 };
 const TRAINING_HITBOX_TOGGLE_STORAGE_KEY = 'hockey.trainingHitboxesVisible';
-const TRAINING_COURT_DESIGN_STORAGE_KEY = 'hockey.trainingCourtDesign';
 const OPPONENT_ONLINE_WINDOW_MS = 2 * 60 * 1000;
 const OPPONENT_RECENT_WINDOW_MS = 5 * 60 * 1000;
 const DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED = 1000;
@@ -306,25 +306,12 @@ function readTrainingHitboxesVisible(): boolean {
   }
 }
 
-function readTrainingCourtDesign(): TrainingCourtDesign {
-  if (typeof window === 'undefined') return 'standard';
-  try {
-    return window.localStorage.getItem(TRAINING_COURT_DESIGN_STORAGE_KEY) === 'long'
-      ? 'long'
-      : 'standard';
-  } catch {
-    return 'standard';
-  }
-}
-
-function saveTrainingCourtDesign(value: TrainingCourtDesign): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(TRAINING_COURT_DESIGN_STORAGE_KEY, value);
-  } catch {
-    // The switch is a local visual aid; storage failure should not block gameplay.
-  }
-}
+const LONG_COURT_RINK_ASPECT_RATIO = '1212 / 2000';
+const LONG_COURT_GAME_LAYER_STYLE: CSSProperties = {
+  top: '24.8%',
+  height: '74.2%',
+  bottom: 'auto',
+};
 
 function shouldReduceMotion(): boolean {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
@@ -1731,11 +1718,7 @@ function ArenaVideoCube({
   );
 }
 
-function ArenaCubeFace({
-  entry,
-}: {
-  entry: ArenaEntry;
-}): JSX.Element {
+function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
   const titleIsLong = entry.title.length > 12;
   const showDuelIdentity = entry.kind === 'duel' && Boolean(entry.opponentName);
 
@@ -2108,7 +2091,8 @@ function arenaDuelCtaLabel(match: AmateurDuelMatch, fallbackNow: number): string
   if (isDuelInviteForMe(match)) return 'Принять вызов';
   if (match.status === 'ready_check' && match.me.state !== 'ready') return 'Готов';
   if (match.status === 'ready_check' && match.me.state === 'ready') return 'Ждём готовность';
-  if (match.status === 'active' && match.opponent.state === 'period_active') return 'Соперник играет';
+  if (match.status === 'active' && match.opponent.state === 'period_active')
+    return 'Соперник играет';
   if (match.me.state === 'break_active') return 'Перерыв';
   if (match.me.state === 'completed' || match.me.state === 'forfeit') return 'Вы сыграли';
   return 'Статус дуэли';
@@ -5059,7 +5043,9 @@ function DuelLockerSlotButton({
       : hasOwnedItems
         ? 'Выбрать'
         : 'Нет купленных';
-  const artwork = activeItem ? artworkForInventoryItem(activeItem) : placeholderArtworkForKind(kind);
+  const artwork = activeItem
+    ? artworkForInventoryItem(activeItem)
+    : placeholderArtworkForKind(kind);
   const hasVisibleEquipment = activeItem !== null || hasBaseEquipment;
 
   return (
@@ -5304,10 +5290,16 @@ function DuelEquipmentDetailsModal({
                     {item.description}
                   </span>
                   <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 12 }}>
-                    <span className="pill" style={{ height: 26, justifyContent: 'center', fontSize: 11 }}>
+                    <span
+                      className="pill"
+                      style={{ height: 26, justifyContent: 'center', fontSize: 11 }}
+                    >
                       {duelInventoryPeriodLabel(item.chargesAvailable)}
                     </span>
-                    <span className="pill" style={{ height: 26, justifyContent: 'center', fontSize: 11 }}>
+                    <span
+                      className="pill"
+                      style={{ height: 26, justifyContent: 'center', fontSize: 11 }}
+                    >
                       Расход {item.duelPeriodCost}/период
                     </span>
                   </span>
@@ -5317,7 +5309,10 @@ function DuelEquipmentDetailsModal({
           })}
 
           {items.length === 0 && (
-            <div className="glass" style={{ borderRadius: 18, padding: 14, display: 'grid', gap: 10 }}>
+            <div
+              className="glass"
+              style={{ borderRadius: 18, padding: 14, display: 'grid', gap: 10 }}
+            >
               <div style={{ color: 'var(--muted)', fontSize: 13, fontWeight: 800 }}>
                 Купленных предметов этого типа пока нет.
               </div>
@@ -5651,9 +5646,7 @@ function AmateurDuelPlayView({
           <div style={{ fontSize: 18, fontWeight: 900, color: 'var(--ink)', marginBottom: 6 }}>
             {match.rules.title}
           </div>
-          <div style={{ color: 'var(--muted)', fontSize: 13, lineHeight: 1.45 }}>
-            {readyLead}
-          </div>
+          <div style={{ color: 'var(--muted)', fontSize: 13, lineHeight: 1.45 }}>{readyLead}</div>
         </div>
         <DuelLoadoutSummary match={match} />
         {error && (
@@ -7338,97 +7331,48 @@ function TrainingHitboxesToggle({
 }): JSX.Element {
   return (
     <label
+      aria-label="Хитбоксы"
+      title="Хитбоксы"
       style={{
         display: 'inline-flex',
         alignItems: 'center',
-        gap: 8,
-        minHeight: 40,
-        padding: '4px 13px',
+        justifyContent: 'center',
+        position: 'relative',
+        width: 34,
+        height: 34,
+        padding: 0,
         borderRadius: 999,
-        background: 'rgba(8, 24, 43, 0.72)',
-        border: '1px solid rgba(255, 255, 255, 0.24)',
-        boxShadow: '0 12px 28px rgba(7, 19, 33, 0.2)',
-        backdropFilter: 'blur(14px)',
-        color: 'rgba(255, 255, 255, 0.88)',
-        fontSize: 11,
-        fontWeight: 900,
-        letterSpacing: 0,
-        lineHeight: 1,
+        background: checked ? 'rgba(8, 24, 43, 0.86)' : 'rgba(255, 255, 255, 0.82)',
+        border: checked
+          ? '1px solid rgba(255, 255, 255, 0.34)'
+          : '1px solid rgba(15, 23, 42, 0.12)',
+        boxShadow: checked
+          ? '0 10px 22px rgba(7, 19, 33, 0.22)'
+          : '0 8px 18px rgba(15, 23, 42, 0.12), inset 0 1px 0 rgba(255,255,255,0.86)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        color: checked ? '#ffffff' : 'rgba(15, 23, 42, 0.68)',
+        cursor: 'pointer',
       }}
     >
       <input
+        aria-label="Хитбоксы"
         type="checkbox"
         checked={checked}
         onChange={(event) => onChange(event.currentTarget.checked)}
         style={{
-          width: 13,
-          height: 13,
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
           margin: 0,
+          opacity: 0,
+          cursor: 'pointer',
           accentColor: '#22cc66',
         }}
       />
-      Хитбоксы
+      <Crosshair aria-hidden="true" size={17} strokeWidth={2.4} />
     </label>
-  );
-}
-
-function TrainingCourtDesignSwitch({
-  value,
-  onChange,
-}: {
-  value: TrainingCourtDesign;
-  onChange: (value: TrainingCourtDesign) => void;
-}): JSX.Element {
-  const options: Array<{ value: TrainingCourtDesign; label: string }> = [
-    { value: 'standard', label: 'Обычная' },
-    { value: 'long', label: 'Длинная' },
-  ];
-
-  return (
-    <div
-      role="group"
-      aria-label="Вариант площадки"
-      style={{
-        display: 'inline-flex',
-        gap: 3,
-        minHeight: 40,
-        padding: 3,
-        borderRadius: 999,
-        background: 'rgba(8, 24, 43, 0.72)',
-        border: '1px solid rgba(255, 255, 255, 0.24)',
-        boxShadow: '0 12px 28px rgba(7, 19, 33, 0.2)',
-        backdropFilter: 'blur(14px)',
-      }}
-    >
-      {options.map((option) => {
-        const active = option.value === value;
-        return (
-          <button
-            key={option.value}
-            type="button"
-            aria-pressed={active}
-            onClick={() => onChange(option.value)}
-            style={{
-              minWidth: 72,
-              minHeight: 34,
-              padding: '0 10px',
-              border: 0,
-              borderRadius: 999,
-              background: active ? 'rgba(255,255,255,0.9)' : 'transparent',
-              color: active ? 'rgba(8, 24, 43, 0.92)' : 'rgba(255,255,255,0.82)',
-              fontFamily: 'inherit',
-              fontSize: 11,
-              fontWeight: 950,
-              lineHeight: 1,
-              whiteSpace: 'nowrap',
-              cursor: 'pointer',
-            }}
-          >
-            {option.label}
-          </button>
-        );
-      })}
-    </div>
   );
 }
 
@@ -7473,8 +7417,8 @@ function TrainingPerspectiveRink({
             position: 'absolute',
             top: 0,
             left: '50%',
-            width: '64.4%',
-            maxWidth: 391,
+            width: '74%',
+            maxWidth: 448,
             transform: 'translateX(-50%)',
             filter: 'drop-shadow(0 18px 24px rgba(3, 10, 18, 0.34))',
           }}
@@ -7599,18 +7543,11 @@ function TrainingPlayView({
   const userRole = useAuthStore((s) => s.user?.role);
   const experimentalTrainingCourt = useAuthStore((s) => s.user?.experimentalTrainingCourt);
   const [hitboxesVisible, setHitboxesVisible] = useState(() => readTrainingHitboxesVisible());
-  const [courtDesign, setCourtDesign] = useState<TrainingCourtDesign>(() =>
-    readTrainingCourtDesign(),
-  );
   const [now, setNow] = useState(Date.now());
-  const canSwitchCourtDesign = userRole === 'admin' || experimentalTrainingCourt === true;
+  const canShowHitboxesToggle = userRole === 'admin' || experimentalTrainingCourt === true;
   const handleHitboxesChange = useCallback((next: boolean): void => {
     setHitboxesVisible(next);
     saveTrainingHitboxesVisible(next);
-  }, []);
-  const handleCourtDesignChange = useCallback((next: TrainingCourtDesign): void => {
-    setCourtDesign(next);
-    saveTrainingCourtDesign(next);
   }, []);
 
   useEffect(() => {
@@ -7666,45 +7603,9 @@ function TrainingPlayView({
         applyState={applyState}
         hitboxesVisible={hitboxesVisible}
         overlayControls={
-          canSwitchCourtDesign ? (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 18,
-                pointerEvents: 'auto',
-              }}
-            >
-              <TrainingHitboxesToggle checked={hitboxesVisible} onChange={handleHitboxesChange} />
-              <TrainingCourtDesignSwitch value={courtDesign} onChange={handleCourtDesignChange} />
-            </div>
+          canShowHitboxesToggle ? (
+            <TrainingHitboxesToggle checked={hitboxesVisible} onChange={handleHitboxesChange} />
           ) : undefined
-        }
-        rinkLayer={
-          <TrainingPerspectiveRink
-            design={courtDesign}
-            cubeHud={
-              courtDesign === 'long' ? (
-                <TrainingCubeScoreboard
-                  period={data.selected_period ?? 1}
-                  periodsTotal={3}
-                  timer={trainingTimer}
-                  timerLabel={trainingTimerLabel}
-                  goals={data.goals}
-                  shots={data.shots_taken}
-                  shotsTotal={data.shots_limit}
-                />
-              ) : undefined
-            }
-          />
-        }
-        rinkAspectRatio={courtDesign === 'long' ? '1212 / 2400' : undefined}
-        hideScoreboard={courtDesign === 'long'}
-        gameLayerStyle={
-          courtDesign === 'long'
-            ? { top: 'calc(31% - 20px)', height: '61.8%', bottom: 'auto' }
-            : undefined
         }
       />
     </>
@@ -7985,13 +7886,13 @@ export function PlayView<TState>({
   submitShot,
   applyState,
   applyResolvedState,
-  rinkLayer = <TrainingPerspectiveRink />,
-  rinkAspectRatio = '1024 / 1428',
+  rinkLayer,
+  rinkAspectRatio = LONG_COURT_RINK_ASPECT_RATIO,
   rinkBorderRadius = 36,
   rinkBorder = '3px solid #1e3a5f',
-  hideScoreboard = false,
+  hideScoreboard = true,
   overlayControls,
-  gameLayerStyle,
+  gameLayerStyle = LONG_COURT_GAME_LAYER_STYLE,
   playerGrip,
   playerOptions = PERSPECTIVE_PLAYER_OPTIONS,
   goalOptions = PERSPECTIVE_GOAL_OPTIONS,
@@ -8051,6 +7952,7 @@ export function PlayView<TState>({
   const initializedRef = useRef(false);
   const [isShowingResult, setIsShowingResult] = useState(false);
   const [isShotInProgress, setIsShotInProgress] = useState(false);
+  const [isShotSubmitPending, setIsShotSubmitPending] = useState(false);
   const [soundToastVisible, setSoundToastVisible] = useState(false);
   const soundToastTimerRef = useRef<number | null>(null);
   const [resultSubText, setResultSubText] = useState<string | null>(null);
@@ -8065,6 +7967,8 @@ export function PlayView<TState>({
   // Server state is held until shot animation ends, so ScoreBoard counters
   // don't jump while the puck is still flying.
   const pendingMidShotApplyRef = useRef<(() => void) | null>(null);
+  const shotAnimationInProgressRef = useRef(false);
+  const shotSubmitPendingRef = useRef(false);
   const [pixiReady, setPixiReady] = useState(false);
   const [isEntrancePlaying, setIsEntrancePlaying] = useState(false);
   const routeCameraRequestedRef = useRef(playRouteTransitionOnMount && !shouldReduceMotion());
@@ -8532,6 +8436,7 @@ export function PlayView<TState>({
     const cur = sessionRef.current;
     if (!loop || !puck || !goalie) return;
     if (puck.isFlying() || puck.isHeld()) return;
+    if (shotSubmitPendingRef.current) return;
     if (!cur.active) return;
     if (!cur.seed) return;
     if (typeof cur.shotsTotal === 'number' && cur.shots >= cur.shotsTotal) return;
@@ -8612,7 +8517,10 @@ export function PlayView<TState>({
     }
 
     optimisticAddShot(result.type);
+    shotSubmitPendingRef.current = true;
+    shotAnimationInProgressRef.current = true;
     setIsShotInProgress(true);
+    setIsShotSubmitPending(true);
     pendingMidShotApplyRef.current = null;
 
     loop.beginShooterPause();
@@ -8650,6 +8558,7 @@ export function PlayView<TState>({
       if (result.type === 'save') goalie.setSavePose(false);
       setIsShowingResult(false);
       setResultDisplayKind(null);
+      shotAnimationInProgressRef.current = false;
       setIsShotInProgress(false);
       const applyPending = pendingMidShotApplyRef.current;
       if (applyPending) {
@@ -8664,8 +8573,15 @@ export function PlayView<TState>({
       claimedResult: result.type,
     }).then((res) => {
       if (!mountedRef.current) return;
+      shotSubmitPendingRef.current = false;
+      setIsShotSubmitPending(false);
       if (res === null) return;
-      pendingMidShotApplyRef.current = () => (applyResolvedState ?? applyState)(res.state);
+      const applyNextState = () => (applyResolvedState ?? applyState)(res.state);
+      if (shotAnimationInProgressRef.current) {
+        pendingMidShotApplyRef.current = applyNextState;
+        return;
+      }
+      applyNextState();
     });
   }, [flightDurationMs, optimisticAddShot, submitShot, applyState, applyResolvedState]);
 
@@ -8679,6 +8595,22 @@ export function PlayView<TState>({
   }, [handleShotTap, inactiveAction]);
 
   const timerValue = timer ?? formatMs(remaining);
+  const effectiveRinkLayer = rinkLayer ?? (
+    <TrainingPerspectiveRink
+      design="long"
+      cubeHud={
+        <TrainingCubeScoreboard
+          period={periodNumber}
+          periodsTotal={periodsTotal}
+          timer={timerValue}
+          timerLabel={timerLabel ?? 'ВРЕМЯ'}
+          goals={goals}
+          shots={shots}
+          shotsTotal={shotsTotal}
+        />
+      }
+    />
+  );
   const routeCameraEase = 'cubic-bezier(.16,.84,.24,1)';
   const routeCameraTransition = `transform ${PLAY_ROUTE_TRANSITION_MS}ms ${routeCameraEase}, filter ${PLAY_ROUTE_TRANSITION_MS}ms ${routeCameraEase}, border-color ${PLAY_ROUTE_TRANSITION_MS}ms ease`;
   const routeChromeTransition =
@@ -8723,24 +8655,6 @@ export function PlayView<TState>({
         overflow: 'hidden',
       }}
     >
-      {overlayControls && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 'calc(var(--app-safe-top) + 30px)',
-            left: 14,
-            right: 14,
-            zIndex: 540,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 18,
-            pointerEvents: 'none',
-          }}
-        >
-          {overlayControls}
-        </div>
-      )}
       <div
         ref={scoreboardShellRef}
         style={{
@@ -8792,7 +8706,7 @@ export function PlayView<TState>({
             ...routeRinkStyle,
           }}
         >
-          {rinkLayer}
+          {effectiveRinkLayer}
           <div
             style={{
               position: 'absolute',
@@ -8803,6 +8717,20 @@ export function PlayView<TState>({
           >
             <PixiStage onReady={handleReady} onResize={handleResize} />
           </div>
+          {overlayControls && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 'clamp(10px, 3.2%, 18px)',
+                left: 'clamp(10px, 3.4%, 18px)',
+                zIndex: 7,
+                pointerEvents: 'auto',
+                ...routeGameStyle,
+              }}
+            >
+              {overlayControls}
+            </div>
+          )}
           {hudAddon && (
             <div
               style={{
@@ -8859,6 +8787,7 @@ export function PlayView<TState>({
             isRouteCameraZoomed ||
             isEntrancePlaying ||
             isShotInProgress ||
+            isShotSubmitPending ||
             isShowingResult ||
             (!active && !inactiveAction) ||
             (typeof shotsTotal === 'number' && shots >= shotsTotal)

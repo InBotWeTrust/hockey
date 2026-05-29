@@ -2,6 +2,25 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './app/App.js';
 
+const LOCAL_DEV_CACHE_RESET_KEY = 'hockey.localDevCacheReset.v1';
+
+if (import.meta.env.DEV && window.location.hostname === '127.0.0.1') {
+  void (async () => {
+    if (window.sessionStorage.getItem(LOCAL_DEV_CACHE_RESET_KEY) === 'done') return;
+    window.sessionStorage.setItem(LOCAL_DEV_CACHE_RESET_KEY, 'done');
+
+    if ('serviceWorker' in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map((registration) => registration.unregister()));
+    }
+    if ('caches' in window) {
+      const keys = await window.caches.keys();
+      await Promise.all(keys.map((key) => window.caches.delete(key)));
+    }
+    window.location.reload();
+  })();
+}
+
 const standaloneMedia = window.matchMedia?.('(display-mode: standalone)').matches ?? false;
 const fullscreenMedia = window.matchMedia?.('(display-mode: fullscreen)').matches ?? false;
 const iosStandalone = Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
