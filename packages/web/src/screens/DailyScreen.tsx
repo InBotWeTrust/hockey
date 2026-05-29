@@ -312,6 +312,7 @@ const LONG_COURT_GAME_LAYER_STYLE: CSSProperties = {
   bottom: 'auto',
 };
 const TRAINING_LED_TABLEAU_IMAGE = '/sprites/wide-tableau-led.webp';
+const DAILY_LONG_COURT_BACKGROUND = '/sprites/daily-long-court-people.webp';
 
 function shouldReduceMotion(): boolean {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
@@ -7001,6 +7002,7 @@ interface PlayViewProps<TState> {
   applyState: (next: TState) => void;
   applyResolvedState?: ((next: TState) => void) | undefined;
   rinkLayer?: ReactNode;
+  longCourtBackground?: string | undefined;
   rinkAspectRatio?: string | undefined;
   rinkBorderRadius?: number | string | undefined;
   rinkBorder?: string | undefined;
@@ -7296,6 +7298,7 @@ function DailyPlayView({
         submitShot={submitShot}
         applyState={applyState}
         applyResolvedState={applyDailyResolvedState}
+        longCourtBackground={DAILY_LONG_COURT_BACKGROUND}
       />
       {statsModal && (
         <DailyGameStatsModal
@@ -7379,9 +7382,11 @@ function TrainingHitboxesToggle({
 function TrainingPerspectiveRink({
   design = 'standard',
   cubeHud,
+  longBackground = TRAINING_LONG_COURT_BACKGROUND,
 }: {
   design?: TrainingCourtDesign | undefined;
   cubeHud?: ReactNode;
+  longBackground?: string | undefined;
 }): JSX.Element {
   const isLong = design === 'long';
   return (
@@ -7399,7 +7404,7 @@ function TrainingPerspectiveRink({
       }}
     >
       <img
-        src={isLong ? TRAINING_LONG_COURT_BACKGROUND : TRAINING_NEW_COURT_BACKGROUND}
+        src={isLong ? longBackground : TRAINING_NEW_COURT_BACKGROUND}
         alt=""
         aria-hidden="true"
         style={{
@@ -7897,6 +7902,7 @@ export function PlayView<TState>({
   applyState,
   applyResolvedState,
   rinkLayer,
+  longCourtBackground,
   rinkAspectRatio = LONG_COURT_RINK_ASPECT_RATIO,
   rinkBorderRadius = 36,
   rinkBorder = '3px solid #1e3a5f',
@@ -8608,6 +8614,7 @@ export function PlayView<TState>({
   const effectiveRinkLayer = rinkLayer ?? (
     <TrainingPerspectiveRink
       design="long"
+      longBackground={longCourtBackground}
       cubeHud={
         <TrainingCubeScoreboard
           period={periodNumber}
