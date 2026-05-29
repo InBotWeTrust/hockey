@@ -816,9 +816,7 @@ function GameHub({
 }): JSX.Element {
   const data = useDailyStore((s) => s.data)!;
   const refresh = useDailyStore((s) => s.refresh);
-  const startDailyPeriod = useDailyStore((s) => s.startPeriod);
   const trainingData = useTrainingSessionStore((s) => s.data);
-  const startTraining = useTrainingSessionStore((s) => s.start);
   const trainingInFlight = useTrainingSessionStore((s) => s.inFlight);
   const [modeInfoModal, setModeInfoModal] = useState<ModeInfoModalContent | null>(null);
   const [duelStatsMatch, setDuelStatsMatch] = useState<AmateurDuelMatch | null>(null);
@@ -970,27 +968,6 @@ function GameHub({
 
   const handleDailyAction = async (): Promise<void> => {
     if (pending || arenaActionId === 'daily' || isArenaLaunching) return;
-    if (
-      data.state === 'idle' &&
-      data.current_period < data.total_periods &&
-      !isDailyLockedByTraining
-    ) {
-      setArenaActionId('daily');
-      try {
-        await runArenaLaunch(
-          'daily',
-          () => startDailyPeriod(),
-          (next) => {
-            if (next?.state === 'period_active') {
-              onOpenDailyPlay({ entrance: true });
-            }
-          },
-        );
-      } finally {
-        setArenaActionId(null);
-      }
-      return;
-    }
     await runArenaLaunch(
       'daily',
       async () => null,
@@ -1003,7 +980,9 @@ function GameHub({
     if (
       isTrainingLockedByDaily ||
       trainingData?.state === 'active' ||
-      trainingData?.state === 'closed'
+      trainingData?.state === 'closed' ||
+      trainingData?.state === 'idle' ||
+      !trainingData
     ) {
       await runArenaLaunch(
         'training',
@@ -1012,23 +991,11 @@ function GameHub({
       );
       return;
     }
-    setArenaActionId('training');
-    try {
-      const periodNumber = trainingData?.selected_period ?? 1;
-      await runArenaLaunch(
-        'training',
-        () => startTraining(periodNumber),
-        (next) => {
-          if (next?.state === 'active') {
-            onOpenTrainingPlay({ entrance: true });
-          } else {
-            onOpenTraining();
-          }
-        },
-      );
-    } finally {
-      setArenaActionId(null);
-    }
+    await runArenaLaunch(
+      'training',
+      async () => null,
+      () => onOpenTraining(),
+    );
   };
 
   const handleOpenDuel = async (event: AmateurDuelMatch): Promise<void> => {
@@ -2957,7 +2924,6 @@ function TrainingPlaceholder({
   const error = useTrainingSessionStore((s) => s.error);
   const inFlight = useTrainingSessionStore((s) => s.inFlight);
   const refresh = useTrainingSessionStore((s) => s.refresh);
-  const start = useTrainingSessionStore((s) => s.start);
   const [selectedPeriod, setSelectedPeriod] = useState<1 | 2 | 3>(1);
   const [playTraining, setPlayTraining] = useState(false);
   const [localPlayEntrance, setLocalPlayEntrance] = useState(false);
@@ -2990,7 +2956,7 @@ function TrainingPlaceholder({
   const nextDayRemaining = Math.max(0, nextDayAt - now);
   const canConfigureTraining = !data || data.state === 'idle' || data.state === 'active';
   const trainingActionLabel =
-    data?.state === 'active' ? 'Продолжить тренировку' : 'Начать тренировку';
+    data?.state === 'active' ? 'Продолжить тренировку' : 'На площадку';
 
   useEffect(() => {
     if (!data) return undefined;
@@ -3008,18 +2974,16 @@ function TrainingPlaceholder({
   }, [data?.next_day_starts_at, nextDayAt, nextDayRemaining, now, refresh]);
 
   const handleTrainingAction = async (): Promise<void> => {
-    const next = await start(selectedPeriod);
-    if (next?.state === 'active') {
-      setLocalPlayEntrance(data?.state !== 'active');
-      setPlayTraining(true);
-      onPlayStart?.();
-    }
+    setLocalPlayEntrance(false);
+    setPlayTraining(true);
+    onPlayStart?.();
   };
 
   if (data && playTraining) {
     const shouldPlayEntrance = playEntranceOnStart || localPlayEntrance;
     return (
       <TrainingPlayView
+        selectedPeriod={selectedPeriod}
         onBack={() => {
           setLocalPlayEntrance(false);
           setPlayTraining(false);
@@ -6635,7 +6599,8 @@ interface PlayViewProps<TState> {
   timer?: string | undefined;
   timerLabel?: string | undefined;
   shotButtonLabel?: string | undefined;
-  inactiveAction?: (() => void | Promise<void>) | undefined;
+  inactiveAction?: (() => unknown | Promise<unknown>) | undefined;
+  entranceBeforeInactiveAction?: boolean | undefined;
   backLabel?: string | undefined;
   bottomInset?: string | undefined;
   sessionStartedAt?: string | null | undefined;
@@ -6862,6 +6827,10 @@ function DailyPlayView({
   const canStartPeriod = rawCanStartPeriod && !isDailyLockedByTraining;
   const shouldSuppressRink = data.state !== 'period_active' || hasStatsModal;
   const shouldShowIceCar = isBreak || isClosed || hasStatsModal || isDailyLockedByTraining;
+  const handleStartPeriod = useCallback(async (): Promise<DailyStateResponse | null> => {
+    if (!canStartPeriod || pending) return null;
+    return startPeriod();
+  }, [canStartPeriod, pending, startPeriod]);
 
   useEffect(() => {
     if ((!isBreak || !breakEndsAt) && !isClosed && !isDailyLockedByTraining) return undefined;
@@ -6936,12 +6905,18 @@ function DailyPlayView({
                 : undefined
         }
         shotButtonLabel={
-          isBreak || isDailyLockedByTraining
+          canStartPeriod
+            ? pending
+              ? 'НАЧИНАЕМ...'
+              : 'НАЧАТЬ'
+            : isBreak || isDailyLockedByTraining
             ? 'ЛЁД ГОТОВИТСЯ'
             : isClosed
               ? 'ИГРА ЗАВЕРШЕНА'
               : undefined
         }
+        inactiveAction={canStartPeriod ? handleStartPeriod : undefined}
+        entranceBeforeInactiveAction={true}
         periodEndsAt={data.state === 'period_active' ? periodEndsAt : undefined}
         onTimerExpired={refresh}
         optimisticAddShot={optimisticAddShot}
@@ -6958,17 +6933,6 @@ function DailyPlayView({
           ariaLabel={statsModal.state === 'closed' ? 'Игра завершена' : 'Итоги ежедневной игры'}
           closeLabel="Понятно"
           onClose={handleStatsModalClose}
-        />
-      )}
-      {canStartPeriod && !hasStatsModal && (
-        <StartPeriodModal
-          nextPeriod={periodNumber}
-          totalPeriods={data.total_periods}
-          shotsPerPeriod={data.shots_per_period}
-          isFirstPeriod={data.current_period === 0}
-          pending={pending}
-          onHome={onBack}
-          onStart={() => void startPeriod()}
         />
       )}
     </>
@@ -7192,18 +7156,22 @@ function TrainingCubeScoreboard({
 
 function TrainingPlayView({
   onBack,
+  selectedPeriod = 1,
   playEntranceOnMount = false,
   onEntranceConsumed,
   playRouteTransitionOnMount = false,
   onRouteTransitionConsumed,
 }: {
   onBack: () => void;
+  selectedPeriod?: 1 | 2 | 3;
   playEntranceOnMount?: boolean;
   onEntranceConsumed?: () => void;
   playRouteTransitionOnMount?: boolean;
   onRouteTransitionConsumed?: (() => void) | undefined;
 }): JSX.Element | null {
   const data = useTrainingSessionStore((s) => s.data);
+  const dailyData = useDailyStore((s) => s.data);
+  const start = useTrainingSessionStore((s) => s.start);
   const optimisticAddShot = useTrainingSessionStore((s) => s.optimisticAddShot);
   const submitShot = useTrainingSessionStore((s) => s.submitShot);
   const applyState = useTrainingSessionStore((s) => s.applyState);
@@ -7227,24 +7195,31 @@ function TrainingPlayView({
 
   const isTrainingActive = data.state === 'active';
   const isTrainingClosed = data.state === 'closed';
+  const isTrainingLockedByDaily =
+    dailyData?.state === 'period_active' ||
+    dailyData?.state === 'break_active' ||
+    (dailyData?.state === 'idle' &&
+      dailyData.current_period > 0 &&
+      dailyData.current_period < dailyData.total_periods);
+  const canStartTraining = data.state === 'idle' && !isTrainingLockedByDaily;
   const nextDayAt = new Date(data.next_day_starts_at).getTime();
   const nextDayRemaining = Math.max(0, nextDayAt - now);
   const trainingTimer = isTrainingClosed
     ? formatHms(nextDayRemaining)
-    : isTrainingActive
-      ? String(data.shots_limit)
-      : '--:--';
+    : String(data.shots_limit);
   const trainingTimerLabel = isTrainingClosed
     ? 'ДО ОБНОВЛЕНИЯ'
-    : isTrainingActive
-      ? 'ЛИМИТ'
-      : 'НЕДОСТУПНО';
+    : 'ЛИМИТ';
+  const handleStartTraining = useCallback(async (): Promise<TrainingStateResponse | null> => {
+    if (!canStartTraining) return null;
+    return start(selectedPeriod);
+  }, [canStartTraining, selectedPeriod, start]);
 
   return (
     <>
       <PlayView<TrainingStateResponse>
         suppressedByModal={!isTrainingActive}
-        showIceCar={!isTrainingActive}
+        showIceCar={isTrainingClosed || isTrainingLockedByDaily}
         playEntranceOnMount={isTrainingActive ? playEntranceOnMount : false}
         onEntranceConsumed={onEntranceConsumed}
         playRouteTransitionOnMount={playRouteTransitionOnMount}
@@ -7253,7 +7228,7 @@ function TrainingPlayView({
         active={isTrainingActive}
         seed={data.training_seed}
         goalieId={data.goalie_id}
-        periodNumber={data.selected_period ?? 1}
+        periodNumber={data.selected_period ?? selectedPeriod}
         periodSpeedPresets={data.period_speed_presets}
         sessionStartedAt={data.started_at}
         serverNow={data.server_now}
@@ -7263,7 +7238,17 @@ function TrainingPlayView({
         shotsTotal={data.shots_limit}
         timer={trainingTimer}
         timerLabel={trainingTimerLabel}
-        shotButtonLabel={isTrainingActive ? undefined : 'ЛЁД ГОТОВИТСЯ'}
+        shotButtonLabel={
+          isTrainingActive
+            ? undefined
+            : canStartTraining
+              ? 'НАЧАТЬ'
+              : isTrainingLockedByDaily
+                ? 'ЛЁД ГОТОВИТСЯ'
+                : 'ТРЕНИРОВКА ЗАВЕРШЕНА'
+        }
+        inactiveAction={canStartTraining ? handleStartTraining : undefined}
+        entranceBeforeInactiveAction={true}
         backLabel="К тренировке"
         optimisticAddShot={optimisticAddShot}
         submitShot={submitShot}
@@ -7542,6 +7527,7 @@ export function PlayView<TState>({
   timerLabel,
   shotButtonLabel = 'БРОСОК',
   inactiveAction,
+  entranceBeforeInactiveAction = false,
   backLabel = 'К режимам',
   bottomInset = 'calc(8px + max(20px, var(--app-safe-bottom)))',
   sessionStartedAt,
@@ -7613,6 +7599,7 @@ export function PlayView<TState>({
   const entranceRafRef = useRef<number | null>(null);
   const routeCameraRafRef = useRef<number | null>(null);
   const routeBackTimeoutRef = useRef<number | null>(null);
+  const skipNextUnsuppressedEntranceRef = useRef(false);
   const iceCarRef = useRef<IceCar | null>(null);
   const iceCarRafRef = useRef<number | null>(null);
   const shotTimeoutsRef = useRef<number[]>([]);
@@ -7621,6 +7608,7 @@ export function PlayView<TState>({
   const [isShowingResult, setIsShowingResult] = useState(false);
   const [isShotInProgress, setIsShotInProgress] = useState(false);
   const [isShotSubmitPending, setIsShotSubmitPending] = useState(false);
+  const [isInactiveActionPending, setIsInactiveActionPending] = useState(false);
   const [soundToastVisible, setSoundToastVisible] = useState(false);
   const soundToastTimerRef = useRef<number | null>(null);
   const [resultSubText, setResultSubText] = useState<string | null>(null);
@@ -7861,75 +7849,97 @@ export function PlayView<TState>({
     };
   }, []);
 
-  const startEntranceAnimation = useCallback((loop: GameLoop, ticker: Ticker): void => {
-    if (entranceRafRef.current !== null) {
-      cancelAnimationFrame(entranceRafRef.current);
-      entranceRafRef.current = null;
-    }
-    const goal = goalRef.current;
-    const player = playerRef.current;
-    const goalie = goalieRef.current;
-    const puck = puckRef.current;
-    if (!goal || !player || !goalie || !puck) return;
+  const startEntranceAnimation = useCallback(
+    (
+      loop: GameLoop,
+      ticker: Ticker,
+      options: { attachOnComplete?: boolean } = {},
+    ): Promise<void> =>
+      new Promise((resolve) => {
+        if (entranceRafRef.current !== null) {
+          cancelAnimationFrame(entranceRafRef.current);
+          entranceRafRef.current = null;
+        }
+        const goal = goalRef.current;
+        const player = playerRef.current;
+        const goalie = goalieRef.current;
+        const puck = puckRef.current;
+        if (!goal || !player || !goalie || !puck) {
+          resolve();
+          return;
+        }
 
-    loop.detach();
-    setIsEntrancePlaying(true);
+        loop.detach();
+        setIsEntrancePlaying(true);
 
-    const ENTRY_DURATION_MS = 1400;
-    const CENTER_RED_Y = 350;
-    const ENTRY_X = RINK.width + 50;
-    const goalieStartX = ENTRY_X;
-    const goalieStartY = CENTER_RED_Y - 30;
-    const playerStartX = ENTRY_X;
-    const playerStartY = CENTER_RED_Y + 30;
-    const goalStartOffsetY = -140;
-    const t0 = performance.now();
+        const attachOnComplete = options.attachOnComplete ?? true;
+        const ENTRY_DURATION_MS = 1400;
+        const CENTER_RED_Y = 350;
+        const ENTRY_X = RINK.width + 50;
+        const goalieStartX = ENTRY_X;
+        const goalieStartY = CENTER_RED_Y - 30;
+        const playerStartX = ENTRY_X;
+        const playerStartY = CENTER_RED_Y + 30;
+        const goalStartOffsetY = -140;
+        const t0 = performance.now();
 
-    goal.container.visible = true;
-    player.container.visible = true;
-    goalie.container.visible = true;
-    puck.container.visible = false;
+        goal.container.visible = true;
+        player.container.visible = true;
+        goalie.container.visible = true;
+        puck.container.visible = false;
 
-    const drawAt = (gx: number, gy: number, px: number, py: number, goalOffsetY: number): void => {
-      goal.update(scaleRef.current, 0, goalOffsetY);
-      player.update(scaleRef.current, px, py);
-      goalie.update(
-        {
-          position: { x: gx, y: gy },
-          width: GOALIE_SIZE.width,
-          height: GOALIE_SIZE.height,
-        },
-        scaleRef.current,
-      );
-    };
+        const drawAt = (
+          gx: number,
+          gy: number,
+          px: number,
+          py: number,
+          goalOffsetY: number,
+        ): void => {
+          goal.update(scaleRef.current, 0, goalOffsetY);
+          player.update(scaleRef.current, px, py);
+          goalie.update(
+            {
+              position: { x: gx, y: gy },
+              width: GOALIE_SIZE.width,
+              height: GOALIE_SIZE.height,
+            },
+            scaleRef.current,
+          );
+        };
 
-    drawAt(goalieStartX, goalieStartY, playerStartX, playerStartY, goalStartOffsetY);
+        drawAt(goalieStartX, goalieStartY, playerStartX, playerStartY, goalStartOffsetY);
 
-    const step = (): void => {
-      if (!mountedRef.current) return;
-      const t = Math.min(1, (performance.now() - t0) / ENTRY_DURATION_MS);
-      const eased = 1 - Math.pow(1 - t, 3);
-      drawAt(
-        goalieStartX + (SHOOTER_CENTER_X - goalieStartX) * eased,
-        goalieStartY + (GOALIE_Y - goalieStartY) * eased,
-        playerStartX + (SHOOTER_CENTER_X - playerStartX) * eased,
-        playerStartY + (PUCK_START.y - playerStartY) * eased,
-        goalStartOffsetY * (1 - eased),
-      );
-      if (t < 1) {
+        const step = (): void => {
+          if (!mountedRef.current) {
+            resolve();
+            return;
+          }
+          const t = Math.min(1, (performance.now() - t0) / ENTRY_DURATION_MS);
+          const eased = 1 - Math.pow(1 - t, 3);
+          drawAt(
+            goalieStartX + (SHOOTER_CENTER_X - goalieStartX) * eased,
+            goalieStartY + (GOALIE_Y - goalieStartY) * eased,
+            playerStartX + (SHOOTER_CENTER_X - playerStartX) * eased,
+            playerStartY + (PUCK_START.y - playerStartY) * eased,
+            goalStartOffsetY * (1 - eased),
+          );
+          if (t < 1) {
+            entranceRafRef.current = requestAnimationFrame(step);
+            return;
+          }
+          entranceRafRef.current = null;
+          goal.update(scaleRef.current, 0, 0);
+          puck.container.visible = true;
+          loop.resetTime();
+          if (attachOnComplete) loop.attach(ticker);
+          setIsEntrancePlaying(false);
+          resolve();
+        };
+
         entranceRafRef.current = requestAnimationFrame(step);
-        return;
-      }
-      entranceRafRef.current = null;
-      goal.update(scaleRef.current, 0, 0);
-      puck.container.visible = true;
-      loop.resetTime();
-      loop.attach(ticker);
-      setIsEntrancePlaying(false);
-    };
-
-    entranceRafRef.current = requestAnimationFrame(step);
-  }, []);
+      }),
+    [],
+  );
 
   const handleReady = useCallback(
     (app: Application, initialScale: Scale): void => {
@@ -8020,7 +8030,7 @@ export function PlayView<TState>({
         iceCar.container.visible = false;
         if (playEntranceOnMountRef.current && sessionRef.current.active) {
           onEntranceConsumedRef.current?.();
-          startEntranceAnimation(loop, app.ticker);
+          void startEntranceAnimation(loop, app.ticker);
         } else {
           loop.attach(app.ticker);
         }
@@ -8065,7 +8075,17 @@ export function PlayView<TState>({
     }
 
     stopIceCarLoop(iceCarRef, iceCarRafRef);
-    startEntranceAnimation(loop, ticker);
+    if (skipNextUnsuppressedEntranceRef.current) {
+      skipNextUnsuppressedEntranceRef.current = false;
+      goal.container.visible = true;
+      player.container.visible = true;
+      goalie.container.visible = true;
+      puck.container.visible = true;
+      loop.resetTime();
+      loop.attach(ticker);
+      return;
+    }
+    void startEntranceAnimation(loop, ticker);
     return () => {
       if (entranceRafRef.current !== null) {
         cancelAnimationFrame(entranceRafRef.current);
@@ -8244,14 +8264,43 @@ export function PlayView<TState>({
     });
   }, [flightDurationMs, optimisticAddShot, submitShot, applyState, applyResolvedState]);
 
+  const handleInactiveAction = useCallback(async (): Promise<void> => {
+    if (!inactiveAction || isInactiveActionPending) return;
+    setIsInactiveActionPending(true);
+    try {
+      const loop = loopRef.current;
+      const ticker = tickerRef.current;
+      if (entranceBeforeInactiveAction && loop && ticker) {
+        skipNextUnsuppressedEntranceRef.current = true;
+        await startEntranceAnimation(loop, ticker, { attachOnComplete: false });
+      }
+      const result = await inactiveAction();
+      if (entranceBeforeInactiveAction && result == null) {
+        skipNextUnsuppressedEntranceRef.current = false;
+        loop?.detach();
+        goalRef.current?.update(scaleRef.current, 0);
+        if (playerRef.current) playerRef.current.container.visible = false;
+        if (goalieRef.current) goalieRef.current.container.visible = false;
+        if (puckRef.current) puckRef.current.container.visible = false;
+      }
+    } finally {
+      setIsInactiveActionPending(false);
+    }
+  }, [
+    entranceBeforeInactiveAction,
+    inactiveAction,
+    isInactiveActionPending,
+    startEntranceAnimation,
+  ]);
+
   const handlePrimaryTap = useCallback((): void => {
     const cur = sessionRef.current;
     if (!cur.active && inactiveAction) {
-      void inactiveAction();
+      void handleInactiveAction();
       return;
     }
     handleShotTap();
-  }, [handleShotTap, inactiveAction]);
+  }, [handleInactiveAction, handleShotTap, inactiveAction]);
 
   const timerValue = timer ?? formatMs(remaining);
   const effectiveRinkLayer = rinkLayer ?? (
@@ -8446,6 +8495,7 @@ export function PlayView<TState>({
             (suppressedByModal && !inactiveAction) ||
             isRouteCameraZoomed ||
             isEntrancePlaying ||
+            isInactiveActionPending ||
             isShotInProgress ||
             isShotSubmitPending ||
             isShowingResult ||
