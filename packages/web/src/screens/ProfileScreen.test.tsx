@@ -151,7 +151,7 @@ function mockProfileFetch(
   profile: typeof telegramProfile,
   inventory: InventoryState = emptyInventoryState,
 ) {
-  return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+  return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, _init) => {
     const url = getFetchUrl(input);
     if (url.endsWith('/api/me')) {
       return new Response(JSON.stringify(profile), {
