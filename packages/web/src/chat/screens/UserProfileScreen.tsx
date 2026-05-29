@@ -245,7 +245,6 @@ export function UserProfileScreen(): JSX.Element {
               onClose={() => setDuelPickerOpen(false)}
               onCreated={() => {
                 setDuelPickerOpen(false);
-                navigate('/?view=amateur');
               }}
             />
           )}

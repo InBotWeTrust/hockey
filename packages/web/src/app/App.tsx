@@ -7,6 +7,7 @@ import { LoginScreen } from '../screens/LoginScreen.js';
 import { PrivateRoute } from '../auth/PrivateRoute.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { BottomNav, isBottomNavVisible } from '../components/BottomNav.js';
+import { DuelInviteToast } from '../components/DuelInviteToast.js';
 import { UpdatePrompt } from '../components/UpdatePrompt.js';
 import { OfflineBanner } from '../chat/components/OfflineBanner.js';
 import { useChatSocket } from '../chat/useChatSocket.js';
@@ -101,6 +102,7 @@ function AppFrame(): JSX.Element {
   return (
     <>
       <ChatRealtime />
+      <DuelInviteToast />
       <div
         className={`app-shell${bottomNavVisible ? ' app-shell--bottom-nav-visible' : ''}`}
         style={{

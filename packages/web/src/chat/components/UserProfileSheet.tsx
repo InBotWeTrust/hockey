@@ -260,8 +260,6 @@ export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JS
             onClose={() => setDuelPickerOpen(false)}
             onCreated={() => {
               setDuelPickerOpen(false);
-              navigate('/?view=amateur');
-              onClose();
             }}
           />
         )}

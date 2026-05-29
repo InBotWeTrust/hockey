@@ -245,7 +245,10 @@ describe('UserProfileSheet', () => {
         opponent_user_id: 'u1',
       }),
     );
-    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Выбор типа дуэли' })).not.toBeInTheDocument(),
+    );
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it('clicking the backdrop calls onClose', () => {

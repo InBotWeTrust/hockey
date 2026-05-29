@@ -117,6 +117,51 @@ describe('BottomNav remembered navigation', () => {
     expect(screen.queryByRole('button', { name: 'Игра' })).toBeNull();
   });
 
+  it('shows a game badge only for actionable duel events', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/duel/amateur/events')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              events: [
+                {
+                  id: 'incoming',
+                  status: 'invited',
+                  starts_at: '2026-05-29T10:00:00.000Z',
+                  ends_at: '2026-05-29T11:00:00.000Z',
+                  server_now: '2026-05-29T10:00:00.000Z',
+                  me: { side: 'opponent', state: 'invited' },
+                  opponent: { state: 'invited' },
+                },
+                {
+                  id: 'waiting',
+                  status: 'invited',
+                  starts_at: '2026-05-29T10:00:00.000Z',
+                  ends_at: '2026-05-29T11:00:00.000Z',
+                  server_now: '2026-05-29T10:00:00.000Z',
+                  me: { side: 'challenger', state: 'invited' },
+                  opponent: { state: 'invited' },
+                },
+              ],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+
+    renderBottomNav('/profile');
+
+    expect(await screen.findByLabelText('События игры: 1')).toHaveTextContent('1');
+  });
+
   it('refreshes missing grip for persisted auth sessions', async () => {
     vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
       const url = String(input);

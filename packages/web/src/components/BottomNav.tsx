@@ -3,6 +3,7 @@ import { useLocation, useNavigate, type Location } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Gamepad2, MessageCircle, Package, ShieldCheck, User } from 'lucide-react';
 import { apiFetch } from '../api/apiFetch.js';
+import { fetchAmateurEvents, type AmateurDuelMatch } from '../api/amateurDuel.js';
 import { useAuthStore } from '../auth/authStore.js';
 import type { AuthUser } from '../auth/authStore.js';
 import { fetchUnreadCounts } from '../chat/api.js';
@@ -17,6 +18,19 @@ const LAST_CHAT_ROUTE_KEY = 'hockey.nav.lastChatRoute';
 const DEFAULT_GAME_ROUTE = '/?view=arena';
 const DEFAULT_CHAT_ROUTE = '/chat';
 export const ADMIN_NAV_HOME_EVENT = 'hockey:admin-nav-home';
+
+function isActionableDuelEvent(match: AmateurDuelMatch): boolean {
+  if (match.status === 'invited') {
+    return match.me.side === 'opponent' && match.me.state === 'invited';
+  }
+  if (match.status === 'ready_check') {
+    return match.me.state !== 'ready' || match.opponent.state === 'ready';
+  }
+  if (match.status === 'active') {
+    return match.me.state === 'accepted' || match.me.state === 'period_active';
+  }
+  return false;
+}
 
 function routeFromLocation(location: ReturnType<typeof useLocation>): string {
   return `${location.pathname}${location.search}${location.hash}`;
@@ -106,6 +120,12 @@ export function BottomNav(): JSX.Element | null {
     queryFn: fetchUnreadCounts,
     enabled: Boolean(user) && !isDemo,
   });
+  const { data: amateurEvents } = useQuery({
+    queryKey: ['amateur-duel', 'events'],
+    queryFn: fetchAmateurEvents,
+    enabled: Boolean(user) && !isDemo,
+    refetchInterval: 15_000,
+  });
   const { data: refreshedUser } = useQuery<AuthUser>({
     queryKey: ['auth', 'me-role'],
     queryFn: () => apiFetch<AuthUser>('/me'),
@@ -155,6 +175,7 @@ export function BottomNav(): JSX.Element | null {
   const isAdmin = location.pathname.startsWith('/admin');
   const isChat = !isDemo && isChatRoute(location.pathname);
   const showAdmin = !isDemo && user?.role === 'admin';
+  const gameActionCount = (amateurEvents?.events ?? []).filter(isActionableDuelEvent).length;
   const inactiveIconColor = isDemo ? 'rgba(71, 85, 105, 0.48)' : 'var(--muted)';
   const openLastGameRoute = (): void => {
     rememberRoute(LAST_GAME_ROUTE_KEY, DEFAULT_GAME_ROUTE);
@@ -220,11 +241,37 @@ export function BottomNav(): JSX.Element | null {
           disabled={isDemo}
           active={isGame}
           icon={
-            <Gamepad2
-              size={ICON_SIZE}
-              color={isGame ? '#ffffff' : inactiveIconColor}
-              strokeWidth={2}
-            />
+            <span style={{ position: 'relative', display: 'inline-flex' }}>
+              <Gamepad2
+                size={ICON_SIZE}
+                color={isGame ? '#ffffff' : inactiveIconColor}
+                strokeWidth={2}
+              />
+              {!isDemo && gameActionCount > 0 && (
+                <span
+                  aria-label={`События игры: ${gameActionCount}`}
+                  style={{
+                    position: 'absolute',
+                    top: -4,
+                    right: -6,
+                    minWidth: 16,
+                    height: 16,
+                    padding: '0 4px',
+                    borderRadius: 999,
+                    background: 'rgb(220, 38, 38)',
+                    color: '#ffffff',
+                    fontSize: 9,
+                    fontWeight: 800,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 0 0 2px rgba(218, 230, 246, 0.96)',
+                  }}
+                >
+                  {gameActionCount > 9 ? '9+' : gameActionCount}
+                </span>
+              )}
+            </span>
           }
           onClick={openLastGameRoute}
         />

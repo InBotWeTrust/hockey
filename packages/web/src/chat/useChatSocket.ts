@@ -8,6 +8,13 @@ import { chatKeys } from '../lib/queryKeys.js';
 import { applyReactionEventToMessage } from './reactionsState.js';
 import type { ChatDTO, ChatEvent, ChatMessageDTO } from './api.js';
 
+export const DUEL_INVITE_RECEIVED_EVENT = 'hockey:duel-invite-received';
+
+export interface DuelInviteReceivedDetail {
+  chatId: string;
+  message: ChatMessageDTO;
+}
+
 interface InfinitePages {
   pages: ChatMessageDTO[][];
   pageParams: unknown[];
@@ -40,8 +47,7 @@ function applyMessageNewToChatList(
     const next = old.map((chat) => {
       if (chat.id !== chatId) return chat;
       touched = true;
-      const shouldIncrementUnread =
-        !silent && msg.senderId !== meId && activeChatId !== chatId;
+      const shouldIncrementUnread = !silent && msg.senderId !== meId && activeChatId !== chatId;
       return {
         ...chat,
         lastMessageAt: msg.createdAt,
@@ -181,6 +187,23 @@ function applyReactionEvent(
   });
 }
 
+function isDuelInviteMessage(message: ChatMessageDTO): boolean {
+  return (
+    typeof message.metadata === 'object' &&
+    message.metadata !== null &&
+    'type' in message.metadata &&
+    message.metadata.type === 'amateur_duel_invite'
+  );
+}
+
+function emitDuelInviteReceived(chatId: string, message: ChatMessageDTO): void {
+  window.dispatchEvent(
+    new CustomEvent<DuelInviteReceivedDetail>(DUEL_INVITE_RECEIVED_EVENT, {
+      detail: { chatId, message },
+    }),
+  );
+}
+
 export function useChatSocket(): ChatSocketStatus {
   const qc = useQueryClient();
   const accessToken = useAuthStore((s) => s.accessToken);
@@ -219,6 +242,13 @@ export function useChatSocket(): ChatSocketStatus {
               event.silent === true,
             );
             applyMessageNew(qc, event.chatId, event.message);
+            if (
+              event.message.senderId !== meId &&
+              useChatStore.getState().activeChatId !== event.chatId &&
+              isDuelInviteMessage(event.message)
+            ) {
+              emitDuelInviteReceived(event.chatId, event.message);
+            }
             return;
           case 'message:deleted':
             applyMessageDeleted(qc, event.chatId, event.messageId);

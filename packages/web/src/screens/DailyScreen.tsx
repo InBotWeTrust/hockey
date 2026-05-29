@@ -121,6 +121,7 @@ import {
   challengeAmateurDuel,
   acceptAmateurDuel,
   cancelAmateurDuel,
+  declineAmateurDuel,
   fetchAmateurEvents,
   fetchAmateurMatch,
   fetchAmateurMatches,
@@ -133,6 +134,8 @@ import {
   settleAmateurDuel,
   startAmateurDuelPeriod,
   type AmateurDuelKind,
+  type AmateurDuelInventoryAvailabilityItem,
+  type AmateurDuelLoadoutSelection,
   type AmateurDuelMatch,
   type AmateurDuelMatchState,
   type AmateurDuelPeriodLog,
@@ -170,6 +173,7 @@ interface ArenaEntry {
   opponentName?: string;
   opponentAvatarUrl?: string | null;
   typeLabel?: string;
+  secondaryActions?: ReactNode;
   onEnter: () => void;
 }
 export type PlayShotResolver = (context: {
@@ -629,7 +633,7 @@ export function DailyScreen(): JSX.Element {
             }}
             onOpenMatch={(matchId) => {
               setActiveAmateurMatchId(matchId);
-              navigate(`/?view=amateur&match=${encodeURIComponent(matchId)}`, {
+              navigate(`/?view=amateur&match=${encodeURIComponent(matchId)}&play=1`, {
                 replace: true,
               });
             }}
@@ -814,6 +818,7 @@ function GameHub({
   onOpenTrainingPlay: (options?: PlayOpenOptions) => void;
   onOpenAmateurMatch: (matchId: string, options?: PlayOpenOptions) => void;
 }): JSX.Element {
+  const queryClient = useQueryClient();
   const data = useDailyStore((s) => s.data)!;
   const refresh = useDailyStore((s) => s.refresh);
   const trainingData = useTrainingSessionStore((s) => s.data);
@@ -1004,47 +1009,12 @@ function GameHub({
     try {
       await runArenaLaunch(
         `duel-${event.id}`,
-        async () => {
-          let entrance = false;
-          let latest: AmateurDuelMatch | AmateurDuelMatchState = event;
-
-          if (latest.status === 'invited' && latest.me.state === 'invited') {
-            latest = (await acceptAmateurDuel(latest.id)).match;
-          }
-
-          if (latest.status === 'ready_check' && latest.me.state !== 'ready') {
-            latest = (await readyAmateurDuel(latest.id, {})).match;
-          }
-
-          const nowMs = duelMatchNowMs(latest, Date.now());
-          if (canStartArenaDuelPeriod(latest, nowMs)) {
-            latest = (await startAmateurDuelPeriod(latest.id)).match;
-            entrance = true;
-          }
-
-          if (latest.me.state !== 'period_active') {
-            return {
-              matchId: latest.id,
-              entrance: false,
-              playable: false,
-            };
-          }
-
-          return {
-            matchId: latest.id,
-            entrance,
-            playable: true,
-          };
-        },
-        ({ matchId, entrance, playable }) => {
-          if (!playable) {
-            onOpenAmateurMatch(matchId, {
-              entrance: false,
-              directPlay: true,
-            });
-            return;
-          }
-          onOpenAmateurMatch(matchId, { entrance, directPlay: true });
+        async () => event.id,
+        (matchId) => {
+          onOpenAmateurMatch(matchId, {
+            entrance: false,
+            directPlay: true,
+          });
         },
       );
     } catch (err) {
@@ -1056,6 +1026,35 @@ function GameHub({
       setArenaActionId(null);
     }
   };
+
+  const acceptArenaDuelMut = useMutation({
+    mutationFn: (matchId: string) => acceptAmateurDuel(matchId),
+    onSuccess: (_res, matchId) => {
+      void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+      onOpenAmateurMatch(matchId, { entrance: false, directPlay: true });
+    },
+    onError: (err) => {
+      setModeInfoModal({
+        title: 'Не удалось принять дуэль',
+        text: err instanceof Error ? err.message : 'Попробуйте ещё раз.',
+      });
+      void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+    },
+  });
+
+  const declineArenaDuelMut = useMutation({
+    mutationFn: (matchId: string) => declineAmateurDuel(matchId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+    },
+    onError: (err) => {
+      setModeInfoModal({
+        title: 'Не удалось отклонить дуэль',
+        text: err instanceof Error ? err.message : 'Попробуйте ещё раз.',
+      });
+      void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+    },
+  });
 
   const dailyArenaEntry: ArenaEntry = {
     id: 'daily',
@@ -1102,6 +1101,10 @@ function GameHub({
   };
   const duelArenaEntries = activeDuelEvents.map<ArenaEntry>((event) => {
     const timing = duelEventTiming(event, now);
+    const isIncomingInvite = isDuelInviteForMe(event);
+    const invitePending =
+      (acceptArenaDuelMut.isPending && acceptArenaDuelMut.variables === event.id) ||
+      (declineArenaDuelMut.isPending && declineArenaDuelMut.variables === event.id);
     return {
       id: `duel-${event.id}`,
       kind: 'duel',
@@ -1110,10 +1113,44 @@ function GameHub({
       subtitle: duelOutcomeText(event),
       meta: `${timing.label}: ${timing.value}`,
       ctaLabel: arenaDuelCtaLabel(event, now),
-      disabled: arenaActionId === `duel-${event.id}` || isArenaLaunching,
+      disabled:
+        isIncomingInvite ||
+        arenaActionId === `duel-${event.id}` ||
+        isArenaLaunching ||
+        invitePending,
       opponentName: event.opponent.display_name,
       opponentAvatarUrl: event.opponent.avatar_url,
       typeLabel: duelKindText(event.rules.duelKind),
+      secondaryActions: isIncomingInvite ? (
+        <div
+          style={{
+            width: '78%',
+            margin: '0 auto',
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: 8,
+          }}
+        >
+          <button
+            type="button"
+            className="btn btn--ghost"
+            disabled={invitePending}
+            onClick={() => declineArenaDuelMut.mutate(event.id)}
+            style={{ minHeight: 34, fontSize: 'clamp(10px, 1.45vh, 12px)', padding: '0 10px' }}
+          >
+            Отклонить
+          </button>
+          <button
+            type="button"
+            className="btn btn--cta"
+            disabled={invitePending}
+            onClick={() => acceptArenaDuelMut.mutate(event.id)}
+            style={{ minHeight: 34, fontSize: 'clamp(10px, 1.45vh, 12px)', padding: '0 10px' }}
+          >
+            Принять
+          </button>
+        </div>
+      ) : undefined,
       onEnter: () => void handleOpenDuel(event),
       scoreboard: (
         <DailyHubScoreboard
@@ -1359,34 +1396,37 @@ function ArenaVideoCube({
             })}
           </div>
           <ArenaCubeFace entry={activeEntry} />
-          <button
-            type="button"
-            className="btn btn--cta"
-            disabled={activeEntry.disabled}
-            onClick={activeEntry.onEnter}
-            style={{
-              position: 'relative',
-              zIndex: 3,
-              width: '70%',
-              minWidth: 0,
-              minHeight: 'clamp(36px, 4.8vh, 44px)',
-              margin: '0 auto',
-              padding: '0 16px',
-              boxSizing: 'border-box',
-              justifyContent: 'center',
-              fontSize: 'clamp(12px, 1.65vh, 14px)',
-              fontWeight: 900,
-              letterSpacing: '0.06em',
-              lineHeight: 1,
-              background: 'linear-gradient(180deg, rgba(246, 252, 255, 0.98), rgba(214, 234, 247, 0.96))',
-              color: '#132033',
-              border: '1px solid rgba(255, 255, 255, 0.78)',
-              boxShadow:
-                '0 0 14px rgba(138, 221, 255, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.86)',
-            }}
-          >
-            {activeEntry.ctaLabel}
-          </button>
+          {activeEntry.secondaryActions ?? (
+            <button
+              type="button"
+              className="btn btn--cta"
+              disabled={activeEntry.disabled}
+              onClick={activeEntry.onEnter}
+              style={{
+                position: 'relative',
+                zIndex: 3,
+                width: '70%',
+                minWidth: 0,
+                minHeight: 'clamp(36px, 4.8vh, 44px)',
+                margin: '0 auto',
+                padding: '0 16px',
+                boxSizing: 'border-box',
+                justifyContent: 'center',
+                fontSize: 'clamp(12px, 1.65vh, 14px)',
+                fontWeight: 900,
+                letterSpacing: '0.06em',
+                lineHeight: 1,
+                background:
+                  'linear-gradient(180deg, rgba(246, 252, 255, 0.98), rgba(214, 234, 247, 0.96))',
+                color: '#132033',
+                border: '1px solid rgba(255, 255, 255, 0.78)',
+                boxShadow:
+                  '0 0 14px rgba(138, 221, 255, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.86)',
+              }}
+            >
+              {activeEntry.ctaLabel}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -1702,13 +1742,26 @@ function arenaDuelCtaLabel(match: AmateurDuelMatch, fallbackNow: number): string
   if (isDuelInviteFromMe(match)) return 'Ждём ответ';
   if (canStartArenaDuelPeriod(match, nowMs)) return 'Начать дуэль';
   if (isDuelInviteForMe(match)) return 'Принять вызов';
-  if (match.status === 'ready_check' && match.me.state !== 'ready') return 'Готов';
+  if (match.status === 'ready_check' && match.me.state !== 'ready') return 'К дуэли';
   if (match.status === 'ready_check' && match.me.state === 'ready') return 'Ждём готовность';
   if (match.status === 'active' && match.opponent.state === 'period_active')
     return 'Соперник играет';
   if (match.me.state === 'break_active') return 'Перерыв';
   if (match.me.state === 'completed' || match.me.state === 'forfeit') return 'Вы сыграли';
-  return 'Статус дуэли';
+  return 'К дуэли';
+}
+
+function duelRinkPrimaryLabel(match: AmateurDuelMatch, fallbackNow: number): string {
+  const nowMs = duelMatchNowMs(match, fallbackNow);
+  if (match.me.state === 'period_active') return 'Бросок';
+  if (canStartArenaDuelPeriod(match, nowMs)) return 'Начать';
+  if (match.status === 'ready_check' && match.me.state !== 'ready') return 'Готов';
+  if (match.status === 'ready_check' && match.me.state === 'ready') return 'Ждём соперника';
+  if (match.status === 'invited' && isDuelInviteForMe(match)) return 'Примите вызов';
+  if (match.status === 'invited') return 'Ждём ответ';
+  if (match.status === 'active' && match.me.state === 'accepted') return 'Начать';
+  if (match.status === 'active' && match.opponent.state === 'period_active') return 'Ждём соперника';
+  return arenaDuelCtaLabel(match, fallbackNow);
 }
 
 function duelNextPeriod(match: AmateurDuelMatch): number {
@@ -3767,6 +3820,19 @@ function AmateurDuelsPage({
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
     },
   });
+  const acceptInviteMut = useMutation({
+    mutationFn: (matchId: string) => acceptAmateurDuel(matchId),
+    onSuccess: (_res, matchId) => {
+      void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+      onOpenMatch(matchId);
+    },
+  });
+  const declineInviteMut = useMutation({
+    mutationFn: (matchId: string) => declineAmateurDuel(matchId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+    },
+  });
 
   const templateItems = templates.data?.templates ?? [];
   const activeMatches = (matches.data?.matches ?? []).filter(
@@ -4316,11 +4382,21 @@ function AmateurDuelsPage({
                 match.status === 'invited' &&
                 match.source === 'challenge' &&
                 match.me.side === 'challenger';
+              const canAnswerInvite = isDuelInviteForMe(match);
               return (
                 <DuelListCard
                   key={match.id}
                   match={match}
                   onOpen={() => onOpenMatch(match.id)}
+                  {...(canAnswerInvite
+                    ? {
+                        onAcceptInvite: () => acceptInviteMut.mutate(match.id),
+                        onDeclineInvite: () => declineInviteMut.mutate(match.id),
+                        inviteAnswerPending:
+                          (acceptInviteMut.isPending && acceptInviteMut.variables === match.id) ||
+                          (declineInviteMut.isPending && declineInviteMut.variables === match.id),
+                      }
+                    : {})}
                   {...(canCancelInvite
                     ? {
                         onCancelInvite: () => cancelChallengeMut.mutate(match.id),
@@ -4956,11 +5032,17 @@ function DuelEquipmentDetailsModal({
 function DuelListCard({
   match,
   onOpen,
+  onAcceptInvite,
+  onDeclineInvite,
+  inviteAnswerPending = false,
   onCancelInvite,
   cancelInvitePending = false,
 }: {
   match: AmateurDuelMatch;
   onOpen: () => void;
+  onAcceptInvite?: () => void;
+  onDeclineInvite?: () => void;
+  inviteAnswerPending?: boolean;
   onCancelInvite?: () => void;
   cancelInvitePending?: boolean;
 }): JSX.Element {
@@ -5030,6 +5112,37 @@ function DuelListCard({
         </div>
       </div>
       <DuelStatusBadge match={match} />
+      {onAcceptInvite && onDeclineInvite && (
+        <div
+          onClick={(event) => event.stopPropagation()}
+          style={{
+            gridColumn: '1 / -1',
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: 8,
+            marginTop: 2,
+          }}
+        >
+          <button
+            type="button"
+            className="btn btn--ghost"
+            disabled={inviteAnswerPending}
+            onClick={onDeclineInvite}
+            style={{ minHeight: 36, fontSize: 12 }}
+          >
+            Отклонить
+          </button>
+          <button
+            type="button"
+            className="btn btn--cta"
+            disabled={inviteAnswerPending}
+            onClick={onAcceptInvite}
+            style={{ minHeight: 36, fontSize: 12 }}
+          >
+            Принять
+          </button>
+        </div>
+      )}
       {onCancelInvite && (
         <button
           type="button"
@@ -5086,6 +5199,18 @@ function AmateurDuelPlayView({
   const applyState = useAmateurDuelStore((s) => s.applyState);
   const [now, setNow] = useState(Date.now());
   const [dismissedResultMatchId, setDismissedResultMatchId] = useState<string | null>(null);
+  const [selectedLoadout, setSelectedLoadout] = useState<AmateurDuelLoadoutSelection>({});
+  const [selectedLoadoutKind, setSelectedLoadoutKind] = useState<InventoryEquipmentKind | null>(
+    null,
+  );
+  const [playerReadyEntranceKey, setPlayerReadyEntranceKey] = useState<string | null>(null);
+  const [goalieReadyEntranceKey, setGoalieReadyEntranceKey] = useState<string | null>(null);
+  const previousReadyStateRef = useRef<{ me: boolean; opponent: boolean } | null>(null);
+  const inventoryQuery = useQuery<InventoryState>({
+    queryKey: ['inventory', 'me'],
+    queryFn: fetchMyInventory,
+    enabled: Boolean(matchId),
+  });
 
   useEffect(() => {
     void load(matchId);
@@ -5093,12 +5218,43 @@ function AmateurDuelPlayView({
 
   useEffect(() => {
     setDismissedResultMatchId(null);
+    setSelectedLoadout({});
+    previousReadyStateRef.current = null;
+    setPlayerReadyEntranceKey(null);
+    setGoalieReadyEntranceKey(null);
   }, [matchId]);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    const inventory = inventoryQuery.data;
+    if (!inventory) return;
+    setSelectedLoadout((current) => ({
+      stick:
+        current.stick === undefined ? duelEquipmentIdFor(inventory, 'stick') : current.stick,
+      skates:
+        current.skates === undefined ? duelEquipmentIdFor(inventory, 'skates') : current.skates,
+      nutrition:
+        current.nutrition === undefined
+          ? duelEquipmentIdFor(inventory, 'nutrition')
+          : current.nutrition,
+    }));
+  }, [inventoryQuery.data, matchId]);
+
+  useEffect(() => {
+    if (!match || match.id !== matchId) return;
+    const meReady = match.me.state === 'ready' || match.me.state === 'accepted';
+    const opponentReady = match.opponent.state === 'ready' || match.opponent.state === 'accepted';
+    const previous = previousReadyStateRef.current;
+    if (previous && !previous.me && meReady) setPlayerReadyEntranceKey(match.me.ready_at ?? match.id);
+    if (previous && !previous.opponent && opponentReady) {
+      setGoalieReadyEntranceKey(match.opponent.ready_at ?? match.id);
+    }
+    previousReadyStateRef.current = { me: meReady, opponent: opponentReady };
+  }, [match, matchId]);
 
   useEffect(() => {
     if (!match || match.id !== matchId) return;
@@ -5128,14 +5284,6 @@ function AmateurDuelPlayView({
     return () => window.clearInterval(id);
   }, [match, matchId, refresh]);
 
-  useEffect(() => {
-    if (!directPlayOnly || !match || match.id !== matchId || inFlight) return;
-    const matchNow = duelMatchNowMs(match, now);
-    if (canStartArenaDuelPeriod(match, matchNow)) {
-      void startPeriod();
-    }
-  }, [directPlayOnly, inFlight, match, matchId, now, startPeriod]);
-
   if (!match || match.id !== matchId) {
     return (
       <ModeShell title="Дуэль" onBack={onBack}>
@@ -5159,13 +5307,8 @@ function AmateurDuelPlayView({
   const handleDirectDuelAction = async (): Promise<void> => {
     if (inFlight) return;
     const matchNow = duelMatchNowMs(match, now);
-    if (match.status === 'invited' && match.me.state === 'invited') {
-      const { match: next } = await acceptAmateurDuel(match.id);
-      applyState(next);
-      return;
-    }
     if (match.status === 'ready_check' && match.me.state !== 'ready') {
-      await ready({});
+      await ready(selectedLoadout);
       return;
     }
     if (canStartArenaDuelPeriod(match, matchNow)) {
@@ -5184,14 +5327,15 @@ function AmateurDuelPlayView({
     const inactivePeriodRule = duelParticipantPeriodRule(match, match.me);
     const showDirectResultModal = match.status === 'settled' && dismissedResultMatchId !== match.id;
     const canRunDirectDuelAction =
-      (match.status === 'invited' && match.me.state === 'invited') ||
       (match.status === 'ready_check' && match.me.state !== 'ready') ||
       canStartArenaDuelPeriod(match, duelMatchNowMs(match, now));
+    const meReady = match.me.state === 'ready' || match.me.state === 'accepted';
+    const opponentReady = match.opponent.state === 'ready' || match.opponent.state === 'accepted';
     return (
       <>
         <PlayView<AmateurDuelMatchState>
-          suppressedByModal={true}
-          showIceCar={true}
+          suppressedByModal={false}
+          showIceCar={false}
           playRouteTransitionOnMount={playRouteTransitionOnMount}
           onRouteTransitionConsumed={onRouteTransitionConsumed}
           onBack={onBack}
@@ -5211,15 +5355,44 @@ function AmateurDuelPlayView({
           }
           timer={timing.value}
           timerLabel={timing.label}
-          shotButtonLabel={inFlight ? 'ОТКРЫВАЕМ...' : arenaDuelCtaLabel(match, now).toUpperCase()}
+          shotButtonLabel={
+            inFlight ? 'ФИКСИРУЕМ...' : duelRinkPrimaryLabel(match, now).toUpperCase()
+          }
           inactiveAction={canRunDirectDuelAction ? handleDirectDuelAction : undefined}
+          readyPresence={{
+            playerReady: meReady,
+            goalieReady: opponentReady,
+            playerEntranceKey: playerReadyEntranceKey,
+            goalieEntranceKey: goalieReadyEntranceKey,
+          }}
           backLabel="К арене"
           optimisticAddShot={optimisticAddShot}
           submitShot={submitShot}
           applyState={applyState}
+          hudAddon={
+            <DuelRinkLoadoutHud
+              match={match}
+              selectedLoadout={selectedLoadout}
+              locked={meReady || inFlight}
+              onSelectKind={setSelectedLoadoutKind}
+            />
+          }
           scoreboardOpponent={duelScoreboardOpponent(match)}
         />
         {showDirectResultModal && <DuelResultModal match={match} onClose={onBack} />}
+        {selectedLoadoutKind !== null && (
+          <DuelRinkLoadoutModal
+            kind={selectedLoadoutKind}
+            match={match}
+            selectedId={selectedLoadout[selectedLoadoutKind] ?? null}
+            onClose={() => setSelectedLoadoutKind(null)}
+            onSelect={(itemId) => {
+              const kind = selectedLoadoutKind;
+              setSelectedLoadout((current) => ({ ...current, [kind]: itemId }));
+              setSelectedLoadoutKind(null);
+            }}
+          />
+        )}
         <DuelDevStatePanel match={match} now={now} />
       </>
     );
@@ -6110,7 +6283,7 @@ function duelEquipmentIdFor(
   inventory: InventoryState | undefined,
   kind: InventoryEquipmentKind,
 ): string | null {
-  if (!inventory) return null;
+  if (!inventory?.equipped) return null;
   if (kind === 'stick') return inventory.equipped.stickItemId;
   if (kind === 'skates') return inventory.equipped.skatesItemId;
   return inventory.equipped.nutritionItemId;
@@ -6296,6 +6469,220 @@ function DuelInventorySlots({ match }: { match: AmateurDuelMatch }): JSX.Element
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function availableDuelItemsForKind(
+  match: AmateurDuelMatch,
+  kind: InventoryEquipmentKind,
+): AmateurDuelInventoryAvailabilityItem[] {
+  return (match.me.inventory_available ?? []).filter(
+    (item) => item.kind === kind && item.chargesAvailable > 0,
+  );
+}
+
+function selectedDuelAvailabilityItem(
+  match: AmateurDuelMatch,
+  kind: InventoryEquipmentKind,
+  selectedId: string | null | undefined,
+): AmateurDuelInventoryAvailabilityItem | null {
+  if (!selectedId) return null;
+  return availableDuelItemsForKind(match, kind).find((item) => item.id === selectedId) ?? null;
+}
+
+function DuelRinkLoadoutHud({
+  match,
+  selectedLoadout,
+  locked,
+  onSelectKind,
+}: {
+  match: AmateurDuelMatch;
+  selectedLoadout: AmateurDuelLoadoutSelection;
+  locked: boolean;
+  onSelectKind: (kind: InventoryEquipmentKind) => void;
+}): JSX.Element {
+  return (
+    <div
+      aria-label="Выбор инвентаря"
+      style={{
+        display: 'flex',
+        gap: 6,
+        pointerEvents: locked ? 'none' : 'auto',
+      }}
+    >
+      {DUEL_INVENTORY_SLOTS.map((slot) => {
+        const selectedId = selectedLoadout[slot.kind] ?? null;
+        const item = selectedDuelAvailabilityItem(match, slot.kind, selectedId);
+        const availableItems = availableDuelItemsForKind(match, slot.kind);
+        const hasBase = isDuelRequiredEquipment(slot.kind);
+        const hasVisibleEquipment = item !== null || hasBase;
+        const canOpen = !locked && availableItems.length > 0;
+        const title = item ? duelEquipmentDisplayTitle(item) : duelBaseEquipmentTitle(slot.kind);
+        return (
+          <button
+            key={slot.kind}
+            type="button"
+            aria-label={`${slot.label}: ${title}`}
+            disabled={!canOpen}
+            onClick={() => onSelectKind(slot.kind)}
+            style={{
+              width: 34,
+              height: 42,
+              border: '1px solid rgba(255,255,255,0.74)',
+              borderRadius: 12,
+              padding: 3,
+              background: hasVisibleEquipment ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.36)',
+              boxShadow: hasVisibleEquipment ? '0 6px 14px rgba(15,23,42,0.14)' : 'none',
+              opacity: hasVisibleEquipment ? 1 : 0.48,
+              cursor: canOpen ? 'pointer' : 'default',
+            }}
+          >
+            <img
+              src={item ? artworkForInventoryItem(item) : placeholderArtworkForKind(slot.kind)}
+              alt=""
+              style={{
+                width: '100%',
+                height: '100%',
+                display: 'block',
+                objectFit: 'cover',
+                borderRadius: 9,
+                filter: hasVisibleEquipment ? 'none' : 'grayscale(1)',
+              }}
+            />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function DuelRinkLoadoutModal({
+  kind,
+  match,
+  selectedId,
+  onClose,
+  onSelect,
+}: {
+  kind: InventoryEquipmentKind;
+  match: AmateurDuelMatch;
+  selectedId: string | null;
+  onClose: () => void;
+  onSelect: (itemId: string | null) => void;
+}): JSX.Element {
+  const meta = DUEL_EQUIPMENT_META[kind];
+  const items = availableDuelItemsForKind(match, kind);
+  const canUseBase = isDuelRequiredEquipment(kind) || kind === 'nutrition';
+
+  return (
+    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 420 }}>
+      <section
+        role="dialog"
+        aria-label={meta.title}
+        className="modal-card"
+        onClick={(event) => event.stopPropagation()}
+        style={{ width: 'min(420px, calc(100vw - 28px))', display: 'grid', gap: 12 }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="modal-title">{meta.title}</div>
+            <div className="modal-copy">Выберите предмет для этой дуэли.</div>
+          </div>
+          <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
+            <X size={15} />
+          </button>
+        </div>
+        <div style={{ display: 'grid', gap: 8 }}>
+          {canUseBase && (
+            <button
+              type="button"
+              className="glass"
+              aria-pressed={selectedId === null}
+              onClick={() => onSelect(null)}
+              style={{
+                minHeight: 54,
+                borderRadius: 16,
+                padding: 12,
+                color: 'var(--ink)',
+                textAlign: 'left',
+                border:
+                  selectedId === null
+                    ? '1px solid rgba(15, 23, 42, 0.3)'
+                    : '1px solid rgba(255,255,255,0.76)',
+              }}
+            >
+              <span style={{ display: 'block', fontSize: 15, fontWeight: 900 }}>
+                {duelBaseEquipmentTitle(kind)}
+              </span>
+              <span
+                style={{
+                  display: 'block',
+                  marginTop: 3,
+                  color: 'var(--muted)',
+                  fontSize: 12,
+                  fontWeight: 760,
+                }}
+              >
+                {duelBaseEquipmentDescription(kind)}
+              </span>
+            </button>
+          )}
+          {items.map((item) => {
+            const selected = item.id === selectedId;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                className="glass"
+                aria-pressed={selected}
+                onClick={() => onSelect(item.id)}
+                style={{
+                  minHeight: 72,
+                  borderRadius: 18,
+                  padding: 10,
+                  display: 'grid',
+                  gridTemplateColumns: '52px minmax(0, 1fr)',
+                  alignItems: 'center',
+                  gap: 10,
+                  color: 'var(--ink)',
+                  textAlign: 'left',
+                  border: selected
+                    ? '1px solid rgba(15, 23, 42, 0.3)'
+                    : '1px solid rgba(255,255,255,0.76)',
+                }}
+              >
+                <img
+                  src={artworkForInventoryItem(item)}
+                  alt=""
+                  style={{
+                    width: 52,
+                    height: 52,
+                    borderRadius: 14,
+                    objectFit: 'cover',
+                    border: '1px solid rgba(255,255,255,0.78)',
+                  }}
+                />
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ display: 'block', fontSize: 15, fontWeight: 950 }}>
+                    {duelEquipmentDisplayTitle(item)}
+                  </span>
+                  <span
+                    style={{
+                      display: 'block',
+                      marginTop: 4,
+                      color: 'var(--muted)',
+                      fontSize: 12,
+                      fontWeight: 800,
+                    }}
+                  >
+                    {duelInventoryPeriodLabel(item.chargesAvailable)}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
     </div>
   );
 }
@@ -6634,6 +7021,14 @@ interface PlayViewProps<TState> {
   shotResolver?: PlayShotResolver | undefined;
   hudAddon?: ReactNode;
   scoreboardOpponent?: ScoreBoardOpponent | undefined;
+  readyPresence?: ReadyPresence | undefined;
+}
+
+interface ReadyPresence {
+  playerReady: boolean;
+  goalieReady: boolean;
+  playerEntranceKey?: string | null | undefined;
+  goalieEntranceKey?: string | null | undefined;
 }
 
 interface PlaySessionSnapshot {
@@ -7076,12 +7471,48 @@ function TrainingCubeScoreboard({
     typeof shotsTotal === 'number'
       ? `${String(shots).padStart(2, '0')}/${String(shotsTotal).padStart(2, '0')}`
       : String(shots).padStart(2, '0');
+  const isSinglePeriod = periodsTotal === 1;
   const metrics = [
     { label: 'Период', value: `${period}/${periodsTotal}` },
     { label: 'Голы', value: String(goals).padStart(2, '0') },
     { label: 'Броски', value: shotsText },
     { label: timerLabel, value: timer },
   ];
+
+  if (isSinglePeriod) {
+    return (
+      <div
+        aria-label="Статистика на видеокубе"
+        style={{
+          position: 'absolute',
+          left: '8%',
+          right: '8%',
+          top: '27%',
+          bottom: '24%',
+          display: 'grid',
+          gridTemplateRows: 'minmax(0, 1.05fr) minmax(0, 0.72fr) minmax(0, 1fr)',
+          alignItems: 'center',
+          justifyItems: 'center',
+          pointerEvents: 'none',
+        }}
+      >
+        <TrainingCubeMetric label={timerLabel} value={timer} emphasis="large" />
+        <TrainingCubeMetric label="Период" value={`${period}/${periodsTotal}`} emphasis="small" />
+        <div
+          style={{
+            width: '100%',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+            columnGap: 'clamp(26px, 11vw, 92px)',
+            alignItems: 'end',
+          }}
+        >
+          <TrainingCubeMetric label="Голы" value={String(goals).padStart(2, '0')} />
+          <TrainingCubeMetric label="Броски" value={shotsText} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -7100,56 +7531,77 @@ function TrainingCubeScoreboard({
         pointerEvents: 'none',
       }}
     >
-      {metrics.map((metric) => {
-        const labelIsLong = metric.label.length > 8;
-        const valueIsLong = metric.value.length > 5;
-        return (
-          <div
-            key={metric.label}
-            style={{
-              minWidth: 0,
-              textAlign: 'center',
-              color: '#e9fbff',
-              textShadow: '0 0 8px rgba(122, 229, 255, 0.36)',
-            }}
-          >
-            <div
-              style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: labelIsLong ? 'clamp(6px, 1.42vw, 9px)' : 'clamp(7px, 1.7vw, 11px)',
-                fontWeight: 950,
-                lineHeight: 1,
-                textTransform: 'uppercase',
-                letterSpacing: labelIsLong ? '0.1em' : '0.16em',
-                color: 'rgba(205, 246, 255, 0.86)',
-                textShadow: '0 0 8px rgba(99, 218, 255, 0.4)',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-              }}
-            >
-              {metric.label}
-            </div>
-            <div
-              style={{
-                marginTop: 2,
-                fontFamily: 'var(--font-mono)',
-                fontSize: valueIsLong ? 'clamp(15px, 4.15vw, 25px)' : 'clamp(17px, 5vw, 30px)',
-                fontWeight: 950,
-                lineHeight: 0.96,
-                letterSpacing: valueIsLong ? '0.04em' : '0.08em',
-                fontVariantNumeric: 'tabular-nums',
-                color: '#f7feff',
-                textShadow:
-                  '0 0 7px rgba(143, 232, 255, 0.72), 0 0 14px rgba(44, 177, 255, 0.38)',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {metric.value}
-            </div>
-          </div>
-        );
-      })}
+      {metrics.map((metric) => (
+        <TrainingCubeMetric key={metric.label} label={metric.label} value={metric.value} />
+      ))}
+    </div>
+  );
+}
+
+function TrainingCubeMetric({
+  label,
+  value,
+  emphasis = 'default',
+}: {
+  label: string;
+  value: string;
+  emphasis?: 'default' | 'large' | 'small';
+}): JSX.Element {
+  const labelIsLong = label.length > 8;
+  const valueIsLong = value.length > 5;
+  const valueFont =
+    emphasis === 'large'
+      ? valueIsLong
+        ? 'clamp(21px, 6.7vw, 40px)'
+        : 'clamp(23px, 7.2vw, 44px)'
+      : emphasis === 'small'
+        ? 'clamp(14px, 3.8vw, 22px)'
+        : valueIsLong
+          ? 'clamp(15px, 4.15vw, 25px)'
+          : 'clamp(17px, 5vw, 30px)';
+
+  return (
+    <div
+      style={{
+        minWidth: 0,
+        textAlign: 'center',
+        color: '#e9fbff',
+        textShadow: '0 0 8px rgba(122, 229, 255, 0.36)',
+      }}
+    >
+      <div
+        style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: labelIsLong ? 'clamp(6px, 1.42vw, 9px)' : 'clamp(7px, 1.7vw, 11px)',
+          fontWeight: 950,
+          lineHeight: 1,
+          textTransform: 'uppercase',
+          letterSpacing: labelIsLong ? '0.1em' : '0.16em',
+          color: 'rgba(205, 246, 255, 0.86)',
+          textShadow: '0 0 8px rgba(99, 218, 255, 0.4)',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          marginTop: 2,
+          fontFamily: 'var(--font-mono)',
+          fontSize: valueFont,
+          fontWeight: 950,
+          lineHeight: 0.96,
+          letterSpacing: valueIsLong ? '0.04em' : '0.08em',
+          fontVariantNumeric: 'tabular-nums',
+          color: '#f7feff',
+          textShadow: '0 0 7px rgba(143, 232, 255, 0.72), 0 0 14px rgba(44, 177, 255, 0.38)',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {value}
+      </div>
     </div>
   );
 }
@@ -7557,6 +8009,7 @@ export function PlayView<TState>({
   shotResolver = resolveNewTrainingCourtShot,
   hudAddon,
   scoreboardOpponent,
+  readyPresence,
 }: PlayViewProps<TState>): JSX.Element {
   const session: PlaySessionSnapshot = useMemo(
     () => ({
@@ -7659,6 +8112,11 @@ export function PlayView<TState>({
   hitboxesOptionsRef.current = hitboxesOptions;
   const shotResolverRef = useRef(shotResolver);
   shotResolverRef.current = shotResolver;
+  const readyPresenceRef = useRef(readyPresence);
+  readyPresenceRef.current = readyPresence;
+  const wasReadyPresenceModeRef = useRef(false);
+  const lastReadyPlayerEntranceKeyRef = useRef(readyPresence?.playerEntranceKey ?? null);
+  const lastReadyGoalieEntranceKeyRef = useRef(readyPresence?.goalieEntranceKey ?? null);
 
   const speeds = useMemo(
     () => speedOverridesForPeriod(periodNumber, periodSpeedPresets),
@@ -7941,6 +8399,120 @@ export function PlayView<TState>({
     [],
   );
 
+  const drawReadyPresence = useCallback((presence: ReadyPresence): void => {
+    const goal = goalRef.current;
+    const player = playerRef.current;
+    const goalie = goalieRef.current;
+    const puck = puckRef.current;
+    if (!goal || !player || !goalie || !puck) return;
+
+    goal.container.visible = presence.goalieReady;
+    goalie.container.visible = presence.goalieReady;
+    player.container.visible = presence.playerReady;
+    puck.container.visible = presence.playerReady;
+    goal.update(scaleRef.current, 0, 0);
+    if (presence.goalieReady) {
+      goalie.update(
+        {
+          position: { x: SHOOTER_CENTER_X, y: GOALIE_Y },
+          width: GOALIE_SIZE.width,
+          height: GOALIE_SIZE.height,
+        },
+        scaleRef.current,
+      );
+    }
+    if (presence.playerReady) {
+      player.update(scaleRef.current, SHOOTER_CENTER_X, PUCK_START.y);
+      puck.resetAtStart(scaleRef.current);
+    }
+  }, []);
+
+  const startReadyPresenceEntrance = useCallback(
+    (part: 'player' | 'goalie'): void => {
+      if (entranceRafRef.current !== null) {
+        cancelAnimationFrame(entranceRafRef.current);
+        entranceRafRef.current = null;
+      }
+      const goal = goalRef.current;
+      const player = playerRef.current;
+      const goalie = goalieRef.current;
+      const puck = puckRef.current;
+      const loop = loopRef.current;
+      if (!goal || !player || !goalie || !puck) return;
+
+      loop?.detach();
+      wasReadyPresenceModeRef.current = true;
+      setIsEntrancePlaying(true);
+
+      const ENTRY_DURATION_MS = 900;
+      const CENTER_RED_Y = 350;
+      const ENTRY_X = RINK.width + 50;
+      const t0 = performance.now();
+      const existingPresence = readyPresenceRef.current ?? {
+        playerReady: false,
+        goalieReady: false,
+      };
+
+      if (part === 'player') {
+        player.container.visible = true;
+        puck.container.visible = false;
+      } else {
+        goal.container.visible = true;
+        goalie.container.visible = true;
+      }
+
+      const step = (): void => {
+        if (!mountedRef.current) return;
+        const t = Math.min(1, (performance.now() - t0) / ENTRY_DURATION_MS);
+        const eased = 1 - Math.pow(1 - t, 3);
+
+        if (part === 'player') {
+          const x = ENTRY_X + (SHOOTER_CENTER_X - ENTRY_X) * eased;
+          const y = CENTER_RED_Y + 30 + (PUCK_START.y - (CENTER_RED_Y + 30)) * eased;
+          player.update(scaleRef.current, x, y);
+          if (existingPresence.goalieReady) {
+            goal.update(scaleRef.current, 0, 0);
+            goalie.update(
+              {
+                position: { x: SHOOTER_CENTER_X, y: GOALIE_Y },
+                width: GOALIE_SIZE.width,
+                height: GOALIE_SIZE.height,
+              },
+              scaleRef.current,
+            );
+          }
+        } else {
+          const x = ENTRY_X + (SHOOTER_CENTER_X - ENTRY_X) * eased;
+          const y = CENTER_RED_Y - 30 + (GOALIE_Y - (CENTER_RED_Y - 30)) * eased;
+          const goalOffsetY = -140 * (1 - eased);
+          goal.update(scaleRef.current, 0, goalOffsetY);
+          goalie.update(
+            {
+              position: { x, y },
+              width: GOALIE_SIZE.width,
+              height: GOALIE_SIZE.height,
+            },
+            scaleRef.current,
+          );
+          if (existingPresence.playerReady) {
+            player.update(scaleRef.current, SHOOTER_CENTER_X, PUCK_START.y);
+          }
+        }
+
+        if (t < 1) {
+          entranceRafRef.current = requestAnimationFrame(step);
+          return;
+        }
+        entranceRafRef.current = null;
+        drawReadyPresence(readyPresenceRef.current ?? existingPresence);
+        setIsEntrancePlaying(false);
+      };
+
+      entranceRafRef.current = requestAnimationFrame(step);
+    },
+    [drawReadyPresence],
+  );
+
   const handleReady = useCallback(
     (app: Application, initialScale: Scale): void => {
       scaleRef.current = initialScale;
@@ -8028,6 +8600,13 @@ export function PlayView<TState>({
         }
       } else {
         iceCar.container.visible = false;
+        if (readyPresenceRef.current && !sessionRef.current.active) {
+          loop.detach();
+          wasReadyPresenceModeRef.current = true;
+          drawReadyPresence(readyPresenceRef.current);
+          setPixiReady(true);
+          return;
+        }
         if (playEntranceOnMountRef.current && sessionRef.current.active) {
           onEntranceConsumedRef.current?.();
           void startEntranceAnimation(loop, app.ticker);
@@ -8037,7 +8616,7 @@ export function PlayView<TState>({
       }
       setPixiReady(true);
     },
-    [startEntranceAnimation],
+    [drawReadyPresence, startEntranceAnimation],
   );
 
   // React to suppressedByModal flips after Pixi is up. handleReady applies
@@ -8075,6 +8654,22 @@ export function PlayView<TState>({
     }
 
     stopIceCarLoop(iceCarRef, iceCarRafRef);
+    if (readyPresence && !active) {
+      loop.detach();
+      wasReadyPresenceModeRef.current = true;
+      drawReadyPresence(readyPresence);
+      return;
+    }
+    if (active && wasReadyPresenceModeRef.current) {
+      wasReadyPresenceModeRef.current = false;
+      goal.container.visible = true;
+      player.container.visible = true;
+      goalie.container.visible = true;
+      puck.container.visible = true;
+      loop.resetTime();
+      loop.attach(ticker);
+      return;
+    }
     if (skipNextUnsuppressedEntranceRef.current) {
       skipNextUnsuppressedEntranceRef.current = false;
       goal.container.visible = true;
@@ -8097,7 +8692,50 @@ export function PlayView<TState>({
         iceCarRafRef.current = null;
       }
     };
-  }, [suppressedByModal, showIceCar, pixiReady, startEntranceAnimation]);
+  }, [
+    active,
+    drawReadyPresence,
+    pixiReady,
+    readyPresence,
+    showIceCar,
+    startEntranceAnimation,
+    suppressedByModal,
+  ]);
+
+  useEffect(() => {
+    if (!pixiReady || !readyPresence || active || suppressedByModal) return;
+
+    const playerKey = readyPresence.playerEntranceKey ?? null;
+    const goalieKey = readyPresence.goalieEntranceKey ?? null;
+    const shouldAnimatePlayer =
+      readyPresence.playerReady &&
+      playerKey !== null &&
+      playerKey !== lastReadyPlayerEntranceKeyRef.current;
+    const shouldAnimateGoalie =
+      readyPresence.goalieReady &&
+      goalieKey !== null &&
+      goalieKey !== lastReadyGoalieEntranceKeyRef.current;
+
+    lastReadyPlayerEntranceKeyRef.current = playerKey;
+    lastReadyGoalieEntranceKeyRef.current = goalieKey;
+
+    if (shouldAnimatePlayer) {
+      startReadyPresenceEntrance('player');
+      return;
+    }
+    if (shouldAnimateGoalie) {
+      startReadyPresenceEntrance('goalie');
+      return;
+    }
+    drawReadyPresence(readyPresence);
+  }, [
+    active,
+    drawReadyPresence,
+    pixiReady,
+    readyPresence,
+    startReadyPresenceEntrance,
+    suppressedByModal,
+  ]);
 
   const handleResize = useCallback((s: Scale): void => {
     refreshRef.current?.(s);
@@ -8303,6 +8941,16 @@ export function PlayView<TState>({
   }, [handleInactiveAction, handleShotTap, inactiveAction]);
 
   const timerValue = timer ?? formatMs(remaining);
+  const primaryButtonDisabled =
+    (suppressedByModal && !inactiveAction) ||
+    isInactiveActionPending ||
+    isShotInProgress ||
+    isShotSubmitPending ||
+    isShowingResult ||
+    (!active && !inactiveAction) ||
+    (active &&
+      ((routeCameraPhase === 'zoomed' || routeCameraPhase === 'exiting') || isEntrancePlaying)) ||
+    (typeof shotsTotal === 'number' && shots >= shotsTotal);
   const effectiveRinkLayer = rinkLayer ?? (
     <TrainingPerspectiveRink
       design="long"
@@ -8491,17 +9139,7 @@ export function PlayView<TState>({
           type="button"
           className="btn btn--cta"
           onClick={handlePrimaryTap}
-          disabled={
-            (suppressedByModal && !inactiveAction) ||
-            isRouteCameraZoomed ||
-            isEntrancePlaying ||
-            isInactiveActionPending ||
-            isShotInProgress ||
-            isShotSubmitPending ||
-            isShowingResult ||
-            (!active && !inactiveAction) ||
-            (typeof shotsTotal === 'number' && shots >= shotsTotal)
-          }
+          disabled={primaryButtonDisabled}
           style={{
             width: '100%',
             minHeight: 58,

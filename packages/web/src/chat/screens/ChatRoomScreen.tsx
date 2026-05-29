@@ -1060,7 +1060,7 @@ export function ChatRoomScreen(): JSX.Element {
     },
     onSuccess: (_data, matchId) => {
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
-      navigate(`/?view=amateur&match=${matchId}`);
+      navigate(`/?view=amateur&match=${encodeURIComponent(matchId)}&play=1`);
     },
     onError: (_err, matchId) => {
       setDuelInviteResolutionByMatch((prev) => ({ ...prev, [matchId]: 'unavailable' }));
@@ -1685,7 +1685,8 @@ export function ChatRoomScreen(): JSX.Element {
           }}
           style={{
             zIndex: 320,
-            padding: 'calc(14px + var(--app-safe-top)) 14px calc(14px + var(--app-dock-safe-bottom))',
+            padding:
+              'calc(14px + var(--app-safe-top)) 14px calc(14px + var(--app-dock-safe-bottom))',
           }}
         >
           <div
