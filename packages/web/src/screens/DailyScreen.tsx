@@ -1264,10 +1264,10 @@ function ArenaVideoCube({
   return (
     <div
       style={{
-        position: 'fixed',
+        position: 'absolute',
         inset: 0,
-        width: '100vw',
-        height: '100dvh',
+        width: '100%',
+        height: '100%',
         overflow: 'hidden',
         background: '#06111d',
       }}
@@ -1284,7 +1284,7 @@ function ArenaVideoCube({
           position: 'absolute',
           left: '50%',
           top: 'calc((100dvh - 92px - var(--bottom-nav-bottom-gap) - var(--app-safe-bottom) + var(--app-safe-top)) / 2)',
-          width: 'min(100vw, 620px)',
+          width: 'min(100%, 620px)',
           aspectRatio: '1024 / 1536',
           overflow: 'hidden',
           transform: 'translate3d(-50%, -74%, 0)',

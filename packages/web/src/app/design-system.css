@@ -561,13 +561,6 @@
   transform: scale(1.015);
 }
 
-@media (min-aspect-ratio: 2 / 3) {
-  .arena-video-cube__background {
-    object-fit: contain;
-    transform: none;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .chat-bubble--flash {
     animation: none;

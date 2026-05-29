@@ -252,8 +252,18 @@ describe('DailyScreen', () => {
     expect(
       screen.getByRole('article', { name: 'Ежедневная игра: 1-й период доступен' }),
     ).toBeInTheDocument();
-    expect(screen.getByTestId('arena-settled-ice-backdrop')).toBeInTheDocument();
+    expect(document.querySelector('.arena-video-cube__background')).toHaveAttribute(
+      'src',
+      '/sprites/arena-ice-court-v2.webp',
+    );
     expect(screen.queryByRole('img', { name: 'Игровая площадка в перспективе' })).toBeNull();
+    const tableau = screen.getByLabelText('Разделы на табло');
+    expect(tableau).toHaveStyle({ width: 'min(100%, 620px)' });
+    expect(tableau.parentElement).toHaveStyle({
+      position: 'absolute',
+      width: '100%',
+      height: '100%',
+    });
     expect(screen.getByText('Ежедневная игра')).toBeInTheDocument();
     expect(screen.getByText('1-й период доступен')).toBeInTheDocument();
     expect(screen.getByText('Время')).toBeInTheDocument();
@@ -262,6 +272,7 @@ describe('DailyScreen', () => {
     expect(
       screen.getByLabelText('1-й период доступен. Время периода 20:00. Период 1'),
     ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Выбрать Тренировка' }));
     expect(screen.getByRole('article', { name: 'Тренировка: Тренировка' })).toBeInTheDocument();
     expect(screen.getByText('0/500 бросков сегодня')).toBeInTheDocument();
     expect(screen.queryByText('Любители')).not.toBeInTheDocument();
