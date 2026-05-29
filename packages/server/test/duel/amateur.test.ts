@@ -207,8 +207,8 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     const { rows } = await pool.query<{ id: string }>(
       `insert into admin_inventory_items
          (photo_url, title, description, price_rub, item_kind, charges_per_purchase,
-          duel_period_cost, power_score)
-       values ('', $1, '', 0, $2, 10, 1, 10)
+          duel_period_cost, power_score, rarity)
+       values ('', $1, '', 0, $2, 10, 1, 10, 'epic')
        returning id`,
       [title, kind],
     );
