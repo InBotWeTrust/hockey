@@ -165,16 +165,20 @@ jobs:
               exit 1
             fi
           done
-          # VPS occasionally flaps its IPv6 route to ghcr.io so the first
-          # `docker login` times out. Retry with a short backoff before failing.
-          for i in 1 2 3 4 5; do
-            if echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin; then
-              break
-            fi
-            [ "$i" = 5 ] && echo "docker login failed after 5 attempts" && exit 1
-            echo "docker login attempt $i failed, retry in 10s..."
-            sleep 10
-          done
+          docker_login_ghcr() {
+            # VPS occasionally flaps its IPv6 route to ghcr.io so the first
+            # `docker login` times out. Retry with a short backoff before failing.
+            for i in 1 2 3 4 5; do
+              if echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin; then
+                return 0
+              fi
+              [ "$i" = 5 ] && echo "docker login failed after 5 attempts" && return 1
+              echo "docker login attempt $i failed, retry in 10s..."
+              sleep 10
+            done
+          }
+
+          docker_login_ghcr
           export IMAGE_TAG PUSH_VAPID_PUBLIC_KEY PUSH_VAPID_PRIVATE_KEY PUSH_VAPID_SUBJECT
           export OBJECT_STORAGE_ENDPOINT OBJECT_STORAGE_REGION OBJECT_STORAGE_BUCKET
           export OBJECT_STORAGE_TENANT_ID OBJECT_STORAGE_ACCESS_KEY_ID
@@ -182,6 +186,10 @@ jobs:
           export OBJECT_STORAGE_MAX_UPLOAD_BYTES
           # Same flap can drop `compose pull` mid-transfer; retry a few times.
           for i in 1 2 3; do
+            # Re-login before each pull attempt: after a partial failed pull,
+            # Docker can leave GHCR auth in a bad state and the next pull gets
+            # `unauthorized` even though the token is valid.
+            docker_login_ghcr
             if docker compose pull; then
               break
             fi
