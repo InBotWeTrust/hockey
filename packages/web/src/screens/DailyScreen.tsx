@@ -234,10 +234,10 @@ const LONG_COURT_GAME_LAYER_STYLE: CSSProperties = {
   height: '74.2%',
   bottom: 'auto',
 };
-const TRAINING_LED_TABLEAU_IMAGE = '/sprites/wide-tableau-led.webp';
+const TRAINING_LED_TABLEAU_IMAGE = '/sprites/wide-tableau-led-dark-v2.webp';
 const DAILY_LONG_COURT_BACKGROUND = '/sprites/daily-long-court-people.webp';
-const ARENA_ICE_COURT_BACKGROUND = '/sprites/arena-ice-court.webp';
-const ARENA_ICE_TABLEAU_IMAGE = '/sprites/arena-ice-tableau.webp';
+const ARENA_ICE_COURT_BACKGROUND = '/sprites/arena-ice-court-v2.webp';
+const ARENA_ICE_TABLEAU_IMAGE = '/sprites/arena-ice-tableau-v2.webp';
 
 function shouldReduceMotion(): boolean {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
