@@ -1411,6 +1411,11 @@ function ArenaVideoCube({
               fontWeight: 900,
               letterSpacing: '0.06em',
               lineHeight: 1,
+              background: 'linear-gradient(180deg, rgba(246, 252, 255, 0.98), rgba(214, 234, 247, 0.96))',
+              color: '#132033',
+              border: '1px solid rgba(255, 255, 255, 0.78)',
+              boxShadow:
+                '0 0 14px rgba(138, 221, 255, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.86)',
             }}
           >
             {activeEntry.ctaLabel}
