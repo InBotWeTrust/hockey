@@ -1314,13 +1314,13 @@ function ArenaVideoCube({
             position: 'absolute',
             left: '8.3%',
             right: '8.3%',
-            top: '58.8%',
+            top: '50.8%',
             bottom: '5.4%',
             zIndex: 2,
             display: 'grid',
             gridTemplateRows: 'auto minmax(0, 1fr) auto',
-            rowGap: 'clamp(16px, 2.5vh, 22px)',
-            padding: 'clamp(10px, 1.7vh, 15px) 0 clamp(12px, 2vh, 18px)',
+            rowGap: 'clamp(18px, 2.6vh, 24px)',
+            padding: 'clamp(30px, 4.2vh, 36px) 0 clamp(15px, 2.3vh, 20px)',
             boxSizing: 'border-box',
           }}
         >
@@ -1474,9 +1474,8 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
         width: '100%',
         height: '100%',
         minHeight: 0,
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'center',
+        display: 'grid',
+        alignItems: 'stretch',
         padding: '0 clamp(8px, 1.6vw, 12px)',
         boxSizing: 'border-box',
         color: '#e9fbff',
@@ -1487,10 +1486,12 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
       <div
         style={{
           minHeight: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'center',
-          gap: 'clamp(10px, 1.8vh, 16px)',
+          height: '100%',
+          display: 'grid',
+          gridTemplateRows: 'auto auto auto auto',
+          alignContent: 'space-evenly',
+          justifyItems: 'center',
+          gap: 'clamp(5px, 0.9vh, 8px)',
           textAlign: 'center',
           padding: 0,
         }}
@@ -1645,7 +1646,7 @@ function DailyHubScoreboard({
       style={{
         width: align === 'left' ? 'auto' : '100%',
         maxWidth: align === 'left' ? 'none' : 306,
-        padding: 'clamp(5px, 0.85vh, 8px) 0 0',
+        padding: 0,
         display: 'grid',
         gridTemplateColumns: align === 'left' ? 'max-content max-content' : 'minmax(0, 1fr) minmax(0, 1fr)',
         alignItems: 'center',
@@ -7066,8 +7067,8 @@ function TrainingPerspectiveRink({
             position: 'absolute',
             top: 0,
             left: '50%',
-            width: '74%',
-            maxWidth: 448,
+            width: '76%',
+            maxWidth: 456,
             transform: 'translateX(-50%)',
             filter: 'drop-shadow(0 18px 24px rgba(3, 10, 18, 0.34))',
           }}
@@ -7118,14 +7119,14 @@ function TrainingCubeScoreboard({
       aria-label="Статистика на видеокубе"
       style={{
         position: 'absolute',
-        left: '10.5%',
-        right: '10.5%',
-        top: '31%',
-        bottom: '23%',
+        left: '8%',
+        right: '8%',
+        top: '27%',
+        bottom: '24%',
         display: 'grid',
         gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-        columnGap: 'clamp(16px, 6vw, 54px)',
-        rowGap: 'clamp(6px, 1.8vw, 12px)',
+        columnGap: 'clamp(16px, 6vw, 58px)',
+        rowGap: 'clamp(8px, 2.2vw, 15px)',
         alignContent: 'center',
         pointerEvents: 'none',
       }}
@@ -7139,21 +7140,20 @@ function TrainingCubeScoreboard({
             style={{
               minWidth: 0,
               textAlign: 'center',
-              color: '#e8fbff',
-              textShadow:
-                '0 0 3px rgba(255,255,255,0.95), 0 0 8px rgba(82, 219, 255, 0.88), 0 0 18px rgba(10, 159, 255, 0.52)',
-              filter: 'drop-shadow(0 0 2px rgba(180, 244, 255, 0.65))',
+              color: '#e9fbff',
+              textShadow: '0 0 8px rgba(122, 229, 255, 0.36)',
             }}
           >
             <div
               style={{
                 fontFamily: 'var(--font-mono)',
-                fontSize: labelIsLong ? 'clamp(5px, 1.25vw, 8px)' : 'clamp(6px, 1.55vw, 10px)',
+                fontSize: labelIsLong ? 'clamp(6px, 1.42vw, 9px)' : 'clamp(7px, 1.7vw, 11px)',
                 fontWeight: 950,
                 lineHeight: 1,
                 textTransform: 'uppercase',
                 letterSpacing: labelIsLong ? '0.1em' : '0.16em',
-                opacity: 0.9,
+                color: 'rgba(205, 246, 255, 0.86)',
+                textShadow: '0 0 8px rgba(99, 218, 255, 0.4)',
                 whiteSpace: 'nowrap',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
@@ -7165,11 +7165,14 @@ function TrainingCubeScoreboard({
               style={{
                 marginTop: 2,
                 fontFamily: 'var(--font-mono)',
-                fontSize: valueIsLong ? 'clamp(12px, 3.6vw, 22px)' : 'clamp(14px, 4.5vw, 26px)',
+                fontSize: valueIsLong ? 'clamp(15px, 4.15vw, 25px)' : 'clamp(17px, 5vw, 30px)',
                 fontWeight: 950,
                 lineHeight: 0.96,
                 letterSpacing: valueIsLong ? '0.04em' : '0.08em',
                 fontVariantNumeric: 'tabular-nums',
+                color: '#f7feff',
+                textShadow:
+                  '0 0 7px rgba(143, 232, 255, 0.72), 0 0 14px rgba(44, 177, 255, 0.38)',
                 whiteSpace: 'nowrap',
               }}
             >
