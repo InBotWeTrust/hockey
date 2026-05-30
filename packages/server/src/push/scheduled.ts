@@ -76,10 +76,9 @@ function makeEmptyResult(eventType: PushEventType): ScheduledPushEventResult {
 function collectTargets(
   eventType: PushEventType,
   rows: ScheduledPushSubscriptionRow[],
-  buildTarget: (row: ScheduledPushSubscriptionRow) => Omit<
-    ScheduledPushTarget,
-    'eventType' | 'eventKey' | 'userId' | 'subscriptions'
-  >,
+  buildTarget: (
+    row: ScheduledPushSubscriptionRow,
+  ) => Omit<ScheduledPushTarget, 'eventType' | 'eventKey' | 'userId' | 'subscriptions'>,
 ): ScheduledPushTarget[] {
   const targets = new Map<string, ScheduledPushTarget>();
   for (const row of rows) {
@@ -464,8 +463,7 @@ async function schedulePushDeliveries(
 ): Promise<ScheduledPushEventResult[]> {
   const settings = await getGameSettings(client);
   const dailyAvailableHour = options.dailyAvailableLocalHour ?? DAILY_AVAILABLE_LOCAL_HOUR;
-  const trainingAvailableHour =
-    options.trainingAvailableLocalHour ?? TRAINING_AVAILABLE_LOCAL_HOUR;
+  const trainingAvailableHour = options.trainingAvailableLocalHour ?? TRAINING_AVAILABLE_LOCAL_HOUR;
   const periodEndingLeadMs = options.dailyPeriodEndingLeadMs ?? DAILY_PERIOD_ENDING_LEAD_MS;
   const lateWindowMs = options.lateWindowMs ?? SCHEDULED_PUSH_LATE_WINDOW_MS;
   const trainingCooldownMs = trainingDailyCooldownMs(settings.training.dailyCooldownMinutes);
@@ -636,7 +634,9 @@ export async function runScheduledPushes(
     const queue = await processPushDeliveryQueue(pool, {
       ...options,
       ...(options.workerBatchSize !== undefined ? { batchSize: options.workerBatchSize } : {}),
-      ...(options.workerConcurrency !== undefined ? { concurrency: options.workerConcurrency } : {}),
+      ...(options.workerConcurrency !== undefined
+        ? { concurrency: options.workerConcurrency }
+        : {}),
     });
     mergeQueueEvents(events, queue.events);
   }

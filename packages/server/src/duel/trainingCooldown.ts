@@ -1,7 +1,7 @@
 import type { PoolClient } from 'pg';
 import { AppError } from '../plugins/errors.js';
 
-export const DEFAULT_TRAINING_TO_DAILY_COOLDOWN_MINUTES = 120;
+export const DEFAULT_TRAINING_TO_DAILY_COOLDOWN_MINUTES = 30;
 export const DEFAULT_TRAINING_TO_DAILY_COOLDOWN_MS =
   DEFAULT_TRAINING_TO_DAILY_COOLDOWN_MINUTES * 60 * 1000;
 
@@ -38,10 +38,6 @@ export async function assertTrainingCooldownExpired(
 ): Promise<void> {
   const cooldownEndsAt = await fetchTrainingCooldownEndsAt(client, userId, now, cooldownMs);
   if (cooldownEndsAt !== null) {
-    throw new AppError(
-      'conflict',
-      `daily game locked until ${cooldownEndsAt.toISOString()}`,
-      409,
-    );
+    throw new AppError('conflict', `daily game locked until ${cooldownEndsAt.toISOString()}`, 409);
   }
 }

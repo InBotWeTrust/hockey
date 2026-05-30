@@ -1,13 +1,7 @@
 import { createHash } from 'node:crypto';
 
-export function deriveDailySeed(
-  userId: string,
-  dayDate: string,
-  secret: string,
-): string {
-  return createHash('sha256')
-    .update(`${userId}:${dayDate}:${secret}`)
-    .digest('hex');
+export function deriveDailySeed(userId: string, dayDate: string, secret: string): string {
+  return createHash('sha256').update(`${userId}:${dayDate}:${secret}`).digest('hex');
 }
 
 export function deriveTrainingSeed(
@@ -29,7 +23,9 @@ export function deriveAmateurDuelSeed(
   secret: string,
 ): string {
   return createHash('sha256')
-    .update(`${matchId}:${challengerUserId}:${opponentUserId}:amateur_duel:${acceptedAtIso}:${secret}`)
+    .update(
+      `${matchId}:${challengerUserId}:${opponentUserId}:amateur_duel:${acceptedAtIso}:${secret}`,
+    )
     .digest('hex');
 }
 

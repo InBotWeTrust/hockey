@@ -62,8 +62,8 @@ export async function recomputeEffectiveProfile(
       ? (row.custom_display_name ??
         buildDisplayName(row.custom_first_name, row.custom_last_name, null))
       : row.display_source === 'vk'
-      ? buildDisplayName(row.vk_first_name, row.vk_last_name, row.vk_username)
-      : buildDisplayName(row.tg_first_name, row.tg_last_name, row.tg_username);
+        ? buildDisplayName(row.vk_first_name, row.vk_last_name, row.vk_username)
+        : buildDisplayName(row.tg_first_name, row.tg_last_name, row.tg_username);
   const avatarUrl =
     row.display_source === 'custom'
       ? (row.custom_avatar_url ?? row.avatar_url)

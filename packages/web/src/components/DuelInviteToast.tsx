@@ -43,6 +43,14 @@ export function DuelInviteToast(): JSX.Element | null {
     return () => window.removeEventListener(DUEL_INVITE_RECEIVED_EVENT, onInvite);
   }, []);
 
+  useEffect(() => {
+    if (!toast) return;
+    const timeoutId = window.setTimeout(() => {
+      setToast(null);
+    }, 15_000);
+    return () => window.clearTimeout(timeoutId);
+  }, [toast]);
+
   const acceptMut = useMutation({
     mutationFn: (matchId: string) => acceptAmateurDuel(matchId),
     onSuccess: (_res, matchId) => {
@@ -110,19 +118,35 @@ export function DuelInviteToast(): JSX.Element | null {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           <button
             type="button"
-            className="btn btn--ghost"
+            className="btn"
             disabled={pending}
             onClick={() => declineMut.mutate(toast.invite.matchId)}
-            style={{ minHeight: 38, fontSize: 12 }}
+            style={{
+              minHeight: 38,
+              fontSize: 12,
+              background: '#dc2626',
+              color: '#ffffff',
+              border: '1px solid rgba(255, 255, 255, 0.72)',
+              boxShadow: '0 8px 20px rgba(220, 38, 38, 0.22)',
+              opacity: pending ? 0.68 : 1,
+            }}
           >
             Отклонить
           </button>
           <button
             type="button"
-            className="btn btn--cta"
+            className="btn"
             disabled={pending}
             onClick={() => acceptMut.mutate(toast.invite.matchId)}
-            style={{ minHeight: 38, fontSize: 12 }}
+            style={{
+              minHeight: 38,
+              fontSize: 12,
+              background: '#16a34a',
+              color: '#ffffff',
+              border: '1px solid rgba(255, 255, 255, 0.72)',
+              boxShadow: '0 8px 20px rgba(22, 163, 74, 0.22)',
+              opacity: pending ? 0.68 : 1,
+            }}
           >
             Принять
           </button>

@@ -400,14 +400,32 @@ describe('useChatSocket dispatch', () => {
 
   it('reaction:added (stranger): inserts pill in chatKeys.messages cache, count 1, reactedByMe=false', async () => {
     qc.setQueryData(chatKeys.messages('c1'), {
-      pages: [[{ id: 'm0', chatId: 'c1', senderId: OTHER, content: 'x', replyToId: null,
-                  isDeleted: false, createdAt: '2026-04-26T00:00:00.000Z', reactions: [] }]],
+      pages: [
+        [
+          {
+            id: 'm0',
+            chatId: 'c1',
+            senderId: OTHER,
+            content: 'x',
+            replyToId: null,
+            isDeleted: false,
+            createdAt: '2026-04-26T00:00:00.000Z',
+            reactions: [],
+          },
+        ],
+      ],
       pageParams: [undefined],
     });
     await act(async () => {
       MockWebSocket.instances[0]?.fireMessage({
         v: 1,
-        event: { type: 'reaction:added', chatId: 'c1', messageId: 'm0', userId: OTHER, emoji: '🔥' },
+        event: {
+          type: 'reaction:added',
+          chatId: 'c1',
+          messageId: 'm0',
+          userId: OTHER,
+          emoji: '🔥',
+        },
       });
     });
     const data = qc.getQueryData<{ pages: ChatMessageDTO[][] }>(chatKeys.messages('c1'));
@@ -416,15 +434,32 @@ describe('useChatSocket dispatch', () => {
 
   it('reaction:removed (stranger): decrements; pill disappears at 0', async () => {
     qc.setQueryData(chatKeys.messages('c1'), {
-      pages: [[{ id: 'm0', chatId: 'c1', senderId: OTHER, content: 'x', replyToId: null,
-                  isDeleted: false, createdAt: '2026-04-26T00:00:00.000Z',
-                  reactions: [{ emoji: '🔥', count: 1, reactedByMe: false }] }]],
+      pages: [
+        [
+          {
+            id: 'm0',
+            chatId: 'c1',
+            senderId: OTHER,
+            content: 'x',
+            replyToId: null,
+            isDeleted: false,
+            createdAt: '2026-04-26T00:00:00.000Z',
+            reactions: [{ emoji: '🔥', count: 1, reactedByMe: false }],
+          },
+        ],
+      ],
       pageParams: [undefined],
     });
     await act(async () => {
       MockWebSocket.instances[0]?.fireMessage({
         v: 1,
-        event: { type: 'reaction:removed', chatId: 'c1', messageId: 'm0', userId: OTHER, emoji: '🔥' },
+        event: {
+          type: 'reaction:removed',
+          chatId: 'c1',
+          messageId: 'm0',
+          userId: OTHER,
+          emoji: '🔥',
+        },
       });
     });
     const data = qc.getQueryData<{ pages: ChatMessageDTO[][] }>(chatKeys.messages('c1'));
@@ -433,9 +468,20 @@ describe('useChatSocket dispatch', () => {
 
   it('reaction:added (self) is deduped when reactedByMe already true', async () => {
     qc.setQueryData(chatKeys.messages('c1'), {
-      pages: [[{ id: 'm0', chatId: 'c1', senderId: SELF, content: 'x', replyToId: null,
-                  isDeleted: false, createdAt: '2026-04-26T00:00:00.000Z',
-                  reactions: [{ emoji: '🔥', count: 1, reactedByMe: true }] }]],
+      pages: [
+        [
+          {
+            id: 'm0',
+            chatId: 'c1',
+            senderId: SELF,
+            content: 'x',
+            replyToId: null,
+            isDeleted: false,
+            createdAt: '2026-04-26T00:00:00.000Z',
+            reactions: [{ emoji: '🔥', count: 1, reactedByMe: true }],
+          },
+        ],
+      ],
       pageParams: [undefined],
     });
     await act(async () => {
@@ -450,15 +496,32 @@ describe('useChatSocket dispatch', () => {
 
   it('reaction:removed (self) is deduped when pill no longer mine', async () => {
     qc.setQueryData(chatKeys.messages('c1'), {
-      pages: [[{ id: 'm0', chatId: 'c1', senderId: SELF, content: 'x', replyToId: null,
-                  isDeleted: false, createdAt: '2026-04-26T00:00:00.000Z',
-                  reactions: [{ emoji: '🔥', count: 1, reactedByMe: false }] }]],
+      pages: [
+        [
+          {
+            id: 'm0',
+            chatId: 'c1',
+            senderId: SELF,
+            content: 'x',
+            replyToId: null,
+            isDeleted: false,
+            createdAt: '2026-04-26T00:00:00.000Z',
+            reactions: [{ emoji: '🔥', count: 1, reactedByMe: false }],
+          },
+        ],
+      ],
       pageParams: [undefined],
     });
     await act(async () => {
       MockWebSocket.instances[0]?.fireMessage({
         v: 1,
-        event: { type: 'reaction:removed', chatId: 'c1', messageId: 'm0', userId: SELF, emoji: '🔥' },
+        event: {
+          type: 'reaction:removed',
+          chatId: 'c1',
+          messageId: 'm0',
+          userId: SELF,
+          emoji: '🔥',
+        },
       });
     });
     const data = qc.getQueryData<{ pages: ChatMessageDTO[][] }>(chatKeys.messages('c1'));
@@ -471,7 +534,13 @@ describe('useChatSocket dispatch', () => {
     await act(async () => {
       MockWebSocket.instances[0]?.fireMessage({
         v: 1,
-        event: { type: 'reaction:added', chatId: 'c-unknown', messageId: 'm', userId: OTHER, emoji: '🔥' },
+        event: {
+          type: 'reaction:added',
+          chatId: 'c-unknown',
+          messageId: 'm',
+          userId: OTHER,
+          emoji: '🔥',
+        },
       });
     });
     expect(qc.getQueryData(chatKeys.messages('c-unknown'))).toBeUndefined();
@@ -479,21 +548,44 @@ describe('useChatSocket dispatch', () => {
 
   it('switch via two stranger events (removed prev + added new) keeps state consistent', async () => {
     qc.setQueryData(chatKeys.messages('c1'), {
-      pages: [[{ id: 'm0', chatId: 'c1', senderId: OTHER, content: 'x', replyToId: null,
-                  isDeleted: false, createdAt: '2026-04-26T00:00:00.000Z',
-                  reactions: [{ emoji: '❤️', count: 1, reactedByMe: false }] }]],
+      pages: [
+        [
+          {
+            id: 'm0',
+            chatId: 'c1',
+            senderId: OTHER,
+            content: 'x',
+            replyToId: null,
+            isDeleted: false,
+            createdAt: '2026-04-26T00:00:00.000Z',
+            reactions: [{ emoji: '❤️', count: 1, reactedByMe: false }],
+          },
+        ],
+      ],
       pageParams: [undefined],
     });
     await act(async () => {
       MockWebSocket.instances[0]?.fireMessage({
         v: 1,
-        event: { type: 'reaction:removed', chatId: 'c1', messageId: 'm0', userId: OTHER, emoji: '❤️' },
+        event: {
+          type: 'reaction:removed',
+          chatId: 'c1',
+          messageId: 'm0',
+          userId: OTHER,
+          emoji: '❤️',
+        },
       });
     });
     await act(async () => {
       MockWebSocket.instances[0]?.fireMessage({
         v: 1,
-        event: { type: 'reaction:added', chatId: 'c1', messageId: 'm0', userId: OTHER, emoji: '🔥' },
+        event: {
+          type: 'reaction:added',
+          chatId: 'c1',
+          messageId: 'm0',
+          userId: OTHER,
+          emoji: '🔥',
+        },
       });
     });
     const data = qc.getQueryData<{ pages: ChatMessageDTO[][] }>(chatKeys.messages('c1'));

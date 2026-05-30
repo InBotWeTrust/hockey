@@ -185,7 +185,9 @@ export const chatRoutes: FastifyPluginAsync<ChatRoutesOptions> = async (app, opt
       ...(body.description !== undefined ? { description: body.description } : {}),
     });
     await Promise.all(
-      [req.user.id, ...body.memberUserIds].map((userId) => invalidateUnreadCache(app.redis, userId)),
+      [req.user.id, ...body.memberUserIds].map((userId) =>
+        invalidateUnreadCache(app.redis, userId),
+      ),
     );
     reply.code(201);
     return result;

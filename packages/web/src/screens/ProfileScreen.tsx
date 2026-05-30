@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CircleDollarSign, Info, Settings, Star, Trophy, X } from 'lucide-react';
+import { CircleDollarSign, Info, Settings, Star, TrendingUp, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../api/apiFetch.js';
 import {
@@ -36,86 +36,163 @@ function canStartMouseDragScroll(target: EventTarget | null): boolean {
   );
 }
 
-function CurrencyCard({
+function formatProfileCompactNumber(value: number): string {
+  const sign = value < 0 ? '-' : '';
+  const absolute = Math.abs(value);
+
+  if (absolute >= 1_000_000_000_000) {
+    return `${sign}${formatCompactUnit(absolute / 1_000_000_000_000)}трлн`;
+  }
+  if (absolute >= 1_000_000_000) {
+    return `${sign}${formatCompactUnit(absolute / 1_000_000_000)}млрд`;
+  }
+  if (absolute >= 1_000_000) {
+    return `${sign}${formatCompactUnit(absolute / 1_000_000)}млн`;
+  }
+  if (absolute >= 10_000) {
+    return `${sign}${Math.round(absolute / 1_000)}тыс`;
+  }
+
+  return formatProfileNumber(value);
+}
+
+function formatCompactUnit(value: number): string {
+  const rounded = value >= 10 ? Math.round(value) : Math.round(value * 10) / 10;
+  return String(rounded).replace('.', ',').replace(/,0$/, '');
+}
+
+function ProfileResourceChip({
   label,
   value,
   icon,
-  iconColor,
+  tone,
 }: {
   label: string;
   value: number;
   icon: ReactNode;
-  iconColor: string;
+  tone: 'coin' | 'star' | 'experience';
+}): JSX.Element {
+  const compactValue = formatProfileCompactNumber(value);
+  const visualLength = compactValue.replace(/\s/g, '').length;
+  const isLargeValue = Math.abs(value) >= 1_000_000;
+  const fontSize = visualLength >= 7 ? 8 : visualLength >= 5 || isLargeValue ? 10 : 11;
+  const iconSize = visualLength >= 7 ? 9 : visualLength >= 5 || isLargeValue ? 12 : 14;
+  const gap = visualLength >= 5 || isLargeValue ? 2 : 4;
+  const colors =
+    tone === 'coin'
+      ? {
+          color: '#9A6700',
+        }
+      : tone === 'star'
+        ? {
+            color: '#B77900',
+          }
+        : {
+            color: '#158A86',
+          };
+
+  return (
+    <span
+      aria-label={`${label}: ${value}`}
+      title={`${label}: ${formatProfileNumber(value)}`}
+      style={{
+        minWidth: 0,
+        height: 18,
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap,
+        color: colors.color,
+        fontSize,
+        fontWeight: 900,
+        lineHeight: 1,
+        fontVariantNumeric: 'tabular-nums',
+        whiteSpace: 'nowrap',
+        flex: '0 1 auto',
+      }}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          width: iconSize,
+          height: iconSize,
+          display: 'inline-flex',
+          flex: `0 0 ${iconSize}px`,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <span style={{ display: 'inline-flex', transform: `scale(${iconSize / 14})` }}>
+          {icon}
+        </span>
+      </span>
+      <span>{compactValue}</span>
+    </span>
+  );
+}
+
+function ProfileAvatar({
+  avatarUrl,
+  initial,
+}: {
+  avatarUrl?: string | undefined;
+  initial: string;
 }): JSX.Element {
   return (
     <div
-      className="glass"
       style={{
-        minWidth: 0,
-        minHeight: 88,
-        padding: '13px 12px 12px',
-        borderRadius: 16,
-        display: 'grid',
-        gridTemplateRows: 'auto minmax(0, 1fr)',
-        alignItems: 'stretch',
-        gap: 8,
+        width: 76,
+        height: 76,
+        gridArea: 'avatar',
         position: 'relative',
-        overflow: 'hidden',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
       }}
     >
       <div
-        aria-hidden="true"
         style={{
-          position: 'absolute',
-          top: 10,
-          right: 12,
-          width: 18,
-          height: 18,
+          width: 72,
+          height: 72,
           borderRadius: 999,
-          color: iconColor,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          pointerEvents: 'none',
-          zIndex: 0,
+          padding: 3,
+          background: 'rgba(226, 238, 249, 0.78)',
+          boxShadow: '0 9px 22px rgba(15, 23, 42, 0.18)',
         }}
       >
-        {icon}
-      </div>
-      <div
-        style={{
-          minWidth: 0,
-          color: 'var(--muted)',
-          fontSize: 10,
-          fontWeight: 700,
-          lineHeight: 1.05,
-          textTransform: 'uppercase',
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          position: 'relative',
-          zIndex: 1,
-          maxWidth: 'calc(100% - 36px)',
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          minWidth: 0,
-          color: 'var(--ink)',
-          fontSize: 23,
-          fontWeight: 800,
-          lineHeight: 1,
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'clip',
-          position: 'relative',
-          zIndex: 1,
-          alignSelf: 'end',
-        }}
-      >
-        {formatProfileNumber(value)}
+        {avatarUrl ? (
+          <img
+            src={avatarUrl}
+            alt="avatar"
+            style={{
+              width: '100%',
+              height: '100%',
+              borderRadius: 999,
+              objectFit: 'cover',
+              border: '2px solid rgba(239, 247, 255, 0.92)',
+              boxSizing: 'border-box',
+              display: 'block',
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              width: '100%',
+              height: '100%',
+              borderRadius: 999,
+              background: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)',
+              color: '#ffffff',
+              fontSize: 25,
+              fontWeight: 800,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              border: '2px solid rgba(239, 247, 255, 0.92)',
+              boxSizing: 'border-box',
+            }}
+          >
+            {initial}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -681,8 +758,7 @@ function EquipmentDetailsModal({
                   letterSpacing: '0.04em',
                   background: 'rgba(255,255,255,0.54)',
                   border: '1px solid rgba(15, 23, 42, 0.13)',
-                  boxShadow:
-                    'inset 0 1px 0 rgba(255,255,255,0.7), 0 8px 18px rgba(15,23,42,0.08)',
+                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.7), 0 8px 18px rgba(15,23,42,0.08)',
                 }}
               >
                 В магазин
@@ -879,13 +955,13 @@ export function ProfileScreen(): JSX.Element {
         className="glass"
         style={{
           margin: 'calc(16px + var(--app-safe-top)) 14px 14px',
-          padding: '14px 14px',
+          padding: '14px 14px 13px',
           borderRadius: 24,
           display: 'grid',
-          gridTemplateColumns: '64px minmax(0, 1fr) 44px',
+          gridTemplateColumns: '76px minmax(0, 1fr) 40px',
           gridTemplateAreas: '"avatar info settings"',
           alignItems: 'center',
-          gap: 12,
+          gap: 10,
           position: 'relative',
         }}
       >
@@ -900,121 +976,96 @@ export function ProfileScreen(): JSX.Element {
             height: 40,
             gridArea: 'settings',
             justifySelf: 'end',
+            alignSelf: 'start',
+            marginTop: 2,
           }}
         >
           <Settings size={18} />
         </button>
-        {data?.avatarUrl ? (
-          <img
-            src={data.avatarUrl}
-            alt="avatar"
-            style={{
-              width: 64,
-              height: 64,
-              gridArea: 'avatar',
-              borderRadius: 999,
-              objectFit: 'cover',
-              boxShadow: '0 8px 20px rgba(15, 23, 42, 0.22)',
-            }}
-          />
-        ) : (
-          <div
-            style={{
-              width: 64,
-              height: 64,
-              gridArea: 'avatar',
-              borderRadius: 999,
-              background: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)',
-              color: '#ffffff',
-              fontSize: 25,
-              fontWeight: 800,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 8px 20px rgba(15, 23, 42, 0.22)',
-            }}
-          >
-            {initial}
-          </div>
-        )}
-        <div style={{ minWidth: 0, gridArea: 'info', display: 'grid', gap: 4 }}>
+        <ProfileAvatar
+          avatarUrl={data?.avatarUrl ?? undefined}
+          initial={initial}
+        />
+        <div
+          style={{
+            minWidth: 0,
+            minHeight: 68,
+            gridArea: 'info',
+            display: 'grid',
+            gridTemplateRows: 'auto minmax(0, 1fr) auto',
+            alignItems: 'center',
+            gap: 2,
+          }}
+        >
           <div
             style={{
               minWidth: 0,
-              fontSize: 20,
-              fontWeight: 800,
+              maxWidth: '100%',
+              display: 'flex',
+              flexWrap: 'nowrap',
+              alignItems: 'center',
+              justifyContent: 'flex-start',
+              gap: 'clamp(6px, 2.8vw, 14px)',
+              justifySelf: 'stretch',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <ProfileResourceChip
+              label="Монеты"
+              value={tokenBalance}
+              icon={<CircleDollarSign size={14} strokeWidth={2.55} />}
+              tone="coin"
+            />
+            <ProfileResourceChip
+              label="Звёзды"
+              value={starBalance}
+              icon={<Star size={14} strokeWidth={2.55} fill="currentColor" />}
+              tone="star"
+            />
+            <ProfileResourceChip
+              label="Опыт"
+              value={experienceBalance}
+              icon={<TrendingUp size={14} strokeWidth={2.55} />}
+              tone="experience"
+            />
+          </div>
+          <span
+            style={{
+              minWidth: 0,
+              maxWidth: '100%',
+              alignSelf: 'center',
               color: 'var(--ink)',
+              fontSize: 20,
+              fontWeight: 850,
               lineHeight: 1.08,
               overflow: 'hidden',
+              textAlign: 'left',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
             }}
           >
             {data?.displayName ?? '-'}
-          </div>
-          {(data?.username || data?.tgId) && (
-            <div
-              style={{
-                minWidth: 0,
-                fontSize: 13,
-                fontWeight: 600,
-                color: 'var(--muted)',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {data.username ? `@${data.username}` : `id ${data.tgId}`}
-            </div>
-          )}
+          </span>
           <div
             style={{
-              color: 'var(--muted)',
-              fontSize: 12,
+              justifySelf: 'start',
+              maxWidth: '100%',
+              minWidth: 0,
+              height: 16,
+              display: 'inline-flex',
+              alignItems: 'center',
+              color: 'rgba(71, 85, 105, 0.88)',
+              fontSize: 11,
               fontWeight: 800,
-              letterSpacing: '0.08em',
-              lineHeight: 1.1,
-              textTransform: 'uppercase',
+              lineHeight: 1,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
             }}
           >
             Уровень: {getLevelLabel(data?.competitionLevel)}
           </div>
         </div>
-      </div>
-
-      <ProfileSectionLabel
-        infoSection="currency"
-        onOpenInfo={setSelectedInfoSection}
-        style={{ marginBottom: 6 }}
-      >
-        Валюта
-      </ProfileSectionLabel>
-      <div
-        style={{
-          margin: '0 14px 14px',
-          display: 'grid',
-          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-          gap: 8,
-        }}
-      >
-        <CurrencyCard
-          label="Монеты"
-          value={tokenBalance}
-          icon={<CircleDollarSign size={16} strokeWidth={2.45} />}
-          iconColor="#C48A1D"
-        />
-        <CurrencyCard
-          label="Звёзды"
-          value={starBalance}
-          icon={<Star size={16} strokeWidth={2.45} fill="currentColor" />}
-          iconColor="#D9A21B"
-        />
-        <CurrencyCard
-          label="Опыт"
-          value={experienceBalance}
-          icon={<Trophy size={16} strokeWidth={2.45} />}
-          iconColor="#21A19A"
-        />
       </div>
 
       <ProfileSectionLabel

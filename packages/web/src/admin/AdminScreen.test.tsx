@@ -676,10 +676,10 @@ describe('AdminScreen', () => {
                 description:
                   'Сколько минут дневная игра закрыта после первого броска в тренировке.',
                 type: 'number',
-                defaultValue: 120,
+                defaultValue: 30,
                 min: 0,
                 max: 1440,
-                value: 120,
+                value: 30,
                 updatedAt: null,
                 updatedBy: null,
               },

@@ -173,7 +173,7 @@ export const GAME_SETTING_DEFINITIONS: readonly GameSettingDefinition[] = [
     label: 'Блокировка дневной игры',
     description: 'Сколько минут дневная игра закрыта после первого броска в тренировке.',
     type: 'number',
-    defaultValue: 120,
+    defaultValue: 30,
     min: 0,
     max: 1440,
   },
@@ -320,7 +320,7 @@ export async function getGameSettings(pool: Queryable): Promise<GameSettings> {
       shotsLimit: Number.isFinite(trainingShotsLimit) ? trainingShotsLimit : 500,
       dailyCooldownMinutes: Number.isFinite(trainingDailyCooldownMinutes)
         ? Math.max(0, Math.trunc(trainingDailyCooldownMinutes))
-        : 120,
+        : 30,
     },
     amateur: {
       unlockGoalsRequired: Number.isFinite(amateurUnlockGoalsRequired)

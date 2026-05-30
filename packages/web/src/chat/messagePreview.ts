@@ -14,7 +14,9 @@ function valueContains(value: unknown, needles: string[]): boolean {
   return needles.some((needle) => normalized.includes(needle));
 }
 
-function collectAttachmentMetadata(metadata: ChatMessageDTO['metadata']): Record<string, unknown>[] {
+function collectAttachmentMetadata(
+  metadata: ChatMessageDTO['metadata'],
+): Record<string, unknown>[] {
   if (!isRecord(metadata)) return [];
   const items: Record<string, unknown>[] = [metadata];
   for (const key of ['attachment', 'file', 'media']) {
@@ -32,7 +34,15 @@ function collectAttachmentMetadata(metadata: ChatMessageDTO['metadata']): Record
 }
 
 function attachmentKind(item: Record<string, unknown>): ChatAttachmentDTO['kind'] | null {
-  const descriptorKeys = ['kind', 'type', 'mediaType', 'mimeType', 'mime', 'contentType', 'attachmentType'];
+  const descriptorKeys = [
+    'kind',
+    'type',
+    'mediaType',
+    'mimeType',
+    'mime',
+    'contentType',
+    'attachmentType',
+  ];
   if (descriptorKeys.some((key) => valueContains(item[key], ['voice', 'audio']))) return 'voice';
   if (descriptorKeys.some((key) => valueContains(item[key], ['image']))) return 'image';
   if (
@@ -68,7 +78,8 @@ export function messageAttachments(metadata: ChatMessageDTO['metadata']): ChatAt
           : typeof item.mime === 'string'
             ? item.mime
             : undefined;
-    const size = typeof item.size === 'number' && Number.isFinite(item.size) ? item.size : undefined;
+    const size =
+      typeof item.size === 'number' && Number.isFinite(item.size) ? item.size : undefined;
     const originalName = attachmentName(item);
     return [
       {
@@ -102,7 +113,8 @@ export function messageBodyPreview(
 ): string {
   const text = stripFormatting ? stripRichTextSyntax(message.content) : message.content;
   const normalized = text.trim();
-  const body = normalized.length > 0 ? normalized : (attachmentPreview(message.metadata) ?? fallback);
+  const body =
+    normalized.length > 0 ? normalized : (attachmentPreview(message.metadata) ?? fallback);
   if (limit === undefined || body.length <= limit) return body;
   return `${body.slice(0, limit - 1).trimEnd()}…`;
 }

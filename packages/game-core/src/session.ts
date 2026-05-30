@@ -24,10 +24,6 @@ export function getSessionPhaseOffsets(seed: string): SessionPhaseOffsets {
  * Per-shot seed derivation. Both server and client must use this identical
  * function so that resolveShot yields the same result on either side.
  */
-export function deriveShotSeed(
-  dailySeed: string,
-  periodNumber: number,
-  shotIndex: number,
-): string {
+export function deriveShotSeed(dailySeed: string, periodNumber: number, shotIndex: number): string {
   return `${dailySeed}:p${periodNumber}:s${shotIndex}`;
 }

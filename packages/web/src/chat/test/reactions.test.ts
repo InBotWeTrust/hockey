@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  EMOJI_WHITELIST,
-  FAVORITE_EMOJI,
-  isWhitelistEmoji,
-} from '../reactions.js';
+import { EMOJI_WHITELIST, FAVORITE_EMOJI, isWhitelistEmoji } from '../reactions.js';
 
 describe('web emoji whitelist', () => {
   it('has 24 entries', () => {
@@ -28,9 +24,30 @@ describe('web emoji whitelist', () => {
     // Lock the order. If you intentionally change the list, update both
     // packages/server/src/chat/whitelist.ts AND this snapshot.
     expect(EMOJI_WHITELIST).toEqual([
-      '👍', '❤️', '😂', '🎉', '😮', '😢', '🔥', '👏',
-      '🙏', '💯', '🤔', '😍', '😡', '🥳', '😎', '🤩',
-      '👎', '💔', '🤯', '🥶', '🤝', '🍻', '💪', '🎯',
+      '👍',
+      '❤️',
+      '😂',
+      '🎉',
+      '😮',
+      '😢',
+      '🔥',
+      '👏',
+      '🙏',
+      '💯',
+      '🤔',
+      '😍',
+      '😡',
+      '🥳',
+      '😎',
+      '🤩',
+      '👎',
+      '💔',
+      '🤯',
+      '🥶',
+      '🤝',
+      '🍻',
+      '💪',
+      '🎯',
     ]);
   });
 });

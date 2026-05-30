@@ -9,9 +9,9 @@ export interface ShooterState {
 //
 // Margin 55 — sprite corner в повороте (BASE_ROTATION=0.32 рад) влезает с
 // небольшим зазором от бортов RINK=572: sqrt(30² + 40.5²) ≈ 50 + 5 запас.
-export const SHOOTER_MIN_X    = 55;
-export const SHOOTER_MAX_X    = 517;
-export const SHOOTER_CENTER_X = (SHOOTER_MIN_X + SHOOTER_MAX_X) / 2;  // = 286
+export const SHOOTER_MIN_X = 55;
+export const SHOOTER_MAX_X = 517;
+export const SHOOTER_CENTER_X = (SHOOTER_MIN_X + SHOOTER_MAX_X) / 2; // = 286
 export const SHOOTER_AMPLITUDE = (SHOOTER_MAX_X - SHOOTER_MIN_X) / 2; // = 231
 export const SHOOTER_FREQUENCY = 0.45; // Hz
 

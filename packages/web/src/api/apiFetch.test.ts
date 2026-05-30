@@ -68,6 +68,21 @@ describe('apiFetch', () => {
     },
   );
 
+  it('localizes unsupported media type errors', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockJson(
+        { error: { code: 'FST_ERR_CTP_INVALID_MEDIA_TYPE', message: 'Unsupported Media Type' } },
+        { status: 415 },
+      ),
+    );
+
+    await expect(apiFetch('/chat/c/uploads')).rejects.toMatchObject({
+      status: 415,
+      code: 'FST_ERR_CTP_INVALID_MEDIA_TYPE',
+      message: 'Формат файла не поддерживается. Загрузите JPG, PNG, WebP или GIF.',
+    });
+  });
+
   it('retries original request once after successful refresh', async () => {
     useAuthStore.getState().setSession({
       accessToken: 'stale',
@@ -114,19 +129,20 @@ describe('apiFetch', () => {
   });
 
   it('does not retry when refreshToken absent', async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      mockJson({ error: 'unauthenticated' }, { status: 401 }),
-    );
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(mockJson({ error: 'unauthenticated' }, { status: 401 }));
     await expect(apiFetch('/me')).rejects.toBeInstanceOf(ApiError);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
   it('refreshAccessToken reuses the in-flight refresh promise (no parallel /auth/refresh calls)', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
-      new Response(JSON.stringify({ accessToken: 'AT2', refreshToken: 'RT2' }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      }),
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ accessToken: 'AT2', refreshToken: 'RT2' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
     );
     const user: AuthUser = { id: 'u1', displayName: 'U' };
     useAuthStore.setState({ accessToken: 'AT1', refreshToken: 'RT1', user });

@@ -5,6 +5,9 @@ const API_BASE = '/api';
 const SERVER_ERROR_MESSAGES: Record<string, string> = {
   telegram_already_linked: 'Аккаунт уже занят',
   vk_already_linked: 'Аккаунт уже занят',
+  unsupported_media_type: 'Формат файла не поддерживается. Загрузите JPG, PNG, WebP или GIF.',
+  FST_ERR_CTP_INVALID_MEDIA_TYPE:
+    'Формат файла не поддерживается. Загрузите JPG, PNG, WebP или GIF.',
   'open duel already exists for this opponent': 'С этим игроком уже есть открытая дуэль.',
 };
 

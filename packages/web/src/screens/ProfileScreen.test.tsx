@@ -193,9 +193,11 @@ describe('ProfileScreen', () => {
     const equipmentLabel = screen.getByText('Экипировка');
     const achievementsLabel = screen.getByText('Задания (1/2)');
     expect(screen.getByText('Уровень: Новичок')).toBeInTheDocument();
-    expect(screen.getByText('Монеты')).toBeInTheDocument();
-    expect(screen.getByText('Звёзды')).toBeInTheDocument();
-    expect(screen.getByText('Опыт')).toBeInTheDocument();
+    expect(screen.queryByText('id u1')).not.toBeInTheDocument();
+    expect(screen.queryByText('Валюта')).not.toBeInTheDocument();
+    expect(await screen.findByLabelText('Монеты: 1000')).toBeInTheDocument();
+    expect(await screen.findByLabelText('Звёзды: 3')).toBeInTheDocument();
+    expect(await screen.findByLabelText('Опыт: 77')).toBeInTheDocument();
     expect(
       await screen.findByText((text) => text.replace(/\s/g, '') === '1000'),
     ).toBeInTheDocument();

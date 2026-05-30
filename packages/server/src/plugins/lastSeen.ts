@@ -36,9 +36,7 @@ const plugin: FastifyPluginAsync = async (app) => {
     done();
     const u = req.user;
     if (!u || !u.id) return;
-    void touch(u.id).catch((err) =>
-      req.log.warn({ err, userId: u.id }, 'touchLastSeen failed'),
-    );
+    void touch(u.id).catch((err) => req.log.warn({ err, userId: u.id }, 'touchLastSeen failed'));
   });
 };
 

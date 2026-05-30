@@ -110,10 +110,7 @@ export function ReplyPreview({
   }
 
   return (
-    <div
-      data-testid="reply-preview"
-      style={style}
-    >
+    <div data-testid="reply-preview" style={style}>
       {contentNode}
     </div>
   );

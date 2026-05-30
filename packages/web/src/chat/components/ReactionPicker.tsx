@@ -19,23 +19,14 @@ function panelPosition(anchor: DOMRect): { top: number; left: number } {
   const below = anchor.bottom + PANEL_GAP;
   const maxTop = window.innerHeight - PANEL_HEIGHT - SAFE_MARGIN;
   const top =
-    above >= SAFE_MARGIN
-      ? above
-      : below <= maxTop
-      ? below
-      : Math.max(SAFE_MARGIN, maxTop);
+    above >= SAFE_MARGIN ? above : below <= maxTop ? below : Math.max(SAFE_MARGIN, maxTop);
   const wantedLeft = anchor.left + anchor.width / 2 - PANEL_WIDTH / 2;
   const maxLeft = window.innerWidth - PANEL_WIDTH - SAFE_MARGIN;
   const left = Math.min(Math.max(SAFE_MARGIN, wantedLeft), Math.max(SAFE_MARGIN, maxLeft));
   return { top, left };
 }
 
-export function ReactionPicker({
-  open,
-  anchorRect,
-  onPick,
-  onClose,
-}: Props): JSX.Element | null {
+export function ReactionPicker({ open, anchorRect, onPick, onClose }: Props): JSX.Element | null {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent): void => {

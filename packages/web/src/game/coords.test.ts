@@ -1,11 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { RINK } from '@hockey/game-core';
-import {
-  computeScale,
-  rinkToScreen,
-  screenToRink,
-  type Scale,
-} from './coords.js';
+import { computeScale, rinkToScreen, screenToRink, type Scale } from './coords.js';
 
 describe('computeScale', () => {
   it(`fits rink into ${RINK.width}x${RINK.height} viewport 1:1`, () => {

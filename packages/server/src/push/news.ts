@@ -29,7 +29,10 @@ export interface SendNewsPostPushResult {
 const BODY_LIMIT = 180;
 
 function compactBody(body: string): string {
-  const normalized = body.replace(/\*\*|__/g, '').replace(/\s+/g, ' ').trim();
+  const normalized = body
+    .replace(/\*\*|__/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
   if (normalized.length <= BODY_LIMIT) return normalized;
   return `${normalized.slice(0, BODY_LIMIT - 1).trimEnd()}…`;
 }

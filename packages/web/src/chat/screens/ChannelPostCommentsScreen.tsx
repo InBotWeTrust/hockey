@@ -345,11 +345,7 @@ export function ChannelPostCommentsScreen(): JSX.Element {
   });
 
   const sendMut = useMutation({
-    mutationFn: (vars: {
-      content: string;
-      replyToId: string | null;
-      attachmentIds?: string[];
-    }) =>
+    mutationFn: (vars: { content: string; replyToId: string | null; attachmentIds?: string[] }) =>
       vars.attachmentIds && vars.attachmentIds.length > 0
         ? sendChannelPostComment(postId, vars.content, vars.replyToId, vars.attachmentIds)
         : sendChannelPostComment(postId, vars.content, vars.replyToId),

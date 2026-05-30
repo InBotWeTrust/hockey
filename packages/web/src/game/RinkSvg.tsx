@@ -27,14 +27,7 @@ export function RinkSvg(): JSX.Element {
           <stop offset="0%" stopColor="#ffffff" stopOpacity="0.9" />
           <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
         </radialGradient>
-        <pattern
-          id="rink-frost"
-          x="0"
-          y="0"
-          width="120"
-          height="120"
-          patternUnits="userSpaceOnUse"
-        >
+        <pattern id="rink-frost" x="0" y="0" width="120" height="120" patternUnits="userSpaceOnUse">
           <rect width="120" height="120" fill="transparent" />
           <circle cx="20" cy="30" r="0.6" fill="#B9CEE0" opacity="0.35" />
           <circle cx="60" cy="90" r="0.5" fill="#B9CEE0" opacity="0.25" />
@@ -101,8 +94,24 @@ function AttackFaceoff({ cx, cy }: { cx: number; cy: number }): JSX.Element {
     <g>
       <circle cx={cx} cy={cy} r="56" stroke="#E3B5B5" strokeWidth="2" fill="none" opacity="0.8" />
       <circle cx={cx} cy={cy} r="4" fill="#E3B5B5" />
-      <line x1={cx - 9} y1={cy - 6} x2={cx + 9} y2={cy - 6} stroke="#E3B5B5" strokeWidth="1.5" opacity="0.8" />
-      <line x1={cx - 9} y1={cy + 6} x2={cx + 9} y2={cy + 6} stroke="#E3B5B5" strokeWidth="1.5" opacity="0.8" />
+      <line
+        x1={cx - 9}
+        y1={cy - 6}
+        x2={cx + 9}
+        y2={cy - 6}
+        stroke="#E3B5B5"
+        strokeWidth="1.5"
+        opacity="0.8"
+      />
+      <line
+        x1={cx - 9}
+        y1={cy + 6}
+        x2={cx + 9}
+        y2={cy + 6}
+        stroke="#E3B5B5"
+        strokeWidth="1.5"
+        opacity="0.8"
+      />
     </g>
   );
 }

@@ -33,10 +33,7 @@ export async function invalidateUnreadCache(redis: Redis, userId: string): Promi
   await redis.del(unreadKey(userId));
 }
 
-export async function checkAndConsumeRateLimit(
-  redis: Redis,
-  userId: string,
-): Promise<void> {
+export async function checkAndConsumeRateLimit(redis: Redis, userId: string): Promise<void> {
   const key = rateLimitKey(userId);
   const count = await redis.incr(key);
   if (count === 1) {

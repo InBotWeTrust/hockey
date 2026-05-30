@@ -681,6 +681,9 @@ export function ChatRoomScreen(): JSX.Element {
       if (vars.attachmentIds !== undefined) body.attachmentIds = vars.attachmentIds;
       return sendMessage(chatId, body);
     },
+    onMutate: () => {
+      setAttachmentError(null);
+    },
     onSuccess: (msg) => {
       setPendingAttachment(null);
       queryClient.setQueryData<InfinitePages | undefined>(chatKeys.messages(chatId), (old) => {
@@ -705,6 +708,9 @@ export function ChatRoomScreen(): JSX.Element {
         const el = messagesListRef.current;
         if (el) el.scrollTop = el.scrollHeight;
       });
+    },
+    onError: (err) => {
+      setAttachmentError(err instanceof Error ? err.message : 'Не удалось отправить сообщение');
     },
   });
 
@@ -1185,20 +1191,20 @@ export function ChatRoomScreen(): JSX.Element {
   );
 
   const handleSend = useCallback(
-    (content: string, replyToId: string | null): void => {
+    (content: string, replyToId: string | null): Promise<void> => {
       const vars: { content: string; replyToId: string | null; attachmentIds?: string[] } = {
         content,
         replyToId,
       };
       if (pendingAttachment?.media) vars.attachmentIds = [pendingAttachment.media.id];
-      sendMut.mutate(vars);
+      return sendMut.mutateAsync(vars).then(() => undefined);
     },
     [pendingAttachment, sendMut],
   );
 
   const handleEditMessage = useCallback(
-    (messageId: string, content: string): void => {
-      editMessageMut.mutate({ messageId, content });
+    (messageId: string, content: string): Promise<void> => {
+      return editMessageMut.mutateAsync({ messageId, content }).then(() => undefined);
     },
     [editMessageMut],
   );
@@ -1524,7 +1530,7 @@ export function ChatRoomScreen(): JSX.Element {
           <input
             ref={imageAttachmentInputRef}
             type="file"
-            accept="image/*"
+            accept="image/jpeg,image/png,image/webp,image/gif"
             hidden
             onChange={(event) => {
               const file = event.currentTarget.files?.[0];

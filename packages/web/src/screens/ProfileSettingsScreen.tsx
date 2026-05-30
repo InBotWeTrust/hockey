@@ -55,7 +55,9 @@ async function convertAvatarToWebp(file: File): Promise<File> {
     throw new Error('Аватар должен быть изображением JPG, PNG или WebP.');
   }
   if (file.size > AVATAR_SOURCE_MAX_BYTES) {
-    throw new Error(`Аватар слишком большой. Лимит: ${formatUploadLimit(AVATAR_SOURCE_MAX_BYTES)}.`);
+    throw new Error(
+      `Аватар слишком большой. Лимит: ${formatUploadLimit(AVATAR_SOURCE_MAX_BYTES)}.`,
+    );
   }
 
   const image = await loadImage(file);
@@ -423,6 +425,40 @@ export function ProfileSettingsScreen(): JSX.Element {
             Аккаунт
           </div>
           <div style={{ margin: '0 14px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div
+              className="glass"
+              style={{
+                padding: '10px 12px',
+                borderRadius: 16,
+                display: 'grid',
+                gap: 3,
+              }}
+            >
+              <div
+                style={{
+                  color: 'var(--muted)',
+                  fontSize: 11,
+                  fontWeight: 800,
+                  letterSpacing: '0.04em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                ID игрока
+              </div>
+              <div
+                style={{
+                  minWidth: 0,
+                  color: 'var(--ink)',
+                  fontSize: 14,
+                  fontWeight: 750,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {data?.tgId ? `id ${data.tgId}` : data?.id ?? '-'}
+              </div>
+            </div>
             <ProfileSourceOption
               label="Кастом"
               name={providerName(data, 'custom')}

@@ -39,8 +39,7 @@ export function SectionsScreen(): JSX.Element {
     dailyData?.amateur_unlock_goals_required ?? DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED,
   );
   const amateurGoals = Math.min(amateurUnlockGoalsRequired, dailyData?.lifetime_total_goals ?? 0);
-  const isAmateurUnlocked =
-    (dailyData?.lifetime_total_goals ?? 0) >= amateurUnlockGoalsRequired;
+  const isAmateurUnlocked = (dailyData?.lifetime_total_goals ?? 0) >= amateurUnlockGoalsRequired;
   const trainingShotsLimit = trainingData?.shots_limit ?? 500;
   const trainingShotsTaken = trainingData?.shots_taken ?? 0;
   const dailyShotsLimit = (dailyData?.shots_per_period ?? 30) * (dailyData?.total_periods ?? 3);

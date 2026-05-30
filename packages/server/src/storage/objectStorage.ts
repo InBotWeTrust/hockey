@@ -160,13 +160,13 @@ function authorizationHeader({
     signedHeaderNames,
     payloadHash,
   ].join('\n');
-  const stringToSign = [
-    algorithm,
-    amzDate,
-    credentialScope,
-    sha256Hex(canonicalRequest),
-  ].join('\n');
-  const signature = createHmac('sha256', signingKey(config.secretAccessKey, dateStamp, config.region))
+  const stringToSign = [algorithm, amzDate, credentialScope, sha256Hex(canonicalRequest)].join(
+    '\n',
+  );
+  const signature = createHmac(
+    'sha256',
+    signingKey(config.secretAccessKey, dateStamp, config.region),
+  )
     .update(stringToSign)
     .digest('hex');
 
@@ -244,7 +244,8 @@ export function createObjectStorageClient(
       const body = Buffer.from(await res.arrayBuffer());
       return {
         body,
-        contentType: res.headers.get('content-type')?.split(';')[0]?.trim() || 'application/octet-stream',
+        contentType:
+          res.headers.get('content-type')?.split(';')[0]?.trim() || 'application/octet-stream',
         size: Number(res.headers.get('content-length') ?? body.byteLength),
       };
     },

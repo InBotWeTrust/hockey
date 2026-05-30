@@ -4,8 +4,15 @@ import { MessageActionsMenu } from '../components/MessageActionsMenu.js';
 import { FAVORITE_EMOJI } from '../reactions.js';
 
 const anchor: DOMRect = {
-  top: 100, left: 100, right: 200, bottom: 200, width: 100, height: 100,
-  x: 100, y: 100, toJSON: () => ({}),
+  top: 100,
+  left: 100,
+  right: 200,
+  bottom: 200,
+  width: 100,
+  height: 100,
+  x: 100,
+  y: 100,
+  toJSON: () => ({}),
 };
 
 function defaults() {

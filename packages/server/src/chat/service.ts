@@ -289,7 +289,12 @@ export async function getChatInfo(
   description: string | null;
   avatarUrl: string | null;
   memberCount: number;
-  members: { userId: string; displayName: string; avatarUrl: string | null; role?: 'admin' | 'member' }[];
+  members: {
+    userId: string;
+    displayName: string;
+    avatarUrl: string | null;
+    role?: 'admin' | 'member';
+  }[];
 }> {
   // Caller is expected to have already passed assertCanAccessChat. This
   // returns chat metadata + a capped, alphabetised member list. For system
@@ -311,7 +316,12 @@ export async function getChatInfo(
   const chat = chatRes.rows[0]!;
 
   let memberCount: number;
-  let members: { userId: string; displayName: string; avatarUrl: string | null; role?: 'admin' | 'member' }[];
+  let members: {
+    userId: string;
+    displayName: string;
+    avatarUrl: string | null;
+    role?: 'admin' | 'member';
+  }[];
 
   if (chat.type === 'system' || chat.type === 'channel') {
     const total = await pool.query<{ c: string }>(`select count(*)::bigint as c from users`);

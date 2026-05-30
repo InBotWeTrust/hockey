@@ -20,7 +20,9 @@ export interface JwtServiceOptions {
 
 export interface JwtService {
   issueAccessToken(input: { sub: string }): Promise<string>;
-  issueRefreshToken(input: { sub: string }): Promise<{ token: string; jti: string; expSec: number }>;
+  issueRefreshToken(input: {
+    sub: string;
+  }): Promise<{ token: string; jti: string; expSec: number }>;
   accessSecret: string;
   refreshSecret: string;
   refreshTtlSec: number;
@@ -60,15 +62,25 @@ export function createJwt(options: JwtServiceOptions): JwtService {
   };
 }
 
-export async function verifyAccessToken(token: string, secret: string): Promise<AccessTokenPayload> {
+export async function verifyAccessToken(
+  token: string,
+  secret: string,
+): Promise<AccessTokenPayload> {
   const { payload } = await jwtVerify(token, encoder.encode(secret), { algorithms: ['HS256'] });
-  if (typeof payload.sub !== 'string' || typeof payload.exp !== 'number' || typeof payload.iat !== 'number') {
+  if (
+    typeof payload.sub !== 'string' ||
+    typeof payload.exp !== 'number' ||
+    typeof payload.iat !== 'number'
+  ) {
     throw new Error('jwt: invalid payload');
   }
   return { sub: payload.sub, exp: payload.exp, iat: payload.iat };
 }
 
-export async function verifyRefreshToken(token: string, secret: string): Promise<RefreshTokenPayload> {
+export async function verifyRefreshToken(
+  token: string,
+  secret: string,
+): Promise<RefreshTokenPayload> {
   const { payload } = await jwtVerify(token, encoder.encode(secret), { algorithms: ['HS256'] });
   if (
     typeof payload.sub !== 'string' ||

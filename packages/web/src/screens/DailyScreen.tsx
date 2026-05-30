@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -905,7 +906,7 @@ function GameHub({
   const isDailyInProgress = data.state === 'period_active' || data.state === 'break_active';
   const isArenaLaunching = false;
   const dailyActionDisabled = pending || arenaActionId === 'daily' || isArenaLaunching;
-  const dailyActionLabel = 'На площадку';
+  const dailyActionLabel = 'На лед';
   const dailyEventTitle = isDailyLockedByTraining
     ? 'Восстановление'
     : data.state === 'period_active'
@@ -1093,7 +1094,7 @@ function GameHub({
     title: 'Тренировка',
     subtitle: 'Период на выбор, броски для формы и скорости.',
     meta: trainingAvailability,
-    ctaLabel: 'На площадку',
+    ctaLabel: 'На лед',
     disabled: trainingInFlight || arenaActionId === 'training' || isArenaLaunching,
     onEnter: handleOpenTraining,
   };
@@ -1246,8 +1247,10 @@ function ArenaVideoCube({
   activeIndex: number;
   onActiveIndexChange: (index: number) => void;
 }): JSX.Element {
-  const activeEntry = entries[Math.min(entries.length - 1, Math.max(0, activeIndex))] ?? entries[0];
+  const activeEntry =
+    entries[Math.min(entries.length - 1, Math.max(0, activeIndex))] ?? entries[0];
   const hasManyEntries = entries.length > 1;
+  const swipeStartRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
   const goTo = useCallback(
     (nextIndex: number): void => {
       if (entries.length === 0) return;
@@ -1256,6 +1259,40 @@ function ArenaVideoCube({
     },
     [entries.length, onActiveIndexChange],
   );
+  const handlePointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>): void => {
+      if (!hasManyEntries) {
+        swipeStartRef.current = null;
+        return;
+      }
+      swipeStartRef.current = {
+        pointerId: event.pointerId,
+        x: event.clientX,
+        y: event.clientY,
+      };
+    },
+    [hasManyEntries],
+  );
+  const handlePointerEnd = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>): void => {
+      const start = swipeStartRef.current;
+      swipeStartRef.current = null;
+      if (!start || start.pointerId !== event.pointerId) return;
+
+      const deltaX = event.clientX - start.x;
+      const deltaY = event.clientY - start.y;
+      const absX = Math.abs(deltaX);
+      const absY = Math.abs(deltaY);
+      if (absX < 44 || absX < absY * 1.2) return;
+
+      event.preventDefault();
+      goTo(activeIndex + (deltaX < 0 ? 1 : -1));
+    },
+    [activeIndex, goTo],
+  );
+  const handlePointerCancel = useCallback((): void => {
+    swipeStartRef.current = null;
+  }, []);
 
   if (!activeEntry) {
     return <div style={{ minHeight: 320 }} />;
@@ -1280,6 +1317,9 @@ function ArenaVideoCube({
       />
       <div
         aria-label="Разделы на табло"
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerEnd}
+        onPointerCancel={handlePointerCancel}
         style={{
           position: 'absolute',
           left: '50%',
@@ -1288,6 +1328,7 @@ function ArenaVideoCube({
           aspectRatio: '1024 / 1536',
           overflow: 'hidden',
           transform: 'translate3d(-50%, -74%, 0)',
+          touchAction: 'pan-y',
         }}
       >
         <img
@@ -2997,8 +3038,7 @@ function TrainingPlaceholder({
   const nextDayAt = data ? new Date(data.next_day_starts_at).getTime() : 0;
   const nextDayRemaining = Math.max(0, nextDayAt - now);
   const canConfigureTraining = !data || data.state === 'idle' || data.state === 'active';
-  const trainingActionLabel =
-    data?.state === 'active' ? 'Продолжить тренировку' : 'На площадку';
+  const trainingActionLabel = data?.state === 'active' ? 'Продолжить тренировку' : 'На лед';
 
   useEffect(() => {
     if (!data) return undefined;
@@ -3436,6 +3476,10 @@ function DuelStatusBadge({ match }: { match: AmateurDuelMatch }): JSX.Element {
     <span
       aria-label={`Статус: ${status}`}
       style={{
+        gridColumn: '2 / 3',
+        gridRow: '2',
+        justifySelf: 'start',
+        maxWidth: '100%',
         minHeight: 30,
         borderRadius: 999,
         padding: '0 10px',
@@ -3448,6 +3492,7 @@ function DuelStatusBadge({ match }: { match: AmateurDuelMatch }): JSX.Element {
         fontSize: 12,
         fontWeight: 900,
         whiteSpace: 'nowrap',
+        overflow: 'hidden',
         boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.72)',
       }}
     >
@@ -3459,9 +3504,19 @@ function DuelStatusBadge({ match }: { match: AmateurDuelMatch }): JSX.Element {
           borderRadius: 999,
           background: dotColor,
           boxShadow: match.status === 'active' ? '0 0 8px rgba(225, 29, 72, 0.45)' : 'none',
+          flex: '0 0 auto',
         }}
       />
-      {status}
+      <span
+        style={{
+          minWidth: 0,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {status}
+      </span>
     </span>
   );
 }
@@ -5064,11 +5119,11 @@ function DuelListCard({
         boxShadow: opensOnCardClick ? '0 10px 22px rgba(42, 91, 132, 0.12)' : undefined,
         outline: 'none',
         display: 'grid',
-        gridTemplateColumns: onCancelInvite
-          ? '42px minmax(0, 1fr) auto 34px'
-          : '42px minmax(0, 1fr) auto',
+        gridTemplateColumns: onCancelInvite ? '42px minmax(0, 1fr) 34px' : '42px minmax(0, 1fr)',
+        gridTemplateRows: 'auto auto',
         alignItems: 'center',
-        gap: 10,
+        columnGap: 10,
+        rowGap: 6,
       }}
     >
       <UserAvatar
@@ -5077,12 +5132,23 @@ function DuelListCard({
         size={42}
         fontSize={16}
         style={{
+          gridColumn: '1 / 2',
+          gridRow: '1 / span 2',
           border: '1px solid rgba(255,255,255,0.78)',
           boxShadow: '0 10px 18px rgba(15,23,42,0.16)',
         }}
       />
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontWeight: 900, color: 'var(--ink)', fontSize: 15 }}>
+      <div style={{ gridColumn: '2 / 3', gridRow: '1', minWidth: 0 }}>
+        <div
+          style={{
+            fontWeight: 900,
+            color: 'var(--ink)',
+            fontSize: 15,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
           {match.opponent.display_name}
         </div>
         <div
@@ -5144,10 +5210,14 @@ function DuelListCard({
             onCancelInvite();
           }}
           style={{
+            gridColumn: '3 / 4',
+            gridRow: '1 / span 2',
+            justifySelf: 'end',
             width: 34,
             height: 34,
             minWidth: 34,
             minHeight: 34,
+            alignSelf: 'center',
             opacity: cancelInvitePending ? 0.62 : 1,
           }}
         >
@@ -5358,6 +5428,7 @@ function AmateurDuelPlayView({
           optimisticAddShot={optimisticAddShot}
           submitShot={submitShot}
           applyState={applyState}
+          longCourtBackground={DAILY_LONG_COURT_BACKGROUND}
           hudAddon={
             <DuelRinkLoadoutHud
               match={match}
@@ -5473,6 +5544,7 @@ function AmateurDuelPlayView({
         optimisticAddShot={optimisticAddShot}
         submitShot={submitShot}
         applyState={applyState}
+        longCourtBackground={DAILY_LONG_COURT_BACKGROUND}
         hudAddon={<DuelInventoryMiniHud match={match} />}
         scoreboardOpponent={duelScoreboardOpponent(match)}
       />
@@ -6516,15 +6588,22 @@ function DuelRinkLoadoutHud({
             disabled={!canOpen}
             onClick={() => onSelectKind(slot.kind)}
             style={{
-              width: 34,
-              height: 42,
-              border: '1px solid rgba(255,255,255,0.74)',
-              borderRadius: 12,
-              padding: 3,
-              background: hasVisibleEquipment ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.36)',
-              boxShadow: hasVisibleEquipment ? '0 6px 14px rgba(15,23,42,0.14)' : 'none',
+              width: 27,
+              height: 27,
+              borderRadius: 999,
+              overflow: 'hidden',
+              padding: 0,
+              display: 'block',
+              background: 'rgba(255,255,255,0.72)',
+              border: hasVisibleEquipment
+                ? '1px solid rgba(255,255,255,0.78)'
+                : '1px solid rgba(15,23,42,0.08)',
+              boxShadow: hasVisibleEquipment
+                ? '0 0 0 1px rgba(15,23,42,0.08), 0 5px 12px rgba(15,23,42,0.12)'
+                : 'none',
               opacity: hasVisibleEquipment ? 1 : 0.48,
               cursor: canOpen ? 'pointer' : 'default',
+              WebkitTapHighlightColor: 'transparent',
             }}
           >
             <img
@@ -6535,8 +6614,8 @@ function DuelRinkLoadoutHud({
                 height: '100%',
                 display: 'block',
                 objectFit: 'cover',
-                borderRadius: 9,
                 filter: hasVisibleEquipment ? 'none' : 'grayscale(1)',
+                opacity: item ? 1 : hasVisibleEquipment ? 0.72 : 0.38,
               }}
             />
           </button>
@@ -6974,6 +7053,7 @@ interface PlayViewProps<TState> {
   shotsTotal?: number | undefined;
   timer?: string | undefined;
   timerLabel?: string | undefined;
+  scoreboardNotice?: string | undefined;
   shotButtonLabel?: string | undefined;
   inactiveAction?: (() => unknown | Promise<unknown>) | undefined;
   entranceBeforeInactiveAction?: boolean | undefined;
@@ -7288,6 +7368,7 @@ function DailyPlayView({
                 ? 'ДО ИГРЫ'
                 : undefined
         }
+        scoreboardNotice={isDailyLockedByTraining ? 'Нужно восстановиться' : undefined}
         shotButtonLabel={
           canStartPeriod
             ? pending
@@ -7447,6 +7528,7 @@ function TrainingCubeScoreboard({
   goals,
   shots,
   shotsTotal,
+  notice,
 }: {
   period: number;
   periodsTotal: number;
@@ -7455,6 +7537,7 @@ function TrainingCubeScoreboard({
   goals: number;
   shots: number;
   shotsTotal?: number | undefined;
+  notice?: string | undefined;
 }): JSX.Element {
   const shotsText =
     typeof shotsTotal === 'number'
@@ -7470,6 +7553,44 @@ function TrainingCubeScoreboard({
 
   if (isSinglePeriod) {
     return (
+      <>
+        <div
+          aria-label="Статистика на видеокубе"
+          style={{
+            position: 'absolute',
+            left: '8%',
+            right: '8%',
+            top: '27%',
+            bottom: notice ? '29%' : '24%',
+            display: 'grid',
+            gridTemplateRows: 'minmax(0, 1.05fr) minmax(0, 0.72fr) minmax(0, 1fr)',
+            alignItems: 'center',
+            justifyItems: 'center',
+            pointerEvents: 'none',
+          }}
+        >
+          <TrainingCubeMetric label={timerLabel} value={timer} emphasis="large" />
+          <TrainingCubeMetric label="Период" value={`${period}/${periodsTotal}`} emphasis="small" />
+          <div
+            style={{
+              width: '100%',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+              columnGap: 'clamp(26px, 11vw, 92px)',
+              alignItems: 'end',
+            }}
+          >
+            <TrainingCubeMetric label="Голы" value={String(goals).padStart(2, '0')} />
+            <TrainingCubeMetric label="Броски" value={shotsText} />
+          </div>
+        </div>
+        {notice && <TrainingCubeNotice text={notice} />}
+      </>
+    );
+  }
+
+  return (
+    <>
       <div
         aria-label="Статистика на видеокубе"
         style={{
@@ -7477,52 +7598,49 @@ function TrainingCubeScoreboard({
           left: '8%',
           right: '8%',
           top: '27%',
-          bottom: '24%',
+          bottom: notice ? '29%' : '24%',
           display: 'grid',
-          gridTemplateRows: 'minmax(0, 1.05fr) minmax(0, 0.72fr) minmax(0, 1fr)',
-          alignItems: 'center',
-          justifyItems: 'center',
+          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+          columnGap: 'clamp(16px, 6vw, 58px)',
+          rowGap: 'clamp(8px, 2.2vw, 15px)',
+          alignContent: 'center',
           pointerEvents: 'none',
         }}
       >
-        <TrainingCubeMetric label={timerLabel} value={timer} emphasis="large" />
-        <TrainingCubeMetric label="Период" value={`${period}/${periodsTotal}`} emphasis="small" />
-        <div
-          style={{
-            width: '100%',
-            display: 'grid',
-            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-            columnGap: 'clamp(26px, 11vw, 92px)',
-            alignItems: 'end',
-          }}
-        >
-          <TrainingCubeMetric label="Голы" value={String(goals).padStart(2, '0')} />
-          <TrainingCubeMetric label="Броски" value={shotsText} />
-        </div>
+        {metrics.map((metric) => (
+          <TrainingCubeMetric key={metric.label} label={metric.label} value={metric.value} />
+        ))}
       </div>
-    );
-  }
+      {notice && <TrainingCubeNotice text={notice} />}
+    </>
+  );
+}
 
+function TrainingCubeNotice({ text }: { text: string }): JSX.Element {
   return (
     <div
-      aria-label="Статистика на видеокубе"
+      aria-label="Сообщение на видеокубе"
       style={{
         position: 'absolute',
-        left: '8%',
-        right: '8%',
-        top: '27%',
-        bottom: '24%',
-        display: 'grid',
-        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-        columnGap: 'clamp(16px, 6vw, 58px)',
-        rowGap: 'clamp(8px, 2.2vw, 15px)',
-        alignContent: 'center',
+        left: '10%',
+        right: '10%',
+        bottom: '22%',
+        color: 'rgba(232, 251, 255, 0.94)',
+        fontFamily: 'var(--font-mono)',
+        fontSize: 'clamp(8px, 2vw, 12px)',
+        fontWeight: 950,
+        lineHeight: 1.08,
+        letterSpacing: '0.08em',
+        textAlign: 'center',
+        textTransform: 'uppercase',
+        textShadow: '0 0 8px rgba(143, 232, 255, 0.66), 0 0 14px rgba(0, 8, 20, 0.72)',
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
         pointerEvents: 'none',
       }}
     >
-      {metrics.map((metric) => (
-        <TrainingCubeMetric key={metric.label} label={metric.label} value={metric.value} />
-      ))}
+      {text}
     </div>
   );
 }
@@ -7616,57 +7734,86 @@ function TrainingPlayView({
   const optimisticAddShot = useTrainingSessionStore((s) => s.optimisticAddShot);
   const submitShot = useTrainingSessionStore((s) => s.submitShot);
   const applyState = useTrainingSessionStore((s) => s.applyState);
+  const refreshDaily = useDailyStore((s) => s.refresh);
   const userRole = useAuthStore((s) => s.user?.role);
   const experimentalTrainingCourt = useAuthStore((s) => s.user?.experimentalTrainingCourt);
   const [hitboxesVisible, setHitboxesVisible] = useState(() => readTrainingHitboxesVisible());
   const [now, setNow] = useState(Date.now());
   const canShowHitboxesToggle = userRole === 'admin' || experimentalTrainingCourt === true;
-  const handleHitboxesChange = useCallback((next: boolean): void => {
-    setHitboxesVisible(next);
-    saveTrainingHitboxesVisible(next);
-  }, []);
-
-  useEffect(() => {
-    if (data?.state !== 'closed') return undefined;
-    const id = window.setInterval(() => setNow(Date.now()), 500);
-    return () => window.clearInterval(id);
-  }, [data?.state]);
-
-  if (!data) return null;
-
-  const isTrainingActive = data.state === 'active';
-  const isTrainingClosed = data.state === 'closed';
   const isTrainingLockedByDaily =
     dailyData?.state === 'period_active' ||
     dailyData?.state === 'break_active' ||
     (dailyData?.state === 'idle' &&
       dailyData.current_period > 0 &&
       dailyData.current_period < dailyData.total_periods);
-  const canStartTraining = data.state === 'idle' && !isTrainingLockedByDaily;
-  const nextDayAt = new Date(data.next_day_starts_at).getTime();
-  const nextDayRemaining = Math.max(0, nextDayAt - now);
-  const trainingTimer = isTrainingClosed
-    ? formatHms(nextDayRemaining)
-    : String(data.shots_limit);
-  const trainingTimerLabel = isTrainingClosed
-    ? 'ДО ОБНОВЛЕНИЯ'
-    : 'ЛИМИТ';
+  const canStartTraining = data?.state === 'idle' && !isTrainingLockedByDaily;
+  const handleHitboxesChange = useCallback((next: boolean): void => {
+    setHitboxesVisible(next);
+    saveTrainingHitboxesVisible(next);
+  }, []);
   const handleStartTraining = useCallback(async (): Promise<TrainingStateResponse | null> => {
     if (!canStartTraining) return null;
     return start(selectedPeriod);
   }, [canStartTraining, selectedPeriod, start]);
+  const submitTrainingShotAndRefreshDaily = useCallback(
+    async (args: Parameters<typeof submitShot>[0]) => {
+      const result = await submitShot(args);
+      if (result !== null) void refreshDaily();
+      return result;
+    },
+    [refreshDaily, submitShot],
+  );
 
+  useEffect(() => {
+    if (data?.state !== 'closed' && !isTrainingLockedByDaily) return undefined;
+    const id = window.setInterval(() => setNow(Date.now()), 500);
+    return () => window.clearInterval(id);
+  }, [data?.state, isTrainingLockedByDaily]);
+
+  if (!data) return null;
+
+  const isTrainingActive = data.state === 'active';
+  const isTrainingClosed = data.state === 'closed';
+  const isTrainingPlayable = isTrainingActive && !isTrainingLockedByDaily;
+  const nextDayAt = new Date(data.next_day_starts_at).getTime();
+  const nextDayRemaining = Math.max(0, nextDayAt - now);
+  const dailyPeriodEndsAt = dailyData?.period_ends_at
+    ? new Date(dailyData.period_ends_at).getTime()
+    : 0;
+  const dailyBreakEndsAt = dailyData?.break_ends_at
+    ? new Date(dailyData.break_ends_at).getTime()
+    : 0;
+  const dailyLockRemaining =
+    dailyData?.state === 'period_active' && dailyPeriodEndsAt > 0
+      ? Math.max(0, dailyPeriodEndsAt - now)
+      : dailyData?.state === 'break_active' && dailyBreakEndsAt > 0
+        ? Math.max(0, dailyBreakEndsAt - now)
+        : 0;
+  const trainingTimer = isTrainingLockedByDaily
+    ? dailyLockRemaining > 0
+      ? formatMs(dailyLockRemaining)
+      : 'ИГРА'
+    : isTrainingClosed
+      ? formatHms(nextDayRemaining)
+      : String(data.shots_limit);
+  const trainingTimerLabel = isTrainingLockedByDaily
+    ? dailyLockRemaining > 0
+      ? 'ДО ИГРЫ'
+      : 'СТАТУС'
+    : isTrainingClosed
+      ? 'ДО ОБНОВЛЕНИЯ'
+      : 'ЛИМИТ';
   return (
     <>
       <PlayView<TrainingStateResponse>
-        suppressedByModal={!isTrainingActive}
+        suppressedByModal={!isTrainingPlayable}
         showIceCar={isTrainingClosed || isTrainingLockedByDaily}
-        playEntranceOnMount={isTrainingActive ? playEntranceOnMount : false}
+        playEntranceOnMount={isTrainingPlayable ? playEntranceOnMount : false}
         onEntranceConsumed={onEntranceConsumed}
         playRouteTransitionOnMount={playRouteTransitionOnMount}
         onRouteTransitionConsumed={onRouteTransitionConsumed}
         onBack={onBack}
-        active={isTrainingActive}
+        active={isTrainingPlayable}
         seed={data.training_seed}
         goalieId={data.goalie_id}
         periodNumber={data.selected_period ?? selectedPeriod}
@@ -7679,8 +7826,9 @@ function TrainingPlayView({
         shotsTotal={data.shots_limit}
         timer={trainingTimer}
         timerLabel={trainingTimerLabel}
+        scoreboardNotice={isTrainingLockedByDaily ? 'Игра уже начата' : undefined}
         shotButtonLabel={
-          isTrainingActive
+          isTrainingPlayable
             ? undefined
             : canStartTraining
               ? 'НАЧАТЬ'
@@ -7692,7 +7840,7 @@ function TrainingPlayView({
         entranceBeforeInactiveAction={true}
         backLabel="К тренировке"
         optimisticAddShot={optimisticAddShot}
-        submitShot={submitShot}
+        submitShot={submitTrainingShotAndRefreshDaily}
         applyState={applyState}
         hitboxesVisible={hitboxesVisible}
         overlayControls={
@@ -7966,6 +8114,7 @@ export function PlayView<TState>({
   shotsTotal,
   timer,
   timerLabel,
+  scoreboardNotice,
   shotButtonLabel = 'БРОСОК',
   inactiveAction,
   entranceBeforeInactiveAction = false,
@@ -8578,6 +8727,7 @@ export function PlayView<TState>({
       // Decide initial visibility/loop state synchronously, BEFORE the first
       // ticker frame, so a modal-on-top mount never flashes moving sprites.
       if (suppressedRef.current) {
+        goal.container.visible = !showIceCarRef.current;
         player.container.visible = false;
         goalie.container.visible = false;
         puck.container.visible = false;
@@ -8630,6 +8780,7 @@ export function PlayView<TState>({
       }
       loop.detach();
       setIsEntrancePlaying(false);
+      goal.container.visible = !showIceCar;
       goal.update(scaleRef.current, 0);
       player.container.visible = false;
       goalie.container.visible = false;
@@ -8939,7 +9090,7 @@ export function PlayView<TState>({
     (!active && !inactiveAction) ||
     (active &&
       ((routeCameraPhase === 'zoomed' || routeCameraPhase === 'exiting') || isEntrancePlaying)) ||
-    (typeof shotsTotal === 'number' && shots >= shotsTotal);
+    (active && typeof shotsTotal === 'number' && shots >= shotsTotal);
   const effectiveRinkLayer = rinkLayer ?? (
     <TrainingPerspectiveRink
       design="long"
@@ -8953,6 +9104,7 @@ export function PlayView<TState>({
           goals={goals}
           shots={shots}
           shotsTotal={shotsTotal}
+          notice={scoreboardNotice}
         />
       }
     />

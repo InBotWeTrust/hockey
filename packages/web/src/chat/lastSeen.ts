@@ -53,7 +53,8 @@ export function formatLastSeen(iso: string | null, now: Date = new Date()): stri
 
   if (dayDiff === 0) return `был сегодня в ${formatHM(seen)}`;
   if (dayDiff === 1) return `был вчера в ${formatHM(seen)}`;
-  if (dayDiff > 0 && dayDiff < 7) return `был в ${WEEKDAY_SHORT[seen.getDay()]} в ${formatHM(seen)}`;
+  if (dayDiff > 0 && dayDiff < 7)
+    return `был в ${WEEKDAY_SHORT[seen.getDay()]} в ${formatHM(seen)}`;
 
   return `был ${pad2(seen.getDate())}.${pad2(seen.getMonth() + 1)}.${seen.getFullYear()}`;
 }

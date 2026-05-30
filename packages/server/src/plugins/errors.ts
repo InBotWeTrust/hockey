@@ -13,6 +13,17 @@ export class AppError extends Error {
   }
 }
 
+function hasHttpStatus(err: unknown): err is { statusCode: number; code?: string; message: string } {
+  if (err === null || typeof err !== 'object') return false;
+  const maybe = err as { statusCode?: unknown; message?: unknown };
+  return (
+    typeof maybe.statusCode === 'number' &&
+    maybe.statusCode >= 400 &&
+    maybe.statusCode < 500 &&
+    typeof maybe.message === 'string'
+  );
+}
+
 const plugin: FastifyPluginAsync = async (app) => {
   app.setErrorHandler((err, req, reply) => {
     if (err instanceof AppError) {
@@ -30,6 +41,12 @@ const plugin: FastifyPluginAsync = async (app) => {
     if (err.validation) {
       reply.status(400).send({
         error: { code: 'bad_request', message: err.message },
+      });
+      return;
+    }
+    if (hasHttpStatus(err)) {
+      reply.status(err.statusCode).send({
+        error: { code: err.code ?? 'bad_request', message: err.message },
       });
       return;
     }

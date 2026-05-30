@@ -27,9 +27,13 @@ export function StatCard({ label, value, suffix }: StatCardProps): JSX.Element {
       >
         {label}
       </span>
-      <span style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--ink)' }}>
+      <span
+        style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--ink)' }}
+      >
         {value}
-        {suffix && <small style={{ fontSize: 12, fontWeight: 500, color: 'var(--muted)' }}>{suffix}</small>}
+        {suffix && (
+          <small style={{ fontSize: 12, fontWeight: 500, color: 'var(--muted)' }}>{suffix}</small>
+        )}
       </span>
     </div>
   );

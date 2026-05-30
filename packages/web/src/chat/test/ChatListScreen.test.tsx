@@ -72,10 +72,9 @@ describe('ChatListScreen — global search dropdown', () => {
     await waitFor(() => expect(screen.getByText('Сообщения')).toBeInTheDocument());
 
     // Eventually, after the 300ms debounce, /chat/search fires with the trimmed query.
-    await waitFor(
-      () => expect(api.searchMessagesApi).toHaveBeenCalledWith('ab', 50),
-      { timeout: 1500 },
-    );
+    await waitFor(() => expect(api.searchMessagesApi).toHaveBeenCalledWith('ab', 50), {
+      timeout: 1500,
+    });
   });
 
   it('lets admins create a group chat from the chat list', async () => {

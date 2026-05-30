@@ -99,8 +99,7 @@ export class Hitboxes {
     const goalCenterY = ((GOAL.y + GOAL_OPENING.y) / 2) * this.goalVisualYScale;
     const goalHeight = Math.max(
       0,
-      (GOAL_OPENING.y - GOAL.y) * this.goalVisualYScale * this.goalHeightScale -
-        this.goalInset * 2,
+      (GOAL_OPENING.y - GOAL.y) * this.goalVisualYScale * this.goalHeightScale - this.goalInset * 2,
     );
     const yTop = (goalCenterY + this.goalVisualYOffset - goalHeight / 2) * s;
     const yBot = (goalCenterY + this.goalVisualYOffset + goalHeight / 2) * s;
@@ -110,8 +109,10 @@ export class Hitboxes {
       .stroke({ width: LINE_WIDTH, color: GOAL_COLOR });
 
     const gw =
-      Math.max(0, (goalieState.width + GOALIE_HITBOX_EXPAND) * this.goalieWidthScale - this.goalieInset * 2) *
-      s;
+      Math.max(
+        0,
+        (goalieState.width + GOALIE_HITBOX_EXPAND) * this.goalieWidthScale - this.goalieInset * 2,
+      ) * s;
     const gh =
       Math.max(
         0,
@@ -126,8 +127,7 @@ export class Hitboxes {
       Math.min(this.goalieVisualMaxX ?? Infinity, scaledGoalieX),
     );
     const gx =
-      (visualGoalieX -
-        ((goalieState.width + GOALIE_HITBOX_EXPAND) * this.goalieWidthScale) / 2) *
+      (visualGoalieX - ((goalieState.width + GOALIE_HITBOX_EXPAND) * this.goalieWidthScale) / 2) *
       s;
     const gy =
       (goalieState.position.y * this.goalieVisualYScale + this.goalieVisualYOffset) * s - gh / 2;

@@ -172,7 +172,8 @@ export function ChatInput({
     const file = item.getAsFile();
     if (!file) return null;
     if (file.name.length > 0) return file;
-    const extension = item.type === 'image/png' ? 'png' : item.type === 'image/webp' ? 'webp' : 'jpg';
+    const extension =
+      item.type === 'image/png' ? 'png' : item.type === 'image/webp' ? 'webp' : 'jpg';
     return new File([file], `clipboard-image-${index + 1}.${extension}`, {
       type: file.type || item.type || 'image/png',
       lastModified: Date.now(),
@@ -194,22 +195,29 @@ export function ChatInput({
     onPasteImage(fileImage);
   }
 
-  function submit(): void {
+  async function submit(): Promise<void> {
     if (disabled || sendingRef.current) return;
     const trimmed = value.trim();
     const hasText = hasMeaningfulContent(trimmed);
     if (!hasText && !canSendEmpty) return;
     if (editing && !hasText) return;
     sendingRef.current = true;
-    setValue('');
-    if (editing && onEdit) {
+
+    try {
+      if (editing && onEdit) {
+        await onEdit(editing.id, trimmed);
+        setValue('');
+        onClearReply();
+        onClearEditing?.();
+        return;
+      }
+      await onSend(trimmed, replyTo?.id ?? null);
+      setValue('');
       onClearReply();
-      onClearEditing?.();
-      void onEdit(editing.id, trimmed);
-      return;
+    } catch {
+      sendingRef.current = false;
+      ref.current?.focus();
     }
-    onClearReply();
-    void onSend(trimmed, replyTo?.id ?? null);
   }
 
   const canSend = hasMeaningfulContent(value) || canSendEmpty;
@@ -409,7 +417,7 @@ export function ChatInput({
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey && shouldSubmitOnEnter()) {
               e.preventDefault();
-              submit();
+              void submit();
             }
           }}
           placeholder={placeholder}
@@ -441,7 +449,9 @@ export function ChatInput({
         {showVoiceAction ? (
           <button
             type="button"
-            className={voiceState === 'recording' ? 'icon-btn icon-btn--dark' : 'icon-btn glass-dock-icon'}
+            className={
+              voiceState === 'recording' ? 'icon-btn icon-btn--dark' : 'icon-btn glass-dock-icon'
+            }
             onClick={onVoice}
             disabled={disabled || voiceState === 'uploading'}
             aria-label={voiceLabel}
@@ -461,7 +471,7 @@ export function ChatInput({
           <button
             type="button"
             className="btn btn--cta"
-            onClick={submit}
+            onClick={() => void submit()}
             disabled={disabled || !canSend}
             aria-label="Отправить"
             style={{

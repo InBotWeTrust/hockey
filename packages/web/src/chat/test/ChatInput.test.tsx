@@ -31,13 +31,7 @@ describe('ChatInput', () => {
   });
 
   it('keeps the send action as an icon-only button', () => {
-    render(
-      <ChatInput
-        replyTo={null}
-        onClearReply={vi.fn()}
-        onSend={vi.fn()}
-      />,
-    );
+    render(<ChatInput replyTo={null} onClearReply={vi.fn()} onSend={vi.fn()} />);
 
     const button = screen.getByLabelText('Отправить');
 
@@ -166,14 +160,7 @@ describe('ChatInput', () => {
 
   it('wraps selected channel post text with rich text markers', async () => {
     const onSend = vi.fn();
-    render(
-      <ChatInput
-        replyTo={null}
-        formattingTools
-        onClearReply={vi.fn()}
-        onSend={onSend}
-      />,
-    );
+    render(<ChatInput replyTo={null} formattingTools onClearReply={vi.fn()} onSend={onSend} />);
 
     const textarea = screen.getByLabelText('Текст сообщения') as HTMLTextAreaElement;
     fireEvent.change(textarea, { target: { value: 'важно' } });
@@ -186,16 +173,38 @@ describe('ChatInput', () => {
     expect(onSend).toHaveBeenCalledWith('**важно**', null);
   });
 
+  it('keeps draft text visible until async send succeeds', async () => {
+    let resolveSend!: () => void;
+    const sendPromise = new Promise<void>((resolve) => {
+      resolveSend = resolve;
+    });
+    const onSend = vi.fn(() => sendPromise);
+    render(<ChatInput replyTo={null} onClearReply={vi.fn()} onSend={onSend} />);
+
+    const textarea = screen.getByLabelText('Текст сообщения') as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: 'пост с картинкой' } });
+    fireEvent.click(screen.getByLabelText('Отправить'));
+
+    expect(textarea.value).toBe('пост с картинкой');
+    resolveSend?.();
+    await waitFor(() => expect(textarea.value).toBe(''));
+  });
+
+  it('preserves draft text when async send fails', async () => {
+    const onSend = vi.fn(() => Promise.reject(new Error('server failed')));
+    render(<ChatInput replyTo={null} onClearReply={vi.fn()} onSend={onSend} />);
+
+    const textarea = screen.getByLabelText('Текст сообщения') as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: 'не терять этот текст' } });
+    fireEvent.click(screen.getByLabelText('Отправить'));
+
+    await waitFor(() => expect(onSend).toHaveBeenCalled());
+    expect(textarea.value).toBe('не терять этот текст');
+  });
+
   it('keeps marker-only drafts unsendable', () => {
     const onSend = vi.fn();
-    render(
-      <ChatInput
-        replyTo={null}
-        formattingTools
-        onClearReply={vi.fn()}
-        onSend={onSend}
-      />,
-    );
+    render(<ChatInput replyTo={null} formattingTools onClearReply={vi.fn()} onSend={onSend} />);
 
     const textarea = screen.getByLabelText('Текст сообщения') as HTMLTextAreaElement;
     fireEvent.click(screen.getByRole('button', { name: 'Курсив' }));

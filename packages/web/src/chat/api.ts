@@ -335,6 +335,7 @@ const MB = 1024 * 1024;
 const CHAT_IMAGE_MAX_BYTES = 10 * MB;
 const CHAT_AUDIO_MAX_BYTES = 25 * MB;
 const CHAT_FILE_MAX_BYTES = 25 * MB;
+const SUPPORTED_CHAT_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
 function formatUploadLimit(bytes: number): string {
   return `${Math.round(bytes / MB)} МБ`;
@@ -347,6 +348,9 @@ function chatUploadLimit(file: File): number {
 }
 
 function assertChatUploadAllowed(file: File): void {
+  if (file.type.startsWith('image/') && !SUPPORTED_CHAT_IMAGE_TYPES.has(file.type)) {
+    throw new Error('Формат файла не поддерживается. Загрузите JPG, PNG, WebP или GIF.');
+  }
   const limit = chatUploadLimit(file);
   if (file.size > limit) {
     throw new Error(`Файл слишком большой. Лимит: ${formatUploadLimit(limit)}.`);

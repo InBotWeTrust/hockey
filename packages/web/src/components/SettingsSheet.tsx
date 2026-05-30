@@ -8,7 +8,12 @@ export interface SettingsSheetProps {
   title?: string;
 }
 
-export function SettingsSheet({ open, onClose, children, title = 'Настройки' }: SettingsSheetProps): JSX.Element | null {
+export function SettingsSheet({
+  open,
+  onClose,
+  children,
+  title = 'Настройки',
+}: SettingsSheetProps): JSX.Element | null {
   if (!open) return null;
 
   return (
@@ -72,12 +77,7 @@ export function SettingsSheet({ open, onClose, children, title = 'Настрой
             >
               {title}
             </div>
-            <button
-              type="button"
-              className="icon-btn"
-              onClick={onClose}
-              aria-label="Закрыть"
-            >
+            <button type="button" className="icon-btn" onClick={onClose} aria-label="Закрыть">
               <X size={16} />
             </button>
           </div>

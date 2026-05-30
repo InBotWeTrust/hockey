@@ -29,7 +29,10 @@ export interface EnqueueFirstDialogMessagePushResult {
 const MESSAGE_PREVIEW_LIMIT = 120;
 
 function compactMessagePreview(content: string): string {
-  const normalized = content.replace(/\*\*|__/g, '').replace(/\s+/g, ' ').trim();
+  const normalized = content
+    .replace(/\*\*|__/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
   if (normalized.length <= MESSAGE_PREVIEW_LIMIT) return normalized;
   return `${normalized.slice(0, MESSAGE_PREVIEW_LIMIT - 1).trimEnd()}…`;
 }

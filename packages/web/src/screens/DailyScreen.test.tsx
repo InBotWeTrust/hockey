@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor, fireEvent, act, within } from '@testing-library/react';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { render, screen, waitFor, fireEvent, act, within, cleanup } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { DAILY_PERIOD_SPEED_PRESETS, STICK_NEUTRAL } from '@hockey/game-core';
@@ -215,7 +215,7 @@ function renderWith(initialEntries: string[] = ['/']) {
 
 async function findArenaCta(articleName: string): Promise<HTMLElement> {
   await screen.findByRole('article', { name: articleName });
-  return screen.getByRole('button', { name: 'На площадку' });
+  return screen.getByRole('button', { name: 'На лед' });
 }
 
 beforeEach(() => {
@@ -237,6 +237,12 @@ beforeEach(() => {
       },
     );
   });
+});
+
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe('DailyScreen', () => {
@@ -277,6 +283,32 @@ describe('DailyScreen', () => {
     expect(screen.getByText('0/500 бросков сегодня')).toBeInTheDocument();
     expect(screen.queryByText('Любители')).not.toBeInTheDocument();
     expect(screen.queryByText('Профессионалы')).not.toBeInTheDocument();
+  });
+
+  it('switches arena tableau cards with circular swipe gestures', async () => {
+    renderWith(['/?view=arena']);
+
+    expect(
+      await screen.findByRole('article', { name: 'Ежедневная игра: 1-й период доступен' }),
+    ).toBeInTheDocument();
+
+    const tableau = screen.getByLabelText('Разделы на табло');
+    fireEvent.pointerDown(tableau, { pointerId: 1, clientX: 320, clientY: 220 });
+    fireEvent.pointerUp(tableau, { pointerId: 1, clientX: 210, clientY: 224 });
+
+    expect(screen.getByRole('article', { name: 'Тренировка: Тренировка' })).toBeInTheDocument();
+
+    fireEvent.pointerDown(tableau, { pointerId: 2, clientX: 210, clientY: 224 });
+    fireEvent.pointerUp(tableau, { pointerId: 2, clientX: 320, clientY: 220 });
+
+    expect(
+      screen.getByRole('article', { name: 'Ежедневная игра: 1-й период доступен' }),
+    ).toBeInTheDocument();
+
+    fireEvent.pointerDown(tableau, { pointerId: 3, clientX: 210, clientY: 224 });
+    fireEvent.pointerUp(tableau, { pointerId: 3, clientX: 320, clientY: 220 });
+
+    expect(screen.getByRole('article', { name: 'Тренировка: Тренировка' })).toBeInTheDocument();
   });
 
   it('names the next available daily period on the hub', async () => {
@@ -362,11 +394,18 @@ describe('DailyScreen', () => {
     renderWith(['/?view=arena']);
 
     await screen.findByRole('article', { name: 'Активная дуэль: Duel Opponent' });
-    const cards = screen.getAllByRole('article');
-    expect(cards[0]).toHaveAttribute('aria-label', 'Активная дуэль: Duel Opponent');
-    expect(cards[1]).toHaveAttribute('aria-label', 'Ежедневная игра: 1-й период доступен');
-    expect(cards[2]).toHaveAttribute('aria-label', 'Тренировка: Тренировка');
-    expect(screen.getByLabelText('Выбрать Активная дуэль')).toHaveStyle({ width: '20px' });
+    expect(screen.getByLabelText('Выбрать Активная дуэль')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    fireEvent.click(screen.getByLabelText('Выбрать Ежедневная игра'));
+    expect(
+      await screen.findByRole('article', { name: 'Ежедневная игра: 1-й период доступен' }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Выбрать Тренировка'));
+    expect(
+      await screen.findByRole('article', { name: 'Тренировка: Тренировка' }),
+    ).toBeInTheDocument();
   });
 
   it('shows outgoing and incoming duel invites from the current player perspective', async () => {
@@ -422,7 +461,7 @@ describe('DailyScreen', () => {
 
     expect(await screen.findByText('Вас вызвали')).toBeInTheDocument();
     expect(screen.getByText('До ответа')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Принять вызов' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Принять' })).toBeInTheDocument();
   });
 
   it('restores the last selected arena card after returning home', async () => {
@@ -433,8 +472,11 @@ describe('DailyScreen', () => {
     expect(
       await screen.findByRole('article', { name: 'Тренировка: Тренировка' }),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText('Выбрать Тренировка')).toHaveStyle({ width: '20px' });
-    expect(screen.getByLabelText('Выбрать Ежедневная игра')).toHaveStyle({ width: '7px' });
+    expect(screen.getByLabelText('Выбрать Тренировка')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByLabelText('Выбрать Ежедневная игра')).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
   });
 
   it('falls back to daily when the saved duel card is no longer available', async () => {
@@ -445,7 +487,10 @@ describe('DailyScreen', () => {
     expect(
       await screen.findByRole('article', { name: 'Ежедневная игра: 1-й период доступен' }),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText('Выбрать Ежедневная игра')).toHaveStyle({ width: '20px' });
+    expect(screen.getByLabelText('Выбрать Ежедневная игра')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
     await waitFor(() => {
       expect(localStorage.getItem('hockey.arenaSelectedEntryId')).toBeNull();
     });
@@ -967,37 +1012,16 @@ describe('DailyScreen', () => {
     expect(screen.queryByText(/Ждём следующий день/)).not.toBeInTheDocument();
     expect(screen.getAllByText(/\d{2}:\d{2}:\d{2}/).length).toBeGreaterThan(0);
     expect(await findArenaCta('Ежедневная игра: Завершена')).toBeEnabled();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Статистика' }));
-    expect(screen.getByRole('dialog', { name: 'Статистика последней игры' })).toBeInTheDocument();
-    expect(screen.getByText('Статистика прошлой игры')).toBeInTheDocument();
-    expect(screen.getByText('Дата: 25.04.2026')).toBeInTheDocument();
-    expect(screen.getByText('48')).toBeInTheDocument();
-    expect(screen.getByText('19')).toBeInTheDocument();
-    expect(screen.getByText('33:00')).toBeInTheDocument();
-    expect(screen.getByText('40%')).toBeInTheDocument();
-    expect(
-      screen.getByLabelText('1-й период: 14 голов из 30 бросков за 20:00'),
-    ).toBeInTheDocument();
-    expect(screen.getByText('20:00')).toBeInTheDocument();
-    expect(screen.getByLabelText('2-й период: 5 голов из 18 бросков за 13:00')).toBeInTheDocument();
-    expect(screen.getByText('13:00')).toBeInTheDocument();
-    expect(screen.queryByText('лимит бросков')).not.toBeInTheDocument();
-    expect(screen.queryByText('день закончился')).not.toBeInTheDocument();
-    expect(screen.queryByText('время вышло')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('3-й период: не сыгран')).toBeInTheDocument();
-    expect(screen.getByText('не сыгран')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Статистика' })).not.toBeInTheDocument();
   });
 
   it('shows empty previous-game stats state before the first completed game', async () => {
     renderWith();
 
-    const statsButton = await screen.findByRole('button', { name: 'Статистика' });
-    fireEvent.click(statsButton);
-
-    expect(screen.getByRole('dialog', { name: 'Статистика последней игры' })).toBeInTheDocument();
-    expect(screen.getByText('Игр пока нет')).toBeInTheDocument();
-    expect(screen.getByText(/После завершения первой ежедневной игры/)).toBeInTheDocument();
+    expect(
+      await screen.findByRole('article', { name: 'Ежедневная игра: 1-й период доступен' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Статистика' })).not.toBeInTheDocument();
   });
 
   it('opens the rink for a closed day without starting a new period', async () => {
@@ -1053,7 +1077,7 @@ describe('DailyScreen', () => {
     renderWith(['/?view=training']);
 
     expect(await screen.findByRole('heading', { name: 'Тренировка' })).toBeInTheDocument();
-    expect(await screen.findByRole('button', { name: /Начать тренировку/ })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'На лед' })).toBeInTheDocument();
     expect(screen.getByText('0/500')).toBeInTheDocument();
     expect(screen.getByText('ДО ОБНОВЛЕНИЯ')).toBeInTheDocument();
     expect(screen.getByText('Скорости 1-го периода')).toBeInTheDocument();
@@ -1083,13 +1107,43 @@ describe('DailyScreen', () => {
     });
     renderWith();
 
+    fireEvent.click(await screen.findByRole('button', { name: 'Выбрать Тренировка' }));
     const trainingCard = await findArenaCta('Тренировка: Тренировка');
     expect(screen.getByText('Закрыта до завершения игры')).toBeInTheDocument();
     fireEvent.click(trainingCard);
 
     expect(await screen.findByRole('button', { name: 'ЛЁД ГОТОВИТСЯ' })).toBeDisabled();
+    expect(screen.getByText('Игра уже начата')).toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: 'Тренировка закрыта' })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Тренировка', level: 1 })).not.toBeInTheDocument();
+  });
+
+  it('blocks active training shots when the daily game has started', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingActiveState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(
+        JSON.stringify({
+          ...baseState,
+          state: 'period_active',
+          current_period: 1,
+          current_period_shots: 1,
+          daily_seed: 'seed-abc',
+          period_ends_at: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+    renderWith(['/?view=training&play=1']);
+
+    expect(await screen.findByRole('button', { name: 'ЛЁД ГОТОВИТСЯ' })).toBeDisabled();
+    expect(screen.getByText('Игра уже начата')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();
   });
 
   it('opens the daily rink with an ice car after a training shot', async () => {
@@ -1118,6 +1172,7 @@ describe('DailyScreen', () => {
     fireEvent.click(dailyButton);
 
     expect(await screen.findByRole('button', { name: 'ЛЁД ГОТОВИТСЯ' })).toBeDisabled();
+    expect(screen.getByText('Нужно восстановиться')).toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: 'Нужно восстановиться' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();
   });
@@ -1546,7 +1601,7 @@ describe('DailyScreen', () => {
     });
   });
 
-  it('labels an outgoing duel detail as waiting from my perspective', async () => {
+  it('keeps current duel status below long opponent names', async () => {
     const invitedMatch: AmateurDuelMatchState = {
       ...settledDuelMatch,
       status: 'invited',
@@ -1555,6 +1610,75 @@ describe('DailyScreen', () => {
       settled_at: null,
       settled_reason: null,
       ready_expires_at: '2026-05-16T10:25:00.000Z',
+      me: { ...settledDuelMatch.me, side: 'challenger', state: 'loadout_pending' },
+      opponent: {
+        ...settledDuelMatch.opponent,
+        side: 'opponent',
+        state: 'invited',
+        display_name: 'Торквимада Очень Длинное Имя',
+      },
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/templates')) {
+        return new Response(JSON.stringify({ templates: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/matches')) {
+        return new Response(JSON.stringify({ matches: [invitedMatch] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/rating')) {
+        return new Response(JSON.stringify({ season_key: '2026-05', rating: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=amateur&section=duels']);
+
+    const status = await screen.findByLabelText('Статус: Ждём ответ соперника');
+    expect(screen.getByText('Торквимада Очень Длинное Имя')).toHaveStyle({
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+    });
+    expect(status).toHaveStyle({
+      gridColumn: '2 / 3',
+      gridRow: '2',
+      maxWidth: '100%',
+    });
+  });
+
+  it('labels an outgoing duel detail as waiting from my perspective', async () => {
+    const startsAt = new Date(Date.now() - 60_000).toISOString();
+    const endsAt = new Date(Date.now() + 15 * 60_000).toISOString();
+    const invitedMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      status: 'invited',
+      outcome: null,
+      winner_user_id: null,
+      settled_at: null,
+      settled_reason: null,
+      starts_at: startsAt,
+      ends_at: endsAt,
+      ready_expires_at: endsAt,
+      server_now: startsAt,
       me: { ...settledDuelMatch.me, side: 'challenger', state: 'loadout_pending' },
       opponent: { ...settledDuelMatch.opponent, side: 'opponent', state: 'invited' },
     };
@@ -1585,6 +1709,8 @@ describe('DailyScreen', () => {
   });
 
   it('labels an incoming duel detail as the opponent waiting for my answer', async () => {
+    const startsAt = new Date(Date.now() - 60_000).toISOString();
+    const endsAt = new Date(Date.now() + 15 * 60_000).toISOString();
     const invitedMatch: AmateurDuelMatchState = {
       ...settledDuelMatch,
       status: 'invited',
@@ -1592,7 +1718,10 @@ describe('DailyScreen', () => {
       winner_user_id: null,
       settled_at: null,
       settled_reason: null,
-      ready_expires_at: '2026-05-16T10:25:00.000Z',
+      starts_at: startsAt,
+      ends_at: endsAt,
+      ready_expires_at: endsAt,
+      server_now: startsAt,
       me: { ...settledDuelMatch.me, side: 'opponent', state: 'invited' },
       opponent: { ...settledDuelMatch.opponent, side: 'challenger', state: 'loadout_pending' },
     };
@@ -1730,6 +1859,114 @@ describe('DailyScreen', () => {
     await waitFor(() => {
       const calls = fetchMock.mock.calls.map((c) => String(c[0]));
       expect(calls.some((u) => u.includes('/duel/daily/period/start'))).toBe(true);
+    });
+  });
+
+  it('keeps classic duel next-period start enabled after previous period shot quota', async () => {
+    const startedAt = new Date(Date.now() - 60_000).toISOString();
+    const endsAt = new Date(Date.now() + 60 * 60_000).toISOString();
+    const classicMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      status: 'active',
+      duel_kind: 'classic',
+      outcome: null,
+      winner_user_id: null,
+      settled_at: null,
+      settled_reason: null,
+      starts_at: startedAt,
+      ends_at: endsAt,
+      server_now: new Date().toISOString(),
+      period_started_at: null,
+      period_ends_at: null,
+      break_ends_at: null,
+      rules: {
+        ...settledDuelMatch.rules,
+        title: 'Классика',
+        duelKind: 'classic',
+        duelVariant: 'classic',
+        totalPeriods: 3,
+        shotsPerPeriod: 30,
+        periodDurationMs: 20 * 60_000,
+        breakDurationMs: 0,
+        periodRules: [
+          { periodNumber: 1, mode: 'quota', durationMs: 20 * 60_000, shotsLimit: 30 },
+          { periodNumber: 2, mode: 'quota', durationMs: 20 * 60_000, shotsLimit: 30 },
+          { periodNumber: 3, mode: 'quota', durationMs: 20 * 60_000, shotsLimit: 30 },
+        ],
+      },
+      me: {
+        ...settledDuelMatch.me,
+        state: 'accepted',
+        current_period: 1,
+        shots_taken: 30,
+        goals: 20,
+        current_period_shots: 0,
+        current_period_goals: 0,
+      },
+      opponent: {
+        ...settledDuelMatch.opponent,
+        state: 'accepted',
+        current_period: 1,
+        shots_taken: 30,
+        goals: 18,
+        current_period_shots: 0,
+        current_period_goals: 0,
+      },
+      current_period_shots: 0,
+      current_period_goals: 0,
+    };
+    const periodActiveMatch: AmateurDuelMatchState = {
+      ...classicMatch,
+      period_started_at: new Date().toISOString(),
+      period_ends_at: new Date(Date.now() + 20 * 60_000).toISOString(),
+      me: {
+        ...classicMatch.me,
+        state: 'period_active',
+        current_period: 2,
+        period_started_at: new Date().toISOString(),
+      },
+    };
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/matches/match-1/period/start')) {
+        return new Response(JSON.stringify({ match: periodActiveMatch }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/matches/match-1')) {
+        return new Response(JSON.stringify({ match: classicMatch }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=amateur&match=match-1&play=1']);
+
+    const startButton = await screen.findByRole('button', { name: 'НАЧАТЬ' });
+    expect(startButton).toBeEnabled();
+    expect(document.querySelector('img[src="/sprites/daily-long-court-people.webp"]')).toBeTruthy();
+    fireEvent.click(startButton);
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(([input]) =>
+          String(input).includes('/duel/amateur/matches/match-1/period/start'),
+        ),
+      ).toBe(true);
     });
   });
 

@@ -233,7 +233,7 @@ describe('ChatSocket reconnect', () => {
     lastSocket().fireOpen();
     lastSocket().fireClose(1006); // attempt 2 scheduled at +1s
     await vi.advanceTimersByTimeAsync(1000);
-    lastSocket().fireOpen();      // success — backoff resets
+    lastSocket().fireOpen(); // success — backoff resets
     lastSocket().fireClose(1006); // next reconnect should be at +1s, not +2s
     await vi.advanceTimersByTimeAsync(999);
     const before = MockWebSocket.instances.length;

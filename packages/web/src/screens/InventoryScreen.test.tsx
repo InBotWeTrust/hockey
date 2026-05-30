@@ -158,7 +158,9 @@ describe('InventoryScreen', () => {
     expect(screen.getAllByText('5 периодов')).toHaveLength(3);
     expect(screen.queryByText(/Осталось/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/выбрано/i)).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Купить Бронзовая клюшка за 120 монет' })).toBeEnabled();
+    expect(
+      screen.getByRole('button', { name: 'Купить Бронзовая клюшка за 120 монет' }),
+    ).toBeEnabled();
     expect(screen.getByRole('tab', { name: 'Товары' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tab', { name: 'Банк' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'История' })).toBeInTheDocument();
@@ -185,8 +187,12 @@ describe('InventoryScreen', () => {
 
     renderInventory();
 
-    expect(await screen.findByRole('button', { name: /Подробнее о Бронзовая клюшка/i })).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: /Подробнее о Бронзовая клюшка/i })).toHaveLength(1);
+    expect(
+      await screen.findByRole('button', { name: /Подробнее о Бронзовая клюшка/i }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /Подробнее о Бронзовая клюшка/i })).toHaveLength(
+      1,
+    );
   });
 
   it('shows bank packages on the bank tab', async () => {
@@ -229,7 +235,9 @@ describe('InventoryScreen', () => {
 
     renderInventory();
 
-    expect(await screen.findByRole('button', { name: /Подробнее о Бронзовая клюшка/i })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: /Подробнее о Бронзовая клюшка/i }),
+    ).toBeInTheDocument();
     expect(screen.queryByText('Бросок +24')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Подробнее о Бронзовая клюшка/i }));
@@ -247,7 +255,9 @@ describe('InventoryScreen', () => {
     renderInventory();
 
     expect(await screen.findByText('Серебряные коньки')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Не хватает монет на Серебряные коньки' })).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: 'Не хватает монет на Серебряные коньки' }),
+    ).toBeDisabled();
   });
 
   it('confirms purchase before spending tokens', async () => {
@@ -263,7 +273,9 @@ describe('InventoryScreen', () => {
 
     renderInventory();
 
-    expect(await screen.findByRole('button', { name: 'Купить Бронзовая клюшка за 120 монет' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: 'Купить Бронзовая клюшка за 120 монет' }),
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Купить Бронзовая клюшка за 120 монет' }));
 
     const confirm = screen.getByRole('dialog', { name: 'Купить Бронзовая клюшка?' });

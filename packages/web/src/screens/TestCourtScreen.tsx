@@ -1,9 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  DAILY_PERIOD_SPEED_PRESETS,
-  type ShotResult,
-} from '@hockey/game-core';
+import { DAILY_PERIOD_SPEED_PRESETS, type ShotResult } from '@hockey/game-core';
 import { PlayView, type PlayShotResolver } from './DailyScreen.js';
 import {
   TRAINING_NEW_COURT_BACKGROUND,

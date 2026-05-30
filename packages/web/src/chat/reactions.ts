@@ -2,9 +2,30 @@
 // MUST stay in sync with packages/server/src/chat/whitelist.ts.
 
 export const EMOJI_WHITELIST = [
-  '👍', '❤️', '😂', '🎉', '😮', '😢', '🔥', '👏',
-  '🙏', '💯', '🤔', '😍', '😡', '🥳', '😎', '🤩',
-  '👎', '💔', '🤯', '🥶', '🤝', '🍻', '💪', '🎯',
+  '👍',
+  '❤️',
+  '😂',
+  '🎉',
+  '😮',
+  '😢',
+  '🔥',
+  '👏',
+  '🙏',
+  '💯',
+  '🤔',
+  '😍',
+  '😡',
+  '🥳',
+  '😎',
+  '🤩',
+  '👎',
+  '💔',
+  '🤯',
+  '🥶',
+  '🤝',
+  '🍻',
+  '💪',
+  '🎯',
 ] as const;
 
 export type WhitelistEmoji = (typeof EMOJI_WHITELIST)[number];

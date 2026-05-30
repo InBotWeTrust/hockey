@@ -144,6 +144,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '040_dev_access_codes.sql',
       '041_shop_inventory_variants.sql',
       '042_dedupe_shop_inventory_variants.sql',
+      '043_training_daily_cooldown_30_minutes.sql',
     ]);
   });
 });

@@ -87,7 +87,8 @@ const DEFAULT_PUSH_NOTIFICATION_TEMPLATES: Array<{
     category: 'daily',
     title: 'Ежедневная игра открыта',
     body: 'Восстановление после тренировки завершено.',
-    trigger: 'Через 2 часа после последнего тренировочного броска, если дневная игра ещё не начата.',
+    trigger:
+      'Через 2 часа после последнего тренировочного броска, если дневная игра ещё не начата.',
     clickUrl: '/?view=hub',
   },
   {
@@ -279,9 +280,7 @@ export async function renderPushNotificationPayload(
   );
   const row = rows[0];
   if (row && !row.is_enabled) return null;
-  const source = row
-    ? { title: row.title, body: row.body, url: row.click_url }
-    : fallback;
+  const source = row ? { title: row.title, body: row.body, url: row.click_url } : fallback;
   return {
     title: interpolate(source.title, variables),
     body: interpolate(source.body, variables),

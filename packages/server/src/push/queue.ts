@@ -327,7 +327,11 @@ async function processDelivery(
 
   for (const subscription of subscriptions) {
     try {
-      const result = await sendWebPush(toSubscription(subscription), options.vapid, deliveryPayload);
+      const result = await sendWebPush(
+        toSubscription(subscription),
+        options.vapid,
+        deliveryPayload,
+      );
       if (result.ok) {
         sent += 1;
         await markSubscriptionSuccess(pool, subscription.id);

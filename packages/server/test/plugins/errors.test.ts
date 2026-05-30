@@ -48,4 +48,24 @@ describe('errorsPlugin', () => {
     const body = res.json() as { error: { code: string; message: string } };
     expect(body.error.code).toBe('bad_request');
   });
+
+  it('passes Fastify 4xx errors through instead of masking them as internal', async () => {
+    const app = Fastify();
+    await app.register(errorsPlugin);
+    app.addContentTypeParser('image/png', { parseAs: 'buffer' }, (_req, body, done) =>
+      done(null, body),
+    );
+    app.post('/upload', async () => ({ ok: true }));
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/upload',
+      headers: { 'content-type': 'image/heic' },
+      payload: Buffer.from('image'),
+    });
+
+    expect(res.statusCode).toBe(415);
+    const body = res.json() as { error: { code: string; message: string } };
+    expect(body.error.code).not.toBe('internal_error');
+  });
 });

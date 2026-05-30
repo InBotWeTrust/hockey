@@ -22,7 +22,9 @@ let stopping = false;
 let nextCleanupAt = 0;
 
 const pushOptions = {
-  ...(config.PUSH_VAPID_PUBLIC_KEY !== undefined ? { publicKey: config.PUSH_VAPID_PUBLIC_KEY } : {}),
+  ...(config.PUSH_VAPID_PUBLIC_KEY !== undefined
+    ? { publicKey: config.PUSH_VAPID_PUBLIC_KEY }
+    : {}),
   ...(config.PUSH_VAPID_PRIVATE_KEY !== undefined
     ? { privateKey: config.PUSH_VAPID_PRIVATE_KEY }
     : {}),

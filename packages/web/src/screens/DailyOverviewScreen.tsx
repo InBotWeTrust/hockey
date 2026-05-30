@@ -295,7 +295,7 @@ export function DailyOverviewScreen(): JSX.Element {
               onClick={() => navigate('/?view=daily')}
               style={{ minHeight: 42, display: 'inline-flex', justifyContent: 'center' }}
             >
-              На площадку
+              На лед
             </button>
           </div>
         </section>
@@ -361,8 +361,7 @@ function HistorySummaryCard({ summary }: { summary: DailyHistorySummary }): JSX.
         background:
           'linear-gradient(135deg, rgba(147,197,253,0.72), rgba(219,234,254,0.86) 52%, rgba(255,255,255,0.72))',
         border: '1px solid rgba(255,255,255,0.94)',
-        boxShadow:
-          'inset 0 1px 0 rgba(255,255,255,0.92), 0 18px 42px rgba(37,99,235,0.2)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.92), 0 18px 42px rgba(37,99,235,0.2)',
       }}
     >
       <div

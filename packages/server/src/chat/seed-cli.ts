@@ -31,13 +31,17 @@ async function main(): Promise<void> {
         process.exit(1);
       }
       systemUserId = r.rows[0]!.id;
-      console.log(`[chat:seed] SYSTEM_USER_ID not set; falling back to earliest user ${systemUserId}`);
+      console.log(
+        `[chat:seed] SYSTEM_USER_ID not set; falling back to earliest user ${systemUserId}`,
+      );
     }
     const result = await seedSystemChannel(pool, { name, createdBy: systemUserId });
     if (result.created) {
       console.log(`[chat:seed] created system channel "${result.chat.name}" (${result.chat.id})`);
     } else {
-      console.log(`[chat:seed] system channel "${result.chat.name}" already exists (${result.chat.id})`);
+      console.log(
+        `[chat:seed] system channel "${result.chat.name}" already exists (${result.chat.id})`,
+      );
     }
   } finally {
     await pool.end();

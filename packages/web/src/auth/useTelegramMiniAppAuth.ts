@@ -18,9 +18,7 @@ export function useTelegramMiniAppAuth(): {
 } {
   const setSession = useAuthStore((s) => s.setSession);
   const startedRef = useRef(false);
-  const [webApp, setWebApp] = useState<TelegramMiniAppWebApp | null>(() =>
-    getTelegramMiniApp(),
-  );
+  const [webApp, setWebApp] = useState<TelegramMiniAppWebApp | null>(() => getTelegramMiniApp());
   const [loadError, setLoadError] = useState<Error | null>(null);
   const isTelegramMiniApp = webApp !== null || isTelegramMiniAppLaunch();
 

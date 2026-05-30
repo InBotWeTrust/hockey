@@ -535,9 +535,7 @@ function GroupChatCreateModal({
                   size={32}
                   fontSize={13}
                 />
-                <span style={{ flex: 1, fontSize: 14, fontWeight: 800 }}>
-                  {user.displayName}
-                </span>
+                <span style={{ flex: 1, fontSize: 14, fontWeight: 800 }}>{user.displayName}</span>
                 <span style={{ fontSize: 12, color: picked ? '#ffffff' : 'var(--muted)' }}>
                   {picked ? 'Добавлен' : 'Добавить'}
                 </span>

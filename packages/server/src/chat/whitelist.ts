@@ -3,9 +3,30 @@
 // by both whitelist.test.ts files via list length + content snapshot).
 
 export const EMOJI_WHITELIST = [
-  '👍', '❤️', '😂', '🎉', '😮', '😢', '🔥', '👏',
-  '🙏', '💯', '🤔', '😍', '😡', '🥳', '😎', '🤩',
-  '👎', '💔', '🤯', '🥶', '🤝', '🍻', '💪', '🎯',
+  '👍',
+  '❤️',
+  '😂',
+  '🎉',
+  '😮',
+  '😢',
+  '🔥',
+  '👏',
+  '🙏',
+  '💯',
+  '🤔',
+  '😍',
+  '😡',
+  '🥳',
+  '😎',
+  '🤩',
+  '👎',
+  '💔',
+  '🤯',
+  '🥶',
+  '🤝',
+  '🍻',
+  '💪',
+  '🎯',
 ] as const;
 
 export type WhitelistEmoji = (typeof EMOJI_WHITELIST)[number];

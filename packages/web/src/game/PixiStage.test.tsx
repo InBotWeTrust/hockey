@@ -31,9 +31,7 @@ describe('PixiStage', () => {
   });
 
   it('inserts a canvas into the DOM', async () => {
-    const { container } = render(
-      <PixiStage onReady={() => {}} onResize={() => {}} />,
-    );
+    const { container } = render(<PixiStage onReady={() => {}} onResize={() => {}} />);
     await new Promise((r) => setTimeout(r, 20));
     expect(container.querySelector('canvas')).not.toBeNull();
   });

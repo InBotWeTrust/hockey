@@ -85,7 +85,9 @@ function parseJsonBody(init: RequestInit | undefined): Record<string, unknown> {
   return JSON.parse(init.body) as Record<string, unknown>;
 }
 
-function mockSettingsFetch(profile: typeof telegramProfile | typeof vkOnlyProfile = telegramProfile) {
+function mockSettingsFetch(
+  profile: typeof telegramProfile | typeof vkOnlyProfile = telegramProfile,
+) {
   return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     const url = getFetchUrl(input);
 
@@ -178,6 +180,8 @@ describe('ProfileSettingsScreen', () => {
     const fetchMock = mockSettingsFetch();
 
     renderProfileSettings();
+    expect(await screen.findByText('ID игрока')).toBeInTheDocument();
+    expect(screen.getByText('u1')).toBeInTheDocument();
     const vkButton = await screen.findByRole('button', { name: /из вконтакте/i });
     fireEvent.click(vkButton);
 
