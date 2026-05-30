@@ -286,10 +286,7 @@ describe('ProfileSettingsScreen', () => {
     expect(screen.getByText('Обратная связь')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Написать в обратную связь' })).toBeInTheDocument();
 
-    const notificationSettings = screen.queryByRole('button', { name: 'Настройки уведомлений' });
-    if (notificationSettings) {
-      fireEvent.click(notificationSettings);
-    }
+    fireEvent.click(await screen.findByRole('button', { name: 'Настройки уведомлений' }));
 
     expect(screen.getByRole('switch', { name: 'Первое сообщение в личке' })).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: 'Дуэли' })).toBeInTheDocument();
@@ -299,12 +296,7 @@ describe('ProfileSettingsScreen', () => {
     const fetchMock = mockSettingsFetch();
 
     renderProfileSettings();
-    const notificationSettings = await screen.findByText('Пуш-уведомления').then(() =>
-      screen.queryByRole('button', { name: 'Настройки уведомлений' }),
-    );
-    if (notificationSettings) {
-      fireEvent.click(notificationSettings);
-    }
+    fireEvent.click(await screen.findByRole('button', { name: 'Настройки уведомлений' }));
     fireEvent.click(screen.getByRole('switch', { name: 'Первое сообщение в личке' }));
 
     await waitFor(() =>
