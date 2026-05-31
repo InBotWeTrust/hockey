@@ -1,5 +1,9 @@
 import type { Pool, PoolClient } from 'pg';
-import { getAchievementProgress, setAchievementProgress } from './progress.js';
+import {
+  deleteAchievementProgress,
+  getAchievementProgress,
+  setAchievementProgress,
+} from './progress.js';
 import { completeAchievements } from './service.js';
 
 type Queryable = Pool | PoolClient;
@@ -64,6 +68,76 @@ export interface TrainingClosedAchievementEvent {
 interface TrainingStreakProgress {
   count: number;
   lastTrainingSessionId?: string;
+}
+
+interface CountProgress {
+  count: number;
+  lastMatchId?: string;
+}
+
+interface LastLossProgress {
+  opponentUserId: string;
+  matchId: string;
+}
+
+interface DuelMatchAchievementRow {
+  id: string;
+  challenger_user_id: string;
+  opponent_user_id: string;
+  winner_user_id: string | null;
+  outcome: string | null;
+  duel_kind: string;
+  rules_snapshot: unknown;
+}
+
+interface DuelParticipantAchievementRow {
+  user_id: string;
+  side: 'challenger' | 'opponent';
+  state: string;
+  loadout_snapshot: unknown;
+  completed_at: Date | null;
+  shots_taken: number | string;
+  goals: number | string;
+  active_duration_ms: number | string;
+  consumed_inventory_charges: number | string;
+  reserved_inventory_charges: number | string;
+  experience_snapshot: number | string;
+}
+
+interface DuelPeriodAchievementRow {
+  user_id: string;
+  period_number: number;
+  shots_taken: number | string;
+  goals: number | string;
+  duration_ms: number | string;
+}
+
+interface DuelAchievementContext {
+  match: DuelMatchAchievementRow;
+  winner: DuelParticipantAchievement;
+  loser: DuelParticipantAchievement;
+  participants: DuelParticipantAchievement[];
+  periods: DuelPeriodAchievementRow[];
+  winnerResults: ShotResult[];
+  winnerPeriodResults: ShotResult[][];
+}
+
+interface DuelParticipantAchievement {
+  userId: string;
+  side: 'challenger' | 'opponent';
+  state: string;
+  loadout: LoadoutSnapshotLike;
+  completedAt: Date | null;
+  shots: number;
+  goals: number;
+  activeDurationMs: number;
+  consumedInventoryCharges: number;
+  reservedInventoryCharges: number;
+  experienceSnapshot: number;
+}
+
+interface LoadoutSnapshotLike {
+  items: Array<{ id?: string; kind?: string }>;
 }
 
 export function hasGoalStreak(results: readonly ShotResult[], target: number): boolean {
@@ -240,6 +314,129 @@ export async function evaluateTrainingClosedAchievements(
   });
 }
 
+export async function evaluateDuelSettledAchievements(
+  db: Queryable,
+  event: { matchId: string; winnerUserId: string | null },
+): Promise<void> {
+  const participants = await fetchDuelParticipants(db, event.matchId);
+  if (participants.length === 0) return;
+
+  if (event.winnerUserId === null) {
+    await updateDuelNonWinProgress(db, event.matchId, participants);
+    return;
+  }
+
+  const ctx = await fetchDuelAchievementContext(db, event.matchId, event.winnerUserId);
+  if (!ctx) return;
+
+  const completed = new Set<string>();
+  const margin = ctx.winner.goals - ctx.loser.goals;
+
+  if (margin === 1) completed.add('nervous-finish');
+  if (margin === 2) completed.add('thin-edge');
+  if (margin >= 20) completed.add('blowout');
+  if (ctx.winner.shots - ctx.winner.goals <= 5) completed.add('no-room-for-error');
+  if (
+    ctx.winner.experienceSnapshot < ctx.loser.experienceSnapshot &&
+    ctx.loser.experienceSnapshot >= 100
+  ) {
+    completed.add('underdog');
+  }
+  if (ctx.winner.completedAt !== null && ctx.loser.completedAt !== null) {
+    if (ctx.loser.completedAt.getTime() < ctx.winner.completedAt.getTime()) {
+      completed.add('handled-pressure');
+    }
+  }
+  if (firstNAllGoals(ctx.winnerResults, 20)) completed.add('cold-start');
+  if (hasNoPanicPattern(ctx.winnerResults)) completed.add('no-panic');
+  if (ctx.winnerPeriodResults.some((results) => lastNAllGoals(results, 10))) {
+    completed.add('final-push');
+  }
+  if (isClassicDuel(ctx.match) && hasCleanPeriodWin(ctx)) completed.add('clean-win');
+  if (isClassicDuel(ctx.match) && hasClassicSpeedPeriod(ctx.periods, ctx.winner.userId)) {
+    completed.add('classic-speed');
+  }
+  if (hasFullPurchasedLoadout(ctx.winner.loadout)) completed.add('master-arsenal');
+
+  if (await updateCountProgress(db, ctx.winner.userId, 'duel_win_streak', event.matchId, true)) {
+    const progress = await getAchievementProgress<CountProgress>(
+      db,
+      ctx.winner.userId,
+      'duel_win_streak',
+    );
+    if ((progress?.count ?? 0) >= 5) completed.add('hunter-streak');
+  }
+
+  const isHostWin = ctx.winner.side === 'challenger';
+  if (
+    await updateCountProgress(
+      db,
+      ctx.winner.userId,
+      'duel_host_win_streak',
+      event.matchId,
+      isHostWin,
+    )
+  ) {
+    const progress = await getAchievementProgress<CountProgress>(
+      db,
+      ctx.winner.userId,
+      'duel_host_win_streak',
+    );
+    if ((progress?.count ?? 0) >= 3) completed.add('dangerous-host');
+  }
+  if (
+    await updateCountProgress(
+      db,
+      ctx.winner.userId,
+      'duel_guest_win_streak',
+      event.matchId,
+      !isHostWin,
+    )
+  ) {
+    const progress = await getAchievementProgress<CountProgress>(
+      db,
+      ctx.winner.userId,
+      'duel_guest_win_streak',
+    );
+    if ((progress?.count ?? 0) >= 3) completed.add('dangerous-guest');
+  }
+
+  if (isEconomicalWin(ctx.winner)) {
+    await updateCountProgress(db, ctx.winner.userId, 'economical_duel_wins', event.matchId, true);
+    const progress = await getAchievementProgress<CountProgress>(
+      db,
+      ctx.winner.userId,
+      'economical_duel_wins',
+    );
+    if ((progress?.count ?? 0) >= 10) completed.add('economical-master');
+  }
+
+  const lastLoss = await getAchievementProgress<LastLossProgress>(
+    db,
+    ctx.winner.userId,
+    'duel_last_loss',
+  );
+  if (lastLoss?.opponentUserId === ctx.loser.userId && lastLoss.matchId !== event.matchId) {
+    completed.add('revenge');
+  }
+
+  const pendingTraining = await getAchievementProgress<{ trainingSessionId: string }>(
+    db,
+    ctx.winner.userId,
+    'training_before_duel_pending',
+  );
+  if (pendingTraining !== null) completed.add('training-before-battle');
+
+  await completeAchievements(db, ctx.winner.userId, [...completed], {
+    source: 'duel_settled',
+    matchId: event.matchId,
+    winnerUserId: event.winnerUserId,
+    margin,
+  });
+
+  await updateDuelPostSettleProgress(db, event.matchId, ctx);
+}
+
 async function fetchDailyResults(db: Queryable, dayPoolId: string): Promise<ShotResult[]> {
   const { rows } = await db.query<{ server_result: ShotResult }>(
     `select server_result
@@ -282,6 +479,212 @@ async function fetchTrainingResults(
     [trainingSessionId],
   );
   return rows.map((row) => row.server_result);
+}
+
+async function fetchDuelParticipants(
+  db: Queryable,
+  matchId: string,
+): Promise<DuelParticipantAchievement[]> {
+  const { rows } = await db.query<DuelParticipantAchievementRow>(
+    `select user_id, side, state, loadout_snapshot, completed_at, shots_taken, goals,
+            active_duration_ms, consumed_inventory_charges, reserved_inventory_charges,
+            experience_snapshot
+       from amateur_duel_participant
+      where match_id = $1
+      order by side`,
+    [matchId],
+  );
+  return rows.map(mapDuelParticipant);
+}
+
+async function fetchDuelAchievementContext(
+  db: Queryable,
+  matchId: string,
+  winnerUserId: string,
+): Promise<DuelAchievementContext | null> {
+  const { rows } = await db.query<DuelMatchAchievementRow>(
+    `select id, challenger_user_id, opponent_user_id, winner_user_id, outcome,
+            duel_kind, rules_snapshot
+       from amateur_duel_match
+      where id = $1`,
+    [matchId],
+  );
+  const match = rows[0];
+  if (!match) return null;
+  const participants = await fetchDuelParticipants(db, matchId);
+  const winner = participants.find((participant) => participant.userId === winnerUserId);
+  const loser = participants.find((participant) => participant.userId !== winnerUserId);
+  if (!winner || !loser) return null;
+  const periods = await fetchDuelPeriods(db, matchId);
+  const winnerResults = await fetchDuelResults(db, matchId, winnerUserId);
+  const winnerPeriodResults = await fetchDuelResultsByPeriod(db, matchId, winnerUserId);
+  return { match, winner, loser, participants, periods, winnerResults, winnerPeriodResults };
+}
+
+async function fetchDuelPeriods(
+  db: Queryable,
+  matchId: string,
+): Promise<DuelPeriodAchievementRow[]> {
+  const { rows } = await db.query<DuelPeriodAchievementRow>(
+    `select user_id, period_number, shots_taken, goals, duration_ms
+       from amateur_duel_period_log
+      where match_id = $1
+      order by period_number asc, user_id asc`,
+    [matchId],
+  );
+  return rows;
+}
+
+async function fetchDuelResults(
+  db: Queryable,
+  matchId: string,
+  userId: string,
+): Promise<ShotResult[]> {
+  const { rows } = await db.query<{ server_result: ShotResult }>(
+    `select server_result
+       from shot_session
+      where mode = 'amateur_duel'
+        and amateur_duel_match_id = $1
+        and user_id = $2
+      order by period_number asc, shot_index asc`,
+    [matchId, userId],
+  );
+  return rows.map((row) => row.server_result);
+}
+
+async function fetchDuelResultsByPeriod(
+  db: Queryable,
+  matchId: string,
+  userId: string,
+): Promise<ShotResult[][]> {
+  const { rows } = await db.query<{ period_number: number; server_result: ShotResult }>(
+    `select period_number, server_result
+       from shot_session
+      where mode = 'amateur_duel'
+        and amateur_duel_match_id = $1
+        and user_id = $2
+      order by period_number asc, shot_index asc`,
+    [matchId, userId],
+  );
+  const byPeriod = new Map<number, ShotResult[]>();
+  for (const row of rows) {
+    const bucket = byPeriod.get(row.period_number) ?? [];
+    bucket.push(row.server_result);
+    byPeriod.set(row.period_number, bucket);
+  }
+  return [...byPeriod.entries()].sort(([a], [b]) => a - b).map(([, results]) => results);
+}
+
+function mapDuelParticipant(row: DuelParticipantAchievementRow): DuelParticipantAchievement {
+  return {
+    userId: row.user_id,
+    side: row.side,
+    state: row.state,
+    loadout: parseLoadoutSnapshot(row.loadout_snapshot),
+    completedAt: row.completed_at,
+    shots: Number(row.shots_taken),
+    goals: Number(row.goals),
+    activeDurationMs: Number(row.active_duration_ms),
+    consumedInventoryCharges: Number(row.consumed_inventory_charges),
+    reservedInventoryCharges: Number(row.reserved_inventory_charges),
+    experienceSnapshot: Number(row.experience_snapshot),
+  };
+}
+
+function parseLoadoutSnapshot(value: unknown): LoadoutSnapshotLike {
+  if (value === null || typeof value !== 'object') return { items: [] };
+  const items = (value as { items?: unknown }).items;
+  if (!Array.isArray(items)) return { items: [] };
+  return {
+    items: items
+      .filter((item): item is Record<string, unknown> => item !== null && typeof item === 'object')
+      .map((item) => ({
+        ...(typeof item.id === 'string' ? { id: item.id } : {}),
+        ...(typeof item.kind === 'string' ? { kind: item.kind } : {}),
+      })),
+  };
+}
+
+function isClassicDuel(match: DuelMatchAchievementRow): boolean {
+  return match.duel_kind === 'classic';
+}
+
+function hasCleanPeriodWin(ctx: DuelAchievementContext): boolean {
+  const winnerPeriods = ctx.periods.filter((period) => period.user_id === ctx.winner.userId);
+  const loserPeriods = ctx.periods.filter((period) => period.user_id === ctx.loser.userId);
+  if (winnerPeriods.length === 0 || winnerPeriods.length !== loserPeriods.length) return false;
+  return winnerPeriods.every((winnerPeriod) => {
+    const loserPeriod = loserPeriods.find(
+      (period) => period.period_number === winnerPeriod.period_number,
+    );
+    return loserPeriod !== undefined && Number(winnerPeriod.goals) > Number(loserPeriod.goals);
+  });
+}
+
+function hasClassicSpeedPeriod(periods: DuelPeriodAchievementRow[], userId: string): boolean {
+  return periods.some((period) => {
+    if (period.user_id !== userId) return false;
+    const shots = Number(period.shots_taken);
+    if (shots <= 0) return false;
+    return Number(period.duration_ms) <= 90_000 && Number(period.goals) / shots >= 0.85;
+  });
+}
+
+function hasFullPurchasedLoadout(loadout: LoadoutSnapshotLike): boolean {
+  const kinds = new Set(loadout.items.map((item) => item.kind).filter(Boolean));
+  return kinds.has('stick') && kinds.has('skates') && kinds.has('nutrition');
+}
+
+function isEconomicalWin(participant: DuelParticipantAchievement): boolean {
+  return (
+    participant.loadout.items.length === 0 &&
+    participant.consumedInventoryCharges === 0 &&
+    participant.reservedInventoryCharges === 0
+  );
+}
+
+async function updateCountProgress(
+  db: Queryable,
+  userId: string,
+  key: string,
+  matchId: string,
+  increment: boolean,
+): Promise<boolean> {
+  const progress = await getAchievementProgress<CountProgress>(db, userId, key);
+  if (progress?.lastMatchId === matchId) return false;
+  const count = increment ? (progress?.count ?? 0) + 1 : 0;
+  await setAchievementProgress(db, userId, key, { count, lastMatchId: matchId });
+  return true;
+}
+
+async function updateDuelNonWinProgress(
+  db: Queryable,
+  matchId: string,
+  participants: DuelParticipantAchievement[],
+): Promise<void> {
+  for (const participant of participants) {
+    await updateCountProgress(db, participant.userId, 'duel_win_streak', matchId, false);
+    await updateCountProgress(db, participant.userId, 'duel_host_win_streak', matchId, false);
+    await updateCountProgress(db, participant.userId, 'duel_guest_win_streak', matchId, false);
+    await deleteAchievementProgress(db, participant.userId, 'training_before_duel_pending');
+  }
+}
+
+async function updateDuelPostSettleProgress(
+  db: Queryable,
+  matchId: string,
+  ctx: DuelAchievementContext,
+): Promise<void> {
+  await deleteAchievementProgress(db, ctx.winner.userId, 'duel_last_loss');
+  await deleteAchievementProgress(db, ctx.winner.userId, 'training_before_duel_pending');
+  await setAchievementProgress(db, ctx.loser.userId, 'duel_last_loss', {
+    opponentUserId: ctx.winner.userId,
+    matchId,
+  });
+  await deleteAchievementProgress(db, ctx.loser.userId, 'training_before_duel_pending');
+  await updateCountProgress(db, ctx.loser.userId, 'duel_win_streak', matchId, false);
+  await updateCountProgress(db, ctx.loser.userId, 'duel_host_win_streak', matchId, false);
+  await updateCountProgress(db, ctx.loser.userId, 'duel_guest_win_streak', matchId, false);
 }
 
 async function incrementTraining40Of50Streak(

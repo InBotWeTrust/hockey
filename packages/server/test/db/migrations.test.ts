@@ -93,6 +93,16 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       expect.arrayContaining(['claimed_at', 'completed_at', 'completion_context']),
     );
 
+    const duelParticipantColumns = await pool.query<{ column_name: string }>(
+      `select column_name
+         from information_schema.columns
+        where table_schema = 'public' and table_name = 'amateur_duel_participant'
+        order by column_name`,
+    );
+    expect(duelParticipantColumns.rows.map((row) => row.column_name)).toContain(
+      'experience_snapshot',
+    );
+
     const inventory = await pool.query<{ title: string; photo_url: string }>(
       `select title, photo_url
          from admin_inventory_items
@@ -181,6 +191,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '044_delete_accidental_telegram_user.sql',
       '045_weekly_challenges.sql',
       '046_achievements_rework.sql',
+      '047_duel_achievement_experience_snapshot.sql',
     ]);
   });
 });
