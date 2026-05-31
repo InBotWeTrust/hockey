@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Gamepad2, MessageCircle, Package, ShieldCheck, User } from 'lucide-react';
 import { apiFetch } from '../api/apiFetch.js';
 import { fetchAmateurEvents, type AmateurDuelMatch } from '../api/amateurDuel.js';
+import { fetchWeeklyChallenge } from '../api/weeklyChallenge.js';
 import { useAuthStore } from '../auth/authStore.js';
 import type { AuthUser } from '../auth/authStore.js';
 import { fetchUnreadCounts } from '../chat/api.js';
@@ -126,6 +127,12 @@ export function BottomNav(): JSX.Element | null {
     enabled: Boolean(user) && !isDemo,
     refetchInterval: 15_000,
   });
+  const { data: weeklyChallenge } = useQuery({
+    queryKey: ['weekly-challenge', 'nav'],
+    queryFn: fetchWeeklyChallenge,
+    enabled: Boolean(user) && !isDemo,
+    refetchInterval: 60_000,
+  });
   const { data: refreshedUser } = useQuery<AuthUser>({
     queryKey: ['auth', 'me-role'],
     queryFn: () => apiFetch<AuthUser>('/me'),
@@ -176,6 +183,7 @@ export function BottomNav(): JSX.Element | null {
   const isChat = !isDemo && isChatRoute(location.pathname);
   const showAdmin = !isDemo && user?.role === 'admin';
   const gameActionCount = (amateurEvents?.events ?? []).filter(isActionableDuelEvent).length;
+  const sectionActionCount = weeklyChallenge?.challenge?.canJoin === true ? 1 : 0;
   const inactiveIconColor = isDemo ? 'rgba(71, 85, 105, 0.48)' : 'var(--muted)';
   const openLastGameRoute = (): void => {
     rememberRoute(LAST_GAME_ROUTE_KEY, DEFAULT_GAME_ROUTE);
@@ -280,11 +288,37 @@ export function BottomNav(): JSX.Element | null {
           disabled={isDemo}
           active={isSections}
           icon={
-            <Package
-              size={ICON_SIZE}
-              color={isSections ? '#ffffff' : inactiveIconColor}
-              strokeWidth={2}
-            />
+            <span style={{ position: 'relative', display: 'inline-flex' }}>
+              <Package
+                size={ICON_SIZE}
+                color={isSections ? '#ffffff' : inactiveIconColor}
+                strokeWidth={2}
+              />
+              {!isDemo && sectionActionCount > 0 && (
+                <span
+                  aria-label={`События разделов: ${sectionActionCount}`}
+                  style={{
+                    position: 'absolute',
+                    top: -4,
+                    right: -6,
+                    minWidth: 16,
+                    height: 16,
+                    padding: '0 4px',
+                    borderRadius: 999,
+                    background: 'rgb(220, 38, 38)',
+                    color: '#ffffff',
+                    fontSize: 9,
+                    fontWeight: 800,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 0 0 2px rgba(218, 230, 246, 0.96)',
+                  }}
+                >
+                  {sectionActionCount}
+                </span>
+              )}
+            </span>
           }
           onClick={openSectionsRoute}
         />
