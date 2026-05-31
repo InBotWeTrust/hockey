@@ -10,7 +10,7 @@ const DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED = 1000;
 const SECTION_ARTWORK_SIZE = 86;
 
 const SECTION_ARTWORK = {
-  weekly: '/daily-game/start.webp',
+  weekly: '/modes/weekly-challenge.webp',
   daily: '/daily-game/start.webp',
   training: '/modes/beginner.webp',
   amateur: '/modes/amateur.webp',
