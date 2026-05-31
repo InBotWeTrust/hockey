@@ -183,12 +183,16 @@ function AppFrame(): JSX.Element {
                 }
               />
               <Route
-                path="/weekly-challenge"
+                path="/achievements/weekly-challenge"
                 element={
                   <PrivateRoute>
                     <WeeklyChallengeScreen />
                   </PrivateRoute>
                 }
+              />
+              <Route
+                path="/weekly-challenge"
+                element={<Navigate to="/achievements/weekly-challenge" replace />}
               />
               <Route
                 path="/profile"

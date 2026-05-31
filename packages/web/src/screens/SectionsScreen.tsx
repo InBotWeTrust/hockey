@@ -11,7 +11,6 @@ const DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED = 300;
 const SECTION_ARTWORK_SIZE = 86;
 
 const SECTION_ARTWORK = {
-  weekly: '/modes/weekly-challenge.webp',
   achievements: '/achievements/first-goal.webp',
   daily: '/daily-game/start.webp',
   training: '/modes/beginner.webp',
@@ -24,6 +23,22 @@ type SectionTone = 'active' | 'default' | 'muted';
 
 function numberText(value: number): string {
   return new Intl.NumberFormat('ru-RU', { useGrouping: false }).format(value);
+}
+
+function waitingActionText(value: number): string {
+  if (value === 1) return '1 действие ждёт';
+  const mod10 = value % 10;
+  const mod100 = value % 100;
+  const noun = mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) ? 'действия' : 'действий';
+  return `${numberText(value)} ${noun} ждут`;
+}
+
+function waitingRewardText(value: number): string {
+  if (value === 1) return '1 награда ждёт';
+  const mod10 = value % 10;
+  const mod100 = value % 100;
+  const noun = mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) ? 'награды' : 'наград';
+  return `${numberText(value)} ${noun} ждут`;
 }
 
 export function SectionsScreen(): JSX.Element {
@@ -62,19 +77,19 @@ export function SectionsScreen(): JSX.Element {
     (weeklyChallenge.data?.pendingRewards?.length ?? 0) > 0;
   const weeklyNeedsDecision =
     weeklyChallenge.data?.challenge?.canJoin === true || weeklyCanClaimReward;
-  const weeklyMeta = weeklyCanClaimReward
-    ? 'Получить награду'
-    : weeklyChallenge.data?.challenge
-      ? weeklyChallenge.data.challenge.canJoin
-        ? 'Нужно подтвердить участие'
-        : weeklyChallenge.data.challenge.status === 'running'
-          ? 'Челлендж идет'
-          : weeklyChallenge.data.challenge.status === 'join_open'
-            ? 'Открыт набор участников'
-            : weeklyChallenge.data.challenge.status === 'finished'
-              ? 'Челлендж завершен'
-              : 'Вход скоро откроется'
-      : 'Нет активного челленджа';
+  const sectionTasksActionCount =
+    achievementsUnclaimedCount +
+    (weeklyChallenge.data?.challenge?.canJoin === true ||
+    weeklyChallenge.data?.challenge?.canClaimReward === true
+      ? 1
+      : 0) +
+    (weeklyChallenge.data?.pendingRewards?.length ?? 0);
+  const achievementsMeta =
+    sectionTasksActionCount > achievementsUnclaimedCount
+      ? waitingActionText(sectionTasksActionCount)
+      : achievementsUnclaimedCount > 0
+        ? waitingRewardText(achievementsUnclaimedCount)
+        : 'Награды, серии и будущие цели';
 
   const openAmateurs = (): void => {
     if (!isAmateurUnlocked) {
@@ -110,14 +125,10 @@ export function SectionsScreen(): JSX.Element {
         <SectionCard
           title="Задания"
           description="Полный список целей и наград"
-          meta={
-            achievementsUnclaimedCount > 0
-              ? `${achievementsUnclaimedCount} наград ждёт`
-              : 'Награды, серии и будущие цели'
-          }
-          tone={achievementsUnclaimedCount > 0 ? 'active' : 'default'}
+          meta={achievementsMeta}
+          tone={sectionTasksActionCount > 0 ? 'active' : 'default'}
           artworkSrc={SECTION_ARTWORK.achievements}
-          attention={achievementsUnclaimedCount > 0}
+          attention={sectionTasksActionCount > 0 || weeklyNeedsDecision}
           onClick={() => navigate('/achievements')}
         />
         <SectionCard
@@ -162,15 +173,6 @@ export function SectionsScreen(): JSX.Element {
           tone="muted"
           artworkSrc={SECTION_ARTWORK.pro}
           onClick={() => navigate('/?view=pro&from=sections')}
-        />
-        <SectionCard
-          title="Челлендж недели"
-          description="Недельные вызовы и награды"
-          meta={weeklyChallenge.isLoading ? 'Проверяем активность' : weeklyMeta}
-          tone={weeklyChallenge.data?.challenge ? 'active' : 'default'}
-          artworkSrc={SECTION_ARTWORK.weekly}
-          attention={weeklyNeedsDecision}
-          onClick={() => navigate('/weekly-challenge')}
         />
         <SectionCard
           title="Магазин"

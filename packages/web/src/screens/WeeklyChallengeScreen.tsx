@@ -146,7 +146,7 @@ export function WeeklyChallengeScreen(): JSX.Element {
           <button
             type="button"
             className="icon-btn"
-            onClick={() => navigate('/sections')}
+            onClick={() => navigate('/achievements')}
             aria-label="Назад"
             title="Назад"
             style={{

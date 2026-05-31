@@ -1,12 +1,14 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CircleDollarSign, Lock, Sparkles, Star, TrendingUp } from 'lucide-react';
+import { ChevronRight, CircleDollarSign, Lock, Sparkles, Star, TrendingUp } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import {
   achievementKeys,
   claimAchievement,
   fetchAchievements,
   type AchievementDto,
 } from '../api/achievements.js';
+import { fetchWeeklyChallenge } from '../api/weeklyChallenge.js';
 
 type AchievementFilter = 'all' | 'daily' | 'training' | 'duel' | 'tournament' | 'shop' | 'future';
 
@@ -43,7 +45,22 @@ function rewardText(achievement: AchievementDto): string {
     .join(' · ');
 }
 
+function weeklyChallengeMeta(data: Awaited<ReturnType<typeof fetchWeeklyChallenge>> | undefined) {
+  const challenge = data?.challenge ?? null;
+  const pendingRewards = data?.pendingRewards ?? [];
+  const hasReward = challenge?.canClaimReward === true || pendingRewards.length > 0;
+  if (hasReward) return { text: 'Получить награду', attention: true };
+  if (challenge?.canJoin) return { text: 'Нужно подтвердить участие', attention: true };
+  if (challenge?.status === 'running') return { text: 'Челлендж идет', attention: false };
+  if (challenge?.status === 'join_open')
+    return { text: 'Открыт набор участников', attention: false };
+  if (challenge?.status === 'finished') return { text: 'Челлендж завершен', attention: false };
+  if (challenge) return { text: 'Вход скоро откроется', attention: false };
+  return { text: 'Нет активного челленджа', attention: false };
+}
+
 export function AchievementsScreen(): JSX.Element {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<AchievementFilter>('all');
   const [selected, setSelected] = useState<AchievementDto | null>(null);
@@ -58,7 +75,12 @@ export function AchievementsScreen(): JSX.Element {
     queryKey: achievementKeys.all,
     queryFn: fetchAchievements,
   });
+  const weeklyChallengeQuery = useQuery({
+    queryKey: ['weekly-challenge', 'achievements'],
+    queryFn: fetchWeeklyChallenge,
+  });
   const achievements = achievementsQuery.data?.achievements ?? [];
+  const weeklyMeta = weeklyChallengeMeta(weeklyChallengeQuery.data);
   const filtered = useMemo(
     () => achievements.filter((achievement) => categoryMatches(achievement, filter)),
     [achievements, filter],
@@ -105,6 +127,11 @@ export function AchievementsScreen(): JSX.Element {
         }}
       >
         <div className="section-label section-label--page">Задания</div>
+        <WeeklyChallengeEntry
+          meta={weeklyChallengeQuery.isLoading ? 'Проверяем активность' : weeklyMeta.text}
+          attention={weeklyMeta.attention}
+          onOpen={() => navigate('/achievements/weekly-challenge')}
+        />
         <div
           role="tablist"
           aria-label="Фильтр заданий"
@@ -249,6 +276,89 @@ export function AchievementsScreen(): JSX.Element {
         </div>
       )}
     </main>
+  );
+}
+
+function WeeklyChallengeEntry({
+  meta,
+  attention,
+  onOpen,
+}: {
+  meta: string;
+  attention: boolean;
+  onOpen: () => void;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      aria-label="Челлендж недели"
+      onClick={onOpen}
+      style={{
+        width: '100%',
+        minHeight: 86,
+        border: '1px solid rgba(255,255,255,0.7)',
+        borderRadius: 8,
+        padding: 10,
+        display: 'grid',
+        gridTemplateColumns: '66px minmax(0, 1fr) 18px',
+        gap: 10,
+        alignItems: 'center',
+        background: attention ? 'rgba(255,255,255,0.78)' : 'rgba(255,255,255,0.56)',
+        color: 'var(--ink)',
+        textAlign: 'left',
+        boxShadow: attention
+          ? '0 10px 26px rgba(220, 38, 38, 0.14)'
+          : '0 8px 20px rgba(15,23,42,0.08)',
+      }}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          width: 66,
+          height: 66,
+          borderRadius: 8,
+          overflow: 'hidden',
+          background: 'rgba(15,23,42,0.08)',
+          border: '1px solid rgba(255,255,255,0.78)',
+        }}
+      >
+        <img
+          src="/modes/weekly-challenge.webp"
+          alt=""
+          draggable={false}
+          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+        />
+      </span>
+      <span style={{ minWidth: 0, display: 'grid', gap: 5 }}>
+        <span style={{ fontSize: 17, lineHeight: 1.05, fontWeight: 950 }}>Челлендж недели</span>
+        <span
+          style={{
+            color: 'rgba(15,23,42,0.56)',
+            fontSize: 12,
+            fontWeight: 850,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+          }}
+        >
+          {attention && (
+            <span
+              aria-label="Требуется действие"
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: 999,
+                background: 'rgba(220, 38, 38, 0.92)',
+                boxShadow: '0 0 0 3px rgba(220, 38, 38, 0.14)',
+                flex: '0 0 7px',
+              }}
+            />
+          )}
+          {meta}
+        </span>
+      </span>
+      <ChevronRight size={18} strokeWidth={2.7} color="rgba(15,23,42,0.52)" />
+    </button>
   );
 }
 

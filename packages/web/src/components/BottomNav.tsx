@@ -50,6 +50,7 @@ function isSectionContext(location: ReturnType<typeof useLocation>): boolean {
   if (
     location.pathname.startsWith('/sections') ||
     location.pathname.startsWith('/achievements') ||
+    location.pathname.startsWith('/weekly-challenge') ||
     location.pathname.startsWith('/inventory') ||
     location.pathname.startsWith('/daily')
   ) {
