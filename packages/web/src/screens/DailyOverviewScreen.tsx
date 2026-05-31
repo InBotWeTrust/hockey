@@ -295,7 +295,7 @@ export function DailyOverviewScreen(): JSX.Element {
               onClick={() => navigate('/?view=daily')}
               style={{ minHeight: 42, display: 'inline-flex', justifyContent: 'center' }}
             >
-              На лед
+              На лёд
             </button>
           </div>
         </section>

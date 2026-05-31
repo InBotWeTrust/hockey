@@ -215,7 +215,7 @@ function renderWith(initialEntries: string[] = ['/']) {
 
 async function findArenaCta(articleName: string): Promise<HTMLElement> {
   await screen.findByRole('article', { name: articleName });
-  return screen.getByRole('button', { name: 'На лед' });
+  return screen.getByRole('button', { name: 'На лёд' });
 }
 
 beforeEach(() => {
@@ -1077,7 +1077,7 @@ describe('DailyScreen', () => {
     renderWith(['/?view=training']);
 
     expect(await screen.findByRole('heading', { name: 'Тренировка' })).toBeInTheDocument();
-    expect(await screen.findByRole('button', { name: 'На лед' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'На лёд' })).toBeInTheDocument();
     expect(screen.getByText('0/500')).toBeInTheDocument();
     expect(screen.getByText('ДО ОБНОВЛЕНИЯ')).toBeInTheDocument();
     expect(screen.getByText('Скорости 1-го периода')).toBeInTheDocument();
@@ -1144,6 +1144,103 @@ describe('DailyScreen', () => {
     expect(await screen.findByRole('button', { name: 'ЛЁД ГОТОВИТСЯ' })).toBeDisabled();
     expect(screen.getByText('Игра уже начата')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();
+  });
+
+  it('keeps multi-period rink cube metrics in the compact two-column layout', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingActiveState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify(baseState), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=training&play=1']);
+
+    const cube = await screen.findByLabelText('Статистика на видеокубе');
+    expect((cube as HTMLElement).style.gridTemplateColumns).toBe('repeat(2, minmax(0, 1fr))');
+    expect((cube as HTMLElement).style.alignContent).toBe('center');
+    expect(within(cube).getByText('Период')).toBeInTheDocument();
+    expect(within(cube).getByText('2/3')).toBeInTheDocument();
+    expect(within(cube).getByText('Броски')).toBeInTheDocument();
+    expect(within(cube).getByText('12/500')).toBeInTheDocument();
+  });
+
+  it('separates time and period rows on a one-period duel rink cube', async () => {
+    const now = Date.now();
+    const expressMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      status: 'active',
+      outcome: null,
+      winner_user_id: null,
+      settled_at: null,
+      settled_reason: null,
+      starts_at: new Date(now - 60_000).toISOString(),
+      ends_at: new Date(now + 60 * 60_000).toISOString(),
+      server_now: new Date(now).toISOString(),
+      period_started_at: new Date(now - 15_000).toISOString(),
+      period_ends_at: new Date(now + 165_000).toISOString(),
+      me: {
+        ...settledDuelMatch.me,
+        state: 'period_active',
+        current_period: 1,
+        shots_taken: 7,
+        goals: 4,
+        current_period_shots: 7,
+        current_period_goals: 4,
+        period_started_at: new Date(now - 15_000).toISOString(),
+        period_ends_at: new Date(now + 165_000).toISOString(),
+      },
+      opponent: {
+        ...settledDuelMatch.opponent,
+        state: 'accepted',
+        current_period: 0,
+        shots_taken: 0,
+        goals: 0,
+        current_period_shots: 0,
+        current_period_goals: 0,
+      },
+      current_period_shots: 7,
+      current_period_goals: 4,
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/matches/match-1')) {
+        return new Response(JSON.stringify({ match: expressMatch }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=amateur&match=match-1&play=1']);
+
+    const cube = await screen.findByLabelText('Статистика на видеокубе');
+    expect((cube as HTMLElement).style.gridTemplateRows).toBe('auto auto minmax(0, 1fr)');
+    expect((cube as HTMLElement).style.rowGap).toBe('clamp(7px, 2.1vw, 16px)');
+    expect(within(cube).getByText('Период')).toBeInTheDocument();
+    expect(within(cube).getByText('1/1')).toBeInTheDocument();
+    expect(within(cube).getByText('Голы')).toBeInTheDocument();
+    expect(within(cube).getByText('04')).toBeInTheDocument();
+
+    const bottomMetrics = within(cube).getByText('Голы').parentElement?.parentElement;
+    expect(bottomMetrics?.style.alignSelf).toBe('end');
   });
 
   it('opens the daily rink with an ice car after a training shot', async () => {

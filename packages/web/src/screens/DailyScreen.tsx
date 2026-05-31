@@ -906,7 +906,7 @@ function GameHub({
   const isDailyInProgress = data.state === 'period_active' || data.state === 'break_active';
   const isArenaLaunching = false;
   const dailyActionDisabled = pending || arenaActionId === 'daily' || isArenaLaunching;
-  const dailyActionLabel = 'На лед';
+  const dailyActionLabel = 'На лёд';
   const dailyEventTitle = isDailyLockedByTraining
     ? 'Восстановление'
     : data.state === 'period_active'
@@ -1094,7 +1094,7 @@ function GameHub({
     title: 'Тренировка',
     subtitle: 'Период на выбор, броски для формы и скорости.',
     meta: trainingAvailability,
-    ctaLabel: 'На лед',
+    ctaLabel: 'На лёд',
     disabled: trainingInFlight || arenaActionId === 'training' || isArenaLaunching,
     onEnter: handleOpenTraining,
   };
@@ -3038,7 +3038,7 @@ function TrainingPlaceholder({
   const nextDayAt = data ? new Date(data.next_day_starts_at).getTime() : 0;
   const nextDayRemaining = Math.max(0, nextDayAt - now);
   const canConfigureTraining = !data || data.state === 'idle' || data.state === 'active';
-  const trainingActionLabel = data?.state === 'active' ? 'Продолжить тренировку' : 'На лед';
+  const trainingActionLabel = data?.state === 'active' ? 'Продолжить тренировку' : 'На лёд';
 
   useEffect(() => {
     if (!data) return undefined;
@@ -7563,7 +7563,8 @@ function TrainingCubeScoreboard({
             top: '27%',
             bottom: notice ? '29%' : '24%',
             display: 'grid',
-            gridTemplateRows: 'minmax(0, 1.05fr) minmax(0, 0.72fr) minmax(0, 1fr)',
+            gridTemplateRows: 'auto auto minmax(0, 1fr)',
+            rowGap: 'clamp(7px, 2.1vw, 16px)',
             alignItems: 'center',
             justifyItems: 'center',
             pointerEvents: 'none',
@@ -7574,6 +7575,7 @@ function TrainingCubeScoreboard({
           <div
             style={{
               width: '100%',
+              alignSelf: 'end',
               display: 'grid',
               gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
               columnGap: 'clamp(26px, 11vw, 92px)',
