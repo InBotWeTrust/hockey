@@ -2098,6 +2098,10 @@ describe('DailyScreen', () => {
     expect(within(dialog).getByText('1-й период')).toBeInTheDocument();
     expect(within(dialog).getByText('25%')).toBeInTheDocument();
     expect(within(dialog).getByText('10%')).toBeInTheDocument();
+    fireEvent.click(dialog);
+    expect(screen.getByRole('dialog', { name: 'Результат дуэли' })).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Понятно' }));
+    expect(screen.queryByRole('dialog', { name: 'Результат дуэли' })).not.toBeInTheDocument();
   });
 
   it('polls an unfinished amateur duel and shows result when it settles', async () => {

@@ -50,18 +50,24 @@ export function SectionsScreen(): JSX.Element {
   const trainingShotsLimit = trainingData?.shots_limit ?? 500;
   const trainingShotsTaken = trainingData?.shots_taken ?? 0;
   const dailyShotsLimit = (dailyData?.shots_per_period ?? 30) * (dailyData?.total_periods ?? 3);
-  const weeklyNeedsDecision = weeklyChallenge.data?.challenge?.canJoin === true;
-  const weeklyMeta = weeklyChallenge.data?.challenge
-    ? weeklyNeedsDecision
-      ? 'Нужно подтвердить участие'
-      : weeklyChallenge.data.challenge.status === 'running'
-      ? 'Челлендж идет'
-      : weeklyChallenge.data.challenge.status === 'join_open'
-        ? 'Открыт набор участников'
-        : weeklyChallenge.data.challenge.status === 'finished'
-          ? 'Челлендж завершен'
-          : 'Вход скоро откроется'
-    : 'Нет активного челленджа';
+  const weeklyCanClaimReward =
+    weeklyChallenge.data?.challenge?.canClaimReward === true ||
+    (weeklyChallenge.data?.pendingRewards?.length ?? 0) > 0;
+  const weeklyNeedsDecision =
+    weeklyChallenge.data?.challenge?.canJoin === true || weeklyCanClaimReward;
+  const weeklyMeta = weeklyCanClaimReward
+    ? 'Получить награду'
+    : weeklyChallenge.data?.challenge
+      ? weeklyChallenge.data.challenge.canJoin
+        ? 'Нужно подтвердить участие'
+        : weeklyChallenge.data.challenge.status === 'running'
+          ? 'Челлендж идет'
+          : weeklyChallenge.data.challenge.status === 'join_open'
+            ? 'Открыт набор участников'
+            : weeklyChallenge.data.challenge.status === 'finished'
+              ? 'Челлендж завершен'
+              : 'Вход скоро откроется'
+      : 'Нет активного челленджа';
 
   const openAmateurs = (): void => {
     if (!isAmateurUnlocked) {
@@ -121,9 +127,11 @@ export function SectionsScreen(): JSX.Element {
           tone={isAmateurUnlocked ? 'default' : 'muted'}
           artworkSrc={SECTION_ARTWORK.amateur}
           progress={
-            amateurUnlockGoalsRequired > 0
-              ? Math.round((amateurGoals / amateurUnlockGoalsRequired) * 100)
-              : 100
+            isAmateurUnlocked
+              ? undefined
+              : amateurUnlockGoalsRequired > 0
+                ? Math.round((amateurGoals / amateurUnlockGoalsRequired) * 100)
+                : 100
           }
           onClick={openAmateurs}
         />
@@ -137,11 +145,11 @@ export function SectionsScreen(): JSX.Element {
         />
         <SectionCard
           title="Челлендж недели"
-          description="Недельные задания и награды"
+          description="Недельные вызовы и награды"
           meta={weeklyChallenge.isLoading ? 'Проверяем активность' : weeklyMeta}
           tone={weeklyChallenge.data?.challenge ? 'active' : 'default'}
           artworkSrc={SECTION_ARTWORK.weekly}
-          badge={weeklyNeedsDecision ? 'Нужно решение' : undefined}
+          attention={weeklyNeedsDecision}
           onClick={() => navigate('/weekly-challenge')}
         />
         <SectionCard
@@ -206,7 +214,7 @@ function SectionCard({
   tone,
   artworkSrc,
   progress,
-  badge,
+  attention,
   onClick,
 }: {
   title: string;
@@ -214,8 +222,8 @@ function SectionCard({
   meta: string;
   tone: SectionTone;
   artworkSrc: string;
-  progress?: number;
-  badge?: string | undefined;
+  progress?: number | undefined;
+  attention?: boolean | undefined;
   onClick: () => void;
 }): JSX.Element {
   const muted = tone === 'muted';
@@ -271,27 +279,6 @@ function SectionCard({
           />
         </div>
       )}
-      {badge && (
-        <span
-          style={{
-            position: 'absolute',
-            top: 10,
-            right: 42,
-            maxWidth: 132,
-            padding: '5px 8px',
-            borderRadius: 999,
-            background: 'rgba(220, 38, 38, 0.92)',
-            color: '#ffffff',
-            fontSize: 10,
-            fontWeight: 900,
-            lineHeight: 1,
-            whiteSpace: 'nowrap',
-            boxShadow: '0 0 0 2px rgba(255,255,255,0.72)',
-          }}
-        >
-          {badge}
-        </span>
-      )}
       <span
         aria-label={`Изображение раздела ${title}`}
         style={{
@@ -340,8 +327,25 @@ function SectionCard({
             fontSize: 12,
             fontWeight: 850,
             fontVariantNumeric: 'tabular-nums',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            minWidth: 0,
           }}
         >
+          {attention && (
+            <span
+              aria-label="Требуется действие"
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: 999,
+                background: 'rgba(220, 38, 38, 0.92)',
+                boxShadow: '0 0 0 3px rgba(220, 38, 38, 0.14)',
+                flex: '0 0 7px',
+              }}
+            />
+          )}
           {meta}
         </span>
       </span>

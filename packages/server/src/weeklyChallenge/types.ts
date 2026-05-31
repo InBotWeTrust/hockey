@@ -81,4 +81,5 @@ export interface WeeklyChallengeDTO {
 
 export interface WeeklyChallengeCurrentResponse {
   challenge: WeeklyChallengeDTO | null;
+  pendingRewards: WeeklyChallengeDTO[];
 }

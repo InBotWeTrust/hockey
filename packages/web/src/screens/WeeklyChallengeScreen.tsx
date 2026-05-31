@@ -102,9 +102,9 @@ export function WeeklyChallengeScreen(): JSX.Element {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const query = useQuery({ queryKey: ['weekly-challenge'], queryFn: fetchWeeklyChallenge });
   const challenge = query.data?.challenge ?? null;
+  const pendingRewards = query.data?.pendingRewards ?? [];
   const timer = challenge ? timerTargetText(challenge) : null;
-  const remainingText =
-    timer === null ? null : formatRemaining(Date.parse(timer.target) - nowMs);
+  const remainingText = timer === null ? null : formatRemaining(Date.parse(timer.target) - nowMs);
   const join = useMutation({
     mutationFn: (id: string) => joinWeeklyChallenge(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['weekly-challenge'] }),
@@ -164,9 +164,7 @@ export function WeeklyChallengeScreen(): JSX.Element {
           >
             <ArrowLeft size={16} />
           </button>
-          <h1 style={{ margin: 0, minWidth: 0, fontSize: 24, fontWeight: 800 }}>
-            Челлендж недели
-          </h1>
+          <h1 style={{ margin: 0, minWidth: 0, fontSize: 24, fontWeight: 800 }}>Челлендж недели</h1>
         </div>
 
         {query.isLoading && (
@@ -187,7 +185,13 @@ export function WeeklyChallengeScreen(): JSX.Element {
         {challenge && (
           <div
             className="glass"
-            style={{ borderRadius: 26, padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}
+            style={{
+              borderRadius: 26,
+              padding: 16,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 14,
+            }}
           >
             <div>
               <h1 style={{ margin: '4px 0 0', fontSize: 24, lineHeight: 1.1 }}>
@@ -243,7 +247,9 @@ export function WeeklyChallengeScreen(): JSX.Element {
             <div style={{ display: 'grid', gap: 10 }}>
               {challenge.tasks.map((task) => {
                 const percent =
-                  task.progress === null ? 0 : Math.min(100, Math.round((task.progress / task.target) * 100));
+                  task.progress === null
+                    ? 0
+                    : Math.min(100, Math.round((task.progress / task.target) * 100));
                 return (
                   <div
                     key={task.id}
@@ -283,18 +289,37 @@ export function WeeklyChallengeScreen(): JSX.Element {
               <div style={{ display: 'grid', gridTemplateColumns: '0.82fr 1fr', gap: 10 }}>
                 <button
                   type="button"
-                  className="btn btn--ghost"
+                  className="btn"
                   onClick={() => decline.mutate(challenge.id)}
                   disabled={decline.isPending || join.isPending}
-                  style={{ padding: '12px 0', fontSize: 13 }}
+                  style={{
+                    minHeight: 44,
+                    padding: '12px 0',
+                    fontSize: 13,
+                    background: '#dc2626',
+                    color: '#ffffff',
+                    border: '1px solid rgba(255, 255, 255, 0.72)',
+                    boxShadow: '0 8px 20px rgba(220, 38, 38, 0.22)',
+                    opacity: decline.isPending || join.isPending ? 0.68 : 1,
+                  }}
                 >
                   Отклонить
                 </button>
                 <button
                   type="button"
-                  className="btn btn--cta"
+                  className="btn"
                   onClick={() => join.mutate(challenge.id)}
                   disabled={join.isPending || decline.isPending}
+                  style={{
+                    minHeight: 44,
+                    padding: '12px 0',
+                    fontSize: 13,
+                    background: '#16a34a',
+                    color: '#ffffff',
+                    border: '1px solid rgba(255, 255, 255, 0.72)',
+                    boxShadow: '0 8px 20px rgba(22, 163, 74, 0.22)',
+                    opacity: join.isPending || decline.isPending ? 0.68 : 1,
+                  }}
                 >
                   Участвовать
                 </button>
@@ -322,7 +347,74 @@ export function WeeklyChallengeScreen(): JSX.Element {
             )}
           </div>
         )}
+
+        {pendingRewards.length > 0 && (
+          <div style={{ display: 'grid', gap: 10 }}>
+            {pendingRewards.map((rewardChallenge) => (
+              <PendingRewardCard
+                key={rewardChallenge.id}
+                challenge={rewardChallenge}
+                onClaim={() => claim.mutate(rewardChallenge.id)}
+                disabled={claim.isPending}
+              />
+            ))}
+          </div>
+        )}
       </section>
     </main>
+  );
+}
+
+function PendingRewardCard({
+  challenge,
+  onClaim,
+  disabled,
+}: {
+  challenge: WeeklyChallenge;
+  onClaim: () => void;
+  disabled: boolean;
+}): JSX.Element {
+  return (
+    <div
+      className="glass"
+      style={{ borderRadius: 22, padding: 16, display: 'grid', gap: 12 }}
+      aria-label={`Награда за челлендж ${challenge.title}`}
+    >
+      <div>
+        <div style={{ color: 'var(--ink)', fontSize: 16, fontWeight: 950 }}>Награда ждёт</div>
+        <div style={{ marginTop: 4, color: 'var(--muted)', fontSize: 13, fontWeight: 800 }}>
+          {challenge.title}
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        <RewardChip
+          label="Монеты"
+          value={challenge.reward.coins}
+          color="#9A6700"
+          icon={<CircleDollarSign size={20} strokeWidth={2.55} />}
+        />
+        <RewardChip
+          label="Звёзды"
+          value={challenge.reward.stars}
+          color="#B77900"
+          icon={<Star size={20} strokeWidth={2.55} fill="currentColor" />}
+        />
+        <RewardChip
+          label="Опыт"
+          value={challenge.reward.experience}
+          color="#158A86"
+          icon={<TrendingUp size={20} strokeWidth={2.55} />}
+        />
+      </div>
+      <button
+        type="button"
+        className="btn btn--cta"
+        onClick={onClaim}
+        disabled={disabled}
+        style={{ minHeight: 44 }}
+      >
+        Получить награду
+      </button>
+    </div>
   );
 }

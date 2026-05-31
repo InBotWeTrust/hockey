@@ -39,6 +39,7 @@ export interface WeeklyChallenge {
 
 export interface WeeklyChallengeCurrentResponse {
   challenge: WeeklyChallenge | null;
+  pendingRewards: WeeklyChallenge[];
 }
 
 export function fetchWeeklyChallenge(): Promise<WeeklyChallengeCurrentResponse> {

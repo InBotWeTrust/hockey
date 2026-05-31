@@ -68,7 +68,7 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
               user_currency_account, currency_ledger,
               training_session, day_pool, period_log, shot_session, event_log,
               weekly_challenges, weekly_challenge_tasks, weekly_challenge_participants,
-              weekly_challenge_reward_claims
+              weekly_challenge_reward_claims, weekly_challenge_declines
               restart identity cascade`,
     );
     const user = await findOrCreateTelegramUser(pool, {
@@ -85,24 +85,37 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
     return { authorization: `Bearer ${accessToken}` };
   }
 
-  async function createActiveChallenge(): Promise<string> {
+  async function createChallenge({
+    title = 'Неделя снайпера',
+    isActive = true,
+    joinOpenOffset = '1 day',
+    startOffset = '1 hour',
+    endOffset = '-7 days',
+  }: {
+    title?: string;
+    isActive?: boolean;
+    joinOpenOffset?: string;
+    startOffset?: string;
+    endOffset?: string;
+  } = {}): Promise<string> {
     const { rows } = await pool.query<{ id: string }>(
       `insert into weekly_challenges
          (title, description, join_open_at, start_at, end_at, is_active, join_enabled,
           reward_coins, reward_stars, reward_experience)
        values (
-         'Неделя снайпера',
+         $1,
          'Забрось одну тестовую шайбу.',
-         now() - interval '1 day',
-         now() - interval '1 hour',
-         now() + interval '7 days',
-         true,
+         now() - ($2::text)::interval,
+         now() - ($3::text)::interval,
+         now() - ($4::text)::interval,
+         $5,
          true,
          10,
          2,
          3
        )
        returning id`,
+      [title, joinOpenOffset, startOffset, endOffset, isActive],
     );
     const challengeId = rows[0]!.id;
     await pool.query(
@@ -113,7 +126,11 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
     return challengeId;
   }
 
-  async function insertGoal(): Promise<void> {
+  async function createActiveChallenge(): Promise<string> {
+    return createChallenge({ endOffset: '-7 days' });
+  }
+
+  async function insertGoal(createdAtSql = 'now()'): Promise<void> {
     const { rows } = await pool.query<{ id: string }>(
       `insert into day_pool
          (user_id, day_date, state, current_period, game_core_version, daily_seed)
@@ -124,8 +141,8 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
     await pool.query(
       `insert into shot_session
          (user_id, mode, day_pool_id, period_number, shot_index, seed,
-          input_payload, server_result, game_core_version)
-       values ($1, 'daily', $2, 1, 1, 'shot-seed', '{}'::jsonb, 'goal', 1)`,
+          input_payload, server_result, game_core_version, created_at)
+       values ($1, 'daily', $2, 1, 1, 'shot-seed', '{}'::jsonb, 'goal', 1, ${createdAtSql})`,
       [userId, rows[0]!.id],
     );
   }
@@ -138,7 +155,7 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
     });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ challenge: null });
+    expect(res.json()).toEqual({ challenge: null, pendingRewards: [] });
   });
 
   it('lets a participant join, counts progress since challenge start, and claim rewards once', async () => {
@@ -222,6 +239,51 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
       headers: authHeader(),
     });
     expect(duplicate.statusCode).toBe(409);
+  });
+
+  it('keeps an unclaimed reward available after a new active challenge is created', async () => {
+    const previousChallengeId = await createChallenge({
+      title: 'Прошлая неделя',
+      isActive: false,
+      joinOpenOffset: '15 days',
+      startOffset: '14 days',
+      endOffset: '7 days',
+    });
+    await pool.query(
+      `insert into weekly_challenge_participants (challenge_id, user_id, joined_at)
+       values ($1, $2, now() - interval '14 days')`,
+      [previousChallengeId, userId],
+    );
+    await insertGoal(`now() - interval '10 days'`);
+
+    const currentChallengeId = await createActiveChallenge();
+
+    const current = await app.inject({
+      method: 'GET',
+      url: '/weekly-challenge/current',
+      headers: authHeader(),
+    });
+    expect(current.statusCode).toBe(200);
+    expect(current.json().challenge).toMatchObject({
+      id: currentChallengeId,
+      title: 'Неделя снайпера',
+    });
+    expect(current.json().pendingRewards).toHaveLength(1);
+    expect(current.json().pendingRewards[0]).toMatchObject({
+      id: previousChallengeId,
+      title: 'Прошлая неделя',
+      canClaimReward: true,
+      allTasksCompleted: true,
+    });
+
+    const claim = await app.inject({
+      method: 'POST',
+      url: `/weekly-challenge/${previousChallengeId}/claim-reward`,
+      headers: authHeader(),
+    });
+    expect(claim.statusCode).toBe(200);
+    expect(claim.json().pendingRewards).toEqual([]);
+    expect(claim.json().challenge).toMatchObject({ id: currentChallengeId });
   });
 
   it('lets a player decline an open challenge invitation', async () => {

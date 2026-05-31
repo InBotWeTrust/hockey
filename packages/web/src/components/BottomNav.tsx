@@ -183,7 +183,13 @@ export function BottomNav(): JSX.Element | null {
   const isChat = !isDemo && isChatRoute(location.pathname);
   const showAdmin = !isDemo && user?.role === 'admin';
   const gameActionCount = (amateurEvents?.events ?? []).filter(isActionableDuelEvent).length;
-  const sectionActionCount = weeklyChallenge?.challenge?.canJoin === true ? 1 : 0;
+  const currentSectionActionCount =
+    weeklyChallenge?.challenge?.canJoin === true ||
+    weeklyChallenge?.challenge?.canClaimReward === true
+      ? 1
+      : 0;
+  const sectionActionCount =
+    currentSectionActionCount + (weeklyChallenge?.pendingRewards?.length ?? 0);
   const inactiveIconColor = isDemo ? 'rgba(71, 85, 105, 0.48)' : 'var(--muted)';
   const openLastGameRoute = (): void => {
     rememberRoute(LAST_GAME_ROUTE_KEY, DEFAULT_GAME_ROUTE);

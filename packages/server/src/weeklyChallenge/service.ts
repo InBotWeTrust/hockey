@@ -63,6 +63,39 @@ async function fetchChallengeForUpdate(
   return rows[0] ?? null;
 }
 
+async function fetchChallengeForRewardUpdate(
+  client: PoolClient,
+  challengeId: string,
+): Promise<WeeklyChallengeRow | null> {
+  const { rows } = await client.query<WeeklyChallengeRow>(
+    `select *
+       from weekly_challenges
+      where id = $1
+      for update`,
+    [challengeId],
+  );
+  return rows[0] ?? null;
+}
+
+async function fetchPendingRewardChallenges(
+  db: Queryable,
+  userId: string,
+  currentChallengeId: string | null,
+): Promise<WeeklyChallengeRow[]> {
+  const { rows } = await db.query<WeeklyChallengeRow>(
+    `select c.*
+       from weekly_challenges c
+       join weekly_challenge_participants p on p.challenge_id = c.id
+      where p.user_id = $1
+        and p.reward_claimed_at is null
+        and ($2::uuid is null or c.id <> $2::uuid)
+      order by c.end_at desc, c.start_at desc
+      limit 10`,
+    [userId, currentChallengeId],
+  );
+  return rows;
+}
+
 async function fetchTasks(db: Queryable, challengeId: string): Promise<WeeklyChallengeTaskRow[]> {
   const { rows } = await db.query<WeeklyChallengeTaskRow>(
     `select *
@@ -108,11 +141,9 @@ async function mapChallenge(
   userId: string,
   now: Date,
 ): Promise<WeeklyChallengeDTO> {
-  const [tasks, participant, decline] = await Promise.all([
-    fetchTasks(db, challenge.id),
-    fetchParticipant(db, challenge.id, userId),
-    fetchDecline(db, challenge.id, userId),
-  ]);
+  const tasks = await fetchTasks(db, challenge.id);
+  const participant = await fetchParticipant(db, challenge.id, userId);
+  const decline = await fetchDecline(db, challenge.id, userId);
   const status = resolveWeeklyChallengeStatus(challenge, now);
   const progressFrom = participant !== null ? challenge.start_at : null;
   const progress =
@@ -134,7 +165,8 @@ async function mapChallenge(
       completed: value === null ? null : value >= task.target,
     };
   });
-  const allTasksCompleted = taskDtos.length > 0 && taskDtos.every((task) => task.completed === true);
+  const allTasksCompleted =
+    taskDtos.length > 0 && taskDtos.every((task) => task.completed === true);
   const canJoin =
     participant === null &&
     decline === null &&
@@ -180,8 +212,18 @@ export async function getCurrentWeeklyChallenge(
   now = new Date(),
 ): Promise<WeeklyChallengeCurrentResponse> {
   const challenge = await fetchActiveChallenge(db);
-  if (!challenge) return { challenge: null };
-  return { challenge: await mapChallenge(db, challenge, userId, now) };
+  const pendingRewardCandidates = await fetchPendingRewardChallenges(
+    db,
+    userId,
+    challenge?.id ?? null,
+  );
+  const pendingRewards = [];
+  for (const candidate of pendingRewardCandidates) {
+    const mapped = await mapChallenge(db, candidate, userId, now);
+    if (mapped.canClaimReward) pendingRewards.push(mapped);
+  }
+  if (!challenge) return { challenge: null, pendingRewards };
+  return { challenge: await mapChallenge(db, challenge, userId, now), pendingRewards };
 }
 
 export async function joinWeeklyChallenge(
@@ -244,7 +286,7 @@ export async function claimWeeklyChallengeReward(
   userId: string,
   now = new Date(),
 ): Promise<WeeklyChallengeCurrentResponse> {
-  const challenge = await fetchChallengeForUpdate(client, challengeId);
+  const challenge = await fetchChallengeForRewardUpdate(client, challengeId);
   if (!challenge) throw new AppError('not_found', 'weekly challenge not found', 404);
   const participant = await fetchParticipant(client, challengeId, userId);
   if (!participant) throw new AppError('conflict', 'weekly challenge participation required', 409);

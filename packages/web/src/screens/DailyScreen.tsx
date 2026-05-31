@@ -5664,11 +5664,9 @@ function DuelResultModal({
       role="dialog"
       aria-modal="true"
       aria-label="Результат дуэли"
-      onClick={onClose}
     >
       <div
         className="modal-card"
-        onClick={(event) => event.stopPropagation()}
         style={{
           maxHeight: 'calc(100dvh - 64px)',
           overflow: 'hidden',
@@ -8451,7 +8449,7 @@ export function PlayView<TState>({
     (
       loop: GameLoop,
       ticker: Ticker,
-      options: { attachOnComplete?: boolean } = {},
+      options: { attachOnComplete?: boolean; animateGoal?: boolean } = {},
     ): Promise<void> =>
       new Promise((resolve) => {
         if (entranceRafRef.current !== null) {
@@ -8471,6 +8469,7 @@ export function PlayView<TState>({
         setIsEntrancePlaying(true);
 
         const attachOnComplete = options.attachOnComplete ?? true;
+        const animateGoal = options.animateGoal ?? true;
         const ENTRY_DURATION_MS = 1400;
         const CENTER_RED_Y = 350;
         const ENTRY_X = RINK.width + 50;
@@ -8478,7 +8477,7 @@ export function PlayView<TState>({
         const goalieStartY = CENTER_RED_Y - 30;
         const playerStartX = ENTRY_X;
         const playerStartY = CENTER_RED_Y + 30;
-        const goalStartOffsetY = -140;
+        const goalStartOffsetY = animateGoal ? -140 : 0;
         const t0 = performance.now();
 
         goal.container.visible = true;
@@ -8519,7 +8518,7 @@ export function PlayView<TState>({
             goalieStartY + (GOALIE_Y - goalieStartY) * eased,
             playerStartX + (SHOOTER_CENTER_X - playerStartX) * eased,
             playerStartY + (PUCK_START.y - playerStartY) * eased,
-            goalStartOffsetY * (1 - eased),
+            animateGoal ? goalStartOffsetY * (1 - eased) : 0,
           );
           if (t < 1) {
             entranceRafRef.current = requestAnimationFrame(step);
@@ -9052,7 +9051,7 @@ export function PlayView<TState>({
       const ticker = tickerRef.current;
       if (entranceBeforeInactiveAction && loop && ticker) {
         skipNextUnsuppressedEntranceRef.current = true;
-        await startEntranceAnimation(loop, ticker, { attachOnComplete: false });
+        await startEntranceAnimation(loop, ticker, { attachOnComplete: false, animateGoal: false });
       }
       const result = await inactiveAction();
       if (entranceBeforeInactiveAction && result == null) {

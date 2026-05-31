@@ -174,6 +174,7 @@ describe('BottomNav remembered navigation', () => {
                 title: 'Неделя снайпера',
                 canJoin: true,
               },
+              pendingRewards: [],
             }),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
           ),
@@ -190,6 +191,76 @@ describe('BottomNav remembered navigation', () => {
     renderBottomNav('/profile');
 
     expect(await screen.findByLabelText('События разделов: 1')).toHaveTextContent('1');
+  });
+
+  it('shows a sections badge when a weekly challenge reward can be claimed', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/weekly-challenge/current')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              challenge: {
+                id: 'challenge-1',
+                title: 'Неделя снайпера',
+                canJoin: false,
+                canClaimReward: true,
+              },
+              pendingRewards: [],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+
+    renderBottomNav('/profile');
+
+    expect(await screen.findByLabelText('События разделов: 1')).toHaveTextContent('1');
+  });
+
+  it('adds pending weekly challenge rewards to the sections badge', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/weekly-challenge/current')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              challenge: {
+                id: 'challenge-1',
+                title: 'Новый челлендж',
+                canJoin: true,
+                canClaimReward: false,
+              },
+              pendingRewards: [
+                {
+                  id: 'challenge-old',
+                  title: 'Прошлая неделя',
+                  canClaimReward: true,
+                },
+              ],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+
+    renderBottomNav('/profile');
+
+    expect(await screen.findByLabelText('События разделов: 2')).toHaveTextContent('2');
   });
 
   it('refreshes missing grip for persisted auth sessions', async () => {
