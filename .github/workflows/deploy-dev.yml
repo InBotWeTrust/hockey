@@ -211,19 +211,7 @@ jobs:
 
           if [ "$RESET_STAGING_ACHIEVEMENTS" = "true" ]; then
             docker compose -f docker-compose.yml -f docker-compose.staging.yml \
-              run --rm -T server-dev node --input-type=module -e '
-                import pg from "pg";
-                const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
-                await client.connect();
-                const achievements = await client.query(
-                  "delete from user_achievements where achievement_id <> $1",
-                  ["amateur-ticket"],
-                );
-                const progress = await client.query("delete from achievement_progress");
-                console.log(`Reset dev achievements: ${achievements.rowCount} rows`);
-                console.log(`Reset dev achievement progress: ${progress.rowCount} rows`);
-                await client.end();
-              ' < /dev/null
+              run --rm -T server-dev node packages/server/dist/achievements/reset-dev-achievements-cli.js < /dev/null
           fi
 
           docker compose -f docker-compose.yml -f docker-compose.staging.yml \
