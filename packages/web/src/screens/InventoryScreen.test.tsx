@@ -151,7 +151,7 @@ describe('InventoryScreen', () => {
     expect(screen.getByRole('button', { name: 'Назад' })).toBeInTheDocument();
     expect(await screen.findByLabelText('Монеты: 1 000')).toBeInTheDocument();
     expect(screen.getByLabelText('Звёзды: 2')).toBeInTheDocument();
-    expect(screen.getByLabelText('Опыт: 77')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Опыт: 77')).toBeNull();
     expect(screen.getAllByText('Бронзовая клюшка').length).toBeGreaterThan(0);
     expect(screen.getByText('Золотое питание')).toBeInTheDocument();
     expect(screen.getByText('Серебряные коньки')).toBeInTheDocument();

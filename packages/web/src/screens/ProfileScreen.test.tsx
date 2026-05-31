@@ -90,6 +90,7 @@ function renderProfile(): void {
           <Route path="/profile" element={<ProfileScreen />} />
           <Route path="/profile/settings" element={<div>settings screen</div>} />
           <Route path="/inventory" element={<div>inventory screen</div>} />
+          <Route path="/achievements" element={<div>achievements screen</div>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -131,6 +132,7 @@ const telegramProfile = {
   ],
   displaySource: 'telegram',
   linkedProviders: ['telegram', 'vk'],
+  unclaimedAchievementsCount: 1,
   tgFirstName: 'Alice',
   tgLastName: 'T',
   tgAvatarUrl: 'tg.png',
@@ -191,7 +193,7 @@ describe('ProfileScreen', () => {
 
     const statsLabel = await screen.findByText('Статистика');
     const equipmentLabel = screen.getByText('Экипировка');
-    const achievementsLabel = screen.getByText('Задания (1/2)');
+    const achievementsLabel = screen.getByText('Выполненные задания (1)');
     expect(screen.getByText('Уровень: Новичок')).toBeInTheDocument();
     expect(screen.queryByText('id u1')).not.toBeInTheDocument();
     expect(screen.queryByText('Валюта')).not.toBeInTheDocument();
@@ -242,7 +244,16 @@ describe('ProfileScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
     expect(screen.queryByRole('dialog', { name: 'Первая шайба' })).not.toBeInTheDocument();
 
-    const settingsButton = screen.getByRole('button', { name: 'Настройки' });
+    fireEvent.click(screen.getByRole('button', { name: /Награды ждут получения.*1/i }));
+    expect(screen.getByText('achievements screen')).toBeInTheDocument();
+  });
+
+  it('opens settings from the header button', async () => {
+    mockProfileFetch(telegramProfile);
+
+    renderProfile();
+
+    const settingsButton = await screen.findByRole('button', { name: 'Настройки' });
     fireEvent.click(settingsButton);
 
     expect(screen.getByText('settings screen')).toBeInTheDocument();

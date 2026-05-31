@@ -10,6 +10,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CircleDollarSign, Info, Settings, Star, TrendingUp, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../api/apiFetch.js';
+import { rewardColor, type RewardTone } from '../app/rewardColors.js';
 import {
   fetchMyInventory,
   patchEquipment,
@@ -70,7 +71,7 @@ function ProfileResourceChip({
   label: string;
   value: number;
   icon: ReactNode;
-  tone: 'coin' | 'star' | 'experience';
+  tone: RewardTone;
 }): JSX.Element {
   const compactValue = formatProfileCompactNumber(value);
   const visualLength = compactValue.replace(/\s/g, '').length;
@@ -78,19 +79,6 @@ function ProfileResourceChip({
   const fontSize = visualLength >= 7 ? 8 : visualLength >= 5 || isLargeValue ? 10 : 11;
   const iconSize = visualLength >= 7 ? 9 : visualLength >= 5 || isLargeValue ? 12 : 14;
   const gap = visualLength >= 5 || isLargeValue ? 2 : 4;
-  const colors =
-    tone === 'coin'
-      ? {
-          color: '#9A6700',
-        }
-      : tone === 'star'
-        ? {
-            color: '#B77900',
-          }
-        : {
-            color: '#158A86',
-          };
-
   return (
     <span
       aria-label={`${label}: ${value}`}
@@ -101,7 +89,7 @@ function ProfileResourceChip({
         display: 'inline-flex',
         alignItems: 'center',
         gap,
-        color: colors.color,
+        color: rewardColor(tone),
         fontSize,
         fontWeight: 900,
         lineHeight: 1,
@@ -223,8 +211,8 @@ const PROFILE_SECTION_INFO: Record<ProfileInfoSection, { title: string; copy: st
     copy: 'В раздевалке выбирается уже купленный инвентарь: одна клюшка, одна пара коньков и одно питание. В дуэлях расход считается по периодам.',
   },
   achievements: {
-    title: 'Задания',
-    copy: 'В раздевалке показываются только уже полученные задания. Полный каталог и награды находятся в разделе заданий.',
+    title: 'Выполненные задания',
+    copy: 'В профиле показываются только уже полученные задания. Полный каталог и награды находятся в разделе заданий.',
   },
 };
 

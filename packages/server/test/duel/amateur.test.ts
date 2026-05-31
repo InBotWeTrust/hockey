@@ -364,6 +364,23 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(accepted.json().match.status).toBe('ready_check');
     expect(accepted.json().match.ready_expires_at).toBeTruthy();
 
+    const acceptedMessage = await pool.query<{ chat_id: string; content: string }>(
+      `select chat_id, content
+         from messages
+        where content like '%принял дуэль%'
+        order by created_at desc
+        limit 1`,
+    );
+    expect(acceptedMessage.rows[0]?.content).toBe('Player B принял дуэль «Test duel».');
+
+    const unreadForChallenger = await app.inject({
+      method: 'GET',
+      url: '/chat/unread',
+      headers: auth(tokenA),
+    });
+    expect(unreadForChallenger.statusCode).toBe(200);
+    expect(unreadForChallenger.json()).not.toHaveProperty(acceptedMessage.rows[0]!.chat_id);
+
     const accounts = await pool.query<{ balance: number; reserved_balance: number }>(
       `select balance, reserved_balance
          from user_currency_account
@@ -591,7 +608,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(ready.json().match.status).toBe('active');
     const acceptedAt = Date.parse(String(ready.json().match.accepted_at));
     const endsAt = Date.parse(String(ready.json().match.ends_at));
-    expect(endsAt - acceptedAt).toBe(3840000);
+    expect(endsAt - acceptedAt).toBe(4440000);
   });
 
   it('cancels an active duel without rating when both ready players never start', async () => {
@@ -757,6 +774,76 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(third.json().match.status).toBe('ready_check');
     expect(third.json().match.rules.duelKind).toBe('classic');
     expect(third.json().match.opponent.user_id).toBe(userB);
+  });
+
+  it('settles a player as forfeit five minutes after intermission is ready', async () => {
+    const templateId = await createTemplate({
+      totalPeriods: 2,
+      periodDurationMs: 1200000,
+      breakDurationMs: 120000,
+      readyDurationMs: 900000,
+      periodRules: [
+        { periodNumber: 1, mode: 'quota', durationMs: 1200000, shotsLimit: 1 },
+        { periodNumber: 2, mode: 'quota', durationMs: 1200000, shotsLimit: 1 },
+      ],
+    });
+    const created = await challenge(templateId);
+    const matchId = created.json().match.id;
+    await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/accept`,
+      headers: auth(tokenB),
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/ready`,
+      headers: auth(tokenA),
+      payload: { loadout: {} },
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/ready`,
+      headers: auth(tokenB),
+      payload: { loadout: {} },
+    });
+
+    await pool.query(
+      `update amateur_duel_participant
+          set state = 'completed',
+              current_period = 2,
+              shots_taken = 2,
+              goals = 2,
+              completed_at = now() - interval '6 minutes'
+        where match_id = $1 and user_id = $2`,
+      [matchId, userA],
+    );
+    await pool.query(
+      `update amateur_duel_participant
+          set state = 'accepted',
+              current_period = 1,
+              shots_taken = 1,
+              goals = 1,
+              ready_at = now() - interval '6 minutes'
+        where match_id = $1 and user_id = $2`,
+      [matchId, userB],
+    );
+    await pool.query(
+      `insert into amateur_duel_period_log
+         (match_id, user_id, period_number, started_at, ended_at, shots_taken, goals, duration_ms, closed_reason)
+       values ($1, $2, 1, now() - interval '10 minutes', now() - interval '7 minutes', 1, 1, 180000, 'quota')`,
+      [matchId, userB],
+    );
+
+    const settled = await app.inject({
+      method: 'GET',
+      url: `/duel/amateur/matches/${matchId}`,
+      headers: auth(tokenA),
+    });
+
+    expect(settled.statusCode).toBe(200);
+    expect(settled.json().match.status).toBe('settled');
+    expect(settled.json().match.winner_user_id).toBe(userA);
+    expect(settled.json().match.opponent.state).toBe('forfeit');
   });
 
   it('settles no-show as a win for the player who completed the duel', async () => {

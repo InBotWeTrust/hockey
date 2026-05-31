@@ -850,4 +850,220 @@ describe('AdminScreen', () => {
 
     expect(screen.getByText('Нет доступа')).toBeInTheDocument();
   });
+
+  it('keeps weekly challenges inside the achievements admin section', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'a',
+      refreshToken: 'r',
+      user: { id: 'admin', displayName: 'Egor', role: 'admin' },
+    });
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes('/admin/summary')) {
+        return new Response(
+          JSON.stringify({
+            users: {
+              total: 1,
+              admins: 1,
+              players: 0,
+              newToday: 0,
+              new7d: 0,
+              new30d: 0,
+              new365d: 0,
+              newInPeriod: 0,
+              activeToday: 0,
+              activeYesterday: 0,
+              active7d: 0,
+              active30d: 0,
+              active365d: 0,
+              activeInPeriod: 0,
+              activated: { count: 0, percent: 0 },
+              notifications: makeNotificationStats(),
+            },
+            lifetime: { shots: 0, goals: 0 },
+            active: { daily: 0, training: 0 },
+            last24h: { shots: 0, goals: 0, mismatches: 0 },
+            dashboard: {
+              period: '30d',
+              periodDays: 30,
+              users: {
+                total: 1,
+                admins: 1,
+                players: 0,
+                newToday: 0,
+                new7d: 0,
+                new30d: 0,
+                new365d: 0,
+                newInPeriod: 0,
+                activeToday: 0,
+                activeYesterday: 0,
+                active7d: 0,
+                active30d: 0,
+                active365d: 0,
+                activeInPeriod: 0,
+                activated: { count: 0, percent: 0 },
+              },
+              payments: {
+                revenueTodayRub: 0,
+                revenue30dRub: 0,
+                revenuePeriodRub: 0,
+                revenueMonthRub: 0,
+                revenueQuarterRub: 0,
+                revenueYearRub: 0,
+                revenueTotalRub: 0,
+                paidUsersTotal: 0,
+                paidUsers30d: 0,
+                paidUsersPeriod: 0,
+                paidPayments30d: 0,
+                paidPaymentsPeriod: 0,
+                payerConversionPercent: 0,
+                arpu30dRub: 0,
+                arppu30dRub: 0,
+                arpuPeriodRub: 0,
+                arppuPeriodRub: 0,
+              },
+              game: {
+                shotsToday: 0,
+                goalsToday: 0,
+                shots7d: 0,
+                goals7d: 0,
+                shots30d: 0,
+                goals30d: 0,
+                shotsPeriod: 0,
+                goalsPeriod: 0,
+                shotsTotal: 0,
+                goalsTotal: 0,
+                accuracy30d: 0,
+                accuracyPeriod: 0,
+                dailyPlayers30d: 0,
+                trainingPlayers30d: 0,
+                dailyPlayersPeriod: 0,
+                trainingPlayersPeriod: 0,
+                activeDailyPools: 0,
+                activeTrainingSessions: 0,
+                mismatches30d: 0,
+                mismatchesPeriod: 0,
+              },
+              chat: {
+                messagesToday: 0,
+                messages7d: 0,
+                messages30d: 0,
+                activeUsers30d: 0,
+                messagesPeriod: 0,
+                activeUsersPeriod: 0,
+              },
+              feedback: { total: 0, unread: 0 },
+              inventory: { activeItems: 0 },
+              engagement: {
+                avgDailyActivitySpanMinutes: 0,
+                dauWauPercent: 0,
+                wauMauPercent: 0,
+              },
+              notifications: makeNotificationStats(),
+              series: [],
+            },
+            gameCoreVersion: 1,
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.includes('/admin/achievements')) {
+        return new Response(
+          JSON.stringify({
+            achievements: [
+              {
+                id: 'first-goal',
+                photoUrl: '/achievements/first-goal.webp',
+                title: 'Первая шайба',
+                description: 'Забросить первую шайбу',
+                requirement: 'Забросить первую шайбу в игре',
+                category: 'daily',
+                availability: 'active',
+                futureTag: null,
+                rewardCurrency: 10,
+                rewardStars: 1,
+                rewardExperience: 5,
+                sortOrder: 1,
+                createdAt: '2026-05-01T00:00:00.000Z',
+                updatedAt: '2026-05-01T00:00:00.000Z',
+                completedCount: 12,
+                claimedCount: 8,
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.includes('/admin/weekly-challenges')) {
+        return new Response(
+          JSON.stringify({
+            challenges: [
+              {
+                id: '11111111-1111-1111-1111-111111111111',
+                title: 'Неделя снайпера',
+                description: '',
+                joinOpenAt: '2026-06-01T09:00:00.000Z',
+                startAt: '2026-06-02T09:00:00.000Z',
+                endAt: '2026-06-09T09:00:00.000Z',
+                isActive: true,
+                joinEnabled: true,
+                rewardCoins: 100,
+                rewardStars: 5,
+                rewardExperience: 50,
+                tasks: [],
+                stats: {
+                  participantsCount: 0,
+                  completedCount: 0,
+                  rewardClaimedCount: 0,
+                  declinedCount: 0,
+                },
+                players: [],
+                createdAt: '2026-06-01T09:00:00.000Z',
+                updatedAt: '2026-06-01T09:00:00.000Z',
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.includes('/admin/users')) {
+        return new Response(
+          JSON.stringify({
+            users: [],
+            total: 0,
+            limit: 20,
+            offset: 0,
+            notificationStats: makeNotificationStats(),
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.includes('/admin/feedback')) {
+        return new Response(
+          JSON.stringify({
+            feedback: [],
+            total: 0,
+            unreadCount: 0,
+            ratingStats: { count: 0, average: null },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+
+    renderAdmin();
+
+    expect(await screen.findByRole('button', { name: 'Задания' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Челленджи' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Задания' }));
+
+    expect(await screen.findByText('Первая шайба')).toBeInTheDocument();
+    expect(screen.getByText('Выполнили игроков')).toBeInTheDocument();
+    expect(screen.getByText('12')).toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'Челленджи' }));
+    expect(await screen.findByText('Еженедельные челленджи (1)')).toBeInTheDocument();
+    expect(await screen.findByText('Неделя снайпера')).toBeInTheDocument();
+  });
 });

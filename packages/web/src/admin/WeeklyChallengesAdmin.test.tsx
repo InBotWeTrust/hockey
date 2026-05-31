@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as api from './api.js';
 import { WeeklyChallengesAdmin } from './WeeklyChallengesAdmin.js';
@@ -44,6 +44,25 @@ describe('WeeklyChallengesAdmin', () => {
               title: '500 шайб',
               target: 500,
               sortOrder: 0,
+              completedCount: 3,
+            },
+          ],
+          stats: {
+            participantsCount: 5,
+            completedCount: 3,
+            rewardClaimedCount: 2,
+            declinedCount: 1,
+          },
+          players: [
+            {
+              userId: 'u1',
+              displayName: 'Regular Player',
+              avatarUrl: null,
+              joinedAt: '2026-06-02T09:00:00.000Z',
+              rewardClaimedAt: null,
+              tasksCompleted: 1,
+              tasksTotal: 1,
+              progressPercent: 100,
             },
           ],
           createdAt: '2026-06-01T09:00:00.000Z',
@@ -55,6 +74,20 @@ describe('WeeklyChallengesAdmin', () => {
     renderAdmin();
 
     expect(await screen.findByText('Неделя снайпера')).toBeInTheDocument();
-    expect(screen.getByText('Активный сейчас: Неделя снайпера')).toBeInTheDocument();
+    expect(screen.getByText('Активный сейчас')).toBeInTheDocument();
+    expect(screen.getByText('Записались')).toBeInTheDocument();
+    expect(screen.getByText('Процент')).toBeInTheDocument();
+    expect(screen.queryByText('Regular Player')).not.toBeInTheDocument();
+    expect(screen.queryByText('Новый челлендж')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Статистика Неделя снайпера' }));
+
+    expect(screen.getByText('Игроки (1)')).toBeInTheDocument();
+    expect(screen.getByText('Regular Player')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Создать' }));
+
+    expect(screen.getByText('Новый челлендж')).toBeInTheDocument();
   });
 });

@@ -97,9 +97,11 @@ import {
 } from '../stores/demoSession.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
 import { useAmateurDuelStore } from '../stores/amateurDuelStore.js';
+import { rewardColor } from '../app/rewardColors.js';
 import { ScoreBoard, type ScoreBoardOpponent } from '../components/ScoreBoard.js';
 import { ResultModal, type ResultModalKind } from '../components/ResultModal.js';
 import { GlassSelect } from '../components/GlassSelect.js';
+import { SegmentedTabs } from '../components/SegmentedTabs.js';
 import { UserAvatar } from '../chat/components/UserAvatar.js';
 import { UserProfileSheet } from '../chat/components/UserProfileSheet.js';
 import type { UserPickerItem } from '../chat/api.js';
@@ -137,6 +139,7 @@ import {
   type AmateurDuelLoadoutSelection,
   type AmateurDuelMatch,
   type AmateurDuelMatchState,
+  type AmateurDuelParticipantState,
   type AmateurDuelPeriodLog,
   type AmateurDuelPeriodRule,
   type AmateurDuelTemplate,
@@ -201,6 +204,7 @@ const OPPONENT_ONLINE_WINDOW_MS = 2 * 60 * 1000;
 const OPPONENT_RECENT_WINDOW_MS = 5 * 60 * 1000;
 const DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED = 1000;
 const PLAY_ROUTE_TRANSITION_MS = 580;
+const DUEL_INTERMISSION_CONTINUE_GRACE_MS = 5 * 60 * 1000;
 const ARENA_SELECTED_ENTRY_STORAGE_KEY = 'hockey.arenaSelectedEntryId';
 
 function readArenaSelectedEntryId(): string | null {
@@ -737,72 +741,6 @@ export function DailyScreen(): JSX.Element {
         );
       }}
     />
-  );
-}
-
-function SegmentedControl({
-  ariaLabel,
-  items,
-  value,
-  disabled = false,
-  onChange,
-}: {
-  ariaLabel: string;
-  items: readonly { id: string; label: string }[];
-  value: string;
-  disabled?: boolean;
-  onChange: (id: string) => void;
-}): JSX.Element {
-  return (
-    <div
-      role="tablist"
-      aria-label={ariaLabel}
-      style={{
-        display: 'grid',
-        gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))`,
-        gap: 4,
-        padding: 4,
-        borderRadius: 999,
-        background: 'rgba(15, 23, 42, 0.08)',
-      }}
-    >
-      {items.map((item) => {
-        const active = item.id === value;
-        return (
-          <button
-            key={item.id}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            disabled={disabled}
-            onClick={() => onChange(item.id)}
-            style={{
-              width: '100%',
-              boxSizing: 'border-box',
-              minWidth: 0,
-              minHeight: 34,
-              borderRadius: 999,
-              border: active ? '1px solid rgba(15, 23, 42, 0.92)' : '1px solid transparent',
-              background: active ? 'rgba(15, 23, 42, 0.92)' : 'transparent',
-              color: active ? '#ffffff' : 'var(--ink)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 12,
-              fontWeight: 800,
-              lineHeight: 1,
-              fontFamily: 'inherit',
-              whiteSpace: 'nowrap',
-              cursor: disabled ? 'default' : 'pointer',
-              padding: '0 8px',
-              opacity: disabled && !active ? 0.52 : 1,
-            }}
-          >
-            {item.label}
-          </button>
-        );
-      })}
-    </div>
   );
 }
 
@@ -1756,6 +1694,43 @@ function canStartArenaDuelPeriod(
   );
 }
 
+export function isDuelReadyPresenceState(state: AmateurDuelParticipantState): boolean {
+  return (
+    state === 'ready' ||
+    state === 'accepted' ||
+    state === 'period_active' ||
+    state === 'break_active' ||
+    state === 'completed'
+  );
+}
+
+function isActiveDuelPlayerPresenceState(state: AmateurDuelParticipantState): boolean {
+  return state !== 'invited' && state !== 'loadout_pending' && state !== 'forfeit';
+}
+
+export function duelRinkReadyPresenceForMatch(
+  match: AmateurDuelMatch | AmateurDuelMatchState,
+): Pick<ReadyPresence, 'playerReady' | 'goalieReady'> {
+  if (match.status === 'ready_check') {
+    return {
+      playerReady: match.me.state === 'ready',
+      goalieReady: match.opponent.state === 'ready',
+    };
+  }
+
+  if (match.status === 'active') {
+    return {
+      playerReady: isActiveDuelPlayerPresenceState(match.me.state),
+      goalieReady: true,
+    };
+  }
+
+  return {
+    playerReady: isDuelReadyPresenceState(match.me.state),
+    goalieReady: isDuelReadyPresenceState(match.opponent.state),
+  };
+}
+
 function isDuelInviteForMe(match: AmateurDuelMatch): boolean {
   return match.status === 'invited' && match.me.side === 'opponent' && match.me.state === 'invited';
 }
@@ -1817,7 +1792,13 @@ function duelParticipantPeriodRule(
   );
 }
 
-function duelEventTiming(match: AmateurDuelMatch, fallbackNow: number): DuelEventTiming {
+function intermissionContinueDeadlineMs(participant: AmateurDuelMatch['me']): number {
+  if (participant.state !== 'accepted' || participant.current_period <= 0) return 0;
+  const readyAt = timestampMs(participant.ready_at);
+  return readyAt > 0 ? readyAt + DUEL_INTERMISSION_CONTINUE_GRACE_MS : 0;
+}
+
+export function duelEventTiming(match: AmateurDuelMatch, fallbackNow: number): DuelEventTiming {
   const now = duelMatchNowMs(match, fallbackNow);
   const startsAt = timestampMs(match.starts_at);
   const endsAt = timestampMs(match.ends_at);
@@ -1925,6 +1906,32 @@ function duelEventTiming(match: AmateurDuelMatch, fallbackNow: number): DuelEven
       label: 'Перерыв',
       value,
     };
+  }
+
+  if (match.status === 'active') {
+    const myContinueDeadline = intermissionContinueDeadlineMs(match.me);
+    if (myContinueDeadline > now) {
+      const value = formatMs(myContinueDeadline - now);
+      return {
+        activePeriod: duelNextPeriod(match),
+        ariaLabel: `До поражения ${value}. Счёт ${score}`,
+        label: 'До поражения',
+        value,
+      };
+    }
+    const opponentContinueDeadline = intermissionContinueDeadlineMs(match.opponent);
+    if (
+      opponentContinueDeadline > now &&
+      (match.me.state === 'completed' || match.me.state === 'forfeit')
+    ) {
+      const value = formatMs(opponentContinueDeadline - now);
+      return {
+        activePeriod: duelNextPeriod(match),
+        ariaLabel: `До поражения соперника ${value}. Счёт ${score}`,
+        label: 'До поражения соперника',
+        value,
+      };
+    }
   }
 
   if (match.status === 'active' && endsAt > now) {
@@ -3104,14 +3111,14 @@ function TrainingPlaceholder({
                 Выбери модель периода. Скорости игрока, ворот, шайбы и вратаря будут такими же, как
                 в дневной игре выбранного периода.
               </div>
-              <SegmentedControl
+              <SegmentedTabs
                 ariaLabel="Период тренировки"
                 items={[
                   { id: '1', label: '1 период' },
                   { id: '2', label: '2 период' },
                   { id: '3', label: '3 период' },
                 ]}
-                value={String(selectedPeriod)}
+                activeTab={String(selectedPeriod)}
                 onChange={(id) => setSelectedPeriod(Number(id) as 1 | 2 | 3)}
               />
               <PeriodSpeedSummary
@@ -3938,9 +3945,9 @@ function AmateurDuelsPage({
 
   return (
     <ModeShell title="Дуэли" onBack={onBack}>
-      <SegmentedControl
+      <SegmentedTabs
         ariaLabel="Разделы дуэлей"
-        value={duelTab}
+        activeTab={duelTab}
         items={[
           { id: 'game', label: 'Игра' },
           { id: 'locker', label: 'Раздевалка' },
@@ -3954,9 +3961,9 @@ function AmateurDuelsPage({
         <>
           <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div className="section-label section-label--page">Новая дуэль</div>
-            <SegmentedControl
+            <SegmentedTabs
               ariaLabel="Сценарий новой дуэли"
-              value={duelCreationMode}
+              activeTab={duelCreationMode}
               items={[
                 { id: 'matchmaking', label: 'Найти' },
                 { id: 'challenge', label: 'Вызвать' },
@@ -4575,9 +4582,9 @@ function AmateurDuelsPage({
       {duelTab === 'history' && (
         <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div className="section-label section-label--page">История</div>
-          <SegmentedControl
+          <SegmentedTabs
             ariaLabel="Фильтр истории дуэлей"
-            value={historyScope}
+            activeTab={historyScope}
             items={[
               { id: 'current', label: 'Текущий месяц' },
               { id: 'all', label: 'Всё время' },
@@ -5305,12 +5312,16 @@ function AmateurDuelPlayView({
 
   useEffect(() => {
     if (!match || match.id !== matchId) return;
-    const meReady = match.me.state === 'ready' || match.me.state === 'accepted';
-    const opponentReady = match.opponent.state === 'ready' || match.opponent.state === 'accepted';
+    const { playerReady: meReady, goalieReady: opponentReady } =
+      duelRinkReadyPresenceForMatch(match);
     const previous = previousReadyStateRef.current;
-    if (previous && !previous.me && meReady) setPlayerReadyEntranceKey(match.me.ready_at ?? match.id);
+    if (previous && !previous.me && meReady) {
+      setPlayerReadyEntranceKey(match.me.ready_at ?? match.me.period_started_at ?? match.id);
+    }
     if (previous && !previous.opponent && opponentReady) {
-      setGoalieReadyEntranceKey(match.opponent.ready_at ?? match.id);
+      setGoalieReadyEntranceKey(
+        match.opponent.ready_at ?? match.opponent.period_started_at ?? match.id,
+      );
     }
     previousReadyStateRef.current = { me: meReady, opponent: opponentReady };
   }, [match, matchId]);
@@ -5388,8 +5399,8 @@ function AmateurDuelPlayView({
     const canRunDirectDuelAction =
       (match.status === 'ready_check' && match.me.state !== 'ready') ||
       canStartArenaDuelPeriod(match, duelMatchNowMs(match, now));
-    const meReady = match.me.state === 'ready' || match.me.state === 'accepted';
-    const opponentReady = match.opponent.state === 'ready' || match.opponent.state === 'accepted';
+    const { playerReady: meReady, goalieReady: opponentReady } =
+      duelRinkReadyPresenceForMatch(match);
     return (
       <>
         <PlayView<AmateurDuelMatchState>
@@ -5437,6 +5448,7 @@ function AmateurDuelPlayView({
               onSelectKind={setSelectedLoadoutKind}
             />
           }
+          scoreboardGoals={match.me.goals}
           scoreboardOpponent={duelScoreboardOpponent(match)}
         />
         {showDirectResultModal && <DuelResultModal match={match} onClose={onBack} />}
@@ -5534,6 +5546,7 @@ function AmateurDuelPlayView({
         serverNow={match.server_now}
         receivedAtPerformanceMs={match.received_at_performance_ms}
         goals={match.current_period_goals}
+        scoreboardGoals={match.me.goals}
         shots={match.current_period_shots}
         shotsTotal={
           activePeriodRule.mode === 'quota' ? (activePeriodRule.shotsLimit ?? 30) : undefined
@@ -5723,7 +5736,11 @@ function DuelResultModal({
           <DuelResultDetailRow label="Тип" value={duelKindText(match.rules.duelKind)} />
           <DuelResultDetailRow label="Соперник" value={match.opponent.display_name || 'Игрок'} />
           {match.rules.winStarReward > 0 && (
-            <DuelResultDetailRow label="Звёзды за победу" value={`+${match.rules.winStarReward}`} />
+            <DuelResultDetailRow
+              label="Звёзды за победу"
+              value={`+${match.rules.winStarReward}`}
+              tone="star"
+            />
           )}
           <DuelResultDetailRow label="Начало" value={formatShortDateTime(match.starts_at)} />
         </div>
@@ -6022,7 +6039,15 @@ function DuelResultTinyStat({ label, value }: { label: string; value: string }):
   );
 }
 
-function DuelResultDetailRow({ label, value }: { label: string; value: string }): JSX.Element {
+function DuelResultDetailRow({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: 'star';
+}): JSX.Element {
   return (
     <div
       style={{
@@ -6046,7 +6071,16 @@ function DuelResultDetailRow({ label, value }: { label: string; value: string })
       >
         {label}
       </span>
-      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{value}</span>
+      <span
+        style={{
+          minWidth: 0,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          color: tone ? rewardColor(tone) : undefined,
+        }}
+      >
+        {value}
+      </span>
     </div>
   );
 }
@@ -6289,12 +6323,21 @@ function DuelLoadoutSummary({ match }: { match: AmateurDuelMatch }): JSX.Element
   );
 }
 
-function duelScoreboardOpponent(match: AmateurDuelMatch): ScoreBoardOpponent {
+export function duelScoreboardOpponent(match: AmateurDuelMatch): ScoreBoardOpponent {
   const opponent = match.opponent;
   const activeTime = opponent.active_duration_ms > 0 ? formatMs(opponent.active_duration_ms) : null;
+  const opponentRule = duelParticipantPeriodRule(match, opponent);
+  const shotsLabel =
+    opponent.state === 'period_active' &&
+    opponentRule.mode === 'quota' &&
+    opponentRule.shotsLimit !== null
+      ? `${String(opponent.current_period_shots).padStart(2, '0')}/${String(
+          opponentRule.shotsLimit,
+        ).padStart(2, '0')}`
+      : undefined;
   const time =
     opponent.state === 'period_active'
-      ? 'играет'
+      ? `играет ${opponent.current_period}/${match.rules.totalPeriods}`
       : opponent.state === 'break_active'
         ? (activeTime ?? 'перерыв')
         : opponent.state === 'completed'
@@ -6318,6 +6361,7 @@ function duelScoreboardOpponent(match: AmateurDuelMatch): ScoreBoardOpponent {
     avatarUrl: opponent.avatar_url,
     goals: opponent.goals,
     shots: opponent.shots_taken,
+    shotsLabel,
     time,
     timeTone,
   };
@@ -7046,7 +7090,9 @@ interface PlayViewProps<TState> {
   periodSpeedPresets?: readonly DailyPeriodSpeedPreset[] | undefined;
   stickEffects?: StickEffects | undefined;
   periodsTotal?: number;
+  scoreboardPeriodsTotal?: number;
   goals: number;
+  scoreboardGoals?: number | undefined;
   shots: number;
   shotsTotal?: number | undefined;
   timer?: string | undefined;
@@ -7527,6 +7573,7 @@ function TrainingCubeScoreboard({
   shots,
   shotsTotal,
   notice,
+  opponent,
 }: {
   period: number;
   periodsTotal: number;
@@ -7536,15 +7583,21 @@ function TrainingCubeScoreboard({
   shots: number;
   shotsTotal?: number | undefined;
   notice?: string | undefined;
+  opponent?: ScoreBoardOpponent | undefined;
 }): JSX.Element {
   const shotsText =
     typeof shotsTotal === 'number'
       ? `${String(shots).padStart(2, '0')}/${String(shotsTotal).padStart(2, '0')}`
       : String(shots).padStart(2, '0');
+  const goalsText = opponent ? `${goals}:${opponent.goals}` : String(goals).padStart(2, '0');
+  const opponentNotice = opponent
+    ? `СОПЕРНИК ${opponent.shotsLabel ?? String(opponent.shots)} · ${opponent.time.toUpperCase()}`
+    : undefined;
+  const effectiveNotice = notice ?? opponentNotice;
   const isSinglePeriod = periodsTotal === 1;
   const metrics = [
     { label: 'Период', value: `${period}/${periodsTotal}` },
-    { label: 'Голы', value: String(goals).padStart(2, '0') },
+    { label: opponent ? 'Счёт' : 'Голы', value: goalsText },
     { label: 'Броски', value: shotsText },
     { label: timerLabel, value: timer },
   ];
@@ -7559,7 +7612,7 @@ function TrainingCubeScoreboard({
             left: '8%',
             right: '8%',
             top: '27%',
-            bottom: notice ? '29%' : '24%',
+            bottom: effectiveNotice ? '29%' : '24%',
             display: 'grid',
             gridTemplateRows: 'auto auto minmax(0, 1fr)',
             rowGap: 'clamp(7px, 2.1vw, 16px)',
@@ -7580,11 +7633,11 @@ function TrainingCubeScoreboard({
               alignItems: 'end',
             }}
           >
-            <TrainingCubeMetric label="Голы" value={String(goals).padStart(2, '0')} />
+            <TrainingCubeMetric label={opponent ? 'Счёт' : 'Голы'} value={goalsText} />
             <TrainingCubeMetric label="Броски" value={shotsText} />
           </div>
         </div>
-        {notice && <TrainingCubeNotice text={notice} />}
+        {effectiveNotice && <TrainingCubeNotice text={effectiveNotice} />}
       </>
     );
   }
@@ -7598,7 +7651,7 @@ function TrainingCubeScoreboard({
           left: '8%',
           right: '8%',
           top: '27%',
-          bottom: notice ? '29%' : '24%',
+          bottom: effectiveNotice ? '29%' : '24%',
           display: 'grid',
           gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
           columnGap: 'clamp(16px, 6vw, 58px)',
@@ -7611,7 +7664,7 @@ function TrainingCubeScoreboard({
           <TrainingCubeMetric key={metric.label} label={metric.label} value={metric.value} />
         ))}
       </div>
-      {notice && <TrainingCubeNotice text={notice} />}
+      {effectiveNotice && <TrainingCubeNotice text={effectiveNotice} />}
     </>
   );
 }
@@ -7817,6 +7870,7 @@ function TrainingPlayView({
         seed={data.training_seed}
         goalieId={data.goalie_id}
         periodNumber={data.selected_period ?? selectedPeriod}
+        scoreboardPeriodsTotal={1}
         periodSpeedPresets={data.period_speed_presets}
         sessionStartedAt={data.started_at}
         serverNow={data.server_now}
@@ -8109,7 +8163,9 @@ export function PlayView<TState>({
   periodSpeedPresets,
   stickEffects = STICK_NEUTRAL,
   periodsTotal = 3,
+  scoreboardPeriodsTotal,
   goals,
+  scoreboardGoals,
   shots,
   shotsTotal,
   timer,
@@ -8983,12 +9039,8 @@ export function PlayView<TState>({
 
     loop.beginShooterPause();
     playerRef.current?.playShot();
-    puck.playShot(
-      puck.bladePoint(sx),
-      { x: sx, y: GOAL_OPENING.y },
-      loop.getRenderNow(),
-      flightDurationMs,
-    );
+    const puckShotPath = puck.shotPath(sx, GOAL_OPENING.y);
+    puck.playShot(puckShotPath.start, puckShotPath.end, loop.getRenderNow(), flightDurationMs);
 
     const scheduleShotTimeout = (fn: () => void, delay: number): void => {
       const id = window.setTimeout(() => {
@@ -9001,7 +9053,10 @@ export function PlayView<TState>({
 
     scheduleShotTimeout(() => {
       loop.beginScenePause();
-      puck.holdAt({ x: sx, y: result.type === 'save' ? GOAL_OPENING.y + 20 : GOAL_OPENING.y });
+      puck.holdAt({
+        x: puckShotPath.end.x,
+        y: result.type === 'save' ? GOAL_OPENING.y + 20 : GOAL_OPENING.y,
+      });
       if (result.type === 'save') goalie.setSavePose(true);
       setLastResult(result);
       setResultSubText(subText);
@@ -9102,10 +9157,11 @@ export function PlayView<TState>({
           periodsTotal={periodsTotal}
           timer={timerValue}
           timerLabel={timerLabel ?? 'ВРЕМЯ'}
-          goals={goals}
+          goals={scoreboardGoals ?? goals}
           shots={shots}
           shotsTotal={shotsTotal}
           notice={scoreboardNotice}
+          opponent={scoreboardOpponent}
         />
       }
     />
@@ -9166,10 +9222,10 @@ export function PlayView<TState>({
         {!hideScoreboard && (
           <ScoreBoard
             period={periodNumber}
-            periodsTotal={periodsTotal}
+            periodsTotal={scoreboardPeriodsTotal ?? periodsTotal}
             timer={timerValue}
             timerLabel={timerLabel}
-            goals={goals}
+            goals={scoreboardGoals ?? goals}
             shots={shots}
             shotsTotal={shotsTotal}
             opponent={scoreboardOpponent}

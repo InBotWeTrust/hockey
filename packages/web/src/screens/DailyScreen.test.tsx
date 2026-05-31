@@ -3,7 +3,13 @@ import { render, screen, waitFor, fireEvent, act, within, cleanup } from '@testi
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { DAILY_PERIOD_SPEED_PRESETS, STICK_NEUTRAL } from '@hockey/game-core';
-import { DailyScreen } from './DailyScreen.js';
+import {
+  DailyScreen,
+  duelEventTiming,
+  duelScoreboardOpponent,
+  duelRinkReadyPresenceForMatch,
+  isDuelReadyPresenceState,
+} from './DailyScreen.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
@@ -1236,10 +1242,10 @@ describe('DailyScreen', () => {
     expect((cube as HTMLElement).style.rowGap).toBe('clamp(7px, 2.1vw, 16px)');
     expect(within(cube).getByText('Период')).toBeInTheDocument();
     expect(within(cube).getByText('1/1')).toBeInTheDocument();
-    expect(within(cube).getByText('Голы')).toBeInTheDocument();
-    expect(within(cube).getByText('04')).toBeInTheDocument();
+    expect(within(cube).getByText('Счёт')).toBeInTheDocument();
+    expect(within(cube).getByText('4:0')).toBeInTheDocument();
 
-    const bottomMetrics = within(cube).getByText('Голы').parentElement?.parentElement;
+    const bottomMetrics = within(cube).getByText('Счёт').parentElement?.parentElement;
     expect(bottomMetrics?.style.alignSelf).toBe('end');
   });
 
@@ -2067,6 +2073,185 @@ describe('DailyScreen', () => {
     });
   });
 
+  it('builds live opponent progress for the amateur duel scoreboard', () => {
+    const now = new Date();
+    const activeMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      status: 'active',
+      duel_kind: 'classic',
+      outcome: null,
+      winner_user_id: null,
+      settled_at: null,
+      settled_reason: null,
+      starts_at: new Date(now.getTime() - 10 * 60_000).toISOString(),
+      ends_at: new Date(now.getTime() + 60 * 60_000).toISOString(),
+      server_now: now.toISOString(),
+      period_started_at: new Date(now.getTime() - 2 * 60_000).toISOString(),
+      period_ends_at: new Date(now.getTime() + 18 * 60_000).toISOString(),
+      rules: {
+        ...settledDuelMatch.rules,
+        title: 'Классика',
+        duelKind: 'classic',
+        duelVariant: 'classic',
+        totalPeriods: 3,
+        shotsPerPeriod: 30,
+        periodDurationMs: 20 * 60_000,
+        breakDurationMs: 5 * 60_000,
+        periodRules: [
+          { periodNumber: 1, mode: 'quota', durationMs: 20 * 60_000, shotsLimit: 30 },
+          { periodNumber: 2, mode: 'quota', durationMs: 20 * 60_000, shotsLimit: 30 },
+          { periodNumber: 3, mode: 'quota', durationMs: 20 * 60_000, shotsLimit: 30 },
+        ],
+      },
+      me: {
+        ...settledDuelMatch.me,
+        state: 'period_active',
+        current_period: 2,
+        shots_taken: 42,
+        goals: 20,
+        current_period_shots: 12,
+        current_period_goals: 5,
+        period_started_at: new Date(now.getTime() - 2 * 60_000).toISOString(),
+        period_ends_at: new Date(now.getTime() + 18 * 60_000).toISOString(),
+      },
+      opponent: {
+        ...settledDuelMatch.opponent,
+        state: 'period_active',
+        current_period: 2,
+        shots_taken: 37,
+        goals: 19,
+        current_period_shots: 7,
+        current_period_goals: 4,
+        period_started_at: new Date(now.getTime() - 90_000).toISOString(),
+        period_ends_at: new Date(now.getTime() + 18 * 60_000 + 30_000).toISOString(),
+      },
+      current_period_shots: 12,
+      current_period_goals: 5,
+    };
+
+    expect(duelScoreboardOpponent(activeMatch)).toMatchObject({
+      goals: 19,
+      shots: 37,
+      shotsLabel: '07/30',
+      time: 'играет 2/3',
+      timeTone: 'active',
+    });
+  });
+
+  it('shows the total duel score and opponent progress on the rink cube', async () => {
+    const now = new Date();
+    const activeMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      status: 'active',
+      duel_kind: 'classic',
+      outcome: null,
+      winner_user_id: null,
+      settled_at: null,
+      settled_reason: null,
+      starts_at: new Date(now.getTime() - 10 * 60_000).toISOString(),
+      ends_at: new Date(now.getTime() + 60 * 60_000).toISOString(),
+      server_now: now.toISOString(),
+      period_started_at: new Date(now.getTime() - 2 * 60_000).toISOString(),
+      period_ends_at: new Date(now.getTime() + 18 * 60_000).toISOString(),
+      rules: {
+        ...settledDuelMatch.rules,
+        title: 'Классика',
+        duelKind: 'classic',
+        duelVariant: 'classic',
+        totalPeriods: 3,
+        shotsPerPeriod: 30,
+        periodDurationMs: 20 * 60_000,
+        breakDurationMs: 5 * 60_000,
+        periodRules: [
+          { periodNumber: 1, mode: 'quota', durationMs: 20 * 60_000, shotsLimit: 30 },
+          { periodNumber: 2, mode: 'quota', durationMs: 20 * 60_000, shotsLimit: 30 },
+          { periodNumber: 3, mode: 'quota', durationMs: 20 * 60_000, shotsLimit: 30 },
+        ],
+      },
+      me: {
+        ...settledDuelMatch.me,
+        state: 'period_active',
+        current_period: 2,
+        shots_taken: 42,
+        goals: 20,
+        current_period_shots: 12,
+        current_period_goals: 5,
+        period_started_at: new Date(now.getTime() - 2 * 60_000).toISOString(),
+        period_ends_at: new Date(now.getTime() + 18 * 60_000).toISOString(),
+      },
+      opponent: {
+        ...settledDuelMatch.opponent,
+        state: 'period_active',
+        current_period: 2,
+        shots_taken: 37,
+        goals: 19,
+        current_period_shots: 7,
+        current_period_goals: 4,
+        period_started_at: new Date(now.getTime() - 90_000).toISOString(),
+        period_ends_at: new Date(now.getTime() + 18 * 60_000 + 30_000).toISOString(),
+      },
+      current_period_shots: 12,
+      current_period_goals: 5,
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/matches/match-1')) {
+        return new Response(JSON.stringify({ match: activeMatch }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=amateur&match=match-1&play=1']);
+
+    expect(await screen.findByText('Счёт')).toBeInTheDocument();
+    expect(screen.getByText('20:19')).toBeInTheDocument();
+    expect(screen.getByLabelText('Сообщение на видеокубе')).toHaveTextContent(
+      'СОПЕРНИК 07/30 · ИГРАЕТ 2/3',
+    );
+  });
+
+  it('shows five minutes to forfeit after an intermission period is ready', () => {
+    const now = Date.parse('2026-05-16T10:10:00.000Z');
+    const activeMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      status: 'active',
+      outcome: null,
+      winner_user_id: null,
+      settled_at: null,
+      settled_reason: null,
+      ends_at: '2026-05-16T10:25:00.000Z',
+      server_now: '2026-05-16T10:10:00.000Z',
+      me: {
+        ...settledDuelMatch.me,
+        state: 'accepted',
+        current_period: 1,
+        ready_at: '2026-05-16T10:10:00.000Z',
+      },
+      opponent: {
+        ...settledDuelMatch.opponent,
+        state: 'completed',
+        current_period: 2,
+      },
+    };
+
+    expect(duelEventTiming(activeMatch, now)).toMatchObject({
+      label: 'До поражения',
+      value: '05:00',
+    });
+  });
+
   it('shows a result modal for a settled amateur duel', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = input instanceof Request ? input.url : String(input);
@@ -2151,5 +2336,49 @@ describe('DailyScreen', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('duel ready rink presence', () => {
+  it('keeps the opponent goalie present after the opponent has started a period', () => {
+    expect(isDuelReadyPresenceState('ready')).toBe(true);
+    expect(isDuelReadyPresenceState('accepted')).toBe(true);
+    expect(isDuelReadyPresenceState('period_active')).toBe(true);
+  });
+
+  it('shows the opponent goalie on active duel start screens regardless of opponent state', () => {
+    const activeStartMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      status: 'active',
+      outcome: null,
+      winner_user_id: null,
+      settled_at: null,
+      settled_reason: null,
+      me: { ...settledDuelMatch.me, state: 'accepted' },
+      opponent: { ...settledDuelMatch.opponent, state: 'forfeit' },
+    };
+
+    expect(duelRinkReadyPresenceForMatch(activeStartMatch)).toEqual({
+      playerReady: true,
+      goalieReady: true,
+    });
+  });
+
+  it('still uses opponent readiness before the duel starts', () => {
+    const preStartMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      status: 'ready_check',
+      outcome: null,
+      winner_user_id: null,
+      settled_at: null,
+      settled_reason: null,
+      me: { ...settledDuelMatch.me, state: 'ready' },
+      opponent: { ...settledDuelMatch.opponent, state: 'loadout_pending' },
+    };
+
+    expect(duelRinkReadyPresenceForMatch(preStartMatch)).toEqual({
+      playerReady: true,
+      goalieReady: false,
+    });
   });
 });

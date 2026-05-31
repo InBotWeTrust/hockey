@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, CircleDollarSign, Star, TrendingUp } from 'lucide-react';
+import { ArrowLeft, CircleDollarSign, Sparkles, Star, TrendingUp } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { rewardColor, type RewardTone } from '../app/rewardColors.js';
+import { SegmentedTabs } from '../components/SegmentedTabs.js';
 import {
   claimWeeklyChallengeReward,
   declineWeeklyChallenge,
@@ -10,6 +12,13 @@ import {
   joinWeeklyChallenge,
   type WeeklyChallenge,
 } from '../api/weeklyChallenge.js';
+
+type AchievementPageTab = 'achievements' | 'challenges';
+
+const ACHIEVEMENT_PAGE_TABS: Array<{ id: AchievementPageTab; label: string }> = [
+  { id: 'achievements', label: 'Задания' },
+  { id: 'challenges', label: 'Челленджи' },
+];
 
 function numberText(value: number): string {
   return new Intl.NumberFormat('ru-RU', { useGrouping: false }).format(value);
@@ -51,6 +60,20 @@ function formatRemaining(ms: number): string {
   return `${minutes} мин`;
 }
 
+function rewardPartItems(
+  reward: WeeklyChallenge['reward'],
+  opts: { plus?: boolean } = {},
+): Array<{ tone: RewardTone; text: string }> {
+  const prefix = opts.plus === true ? '+' : '';
+  return [
+    reward.coins > 0 ? { tone: 'coin' as const, text: `${prefix}${numberText(reward.coins)}` } : null,
+    reward.stars > 0 ? { tone: 'star' as const, text: `${prefix}${numberText(reward.stars)}` } : null,
+    reward.experience > 0
+      ? { tone: 'experience' as const, text: `${prefix}${numberText(reward.experience)}` }
+      : null,
+  ].filter((part): part is { tone: RewardTone; text: string } => part !== null);
+}
+
 function RewardChip({
   label,
   value,
@@ -61,7 +84,8 @@ function RewardChip({
   value: number;
   icon: ReactNode;
   color: string;
-}): JSX.Element {
+}): JSX.Element | null {
+  if (value <= 0) return null;
   return (
     <span
       aria-label={`${label}: ${value}`}
@@ -100,11 +124,18 @@ export function WeeklyChallengeScreen(): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [claimedReward, setClaimedReward] = useState<{
+    title: string;
+    reward: WeeklyChallenge['reward'];
+  } | null>(null);
+  const [claimError, setClaimError] = useState<string | null>(null);
   const query = useQuery({ queryKey: ['weekly-challenge'], queryFn: fetchWeeklyChallenge });
   const challenge = query.data?.challenge ?? null;
   const pendingRewards = query.data?.pendingRewards ?? [];
   const timer = challenge ? timerTargetText(challenge) : null;
   const remainingText = timer === null ? null : formatRemaining(Date.parse(timer.target) - nowMs);
+  const challengeAttention =
+    challenge?.canJoin === true || challenge?.canClaimReward === true || pendingRewards.length > 0;
   const join = useMutation({
     mutationFn: (id: string) => joinWeeklyChallenge(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['weekly-challenge'] }),
@@ -114,8 +145,20 @@ export function WeeklyChallengeScreen(): JSX.Element {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['weekly-challenge'] }),
   });
   const claim = useMutation({
-    mutationFn: (id: string) => claimWeeklyChallengeReward(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['weekly-challenge'] }),
+    mutationFn: (challengeToClaim: WeeklyChallenge) =>
+      claimWeeklyChallengeReward(challengeToClaim.id),
+    onMutate: () => {
+      setClaimError(null);
+    },
+    onSuccess: (_response, challengeToClaim) => {
+      setClaimError(null);
+      setClaimedReward({ title: challengeToClaim.title, reward: challengeToClaim.reward });
+      window.setTimeout(() => setClaimedReward(null), 2800);
+      void queryClient.invalidateQueries({ queryKey: ['weekly-challenge'] });
+    },
+    onError: (error) => {
+      setClaimError(error instanceof Error ? error.message : 'Не удалось получить награду');
+    },
   });
 
   useEffect(() => {
@@ -146,7 +189,7 @@ export function WeeklyChallengeScreen(): JSX.Element {
           <button
             type="button"
             className="icon-btn"
-            onClick={() => navigate('/achievements')}
+            onClick={() => navigate('/sections')}
             aria-label="Назад"
             title="Назад"
             style={{
@@ -164,8 +207,20 @@ export function WeeklyChallengeScreen(): JSX.Element {
           >
             <ArrowLeft size={16} />
           </button>
-          <h1 style={{ margin: 0, minWidth: 0, fontSize: 24, fontWeight: 800 }}>Челлендж недели</h1>
+          <h1 style={{ margin: 0, minWidth: 0, fontSize: 24, fontWeight: 800 }}>Задания</h1>
         </div>
+
+        <SegmentedTabs
+          items={ACHIEVEMENT_PAGE_TABS.map((tab) => ({
+            ...tab,
+            attention: tab.id === 'challenges' ? challengeAttention : false,
+          }))}
+          activeTab="challenges"
+          ariaLabel="Разделы заданий"
+          onChange={(tab) => {
+            if (tab === 'achievements') navigate('/achievements');
+          }}
+        />
 
         {query.isLoading && (
           <div className="glass" style={{ borderRadius: 20, padding: 18 }}>
@@ -217,7 +272,7 @@ export function WeeklyChallengeScreen(): JSX.Element {
                     fontWeight: 900,
                   }}
                 >
-                  <span style={{ color: 'var(--muted)', fontWeight: 800 }}>{timer.label}</span>
+                  <span style={{ color: 'var(--muted)', fontWeight: 800 }}>{timer.label}:</span>
                   <span>{remainingText}</span>
                 </div>
               )}
@@ -227,19 +282,19 @@ export function WeeklyChallengeScreen(): JSX.Element {
               <RewardChip
                 label="Монеты"
                 value={challenge.reward.coins}
-                color="#9A6700"
+                color={rewardColor('coin')}
                 icon={<CircleDollarSign size={20} strokeWidth={2.55} />}
               />
               <RewardChip
                 label="Звёзды"
                 value={challenge.reward.stars}
-                color="#B77900"
+                color={rewardColor('star')}
                 icon={<Star size={20} strokeWidth={2.55} fill="currentColor" />}
               />
               <RewardChip
                 label="Опыт"
                 value={challenge.reward.experience}
-                color="#158A86"
+                color={rewardColor('experience')}
                 icon={<TrendingUp size={20} strokeWidth={2.55} />}
               />
             </div>
@@ -334,11 +389,24 @@ export function WeeklyChallengeScreen(): JSX.Element {
               <button
                 type="button"
                 className="btn btn--cta"
-                onClick={() => claim.mutate(challenge.id)}
+                onClick={() => claim.mutate(challenge)}
                 disabled={claim.isPending}
               >
                 Получить награду
               </button>
+            )}
+            {claimError && (
+              <div
+                role="alert"
+                style={{
+                  marginTop: challenge.canClaimReward ? -4 : 0,
+                  color: '#dc2626',
+                  fontSize: 13,
+                  fontWeight: 900,
+                }}
+              >
+                {claimError}
+              </div>
             )}
             {challenge.participant?.rewardClaimedAt && (
               <div style={{ fontSize: 13, fontWeight: 900, color: 'var(--muted)' }}>
@@ -354,13 +422,69 @@ export function WeeklyChallengeScreen(): JSX.Element {
               <PendingRewardCard
                 key={rewardChallenge.id}
                 challenge={rewardChallenge}
-                onClaim={() => claim.mutate(rewardChallenge.id)}
+                onClaim={() => claim.mutate(rewardChallenge)}
                 disabled={claim.isPending}
               />
             ))}
           </div>
         )}
       </section>
+
+      {claimedReward && (
+        <div
+          aria-live="polite"
+          style={{
+            position: 'fixed',
+            left: 18,
+            right: 18,
+            bottom: 'calc(88px + var(--app-safe-bottom))',
+            zIndex: 280,
+            display: 'flex',
+            justifyContent: 'center',
+            pointerEvents: 'none',
+          }}
+        >
+          <div
+            className="glass"
+            style={{
+              width: 'min(100%, 330px)',
+              borderRadius: 18,
+              padding: '14px 16px',
+              display: 'grid',
+              gridTemplateColumns: '34px minmax(0, 1fr)',
+              gap: 10,
+              alignItems: 'center',
+              animation: 'reward-pop 2.6s ease both',
+            }}
+          >
+            <Sparkles size={24} color="var(--reward-coin)" />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 950, color: 'var(--ink)' }}>
+                {claimedReward.title}
+              </div>
+              {rewardPartItems(claimedReward.reward, { plus: true }).length > 0 && (
+                <div
+                  style={{
+                    marginTop: 3,
+                    display: 'flex',
+                    gap: 6,
+                    flexWrap: 'wrap',
+                    fontSize: 12,
+                    fontWeight: 900,
+                  }}
+                >
+                  {rewardPartItems(claimedReward.reward, { plus: true }).map((part, index) => (
+                    <span key={part.tone} style={{ color: rewardColor(part.tone) }}>
+                      {index > 0 ? '· ' : ''}
+                      {part.text}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
@@ -390,19 +514,19 @@ function PendingRewardCard({
         <RewardChip
           label="Монеты"
           value={challenge.reward.coins}
-          color="#9A6700"
+          color={rewardColor('coin')}
           icon={<CircleDollarSign size={20} strokeWidth={2.55} />}
         />
         <RewardChip
           label="Звёзды"
           value={challenge.reward.stars}
-          color="#B77900"
+          color={rewardColor('star')}
           icon={<Star size={20} strokeWidth={2.55} fill="currentColor" />}
         />
         <RewardChip
           label="Опыт"
           value={challenge.reward.experience}
-          color="#158A86"
+          color={rewardColor('experience')}
           icon={<TrendingUp size={20} strokeWidth={2.55} />}
         />
       </div>

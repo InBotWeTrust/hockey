@@ -45,6 +45,7 @@ const TAP_TIME_STALE_TOLERANCE_MS = 12_000;
 const TAP_TIME_PAUSE_ALLOWANCE_PER_SHOT_MS = 2_000;
 const MATCHMAKING_TIMEOUT_MS = 120_000;
 const MAX_OPEN_DUEL_SLOTS = 5;
+const DUEL_INTERMISSION_CONTINUE_GRACE_MS = 5 * 60_000;
 
 const uuid = z.string().uuid();
 const isoDate = z.string().datetime({ offset: true });
@@ -781,7 +782,9 @@ function estimateDuelPlayWindowMs(rules: DuelRulesSnapshot): number {
     getDuelPeriodRule(rules, index + 1),
   ).reduce((sum, rule) => sum + rule.durationMs, 0);
   const breakDurationMs = Math.max(0, rules.totalPeriods - 1) * rules.breakDurationMs;
-  return Math.max(rules.readyDurationMs, periodDurationMs + breakDurationMs);
+  const continueGraceMs =
+    Math.max(0, rules.totalPeriods - 1) * DUEL_INTERMISSION_CONTINUE_GRACE_MS;
+  return Math.max(rules.readyDurationMs, periodDurationMs + breakDurationMs + continueGraceMs);
 }
 
 function clampSpeed(value: number, min: number, max: number): number {
@@ -1283,6 +1286,7 @@ async function closeParticipantPeriod(
             period_started_at = null,
             break_started_at = case when $3 = 'break_active' then $4::timestamptz else null end,
             completed_at = case when $3 = 'completed' then $4::timestamptz else completed_at end,
+            ready_at = null,
             shots_taken = shots_taken + $5,
             goals = goals + $6,
             active_duration_ms = active_duration_ms + $7,
@@ -1690,10 +1694,41 @@ async function reconcileMatch(
           `update amateur_duel_participant
               set state = 'accepted',
                   break_started_at = null,
+                  ready_at = $3,
                   updated_at = now()
             where match_id = $1 and user_id = $2 and state = 'break_active'`,
-          [match.id, participant.user_id],
+          [match.id, participant.user_id, breakEndsAt],
         );
+      }
+    }
+    if (
+      participant.state === 'accepted' &&
+      participant.current_period > 0 &&
+      participant.ready_at !== null
+    ) {
+      const latestPeriod = await client.query<{ ended_at: Date }>(
+        `select ended_at
+           from amateur_duel_period_log
+          where match_id = $1 and user_id = $2 and period_number = $3
+          limit 1`,
+        [match.id, participant.user_id, participant.current_period],
+      );
+      const latestEndedAt = latestPeriod.rows[0]?.ended_at ?? null;
+      if (latestEndedAt !== null && participant.ready_at >= latestEndedAt) {
+        const continueDeadline = new Date(
+          participant.ready_at.getTime() + DUEL_INTERMISSION_CONTINUE_GRACE_MS,
+        );
+        if (now >= continueDeadline) {
+          await client.query(
+            `update amateur_duel_participant
+                set state = 'forfeit',
+                    period_started_at = null,
+                    break_started_at = null,
+                    updated_at = now()
+              where match_id = $1 and user_id = $2 and state = 'accepted'`,
+            [match.id, participant.user_id],
+          );
+        }
       }
     }
   }
@@ -1917,9 +1952,15 @@ async function notifyDuelMessage(
   targetUserId: string,
   content: string,
   metadata?: Record<string, unknown>,
+  options: { markReadForTarget?: boolean; silent?: boolean } = {},
 ): Promise<void> {
   const dm = await findOrCreateDM(app.pg, actorUserId, targetUserId);
-  const sendOpts = { chatId: dm.chatId, senderId: actorUserId, content };
+  const sendOpts = {
+    chatId: dm.chatId,
+    senderId: actorUserId,
+    content,
+    ...(options.markReadForTarget === true ? { markReadForUserIds: [targetUserId] } : {}),
+  };
   const dto = await sendMessage(
     app.pg,
     metadata !== undefined ? { ...sendOpts, metadata } : sendOpts,
@@ -1928,7 +1969,9 @@ async function notifyDuelMessage(
     invalidateUnreadCache(app.redis, actorUserId),
     invalidateUnreadCache(app.redis, targetUserId),
   ]);
-  await publishMessageNew(app.pg, app.realtime, dm.chatId, 'direct', dto);
+  await publishMessageNew(app.pg, app.realtime, dm.chatId, 'direct', dto, {
+    silent: options.silent === true,
+  });
 }
 
 async function fetchDisplayName(
@@ -2570,6 +2613,8 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
         req.user.id,
         accepted.challengerUserId,
         `${opponentName} принял дуэль «${accepted.title}».`,
+        undefined,
+        { markReadForTarget: true, silent: true },
       ).catch((err) =>
         app.log.warn({ err, matchId: accepted.matchId }, 'duel accept DM notification failed'),
       );
@@ -2924,6 +2969,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
                   current_period = current_period + 1,
                   period_started_at = $3,
                   break_started_at = null,
+                  ready_at = null,
                   updated_at = now()
             where match_id = $1 and user_id = $2`,
           [match.id, req.user.id, now],

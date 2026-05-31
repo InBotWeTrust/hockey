@@ -18,6 +18,18 @@ describe('Puck', () => {
     expect(rightPuck.bladePoint(100).x).toBe(141);
   });
 
+  it.each([
+    ['left' as const, 59],
+    ['right' as const, 141],
+  ])('flies from the %s blade point to the physical shooter line', (grip, x) => {
+    const puck = new Puck(grip, { bladeOffsetX: 41, bladeOffsetY: 29 });
+
+    const path = puck.shotPath(100, 60);
+
+    expect(path.start).toEqual({ x, y: 609 });
+    expect(path.end).toEqual({ x: 100, y: 60 });
+  });
+
   it('does not move backward when the render clock is behind shot start time', () => {
     const puck = new Puck('right');
     const scale = { factor: 1, offsetX: 0, offsetY: 0 };

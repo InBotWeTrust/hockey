@@ -170,6 +170,25 @@ export interface AdminWeeklyChallengeTask {
   title?: string | null;
   target: number;
   sortOrder: number;
+  completedCount: number;
+}
+
+export interface AdminWeeklyChallengePlayer {
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  joinedAt: string;
+  rewardClaimedAt: string | null;
+  tasksCompleted: number;
+  tasksTotal: number;
+  progressPercent: number;
+}
+
+export interface AdminWeeklyChallengeStats {
+  participantsCount: number;
+  completedCount: number;
+  rewardClaimedCount: number;
+  declinedCount: number;
 }
 
 export interface AdminWeeklyChallenge {
@@ -185,6 +204,8 @@ export interface AdminWeeklyChallenge {
   rewardStars: number;
   rewardExperience: number;
   tasks: AdminWeeklyChallengeTask[];
+  stats: AdminWeeklyChallengeStats;
+  players: AdminWeeklyChallengePlayer[];
   createdAt: string;
   updatedAt: string;
 }
@@ -198,7 +219,12 @@ export interface AdminWeeklyChallengeInput {
   rewardCoins: number;
   rewardStars: number;
   rewardExperience: number;
-  tasks: Array<Omit<AdminWeeklyChallengeTask, 'id'>>;
+  tasks: Array<{
+    type: AdminWeeklyChallengeTaskType;
+    title?: string | null;
+    target: number;
+    sortOrder: number;
+  }>;
 }
 
 export interface AdminUser {

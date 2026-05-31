@@ -14,6 +14,7 @@ export interface ScoreBoardOpponent {
   avatarUrl: string | null;
   goals: number;
   shots: number;
+  shotsLabel?: string | undefined;
   time: string;
   timeTone?: 'active' | 'muted' | 'danger';
 }
@@ -36,6 +37,8 @@ export function ScoreBoard({
 }: ScoreBoardProps): JSX.Element {
   const periodNums = Array.from({ length: periodsTotal }, (_, i) => i + 1);
   const goalsStr = String(goals).padStart(2, '0');
+  const goalsLabel = opponent ? 'СЧЁТ' : 'ШАЙБЫ';
+  const goalsValue = opponent ? `${goals}:${opponent.goals}` : goalsStr;
   const shotsStr =
     typeof shotsTotal === 'number'
       ? `${String(shots).padStart(2, '0')}/${String(shotsTotal).padStart(2, '0')}`
@@ -92,8 +95,8 @@ export function ScoreBoard({
           </div>
         </Column>
 
-        <Column label="ШАЙБЫ">
-          <LedNumber value={goalsStr} color="#f1f5f9" />
+        <Column label={goalsLabel}>
+          <LedNumber value={goalsValue} color="#f1f5f9" />
         </Column>
 
         <Column label="БРОСКИ">
@@ -189,7 +192,7 @@ function OpponentRow({ opponent }: { opponent: ScoreBoardOpponent }): JSX.Elemen
         </span>
       </div>
       <OpponentMetric value={String(opponent.goals)} />
-      <OpponentMetric value={String(opponent.shots)} />
+      <OpponentMetric value={opponent.shotsLabel ?? String(opponent.shots)} />
       <span
         style={{
           justifySelf: 'center',

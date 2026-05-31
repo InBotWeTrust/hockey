@@ -42,11 +42,13 @@ import {
   X,
 } from 'lucide-react';
 import { ApiError } from '../api/apiFetch.js';
+import { rewardColor } from '../app/rewardColors.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { ChannelPostEditorSheet } from '../chat/components/ChannelPostEditorSheet.js';
 import { RichText } from '../chat/richText.js';
 import { GlassSelect, type GlassSelectOption } from '../components/GlassSelect.js';
 import { ADMIN_NAV_HOME_EVENT } from '../components/BottomNav.js';
+import { SegmentedTabs } from '../components/SegmentedTabs.js';
 import { convertChatAvatarToWebp } from '../lib/chatAvatarImage.js';
 import { useDebouncedValue } from '../lib/useDebouncedValue.js';
 import { AchievementDetailsSheet, AchievementTile } from '../screens/profileSections.js';
@@ -138,9 +140,9 @@ type AdminTab =
   | 'inventory'
   | 'achievements'
   | 'duels'
-  | 'weeklyChallenges'
   | 'feedback'
   | 'settings';
+type AdminAchievementsTab = 'achievements' | 'challenges';
 type SortField = 'name' | 'goals' | 'accuracy';
 type SortDirection = 'asc' | 'desc';
 type AdminIdentity = AdminUser['identities'][number];
@@ -158,7 +160,6 @@ const tabs: Array<{ id: AdminTab; label: string; icon: JSX.Element }> = [
   { id: 'inventory', label: 'Инвентарь', icon: <Package size={15} /> },
   { id: 'achievements', label: 'Задания', icon: <Medal size={15} /> },
   { id: 'duels', label: 'Дуэли', icon: <Trophy size={15} /> },
-  { id: 'weeklyChallenges', label: 'Челленджи', icon: <CalendarDays size={15} /> },
   { id: 'feedback', label: 'Отзывы', icon: <MessageSquare size={15} /> },
   { id: 'settings', label: 'Параметры', icon: <SlidersHorizontal size={15} /> },
 ];
@@ -174,6 +175,11 @@ const dashboardPeriodOptions: Array<GlassSelectOption<AdminDashboardPeriod>> = [
   { value: '30d', label: '30 дней' },
   { value: '90d', label: '90 дней' },
   { value: '365d', label: '1 год' },
+];
+
+const adminAchievementsTabs: Array<{ id: AdminAchievementsTab; label: string }> = [
+  { id: 'achievements', label: 'Задания' },
+  { id: 'challenges', label: 'Челленджи' },
 ];
 
 const pushNotificationStatusOptions: Array<GlassSelectOption<'enabled' | 'disabled'>> = [
@@ -755,15 +761,15 @@ export function AdminScreen(): JSX.Element {
       <nav
         className="glass no-scrollbar"
         style={{
-          borderRadius: 20,
-          padding: 5,
+          borderRadius: 999,
+          padding: 4,
           display: 'flex',
           alignItems: 'center',
-          minHeight: 54,
+          minHeight: 52,
           flex: '0 0 auto',
           overflowX: 'auto',
           overscrollBehaviorX: 'contain',
-          gap: 5,
+          gap: 4,
         }}
       >
         {tabs.map((item) => (
@@ -774,30 +780,10 @@ export function AdminScreen(): JSX.Element {
             className={tab === item.id ? 'chip chip--active' : 'chip'}
             style={{
               flex: '0 0 auto',
-              minWidth: 146,
+              minWidth: 112,
               height: 42,
-              borderRadius: 16,
-              padding: '9px 14px',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 6,
             }}
           >
-            <span
-              aria-hidden="true"
-              style={{
-                width: 18,
-                height: 18,
-                flex: '0 0 18px',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                transform: 'translateX(1px)',
-              }}
-            >
-              {item.icon}
-            </span>
             {item.id === 'feedback' ? `${item.label} (${feedbackUnreadCount})` : item.label}
           </button>
         ))}
@@ -917,7 +903,6 @@ export function AdminScreen(): JSX.Element {
           }}
         />
       )}
-      {tab === 'weeklyChallenges' && <WeeklyChallengesAdmin />}
       {tab === 'feedback' && (
         <FeedbackPanel
           loading={feedback.isLoading}
@@ -5202,6 +5187,7 @@ function AchievementsAdminPanel({
   achievements: AdminAchievement[];
   onChanged: () => void;
 }): JSX.Element {
+  const [sectionTab, setSectionTab] = useState<AdminAchievementsTab>('achievements');
   const [category, setCategory] = useState<AdminAchievementCategory | 'all'>('all');
   const [availability, setAvailability] = useState<AdminAchievementAvailability | 'all'>('all');
   const [query, setQuery] = useState('');
@@ -5225,62 +5211,78 @@ function AchievementsAdminPanel({
 
   return (
     <>
-      <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
-        Задания
+      <div style={{ marginBottom: 10 }}>
+        <SegmentedTabs
+          items={adminAchievementsTabs}
+          activeTab={sectionTab}
+          ariaLabel="Раздел заданий"
+          onChange={setSectionTab}
+        />
       </div>
-      <section className="glass" style={{ borderRadius: 20, padding: 14 }}>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-            gap: 8,
-          }}
-        >
-          <AdminMetric label="Всего" value={achievements.length} />
-          <AdminMetric label="Активных" value={activeCount} />
-          <AdminMetric label="Future" value={futureCount} />
-        </div>
-        <div
-          style={{
-            marginTop: 12,
-            display: 'grid',
-            gridTemplateColumns: 'minmax(0, 1.1fr) minmax(0, 0.8fr) minmax(0, 0.8fr)',
-            gap: 8,
-          }}
-        >
-          <input
-            type="search"
-            placeholder="Поиск по заданию"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-          <GlassSelect
-            value={category}
-            options={[{ value: 'all', label: 'Все категории' }, ...achievementCategoryOptions]}
-            onChange={(value) => setCategory(value as AdminAchievementCategory | 'all')}
-            ariaLabel="Категория заданий"
-          />
-          <GlassSelect
-            value={availability}
-            options={[{ value: 'all', label: 'Все статусы' }, ...achievementAvailabilityOptions]}
-            onChange={(value) => setAvailability(value as AdminAchievementAvailability | 'all')}
-            ariaLabel="Статус заданий"
-          />
-        </div>
-      </section>
-      {loading && <AdminPlainState>Загрузка...</AdminPlainState>}
-      {!loading && filtered.length === 0 && (
-        <AdminPlainState>Под такие фильтры заданий не нашлось.</AdminPlainState>
+      {sectionTab === 'challenges' && <WeeklyChallengesAdmin />}
+      {sectionTab === 'achievements' && (
+        <>
+          <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+            Задания
+          </div>
+          <section className="glass" style={{ borderRadius: 20, padding: 14 }}>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                gap: 8,
+              }}
+            >
+              <AdminMetric label="Всего" value={achievements.length} />
+              <AdminMetric label="Активных" value={activeCount} />
+              <AdminMetric label="Future" value={futureCount} />
+            </div>
+            <div
+              style={{
+                marginTop: 12,
+                display: 'grid',
+                gridTemplateColumns: 'minmax(0, 1.1fr) minmax(0, 0.8fr) minmax(0, 0.8fr)',
+                gap: 8,
+              }}
+            >
+              <input
+                type="search"
+                placeholder="Поиск по заданию"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+              <GlassSelect
+                value={category}
+                options={[{ value: 'all', label: 'Все категории' }, ...achievementCategoryOptions]}
+                onChange={(value) => setCategory(value as AdminAchievementCategory | 'all')}
+                ariaLabel="Категория заданий"
+              />
+              <GlassSelect
+                value={availability}
+                options={[
+                  { value: 'all', label: 'Все статусы' },
+                  ...achievementAvailabilityOptions,
+                ]}
+                onChange={(value) => setAvailability(value as AdminAchievementAvailability | 'all')}
+                ariaLabel="Статус заданий"
+              />
+            </div>
+          </section>
+          {loading && <AdminPlainState>Загрузка...</AdminPlainState>}
+          {!loading && filtered.length === 0 && (
+            <AdminPlainState>Под такие фильтры заданий не нашлось.</AdminPlainState>
+          )}
+          <section style={{ display: 'grid', gap: 10 }}>
+            {filtered.map((achievement) => (
+              <AchievementAdminCard
+                key={achievement.id}
+                achievement={achievement}
+                onChanged={onChanged}
+              />
+            ))}
+          </section>
+        </>
       )}
-      <section style={{ display: 'grid', gap: 10 }}>
-        {filtered.map((achievement) => (
-          <AchievementAdminCard
-            key={achievement.id}
-            achievement={achievement}
-            onChanged={onChanged}
-          />
-        ))}
-      </section>
     </>
   );
 }
@@ -5351,6 +5353,7 @@ function AchievementAdminCard({
     return body;
   }, [achievement, draft, rewardCurrency, rewardExperience, rewardStars, sortOrder]);
   const dirty = Object.keys(patch).length > 0;
+  const unclaimedCount = Math.max(0, achievement.completedCount - achievement.claimedCount);
   const mutation = useMutation({
     mutationFn: () => patchAdminAchievement(achievement.id, patch),
     onSuccess: onChanged,
@@ -5398,6 +5401,18 @@ function AchievementAdminCard({
         >
           <Save size={17} />
         </button>
+      </div>
+      <div
+        style={{
+          marginTop: 12,
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+          gap: 8,
+        }}
+      >
+        <AdminMetric label="Выполнили игроков" value={achievement.completedCount} />
+        <AdminMetric label="Получили награду" value={achievement.claimedCount} />
+        <AdminMetric label="Ждут награду" value={unclaimedCount} />
       </div>
       <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         <AdminField label="Название">
@@ -5590,22 +5605,15 @@ function DuelTemplatesPanel({
 
   return (
     <>
-      <div className="segmented" style={{ gridTemplateColumns: '1fr 1fr' }}>
-        <button
-          type="button"
-          className={duelView === 'templates' ? 'active' : ''}
-          onClick={() => setDuelView('templates')}
-        >
-          Шаблоны
-        </button>
-        <button
-          type="button"
-          className={duelView === 'history' ? 'active' : ''}
-          onClick={() => setDuelView('history')}
-        >
-          История
-        </button>
-      </div>
+      <SegmentedTabs
+        items={[
+          { id: 'templates', label: 'Шаблоны' },
+          { id: 'history', label: 'История' },
+        ]}
+        activeTab={duelView}
+        ariaLabel="Раздел дуэлей"
+        onChange={setDuelView}
+      />
       <div
         style={{
           display: 'flex',
@@ -5720,17 +5728,21 @@ function DuelTemplateCard({
           Ожидание {minutesText(msToMinutes(template.readyDurationMs))}
         </span>
         <span className="pill" style={{ fontSize: 10 }}>
-          Победа {numberText(template.winPoints)} очк. · {numberText(template.winCurrencyReward)}{' '}
-          шайб
+          Победа {numberText(template.winPoints)} очк. ·{' '}
+          <span style={{ color: rewardColor('coin') }}>
+            {numberText(template.winCurrencyReward)} шайб
+          </span>
         </span>
         {template.winStarReward > 0 && (
-          <span className="pill" style={{ fontSize: 10 }}>
+          <span className="pill" style={{ fontSize: 10, color: rewardColor('star') }}>
             Победа {numberText(template.winStarReward)} звёзд
           </span>
         )}
         <span className="pill" style={{ fontSize: 10 }}>
-          Ничья {numberText(template.drawPoints)} очк. · {numberText(template.drawCurrencyReward)}{' '}
-          шайб
+          Ничья {numberText(template.drawPoints)} очк. ·{' '}
+          <span style={{ color: rewardColor('coin') }}>
+            {numberText(template.drawCurrencyReward)} шайб
+          </span>
         </span>
       </div>
       <div style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 800 }}>

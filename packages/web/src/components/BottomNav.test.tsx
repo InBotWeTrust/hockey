@@ -263,6 +263,52 @@ describe('BottomNav remembered navigation', () => {
     expect(await screen.findByLabelText('События разделов: 2')).toHaveTextContent('2');
   });
 
+  it('combines achievement rewards and weekly challenge actions in the sections badge', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/weekly-challenge/current')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              challenge: {
+                id: 'challenge-1',
+                title: 'Новый челлендж',
+                canJoin: true,
+                canClaimReward: false,
+              },
+              pendingRewards: [
+                {
+                  id: 'challenge-old',
+                  title: 'Прошлая неделя',
+                  canClaimReward: true,
+                },
+              ],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      if (url.endsWith('/api/achievements')) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ achievements: [], unclaimedCount: 2 }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+
+    renderBottomNav('/profile');
+
+    expect(await screen.findByLabelText('События разделов: 4')).toHaveTextContent('4');
+  });
+
   it('refreshes missing grip for persisted auth sessions', async () => {
     vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
       const url = String(input);

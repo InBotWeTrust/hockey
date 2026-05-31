@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { UseMutationResult } from '@tanstack/react-query';
-import { ArrowLeft, CircleDollarSign, Star, Trophy, X } from 'lucide-react';
+import { ArrowLeft, CircleDollarSign, Star, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { rewardColor, type RewardTone } from '../app/rewardColors.js';
+import { SegmentedTabs } from '../components/SegmentedTabs.js';
 import {
   fetchMyInventory,
   purchaseInventoryItem,
@@ -161,7 +163,14 @@ export function InventoryScreen(): JSX.Element {
           gap: 14,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '40px minmax(0, 1fr) auto',
+            gap: 10,
+            alignItems: 'center',
+          }}
+        >
           <button
             type="button"
             className="icon-btn"
@@ -184,33 +193,7 @@ export function InventoryScreen(): JSX.Element {
             <ArrowLeft size={16} />
           </button>
           <h1 style={{ margin: 0, minWidth: 0, fontSize: 24, fontWeight: 800 }}>Магазин</h1>
-        </div>
-
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-            gap: 8,
-          }}
-        >
-          <BalanceCard
-            label="Монеты"
-            value={tokens}
-            icon={<CircleDollarSign size={16} strokeWidth={2.45} />}
-            iconColor="#C48A1D"
-          />
-          <BalanceCard
-            label="Звёзды"
-            value={inventory?.balances.stars ?? 0}
-            icon={<Star size={16} strokeWidth={2.45} fill="currentColor" />}
-            iconColor="#D9A21B"
-          />
-          <BalanceCard
-            label="Опыт"
-            value={inventory?.balances.experience ?? 0}
-            icon={<Trophy size={16} strokeWidth={2.45} />}
-            iconColor="#21A19A"
-          />
+          <ShopBalanceBar tokens={tokens} stars={inventory?.balances.stars ?? 0} />
         </div>
 
         <ShopTabs activeTab={activeTab} onChange={setActiveTab} />
@@ -329,46 +312,12 @@ function ShopTabs({
   onChange: (tab: ShopTab) => void;
 }): JSX.Element {
   return (
-    <div
-      role="tablist"
-      aria-label="Разделы магазина"
-      style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-        gap: 4,
-        padding: 4,
-        borderRadius: 999,
-        background: 'rgba(255,255,255,0.38)',
-        border: '1px solid rgba(255,255,255,0.62)',
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.74)',
-      }}
-    >
-      {SHOP_TABS.map((tab) => {
-        const active = tab.id === activeTab;
-        return (
-          <button
-            key={tab.id}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            onClick={() => onChange(tab.id)}
-            style={{
-              minWidth: 0,
-              minHeight: 36,
-              borderRadius: 999,
-              border: active ? '1px solid rgba(15,23,42,0.92)' : '1px solid transparent',
-              background: active ? 'rgba(15,23,42,0.92)' : 'transparent',
-              color: active ? '#ffffff' : 'rgba(15,23,42,0.72)',
-              fontSize: 12,
-              fontWeight: 900,
-              cursor: 'pointer',
-            }}
-          >
-            {tab.label}
-          </button>
-        );
-      })}
-    </div>
+    <SegmentedTabs
+      items={SHOP_TABS}
+      activeTab={activeTab}
+      ariaLabel="Разделы магазина"
+      onChange={onChange}
+    />
   );
 }
 
@@ -418,7 +367,7 @@ function BankPackageCard({ pack }: { pack: (typeof BANK_PACKAGES)[number] }): JS
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: '#C48A1D',
+            color: rewardColor('coin'),
             background: 'rgba(255,255,255,0.52)',
             border: '1px solid rgba(255,255,255,0.72)',
           }}
@@ -436,7 +385,7 @@ function BankPackageCard({ pack }: { pack: (typeof BANK_PACKAGES)[number] }): JS
         >
           {pack.title}
         </h2>
-        <div style={{ color: 'var(--ink)', fontSize: 19, fontWeight: 950, lineHeight: 1 }}>
+        <div style={{ color: rewardColor('coin'), fontSize: 19, fontWeight: 950, lineHeight: 1 }}>
           {numberText(pack.tokens)}
         </div>
         <div style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 800, lineHeight: 1.2 }}>
@@ -467,42 +416,66 @@ function BankPackageCard({ pack }: { pack: (typeof BANK_PACKAGES)[number] }): JS
   );
 }
 
-function BalanceCard({
+function ShopBalanceBar({ tokens, stars }: { tokens: number; stars: number }): JSX.Element {
+  return (
+    <div
+      className="glass"
+      style={{
+        width: 'fit-content',
+        maxWidth: '100%',
+        borderRadius: 999,
+        padding: '9px 12px',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 14,
+        justifySelf: 'end',
+      }}
+    >
+      <BalanceChip
+        label="Монеты"
+        value={tokens}
+        icon={<CircleDollarSign size={15} strokeWidth={2.45} />}
+        tone="coin"
+      />
+      <BalanceChip
+        label="Звёзды"
+        value={stars}
+        icon={<Star size={15} strokeWidth={2.45} fill="currentColor" />}
+        tone="star"
+      />
+    </div>
+  );
+}
+
+function BalanceChip({
   label,
   value,
   icon,
-  iconColor,
+  tone,
 }: {
   label: string;
   value: number;
   icon: JSX.Element;
-  iconColor: string;
+  tone: RewardTone;
 }): JSX.Element {
   return (
-    <div
-      className="glass"
+    <span
       aria-label={`${label}: ${numberText(value)}`}
       style={{
-        minWidth: 0,
-        minHeight: 74,
-        borderRadius: 18,
-        padding: '12px 11px',
-        position: 'relative',
-        display: 'grid',
-        gridTemplateRows: 'auto 1fr',
-        gap: 8,
-        overflow: 'hidden',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 5,
+        color: rewardColor(tone),
+        fontSize: 13,
+        fontWeight: 950,
+        lineHeight: 1,
+        fontVariantNumeric: 'tabular-nums',
+        whiteSpace: 'nowrap',
       }}
     >
       <span
         aria-hidden="true"
         style={{
-          position: 'absolute',
-          top: 10,
-          right: 12,
-          width: 18,
-          height: 18,
-          color: iconColor,
           display: 'inline-flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -510,35 +483,8 @@ function BalanceCard({
       >
         {icon}
       </span>
-      <span
-        style={{
-          minWidth: 0,
-          maxWidth: 'calc(100% - 30px)',
-          color: 'var(--muted)',
-          fontSize: 10,
-          fontWeight: 700,
-          lineHeight: 1.05,
-          textTransform: 'uppercase',
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-        }}
-      >
-        {label}
-      </span>
-      <span
-        style={{
-          alignSelf: 'end',
-          color: 'var(--ink)',
-          fontSize: 22,
-          fontWeight: 800,
-          lineHeight: 1,
-          fontVariantNumeric: 'tabular-nums',
-        }}
-      >
-        {numberText(value)}
-      </span>
-    </div>
+      <span>{numberText(value)}</span>
+    </span>
   );
 }
 
@@ -628,8 +574,21 @@ function InventoryProductCard({
         <div style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 800, lineHeight: 1.2 }}>
           {purchaseBundleLabel(item)}
         </div>
-        <div style={{ color: 'var(--ink)', fontSize: 13, fontWeight: 950, lineHeight: 1.1 }}>
-          {numberText(item.currencyPrice)} монет
+        <div
+          aria-label={`${numberText(item.currencyPrice)} монет`}
+          style={{
+            color: rewardColor('coin'),
+            fontSize: 13,
+            fontWeight: 950,
+            lineHeight: 1.1,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 5,
+            fontVariantNumeric: 'tabular-nums',
+          }}
+        >
+          <CircleDollarSign size={14} strokeWidth={2.55} aria-hidden="true" />
+          <span>{numberText(item.currencyPrice)}</span>
         </div>
       </button>
       <button
@@ -744,7 +703,11 @@ function InventoryItemModal({
         </div>
 
         <div className="glass" style={{ borderRadius: 18, padding: 14, display: 'grid', gap: 9 }}>
-          <DetailRow label="Цена" value={`${numberText(item.currencyPrice)} монет`} />
+          <DetailRow
+            label="Цена"
+            value={`${numberText(item.currencyPrice)} монет`}
+            tone="coin"
+          />
         </div>
 
         <p
@@ -910,11 +873,26 @@ function PurchaseHistorySection({
   );
 }
 
-function DetailRow({ label, value }: { label: string; value: string }): JSX.Element {
+function DetailRow({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: RewardTone;
+}): JSX.Element {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
       <span style={{ color: 'var(--muted)', fontSize: 12, fontWeight: 800 }}>{label}</span>
-      <span style={{ color: 'var(--ink)', fontSize: 12, fontWeight: 900, textAlign: 'right' }}>
+      <span
+        style={{
+          color: tone ? rewardColor(tone) : 'var(--ink)',
+          fontSize: 12,
+          fontWeight: 900,
+          textAlign: 'right',
+        }}
+      >
         {value}
       </span>
     </div>

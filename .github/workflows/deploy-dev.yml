@@ -4,6 +4,12 @@ on:
   push:
     branches: [dev]
   workflow_dispatch:
+    inputs:
+      reset_achievements:
+        description: 'Reset dev user achievements, keeping amateur-ticket rows'
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: deploy-dev
@@ -119,6 +125,7 @@ jobs:
           STAGING_REFRESH_SECRET: ${{ secrets.STAGING_REFRESH_SECRET }}
           STAGING_DAILY_SEED_SECRET: ${{ secrets.STAGING_DAILY_SEED_SECRET }}
           STAGING_ADMIN_ACCESS_CODE: ${{ secrets.STAGING_ADMIN_ACCESS_CODE }}
+          RESET_STAGING_ACHIEVEMENTS: ${{ github.event_name == 'workflow_dispatch' && inputs.reset_achievements || 'false' }}
           OBJECT_STORAGE_ENDPOINT: ${{ secrets.OBJECT_STORAGE_ENDPOINT }}
           OBJECT_STORAGE_REGION: ${{ secrets.OBJECT_STORAGE_REGION }}
           OBJECT_STORAGE_BUCKET: ${{ secrets.OBJECT_STORAGE_BUCKET }}
@@ -140,6 +147,7 @@ jobs:
             STAGING_REFRESH_SECRET="$STAGING_REFRESH_SECRET" \
             STAGING_DAILY_SEED_SECRET="$STAGING_DAILY_SEED_SECRET" \
             STAGING_ADMIN_ACCESS_CODE="$STAGING_ADMIN_ACCESS_CODE" \
+            RESET_STAGING_ACHIEVEMENTS="$RESET_STAGING_ACHIEVEMENTS" \
             OBJECT_STORAGE_ENDPOINT="$OBJECT_STORAGE_ENDPOINT" \
             OBJECT_STORAGE_REGION="$OBJECT_STORAGE_REGION" \
             OBJECT_STORAGE_BUCKET="$OBJECT_STORAGE_BUCKET" \
@@ -200,6 +208,23 @@ jobs:
 
           docker compose -f docker-compose.yml -f docker-compose.staging.yml \
             run --rm -T server-dev node packages/server/dist/db/migrate-cli.js < /dev/null
+
+          if [ "$RESET_STAGING_ACHIEVEMENTS" = "true" ]; then
+            docker compose -f docker-compose.yml -f docker-compose.staging.yml \
+              run --rm -T server-dev node --input-type=module -e '
+                import pg from "pg";
+                const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+                await client.connect();
+                const achievements = await client.query(
+                  "delete from user_achievements where achievement_id <> $1",
+                  ["amateur-ticket"],
+                );
+                const progress = await client.query("delete from achievement_progress");
+                console.log(`Reset dev achievements: ${achievements.rowCount} rows`);
+                console.log(`Reset dev achievement progress: ${progress.rowCount} rows`);
+                await client.end();
+              ' < /dev/null
+          fi
 
           docker compose -f docker-compose.yml -f docker-compose.staging.yml \
             run --rm -T server-dev node packages/server/dist/auth/dev-access-code-cli.js \

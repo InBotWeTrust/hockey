@@ -62,6 +62,9 @@ describe('WeeklyChallengeScreen', () => {
 
     renderScreen();
 
+    expect(await screen.findByRole('heading', { name: 'Задания' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Задания' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Челленджи', selected: true })).toBeInTheDocument();
     expect(await screen.findByText('На этой неделе активного челленджа нет')).toBeInTheDocument();
   });
 
@@ -127,5 +130,8 @@ describe('WeeklyChallengeScreen', () => {
         '33333333-3333-3333-3333-333333333333',
       ),
     );
+    expect(await screen.findByText('+100')).toBeInTheDocument();
+    expect(await screen.findByText('· +5')).toBeInTheDocument();
+    expect(await screen.findByText('· +50')).toBeInTheDocument();
   });
 });

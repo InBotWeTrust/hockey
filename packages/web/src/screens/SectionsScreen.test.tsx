@@ -101,6 +101,17 @@ describe('SectionsScreen', () => {
     expect(screen.getByLabelText('Требуется действие')).toBeInTheDocument();
   });
 
+  it.each([
+    { count: 1, text: '1 награда ждёт' },
+    { count: 2, text: '2 награды ждут' },
+    { count: 5, text: '5 наград ждут' },
+  ])('uses Russian plural forms for $count achievement rewards', async ({ count, text }) => {
+    mockSectionsApi({ achievementsUnclaimedCount: count });
+    renderSections();
+
+    expect(await screen.findByText(text)).toBeInTheDocument();
+  });
+
   it('keeps the weekly challenge out of the sections list', async () => {
     mockSectionsApi({
       achievementsUnclaimedCount: 0,
@@ -109,6 +120,19 @@ describe('SectionsScreen', () => {
     renderSections();
 
     expect(await screen.findByRole('button', { name: 'Задания' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Челлендж недели' })).toBeNull();
+  });
+
+  it('summarizes achievement rewards and weekly challenge actions on the achievements card', async () => {
+    mockSectionsApi({
+      achievementsUnclaimedCount: 2,
+      weeklyChallenge: { id: 'challenge-1', title: 'Неделя снайпера', canJoin: true },
+      weeklyPendingRewards: [{ id: 'challenge-old', title: 'Прошлая неделя' }],
+    });
+    renderSections();
+
+    expect(await screen.findByText('4 действия ждут')).toBeInTheDocument();
+    expect(screen.getByLabelText('Требуется действие')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Челлендж недели' })).toBeNull();
   });
 });

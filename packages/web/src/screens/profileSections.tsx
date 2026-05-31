@@ -240,9 +240,9 @@ export function ProfileAchievementsSection({
           ...labelStyle,
         }}
       >
-        <span style={{ minWidth: 0 }}>
-          Задания
-          {achievements.length > 0 ? ` (${unlockedAchievements}/${achievements.length})` : ''}
+        <span style={{ minWidth: 0, whiteSpace: 'nowrap' }}>
+          Выполненные задания
+          {unlockedAchievements > 0 ? ` (${unlockedAchievements})` : ''}
         </span>
         {labelAccessory}
       </div>

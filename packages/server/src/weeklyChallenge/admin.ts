@@ -36,6 +36,25 @@ interface AdminWeeklyChallengeTaskDTO {
   title: string | null;
   target: number;
   sortOrder: number;
+  completedCount: number;
+}
+
+interface AdminWeeklyChallengePlayerDTO {
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  joinedAt: string;
+  rewardClaimedAt: string | null;
+  tasksCompleted: number;
+  tasksTotal: number;
+  progressPercent: number;
+}
+
+interface AdminWeeklyChallengeStatsDTO {
+  participantsCount: number;
+  completedCount: number;
+  rewardClaimedCount: number;
+  declinedCount: number;
 }
 
 interface AdminWeeklyChallengeDTO {
@@ -51,6 +70,8 @@ interface AdminWeeklyChallengeDTO {
   rewardStars: number;
   rewardExperience: number;
   tasks: AdminWeeklyChallengeTaskDTO[];
+  stats: AdminWeeklyChallengeStatsDTO;
+  players: AdminWeeklyChallengePlayerDTO[];
   createdAt: string;
   updatedAt: string;
 }
@@ -80,6 +101,44 @@ interface AdminWeeklyChallengeTaskRow {
   sort_order: number;
 }
 
+interface AdminWeeklyChallengeStatsRow {
+  challenge_id: string;
+  participants_count: string;
+  completed_count: string;
+  reward_claimed_count: string;
+  declined_count: string;
+}
+
+interface AdminWeeklyChallengeTaskStatsRow {
+  task_id: string;
+  completed_count: string;
+}
+
+interface AdminWeeklyChallengePlayerStatsRow {
+  challenge_id: string;
+  user_id: string;
+  display_name: string;
+  avatar_url: string | null;
+  joined_at: Date | string;
+  reward_claimed_at: Date | string | null;
+  tasks_completed: string;
+  tasks_total: string;
+  progress_percent: number | string;
+}
+
+interface AdminWeeklyChallengeEnrichment {
+  stats: AdminWeeklyChallengeStatsDTO;
+  players: AdminWeeklyChallengePlayerDTO[];
+  taskCompletedCounts: Map<string, number>;
+}
+
+const emptyChallengeStats: AdminWeeklyChallengeStatsDTO = {
+  participantsCount: 0,
+  completedCount: 0,
+  rewardClaimedCount: 0,
+  declinedCount: 0,
+};
+
 function toIso(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
@@ -106,7 +165,10 @@ function parseTasks(value: unknown): AdminWeeklyChallengeTaskRow[] {
   return Array.isArray(value) ? (value as AdminWeeklyChallengeTaskRow[]) : [];
 }
 
-function mapAdminChallengeRow(row: AdminWeeklyChallengeRow): AdminWeeklyChallengeDTO {
+function mapAdminChallengeRow(
+  row: AdminWeeklyChallengeRow,
+  enrichment?: AdminWeeklyChallengeEnrichment,
+): AdminWeeklyChallengeDTO {
   return {
     id: row.id,
     title: row.title,
@@ -125,10 +187,228 @@ function mapAdminChallengeRow(row: AdminWeeklyChallengeRow): AdminWeeklyChalleng
       title: task.title,
       target: Number(task.target),
       sortOrder: Number(task.sort_order),
+      completedCount: enrichment?.taskCompletedCounts.get(task.id) ?? 0,
     })),
+    stats: enrichment?.stats ?? emptyChallengeStats,
+    players: enrichment?.players ?? [],
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
   };
+}
+
+async function fetchAdminChallengeEnrichment(
+  db: PoolClient | FastifyInstance['pg'],
+  challengeIds: string[],
+): Promise<Map<string, AdminWeeklyChallengeEnrichment>> {
+  const result = new Map<string, AdminWeeklyChallengeEnrichment>();
+  for (const challengeId of challengeIds) {
+    result.set(challengeId, {
+      stats: emptyChallengeStats,
+      players: [],
+      taskCompletedCounts: new Map<string, number>(),
+    });
+  }
+  if (challengeIds.length === 0) return result;
+
+  const progressCte = `
+    with participant_progress as (
+      select p.challenge_id,
+             p.user_id,
+             p.joined_at,
+             p.reward_claimed_at,
+             u.display_name,
+             u.avatar_url,
+             (
+               select count(*)::int
+                 from shot_session ss
+                where ss.user_id = p.user_id
+                  and ss.server_result = 'goal'
+                  and ss.created_at >= wc.start_at
+                  and ss.created_at <= wc.end_at
+             ) as goals_scored,
+             (
+               select count(*)::int
+                 from amateur_duel_participant adp
+                 join amateur_duel_match adm on adm.id = adp.match_id
+                where adp.user_id = p.user_id
+                  and adp.state = 'completed'
+                  and adm.status = 'settled'
+                  and coalesce(adm.settled_at, adm.updated_at) >= wc.start_at
+                  and coalesce(adm.settled_at, adm.updated_at) <= wc.end_at
+             ) as duels_played,
+             (
+               select count(*)::int
+                 from amateur_duel_match adm
+                where adm.winner_user_id = p.user_id
+                  and adm.status = 'settled'
+                  and coalesce(adm.settled_at, adm.updated_at) >= wc.start_at
+                  and coalesce(adm.settled_at, adm.updated_at) <= wc.end_at
+             ) as duels_won,
+             (
+               select count(*)::int
+                 from amateur_duel_match adm
+                where adm.challenger_user_id = p.user_id
+                  and adm.source = 'challenge'
+                  and adm.created_at >= wc.start_at
+                  and adm.created_at <= wc.end_at
+             ) as duel_invites_sent,
+             (
+               select count(*)::int
+                 from training_session ts
+                where ts.user_id = p.user_id
+                  and ts.state = 'closed'
+                  and coalesce(ts.closed_at, ts.started_at) >= wc.start_at
+                  and coalesce(ts.closed_at, ts.started_at) <= wc.end_at
+             ) as trainings_completed
+        from weekly_challenge_participants p
+        join weekly_challenges wc on wc.id = p.challenge_id
+        join users u on u.id = p.user_id
+       where p.challenge_id = any($1::uuid[])
+    ),
+    player_stats as (
+      select pp.challenge_id,
+             pp.user_id,
+             pp.display_name,
+             pp.avatar_url,
+             pp.joined_at,
+             pp.reward_claimed_at,
+             count(t.id)::text as tasks_total,
+             count(t.id) filter (
+               where case t.type
+                 when 'goals_scored' then pp.goals_scored
+                 when 'duels_played' then pp.duels_played
+                 when 'duels_won' then pp.duels_won
+                 when 'duel_invites_sent' then pp.duel_invites_sent
+                 when 'trainings_completed' then pp.trainings_completed
+                 else 0
+               end >= t.target
+             )::text as tasks_completed,
+             coalesce(
+               round(
+                 100 * sum(least(
+                   (case t.type
+                     when 'goals_scored' then pp.goals_scored
+                     when 'duels_played' then pp.duels_played
+                     when 'duels_won' then pp.duels_won
+                     when 'duel_invites_sent' then pp.duel_invites_sent
+                     when 'trainings_completed' then pp.trainings_completed
+                     else 0
+                   end)::numeric,
+                   t.target::numeric
+                 )) / nullif(sum(t.target), 0)
+               )::int,
+               0
+             ) as progress_percent
+        from participant_progress pp
+        left join weekly_challenge_tasks t on t.challenge_id = pp.challenge_id
+       group by pp.challenge_id,
+                pp.user_id,
+                pp.display_name,
+                pp.avatar_url,
+                pp.joined_at,
+                pp.reward_claimed_at
+    )
+  `;
+
+  const statsRows = await db.query<AdminWeeklyChallengeStatsRow>(
+    `${progressCte}
+      select wc.id as challenge_id,
+             count(ps.user_id)::text as participants_count,
+             count(ps.user_id) filter (
+               where ps.tasks_total::int > 0 and ps.tasks_completed::int = ps.tasks_total::int
+             )::text as completed_count,
+             count(ps.user_id) filter (where ps.reward_claimed_at is not null)::text
+               as reward_claimed_count,
+             (
+               select count(*)::text
+                 from weekly_challenge_declines d
+                where d.challenge_id = wc.id
+             ) as declined_count
+        from weekly_challenges wc
+        left join player_stats ps on ps.challenge_id = wc.id
+       where wc.id = any($1::uuid[])
+       group by wc.id`,
+    [challengeIds],
+  );
+
+  for (const row of statsRows.rows) {
+    const current = result.get(row.challenge_id);
+    if (!current) continue;
+    current.stats = {
+      participantsCount: Number(row.participants_count),
+      completedCount: Number(row.completed_count),
+      rewardClaimedCount: Number(row.reward_claimed_count),
+      declinedCount: Number(row.declined_count),
+    };
+  }
+
+  const taskRows = await db.query<AdminWeeklyChallengeTaskStatsRow>(
+    `${progressCte}
+      select t.id as task_id,
+             count(pp.user_id) filter (
+               where case t.type
+                 when 'goals_scored' then pp.goals_scored
+                 when 'duels_played' then pp.duels_played
+                 when 'duels_won' then pp.duels_won
+                 when 'duel_invites_sent' then pp.duel_invites_sent
+                 when 'trainings_completed' then pp.trainings_completed
+                 else 0
+               end >= t.target
+             )::text as completed_count
+        from weekly_challenge_tasks t
+        left join participant_progress pp on pp.challenge_id = t.challenge_id
+       where t.challenge_id = any($1::uuid[])
+       group by t.challenge_id, t.id`,
+    [challengeIds],
+  );
+
+  for (const row of taskRows.rows) {
+    for (const enrichment of result.values()) {
+      enrichment.taskCompletedCounts.set(row.task_id, Number(row.completed_count));
+    }
+  }
+
+  const playerRows = await db.query<AdminWeeklyChallengePlayerStatsRow>(
+    `${progressCte}
+      select challenge_id,
+             user_id,
+             display_name,
+             avatar_url,
+             joined_at,
+             reward_claimed_at,
+             tasks_completed,
+             tasks_total,
+             progress_percent
+        from player_stats
+       order by challenge_id, progress_percent desc, joined_at desc`,
+    [challengeIds],
+  );
+
+  for (const row of playerRows.rows) {
+    const current = result.get(row.challenge_id);
+    if (!current) continue;
+    current.players.push({
+      userId: row.user_id,
+      displayName: row.display_name,
+      avatarUrl: row.avatar_url,
+      joinedAt: toIso(row.joined_at),
+      rewardClaimedAt: row.reward_claimed_at === null ? null : toIso(row.reward_claimed_at),
+      tasksCompleted: Number(row.tasks_completed),
+      tasksTotal: Number(row.tasks_total),
+      progressPercent: Number(row.progress_percent),
+    });
+  }
+
+  return result;
+}
+
+async function mapAdminChallengeRows(
+  db: PoolClient | FastifyInstance['pg'],
+  rows: AdminWeeklyChallengeRow[],
+): Promise<AdminWeeklyChallengeDTO[]> {
+  const ids = rows.map((row) => row.id);
+  const enrichment = await fetchAdminChallengeEnrichment(db, ids);
+  return rows.map((row) => mapAdminChallengeRow(row, enrichment.get(row.id)));
 }
 
 async function withTransaction<T>(
@@ -165,7 +445,7 @@ async function fetchAdminChallenge(
   );
   const row = rows[0];
   if (!row) throw new AppError('not_found', 'weekly challenge not found', 404);
-  return mapAdminChallengeRow(row);
+  return (await mapAdminChallengeRows(client, [row]))[0]!;
 }
 
 async function replaceTasks(
@@ -263,7 +543,7 @@ export async function registerWeeklyChallengeAdminRoutes(app: FastifyInstance): 
         group by wc.id
         order by wc.start_at desc`,
     );
-    return { challenges: rows.map(mapAdminChallengeRow) };
+    return { challenges: await mapAdminChallengeRows(app.pg, rows) };
   });
 
   app.post('/admin/weekly-challenges', { preHandler: adminPreHandlers }, async (req) => {

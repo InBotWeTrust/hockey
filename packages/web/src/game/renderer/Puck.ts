@@ -77,6 +77,14 @@ export class Puck {
     return { x: shooterX + this.offset.x, y: PUCK_START.y + this.offset.y };
   }
 
+  shotPath(shooterX: number, targetY: number): { start: Vec2; end: Vec2 } {
+    const start = this.bladePoint(shooterX);
+    return {
+      start,
+      end: { x: shooterX, y: targetY },
+    };
+  }
+
   resetAtStart(scale: Scale, shooterX = PUCK_START.x): void {
     if (this.destroyed) return;
     this.flight = null;

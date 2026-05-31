@@ -549,6 +549,7 @@ export interface SendMessageOpts {
   replyToId?: string;
   pollOptions?: string[];
   metadata?: Record<string, unknown>;
+  markReadForUserIds?: string[];
 }
 
 export async function sendMessage(pool: Pool, opts: SendMessageOpts): Promise<ChatMessageDTO> {
@@ -590,14 +591,33 @@ export async function sendMessage(pool: Pool, opts: SendMessageOpts): Promise<Ch
     const row = r.rows[0]!;
     await client.query(
       `insert into chat_members (chat_id, user_id, last_read_at)
-       values ($1, $2, $3)
+       select $1, $2, created_at
+         from messages
+        where id = $3
        on conflict (chat_id, user_id) do update
           set last_read_at = greatest(
             coalesce(chat_members.last_read_at, '-infinity'::timestamptz),
             excluded.last_read_at
           )`,
-      [opts.chatId, opts.senderId, row.created_at],
+      [opts.chatId, opts.senderId, row.id],
     );
+    const markReadForUserIds = Array.from(
+      new Set((opts.markReadForUserIds ?? []).filter((userId) => userId !== opts.senderId)),
+    );
+    if (markReadForUserIds.length > 0) {
+      await client.query(
+        `insert into chat_members (chat_id, user_id, last_read_at)
+         select $1, ids.user_id, m.created_at
+           from unnest($2::uuid[]) as ids(user_id)
+           join messages m on m.id = $3
+         on conflict (chat_id, user_id) do update
+            set last_read_at = greatest(
+              coalesce(chat_members.last_read_at, '-infinity'::timestamptz),
+              excluded.last_read_at
+            )`,
+        [opts.chatId, markReadForUserIds, row.id],
+      );
+    }
     if (pollOptions.length > 0) {
       await client.query(`insert into channel_post_polls (post_message_id) values ($1)`, [row.id]);
       for (const [index, text] of pollOptions.entries()) {

@@ -286,6 +286,53 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
     expect(claim.json().challenge).toMatchObject({ id: currentChallengeId });
   });
 
+  it('treats reward claim rows as claimed even if participant state is stale', async () => {
+    const challengeId = await createActiveChallenge();
+    await pool.query(
+      `insert into weekly_challenge_participants (challenge_id, user_id, joined_at)
+       values ($1, $2, now() - interval '1 hour')`,
+      [challengeId, userId],
+    );
+    await pool.query(
+      `insert into weekly_challenge_reward_claims (challenge_id, user_id, coins, stars, experience)
+       values ($1, $2, 10, 2, 3)`,
+      [challengeId, userId],
+    );
+    await insertGoal();
+
+    const current = await app.inject({
+      method: 'GET',
+      url: '/weekly-challenge/current',
+      headers: authHeader(),
+    });
+    expect(current.statusCode).toBe(200);
+    expect(current.json().challenge).toMatchObject({
+      id: challengeId,
+      allTasksCompleted: true,
+      canClaimReward: false,
+      participant: { rewardClaimedAt: expect.any(String) },
+    });
+
+    const claim = await app.inject({
+      method: 'POST',
+      url: `/weekly-challenge/${challengeId}/claim-reward`,
+      headers: authHeader(),
+    });
+    expect(claim.statusCode).toBe(200);
+    expect(claim.json().challenge).toMatchObject({
+      canClaimReward: false,
+      participant: { rewardClaimedAt: expect.any(String) },
+    });
+
+    const repaired = await pool.query<{ reward_claimed_at: Date | null }>(
+      `select reward_claimed_at
+         from weekly_challenge_participants
+        where challenge_id = $1 and user_id = $2`,
+      [challengeId, userId],
+    );
+    expect(repaired.rows[0]?.reward_claimed_at).toBeInstanceOf(Date);
+  });
+
   it('lets a player decline an open challenge invitation', async () => {
     const challengeId = await createActiveChallenge();
 
