@@ -62,8 +62,47 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     expect(names).toContain('weekly_challenge_participants');
     expect(names).toContain('weekly_challenge_declines');
     expect(names).toContain('weekly_challenge_reward_claims');
+    expect(names).toContain('achievement_progress');
     expect(names).toContain('feedback_messages');
     expect(names).toContain('_migrations');
+
+    const achievementColumns = await pool.query<{ column_name: string }>(
+      `select column_name
+         from information_schema.columns
+        where table_schema = 'public' and table_name = 'achievements'
+        order by column_name`,
+    );
+    expect(achievementColumns.rows.map((row) => row.column_name)).toEqual(
+      expect.arrayContaining([
+        'availability',
+        'category',
+        'future_tag',
+        'reward_currency',
+        'reward_experience',
+        'reward_stars',
+        'updated_at',
+      ]),
+    );
+
+    const userAchievementColumns = await pool.query<{ column_name: string }>(
+      `select column_name
+         from information_schema.columns
+        where table_schema = 'public' and table_name = 'user_achievements'
+        order by column_name`,
+    );
+    expect(userAchievementColumns.rows.map((row) => row.column_name)).toEqual(
+      expect.arrayContaining(['claimed_at', 'completed_at', 'completion_context']),
+    );
+
+    const duelParticipantColumns = await pool.query<{ column_name: string }>(
+      `select column_name
+         from information_schema.columns
+        where table_schema = 'public' and table_name = 'amateur_duel_participant'
+        order by column_name`,
+    );
+    expect(duelParticipantColumns.rows.map((row) => row.column_name)).toContain(
+      'experience_snapshot',
+    );
 
     const inventory = await pool.query<{ title: string; photo_url: string }>(
       `select title, photo_url
@@ -153,6 +192,9 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '044_delete_accidental_telegram_user.sql',
       '045_weekly_challenges.sql',
       '046_weekly_challenge_declines.sql',
+      '047_achievements_rework.sql',
+      '048_duel_achievement_experience_snapshot.sql',
+      '049_amateur_unlock_300_goals.sql',
     ]);
   });
 });

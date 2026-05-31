@@ -32,6 +32,7 @@ interface MeRow {
   linked_providers: string[] | null;
   currency_balance: number;
   star_balance: number;
+  experience: number;
 }
 
 async function getMe(app: Parameters<FastifyPluginAsync>[0], userId: string) {
@@ -43,6 +44,7 @@ async function getMe(app: Parameters<FastifyPluginAsync>[0], userId: string) {
             u.tg_first_name, u.tg_last_name, u.tg_avatar_url, u.tg_username,
             u.vk_first_name, u.vk_last_name, u.vk_avatar_url, u.vk_username,
             u.xp::int as star_balance,
+            u.experience::int as experience,
             coalesce(uca.balance, 0)::int as currency_balance,
             coalesce(
               (select array_agg(ap.provider order by ap.provider)
@@ -77,8 +79,10 @@ async function getMe(app: Parameters<FastifyPluginAsync>[0], userId: string) {
     competitionLevel: profileProgress.competitionLevel,
     stats: profileProgress.stats,
     achievements: profileProgress.achievements,
+    unclaimedAchievementsCount: profileProgress.unclaimedAchievementsCount,
     currencyBalance: Number(row.currency_balance),
     starBalance: Number(row.star_balance),
+    experienceBalance: Number(row.experience),
     displaySource: row.display_source,
     customDisplayName: row.custom_display_name,
     customFirstName: row.custom_first_name,

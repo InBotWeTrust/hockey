@@ -14,6 +14,7 @@ import { assertAdminUser } from '../../chat/channel.js';
 import { invalidateUnreadCache } from '../../chat/cache.js';
 import { publishMessageNew } from '../../chat/events.js';
 import { findOrCreateDM, sendMessage } from '../../chat/service.js';
+import { evaluateDuelSettledAchievements } from '../../achievements/engine.js';
 import { AppError } from '../../plugins/errors.js';
 import { enqueueDuelPush } from '../../push/duel.js';
 import { appendEvent } from '../eventLog.js';
@@ -277,6 +278,7 @@ interface DuelParticipantRow {
   inventory_effects_snapshot: unknown;
   inventory_report: unknown;
   result_points: number;
+  experience_snapshot: number;
 }
 
 interface PeriodLogRow {
@@ -1174,7 +1176,7 @@ async function fetchParticipants(
             period_started_at, break_started_at, completed_at, shots_taken, goals, active_duration_ms,
             stake_reserved, entry_fee_paid, reserved_inventory_item_id,
             reserved_inventory_charges, consumed_inventory_charges,
-            inventory_effects_snapshot, inventory_report, result_points
+            inventory_effects_snapshot, inventory_report, result_points, experience_snapshot
        from amateur_duel_participant
       where match_id = $1
       order by side`,
@@ -1628,6 +1630,7 @@ async function settleMatchIfReady(
     outcome,
     winner_user_id: winnerUserId,
   });
+  await evaluateDuelSettledAchievements(client, { matchId: match.id, winnerUserId });
   return rows[0]!;
 }
 
@@ -2184,6 +2187,7 @@ async function activateReadyMatch(
               entry_fee_paid = $4,
               reserved_inventory_charges = $5,
               inventory_effects_snapshot = $6,
+              experience_snapshot = coalesce((select experience from users where id = $2), 0),
               updated_at = now()
         where match_id = $1 and user_id = $2`,
       [

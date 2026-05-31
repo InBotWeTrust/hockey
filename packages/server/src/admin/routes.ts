@@ -4,6 +4,11 @@ import type { Pool, PoolClient } from 'pg';
 import { z } from 'zod';
 import { DAILY_PERIOD_SPEED_PRESETS, GAME_CORE_VERSION, GOALIES, STICKS } from '@hockey/game-core';
 import { AppError } from '../plugins/errors.js';
+import {
+  ACHIEVEMENT_AVAILABILITIES,
+  ACHIEVEMENT_CATEGORIES,
+  ACHIEVEMENT_FUTURE_TAGS,
+} from '../achievements/catalog.js';
 import { appendEvent } from '../duel/eventLog.js';
 import { listGameSettings, saveGameSetting, type GameSettingDTO } from '../duel/gameSettings.js';
 import { buildProfileProgress } from '../profile/summary.js';
@@ -335,6 +340,25 @@ interface AdminInventoryItemRow {
   paid_revenue?: string;
 }
 
+interface AdminAchievementRow {
+  id: string;
+  photo_url: string;
+  title: string;
+  description: string;
+  requirement: string;
+  category: string;
+  availability: string;
+  future_tag: string | null;
+  reward_currency: number | string;
+  reward_stars: number | string;
+  reward_experience: number | string;
+  sort_order: number;
+  created_at: Date;
+  updated_at: Date;
+  completed_count?: string;
+  claimed_count?: string;
+}
+
 interface AdminFeedbackRow {
   id: string;
   user_id: string | null;
@@ -459,6 +483,45 @@ const userPatchSchema = z
 const settingPatchSchema = z.object({
   value: z.union([z.string(), z.number(), z.boolean()]),
 });
+
+const achievementPatchSchema = z
+  .object({
+    photoUrl: z
+      .string()
+      .trim()
+      .refine(
+        (value) =>
+          value === '' || value.startsWith('/') || z.string().url().safeParse(value).success,
+        'invalid photo url',
+      )
+      .optional(),
+    title: z.string().trim().min(1).max(120).optional(),
+    description: z.string().trim().max(1000).optional(),
+    requirement: z.string().trim().min(1).max(1000).optional(),
+    category: z.enum(ACHIEVEMENT_CATEGORIES).optional(),
+    availability: z.enum(ACHIEVEMENT_AVAILABILITIES).optional(),
+    futureTag: z.enum(ACHIEVEMENT_FUTURE_TAGS).nullable().optional(),
+    rewardCurrency: z.number().int().min(0).max(9_000_000_000).optional(),
+    rewardStars: z.number().int().min(0).max(9_000_000_000).optional(),
+    rewardExperience: z.number().int().min(0).max(9_000_000_000).optional(),
+    sortOrder: z.number().int().min(0).max(1_000_000).optional(),
+  })
+  .strict()
+  .refine(
+    (value) =>
+      value.photoUrl !== undefined ||
+      value.title !== undefined ||
+      value.description !== undefined ||
+      value.requirement !== undefined ||
+      value.category !== undefined ||
+      value.availability !== undefined ||
+      value.futureTag !== undefined ||
+      value.rewardCurrency !== undefined ||
+      value.rewardStars !== undefined ||
+      value.rewardExperience !== undefined ||
+      value.sortOrder !== undefined,
+    'no changes',
+  );
 
 const listPaymentsQuerySchema = z.object({
   q: z.string().trim().min(1).max(80).optional(),
@@ -1156,6 +1219,27 @@ function mapPayment(row: AdminPaymentRow) {
   };
 }
 
+function mapAdminAchievement(row: AdminAchievementRow) {
+  return {
+    id: row.id,
+    photoUrl: row.photo_url,
+    title: row.title,
+    description: row.description,
+    requirement: row.requirement,
+    category: row.category,
+    availability: row.availability,
+    futureTag: row.future_tag,
+    rewardCurrency: Number(row.reward_currency),
+    rewardStars: Number(row.reward_stars),
+    rewardExperience: Number(row.reward_experience),
+    sortOrder: row.sort_order,
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
+    completedCount: Number(row.completed_count ?? 0),
+    claimedCount: Number(row.claimed_count ?? 0),
+  };
+}
+
 function mapInventoryItem(row: AdminInventoryItemRow) {
   return {
     id: row.id,
@@ -1674,7 +1758,7 @@ async function fetchAdminUser(client: Pool | PoolClient, userId: string): Promis
                   (select (value #>> '{}')::int
                      from game_settings
                     where key = 'amateur.unlock_goals_required'),
-                  1000
+                  300
                 ) then 'amateur'
               else 'beginner'
             end as competition_level,
@@ -1972,6 +2056,99 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
       value: setting.value,
     });
     return setting;
+  });
+
+  app.get('/admin/achievements', { preHandler: adminPreHandlers }, async () => {
+    const { rows } = await app.pg.query<AdminAchievementRow>(
+      `select a.id,
+              a.photo_url,
+              a.title,
+              a.description,
+              a.requirement,
+              a.category,
+              a.availability,
+              a.future_tag,
+              a.reward_currency,
+              a.reward_stars,
+              a.reward_experience,
+              a.sort_order,
+              a.created_at,
+              a.updated_at,
+              count(ua.user_id)::text as completed_count,
+              count(ua.user_id) filter (where ua.claimed_at is not null)::text as claimed_count
+         from achievements a
+         left join user_achievements ua on ua.achievement_id = a.id
+        group by a.id
+        order by a.sort_order asc, a.created_at asc`,
+    );
+    return { achievements: rows.map(mapAdminAchievement) };
+  });
+
+  app.patch('/admin/achievements/:achievementId', { preHandler: adminPreHandlers }, async (req) => {
+    const params = z.object({ achievementId: z.string().min(1).max(120) }).parse(req.params);
+    const body = achievementPatchSchema.safeParse(req.body);
+    if (!body.success) {
+      throw new AppError('bad_request', 'invalid achievement patch', 400);
+    }
+
+    const assignments: string[] = [];
+    const values: unknown[] = [];
+    if (body.data.photoUrl !== undefined) {
+      addAssignment(assignments, values, 'photo_url', body.data.photoUrl);
+    }
+    if (body.data.title !== undefined) addAssignment(assignments, values, 'title', body.data.title);
+    if (body.data.description !== undefined) {
+      addAssignment(assignments, values, 'description', body.data.description);
+    }
+    if (body.data.requirement !== undefined) {
+      addAssignment(assignments, values, 'requirement', body.data.requirement);
+    }
+    if (body.data.category !== undefined) {
+      addAssignment(assignments, values, 'category', body.data.category);
+    }
+    if (body.data.availability !== undefined) {
+      addAssignment(assignments, values, 'availability', body.data.availability);
+    }
+    if (body.data.futureTag !== undefined) {
+      addAssignment(assignments, values, 'future_tag', body.data.futureTag);
+    }
+    if (body.data.rewardCurrency !== undefined) {
+      addAssignment(assignments, values, 'reward_currency', body.data.rewardCurrency);
+    }
+    if (body.data.rewardStars !== undefined) {
+      addAssignment(assignments, values, 'reward_stars', body.data.rewardStars);
+    }
+    if (body.data.rewardExperience !== undefined) {
+      addAssignment(assignments, values, 'reward_experience', body.data.rewardExperience);
+    }
+    if (body.data.sortOrder !== undefined) {
+      addAssignment(assignments, values, 'sort_order', body.data.sortOrder);
+    }
+
+    values.push(params.achievementId);
+    const { rows } = await app.pg.query<AdminAchievementRow>(
+      `update achievements
+          set ${assignments.join(', ')},
+              updated_at = now()
+        where id = $${values.length}
+      returning id, photo_url, title, description, requirement, category, availability, future_tag,
+                reward_currency, reward_stars, reward_experience, sort_order, created_at,
+                updated_at,
+                (select count(*)::text from user_achievements where achievement_id = achievements.id)
+                  as completed_count,
+                (select count(*)::text
+                   from user_achievements
+                  where achievement_id = achievements.id and claimed_at is not null) as claimed_count`,
+      values,
+    );
+    if (rows.length === 0) {
+      throw new AppError('not_found', 'achievement not found', 404);
+    }
+    await appendEvent(app.pg, req.user.id, 'admin_achievement_updated', {
+      achievement_id: params.achievementId,
+      fields: Object.keys(body.data),
+    });
+    return { achievement: mapAdminAchievement(rows[0]!) };
   });
 
   app.get('/admin/channel/news', { preHandler: adminPreHandlers }, async (req) => {
@@ -2824,7 +3001,7 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
                             (select (value #>> '{}')::int
                                from game_settings
                               where key = 'amateur.unlock_goals_required'),
-                            1000
+                            300
                           ) then 'amateur'
                         else 'beginner'
                       end as competition_level,

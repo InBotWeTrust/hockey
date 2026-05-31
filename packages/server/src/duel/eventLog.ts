@@ -17,6 +17,7 @@ export type EventType =
   | 'weekly_challenge_joined'
   | 'weekly_challenge_reward_claimed'
   | 'admin_user_updated'
+  | 'admin_achievement_updated'
   | 'admin_game_setting_updated'
   | 'admin_duel_template_created'
   | 'admin_duel_template_updated'
