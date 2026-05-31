@@ -145,6 +145,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '041_shop_inventory_variants.sql',
       '042_dedupe_shop_inventory_variants.sql',
       '043_training_daily_cooldown_30_minutes.sql',
+      '044_delete_accidental_telegram_user.sql',
     ]);
   });
 });
