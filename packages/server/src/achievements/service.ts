@@ -107,10 +107,24 @@ export async function grantStatAchievements(
   userId: string,
   stats: AchievementStats,
 ): Promise<void> {
-  const achievementIds = STAT_ACHIEVEMENT_RULES.filter((rule) => rule.isSatisfied(stats)).map(
-    (rule) => rule.id,
-  );
+  const achievementIds: string[] = STAT_ACHIEVEMENT_RULES.filter((rule) =>
+    rule.isSatisfied(stats),
+  ).map((rule) => rule.id);
+  if (await hasPaidPurchase(db, userId)) achievementIds.push('wallet');
   await completeAchievements(db, userId, achievementIds, { source: 'stats', stats });
+}
+
+async function hasPaidPurchase(db: Queryable, userId: string): Promise<boolean> {
+  const { rows } = await db.query<{ exists: boolean }>(
+    `select exists (
+       select 1
+         from payments
+        where user_id = $1
+          and status = 'paid'
+     ) as exists`,
+    [userId],
+  );
+  return rows[0]?.exists === true;
 }
 
 export async function fetchAchievementCatalogueForUser(
