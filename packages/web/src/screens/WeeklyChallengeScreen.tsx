@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, CircleDollarSign, Star, TrendingUp } from 'lucide-react';
 import type { ReactNode } from 'react';
@@ -27,11 +28,27 @@ function dateText(value: string): string {
   return `${get('day')} ${get('month')}, ${get('hour')}:${get('minute')}`;
 }
 
-function statusText(challenge: WeeklyChallenge): string {
-  if (challenge.status === 'not_open') return 'Вход скоро откроется';
-  if (challenge.status === 'join_open') return 'Открыт набор участников';
-  if (challenge.status === 'running') return 'Челлендж идет';
-  return 'Челлендж завершен';
+function timerTargetText(challenge: WeeklyChallenge): { label: string; target: string } | null {
+  if (challenge.status === 'not_open') {
+    return { label: 'До открытия входа', target: challenge.joinOpenAt };
+  }
+  if (challenge.status === 'join_open') {
+    return { label: 'До старта', target: challenge.startAt };
+  }
+  if (challenge.status === 'running') {
+    return { label: 'До окончания', target: challenge.endAt };
+  }
+  return null;
+}
+
+function formatRemaining(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  if (days > 0) return `${days} д ${hours} ч ${minutes} мин`;
+  if (hours > 0) return `${hours} ч ${minutes} мин`;
+  return `${minutes} мин`;
 }
 
 function RewardChip({
@@ -82,8 +99,12 @@ function RewardChip({
 export function WeeklyChallengeScreen(): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const query = useQuery({ queryKey: ['weekly-challenge'], queryFn: fetchWeeklyChallenge });
   const challenge = query.data?.challenge ?? null;
+  const timer = challenge ? timerTargetText(challenge) : null;
+  const remainingText =
+    timer === null ? null : formatRemaining(Date.parse(timer.target) - nowMs);
   const join = useMutation({
     mutationFn: (id: string) => joinWeeklyChallenge(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['weekly-challenge'] }),
@@ -96,6 +117,11 @@ export function WeeklyChallengeScreen(): JSX.Element {
     mutationFn: (id: string) => claimWeeklyChallengeReward(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['weekly-challenge'] }),
   });
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   return (
     <main
@@ -164,9 +190,6 @@ export function WeeklyChallengeScreen(): JSX.Element {
             style={{ borderRadius: 26, padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}
           >
             <div>
-              <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--blue-accent)' }}>
-                {statusText(challenge)}
-              </div>
               <h1 style={{ margin: '4px 0 0', fontSize: 24, lineHeight: 1.1 }}>
                 {challenge.title}
               </h1>
@@ -177,6 +200,22 @@ export function WeeklyChallengeScreen(): JSX.Element {
                 <p style={{ margin: '8px 0 0', color: 'var(--muted)', lineHeight: 1.5 }}>
                   {challenge.description}
                 </p>
+              )}
+              {timer && remainingText && (
+                <div
+                  style={{
+                    marginTop: 10,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    color: 'var(--ink)',
+                    fontSize: 13,
+                    fontWeight: 900,
+                  }}
+                >
+                  <span style={{ color: 'var(--muted)', fontWeight: 800 }}>{timer.label}</span>
+                  <span>{remainingText}</span>
+                </div>
               )}
             </div>
 
