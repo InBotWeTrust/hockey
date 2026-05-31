@@ -14,6 +14,8 @@ export type EventType =
   | 'amateur_duel_inventory_reserved'
   | 'amateur_duel_settled'
   | 'amateur_duel_star_reward'
+  | 'weekly_challenge_joined'
+  | 'weekly_challenge_reward_claimed'
   | 'admin_user_updated'
   | 'admin_game_setting_updated'
   | 'admin_duel_template_created'

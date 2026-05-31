@@ -26,6 +26,11 @@ const DailyOverviewScreen = lazy(() =>
     default: module.DailyOverviewScreen,
   })),
 );
+const WeeklyChallengeScreen = lazy(() =>
+  import('../screens/WeeklyChallengeScreen.js').then((module) => ({
+    default: module.WeeklyChallengeScreen,
+  })),
+);
 const ProfileScreen = lazy(() =>
   import('../screens/ProfileScreen.js').then((module) => ({ default: module.ProfileScreen })),
 );
@@ -161,6 +166,14 @@ function AppFrame(): JSX.Element {
                 element={
                   <PrivateRoute>
                     <DailyOverviewScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/weekly-challenge"
+                element={
+                  <PrivateRoute>
+                    <WeeklyChallengeScreen />
                   </PrivateRoute>
                 }
               />

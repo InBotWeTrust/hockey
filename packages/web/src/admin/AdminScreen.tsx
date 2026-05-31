@@ -50,6 +50,7 @@ import { ADMIN_NAV_HOME_EVENT } from '../components/BottomNav.js';
 import { convertChatAvatarToWebp } from '../lib/chatAvatarImage.js';
 import { useDebouncedValue } from '../lib/useDebouncedValue.js';
 import { AchievementDetailsSheet, AchievementTile } from '../screens/profileSections.js';
+import { WeeklyChallengesAdmin } from './WeeklyChallengesAdmin.js';
 import {
   createAdminInventoryItem,
   createAdminDuelTemplate,
@@ -129,6 +130,7 @@ type AdminTab =
   | 'payments'
   | 'inventory'
   | 'duels'
+  | 'weeklyChallenges'
   | 'feedback'
   | 'settings';
 type SortField = 'name' | 'goals' | 'accuracy';
@@ -147,6 +149,7 @@ const tabs: Array<{ id: AdminTab; label: string; icon: JSX.Element }> = [
   { id: 'payments', label: 'Платежи', icon: <CreditCard size={15} /> },
   { id: 'inventory', label: 'Инвентарь', icon: <Package size={15} /> },
   { id: 'duels', label: 'Дуэли', icon: <Trophy size={15} /> },
+  { id: 'weeklyChallenges', label: 'Челленджи', icon: <CalendarDays size={15} /> },
   { id: 'feedback', label: 'Отзывы', icon: <MessageSquare size={15} /> },
   { id: 'settings', label: 'Параметры', icon: <SlidersHorizontal size={15} /> },
 ];
@@ -855,6 +858,7 @@ export function AdminScreen(): JSX.Element {
           }}
         />
       )}
+      {tab === 'weeklyChallenges' && <WeeklyChallengesAdmin />}
       {tab === 'feedback' && (
         <FeedbackPanel
           loading={feedback.isLoading}

@@ -10,6 +10,7 @@ import { buildProfileProgress } from '../profile/summary.js';
 import { deleteChannelPost, updateChannelPostContent } from '../chat/channel.js';
 import { publishMessageDeleted, publishMessageUpdated } from '../chat/events.js';
 import { DEFAULT_NEWS_CHANNEL_SLUG } from '../chat/service.js';
+import { registerWeeklyChallengeAdminRoutes } from '../weeklyChallenge/admin.js';
 import { createMediaObjectKey, type ObjectStorageClient } from '../storage/objectStorage.js';
 import { createMediaProxyUrl } from '../storage/mediaAccess.js';
 import {
@@ -1775,6 +1776,8 @@ async function fetchAdminFeedbackById(
 }
 
 export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, opts) => {
+  await registerWeeklyChallengeAdminRoutes(app);
+
   app.addContentTypeParser(
     /^image\/webp$/i,
     {

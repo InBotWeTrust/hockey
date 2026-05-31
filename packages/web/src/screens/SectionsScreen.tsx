@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
+import { fetchWeeklyChallenge } from '../api/weeklyChallenge.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
 
@@ -8,6 +10,7 @@ const DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED = 1000;
 const SECTION_ARTWORK_SIZE = 86;
 
 const SECTION_ARTWORK = {
+  weekly: '/daily-game/start.webp',
   daily: '/daily-game/start.webp',
   training: '/modes/beginner.webp',
   amateur: '/modes/amateur.webp',
@@ -28,6 +31,10 @@ export function SectionsScreen(): JSX.Element {
   const trainingData = useTrainingSessionStore((s) => s.data);
   const refreshTraining = useTrainingSessionStore((s) => s.refresh);
   const [lockedInfo, setLockedInfo] = useState<{ title: string; text: string } | null>(null);
+  const weeklyChallenge = useQuery({
+    queryKey: ['weekly-challenge', 'section'],
+    queryFn: fetchWeeklyChallenge,
+  });
 
   useEffect(() => {
     void refreshDaily();
@@ -43,6 +50,15 @@ export function SectionsScreen(): JSX.Element {
   const trainingShotsLimit = trainingData?.shots_limit ?? 500;
   const trainingShotsTaken = trainingData?.shots_taken ?? 0;
   const dailyShotsLimit = (dailyData?.shots_per_period ?? 30) * (dailyData?.total_periods ?? 3);
+  const weeklyMeta = weeklyChallenge.data?.challenge
+    ? weeklyChallenge.data.challenge.status === 'running'
+      ? 'Челлендж идет'
+      : weeklyChallenge.data.challenge.status === 'join_open'
+        ? 'Открыт набор участников'
+        : weeklyChallenge.data.challenge.status === 'finished'
+          ? 'Челлендж завершен'
+          : 'Вход скоро откроется'
+    : 'На этой неделе нет активного челленджа';
 
   const openAmateurs = (): void => {
     if (!isAmateurUnlocked) {
@@ -75,6 +91,14 @@ export function SectionsScreen(): JSX.Element {
       >
         <div className="section-label section-label--page">Разделы</div>
 
+        <SectionCard
+          title="Еженедельный челлендж"
+          description="Недельные задания и награды"
+          meta={weeklyChallenge.isLoading ? 'Проверяем активность' : weeklyMeta}
+          tone={weeklyChallenge.data?.challenge ? 'active' : 'default'}
+          artworkSrc={SECTION_ARTWORK.weekly}
+          onClick={() => navigate('/weekly-challenge')}
+        />
         <SectionCard
           title="Ежедневная игра"
           description="Сегодняшняя игра и статистика прошедших дней"

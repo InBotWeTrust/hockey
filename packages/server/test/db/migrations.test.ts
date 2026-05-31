@@ -57,6 +57,10 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     expect(names).toContain('user_currency_account');
     expect(names).toContain('currency_ledger');
     expect(names).toContain('user_inventory_item');
+    expect(names).toContain('weekly_challenges');
+    expect(names).toContain('weekly_challenge_tasks');
+    expect(names).toContain('weekly_challenge_participants');
+    expect(names).toContain('weekly_challenge_reward_claims');
     expect(names).toContain('feedback_messages');
     expect(names).toContain('_migrations');
 
@@ -146,6 +150,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '042_dedupe_shop_inventory_variants.sql',
       '043_training_daily_cooldown_30_minutes.sql',
       '044_delete_accidental_telegram_user.sql',
+      '045_weekly_challenges.sql',
     ]);
   });
 });
