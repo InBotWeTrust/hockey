@@ -9,7 +9,11 @@ import {
   resolvePerspectiveCourtShot,
   type DailyPeriodSpeedPreset,
 } from '@hockey/game-core';
-import { grantAchievements } from '../../achievements/service.js';
+import {
+  evaluateDailyClosedAchievements,
+  evaluateDailyPeriodClosedAchievements,
+  evaluateDailyShotAchievements,
+} from '../../achievements/engine.js';
 import { AppError } from '../../plugins/errors.js';
 import { appendEvent } from '../eventLog.js';
 import { deriveDailySeed, deriveShotSeed } from '../seed.js';
@@ -635,6 +639,13 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
           pool.game_core_version,
         ],
       );
+      await evaluateDailyShotAchievements(client, {
+        userId: req.user.id,
+        dayPoolId: pool.id,
+        periodNumber: pool.current_period,
+        shotIndex: body.shot_index,
+        result: serverResult,
+      });
 
       if (body.claimed_result !== serverResult) {
         await appendEvent(client, req.user.id, 'shot_mismatch', {
@@ -681,9 +692,11 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
           shots_taken: settings.daily.shotsPerPeriod,
           goals,
         });
-        if (goals === settings.daily.shotsPerPeriod) {
-          await grantAchievements(client, req.user.id, ['sniper-hand']);
-        }
+        await evaluateDailyPeriodClosedAchievements(client, {
+          userId: req.user.id,
+          dayPoolId: pool.id,
+          periodNumber: pool.current_period,
+        });
         // After the LAST period — close the day directly. Otherwise enter
         // the regular break.
         const isFinalPeriod = pool.current_period >= settings.daily.totalPeriods;
@@ -703,10 +716,16 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
         const { rows } = await client.query<DayPoolRow>(updateSql, [periodEndedAt, pool.id]);
         currentPool = rows[0]!;
         if (isFinalPeriod) {
-          await grantAchievements(client, req.user.id, ['first-game']);
           await appendEvent(client, req.user.id, 'day_pool_closed', {
             day_pool_id: pool.id,
             reason: 'completed',
+          });
+          await evaluateDailyClosedAchievements(client, {
+            userId: req.user.id,
+            dayPoolId: pool.id,
+            dayDate: pool.day_date,
+            totalPeriods: settings.daily.totalPeriods,
+            shotsPerPeriod: settings.daily.shotsPerPeriod,
           });
         }
       }
