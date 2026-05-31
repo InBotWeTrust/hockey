@@ -1,5 +1,9 @@
 import type { Pool, PoolClient } from 'pg';
-import { fetchProfileAchievements, type ProfileAchievementDTO } from '../achievements/service.js';
+import {
+  fetchAchievementCatalogueForUser,
+  grantStatAchievements,
+  type ProfileAchievementDTO,
+} from '../achievements/service.js';
 import { getGameSettings } from '../duel/gameSettings.js';
 
 type Queryable = Pool | PoolClient;
@@ -18,6 +22,7 @@ export interface ProfileProgressDTO {
   competitionLevel: CompetitionLevel;
   stats: ProfileStatsDTO;
   achievements: ProfileAchievementDTO[];
+  unclaimedAchievementsCount: number;
 }
 
 export interface ProfileProgressRow {
@@ -114,14 +119,17 @@ export async function buildProfileProgress(
   const shots = toNumber(row.lifetime_shots_total);
   const goals = toNumber(row.lifetime_goals_total);
   const accuracy = shots > 0 ? Math.round((goals / shots) * 100) : 0;
-  const [settings, playStreakStats, achievements] = await Promise.all([
+  await grantStatAchievements(db, row.id, {
+    lifetimeShots: shots,
+    lifetimeGoals: goals,
+    level,
+  });
+
+  const [settings, playStreakStats, achievements, unclaimedAchievementsCount] = await Promise.all([
     getGameSettings(db),
     fetchPlayStreakStats(db, row.id, row.timezone),
-    fetchProfileAchievements(db, row.id, {
-      lifetimeShots: shots,
-      lifetimeGoals: goals,
-      level,
-    }),
+    fetchAchievementCatalogueForUser(db, row.id, { claimedOnly: true }),
+    fetchUnclaimedAchievementCount(db, row.id),
   ]);
 
   return {
@@ -134,5 +142,19 @@ export async function buildProfileProgress(
       bestPlayStreakDays: playStreakStats.bestDays,
     },
     achievements,
+    unclaimedAchievementsCount,
   };
+}
+
+export async function fetchUnclaimedAchievementCount(
+  db: Queryable,
+  userId: string,
+): Promise<number> {
+  const { rows } = await db.query<{ count: number | string }>(
+    `select count(*)::int as count
+       from user_achievements
+      where user_id = $1 and claimed_at is null`,
+    [userId],
+  );
+  return Number(rows[0]?.count ?? 0);
 }

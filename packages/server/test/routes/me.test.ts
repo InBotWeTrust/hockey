@@ -201,14 +201,13 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
       tgUsername: 'alice',
     });
     const fullBody = res.json() as {
-      achievements: Array<{ id: string; isUnlocked: boolean; photoUrl: string }>;
+      achievements: Array<{ id: string; status: string; photoUrl: string }>;
+      unclaimedAchievementsCount: number;
+      experienceBalance: number;
     };
-    expect(fullBody.achievements.length).toBeGreaterThan(0);
-    expect(fullBody.achievements.every((achievement) => !achievement.isUnlocked)).toBe(true);
-    expect(fullBody.achievements[0]).toMatchObject({
-      id: 'first-goal',
-      photoUrl: '/achievements/first-goal.webp',
-    });
+    expect(fullBody.achievements).toEqual([]);
+    expect(fullBody.unclaimedAchievementsCount).toBe(0);
+    expect(fullBody.experienceBalance).toBe(0);
   });
 
   it('enables the experimental training court for allowlisted Telegram users', async () => {
@@ -227,7 +226,7 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
     });
   });
 
-  it('unlocks stat achievements from lifetime totals', async () => {
+  it('completes stat achievements from lifetime totals without showing them as claimed', async () => {
     const { accessToken, user } = await loginTelegram({ id: '45' });
     await app.pg.query(
       `update users
@@ -254,16 +253,38 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
       },
     });
     const body = res.json() as {
-      achievements: Array<{ id: string; isUnlocked: boolean; unlockedAt?: string }>;
+      achievements: Array<{ id: string; status: string; completedAt?: string }>;
+      unclaimedAchievementsCount: number;
     };
-    expect(
-      body.achievements
-        .filter((achievement) => achievement.isUnlocked)
-        .map((achievement) => achievement.id),
-    ).toEqual(['first-goal', 'amateur-ticket']);
-    expect(
-      body.achievements.find((achievement) => achievement.id === 'first-goal')?.unlockedAt,
-    ).toEqual(expect.any(String));
+    expect(body.achievements).toEqual([]);
+    expect(body.unclaimedAchievementsCount).toBe(2);
+  });
+
+  it('reports unclaimed achievement count while profile achievements stay claimed-only', async () => {
+    const { accessToken, user } = await loginTelegram({ id: '145' });
+    await app.pg.query(
+      `insert into user_achievements (user_id, achievement_id, completed_at, claimed_at)
+       values
+         ($1, 'first-goal', now(), null),
+         ($1, 'first-training', now(), now())`,
+      [user.id],
+    );
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/me',
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      achievements: Array<{ id: string; status: string }>;
+      unclaimedAchievementsCount: number;
+    };
+    expect(body.unclaimedAchievementsCount).toBe(1);
+    expect(body.achievements).toEqual([
+      expect.objectContaining({ id: 'first-training', status: 'claimed' }),
+    ]);
   });
 
   it('counts consecutive play days from shots in any game mode', async () => {
