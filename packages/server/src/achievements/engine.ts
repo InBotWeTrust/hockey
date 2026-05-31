@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from 'pg';
+import { getAchievementProgress, setAchievementProgress } from './progress.js';
 import { completeAchievements } from './service.js';
 
 type Queryable = Pool | PoolClient;
@@ -49,6 +50,20 @@ export interface DailyClosedAchievementEvent {
   dayDate: string;
   totalPeriods: number;
   shotsPerPeriod: number;
+}
+
+export interface TrainingClosedAchievementEvent {
+  userId: string;
+  trainingSessionId: string;
+  dayDate: string;
+  shotsLimit: number;
+  dailyTotalPeriods?: number;
+  dailyShotsPerPeriod?: number;
+}
+
+interface TrainingStreakProgress {
+  count: number;
+  lastTrainingSessionId?: string;
 }
 
 export function hasGoalStreak(results: readonly ShotResult[], target: number): boolean {
@@ -172,6 +187,59 @@ export async function evaluateDailyClosedAchievements(
   });
 }
 
+export async function evaluateTrainingClosedAchievements(
+  db: Queryable,
+  event: TrainingClosedAchievementEvent,
+): Promise<void> {
+  const results = await fetchTrainingResults(db, event.trainingSessionId);
+  const goals = results.filter((result) => result === 'goal').length;
+  const completed = new Set<string>(['first-training']);
+  const finishedQuota = results.length >= event.shotsLimit;
+
+  if (finishedQuota && event.shotsLimit === 50 && results.length === 50 && goals >= 45) {
+    completed.add('training-monster');
+  }
+  if (finishedQuota && event.shotsLimit === 50 && results.length === 50 && goals === 49) {
+    completed.add('almost-perfect-training');
+  }
+  if (hasGoalStreak(results, 30)) completed.add('rhythm-control');
+  if (firstNAllGoals(results, 20)) completed.add('no-warmup-needed');
+  if (finishedQuota && event.shotsLimit >= 20 && lastNAllGoals(results, 20)) {
+    completed.add('finish-machine');
+  }
+
+  if (finishedQuota && event.shotsLimit === 50 && results.length === 50 && goals >= 40) {
+    const streak = await incrementTraining40Of50Streak(db, event.userId, event.trainingSessionId);
+    if (streak >= 5) completed.add('stable-student');
+  } else {
+    await resetTraining40Of50Streak(db, event.userId, event.trainingSessionId);
+  }
+
+  if (
+    await hasIdealDay(
+      db,
+      event.userId,
+      event.dayDate,
+      event.dailyTotalPeriods ?? 3,
+      event.dailyShotsPerPeriod ?? 30,
+    )
+  ) {
+    completed.add('ideal-day');
+  }
+
+  await setAchievementProgress(db, event.userId, 'training_before_duel_pending', {
+    trainingSessionId: event.trainingSessionId,
+    dayDate: event.dayDate,
+  });
+
+  await completeAchievements(db, event.userId, [...completed], {
+    source: 'training_closed',
+    ...event,
+    goals,
+    shots: results.length,
+  });
+}
+
 async function fetchDailyResults(db: Queryable, dayPoolId: string): Promise<ShotResult[]> {
   const { rows } = await db.query<{ server_result: ShotResult }>(
     `select server_result
@@ -199,6 +267,59 @@ async function fetchDailyPeriodResults(
     [dayPoolId, periodNumber],
   );
   return rows.map((row) => row.server_result);
+}
+
+async function fetchTrainingResults(
+  db: Queryable,
+  trainingSessionId: string,
+): Promise<ShotResult[]> {
+  const { rows } = await db.query<{ server_result: ShotResult }>(
+    `select server_result
+       from shot_session
+      where mode = 'training'
+        and training_session_id = $1
+      order by shot_index asc`,
+    [trainingSessionId],
+  );
+  return rows.map((row) => row.server_result);
+}
+
+async function incrementTraining40Of50Streak(
+  db: Queryable,
+  userId: string,
+  trainingSessionId: string,
+): Promise<number> {
+  const progress = await getAchievementProgress<TrainingStreakProgress>(
+    db,
+    userId,
+    'training_40_of_50_streak',
+  );
+  if (progress?.lastTrainingSessionId === trainingSessionId) {
+    return progress.count;
+  }
+  const count = (progress?.count ?? 0) + 1;
+  await setAchievementProgress(db, userId, 'training_40_of_50_streak', {
+    count,
+    lastTrainingSessionId: trainingSessionId,
+  });
+  return count;
+}
+
+async function resetTraining40Of50Streak(
+  db: Queryable,
+  userId: string,
+  trainingSessionId: string,
+): Promise<void> {
+  const progress = await getAchievementProgress<TrainingStreakProgress>(
+    db,
+    userId,
+    'training_40_of_50_streak',
+  );
+  if (progress?.lastTrainingSessionId === trainingSessionId && progress.count === 0) return;
+  await setAchievementProgress(db, userId, 'training_40_of_50_streak', {
+    count: 0,
+    lastTrainingSessionId: trainingSessionId,
+  });
 }
 
 async function fetchDailyPeriods(db: Queryable, dayPoolId: string): Promise<DailyPeriodStats[]> {

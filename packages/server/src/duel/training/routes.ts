@@ -9,7 +9,7 @@ import {
   resolvePerspectiveCourtShot,
   type DailyPeriodSpeedPreset,
 } from '@hockey/game-core';
-import { grantAchievements } from '../../achievements/service.js';
+import { evaluateTrainingClosedAchievements } from '../../achievements/engine.js';
 import { AppError } from '../../plugins/errors.js';
 import { appendEvent } from '../eventLog.js';
 import { deriveShotSeed, deriveTrainingSeed } from '../seed.js';
@@ -435,7 +435,14 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
           training_session_id: session.id,
           closed_reason: 'quota',
         });
-        await grantAchievements(client, req.user.id, ['first-training']);
+        await evaluateTrainingClosedAchievements(client, {
+          userId: req.user.id,
+          trainingSessionId: session.id,
+          dayDate: session.day_date,
+          shotsLimit: settings.training.shotsLimit,
+          dailyTotalPeriods: settings.daily.totalPeriods,
+          dailyShotsPerPeriod: settings.daily.shotsPerPeriod,
+        });
       }
 
       const nextSession = await fetchTodayTrainingSession(client, req.user.id, localToday);
