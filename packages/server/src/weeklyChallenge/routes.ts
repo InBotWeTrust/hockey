@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { AppError } from '../plugins/errors.js';
 import {
   claimWeeklyChallengeReward,
+  declineWeeklyChallenge,
   getCurrentWeeklyChallenge,
   joinWeeklyChallenge,
 } from './service.js';
@@ -37,6 +38,14 @@ export const weeklyChallengeRoutes: FastifyPluginAsync = async (app) => {
     const params = paramsSchema.safeParse(req.params);
     if (!params.success) throw new AppError('bad_request', 'invalid weekly challenge id', 400);
     return withTransaction(app, (client) => joinWeeklyChallenge(client, params.data.id, req.user.id));
+  });
+
+  app.post('/weekly-challenge/:id/decline', { preHandler: [app.authenticate] }, async (req) => {
+    const params = paramsSchema.safeParse(req.params);
+    if (!params.success) throw new AppError('bad_request', 'invalid weekly challenge id', 400);
+    return withTransaction(app, (client) =>
+      declineWeeklyChallenge(client, params.data.id, req.user.id),
+    );
   });
 
   app.post(

@@ -50,15 +50,18 @@ export function SectionsScreen(): JSX.Element {
   const trainingShotsLimit = trainingData?.shots_limit ?? 500;
   const trainingShotsTaken = trainingData?.shots_taken ?? 0;
   const dailyShotsLimit = (dailyData?.shots_per_period ?? 30) * (dailyData?.total_periods ?? 3);
+  const weeklyNeedsDecision = weeklyChallenge.data?.challenge?.canJoin === true;
   const weeklyMeta = weeklyChallenge.data?.challenge
-    ? weeklyChallenge.data.challenge.status === 'running'
+    ? weeklyNeedsDecision
+      ? 'Нужно подтвердить участие'
+      : weeklyChallenge.data.challenge.status === 'running'
       ? 'Челлендж идет'
       : weeklyChallenge.data.challenge.status === 'join_open'
         ? 'Открыт набор участников'
         : weeklyChallenge.data.challenge.status === 'finished'
           ? 'Челлендж завершен'
           : 'Вход скоро откроется'
-    : 'На этой неделе нет активного челленджа';
+    : 'Нет активного челленджа';
 
   const openAmateurs = (): void => {
     if (!isAmateurUnlocked) {
@@ -91,14 +94,6 @@ export function SectionsScreen(): JSX.Element {
       >
         <div className="section-label section-label--page">Разделы</div>
 
-        <SectionCard
-          title="Еженедельный челлендж"
-          description="Недельные задания и награды"
-          meta={weeklyChallenge.isLoading ? 'Проверяем активность' : weeklyMeta}
-          tone={weeklyChallenge.data?.challenge ? 'active' : 'default'}
-          artworkSrc={SECTION_ARTWORK.weekly}
-          onClick={() => navigate('/weekly-challenge')}
-        />
         <SectionCard
           title="Ежедневная игра"
           description="Сегодняшняя игра и статистика прошедших дней"
@@ -139,6 +134,15 @@ export function SectionsScreen(): JSX.Element {
           tone="muted"
           artworkSrc={SECTION_ARTWORK.pro}
           onClick={() => navigate('/?view=pro&from=sections')}
+        />
+        <SectionCard
+          title="Челлендж недели"
+          description="Недельные задания и награды"
+          meta={weeklyChallenge.isLoading ? 'Проверяем активность' : weeklyMeta}
+          tone={weeklyChallenge.data?.challenge ? 'active' : 'default'}
+          artworkSrc={SECTION_ARTWORK.weekly}
+          badge={weeklyNeedsDecision ? 'Нужно решение' : undefined}
+          onClick={() => navigate('/weekly-challenge')}
         />
         <SectionCard
           title="Магазин"
@@ -202,6 +206,7 @@ function SectionCard({
   tone,
   artworkSrc,
   progress,
+  badge,
   onClick,
 }: {
   title: string;
@@ -210,6 +215,7 @@ function SectionCard({
   tone: SectionTone;
   artworkSrc: string;
   progress?: number;
+  badge?: string | undefined;
   onClick: () => void;
 }): JSX.Element {
   const muted = tone === 'muted';
@@ -264,6 +270,27 @@ function SectionCard({
             }}
           />
         </div>
+      )}
+      {badge && (
+        <span
+          style={{
+            position: 'absolute',
+            top: 10,
+            right: 42,
+            maxWidth: 132,
+            padding: '5px 8px',
+            borderRadius: 999,
+            background: 'rgba(220, 38, 38, 0.92)',
+            color: '#ffffff',
+            fontSize: 10,
+            fontWeight: 900,
+            lineHeight: 1,
+            whiteSpace: 'nowrap',
+            boxShadow: '0 0 0 2px rgba(255,255,255,0.72)',
+          }}
+        >
+          {badge}
+        </span>
       )}
       <span
         aria-label={`Изображение раздела ${title}`}

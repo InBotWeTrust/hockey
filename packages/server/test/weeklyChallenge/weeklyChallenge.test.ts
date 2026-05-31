@@ -223,4 +223,31 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
     });
     expect(duplicate.statusCode).toBe(409);
   });
+
+  it('lets a player decline an open challenge invitation', async () => {
+    const challengeId = await createActiveChallenge();
+
+    const decline = await app.inject({
+      method: 'POST',
+      url: `/weekly-challenge/${challengeId}/decline`,
+      headers: authHeader(),
+    });
+    expect(decline.statusCode).toBe(200);
+    expect(decline.json().challenge).toMatchObject({
+      canJoin: false,
+      declinedAt: expect.any(String),
+      participant: null,
+    });
+
+    const current = await app.inject({
+      method: 'GET',
+      url: '/weekly-challenge/current',
+      headers: authHeader(),
+    });
+    expect(current.statusCode).toBe(200);
+    expect(current.json().challenge).toMatchObject({
+      canJoin: false,
+      declinedAt: expect.any(String),
+    });
+  });
 });

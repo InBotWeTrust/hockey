@@ -6,6 +6,7 @@ import { grantWeeklyChallengeReward } from './rewards.js';
 import type {
   WeeklyChallengeCurrentResponse,
   WeeklyChallengeDTO,
+  WeeklyChallengeDeclineRow,
   WeeklyChallengeParticipantRow,
   WeeklyChallengeRow,
   WeeklyChallengeStatus,
@@ -87,15 +88,30 @@ async function fetchParticipant(
   return rows[0] ?? null;
 }
 
+async function fetchDecline(
+  db: Queryable,
+  challengeId: string,
+  userId: string,
+): Promise<WeeklyChallengeDeclineRow | null> {
+  const { rows } = await db.query<WeeklyChallengeDeclineRow>(
+    `select *
+       from weekly_challenge_declines
+      where challenge_id = $1 and user_id = $2`,
+    [challengeId, userId],
+  );
+  return rows[0] ?? null;
+}
+
 async function mapChallenge(
   db: Queryable,
   challenge: WeeklyChallengeRow,
   userId: string,
   now: Date,
 ): Promise<WeeklyChallengeDTO> {
-  const [tasks, participant] = await Promise.all([
+  const [tasks, participant, decline] = await Promise.all([
     fetchTasks(db, challenge.id),
     fetchParticipant(db, challenge.id, userId),
+    fetchDecline(db, challenge.id, userId),
   ]);
   const status = resolveWeeklyChallengeStatus(challenge, now);
   const progressFrom = participant !== null ? challenge.start_at : null;
@@ -121,6 +137,7 @@ async function mapChallenge(
   const allTasksCompleted = taskDtos.length > 0 && taskDtos.every((task) => task.completed === true);
   const canJoin =
     participant === null &&
+    decline === null &&
     challenge.join_enabled &&
     status !== 'not_open' &&
     status !== 'finished';
@@ -148,6 +165,7 @@ async function mapChallenge(
             joinedAt: iso(participant.joined_at),
             rewardClaimedAt: participant.reward_claimed_at?.toISOString() ?? null,
           },
+    declinedAt: decline?.declined_at.toISOString() ?? null,
     tasks: taskDtos,
     canJoin,
     canClaimReward,
@@ -185,7 +203,38 @@ export async function joinWeeklyChallenge(
      on conflict (challenge_id, user_id) do nothing`,
     [challengeId, userId, now],
   );
+  await client.query(
+    `delete from weekly_challenge_declines where challenge_id = $1 and user_id = $2`,
+    [challengeId, userId],
+  );
   await appendEvent(client, userId, 'weekly_challenge_joined', { challenge_id: challengeId });
+  return getCurrentWeeklyChallenge(client, userId, now);
+}
+
+export async function declineWeeklyChallenge(
+  client: PoolClient,
+  challengeId: string,
+  userId: string,
+  now = new Date(),
+): Promise<WeeklyChallengeCurrentResponse> {
+  const challenge = await fetchChallengeForUpdate(client, challengeId);
+  if (!challenge) throw new AppError('not_found', 'weekly challenge not found', 404);
+  const status = resolveWeeklyChallengeStatus(challenge, now);
+  if (!challenge.join_enabled || status === 'not_open' || status === 'finished') {
+    throw new AppError('conflict', 'weekly challenge join is closed', 409);
+  }
+  const participant = await fetchParticipant(client, challengeId, userId);
+  if (participant !== null) {
+    throw new AppError('conflict', 'weekly challenge already joined', 409);
+  }
+
+  await client.query(
+    `insert into weekly_challenge_declines (challenge_id, user_id, declined_at)
+     values ($1, $2, $3)
+     on conflict (challenge_id, user_id)
+     do update set declined_at = excluded.declined_at`,
+    [challengeId, userId, now],
+  );
   return getCurrentWeeklyChallenge(client, userId, now);
 }
 

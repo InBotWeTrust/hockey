@@ -1,8 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Coins, Sparkles, Star } from 'lucide-react';
+import { ArrowLeft, CircleDollarSign, Star, TrendingUp } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   claimWeeklyChallengeReward,
+  declineWeeklyChallenge,
   fetchWeeklyChallenge,
   joinWeeklyChallenge,
   type WeeklyChallenge,
@@ -29,6 +31,51 @@ function statusText(challenge: WeeklyChallenge): string {
   return 'Челлендж завершен';
 }
 
+function RewardChip({
+  label,
+  value,
+  icon,
+  color,
+}: {
+  label: string;
+  value: number;
+  icon: ReactNode;
+  color: string;
+}): JSX.Element {
+  return (
+    <span
+      aria-label={`${label}: ${value}`}
+      title={`${label}: ${numberText(value)}`}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 5,
+        color,
+        fontSize: 18,
+        fontWeight: 950,
+        lineHeight: 1,
+        fontVariantNumeric: 'tabular-nums',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          width: 20,
+          height: 20,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flex: '0 0 20px',
+        }}
+      >
+        {icon}
+      </span>
+      <span>{numberText(value)}</span>
+    </span>
+  );
+}
+
 export function WeeklyChallengeScreen(): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -36,6 +83,10 @@ export function WeeklyChallengeScreen(): JSX.Element {
   const challenge = query.data?.challenge ?? null;
   const join = useMutation({
     mutationFn: (id: string) => joinWeeklyChallenge(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['weekly-challenge'] }),
+  });
+  const decline = useMutation({
+    mutationFn: (id: string) => declineWeeklyChallenge(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['weekly-challenge'] }),
   });
   const claim = useMutation({
@@ -46,7 +97,11 @@ export function WeeklyChallengeScreen(): JSX.Element {
   return (
     <main
       className="screen"
-      style={{ padding: 'calc(16px + var(--app-safe-top)) 14px 24px', overflowY: 'auto' }}
+      style={{
+        padding: 'calc(22px + var(--app-safe-top)) 24px 24px',
+        overflowY: 'auto',
+        WebkitOverflowScrolling: 'touch',
+      }}
     >
       <section
         style={{
@@ -58,15 +113,32 @@ export function WeeklyChallengeScreen(): JSX.Element {
           width: '100%',
         }}
       >
-        <button
-          type="button"
-          className="btn btn--ghost"
-          onClick={() => navigate('/sections')}
-          style={{ alignSelf: 'flex-start', padding: '10px 16px', fontSize: 13 }}
-        >
-          Назад
-        </button>
-        <div className="section-label section-label--page">Еженедельный челлендж</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={() => navigate('/sections')}
+            aria-label="Назад"
+            title="Назад"
+            style={{
+              width: 40,
+              height: 40,
+              minWidth: 40,
+              minHeight: 40,
+              borderRadius: 999,
+              padding: 0,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <ArrowLeft size={16} />
+          </button>
+          <h1 style={{ margin: 0, minWidth: 0, fontSize: 24, fontWeight: 800 }}>
+            Челлендж недели
+          </h1>
+        </div>
 
         {query.isLoading && (
           <div className="glass" style={{ borderRadius: 20, padding: 18 }}>
@@ -86,7 +158,7 @@ export function WeeklyChallengeScreen(): JSX.Element {
         {challenge && (
           <div
             className="glass"
-            style={{ borderRadius: 24, padding: 18, display: 'flex', flexDirection: 'column', gap: 14 }}
+            style={{ borderRadius: 26, padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}
           >
             <div>
               <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--blue-accent)' }}>
@@ -105,16 +177,25 @@ export function WeeklyChallengeScreen(): JSX.Element {
               )}
             </div>
 
-            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 13, fontWeight: 900 }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                <Coins size={14} /> {numberText(challenge.reward.coins)}
-              </span>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                <Star size={14} /> {numberText(challenge.reward.stars)}
-              </span>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                <Sparkles size={14} /> {numberText(challenge.reward.experience)}
-              </span>
+            <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'center' }}>
+              <RewardChip
+                label="Монеты"
+                value={challenge.reward.coins}
+                color="#9A6700"
+                icon={<CircleDollarSign size={20} strokeWidth={2.55} />}
+              />
+              <RewardChip
+                label="Звёзды"
+                value={challenge.reward.stars}
+                color="#B77900"
+                icon={<Star size={20} strokeWidth={2.55} fill="currentColor" />}
+              />
+              <RewardChip
+                label="Опыт"
+                value={challenge.reward.experience}
+                color="#158A86"
+                icon={<TrendingUp size={20} strokeWidth={2.55} />}
+              />
             </div>
 
             <div style={{ display: 'grid', gap: 10 }}>
@@ -157,14 +238,30 @@ export function WeeklyChallengeScreen(): JSX.Element {
             </div>
 
             {challenge.canJoin && (
-              <button
-                type="button"
-                className="btn btn--cta"
-                onClick={() => join.mutate(challenge.id)}
-                disabled={join.isPending}
-              >
-                Участвовать
-              </button>
+              <div style={{ display: 'grid', gridTemplateColumns: '0.82fr 1fr', gap: 10 }}>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => decline.mutate(challenge.id)}
+                  disabled={decline.isPending || join.isPending}
+                  style={{ padding: '12px 0', fontSize: 13 }}
+                >
+                  Отклонить
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--cta"
+                  onClick={() => join.mutate(challenge.id)}
+                  disabled={join.isPending || decline.isPending}
+                >
+                  Участвовать
+                </button>
+              </div>
+            )}
+            {!challenge.canJoin && challenge.declinedAt && !challenge.participant && (
+              <div style={{ fontSize: 13, fontWeight: 900, color: 'var(--muted)' }}>
+                Участие отклонено
+              </div>
             )}
             {challenge.canClaimReward && (
               <button

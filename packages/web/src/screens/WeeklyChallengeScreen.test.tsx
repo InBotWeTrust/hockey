@@ -46,6 +46,7 @@ describe('WeeklyChallengeScreen', () => {
         joinEnabled: true,
         reward: { coins: 100, stars: 5, experience: 50 },
         participant: null,
+        declinedAt: null,
         tasks: [
           {
             id: 'task-1',
@@ -63,10 +64,12 @@ describe('WeeklyChallengeScreen', () => {
       },
     });
     vi.mocked(api.joinWeeklyChallenge).mockResolvedValue({ challenge: null });
+    vi.mocked(api.declineWeeklyChallenge).mockResolvedValue({ challenge: null });
 
     renderScreen();
 
     expect(await screen.findByText('Неделя снайпера')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Отклонить' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Участвовать' }));
     await waitFor(() =>
       expect(api.joinWeeklyChallenge).toHaveBeenCalledWith(

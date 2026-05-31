@@ -45,6 +45,12 @@ export interface WeeklyChallengeParticipantRow {
   created_at: Date;
 }
 
+export interface WeeklyChallengeDeclineRow {
+  challenge_id: string;
+  user_id: string;
+  declined_at: Date;
+}
+
 export interface WeeklyChallengeTaskDTO {
   id: string;
   type: WeeklyChallengeTaskType;
@@ -65,6 +71,7 @@ export interface WeeklyChallengeDTO {
   joinEnabled: boolean;
   reward: { coins: number; stars: number; experience: number };
   participant: { joinedAt: string; rewardClaimedAt: string | null } | null;
+  declinedAt: string | null;
   tasks: WeeklyChallengeTaskDTO[];
   canJoin: boolean;
   canClaimReward: boolean;

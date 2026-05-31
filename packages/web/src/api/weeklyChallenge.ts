@@ -29,6 +29,7 @@ export interface WeeklyChallenge {
   joinEnabled: boolean;
   reward: { coins: number; stars: number; experience: number };
   participant: { joinedAt: string; rewardClaimedAt: string | null } | null;
+  declinedAt: string | null;
   tasks: WeeklyChallengeTask[];
   canJoin: boolean;
   canClaimReward: boolean;
@@ -46,6 +47,12 @@ export function fetchWeeklyChallenge(): Promise<WeeklyChallengeCurrentResponse> 
 
 export function joinWeeklyChallenge(id: string): Promise<WeeklyChallengeCurrentResponse> {
   return apiFetch<WeeklyChallengeCurrentResponse>(`/weekly-challenge/${id}/join`, {
+    method: 'POST',
+  });
+}
+
+export function declineWeeklyChallenge(id: string): Promise<WeeklyChallengeCurrentResponse> {
+  return apiFetch<WeeklyChallengeCurrentResponse>(`/weekly-challenge/${id}/decline`, {
     method: 'POST',
   });
 }
