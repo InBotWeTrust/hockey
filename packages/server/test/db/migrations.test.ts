@@ -192,6 +192,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '045_weekly_challenges.sql',
       '046_achievements_rework.sql',
       '047_duel_achievement_experience_snapshot.sql',
+      '048_amateur_unlock_300_goals.sql',
     ]);
   });
 });

@@ -40,7 +40,7 @@ function toNumber(value: number | string): number {
 export function resolveCompetitionLevel(
   level: number,
   lifetimeGoals: number,
-  amateurUnlockGoalsRequired = 1000,
+  amateurUnlockGoalsRequired = 300,
 ): CompetitionLevel {
   if (level >= 3) return 'professional';
   if (level >= 2 || lifetimeGoals >= amateurUnlockGoalsRequired) return 'amateur';

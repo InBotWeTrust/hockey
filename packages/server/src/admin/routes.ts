@@ -1674,7 +1674,7 @@ async function fetchAdminUser(client: Pool | PoolClient, userId: string): Promis
                   (select (value #>> '{}')::int
                      from game_settings
                     where key = 'amateur.unlock_goals_required'),
-                  1000
+                  300
                 ) then 'amateur'
               else 'beginner'
             end as competition_level,
@@ -2824,7 +2824,7 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
                             (select (value #>> '{}')::int
                                from game_settings
                               where key = 'amateur.unlock_goals_required'),
-                            1000
+                            300
                           ) then 'amateur'
                         else 'beginner'
                       end as competition_level,

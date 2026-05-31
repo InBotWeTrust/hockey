@@ -190,7 +190,7 @@ export const GAME_SETTING_DEFINITIONS: readonly GameSettingDefinition[] = [
     label: 'Голов для любителей',
     description: 'Сколько шайб нужно забить, чтобы открыть любительскую лигу.',
     type: 'number',
-    defaultValue: 1000,
+    defaultValue: 300,
     min: 0,
     max: 1_000_000,
   },
@@ -325,7 +325,7 @@ export async function getGameSettings(pool: Queryable): Promise<GameSettings> {
     amateur: {
       unlockGoalsRequired: Number.isFinite(amateurUnlockGoalsRequired)
         ? Math.max(0, Math.trunc(amateurUnlockGoalsRequired))
-        : 1000,
+        : 300,
     },
   };
 }
