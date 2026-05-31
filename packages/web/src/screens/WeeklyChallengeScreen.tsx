@@ -15,13 +15,16 @@ function numberText(value: number): string {
 }
 
 function dateText(value: string): string {
-  return new Intl.DateTimeFormat('ru-RU', {
+  const parts = new Intl.DateTimeFormat('ru-RU', {
     day: '2-digit',
-    month: '2-digit',
+    month: 'long',
     hour: '2-digit',
     minute: '2-digit',
     timeZone: 'Europe/Moscow',
-  }).format(new Date(value));
+  }).formatToParts(new Date(value));
+  const get = (type: Intl.DateTimeFormatPartTypes): string =>
+    parts.find((part) => part.type === type)?.value ?? '';
+  return `${get('day')} ${get('month')}, ${get('hour')}:${get('minute')}`;
 }
 
 function statusText(challenge: WeeklyChallenge): string {
