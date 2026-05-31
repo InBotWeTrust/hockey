@@ -268,6 +268,25 @@
   letter-spacing: 0.12em;
 }
 
+@keyframes reward-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+  16% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  82% {
+    opacity: 1;
+    transform: translateY(-4px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.98);
+  }
+}
+
 .chat-create-field {
   width: 100%;
   min-height: 44px;

@@ -39,6 +39,19 @@ export type AdminWeeklyChallengeTaskType =
   | 'duels_won'
   | 'duel_invites_sent'
   | 'trainings_completed';
+export type AdminAchievementCategory =
+  | 'daily'
+  | 'training'
+  | 'duel'
+  | 'tournament'
+  | 'shop'
+  | 'rating'
+  | 'level';
+export type AdminAchievementAvailability = 'active' | 'future' | 'hidden';
+export type AdminAchievementFutureTag =
+  | 'future/pro'
+  | 'future/tournament'
+  | 'future/monthly_rating';
 
 export interface AdminSummary {
   users: { total: number; admins: number; notifications: AdminNotificationStats };
@@ -693,6 +706,39 @@ export interface AdminGameSettingsResponse {
   };
 }
 
+export interface AdminAchievement {
+  id: string;
+  photoUrl: string;
+  title: string;
+  description: string;
+  requirement: string;
+  category: AdminAchievementCategory;
+  availability: AdminAchievementAvailability;
+  futureTag: AdminAchievementFutureTag | null;
+  rewardCurrency: number;
+  rewardStars: number;
+  rewardExperience: number;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+  completedCount: number;
+  claimedCount: number;
+}
+
+export interface AdminAchievementPatch {
+  photoUrl?: string;
+  title?: string;
+  description?: string;
+  requirement?: string;
+  category?: AdminAchievementCategory;
+  availability?: AdminAchievementAvailability;
+  futureTag?: AdminAchievementFutureTag | null;
+  rewardCurrency?: number;
+  rewardStars?: number;
+  rewardExperience?: number;
+  sortOrder?: number;
+}
+
 export interface AdminUserPatch {
   role?: AdminRole;
   displayName?: string;
@@ -1015,4 +1061,21 @@ export function patchAdminGameSetting(
     method: 'PATCH',
     body: JSON.stringify({ value }),
   });
+}
+
+export function fetchAdminAchievements(): Promise<{ achievements: AdminAchievement[] }> {
+  return apiFetch<{ achievements: AdminAchievement[] }>('/admin/achievements');
+}
+
+export function patchAdminAchievement(
+  achievementId: string,
+  body: AdminAchievementPatch,
+): Promise<{ achievement: AdminAchievement }> {
+  return apiFetch<{ achievement: AdminAchievement }>(
+    `/admin/achievements/${encodeURIComponent(achievementId)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    },
+  );
 }

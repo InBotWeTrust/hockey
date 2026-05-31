@@ -121,9 +121,7 @@ function ProfileResourceChip({
           justifyContent: 'center',
         }}
       >
-        <span style={{ display: 'inline-flex', transform: `scale(${iconSize / 14})` }}>
-          {icon}
-        </span>
+        <span style={{ display: 'inline-flex', transform: `scale(${iconSize / 14})` }}>{icon}</span>
       </span>
       <span>{compactValue}</span>
     </span>
@@ -226,7 +224,7 @@ const PROFILE_SECTION_INFO: Record<ProfileInfoSection, { title: string; copy: st
   },
   achievements: {
     title: 'Задания',
-    copy: 'Задания показывают важные игровые цели. Выполненные задания подсвечены, невыполненные остаются приглушёнными до выполнения условия.',
+    copy: 'В раздевалке показываются только уже полученные задания. Полный каталог и награды находятся в разделе заданий.',
   },
 };
 
@@ -890,6 +888,7 @@ export function ProfileScreen(): JSX.Element {
   const initial = (data?.displayName ?? '?').charAt(0).toUpperCase();
   const stats = data?.stats ?? EMPTY_PROFILE_STATS;
   const achievements = data?.achievements ?? [];
+  const unclaimedAchievementsCount = data?.unclaimedAchievementsCount ?? 0;
   const tokenBalance = inventoryQuery.data?.balances.tokens ?? data?.currencyBalance ?? 0;
   const starBalance = inventoryQuery.data?.balances.stars ?? data?.starBalance ?? 0;
   const experienceBalance =
@@ -982,10 +981,7 @@ export function ProfileScreen(): JSX.Element {
         >
           <Settings size={18} />
         </button>
-        <ProfileAvatar
-          avatarUrl={data?.avatarUrl ?? undefined}
-          initial={initial}
-        />
+        <ProfileAvatar avatarUrl={data?.avatarUrl ?? undefined} initial={initial} />
         <div
           style={{
             minWidth: 0,
@@ -1114,6 +1110,32 @@ export function ProfileScreen(): JSX.Element {
           if (!suppressClickRef.current) setSelectedAchievement(achievement);
         }}
       />
+      {unclaimedAchievementsCount > 0 && (
+        <button
+          type="button"
+          className="glass"
+          data-no-drag-scroll="true"
+          onClick={() => navigate('/achievements')}
+          style={{
+            margin: '0 14px 14px',
+            width: 'calc(100% - 28px)',
+            border: '1px solid rgba(255,255,255,0.76)',
+            borderRadius: 8,
+            padding: '12px 14px',
+            textAlign: 'left',
+            color: 'var(--ink)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+          }}
+        >
+          <span style={{ minWidth: 0, fontSize: 13, fontWeight: 900 }}>Награды ждут получения</span>
+          <span className="pill pill--dark" style={{ padding: '5px 10px', fontSize: 11 }}>
+            {unclaimedAchievementsCount}
+          </span>
+        </button>
+      )}
 
       {selectedAchievement !== null && (
         <AchievementDetailsSheet

@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from 'pg';
+import { getGameSettings } from '../duel/gameSettings.js';
 
 type Queryable = Pool | PoolClient;
 
@@ -51,15 +52,15 @@ const STAT_ACHIEVEMENT_RULES = [
     id: 'first-goal',
     isSatisfied: (stats: AchievementStats) => stats.lifetimeGoals >= 1,
   },
-  {
-    id: 'amateur-ticket',
-    isSatisfied: (stats: AchievementStats) => stats.lifetimeGoals >= 300,
-  },
 ] as const;
 
 function mapAchievementRow(row: AchievementRow): ProfileAchievementDTO {
   const status: AchievementStatus =
-    row.completed_at === null ? 'locked' : row.claimed_at === null ? 'completed_unclaimed' : 'claimed';
+    row.completed_at === null
+      ? 'locked'
+      : row.claimed_at === null
+        ? 'completed_unclaimed'
+        : 'claimed';
 
   return {
     id: row.id,
@@ -110,6 +111,10 @@ export async function grantStatAchievements(
   const achievementIds: string[] = STAT_ACHIEVEMENT_RULES.filter((rule) =>
     rule.isSatisfied(stats),
   ).map((rule) => rule.id);
+  const settings = await getGameSettings(db);
+  if (stats.lifetimeGoals >= settings.amateur.unlockGoalsRequired) {
+    achievementIds.push('amateur-ticket');
+  }
   if (await hasPaidPurchase(db, userId)) achievementIds.push('wallet');
   await completeAchievements(db, userId, achievementIds, { source: 'stats', stats });
 }

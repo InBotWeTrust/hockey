@@ -3,6 +3,7 @@ import { useLocation, useNavigate, type Location } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Gamepad2, MessageCircle, Package, ShieldCheck, User } from 'lucide-react';
 import { apiFetch } from '../api/apiFetch.js';
+import { achievementKeys, fetchAchievements } from '../api/achievements.js';
 import { fetchAmateurEvents, type AmateurDuelMatch } from '../api/amateurDuel.js';
 import { fetchWeeklyChallenge } from '../api/weeklyChallenge.js';
 import { useAuthStore } from '../auth/authStore.js';
@@ -48,6 +49,7 @@ function isChatRoute(pathname: string): boolean {
 function isSectionContext(location: ReturnType<typeof useLocation>): boolean {
   if (
     location.pathname.startsWith('/sections') ||
+    location.pathname.startsWith('/achievements') ||
     location.pathname.startsWith('/inventory') ||
     location.pathname.startsWith('/daily')
   ) {
@@ -133,6 +135,12 @@ export function BottomNav(): JSX.Element | null {
     enabled: Boolean(user) && !isDemo,
     refetchInterval: 60_000,
   });
+  const { data: achievements } = useQuery({
+    queryKey: achievementKeys.all,
+    queryFn: fetchAchievements,
+    enabled: Boolean(user) && !isDemo,
+    refetchInterval: 30_000,
+  });
   const { data: refreshedUser } = useQuery<AuthUser>({
     queryKey: ['auth', 'me-role'],
     queryFn: () => apiFetch<AuthUser>('/me'),
@@ -183,7 +191,8 @@ export function BottomNav(): JSX.Element | null {
   const isChat = !isDemo && isChatRoute(location.pathname);
   const showAdmin = !isDemo && user?.role === 'admin';
   const gameActionCount = (amateurEvents?.events ?? []).filter(isActionableDuelEvent).length;
-  const sectionActionCount = weeklyChallenge?.challenge?.canJoin === true ? 1 : 0;
+  const sectionActionCount =
+    (weeklyChallenge?.challenge?.canJoin === true ? 1 : 0) + (achievements?.unclaimedCount ?? 0);
   const inactiveIconColor = isDemo ? 'rgba(71, 85, 105, 0.48)' : 'var(--muted)';
   const openLastGameRoute = (): void => {
     rememberRoute(LAST_GAME_ROUTE_KEY, DEFAULT_GAME_ROUTE);

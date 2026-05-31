@@ -42,6 +42,11 @@ const ProfileSettingsScreen = lazy(() =>
 const SectionsScreen = lazy(() =>
   import('../screens/SectionsScreen.js').then((module) => ({ default: module.SectionsScreen })),
 );
+const AchievementsScreen = lazy(() =>
+  import('../screens/AchievementsScreen.js').then((module) => ({
+    default: module.AchievementsScreen,
+  })),
+);
 const TestCourtScreen = lazy(() =>
   import('../screens/TestCourtScreen.js').then((module) => ({ default: module.TestCourtScreen })),
 );
@@ -150,6 +155,14 @@ function AppFrame(): JSX.Element {
                 element={
                   <PrivateRoute>
                     <SectionsScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/achievements"
+                element={
+                  <PrivateRoute>
+                    <AchievementsScreen />
                   </PrivateRoute>
                 }
               />

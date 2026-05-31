@@ -126,3 +126,5 @@ on conflict (user_id, achievement_id) do update
        completion_context = user_achievements.completion_context || excluded.completion_context;
 
 delete from user_achievements where achievement_id = 'first-game';
+
+delete from achievements where id in ('first-game', 'sniper-hand');

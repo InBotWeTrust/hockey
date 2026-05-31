@@ -62,6 +62,7 @@ import {
   fetchAdminDuelTemplates,
   fetchAdminFeedback,
   fetchAdminGameSettings,
+  fetchAdminAchievements,
   fetchAdminInventory,
   fetchAdminMismatches,
   fetchAdminNotifications,
@@ -77,6 +78,7 @@ import {
   patchAdminDuelTemplate,
   patchAdminInventoryGameplay,
   patchAdminInventoryItem,
+  patchAdminAchievement,
   patchAdminGameSetting,
   patchAdminNotification,
   patchAdminUser,
@@ -84,6 +86,11 @@ import {
   type AdminDashboard,
   type AdminDashboardPeriod,
   type AdminDashboardSeriesPoint,
+  type AdminAchievement,
+  type AdminAchievementAvailability,
+  type AdminAchievementCategory,
+  type AdminAchievementFutureTag,
+  type AdminAchievementPatch,
   type AdminDuelHistoryItem,
   type AdminDuelHistoryResponse,
   type AdminDuelPeriodSpeedPreset,
@@ -129,6 +136,7 @@ type AdminTab =
   | 'anticheat'
   | 'payments'
   | 'inventory'
+  | 'achievements'
   | 'duels'
   | 'weeklyChallenges'
   | 'feedback'
@@ -136,7 +144,7 @@ type AdminTab =
 type SortField = 'name' | 'goals' | 'accuracy';
 type SortDirection = 'asc' | 'desc';
 type AdminIdentity = AdminUser['identities'][number];
-type AdminAchievement = AdminUserDetail['achievements'][number];
+type AdminUserAchievement = AdminUserDetail['achievements'][number];
 type SettingsSectionId = 'daily' | 'training' | 'amateur' | 'pro';
 type AdminFeedbackStatus = AdminFeedbackQuery['status'];
 
@@ -148,6 +156,7 @@ const tabs: Array<{ id: AdminTab; label: string; icon: JSX.Element }> = [
   { id: 'anticheat', label: 'Античит', icon: <ShieldAlert size={15} /> },
   { id: 'payments', label: 'Платежи', icon: <CreditCard size={15} /> },
   { id: 'inventory', label: 'Инвентарь', icon: <Package size={15} /> },
+  { id: 'achievements', label: 'Задания', icon: <Medal size={15} /> },
   { id: 'duels', label: 'Дуэли', icon: <Trophy size={15} /> },
   { id: 'weeklyChallenges', label: 'Челленджи', icon: <CalendarDays size={15} /> },
   { id: 'feedback', label: 'Отзывы', icon: <MessageSquare size={15} /> },
@@ -240,6 +249,29 @@ const inventoryItemKindOptions: Array<GlassSelectOption<AdminInventoryItemKind>>
   { value: 'skates', label: 'Коньки' },
   { value: 'nutrition', label: 'Энергия' },
   { value: 'consumable', label: 'Расходник' },
+];
+
+const achievementCategoryOptions: Array<GlassSelectOption<AdminAchievementCategory>> = [
+  { value: 'daily', label: 'Ежедневная' },
+  { value: 'training', label: 'Тренировка' },
+  { value: 'duel', label: 'Дуэли' },
+  { value: 'tournament', label: 'Турниры' },
+  { value: 'shop', label: 'Магазин' },
+  { value: 'rating', label: 'Рейтинг' },
+  { value: 'level', label: 'Уровни' },
+];
+
+const achievementAvailabilityOptions: Array<GlassSelectOption<AdminAchievementAvailability>> = [
+  { value: 'active', label: 'Активно' },
+  { value: 'future', label: 'Будущее' },
+  { value: 'hidden', label: 'Скрыто' },
+];
+
+const achievementFutureTagOptions: Array<GlassSelectOption<AdminAchievementFutureTag | 'none'>> = [
+  { value: 'none', label: 'Без метки' },
+  { value: 'future/pro', label: 'future/pro' },
+  { value: 'future/tournament', label: 'future/tournament' },
+  { value: 'future/monthly_rating', label: 'future/monthly_rating' },
 ];
 
 const roleOptions: Array<GlassSelectOption<AdminRole>> = [
@@ -492,6 +524,17 @@ function AdminPlainState({
   );
 }
 
+function AdminMetric({ label, value }: { label: string; value: number }): JSX.Element {
+  return (
+    <div className="glass" style={{ borderRadius: 16, padding: 10, boxShadow: 'none' }}>
+      <div style={{ color: 'var(--muted)', fontSize: 10, fontWeight: 850 }}>{label}</div>
+      <div style={{ marginTop: 3, color: 'var(--ink)', fontSize: 17, fontWeight: 950 }}>
+        {numberText(value)}
+      </div>
+    </div>
+  );
+}
+
 function minutesText(value: number): string {
   if (value <= 0) return '0 мин';
   if (value < 60) return `${numberText(value)} мин`;
@@ -608,6 +651,11 @@ export function AdminScreen(): JSX.Element {
     queryFn: fetchAdminGameSettings,
     enabled: canTryAdmin && tab === 'settings',
   });
+  const achievements = useQuery({
+    queryKey: ['admin', 'achievements'],
+    queryFn: fetchAdminAchievements,
+    enabled: canTryAdmin && tab === 'achievements',
+  });
   const paymentsQuery = {
     q: debouncedPaymentSearch,
     status: paymentStatus,
@@ -667,6 +715,7 @@ export function AdminScreen(): JSX.Element {
       users.error,
       summary.error,
       settings.error,
+      achievements.error,
       payments.error,
       inventory.error,
       duelTemplates.error,
@@ -846,6 +895,16 @@ export function AdminScreen(): JSX.Element {
           items={inventory.data?.items ?? []}
           onChanged={() => {
             void queryClient.invalidateQueries({ queryKey: ['admin', 'inventory'] });
+          }}
+        />
+      )}
+      {tab === 'achievements' && (
+        <AchievementsAdminPanel
+          loading={achievements.isLoading}
+          achievements={achievements.data?.achievements ?? []}
+          onChanged={() => {
+            void queryClient.invalidateQueries({ queryKey: ['admin', 'achievements'] });
+            void queryClient.invalidateQueries({ queryKey: ['achievements'] });
           }}
         />
       )}
@@ -1922,7 +1981,7 @@ function UserDetailsModal({
   const user = detail.data?.user ?? fallback;
   const [editMode, setEditMode] = useState(false);
   const [showPurchases, setShowPurchases] = useState(false);
-  const [selectedAchievement, setSelectedAchievement] = useState<AdminAchievement | null>(null);
+  const [selectedAchievement, setSelectedAchievement] = useState<AdminUserAchievement | null>(null);
   const [confirmAction, setConfirmAction] = useState<'save' | 'block' | null>(null);
   const [role, setRole] = useState<AdminRole>(user.role);
   const [displayName, setDisplayName] = useState(user.displayName);
@@ -2305,8 +2364,8 @@ function AdminAchievementsRow({
   achievements,
   onOpenAchievement,
 }: {
-  achievements: AdminAchievement[];
-  onOpenAchievement: (achievement: AdminAchievement) => void;
+  achievements: AdminUserAchievement[];
+  onOpenAchievement: (achievement: AdminUserAchievement) => void;
 }): JSX.Element {
   const unlocked = achievements.filter((achievement) => achievement.isUnlocked).length;
 
@@ -5131,6 +5190,332 @@ function InventoryEditor({
         </div>
       )}
     </section>
+  );
+}
+
+function AchievementsAdminPanel({
+  loading,
+  achievements,
+  onChanged,
+}: {
+  loading: boolean;
+  achievements: AdminAchievement[];
+  onChanged: () => void;
+}): JSX.Element {
+  const [category, setCategory] = useState<AdminAchievementCategory | 'all'>('all');
+  const [availability, setAvailability] = useState<AdminAchievementAvailability | 'all'>('all');
+  const [query, setQuery] = useState('');
+  const normalizedQuery = query.trim().toLowerCase();
+  const filtered = achievements.filter((achievement) => {
+    if (category !== 'all' && achievement.category !== category) return false;
+    if (availability !== 'all' && achievement.availability !== availability) return false;
+    if (normalizedQuery.length === 0) return true;
+    return (
+      achievement.title.toLowerCase().includes(normalizedQuery) ||
+      achievement.id.toLowerCase().includes(normalizedQuery) ||
+      achievement.requirement.toLowerCase().includes(normalizedQuery)
+    );
+  });
+  const futureCount = achievements.filter(
+    (achievement) => achievement.availability === 'future',
+  ).length;
+  const activeCount = achievements.filter(
+    (achievement) => achievement.availability === 'active',
+  ).length;
+
+  return (
+    <>
+      <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+        Задания
+      </div>
+      <section className="glass" style={{ borderRadius: 20, padding: 14 }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+            gap: 8,
+          }}
+        >
+          <AdminMetric label="Всего" value={achievements.length} />
+          <AdminMetric label="Активных" value={activeCount} />
+          <AdminMetric label="Future" value={futureCount} />
+        </div>
+        <div
+          style={{
+            marginTop: 12,
+            display: 'grid',
+            gridTemplateColumns: 'minmax(0, 1.1fr) minmax(0, 0.8fr) minmax(0, 0.8fr)',
+            gap: 8,
+          }}
+        >
+          <input
+            type="search"
+            placeholder="Поиск по заданию"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          <GlassSelect
+            value={category}
+            options={[{ value: 'all', label: 'Все категории' }, ...achievementCategoryOptions]}
+            onChange={(value) => setCategory(value as AdminAchievementCategory | 'all')}
+            ariaLabel="Категория заданий"
+          />
+          <GlassSelect
+            value={availability}
+            options={[{ value: 'all', label: 'Все статусы' }, ...achievementAvailabilityOptions]}
+            onChange={(value) => setAvailability(value as AdminAchievementAvailability | 'all')}
+            ariaLabel="Статус заданий"
+          />
+        </div>
+      </section>
+      {loading && <AdminPlainState>Загрузка...</AdminPlainState>}
+      {!loading && filtered.length === 0 && (
+        <AdminPlainState>Под такие фильтры заданий не нашлось.</AdminPlainState>
+      )}
+      <section style={{ display: 'grid', gap: 10 }}>
+        {filtered.map((achievement) => (
+          <AchievementAdminCard
+            key={achievement.id}
+            achievement={achievement}
+            onChanged={onChanged}
+          />
+        ))}
+      </section>
+    </>
+  );
+}
+
+function AchievementAdminCard({
+  achievement,
+  onChanged,
+}: {
+  achievement: AdminAchievement;
+  onChanged: () => void;
+}): JSX.Element {
+  const [draft, setDraft] = useState({
+    title: achievement.title,
+    description: achievement.description,
+    requirement: achievement.requirement,
+    photoUrl: achievement.photoUrl,
+    category: achievement.category,
+    availability: achievement.availability,
+    futureTag: achievement.futureTag ?? 'none',
+    rewardCurrency: String(achievement.rewardCurrency),
+    rewardStars: String(achievement.rewardStars),
+    rewardExperience: String(achievement.rewardExperience),
+    sortOrder: String(achievement.sortOrder),
+  });
+
+  useEffect(() => {
+    setDraft({
+      title: achievement.title,
+      description: achievement.description,
+      requirement: achievement.requirement,
+      photoUrl: achievement.photoUrl,
+      category: achievement.category,
+      availability: achievement.availability,
+      futureTag: achievement.futureTag ?? 'none',
+      rewardCurrency: String(achievement.rewardCurrency),
+      rewardStars: String(achievement.rewardStars),
+      rewardExperience: String(achievement.rewardExperience),
+      sortOrder: String(achievement.sortOrder),
+    });
+  }, [achievement]);
+
+  const rewardCurrency = Number(draft.rewardCurrency);
+  const rewardStars = Number(draft.rewardStars);
+  const rewardExperience = Number(draft.rewardExperience);
+  const sortOrder = Number(draft.sortOrder);
+  const validNumbers = [rewardCurrency, rewardStars, rewardExperience, sortOrder].every(
+    (value) => Number.isFinite(value) && value >= 0,
+  );
+  const patch = useMemo<AdminAchievementPatch>(() => {
+    const body: AdminAchievementPatch = {};
+    if (draft.title !== achievement.title) body.title = draft.title;
+    if (draft.description !== achievement.description) body.description = draft.description;
+    if (draft.requirement !== achievement.requirement) body.requirement = draft.requirement;
+    if (draft.photoUrl !== achievement.photoUrl) body.photoUrl = draft.photoUrl;
+    if (draft.category !== achievement.category) body.category = draft.category;
+    if (draft.availability !== achievement.availability) body.availability = draft.availability;
+    const futureTag = draft.futureTag === 'none' ? null : draft.futureTag;
+    if (futureTag !== achievement.futureTag) {
+      body.futureTag = futureTag as AdminAchievementFutureTag | null;
+    }
+    if (rewardCurrency !== achievement.rewardCurrency)
+      body.rewardCurrency = Math.trunc(rewardCurrency);
+    if (rewardStars !== achievement.rewardStars) body.rewardStars = Math.trunc(rewardStars);
+    if (rewardExperience !== achievement.rewardExperience) {
+      body.rewardExperience = Math.trunc(rewardExperience);
+    }
+    if (sortOrder !== achievement.sortOrder) body.sortOrder = Math.trunc(sortOrder);
+    return body;
+  }, [achievement, draft, rewardCurrency, rewardExperience, rewardStars, sortOrder]);
+  const dirty = Object.keys(patch).length > 0;
+  const mutation = useMutation({
+    mutationFn: () => patchAdminAchievement(achievement.id, patch),
+    onSuccess: onChanged,
+  });
+
+  return (
+    <article className="glass" style={{ borderRadius: 20, padding: 14 }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '58px minmax(0, 1fr) auto',
+          gap: 12,
+          alignItems: 'center',
+        }}
+      >
+        <img
+          src={achievement.photoUrl}
+          alt=""
+          width={58}
+          height={58}
+          style={{ borderRadius: 8, objectFit: 'cover', background: 'rgba(255,255,255,0.5)' }}
+        />
+        <div style={{ minWidth: 0 }}>
+          <div style={{ color: 'var(--ink)', fontSize: 15, fontWeight: 950 }}>
+            {achievement.title}
+          </div>
+          <div style={{ marginTop: 4, color: 'var(--muted)', fontSize: 11, fontWeight: 800 }}>
+            {achievement.id} · выполнено {numberText(achievement.completedCount)} · получено{' '}
+            {numberText(achievement.claimedCount)}
+          </div>
+        </div>
+        <button
+          type="button"
+          className="icon-btn icon-btn--dark"
+          onClick={() => mutation.mutate()}
+          disabled={!dirty || !validNumbers || mutation.isPending}
+          title="Сохранить"
+          aria-label={`Сохранить ${achievement.title}`}
+          style={{
+            width: 42,
+            height: 42,
+            opacity: dirty && validNumbers ? 1 : 0.52,
+            cursor: dirty && validNumbers ? 'pointer' : 'not-allowed',
+          }}
+        >
+          <Save size={17} />
+        </button>
+      </div>
+      <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        <AdminField label="Название">
+          <input
+            value={draft.title}
+            onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))}
+          />
+        </AdminField>
+        <AdminField label="Картинка">
+          <input
+            value={draft.photoUrl}
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, photoUrl: event.target.value }))
+            }
+          />
+        </AdminField>
+        <AdminField label="Описание">
+          <input
+            value={draft.description}
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, description: event.target.value }))
+            }
+          />
+        </AdminField>
+        <AdminField label="Условие">
+          <input
+            value={draft.requirement}
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, requirement: event.target.value }))
+            }
+          />
+        </AdminField>
+        <AdminField label="Категория">
+          <GlassSelect
+            value={draft.category}
+            options={achievementCategoryOptions}
+            onChange={(value) =>
+              setDraft((current) => ({
+                ...current,
+                category: value as AdminAchievementCategory,
+              }))
+            }
+            ariaLabel={`Категория ${achievement.title}`}
+          />
+        </AdminField>
+        <AdminField label="Доступность">
+          <GlassSelect
+            value={draft.availability}
+            options={achievementAvailabilityOptions}
+            onChange={(value) =>
+              setDraft((current) => ({
+                ...current,
+                availability: value as AdminAchievementAvailability,
+              }))
+            }
+            ariaLabel={`Доступность ${achievement.title}`}
+          />
+        </AdminField>
+        <AdminField label="Future tag">
+          <GlassSelect
+            value={draft.futureTag}
+            options={achievementFutureTagOptions}
+            onChange={(value) =>
+              setDraft((current) => ({
+                ...current,
+                futureTag: value as AdminAchievementFutureTag | 'none',
+              }))
+            }
+            ariaLabel={`Future tag ${achievement.title}`}
+          />
+        </AdminField>
+        <AdminField label="Порядок">
+          <input
+            type="number"
+            min={0}
+            value={draft.sortOrder}
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, sortOrder: event.target.value }))
+            }
+          />
+        </AdminField>
+        <AdminField label="Монеты">
+          <input
+            type="number"
+            min={0}
+            value={draft.rewardCurrency}
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, rewardCurrency: event.target.value }))
+            }
+          />
+        </AdminField>
+        <AdminField label="Звезды">
+          <input
+            type="number"
+            min={0}
+            value={draft.rewardStars}
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, rewardStars: event.target.value }))
+            }
+          />
+        </AdminField>
+        <AdminField label="Опыт">
+          <input
+            type="number"
+            min={0}
+            value={draft.rewardExperience}
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, rewardExperience: event.target.value }))
+            }
+          />
+        </AdminField>
+      </div>
+      {mutation.isError && (
+        <div role="alert" style={{ marginTop: 8, color: 'var(--red-deep)', fontSize: 12 }}>
+          {mutation.error instanceof Error ? mutation.error.message : 'Ошибка сохранения'}
+        </div>
+      )}
+    </article>
   );
 }
 

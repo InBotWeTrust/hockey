@@ -2,15 +2,17 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
+import { fetchAchievements } from '../api/achievements.js';
 import { fetchWeeklyChallenge } from '../api/weeklyChallenge.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
 
-const DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED = 1000;
+const DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED = 300;
 const SECTION_ARTWORK_SIZE = 86;
 
 const SECTION_ARTWORK = {
   weekly: '/daily-game/start.webp',
+  achievements: '/achievements/first-goal.webp',
   daily: '/daily-game/start.webp',
   training: '/modes/beginner.webp',
   amateur: '/modes/amateur.webp',
@@ -34,6 +36,10 @@ export function SectionsScreen(): JSX.Element {
   const weeklyChallenge = useQuery({
     queryKey: ['weekly-challenge', 'section'],
     queryFn: fetchWeeklyChallenge,
+  });
+  const achievementsQuery = useQuery({
+    queryKey: ['achievements', 'section'],
+    queryFn: fetchAchievements,
   });
 
   useEffect(() => {
@@ -91,6 +97,18 @@ export function SectionsScreen(): JSX.Element {
       >
         <div className="section-label section-label--page">Разделы</div>
 
+        <SectionCard
+          title="Задания"
+          description="Полный список целей и наград"
+          meta={
+            (achievementsQuery.data?.unclaimedCount ?? 0) > 0
+              ? `${achievementsQuery.data?.unclaimedCount ?? 0} наград ждёт`
+              : 'Награды, серии и будущие цели'
+          }
+          tone={(achievementsQuery.data?.unclaimedCount ?? 0) > 0 ? 'active' : 'default'}
+          artworkSrc={SECTION_ARTWORK.achievements}
+          onClick={() => navigate('/achievements')}
+        />
         <SectionCard
           title="Еженедельный челлендж"
           description="Недельные задания и награды"
