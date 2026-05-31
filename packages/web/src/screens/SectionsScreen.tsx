@@ -56,6 +56,7 @@ export function SectionsScreen(): JSX.Element {
   const trainingShotsLimit = trainingData?.shots_limit ?? 500;
   const trainingShotsTaken = trainingData?.shots_taken ?? 0;
   const dailyShotsLimit = (dailyData?.shots_per_period ?? 30) * (dailyData?.total_periods ?? 3);
+  const achievementsUnclaimedCount = achievementsQuery.data?.unclaimedCount ?? 0;
   const weeklyCanClaimReward =
     weeklyChallenge.data?.challenge?.canClaimReward === true ||
     (weeklyChallenge.data?.pendingRewards?.length ?? 0) > 0;
@@ -110,12 +111,13 @@ export function SectionsScreen(): JSX.Element {
           title="Задания"
           description="Полный список целей и наград"
           meta={
-            (achievementsQuery.data?.unclaimedCount ?? 0) > 0
-              ? `${achievementsQuery.data?.unclaimedCount ?? 0} наград ждёт`
+            achievementsUnclaimedCount > 0
+              ? `${achievementsUnclaimedCount} наград ждёт`
               : 'Награды, серии и будущие цели'
           }
-          tone={(achievementsQuery.data?.unclaimedCount ?? 0) > 0 ? 'active' : 'default'}
+          tone={achievementsUnclaimedCount > 0 ? 'active' : 'default'}
           artworkSrc={SECTION_ARTWORK.achievements}
+          attention={achievementsUnclaimedCount > 0}
           onClick={() => navigate('/achievements')}
         />
         <SectionCard
