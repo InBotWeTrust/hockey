@@ -136,6 +136,47 @@ describe('duel inventory condition', () => {
     expect(condition.canShoot).toBe(true);
   });
 
+  it('returns zero skates consumption when no active skates exist', () => {
+    const condition = getDuelPlayerCondition({
+      seed: 'match-seed',
+      userId: 'user-a',
+      periodNumber: 1,
+      elapsedMs: 10_000,
+      movementDistancePx: 1144,
+      baseLaneWidthPx: 572,
+      baselineShooterSpeed: 1,
+      currentShooterSpeed: 1,
+      loadout: loadout(),
+    });
+
+    expect(condition.skatesConsumed).toBe(0);
+  });
+
+  it('caps skates consumption at available distance resource', () => {
+    const condition = getDuelPlayerCondition({
+      seed: 'match-seed',
+      userId: 'user-a',
+      periodNumber: 1,
+      elapsedMs: 10_000,
+      movementDistancePx: 1716,
+      baseLaneWidthPx: 572,
+      baselineShooterSpeed: 1,
+      currentShooterSpeed: 1,
+      loadout: loadout({
+        skates: {
+          id: 'skates-low',
+          title: 'Старт',
+          resourceUnit: 'distance',
+          resourceAvailable: 1.25,
+          effectPuckSpeedPoints: 0,
+          timing: DEFAULT_DUEL_INVENTORY_TIMING,
+        },
+      }),
+    });
+
+    expect(condition.skatesConsumed).toBe(1.25);
+  });
+
   it('empty nutrition behaves like no active nutrition instead of depletion', () => {
     const common = {
       seed: 'match-seed',
@@ -162,8 +203,36 @@ describe('duel inventory condition', () => {
 
     expect(early.status).toBe('normal');
     expect(early.canShoot).toBe(true);
+    expect(early.nutritionConsumed).toBe(0);
     expect(duringWouldBeStop.status).toBe('normal');
     expect(duringWouldBeStop.canShoot).toBe(true);
+    expect(duringWouldBeStop.nutritionConsumed).toBe(0);
+  });
+
+  it('caps nutrition consumption at available energy resource after stop window', () => {
+    const condition = getDuelPlayerCondition({
+      seed: 'match-seed',
+      userId: 'user-a',
+      periodNumber: 1,
+      elapsedMs: 17_000,
+      movementDistancePx: 0,
+      baseLaneWidthPx: 572,
+      baselineShooterSpeed: 1,
+      currentShooterSpeed: 1,
+      loadout: loadout({
+        nutrition: {
+          id: 'nutrition-1',
+          title: 'Изотоник',
+          resourceUnit: 'energy_ms',
+          resourceAvailable: 10_000,
+          effectPuckSpeedPoints: 0,
+          timing: DEFAULT_DUEL_INVENTORY_TIMING,
+        },
+      }),
+    });
+
+    expect(condition.nutritionConsumed).toBe(10_000);
+    expect(condition.canShoot).toBe(true);
   });
 
   it('nutrition depletion follows before, slowdown, stop, and recovery boundaries', () => {

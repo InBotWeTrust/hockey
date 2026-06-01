@@ -134,14 +134,16 @@ export function getDuelPlayerCondition(input: DuelPlayerConditionInput): DuelPla
     input.baselineShooterSpeed,
     input.currentShooterSpeed,
   );
-  const skatesConsumed = normalizeDuelInventoryResource({
+  const rawSkatesCost = normalizeDuelInventoryResource({
     resourceUnit: 'distance',
     activePeriodMs: input.elapsedMs,
     movementDistancePx: input.movementDistancePx,
     baseLaneWidthPx: input.baseLaneWidthPx,
     speedPressureMultiplier,
   });
-  const nutritionConsumed = nutritionResourceConsumed(input, speedPressureMultiplier);
+  const skatesConsumed = cappedSkatesConsumed(input, rawSkatesCost);
+  const rawNutritionCost = rawNutritionResourceCost(input, speedPressureMultiplier);
+  const nutritionConsumed = cappedNutritionConsumed(input, rawNutritionCost);
   const puckSpeedDelta = activeStickPuckSpeedDelta(input.loadout.stick);
 
   const nutrition = input.loadout.nutrition;
@@ -173,7 +175,7 @@ export function getDuelPlayerCondition(input: DuelPlayerConditionInput): DuelPla
 
   const skatesActive =
     input.loadout.skates?.resourceUnit === 'distance' &&
-    input.loadout.skates.resourceAvailable > skatesConsumed;
+    input.loadout.skates.resourceAvailable > rawSkatesCost;
   const movementTiming = timingFor(input.loadout.skates);
   const stumbleActive = skatesActive ? false : defaultSkateStumbleWindow(input, movementTiming);
   if (stumbleActive) {
@@ -189,7 +191,7 @@ export function getDuelPlayerCondition(input: DuelPlayerConditionInput): DuelPla
   }
 
   const nutritionRemaining =
-    nutrition?.resourceUnit === 'energy_ms' && nutrition.resourceAvailable > nutritionConsumed;
+    nutrition?.resourceUnit === 'energy_ms' && nutrition.resourceAvailable > rawNutritionCost;
   const fatigueTiming = timingFor(nutrition);
   const tired = !nutritionRemaining && input.elapsedMs >= Math.max(0, fatigueTiming.fatigueDelayMs);
 
@@ -209,16 +211,17 @@ function activeStickPuckSpeedDelta(stick: DuelInventoryItemSnapshot | null): num
   return duelInventorySpeedPointsToPuckSpeedDelta(stick.effectPuckSpeedPoints);
 }
 
-function nutritionResourceConsumed(
+function cappedSkatesConsumed(input: DuelPlayerConditionInput, rawSkatesCost: number): number {
+  const skates = input.loadout.skates;
+  if (skates?.resourceUnit !== 'distance' || skates.resourceAvailable <= 0) return 0;
+  return Math.min(rawSkatesCost, skates.resourceAvailable);
+}
+
+function rawNutritionResourceCost(
   input: DuelPlayerConditionInput,
   speedPressureMultiplier: number,
 ): number {
-  if (
-    input.loadout.nutrition?.resourceUnit !== 'energy_ms' ||
-    input.loadout.nutrition.resourceAvailable <= 0
-  ) {
-    return 0;
-  }
+  if (input.loadout.nutrition?.resourceUnit !== 'energy_ms') return 0;
   return normalizeDuelInventoryResource({
     resourceUnit: 'energy_ms',
     activePeriodMs: input.elapsedMs,
@@ -226,6 +229,15 @@ function nutritionResourceConsumed(
     baseLaneWidthPx: input.baseLaneWidthPx,
     speedPressureMultiplier,
   });
+}
+
+function cappedNutritionConsumed(
+  input: DuelPlayerConditionInput,
+  rawNutritionCost: number,
+): number {
+  const nutrition = input.loadout.nutrition;
+  if (nutrition?.resourceUnit !== 'energy_ms' || nutrition.resourceAvailable <= 0) return 0;
+  return Math.min(rawNutritionCost, nutrition.resourceAvailable);
 }
 
 function nutritionDepletionState(
