@@ -310,7 +310,7 @@ function startIceCarLoop(
     if (!mountedRef.current) return;
     if (t0 < 0) t0 = rafTime;
     const pos = iceCarPosAt(rafTime - t0);
-    iceCar.update(scaleRef.current, pos.x, pos.y, pos.rot);
+    iceCar.update(scaleRef.current, pos.x, pos.y, pos.rot, pos.variant);
     iceCarRafRef.current = requestAnimationFrame(carStep);
   };
   iceCarRafRef.current = requestAnimationFrame(carStep);

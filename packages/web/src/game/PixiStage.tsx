@@ -13,7 +13,11 @@ const SPRITE_ASSETS = [
   '/sprites/ultimate-player-left-shoot.webp',
   '/sprites/ultimate-player-right.webp',
   '/sprites/ultimate-player-right-shoot.webp',
-  '/sprites/ice_car.webp',
+  '/sprites/ice-resurfacer-center.webp',
+  '/sprites/ice-resurfacer-left-down.webp',
+  '/sprites/ice-resurfacer-left-up.webp',
+  '/sprites/ice-resurfacer-right-down.webp',
+  '/sprites/ice-resurfacer-right-up.webp',
 ];
 
 export interface PixiStageProps {

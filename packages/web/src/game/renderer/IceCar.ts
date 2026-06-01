@@ -1,28 +1,29 @@
-import { Assets, Container, Sprite, Texture } from 'pixi.js';
+import { Assets, Container, Graphics, Sprite, Texture } from 'pixi.js';
 import { RINK } from '@hockey/game-core';
 import type { Scale } from '../coords.js';
+import {
+  TRAINING_NEW_COURT_VISUAL_Y_OFFSET,
+  TRAINING_NEW_COURT_VISUAL_Y_SCALE,
+} from '../trainingNewCourt.js';
 
-// Sprite: 550×1024 top-down view. Rotation 0 = car faces north (toward goal).
-export const CAR_W = 68;
-export const CAR_H = Math.round(CAR_W * (1024 / 550)); // ≈ 127
+// Render size in rink coordinates before perspective depth scaling.
+export const CAR_W = 136;
+export const CAR_H = 205;
 
-const BOARD_MARGIN = 20;
-// When driving N/S the car occupies CAR_W horizontally; clamp X so it stays inside glass.
-const X_LEFT = BOARD_MARGIN + Math.round(CAR_W / 2); // ≈ 54
-const X_RIGHT = RINK.width - BOARD_MARGIN - Math.round(CAR_W / 2); // ≈ 518
-// When driving N/S the car occupies CAR_H vertically.
-// Goalie bottom edge is at ~92; keep car top edge (Y_TOP - CAR_H/2) below that with margin.
-const Y_TOP = 165; // top edge ≈ 101, just below goalie area (~92)
-const Y_BOTTOM = RINK.height - BOARD_MARGIN - Math.round(CAR_H / 2); // ≈ 616
+const X_LEFT = 34;
+const X_RIGHT = RINK.width - 34;
+const Y_TOP = 158;
+const Y_BOTTOM = RINK.height - 82;
+const OFFSCREEN_Y_TOP = Y_TOP - CAR_H * 0.68;
+const OFFSCREEN_Y_BOTTOM = Y_BOTTOM + CAR_H * 0.78;
 
-// 6 vertical strips spanning the rink width left→right.
-const N_STRIPS = 6;
-const STRIP_W = Math.round((X_RIGHT - X_LEFT) / (N_STRIPS - 1)); // ≈ 93
+const N_STRIPS = 5;
+const STRIP_W = Math.round((X_RIGHT - X_LEFT) / (N_STRIPS - 1));
 
-const PASS_MS = 9000; // one N-S or S-N pass
-const TURN_MS = 1140; // horizontal U-turn to next strip
-const ENTRY_MS = 3800; // enter from off-screen bottom to Y_TOP
-const RETURN_MS = 4200; // drive west along top board back to X_LEFT
+const PASS_MS = 9400;
+const TURN_MS = 1450;
+const ENTRY_MS = 3900;
+const RETURN_MS = 4600;
 
 interface Seg {
   x0: number;
@@ -30,53 +31,90 @@ interface Seg {
   x1: number;
   y1: number;
   ms: number;
-  rot: number;
+  kind: 'pass' | 'turn';
 }
 
+type IceCarVariant = 'center' | 'left-down' | 'left-up' | 'right-down' | 'right-up';
+
+type IceCarPose = {
+  x: number;
+  y: number;
+  rot: number;
+  variant: IceCarVariant;
+};
+
+const TEXTURE_URLS: Record<IceCarVariant, string> = {
+  center: '/sprites/ice-resurfacer-center.webp',
+  'left-down': '/sprites/ice-resurfacer-left-down.webp',
+  'left-up': '/sprites/ice-resurfacer-left-up.webp',
+  'right-down': '/sprites/ice-resurfacer-right-down.webp',
+  'right-up': '/sprites/ice-resurfacer-right-up.webp',
+};
+
 function buildEntry(): Seg {
-  const offscreen = RINK.height + CAR_H / 2;
-  return { x0: X_LEFT, y0: offscreen, x1: X_LEFT, y1: Y_TOP, ms: ENTRY_MS, rot: 0 };
+  return {
+    x0: X_LEFT,
+    y0: OFFSCREEN_Y_BOTTOM,
+    x1: X_LEFT,
+    y1: Y_TOP,
+    ms: ENTRY_MS,
+    kind: 'pass',
+  };
 }
 
 function buildLoop(): Seg[] {
   const segs: Seg[] = [];
 
-  // Pass 0 starts going south from Y_TOP so it connects to the entry (car arrives at Y_TOP).
   for (let i = 0; i < N_STRIPS; i++) {
     const x = X_LEFT + i * STRIP_W;
-    const goDown = i % 2 === 0; // even strips go south, odd go north
+    const goDown = i % 2 === 0;
     segs.push({
       x0: x,
       y0: goDown ? Y_TOP : Y_BOTTOM,
       x1: x,
-      y1: goDown ? Y_BOTTOM : Y_TOP,
+      y1: goDown ? OFFSCREEN_Y_BOTTOM : OFFSCREEN_Y_TOP,
       ms: PASS_MS,
-      rot: goDown ? Math.PI : 0, // south = π, north = 0
+      kind: 'pass',
     });
     if (i < N_STRIPS - 1) {
-      // Horizontal U-turn: shift east to next strip at the current board side.
-      const turnY = goDown ? Y_BOTTOM : Y_TOP;
+      const turnY = goDown ? OFFSCREEN_Y_BOTTOM : OFFSCREEN_Y_TOP;
       segs.push({
         x0: x,
         y0: turnY,
         x1: x + STRIP_W,
         y1: turnY,
         ms: TURN_MS,
-        rot: Math.PI / 2, // facing east
+        kind: 'turn',
+      });
+      segs.push({
+        x0: x + STRIP_W,
+        y0: turnY,
+        x1: x + STRIP_W,
+        y1: goDown ? Y_BOTTOM : Y_TOP,
+        ms: Math.round(TURN_MS * 0.72),
+        kind: 'pass',
       });
     }
   }
 
-  // Last strip (i=5, goDown=false) ends at (X_RIGHT-ish, Y_TOP).
-  // Drive west back to X_LEFT along the top board to close the loop.
   const lastX = X_LEFT + (N_STRIPS - 1) * STRIP_W;
+  const lastGoesDown = (N_STRIPS - 1) % 2 === 0;
+  const returnY = lastGoesDown ? OFFSCREEN_Y_BOTTOM : OFFSCREEN_Y_TOP;
   segs.push({
     x0: lastX,
-    y0: Y_TOP,
+    y0: returnY,
     x1: X_LEFT,
-    y1: Y_TOP,
+    y1: returnY,
     ms: RETURN_MS,
-    rot: -Math.PI / 2, // facing west
+    kind: 'turn',
+  });
+  segs.push({
+    x0: X_LEFT,
+    y0: returnY,
+    x1: X_LEFT,
+    y1: lastGoesDown ? Y_TOP : Y_BOTTOM,
+    ms: ENTRY_MS,
+    kind: 'pass',
   });
 
   return segs;
@@ -84,7 +122,9 @@ function buildLoop(): Seg[] {
 
 const ENTRY = buildEntry();
 const LOOP = buildLoop();
-
+const RINK_CENTER_X = RINK.width / 2;
+const PERSPECTIVE_TOP_SCALE = 0.96;
+const PERSPECTIVE_BOTTOM_SCALE = 1.07;
 const LOOP_CUM_STARTS: number[] = [];
 let _cum = 0;
 for (const seg of LOOP) {
@@ -97,16 +137,51 @@ function easeInOut(t: number): number {
   return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
 }
 
-function posInSeg(seg: Seg, f: number): { x: number; y: number; rot: number } {
-  const e = seg.ms >= PASS_MS ? easeInOut(f) : f;
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function depthAt(y: number): number {
+  return clamp01((y - Y_TOP) / (Y_BOTTOM - Y_TOP));
+}
+
+function perspectiveScaleAt(y: number): number {
+  const depth = depthAt(y);
+  return PERSPECTIVE_TOP_SCALE + (PERSPECTIVE_BOTTOM_SCALE - PERSPECTIVE_TOP_SCALE) * depth;
+}
+
+function variantFor(seg: Seg): IceCarVariant {
+  const dx = seg.x1 - seg.x0;
+  const dy = seg.y1 - seg.y0;
+  if (Math.abs(dx) > Math.abs(dy)) return 'center';
+
+  const laneCenter = (seg.x0 + seg.x1) / 2;
+  const laneSide = (laneCenter - RINK_CENTER_X) / Math.max(1, X_RIGHT - RINK_CENTER_X);
+  if (Math.abs(laneSide) < 0.18) return 'center';
+  if (laneSide < 0) return dy > 0 ? 'left-down' : 'left-up';
+  return dy > 0 ? 'right-down' : 'right-up';
+}
+
+function rotFor(seg: Seg, variant: IceCarVariant): number {
+  const dx = seg.x1 - seg.x0;
+  const dy = seg.y1 - seg.y0;
+  if (Math.abs(dx) > Math.abs(dy)) return dx >= 0 ? Math.PI / 2 : -Math.PI / 2;
+  if (variant !== 'center') return 0;
+  return dy > 0 ? 0 : Math.PI;
+}
+
+function posInSeg(seg: Seg, f: number): IceCarPose {
+  const e = seg.kind === 'pass' ? easeInOut(f) : f;
+  const variant = variantFor(seg);
   return {
     x: seg.x0 + (seg.x1 - seg.x0) * e,
     y: seg.y0 + (seg.y1 - seg.y0) * e,
-    rot: seg.rot,
+    rot: rotFor(seg, variant),
+    variant,
   };
 }
 
-export function iceCarPosAt(elapsed: number): { x: number; y: number; rot: number } {
+export function iceCarPosAt(elapsed: number): IceCarPose {
   if (elapsed < ENTRY_MS) {
     return posInSeg(ENTRY, elapsed / ENTRY_MS);
   }
@@ -120,33 +195,73 @@ export function iceCarPosAt(elapsed: number): { x: number; y: number; rot: numbe
       return posInSeg(seg, (t - segStart) / seg.ms);
     }
   }
-  return { x: X_LEFT, y: Y_TOP, rot: 0 };
+  return { x: X_LEFT, y: Y_TOP, rot: 0, variant: 'left-down' };
+}
+
+export function perspectiveIceCarPose(pos: { x: number; y: number; rot: number }): {
+  x: number;
+  y: number;
+  rot: number;
+  size: number;
+  depth: number;
+} {
+  const size = perspectiveScaleAt(pos.y);
+  return {
+    x: RINK_CENTER_X + (pos.x - RINK_CENTER_X) * size,
+    y: pos.y * TRAINING_NEW_COURT_VISUAL_Y_SCALE + TRAINING_NEW_COURT_VISUAL_Y_OFFSET,
+    rot: pos.rot,
+    size,
+    depth: depthAt(pos.y),
+  };
 }
 
 export class IceCar {
   readonly container = new Container();
+  private readonly shadow: Graphics;
   private readonly sprite: Sprite;
+  private readonly textures = new Map<IceCarVariant, Texture>();
+  private currentVariant: IceCarVariant = 'center';
   private destroyed = false;
 
   constructor() {
+    this.shadow = new Graphics().ellipse(0, 0, 1, 1).fill({ color: 0x06131f, alpha: 0.12 });
     this.sprite = new Sprite(Texture.EMPTY);
     this.sprite.anchor.set(0.5, 0.5);
+    this.container.addChild(this.shadow);
     this.container.addChild(this.sprite);
-    Assets.load<Texture>('/sprites/ice_car.webp')
-      .then((tex) => {
-        if (this.destroyed) return;
-        this.sprite.texture = tex;
-      })
-      .catch(() => undefined);
+
+    for (const [variant, url] of Object.entries(TEXTURE_URLS) as [IceCarVariant, string][]) {
+      Assets.load<Texture>(url)
+        .then((tex) => {
+          if (this.destroyed) return;
+          this.textures.set(variant, tex);
+          if (variant === this.currentVariant) this.sprite.texture = tex;
+        })
+        .catch(() => undefined);
+    }
   }
 
-  update(scale: Scale, x: number, y: number, rotation: number): void {
+  update(scale: Scale, x: number, y: number, rotation: number, variant: IceCarVariant): void {
     if (this.destroyed) return;
+    if (variant !== this.currentVariant) {
+      this.currentVariant = variant;
+      const texture = this.textures.get(variant);
+      if (texture) this.sprite.texture = texture;
+    }
     const s = scale.factor;
-    this.sprite.width = CAR_W * s;
-    this.sprite.height = CAR_H * s;
-    this.sprite.position.set(x * s, y * s);
-    this.sprite.rotation = rotation;
+    const pose = perspectiveIceCarPose({ x, y, rot: rotation });
+    const size = pose.size * s;
+    const px = pose.x * s;
+    const py = pose.y * s;
+
+    this.shadow.position.set(px, py + CAR_H * size * 0.25);
+    this.shadow.scale.set(CAR_W * size * 0.56, CAR_H * size * 0.12);
+    this.shadow.alpha = 0.13 + pose.depth * 0.1;
+
+    this.sprite.width = CAR_W * size;
+    this.sprite.height = CAR_H * size;
+    this.sprite.position.set(px, py);
+    this.sprite.rotation = pose.rot;
     this.container.position.set(scale.offsetX, scale.offsetY);
   }
 
