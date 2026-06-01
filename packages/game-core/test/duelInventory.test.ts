@@ -152,6 +152,48 @@ describe('duel inventory condition', () => {
     expect(condition.skatesConsumed).toBe(0);
   });
 
+  it('returns zero skates consumption for wrong-unit or empty distance skates', () => {
+    const baseInput = {
+      seed: 'match-seed',
+      userId: 'user-a',
+      periodNumber: 1,
+      elapsedMs: 10_000,
+      movementDistancePx: 1144,
+      baseLaneWidthPx: 572,
+      baselineShooterSpeed: 1,
+      currentShooterSpeed: 1,
+    };
+    const wrongUnit = getDuelPlayerCondition({
+      ...baseInput,
+      loadout: loadout({
+        skates: {
+          id: 'shot-skates',
+          title: 'Старт',
+          resourceUnit: 'shot',
+          resourceAvailable: 10,
+          effectPuckSpeedPoints: 0,
+          timing: DEFAULT_DUEL_INVENTORY_TIMING,
+        },
+      }),
+    });
+    const emptyDistance = getDuelPlayerCondition({
+      ...baseInput,
+      loadout: loadout({
+        skates: {
+          id: 'empty-skates',
+          title: 'Старт',
+          resourceUnit: 'distance',
+          resourceAvailable: 0,
+          effectPuckSpeedPoints: 0,
+          timing: DEFAULT_DUEL_INVENTORY_TIMING,
+        },
+      }),
+    });
+
+    expect(wrongUnit.skatesConsumed).toBe(0);
+    expect(emptyDistance.skatesConsumed).toBe(0);
+  });
+
   it('caps skates consumption at available distance resource', () => {
     const condition = getDuelPlayerCondition({
       seed: 'match-seed',
@@ -207,6 +249,22 @@ describe('duel inventory condition', () => {
     expect(duringWouldBeStop.status).toBe('normal');
     expect(duringWouldBeStop.canShoot).toBe(true);
     expect(duringWouldBeStop.nutritionConsumed).toBe(0);
+  });
+
+  it('returns zero nutrition consumption when no nutrition is selected', () => {
+    const condition = getDuelPlayerCondition({
+      seed: 'match-seed',
+      userId: 'user-a',
+      periodNumber: 1,
+      elapsedMs: 10_000,
+      movementDistancePx: 0,
+      baseLaneWidthPx: 572,
+      baselineShooterSpeed: 1,
+      currentShooterSpeed: 1,
+      loadout: loadout(),
+    });
+
+    expect(condition.nutritionConsumed).toBe(0);
   });
 
   it('caps nutrition consumption at available energy resource after stop window', () => {
