@@ -4,11 +4,15 @@ import { z } from 'zod';
 import {
   DEFAULT_DUEL_INVENTORY_TIMING,
   GAME_CORE_VERSION,
+  SHOOTER_AMPLITUDE,
   STICK_NEUTRAL,
   getGoalie,
+  getDuelPlayerCondition,
   getSessionPhaseOffsets,
   resolvePerspectiveCourtShot,
   type DailyPeriodSpeedPreset,
+  type DuelInventoryItemSnapshot,
+  type DuelInventoryLoadoutSnapshot,
   type DuelInventoryResourceUnit,
   type DuelInventoryTiming,
   type StickEffects,
@@ -654,14 +658,101 @@ function inventoryReportFromUnknown(value: unknown): InventoryPeriodReport[] {
             id: uuid,
             kind: z.enum(['stick', 'skates', 'nutrition']),
             title: z.string(),
-            charges: z.number().int().min(0),
-            remainingReserved: z.number().int().min(0),
+            charges: z.number().min(0),
+            remainingReserved: z.number().min(0),
           }),
         ),
       }),
     )
     .safeParse(value ?? []);
   return parsed.success ? parsed.data : [];
+}
+
+function duelInventoryItemFromSnapshot(
+  item: LoadoutItemSnapshot | undefined,
+  resourceAvailableOverride?: number,
+): DuelInventoryItemSnapshot | null {
+  if (!item || item.resourceUnit === 'period') return null;
+  return {
+    id: item.id,
+    title: item.title,
+    resourceUnit: item.resourceUnit,
+    resourceAvailable: Math.max(0, resourceAvailableOverride ?? item.resourceAvailable),
+    effectPuckSpeedPoints: item.effectPuckSpeedPoints,
+    timing: item.timing,
+  };
+}
+
+function consumedForPeriodItem(
+  report: InventoryPeriodReport[],
+  periodNumber: number,
+  itemId: string,
+): number {
+  return report
+    .filter((entry) => entry.periodNumber === periodNumber)
+    .flatMap((entry) => entry.consumed)
+    .filter((entry) => entry.id === itemId)
+    .reduce((sum, entry) => sum + entry.charges, 0);
+}
+
+function consumedBeforePeriodItem(
+  report: InventoryPeriodReport[],
+  periodNumber: number,
+  itemId: string,
+): number {
+  return report
+    .filter((entry) => entry.periodNumber < periodNumber)
+    .flatMap((entry) => entry.consumed)
+    .filter((entry) => entry.id === itemId)
+    .reduce((sum, entry) => sum + entry.charges, 0);
+}
+
+function consumedForItem(report: InventoryPeriodReport[], itemId: string): number {
+  return report
+    .flatMap((entry) => entry.consumed)
+    .filter((entry) => entry.id === itemId)
+    .reduce((sum, entry) => sum + entry.charges, 0);
+}
+
+function conditionLoadoutFromSnapshot(
+  loadout: LoadoutSnapshot,
+  report: InventoryPeriodReport[],
+  periodNumber: number,
+): DuelInventoryLoadoutSnapshot {
+  const stick = loadout.items.find((item) => item.kind === 'stick');
+  const skates = loadout.items.find((item) => item.kind === 'skates');
+  const nutrition = loadout.items.find((item) => item.kind === 'nutrition');
+  const stickConsumed = stick ? consumedForItem(report, stick.id) : 0;
+  const skatesConsumedBeforePeriod = skates
+    ? consumedBeforePeriodItem(report, periodNumber, skates.id)
+    : 0;
+  const nutritionConsumedBeforePeriod = nutrition
+    ? consumedBeforePeriodItem(report, periodNumber, nutrition.id)
+    : 0;
+  return {
+    stick: duelInventoryItemFromSnapshot(
+      stick,
+      Math.max(0, (stick?.resourceAvailable ?? 0) - stickConsumed),
+    ),
+    skates: duelInventoryItemFromSnapshot(
+      skates,
+      Math.max(0, (skates?.resourceAvailable ?? 0) - skatesConsumedBeforePeriod),
+    ),
+    nutrition: duelInventoryItemFromSnapshot(
+      nutrition,
+      Math.max(0, (nutrition?.resourceAvailable ?? 0) - nutritionConsumedBeforePeriod),
+    ),
+  };
+}
+
+function movementDistancePxForElapsed(elapsedMs: number, shooterFrequency: number): number {
+  const safeElapsed = Math.max(0, elapsedMs);
+  const safeFrequency = Math.max(0, shooterFrequency);
+  return (safeElapsed * SHOOTER_AMPLITUDE * 4 * safeFrequency) / 1000;
+}
+
+function roundInventoryCharge(value: number): number {
+  return Number(value.toFixed(4));
 }
 
 function combineEffects(items: LoadoutItemSnapshot[]): InventoryItemEffects {
@@ -677,22 +768,10 @@ function combineEffects(items: LoadoutItemSnapshot[]): InventoryItemEffects {
       stumbleChance: acc.stumbleChance + item.effects.stumbleChance,
       stumbleMs: acc.stumbleMs + item.effects.stumbleMs,
       stumbleBlocksPerPeriod: acc.stumbleBlocksPerPeriod + item.effects.stumbleBlocksPerPeriod,
-      stumbleIntervalMinMs: Math.min(
-        acc.stumbleIntervalMinMs,
-        item.effects.stumbleIntervalMinMs,
-      ),
-      stumbleIntervalMaxMs: Math.max(
-        acc.stumbleIntervalMaxMs,
-        item.effects.stumbleIntervalMaxMs,
-      ),
-      stumbleDurationMinMs: Math.min(
-        acc.stumbleDurationMinMs,
-        item.effects.stumbleDurationMinMs,
-      ),
-      stumbleDurationMaxMs: Math.max(
-        acc.stumbleDurationMaxMs,
-        item.effects.stumbleDurationMaxMs,
-      ),
+      stumbleIntervalMinMs: Math.min(acc.stumbleIntervalMinMs, item.effects.stumbleIntervalMinMs),
+      stumbleIntervalMaxMs: Math.max(acc.stumbleIntervalMaxMs, item.effects.stumbleIntervalMaxMs),
+      stumbleDurationMinMs: Math.min(acc.stumbleDurationMinMs, item.effects.stumbleDurationMinMs),
+      stumbleDurationMaxMs: Math.max(acc.stumbleDurationMaxMs, item.effects.stumbleDurationMaxMs),
       nutritionSlowdownMs: Math.max(acc.nutritionSlowdownMs, item.effects.nutritionSlowdownMs),
       nutritionStopMs: Math.max(acc.nutritionStopMs, item.effects.nutritionStopMs),
       fatigueDelayMs: Math.max(acc.fatigueDelayMs, item.effects.fatigueDelayMs),
@@ -703,6 +782,19 @@ function combineEffects(items: LoadoutItemSnapshot[]): InventoryItemEffects {
     }),
     effectsFromUnknown(null),
   );
+}
+
+function periodSpeedEffectsForLoadout(
+  effects: InventoryItemEffects,
+  loadout: LoadoutSnapshot,
+): InventoryItemEffects {
+  const shotResourcePuckSpeedDelta = loadout.items
+    .filter((item) => item.resourceUnit === 'shot')
+    .reduce((sum, item) => sum + item.effects.puckSpeedDelta, 0);
+  return {
+    ...effects,
+    puckSpeedDelta: effects.puckSpeedDelta - shotResourcePuckSpeedDelta,
+  };
 }
 
 function makeRulesSnapshot(template: DuelTemplateRow): DuelRulesSnapshot {
@@ -1207,6 +1299,7 @@ async function consumeInventoryForPeriod(
     return;
   }
   for (const item of loadout.items) {
+    if (item.resourceUnit !== 'period') continue;
     if (item.duelPeriodCost <= 0) continue;
     await client.query(
       `update user_inventory_item
@@ -1243,6 +1336,90 @@ async function consumeInventoryForPeriod(
             updated_at = now()
       where match_id = $1 and user_id = $2`,
     [participant.match_id, participant.user_id, consumedCharges, JSON.stringify(report)],
+  );
+}
+
+async function consumeInventoryForShot(
+  client: PoolClient,
+  participant: DuelParticipantRow,
+  loadout: LoadoutSnapshot,
+  reportBeforeShot: InventoryPeriodReport[],
+  consumedTotals: { skatesConsumed: number; nutritionConsumed: number },
+): Promise<void> {
+  const periodNumber = participant.current_period;
+  const consumed: InventoryPeriodReport['consumed'] = [];
+  let consumedInventoryChargesDelta = 0;
+
+  for (const item of loadout.items) {
+    if (item.resourceUnit === 'period') continue;
+    const consumedBeforePeriod = consumedBeforePeriodItem(reportBeforeShot, periodNumber, item.id);
+    const previous = consumedForPeriodItem(reportBeforeShot, periodNumber, item.id);
+    const availableForPeriod = Math.max(0, item.resourceAvailable - consumedBeforePeriod);
+    let target = previous;
+    if (item.resourceUnit === 'shot') {
+      target = previous < availableForPeriod ? previous + 1 : previous;
+    } else if (item.resourceUnit === 'distance') {
+      target = consumedTotals.skatesConsumed;
+    } else if (item.resourceUnit === 'energy_ms') {
+      target = consumedTotals.nutritionConsumed;
+    }
+    target = Math.min(availableForPeriod, Math.max(previous, target));
+    const delta = roundInventoryCharge(target - previous);
+    if (delta <= 0) continue;
+
+    const integerBefore = Math.floor(previous);
+    const integerAfter = Math.floor(target);
+    const availableDelta =
+      item.resourceUnit === 'shot' || item.resourceUnit === 'energy_ms'
+        ? Math.ceil(delta)
+        : Math.max(0, integerAfter - integerBefore);
+    if (availableDelta > 0) {
+      const { rowCount } = await client.query(
+        `update user_inventory_item
+            set charges_available = charges_available - $3,
+                updated_at = now()
+          where user_id = $1
+            and inventory_item_id = $2
+            and charges_available >= $3`,
+        [participant.user_id, item.id, availableDelta],
+      );
+      if (rowCount === 0) {
+        throw new AppError('conflict', 'not enough inventory resource for duel shot', 409);
+      }
+      consumedInventoryChargesDelta += availableDelta;
+    }
+
+    consumed.push({
+      id: item.id,
+      kind: item.kind,
+      title: item.title,
+      charges: delta,
+      remainingReserved: roundInventoryCharge(
+        Math.max(0, item.resourceAvailable - consumedBeforePeriod - target),
+      ),
+    });
+  }
+
+  if (consumed.length === 0) return;
+  const nextReport = [
+    ...reportBeforeShot,
+    {
+      periodNumber,
+      consumed,
+    },
+  ];
+  await client.query(
+    `update amateur_duel_participant
+        set consumed_inventory_charges = consumed_inventory_charges + $3,
+            inventory_report = $4,
+            updated_at = now()
+      where match_id = $1 and user_id = $2`,
+    [
+      participant.match_id,
+      participant.user_id,
+      consumedInventoryChargesDelta,
+      JSON.stringify(nextReport),
+    ],
   );
 }
 
@@ -2033,6 +2210,7 @@ async function buildMatchStateDto(
       : null;
   const rules = parseRulesSnapshot(match.rules_snapshot);
   const effects = effectsFromUnknown(me.inventory_effects_snapshot);
+  const loadout = loadoutFromUnknown(me.loadout_snapshot, rules.powerCap);
   const periodEndsAt =
     me.state === 'period_active' && me.period_started_at !== null
       ? new Date(
@@ -2065,7 +2243,10 @@ async function buildMatchStateDto(
     period_started_at: me.period_started_at?.toISOString() ?? null,
     period_ends_at: periodEndsAt,
     break_ends_at: breakEndsAt,
-    period_speed_presets: effectivePeriodSpeedPresets(rules, effects),
+    period_speed_presets: effectivePeriodSpeedPresets(
+      rules,
+      periodSpeedEffectsForLoadout(effects, loadout),
+    ),
     stick_effects: stickEffectsFromInventory(effects),
     recent_periods: recentPeriods.map(periodLogDto),
     opponent_recent_periods: opponentRecentPeriods.map(periodLogDto),
@@ -3258,18 +3439,56 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
         }
         assertDuelTapTimeFresh(participant, cur.shots, body.input.tapTime, now);
 
+        const loadout = loadoutFromUnknown(participant.loadout_snapshot, rules.powerCap);
+        const inventoryReport = inventoryReportFromUnknown(participant.inventory_report);
         const effects = effectsFromUnknown(participant.inventory_effects_snapshot);
-        const periodSpeeds = effectivePeriodSpeedPresets(rules, effects).find(
+        const basePeriodSpeeds = rules.periodSpeedPresets.find(
           (preset) => preset.periodNumber === participant.current_period,
         );
+        if (!basePeriodSpeeds)
+          throw new AppError('server_error', 'missing base period speeds', 500);
+        const periodSpeeds = effectivePeriodSpeedPresets(
+          rules,
+          periodSpeedEffectsForLoadout(effects, loadout),
+        ).find((preset) => preset.periodNumber === participant.current_period);
         if (!periodSpeeds)
           throw new AppError('server_error', 'missing effective period speeds', 500);
+        const elapsedMs = Math.max(0, body.input.tapTime);
+        const condition = getDuelPlayerCondition({
+          seed: match.match_seed,
+          userId: participant.user_id,
+          periodNumber: participant.current_period,
+          elapsedMs,
+          movementDistancePx: movementDistancePxForElapsed(
+            elapsedMs,
+            periodSpeeds.shooterFrequency,
+          ),
+          baseLaneWidthPx: SHOOTER_AMPLITUDE * 2,
+          baselineShooterSpeed: basePeriodSpeeds.shooterFrequency,
+          currentShooterSpeed: periodSpeeds.shooterFrequency,
+          loadout: conditionLoadoutFromSnapshot(
+            loadout,
+            inventoryReport,
+            participant.current_period,
+          ),
+        });
+        if (!condition.canShoot) {
+          throw new AppError(
+            'conflict',
+            `player cannot shoot during duel inventory status '${condition.status}'`,
+            409,
+          );
+        }
         const shotInput = {
           tapTime: body.input.tapTime,
           ...(body.input.shooterTapTime !== undefined
             ? { shooterTapTime: body.input.shooterTapTime }
             : {}),
-          puckSpeedPerMs: periodSpeeds.puckSpeedPerMs,
+          puckSpeedPerMs: clampSpeed(
+            periodSpeeds.puckSpeedPerMs + condition.puckSpeedDelta,
+            0.2,
+            5,
+          ),
           shooterFrequency: periodSpeeds.shooterFrequency,
           goalieFrequency: periodSpeeds.goalieFrequency,
           goalFrequency: periodSpeeds.goalFrequency,
@@ -3316,6 +3535,11 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
             server_result: serverResult,
           });
         }
+
+        await consumeInventoryForShot(client, participant, loadout, inventoryReport, {
+          skatesConsumed: condition.skatesConsumed,
+          nutritionConsumed: condition.nutritionConsumed,
+        });
 
         if (
           periodRule.mode === 'quota' &&

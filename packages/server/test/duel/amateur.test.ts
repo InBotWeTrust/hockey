@@ -215,6 +215,34 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     return rows[0]!.id;
   }
 
+  async function acceptReadyAndStart(
+    matchId: string,
+    opts: { token?: string; loadout?: Record<string, string | null> } = {},
+  ) {
+    await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/accept`,
+      headers: auth(tokenB),
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/ready`,
+      headers: auth(opts.token ?? tokenA),
+      payload: { loadout: opts.loadout ?? {} },
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/ready`,
+      headers: auth(tokenB),
+      payload: { loadout: {} },
+    });
+    return app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/period/start`,
+      headers: auth(opts.token ?? tokenA),
+    });
+  }
+
   it('creates a pending challenge and rejects duplicate open matches', async () => {
     const templateId = await createTemplate();
     const first = await challenge(templateId);
@@ -609,10 +637,9 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     const stick = state.json().items.stick.find((item: { id: string }) => item.id === stickId);
     expect(stick?.chargesAvailable).toBe(3);
     const labelById = new Map(
-      [
-        ...state.json().items.stick,
-        ...state.json().items.nutrition,
-      ].map((item: { id: string; resourceLabel: string }) => [item.id, item.resourceLabel]),
+      [...state.json().items.stick, ...state.json().items.nutrition].map(
+        (item: { id: string; resourceLabel: string }) => [item.id, item.resourceLabel],
+      ),
     );
     expect(labelById.get(oneShotStickId)).toBe('1 бросок');
     expect(labelById.get(twoShotStickId)).toBe('2 броска');
@@ -1079,6 +1106,287 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(settled.json().match.outcome).toBe('challenger_win');
     const stars = await pool.query<{ xp: number }>(`select xp from users where id = $1`, [userA]);
     expect(Number(stars.rows[0]?.xp)).toBe(7);
+  });
+
+  it('consumes one stick shot and applies the stick speed bonus on accepted duel shot', async () => {
+    const stickId = await createInventoryItem('stick', 'Ультимейт Ван test');
+    await pool.query(
+      `update admin_inventory_items
+          set resource_unit = 'shot',
+              charges_per_purchase = 2,
+              duel_period_cost = 0,
+              effect_puck_speed_points = 10,
+              effect_puck_speed_delta = 0
+        where id = $1`,
+      [stickId],
+    );
+    await pool.query(
+      `insert into user_inventory_item (user_id, inventory_item_id, charges_available)
+       values ($1, $2, 2)
+       on conflict (user_id, inventory_item_id)
+       do update set charges_available = excluded.charges_available, charges_reserved = 0`,
+      [userA, stickId],
+    );
+    const templateId = await createTemplate();
+    const created = await challenge(templateId);
+    const matchId = created.json().match.id;
+    const started = await acceptReadyAndStart(matchId, { loadout: { stick: stickId } });
+    expect(started.statusCode).toBe(200);
+
+    const shot = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/shot`,
+      headers: auth(tokenA),
+      payload: {
+        shot_index: 1,
+        input: { tapTime: 1000 },
+        claimed_result: 'goal',
+      },
+    });
+
+    expect(shot.statusCode).toBe(200);
+    const inventory = await pool.query<{
+      charges_available: number;
+      charges_reserved: number;
+    }>(
+      `select charges_available, charges_reserved
+         from user_inventory_item
+        where user_id = $1 and inventory_item_id = $2`,
+      [userA, stickId],
+    );
+    expect(inventory.rows[0]).toEqual({ charges_available: 1, charges_reserved: 0 });
+    const storedShot = await pool.query<{ input_payload: { puckSpeedPerMs: number } }>(
+      `select input_payload
+         from shot_session
+        where amateur_duel_match_id = $1 and user_id = $2 and shot_index = 1`,
+      [matchId, userA],
+    );
+    expect(storedShot.rows[0]?.input_payload.puckSpeedPerMs).toBe(1.4);
+    const consumed = shot
+      .json()
+      .match.me.inventory_report.flatMap(
+        (report: { consumed: Array<{ id: string; charges: number }> }) => report.consumed,
+      )
+      .find((item: { id: string }) => item.id === stickId);
+    expect(consumed?.charges).toBe(1);
+  });
+
+  it('does not reset shot-stick resource on the next duel period', async () => {
+    const stickId = await createInventoryItem('stick', 'One duel shot stick');
+    await pool.query(
+      `update admin_inventory_items
+          set resource_unit = 'shot',
+              charges_per_purchase = 1,
+              duel_period_cost = 0,
+              effect_puck_speed_points = 10,
+              effect_puck_speed_delta = 0
+        where id = $1`,
+      [stickId],
+    );
+    await pool.query(
+      `insert into user_inventory_item (user_id, inventory_item_id, charges_available)
+       values ($1, $2, 1)
+       on conflict (user_id, inventory_item_id)
+       do update set charges_available = excluded.charges_available, charges_reserved = 0`,
+      [userA, stickId],
+    );
+    const templateId = await createTemplate({
+      totalPeriods: 2,
+      periodRules: [
+        { periodNumber: 1, mode: 'quota', durationMs: 1200000, shotsLimit: 1 },
+        { periodNumber: 2, mode: 'quota', durationMs: 1200000, shotsLimit: 1 },
+      ],
+    });
+    const created = await challenge(templateId);
+    const matchId = created.json().match.id;
+    const started = await acceptReadyAndStart(matchId, { loadout: { stick: stickId } });
+    expect(started.statusCode).toBe(200);
+
+    const first = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/shot`,
+      headers: auth(tokenA),
+      payload: {
+        shot_index: 1,
+        input: { tapTime: 1000 },
+        claimed_result: 'goal',
+      },
+    });
+    expect(first.statusCode).toBe(200);
+    await pool.query(
+      `update amateur_duel_participant
+          set state = 'accepted',
+              current_period = 1,
+              break_started_at = null
+        where match_id = $1 and user_id = $2`,
+      [matchId, userA],
+    );
+    const secondStarted = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/period/start`,
+      headers: auth(tokenA),
+    });
+    expect(secondStarted.statusCode).toBe(200);
+
+    const second = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/shot`,
+      headers: auth(tokenA),
+      payload: {
+        shot_index: 1,
+        input: { tapTime: 1000 },
+        claimed_result: 'goal',
+      },
+    });
+    expect(second.statusCode).toBe(200);
+    const storedShots = await pool.query<{
+      period_number: number;
+      input_payload: { puckSpeedPerMs: number };
+    }>(
+      `select period_number, input_payload
+         from shot_session
+        where amateur_duel_match_id = $1 and user_id = $2
+        order by period_number`,
+      [matchId, userA],
+    );
+    expect(storedShots.rows.map((row) => row.input_payload.puckSpeedPerMs)).toEqual([1.4, 1.3]);
+    const inventory = await pool.query<{ charges_available: number }>(
+      `select charges_available
+         from user_inventory_item
+        where user_id = $1 and inventory_item_id = $2`,
+      [userA, stickId],
+    );
+    expect(inventory.rows[0]?.charges_available).toBe(0);
+  });
+
+  it('rejects duel shots during deterministic exhausted stop', async () => {
+    const nutritionId = await createInventoryItem('nutrition', 'Tiny nutrition');
+    await pool.query(
+      `update admin_inventory_items
+          set resource_unit = 'energy_ms',
+              charges_per_purchase = 1000,
+              duel_period_cost = 0,
+              effect_nutrition_slowdown_ms = 2000,
+              effect_nutrition_stop_ms = 5000
+        where id = $1`,
+      [nutritionId],
+    );
+    await pool.query(
+      `insert into user_inventory_item (user_id, inventory_item_id, charges_available)
+       values ($1, $2, 1000)
+       on conflict (user_id, inventory_item_id)
+       do update set charges_available = excluded.charges_available, charges_reserved = 0`,
+      [userA, nutritionId],
+    );
+    const templateId = await createTemplate();
+    const created = await challenge(templateId);
+    const matchId = created.json().match.id;
+    const started = await acceptReadyAndStart(matchId, { loadout: { nutrition: nutritionId } });
+    expect(started.statusCode).toBe(200);
+    await pool.query(
+      `update amateur_duel_participant
+          set period_started_at = now() - interval '3500 milliseconds'
+        where match_id = $1 and user_id = $2`,
+      [matchId, userA],
+    );
+
+    const shot = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/shot`,
+      headers: auth(tokenA),
+      payload: {
+        shot_index: 1,
+        input: { tapTime: 3500 },
+        claimed_result: 'goal',
+      },
+    });
+
+    expect(shot.statusCode).toBe(409);
+    expect(shot.json().error.message).toContain('player cannot shoot');
+  });
+
+  it('consumes only nutrition delta between accepted duel shots', async () => {
+    const nutritionId = await createInventoryItem('nutrition', 'Delta nutrition');
+    await pool.query(
+      `update admin_inventory_items
+          set resource_unit = 'energy_ms',
+              charges_per_purchase = 10000,
+              duel_period_cost = 0
+        where id = $1`,
+      [nutritionId],
+    );
+    await pool.query(
+      `insert into user_inventory_item (user_id, inventory_item_id, charges_available)
+       values ($1, $2, 10000)
+       on conflict (user_id, inventory_item_id)
+       do update set charges_available = excluded.charges_available, charges_reserved = 0`,
+      [userA, nutritionId],
+    );
+    const templateId = await createTemplate({
+      periodRules: [{ periodNumber: 1, mode: 'quota', durationMs: 1200000, shotsLimit: 3 }],
+    });
+    const created = await challenge(templateId);
+    const matchId = created.json().match.id;
+    const started = await acceptReadyAndStart(matchId, { loadout: { nutrition: nutritionId } });
+    expect(started.statusCode).toBe(200);
+    await pool.query(
+      `update amateur_duel_participant
+          set period_started_at = now() - interval '2000 milliseconds'
+        where match_id = $1 and user_id = $2`,
+      [matchId, userA],
+    );
+
+    const first = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/shot`,
+      headers: auth(tokenA),
+      payload: {
+        shot_index: 1,
+        input: { tapTime: 2000 },
+        claimed_result: 'goal',
+      },
+    });
+    expect(first.statusCode).toBe(200);
+
+    await pool.query(
+      `update amateur_duel_participant
+          set period_started_at = now() - interval '3000 milliseconds'
+        where match_id = $1 and user_id = $2`,
+      [matchId, userA],
+    );
+    const second = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/shot`,
+      headers: auth(tokenA),
+      payload: {
+        shot_index: 2,
+        input: { tapTime: 3000 },
+        claimed_result: 'goal',
+      },
+    });
+    expect(second.statusCode).toBe(200);
+
+    const inventory = await pool.query<{ charges_available: number }>(
+      `select charges_available
+         from user_inventory_item
+        where user_id = $1 and inventory_item_id = $2`,
+      [userA, nutritionId],
+    );
+    expect(inventory.rows[0]?.charges_available).toBe(7000);
+    const participant = await pool.query<{ inventory_report: unknown }>(
+      `select inventory_report
+         from amateur_duel_participant
+        where match_id = $1 and user_id = $2`,
+      [matchId, userA],
+    );
+    const consumed = (
+      participant.rows[0]?.inventory_report as Array<{
+        consumed: Array<{ id: string; charges: number }>;
+      }>
+    ).flatMap((report) => report.consumed);
+    expect(consumed.filter((item) => item.id === nutritionId).map((item) => item.charges)).toEqual([
+      2000, 1000,
+    ]);
   });
 
   it('includes opponent live period shots in match state', async () => {
