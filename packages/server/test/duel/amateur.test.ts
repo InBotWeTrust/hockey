@@ -547,10 +547,48 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
 
   it('returns inventory state and updates active equipment', async () => {
     const stickId = await createInventoryItem('stick', 'Locker stick');
+    const oneShotStickId = await createInventoryItem('stick', 'One shot stick');
+    const twoShotStickId = await createInventoryItem('stick', 'Two shot stick');
+    const fiveShotStickId = await createInventoryItem('stick', 'Five shot stick');
+    const twentyOneShotStickId = await createInventoryItem('stick', 'Twenty one shot stick');
+    const energyNutritionId = await createInventoryItem('nutrition', 'Energy nutrition');
     await pool.query(
       `insert into user_inventory_item (user_id, inventory_item_id, charges_available)
-       values ($1, $2, 3)`,
-      [userA, stickId],
+       values ($1, $2, 3),
+              ($1, $3, 1),
+              ($1, $4, 2),
+              ($1, $5, 5),
+              ($1, $6, 21),
+              ($1, $7, 59999)`,
+      [
+        userA,
+        stickId,
+        oneShotStickId,
+        twoShotStickId,
+        fiveShotStickId,
+        twentyOneShotStickId,
+        energyNutritionId,
+      ],
+    );
+    await pool.query(
+      `update admin_inventory_items
+          set resource_unit = case id
+                when $1 then 'shot'
+                when $2 then 'shot'
+                when $3 then 'shot'
+                when $4 then 'shot'
+                when $5 then 'energy_ms'
+                else resource_unit
+              end
+        where id = any($6::uuid[])`,
+      [
+        oneShotStickId,
+        twoShotStickId,
+        fiveShotStickId,
+        twentyOneShotStickId,
+        energyNutritionId,
+        [oneShotStickId, twoShotStickId, fiveShotStickId, twentyOneShotStickId, energyNutritionId],
+      ],
     );
 
     const saved = await app.inject({
@@ -570,6 +608,17 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(state.statusCode).toBe(200);
     const stick = state.json().items.stick.find((item: { id: string }) => item.id === stickId);
     expect(stick?.chargesAvailable).toBe(3);
+    const labelById = new Map(
+      [
+        ...state.json().items.stick,
+        ...state.json().items.nutrition,
+      ].map((item: { id: string; resourceLabel: string }) => [item.id, item.resourceLabel]),
+    );
+    expect(labelById.get(oneShotStickId)).toBe('1 бросок');
+    expect(labelById.get(twoShotStickId)).toBe('2 броска');
+    expect(labelById.get(fiveShotStickId)).toBe('5 бросков');
+    expect(labelById.get(twentyOneShotStickId)).toBe('21 бросок');
+    expect(labelById.get(energyNutritionId)).toBe('1 минута');
   });
 
   it('purchases inventory with currency balance', async () => {

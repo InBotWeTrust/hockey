@@ -112,11 +112,25 @@ const itemParamsSchema = z.object({
   itemId: z.string().uuid(),
 });
 
+function pluralRu(value: number, one: string, few: string, many: string): string {
+  const mod100 = Math.abs(value) % 100;
+  const mod10 = Math.abs(value) % 10;
+  if (mod100 >= 11 && mod100 <= 14) return many;
+  if (mod10 === 1) return one;
+  if (mod10 >= 2 && mod10 <= 4) return few;
+  return many;
+}
+
 function resourceLabel(unit: ResourceUnit, chargesAvailable: number): string {
-  if (unit === 'shot') return `${chargesAvailable} бросков`;
-  if (unit === 'energy_ms') return `${Math.floor(chargesAvailable / 60000)} мин`;
+  if (unit === 'shot') {
+    return `${chargesAvailable} ${pluralRu(chargesAvailable, 'бросок', 'броска', 'бросков')}`;
+  }
+  if (unit === 'energy_ms') {
+    const minutes = chargesAvailable > 0 ? Math.ceil(chargesAvailable / 60000) : 0;
+    return `${minutes} ${pluralRu(minutes, 'минута', 'минуты', 'минут')}`;
+  }
   if (unit === 'distance') return `${chargesAvailable} ед.`;
-  return `${chargesAvailable} зарядов`;
+  return `${chargesAvailable} ${pluralRu(chargesAvailable, 'заряд', 'заряда', 'зарядов')}`;
 }
 
 async function ensureInventoryRows(client: DbClient, userId: string): Promise<void> {
