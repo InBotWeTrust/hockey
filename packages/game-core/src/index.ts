@@ -51,3 +51,17 @@ export {
 } from './balance/periods.js';
 export type { SessionPhaseOffsets } from './session.js';
 export { getSessionPhaseOffsets, deriveShotSeed } from './session.js';
+export {
+  DEFAULT_DUEL_INVENTORY_TIMING,
+  duelInventorySpeedPointsToPuckSpeedDelta,
+  duelSpeedPressureMultiplier,
+  getDuelPlayerCondition,
+  normalizeDuelInventoryResource,
+  type DuelInventoryItemSnapshot,
+  type DuelInventoryLoadoutSnapshot,
+  type DuelInventoryResourceUnit,
+  type DuelInventoryTiming,
+  type DuelPlayerCondition,
+  type DuelPlayerConditionInput,
+  type DuelPlayerConditionStatus,
+} from './duelInventory.js';
