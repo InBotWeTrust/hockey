@@ -165,7 +165,7 @@ describe('UserProfileSheet', () => {
     expect(screen.getByText('Голы')).toBeInTheDocument();
     expect(screen.getByText('64')).toBeInTheDocument();
     expect(screen.getByText('(12)')).toBeInTheDocument();
-    expect(screen.getByText('Задания (1/1)')).toBeInTheDocument();
+    expect(screen.getByText('Выполненные задания (1)')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Первая шайба.*получено/i })).toBeInTheDocument();
   });
 

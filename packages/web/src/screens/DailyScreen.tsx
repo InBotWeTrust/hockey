@@ -25,6 +25,7 @@ import {
   X,
 } from 'lucide-react';
 import {
+  DEFAULT_DUEL_INVENTORY_TIMING,
   GOALIE_SIZE,
   GOALIE_Y,
   GOAL_OPENING,
@@ -34,6 +35,7 @@ import {
   SHOOTER_CENTER_X,
   STICK_NEUTRAL,
   deriveShotSeed,
+  getDuelPlayerCondition,
   getDailyPeriodSpeedPreset,
   getGoalie,
   getSessionPhaseOffsets,
@@ -41,6 +43,8 @@ import {
   simulateGoal,
   simulateGoalie,
   type DailyPeriodSpeedPreset,
+  type DuelInventoryLoadoutSnapshot,
+  type DuelPlayerCondition,
   type GoalieConfig,
   type SessionPhaseOffsets,
   type ShotInput,
@@ -285,6 +289,16 @@ function speedOverridesForPeriod(
     shooterFreq: preset.shooterFrequency,
     puckSpeed: preset.puckSpeedPerMs,
   };
+}
+
+function clampPuckSpeed(value: number): number {
+  return Math.min(5, Math.max(0.2, Number(value.toFixed(4))));
+}
+
+function movementDistancePxForElapsed(elapsedMs: number, shooterFrequency: number): number {
+  const safeElapsed = Math.max(0, elapsedMs);
+  const safeFrequency = Math.max(0, shooterFrequency);
+  return (safeElapsed * SHOOTER_AMPLITUDE * 4 * safeFrequency) / 1000;
 }
 
 function computeShooterX(t: number, freq: number): number {
@@ -5445,6 +5459,8 @@ function AmateurDuelPlayView({
       : Math.min(match.rules.totalPeriods, match.me.current_period + 1);
   const nextPeriodRule = currentDuelPeriodRule(match);
   const opponentDisplayName = match.opponent.display_name || 'Игрок';
+  const duelCondition = (elapsedMs: number, speeds: SpeedOverrides): DuelPlayerCondition | null =>
+    duelConditionForMatch(match, elapsedMs, speeds);
 
   if (directPlayOnly && match.me.state !== 'period_active') {
     const timing = duelEventTiming(match, now);
@@ -5493,6 +5509,7 @@ function AmateurDuelPlayView({
           optimisticAddShot={optimisticAddShot}
           submitShot={submitShot}
           applyState={applyState}
+          duelCondition={duelCondition}
           longCourtBackground={DAILY_LONG_COURT_BACKGROUND}
           hudAddon={
             <DuelRinkLoadoutHud
@@ -5611,6 +5628,7 @@ function AmateurDuelPlayView({
         optimisticAddShot={optimisticAddShot}
         submitShot={submitShot}
         applyState={applyState}
+        duelCondition={duelCondition}
         longCourtBackground={DAILY_LONG_COURT_BACKGROUND}
         hudAddon={<DuelInventoryMiniHud match={match} />}
         scoreboardOpponent={duelScoreboardOpponent(match)}
@@ -6867,6 +6885,81 @@ function duelInventoryRemaining(match: AmateurDuelMatch, itemId: string, fallbac
   return fallback;
 }
 
+function duelConsumedBeforePeriodItem(
+  match: AmateurDuelMatch,
+  periodNumber: number,
+  itemId: string,
+): number {
+  return match.me.inventory_report
+    .filter((report) => report.periodNumber < periodNumber)
+    .flatMap((report) => report.consumed)
+    .filter((item) => item.id === itemId)
+    .reduce((sum, item) => sum + item.charges, 0);
+}
+
+function duelConsumedForItem(match: AmateurDuelMatch, itemId: string): number {
+  return match.me.inventory_report
+    .flatMap((report) => report.consumed)
+    .filter((item) => item.id === itemId)
+    .reduce((sum, item) => sum + item.charges, 0);
+}
+
+function duelConditionLoadout(match: AmateurDuelMatch): DuelInventoryLoadoutSnapshot {
+  const periodNumber = Math.max(1, match.me.current_period);
+  const stick = match.me.loadout.items.find((item) => item.kind === 'stick');
+  const skates = match.me.loadout.items.find((item) => item.kind === 'skates');
+  const nutrition = match.me.loadout.items.find((item) => item.kind === 'nutrition');
+  const toConditionItem = (
+    item: typeof stick,
+    resourceAvailable: number,
+  ): DuelInventoryLoadoutSnapshot['stick'] => {
+    if (!item || item.resourceUnit === undefined || item.resourceUnit === 'period') return null;
+    return {
+      id: item.id,
+      title: item.title,
+      resourceUnit: item.resourceUnit,
+      resourceAvailable: Math.max(0, resourceAvailable),
+      effectPuckSpeedPoints: item.effectPuckSpeedPoints ?? 0,
+      timing: item.timing ?? DEFAULT_DUEL_INVENTORY_TIMING,
+    };
+  };
+  const stickConsumed = stick ? duelConsumedForItem(match, stick.id) : 0;
+  const skatesConsumedBeforePeriod = skates
+    ? duelConsumedBeforePeriodItem(match, periodNumber, skates.id)
+    : 0;
+  const nutritionConsumedBeforePeriod = nutrition
+    ? duelConsumedBeforePeriodItem(match, periodNumber, nutrition.id)
+    : 0;
+  return {
+    stick: toConditionItem(stick, (stick?.resourceAvailable ?? 0) - stickConsumed),
+    skates: toConditionItem(skates, (skates?.resourceAvailable ?? 0) - skatesConsumedBeforePeriod),
+    nutrition: toConditionItem(
+      nutrition,
+      (nutrition?.resourceAvailable ?? 0) - nutritionConsumedBeforePeriod,
+    ),
+  };
+}
+
+function duelConditionForMatch(
+  match: AmateurDuelMatchState,
+  elapsedMs: number,
+  speeds: SpeedOverrides,
+): DuelPlayerCondition | null {
+  if (!match.match_seed) return null;
+  const basePreset = periodSpeedPresetFor(match.me.current_period, match.rules.periodSpeedPresets);
+  return getDuelPlayerCondition({
+    seed: match.match_seed,
+    userId: match.me.user_id,
+    periodNumber: match.me.current_period,
+    elapsedMs: Math.max(0, elapsedMs),
+    movementDistancePx: movementDistancePxForElapsed(elapsedMs, speeds.shooterFreq),
+    baseLaneWidthPx: SHOOTER_AMPLITUDE * 2,
+    baselineShooterSpeed: basePreset.shooterFrequency,
+    currentShooterSpeed: speeds.shooterFreq,
+    loadout: duelConditionLoadout(match),
+  });
+}
+
 function DuelInventoryMiniHud({ match }: { match: AmateurDuelMatch }): JSX.Element | null {
   const availableItems = match.me.inventory_available ?? [];
 
@@ -7182,6 +7275,9 @@ interface PlayViewProps<TState> {
   hitboxesVisible?: boolean | undefined;
   hitboxesOptions?: HitboxesOptions | undefined;
   shotResolver?: PlayShotResolver | undefined;
+  duelCondition?:
+    | ((elapsedMs: number, speeds: SpeedOverrides) => DuelPlayerCondition | null)
+    | undefined;
   hudAddon?: ReactNode;
   scoreboardOpponent?: ScoreBoardOpponent | undefined;
   readyPresence?: ReadyPresence | undefined;
@@ -8258,6 +8354,7 @@ export function PlayView<TState>({
   hitboxesVisible = false,
   hitboxesOptions = PERSPECTIVE_HITBOX_OPTIONS,
   shotResolver = resolveNewTrainingCourtShot,
+  duelCondition,
   hudAddon,
   scoreboardOpponent,
   readyPresence,
@@ -8363,6 +8460,8 @@ export function PlayView<TState>({
   hitboxesOptionsRef.current = hitboxesOptions;
   const shotResolverRef = useRef(shotResolver);
   shotResolverRef.current = shotResolver;
+  const duelConditionRef = useRef(duelCondition);
+  duelConditionRef.current = duelCondition;
   const readyPresenceRef = useRef(readyPresence);
   readyPresenceRef.current = readyPresence;
   const wasReadyPresenceModeRef = useRef(false);
@@ -8379,12 +8478,14 @@ export function PlayView<TState>({
   const stickEffectsRef = useRef<StickEffects>(stickEffects);
   stickEffectsRef.current = stickEffects;
 
-  const flightDurationMs = useMemo(
-    () => (PUCK_START.y - GOAL_OPENING.y) / speeds.puckSpeed,
-    [speeds.puckSpeed],
-  );
-
   const [now, setNow] = useState(Date.now());
+  const currentDuelCondition = useMemo(
+    () =>
+      active && duelCondition
+        ? duelCondition(computeInitialElapsedMs(sessionTimingRef.current), speeds)
+        : null,
+    [active, duelCondition, now, speeds],
+  );
 
   useEffect(
     () => () => {
@@ -9029,11 +9130,16 @@ export function PlayView<TState>({
     const tapTime = loop.getSceneT();
     const shooterTapTime = loop.getShooterT();
     const sx = computeShooterX(shooterTapTime + offsets.shooter, overrides.shooterFreq);
+    const duelShotCondition = duelConditionRef.current?.(tapTime, overrides) ?? null;
+    if (duelShotCondition && !duelShotCondition.canShoot) return;
+    const puckSpeed = clampPuckSpeed(
+      overrides.puckSpeed + (duelShotCondition?.puckSpeedDelta ?? 0),
+    );
 
     const input = {
       tapTime,
       shooterTapTime,
-      puckSpeedPerMs: overrides.puckSpeed,
+      puckSpeedPerMs: puckSpeed,
       shooterFrequency: overrides.shooterFreq,
       goalieFrequency: overrides.goalieFreq,
       goalFrequency: overrides.goalFreq,
@@ -9051,9 +9157,9 @@ export function PlayView<TState>({
 
     let subText: string | null = null;
     let displayKind: ResultModalKind = result.type;
-    const flightMs = (PUCK_START.y - GOAL_OPENING.y) / overrides.puckSpeed;
+    const flightMs = (PUCK_START.y - GOAL_OPENING.y) / puckSpeed;
     const tGoalCross = tapTime + flightMs;
-    const tGoalieCross = tapTime + (PUCK_START.y - GOALIE_Y) / overrides.puckSpeed;
+    const tGoalieCross = tapTime + (PUCK_START.y - GOALIE_Y) / puckSpeed;
     if (result.type === 'save') {
       const gs = simulateGoalie(activeCfg, seed, shotIndex, tGoalieCross, offsets.goalie);
       const rel = sx - gs.position.x;
@@ -9097,7 +9203,7 @@ export function PlayView<TState>({
     loop.beginShooterPause();
     playerRef.current?.playShot();
     const puckShotPath = puck.shotPath(sx, GOAL_OPENING.y);
-    puck.playShot(puckShotPath.start, puckShotPath.end, loop.getRenderNow(), flightDurationMs);
+    puck.playShot(puckShotPath.start, puckShotPath.end, loop.getRenderNow(), flightMs);
 
     const scheduleShotTimeout = (fn: () => void, delay: number): void => {
       const id = window.setTimeout(() => {
@@ -9119,7 +9225,7 @@ export function PlayView<TState>({
       setResultSubText(subText);
       setResultDisplayKind(displayKind);
       setIsShowingResult(true);
-    }, flightDurationMs);
+    }, flightMs);
 
     scheduleShotTimeout(() => {
       loop.endScenePause();
@@ -9135,7 +9241,7 @@ export function PlayView<TState>({
         applyPending();
         pendingMidShotApplyRef.current = null;
       }
-    }, flightDurationMs + PAUSE_MS);
+    }, flightMs + PAUSE_MS);
 
     void submitShot({
       shotIndex,
@@ -9153,7 +9259,7 @@ export function PlayView<TState>({
       }
       applyNextState();
     });
-  }, [flightDurationMs, optimisticAddShot, submitShot, applyState, applyResolvedState]);
+  }, [optimisticAddShot, submitShot, applyState, applyResolvedState]);
 
   const handleInactiveAction = useCallback(async (): Promise<void> => {
     if (!inactiveAction || isInactiveActionPending) return;
@@ -9201,6 +9307,7 @@ export function PlayView<TState>({
     isShotSubmitPending ||
     isShowingResult ||
     (!active && !inactiveAction) ||
+    (active && currentDuelCondition?.canShoot === false) ||
     (active &&
       (routeCameraPhase === 'zoomed' || routeCameraPhase === 'exiting' || isEntrancePlaying)) ||
     (active && typeof shotsTotal === 'number' && shots >= shotsTotal);

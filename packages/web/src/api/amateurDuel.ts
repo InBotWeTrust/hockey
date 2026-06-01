@@ -1,4 +1,9 @@
-import type { DailyPeriodSpeedPreset, StickEffects } from '@hockey/game-core';
+import type {
+  DailyPeriodSpeedPreset,
+  DuelInventoryResourceUnit,
+  DuelInventoryTiming,
+  StickEffects,
+} from '@hockey/game-core';
 import { apiFetch } from './apiFetch.js';
 import type { ShotInputPayload, ShotResultType } from './duel.js';
 
@@ -138,6 +143,10 @@ export interface AmateurDuelLoadoutItem {
   powerScore: number;
   duelPeriodCost: number;
   chargesReserved: number;
+  resourceUnit?: DuelInventoryResourceUnit;
+  resourceAvailable?: number;
+  effectPuckSpeedPoints?: number;
+  timing?: DuelInventoryTiming;
 }
 
 export interface AmateurDuelLoadout {

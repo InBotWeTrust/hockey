@@ -1,4 +1,5 @@
 import { apiFetch } from './apiFetch.js';
+import type { DuelInventoryResourceUnit, DuelInventoryTiming } from '@hockey/game-core';
 
 export type InventoryEquipmentKind = 'stick' | 'skates' | 'nutrition';
 
@@ -10,9 +11,13 @@ export interface InventoryItem {
   imageUrl: string | null;
   currencyPrice: number;
   chargesPerPurchase: number;
+  resourceUnit?: DuelInventoryResourceUnit;
+  resourceLabel?: string;
   rarity: 'common' | 'rare' | 'epic' | 'legendary';
   powerScore: number;
   duelPeriodCost: number;
+  effectPuckSpeedPoints?: number;
+  timing?: DuelInventoryTiming;
   chargesAvailable: number;
   chargesReserved: number;
 }
