@@ -19,6 +19,9 @@ alter table admin_inventory_items
   add column if not exists effect_fatigue_speed_multiplier numeric(8, 4) not null default 0.88
     check (effect_fatigue_speed_multiplier > 0 and effect_fatigue_speed_multiplier <= 1);
 
+lock table admin_inventory_items, user_inventory_item, user_equipment, amateur_duel_participant
+  in share row exclusive mode;
+
 drop index if exists admin_inventory_items_active_shop_variant_idx;
 
 insert into admin_inventory_items
@@ -220,8 +223,7 @@ transferred_inventory as (
   select
     inventory.user_id,
     mapped_items.new_item_id as inventory_item_id,
-    sum(inventory.charges_available)::int as charges_available,
-    sum(inventory.charges_reserved)::int as charges_reserved
+    sum(inventory.charges_available)::int as charges_available
   from user_inventory_item inventory
   join mapped_items on mapped_items.old_item_id = inventory.inventory_item_id
   group by inventory.user_id, mapped_items.new_item_id
@@ -229,18 +231,15 @@ transferred_inventory as (
 insert into user_inventory_item (
   user_id,
   inventory_item_id,
-  charges_available,
-  charges_reserved
+  charges_available
 )
 select
   user_id,
   inventory_item_id,
-  charges_available,
-  charges_reserved
+  charges_available
 from transferred_inventory
 on conflict (user_id, inventory_item_id) do update
    set charges_available = user_inventory_item.charges_available + excluded.charges_available,
-       charges_reserved = user_inventory_item.charges_reserved + excluded.charges_reserved,
        updated_at = now();
 
 with mapped_items as (

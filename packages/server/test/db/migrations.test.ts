@@ -464,9 +464,36 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       [userId],
     );
     expect(transferredInventory.rows).toEqual([
-      { title: 'Старт', charges_available: 9, charges_reserved: 3 },
-      { title: 'Ультимейт Ван 1', charges_available: 7, charges_reserved: 2 },
-      { title: 'Энерго-заряд', charges_available: 11, charges_reserved: 3 },
+      { title: 'Старт', charges_available: 9, charges_reserved: 0 },
+      { title: 'Ультимейт Ван 1', charges_available: 7, charges_reserved: 0 },
+      { title: 'Энерго-заряд', charges_available: 11, charges_reserved: 0 },
+    ]);
+
+    const oldInventory = await pool.query<{
+      title: string;
+      charges_available: number;
+      charges_reserved: number;
+    }>(
+      `select item.title, inventory.charges_available, inventory.charges_reserved
+         from user_inventory_item inventory
+         join admin_inventory_items item on item.id = inventory.inventory_item_id
+        where inventory.user_id = $1
+          and inventory.inventory_item_id in ($2, $3, $4, $5)
+          and item.deleted_at is not null
+        order by item.title`,
+      [
+        userId,
+        oldItemByKindRarity.get('stick:common'),
+        oldItemByKindRarity.get('nutrition:rare'),
+        oldItemByKindRarity.get('skates:common'),
+        oldItemByKindRarity.get('skates:legendary'),
+      ],
+    );
+    expect(oldInventory.rows).toEqual([
+      { title: 'Бронзовая клюшка', charges_available: 7, charges_reserved: 2 },
+      { title: 'Бронзовые коньки', charges_available: 4, charges_reserved: 1 },
+      { title: 'Золотые коньки', charges_available: 5, charges_reserved: 2 },
+      { title: 'Серебряное питание', charges_available: 11, charges_reserved: 3 },
     ]);
 
     const equipment = await pool.query<{
