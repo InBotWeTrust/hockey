@@ -104,22 +104,99 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       'experience_snapshot',
     );
 
-    const inventory = await pool.query<{ title: string; photo_url: string }>(
-      `select title, photo_url
+    const inventoryColumns = await pool.query<{ column_name: string }>(
+      `select column_name
+         from information_schema.columns
+        where table_schema = 'public' and table_name = 'admin_inventory_items'
+        order by column_name`,
+    );
+    expect(inventoryColumns.rows.map((row) => row.column_name)).toEqual(
+      expect.arrayContaining([
+        'resource_unit',
+        'effect_puck_speed_points',
+        'effect_stumble_interval_min_ms',
+        'effect_stumble_interval_max_ms',
+        'effect_stumble_duration_min_ms',
+        'effect_stumble_duration_max_ms',
+        'effect_nutrition_slowdown_ms',
+        'effect_nutrition_stop_ms',
+        'effect_fatigue_delay_ms',
+        'effect_fatigue_speed_multiplier',
+      ]),
+    );
+
+    const inventory = await pool.query<{
+      title: string;
+      item_kind: string;
+      resource_unit: string;
+      currency_price: number;
+      charges_per_purchase: number;
+      effect_puck_speed_points: number;
+    }>(
+      `select title, item_kind, resource_unit, currency_price, charges_per_purchase,
+              effect_puck_speed_points
          from admin_inventory_items
         where deleted_at is null
-        order by title`,
+          and item_kind in ('stick', 'skates', 'nutrition')
+        order by item_kind, currency_price, title`,
     );
     expect(inventory.rows).toEqual([
-      { title: 'Бронзовая клюшка', photo_url: '/inventory/stick-bronze.webp' },
-      { title: 'Бронзовое питание', photo_url: '/inventory/nutrition-bronze.webp' },
-      { title: 'Бронзовые коньки', photo_url: '/inventory/skates-bronze.webp' },
-      { title: 'Золотая клюшка', photo_url: '/inventory/stick-gold.webp' },
-      { title: 'Золотое питание', photo_url: '/inventory/nutrition-gold.webp' },
-      { title: 'Золотые коньки', photo_url: '/inventory/skates-gold.webp' },
-      { title: 'Серебряная клюшка', photo_url: '/inventory/stick-silver.webp' },
-      { title: 'Серебряное питание', photo_url: '/inventory/nutrition-silver.webp' },
-      { title: 'Серебряные коньки', photo_url: '/inventory/skates-silver.webp' },
+      {
+        title: 'Изотоник',
+        item_kind: 'nutrition',
+        resource_unit: 'energy_ms',
+        currency_price: 1490,
+        charges_per_purchase: 8_400_000,
+        effect_puck_speed_points: 0,
+      },
+      {
+        title: 'Энерго-заряд',
+        item_kind: 'nutrition',
+        resource_unit: 'energy_ms',
+        currency_price: 2490,
+        charges_per_purchase: 15_000_000,
+        effect_puck_speed_points: 0,
+      },
+      {
+        title: 'Энерго-комплекс',
+        item_kind: 'nutrition',
+        resource_unit: 'energy_ms',
+        currency_price: 3490,
+        charges_per_purchase: 21_600_000,
+        effect_puck_speed_points: 0,
+      },
+      {
+        title: 'Старт',
+        item_kind: 'skates',
+        resource_unit: 'distance',
+        currency_price: 2990,
+        charges_per_purchase: 1000,
+        effect_puck_speed_points: 0,
+      },
+      {
+        title: 'Ультимейт Ван 1',
+        item_kind: 'stick',
+        resource_unit: 'shot',
+        currency_price: 1490,
+        charges_per_purchase: 1300,
+        effect_puck_speed_points: 10,
+      },
+      {
+        title: 'Ультимейт Ван 2',
+        item_kind: 'stick',
+        resource_unit: 'shot',
+        currency_price: 2490,
+        charges_per_purchase: 1950,
+        effect_puck_speed_points: 10,
+      },
+      {
+        title: 'Ультимейт Ван 3',
+        item_kind: 'stick',
+        resource_unit: 'shot',
+        currency_price: 3740,
+        charges_per_purchase: 2500,
+        effect_puck_speed_points: 10,
+      },
     ]);
 
     const notifications = await pool.query<{ key: string; click_url: string }>(
@@ -195,6 +272,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '047_achievements_rework.sql',
       '048_duel_achievement_experience_snapshot.sql',
       '049_amateur_unlock_300_goals.sql',
+      '050_duel_inventory_usage_resources.sql',
     ]);
   });
 });
