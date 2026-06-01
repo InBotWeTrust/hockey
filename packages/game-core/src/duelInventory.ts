@@ -125,7 +125,8 @@ function defaultSkateStumbleWindow(
     timing.stumbleDurationMaxMs,
   );
   if (interval <= 0 || duration <= 0) return false;
-  return input.elapsedMs % interval < duration;
+  if (input.elapsedMs < interval) return false;
+  return (input.elapsedMs - interval) % interval < duration;
 }
 
 export function getDuelPlayerCondition(input: DuelPlayerConditionInput): DuelPlayerCondition {
@@ -144,7 +145,7 @@ export function getDuelPlayerCondition(input: DuelPlayerConditionInput): DuelPla
   const puckSpeedDelta = activeStickPuckSpeedDelta(input.loadout.stick);
 
   const nutrition = input.loadout.nutrition;
-  if (nutrition?.resourceUnit === 'energy_ms') {
+  if (nutrition?.resourceUnit === 'energy_ms' && nutrition.resourceAvailable > 0) {
     const depletion = nutritionDepletionState(input, nutrition, speedPressureMultiplier);
     if (depletion === 'exhausted_stop') {
       return condition({
@@ -212,7 +213,12 @@ function nutritionResourceConsumed(
   input: DuelPlayerConditionInput,
   speedPressureMultiplier: number,
 ): number {
-  if (input.loadout.nutrition?.resourceUnit !== 'energy_ms') return 0;
+  if (
+    input.loadout.nutrition?.resourceUnit !== 'energy_ms' ||
+    input.loadout.nutrition.resourceAvailable <= 0
+  ) {
+    return 0;
+  }
   return normalizeDuelInventoryResource({
     resourceUnit: 'energy_ms',
     activePeriodMs: input.elapsedMs,

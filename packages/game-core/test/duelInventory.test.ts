@@ -67,6 +67,49 @@ describe('duel inventory condition', () => {
     expect(getDuelPlayerCondition(input)).toEqual(getDuelPlayerCondition(input));
   });
 
+  it('does not start default-skate stumble before the first deterministic interval', () => {
+    const timedLoadout = loadout({
+      skates: {
+        id: 'spent-skates',
+        title: 'Старт',
+        resourceUnit: 'distance',
+        resourceAvailable: 0,
+        effectPuckSpeedPoints: 0,
+        timing: {
+          ...DEFAULT_DUEL_INVENTORY_TIMING,
+          stumbleIntervalMinMs: 25_000,
+          stumbleIntervalMaxMs: 25_000,
+          stumbleDurationMinMs: 300,
+          stumbleDurationMaxMs: 300,
+        },
+      },
+    });
+    const baseInput = {
+      seed: 'match-seed',
+      userId: 'user-a',
+      periodNumber: 1,
+      movementDistancePx: 0,
+      baseLaneWidthPx: 572,
+      baselineShooterSpeed: 1,
+      currentShooterSpeed: 1,
+      loadout: timedLoadout,
+    };
+
+    const atStart = getDuelPlayerCondition({ ...baseInput, elapsedMs: 0 });
+    const beforeFirstInterval = getDuelPlayerCondition({
+      ...baseInput,
+      elapsedMs: 24_999,
+    });
+    const atFirstInterval = getDuelPlayerCondition({ ...baseInput, elapsedMs: 25_000 });
+
+    expect(atStart.stumbleActive).toBe(false);
+    expect(atStart.canShoot).toBe(true);
+    expect(beforeFirstInterval.stumbleActive).toBe(false);
+    expect(beforeFirstInterval.canShoot).toBe(true);
+    expect(atFirstInterval.stumbleActive).toBe(true);
+    expect(atFirstInterval.canShoot).toBe(false);
+  });
+
   it('Start skates disable stumble while distance resource remains', () => {
     const condition = getDuelPlayerCondition({
       seed: 'match-seed',
@@ -93,7 +136,37 @@ describe('duel inventory condition', () => {
     expect(condition.canShoot).toBe(true);
   });
 
-  it('nutrition depletion slows then fully stops the player', () => {
+  it('empty nutrition behaves like no active nutrition instead of depletion', () => {
+    const common = {
+      seed: 'match-seed',
+      userId: 'user-a',
+      periodNumber: 1,
+      movementDistancePx: 0,
+      baseLaneWidthPx: 572,
+      baselineShooterSpeed: 1,
+      currentShooterSpeed: 1,
+      loadout: loadout({
+        nutrition: {
+          id: 'nutrition-empty',
+          title: 'Изотоник',
+          resourceUnit: 'energy_ms' as const,
+          resourceAvailable: 0,
+          effectPuckSpeedPoints: 0,
+          timing: DEFAULT_DUEL_INVENTORY_TIMING,
+        },
+      }),
+    };
+
+    const early = getDuelPlayerCondition({ ...common, elapsedMs: 500 });
+    const duringWouldBeStop = getDuelPlayerCondition({ ...common, elapsedMs: 2_500 });
+
+    expect(early.status).toBe('normal');
+    expect(early.canShoot).toBe(true);
+    expect(duringWouldBeStop.status).toBe('normal');
+    expect(duringWouldBeStop.canShoot).toBe(true);
+  });
+
+  it('nutrition depletion follows before, slowdown, stop, and recovery boundaries', () => {
     const common = {
       seed: 'match-seed',
       userId: 'user-a',
@@ -114,12 +187,19 @@ describe('duel inventory condition', () => {
       }),
     };
 
-    expect(getDuelPlayerCondition({ ...common, elapsedMs: 10_500 }).status).toBe(
-      'nutrition_slowdown',
-    );
+    const beforeDepletion = getDuelPlayerCondition({ ...common, elapsedMs: 9_999 });
+    const slowed = getDuelPlayerCondition({ ...common, elapsedMs: 10_500 });
     const stopped = getDuelPlayerCondition({ ...common, elapsedMs: 12_500 });
+    const recovered = getDuelPlayerCondition({ ...common, elapsedMs: 17_000 });
+
+    expect(beforeDepletion.status).toBe('normal');
+    expect(beforeDepletion.canShoot).toBe(true);
+    expect(slowed.status).toBe('nutrition_slowdown');
+    expect(slowed.canShoot).toBe(true);
     expect(stopped.status).toBe('exhausted_stop');
     expect(stopped.canShoot).toBe(false);
+    expect(['normal', 'tired']).toContain(recovered.status);
+    expect(recovered.canShoot).toBe(true);
   });
 
   it('normalizes distance and energy resource consumption', () => {
