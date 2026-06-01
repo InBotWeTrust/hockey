@@ -126,6 +126,7 @@ import {
   cancelAmateurDuel,
   declineAmateurDuel,
   fetchAmateurEvents,
+  fetchAmateurHistory,
   fetchAmateurMatch,
   fetchAmateurMatches,
   fetchAmateurRating,
@@ -158,7 +159,7 @@ type BeginnerMode = 'daily' | 'training';
 type DailyView = 'arena' | 'play';
 type AmateurView = 'home' | 'duels' | 'tournaments';
 type AmateurDuelTab = 'game' | 'locker' | 'rating' | 'history';
-type DuelHistoryScope = 'current' | 'all';
+type DuelHistoryFilter = 'current' | 'all' | string;
 type LevelArtwork = 'beginner' | 'amateur' | 'pro';
 type ModeInfoModalContent = { title: string; text: string };
 type ArenaEntryKind = 'daily' | 'training' | 'duel';
@@ -1185,8 +1186,7 @@ function ArenaVideoCube({
   activeIndex: number;
   onActiveIndexChange: (index: number) => void;
 }): JSX.Element {
-  const activeEntry =
-    entries[Math.min(entries.length - 1, Math.max(0, activeIndex))] ?? entries[0];
+  const activeEntry = entries[Math.min(entries.length - 1, Math.max(0, activeIndex))] ?? entries[0];
   const hasManyEntries = entries.length > 1;
   const swipeStartRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
   const goTo = useCallback(
@@ -1628,7 +1628,8 @@ function DailyHubScoreboard({
         maxWidth: align === 'left' ? 'none' : 306,
         padding: 0,
         display: 'grid',
-        gridTemplateColumns: align === 'left' ? 'max-content max-content' : 'minmax(0, 1fr) minmax(0, 1fr)',
+        gridTemplateColumns:
+          align === 'left' ? 'max-content max-content' : 'minmax(0, 1fr) minmax(0, 1fr)',
         alignItems: 'center',
         justifyItems: align === 'left' ? 'start' : 'center',
         gap: align === 'left' ? 36 : 'clamp(6px, 1.1vh, 10px)',
@@ -1765,7 +1766,8 @@ function duelRinkPrimaryLabel(match: AmateurDuelMatch, fallbackNow: number): str
   if (match.status === 'invited' && isDuelInviteForMe(match)) return 'Примите вызов';
   if (match.status === 'invited') return 'Ждём ответ';
   if (match.status === 'active' && match.me.state === 'accepted') return 'Начать';
-  if (match.status === 'active' && match.opponent.state === 'period_active') return 'Ждём соперника';
+  if (match.status === 'active' && match.opponent.state === 'period_active')
+    return 'Ждём соперника';
   return arenaDuelCtaLabel(match, fallbackNow);
 }
 
@@ -2009,7 +2011,9 @@ function DailyPeriodTab({
         fontSize: 11,
         fontWeight: 900,
         background: active ? 'rgba(107, 224, 255, 0.24)' : 'rgba(7, 32, 52, 0.28)',
-        border: active ? '1px solid rgba(182, 238, 255, 0.72)' : '1px solid rgba(118, 215, 255, 0.24)',
+        border: active
+          ? '1px solid rgba(182, 238, 255, 0.72)'
+          : '1px solid rgba(118, 215, 255, 0.24)',
         color: active ? '#e9fbff' : 'rgba(174, 233, 255, 0.46)',
         boxShadow: active
           ? '0 0 9px rgba(122, 229, 255, 0.54), inset 0 0 8px rgba(82, 205, 255, 0.24)'
@@ -2053,8 +2057,7 @@ function DailyEventScoreboardColumn({
           letterSpacing: '0.06em',
           fontVariantNumeric: 'tabular-nums',
           whiteSpace: 'nowrap',
-          textShadow:
-            '0 0 7px rgba(143, 232, 255, 0.72), 0 0 14px rgba(44, 177, 255, 0.38)',
+          textShadow: '0 0 7px rgba(143, 232, 255, 0.72), 0 0 14px rgba(44, 177, 255, 0.38)',
         }}
       >
         {value}
@@ -3447,6 +3450,18 @@ function currentMoscowSeasonKey(): string {
   return `${year}-${month}`;
 }
 
+function formatSeasonKeyLabel(seasonKey: string): string {
+  const match = /^(\d{4})-(\d{2})$/.exec(seasonKey);
+  if (!match) return seasonKey;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (!Number.isFinite(year) || !Number.isFinite(month)) return seasonKey;
+  return new Intl.DateTimeFormat('ru-RU', {
+    month: 'long',
+    year: 'numeric',
+  }).format(new Date(Date.UTC(year, month - 1, 1)));
+}
+
 function duelHistoryStats(matches: AmateurDuelMatch[]): {
   duels: number;
   wins: number;
@@ -3795,7 +3810,7 @@ function AmateurDuelsPage({
   const currentUserId = useAuthStore((s) => s.user?.id ?? null);
   const queryClient = useQueryClient();
   const [duelTab, setDuelTab] = useState<AmateurDuelTab>('game');
-  const [historyScope, setHistoryScope] = useState<DuelHistoryScope>('current');
+  const [historyFilter, setHistoryFilter] = useState<DuelHistoryFilter>('current');
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [duelCreationMode, setDuelCreationMode] = useState<'matchmaking' | 'challenge'>(
     'matchmaking',
@@ -3835,7 +3850,19 @@ function AmateurDuelsPage({
   });
   const rating = useQuery({
     queryKey: ['amateur-duel', 'rating'],
-    queryFn: fetchAmateurRating,
+    queryFn: () => fetchAmateurRating(),
+  });
+  const currentSeasonKey = rating.data?.season_key ?? currentMoscowSeasonKey();
+  const selectedHistorySeasonKey =
+    historyFilter === 'current'
+      ? currentSeasonKey
+      : historyFilter === 'all'
+        ? undefined
+        : historyFilter;
+  const historyQuery = useQuery({
+    queryKey: ['amateur-duel', 'history', selectedHistorySeasonKey ?? 'all'],
+    queryFn: () => fetchAmateurHistory(selectedHistorySeasonKey),
+    enabled: duelTab === 'history',
   });
   const historyResultDetails = useQuery({
     queryKey: ['amateur-duel', 'matches', historyResultMatch?.id],
@@ -3892,16 +3919,20 @@ function AmateurDuelsPage({
   );
   const openDuelSlotsUsed = activeMatches.length;
   const hasOpenDuelSlot = openDuelSlotsUsed < 5;
-  const history = (matches.data?.matches ?? []).filter(
-    (match) =>
-      match.status === 'settled' || match.status === 'expired' || match.status === 'cancelled',
+  const filteredHistory = historyQuery.data?.matches ?? [];
+  const historyStats = historyQuery.data?.stats ?? duelHistoryStats(filteredHistory);
+  const historySeasons = Array.from(
+    new Set([currentSeasonKey, ...(historyQuery.data?.seasons ?? [])]),
   );
-  const currentSeasonKey = rating.data?.season_key ?? currentMoscowSeasonKey();
-  const filteredHistory =
-    historyScope === 'current'
-      ? history.filter((match) => match.season_key === currentSeasonKey)
-      : history;
-  const historyStats = duelHistoryStats(filteredHistory);
+  const historyFilterItems = [
+    { id: 'current', label: 'Текущий месяц' },
+    ...historySeasons
+      .filter((seasonKey) => seasonKey !== currentSeasonKey)
+      .map((seasonKey) => ({ id: seasonKey, label: formatSeasonKeyLabel(seasonKey) })),
+    { id: 'all', label: 'Всё время' },
+  ];
+  const historyRatingPlace =
+    selectedHistorySeasonKey !== undefined ? (historyQuery.data?.rating_place ?? null) : null;
   const selectedTemplate = selectedTemplateId
     ? (templateItems.find((item) => item.id === selectedTemplateId) ?? null)
     : (templateItems[0] ?? null);
@@ -4582,21 +4613,34 @@ function AmateurDuelsPage({
       {duelTab === 'history' && (
         <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div className="section-label section-label--page">История</div>
-          <SegmentedTabs
-            ariaLabel="Фильтр истории дуэлей"
-            activeTab={historyScope}
-            items={[
-              { id: 'current', label: 'Текущий месяц' },
-              { id: 'all', label: 'Всё время' },
-            ]}
-            onChange={(id) => setHistoryScope(id as DuelHistoryScope)}
+          <GlassSelect
+            ariaLabel="Месяц истории дуэлей"
+            value={historyFilter}
+            options={historyFilterItems.map((item) => ({
+              value: item.id,
+              label: item.label,
+            }))}
+            onChange={setHistoryFilter}
           />
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns:
+                selectedHistorySeasonKey !== undefined ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)',
+              gap: 8,
+            }}
+          >
             <TotalCell label="ДУЭЛИ" value={String(historyStats.duels)} />
             <TotalCell label="ПОБЕДЫ" value={String(historyStats.wins)} />
             <TotalCell label="ОЧКИ" value={String(historyStats.points)} />
+            {selectedHistorySeasonKey !== undefined && (
+              <TotalCell
+                label="МЕСТО"
+                value={historyRatingPlace !== null ? `#${historyRatingPlace}` : '—'}
+              />
+            )}
           </div>
-          {filteredHistory.length === 0 ? (
+          {historyQuery.isLoading ? (
             <div
               style={{
                 color: 'rgba(15, 23, 42, 0.68)',
@@ -4605,8 +4649,19 @@ function AmateurDuelsPage({
                 lineHeight: 1.35,
               }}
             >
-              {historyScope === 'current'
-                ? 'За текущий месяц дуэлей пока нет.'
+              Загрузка истории...
+            </div>
+          ) : filteredHistory.length === 0 ? (
+            <div
+              style={{
+                color: 'rgba(15, 23, 42, 0.68)',
+                fontSize: 16,
+                fontWeight: 700,
+                lineHeight: 1.35,
+              }}
+            >
+              {selectedHistorySeasonKey
+                ? `За ${formatSeasonKeyLabel(selectedHistorySeasonKey)} сыгранных дуэлей пока нет.`
                 : 'Архив появится после первых завершённых дуэлей.'}
             </div>
           ) : (
@@ -5299,8 +5354,7 @@ function AmateurDuelPlayView({
     const inventory = inventoryQuery.data;
     if (!inventory) return;
     setSelectedLoadout((current) => ({
-      stick:
-        current.stick === undefined ? duelEquipmentIdFor(inventory, 'stick') : current.stick,
+      stick: current.stick === undefined ? duelEquipmentIdFor(inventory, 'stick') : current.stick,
       skates:
         current.skates === undefined ? duelEquipmentIdFor(inventory, 'skates') : current.skates,
       nutrition:
@@ -5672,12 +5726,7 @@ function DuelResultModal({
   const hasMultiplePeriods = match.rules.totalPeriods > 1;
 
   return (
-    <div
-      className="modal-backdrop"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Результат дуэли"
-    >
+    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Результат дуэли">
       <div
         className="modal-card"
         style={{
@@ -7038,6 +7087,7 @@ function TotalCell({ label, value }: { label: string; value: string }): JSX.Elem
   const isLongValue = value.length > 5;
   return (
     <div
+      aria-label={`${label}: ${value}`}
       style={{
         padding: '10px 4px',
         borderRadius: 14,
@@ -7419,10 +7469,10 @@ function DailyPlayView({
               ? 'НАЧИНАЕМ...'
               : 'НАЧАТЬ'
             : isBreak || isDailyLockedByTraining
-            ? 'ЛЁД ГОТОВИТСЯ'
-            : isClosed
-              ? 'ИГРА ЗАВЕРШЕНА'
-              : undefined
+              ? 'ЛЁД ГОТОВИТСЯ'
+              : isClosed
+                ? 'ИГРА ЗАВЕРШЕНА'
+                : undefined
         }
         inactiveAction={canStartPeriod ? handleStartPeriod : undefined}
         entranceBeforeInactiveAction={true}
@@ -7595,12 +7645,19 @@ function TrainingCubeScoreboard({
     : undefined;
   const effectiveNotice = notice ?? opponentNotice;
   const isSinglePeriod = periodsTotal === 1;
-  const metrics = [
-    { label: 'Период', value: `${period}/${periodsTotal}` },
-    { label: opponent ? 'Счёт' : 'Голы', value: goalsText },
-    { label: 'Броски', value: shotsText },
-    { label: timerLabel, value: timer },
-  ];
+  const metrics = opponent
+    ? [
+        { label: 'Период', value: `${period}/${periodsTotal}` },
+        { label: timerLabel, value: timer },
+        { label: 'Броски', value: shotsText },
+        { label: 'Счёт', value: goalsText },
+      ]
+    : [
+        { label: 'Период', value: `${period}/${periodsTotal}` },
+        { label: timerLabel, value: timer },
+        { label: 'Голы', value: goalsText },
+        { label: 'Броски', value: shotsText },
+      ];
 
   if (isSinglePeriod) {
     return (
@@ -7677,7 +7734,7 @@ function TrainingCubeNotice({ text }: { text: string }): JSX.Element {
         position: 'absolute',
         left: '10%',
         right: '10%',
-        bottom: '22%',
+        bottom: '16%',
         color: 'rgba(232, 251, 255, 0.94)',
         fontFamily: 'var(--font-mono)',
         fontSize: 'clamp(8px, 2vw, 12px)',
@@ -9145,7 +9202,7 @@ export function PlayView<TState>({
     isShowingResult ||
     (!active && !inactiveAction) ||
     (active &&
-      ((routeCameraPhase === 'zoomed' || routeCameraPhase === 'exiting') || isEntrancePlaying)) ||
+      (routeCameraPhase === 'zoomed' || routeCameraPhase === 'exiting' || isEntrancePlaying)) ||
     (active && typeof shotsTotal === 'number' && shots >= shotsTotal);
   const effectiveRinkLayer = rinkLayer ?? (
     <TrainingPerspectiveRink

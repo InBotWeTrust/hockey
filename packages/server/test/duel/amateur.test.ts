@@ -509,9 +509,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       headers: auth(tokenA),
     });
     expect(state.statusCode).toBe(200);
-    const stick = state
-      .json()
-      .items.stick.find((item: { id: string }) => item.id === stickId);
+    const stick = state.json().items.stick.find((item: { id: string }) => item.id === stickId);
     expect(stick?.chargesAvailable).toBe(3);
   });
 
@@ -533,9 +531,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
 
     expect(purchased.statusCode).toBe(200);
     expect(purchased.json().balances.tokens).toBe(60);
-    const stick = purchased
-      .json()
-      .items.stick.find((item: { id: string }) => item.id === stickId);
+    const stick = purchased.json().items.stick.find((item: { id: string }) => item.id === stickId);
     expect(stick?.chargesAvailable).toBe(5);
     expect(stick?.chargesPerPurchase).toBe(5);
     expect(purchased.json().purchaseHistory[0]).toMatchObject({
@@ -707,6 +703,74 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(notification.rows[0]?.content).toBe(
       'Player B отклонил приглашение на дуэль «Test duel».',
     );
+  });
+
+  it('omits cancelled and expired duels from the match list', async () => {
+    const templateId = await createTemplate();
+
+    const settled = await challenge(templateId);
+    const settledMatchId = settled.json().match.id;
+    await pool.query(
+      `update amateur_duel_match
+          set status = 'settled',
+              season_key = '2026-01',
+              accepted_at = now(),
+              settled_at = now(),
+              settled_reason = 'completed',
+              winner_user_id = $2,
+              outcome = 'challenger_win'
+        where id = $1`,
+      [settledMatchId, userA],
+    );
+    await pool.query(
+      `update amateur_duel_participant
+          set state = 'completed',
+              shots_taken = case when user_id = $2 then 5 else 4 end,
+              goals = case when user_id = $2 then 3 else 1 end,
+              result_points = case when user_id = $2 then 3 else 0 end
+        where match_id = $1`,
+      [settledMatchId, userA],
+    );
+
+    const cancelled = await challenge(templateId);
+    await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${cancelled.json().match.id}/cancel`,
+      headers: auth(tokenA),
+    });
+
+    const expired = await challenge(templateId);
+    await pool.query(
+      `update amateur_duel_match
+          set status = 'expired',
+              settled_at = now(),
+              settled_reason = 'not_accepted'
+        where id = $1`,
+      [expired.json().match.id],
+    );
+
+    const listed = await app.inject({
+      method: 'GET',
+      url: '/duel/amateur/matches',
+      headers: auth(tokenA),
+    });
+
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json().matches.map((match: { id: string }) => match.id)).toEqual([
+      settledMatchId,
+    ]);
+
+    const history = await app.inject({
+      method: 'GET',
+      url: '/duel/amateur/history?season_key=2026-01',
+      headers: auth(tokenA),
+    });
+
+    expect(history.statusCode).toBe(200);
+    expect(history.json().matches.map((match: { id: string }) => match.id)).toEqual([
+      settledMatchId,
+    ]);
+    expect(history.json().stats).toEqual({ duels: 1, wins: 1, points: 3 });
   });
 
   it('pairs matchmaking players into a ready room', async () => {

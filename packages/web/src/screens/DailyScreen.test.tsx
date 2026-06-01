@@ -400,10 +400,7 @@ describe('DailyScreen', () => {
     renderWith(['/?view=arena']);
 
     await screen.findByRole('article', { name: 'Активная дуэль: Duel Opponent' });
-    expect(screen.getByLabelText('Выбрать Активная дуэль')).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
+    expect(screen.getByLabelText('Выбрать Активная дуэль')).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(screen.getByLabelText('Выбрать Ежедневная игра'));
     expect(
       await screen.findByRole('article', { name: 'Ежедневная игра: 1-й период доступен' }),
@@ -678,6 +675,10 @@ describe('DailyScreen', () => {
 
     const shotButton = await screen.findByRole('button', { name: 'БРОСОК' });
     expect(shotButton).toBeEnabled();
+    const cubeText = screen.getByLabelText('Статистика на видеокубе').textContent ?? '';
+    expect(cubeText.indexOf('ВРЕМЯ')).toBeGreaterThan(cubeText.indexOf('Период'));
+    expect(cubeText.indexOf('Голы')).toBeGreaterThan(cubeText.indexOf('ВРЕМЯ'));
+    expect(cubeText.indexOf('Броски')).toBeGreaterThan(cubeText.indexOf('Голы'));
     fireEvent.click(screen.getByRole('button', { name: 'Звук в разработке' }));
     expect(screen.getByRole('status')).toHaveTextContent('Звук в разработке');
     expect(screen.getByText('00/30')).toBeInTheDocument();
@@ -1558,6 +1559,153 @@ describe('DailyScreen', () => {
     expect(screen.getByRole('button', { name: /написать в личку/i })).toBeInTheDocument();
   });
 
+  it('shows only played duels in history stats and list', async () => {
+    const expiredMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      id: 'match-expired',
+      status: 'expired',
+      starts_at: '2026-05-16T11:00:00.000Z',
+      winner_user_id: null,
+      outcome: null,
+      settled_reason: 'not_accepted',
+      settled_at: '2026-05-16T11:15:00.000Z',
+      me: {
+        ...settledDuelMatch.me,
+        state: 'invited',
+        shots_taken: 0,
+        goals: 0,
+        result_points: 0,
+      },
+      opponent: {
+        ...settledDuelMatch.opponent,
+        display_name: 'No Show',
+        state: 'invited',
+        shots_taken: 0,
+        goals: 0,
+        result_points: 0,
+      },
+    };
+    const cancelledMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      id: 'match-cancelled',
+      status: 'cancelled',
+      starts_at: '2026-05-16T12:00:00.000Z',
+      winner_user_id: null,
+      outcome: null,
+      settled_reason: 'cancelled_by_challenger',
+      settled_at: '2026-05-16T12:02:00.000Z',
+      me: {
+        ...settledDuelMatch.me,
+        shots_taken: 0,
+        goals: 0,
+        result_points: 0,
+      },
+      opponent: {
+        ...settledDuelMatch.opponent,
+        display_name: 'Cancelled Player',
+        shots_taken: 0,
+        goals: 0,
+        result_points: 0,
+      },
+    };
+    const previousMonthMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      id: 'match-previous-month',
+      season_key: '2026-04',
+      starts_at: '2026-04-12T12:00:00.000Z',
+      winner_user_id: 'u2',
+      outcome: 'opponent_win',
+      me: {
+        ...settledDuelMatch.me,
+        result_points: 0,
+      },
+      opponent: {
+        ...settledDuelMatch.opponent,
+        display_name: 'April Opponent',
+        result_points: 3,
+      },
+    };
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/templates')) {
+        return new Response(JSON.stringify({ templates: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/history')) {
+        const requestedSeason = new URL(url, 'http://localhost').searchParams.get('season_key');
+        if (requestedSeason === '2026-04') {
+          return new Response(
+            JSON.stringify({
+              season_key: '2026-04',
+              seasons: ['2026-05', '2026-04'],
+              rating_place: 8,
+              stats: { duels: 1, wins: 0, points: 0 },
+              matches: [previousMonthMatch],
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            season_key: '2026-05',
+            seasons: ['2026-05', '2026-04'],
+            rating_place: 4,
+            stats: { duels: 1, wins: 1, points: 3 },
+            matches: [settledDuelMatch],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.includes('/duel/amateur/matches')) {
+        return new Response(
+          JSON.stringify({ matches: [settledDuelMatch, expiredMatch, cancelledMatch] }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.includes('/duel/amateur/rating')) {
+        return new Response(JSON.stringify({ season_key: '2026-05', rating: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=amateur&section=duels']);
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'История' }));
+
+    expect(await screen.findByText('Duel Opponent')).toBeInTheDocument();
+    expect(screen.getByLabelText('ДУЭЛИ: 1')).toBeInTheDocument();
+    expect(screen.getByLabelText('ПОБЕДЫ: 1')).toBeInTheDocument();
+    expect(screen.getByLabelText('ОЧКИ: 3')).toBeInTheDocument();
+    expect(screen.getByLabelText('МЕСТО: #4')).toBeInTheDocument();
+    expect(screen.queryByText('No Show')).not.toBeInTheDocument();
+    expect(screen.queryByText('Cancelled Player')).not.toBeInTheDocument();
+    expect(screen.queryByText('Ответа не было')).not.toBeInTheDocument();
+    expect(screen.queryByText('Вы отменили вызов')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Месяц истории дуэлей' }));
+    fireEvent.click(await screen.findByRole('option', { name: 'апрель 2026 г.' }));
+
+    expect(await screen.findByText('April Opponent')).toBeInTheDocument();
+    expect(screen.getByLabelText('ПОБЕДЫ: 0')).toBeInTheDocument();
+    expect(screen.getByLabelText('МЕСТО: #8')).toBeInTheDocument();
+    expect(screen.queryByText('Duel Opponent')).not.toBeInTheDocument();
+  });
+
   it('uses only concrete duel formats for matchmaking filters', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch');
     fetchMock.mockReset();
@@ -2217,6 +2365,9 @@ describe('DailyScreen', () => {
 
     expect(await screen.findByText('Счёт')).toBeInTheDocument();
     expect(screen.getByText('20:19')).toBeInTheDocument();
+    const cubeText = screen.getByLabelText('Статистика на видеокубе').textContent ?? '';
+    expect(cubeText.indexOf('ВРЕМЯ')).toBeGreaterThan(cubeText.indexOf('Период'));
+    expect(cubeText.indexOf('Счёт')).toBeGreaterThan(cubeText.indexOf('Броски'));
     expect(screen.getByLabelText('Сообщение на видеокубе')).toHaveTextContent(
       'СОПЕРНИК 07/30 · ИГРАЕТ 2/3',
     );

@@ -238,6 +238,26 @@ export interface AmateurRatingRow {
   active_duration_seconds: number;
 }
 
+export interface AmateurDuelHistoryStats {
+  duels: number;
+  wins: number;
+  points: number;
+}
+
+export interface AmateurDuelHistoryResponse {
+  season_key: string | null;
+  seasons: string[];
+  rating_place: number | null;
+  stats: AmateurDuelHistoryStats;
+  matches: AmateurDuelMatch[];
+}
+
+export interface AmateurDuelRatingResponse {
+  season_key: string;
+  rating: AmateurRatingRow[];
+  me_rank: number | null;
+}
+
 export interface SubmitAmateurDuelShotRequest {
   shot_index: number;
   input: ShotInputPayload;
@@ -275,6 +295,15 @@ export function fetchAmateurMatches(): Promise<{ matches: AmateurDuelMatch[] }> 
   return apiFetch<{ matches: AmateurDuelMatch[] }>('/duel/amateur/matches').then((res) => ({
     matches: res.matches.map(stampMatch),
   }));
+}
+
+export function fetchAmateurHistory(seasonKey?: string): Promise<AmateurDuelHistoryResponse> {
+  const params = new URLSearchParams();
+  if (seasonKey) params.set('season_key', seasonKey);
+  const query = params.toString();
+  return apiFetch<AmateurDuelHistoryResponse>(
+    `/duel/amateur/history${query ? `?${query}` : ''}`,
+  ).then((res) => ({ ...res, matches: res.matches.map(stampMatch) }));
 }
 
 export function fetchAmateurEvents(): Promise<{ events: AmateurDuelMatch[] }> {
@@ -369,6 +398,9 @@ export function settleAmateurDuel(matchId: string): Promise<{ match: AmateurDuel
   }).then((res) => ({ match: stampMatch(res.match) }));
 }
 
-export function fetchAmateurRating(): Promise<{ season_key: string; rating: AmateurRatingRow[] }> {
-  return apiFetch<{ season_key: string; rating: AmateurRatingRow[] }>('/duel/amateur/rating');
+export function fetchAmateurRating(seasonKey?: string): Promise<AmateurDuelRatingResponse> {
+  const params = new URLSearchParams();
+  if (seasonKey) params.set('season_key', seasonKey);
+  const query = params.toString();
+  return apiFetch<AmateurDuelRatingResponse>(`/duel/amateur/rating${query ? `?${query}` : ''}`);
 }

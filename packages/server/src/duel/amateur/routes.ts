@@ -134,6 +134,18 @@ const adminDuelHistoryQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
 });
 
+const seasonKeySchema = z.string().regex(/^\d{4}-\d{2}$/);
+
+const duelHistoryQuerySchema = z.object({
+  season_key: seasonKeySchema.optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+const duelRatingQuerySchema = z.object({
+  season_key: seasonKeySchema.optional(),
+});
+
 const matchmakingJoinSchema = z
   .object({
     template_id: uuid.optional(),
@@ -782,8 +794,7 @@ function estimateDuelPlayWindowMs(rules: DuelRulesSnapshot): number {
     getDuelPeriodRule(rules, index + 1),
   ).reduce((sum, rule) => sum + rule.durationMs, 0);
   const breakDurationMs = Math.max(0, rules.totalPeriods - 1) * rules.breakDurationMs;
-  const continueGraceMs =
-    Math.max(0, rules.totalPeriods - 1) * DUEL_INTERMISSION_CONTINUE_GRACE_MS;
+  const continueGraceMs = Math.max(0, rules.totalPeriods - 1) * DUEL_INTERMISSION_CONTINUE_GRACE_MS;
   return Math.max(rules.readyDurationMs, periodDurationMs + breakDurationMs + continueGraceMs);
 }
 
@@ -2421,18 +2432,113 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
            from amateur_duel_match m
            join users cu on cu.id = m.challenger_user_id
            join users ou on ou.id = m.opponent_user_id
-          where m.challenger_user_id = $1 or m.opponent_user_id = $1
-          order by case when m.status in ('invited', 'ready_check', 'active') then 0 else 1 end,
-                   m.created_at desc
-          limit 50`,
+	          where (m.challenger_user_id = $1 or m.opponent_user_id = $1)
+	            and m.status in ('invited', 'ready_check', 'active', 'settled')
+	          order by case when m.status in ('invited', 'ready_check', 'active') then 0 else 1 end,
+	                   m.created_at desc
+	          limit 50`,
         [req.user.id],
       );
       const matches: DuelMatchDTO[] = [];
       for (const row of rows) {
         const match = await reconcileMatch(client, row, now);
-        matches.push(await buildMatchDto(client, match, req.user.id, now));
+        if (
+          match.status === 'invited' ||
+          match.status === 'ready_check' ||
+          match.status === 'active' ||
+          match.status === 'settled'
+        ) {
+          matches.push(await buildMatchDto(client, match, req.user.id, now));
+        }
       }
       return { matches };
+    });
+  });
+
+  app.get('/duel/amateur/history', { preHandler: [app.authenticate] }, async (req) => {
+    const query = duelHistoryQuerySchema.parse(req.query);
+    return withTransaction(app, async (client) => {
+      const now = new Date();
+      const seasonFilterSql = query.season_key ? `and m.season_key = $2` : '';
+      const listParams = query.season_key
+        ? [req.user.id, query.season_key, query.limit, query.offset]
+        : [req.user.id, query.limit, query.offset];
+      const limitParam = query.season_key ? '$3' : '$2';
+      const offsetParam = query.season_key ? '$4' : '$3';
+      const { rows } = await client.query<DuelMatchRow>(
+        `select m.*, cu.display_name as challenger_name, cu.avatar_url as challenger_avatar_url,
+	                ou.display_name as opponent_name, ou.avatar_url as opponent_avatar_url
+	           from amateur_duel_match m
+	           join users cu on cu.id = m.challenger_user_id
+	           join users ou on ou.id = m.opponent_user_id
+	          where (m.challenger_user_id = $1 or m.opponent_user_id = $1)
+	            and m.status = 'settled'
+	            ${seasonFilterSql}
+	          order by coalesce(m.settled_at, m.created_at) desc, m.created_at desc
+	          limit ${limitParam}
+	         offset ${offsetParam}`,
+        listParams,
+      );
+      const statsParams = query.season_key ? [req.user.id, query.season_key] : [req.user.id];
+      const { rows: statsRows } = await client.query<{
+        duels: number;
+        wins: number;
+        points: number;
+      }>(
+        `select count(*)::int as duels,
+	                count(*) filter (where m.winner_user_id = $1)::int as wins,
+	                coalesce(sum(p.result_points), 0)::int as points
+	           from amateur_duel_match m
+	           join amateur_duel_participant p on p.match_id = m.id and p.user_id = $1
+	          where m.status = 'settled'
+	            ${seasonFilterSql}`,
+        statsParams,
+      );
+      const { rows: seasonRows } = await client.query<{ season_key: string }>(
+        `select distinct season_key
+	           from (
+	             select m.season_key
+	               from amateur_duel_match m
+	              where (m.challenger_user_id = $1 or m.opponent_user_id = $1)
+	                and m.status = 'settled'
+	             union
+	             select r.season_key
+	               from amateur_duel_rating r
+	              where r.user_id = $1
+	           ) seasons
+	          order by season_key desc`,
+        [req.user.id],
+      );
+      const ratingPlace = query.season_key
+        ? await client
+            .query<{ rank: number }>(
+              `select ranked.rank::int as rank
+	                 from (
+	                   select r.user_id,
+	                          row_number() over (
+	                            order by r.points desc, r.wins desc, r.active_duration_seconds asc,
+	                                     u.display_name asc
+	                          ) as rank
+	                     from amateur_duel_rating r
+	                     join users u on u.id = r.user_id
+	                    where r.season_key = $1
+	                 ) ranked
+	                where ranked.user_id = $2`,
+              [query.season_key, req.user.id],
+            )
+            .then((result) => result.rows[0]?.rank ?? null)
+        : null;
+      const matches: DuelMatchDTO[] = [];
+      for (const row of rows) {
+        matches.push(await buildMatchDto(client, row, req.user.id, now));
+      }
+      return {
+        season_key: query.season_key ?? null,
+        seasons: seasonRows.map((row) => row.season_key),
+        rating_place: ratingPlace,
+        stats: statsRows[0] ?? { duels: 0, wins: 0, points: 0 },
+        matches,
+      };
     });
   });
 
@@ -3142,19 +3248,34 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
     },
   );
 
-  app.get('/duel/amateur/rating', { preHandler: [app.authenticate] }, async () => {
-    const seasonKey = seasonKeyMoscow(new Date());
+  app.get('/duel/amateur/rating', { preHandler: [app.authenticate] }, async (req) => {
+    const query = duelRatingQuerySchema.parse(req.query);
+    const seasonKey = query.season_key ?? seasonKeyMoscow(new Date());
     const { rows } = await app.pg.query<RatingRow>(
       `select r.user_id, u.display_name, u.avatar_url, r.points, r.wins, r.draws, r.losses,
-              r.goals_for, r.goals_against, r.matches_played, r.active_duration_seconds
-         from amateur_duel_rating r
+	              r.goals_for, r.goals_against, r.matches_played, r.active_duration_seconds
+	         from amateur_duel_rating r
          join users u on u.id = r.user_id
         where r.season_key = $1
         order by r.points desc, r.wins desc, r.active_duration_seconds asc, u.display_name asc
-        limit 100`,
+	        limit 100`,
       [seasonKey],
     );
-    return { season_key: seasonKey, rating: rows };
+    const { rows: rankRows } = await app.pg.query<{ rank: number }>(
+      `select ranked.rank::int as rank
+	         from (
+	           select r.user_id,
+	                  row_number() over (
+	                    order by r.points desc, r.wins desc, r.active_duration_seconds asc, u.display_name asc
+	                  ) as rank
+	             from amateur_duel_rating r
+	             join users u on u.id = r.user_id
+	            where r.season_key = $1
+	         ) ranked
+	        where ranked.user_id = $2`,
+      [seasonKey, req.user.id],
+    );
+    return { season_key: seasonKey, rating: rows, me_rank: rankRows[0]?.rank ?? null };
   });
 
   app.get(

@@ -43,6 +43,43 @@ export function ScoreBoard({
     typeof shotsTotal === 'number'
       ? `${String(shots).padStart(2, '0')}/${String(shotsTotal).padStart(2, '0')}`
       : String(shots).padStart(2, '0');
+  const columns = opponent
+    ? [
+        {
+          key: 'period',
+          label: 'ПЕРИОД',
+          content: <PeriodNumbers period={period} periods={periodNums} />,
+        },
+        { key: 'timer', label: timerLabel, content: <LedNumber value={timer} color="#f43f5e" /> },
+        {
+          key: 'shots',
+          label: 'БРОСКИ',
+          content: <LedNumber value={shotsStr} color="#f1f5f9" />,
+        },
+        {
+          key: 'score',
+          label: goalsLabel,
+          content: <LedNumber value={goalsValue} color="#f1f5f9" />,
+        },
+      ]
+    : [
+        {
+          key: 'period',
+          label: 'ПЕРИОД',
+          content: <PeriodNumbers period={period} periods={periodNums} />,
+        },
+        { key: 'timer', label: timerLabel, content: <LedNumber value={timer} color="#f43f5e" /> },
+        {
+          key: 'score',
+          label: goalsLabel,
+          content: <LedNumber value={goalsValue} color="#f1f5f9" />,
+        },
+        {
+          key: 'shots',
+          label: 'БРОСКИ',
+          content: <LedNumber value={shotsStr} color="#f1f5f9" />,
+        },
+      ];
 
   return (
     <div
@@ -67,45 +104,11 @@ export function ScoreBoard({
           gap: 8,
         }}
       >
-        <Column label="ПЕРИОД">
-          <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
-            {periodNums.map((n) => (
-              <span
-                key={n}
-                style={{
-                  display: 'inline-flex',
-                  width: 20,
-                  height: 20,
-                  borderRadius: 5,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: 11,
-                  fontWeight: 700,
-                  background: n === period ? 'var(--red)' : 'transparent',
-                  border: n === period ? 'none' : `1px solid ${DIM}`,
-                  color: n === period ? '#ffffff' : DIM,
-                  boxShadow: n === period ? '0 0 10px rgba(225, 29, 72, 0.55)' : 'none',
-                  transition: 'background 0.2s',
-                }}
-              >
-                {n}
-              </span>
-            ))}
-          </div>
-        </Column>
-
-        <Column label={goalsLabel}>
-          <LedNumber value={goalsValue} color="#f1f5f9" />
-        </Column>
-
-        <Column label="БРОСКИ">
-          <LedNumber value={shotsStr} color="#f1f5f9" />
-        </Column>
-
-        <Column label={timerLabel}>
-          <LedNumber value={timer} color="#f43f5e" />
-        </Column>
+        {columns.map((column) => (
+          <Column key={column.key} label={column.label}>
+            {column.content}
+          </Column>
+        ))}
       </div>
 
       {opponent && <OpponentRow opponent={opponent} />}
@@ -191,8 +194,6 @@ function OpponentRow({ opponent }: { opponent: ScoreBoardOpponent }): JSX.Elemen
           {opponent.name}
         </span>
       </div>
-      <OpponentMetric value={String(opponent.goals)} />
-      <OpponentMetric value={opponent.shotsLabel ?? String(opponent.shots)} />
       <span
         style={{
           justifySelf: 'center',
@@ -209,6 +210,38 @@ function OpponentRow({ opponent }: { opponent: ScoreBoardOpponent }): JSX.Elemen
       >
         {opponent.time}
       </span>
+      <OpponentMetric value={opponent.shotsLabel ?? String(opponent.shots)} />
+      <OpponentMetric value={String(opponent.goals)} />
+    </div>
+  );
+}
+
+function PeriodNumbers({ period, periods }: { period: number; periods: number[] }): JSX.Element {
+  return (
+    <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+      {periods.map((n) => (
+        <span
+          key={n}
+          style={{
+            display: 'inline-flex',
+            width: 20,
+            height: 20,
+            borderRadius: 5,
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontFamily: 'var(--font-mono)',
+            fontSize: 11,
+            fontWeight: 700,
+            background: n === period ? 'var(--red)' : 'transparent',
+            border: n === period ? 'none' : `1px solid ${DIM}`,
+            color: n === period ? '#ffffff' : DIM,
+            boxShadow: n === period ? '0 0 10px rgba(225, 29, 72, 0.55)' : 'none',
+            transition: 'background 0.2s',
+          }}
+        >
+          {n}
+        </span>
+      ))}
     </div>
   );
 }
