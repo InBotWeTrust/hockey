@@ -190,10 +190,11 @@ where not exists (
      and existing.title = seed.title
 );
 
-with mapped_items as (
+create temp table duel_inventory_item_migration_map on commit drop as
   select
     old_item.id as old_item_id,
-    new_item.id as new_item_id
+    new_item.id as new_item_id,
+    new_item.title as new_title
   from admin_inventory_items old_item
   join admin_inventory_items new_item
     on new_item.deleted_at is null
@@ -218,29 +219,100 @@ with mapped_items as (
       'Энерго-заряд',
       'Энерго-комплекс'
     )
-),
+;
+
+with
 transferred_inventory as (
   select
     inventory.user_id,
     mapped_items.new_item_id as inventory_item_id,
-    sum(inventory.charges_available)::int as charges_available
+    sum(inventory.charges_available)::int as charges_available,
+    sum(inventory.charges_reserved)::int as charges_reserved
   from user_inventory_item inventory
-  join mapped_items on mapped_items.old_item_id = inventory.inventory_item_id
+  join duel_inventory_item_migration_map mapped_items
+    on mapped_items.old_item_id = inventory.inventory_item_id
   group by inventory.user_id, mapped_items.new_item_id
 )
 insert into user_inventory_item (
   user_id,
   inventory_item_id,
-  charges_available
+  charges_available,
+  charges_reserved
 )
 select
   user_id,
   inventory_item_id,
-  charges_available
+  charges_available,
+  charges_reserved
 from transferred_inventory
 on conflict (user_id, inventory_item_id) do update
    set charges_available = user_inventory_item.charges_available + excluded.charges_available,
+       charges_reserved = user_inventory_item.charges_reserved + excluded.charges_reserved,
        updated_at = now();
+
+with remapped_participants as (
+  select
+    participant.match_id,
+    participant.user_id,
+    jsonb_set(
+      participant.loadout_snapshot,
+      '{items}',
+      coalesce(
+        (
+          select jsonb_agg(
+            case
+              when mapped_items.new_item_id is null then item.value
+              else jsonb_set(
+                jsonb_set(
+                  item.value,
+                  '{id}',
+                  to_jsonb(mapped_items.new_item_id::text),
+                  false
+                ),
+                '{title}',
+                to_jsonb(mapped_items.new_title),
+                false
+              )
+            end
+            order by item.ordinality
+          )
+          from jsonb_array_elements(participant.loadout_snapshot->'items')
+            with ordinality as item(value, ordinality)
+          left join duel_inventory_item_migration_map mapped_items
+            on item.value->>'id' = mapped_items.old_item_id::text
+        ),
+        '[]'::jsonb
+      ),
+      false
+    ) as loadout_snapshot
+  from amateur_duel_participant participant
+  where jsonb_typeof(participant.loadout_snapshot->'items') = 'array'
+    and exists (
+      select 1
+        from jsonb_array_elements(participant.loadout_snapshot->'items') item(value)
+        join duel_inventory_item_migration_map mapped_items
+          on item.value->>'id' = mapped_items.old_item_id::text
+    )
+)
+update amateur_duel_participant participant
+   set loadout_snapshot = remapped_participants.loadout_snapshot,
+       updated_at = now()
+  from remapped_participants
+ where participant.match_id = remapped_participants.match_id
+   and participant.user_id = remapped_participants.user_id;
+
+update amateur_duel_participant participant
+   set reserved_inventory_item_id = mapped_items.new_item_id,
+       updated_at = now()
+  from duel_inventory_item_migration_map mapped_items
+ where participant.reserved_inventory_item_id = mapped_items.old_item_id;
+
+update user_inventory_item inventory
+   set charges_available = 0,
+       charges_reserved = 0,
+       updated_at = now()
+  from duel_inventory_item_migration_map mapped_items
+ where inventory.inventory_item_id = mapped_items.old_item_id;
 
 with mapped_items as (
   select

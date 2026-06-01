@@ -317,10 +317,14 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
     await applyMigrations(pool, migrationsBefore050Dir!);
 
     const userId = '00000000-0000-4000-8000-000000000501';
+    const opponentId = '00000000-0000-4000-8000-000000000502';
+    const matchId = '00000000-0000-4000-8000-000000000503';
     await pool.query(
       `insert into users (id, display_name, timezone)
-       values ($1, 'Migration Keeper', 'Europe/Moscow')`,
-      [userId],
+       values
+         ($1, 'Migration Keeper', 'Europe/Moscow'),
+         ($2, 'Migration Opponent', 'Europe/Moscow')`,
+      [userId, opponentId],
     );
     await pool.query(
       `insert into user_equipment (user_id)
@@ -370,6 +374,42 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
         oldItemByKindRarity.get('stick:common'),
         oldItemByKindRarity.get('nutrition:rare'),
         oldItemByKindRarity.get('skates:legendary'),
+      ],
+    );
+    await pool.query(
+      `insert into amateur_duel_match
+         (id, challenger_user_id, opponent_user_id, status, rules_snapshot, match_seed,
+          starts_at, ends_at, game_core_version)
+       values
+         ($1, $2, $3, 'active', '{}'::jsonb, 'migration-seed', now(), now() + interval '1 hour', 1)`,
+      [matchId, userId, opponentId],
+    );
+    await pool.query(
+      `insert into amateur_duel_participant
+         (match_id, user_id, side, state, loadout_snapshot, reserved_inventory_item_id,
+          reserved_inventory_charges)
+       values
+         ($1, $2, 'challenger', 'accepted', $3::jsonb, $4, 2)`,
+      [
+        matchId,
+        userId,
+        JSON.stringify({
+          items: [
+            {
+              id: oldItemByKindRarity.get('stick:common'),
+              kind: 'stick',
+              title: 'Бронзовая клюшка',
+              rarity: 'common',
+              powerScore: 24,
+              duelPeriodCost: 1,
+              chargesReserved: 2,
+              effects: { puckSpeedDelta: 0 },
+            },
+          ],
+          powerScore: 24,
+          powerCap: 100,
+        }),
+        oldItemByKindRarity.get('stick:common'),
       ],
     );
 
@@ -464,9 +504,9 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       [userId],
     );
     expect(transferredInventory.rows).toEqual([
-      { title: 'Старт', charges_available: 9, charges_reserved: 0 },
-      { title: 'Ультимейт Ван 1', charges_available: 7, charges_reserved: 0 },
-      { title: 'Энерго-заряд', charges_available: 11, charges_reserved: 0 },
+      { title: 'Старт', charges_available: 9, charges_reserved: 3 },
+      { title: 'Ультимейт Ван 1', charges_available: 7, charges_reserved: 2 },
+      { title: 'Энерго-заряд', charges_available: 11, charges_reserved: 3 },
     ]);
 
     const oldInventory = await pool.query<{
@@ -490,11 +530,52 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       ],
     );
     expect(oldInventory.rows).toEqual([
-      { title: 'Бронзовая клюшка', charges_available: 7, charges_reserved: 2 },
-      { title: 'Бронзовые коньки', charges_available: 4, charges_reserved: 1 },
-      { title: 'Золотые коньки', charges_available: 5, charges_reserved: 2 },
-      { title: 'Серебряное питание', charges_available: 11, charges_reserved: 3 },
+      { title: 'Бронзовая клюшка', charges_available: 0, charges_reserved: 0 },
+      { title: 'Бронзовые коньки', charges_available: 0, charges_reserved: 0 },
+      { title: 'Золотые коньки', charges_available: 0, charges_reserved: 0 },
+      { title: 'Серебряное питание', charges_available: 0, charges_reserved: 0 },
     ]);
+
+    const remappedParticipant = await pool.query<{
+      loadout_snapshot: {
+        items: Array<{ id: string; title: string; chargesReserved: number }>;
+      };
+      reserved_inventory_item_id: string | null;
+    }>(
+      `select loadout_snapshot, reserved_inventory_item_id
+         from amateur_duel_participant
+        where match_id = $1 and user_id = $2`,
+      [matchId, userId],
+    );
+    const remappedStick = transferredInventory.rows.find(
+      (item) => item.title === 'Ультимейт Ван 1',
+    );
+    const newStick = await pool.query<{ id: string }>(
+      `select id
+         from admin_inventory_items
+        where deleted_at is null
+          and item_kind = 'stick'
+          and title = 'Ультимейт Ван 1'`,
+    );
+    expect(remappedParticipant.rows[0]).toEqual({
+      loadout_snapshot: {
+        items: [
+          expect.objectContaining({
+            id: newStick.rows[0]?.id,
+            title: 'Ультимейт Ван 1',
+            chargesReserved: 2,
+          }),
+        ],
+        powerScore: 24,
+        powerCap: 100,
+      },
+      reserved_inventory_item_id: newStick.rows[0]?.id,
+    });
+    expect(remappedStick).toEqual({
+      title: 'Ультимейт Ван 1',
+      charges_available: 7,
+      charges_reserved: 2,
+    });
 
     const equipment = await pool.query<{
       equipped_stick: string | null;
