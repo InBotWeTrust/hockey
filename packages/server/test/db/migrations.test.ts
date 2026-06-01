@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Pool } from 'pg';
@@ -7,6 +9,21 @@ import { applyMigrations } from '../../src/db/migrations.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
+
+async function createMigrationsDirBefore(cutoff: string): Promise<string> {
+  const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), 'hockey-migrations-before-'));
+  const files = (await fs.readdir(MIGRATIONS_DIR))
+    .filter((file) => file.endsWith('.sql') && file.localeCompare(cutoff) < 0)
+    .sort((a, b) => a.localeCompare(b));
+
+  await Promise.all(
+    files.map((file) =>
+      fs.copyFile(path.join(MIGRATIONS_DIR, file), path.join(targetDir, file)),
+    ),
+  );
+
+  return targetDir;
+}
 
 describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
   let pool: Pool;
@@ -273,6 +290,209 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '048_duel_achievement_experience_snapshot.sql',
       '049_amateur_unlock_300_goals.sql',
       '050_duel_inventory_usage_resources.sql',
+    ]);
+  });
+});
+
+describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () => {
+  let pool: Pool;
+  let migrationsBefore050Dir: string | undefined;
+
+  beforeAll(async () => {
+    pool = createTestPool();
+    await resetDatabase(pool);
+    migrationsBefore050Dir = await createMigrationsDirBefore(
+      '050_duel_inventory_usage_resources.sql',
+    );
+  });
+
+  afterAll(async () => {
+    await pool.end();
+    if (migrationsBefore050Dir) {
+      await fs.rm(migrationsBefore050Dir, { recursive: true, force: true });
+    }
+  });
+
+  it('preserves old inventory balances and equipped items when replacing catalogue', async () => {
+    await applyMigrations(pool, migrationsBefore050Dir!);
+
+    const userId = '00000000-0000-4000-8000-000000000501';
+    await pool.query(
+      `insert into users (id, display_name, timezone)
+       values ($1, 'Migration Keeper', 'Europe/Moscow')`,
+      [userId],
+    );
+    await pool.query(
+      `insert into user_equipment (user_id)
+       values ($1)`,
+      [userId],
+    );
+
+    const oldItems = await pool.query<{
+      id: string;
+      item_kind: string;
+      rarity: string;
+      title: string;
+    }>(
+      `select id, item_kind, rarity, title
+         from admin_inventory_items
+        where deleted_at is null
+          and item_kind in ('stick', 'skates', 'nutrition')`,
+    );
+    const oldItemByKindRarity = new Map(
+      oldItems.rows.map((item) => [`${item.item_kind}:${item.rarity}`, item.id]),
+    );
+
+    await pool.query(
+      `insert into user_inventory_item
+         (user_id, inventory_item_id, charges_available, charges_reserved)
+       values
+         ($1, $2, 7, 2),
+         ($1, $3, 11, 3),
+         ($1, $4, 4, 1),
+         ($1, $5, 5, 2)`,
+      [
+        userId,
+        oldItemByKindRarity.get('stick:common'),
+        oldItemByKindRarity.get('nutrition:rare'),
+        oldItemByKindRarity.get('skates:common'),
+        oldItemByKindRarity.get('skates:legendary'),
+      ],
+    );
+    await pool.query(
+      `update user_equipment
+          set equipped_stick_item_id = $2,
+              equipped_nutrition_item_id = $3,
+              equipped_skates_item_id = $4
+        where user_id = $1`,
+      [
+        userId,
+        oldItemByKindRarity.get('stick:common'),
+        oldItemByKindRarity.get('nutrition:rare'),
+        oldItemByKindRarity.get('skates:legendary'),
+      ],
+    );
+
+    const applied = await applyMigrations(pool, MIGRATIONS_DIR);
+    expect(applied.applied).toEqual(['050_duel_inventory_usage_resources.sql']);
+
+    const activeInventory = await pool.query<{
+      item_kind: string;
+      title: string;
+      resource_unit: string;
+      currency_price: number;
+      charges_per_purchase: number;
+      effect_puck_speed_points: number;
+    }>(
+      `select item_kind, title, resource_unit, currency_price, charges_per_purchase,
+              effect_puck_speed_points
+         from admin_inventory_items
+        where deleted_at is null
+          and item_kind in ('stick', 'skates', 'nutrition')
+        order by item_kind, currency_price, title`,
+    );
+    expect(activeInventory.rows).toEqual([
+      {
+        item_kind: 'nutrition',
+        title: 'Изотоник',
+        resource_unit: 'energy_ms',
+        currency_price: 1490,
+        charges_per_purchase: 8_400_000,
+        effect_puck_speed_points: 0,
+      },
+      {
+        item_kind: 'nutrition',
+        title: 'Энерго-заряд',
+        resource_unit: 'energy_ms',
+        currency_price: 2490,
+        charges_per_purchase: 15_000_000,
+        effect_puck_speed_points: 0,
+      },
+      {
+        item_kind: 'nutrition',
+        title: 'Энерго-комплекс',
+        resource_unit: 'energy_ms',
+        currency_price: 3490,
+        charges_per_purchase: 21_600_000,
+        effect_puck_speed_points: 0,
+      },
+      {
+        item_kind: 'skates',
+        title: 'Старт',
+        resource_unit: 'distance',
+        currency_price: 2990,
+        charges_per_purchase: 1000,
+        effect_puck_speed_points: 0,
+      },
+      {
+        item_kind: 'stick',
+        title: 'Ультимейт Ван 1',
+        resource_unit: 'shot',
+        currency_price: 1490,
+        charges_per_purchase: 1300,
+        effect_puck_speed_points: 10,
+      },
+      {
+        item_kind: 'stick',
+        title: 'Ультимейт Ван 2',
+        resource_unit: 'shot',
+        currency_price: 2490,
+        charges_per_purchase: 1950,
+        effect_puck_speed_points: 10,
+      },
+      {
+        item_kind: 'stick',
+        title: 'Ультимейт Ван 3',
+        resource_unit: 'shot',
+        currency_price: 3740,
+        charges_per_purchase: 2500,
+        effect_puck_speed_points: 10,
+      },
+    ]);
+
+    const transferredInventory = await pool.query<{
+      title: string;
+      charges_available: number;
+      charges_reserved: number;
+    }>(
+      `select item.title, inventory.charges_available, inventory.charges_reserved
+         from user_inventory_item inventory
+         join admin_inventory_items item on item.id = inventory.inventory_item_id
+        where inventory.user_id = $1
+          and item.deleted_at is null
+        order by item.title`,
+      [userId],
+    );
+    expect(transferredInventory.rows).toEqual([
+      { title: 'Старт', charges_available: 9, charges_reserved: 3 },
+      { title: 'Ультимейт Ван 1', charges_available: 7, charges_reserved: 2 },
+      { title: 'Энерго-заряд', charges_available: 11, charges_reserved: 3 },
+    ]);
+
+    const equipment = await pool.query<{
+      equipped_stick: string | null;
+      equipped_skates: string | null;
+      equipped_nutrition: string | null;
+    }>(
+      `select stick.title as equipped_stick,
+              skates.title as equipped_skates,
+              nutrition.title as equipped_nutrition
+         from user_equipment equipment
+         left join admin_inventory_items stick
+           on stick.id = equipment.equipped_stick_item_id
+         left join admin_inventory_items skates
+           on skates.id = equipment.equipped_skates_item_id
+         left join admin_inventory_items nutrition
+           on nutrition.id = equipment.equipped_nutrition_item_id
+        where equipment.user_id = $1`,
+      [userId],
+    );
+    expect(equipment.rows).toEqual([
+      {
+        equipped_stick: 'Ультимейт Ван 1',
+        equipped_skates: 'Старт',
+        equipped_nutrition: 'Энерго-заряд',
+      },
     ]);
   });
 });
