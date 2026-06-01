@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { AppError } from '../plugins/errors.js';
 
 type EquipmentKind = 'stick' | 'skates' | 'nutrition';
+type ResourceUnit = 'period' | 'shot' | 'distance' | 'energy_ms';
 type DbClient = Pick<PoolClient, 'query'>;
 
 interface InventoryItemRow {
@@ -14,9 +15,19 @@ interface InventoryItemRow {
   photo_url: string | null;
   currency_price: number;
   charges_per_purchase: number;
+  resource_unit: ResourceUnit;
   rarity: 'common' | 'rare' | 'epic' | 'legendary';
   power_score: number;
   duel_period_cost: number;
+  effect_puck_speed_points: number;
+  effect_stumble_interval_min_ms: number;
+  effect_stumble_interval_max_ms: number;
+  effect_stumble_duration_min_ms: number;
+  effect_stumble_duration_max_ms: number;
+  effect_nutrition_slowdown_ms: number;
+  effect_nutrition_stop_ms: number;
+  effect_fatigue_delay_ms: number;
+  effect_fatigue_speed_multiplier: string | number;
   charges_available: number;
   charges_reserved: number;
 }
@@ -44,9 +55,22 @@ interface InventoryItemDto {
   imageUrl: string | null;
   currencyPrice: number;
   chargesPerPurchase: number;
+  resourceUnit: ResourceUnit;
+  resourceLabel: string;
   rarity: 'common' | 'rare' | 'epic' | 'legendary';
   powerScore: number;
   duelPeriodCost: number;
+  effectPuckSpeedPoints: number;
+  timing: {
+    stumbleIntervalMinMs: number;
+    stumbleIntervalMaxMs: number;
+    stumbleDurationMinMs: number;
+    stumbleDurationMaxMs: number;
+    nutritionSlowdownMs: number;
+    nutritionStopMs: number;
+    fatigueDelayMs: number;
+    fatigueSpeedMultiplier: number;
+  };
   chargesAvailable: number;
   chargesReserved: number;
 }
@@ -88,6 +112,13 @@ const itemParamsSchema = z.object({
   itemId: z.string().uuid(),
 });
 
+function resourceLabel(unit: ResourceUnit, chargesAvailable: number): string {
+  if (unit === 'shot') return `${chargesAvailable} бросков`;
+  if (unit === 'energy_ms') return `${Math.floor(chargesAvailable / 60000)} мин`;
+  if (unit === 'distance') return `${chargesAvailable} ед.`;
+  return `${chargesAvailable} зарядов`;
+}
+
 async function ensureInventoryRows(client: DbClient, userId: string): Promise<void> {
   await client.query(
     `insert into user_currency_account (user_id) values ($1) on conflict do nothing`,
@@ -123,7 +154,12 @@ async function fetchInventoryState(client: DbClient, userId: string): Promise<In
 
   const { rows } = await client.query<InventoryItemRow>(
     `select i.id, i.item_kind, i.title, i.description, i.photo_url, i.currency_price,
-            i.charges_per_purchase, i.rarity, i.power_score, i.duel_period_cost,
+            i.charges_per_purchase, i.resource_unit, i.rarity, i.power_score, i.duel_period_cost,
+            i.effect_puck_speed_points,
+            i.effect_stumble_interval_min_ms, i.effect_stumble_interval_max_ms,
+            i.effect_stumble_duration_min_ms, i.effect_stumble_duration_max_ms,
+            i.effect_nutrition_slowdown_ms, i.effect_nutrition_stop_ms,
+            i.effect_fatigue_delay_ms, i.effect_fatigue_speed_multiplier,
             coalesce(ui.charges_available, 0)::int as charges_available,
             coalesce(ui.charges_reserved, 0)::int as charges_reserved
        from admin_inventory_items i
@@ -141,6 +177,7 @@ async function fetchInventoryState(client: DbClient, userId: string): Promise<In
     nutrition: [],
   };
   for (const row of rows) {
+    const chargesAvailable = Number(row.charges_available);
     items[row.item_kind].push({
       id: row.id,
       kind: row.item_kind,
@@ -149,10 +186,23 @@ async function fetchInventoryState(client: DbClient, userId: string): Promise<In
       imageUrl: row.photo_url,
       currencyPrice: Number(row.currency_price),
       chargesPerPurchase: Number(row.charges_per_purchase),
+      resourceUnit: row.resource_unit,
+      resourceLabel: resourceLabel(row.resource_unit, chargesAvailable),
       rarity: row.rarity,
       powerScore: Number(row.power_score),
       duelPeriodCost: Number(row.duel_period_cost),
-      chargesAvailable: Number(row.charges_available),
+      effectPuckSpeedPoints: Number(row.effect_puck_speed_points),
+      timing: {
+        stumbleIntervalMinMs: Number(row.effect_stumble_interval_min_ms),
+        stumbleIntervalMaxMs: Number(row.effect_stumble_interval_max_ms),
+        stumbleDurationMinMs: Number(row.effect_stumble_duration_min_ms),
+        stumbleDurationMaxMs: Number(row.effect_stumble_duration_max_ms),
+        nutritionSlowdownMs: Number(row.effect_nutrition_slowdown_ms),
+        nutritionStopMs: Number(row.effect_nutrition_stop_ms),
+        fatigueDelayMs: Number(row.effect_fatigue_delay_ms),
+        fatigueSpeedMultiplier: Number(row.effect_fatigue_speed_multiplier),
+      },
+      chargesAvailable,
       chargesReserved: Number(row.charges_reserved),
     });
   }

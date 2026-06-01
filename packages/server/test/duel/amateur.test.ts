@@ -486,6 +486,65 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(ready.json().match.me.loadout.powerScore).toBe(30);
   });
 
+  it('snapshots duel inventory resource units and timing', async () => {
+    const stickId = await createInventoryItem('stick', 'Ультимейт Ван 1');
+    await pool.query(
+      `update admin_inventory_items
+          set resource_unit = 'shot',
+              charges_per_purchase = 1300,
+              effect_puck_speed_points = 10,
+              effect_puck_speed_delta = 0.10,
+              duel_period_cost = 0
+        where id = $1`,
+      [stickId],
+    );
+    await pool.query(
+      `insert into user_inventory_item (user_id, inventory_item_id, charges_available)
+       values ($1, $2, 1300)
+       on conflict (user_id, inventory_item_id)
+       do update set charges_available = excluded.charges_available`,
+      [userA, stickId],
+    );
+    await pool.query(
+      `insert into user_equipment (user_id, equipped_stick_item_id)
+       values ($1, $2)
+       on conflict (user_id) do update
+          set equipped_stick_item_id = excluded.equipped_stick_item_id`,
+      [userA, stickId],
+    );
+    const templateId = await createTemplate();
+    const created = await challenge(templateId);
+    const matchId = created.json().match.id;
+    await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/accept`,
+      headers: auth(tokenB),
+    });
+
+    const ready = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/ready`,
+      headers: auth(tokenA),
+      payload: { loadout: {} },
+    });
+
+    expect(ready.statusCode).toBe(200);
+    const stick = ready
+      .json()
+      .match.me.loadout.items.find((item: { id: string }) => item.id === stickId);
+    expect(stick).toMatchObject({
+      id: stickId,
+      title: 'Ультимейт Ван 1',
+      resourceUnit: 'shot',
+      resourceAvailable: 1300,
+      effectPuckSpeedPoints: 10,
+      timing: {
+        nutritionSlowdownMs: 2000,
+        nutritionStopMs: 5000,
+      },
+    });
+  });
+
   it('returns inventory state and updates active equipment', async () => {
     const stickId = await createInventoryItem('stick', 'Locker stick');
     await pool.query(

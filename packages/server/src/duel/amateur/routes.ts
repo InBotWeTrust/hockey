@@ -2,12 +2,15 @@ import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import type { PoolClient } from 'pg';
 import { z } from 'zod';
 import {
+  DEFAULT_DUEL_INVENTORY_TIMING,
   GAME_CORE_VERSION,
   STICK_NEUTRAL,
   getGoalie,
   getSessionPhaseOffsets,
   resolvePerspectiveCourtShot,
   type DailyPeriodSpeedPreset,
+  type DuelInventoryResourceUnit,
+  type DuelInventoryTiming,
   type StickEffects,
 } from '@hockey/game-core';
 import { assertAdminUser } from '../../chat/channel.js';
@@ -50,6 +53,7 @@ const DUEL_INTERMISSION_CONTINUE_GRACE_MS = 5 * 60_000;
 const uuid = z.string().uuid();
 const isoDate = z.string().datetime({ offset: true });
 const duelKindSchema = z.enum(['express', 'express_plus', 'classic']);
+const duelInventoryResourceUnitSchema = z.enum(['period', 'shot', 'distance', 'energy_ms']);
 
 const periodPresetSchema = z.object({
   periodNumber: z.union([z.literal(1), z.literal(2), z.literal(3)]),
@@ -304,6 +308,7 @@ interface PeriodLogRow {
 }
 
 interface InventoryItemEffects {
+  puckSpeedPoints: number;
   puckSpeedDelta: number;
   shooterFrequencyDelta: number;
   goalieFrequencyDelta: number;
@@ -313,6 +318,14 @@ interface InventoryItemEffects {
   stumbleChance: number;
   stumbleMs: number;
   stumbleBlocksPerPeriod: number;
+  stumbleIntervalMinMs: number;
+  stumbleIntervalMaxMs: number;
+  stumbleDurationMinMs: number;
+  stumbleDurationMaxMs: number;
+  nutritionSlowdownMs: number;
+  nutritionStopMs: number;
+  fatigueDelayMs: number;
+  fatigueSpeedMultiplier: number;
 }
 
 interface LoadoutSelection {
@@ -329,6 +342,10 @@ interface LoadoutItemSnapshot {
   powerScore: number;
   duelPeriodCost: number;
   chargesReserved: number;
+  resourceUnit: DuelInventoryResourceUnit;
+  resourceAvailable: number;
+  effectPuckSpeedPoints: number;
+  timing: DuelInventoryTiming;
   effects: InventoryItemEffects;
 }
 
@@ -523,6 +540,7 @@ function parsePeriodSpeedPresets(value: unknown): DailyPeriodSpeedPreset[] {
 function effectsFromUnknown(value: unknown): InventoryItemEffects {
   const parsed = z
     .object({
+      puckSpeedPoints: z.number().default(0),
       puckSpeedDelta: z.number().default(0),
       shooterFrequencyDelta: z.number().default(0),
       goalieFrequencyDelta: z.number().default(0),
@@ -532,10 +550,21 @@ function effectsFromUnknown(value: unknown): InventoryItemEffects {
       stumbleChance: z.number().default(0),
       stumbleMs: z.number().default(0),
       stumbleBlocksPerPeriod: z.number().default(0),
+      stumbleIntervalMinMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleIntervalMinMs),
+      stumbleIntervalMaxMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleIntervalMaxMs),
+      stumbleDurationMinMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleDurationMinMs),
+      stumbleDurationMaxMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleDurationMaxMs),
+      nutritionSlowdownMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.nutritionSlowdownMs),
+      nutritionStopMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.nutritionStopMs),
+      fatigueDelayMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueDelayMs),
+      fatigueSpeedMultiplier: z
+        .number()
+        .default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueSpeedMultiplier),
     })
     .safeParse(value ?? {});
   if (!parsed.success) {
     return {
+      puckSpeedPoints: 0,
       puckSpeedDelta: 0,
       shooterFrequencyDelta: 0,
       goalieFrequencyDelta: 0,
@@ -545,6 +574,7 @@ function effectsFromUnknown(value: unknown): InventoryItemEffects {
       stumbleChance: 0,
       stumbleMs: 0,
       stumbleBlocksPerPeriod: 0,
+      ...DEFAULT_DUEL_INVENTORY_TIMING,
     };
   }
   return parsed.data;
@@ -567,6 +597,33 @@ function loadoutFromUnknown(value: unknown, powerCap = 0): LoadoutSnapshot {
             powerScore: z.number().int().min(0).default(0),
             duelPeriodCost: z.number().int().min(0).default(0),
             chargesReserved: z.number().int().min(0).default(0),
+            resourceUnit: duelInventoryResourceUnitSchema.default('period'),
+            resourceAvailable: z.number().int().min(0).default(0),
+            effectPuckSpeedPoints: z.number().int().default(0),
+            timing: z
+              .object({
+                stumbleIntervalMinMs: z
+                  .number()
+                  .default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleIntervalMinMs),
+                stumbleIntervalMaxMs: z
+                  .number()
+                  .default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleIntervalMaxMs),
+                stumbleDurationMinMs: z
+                  .number()
+                  .default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleDurationMinMs),
+                stumbleDurationMaxMs: z
+                  .number()
+                  .default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleDurationMaxMs),
+                nutritionSlowdownMs: z
+                  .number()
+                  .default(DEFAULT_DUEL_INVENTORY_TIMING.nutritionSlowdownMs),
+                nutritionStopMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.nutritionStopMs),
+                fatigueDelayMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueDelayMs),
+                fatigueSpeedMultiplier: z
+                  .number()
+                  .default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueSpeedMultiplier),
+              })
+              .default(DEFAULT_DUEL_INVENTORY_TIMING),
             effects: z.unknown().optional(),
           }),
         )
@@ -579,6 +636,7 @@ function loadoutFromUnknown(value: unknown, powerCap = 0): LoadoutSnapshot {
   return {
     items: parsed.data.items.map((item) => ({
       ...item,
+      timing: { ...DEFAULT_DUEL_INVENTORY_TIMING, ...item.timing },
       effects: effectsFromUnknown(item.effects),
     })),
     powerScore: parsed.data.powerScore,
@@ -609,6 +667,7 @@ function inventoryReportFromUnknown(value: unknown): InventoryPeriodReport[] {
 function combineEffects(items: LoadoutItemSnapshot[]): InventoryItemEffects {
   return items.reduce<InventoryItemEffects>(
     (acc, item) => ({
+      puckSpeedPoints: acc.puckSpeedPoints + item.effects.puckSpeedPoints,
       puckSpeedDelta: acc.puckSpeedDelta + item.effects.puckSpeedDelta,
       shooterFrequencyDelta: acc.shooterFrequencyDelta + item.effects.shooterFrequencyDelta,
       goalieFrequencyDelta: acc.goalieFrequencyDelta + item.effects.goalieFrequencyDelta,
@@ -618,6 +677,29 @@ function combineEffects(items: LoadoutItemSnapshot[]): InventoryItemEffects {
       stumbleChance: acc.stumbleChance + item.effects.stumbleChance,
       stumbleMs: acc.stumbleMs + item.effects.stumbleMs,
       stumbleBlocksPerPeriod: acc.stumbleBlocksPerPeriod + item.effects.stumbleBlocksPerPeriod,
+      stumbleIntervalMinMs: Math.min(
+        acc.stumbleIntervalMinMs,
+        item.effects.stumbleIntervalMinMs,
+      ),
+      stumbleIntervalMaxMs: Math.max(
+        acc.stumbleIntervalMaxMs,
+        item.effects.stumbleIntervalMaxMs,
+      ),
+      stumbleDurationMinMs: Math.min(
+        acc.stumbleDurationMinMs,
+        item.effects.stumbleDurationMinMs,
+      ),
+      stumbleDurationMaxMs: Math.max(
+        acc.stumbleDurationMaxMs,
+        item.effects.stumbleDurationMaxMs,
+      ),
+      nutritionSlowdownMs: Math.max(acc.nutritionSlowdownMs, item.effects.nutritionSlowdownMs),
+      nutritionStopMs: Math.max(acc.nutritionStopMs, item.effects.nutritionStopMs),
+      fatigueDelayMs: Math.max(acc.fatigueDelayMs, item.effects.fatigueDelayMs),
+      fatigueSpeedMultiplier: Math.min(
+        acc.fatigueSpeedMultiplier,
+        item.effects.fatigueSpeedMultiplier,
+      ),
     }),
     effectsFromUnknown(null),
   );
@@ -977,7 +1059,9 @@ async function buildLoadoutSnapshot(
     rarity: 'common' | 'rare' | 'epic' | 'legendary';
     power_score: number;
     duel_period_cost: number;
+    resource_unit: DuelInventoryResourceUnit;
     charges_available: number;
+    effect_puck_speed_points: number;
     effect_puck_speed_delta: string | number;
     effect_shooter_frequency_delta: string | number;
     effect_goalie_frequency_delta: string | number;
@@ -987,14 +1071,27 @@ async function buildLoadoutSnapshot(
     effect_stumble_chance: string | number;
     effect_stumble_ms: number;
     effect_stumble_blocks_per_period: number;
+    effect_stumble_interval_min_ms: number;
+    effect_stumble_interval_max_ms: number;
+    effect_stumble_duration_min_ms: number;
+    effect_stumble_duration_max_ms: number;
+    effect_nutrition_slowdown_ms: number;
+    effect_nutrition_stop_ms: number;
+    effect_fatigue_delay_ms: number;
+    effect_fatigue_speed_multiplier: string | number;
   }>(
     `select i.id, i.title, i.item_kind, i.rarity, i.power_score, i.duel_period_cost,
-            coalesce(ui.charges_available, 0)::int as charges_available,
+            i.resource_unit, coalesce(ui.charges_available, 0)::int as charges_available,
+            i.effect_puck_speed_points,
             i.effect_puck_speed_delta, i.effect_shooter_frequency_delta,
             i.effect_goalie_frequency_delta, i.effect_goal_frequency_delta,
             i.effect_shot_zone_multiplier, i.effect_recovery_delay_ms,
             i.effect_stumble_chance, i.effect_stumble_ms,
-            i.effect_stumble_blocks_per_period
+            i.effect_stumble_blocks_per_period,
+            i.effect_stumble_interval_min_ms, i.effect_stumble_interval_max_ms,
+            i.effect_stumble_duration_min_ms, i.effect_stumble_duration_max_ms,
+            i.effect_nutrition_slowdown_ms, i.effect_nutrition_stop_ms,
+            i.effect_fatigue_delay_ms, i.effect_fatigue_speed_multiplier
        from admin_inventory_items i
        left join user_inventory_item ui
          on ui.inventory_item_id = i.id and ui.user_id = $1
@@ -1021,6 +1118,18 @@ async function buildLoadoutSnapshot(
       if (!hasExplicitSelection) continue;
       throw new AppError('conflict', 'not enough inventory charges for duel loadout', 409);
     }
+    const resourceAvailable = Number(row.charges_available);
+    const effectPuckSpeedPoints = Number(row.effect_puck_speed_points);
+    const timing: DuelInventoryTiming = {
+      stumbleIntervalMinMs: Number(row.effect_stumble_interval_min_ms),
+      stumbleIntervalMaxMs: Number(row.effect_stumble_interval_max_ms),
+      stumbleDurationMinMs: Number(row.effect_stumble_duration_min_ms),
+      stumbleDurationMaxMs: Number(row.effect_stumble_duration_max_ms),
+      nutritionSlowdownMs: Number(row.effect_nutrition_slowdown_ms),
+      nutritionStopMs: Number(row.effect_nutrition_stop_ms),
+      fatigueDelayMs: Number(row.effect_fatigue_delay_ms),
+      fatigueSpeedMultiplier: Number(row.effect_fatigue_speed_multiplier),
+    };
     items.push({
       id: row.id,
       kind: row.item_kind,
@@ -1029,7 +1138,12 @@ async function buildLoadoutSnapshot(
       powerScore: Number(row.power_score),
       duelPeriodCost: Number(row.duel_period_cost),
       chargesReserved,
+      resourceUnit: row.resource_unit,
+      resourceAvailable,
+      effectPuckSpeedPoints,
+      timing,
       effects: {
+        puckSpeedPoints: effectPuckSpeedPoints,
         puckSpeedDelta: numberFromUnknown(row.effect_puck_speed_delta),
         shooterFrequencyDelta: numberFromUnknown(row.effect_shooter_frequency_delta),
         goalieFrequencyDelta: numberFromUnknown(row.effect_goalie_frequency_delta),
@@ -1039,6 +1153,7 @@ async function buildLoadoutSnapshot(
         stumbleChance: numberFromUnknown(row.effect_stumble_chance),
         stumbleMs: Number(row.effect_stumble_ms),
         stumbleBlocksPerPeriod: Number(row.effect_stumble_blocks_per_period),
+        ...timing,
       },
     });
   }
