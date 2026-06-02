@@ -72,31 +72,6 @@ function canStartMouseDragScroll(target: EventTarget | null): boolean {
   );
 }
 
-function formatProfileCompactNumber(value: number): string {
-  const sign = value < 0 ? '-' : '';
-  const absolute = Math.abs(value);
-
-  if (absolute >= 1_000_000_000_000) {
-    return `${sign}${formatCompactUnit(absolute / 1_000_000_000_000)}трлн`;
-  }
-  if (absolute >= 1_000_000_000) {
-    return `${sign}${formatCompactUnit(absolute / 1_000_000_000)}млрд`;
-  }
-  if (absolute >= 1_000_000) {
-    return `${sign}${formatCompactUnit(absolute / 1_000_000)}млн`;
-  }
-  if (absolute >= 10_000) {
-    return `${sign}${Math.round(absolute / 1_000)}тыс`;
-  }
-
-  return formatProfileNumber(value);
-}
-
-function formatCompactUnit(value: number): string {
-  const rounded = value >= 10 ? Math.round(value) : Math.round(value * 10) / 10;
-  return String(rounded).replace('.', ',').replace(/,0$/, '');
-}
-
 function ProfileResourceChip({
   label,
   value,
@@ -108,12 +83,13 @@ function ProfileResourceChip({
   icon: ReactNode;
   tone: RewardTone;
 }): JSX.Element {
-  const compactValue = formatProfileCompactNumber(value);
-  const visualLength = compactValue.replace(/\s/g, '').length;
-  const isLargeValue = Math.abs(value) >= 1_000_000;
-  const fontSize = visualLength >= 7 ? 8 : visualLength >= 5 || isLargeValue ? 10 : 11;
-  const iconSize = visualLength >= 7 ? 9 : visualLength >= 5 || isLargeValue ? 12 : 14;
-  const gap = visualLength >= 5 || isLargeValue ? 2 : 4;
+  const displayValue = formatProfileNumber(value);
+  const visualLength = displayValue.replace(/\s/g, '').length;
+  const fontSize =
+    visualLength >= 12 ? 6 : visualLength >= 9 ? 7 : visualLength >= 7 ? 8 : visualLength >= 5 ? 10 : 11;
+  const iconSize =
+    visualLength >= 12 ? 7 : visualLength >= 9 ? 8 : visualLength >= 7 ? 9 : visualLength >= 5 ? 12 : 14;
+  const gap = visualLength >= 5 ? 2 : 4;
   return (
     <span
       aria-label={`${label}: ${value}`}
@@ -146,7 +122,7 @@ function ProfileResourceChip({
       >
         <span style={{ display: 'inline-flex', transform: `scale(${iconSize / 14})` }}>{icon}</span>
       </span>
-      <span style={{ color: 'var(--ink)' }}>{compactValue}</span>
+      <span style={{ color: 'var(--ink)' }}>{displayValue}</span>
     </span>
   );
 }

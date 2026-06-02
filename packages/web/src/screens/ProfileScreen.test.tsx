@@ -177,6 +177,10 @@ function mockProfileFetch(
   });
 }
 
+function textWithoutWhitespace(text: string): string {
+  return text.replace(/\s/g, '');
+}
+
 describe('ProfileScreen', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -264,6 +268,24 @@ describe('ProfileScreen', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Награды ждут получения.*1/i }));
     expect(screen.getByText('achievements screen')).toBeInTheDocument();
+  });
+
+  it('shows exact resource balances instead of compact labels', async () => {
+    mockProfileFetch(telegramProfile, {
+      ...emptyInventoryState,
+      balances: { tokens: 100_449, stars: 100_000, experience: 1_000_000 },
+    });
+
+    renderProfile();
+
+    expect(await screen.findByLabelText('Монеты: 100449')).toBeInTheDocument();
+    expect(await screen.findByLabelText('Звёзды: 100000')).toBeInTheDocument();
+    expect(await screen.findByLabelText('Опыт: 1000000')).toBeInTheDocument();
+    expect(await screen.findByText((text) => textWithoutWhitespace(text) === '100449')).toBeInTheDocument();
+    expect(await screen.findByText((text) => textWithoutWhitespace(text) === '100000')).toBeInTheDocument();
+    expect(await screen.findByText((text) => textWithoutWhitespace(text) === '1000000')).toBeInTheDocument();
+    expect(screen.queryByText(/тыс/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/млн/)).not.toBeInTheDocument();
   });
 
   it('hides decorative achievement medals until the player has an unlocked achievement', async () => {
