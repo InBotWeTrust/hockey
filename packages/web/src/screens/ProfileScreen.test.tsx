@@ -229,6 +229,7 @@ describe('ProfileScreen', () => {
       document.querySelector('img[src="/inventory/profile-achievement-medals.webp"]'),
     ).toBeInTheDocument();
     expect(document.querySelector('img[src="/inventory/profile-rink-photo-frame.webp"]')).toBeInTheDocument();
+    expect(document.querySelector('img[src="/inventory/profile-nutrition-cans.webp"]')).not.toBeInTheDocument();
     expect(screen.queryByText('Первый гол всегда самый шумный.')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Шайба.*статистика/i }));
@@ -357,6 +358,7 @@ describe('ProfileScreen', () => {
     expect(
       document.querySelector('img[src^="/inventory/nutrition-bronze.webp"]'),
     ).not.toBeInTheDocument();
+    expect(document.querySelector('img[src="/inventory/profile-nutrition-cans.webp"]')).toBeInTheDocument();
     expect(document.querySelector('img[src="/inventory/sticks.webp"]')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Клюшка.*Острая клюшка/i }));

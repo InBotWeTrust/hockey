@@ -48,6 +48,7 @@ const LOCKER_PROPS = {
   skates: { x: 560, y: 1302, width: 270 },
   achievementMedals: { x: 676, y: 472, width: 154 },
   rinkPhoto: { x: 686, y: 825, width: 150 },
+  nutritionCans: { x: 705, y: 1010, width: 115 },
 } satisfies Record<string, { x: number; y: number; width: number }>;
 
 function lockerHotspotStyle(position: { x: number; y: number }): CSSProperties {
@@ -172,6 +173,10 @@ function baseEquipmentDescription(kind: InventoryEquipmentKind): string {
 
 function isAvailableLockerItem(item: InventoryItem): boolean {
   return item.chargesAvailable + item.chargesReserved > 0;
+}
+
+function hasOwnedNutrition(inventory: InventoryState | undefined): boolean {
+  return (inventory?.items.nutrition ?? []).some(isAvailableLockerItem);
 }
 
 function formatReservedLabel(count: number): string | null {
@@ -786,6 +791,7 @@ export function ProfileScreen(): JSX.Element {
   const starBalance = inventoryQuery.data?.balances.stars ?? data?.starBalance ?? 0;
   const experienceBalance =
     inventoryQuery.data?.balances.experience ?? data?.experienceBalance ?? 0;
+  const showNutritionCans = hasOwnedNutrition(inventoryQuery.data);
 
   function handlePointerDown(event: PointerEvent<HTMLElement>): void {
     if (
@@ -878,6 +884,14 @@ export function ProfileScreen(): JSX.Element {
             alt=""
             style={lockerPropStyle(LOCKER_PROPS.rinkPhoto)}
           />
+          {showNutritionCans && (
+            <img
+              className="profile-locker-prop profile-locker-prop--nutrition-cans"
+              src="/inventory/profile-nutrition-cans.webp"
+              alt=""
+              style={lockerPropStyle(LOCKER_PROPS.nutritionCans)}
+            />
+          )}
           <ProfileLockerHotspotButton
             className="profile-locker-hotspot--stick"
             label={equipmentHotspotLabel('stick', inventoryQuery.data)}
