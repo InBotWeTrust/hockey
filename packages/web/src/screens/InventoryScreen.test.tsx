@@ -292,6 +292,8 @@ describe('InventoryScreen', () => {
     fireEvent.click(within(confirm).getByRole('button', { name: 'Купить' }));
 
     expect(await screen.findByLabelText('Монеты: 880')).toBeInTheDocument();
+    expect(await screen.findByText('Бронзовая клюшка добавлена')).toBeInTheDocument();
+    expect(screen.getByText('+5 бросков в инвентарь')).toBeInTheDocument();
     expect(globalThis.fetch).toHaveBeenCalledWith(
       '/api/inventory/items/stick-bronze/purchase',
       expect.objectContaining({ method: 'POST' }),

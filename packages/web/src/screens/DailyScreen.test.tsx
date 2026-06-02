@@ -1404,6 +1404,7 @@ describe('DailyScreen', () => {
       await screen.findByRole('img', { name: 'Игровая площадка в перспективе' }),
     ).toBeInTheDocument();
     expect(document.querySelector('img[src="/sprites/training-court.webp"]')).toBeTruthy();
+    expect(document.querySelector('img[src="/sprites/street-tableau.webp"]')).toBeTruthy();
     const hitboxesToggle = screen.getByRole('checkbox', { name: 'Хитбоксы' });
     expect(hitboxesToggle).not.toBeChecked();
     fireEvent.click(hitboxesToggle);

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { UseMutationResult } from '@tanstack/react-query';
-import { ArrowLeft, CircleDollarSign, Star, X } from 'lucide-react';
+import { ArrowLeft, CircleDollarSign, Sparkles, Star, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { rewardColor, type RewardTone } from '../app/rewardColors.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
@@ -73,6 +73,12 @@ function purchaseBundleLabel(item: InventoryItem): string {
   return formatInventoryResourceAmount(item.kind, count, item.resourceUnit);
 }
 
+function addedInventoryTitle(item: InventoryItem): string {
+  if (item.kind === 'skates') return `${item.title} добавлены`;
+  if (item.kind === 'nutrition') return `${item.title} добавлено`;
+  return `${item.title} добавлена`;
+}
+
 function uniqueShopItems(items: InventoryItem[]): InventoryItem[] {
   const seen = new Set<string>();
   const result: InventoryItem[] = [];
@@ -110,15 +116,24 @@ export function InventoryScreen(): JSX.Element {
   const [activeTab, setActiveTab] = useState<ShopTab>('goods');
   const [detailsItem, setDetailsItem] = useState<InventoryItem | null>(null);
   const [purchaseItem, setPurchaseItem] = useState<InventoryItem | null>(null);
+  const [purchaseNotice, setPurchaseNotice] = useState<{
+    title: string;
+    amount: string;
+  } | null>(null);
   const inventoryQuery = useQuery<InventoryState>({
     queryKey: ['inventory', 'me'],
     queryFn: fetchMyInventory,
   });
   const purchaseMutation = useMutation<InventoryState, Error, InventoryItem>({
     mutationFn: (item) => purchaseInventoryItem(item.id),
-    onSuccess: (inventory) => {
+    onSuccess: (inventory, item) => {
       queryClient.setQueryData(['inventory', 'me'], inventory);
       setPurchaseItem(null);
+      setPurchaseNotice({
+        title: addedInventoryTitle(item),
+        amount: `+${purchaseBundleLabel(item)} в инвентарь`,
+      });
+      window.setTimeout(() => setPurchaseNotice(null), 2800);
     },
   });
 
@@ -235,6 +250,53 @@ export function InventoryScreen(): JSX.Element {
           }}
           onConfirm={() => purchaseMutation.mutate(purchaseItem)}
         />
+      )}
+
+      {purchaseNotice && (
+        <div
+          aria-live="polite"
+          style={{
+            position: 'fixed',
+            left: 18,
+            right: 18,
+            bottom: 'calc(88px + var(--app-safe-bottom))',
+            zIndex: 280,
+            display: 'flex',
+            justifyContent: 'center',
+            pointerEvents: 'none',
+          }}
+        >
+          <div
+            className="glass"
+            style={{
+              width: 'min(100%, 330px)',
+              borderRadius: 18,
+              padding: '14px 16px',
+              display: 'grid',
+              gridTemplateColumns: '34px minmax(0, 1fr)',
+              gap: 10,
+              alignItems: 'center',
+              animation: 'reward-pop 2.6s ease both',
+            }}
+          >
+            <Sparkles size={24} color="#0f766e" />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 950, color: 'var(--ink)' }}>
+                {purchaseNotice.title}
+              </div>
+              <div
+                style={{
+                  marginTop: 3,
+                  color: '#0f766e',
+                  fontSize: 12,
+                  fontWeight: 900,
+                }}
+              >
+                {purchaseNotice.amount}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </main>
   );

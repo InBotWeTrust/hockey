@@ -278,7 +278,7 @@ const LONG_COURT_GAME_LAYER_STYLE: CSSProperties = {
   height: '74.2%',
   bottom: 'auto',
 };
-const TRAINING_LED_TABLEAU_IMAGE = '/sprites/wide-tableau-led-dark-v2.webp';
+const TRAINING_LED_TABLEAU_IMAGE = '/sprites/street-tableau.webp';
 const DAILY_LONG_COURT_BACKGROUND = '/sprites/daily-long-court-people.webp';
 const ARENA_ICE_COURT_BACKGROUND = '/sprites/arena-ice-court-v2.webp';
 const ARENA_ICE_TABLEAU_IMAGE = '/sprites/arena-ice-tableau-v2.webp';
