@@ -2,6 +2,7 @@ import type { PoolClient, Pool } from 'pg';
 
 export type EventType =
   | 'shot_mismatch'
+  | 'daily_shot_rejected'
   | 'day_pool_created'
   | 'day_pool_closed'
   | 'period_closed'

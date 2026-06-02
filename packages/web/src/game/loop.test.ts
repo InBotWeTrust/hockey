@@ -73,13 +73,13 @@ describe('createGameLoop', () => {
     const onTick = ticker.add.mock.calls[0]?.[0] as ((ticker: Ticker) => void) | undefined;
     onTick?.(ticker);
 
-    expect(loop.getSceneT()).toBe(5016);
-    expect(loop.getRenderNow()).toBe(1016);
+    expect(loop.getSceneT()).toBe(5250);
+    expect(loop.getRenderNow()).toBe(1250);
 
     nowSpy.mockRestore();
   });
 
-  it('caps large render steps so one dropped frame does not jump moving sprites', () => {
+  it('keeps moving sprites aligned with real time after a dropped frame', () => {
     const nowSpy = vi.spyOn(performance, 'now');
     nowSpy.mockReturnValue(1000);
     const goalUpdate = vi.fn();
@@ -98,9 +98,30 @@ describe('createGameLoop', () => {
     expect(onTick).toBeDefined();
 
     ticker.elapsedMS = 120;
+    nowSpy.mockReturnValue(1120);
     onTick?.(ticker);
 
-    expect(loop.getSceneT()).toBe(34);
+    expect(loop.getSceneT()).toBe(120);
+
+    nowSpy.mockRestore();
+  });
+
+  it('keeps simulation time aligned with real elapsed time on slow frames', () => {
+    const nowSpy = vi.spyOn(performance, 'now');
+    nowSpy.mockReturnValue(1000);
+    const loop = makeLoop({ getGoalieId: () => 'rookie' });
+    const ticker = makeTicker();
+
+    loop.attach(ticker);
+    const onTick = ticker.add.mock.calls[0]?.[0] as ((ticker: Ticker) => void) | undefined;
+    expect(onTick).toBeDefined();
+
+    nowSpy.mockReturnValue(1120);
+    ticker.elapsedMS = 120;
+    onTick?.(ticker);
+
+    expect(loop.getSceneT()).toBe(120);
+    expect(loop.getRenderNow()).toBe(1120);
 
     nowSpy.mockRestore();
   });

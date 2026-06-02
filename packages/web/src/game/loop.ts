@@ -17,8 +17,6 @@ import type { Hitboxes } from './renderer/Hitboxes.js';
 import type { Player } from './renderer/Player.js';
 import type { Puck } from './renderer/Puck.js';
 
-const MAX_RENDER_STEP_MS = 34;
-
 export interface SpeedOverrides {
   goalFreq: number;
   goalieFreq: number;
@@ -73,7 +71,6 @@ function shooterX(t: number, freq: number): number {
 export function createGameLoop(opts: GameLoopOpts): GameLoop {
   const initialElapsedMs = (): number => Math.max(0, opts.getInitialElapsedMs?.() ?? 0);
   let renderNowMs = performance.now();
-  let realNowMs = renderNowMs;
   let sessionStartMs = renderNowMs - initialElapsedMs();
   let offsets: SessionPhaseOffsets | null = null;
   let offsetSeed: string | null = null;
@@ -102,22 +99,17 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
     return offsets!;
   }
 
-  function advanceRenderClock(ticker?: Ticker): number {
+  function advanceRenderClock(): number {
     const now = performance.now();
-    const tickerDelta =
-      typeof ticker?.elapsedMS === 'number' && Number.isFinite(ticker.elapsedMS)
-        ? ticker.elapsedMS
-        : now - realNowMs;
-    realNowMs = now;
-    renderNowMs += Math.min(Math.max(0, tickerDelta), MAX_RENDER_STEP_MS);
+    renderNowMs = now;
     return renderNowMs;
   }
 
-  const onTick = (ticker?: Ticker): void => {
+  const onTick = (): void => {
     const id = opts.getGoalieId();
     if (!id) return;
     const cfg = getGoalie(id);
-    const now = advanceRenderClock(ticker);
+    const now = advanceRenderClock();
     const overrides = opts.getSpeedOverrides?.();
     const activeCfg = overrides
       ? { ...cfg, goalFrequency: overrides.goalFreq, frequency: overrides.goalieFreq }
@@ -182,7 +174,6 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
     },
     resetTime(elapsedMs = initialElapsedMs()) {
       renderNowMs = performance.now();
-      realNowMs = renderNowMs;
       sessionStartMs = renderNowMs - Math.max(0, elapsedMs);
       shooterPausedTotal = 0;
       scenePausedTotal = 0;

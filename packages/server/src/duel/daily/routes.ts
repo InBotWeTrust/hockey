@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync } from 'fastify';
+import type { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import type { PoolClient } from 'pg';
 import { z } from 'zod';
 import {
@@ -51,6 +51,15 @@ const TAP_TIME_FUTURE_TOLERANCE_MS = 2500;
 const TAP_TIME_STALE_TOLERANCE_MS = 12_000;
 const TAP_TIME_PAUSE_ALLOWANCE_PER_SHOT_MS = 2_000;
 
+type DailyShotRejectReason =
+  | 'no_active_day_pool'
+  | 'state_not_active'
+  | 'shot_index_mismatch'
+  | 'quota_exhausted'
+  | 'invalid_tap_time'
+  | 'missing_period_started_at'
+  | 'tap_time_stale';
+
 interface PeriodLogEntry {
   period_number: number;
   shots_taken: number;
@@ -66,6 +75,38 @@ interface DailyGameStats {
   total_goals: number;
   total_duration_ms: number;
   periods: PeriodLogEntry[];
+}
+
+interface DailyTapTimeReject {
+  reason: Extract<
+    DailyShotRejectReason,
+    'invalid_tap_time' | 'missing_period_started_at' | 'tap_time_stale'
+  >;
+  statusCode: 400 | 409;
+  message: string;
+  elapsed_ms?: number;
+  stale_limit_ms?: number;
+  future_limit_ms?: number;
+}
+
+async function rejectDailyShot(
+  app: FastifyInstance,
+  userId: string,
+  reason: DailyShotRejectReason,
+  details: Record<string, unknown>,
+  error: AppError,
+): Promise<never> {
+  const payload = {
+    mode: 'daily',
+    reason,
+    ...details,
+  };
+  try {
+    await appendEvent(app.pg, userId, 'daily_shot_rejected', payload);
+  } catch (err) {
+    app.log.warn({ err, payload }, 'failed to write daily shot rejection event');
+  }
+  throw error;
 }
 
 interface DailyHistorySummary {
@@ -433,17 +474,25 @@ async function buildState(
   };
 }
 
-function assertDailyTapTimeFresh(
+function validateDailyTapTimeFresh(
   pool: DayPoolRow,
   previousShots: number,
   tapTime: number,
   now: Date,
-): void {
+): DailyTapTimeReject | null {
   if (!Number.isFinite(tapTime) || tapTime < 0) {
-    throw new AppError('bad_request', 'invalid shot tapTime', 400);
+    return {
+      reason: 'invalid_tap_time',
+      statusCode: 400,
+      message: 'invalid shot tapTime',
+    };
   }
   if (pool.period_started_at === null) {
-    throw new AppError('conflict', 'active period has no start timestamp', 409);
+    return {
+      reason: 'missing_period_started_at',
+      statusCode: 409,
+      message: 'active period has no start timestamp',
+    };
   }
 
   const elapsedMs = Math.max(0, now.getTime() - pool.period_started_at.getTime());
@@ -454,8 +503,16 @@ function assertDailyTapTimeFresh(
   );
 
   if (tapTime > futureLimit || tapTime < staleLimit) {
-    throw new AppError('conflict', 'shot tapTime is stale', 409);
+    return {
+      reason: 'tap_time_stale',
+      statusCode: 409,
+      message: 'shot tapTime is stale',
+      elapsed_ms: elapsedMs,
+      stale_limit_ms: staleLimit,
+      future_limit_ms: futureLimit,
+    };
   }
+  return null;
 }
 
 async function withTransaction<T>(
@@ -576,25 +633,97 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
       const settings = await getGameSettings(client);
       const { pool, localToday } = await reconcileDayPool(client, req.user.id, now, settings.daily);
       if (pool === null) {
-        throw new AppError('conflict', 'no active day_pool', 409);
+        return rejectDailyShot(
+          app,
+          req.user.id,
+          'no_active_day_pool',
+          {
+            requested_shot_index: body.shot_index,
+            tap_time_ms: body.input.tapTime,
+          },
+          new AppError('conflict', 'no active day_pool', 409),
+        );
       }
       if (pool.state !== 'period_active') {
-        throw new AppError('conflict', `cannot submit shot in state '${pool.state}'`, 409);
+        await rejectDailyShot(
+          app,
+          req.user.id,
+          'state_not_active',
+          {
+            day_pool_id: pool.id,
+            state: pool.state,
+            period_number: pool.current_period,
+            requested_shot_index: body.shot_index,
+            tap_time_ms: body.input.tapTime,
+          },
+          new AppError('conflict', `cannot submit shot in state '${pool.state}'`, 409),
+        );
       }
 
       const cur = await aggregateCurrentPeriod(client, pool.id, pool.current_period);
       const expectedShotIndex = cur.shots + 1;
       if (body.shot_index !== expectedShotIndex) {
-        throw new AppError(
-          'conflict',
-          `shot_index mismatch: expected ${expectedShotIndex}, got ${body.shot_index}`,
-          409,
+        await rejectDailyShot(
+          app,
+          req.user.id,
+          'shot_index_mismatch',
+          {
+            day_pool_id: pool.id,
+            state: pool.state,
+            period_number: pool.current_period,
+            current_shots: cur.shots,
+            expected_shot_index: expectedShotIndex,
+            requested_shot_index: body.shot_index,
+            tap_time_ms: body.input.tapTime,
+          },
+          new AppError(
+            'conflict',
+            `shot_index mismatch: expected ${expectedShotIndex}, got ${body.shot_index}`,
+            409,
+          ),
         );
       }
       if (cur.shots >= settings.daily.shotsPerPeriod) {
-        throw new AppError('conflict', 'shot quota for this period exhausted', 409);
+        await rejectDailyShot(
+          app,
+          req.user.id,
+          'quota_exhausted',
+          {
+            day_pool_id: pool.id,
+            state: pool.state,
+            period_number: pool.current_period,
+            current_shots: cur.shots,
+            shots_per_period: settings.daily.shotsPerPeriod,
+            requested_shot_index: body.shot_index,
+            tap_time_ms: body.input.tapTime,
+          },
+          new AppError('conflict', 'shot quota for this period exhausted', 409),
+        );
       }
-      assertDailyTapTimeFresh(pool, cur.shots, body.input.tapTime, now);
+      const tapTimeReject = validateDailyTapTimeFresh(pool, cur.shots, body.input.tapTime, now);
+      if (tapTimeReject) {
+        await rejectDailyShot(
+          app,
+          req.user.id,
+          tapTimeReject.reason,
+          {
+            day_pool_id: pool.id,
+            state: pool.state,
+            period_number: pool.current_period,
+            current_shots: cur.shots,
+            requested_shot_index: body.shot_index,
+            tap_time_ms: body.input.tapTime,
+            elapsed_ms: tapTimeReject.elapsed_ms,
+            stale_limit_ms: tapTimeReject.stale_limit_ms,
+            future_limit_ms: tapTimeReject.future_limit_ms,
+          },
+          new AppError(
+            tapTimeReject.statusCode === 400 ? 'bad_request' : 'conflict',
+            tapTimeReject.message,
+            tapTimeReject.statusCode,
+          ),
+        );
+      }
 
       const shotSeed = deriveShotSeed(pool.daily_seed, pool.current_period, body.shot_index);
       const goalieCfg = getGoalie(settings.daily.goalieId);
