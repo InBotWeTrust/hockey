@@ -29,6 +29,7 @@ import {
   ProfileStatsGrid,
 } from './profileSections.js';
 import { artworkForInventoryItem, placeholderArtworkForKind } from './inventoryArtwork.js';
+import { formatInventoryStockLabel } from './inventoryResourceLabels.js';
 
 function canStartMouseDragScroll(target: EventTarget | null): boolean {
   return (
@@ -208,7 +209,7 @@ const PROFILE_SECTION_INFO: Record<ProfileInfoSection, { title: string; copy: st
   },
   equipment: {
     title: 'Экипировка',
-    copy: 'В раздевалке выбирается уже купленный инвентарь: одна клюшка, одна пара коньков и одно питание. В дуэлях расход считается по периодам.',
+    copy: 'В раздевалке выбирается уже купленный инвентарь: одна клюшка, одна пара коньков и одно питание. В дуэлях ресурс расходуется по типу предмета.',
   },
   achievements: {
     title: 'Выполненные задания',
@@ -302,21 +303,6 @@ function isAvailableLockerItem(item: InventoryItem): boolean {
   return item.chargesAvailable + item.chargesReserved > 0;
 }
 
-function formatProfileUsageCountLabel(count: number): string {
-  const normalized = Math.max(0, Math.trunc(count));
-  if (normalized === 0) return 'Нет запаса';
-
-  const mod10 = normalized % 10;
-  const mod100 = normalized % 100;
-  const noun =
-    mod10 === 1 && mod100 !== 11
-      ? 'период'
-      : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)
-        ? 'периода'
-        : 'периодов';
-  return `На ${normalized} ${noun}`;
-}
-
 function formatReservedLabel(count: number): string | null {
   const normalized = Math.max(0, Math.trunc(count));
   if (normalized === 0) return null;
@@ -376,7 +362,7 @@ function EquipmentSlotButton({
   const hasOwnedItems = items.length > 0;
   const hasBaseEquipment = isRequiredEquipment(kind);
   const status = activeItem
-    ? formatProfileUsageCountLabel(activeItem.chargesAvailable)
+    ? formatInventoryStockLabel(activeItem)
     : hasBaseEquipment
       ? 'Базовая'
       : hasOwnedItems
@@ -693,7 +679,7 @@ function EquipmentDetailsModal({
                       className="pill"
                       style={{ height: 26, justifyContent: 'center', fontSize: 11 }}
                     >
-                      {formatProfileUsageCountLabel(item.chargesAvailable)}
+                      {formatInventoryStockLabel(item)}
                     </span>
                     <span
                       className="pill"
@@ -713,7 +699,7 @@ function EquipmentDetailsModal({
                       color: 'rgba(15, 23, 42, 0.66)',
                     }}
                   >
-                    <span>Расход: {item.duelPeriodCost}/период</span>
+                    {item.duelPeriodCost > 0 && <span>Расход: {item.duelPeriodCost}/период</span>}
                     <span>Цена: {item.currencyPrice}</span>
                     {reservedLabel !== null && <span>{reservedLabel}</span>}
                   </span>

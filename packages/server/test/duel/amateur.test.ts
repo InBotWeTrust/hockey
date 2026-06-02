@@ -645,7 +645,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(labelById.get(twoShotStickId)).toBe('2 броска');
     expect(labelById.get(fiveShotStickId)).toBe('5 бросков');
     expect(labelById.get(twentyOneShotStickId)).toBe('21 бросок');
-    expect(labelById.get(energyNutritionId)).toBe('1 минута');
+    expect(labelById.get(energyNutritionId)).toBe('1 минута энергии');
   });
 
   it('purchases inventory with currency balance', async () => {

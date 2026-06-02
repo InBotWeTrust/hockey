@@ -15,6 +15,7 @@ import {
   type InventoryState,
 } from '../api/inventory.js';
 import { artworkForInventoryItem } from './inventoryArtwork.js';
+import { formatInventoryResourceAmount } from './inventoryResourceLabels.js';
 
 type ShopTab = 'goods' | 'bank' | 'history';
 
@@ -67,19 +68,9 @@ function rubText(value: number): string {
   }).format(value);
 }
 
-function periodWord(value: number): string {
-  const abs = Math.abs(value);
-  const lastTwo = abs % 100;
-  const last = abs % 10;
-  if (lastTwo >= 11 && lastTwo <= 14) return 'периодов';
-  if (last === 1) return 'период';
-  if (last >= 2 && last <= 4) return 'периода';
-  return 'периодов';
-}
-
 function purchaseBundleLabel(item: InventoryItem): string {
   const count = item.chargesPerPurchase || item.chargesAvailable || 5;
-  return `${numberText(count)} ${periodWord(count)}`;
+  return formatInventoryResourceAmount(item.kind, count, item.resourceUnit);
 }
 
 function uniqueShopItems(items: InventoryItem[]): InventoryItem[] {
@@ -703,11 +694,8 @@ function InventoryItemModal({
         </div>
 
         <div className="glass" style={{ borderRadius: 18, padding: 14, display: 'grid', gap: 9 }}>
-          <DetailRow
-            label="Цена"
-            value={`${numberText(item.currencyPrice)} монет`}
-            tone="coin"
-          />
+          <DetailRow label="Цена" value={`${numberText(item.currencyPrice)} монет`} tone="coin" />
+          <DetailRow label="Ресурс" value={purchaseBundleLabel(item)} />
         </div>
 
         <p
@@ -803,7 +791,7 @@ function PurchaseHistorySection({
       id: `inventory-${purchase.id}`,
       createdAt: purchase.createdAt,
       title: purchase.title,
-      subtitle: `${formatPurchaseDate(purchase.createdAt)} · товар · ${numberText(purchase.chargesAdded)} ${periodWord(purchase.chargesAdded)}`,
+      subtitle: `${formatPurchaseDate(purchase.createdAt)} · товар · ${formatInventoryResourceAmount(purchase.kind, purchase.chargesAdded)}`,
       value: `-${numberText(purchase.tokensSpent)}`,
       tone: 'negative' as const,
     })),

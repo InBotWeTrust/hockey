@@ -127,9 +127,11 @@ function resourceLabel(unit: ResourceUnit, chargesAvailable: number): string {
   }
   if (unit === 'energy_ms') {
     const minutes = chargesAvailable > 0 ? Math.ceil(chargesAvailable / 60000) : 0;
-    return `${minutes} ${pluralRu(minutes, 'минута', 'минуты', 'минут')}`;
+    return `${minutes} ${pluralRu(minutes, 'минута', 'минуты', 'минут')} энергии`;
   }
-  if (unit === 'distance') return `${chargesAvailable} ед.`;
+  if (unit === 'distance') {
+    return `${chargesAvailable} ${pluralRu(chargesAvailable, 'прокат', 'проката', 'прокатов')}`;
+  }
   return `${chargesAvailable} ${pluralRu(chargesAvailable, 'заряд', 'заряда', 'зарядов')}`;
 }
 

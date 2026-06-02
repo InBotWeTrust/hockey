@@ -28,6 +28,7 @@ const inventoryWithItems: InventoryState = {
         imageUrl: '/inventory/sticks.webp',
         currencyPrice: 120,
         chargesPerPurchase: 5,
+        resourceUnit: 'shot',
         rarity: 'common',
         powerScore: 24,
         duelPeriodCost: 1,
@@ -44,6 +45,7 @@ const inventoryWithItems: InventoryState = {
         imageUrl: null,
         currencyPrice: 1500,
         chargesPerPurchase: 5,
+        resourceUnit: 'distance',
         rarity: 'rare',
         powerScore: 12,
         duelPeriodCost: 1,
@@ -59,11 +61,12 @@ const inventoryWithItems: InventoryState = {
         description: 'Держит концентрацию в конце периода.',
         imageUrl: null,
         currencyPrice: 60,
-        chargesPerPurchase: 5,
+        chargesPerPurchase: 300_000,
+        resourceUnit: 'energy_ms',
         rarity: 'legendary',
         powerScore: 8,
         duelPeriodCost: 1,
-        chargesAvailable: 5,
+        chargesAvailable: 300_000,
         chargesReserved: 1,
       },
     ],
@@ -155,7 +158,9 @@ describe('InventoryScreen', () => {
     expect(screen.getAllByText('Бронзовая клюшка').length).toBeGreaterThan(0);
     expect(screen.getByText('Золотое питание')).toBeInTheDocument();
     expect(screen.getByText('Серебряные коньки')).toBeInTheDocument();
-    expect(screen.getAllByText('5 периодов')).toHaveLength(3);
+    expect(screen.getByText('5 бросков')).toBeInTheDocument();
+    expect(screen.getByText('5 прокатов')).toBeInTheDocument();
+    expect(screen.getByText('5 минут энергии')).toBeInTheDocument();
     expect(screen.queryByText(/Осталось/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/выбрано/i)).not.toBeInTheDocument();
     expect(
@@ -222,6 +227,7 @@ describe('InventoryScreen', () => {
     expect(screen.getByText('Игровой запас')).toBeInTheDocument();
     expect(screen.getByText('299 ₽')).toBeInTheDocument();
     expect(screen.getByText(/банк · Оплачено/)).toBeInTheDocument();
+    expect(screen.getByText(/товар · 5 бросков/)).toBeInTheDocument();
   });
 
   it('shows an empty shop state when no products exist', async () => {
@@ -244,6 +250,7 @@ describe('InventoryScreen', () => {
 
     const dialog = screen.getByRole('dialog', { name: 'Бронзовая клюшка' });
     expect(within(dialog).getByText('120 монет')).toBeInTheDocument();
+    expect(within(dialog).getByText('5 бросков')).toBeInTheDocument();
     expect(within(dialog).getByText('Надёжная клюшка для первых дуэлей.')).toBeInTheDocument();
     expect(within(dialog).queryByText('5 периодов')).not.toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: 'Купить' })).toBeEnabled();
@@ -280,7 +287,7 @@ describe('InventoryScreen', () => {
 
     const confirm = screen.getByRole('dialog', { name: 'Купить Бронзовая клюшка?' });
     expect(
-      within(confirm).getByText('Будет списано 120 монет. В инвентарь добавится 5 периодов.'),
+      within(confirm).getByText('Будет списано 120 монет. В инвентарь добавится 5 бросков.'),
     ).toBeInTheDocument();
     fireEvent.click(within(confirm).getByRole('button', { name: 'Купить' }));
 

@@ -32,6 +32,7 @@ const consumableInventoryState: InventoryState = {
         imageUrl: '/inventory/sticks.webp',
         currencyPrice: 120,
         chargesPerPurchase: 5,
+        resourceUnit: 'shot',
         rarity: 'rare',
         powerScore: 24,
         duelPeriodCost: 1,
@@ -48,6 +49,7 @@ const consumableInventoryState: InventoryState = {
         imageUrl: '/inventory/nutrition.webp',
         currencyPrice: 90,
         chargesPerPurchase: 5,
+        resourceUnit: 'distance',
         rarity: 'common',
         powerScore: 12,
         duelPeriodCost: 1,
@@ -63,11 +65,12 @@ const consumableInventoryState: InventoryState = {
         description: 'Держит концентрацию в конце периода.',
         imageUrl: null,
         currencyPrice: 60,
-        chargesPerPurchase: 5,
+        chargesPerPurchase: 300_000,
+        resourceUnit: 'energy_ms',
         rarity: 'common',
         powerScore: 8,
         duelPeriodCost: 1,
-        chargesAvailable: 5,
+        chargesAvailable: 300_000,
         chargesReserved: 0,
       },
     ],
@@ -289,7 +292,8 @@ describe('ProfileScreen', () => {
       screen.getByRole('button', { name: /Коньки.*Обычные коньки.*Базовая/i }),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Питание.*Энергогель/i })).toBeInTheDocument();
-    expect(screen.getByText('На 3 периода')).toBeInTheDocument();
+    expect(screen.getByText('На 3 броска')).toBeInTheDocument();
+    expect(screen.getByText('На 5 минут энергии')).toBeInTheDocument();
     expect(screen.queryByText('Бросок +24')).not.toBeInTheDocument();
     expect(screen.queryByText('выбрано')).not.toBeInTheDocument();
     expect(document.querySelector('img[src="/inventory/stick-silver.webp"]')).toBeInTheDocument();
