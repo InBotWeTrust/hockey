@@ -281,18 +281,18 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
   });
 
   it('limits one player to five open duel slots', async () => {
-    const templateIds = await Promise.all(Array.from({ length: 6 }, () => createTemplate()));
+    const templateId = await createTemplate();
     const opponentIds = await Promise.all(
       Array.from({ length: 6 }, (_, index) => createOpponent(index)),
     );
 
-    for (const [index, templateId] of templateIds.slice(0, 5).entries()) {
-      const created = await challenge(templateId, opponentIds[index]);
+    for (const opponentId of opponentIds.slice(0, 5)) {
+      const created = await challenge(templateId, opponentId);
       expect(created.statusCode).toBe(200);
       expect(created.json().match.status).toBe('invited');
     }
 
-    const blocked = await challenge(templateIds[5]!, opponentIds[5]);
+    const blocked = await challenge(templateId, opponentIds[5]);
     expect(blocked.statusCode).toBe(409);
     expect(blocked.json().error.message).toBe('open duel slot limit reached');
   });

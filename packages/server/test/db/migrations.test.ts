@@ -83,6 +83,24 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     expect(names).toContain('feedback_messages');
     expect(names).toContain('_migrations');
 
+    const activeDuelTemplateKinds = await pool.query<{ duel_kind: string; count: string }>(
+      `select duel_kind, count(*)::text as count
+         from amateur_duel_template
+        where deleted_at is null and is_active
+        group by duel_kind
+        order by duel_kind`,
+    );
+    expect(activeDuelTemplateKinds.rows.every((row) => Number(row.count) <= 1)).toBe(true);
+
+    const activeDuelTemplateKindIndex = await pool.query<{ indexname: string }>(
+      `select indexname
+         from pg_indexes
+        where schemaname = 'public'
+          and tablename = 'amateur_duel_template'
+          and indexname = 'amateur_duel_template_one_active_kind_idx'`,
+    );
+    expect(activeDuelTemplateKindIndex.rows).toHaveLength(1);
+
     const achievementColumns = await pool.query<{ column_name: string }>(
       `select column_name
          from information_schema.columns
@@ -290,6 +308,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '048_duel_achievement_experience_snapshot.sql',
       '049_amateur_unlock_300_goals.sql',
       '050_duel_inventory_usage_resources.sql',
+      '051_dedupe_active_duel_templates.sql',
     ]);
   });
 });
@@ -414,7 +433,10 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
     );
 
     const applied = await applyMigrations(pool, MIGRATIONS_DIR);
-    expect(applied.applied).toEqual(['050_duel_inventory_usage_resources.sql']);
+    expect(applied.applied).toEqual([
+      '050_duel_inventory_usage_resources.sql',
+      '051_dedupe_active_duel_templates.sql',
+    ]);
 
     const activeInventory = await pool.query<{
       item_kind: string;
