@@ -218,6 +218,7 @@ interface AdminUserRow {
   grip: 'left' | 'right';
   level: number;
   xp: number;
+  experience: number;
   timezone: string;
   created_at: Date;
   last_seen_at: Date | null;
@@ -241,6 +242,7 @@ interface AdminUserRow {
   shots_current: number;
   shots_max: number;
   shots_bonus: number;
+  currency_balance: string;
   pucks: string;
   gold_pucks: string;
   wheel_spins: number;
@@ -450,6 +452,7 @@ const userPatchSchema = z
     grip: z.enum(['left', 'right']).optional(),
     level: z.number().int().min(1).max(999).optional(),
     xp: z.number().int().min(0).max(2_147_483_647).optional(),
+    experience: z.number().int().min(0).max(2_147_483_647).optional(),
     lifetimeShotsTotal: z.number().int().min(0).max(2_147_483_647).optional(),
     lifetimeGoalsTotal: z.number().int().min(0).max(2_147_483_647).optional(),
     isBlocked: z.boolean().optional(),
@@ -458,6 +461,7 @@ const userPatchSchema = z
         shotsCurrent: z.number().int().min(0).max(100_000).optional(),
         shotsMax: z.number().int().min(1).max(100_000).optional(),
         shotsBonus: z.number().int().min(0).max(100_000).optional(),
+        coins: z.number().int().min(0).max(9_000_000_000).optional(),
         pucks: z.number().int().min(0).max(9_000_000_000).optional(),
         goldPucks: z.number().int().min(0).max(9_000_000_000).optional(),
         wheelSpins: z.number().int().min(0).max(100_000).optional(),
@@ -473,6 +477,7 @@ const userPatchSchema = z
       value.grip !== undefined ||
       value.level !== undefined ||
       value.xp !== undefined ||
+      value.experience !== undefined ||
       value.lifetimeShotsTotal !== undefined ||
       value.lifetimeGoalsTotal !== undefined ||
       value.isBlocked !== undefined ||
@@ -1126,6 +1131,7 @@ function mapUser(row: AdminUserRow) {
     grip: row.grip,
     level: row.level,
     xp: row.xp,
+    experience: row.experience,
     timezone: row.timezone,
     createdAt: row.created_at.toISOString(),
     lastSeenAt: row.last_seen_at?.toISOString() ?? null,
@@ -1183,6 +1189,7 @@ function mapUser(row: AdminUserRow) {
       shotsCurrent: row.shots_current,
       shotsMax: row.shots_max,
       shotsBonus: row.shots_bonus,
+      coins: Number(row.currency_balance),
       pucks: Number(row.pucks),
       goldPucks: Number(row.gold_pucks),
       wheelSpins: row.wheel_spins,
@@ -1730,7 +1737,7 @@ async function fetchAdminMismatchLogs(
 async function fetchAdminUser(client: Pool | PoolClient, userId: string): Promise<AdminUserRow> {
   const { rows } = await client.query<AdminUserRow>(
     `select u.id, u.display_name, u.avatar_url, u.display_source,
-            u.role, u.grip, u.level, u.xp,
+            u.role, u.grip, u.level, u.xp, u.experience,
             case
               when u.display_source = 'vk' then
                 coalesce(nullif(concat_ws(' ', u.vk_first_name, u.vk_last_name), ''), u.vk_username, 'Player')
@@ -1775,6 +1782,7 @@ async function fetchAdminUser(client: Pool | PoolClient, userId: string): Promis
             coalesce(w.shots_current, 0) as shots_current,
             coalesce(w.shots_max, 25) as shots_max,
             coalesce(w.shots_bonus, 0) as shots_bonus,
+            coalesce(uca.balance, 0) as currency_balance,
             coalesce(w.pucks, 0) as pucks,
             coalesce(w.gold_pucks, 0) as gold_pucks,
             coalesce(w.wheel_spins, 0) as wheel_spins,
@@ -1792,6 +1800,7 @@ async function fetchAdminUser(client: Pool | PoolClient, userId: string): Promis
               and coalesce(pref.game_news, true) as push_game_news
        from users u
        left join user_wallet w on w.user_id = u.id
+       left join user_currency_account uca on uca.user_id = u.id
        left join users blocker on blocker.id = u.blocked_by
        left join auth_providers tg
          on tg.user_id = u.id and tg.provider = 'telegram'
@@ -2973,7 +2982,7 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
            select *
              from (
                select u.id, u.display_name, u.avatar_url, u.display_source,
-                      u.role, u.grip, u.level, u.xp,
+                      u.role, u.grip, u.level, u.xp, u.experience,
                       case
                         when u.display_source = 'vk' then
                           coalesce(nullif(concat_ws(' ', u.vk_first_name, u.vk_last_name), ''), u.vk_username, 'Player')
@@ -3018,6 +3027,7 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
                       coalesce(w.shots_current, 0) as shots_current,
                       coalesce(w.shots_max, 25) as shots_max,
                       coalesce(w.shots_bonus, 0) as shots_bonus,
+                      coalesce(uca.balance, 0) as currency_balance,
                       coalesce(w.pucks, 0) as pucks,
                       coalesce(w.gold_pucks, 0) as gold_pucks,
                       coalesce(w.wheel_spins, 0) as wheel_spins,
@@ -3035,6 +3045,7 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
                         and coalesce(pref.game_news, true) as push_game_news
                  from users u
                  left join user_wallet w on w.user_id = u.id
+                 left join user_currency_account uca on uca.user_id = u.id
                  left join users blocker on blocker.id = u.blocked_by
                  left join auth_providers tg
                    on tg.user_id = u.id and tg.provider = 'telegram'
@@ -3198,6 +3209,10 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
         addAssignment(userAssignments, userValues, 'xp', body.data.xp);
         changed.push('xp');
       }
+      if (body.data.experience !== undefined) {
+        addAssignment(userAssignments, userValues, 'experience', body.data.experience);
+        changed.push('experience');
+      }
       if (body.data.lifetimeShotsTotal !== undefined) {
         addAssignment(
           userAssignments,
@@ -3237,9 +3252,6 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
 
       const wallet = body.data.wallet;
       if (wallet !== undefined && Object.keys(wallet).length > 0) {
-        await client.query('insert into user_wallet (user_id) values ($1) on conflict do nothing', [
-          params.userId,
-        ]);
         const walletAssignments: string[] = [];
         const walletValues: unknown[] = [];
         if (wallet.shotsCurrent !== undefined) {
@@ -3270,13 +3282,28 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
           addAssignment(walletAssignments, walletValues, 'training_energy', wallet.trainingEnergy);
           changed.push('wallet.trainingEnergy');
         }
-        walletValues.push(params.userId);
-        await client.query(
-          `update user_wallet
-              set ${walletAssignments.join(', ')}
-            where user_id = $${walletValues.length}`,
-          walletValues,
-        );
+        if (walletAssignments.length > 0) {
+          await client.query(
+            'insert into user_wallet (user_id) values ($1) on conflict do nothing',
+            [params.userId],
+          );
+          walletValues.push(params.userId);
+          await client.query(
+            `update user_wallet
+                set ${walletAssignments.join(', ')}
+              where user_id = $${walletValues.length}`,
+            walletValues,
+          );
+        }
+        if (wallet.coins !== undefined) {
+          await client.query(
+            `insert into user_currency_account (user_id, balance)
+             values ($1, $2)
+             on conflict (user_id) do update set balance = excluded.balance`,
+            [params.userId, wallet.coins],
+          );
+          changed.push('wallet.coins');
+        }
       }
 
       await appendEvent(client, params.userId, 'admin_user_updated', {

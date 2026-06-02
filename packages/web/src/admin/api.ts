@@ -236,6 +236,7 @@ export interface AdminUser {
   grip: 'left' | 'right';
   level: number;
   xp: number;
+  experience: number;
   timezone: string;
   createdAt: string;
   lastSeenAt: string | null;
@@ -265,6 +266,7 @@ export interface AdminUser {
     shotsCurrent: number;
     shotsMax: number;
     shotsBonus: number;
+    coins: number;
     pucks: number;
     goldPucks: number;
     wheelSpins: number;
@@ -771,6 +773,7 @@ export interface AdminUserPatch {
   grip?: 'left' | 'right';
   level?: number;
   xp?: number;
+  experience?: number;
   lifetimeShotsTotal?: number;
   lifetimeGoalsTotal?: number;
   isBlocked?: boolean;

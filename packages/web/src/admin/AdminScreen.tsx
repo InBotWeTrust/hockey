@@ -1972,11 +1972,11 @@ function UserDetailsModal({
   const [displayName, setDisplayName] = useState(user.displayName);
   const [grip, setGrip] = useState(user.grip);
   const [level, setLevel] = useState(fieldNumber(user.level));
-  const [xp, setXp] = useState(fieldNumber(user.xp));
+  const [stars, setStars] = useState(fieldNumber(user.xp));
+  const [experience, setExperience] = useState(fieldNumber(user.experience));
   const [lifetimeShots, setLifetimeShots] = useState(fieldNumber(user.lifetimeShotsTotal));
   const [lifetimeGoals, setLifetimeGoals] = useState(fieldNumber(user.lifetimeGoalsTotal));
-  const [pucks, setPucks] = useState(fieldNumber(user.wallet.pucks));
-  const [goldPucks, setGoldPucks] = useState(fieldNumber(user.wallet.goldPucks));
+  const [coins, setCoins] = useState(fieldNumber(user.wallet.coins));
   const [shotsCurrent, setShotsCurrent] = useState(fieldNumber(user.wallet.shotsCurrent));
   const [shotsMax, setShotsMax] = useState(fieldNumber(user.wallet.shotsMax));
 
@@ -1985,11 +1985,11 @@ function UserDetailsModal({
     setDisplayName(user.displayName);
     setGrip(user.grip);
     setLevel(fieldNumber(user.level));
-    setXp(fieldNumber(user.xp));
+    setStars(fieldNumber(user.xp));
+    setExperience(fieldNumber(user.experience));
     setLifetimeShots(fieldNumber(user.lifetimeShotsTotal));
     setLifetimeGoals(fieldNumber(user.lifetimeGoalsTotal));
-    setPucks(fieldNumber(user.wallet.pucks));
-    setGoldPucks(fieldNumber(user.wallet.goldPucks));
+    setCoins(fieldNumber(user.wallet.coins));
     setShotsCurrent(fieldNumber(user.wallet.shotsCurrent));
     setShotsMax(fieldNumber(user.wallet.shotsMax));
   }, [user]);
@@ -2024,12 +2024,12 @@ function UserDetailsModal({
       displayName,
       grip,
       level: Number(level),
-      xp: Number(xp),
+      xp: Number(stars),
+      experience: Number(experience),
       lifetimeShotsTotal: Number(lifetimeShots),
       lifetimeGoalsTotal: Number(lifetimeGoals),
       wallet: {
-        pucks: Number(pucks),
-        goldPucks: Number(goldPucks),
+        coins: Number(coins),
         shotsCurrent: Number(shotsCurrent),
         shotsMax: Number(shotsMax),
       },
@@ -2170,11 +2170,11 @@ function UserDetailsModal({
               </AdminField>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
-              <AdminField label="Level">
+              <AdminField label="Уровень">
                 <input value={level} onChange={(event) => setLevel(event.target.value)} />
               </AdminField>
-              <AdminField label="XP">
-                <input value={xp} onChange={(event) => setXp(event.target.value)} />
+              <AdminField label="Звёзды">
+                <input value={stars} onChange={(event) => setStars(event.target.value)} />
               </AdminField>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
@@ -2192,11 +2192,11 @@ function UserDetailsModal({
               </AdminField>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
-              <AdminField label="Шайбы">
-                <input value={pucks} onChange={(event) => setPucks(event.target.value)} />
+              <AdminField label="Монеты">
+                <input value={coins} onChange={(event) => setCoins(event.target.value)} />
               </AdminField>
-              <AdminField label="Золото">
-                <input value={goldPucks} onChange={(event) => setGoldPucks(event.target.value)} />
+              <AdminField label="Опыт">
+                <input value={experience} onChange={(event) => setExperience(event.target.value)} />
               </AdminField>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
@@ -2296,7 +2296,7 @@ function UserStatsRow({ user }: { user: AdminUser }): JSX.Element {
     { label: 'Броски', value: numberText(user.lifetimeShotsTotal) },
     { label: 'Голы', value: numberText(user.lifetimeGoalsTotal) },
     { label: 'Точность', value: `${user.accuracy}%` },
-    { label: 'Шайбы', value: numberText(user.wallet.pucks) },
+    { label: 'Монеты', value: numberText(user.wallet.coins) },
   ];
   return (
     <section

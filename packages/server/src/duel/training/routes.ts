@@ -29,10 +29,10 @@ const shotBodySchema = z.object({
   input: z.object({
     tapTime: z.number(),
     shooterTapTime: z.number().optional(),
-    puckSpeedPerMs: z.number().optional(),
-    shooterFrequency: z.number().optional(),
-    goalieFrequency: z.number().optional(),
-    goalFrequency: z.number().optional(),
+    puckSpeedPerMs: z.number().min(0.2).max(5).optional(),
+    shooterFrequency: z.number().min(0.1).max(3).optional(),
+    goalieFrequency: z.number().min(0.1).max(3).optional(),
+    goalFrequency: z.number().min(0.1).max(3).optional(),
   }),
   claimed_result: z.enum(['goal', 'save', 'miss']),
 });
@@ -381,10 +381,10 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
         ...(body.input.shooterTapTime !== undefined
           ? { shooterTapTime: body.input.shooterTapTime }
           : {}),
-        puckSpeedPerMs: periodSpeeds.puckSpeedPerMs,
-        shooterFrequency: periodSpeeds.shooterFrequency,
-        goalieFrequency: periodSpeeds.goalieFrequency,
-        goalFrequency: periodSpeeds.goalFrequency,
+        puckSpeedPerMs: body.input.puckSpeedPerMs ?? periodSpeeds.puckSpeedPerMs,
+        shooterFrequency: body.input.shooterFrequency ?? periodSpeeds.shooterFrequency,
+        goalieFrequency: body.input.goalieFrequency ?? periodSpeeds.goalieFrequency,
+        goalFrequency: body.input.goalFrequency ?? periodSpeeds.goalFrequency,
       };
       const result = resolvePerspectiveCourtShot(
         shotInput,
