@@ -16,9 +16,13 @@ export const NAV_HEIGHT = 68;
 
 const ICON_SIZE = 22;
 const LAST_GAME_ROUTE_KEY = 'hockey.nav.lastGameRoute';
+const LAST_SECTIONS_ROUTE_KEY = 'hockey.nav.lastSectionsRoute';
 const LAST_CHAT_ROUTE_KEY = 'hockey.nav.lastChatRoute';
+const LAST_PROFILE_ROUTE_KEY = 'hockey.nav.lastProfileRoute';
 const DEFAULT_GAME_ROUTE = '/?view=arena';
+const DEFAULT_SECTIONS_ROUTE = '/sections';
 const DEFAULT_CHAT_ROUTE = '/chat';
+const DEFAULT_PROFILE_ROUTE = '/profile';
 export const ADMIN_NAV_HOME_EVENT = 'hockey:admin-nav-home';
 
 function isActionableDuelEvent(match: AmateurDuelMatch): boolean {
@@ -44,6 +48,10 @@ function isGameRoute(pathname: string): boolean {
 
 function isChatRoute(pathname: string): boolean {
   return pathname.startsWith('/chat');
+}
+
+function isProfileRoute(pathname: string): boolean {
+  return pathname.startsWith('/profile');
 }
 
 function isSectionContext(location: ReturnType<typeof useLocation>): boolean {
@@ -114,7 +122,13 @@ export function BottomNav(): JSX.Element | null {
   const location = useLocation();
   const navigate = useNavigate();
   const isDemo = location.pathname === '/demo';
+  const lastSectionsRouteRef = useRef(
+    readRememberedRoute(LAST_SECTIONS_ROUTE_KEY, DEFAULT_SECTIONS_ROUTE),
+  );
   const lastChatRouteRef = useRef(readRememberedRoute(LAST_CHAT_ROUTE_KEY, DEFAULT_CHAT_ROUTE));
+  const lastProfileRouteRef = useRef(
+    readRememberedRoute(LAST_PROFILE_ROUTE_KEY, DEFAULT_PROFILE_ROUTE),
+  );
 
   const totalUnread = useChatStore((s) => s.totalUnread());
   const setUnread = useChatStore((s) => s.setUnread);
@@ -174,9 +188,17 @@ export function BottomNav(): JSX.Element | null {
     if (isDemo) return;
     const route = routeFromLocation(location);
     if (isGameRoute(location.pathname)) rememberRoute(LAST_GAME_ROUTE_KEY, DEFAULT_GAME_ROUTE);
+    if (isSectionContext(location)) {
+      lastSectionsRouteRef.current = route;
+      rememberRoute(LAST_SECTIONS_ROUTE_KEY, route);
+    }
     if (isChatRoute(location.pathname)) {
       lastChatRouteRef.current = route;
       rememberRoute(LAST_CHAT_ROUTE_KEY, route);
+    }
+    if (isProfileRoute(location.pathname)) {
+      lastProfileRouteRef.current = route;
+      rememberRoute(LAST_PROFILE_ROUTE_KEY, route);
     }
   }, [isDemo, location]);
 
@@ -187,7 +209,7 @@ export function BottomNav(): JSX.Element | null {
 
   const isSections = isSectionContext(location);
   const isGame = isDemo || (isGameRoute(location.pathname) && !isSections);
-  const isProfile = location.pathname.startsWith('/profile');
+  const isProfile = isProfileRoute(location.pathname);
   const isAdmin = location.pathname.startsWith('/admin');
   const isChat = !isDemo && isChatRoute(location.pathname);
   const showAdmin = !isDemo && user?.role === 'admin';
@@ -218,10 +240,28 @@ export function BottomNav(): JSX.Element | null {
     );
   };
   const openProfileRoute = (): void => {
-    navigate('/profile');
+    if (isProfile) {
+      lastProfileRouteRef.current = DEFAULT_PROFILE_ROUTE;
+      rememberRoute(LAST_PROFILE_ROUTE_KEY, DEFAULT_PROFILE_ROUTE);
+      navigate(DEFAULT_PROFILE_ROUTE);
+      return;
+    }
+    navigate(
+      lastProfileRouteRef.current ||
+        readRememberedRoute(LAST_PROFILE_ROUTE_KEY, DEFAULT_PROFILE_ROUTE),
+    );
   };
   const openSectionsRoute = (): void => {
-    navigate('/sections');
+    if (isSections) {
+      lastSectionsRouteRef.current = DEFAULT_SECTIONS_ROUTE;
+      rememberRoute(LAST_SECTIONS_ROUTE_KEY, DEFAULT_SECTIONS_ROUTE);
+      navigate(DEFAULT_SECTIONS_ROUTE);
+      return;
+    }
+    navigate(
+      lastSectionsRouteRef.current ||
+        readRememberedRoute(LAST_SECTIONS_ROUTE_KEY, DEFAULT_SECTIONS_ROUTE),
+    );
   };
   const openAdminRoute = (): void => {
     if (isAdmin) {

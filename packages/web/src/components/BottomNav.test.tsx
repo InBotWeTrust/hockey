@@ -91,6 +91,23 @@ describe('BottomNav remembered navigation', () => {
     expect(screen.getByLabelText('location')).toHaveTextContent('/sections');
   });
 
+  it('opens the last remembered sections route from another tab', () => {
+    sessionStorage.setItem('hockey.nav.lastSectionsRoute', '/?view=amateur&section=duels');
+    renderBottomNav('/profile');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Разделы' }));
+
+    expect(screen.getByLabelText('location')).toHaveTextContent('/?view=amateur&section=duels');
+  });
+
+  it('resets the active sections tab to the sections root', () => {
+    renderBottomNav('/?view=amateur&section=duels');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Разделы' }));
+
+    expect(screen.getByLabelText('location')).toHaveTextContent('/sections');
+  });
+
   it('keeps section setup screens on the sections tab until play starts', () => {
     renderBottomNav('/?view=training&from=sections');
 
@@ -337,6 +354,23 @@ describe('BottomNav remembered navigation', () => {
     renderBottomNav('/');
 
     await waitFor(() => expect(useAuthStore.getState().user?.grip).toBe('right'));
+  });
+
+  it('opens the last remembered profile route from another tab', () => {
+    sessionStorage.setItem('hockey.nav.lastProfileRoute', '/profile/settings');
+    renderBottomNav('/sections');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Раздевалка' }));
+
+    expect(screen.getByLabelText('location')).toHaveTextContent('/profile/settings');
+  });
+
+  it('resets the active profile tab to the profile root', () => {
+    renderBottomNav('/profile/settings');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Раздевалка' }));
+
+    expect(screen.getByLabelText('location')).toHaveTextContent('/profile');
   });
 
   it('resets the active chat section to the chat list', () => {
