@@ -152,6 +152,18 @@ Fastify generic `FastifyInstance` резолвится к union http/http2/https
 
 Concurrency: `group: deploy-prod, cancel-in-progress: false` — новый пуш ждёт текущий деплой.
 
+### Dev → prod release rule
+
+Dev and prod are separate environments. `dev` deploys from branch `dev` to `dev.hockey.inbotwetrust.ru` with `server-dev/web-dev` and its own staging DB. Prod deploys from branch `main` to `hockey.inbotwetrust.ru` with `server/web` and its own prod DB. To move changes from dev to prod, merge or PR `dev` → `main`; never try to copy built files or rebuild on the VPS manually.
+
+Before merging `dev` to `main`, run a release sanity check:
+
+1. Dev is manually checked and the relevant tests/builds are green.
+2. All DB changes are represented as repo migrations in `packages/server/db/migrations/`; manual staging DB edits do not count and will not appear on prod.
+3. Migrations are forward-only and prod-safe: prefer additive changes, backfills, compatibility windows, and separate cleanup migrations over destructive schema edits.
+4. If prod data must be created or changed (inventory items, weekly challenges, admin config, seed data), either create an explicit migration/seed command or note the manual prod admin step before deploy.
+5. After push to `main`, watch `.github/workflows/deploy.yml` through image build, prod migration, container recreate, and smoke test. Do not report prod as updated until the workflow is green.
+
 ## Language
 
 Коммуникация с пользователем — на русском. Код, коммит-сообщения, комментарии, идентификаторы — на английском. UI-тексты — на русском.
