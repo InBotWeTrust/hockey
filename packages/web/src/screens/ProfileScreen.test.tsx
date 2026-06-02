@@ -189,14 +189,13 @@ describe('ProfileScreen', () => {
     vi.restoreAllMocks();
   });
 
-  it('shows profile stats, achievements and a header settings button', async () => {
+  it('shows the locker profile with identity, resources and clickable hotspots', async () => {
     mockProfileFetch(telegramProfile);
 
     renderProfile();
 
-    const statsLabel = await screen.findByText('Статистика');
-    const equipmentLabel = screen.getByText('Экипировка');
-    const achievementsLabel = screen.getByText('Выполненные задания (1)');
+    expect(await screen.findByLabelText('Раздевалка игрока')).toBeInTheDocument();
+    expect(screen.getByText('Alice T')).toBeInTheDocument();
     expect(screen.getByText('Уровень: Новичок')).toBeInTheDocument();
     expect(screen.queryByText('id u1')).not.toBeInTheDocument();
     expect(screen.queryByText('Валюта')).not.toBeInTheDocument();
@@ -208,15 +207,7 @@ describe('ProfileScreen', () => {
     ).toBeInTheDocument();
     expect(await screen.findByText('77')).toBeInTheDocument();
     expect(screen.queryByText('Ранг')).not.toBeInTheDocument();
-    expect(screen.getByText('Броски')).toBeInTheDocument();
-    expect(screen.getByText('128')).toBeInTheDocument();
-    expect(screen.getByText('Голы')).toBeInTheDocument();
-    expect(screen.getByText('64')).toBeInTheDocument();
-    expect(screen.getByText('Точность')).toBeInTheDocument();
-    expect(screen.getByText('50%')).toBeInTheDocument();
-    expect(screen.getByText('Дней подряд')).toBeInTheDocument();
-    expect(screen.getByText('7')).toBeInTheDocument();
-    expect(screen.getByText('(12)')).toBeInTheDocument();
+    expect(screen.queryByText('Броски')).not.toBeInTheDocument();
     expect(screen.queryByText('Вратарей пройдено')).not.toBeInTheDocument();
     expect(screen.queryByText('Аккаунт и хват игрока')).not.toBeInTheDocument();
     expect(screen.queryByText('Уведомления')).not.toBeInTheDocument();
@@ -224,31 +215,75 @@ describe('ProfileScreen', () => {
     expect(screen.queryByText('Обратная связь')).not.toBeInTheDocument();
     expect(screen.queryByText('Форма обратной связи')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Тестовый пуш/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Первая шайба.*получено/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Шайба.*статистика/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Клюшка.*Обычная клюшка.*Базовая/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Коньки.*Обычные коньки.*Базовая/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Питание.*Нет купленных/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Достижения.*получено/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Настройки профиля' })).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: /Билет в любители.*не получено/i }),
+      document.querySelector('img[src="/inventory/profile-achievement-medals.webp"]'),
     ).toBeInTheDocument();
+    expect(document.querySelector('img[src="/inventory/profile-rink-photo-frame.webp"]')).toBeInTheDocument();
     expect(screen.queryByText('Первый гол всегда самый шумный.')).not.toBeInTheDocument();
-    expect(statsLabel.compareDocumentPosition(achievementsLabel)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
-    );
-    expect(statsLabel.compareDocumentPosition(equipmentLabel)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
-    );
-    expect(equipmentLabel.compareDocumentPosition(achievementsLabel)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
-    );
 
-    fireEvent.click(screen.getByRole('button', { name: /Первая шайба.*получено/i }));
-    expect(screen.getByRole('dialog', { name: 'Первая шайба' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Шайба.*статистика/i }));
+    const statsDialog = screen.getByRole('dialog', { name: 'Статистика' });
+    expect(within(statsDialog).getByText('Броски')).toBeInTheDocument();
+    expect(within(statsDialog).getByText('128')).toBeInTheDocument();
+    expect(within(statsDialog).getByText('Голы')).toBeInTheDocument();
+    expect(within(statsDialog).getByText('64')).toBeInTheDocument();
+    expect(within(statsDialog).getByText('Точность')).toBeInTheDocument();
+    expect(within(statsDialog).getByText('50%')).toBeInTheDocument();
+    expect(within(statsDialog).getByText('Дней подряд')).toBeInTheDocument();
+    expect(within(statsDialog).getByText('7')).toBeInTheDocument();
+    expect(within(statsDialog).getByText('(12)')).toBeInTheDocument();
+    fireEvent.click(within(statsDialog).getByRole('button', { name: 'Закрыть' }));
+
+    fireEvent.click(screen.getByRole('button', { name: /Достижения.*получено/i }));
+    const achievementsDialog = screen.getByRole('dialog', { name: 'Достижения' });
+    expect(within(achievementsDialog).getByText('Достижения (2)')).toBeInTheDocument();
+    expect(within(achievementsDialog).queryByText(/Всего достижений/i)).not.toBeInTheDocument();
+    expect(
+      within(achievementsDialog).getByRole('button', { name: /Первая шайба.*получено/i }),
+    ).toBeInTheDocument();
+    expect(
+      within(achievementsDialog).getByRole('button', { name: /Билет в любители.*не получено/i }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      within(achievementsDialog).getByRole('button', { name: /Первая шайба.*получено/i }),
+    );
+    const achievementDetailsDialog = screen.getByRole('dialog', { name: 'Первая шайба' });
+    expect(achievementDetailsDialog).toBeInTheDocument();
     expect(screen.getByText('Первый гол всегда самый шумный.')).toBeInTheDocument();
     expect(screen.getByText(/Забить 1 гол/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Понятно' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+    fireEvent.click(within(achievementDetailsDialog).getByRole('button', { name: 'Закрыть' }));
     expect(screen.queryByRole('dialog', { name: 'Первая шайба' })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Награды ждут получения.*1/i }));
     expect(screen.getByText('achievements screen')).toBeInTheDocument();
+  });
+
+  it('hides decorative achievement medals until the player has an unlocked achievement', async () => {
+    mockProfileFetch({
+      ...telegramProfile,
+      achievements: telegramProfile.achievements.map((achievement) => ({
+        ...achievement,
+        isUnlocked: false,
+      })),
+      unclaimedAchievementsCount: 0,
+    });
+
+    renderProfile();
+
+    expect(await screen.findByLabelText('Раздевалка игрока')).toBeInTheDocument();
+    expect(
+      document.querySelector('img[src="/inventory/profile-achievement-medals.webp"]'),
+    ).not.toBeInTheDocument();
+    expect(document.querySelector('img[src="/inventory/profile-rink-photo-frame.webp"]')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Достижения: 0 получено/i })).toBeInTheDocument();
   });
 
   it('opens settings from the header button', async () => {
@@ -256,7 +291,7 @@ describe('ProfileScreen', () => {
 
     renderProfile();
 
-    const settingsButton = await screen.findByRole('button', { name: 'Настройки' });
+    const settingsButton = await screen.findByRole('button', { name: 'Настройки профиля' });
     fireEvent.click(settingsButton);
 
     expect(screen.getByText('settings screen')).toBeInTheDocument();
@@ -272,7 +307,7 @@ describe('ProfileScreen', () => {
 
     renderProfile();
 
-    expect(await screen.findByText('Статистика')).toBeInTheDocument();
+    expect(await screen.findByLabelText('Раздевалка игрока')).toBeInTheDocument();
     expect(screen.queryByText('Уведомления')).not.toBeInTheDocument();
     expect(screen.queryByText('Пуш-уведомления')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /уведомления/i })).not.toBeInTheDocument();
@@ -292,14 +327,14 @@ describe('ProfileScreen', () => {
       screen.getByRole('button', { name: /Коньки.*Обычные коньки.*Базовая/i }),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Питание.*Энергогель/i })).toBeInTheDocument();
-    expect(screen.getByText('На 3 броска')).toBeInTheDocument();
-    expect(screen.getByText('На 5 минут энергии')).toBeInTheDocument();
+    expect(screen.queryByText('На 3 броска')).not.toBeInTheDocument();
+    expect(screen.queryByText('На 5 минут энергии')).not.toBeInTheDocument();
     expect(screen.queryByText('Бросок +24')).not.toBeInTheDocument();
     expect(screen.queryByText('выбрано')).not.toBeInTheDocument();
-    expect(document.querySelector('img[src^="/inventory/stick-silver.webp"]')).toBeInTheDocument();
+    expect(document.querySelector('img[src^="/inventory/stick-silver.webp"]')).not.toBeInTheDocument();
     expect(
       document.querySelector('img[src^="/inventory/nutrition-bronze.webp"]'),
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
     expect(document.querySelector('img[src="/inventory/sticks.webp"]')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Клюшка.*Острая клюшка/i }));

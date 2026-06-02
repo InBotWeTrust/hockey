@@ -180,8 +180,10 @@ describe('ProfileSettingsScreen', () => {
     const fetchMock = mockSettingsFetch();
 
     renderProfileSettings();
-    expect(await screen.findByText('ID игрока')).toBeInTheDocument();
-    expect(screen.getByText('u1')).toBeInTheDocument();
+    expect(await screen.findByText('Аккаунт (u1)')).toBeInTheDocument();
+    expect(screen.queryByText('ID игрока')).not.toBeInTheDocument();
+    expect(document.querySelector('img[src="/sprites/ultimate-player-left.webp"]')).toBeInTheDocument();
+    expect(document.querySelector('img[src="/sprites/ultimate-player-right.webp"]')).toBeInTheDocument();
     const vkButton = await screen.findByRole('button', { name: /из вконтакте/i });
     fireEvent.click(vkButton);
 
@@ -241,6 +243,8 @@ describe('ProfileSettingsScreen', () => {
     const fetchMock = mockSettingsFetch();
 
     renderProfileSettings();
+    fireEvent.click(await screen.findByRole('button', { name: /Кастом.*Alice T/i }));
+    expect(screen.getByRole('dialog', { name: 'Кастомный профиль' })).toBeInTheDocument();
     fireEvent.change(await screen.findByLabelText('Кастомное имя'), {
       target: { value: 'Егор' },
     });

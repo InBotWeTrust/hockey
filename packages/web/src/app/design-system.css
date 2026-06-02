@@ -511,6 +511,18 @@
   padding: 16px;
 }
 
+.btn--accent {
+  background: var(--blue-accent);
+  color: #ffffff;
+  border: 1px solid rgba(34, 158, 217, 0.92);
+  backdrop-filter: var(--blur-sm);
+  -webkit-backdrop-filter: var(--blur-sm);
+  box-shadow:
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.24),
+    inset 0 -8px 18px rgba(3, 105, 161, 0.1),
+    0 10px 22px rgba(34, 158, 217, 0.24);
+}
+
 .btn--ghost {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
@@ -548,6 +560,368 @@
   background: rgba(15, 23, 42, 0.9);
   border: 1px solid rgba(15, 23, 42, 0.9);
   color: #ffffff;
+}
+
+/* === Profile locker room === */
+.profile-locker-screen {
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #09111a;
+}
+
+.app-shell--bottom-nav-visible .app-content > .profile-locker-screen {
+  padding-bottom: 0 !important;
+  scroll-padding-bottom: 0;
+}
+
+.profile-locker-scene {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: #09111a;
+  isolation: isolate;
+}
+
+.profile-locker-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center center;
+  z-index: 0;
+  user-select: none;
+  pointer-events: none;
+}
+
+.profile-locker-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(3, 7, 18, 0.72) 0%, rgba(3, 7, 18, 0.1) 22%, rgba(3, 7, 18, 0.16) 72%, rgba(3, 7, 18, 0.72) 100%),
+    radial-gradient(circle at 50% 16%, rgba(226, 238, 249, 0.2), transparent 28%),
+    radial-gradient(circle at 50% 78%, rgba(125, 211, 252, 0.12), transparent 42%);
+}
+
+.profile-locker-id-card {
+  position: absolute;
+  top: calc(12px + var(--app-safe-top));
+  right: 14px;
+  left: 14px;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) 46px;
+  gap: 10px;
+  align-items: center;
+  min-height: 82px;
+  padding: 10px 12px 11px;
+  border-radius: 24px;
+  background: rgba(232, 242, 255, 0.52);
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  box-shadow:
+    0 18px 36px rgba(42, 91, 132, 0.2),
+    0 -1px 0 rgba(255, 255, 255, 0.44) inset;
+  backdrop-filter: blur(20px) saturate(130%);
+  -webkit-backdrop-filter: blur(20px) saturate(130%);
+}
+
+.profile-locker-id-avatar {
+  width: 58px;
+  height: 58px;
+  border-radius: 999px;
+  padding: 3px;
+  background: rgba(226, 238, 249, 0.76);
+  box-shadow: 0 9px 22px rgba(15, 23, 42, 0.22);
+}
+
+.profile-locker-id-avatar img,
+.profile-locker-id-initial {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  border: 2px solid rgba(239, 247, 255, 0.92);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.profile-locker-id-avatar img {
+  object-fit: cover;
+}
+
+.profile-locker-id-initial {
+  background: linear-gradient(135deg, #0f172a 0%, #334155 100%);
+  color: #ffffff;
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.profile-locker-id-main {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  align-content: center;
+}
+
+.profile-locker-resources {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: clamp(6px, 2.2vw, 14px);
+  overflow: hidden;
+  text-shadow: none;
+}
+
+.profile-locker-name {
+  min-width: 0;
+  color: var(--ink);
+  font-size: 20px;
+  font-weight: 950;
+  line-height: 1.05;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.38);
+}
+
+.profile-locker-status {
+  min-width: 0;
+  color: rgba(71, 85, 105, 0.92);
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-locker-settings-button {
+  width: 46px;
+  height: 46px;
+  justify-self: center;
+  align-self: center;
+  background: rgba(255, 255, 255, 0.48);
+  border-color: rgba(255, 255, 255, 0.72);
+  color: rgba(71, 85, 105, 0.9);
+  box-shadow: none;
+}
+
+.profile-locker-hotspot {
+  --hotspot-x: 50%;
+  --hotspot-y: 50%;
+  --hotspot-size: 46px;
+  position: absolute;
+  left: var(--hotspot-x);
+  top: var(--hotspot-y);
+  z-index: 3;
+  width: var(--hotspot-size);
+  height: var(--hotspot-size);
+  border: 1px solid rgba(226, 246, 255, 0.92);
+  border-radius: 999px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.96);
+  background:
+    radial-gradient(circle at 42% 32%, rgba(255, 255, 255, 0.68), rgba(226, 246, 255, 0.22) 36%, rgba(59, 130, 246, 0.2) 100%),
+    rgba(226, 238, 249, 0.12);
+  box-shadow:
+    0 0 0 4px rgba(125, 211, 252, 0.12),
+    0 0 24px rgba(125, 211, 252, 0.46),
+    0 14px 32px rgba(3, 7, 18, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    inset 0 -10px 18px rgba(15, 23, 42, 0.18);
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.16s ease,
+  border-color 0.16s ease;
+}
+
+.profile-locker-hotspot-layer {
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.profile-locker-hotspot-layer .profile-locker-hotspot {
+  pointer-events: auto;
+}
+
+.profile-locker-prop {
+  position: absolute;
+  height: auto;
+  pointer-events: none;
+  user-select: none;
+  filter: drop-shadow(0 16px 22px rgba(3, 7, 18, 0.38));
+}
+
+.profile-locker-prop--jersey {
+  z-index: 1;
+}
+
+.profile-locker-prop--stick {
+  z-index: 2;
+  filter: drop-shadow(0 14px 18px rgba(3, 7, 18, 0.42));
+}
+
+.profile-locker-prop--skates {
+  z-index: 2;
+  filter: drop-shadow(0 12px 14px rgba(3, 7, 18, 0.42));
+}
+
+.profile-locker-prop--achievement-medals {
+  z-index: 1;
+  filter: drop-shadow(0 10px 14px rgba(3, 7, 18, 0.42));
+}
+
+.profile-locker-prop--rink-photo {
+  z-index: 1;
+  filter: drop-shadow(0 12px 16px rgba(3, 7, 18, 0.44));
+}
+
+.profile-locker-hotspot-icon {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  user-select: none;
+  pointer-events: none;
+  filter: drop-shadow(0 1px 4px rgba(3, 7, 18, 0.3));
+}
+
+.profile-locker-hotspot:active {
+  transform: translate(-50%, -50%) scale(0.94);
+}
+
+.profile-locker-hotspot:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.86);
+  outline-offset: 4px;
+}
+
+.profile-locker-hotspot__badge {
+  position: absolute;
+  right: -1px;
+  top: -3px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(220, 38, 38, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.78);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 950;
+  line-height: 16px;
+  text-align: center;
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.22);
+}
+
+.profile-locker-hotspot--stick {
+  --hotspot-x: 17%;
+  --hotspot-y: 37%;
+}
+
+.profile-locker-hotspot--skates {
+  --hotspot-x: 24%;
+  --hotspot-y: 73%;
+}
+
+.profile-locker-hotspot--puck {
+  --hotspot-x: 15%;
+  --hotspot-y: 88%;
+}
+
+.profile-locker-hotspot--achievements {
+  --hotspot-x: 82%;
+  --hotspot-y: 24%;
+}
+
+.profile-locker-hotspot--nutrition {
+  --hotspot-x: 82%;
+  --hotspot-y: 58%;
+}
+
+.profile-locker-modal-card {
+  width: min(430px, calc(100vw - 28px));
+  max-height: min(76vh, 680px);
+  overflow: auto;
+  display: grid;
+  gap: 14px;
+  position: relative;
+}
+
+.profile-locker-modal-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+}
+
+.profile-locker-modal-header {
+  min-width: 0;
+  padding-right: 42px;
+}
+
+.profile-locker-stats-grid {
+  margin-top: 4px;
+}
+
+.profile-locker-achievement-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  max-height: min(42vh, 360px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 8px 2px 10px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.profile-locker-achievement-grid .achievement-tile {
+  width: 100% !important;
+  flex: 0 1 auto !important;
+}
+
+.profile-locker-empty-copy {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+@media (max-width: 390px) {
+  .profile-locker-id-card {
+    grid-template-columns: 52px minmax(0, 1fr) 44px;
+    gap: 8px;
+  }
+
+  .profile-locker-id-avatar {
+    width: 52px;
+    height: 52px;
+  }
+
+  .profile-locker-name {
+    font-size: 18px;
+  }
+
+  .profile-locker-hotspot {
+    --hotspot-size: 44px;
+  }
+
+  .profile-locker-settings-button {
+    width: 44px;
+    height: 44px;
+  }
 }
 
 /* Section info icons match the main hub event header: glyph-only, no filled button chrome. */
