@@ -296,9 +296,9 @@ describe('ProfileScreen', () => {
     expect(screen.getByText('На 5 минут энергии')).toBeInTheDocument();
     expect(screen.queryByText('Бросок +24')).not.toBeInTheDocument();
     expect(screen.queryByText('выбрано')).not.toBeInTheDocument();
-    expect(document.querySelector('img[src="/inventory/stick-silver.webp"]')).toBeInTheDocument();
+    expect(document.querySelector('img[src^="/inventory/stick-silver.webp"]')).toBeInTheDocument();
     expect(
-      document.querySelector('img[src="/inventory/nutrition-bronze.webp"]'),
+      document.querySelector('img[src^="/inventory/nutrition-bronze.webp"]'),
     ).toBeInTheDocument();
     expect(document.querySelector('img[src="/inventory/sticks.webp"]')).not.toBeInTheDocument();
 

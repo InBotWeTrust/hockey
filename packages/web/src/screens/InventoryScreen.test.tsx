@@ -170,7 +170,7 @@ describe('InventoryScreen', () => {
     expect(screen.getByRole('tab', { name: 'Банк' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'История' })).toBeInTheDocument();
     expect(screen.queryByText('-120')).not.toBeInTheDocument();
-    expect(document.querySelector('img[src="/inventory/stick-bronze.webp"]')).toBeInTheDocument();
+    expect(document.querySelector('img[src^="/inventory/stick-bronze.webp"]')).toBeInTheDocument();
     expect(document.querySelector('img[src="/inventory/sticks.webp"]')).not.toBeInTheDocument();
   });
 
