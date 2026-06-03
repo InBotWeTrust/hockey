@@ -159,7 +159,11 @@ export interface AmateurDuelInventoryAvailabilityItem {
   id: string;
   kind: 'stick' | 'skates' | 'nutrition';
   title: string;
+  description: string;
+  imageUrl: string | null;
   rarity: 'common' | 'rare' | 'epic' | 'legendary';
+  powerScore: number;
+  duelPeriodCost: number;
   resourceUnit?: DuelInventoryResourceUnit;
   chargesAvailable: number;
   chargesReserved: number;

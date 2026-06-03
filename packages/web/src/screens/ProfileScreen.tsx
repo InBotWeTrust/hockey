@@ -28,7 +28,7 @@ import {
   getLevelLabel,
   ProfileStatsGrid,
 } from './profileSections.js';
-import { artworkForInventoryItem } from './inventoryArtwork.js';
+import { artworkForInventoryItem, placeholderArtworkForKind } from './inventoryArtwork.js';
 import { formatInventoryStockLabel } from './inventoryResourceLabels.js';
 
 const LOCKER_IMAGE_WIDTH = 853;
@@ -45,11 +45,19 @@ const LOCKER_HOTSPOTS = {
 const LOCKER_PROPS = {
   jersey: { x: 232, y: 430, width: 388 },
   stick: { x: 112, y: 565, width: 420 },
+  stickRack: { x: 22, y: 510, width: 205 },
   skates: { x: 560, y: 1302, width: 270 },
   achievementMedals: { x: 676, y: 472, width: 154 },
   rinkPhoto: { x: 686, y: 825, width: 150 },
   nutritionCans: { x: 705, y: 1010, width: 115 },
 } satisfies Record<string, { x: number; y: number; width: number }>;
+
+const LOCKER_STICK_ARTWORK = {
+  baseSelected: '/inventory/profile-hockey-stick.webp',
+  baseRack: '/inventory/profile-stick-base-rack.webp',
+  ultimateSelected: '/inventory/profile-stick-ultimate-selected.webp',
+  ultimateRack: '/inventory/profile-stick-ultimate-rack.webp',
+} as const;
 
 function lockerHotspotStyle(position: { x: number; y: number }): CSSProperties {
   return {
@@ -87,9 +95,25 @@ function ProfileResourceChip({
   const displayValue = formatProfileNumber(value);
   const visualLength = displayValue.replace(/\s/g, '').length;
   const fontSize =
-    visualLength >= 12 ? 6 : visualLength >= 9 ? 7 : visualLength >= 7 ? 8 : visualLength >= 5 ? 10 : 11;
+    visualLength >= 12
+      ? 6
+      : visualLength >= 9
+        ? 7
+        : visualLength >= 7
+          ? 8
+          : visualLength >= 5
+            ? 10
+            : 11;
   const iconSize =
-    visualLength >= 12 ? 7 : visualLength >= 9 ? 8 : visualLength >= 7 ? 9 : visualLength >= 5 ? 12 : 14;
+    visualLength >= 12
+      ? 7
+      : visualLength >= 9
+        ? 8
+        : visualLength >= 7
+          ? 9
+          : visualLength >= 5
+            ? 12
+            : 14;
   const gap = visualLength >= 5 ? 2 : 4;
   return (
     <span
@@ -179,6 +203,33 @@ function hasOwnedNutrition(inventory: InventoryState | undefined): boolean {
   return (inventory?.items.nutrition ?? []).some(isAvailableLockerItem);
 }
 
+function isUltimateStick(item: InventoryItem): boolean {
+  return item.kind === 'stick' && item.title.trim().toLowerCase().startsWith('ультимейт ван');
+}
+
+function lockerStickArtwork(inventory: InventoryState | undefined): {
+  selectedSrc: string;
+  rackSrc: string | null;
+} {
+  const ownedUltimateStick = (inventory?.items.stick ?? []).find(
+    (item) => isAvailableLockerItem(item) && isUltimateStick(item),
+  );
+  const activeStick = equippedItem(inventory, 'stick');
+  const selectedIsUltimate = activeStick !== null && isUltimateStick(activeStick);
+
+  return {
+    selectedSrc: selectedIsUltimate
+      ? LOCKER_STICK_ARTWORK.ultimateSelected
+      : LOCKER_STICK_ARTWORK.baseSelected,
+    rackSrc:
+      ownedUltimateStick === undefined
+        ? null
+        : selectedIsUltimate
+          ? LOCKER_STICK_ARTWORK.baseRack
+          : LOCKER_STICK_ARTWORK.ultimateRack,
+  };
+}
+
 function formatReservedLabel(count: number): string | null {
   const normalized = Math.max(0, Math.trunc(count));
   if (normalized === 0) return null;
@@ -194,10 +245,28 @@ function formatReservedLabel(count: number): string | null {
   return `${normalized} ${noun}`;
 }
 
+function equipmentPointLabel(value: number): string {
+  const normalized = Math.max(0, Math.trunc(value));
+  const mod10 = normalized % 10;
+  const mod100 = normalized % 100;
+  const noun =
+    mod10 === 1 && mod100 !== 11
+      ? 'пункт'
+      : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)
+        ? 'пункта'
+        : 'пунктов';
+  return `${normalized} ${noun}`;
+}
+
 function equipmentEffectLabel(kind: InventoryEquipmentKind, powerScore: number): string {
-  if (kind === 'stick') return `Бросок +${powerScore}`;
-  if (kind === 'skates') return `Скорость +${powerScore}`;
-  return `Энергия +${powerScore}`;
+  if (powerScore <= 0) {
+    if (kind === 'stick') return 'Базовая скорость полёта шайбы';
+    if (kind === 'skates') return 'Базовая скорость игрока';
+    return 'Без усиления энергии';
+  }
+  if (kind === 'stick') return `Ускоряет полёт шайбы на ${equipmentPointLabel(powerScore)}`;
+  if (kind === 'skates') return `Ускоряет игрока на ${equipmentPointLabel(powerScore)}`;
+  return `Добавляет энергию на ${equipmentPointLabel(powerScore)}`;
 }
 
 function equipmentDisplayTitle(item: InventoryItem): string {
@@ -248,9 +317,7 @@ function equipmentHotspotLabel(
 }
 
 function ProfileLockerIcon({ src }: { src: string }): JSX.Element {
-  return (
-    <img className="profile-locker-hotspot-icon" src={src} alt="" aria-hidden="true" />
-  );
+  return <img className="profile-locker-hotspot-icon" src={src} alt="" aria-hidden="true" />;
 }
 
 function ProfileLockerHotspotButton({
@@ -333,7 +400,9 @@ function ProfileLockerIdentityCard({
           />
         </div>
         <div className="profile-locker-name">{data?.displayName ?? '-'}</div>
-        <div className="profile-locker-status">Уровень: {getLevelLabel(data?.competitionLevel)}</div>
+        <div className="profile-locker-status">
+          Уровень: {getLevelLabel(data?.competitionLevel)}
+        </div>
       </div>
       <button
         type="button"
@@ -472,9 +541,12 @@ function EquipmentDetailsModal({
         onClick={(event) => event.stopPropagation()}
         style={{
           width: 'min(430px, calc(100vw - 28px))',
+          maxHeight: 'calc(100dvh - 112px - var(--app-safe-top) - var(--app-safe-bottom))',
           display: 'grid',
-          gap: 14,
+          gridTemplateRows: 'auto minmax(0, 1fr) auto',
+          gap: 10,
           position: 'relative',
+          overflow: 'hidden',
         }}
       >
         <button
@@ -491,7 +563,17 @@ function EquipmentDetailsModal({
           <div className="modal-copy">Купленные расходники для активного слота.</div>
         </div>
 
-        <div style={{ display: 'grid', gap: 8 }}>
+        <div
+          className="no-scrollbar"
+          style={{
+            minHeight: 0,
+            maxHeight: 'min(54dvh, 430px)',
+            overflowY: 'auto',
+            display: 'grid',
+            gap: 8,
+            paddingRight: 2,
+          }}
+        >
           <button
             type="button"
             data-no-drag-scroll="true"
@@ -500,15 +582,18 @@ function EquipmentDetailsModal({
             className={baseSelected ? 'glass-dark' : 'glass'}
             aria-pressed={baseSelected}
             style={{
-              borderRadius: 18,
-              padding: 12,
+              minHeight: 74,
+              borderRadius: 16,
+              padding: 10,
               color: baseSelected ? '#ffffff' : 'var(--ink)',
               border: baseSelected
                 ? '1px solid rgba(15, 23, 42, 0.22)'
                 : '1px solid rgba(255,255,255,0.76)',
               background: baseSelected ? 'rgba(15, 23, 42, 0.74)' : 'rgba(255,255,255,0.22)',
-              display: 'block',
+              display: 'grid',
+              gridTemplateColumns: '54px minmax(0, 1fr)',
               alignItems: 'center',
+              gap: 10,
               textAlign: 'left',
               cursor: isSaving ? 'wait' : 'pointer',
               boxShadow: baseSelected
@@ -516,8 +601,64 @@ function EquipmentDetailsModal({
                 : '0 8px 18px rgba(15,23,42,0.1), inset 0 1px 0 rgba(255,255,255,0.74)',
             }}
           >
-            <span style={{ display: 'grid', gap: 4 }}>
-              <span style={{ fontSize: 15, fontWeight: 900 }}>{baseEquipmentTitle(kind)}</span>
+            <span
+              aria-hidden="true"
+              style={{
+                width: 54,
+                height: 54,
+                borderRadius: 14,
+                overflow: 'hidden',
+                border: baseSelected
+                  ? '1px solid rgba(255,255,255,0.32)'
+                  : '1px solid rgba(255,255,255,0.78)',
+                background: 'rgba(255,255,255,0.28)',
+              }}
+            >
+              <img
+                src={placeholderArtworkForKind(kind)}
+                alt=""
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  display: 'block',
+                  objectFit: 'cover',
+                  filter: 'grayscale(0.45)',
+                  opacity: 0.72,
+                }}
+              />
+            </span>
+            <span style={{ minWidth: 0, display: 'grid', gap: 5 }}>
+              <span
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'minmax(0, 1fr) auto',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <span style={{ minWidth: 0, fontSize: 15, fontWeight: 950, lineHeight: 1.12 }}>
+                  {baseEquipmentTitle(kind)}
+                </span>
+                <span
+                  className="pill"
+                  style={{
+                    height: 24,
+                    padding: '0 9px',
+                    justifyContent: 'center',
+                    fontSize: 10,
+                    whiteSpace: 'nowrap',
+                    ...(baseSelected
+                      ? {
+                          color: 'rgba(15, 23, 42, 0.9)',
+                          background: 'rgba(255,255,255,0.82)',
+                          border: '1px solid rgba(255,255,255,0.78)',
+                        }
+                      : {}),
+                  }}
+                >
+                  {baseSelected ? 'Активировано' : 'Активировать'}
+                </span>
+              </span>
               <span
                 style={{
                   color: baseSelected ? 'rgba(255,255,255,0.72)' : 'rgba(15, 23, 42, 0.62)',
@@ -545,19 +686,18 @@ function EquipmentDetailsModal({
                 aria-pressed={selected}
                 className={selected ? 'glass-dark' : 'glass'}
                 style={{
-                  borderRadius: 24,
-                  padding: 14,
+                  minHeight: 94,
+                  borderRadius: 18,
+                  padding: 10,
                   color: selected ? '#ffffff' : 'var(--ink)',
                   border: selected
                     ? '1px solid rgba(15, 23, 42, 0.22)'
                     : '1px solid rgba(255,255,255,0.76)',
-                  background: selected
-                    ? 'rgba(15, 23, 42, 0.74)'
-                    : 'rgba(255,255,255,0.22)',
+                  background: selected ? 'rgba(15, 23, 42, 0.74)' : 'rgba(255,255,255,0.22)',
                   display: 'grid',
-                  gridTemplateColumns: '96px minmax(0, 1fr)',
-                  alignItems: 'start',
-                  gap: 12,
+                  gridTemplateColumns: '64px minmax(0, 1fr)',
+                  alignItems: 'center',
+                  gap: 10,
                   textAlign: 'left',
                   cursor: isSaving ? 'wait' : 'pointer',
                   opacity: item.chargesAvailable > 0 ? 1 : 0.55,
@@ -565,13 +705,13 @@ function EquipmentDetailsModal({
                     ? '0 14px 26px rgba(15,23,42,0.2), inset 0 1px 0 rgba(255,255,255,0.2)'
                     : '0 8px 18px rgba(15,23,42,0.1), inset 0 1px 0 rgba(255,255,255,0.74)',
                 }}
-              >
+                >
                 <span
                   aria-hidden="true"
                   style={{
-                    width: '100%',
-                    aspectRatio: '1 / 1',
-                    borderRadius: 22,
+                    width: 64,
+                    height: 64,
+                    borderRadius: 16,
                     overflow: 'hidden',
                     border: '1px solid rgba(255,255,255,0.8)',
                     background: 'rgba(255,255,255,0.28)',
@@ -585,10 +725,13 @@ function EquipmentDetailsModal({
                     style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }}
                   />
                 </span>
-                <span style={{ minWidth: 0 }}>
+                <span style={{ minWidth: 0, display: 'grid', gap: 5 }}>
                   <span
                     style={{
-                      display: 'block',
+                      display: 'grid',
+                      gridTemplateColumns: 'minmax(0, 1fr) auto',
+                      alignItems: 'start',
+                      gap: 8,
                       minWidth: 0,
                     }}
                   >
@@ -596,19 +739,37 @@ function EquipmentDetailsModal({
                       style={{
                         minWidth: 0,
                         color: selected ? '#ffffff' : 'var(--ink)',
-                        fontSize: 18,
+                        fontSize: 15,
                         fontWeight: 950,
-                        lineHeight: 1.08,
+                        lineHeight: 1.12,
                         overflowWrap: 'break-word',
                       }}
                     >
                       {displayTitle}
                     </span>
+                    <span
+                      className="pill"
+                      style={{
+                        height: 24,
+                        padding: '0 9px',
+                        justifyContent: 'center',
+                        fontSize: 10,
+                        whiteSpace: 'nowrap',
+                        ...(selected
+                          ? {
+                              color: 'rgba(15, 23, 42, 0.9)',
+                              background: 'rgba(255,255,255,0.82)',
+                              border: '1px solid rgba(255,255,255,0.78)',
+                            }
+                          : {}),
+                      }}
+                    >
+                      {selected ? 'Активировано' : 'Активировать'}
+                    </span>
                   </span>
                   <span
                     style={{
                       display: 'block',
-                      marginTop: 7,
                       fontSize: 12,
                       fontWeight: 760,
                       lineHeight: 1.28,
@@ -622,36 +783,28 @@ function EquipmentDetailsModal({
                       display: 'flex',
                       gap: 6,
                       flexWrap: 'wrap',
-                      marginTop: 12,
                     }}
                   >
                     <span
                       className="pill"
-                      style={{ height: 26, justifyContent: 'center', fontSize: 11 }}
+                      style={{ height: 24, justifyContent: 'center', fontSize: 10.5 }}
                     >
                       {formatInventoryStockLabel(item)}
                     </span>
                     <span
                       className="pill"
-                      style={{ height: 26, justifyContent: 'center', fontSize: 11 }}
+                      style={{ height: 24, justifyContent: 'center', fontSize: 10.5 }}
                     >
                       {equipmentEffectLabel(kind, item.powerScore)}
                     </span>
-                  </span>
-                  <span
-                    style={{
-                      display: 'flex',
-                      gap: 8,
-                      flexWrap: 'wrap',
-                      marginTop: 10,
-                      fontSize: 11,
-                      fontWeight: 850,
-                      color: selected ? 'rgba(255,255,255,0.72)' : 'rgba(15, 23, 42, 0.66)',
-                    }}
-                  >
-                    {item.duelPeriodCost > 0 && <span>Расход: {item.duelPeriodCost}/период</span>}
-                    <span>Цена: {item.currencyPrice}</span>
-                    {reservedLabel !== null && <span>{reservedLabel}</span>}
+                    {reservedLabel !== null && (
+                      <span
+                        className="pill"
+                        style={{ height: 24, justifyContent: 'center', fontSize: 10.5 }}
+                      >
+                        {reservedLabel}
+                      </span>
+                    )}
                   </span>
                 </span>
               </button>
@@ -699,9 +852,9 @@ export function ProfileScreen(): JSX.Element {
   const suppressClickRef = useRef(false);
   const [lockerHotspotLayerStyle, setLockerHotspotLayerStyle] = useState<CSSProperties>({});
   const [selectedAchievement, setSelectedAchievement] = useState<ProfileAchievement | null>(null);
-  const [selectedLockerModal, setSelectedLockerModal] = useState<
-    'stats' | 'achievements' | null
-  >(null);
+  const [selectedLockerModal, setSelectedLockerModal] = useState<'stats' | 'achievements' | null>(
+    null,
+  );
   const [selectedEquipmentKind, setSelectedEquipmentKind] = useState<InventoryEquipmentKind | null>(
     null,
   );
@@ -785,13 +938,16 @@ export function ProfileScreen(): JSX.Element {
   const initial = (data?.displayName ?? '?').charAt(0).toUpperCase();
   const stats = data?.stats ?? EMPTY_PROFILE_STATS;
   const achievements = data?.achievements ?? [];
-  const unlockedAchievementsCount = achievements.filter((achievement) => achievement.isUnlocked).length;
+  const unlockedAchievementsCount = achievements.filter(
+    (achievement) => achievement.isUnlocked,
+  ).length;
   const unclaimedAchievementsCount = data?.unclaimedAchievementsCount ?? 0;
   const tokenBalance = inventoryQuery.data?.balances.tokens ?? data?.currencyBalance ?? 0;
   const starBalance = inventoryQuery.data?.balances.stars ?? data?.starBalance ?? 0;
   const experienceBalance =
     inventoryQuery.data?.balances.experience ?? data?.experienceBalance ?? 0;
   const showNutritionCans = hasOwnedNutrition(inventoryQuery.data);
+  const stickArtwork = lockerStickArtwork(inventoryQuery.data);
   const jerseyArtworkSrc =
     data?.competitionLevel === 'beginner'
       ? '/inventory/profile-hoodie-training.webp'
@@ -862,9 +1018,17 @@ export function ProfileScreen(): JSX.Element {
             alt=""
             style={lockerPropStyle(LOCKER_PROPS.jersey)}
           />
+          {stickArtwork.rackSrc !== null && (
+            <img
+              className="profile-locker-prop profile-locker-prop--stick-rack"
+              src={stickArtwork.rackSrc}
+              alt=""
+              style={lockerPropStyle(LOCKER_PROPS.stickRack)}
+            />
+          )}
           <img
             className="profile-locker-prop profile-locker-prop--stick"
-            src="/inventory/profile-hockey-stick.webp"
+            src={stickArtwork.selectedSrc}
             alt=""
             style={lockerPropStyle(LOCKER_PROPS.stick)}
           />

@@ -718,7 +718,7 @@ function InventoryItemModal({
       <section
         role="dialog"
         aria-label={item.title}
-        className="modal-card"
+        className="modal-card inventory-item-modal-card"
         onClick={(event) => event.stopPropagation()}
         style={{
           width: 'min(430px, calc(100vw - 28px))',
@@ -741,6 +741,7 @@ function InventoryItemModal({
         <div
           style={{
             width: '100%',
+            height: 'var(--inventory-item-art-height, auto)',
             aspectRatio: '1 / 1',
             borderRadius: 22,
             overflow: 'hidden',

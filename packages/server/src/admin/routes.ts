@@ -331,6 +331,9 @@ interface AdminInventoryItemRow {
   currency_price: number;
   charges_per_purchase: number;
   duel_period_cost: number;
+  power_score: number;
+  resource_unit: 'period' | 'shot' | 'distance' | 'energy_ms';
+  effect_puck_speed_points: number;
   effect_puck_speed_delta: number;
   effect_shooter_frequency_delta: number;
   effect_goalie_frequency_delta: number;
@@ -1258,6 +1261,9 @@ function mapInventoryItem(row: AdminInventoryItemRow) {
     currencyPrice: row.currency_price,
     chargesPerPurchase: row.charges_per_purchase,
     duelPeriodCost: row.duel_period_cost,
+    powerScore: row.power_score,
+    resourceUnit: row.resource_unit,
+    effectPuckSpeedPoints: row.effect_puck_speed_points,
     effectPuckSpeedDelta: row.effect_puck_speed_delta,
     effectShooterFrequencyDelta: row.effect_shooter_frequency_delta,
     effectGoalieFrequencyDelta: row.effect_goalie_frequency_delta,
@@ -2862,6 +2868,9 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
               i.currency_price,
               i.charges_per_purchase,
               i.duel_period_cost,
+              i.power_score,
+              i.resource_unit,
+              i.effect_puck_speed_points,
               i.effect_puck_speed_delta,
               i.effect_shooter_frequency_delta,
               i.effect_goalie_frequency_delta,
@@ -2889,7 +2898,8 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
       `insert into admin_inventory_items (photo_url, title, description, price_rub)
        values ($1, $2, $3, $4)
        returning id, photo_url, title, description, price_rub, item_kind, currency_price,
-                 charges_per_purchase, duel_period_cost, effect_puck_speed_delta,
+                 charges_per_purchase, duel_period_cost, power_score, resource_unit,
+                 effect_puck_speed_points, effect_puck_speed_delta,
                  effect_shooter_frequency_delta, effect_goalie_frequency_delta,
                  effect_goal_frequency_delta, effect_shot_zone_multiplier,
                  created_at, updated_at`,
@@ -2928,7 +2938,8 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
               updated_at = now()
         where id = $${values.length} and deleted_at is null
       returning id, photo_url, title, description, price_rub, item_kind, currency_price,
-                charges_per_purchase, duel_period_cost, effect_puck_speed_delta,
+                charges_per_purchase, duel_period_cost, power_score, resource_unit,
+                effect_puck_speed_points, effect_puck_speed_delta,
                 effect_shooter_frequency_delta, effect_goalie_frequency_delta,
                 effect_goal_frequency_delta, effect_shot_zone_multiplier,
                 created_at, updated_at`,

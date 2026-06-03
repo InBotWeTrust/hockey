@@ -844,6 +844,23 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
       item: { id: itemId, title: 'Про-клюшка', priceRub: 249 },
     });
 
+    const gameplay = await app.inject({
+      method: 'PATCH',
+      url: `/admin/inventory/${itemId}/gameplay`,
+      headers: auth(adminToken),
+      payload: {
+        itemKind: 'stick',
+        currencyPrice: 1490,
+        chargesPerPurchase: 1300,
+        duelPeriodCost: 0,
+        powerScore: 25,
+        resourceUnit: 'shot',
+        effectPuckSpeedPoints: 25,
+        effectPuckSpeedDelta: 0.25,
+      },
+    });
+    expect(gameplay.statusCode).toBe(200);
+
     await pool.query(
       `insert into payments
          (user_id, inventory_item_id, title, amount_rub, status, provider, provider_payment_id, paid_at)
@@ -888,6 +905,14 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
         {
           id: itemId,
           title: 'Про-клюшка',
+          itemKind: 'stick',
+          currencyPrice: 1490,
+          chargesPerPurchase: 1300,
+          duelPeriodCost: 0,
+          powerScore: 25,
+          resourceUnit: 'shot',
+          effectPuckSpeedPoints: 25,
+          effectPuckSpeedDelta: '0.2500',
           paymentsCount: 2,
           paidRevenueRub: 249,
         },

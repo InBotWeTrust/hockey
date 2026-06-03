@@ -109,6 +109,7 @@ import {
   type AdminInventoryGameplayPatch,
   type AdminInventoryItemKind,
   type AdminInventoryItemPatch,
+  type AdminInventoryResourceUnit,
   type AdminMismatchLog,
   type AdminMismatchPeriod,
   type AdminMismatchesResponse,
@@ -507,8 +508,23 @@ function puckSpeedDeltaToPoints(value: number | undefined): string {
   return String(Math.round(value * 100));
 }
 
+function puckSpeedPointsFieldValue(item: AdminInventoryItem | null): string {
+  if (!item) return '0';
+  if (Number.isFinite(item.effectPuckSpeedPoints) && item.effectPuckSpeedPoints !== 0) {
+    return fieldNumber(item.effectPuckSpeedPoints);
+  }
+  return puckSpeedDeltaToPoints(item.effectPuckSpeedDelta ?? 0);
+}
+
 function puckSpeedPointsToDelta(value: string): number {
   return parseAdminNumberInput(value) / 100;
+}
+
+function inventoryResourceUnitForKind(kind: AdminInventoryItemKind): AdminInventoryResourceUnit {
+  if (kind === 'stick') return 'shot';
+  if (kind === 'skates') return 'distance';
+  if (kind === 'nutrition') return 'energy_ms';
+  return 'period';
 }
 
 const adminInventoryHintStyle: CSSProperties = {
@@ -5019,7 +5035,7 @@ function InventoryEditor({
   );
   const [duelPeriodCost, setDuelPeriodCost] = useState(fieldNumber(item?.duelPeriodCost ?? 0));
   const [effectPuckSpeedPoints, setEffectPuckSpeedPoints] = useState(
-    puckSpeedDeltaToPoints(item?.effectPuckSpeedDelta ?? 0),
+    puckSpeedPointsFieldValue(item),
   );
   const [effectShooterFrequencyDelta, setEffectShooterFrequencyDelta] = useState(
     fieldNumber(item?.effectShooterFrequencyDelta ?? 0),
@@ -5055,6 +5071,12 @@ function InventoryEditor({
         currencyPrice: parsedCurrencyPrice,
         chargesPerPurchase: parsedChargesPerPurchase,
         duelPeriodCost: parsedDuelPeriodCost,
+        powerScore:
+          itemKind === 'stick'
+            ? Math.max(0, Math.round(parsedEffectPuckSpeedPoints))
+            : (item?.powerScore ?? 0),
+        resourceUnit: inventoryResourceUnitForKind(itemKind),
+        effectPuckSpeedPoints: Math.round(parsedEffectPuckSpeedPoints),
         effectPuckSpeedDelta: puckSpeedPointsToDelta(effectPuckSpeedPoints),
         effectShooterFrequencyDelta: parsedEffectShooterFrequencyDelta,
         effectGoalieFrequencyDelta: parsedEffectGoalieFrequencyDelta,
@@ -5209,7 +5231,7 @@ function InventoryEditor({
                 onChange={(event) => setEffectPuckSpeedPoints(event.target.value)}
               />
               <span style={adminInventoryHintStyle}>
-                10 сохранится как +0.10.
+                Для клюшки это скорость шайбы: 25 = +0.25 к скорости.
               </span>
             </div>
           </AdminField>

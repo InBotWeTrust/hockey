@@ -362,6 +362,9 @@ export interface AdminInventoryItem {
   currencyPrice: number;
   chargesPerPurchase: number;
   duelPeriodCost: number;
+  powerScore: number;
+  resourceUnit: AdminInventoryResourceUnit;
+  effectPuckSpeedPoints: number;
   effectPuckSpeedDelta: number;
   effectShooterFrequencyDelta: number;
   effectGoalieFrequencyDelta: number;
@@ -374,6 +377,7 @@ export interface AdminInventoryItem {
 }
 
 export type AdminInventoryItemKind = 'bundle' | 'stick' | 'skates' | 'nutrition' | 'consumable';
+export type AdminInventoryResourceUnit = 'period' | 'shot' | 'distance' | 'energy_ms';
 
 export interface AdminDuelPeriodSpeedPreset {
   periodNumber: number;
@@ -694,6 +698,9 @@ export interface AdminInventoryGameplayPatch {
   currencyPrice?: number;
   chargesPerPurchase?: number;
   duelPeriodCost?: number;
+  powerScore?: number;
+  resourceUnit?: AdminInventoryResourceUnit;
+  effectPuckSpeedPoints?: number;
   effectPuckSpeedDelta?: number;
   effectShooterFrequencyDelta?: number;
   effectGoalieFrequencyDelta?: number;

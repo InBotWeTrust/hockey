@@ -173,6 +173,8 @@ const inventoryItemPatchSchema = z
     chargesPerPurchase: z.number().int().min(0).max(100_000).optional(),
     duelPeriodCost: z.number().int().min(0).max(100_000).optional(),
     powerScore: z.number().int().min(0).max(100_000).optional(),
+    resourceUnit: duelInventoryResourceUnitSchema.optional(),
+    effectPuckSpeedPoints: z.number().int().min(-500).max(500).optional(),
     effectPuckSpeedDelta: z.number().min(-5).max(5).optional(),
     effectShooterFrequencyDelta: z.number().min(-3).max(3).optional(),
     effectGoalieFrequencyDelta: z.number().min(-3).max(3).optional(),
@@ -369,7 +371,11 @@ interface InventoryAvailabilityItem {
   id: string;
   kind: InventoryKind;
   title: string;
+  description: string;
+  imageUrl: string | null;
   rarity: 'common' | 'rare' | 'epic' | 'legendary';
+  powerScore: number;
+  duelPeriodCost: number;
   resourceUnit: DuelInventoryResourceUnit;
   chargesAvailable: number;
   chargesReserved: number;
@@ -2108,13 +2114,18 @@ async function fetchAvailableInventory(
   const { rows } = await client.query<{
     id: string;
     title: string;
+    description: string;
+    image_url: string | null;
     item_kind: InventoryKind;
     rarity: 'common' | 'rare' | 'epic' | 'legendary';
+    power_score: number;
+    duel_period_cost: number;
     resource_unit: DuelInventoryResourceUnit;
     charges_available: number;
     charges_reserved: number;
   }>(
-    `select i.id, i.title, i.item_kind, i.rarity, i.resource_unit,
+    `select i.id, i.title, i.description, i.photo_url as image_url, i.item_kind, i.rarity,
+            i.power_score, i.duel_period_cost, i.resource_unit,
             coalesce(ui.charges_available, 0)::int as charges_available,
             coalesce(ui.charges_reserved, 0)::int as charges_reserved
        from admin_inventory_items i
@@ -2129,7 +2140,11 @@ async function fetchAvailableInventory(
     id: row.id,
     kind: row.item_kind,
     title: row.title,
+    description: row.description,
+    imageUrl: row.image_url,
     rarity: row.rarity,
+    powerScore: Number(row.power_score),
+    duelPeriodCost: Number(row.duel_period_cost),
     resourceUnit: row.resource_unit,
     chargesAvailable: Number(row.charges_available),
     chargesReserved: Number(row.charges_reserved),
@@ -4088,6 +4103,8 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
       addPatch(assignments, values, 'charges_per_purchase', body.data.chargesPerPurchase);
       addPatch(assignments, values, 'duel_period_cost', body.data.duelPeriodCost);
       addPatch(assignments, values, 'power_score', body.data.powerScore);
+      addPatch(assignments, values, 'resource_unit', body.data.resourceUnit);
+      addPatch(assignments, values, 'effect_puck_speed_points', body.data.effectPuckSpeedPoints);
       addPatch(assignments, values, 'effect_puck_speed_delta', body.data.effectPuckSpeedDelta);
       addPatch(
         assignments,

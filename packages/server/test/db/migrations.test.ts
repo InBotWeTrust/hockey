@@ -309,6 +309,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '049_amateur_unlock_300_goals.sql',
       '050_duel_inventory_usage_resources.sql',
       '051_dedupe_active_duel_templates.sql',
+      '052_backfill_duel_inventory_gameplay_fields.sql',
     ]);
   });
 });

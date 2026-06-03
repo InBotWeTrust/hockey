@@ -1252,7 +1252,7 @@ describe('DailyScreen', () => {
 
     const cube = await screen.findByLabelText('Статистика на видеокубе');
     expect((cube as HTMLElement).style.gridTemplateRows).toBe('auto auto minmax(0, 1fr)');
-    expect((cube as HTMLElement).style.rowGap).toBe('clamp(7px, 2.1vw, 16px)');
+    expect((cube as HTMLElement).style.rowGap).toBe('clamp(6px, 3cqw, 12px)');
     expect(within(cube).getByText('Период')).toBeInTheDocument();
     expect(within(cube).getByText('1/1')).toBeInTheDocument();
     expect(within(cube).getByText('Счёт')).toBeInTheDocument();

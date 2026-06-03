@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ProfileScreen } from './ProfileScreen.js';
@@ -18,6 +18,22 @@ const emptyInventoryState: InventoryState = {
   balances: { tokens: 1000, stars: 3, experience: 77 },
   items: { stick: [], skates: [], nutrition: [] },
   equipped: { stickItemId: null, skatesItemId: null, nutritionItemId: null },
+};
+
+const ultimateOneStick = {
+  id: 'stick-ultimate-one',
+  kind: 'stick' as const,
+  title: 'Ультимейт Ван 1',
+  description: 'Комплект клюшек Ультимейт Ван на 1300 бросков. Ускоряет полёт шайбы.',
+  imageUrl: '/inventory/stick-bronze.webp',
+  currencyPrice: 1490,
+  chargesPerPurchase: 1300,
+  resourceUnit: 'shot' as const,
+  rarity: 'common' as const,
+  powerScore: 24,
+  duelPeriodCost: 1,
+  chargesAvailable: 1305,
+  chargesReserved: 0,
 };
 
 const consumableInventoryState: InventoryState = {
@@ -220,8 +236,12 @@ describe('ProfileScreen', () => {
     expect(screen.queryByText('Форма обратной связи')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Тестовый пуш/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Шайба.*статистика/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Клюшка.*Обычная клюшка.*Базовая/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Коньки.*Обычные коньки.*Базовая/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Клюшка.*Обычная клюшка.*Базовая/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Коньки.*Обычные коньки.*Базовая/i }),
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Питание.*Нет купленных/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Достижения.*получено/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Настройки профиля' })).toBeInTheDocument();
@@ -234,8 +254,24 @@ describe('ProfileScreen', () => {
     expect(
       document.querySelector('img[src="/inventory/profile-jersey-hanger.webp"]'),
     ).not.toBeInTheDocument();
-    expect(document.querySelector('img[src="/inventory/profile-rink-photo-frame.webp"]')).toBeInTheDocument();
-    expect(document.querySelector('img[src="/inventory/profile-nutrition-cans.webp"]')).not.toBeInTheDocument();
+    expect(
+      document.querySelector('img[src="/inventory/profile-rink-photo-frame.webp"]'),
+    ).toBeInTheDocument();
+    expect(
+      document.querySelector('img[src="/inventory/profile-nutrition-cans.webp"]'),
+    ).not.toBeInTheDocument();
+    expect(
+      document.querySelector('img[src="/inventory/profile-hockey-stick.webp"]'),
+    ).toBeInTheDocument();
+    expect(
+      document.querySelector('img[src="/inventory/profile-stick-base-rack.webp"]'),
+    ).not.toBeInTheDocument();
+    expect(
+      document.querySelector('img[src="/inventory/profile-stick-ultimate-selected.webp"]'),
+    ).not.toBeInTheDocument();
+    expect(
+      document.querySelector('img[src="/inventory/profile-stick-ultimate-rack.webp"]'),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText('Первый гол всегда самый шумный.')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Шайба.*статистика/i }));
@@ -302,9 +338,15 @@ describe('ProfileScreen', () => {
     expect(await screen.findByLabelText('Монеты: 100449')).toBeInTheDocument();
     expect(await screen.findByLabelText('Звёзды: 100000')).toBeInTheDocument();
     expect(await screen.findByLabelText('Опыт: 1000000')).toBeInTheDocument();
-    expect(await screen.findByText((text) => textWithoutWhitespace(text) === '100449')).toBeInTheDocument();
-    expect(await screen.findByText((text) => textWithoutWhitespace(text) === '100000')).toBeInTheDocument();
-    expect(await screen.findByText((text) => textWithoutWhitespace(text) === '1000000')).toBeInTheDocument();
+    expect(
+      await screen.findByText((text) => textWithoutWhitespace(text) === '100449'),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText((text) => textWithoutWhitespace(text) === '100000'),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText((text) => textWithoutWhitespace(text) === '1000000'),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/тыс/)).not.toBeInTheDocument();
     expect(screen.queryByText(/млн/)).not.toBeInTheDocument();
   });
@@ -325,8 +367,74 @@ describe('ProfileScreen', () => {
     expect(
       document.querySelector('img[src="/inventory/profile-achievement-medals.webp"]'),
     ).not.toBeInTheDocument();
-    expect(document.querySelector('img[src="/inventory/profile-rink-photo-frame.webp"]')).toBeInTheDocument();
+    expect(
+      document.querySelector('img[src="/inventory/profile-rink-photo-frame.webp"]'),
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Достижения: 0 получено/i })).toBeInTheDocument();
+  });
+
+  it('keeps the base stick in front and places owned ultimate stick in the rack', async () => {
+    mockProfileFetch(telegramProfile, {
+      ...emptyInventoryState,
+      items: {
+        ...emptyInventoryState.items,
+        stick: [ultimateOneStick],
+      },
+      equipped: {
+        ...emptyInventoryState.equipped,
+        stickItemId: null,
+      },
+    });
+
+    renderProfile();
+
+    expect(await screen.findByLabelText('Раздевалка игрока')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        document.querySelector('img[src="/inventory/profile-stick-ultimate-rack.webp"]'),
+      ).toBeInTheDocument(),
+    );
+    expect(
+      document.querySelector('img[src="/inventory/profile-hockey-stick.webp"]'),
+    ).toBeInTheDocument();
+    expect(
+      document.querySelector('img[src="/inventory/profile-stick-base-rack.webp"]'),
+    ).not.toBeInTheDocument();
+    expect(
+      document.querySelector('img[src="/inventory/profile-stick-ultimate-selected.webp"]'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows equipped ultimate stick in front and moves the base stick into the rack', async () => {
+    mockProfileFetch(telegramProfile, {
+      ...emptyInventoryState,
+      items: {
+        ...emptyInventoryState.items,
+        stick: [ultimateOneStick],
+      },
+      equipped: {
+        ...emptyInventoryState.equipped,
+        stickItemId: 'stick-ultimate-one',
+      },
+    });
+
+    renderProfile();
+
+    expect(await screen.findByLabelText('Раздевалка игрока')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        document.querySelector('img[src="/inventory/profile-stick-ultimate-selected.webp"]'),
+      ).toBeInTheDocument(),
+    );
+    expect(
+      document.querySelector('img[src="/inventory/profile-stick-base-rack.webp"]'),
+    ).toBeInTheDocument();
+    expect(
+      document.querySelector('img[src="/inventory/profile-hockey-stick.webp"]'),
+    ).not.toBeInTheDocument();
+    expect(
+      document.querySelector('img[src="/inventory/profile-stick-ultimate-rack.webp"]'),
+    ).not.toBeInTheDocument();
   });
 
   it('opens settings from the header button', async () => {
@@ -374,11 +482,15 @@ describe('ProfileScreen', () => {
     expect(screen.queryByText('На 5 минут энергии')).not.toBeInTheDocument();
     expect(screen.queryByText('Бросок +24')).not.toBeInTheDocument();
     expect(screen.queryByText('выбрано')).not.toBeInTheDocument();
-    expect(document.querySelector('img[src^="/inventory/stick-silver.webp"]')).not.toBeInTheDocument();
+    expect(
+      document.querySelector('img[src^="/inventory/stick-silver.webp"]'),
+    ).not.toBeInTheDocument();
     expect(
       document.querySelector('img[src^="/inventory/nutrition-bronze.webp"]'),
     ).not.toBeInTheDocument();
-    expect(document.querySelector('img[src="/inventory/profile-nutrition-cans.webp"]')).toBeInTheDocument();
+    expect(
+      document.querySelector('img[src="/inventory/profile-nutrition-cans.webp"]'),
+    ).toBeInTheDocument();
     expect(document.querySelector('img[src="/inventory/sticks.webp"]')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Клюшка.*Острая клюшка/i }));
@@ -389,9 +501,10 @@ describe('ProfileScreen', () => {
     expect(
       within(dialog).getByText('Быстрее выпускает шайбу из неудобной позиции.'),
     ).toBeInTheDocument();
-    expect(within(dialog).getByText(/Бросок \+24/)).toBeInTheDocument();
-    expect(within(dialog).getByText('Цена: 120')).toBeInTheDocument();
+    expect(within(dialog).getByText(/Ускоряет полёт шайбы на 24 пункта/)).toBeInTheDocument();
+    expect(within(dialog).queryByText('Цена: 120')).not.toBeInTheDocument();
     expect(within(dialog).getByText('1 забронирован')).toBeInTheDocument();
+    expect(within(dialog).getByText('Активировано')).toBeInTheDocument();
     expect(within(dialog).queryByText('Экипировать')).not.toBeInTheDocument();
     expect(within(dialog).queryByText('Не брать')).not.toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: /Острая клюшка/i })).toHaveAttribute(

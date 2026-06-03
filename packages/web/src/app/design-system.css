@@ -268,6 +268,44 @@
   letter-spacing: 0.12em;
 }
 
+@media (hover: hover) and (pointer: fine) and (min-width: 700px) {
+  .modal-backdrop {
+    padding: calc(18px + var(--app-safe-top)) 18px calc(18px + var(--app-safe-bottom));
+  }
+
+  .modal-card {
+    max-width: calc(100vw - 56px);
+    border-radius: 20px;
+    padding: 20px 18px 18px;
+  }
+
+  .modal-title {
+    font-size: 15px;
+    line-height: 1.22;
+  }
+
+  .modal-copy {
+    margin-top: 10px;
+    font-size: 13px;
+    line-height: 1.36;
+  }
+
+  .modal-actions {
+    gap: 8px;
+    margin-top: 18px;
+  }
+
+  .modal-primary {
+    min-height: 48px;
+    font-size: 12.5px;
+    letter-spacing: 0.08em;
+  }
+
+  .inventory-item-modal-card {
+    --inventory-item-art-height: min(260px, 42dvh);
+  }
+}
+
 @keyframes reward-pop {
   0% {
     opacity: 0;
@@ -413,7 +451,9 @@
   background: rgba(15, 23, 42, 0.9);
   color: #ffffff;
   border: 1px solid rgba(15, 23, 42, 0.9);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 8px 18px rgba(15, 23, 42, 0.12);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 8px 18px rgba(15, 23, 42, 0.12);
 }
 .chip:focus-visible {
   outline: 2px solid rgba(59, 130, 246, 0.64);
@@ -457,7 +497,9 @@
   border-color: rgba(15, 23, 42, 0.92);
   background: rgba(15, 23, 42, 0.92);
   color: #ffffff;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 8px 18px rgba(15, 23, 42, 0.12);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 8px 18px rgba(15, 23, 42, 0.12);
 }
 .segmented-tabs__item:focus-visible {
   outline: 2px solid rgba(59, 130, 246, 0.64);
@@ -619,7 +661,13 @@
   z-index: 1;
   pointer-events: none;
   background:
-    linear-gradient(180deg, rgba(3, 7, 18, 0.72) 0%, rgba(3, 7, 18, 0.1) 22%, rgba(3, 7, 18, 0.16) 72%, rgba(3, 7, 18, 0.72) 100%),
+    linear-gradient(
+      180deg,
+      rgba(3, 7, 18, 0.72) 0%,
+      rgba(3, 7, 18, 0.1) 22%,
+      rgba(3, 7, 18, 0.16) 72%,
+      rgba(3, 7, 18, 0.72) 100%
+    ),
     radial-gradient(circle at 50% 16%, rgba(226, 238, 249, 0.2), transparent 28%),
     radial-gradient(circle at 50% 78%, rgba(125, 211, 252, 0.12), transparent 42%);
 }
@@ -746,7 +794,12 @@
   justify-content: center;
   color: rgba(255, 255, 255, 0.96);
   background:
-    radial-gradient(circle at 42% 32%, rgba(255, 255, 255, 0.68), rgba(226, 246, 255, 0.22) 36%, rgba(59, 130, 246, 0.2) 100%),
+    radial-gradient(
+      circle at 42% 32%,
+      rgba(255, 255, 255, 0.68),
+      rgba(226, 246, 255, 0.22) 36%,
+      rgba(59, 130, 246, 0.2) 100%
+    ),
     rgba(226, 238, 249, 0.12);
   box-shadow:
     0 0 0 4px rgba(125, 211, 252, 0.12),
@@ -761,7 +814,7 @@
   transition:
     transform 0.12s ease,
     box-shadow 0.16s ease,
-  border-color 0.16s ease;
+    border-color 0.16s ease;
 }
 
 .profile-locker-hotspot-layer {
@@ -789,6 +842,12 @@
 .profile-locker-prop--stick {
   z-index: 2;
   filter: drop-shadow(0 14px 18px rgba(3, 7, 18, 0.42));
+}
+
+.profile-locker-prop--stick-rack {
+  z-index: 1;
+  opacity: 0.96;
+  filter: drop-shadow(0 10px 14px rgba(3, 7, 18, 0.38));
 }
 
 .profile-locker-prop--skates {
