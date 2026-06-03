@@ -228,6 +228,12 @@ describe('ProfileScreen', () => {
     expect(
       document.querySelector('img[src="/inventory/profile-achievement-medals.webp"]'),
     ).toBeInTheDocument();
+    expect(
+      document.querySelector('img[src="/inventory/profile-hoodie-training.webp"]'),
+    ).toBeInTheDocument();
+    expect(
+      document.querySelector('img[src="/inventory/profile-jersey-hanger.webp"]'),
+    ).not.toBeInTheDocument();
     expect(document.querySelector('img[src="/inventory/profile-rink-photo-frame.webp"]')).toBeInTheDocument();
     expect(document.querySelector('img[src="/inventory/profile-nutrition-cans.webp"]')).not.toBeInTheDocument();
     expect(screen.queryByText('Первый гол всегда самый шумный.')).not.toBeInTheDocument();
@@ -269,6 +275,20 @@ describe('ProfileScreen', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Награды ждут получения.*1/i }));
     expect(screen.getByText('achievements screen')).toBeInTheDocument();
+  });
+
+  it('shows the hockey jersey for amateur players', async () => {
+    mockProfileFetch({ ...telegramProfile, competitionLevel: 'amateur' });
+
+    renderProfile();
+
+    expect(await screen.findByLabelText('Раздевалка игрока')).toBeInTheDocument();
+    expect(
+      document.querySelector('img[src="/inventory/profile-jersey-hanger.webp"]'),
+    ).toBeInTheDocument();
+    expect(
+      document.querySelector('img[src="/inventory/profile-hoodie-training.webp"]'),
+    ).not.toBeInTheDocument();
   });
 
   it('shows exact resource balances instead of compact labels', async () => {

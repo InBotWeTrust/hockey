@@ -792,6 +792,10 @@ export function ProfileScreen(): JSX.Element {
   const experienceBalance =
     inventoryQuery.data?.balances.experience ?? data?.experienceBalance ?? 0;
   const showNutritionCans = hasOwnedNutrition(inventoryQuery.data);
+  const jerseyArtworkSrc =
+    data?.competitionLevel === 'beginner'
+      ? '/inventory/profile-hoodie-training.webp'
+      : '/inventory/profile-jersey-hanger.webp';
 
   function handlePointerDown(event: PointerEvent<HTMLElement>): void {
     if (
@@ -854,7 +858,7 @@ export function ProfileScreen(): JSX.Element {
         <div className="profile-locker-hotspot-layer" style={lockerHotspotLayerStyle}>
           <img
             className="profile-locker-prop profile-locker-prop--jersey"
-            src="/inventory/profile-jersey-hanger.webp"
+            src={jerseyArtworkSrc}
             alt=""
             style={lockerPropStyle(LOCKER_PROPS.jersey)}
           />
