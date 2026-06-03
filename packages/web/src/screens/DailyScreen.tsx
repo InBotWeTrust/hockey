@@ -7201,7 +7201,6 @@ function DuelInventoryMiniHud({ match }: { match: AmateurDuelMatch }): JSX.Eleme
         return (
           <span
             key={slot.kind}
-            className={stickLow ? 'attention-dot-pulse' : undefined}
             aria-label={`${slot.label}: ${statusText}`}
             style={{
               position: 'relative',
@@ -7220,6 +7219,7 @@ function DuelInventoryMiniHud({ match }: { match: AmateurDuelMatch }): JSX.Eleme
             <img
               src={artwork}
               alt=""
+              className={stickLow ? 'inventory-icon-pulse' : undefined}
               style={{
                 position: 'absolute',
                 inset: 0,

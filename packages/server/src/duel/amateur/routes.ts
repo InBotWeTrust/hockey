@@ -534,6 +534,13 @@ function numberFromUnknown(value: unknown, fallback = 0): number {
   return Number.isFinite(raw) ? raw : fallback;
 }
 
+function puckSpeedPointsFromValues(points: unknown, delta: unknown): number {
+  const rawPoints = numberFromUnknown(points);
+  if (rawPoints !== 0) return Math.round(rawPoints);
+  const rawDelta = numberFromUnknown(delta);
+  return rawDelta !== 0 ? Math.round(rawDelta * 100) : 0;
+}
+
 function parsePeriodSpeedPresets(value: unknown): DailyPeriodSpeedPreset[] {
   const parsed = z.array(periodPresetSchema).safeParse(value);
   if (!parsed.success) {
@@ -645,11 +652,18 @@ function loadoutFromUnknown(value: unknown, powerCap = 0): LoadoutSnapshot {
     .safeParse(value ?? {});
   if (!parsed.success) return emptyLoadout(powerCap);
   return {
-    items: parsed.data.items.map((item) => ({
-      ...item,
-      timing: { ...DEFAULT_DUEL_INVENTORY_TIMING, ...item.timing },
-      effects: effectsFromUnknown(item.effects),
-    })),
+    items: parsed.data.items.map((item) => {
+      const effects = effectsFromUnknown(item.effects);
+      return {
+        ...item,
+        effectPuckSpeedPoints: puckSpeedPointsFromValues(
+          item.effectPuckSpeedPoints,
+          effects.puckSpeedDelta,
+        ),
+        timing: { ...DEFAULT_DUEL_INVENTORY_TIMING, ...item.timing },
+        effects,
+      };
+    }),
     powerScore: parsed.data.powerScore,
     powerCap: parsed.data.powerCap,
   };
@@ -1218,7 +1232,11 @@ async function buildLoadoutSnapshot(
       throw new AppError('conflict', 'not enough inventory charges for duel loadout', 409);
     }
     const resourceAvailable = Number(row.charges_available);
-    const effectPuckSpeedPoints = Number(row.effect_puck_speed_points);
+    const effectPuckSpeedDelta = numberFromUnknown(row.effect_puck_speed_delta);
+    const effectPuckSpeedPoints = puckSpeedPointsFromValues(
+      row.effect_puck_speed_points,
+      effectPuckSpeedDelta,
+    );
     const timing: DuelInventoryTiming = {
       stumbleIntervalMinMs: Number(row.effect_stumble_interval_min_ms),
       stumbleIntervalMaxMs: Number(row.effect_stumble_interval_max_ms),
@@ -1243,7 +1261,7 @@ async function buildLoadoutSnapshot(
       timing,
       effects: {
         puckSpeedPoints: effectPuckSpeedPoints,
-        puckSpeedDelta: numberFromUnknown(row.effect_puck_speed_delta),
+        puckSpeedDelta: effectPuckSpeedDelta,
         shooterFrequencyDelta: numberFromUnknown(row.effect_shooter_frequency_delta),
         goalieFrequencyDelta: numberFromUnknown(row.effect_goalie_frequency_delta),
         goalFrequencyDelta: numberFromUnknown(row.effect_goal_frequency_delta),

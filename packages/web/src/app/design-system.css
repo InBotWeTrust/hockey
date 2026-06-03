@@ -303,6 +303,21 @@
   animation: attention-dot-pulse 1.55s ease-in-out infinite;
 }
 
+@keyframes inventory-icon-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.08);
+  }
+}
+
+.inventory-icon-pulse {
+  animation: inventory-icon-pulse 1.35s ease-in-out infinite;
+  transform-origin: center;
+}
+
 .chat-create-field {
   width: 100%;
   min-height: 44px;

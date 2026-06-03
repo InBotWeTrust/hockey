@@ -1115,8 +1115,8 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
           set resource_unit = 'shot',
               charges_per_purchase = 2,
               duel_period_cost = 0,
-              effect_puck_speed_points = 10,
-              effect_puck_speed_delta = 0
+              effect_puck_speed_points = 0,
+              effect_puck_speed_delta = 0.10
         where id = $1`,
       [stickId],
     );
