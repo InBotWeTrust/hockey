@@ -284,6 +284,9 @@ const LONG_COURT_GAME_LAYER_STYLE: CSSProperties = {
 };
 const GAME_LED_TABLEAU_IMAGE = '/sprites/wide-tableau-led-dark-v2.webp';
 const TRAINING_LED_TABLEAU_IMAGE = '/sprites/street-tableau.webp';
+const DAILY_LED_TABLEAU_IMAGE = '/sprites/daily-tableau.webp';
+const DUEL_LED_TABLEAU_IMAGE = '/sprites/duel-tableau.webp';
+const TOURNAMENT_LED_TABLEAU_IMAGE = '/sprites/tournament-tableau.webp';
 const AMATEUR_DAILY_COURT_BACKGROUND = '/sprites/amateur-daily-court.webp';
 const AMATEUR_DUEL_COURT_BACKGROUND = '/sprites/amateur-duel-court.webp';
 const AMATEUR_TOURNAMENT_COURT_BACKGROUND = '/sprites/amateur-tournament-court.webp';
@@ -3702,6 +3705,21 @@ function AmateurTournamentsPage({ onBack }: { onBack: () => void }): JSX.Element
               objectFit: 'cover',
             }}
           />
+          <img
+            src={TOURNAMENT_LED_TABLEAU_IMAGE}
+            alt=""
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              left: '50%',
+              top: 0,
+              width: '76%',
+              maxWidth: 456,
+              height: 'auto',
+              transform: 'translateX(-50%)',
+              filter: 'drop-shadow(0 18px 24px rgba(3, 10, 18, 0.34))',
+            }}
+          />
         </div>
       </section>
 
@@ -5604,6 +5622,7 @@ function AmateurDuelPlayView({
           applyState={applyState}
           duelCondition={duelCondition}
           longCourtBackground={AMATEUR_DUEL_COURT_BACKGROUND}
+          longCourtTableau={DUEL_LED_TABLEAU_IMAGE}
           hudAddon={
             <DuelRinkLoadoutHud
               match={match}
@@ -5723,6 +5742,7 @@ function AmateurDuelPlayView({
         applyState={applyState}
         duelCondition={duelCondition}
         longCourtBackground={AMATEUR_DUEL_COURT_BACKGROUND}
+        longCourtTableau={DUEL_LED_TABLEAU_IMAGE}
         hudAddon={<DuelInventoryMiniHud match={match} />}
         scoreboardOpponent={duelScoreboardOpponent(match)}
       />
@@ -7799,6 +7819,7 @@ function DailyPlayView({
         applyState={applyState}
         applyResolvedState={applyDailyResolvedState}
         longCourtBackground={AMATEUR_DAILY_COURT_BACKGROUND}
+        longCourtTableau={DAILY_LED_TABLEAU_IMAGE}
       />
       {statsModal && (
         <DailyGameStatsModal

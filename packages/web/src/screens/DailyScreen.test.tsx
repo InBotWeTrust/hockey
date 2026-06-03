@@ -606,7 +606,8 @@ describe('DailyScreen', () => {
 
     expect(await screen.findByRole('button', { name: 'К режимам' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'НАЧАТЬ' })).toBeInTheDocument();
-    expect(document.querySelector('img[src="/sprites/wide-tableau-led-dark-v2.webp"]')).toBeTruthy();
+    expect(document.querySelector('img[src="/sprites/daily-tableau.webp"]')).toBeTruthy();
+    expect(document.querySelector('img[src="/sprites/wide-tableau-led-dark-v2.webp"]')).toBeFalsy();
     expect(document.querySelector('img[src="/sprites/street-tableau.webp"]')).toBeFalsy();
     const calls = fetchMock.mock.calls.map((c) => String(c[0]));
     expect(calls.some((u) => u.includes('/duel/daily/period/start'))).toBe(false);
@@ -2234,6 +2235,7 @@ describe('DailyScreen', () => {
     const startButton = await screen.findByRole('button', { name: 'НАЧАТЬ' });
     expect(startButton).toBeEnabled();
     expect(document.querySelector('img[src="/sprites/amateur-duel-court.webp"]')).toBeTruthy();
+    expect(document.querySelector('img[src="/sprites/duel-tableau.webp"]')).toBeTruthy();
     fireEvent.click(startButton);
 
     await waitFor(() => {
