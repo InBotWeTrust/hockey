@@ -6,6 +6,7 @@ import { DAILY_PERIOD_SPEED_PRESETS, STICK_NEUTRAL } from '@hockey/game-core';
 import {
   DailyScreen,
   duelEventTiming,
+  duelStickChargeBadgeLabel,
   duelScoreboardOpponent,
   duelRinkReadyPresenceForMatch,
   isDuelReadyPresenceState,
@@ -252,6 +253,14 @@ afterEach(() => {
 });
 
 describe('DailyScreen', () => {
+  it('formats duel stick charge badges without showing exhausted zero', () => {
+    expect(duelStickChargeBadgeLabel(0)).toBeNull();
+    expect(duelStickChargeBadgeLabel(10)).toBe('10');
+    expect(duelStickChargeBadgeLabel(99)).toBe('99');
+    expect(duelStickChargeBadgeLabel(101)).toBe('>100');
+    expect(duelStickChargeBadgeLabel(201)).toBe('>200');
+  });
+
   it('shows loader while fetching state', () => {
     renderWith();
     expect(screen.getByText(/Загрузка/)).toBeInTheDocument();
@@ -2224,7 +2233,7 @@ describe('DailyScreen', () => {
 
     const startButton = await screen.findByRole('button', { name: 'НАЧАТЬ' });
     expect(startButton).toBeEnabled();
-    expect(document.querySelector('img[src="/sprites/daily-long-court-people.webp"]')).toBeTruthy();
+    expect(document.querySelector('img[src="/sprites/amateur-duel-court.webp"]')).toBeTruthy();
     fireEvent.click(startButton);
 
     await waitFor(() => {

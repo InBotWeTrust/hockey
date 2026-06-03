@@ -155,6 +155,10 @@ import {
 import { StartPeriodModal } from '../components/StartPeriodModal.js';
 import { getLastSeenAt, setLastSeenAt } from '../stores/seenPeriods.js';
 import { artworkForInventoryItem, placeholderArtworkForKind } from './inventoryArtwork.js';
+import {
+  formatInventoryResourceAmount,
+  formatInventoryStockLabel,
+} from './inventoryResourceLabels.js';
 
 const PAUSE_MS = 1000;
 const HUB_PERIOD_DURATION_MS = 20 * 60 * 1000;
@@ -280,7 +284,9 @@ const LONG_COURT_GAME_LAYER_STYLE: CSSProperties = {
 };
 const GAME_LED_TABLEAU_IMAGE = '/sprites/wide-tableau-led-dark-v2.webp';
 const TRAINING_LED_TABLEAU_IMAGE = '/sprites/street-tableau.webp';
-const DAILY_LONG_COURT_BACKGROUND = '/sprites/daily-long-court-people.webp';
+const AMATEUR_DAILY_COURT_BACKGROUND = '/sprites/amateur-daily-court.webp';
+const AMATEUR_DUEL_COURT_BACKGROUND = '/sprites/amateur-duel-court.webp';
+const AMATEUR_TOURNAMENT_COURT_BACKGROUND = '/sprites/amateur-tournament-court.webp';
 const ARENA_ICE_COURT_BACKGROUND = '/sprites/arena-ice-court-v2.webp';
 const ARENA_ICE_TABLEAU_IMAGE = '/sprites/arena-ice-tableau-v2.webp';
 
@@ -3667,6 +3673,40 @@ function AmateurTournamentsPage({ onBack }: { onBack: () => void }): JSX.Element
 
       <section
         className="glass"
+        aria-label="Площадка любительских турниров"
+        style={{
+          borderRadius: 22,
+          padding: 10,
+          overflow: 'hidden',
+          border: '1px solid rgba(255,255,255,0.76)',
+        }}
+      >
+        <div
+          style={{
+            position: 'relative',
+            aspectRatio: '1212 / 2000',
+            borderRadius: 18,
+            overflow: 'hidden',
+            background: '#dceaf5',
+            boxShadow: 'inset 0 0 0 1px rgba(15, 23, 42, 0.08)',
+          }}
+        >
+          <img
+            src={AMATEUR_TOURNAMENT_COURT_BACKGROUND}
+            alt=""
+            aria-hidden="true"
+            style={{
+              display: 'block',
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+            }}
+          />
+        </div>
+      </section>
+
+      <section
+        className="glass"
         style={{ borderRadius: 22, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}
       >
         <div className="section-label" style={{ margin: 0 }}>
@@ -4894,7 +4934,7 @@ function DuelLockerSlotButton({
       ? duelBaseEquipmentTitle(kind)
       : meta.empty;
   const status = activeItem
-    ? duelInventoryPeriodLabel(activeItem.chargesAvailable)
+    ? formatInventoryStockLabel(activeItem)
     : hasBaseEquipment
       ? 'Базовая'
       : hasOwnedItems
@@ -5043,15 +5083,19 @@ function DuelEquipmentDetailsModal({
             style={{
               borderRadius: 18,
               padding: 12,
-              color: 'var(--ink)',
+              color: activeId === null ? '#fff' : 'var(--ink)',
               border:
                 activeId === null
-                  ? '1px solid rgba(15, 23, 42, 0.28)'
+                  ? '1px solid rgba(255,255,255,0.24)'
                   : '1px solid rgba(255,255,255,0.76)',
               background:
                 activeId === null
-                  ? 'linear-gradient(180deg, rgba(255,255,255,0.58), rgba(226, 239, 249, 0.24))'
+                  ? 'linear-gradient(180deg, rgba(15,23,42,0.92), rgba(30,41,59,0.86))'
                   : 'rgba(255,255,255,0.22)',
+              boxShadow:
+                activeId === null
+                  ? 'inset 0 1px 0 rgba(255,255,255,0.12), 0 10px 22px rgba(15,23,42,0.22)'
+                  : undefined,
               display: 'block',
               textAlign: 'left',
               cursor: isSaving ? 'wait' : 'pointer',
@@ -5061,7 +5105,7 @@ function DuelEquipmentDetailsModal({
               <span style={{ fontSize: 15, fontWeight: 900 }}>{duelBaseEquipmentTitle(kind)}</span>
               <span
                 style={{
-                  color: 'rgba(15, 23, 42, 0.62)',
+                  color: activeId === null ? 'rgba(255,255,255,0.76)' : 'rgba(15, 23, 42, 0.62)',
                   fontSize: 12,
                   fontWeight: 760,
                   lineHeight: 1.28,
@@ -5086,13 +5130,16 @@ function DuelEquipmentDetailsModal({
                 style={{
                   borderRadius: 24,
                   padding: 14,
-                  color: 'var(--ink)',
+                  color: selected ? '#fff' : 'var(--ink)',
                   border: selected
-                    ? '1px solid rgba(15, 23, 42, 0.28)'
+                    ? '1px solid rgba(255,255,255,0.24)'
                     : '1px solid rgba(255,255,255,0.76)',
                   background: selected
-                    ? 'linear-gradient(180deg, rgba(255,255,255,0.58), rgba(226, 239, 249, 0.24))'
+                    ? 'linear-gradient(180deg, rgba(15,23,42,0.92), rgba(30,41,59,0.86))'
                     : 'rgba(255,255,255,0.22)',
+                  boxShadow: selected
+                    ? 'inset 0 1px 0 rgba(255,255,255,0.12), 0 10px 22px rgba(15,23,42,0.22)'
+                    : undefined,
                   display: 'grid',
                   gridTemplateColumns: '96px minmax(0, 1fr)',
                   alignItems: 'start',
@@ -5125,7 +5172,7 @@ function DuelEquipmentDetailsModal({
                   <span
                     style={{
                       minWidth: 0,
-                      color: 'var(--ink)',
+                      color: selected ? '#fff' : 'var(--ink)',
                       fontSize: 18,
                       fontWeight: 950,
                       lineHeight: 1.08,
@@ -5141,7 +5188,7 @@ function DuelEquipmentDetailsModal({
                       fontSize: 12,
                       fontWeight: 760,
                       lineHeight: 1.28,
-                      color: 'rgba(15, 23, 42, 0.62)',
+                      color: selected ? 'rgba(255,255,255,0.76)' : 'rgba(15, 23, 42, 0.62)',
                     }}
                   >
                     {item.description}
@@ -5151,13 +5198,13 @@ function DuelEquipmentDetailsModal({
                       className="pill"
                       style={{ height: 26, justifyContent: 'center', fontSize: 11 }}
                     >
-                      {duelInventoryPeriodLabel(item.chargesAvailable)}
+                      {formatInventoryStockLabel(item)}
                     </span>
                     <span
                       className="pill"
                       style={{ height: 26, justifyContent: 'center', fontSize: 11 }}
                     >
-                      Расход {item.duelPeriodCost}/период
+                      {duelInventoryConsumptionLabel(item)}
                     </span>
                   </span>
                 </span>
@@ -5496,7 +5543,7 @@ function AmateurDuelPlayView({
       return;
     }
     if (canStartArenaDuelPeriod(match, matchNow)) {
-      await startPeriod();
+      await startPeriod(duelStartPeriodLoadoutSelection(match, selectedLoadout));
     }
   };
   const nextPeriod =
@@ -5556,12 +5603,12 @@ function AmateurDuelPlayView({
           submitShot={submitShot}
           applyState={applyState}
           duelCondition={duelCondition}
-          longCourtBackground={DAILY_LONG_COURT_BACKGROUND}
+          longCourtBackground={AMATEUR_DUEL_COURT_BACKGROUND}
           hudAddon={
             <DuelRinkLoadoutHud
               match={match}
               selectedLoadout={selectedLoadout}
-              locked={meReady || inFlight}
+              locked={(match.status === 'ready_check' && meReady) || inFlight}
               onSelectKind={setSelectedLoadoutKind}
             />
           }
@@ -5675,7 +5722,7 @@ function AmateurDuelPlayView({
         submitShot={submitShot}
         applyState={applyState}
         duelCondition={duelCondition}
-        longCourtBackground={DAILY_LONG_COURT_BACKGROUND}
+        longCourtBackground={AMATEUR_DUEL_COURT_BACKGROUND}
         hudAddon={<DuelInventoryMiniHud match={match} />}
         scoreboardOpponent={duelScoreboardOpponent(match)}
       />
@@ -5737,14 +5784,14 @@ function AmateurDuelPlayView({
           isFirstPeriod={match.me.current_period === 0}
           pending={inFlight}
           onHome={onBack}
-          onStart={() => void startPeriod()}
+          onStart={() => void startPeriod(duelStartPeriodLoadoutSelection(match, selectedLoadout))}
         />
       )}
       <button
         type="button"
         className="btn btn--cta"
         disabled={!canStart || inFlight}
-        onClick={() => void startPeriod()}
+        onClick={() => void startPeriod(duelStartPeriodLoadoutSelection(match, selectedLoadout))}
       >
         {startButtonLabel}
       </button>
@@ -6548,6 +6595,37 @@ function duelInventoryPeriodLabel(count: number): string {
   return `На ${normalized} ${noun}`;
 }
 
+function duelInventoryStockLabel(item: AmateurDuelInventoryAvailabilityItem): string {
+  if (item.chargesAvailable <= 0) return 'Нет запаса';
+  return `На ${formatInventoryResourceAmount(item.kind, item.chargesAvailable, item.resourceUnit)}`;
+}
+
+function duelInventoryConsumptionLabel(
+  item: Pick<InventoryItem, 'resourceUnit' | 'duelPeriodCost'>,
+): string {
+  if (item.resourceUnit === 'shot') return 'Расход 1/бросок';
+  if (item.resourceUnit === 'distance') return 'Расход по прокатам';
+  if (item.resourceUnit === 'energy_ms') return 'Расход по темпу';
+  return `Расход ${item.duelPeriodCost}/период`;
+}
+
+export function duelStickChargeBadgeLabel(remaining: number): string | null {
+  const normalized = Math.max(0, Math.floor(remaining));
+  if (normalized <= 0) return null;
+  if (normalized > 200) return '>200';
+  if (normalized > 100) return '>100';
+  return String(normalized);
+}
+
+function duelStartPeriodLoadoutSelection(
+  match: AmateurDuelMatch,
+  selectedLoadout: AmateurDuelLoadoutSelection,
+): AmateurDuelLoadoutSelection | undefined {
+  if (selectedLoadout.stick === undefined) return undefined;
+  const selectedStick = selectedDuelAvailabilityItem(match, 'stick', selectedLoadout.stick);
+  return { stick: selectedStick ? selectedStick.id : null };
+}
+
 function duelEquipmentDisplayTitle(item: Pick<InventoryItem, 'kind' | 'rarity' | 'title'>): string {
   const normalized = item.title.trim().toLowerCase();
   const isGenericTitle = new Set(['клюшка', 'клюшки', 'коньки', 'питание', 'энергия']).has(
@@ -6679,7 +6757,13 @@ function DuelInventorySlots({ match }: { match: AmateurDuelMatch }): JSX.Element
                   overflowWrap: 'anywhere',
                 }}
               >
-                {item ? `${item.chargesReserved} зар.` : emptyText}
+                {item
+                  ? formatInventoryResourceAmount(
+                      item.kind,
+                      duelInventoryItemRemaining(match, item),
+                      item.resourceUnit,
+                    )
+                  : emptyText}
               </div>
             </div>
           </div>
@@ -6826,12 +6910,20 @@ function DuelRinkLoadoutModal({
                 minHeight: 54,
                 borderRadius: 16,
                 padding: 12,
-                color: 'var(--ink)',
+                color: selectedId === null ? '#fff' : 'var(--ink)',
                 textAlign: 'left',
                 border:
                   selectedId === null
-                    ? '1px solid rgba(15, 23, 42, 0.3)'
+                    ? '1px solid rgba(255,255,255,0.24)'
                     : '1px solid rgba(255,255,255,0.76)',
+                background:
+                  selectedId === null
+                    ? 'linear-gradient(180deg, rgba(15,23,42,0.92), rgba(30,41,59,0.86))'
+                    : undefined,
+                boxShadow:
+                  selectedId === null
+                    ? 'inset 0 1px 0 rgba(255,255,255,0.12), 0 10px 22px rgba(15,23,42,0.22)'
+                    : undefined,
               }}
             >
               <span style={{ display: 'block', fontSize: 15, fontWeight: 900 }}>
@@ -6841,7 +6933,7 @@ function DuelRinkLoadoutModal({
                 style={{
                   display: 'block',
                   marginTop: 3,
-                  color: 'var(--muted)',
+                  color: selectedId === null ? 'rgba(255,255,255,0.76)' : 'var(--muted)',
                   fontSize: 12,
                   fontWeight: 760,
                 }}
@@ -6867,11 +6959,17 @@ function DuelRinkLoadoutModal({
                   gridTemplateColumns: '52px minmax(0, 1fr)',
                   alignItems: 'center',
                   gap: 10,
-                  color: 'var(--ink)',
+                  color: selected ? '#fff' : 'var(--ink)',
                   textAlign: 'left',
                   border: selected
-                    ? '1px solid rgba(15, 23, 42, 0.3)'
+                    ? '1px solid rgba(255,255,255,0.24)'
                     : '1px solid rgba(255,255,255,0.76)',
+                  background: selected
+                    ? 'linear-gradient(180deg, rgba(15,23,42,0.92), rgba(30,41,59,0.86))'
+                    : undefined,
+                  boxShadow: selected
+                    ? 'inset 0 1px 0 rgba(255,255,255,0.12), 0 10px 22px rgba(15,23,42,0.22)'
+                    : undefined,
                 }}
               >
                 <img
@@ -6882,7 +6980,9 @@ function DuelRinkLoadoutModal({
                     height: 52,
                     borderRadius: 14,
                     objectFit: 'cover',
-                    border: '1px solid rgba(255,255,255,0.78)',
+                    border: selected
+                      ? '1px solid rgba(255,255,255,0.34)'
+                      : '1px solid rgba(255,255,255,0.78)',
                   }}
                 />
                 <span style={{ minWidth: 0 }}>
@@ -6893,12 +6993,12 @@ function DuelRinkLoadoutModal({
                     style={{
                       display: 'block',
                       marginTop: 4,
-                      color: 'var(--muted)',
+                      color: selected ? 'rgba(255,255,255,0.76)' : 'var(--muted)',
                       fontSize: 12,
                       fontWeight: 800,
                     }}
                   >
-                    {duelInventoryPeriodLabel(item.chargesAvailable)}
+                    {duelInventoryStockLabel(item)}
                   </span>
                 </span>
               </button>
@@ -6929,6 +7029,23 @@ function duelInventoryRemaining(match: AmateurDuelMatch, itemId: string, fallbac
     if (consumed) return consumed.remainingReserved;
   }
   return fallback;
+}
+
+function duelInventoryItemRemaining(
+  match: AmateurDuelMatch,
+  item: AmateurDuelMatch['me']['loadout']['items'][number],
+): number {
+  if (item.resourceUnit === 'shot') {
+    return Math.max(0, (item.resourceAvailable ?? 0) - duelConsumedForItem(match, item.id));
+  }
+  if (item.resourceUnit === 'distance' || item.resourceUnit === 'energy_ms') {
+    const periodNumber = Math.max(1, match.me.current_period);
+    return Math.max(
+      0,
+      (item.resourceAvailable ?? 0) - duelConsumedBeforePeriodItem(match, periodNumber, item.id),
+    );
+  }
+  return duelInventoryRemaining(match, item.id, item.chargesReserved);
 }
 
 function duelConsumedBeforePeriodItem(
@@ -7020,7 +7137,12 @@ function DuelInventoryMiniHud({ match }: { match: AmateurDuelMatch }): JSX.Eleme
       }}
     >
       {DUEL_INVENTORY_SLOTS.map((slot) => {
-        const item = match.me.loadout.items.find((cur) => cur.kind === slot.kind);
+        const selectedItem = match.me.loadout.items.find((cur) => cur.kind === slot.kind);
+        const selectedRemaining = selectedItem ? duelInventoryItemRemaining(match, selectedItem) : 0;
+        const item =
+          selectedItem && !(slot.kind === 'stick' && selectedRemaining <= 0)
+            ? selectedItem
+            : undefined;
         const available = availableItems.find(
           (cur) => cur.kind === slot.kind && cur.chargesAvailable > 0,
         );
@@ -7029,10 +7151,12 @@ function DuelInventoryMiniHud({ match }: { match: AmateurDuelMatch }): JSX.Eleme
           : available
             ? artworkForInventoryItem(available)
             : placeholderArtworkForKind(slot.kind);
-        const totalCharges = item?.chargesReserved ?? 0;
-        const remainingCharges = item
-          ? duelInventoryRemaining(match, item.id, item.chargesReserved)
+        const totalCharges = item
+          ? item.resourceUnit && item.resourceUnit !== 'period'
+            ? (item.resourceAvailable ?? 0)
+            : item.chargesReserved
           : 0;
+        const remainingCharges = item ? duelInventoryItemRemaining(match, item) : 0;
         const remainingRatio =
           item && totalCharges > 0
             ? Math.max(0, Math.min(1, remainingCharges / totalCharges))
@@ -7043,17 +7167,21 @@ function DuelInventoryMiniHud({ match }: { match: AmateurDuelMatch }): JSX.Eleme
         const rarityColor = duelInventoryRarityColor(item?.rarity ?? available?.rarity);
         const isSelected = item !== undefined;
         const lineVisible = isSelected && usedPercent > 0 && usedPercent < 100;
+        const stickBadge =
+          slot.kind === 'stick' && item ? duelStickChargeBadgeLabel(remainingCharges) : null;
+        const stickLow = slot.kind === 'stick' && remainingCharges > 0 && remainingCharges <= 10;
         const statusText = isSelected
-          ? totalCharges > 0
-            ? `${remainingCharges}/${totalCharges}`
-            : 'вкл'
+          ? formatInventoryResourceAmount(item.kind, remainingCharges, item.resourceUnit)
           : available
             ? 'не выбрано'
-            : 'нет';
+            : slot.kind === 'nutrition'
+              ? 'нет'
+              : 'обычный';
 
         return (
           <span
             key={slot.kind}
+            className={stickLow ? 'attention-dot-pulse' : undefined}
             aria-label={`${slot.label}: ${statusText}`}
             style={{
               position: 'relative',
@@ -7110,6 +7238,32 @@ function DuelInventoryMiniHud({ match }: { match: AmateurDuelMatch }): JSX.Eleme
                   transform: 'translateY(-0.5px)',
                 }}
               />
+            )}
+            {stickBadge && (
+              <span
+                aria-hidden="true"
+                style={{
+                  position: 'absolute',
+                  right: -1,
+                  bottom: -1,
+                  minWidth: 17,
+                  height: 13,
+                  padding: '0 3px',
+                  borderRadius: 999,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: 'rgba(15, 23, 42, 0.82)',
+                  color: '#fff',
+                  border: '1px solid rgba(255,255,255,0.86)',
+                  fontSize: 7,
+                  fontWeight: 950,
+                  lineHeight: 1,
+                  boxShadow: '0 2px 6px rgba(15,23,42,0.22)',
+                }}
+              >
+                {stickBadge}
+              </span>
             )}
           </span>
         );
@@ -7644,7 +7798,7 @@ function DailyPlayView({
         submitShot={submitShot}
         applyState={applyState}
         applyResolvedState={applyDailyResolvedState}
-        longCourtBackground={DAILY_LONG_COURT_BACKGROUND}
+        longCourtBackground={AMATEUR_DAILY_COURT_BACKGROUND}
       />
       {statsModal && (
         <DailyGameStatsModal

@@ -51,6 +51,33 @@ describe('duel inventory condition', () => {
     expect(condition.status).toBe('normal');
   });
 
+  it('falls back to base duel puck speed when shot-stick resource is exhausted', () => {
+    const condition = getDuelPlayerCondition({
+      seed: 'match-seed',
+      userId: 'user-a',
+      periodNumber: 1,
+      elapsedMs: 10_000,
+      movementDistancePx: 0,
+      baseLaneWidthPx: 572,
+      baselineShooterSpeed: 1,
+      currentShooterSpeed: 1,
+      loadout: loadout({
+        stick: {
+          id: 'spent-stick',
+          title: 'Ультимейт Ван 1',
+          resourceUnit: 'shot',
+          resourceAvailable: 0,
+          effectPuckSpeedPoints: 10,
+          timing: DEFAULT_DUEL_INVENTORY_TIMING,
+        },
+      }),
+    });
+
+    expect(condition.puckSpeedDelta).toBe(0);
+    expect(condition.canShoot).toBe(true);
+    expect(condition.status).toBe('normal');
+  });
+
   it('creates deterministic default-skate stumble windows for same seed and input', () => {
     const input = {
       seed: 'same-seed',

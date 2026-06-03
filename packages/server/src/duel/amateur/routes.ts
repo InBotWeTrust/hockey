@@ -197,6 +197,12 @@ const readyBodySchema = z.object({
   loadout: loadoutSchema,
 });
 
+const startPeriodBodySchema = z
+  .object({
+    loadout: loadoutSchema.optional(),
+  })
+  .default({});
+
 interface DuelTemplateRow {
   id: string;
   title: string;
@@ -364,6 +370,7 @@ interface InventoryAvailabilityItem {
   kind: InventoryKind;
   title: string;
   rarity: 'common' | 'rare' | 'epic' | 'legendary';
+  resourceUnit: DuelInventoryResourceUnit;
   chargesAvailable: number;
   chargesReserved: number;
 }
@@ -1258,6 +1265,30 @@ async function buildLoadoutSnapshot(
   return { items, powerScore, powerCap: rules.powerCap };
 }
 
+function loadoutWithUpdatedShotStick(
+  current: LoadoutSnapshot,
+  stickOnly: LoadoutSnapshot,
+  rules: DuelRulesSnapshot,
+): LoadoutSnapshot {
+  const currentStick = current.items.find((item) => item.kind === 'stick');
+  if (currentStick && currentStick.chargesReserved > 0) {
+    throw new AppError('conflict', 'cannot switch reserved duel stick between periods', 409);
+  }
+  const nextStick = stickOnly.items.find((item) => item.kind === 'stick');
+  if (nextStick && nextStick.resourceUnit !== 'shot') {
+    throw new AppError('conflict', 'only shot-resource sticks can be switched between periods', 409);
+  }
+  const items = [
+    ...current.items.filter((item) => item.kind !== 'stick'),
+    ...(nextStick ? [nextStick] : []),
+  ];
+  const powerScore = items.reduce((sum, item) => sum + item.powerScore, 0);
+  if (rules.rankedEnabled && powerScore > rules.powerCap) {
+    throw new AppError('conflict', 'duel loadout exceeds power cap', 409);
+  }
+  return { items, powerScore, powerCap: rules.powerCap };
+}
+
 async function reserveLoadoutInventory(
   client: PoolClient,
   userId: string,
@@ -2061,10 +2092,11 @@ async function fetchAvailableInventory(
     title: string;
     item_kind: InventoryKind;
     rarity: 'common' | 'rare' | 'epic' | 'legendary';
+    resource_unit: DuelInventoryResourceUnit;
     charges_available: number;
     charges_reserved: number;
   }>(
-    `select i.id, i.title, i.item_kind, i.rarity,
+    `select i.id, i.title, i.item_kind, i.rarity, i.resource_unit,
             coalesce(ui.charges_available, 0)::int as charges_available,
             coalesce(ui.charges_reserved, 0)::int as charges_reserved
        from admin_inventory_items i
@@ -2080,6 +2112,7 @@ async function fetchAvailableInventory(
     kind: row.item_kind,
     title: row.title,
     rarity: row.rarity,
+    resourceUnit: row.resource_unit,
     chargesAvailable: Number(row.charges_available),
     chargesReserved: Number(row.charges_reserved),
   }));
@@ -3356,6 +3389,8 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
     { preHandler: [app.authenticate] },
     async (req) => {
       const params = z.object({ matchId: uuid }).parse(req.params);
+      const parsed = startPeriodBodySchema.safeParse(req.body ?? {});
+      if (!parsed.success) throw new AppError('bad_request', 'invalid duel period payload', 400);
       return withTransaction(app, async (client) => {
         const now = new Date();
         let match = await reconcileMatch(
@@ -3389,6 +3424,24 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
         }
         if (participant.current_period >= rules.totalPeriods) {
           throw new AppError('conflict', 'all duel periods completed', 409);
+        }
+        if (parsed.data.loadout !== undefined) {
+          const currentLoadout = loadoutFromUnknown(participant.loadout_snapshot, rules.powerCap);
+          const stickOnly = await buildLoadoutSnapshot(
+            client,
+            req.user.id,
+            { stick: parsed.data.loadout.stick ?? null },
+            rules,
+          );
+          const nextLoadout = loadoutWithUpdatedShotStick(currentLoadout, stickOnly, rules);
+          participant.loadout_snapshot = nextLoadout;
+          await client.query(
+            `update amateur_duel_participant
+                set loadout_snapshot = $3,
+                    updated_at = now()
+              where match_id = $1 and user_id = $2`,
+            [match.id, req.user.id, JSON.stringify(nextLoadout)],
+          );
         }
         await consumeInventoryForPeriod(client, participant, rules);
         await client.query(

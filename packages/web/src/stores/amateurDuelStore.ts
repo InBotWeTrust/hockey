@@ -17,7 +17,7 @@ interface AmateurDuelStoreState {
   load: (matchId: string) => Promise<AmateurDuelMatchState | null>;
   refresh: () => Promise<void>;
   ready: (loadout?: AmateurDuelLoadoutSelection) => Promise<AmateurDuelMatchState | null>;
-  startPeriod: () => Promise<AmateurDuelMatchState | null>;
+  startPeriod: (loadout?: AmateurDuelLoadoutSelection) => Promise<AmateurDuelMatchState | null>;
   applyState: (next: AmateurDuelMatchState) => void;
   optimisticAddShot: (claimed: ShotResultType) => void;
   submitShot: (args: {
@@ -71,12 +71,12 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
     }
   },
 
-  startPeriod: async () => {
+  startPeriod: async (loadout) => {
     const current = get().match;
     if (!current) return null;
     set({ inFlight: true, error: null });
     try {
-      const { match } = await startAmateurDuelPeriod(current.id);
+      const { match } = await startAmateurDuelPeriod(current.id, loadout);
       set({ match, inFlight: false, error: null });
       return match;
     } catch (err) {

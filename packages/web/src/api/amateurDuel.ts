@@ -160,6 +160,7 @@ export interface AmateurDuelInventoryAvailabilityItem {
   kind: 'stick' | 'skates' | 'nutrition';
   title: string;
   rarity: 'common' | 'rare' | 'epic' | 'legendary';
+  resourceUnit?: DuelInventoryResourceUnit;
   chargesAvailable: number;
   chargesReserved: number;
 }
@@ -384,10 +385,16 @@ export function leaveAmateurMatchmaking(templateId?: string): Promise<{ ok: true
   });
 }
 
-export function startAmateurDuelPeriod(matchId: string): Promise<{ match: AmateurDuelMatchState }> {
+export function startAmateurDuelPeriod(
+  matchId: string,
+  loadout?: AmateurDuelLoadoutSelection,
+): Promise<{ match: AmateurDuelMatchState }> {
   return apiFetch<{ match: AmateurDuelMatchState }>(
     `/duel/amateur/matches/${matchId}/period/start`,
-    { method: 'POST' },
+    {
+      method: 'POST',
+      ...(loadout ? { body: JSON.stringify({ loadout }) } : {}),
+    },
   ).then((res) => ({ match: stampMatch(res.match) }));
 }
 
