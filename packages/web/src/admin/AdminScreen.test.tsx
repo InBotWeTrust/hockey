@@ -106,6 +106,112 @@ function makeNotificationStats() {
   };
 }
 
+function makeAdminSummary() {
+  return {
+    users: {
+      total: 1,
+      admins: 1,
+      players: 0,
+      newToday: 0,
+      new7d: 0,
+      new30d: 0,
+      new365d: 0,
+      newInPeriod: 0,
+      activeToday: 0,
+      activeYesterday: 0,
+      active7d: 0,
+      active30d: 0,
+      active365d: 0,
+      activeInPeriod: 0,
+      activated: { count: 0, percent: 0 },
+      notifications: makeNotificationStats(),
+    },
+    lifetime: { shots: 0, goals: 0 },
+    active: { daily: 0, training: 0 },
+    last24h: { shots: 0, goals: 0, mismatches: 0 },
+    dashboard: {
+      period: '30d',
+      periodDays: 30,
+      users: {
+        total: 1,
+        admins: 1,
+        players: 0,
+        newToday: 0,
+        new7d: 0,
+        new30d: 0,
+        new365d: 0,
+        newInPeriod: 0,
+        activeToday: 0,
+        activeYesterday: 0,
+        active7d: 0,
+        active30d: 0,
+        active365d: 0,
+        activeInPeriod: 0,
+        activated: { count: 0, percent: 0 },
+      },
+      payments: {
+        revenueTodayRub: 0,
+        revenue30dRub: 0,
+        revenuePeriodRub: 0,
+        revenueMonthRub: 0,
+        revenueQuarterRub: 0,
+        revenueYearRub: 0,
+        revenueTotalRub: 0,
+        paidUsersTotal: 0,
+        paidUsers30d: 0,
+        paidUsersPeriod: 0,
+        paidPayments30d: 0,
+        paidPaymentsPeriod: 0,
+        payerConversionPercent: 0,
+        arpu30dRub: 0,
+        arppu30dRub: 0,
+        arpuPeriodRub: 0,
+        arppuPeriodRub: 0,
+      },
+      game: {
+        shotsToday: 0,
+        goalsToday: 0,
+        shots7d: 0,
+        goals7d: 0,
+        shots30d: 0,
+        goals30d: 0,
+        shotsPeriod: 0,
+        goalsPeriod: 0,
+        shotsTotal: 0,
+        goalsTotal: 0,
+        accuracy30d: 0,
+        accuracyPeriod: 0,
+        dailyPlayers30d: 0,
+        trainingPlayers30d: 0,
+        dailyPlayersPeriod: 0,
+        trainingPlayersPeriod: 0,
+        activeDailyPools: 0,
+        activeTrainingSessions: 0,
+        mismatches30d: 0,
+        mismatchesPeriod: 0,
+      },
+      chat: {
+        messagesToday: 0,
+        messages7d: 0,
+        messages30d: 0,
+        activeUsers30d: 0,
+        messagesPeriod: 0,
+        activeUsersPeriod: 0,
+      },
+      feedback: { total: 0, unread: 0 },
+      inventory: { activeItems: 1 },
+      engagement: {
+        avgDailyActivitySpanMinutes: 0,
+        dauWauPercent: 0,
+        wauMauPercent: 0,
+      },
+      notifications: makeNotificationStats(),
+      series: [],
+    },
+    gameCoreVersion: 1,
+  };
+}
+
 describe('AdminScreen', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -851,6 +957,115 @@ describe('AdminScreen', () => {
     renderAdmin();
 
     expect(screen.getByText('Нет доступа')).toBeInTheDocument();
+  });
+
+  it('saves inventory gameplay with comma decimal inputs', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'a',
+      refreshToken: 'r',
+      user: { id: 'admin', displayName: 'Egor', role: 'admin' },
+    });
+    let itemPatchBody: Record<string, unknown> | null = null;
+    let gameplayPatchBody: Record<string, unknown> | null = null;
+    const inventoryItem = {
+      id: '11111111-1111-1111-1111-111111111111',
+      photoUrl: '/inventory/stick.webp',
+      title: 'Ультимейт Ван 1',
+      description: 'Комплект клюшек',
+      priceRub: 1490,
+      itemKind: 'stick',
+      currencyPrice: 1490,
+      chargesPerPurchase: 1300,
+      duelPeriodCost: 0,
+      effectPuckSpeedDelta: 0.1,
+      effectShooterFrequencyDelta: 0,
+      effectGoalieFrequencyDelta: 0,
+      effectGoalFrequencyDelta: 0,
+      effectShotZoneMultiplier: 1,
+      createdAt: '2026-05-03T08:00:00.000Z',
+      updatedAt: '2026-05-03T08:00:00.000Z',
+      paymentsCount: 0,
+      paidRevenueRub: 0,
+    };
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.includes('/admin/summary')) {
+        return new Response(JSON.stringify(makeAdminSummary()), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/admin/users')) {
+        return new Response(
+          JSON.stringify({
+            users: [],
+            total: 0,
+            limit: 20,
+            offset: 0,
+            notificationStats: makeNotificationStats(),
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.includes('/admin/feedback')) {
+        return new Response(
+          JSON.stringify({
+            feedback: [],
+            total: 0,
+            unreadCount: 0,
+            ratingStats: { count: 0, average: null },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.includes('/admin/inventory/11111111-1111-1111-1111-111111111111/gameplay')) {
+        gameplayPatchBody = typeof init?.body === 'string' ? JSON.parse(init.body) : null;
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/admin/inventory/11111111-1111-1111-1111-111111111111')) {
+        itemPatchBody = typeof init?.body === 'string' ? JSON.parse(init.body) : null;
+        return new Response(JSON.stringify({ item: inventoryItem }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/admin/inventory')) {
+        return new Response(JSON.stringify({ items: [inventoryItem] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+
+    renderAdmin();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Инвентарь' }));
+    expect(await screen.findByText('Ультимейт Ван 1')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать' }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Редактирование предмета' });
+    const inputs = within(dialog).getAllByRole('textbox');
+    fireEvent.change(inputs[3]!, { target: { value: '1490,00' } });
+    fireEvent.change(inputs[4]!, { target: { value: '2490,00' } });
+    fireEvent.change(inputs[7]!, { target: { value: '10,5' } });
+    fireEvent.change(inputs[8]!, { target: { value: '0,25' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
+
+    await waitFor(() => expect(gameplayPatchBody).not.toBeNull());
+    const savedItemPatchBody = itemPatchBody as unknown as Record<string, unknown>;
+    const savedGameplayPatchBody = gameplayPatchBody as unknown as Record<string, unknown>;
+    expect(savedItemPatchBody.priceRub).toBe(1490);
+    expect(savedGameplayPatchBody.currencyPrice).toBe(2490);
+    expect(savedGameplayPatchBody.chargesPerPurchase).toBe(1300);
+    expect(savedGameplayPatchBody.duelPeriodCost).toBe(0);
+    expect(savedGameplayPatchBody.effectPuckSpeedDelta).toBeCloseTo(0.105, 5);
+    expect(savedGameplayPatchBody.effectShooterFrequencyDelta).toBe(0.25);
+    expect(savedGameplayPatchBody.effectShotZoneMultiplier).toBe(1);
   });
 
   it('keeps weekly challenges inside the achievements admin section', async () => {

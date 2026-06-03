@@ -413,6 +413,11 @@ function parseAdminNumberInput(value: string | number): number {
   return Number(value.trim().replace(',', '.'));
 }
 
+function parseAdminIntegerInput(value: string | number): number {
+  const numeric = parseAdminNumberInput(value);
+  return Number.isInteger(numeric) ? numeric : Number.NaN;
+}
+
 function gameModeLabel(mode: string | null | undefined): string {
   if (mode === 'daily') return 'Ежедневная игра';
   if (mode === 'training') return 'Тренировка';
@@ -503,8 +508,22 @@ function puckSpeedDeltaToPoints(value: number | undefined): string {
 }
 
 function puckSpeedPointsToDelta(value: string): number {
-  return Number(value) / 100;
+  return parseAdminNumberInput(value) / 100;
 }
+
+const adminInventoryHintStyle: CSSProperties = {
+  minHeight: 11,
+  color: 'rgba(71, 85, 105, 0.78)',
+  fontSize: 9.5,
+  fontWeight: 500,
+  lineHeight: 1.15,
+};
+
+const adminInventoryFieldBodyStyle: CSSProperties = {
+  display: 'grid',
+  gap: 5,
+  gridTemplateRows: '44px 11px',
+};
 
 function isHiddenGameSetting(setting: AdminGameSetting): boolean {
   return setting.key.endsWith('.goalie_id');
@@ -5014,24 +5033,33 @@ function InventoryEditor({
   const [effectShotZoneMultiplier, setEffectShotZoneMultiplier] = useState(
     fieldNumber(item?.effectShotZoneMultiplier ?? 1),
   );
+  const parsedPriceRub = parseAdminIntegerInput(priceRub);
+  const parsedCurrencyPrice = parseAdminIntegerInput(currencyPrice);
+  const parsedChargesPerPurchase = parseAdminIntegerInput(chargesPerPurchase);
+  const parsedDuelPeriodCost = parseAdminIntegerInput(duelPeriodCost);
+  const parsedEffectPuckSpeedPoints = parseAdminNumberInput(effectPuckSpeedPoints);
+  const parsedEffectShooterFrequencyDelta = parseAdminNumberInput(effectShooterFrequencyDelta);
+  const parsedEffectGoalieFrequencyDelta = parseAdminNumberInput(effectGoalieFrequencyDelta);
+  const parsedEffectGoalFrequencyDelta = parseAdminNumberInput(effectGoalFrequencyDelta);
+  const parsedEffectShotZoneMultiplier = parseAdminNumberInput(effectShotZoneMultiplier);
   const mutation = useMutation({
     mutationFn: async () => {
       const body: Required<AdminInventoryItemPatch> = {
         photoUrl,
         title,
         description,
-        priceRub: Number(priceRub),
+        priceRub: parsedPriceRub,
       };
       const gameplay: Required<AdminInventoryGameplayPatch> = {
         itemKind,
-        currencyPrice: Number(currencyPrice),
-        chargesPerPurchase: Number(chargesPerPurchase),
-        duelPeriodCost: Number(duelPeriodCost),
+        currencyPrice: parsedCurrencyPrice,
+        chargesPerPurchase: parsedChargesPerPurchase,
+        duelPeriodCost: parsedDuelPeriodCost,
         effectPuckSpeedDelta: puckSpeedPointsToDelta(effectPuckSpeedPoints),
-        effectShooterFrequencyDelta: Number(effectShooterFrequencyDelta),
-        effectGoalieFrequencyDelta: Number(effectGoalieFrequencyDelta),
-        effectGoalFrequencyDelta: Number(effectGoalFrequencyDelta),
-        effectShotZoneMultiplier: Number(effectShotZoneMultiplier),
+        effectShooterFrequencyDelta: parsedEffectShooterFrequencyDelta,
+        effectGoalieFrequencyDelta: parsedEffectGoalieFrequencyDelta,
+        effectGoalFrequencyDelta: parsedEffectGoalFrequencyDelta,
+        effectShotZoneMultiplier: parsedEffectShotZoneMultiplier,
       };
       const saved =
         item === null
@@ -5043,26 +5071,26 @@ function InventoryEditor({
     onSuccess: onSaved,
   });
   const numericValues = [
-    priceRub,
-    currencyPrice,
-    chargesPerPurchase,
-    duelPeriodCost,
-    effectPuckSpeedPoints,
-    effectShooterFrequencyDelta,
-    effectGoalieFrequencyDelta,
-    effectGoalFrequencyDelta,
-    effectShotZoneMultiplier,
-  ].map(Number);
+    parsedPriceRub,
+    parsedCurrencyPrice,
+    parsedChargesPerPurchase,
+    parsedDuelPeriodCost,
+    parsedEffectPuckSpeedPoints,
+    parsedEffectShooterFrequencyDelta,
+    parsedEffectGoalieFrequencyDelta,
+    parsedEffectGoalFrequencyDelta,
+    parsedEffectShotZoneMultiplier,
+  ];
   const canSave =
     title.trim() !== '' &&
     numericValues.every(Number.isFinite) &&
-    Number(priceRub) >= 0 &&
-    Number(currencyPrice) >= 0 &&
-    Number(chargesPerPurchase) >= 0 &&
-    Number(duelPeriodCost) >= 0 &&
-    Number(effectShotZoneMultiplier) >= 1 &&
-    Number(effectPuckSpeedPoints) >= -500 &&
-    Number(effectPuckSpeedPoints) <= 500;
+    parsedPriceRub >= 0 &&
+    parsedCurrencyPrice >= 0 &&
+    parsedChargesPerPurchase >= 0 &&
+    parsedDuelPeriodCost >= 0 &&
+    parsedEffectShotZoneMultiplier >= 1 &&
+    parsedEffectPuckSpeedPoints >= -500 &&
+    parsedEffectPuckSpeedPoints <= 500;
   const isStickItem = itemKind === 'stick';
 
   return createPortal(
@@ -5086,16 +5114,25 @@ function InventoryEditor({
           gap: 10,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="modal-title">
               {item === null ? 'Новый предмет' : 'Редактирование предмета'}
             </div>
-            <div className="modal-copy">
-              Скорость шайбы задаётся в пунктах: 10 = +0.10 к скорости полёта.
+            <div
+              className="modal-copy"
+              style={{ marginTop: 4, fontSize: 11, fontWeight: 520, lineHeight: 1.22 }}
+            >
+              Скорость шайбы: 10 пунктов = +0.10.
             </div>
           </div>
-          <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onCancel}>
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="Закрыть"
+            onClick={onCancel}
+            style={{ flex: '0 0 34px' }}
+          >
             <X size={15} />
           </button>
         </div>
@@ -5110,7 +5147,8 @@ function InventoryEditor({
         </AdminField>
         <AdminField label="Цена">
           <input
-            type="number"
+            type="text"
+            inputMode="numeric"
             value={priceRub}
             onChange={(event) => setPriceRub(event.target.value)}
           />
@@ -5126,7 +5164,8 @@ function InventoryEditor({
           </AdminField>
           <AdminField label="Цена в валюте">
             <input
-              type="number"
+              type="text"
+              inputMode="numeric"
               value={currencyPrice}
               onChange={(event) => setCurrencyPrice(event.target.value)}
             />
@@ -5134,73 +5173,90 @@ function InventoryEditor({
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
           <AdminField label={isStickItem ? 'Бросков при покупке' : 'Зарядов при покупке'}>
-            <input
-              type="number"
-              value={chargesPerPurchase}
-              onChange={(event) => setChargesPerPurchase(event.target.value)}
-            />
+            <div style={adminInventoryFieldBodyStyle}>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={chargesPerPurchase}
+                onChange={(event) => setChargesPerPurchase(event.target.value)}
+              />
+              <span style={adminInventoryHintStyle} aria-hidden="true">
+                {' '}
+              </span>
+            </div>
           </AdminField>
           <AdminField label="Расход за период">
-            <div style={{ display: 'grid', gap: 5 }}>
+            <div style={adminInventoryFieldBodyStyle}>
               <input
-                type="number"
+                type="text"
+                inputMode="numeric"
                 value={duelPeriodCost}
                 onChange={(event) => setDuelPeriodCost(event.target.value)}
               />
-              {isStickItem && (
-                <span style={{ color: 'var(--muted)', fontSize: 10, fontWeight: 760 }}>
-                  Для клюшек оставь 0: списание идёт 1 за бросок.
-                </span>
-              )}
+              <span style={adminInventoryHintStyle}>
+                {isStickItem ? 'Клюшка: 0, списание 1/бросок.' : ' '}
+              </span>
             </div>
           </AdminField>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
           <AdminField label="Шайба +пункты">
-            <div style={{ display: 'grid', gap: 5 }}>
+            <div style={adminInventoryFieldBodyStyle}>
               <input
-                type="number"
-                step="1"
-                min="-500"
-                max="500"
+                type="text"
+                inputMode="decimal"
                 value={effectPuckSpeedPoints}
                 onChange={(event) => setEffectPuckSpeedPoints(event.target.value)}
               />
-              <span style={{ color: 'var(--muted)', fontSize: 10, fontWeight: 760 }}>
-                Например: 10 пунктов сохранится как +0.10.
+              <span style={adminInventoryHintStyle}>
+                10 сохранится как +0.10.
               </span>
             </div>
           </AdminField>
           <AdminField label="Игрок Δ">
-            <input
-              type="number"
-              step="0.01"
-              value={effectShooterFrequencyDelta}
-              onChange={(event) => setEffectShooterFrequencyDelta(event.target.value)}
-            />
+            <div style={adminInventoryFieldBodyStyle}>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={effectShooterFrequencyDelta}
+                onChange={(event) => setEffectShooterFrequencyDelta(event.target.value)}
+              />
+              <span style={adminInventoryHintStyle} aria-hidden="true">
+                {' '}
+              </span>
+            </div>
           </AdminField>
           <AdminField label="Вратарь Δ">
-            <input
-              type="number"
-              step="0.01"
-              value={effectGoalieFrequencyDelta}
-              onChange={(event) => setEffectGoalieFrequencyDelta(event.target.value)}
-            />
+            <div style={adminInventoryFieldBodyStyle}>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={effectGoalieFrequencyDelta}
+                onChange={(event) => setEffectGoalieFrequencyDelta(event.target.value)}
+              />
+              <span style={adminInventoryHintStyle} aria-hidden="true">
+                {' '}
+              </span>
+            </div>
           </AdminField>
           <AdminField label="Ворота Δ">
-            <input
-              type="number"
-              step="0.01"
-              value={effectGoalFrequencyDelta}
-              onChange={(event) => setEffectGoalFrequencyDelta(event.target.value)}
-            />
+            <div style={adminInventoryFieldBodyStyle}>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={effectGoalFrequencyDelta}
+                onChange={(event) => setEffectGoalFrequencyDelta(event.target.value)}
+              />
+              <span style={adminInventoryHintStyle} aria-hidden="true">
+                {' '}
+              </span>
+            </div>
           </AdminField>
         </div>
         <AdminField label="Множитель зоны броска">
           <input
-            type="number"
-            step="0.01"
-            min="1"
+            type="text"
+            inputMode="decimal"
             value={effectShotZoneMultiplier}
             onChange={(event) => setEffectShotZoneMultiplier(event.target.value)}
           />
