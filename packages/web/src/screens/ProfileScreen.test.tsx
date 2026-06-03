@@ -244,6 +244,9 @@ describe('ProfileScreen', () => {
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Питание.*Нет купленных/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Достижения.*получено/i })).toBeInTheDocument();
+    expect(
+      document.querySelector('.profile-locker-hotspot--achievements .profile-locker-hotspot__count'),
+    ).toHaveTextContent('1');
     expect(screen.getByRole('button', { name: 'Настройки профиля' })).toBeInTheDocument();
     expect(
       document.querySelector('img[src="/inventory/profile-achievement-medals.webp"]'),
@@ -402,6 +405,9 @@ describe('ProfileScreen', () => {
       await screen.findByRole('button', { name: /Клюшка.*Острая клюшка/i }),
     ).toBeInTheDocument();
     expect(
+      document.querySelector('.profile-locker-hotspot--stick .profile-locker-hotspot__count'),
+    ).toHaveTextContent('3');
+    expect(
       screen.getByRole('button', { name: /Коньки.*Обычные коньки.*Базовая/i }),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Питание.*Энергогель/i })).toBeInTheDocument();
@@ -426,12 +432,13 @@ describe('ProfileScreen', () => {
     expect(dialog).toBeInTheDocument();
     expect(within(dialog).getByText('Острая клюшка')).toBeInTheDocument();
     expect(
-      within(dialog).getByText('Быстрее выпускает шайбу из неудобной позиции.'),
-    ).toBeInTheDocument();
+      within(dialog).queryByText('Быстрее выпускает шайбу из неудобной позиции.'),
+    ).not.toBeInTheDocument();
     expect(within(dialog).getByText(/Ускоряет полёт шайбы на 24 пункта/)).toBeInTheDocument();
+    expect(within(dialog).getByText('На 3 броска')).toBeInTheDocument();
     expect(within(dialog).queryByText('Цена: 120')).not.toBeInTheDocument();
     expect(within(dialog).getByText('1 забронирован')).toBeInTheDocument();
-    expect(within(dialog).getByText('Активировано')).toBeInTheDocument();
+    expect(within(dialog).queryByText('Активировано')).not.toBeInTheDocument();
     expect(within(dialog).queryByText('Экипировать')).not.toBeInTheDocument();
     expect(within(dialog).queryByText('Не брать')).not.toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: /Острая клюшка/i })).toHaveAttribute(

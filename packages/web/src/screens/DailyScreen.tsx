@@ -5056,6 +5056,25 @@ function DuelLockerSlotButton({
   );
 }
 
+function DuelEquipmentSelectionRadio({ selected }: { selected: boolean }): JSX.Element {
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        width: 18,
+        height: 18,
+        borderRadius: 999,
+        border: selected ? '5px solid rgba(255,255,255,0.92)' : '2px solid rgba(15,23,42,0.34)',
+        background: selected ? '#1f2a3d' : 'rgba(255,255,255,0.36)',
+        boxShadow: selected
+          ? '0 0 0 1px rgba(15,23,42,0.2)'
+          : 'inset 0 1px 0 rgba(255,255,255,0.62)',
+        justifySelf: 'end',
+      }}
+    />
+  );
+}
+
 function DuelEquipmentDetailsModal({
   kind,
   inventory,
@@ -5146,7 +5165,7 @@ function DuelEquipmentDetailsModal({
                     ? 'inset 0 1px 0 rgba(255,255,255,0.12), 0 10px 22px rgba(15,23,42,0.22)'
                     : undefined,
                 display: 'grid',
-                gridTemplateColumns: '54px minmax(0, 1fr)',
+                gridTemplateColumns: '54px minmax(0, 1fr) 22px',
                 alignItems: 'center',
                 gap: 10,
                 textAlign: 'left',
@@ -5181,36 +5200,8 @@ function DuelEquipmentDetailsModal({
                 />
               </span>
               <span style={{ minWidth: 0, display: 'grid', gap: 5 }}>
-                <span
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'minmax(0, 1fr) auto',
-                    alignItems: 'center',
-                    gap: 8,
-                  }}
-                >
-                  <span style={{ minWidth: 0, fontSize: 15, fontWeight: 950, lineHeight: 1.12 }}>
-                    {duelBaseEquipmentTitle(kind)}
-                  </span>
-                  <span
-                    className="pill"
-                    style={{
-                      height: 24,
-                      padding: '0 9px',
-                      justifyContent: 'center',
-                      fontSize: 10,
-                      whiteSpace: 'nowrap',
-                      ...(activeId === null
-                        ? {
-                            color: 'rgba(15, 23, 42, 0.9)',
-                            background: 'rgba(255,255,255,0.82)',
-                            border: '1px solid rgba(255,255,255,0.78)',
-                          }
-                        : {}),
-                    }}
-                  >
-                    {activeId === null ? 'Активировано' : 'Активировать'}
-                  </span>
+                <span style={{ minWidth: 0, fontSize: 15, fontWeight: 950, lineHeight: 1.12 }}>
+                  {duelBaseEquipmentTitle(kind)}
                 </span>
                 <span
                   style={{
@@ -5221,9 +5212,10 @@ function DuelEquipmentDetailsModal({
                     lineHeight: 1.28,
                   }}
                 >
-                  {duelBaseEquipmentDescription(kind)}
+                  {duelEquipmentEffectLabel(kind, 0)}
                 </span>
               </span>
+              <DuelEquipmentSelectionRadio selected={activeId === null} />
             </button>
           )}
 
@@ -5253,7 +5245,7 @@ function DuelEquipmentDetailsModal({
                     ? 'inset 0 1px 0 rgba(255,255,255,0.12), 0 10px 22px rgba(15,23,42,0.22)'
                     : undefined,
                   display: 'grid',
-                  gridTemplateColumns: '64px minmax(0, 1fr)',
+                  gridTemplateColumns: '64px minmax(0, 1fr) 22px',
                   alignItems: 'center',
                   gap: 10,
                   textAlign: 'left',
@@ -5283,77 +5275,31 @@ function DuelEquipmentDetailsModal({
                 <span style={{ minWidth: 0, display: 'grid', gap: 5 }}>
                   <span
                     style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'minmax(0, 1fr) auto',
-                      alignItems: 'start',
-                      gap: 8,
                       minWidth: 0,
+                      color: selected ? '#fff' : 'var(--ink)',
+                      fontSize: 15,
+                      fontWeight: 950,
+                      lineHeight: 1.12,
+                      overflowWrap: 'break-word',
                     }}
                   >
-                    <span
-                      style={{
-                        minWidth: 0,
-                        color: selected ? '#fff' : 'var(--ink)',
-                        fontSize: 15,
-                        fontWeight: 950,
-                        lineHeight: 1.12,
-                        overflowWrap: 'break-word',
-                      }}
-                    >
-                      {duelEquipmentDisplayTitle(item)}
-                    </span>
-                    <span
-                      className="pill"
-                      style={{
-                        height: 24,
-                        padding: '0 9px',
-                        justifyContent: 'center',
-                        fontSize: 10,
-                        whiteSpace: 'nowrap',
-                        ...(selected
-                          ? {
-                              color: 'rgba(15, 23, 42, 0.9)',
-                              background: 'rgba(255,255,255,0.82)',
-                              border: '1px solid rgba(255,255,255,0.78)',
-                            }
-                          : {}),
-                      }}
-                    >
-                      {selected ? 'Активировано' : 'Активировать'}
-                    </span>
+                    {duelEquipmentDisplayTitle(item)}
                   </span>
                   <span
                     style={{
-                      display: 'block',
+                      display: 'grid',
+                      gap: 2,
+                      color: selected ? 'rgba(255,255,255,0.76)' : 'rgba(15, 23, 42, 0.62)',
                       fontSize: 12,
                       fontWeight: 760,
-                      lineHeight: 1.28,
-                      color: selected ? 'rgba(255,255,255,0.76)' : 'rgba(15, 23, 42, 0.62)',
+                      lineHeight: 1.25,
                     }}
                   >
-                    {item.description}
-                  </span>
-                  <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    <span
-                      className="pill"
-                      style={{ height: 24, justifyContent: 'center', fontSize: 10.5 }}
-                    >
-                      {formatInventoryStockLabel(item)}
-                    </span>
-                    <span
-                      className="pill"
-                      style={{ height: 24, justifyContent: 'center', fontSize: 10.5 }}
-                    >
-                      {duelEquipmentEffectLabel(kind, item.powerScore)}
-                    </span>
-                    <span
-                      className="pill"
-                      style={{ height: 24, justifyContent: 'center', fontSize: 10.5 }}
-                    >
-                      {duelInventoryConsumptionLabel(item)}
-                    </span>
+                    <span>{duelEquipmentEffectLabel(kind, item.powerScore)}</span>
+                    <span>{formatInventoryStockLabel(item)}</span>
                   </span>
                 </span>
+                <DuelEquipmentSelectionRadio selected={selected} />
               </button>
             );
           })}
@@ -6722,39 +6668,9 @@ function duelBaseEquipmentTitle(kind: InventoryEquipmentKind): string {
   return 'Без питания';
 }
 
-function duelBaseEquipmentDescription(kind: InventoryEquipmentKind): string {
-  if (kind === 'stick') return 'Базовая клюшка доступна всегда и не расходуется в дуэлях.';
-  if (kind === 'skates') return 'Базовые коньки доступны всегда и не расходуются в дуэлях.';
-  return 'Можно выйти на матч без спортивного питания.';
-}
-
-function duelInventoryPeriodLabel(count: number): string {
-  const normalized = Math.max(0, Math.trunc(count));
-  if (normalized === 0) return 'Нет запаса';
-
-  const mod10 = normalized % 10;
-  const mod100 = normalized % 100;
-  const noun =
-    mod10 === 1 && mod100 !== 11
-      ? 'период'
-      : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)
-        ? 'периода'
-        : 'периодов';
-  return `На ${normalized} ${noun}`;
-}
-
 function duelInventoryStockLabel(item: AmateurDuelInventoryAvailabilityItem): string {
   if (item.chargesAvailable <= 0) return 'Нет запаса';
   return `На ${formatInventoryResourceAmount(item.kind, item.chargesAvailable, item.resourceUnit)}`;
-}
-
-function duelInventoryConsumptionLabel(
-  item: Pick<InventoryItem, 'resourceUnit' | 'duelPeriodCost'>,
-): string {
-  if (item.resourceUnit === 'shot') return 'Расход 1/бросок';
-  if (item.resourceUnit === 'distance') return 'Расход по прокатам';
-  if (item.resourceUnit === 'energy_ms') return 'Расход по темпу';
-  return `Расход ${item.duelPeriodCost}/период`;
 }
 
 function duelEquipmentPointLabel(value: number): string {
@@ -7139,7 +7055,7 @@ function DuelRinkLoadoutModal({
                 borderRadius: 16,
                 padding: 10,
                 display: 'grid',
-                gridTemplateColumns: '54px minmax(0, 1fr)',
+                gridTemplateColumns: '54px minmax(0, 1fr) 22px',
                 alignItems: 'center',
                 gap: 10,
                 color: selectedId === null ? '#fff' : 'var(--ink)',
@@ -7186,36 +7102,8 @@ function DuelRinkLoadoutModal({
                 />
               </span>
               <span style={{ minWidth: 0, display: 'grid', gap: 5 }}>
-                <span
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'minmax(0, 1fr) auto',
-                    alignItems: 'center',
-                    gap: 8,
-                  }}
-                >
-                  <span style={{ minWidth: 0, fontSize: 15, fontWeight: 950, lineHeight: 1.12 }}>
-                    {duelBaseEquipmentTitle(kind)}
-                  </span>
-                  <span
-                    className="pill"
-                    style={{
-                      height: 24,
-                      padding: '0 9px',
-                      justifyContent: 'center',
-                      fontSize: 10,
-                      whiteSpace: 'nowrap',
-                      ...(selectedId === null
-                        ? {
-                            color: 'rgba(15, 23, 42, 0.9)',
-                            background: 'rgba(255,255,255,0.82)',
-                            border: '1px solid rgba(255,255,255,0.78)',
-                          }
-                        : {}),
-                    }}
-                  >
-                    {selectedId === null ? 'Выбрано' : 'Выбрать'}
-                  </span>
+                <span style={{ minWidth: 0, fontSize: 15, fontWeight: 950, lineHeight: 1.12 }}>
+                  {duelBaseEquipmentTitle(kind)}
                 </span>
                 <span
                   style={{
@@ -7226,9 +7114,10 @@ function DuelRinkLoadoutModal({
                     lineHeight: 1.25,
                   }}
                 >
-                  {duelBaseEquipmentDescription(kind)}
+                  {duelEquipmentEffectLabel(kind, 0)}
                 </span>
               </span>
+              <DuelEquipmentSelectionRadio selected={selectedId === null} />
             </button>
           )}
           {items.map((item) => {
@@ -7245,7 +7134,7 @@ function DuelRinkLoadoutModal({
                   borderRadius: 18,
                   padding: 10,
                   display: 'grid',
-                  gridTemplateColumns: '64px minmax(0, 1fr)',
+                  gridTemplateColumns: '64px minmax(0, 1fr) 22px',
                   alignItems: 'center',
                   gap: 10,
                   color: selected ? '#fff' : 'var(--ink)',
@@ -7277,70 +7166,31 @@ function DuelRinkLoadoutModal({
                 <span style={{ minWidth: 0, display: 'grid', gap: 5 }}>
                   <span
                     style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'minmax(0, 1fr) auto',
-                      alignItems: 'start',
-                      gap: 8,
+                      minWidth: 0,
+                      display: 'block',
+                      fontSize: 15,
+                      fontWeight: 950,
+                      lineHeight: 1.12,
+                      overflowWrap: 'break-word',
                     }}
                   >
-                    <span
-                      style={{
-                        minWidth: 0,
-                        display: 'block',
-                        fontSize: 15,
-                        fontWeight: 950,
-                        lineHeight: 1.12,
-                        overflowWrap: 'break-word',
-                      }}
-                    >
-                      {duelEquipmentDisplayTitle(item)}
-                    </span>
-                    <span
-                      className="pill"
-                      style={{
-                        height: 24,
-                        padding: '0 9px',
-                        justifyContent: 'center',
-                        fontSize: 10,
-                        whiteSpace: 'nowrap',
-                        ...(selected
-                          ? {
-                              color: 'rgba(15, 23, 42, 0.9)',
-                              background: 'rgba(255,255,255,0.82)',
-                              border: '1px solid rgba(255,255,255,0.78)',
-                            }
-                          : {}),
-                      }}
-                    >
-                      {selected ? 'Выбрано' : 'Выбрать'}
-                    </span>
+                    {duelEquipmentDisplayTitle(item)}
                   </span>
                   <span
                     style={{
-                      display: 'block',
+                      display: 'grid',
+                      gap: 2,
                       color: selected ? 'rgba(255,255,255,0.76)' : 'var(--muted)',
                       fontSize: 12,
                       fontWeight: 760,
                       lineHeight: 1.25,
                     }}
                   >
-                    {item.description}
-                  </span>
-                  <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    <span
-                      className="pill"
-                      style={{ height: 24, justifyContent: 'center', fontSize: 10.5 }}
-                    >
-                      {duelInventoryStockLabel(item)}
-                    </span>
-                    <span
-                      className="pill"
-                      style={{ height: 24, justifyContent: 'center', fontSize: 10.5 }}
-                    >
-                      {duelEquipmentEffectLabel(kind, item.powerScore)}
-                    </span>
+                    <span>{duelEquipmentEffectLabel(kind, item.powerScore)}</span>
+                    <span>{duelInventoryStockLabel(item)}</span>
                   </span>
                 </span>
+                <DuelEquipmentSelectionRadio selected={selected} />
               </button>
             );
           })}

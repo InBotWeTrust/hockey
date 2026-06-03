@@ -181,12 +181,6 @@ function baseEquipmentTitle(kind: InventoryEquipmentKind): string {
   return 'Без питания';
 }
 
-function baseEquipmentDescription(kind: InventoryEquipmentKind): string {
-  if (kind === 'stick') return 'Базовая клюшка доступна всегда и не расходуется в дуэлях.';
-  if (kind === 'skates') return 'Базовые коньки доступны всегда и не расходуются в дуэлях.';
-  return 'Можно выйти на матч без спортивного питания.';
-}
-
 function isAvailableLockerItem(item: InventoryItem): boolean {
   return item.chargesAvailable + item.chargesReserved > 0;
 }
@@ -208,6 +202,17 @@ function formatReservedLabel(count: number): string | null {
         ? 'забронировано'
         : 'забронировано';
   return `${normalized} ${noun}`;
+}
+
+function formatLockerCount(value: number): string {
+  return new Intl.NumberFormat('ru-RU').format(Math.max(0, Math.trunc(value)));
+}
+
+function availableStickShots(inventory: InventoryState | undefined): number {
+  return (inventory?.items.stick ?? []).reduce(
+    (sum, item) => sum + Math.max(0, Math.trunc(item.chargesAvailable)),
+    0,
+  );
 }
 
 function equipmentPointLabel(value: number): string {
@@ -285,10 +290,30 @@ function ProfileLockerIcon({ src }: { src: string }): JSX.Element {
   return <img className="profile-locker-hotspot-icon" src={src} alt="" aria-hidden="true" />;
 }
 
+function EquipmentSelectionRadio({ selected }: { selected: boolean }): JSX.Element {
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        width: 18,
+        height: 18,
+        borderRadius: 999,
+        border: selected ? '5px solid rgba(255,255,255,0.92)' : '2px solid rgba(15,23,42,0.34)',
+        background: selected ? '#1f2a3d' : 'rgba(255,255,255,0.36)',
+        boxShadow: selected
+          ? '0 0 0 1px rgba(15,23,42,0.2)'
+          : 'inset 0 1px 0 rgba(255,255,255,0.62)',
+        justifySelf: 'end',
+      }}
+    />
+  );
+}
+
 function ProfileLockerHotspotButton({
   className,
   label,
   badge,
+  countLabel,
   style,
   onClick,
   children,
@@ -296,6 +321,7 @@ function ProfileLockerHotspotButton({
   className: string;
   label: string;
   badge?: number;
+  countLabel?: string;
   style?: CSSProperties;
   onClick: () => void;
   children: ReactNode;
@@ -313,6 +339,11 @@ function ProfileLockerHotspotButton({
       {badge !== undefined && badge > 0 && (
         <span className="profile-locker-hotspot__badge" aria-hidden="true">
           {badge}
+        </span>
+      )}
+      {countLabel !== undefined && (
+        <span className="profile-locker-hotspot__count" aria-hidden="true">
+          {countLabel}
         </span>
       )}
     </button>
@@ -556,7 +587,7 @@ function EquipmentDetailsModal({
                 : '1px solid rgba(255,255,255,0.76)',
               background: baseSelected ? 'rgba(15, 23, 42, 0.74)' : 'rgba(255,255,255,0.22)',
               display: 'grid',
-              gridTemplateColumns: '54px minmax(0, 1fr)',
+              gridTemplateColumns: '54px minmax(0, 1fr) 22px',
               alignItems: 'center',
               gap: 10,
               textAlign: 'left',
@@ -593,36 +624,8 @@ function EquipmentDetailsModal({
               />
             </span>
             <span style={{ minWidth: 0, display: 'grid', gap: 5 }}>
-              <span
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'minmax(0, 1fr) auto',
-                  alignItems: 'center',
-                  gap: 8,
-                }}
-              >
-                <span style={{ minWidth: 0, fontSize: 15, fontWeight: 950, lineHeight: 1.12 }}>
-                  {baseEquipmentTitle(kind)}
-                </span>
-                <span
-                  className="pill"
-                  style={{
-                    height: 24,
-                    padding: '0 9px',
-                    justifyContent: 'center',
-                    fontSize: 10,
-                    whiteSpace: 'nowrap',
-                    ...(baseSelected
-                      ? {
-                          color: 'rgba(15, 23, 42, 0.9)',
-                          background: 'rgba(255,255,255,0.82)',
-                          border: '1px solid rgba(255,255,255,0.78)',
-                        }
-                      : {}),
-                  }}
-                >
-                  {baseSelected ? 'Активировано' : 'Активировать'}
-                </span>
+              <span style={{ minWidth: 0, fontSize: 15, fontWeight: 950, lineHeight: 1.12 }}>
+                {baseEquipmentTitle(kind)}
               </span>
               <span
                 style={{
@@ -632,9 +635,10 @@ function EquipmentDetailsModal({
                   lineHeight: 1.28,
                 }}
               >
-                {baseEquipmentDescription(kind)}
+                {equipmentEffectLabel(kind, 0)}
               </span>
             </span>
+            <EquipmentSelectionRadio selected={baseSelected} />
           </button>
 
           {items.map((item) => {
@@ -660,7 +664,7 @@ function EquipmentDetailsModal({
                     : '1px solid rgba(255,255,255,0.76)',
                   background: selected ? 'rgba(15, 23, 42, 0.74)' : 'rgba(255,255,255,0.22)',
                   display: 'grid',
-                  gridTemplateColumns: '64px minmax(0, 1fr)',
+                  gridTemplateColumns: '64px minmax(0, 1fr) 22px',
                   alignItems: 'center',
                   gap: 10,
                   textAlign: 'left',
@@ -693,85 +697,32 @@ function EquipmentDetailsModal({
                 <span style={{ minWidth: 0, display: 'grid', gap: 5 }}>
                   <span
                     style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'minmax(0, 1fr) auto',
-                      alignItems: 'start',
-                      gap: 8,
                       minWidth: 0,
+                      color: selected ? '#ffffff' : 'var(--ink)',
+                      fontSize: 15,
+                      fontWeight: 950,
+                      lineHeight: 1.12,
+                      overflowWrap: 'break-word',
                     }}
                   >
-                    <span
-                      style={{
-                        minWidth: 0,
-                        color: selected ? '#ffffff' : 'var(--ink)',
-                        fontSize: 15,
-                        fontWeight: 950,
-                        lineHeight: 1.12,
-                        overflowWrap: 'break-word',
-                      }}
-                    >
-                      {displayTitle}
-                    </span>
-                    <span
-                      className="pill"
-                      style={{
-                        height: 24,
-                        padding: '0 9px',
-                        justifyContent: 'center',
-                        fontSize: 10,
-                        whiteSpace: 'nowrap',
-                        ...(selected
-                          ? {
-                              color: 'rgba(15, 23, 42, 0.9)',
-                              background: 'rgba(255,255,255,0.82)',
-                              border: '1px solid rgba(255,255,255,0.78)',
-                            }
-                          : {}),
-                      }}
-                    >
-                      {selected ? 'Активировано' : 'Активировать'}
-                    </span>
+                    {displayTitle}
                   </span>
                   <span
                     style={{
-                      display: 'block',
+                      display: 'grid',
+                      gap: 2,
+                      color: selected ? 'rgba(255,255,255,0.74)' : 'rgba(15, 23, 42, 0.62)',
                       fontSize: 12,
                       fontWeight: 760,
-                      lineHeight: 1.28,
-                      color: selected ? 'rgba(255,255,255,0.72)' : 'rgba(15, 23, 42, 0.62)',
+                      lineHeight: 1.25,
                     }}
                   >
-                    {item.description}
-                  </span>
-                  <span
-                    style={{
-                      display: 'flex',
-                      gap: 6,
-                      flexWrap: 'wrap',
-                    }}
-                  >
-                    <span
-                      className="pill"
-                      style={{ height: 24, justifyContent: 'center', fontSize: 10.5 }}
-                    >
-                      {formatInventoryStockLabel(item)}
-                    </span>
-                    <span
-                      className="pill"
-                      style={{ height: 24, justifyContent: 'center', fontSize: 10.5 }}
-                    >
-                      {equipmentEffectLabel(kind, item.powerScore)}
-                    </span>
-                    {reservedLabel !== null && (
-                      <span
-                        className="pill"
-                        style={{ height: 24, justifyContent: 'center', fontSize: 10.5 }}
-                      >
-                        {reservedLabel}
-                      </span>
-                    )}
+                    <span>{equipmentEffectLabel(kind, item.powerScore)}</span>
+                    <span>{formatInventoryStockLabel(item)}</span>
+                    {reservedLabel !== null && <span>{reservedLabel}</span>}
                   </span>
                 </span>
+                <EquipmentSelectionRadio selected={selected} />
               </button>
             );
           })}
@@ -906,6 +857,7 @@ export function ProfileScreen(): JSX.Element {
   const unlockedAchievementsCount = achievements.filter(
     (achievement) => achievement.isUnlocked,
   ).length;
+  const stickShotsAvailable = availableStickShots(inventoryQuery.data);
   const unclaimedAchievementsCount = data?.unclaimedAchievementsCount ?? 0;
   const tokenBalance = inventoryQuery.data?.balances.tokens ?? data?.currencyBalance ?? 0;
   const starBalance = inventoryQuery.data?.balances.stars ?? data?.starBalance ?? 0;
@@ -1019,6 +971,7 @@ export function ProfileScreen(): JSX.Element {
           <ProfileLockerHotspotButton
             className="profile-locker-hotspot--stick"
             label={equipmentHotspotLabel('stick', inventoryQuery.data)}
+            countLabel={formatLockerCount(stickShotsAvailable)}
             style={lockerHotspotStyle(LOCKER_HOTSPOTS.stick)}
             onClick={() => setSelectedEquipmentKind('stick')}
           >
@@ -1044,6 +997,7 @@ export function ProfileScreen(): JSX.Element {
             className="profile-locker-hotspot--achievements"
             label={`Достижения: ${unlockedAchievementsCount} получено`}
             badge={unclaimedAchievementsCount}
+            countLabel={formatLockerCount(unlockedAchievementsCount)}
             style={lockerHotspotStyle(LOCKER_HOTSPOTS.achievements)}
             onClick={() => setSelectedLockerModal('achievements')}
           >
