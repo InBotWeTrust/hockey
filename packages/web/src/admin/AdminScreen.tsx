@@ -497,6 +497,15 @@ function fieldNumber(value: number | undefined): string {
   return value === undefined ? '' : String(value);
 }
 
+function puckSpeedDeltaToPoints(value: number | undefined): string {
+  if (value === undefined || !Number.isFinite(value)) return '';
+  return String(Math.round(value * 100));
+}
+
+function puckSpeedPointsToDelta(value: string): number {
+  return Number(value) / 100;
+}
+
 function isHiddenGameSetting(setting: AdminGameSetting): boolean {
   return setting.key.endsWith('.goalie_id');
 }
@@ -4990,8 +4999,8 @@ function InventoryEditor({
     fieldNumber(item?.chargesPerPurchase ?? 1),
   );
   const [duelPeriodCost, setDuelPeriodCost] = useState(fieldNumber(item?.duelPeriodCost ?? 0));
-  const [effectPuckSpeedDelta, setEffectPuckSpeedDelta] = useState(
-    fieldNumber(item?.effectPuckSpeedDelta ?? 0),
+  const [effectPuckSpeedPoints, setEffectPuckSpeedPoints] = useState(
+    puckSpeedDeltaToPoints(item?.effectPuckSpeedDelta ?? 0),
   );
   const [effectShooterFrequencyDelta, setEffectShooterFrequencyDelta] = useState(
     fieldNumber(item?.effectShooterFrequencyDelta ?? 0),
@@ -5018,7 +5027,7 @@ function InventoryEditor({
         currencyPrice: Number(currencyPrice),
         chargesPerPurchase: Number(chargesPerPurchase),
         duelPeriodCost: Number(duelPeriodCost),
-        effectPuckSpeedDelta: Number(effectPuckSpeedDelta),
+        effectPuckSpeedDelta: puckSpeedPointsToDelta(effectPuckSpeedPoints),
         effectShooterFrequencyDelta: Number(effectShooterFrequencyDelta),
         effectGoalieFrequencyDelta: Number(effectGoalieFrequencyDelta),
         effectGoalFrequencyDelta: Number(effectGoalFrequencyDelta),
@@ -5038,7 +5047,7 @@ function InventoryEditor({
     currencyPrice,
     chargesPerPurchase,
     duelPeriodCost,
-    effectPuckSpeedDelta,
+    effectPuckSpeedPoints,
     effectShooterFrequencyDelta,
     effectGoalieFrequencyDelta,
     effectGoalFrequencyDelta,
@@ -5051,130 +5060,178 @@ function InventoryEditor({
     Number(currencyPrice) >= 0 &&
     Number(chargesPerPurchase) >= 0 &&
     Number(duelPeriodCost) >= 0 &&
-    Number(effectShotZoneMultiplier) >= 1;
+    Number(effectShotZoneMultiplier) >= 1 &&
+    Number(effectPuckSpeedPoints) >= -500 &&
+    Number(effectPuckSpeedPoints) <= 500;
+  const isStickItem = itemKind === 'stick';
 
-  return (
-    <section className="glass" style={{ borderRadius: 20, padding: 14, display: 'grid', gap: 10 }}>
-      <div style={{ color: 'var(--ink)', fontSize: 15, fontWeight: 950 }}>
-        {item === null ? 'Новый предмет' : 'Редактирование предмета'}
-      </div>
-      <AdminField label="Фото URL">
-        <input value={photoUrl} onChange={(event) => setPhotoUrl(event.target.value)} />
-      </AdminField>
-      <AdminField label="Название">
-        <input value={title} onChange={(event) => setTitle(event.target.value)} />
-      </AdminField>
-      <AdminField label="Описание">
-        <input value={description} onChange={(event) => setDescription(event.target.value)} />
-      </AdminField>
-      <AdminField label="Цена">
-        <input
-          type="number"
-          value={priceRub}
-          onChange={(event) => setPriceRub(event.target.value)}
-        />
-      </AdminField>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
-        <AdminField label="Тип">
-          <GlassSelect
-            value={itemKind}
-            options={inventoryItemKindOptions}
-            onChange={setItemKind}
-            ariaLabel="Тип предмета"
-          />
-        </AdminField>
-        <AdminField label="Цена в валюте">
-          <input
-            type="number"
-            value={currencyPrice}
-            onChange={(event) => setCurrencyPrice(event.target.value)}
-          />
-        </AdminField>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
-        <AdminField label="Зарядов при покупке">
-          <input
-            type="number"
-            value={chargesPerPurchase}
-            onChange={(event) => setChargesPerPurchase(event.target.value)}
-          />
-        </AdminField>
-        <AdminField label="Расход за период">
-          <input
-            type="number"
-            value={duelPeriodCost}
-            onChange={(event) => setDuelPeriodCost(event.target.value)}
-          />
-        </AdminField>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
-        <AdminField label="Шайба Δ">
-          <input
-            type="number"
-            step="0.01"
-            value={effectPuckSpeedDelta}
-            onChange={(event) => setEffectPuckSpeedDelta(event.target.value)}
-          />
-        </AdminField>
-        <AdminField label="Игрок Δ">
-          <input
-            type="number"
-            step="0.01"
-            value={effectShooterFrequencyDelta}
-            onChange={(event) => setEffectShooterFrequencyDelta(event.target.value)}
-          />
-        </AdminField>
-        <AdminField label="Вратарь Δ">
-          <input
-            type="number"
-            step="0.01"
-            value={effectGoalieFrequencyDelta}
-            onChange={(event) => setEffectGoalieFrequencyDelta(event.target.value)}
-          />
-        </AdminField>
-        <AdminField label="Ворота Δ">
-          <input
-            type="number"
-            step="0.01"
-            value={effectGoalFrequencyDelta}
-            onChange={(event) => setEffectGoalFrequencyDelta(event.target.value)}
-          />
-        </AdminField>
-      </div>
-      <AdminField label="Множитель зоны броска">
-        <input
-          type="number"
-          step="0.01"
-          min="1"
-          value={effectShotZoneMultiplier}
-          onChange={(event) => setEffectShotZoneMultiplier(event.target.value)}
-        />
-      </AdminField>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        <button
-          type="button"
-          className="btn btn--ghost"
-          onClick={onCancel}
-          style={{ padding: '10px', fontSize: 12, letterSpacing: 0 }}
-        >
-          Отмена
-        </button>
-        <button
-          type="button"
-          className="btn btn--cta"
-          onClick={() => mutation.mutate()}
-          disabled={mutation.isPending || !canSave}
-          style={{ padding: '10px', fontSize: 12, letterSpacing: 0 }}
-        >
-          Сохранить
-        </button>
-      </div>
-      {mutation.isError && (
-        <div role="alert" style={{ color: 'var(--red-deep)', fontSize: 12 }}>
-          {mutation.error instanceof Error ? mutation.error.message : 'Ошибка сохранения'}
+  return createPortal(
+    <div
+      className="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-label={item === null ? 'Новый предмет' : 'Редактирование предмета'}
+      style={{
+        zIndex: 1000,
+        padding: 'calc(12px + var(--app-safe-top)) 12px calc(12px + var(--app-safe-bottom))',
+      }}
+    >
+      <section
+        className="modal-card"
+        style={{
+          width: 'min(520px, calc(100vw - 24px))',
+          maxHeight: '100%',
+          overflowY: 'auto',
+          display: 'grid',
+          gap: 10,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="modal-title">
+              {item === null ? 'Новый предмет' : 'Редактирование предмета'}
+            </div>
+            <div className="modal-copy">
+              Скорость шайбы задаётся в пунктах: 10 = +0.10 к скорости полёта.
+            </div>
+          </div>
+          <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onCancel}>
+            <X size={15} />
+          </button>
         </div>
-      )}
-    </section>
+        <AdminField label="Фото URL">
+          <input value={photoUrl} onChange={(event) => setPhotoUrl(event.target.value)} />
+        </AdminField>
+        <AdminField label="Название">
+          <input value={title} onChange={(event) => setTitle(event.target.value)} />
+        </AdminField>
+        <AdminField label="Описание">
+          <input value={description} onChange={(event) => setDescription(event.target.value)} />
+        </AdminField>
+        <AdminField label="Цена">
+          <input
+            type="number"
+            value={priceRub}
+            onChange={(event) => setPriceRub(event.target.value)}
+          />
+        </AdminField>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+          <AdminField label="Тип">
+            <GlassSelect
+              value={itemKind}
+              options={inventoryItemKindOptions}
+              onChange={setItemKind}
+              ariaLabel="Тип предмета"
+            />
+          </AdminField>
+          <AdminField label="Цена в валюте">
+            <input
+              type="number"
+              value={currencyPrice}
+              onChange={(event) => setCurrencyPrice(event.target.value)}
+            />
+          </AdminField>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+          <AdminField label={isStickItem ? 'Бросков при покупке' : 'Зарядов при покупке'}>
+            <input
+              type="number"
+              value={chargesPerPurchase}
+              onChange={(event) => setChargesPerPurchase(event.target.value)}
+            />
+          </AdminField>
+          <AdminField label="Расход за период">
+            <div style={{ display: 'grid', gap: 5 }}>
+              <input
+                type="number"
+                value={duelPeriodCost}
+                onChange={(event) => setDuelPeriodCost(event.target.value)}
+              />
+              {isStickItem && (
+                <span style={{ color: 'var(--muted)', fontSize: 10, fontWeight: 760 }}>
+                  Для клюшек оставь 0: списание идёт 1 за бросок.
+                </span>
+              )}
+            </div>
+          </AdminField>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+          <AdminField label="Шайба +пункты">
+            <div style={{ display: 'grid', gap: 5 }}>
+              <input
+                type="number"
+                step="1"
+                min="-500"
+                max="500"
+                value={effectPuckSpeedPoints}
+                onChange={(event) => setEffectPuckSpeedPoints(event.target.value)}
+              />
+              <span style={{ color: 'var(--muted)', fontSize: 10, fontWeight: 760 }}>
+                Например: 10 пунктов сохранится как +0.10.
+              </span>
+            </div>
+          </AdminField>
+          <AdminField label="Игрок Δ">
+            <input
+              type="number"
+              step="0.01"
+              value={effectShooterFrequencyDelta}
+              onChange={(event) => setEffectShooterFrequencyDelta(event.target.value)}
+            />
+          </AdminField>
+          <AdminField label="Вратарь Δ">
+            <input
+              type="number"
+              step="0.01"
+              value={effectGoalieFrequencyDelta}
+              onChange={(event) => setEffectGoalieFrequencyDelta(event.target.value)}
+            />
+          </AdminField>
+          <AdminField label="Ворота Δ">
+            <input
+              type="number"
+              step="0.01"
+              value={effectGoalFrequencyDelta}
+              onChange={(event) => setEffectGoalFrequencyDelta(event.target.value)}
+            />
+          </AdminField>
+        </div>
+        <AdminField label="Множитель зоны броска">
+          <input
+            type="number"
+            step="0.01"
+            min="1"
+            value={effectShotZoneMultiplier}
+            onChange={(event) => setEffectShotZoneMultiplier(event.target.value)}
+          />
+        </AdminField>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={onCancel}
+            style={{ padding: '10px', fontSize: 12, letterSpacing: 0 }}
+          >
+            Отмена
+          </button>
+          <button
+            type="button"
+            className="btn btn--cta"
+            onClick={() => mutation.mutate()}
+            disabled={mutation.isPending || !canSave}
+            style={{ padding: '10px', fontSize: 12, letterSpacing: 0 }}
+          >
+            Сохранить
+          </button>
+        </div>
+        {mutation.isError && (
+          <div role="alert" style={{ color: 'var(--red-deep)', fontSize: 12 }}>
+            {mutation.error instanceof Error ? mutation.error.message : 'Ошибка сохранения'}
+          </div>
+        )}
+      </section>
+    </div>,
+    document.body,
   );
 }
 
