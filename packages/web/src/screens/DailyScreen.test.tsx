@@ -597,6 +597,8 @@ describe('DailyScreen', () => {
 
     expect(await screen.findByRole('button', { name: 'К режимам' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'НАЧАТЬ' })).toBeInTheDocument();
+    expect(document.querySelector('img[src="/sprites/wide-tableau-led-dark-v2.webp"]')).toBeTruthy();
+    expect(document.querySelector('img[src="/sprites/street-tableau.webp"]')).toBeFalsy();
     const calls = fetchMock.mock.calls.map((c) => String(c[0]));
     expect(calls.some((u) => u.includes('/duel/daily/period/start'))).toBe(false);
     expect(screen.queryByTestId('arena-rink-backdrop')).not.toBeInTheDocument();

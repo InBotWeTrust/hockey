@@ -278,6 +278,7 @@ const LONG_COURT_GAME_LAYER_STYLE: CSSProperties = {
   height: '74.2%',
   bottom: 'auto',
 };
+const GAME_LED_TABLEAU_IMAGE = '/sprites/wide-tableau-led-dark-v2.webp';
 const TRAINING_LED_TABLEAU_IMAGE = '/sprites/street-tableau.webp';
 const DAILY_LONG_COURT_BACKGROUND = '/sprites/daily-long-court-people.webp';
 const ARENA_ICE_COURT_BACKGROUND = '/sprites/arena-ice-court-v2.webp';
@@ -7307,6 +7308,7 @@ interface PlayViewProps<TState> {
   applyResolvedState?: ((next: TState) => void) | undefined;
   rinkLayer?: ReactNode;
   longCourtBackground?: string | undefined;
+  longCourtTableau?: string | undefined;
   rinkAspectRatio?: string | undefined;
   rinkBorderRadius?: number | string | undefined;
   rinkBorder?: string | undefined;
@@ -7362,6 +7364,18 @@ const PERSPECTIVE_PLAYER_OPTIONS: PlayerOptions = {
   visualYScale: TRAINING_NEW_COURT_VISUAL_Y_SCALE,
   visualYOffset: TRAINING_NEW_COURT_VISUAL_Y_OFFSET,
   shadow: true,
+};
+
+const TRAINING_STREET_PLAYER_OPTIONS: PlayerOptions = {
+  ...PERSPECTIVE_PLAYER_OPTIONS,
+  spriteUrls: {
+    left: '/sprites/street-player-left.webp',
+    right: '/sprites/street-player-right.webp',
+  },
+  shotSpriteUrls: {
+    left: '/sprites/street-player-left-shoot.webp',
+    right: '/sprites/street-player-right-shoot.webp',
+  },
 };
 
 const PERSPECTIVE_GOAL_OPTIONS: GoalOptions = {
@@ -7875,10 +7889,12 @@ function TrainingPerspectiveRink({
   design = 'standard',
   cubeHud,
   longBackground = TRAINING_LONG_COURT_BACKGROUND,
+  tableauImage = GAME_LED_TABLEAU_IMAGE,
 }: {
   design?: TrainingCourtDesign | undefined;
   cubeHud?: ReactNode;
   longBackground?: string | undefined;
+  tableauImage?: string | undefined;
 }): JSX.Element {
   const isLong = design === 'long';
   return (
@@ -7921,7 +7937,7 @@ function TrainingPerspectiveRink({
           }}
         >
           <img
-            src={TRAINING_LED_TABLEAU_IMAGE}
+            src={tableauImage}
             alt=""
             aria-hidden="true"
             style={{ display: 'block', width: '100%', height: 'auto' }}
@@ -8295,6 +8311,8 @@ function TrainingPlayView({
         submitShot={submitTrainingShotAndRefreshDaily}
         applyState={applyState}
         hitboxesVisible={hitboxesVisible}
+        longCourtTableau={TRAINING_LED_TABLEAU_IMAGE}
+        playerOptions={TRAINING_STREET_PLAYER_OPTIONS}
         overlayControls={
           canShowTrainingDebugControls ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -8597,6 +8615,7 @@ export function PlayView<TState>({
   applyResolvedState,
   rinkLayer,
   longCourtBackground,
+  longCourtTableau = GAME_LED_TABLEAU_IMAGE,
   rinkAspectRatio = LONG_COURT_RINK_ASPECT_RATIO,
   rinkBorderRadius = 36,
   rinkBorder = '3px solid #1e3a5f',
@@ -9572,6 +9591,7 @@ export function PlayView<TState>({
     <TrainingPerspectiveRink
       design="long"
       longBackground={longCourtBackground}
+      tableauImage={longCourtTableau}
       cubeHud={
         <TrainingCubeScoreboard
           period={periodNumber}
