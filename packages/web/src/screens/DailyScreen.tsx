@@ -7401,6 +7401,12 @@ const PERSPECTIVE_GOALIE_OPTIONS: GoalieOptions = {
   shadow: true,
 };
 
+const TRAINING_AMATEUR_GOALIE_OPTIONS: GoalieOptions = {
+  ...PERSPECTIVE_GOALIE_OPTIONS,
+  idleSpriteUrl: '/sprites/training-goalie-amateur.webp',
+  saveSpriteUrl: '/sprites/training-goalie-amateur-save.webp',
+};
+
 const PERSPECTIVE_PUCK_OPTIONS: PuckOptions = {
   radiusScaleX: 1.16,
   radiusScaleY: 0.82,
@@ -8313,6 +8319,7 @@ function TrainingPlayView({
         hitboxesVisible={hitboxesVisible}
         longCourtTableau={TRAINING_LED_TABLEAU_IMAGE}
         playerOptions={TRAINING_STREET_PLAYER_OPTIONS}
+        goalieOptions={TRAINING_AMATEUR_GOALIE_OPTIONS}
         overlayControls={
           canShowTrainingDebugControls ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
