@@ -263,15 +263,6 @@ describe('ProfileScreen', () => {
     expect(
       document.querySelector('img[src="/inventory/profile-hockey-stick.webp"]'),
     ).toBeInTheDocument();
-    expect(
-      document.querySelector('img[src="/inventory/profile-stick-base-rack.webp"]'),
-    ).not.toBeInTheDocument();
-    expect(
-      document.querySelector('img[src="/inventory/profile-stick-ultimate-selected.webp"]'),
-    ).not.toBeInTheDocument();
-    expect(
-      document.querySelector('img[src="/inventory/profile-stick-ultimate-rack.webp"]'),
-    ).not.toBeInTheDocument();
     expect(screen.queryByText('Первый гол всегда самый шумный.')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Шайба.*статистика/i }));
@@ -371,70 +362,6 @@ describe('ProfileScreen', () => {
       document.querySelector('img[src="/inventory/profile-rink-photo-frame.webp"]'),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Достижения: 0 получено/i })).toBeInTheDocument();
-  });
-
-  it('keeps the base stick in front and places owned ultimate stick in the rack', async () => {
-    mockProfileFetch(telegramProfile, {
-      ...emptyInventoryState,
-      items: {
-        ...emptyInventoryState.items,
-        stick: [ultimateOneStick],
-      },
-      equipped: {
-        ...emptyInventoryState.equipped,
-        stickItemId: null,
-      },
-    });
-
-    renderProfile();
-
-    expect(await screen.findByLabelText('Раздевалка игрока')).toBeInTheDocument();
-    await waitFor(() =>
-      expect(
-        document.querySelector('img[src="/inventory/profile-stick-ultimate-rack.webp"]'),
-      ).toBeInTheDocument(),
-    );
-    expect(
-      document.querySelector('img[src="/inventory/profile-hockey-stick.webp"]'),
-    ).toBeInTheDocument();
-    expect(
-      document.querySelector('img[src="/inventory/profile-stick-base-rack.webp"]'),
-    ).not.toBeInTheDocument();
-    expect(
-      document.querySelector('img[src="/inventory/profile-stick-ultimate-selected.webp"]'),
-    ).not.toBeInTheDocument();
-  });
-
-  it('shows equipped ultimate stick in front and moves the base stick into the rack', async () => {
-    mockProfileFetch(telegramProfile, {
-      ...emptyInventoryState,
-      items: {
-        ...emptyInventoryState.items,
-        stick: [ultimateOneStick],
-      },
-      equipped: {
-        ...emptyInventoryState.equipped,
-        stickItemId: 'stick-ultimate-one',
-      },
-    });
-
-    renderProfile();
-
-    expect(await screen.findByLabelText('Раздевалка игрока')).toBeInTheDocument();
-    await waitFor(() =>
-      expect(
-        document.querySelector('img[src="/inventory/profile-stick-ultimate-selected.webp"]'),
-      ).toBeInTheDocument(),
-    );
-    expect(
-      document.querySelector('img[src="/inventory/profile-stick-base-rack.webp"]'),
-    ).toBeInTheDocument();
-    expect(
-      document.querySelector('img[src="/inventory/profile-hockey-stick.webp"]'),
-    ).not.toBeInTheDocument();
-    expect(
-      document.querySelector('img[src="/inventory/profile-stick-ultimate-rack.webp"]'),
-    ).not.toBeInTheDocument();
   });
 
   it('opens settings from the header button', async () => {

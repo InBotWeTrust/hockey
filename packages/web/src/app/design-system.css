@@ -844,12 +844,6 @@
   filter: drop-shadow(0 14px 18px rgba(3, 7, 18, 0.42));
 }
 
-.profile-locker-prop--stick-rack {
-  z-index: 1;
-  opacity: 0.96;
-  filter: drop-shadow(0 10px 14px rgba(3, 7, 18, 0.38));
-}
-
 .profile-locker-prop--skates {
   z-index: 2;
   filter: drop-shadow(0 12px 14px rgba(3, 7, 18, 0.42));

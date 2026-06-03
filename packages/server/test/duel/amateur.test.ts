@@ -262,6 +262,16 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(Date.parse(String(inviteMessage.rows[0]?.metadata.endsAt))).toBeLessThan(
       Date.parse('2100-01-01T00:00:00.000Z'),
     );
+    const unreadInvite = await pool.query<{ cnt: string }>(
+      `select count(m.id)::int as cnt
+         from messages m
+         left join chat_members cm on cm.chat_id = m.chat_id and cm.user_id = $1
+        where m.metadata->>'type' = 'amateur_duel_invite'
+          and m.sender_id != $1
+          and m.created_at > coalesce(cm.last_read_at, '1970-01-01'::timestamptz)`,
+      [userB],
+    );
+    expect(Number(unreadInvite.rows[0]?.cnt)).toBe(0);
 
     const duplicate = await challenge(templateId);
     expect(duplicate.statusCode).toBe(409);
@@ -1108,11 +1118,11 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(Number(stars.rows[0]?.xp)).toBe(7);
   });
 
-  it('consumes one stick shot and applies the stick speed bonus on accepted duel shot', async () => {
+  it('normalizes legacy stick snapshots and applies the stick speed bonus on duel shot', async () => {
     const stickId = await createInventoryItem('stick', 'Ультимейт Ван test');
     await pool.query(
       `update admin_inventory_items
-          set resource_unit = 'shot',
+          set resource_unit = 'period',
               charges_per_purchase = 2,
               duel_period_cost = 0,
               effect_puck_speed_points = 0,

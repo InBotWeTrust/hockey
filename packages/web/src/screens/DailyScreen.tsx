@@ -875,6 +875,7 @@ function GameHub({
   const [activeCubeEntryId, setActiveCubeEntryId] = useState<string | null>(
     readArenaSelectedEntryId,
   );
+  const prioritizedDuelEntryIdsRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (
@@ -1174,6 +1175,8 @@ function GameHub({
     duelArenaEntries.length > 0
       ? [...duelArenaEntries, dailyArenaEntry, trainingArenaEntry]
       : [dailyArenaEntry, trainingArenaEntry];
+  const duelArenaEntryIds = duelArenaEntries.map((entry) => entry.id).join('|');
+  const firstDuelArenaEntryId = duelArenaEntries[0]?.id ?? null;
 
   const arenaEntryIds = arenaEntries.map((entry) => entry.id).join('|');
   const activeCubeIndex = Math.max(
@@ -1188,6 +1191,18 @@ function GameHub({
     setActiveCubeEntryId(null);
     saveArenaSelectedEntryId(null);
   }, [activeCubeEntryId, activeCubeEntryExists, arenaEntryIds]);
+
+  useEffect(() => {
+    if (firstDuelArenaEntryId === null) {
+      prioritizedDuelEntryIdsRef.current = null;
+      return;
+    }
+    if (prioritizedDuelEntryIdsRef.current === duelArenaEntryIds) return;
+    prioritizedDuelEntryIdsRef.current = duelArenaEntryIds;
+    if (activeCubeEntryId === firstDuelArenaEntryId) return;
+    setActiveCubeEntryId(firstDuelArenaEntryId);
+    saveArenaSelectedEntryId(firstDuelArenaEntryId);
+  }, [activeCubeEntryId, duelArenaEntryIds, firstDuelArenaEntryId]);
 
   const handleArenaActiveIndexChange = useCallback(
     (index: number): void => {
@@ -7401,11 +7416,14 @@ function duelConditionLoadout(match: AmateurDuelMatch): DuelInventoryLoadoutSnap
     item: typeof stick,
     resourceAvailable: number,
   ): DuelInventoryLoadoutSnapshot['stick'] => {
-    if (!item || item.resourceUnit === undefined || item.resourceUnit === 'period') return null;
+    if (!item || item.resourceUnit === undefined) return null;
+    const resourceUnit =
+      item.kind === 'stick' && item.resourceUnit === 'period' ? 'shot' : item.resourceUnit;
+    if (resourceUnit === 'period') return null;
     return {
       id: item.id,
       title: item.title,
-      resourceUnit: item.resourceUnit,
+      resourceUnit,
       resourceAvailable: Math.max(0, resourceAvailable),
       effectPuckSpeedPoints: item.effectPuckSpeedPoints ?? 0,
       timing: item.timing ?? DEFAULT_DUEL_INVENTORY_TIMING,

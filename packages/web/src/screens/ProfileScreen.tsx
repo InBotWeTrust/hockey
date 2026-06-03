@@ -45,19 +45,11 @@ const LOCKER_HOTSPOTS = {
 const LOCKER_PROPS = {
   jersey: { x: 232, y: 430, width: 388 },
   stick: { x: 112, y: 565, width: 420 },
-  stickRack: { x: 22, y: 510, width: 205 },
   skates: { x: 560, y: 1302, width: 270 },
   achievementMedals: { x: 676, y: 472, width: 154 },
   rinkPhoto: { x: 686, y: 825, width: 150 },
   nutritionCans: { x: 705, y: 1010, width: 115 },
 } satisfies Record<string, { x: number; y: number; width: number }>;
-
-const LOCKER_STICK_ARTWORK = {
-  baseSelected: '/inventory/profile-hockey-stick.webp',
-  baseRack: '/inventory/profile-stick-base-rack.webp',
-  ultimateSelected: '/inventory/profile-stick-ultimate-selected.webp',
-  ultimateRack: '/inventory/profile-stick-ultimate-rack.webp',
-} as const;
 
 function lockerHotspotStyle(position: { x: number; y: number }): CSSProperties {
   return {
@@ -201,33 +193,6 @@ function isAvailableLockerItem(item: InventoryItem): boolean {
 
 function hasOwnedNutrition(inventory: InventoryState | undefined): boolean {
   return (inventory?.items.nutrition ?? []).some(isAvailableLockerItem);
-}
-
-function isUltimateStick(item: InventoryItem): boolean {
-  return item.kind === 'stick' && item.title.trim().toLowerCase().startsWith('ультимейт ван');
-}
-
-function lockerStickArtwork(inventory: InventoryState | undefined): {
-  selectedSrc: string;
-  rackSrc: string | null;
-} {
-  const ownedUltimateStick = (inventory?.items.stick ?? []).find(
-    (item) => isAvailableLockerItem(item) && isUltimateStick(item),
-  );
-  const activeStick = equippedItem(inventory, 'stick');
-  const selectedIsUltimate = activeStick !== null && isUltimateStick(activeStick);
-
-  return {
-    selectedSrc: selectedIsUltimate
-      ? LOCKER_STICK_ARTWORK.ultimateSelected
-      : LOCKER_STICK_ARTWORK.baseSelected,
-    rackSrc:
-      ownedUltimateStick === undefined
-        ? null
-        : selectedIsUltimate
-          ? LOCKER_STICK_ARTWORK.baseRack
-          : LOCKER_STICK_ARTWORK.ultimateRack,
-  };
 }
 
 function formatReservedLabel(count: number): string | null {
@@ -947,7 +912,6 @@ export function ProfileScreen(): JSX.Element {
   const experienceBalance =
     inventoryQuery.data?.balances.experience ?? data?.experienceBalance ?? 0;
   const showNutritionCans = hasOwnedNutrition(inventoryQuery.data);
-  const stickArtwork = lockerStickArtwork(inventoryQuery.data);
   const jerseyArtworkSrc =
     data?.competitionLevel === 'beginner'
       ? '/inventory/profile-hoodie-training.webp'
@@ -1018,17 +982,9 @@ export function ProfileScreen(): JSX.Element {
             alt=""
             style={lockerPropStyle(LOCKER_PROPS.jersey)}
           />
-          {stickArtwork.rackSrc !== null && (
-            <img
-              className="profile-locker-prop profile-locker-prop--stick-rack"
-              src={stickArtwork.rackSrc}
-              alt=""
-              style={lockerPropStyle(LOCKER_PROPS.stickRack)}
-            />
-          )}
           <img
             className="profile-locker-prop profile-locker-prop--stick"
-            src={stickArtwork.selectedSrc}
+            src="/inventory/profile-hockey-stick.webp"
             alt=""
             style={lockerPropStyle(LOCKER_PROPS.stick)}
           />

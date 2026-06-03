@@ -660,8 +660,11 @@ function loadoutFromUnknown(value: unknown, powerCap = 0): LoadoutSnapshot {
   return {
     items: parsed.data.items.map((item) => {
       const effects = effectsFromUnknown(item.effects);
+      const resourceUnit =
+        item.kind === 'stick' && item.resourceUnit === 'period' ? 'shot' : item.resourceUnit;
       return {
         ...item,
+        resourceUnit,
         effectPuckSpeedPoints: puckSpeedPointsFromValues(
           item.effectPuckSpeedPoints,
           effects.puckSpeedDelta,
@@ -3011,6 +3014,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
       opponentUserId,
       inviteMessage.content,
       inviteMessage.metadata,
+      { markReadForTarget: true, silent: true },
     ).catch((err) => app.log.warn({ err, matchId: result.matchId }, 'duel DM notification failed'));
     void enqueueDuelPush(app.pg, {
       userId: opponentUserId,

@@ -360,7 +360,8 @@ describe('DailyScreen', () => {
     expect(screen.queryByText('Скоро')).not.toBeInTheDocument();
   });
 
-  it('prioritizes active duels before daily and training on the arena', async () => {
+  it('prioritizes active duels before saved daily and training cards on the arena', async () => {
+    localStorage.setItem('hockey.arenaSelectedEntryId', 'training');
     const activeMatch: AmateurDuelMatchState = {
       ...settledDuelMatch,
       status: 'active',
