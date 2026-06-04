@@ -692,6 +692,51 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       [userA],
     );
     expect(ledger.rows).toEqual([{ available_delta: -40, balance_after: 60 }]);
+
+    await pool.query(
+      `insert into currency_ledger
+         (user_id, reason, available_delta, reserved_delta, balance_after, reserved_after, metadata)
+       values ($1, 'weekly_challenge_reward', 25, 0, 85, 0, $2)`,
+      [userA, JSON.stringify({ stars: 2, experience: 10, title: 'Недельная награда' })],
+    );
+    await pool.query(
+      `insert into payments (user_id, title, amount_rub, status, paid_at)
+       values ($1, 'Игровой запас', 299, 'paid', now())`,
+      [userA],
+    );
+
+    const state = await app.inject({
+      method: 'GET',
+      url: '/inventory/me',
+      headers: auth(tokenA),
+    });
+    expect(state.statusCode).toBe(200);
+    expect(state.json().transactionHistory).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: 'Bronze shop stick',
+          category: 'inventory',
+          flow: 'debit',
+          amounts: [{ currency: 'coin', value: -40 }],
+        }),
+        expect.objectContaining({
+          title: 'Недельная награда',
+          category: 'reward',
+          flow: 'credit',
+          amounts: [
+            { currency: 'coin', value: 25 },
+            { currency: 'star', value: 2 },
+            { currency: 'experience', value: 10 },
+          ],
+        }),
+        expect.objectContaining({
+          title: 'Игровой запас',
+          category: 'bank',
+          flow: 'debit',
+          amounts: [{ currency: 'ruble', value: -299 }],
+        }),
+      ]),
+    );
   });
 
   it('rejects inventory purchase when currency balance is too low', async () => {
@@ -1400,9 +1445,8 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     });
     expect(switched.statusCode).toBe(200);
     expect(
-      switched
-        .json()
-        .match.me.loadout.items.find((item: { kind: string }) => item.kind === 'stick')?.id,
+      switched.json().match.me.loadout.items.find((item: { kind: string }) => item.kind === 'stick')
+        ?.id,
     ).toBe(secondStickId);
 
     const second = await app.inject({
@@ -1441,11 +1485,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
         id: row.inventory_item_id,
         charges: row.charges_available,
       })),
-    ).toEqual(
-      [firstStickId, secondStickId]
-        .sort()
-        .map((id) => ({ id, charges: 0 })),
-    );
+    ).toEqual([firstStickId, secondStickId].sort().map((id) => ({ id, charges: 0 })));
   });
 
   it('rejects duel shots during deterministic exhausted stop', async () => {

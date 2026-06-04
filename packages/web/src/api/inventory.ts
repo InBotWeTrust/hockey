@@ -41,6 +41,23 @@ export interface BankPurchase {
   paidAt: string | null;
 }
 
+export type InventoryTransactionCurrency = 'coin' | 'star' | 'experience' | 'ruble';
+
+export interface InventoryTransactionAmount {
+  currency: InventoryTransactionCurrency;
+  value: number;
+}
+
+export interface InventoryTransaction {
+  id: string;
+  title: string;
+  subtitle: string;
+  category: 'inventory' | 'bank' | 'reward' | 'duel' | 'adjustment' | 'other';
+  flow: 'credit' | 'debit' | 'neutral';
+  amounts: InventoryTransactionAmount[];
+  createdAt: string;
+}
+
 export interface InventoryState {
   balances: {
     tokens: number;
@@ -55,6 +72,7 @@ export interface InventoryState {
   items: Record<InventoryEquipmentKind, InventoryItem[]>;
   purchaseHistory?: InventoryPurchase[];
   bankHistory?: BankPurchase[];
+  transactionHistory?: InventoryTransaction[];
 }
 
 export interface EquipmentPatch {

@@ -92,6 +92,38 @@ const inventoryWithItems: InventoryState = {
       paidAt: '2026-05-27T10:11:00.000Z',
     },
   ],
+  transactionHistory: [
+    {
+      id: 'reward-1',
+      title: 'Недельная награда',
+      subtitle: '27.05, 10:20 · награда',
+      category: 'reward',
+      flow: 'credit',
+      amounts: [
+        { currency: 'coin', value: 100 },
+        { currency: 'star', value: 2 },
+      ],
+      createdAt: '2026-05-27T10:20:00.000Z',
+    },
+    {
+      id: 'inventory-ledger-1',
+      title: 'Бронзовая клюшка',
+      subtitle: '27.05, 10:15 · товар · 5 бросков',
+      category: 'inventory',
+      flow: 'debit',
+      amounts: [{ currency: 'coin', value: -120 }],
+      createdAt: '2026-05-27T10:15:00.000Z',
+    },
+    {
+      id: 'bank-payment-1',
+      title: 'Игровой запас',
+      subtitle: '27.05, 10:10 · банк · Оплачено',
+      category: 'bank',
+      flow: 'debit',
+      amounts: [{ currency: 'ruble', value: -299 }],
+      createdAt: '2026-05-27T10:10:00.000Z',
+    },
+  ],
 };
 
 function mockInventoryFetch(inventory: InventoryState, purchasedInventory = inventory): void {
@@ -200,6 +232,16 @@ describe('InventoryScreen', () => {
     );
   });
 
+  it('reserves two product description lines in shop cards', async () => {
+    mockInventoryFetch(inventoryWithItems);
+
+    renderInventory();
+
+    expect(await screen.findByText('5 бросков')).toHaveStyle({ minHeight: '2.4em' });
+    expect(screen.getByText('5 прокатов')).toHaveStyle({ minHeight: '2.4em' });
+    expect(screen.getByText('5 минут энергии')).toHaveStyle({ minHeight: '2.4em' });
+  });
+
   it('shows bank packages on the bank tab', async () => {
     mockInventoryFetch(inventoryWithItems);
 
@@ -215,19 +257,35 @@ describe('InventoryScreen', () => {
     expect(screen.getByText('3 000')).toBeInTheDocument();
   });
 
-  it('shows inventory and bank purchases on the history tab', async () => {
+  it('shows transaction history with currency icons and filters', async () => {
     mockInventoryFetch(inventoryWithItems);
 
     renderInventory();
 
     fireEvent.click(await screen.findByRole('tab', { name: 'История' }));
 
+    expect(screen.getByRole('button', { name: 'Все' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Начисления' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Списания' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Рубли' })).toBeInTheDocument();
+    expect(screen.getByText('Недельная награда')).toBeInTheDocument();
     expect(screen.getByText('Бронзовая клюшка')).toBeInTheDocument();
-    expect(screen.getByText('-120')).toBeInTheDocument();
     expect(screen.getByText('Игровой запас')).toBeInTheDocument();
-    expect(screen.getByText('299 ₽')).toBeInTheDocument();
+    expect(screen.getByLabelText('Начисление монет: 100')).toBeInTheDocument();
+    expect(screen.getByLabelText('Начисление звёзд: 2')).toBeInTheDocument();
+    expect(screen.getByLabelText('Списание монет: 120')).toBeInTheDocument();
+    expect(screen.getByLabelText('Списание рублей: 299 ₽')).toBeInTheDocument();
     expect(screen.getByText(/банк · Оплачено/)).toBeInTheDocument();
     expect(screen.getByText(/товар · 5 бросков/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Начисления' }));
+    expect(screen.getByText('Недельная награда')).toBeInTheDocument();
+    expect(screen.queryByText('Бронзовая клюшка')).not.toBeInTheDocument();
+    expect(screen.queryByText('Игровой запас')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Рубли' }));
+    expect(screen.getByText('Игровой запас')).toBeInTheDocument();
+    expect(screen.queryByText('Недельная награда')).not.toBeInTheDocument();
   });
 
   it('shows an empty shop state when no products exist', async () => {

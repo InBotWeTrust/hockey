@@ -45,6 +45,7 @@ interface InventoryState {
   items: Record<EquipmentKind, InventoryItemDto[]>;
   purchaseHistory: InventoryPurchaseDto[];
   bankHistory: BankPurchaseDto[];
+  transactionHistory: InventoryTransactionDto[];
 }
 
 interface InventoryItemDto {
@@ -94,6 +95,25 @@ interface BankPurchaseDto {
   paidAt: string | null;
 }
 
+type TransactionCurrency = 'coin' | 'star' | 'experience' | 'ruble';
+type TransactionCategory = 'inventory' | 'bank' | 'reward' | 'duel' | 'adjustment' | 'other';
+type TransactionFlow = 'credit' | 'debit' | 'neutral';
+
+interface InventoryTransactionAmountDto {
+  currency: TransactionCurrency;
+  value: number;
+}
+
+interface InventoryTransactionDto {
+  id: string;
+  title: string;
+  subtitle: string;
+  category: TransactionCategory;
+  flow: TransactionFlow;
+  amounts: InventoryTransactionAmountDto[];
+  createdAt: string;
+}
+
 const equipmentPatchSchema = z
   .object({
     stickItemId: z.string().uuid().nullable().optional(),
@@ -133,6 +153,107 @@ function resourceLabel(unit: ResourceUnit, chargesAvailable: number): string {
     return `${chargesAvailable} ${pluralRu(chargesAvailable, 'прокат', 'проката', 'прокатов')}`;
   }
   return `${chargesAvailable} ${pluralRu(chargesAvailable, 'заряд', 'заряда', 'зарядов')}`;
+}
+
+function defaultResourceUnitForKind(kind: string | null): ResourceUnit | null {
+  if (kind === 'stick') return 'shot';
+  if (kind === 'skates') return 'distance';
+  if (kind === 'nutrition') return 'energy_ms';
+  return null;
+}
+
+function numberMetadata(metadata: Record<string, unknown>, key: string): number {
+  const value = metadata[key];
+  if (typeof value === 'number' && Number.isFinite(value)) return Math.trunc(value);
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return Math.trunc(parsed);
+  }
+  return 0;
+}
+
+function stringMetadata(metadata: Record<string, unknown>, key: string): string | null {
+  const value = metadata[key];
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function transactionFlow(amounts: InventoryTransactionAmountDto[]): TransactionFlow {
+  if (amounts.some((amount) => amount.value > 0)) return 'credit';
+  if (amounts.some((amount) => amount.value < 0)) return 'debit';
+  return 'neutral';
+}
+
+function transactionCategory(reason: string): TransactionCategory {
+  if (reason === 'inventory_purchase') return 'inventory';
+  if (reason === 'weekly_challenge_reward' || reason === 'duel_reward') return 'reward';
+  if (reason.startsWith('duel_')) return 'duel';
+  if (reason === 'admin_adjustment') return 'adjustment';
+  return 'other';
+}
+
+function transactionTitle(reason: string, metadata: Record<string, unknown>): string {
+  const title = stringMetadata(metadata, 'title');
+  if (title) return title;
+  if (reason === 'inventory_purchase') return 'Покупка инвентаря';
+  if (reason === 'weekly_challenge_reward') return 'Недельная награда';
+  if (reason === 'duel_reward') return 'Награда за дуэль';
+  if (reason === 'duel_stake_hold') return 'Ставка дуэли заморожена';
+  if (reason === 'duel_entry_fee') return 'Взнос за дуэль';
+  if (reason === 'duel_stake_refund') return 'Возврат ставки';
+  if (reason === 'duel_stake_payout') return 'Выигрыш ставки';
+  if (reason === 'duel_stake_burn') return 'Ставка списана';
+  if (reason === 'admin_adjustment') return 'Корректировка баланса';
+  return 'Операция';
+}
+
+function transactionSubtitle(
+  createdAt: Date,
+  reason: string,
+  metadata: Record<string, unknown>,
+): string {
+  const parts = [createdAt.toISOString()];
+  if (reason === 'inventory_purchase') {
+    const itemKind = stringMetadata(metadata, 'item_kind');
+    const chargesAdded = numberMetadata(metadata, 'charges_added');
+    parts.push('товар');
+    const resourceUnit = defaultResourceUnitForKind(itemKind);
+    if (resourceUnit && chargesAdded > 0) {
+      parts.push(resourceLabel(resourceUnit, chargesAdded));
+    }
+  } else if (reason === 'weekly_challenge_reward') {
+    parts.push('награда');
+  } else if (reason.startsWith('duel_')) {
+    parts.push('дуэль');
+  } else if (reason === 'admin_adjustment') {
+    parts.push('корректировка');
+  } else {
+    parts.push('операция');
+  }
+  return parts.join(' · ');
+}
+
+function bankTransactionFlow(status: BankPurchaseDto['status']): TransactionFlow {
+  if (status === 'refunded') return 'credit';
+  if (status === 'paid') return 'debit';
+  return 'neutral';
+}
+
+function bankStatusText(status: BankPurchaseDto['status']): string {
+  if (status === 'paid') return 'Оплачено';
+  if (status === 'pending') return 'Ожидает оплаты';
+  if (status === 'failed') return 'Ошибка оплаты';
+  if (status === 'refunded') return 'Возврат';
+  return 'Отменено';
+}
+
+function bankTransactionAmount(row: {
+  amount_rub: number;
+  status: BankPurchaseDto['status'];
+}): number {
+  const amount = Number(row.amount_rub);
+  if (row.status === 'refunded') return amount;
+  if (row.status === 'paid') return -amount;
+  return amount;
 }
 
 async function ensureInventoryRows(client: DbClient, userId: string): Promise<void> {
@@ -259,6 +380,58 @@ async function fetchInventoryState(client: DbClient, userId: string): Promise<In
     [userId],
   );
 
+  const { rows: transactionRows } = await client.query<{
+    id: string;
+    reason: string;
+    available_delta: number;
+    created_at: Date;
+    metadata: Record<string, unknown>;
+  }>(
+    `select id::text, reason, available_delta, created_at, metadata
+       from currency_ledger
+      where user_id = $1
+      order by created_at desc, id desc
+      limit 30`,
+    [userId],
+  );
+
+  const ledgerTransactions: InventoryTransactionDto[] = transactionRows
+    .map((row) => {
+      const metadata = row.metadata ?? {};
+      const amounts: InventoryTransactionAmountDto[] = [];
+      const coinDelta = Number(row.available_delta);
+      if (coinDelta !== 0) amounts.push({ currency: 'coin', value: coinDelta });
+      const stars = numberMetadata(metadata, 'stars');
+      if (stars !== 0) amounts.push({ currency: 'star', value: stars });
+      const experience = numberMetadata(metadata, 'experience');
+      if (experience !== 0) amounts.push({ currency: 'experience', value: experience });
+      if (amounts.length === 0) return null;
+      return {
+        id: `ledger-${row.id}`,
+        title: transactionTitle(row.reason, metadata),
+        subtitle: transactionSubtitle(row.created_at, row.reason, metadata),
+        category: transactionCategory(row.reason),
+        flow: transactionFlow(amounts),
+        amounts,
+        createdAt: row.created_at.toISOString(),
+      };
+    })
+    .filter((item): item is InventoryTransactionDto => item !== null);
+
+  const bankTransactions: InventoryTransactionDto[] = bankHistoryRows.map((row) => ({
+    id: `payment-${row.id}`,
+    title: row.title,
+    subtitle: `${row.created_at.toISOString()} · банк · ${bankStatusText(row.status)}`,
+    category: 'bank',
+    flow: bankTransactionFlow(row.status),
+    amounts: [{ currency: 'ruble', value: bankTransactionAmount(row) }],
+    createdAt: row.created_at.toISOString(),
+  }));
+
+  const transactionHistory = [...ledgerTransactions, ...bankTransactions]
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 40);
+
   return {
     balances: {
       tokens: Number(account.balance),
@@ -287,6 +460,7 @@ async function fetchInventoryState(client: DbClient, userId: string): Promise<In
       createdAt: row.created_at.toISOString(),
       paidAt: row.paid_at?.toISOString() ?? null,
     })),
+    transactionHistory,
   };
 }
 

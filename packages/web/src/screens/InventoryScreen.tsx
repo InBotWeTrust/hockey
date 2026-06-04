@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { UseMutationResult } from '@tanstack/react-query';
-import { ArrowLeft, CircleDollarSign, Sparkles, Star, X } from 'lucide-react';
+import { ArrowLeft, CircleDollarSign, RussianRuble, Sparkles, Star, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { rewardColor, type RewardTone } from '../app/rewardColors.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
@@ -13,17 +13,27 @@ import {
   type InventoryItem,
   type InventoryPurchase,
   type InventoryState,
+  type InventoryTransaction,
+  type InventoryTransactionAmount,
+  type InventoryTransactionCurrency,
 } from '../api/inventory.js';
 import { artworkForInventoryItem } from './inventoryArtwork.js';
 import { formatInventoryResourceAmount } from './inventoryResourceLabels.js';
 
 type ShopTab = 'goods' | 'bank' | 'history';
+type HistoryFilter = 'all' | 'credit' | 'debit' | 'ruble';
 
 const INVENTORY_KINDS: InventoryEquipmentKind[] = ['stick', 'skates', 'nutrition'];
 const SHOP_TABS: Array<{ id: ShopTab; label: string }> = [
   { id: 'goods', label: 'Товары' },
   { id: 'bank', label: 'Банк' },
   { id: 'history', label: 'История' },
+];
+const HISTORY_FILTERS: Array<{ id: HistoryFilter; label: string }> = [
+  { id: 'all', label: 'Все' },
+  { id: 'credit', label: 'Начисления' },
+  { id: 'debit', label: 'Списания' },
+  { id: 'ruble', label: 'Рубли' },
 ];
 
 const BANK_PACKAGES = [
@@ -110,6 +120,49 @@ function bankStatusText(status: BankPurchase['status']): string {
   return 'Отменено';
 }
 
+function transactionFlowFromAmounts(
+  amounts: InventoryTransactionAmount[],
+): InventoryTransaction['flow'] {
+  if (amounts.some((amount) => amount.value > 0)) return 'credit';
+  if (amounts.some((amount) => amount.value < 0)) return 'debit';
+  return 'neutral';
+}
+
+function legacyTransactionHistory(
+  inventoryHistory: InventoryPurchase[],
+  bankHistory: BankPurchase[],
+): InventoryTransaction[] {
+  return [
+    ...inventoryHistory.map((purchase) => ({
+      id: `inventory-${purchase.id}`,
+      createdAt: purchase.createdAt,
+      title: purchase.title,
+      subtitle: `${formatPurchaseDate(purchase.createdAt)} · товар · ${formatInventoryResourceAmount(purchase.kind, purchase.chargesAdded)}`,
+      category: 'inventory' as const,
+      flow: 'debit' as const,
+      amounts: [{ currency: 'coin' as const, value: -Math.abs(purchase.tokensSpent) }],
+    })),
+    ...bankHistory.map((purchase) => {
+      const value =
+        purchase.status === 'refunded'
+          ? purchase.amountRub
+          : purchase.status === 'paid'
+            ? -purchase.amountRub
+            : purchase.amountRub;
+      const amounts = [{ currency: 'ruble' as const, value }];
+      return {
+        id: `bank-${purchase.id}`,
+        createdAt: purchase.createdAt,
+        title: purchase.title,
+        subtitle: `${formatPurchaseDate(purchase.createdAt)} · банк · ${bankStatusText(purchase.status)}`,
+        category: 'bank' as const,
+        flow: transactionFlowFromAmounts(amounts),
+        amounts,
+      };
+    }),
+  ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
 export function InventoryScreen(): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -143,6 +196,8 @@ export function InventoryScreen(): JSX.Element {
   const tokens = inventory?.balances.tokens ?? 0;
   const history = inventory?.purchaseHistory ?? [];
   const bankHistory = inventory?.bankHistory ?? [];
+  const transactionHistory =
+    inventory?.transactionHistory ?? legacyTransactionHistory(history, bankHistory);
 
   const openPurchase = (item: InventoryItem): void => {
     purchaseMutation.reset();
@@ -221,7 +276,7 @@ export function InventoryScreen(): JSX.Element {
         ) : activeTab === 'bank' ? (
           <BankTab />
         ) : (
-          <PurchaseHistorySection inventoryHistory={history} bankHistory={bankHistory} />
+          <TransactionHistorySection transactions={transactionHistory} />
         )}
       </section>
 
@@ -624,7 +679,15 @@ function InventoryProductCard({
         >
           {item.title}
         </h2>
-        <div style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 800, lineHeight: 1.2 }}>
+        <div
+          style={{
+            minHeight: '2.4em',
+            color: 'var(--muted)',
+            fontSize: 11,
+            fontWeight: 800,
+            lineHeight: 1.2,
+          }}
+        >
           {purchaseBundleLabel(item)}
         </div>
         <div
@@ -842,44 +905,67 @@ function PurchaseConfirmModal({
   );
 }
 
-function PurchaseHistorySection({
-  inventoryHistory,
-  bankHistory,
+function TransactionHistorySection({
+  transactions,
 }: {
-  inventoryHistory: InventoryPurchase[];
-  bankHistory: BankPurchase[];
+  transactions: InventoryTransaction[];
 }): JSX.Element {
-  const entries = [
-    ...inventoryHistory.map((purchase) => ({
-      id: `inventory-${purchase.id}`,
-      createdAt: purchase.createdAt,
-      title: purchase.title,
-      subtitle: `${formatPurchaseDate(purchase.createdAt)} · товар · ${formatInventoryResourceAmount(purchase.kind, purchase.chargesAdded)}`,
-      value: `-${numberText(purchase.tokensSpent)}`,
-      tone: 'negative' as const,
-    })),
-    ...bankHistory.map((purchase) => ({
-      id: `bank-${purchase.id}`,
-      createdAt: purchase.createdAt,
-      title: purchase.title,
-      subtitle: `${formatPurchaseDate(purchase.createdAt)} · банк · ${bankStatusText(purchase.status)}`,
-      value: rubText(purchase.amountRub),
-      tone: purchase.status === 'paid' ? ('positive' as const) : ('default' as const),
-    })),
-  ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const [filter, setFilter] = useState<HistoryFilter>('all');
+  const filteredEntries = transactions.filter((entry) => {
+    if (filter === 'credit') return entry.flow === 'credit';
+    if (filter === 'debit') return entry.flow === 'debit' && entry.category !== 'bank';
+    if (filter === 'ruble') return entry.amounts.some((amount) => amount.currency === 'ruble');
+    return true;
+  });
 
   return (
-    <section aria-label="История покупок" style={{ display: 'grid', gap: 8 }}>
+    <section aria-label="История транзакций" style={{ display: 'grid', gap: 8 }}>
       <div className="section-label" style={{ margin: '0 0 0 -14px' }}>
         История
       </div>
+      <div
+        aria-label="Фильтр истории"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+          gap: 6,
+        }}
+      >
+        {HISTORY_FILTERS.map((item) => {
+          const active = item.id === filter;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              aria-pressed={active}
+              onClick={() => setFilter(item.id)}
+              style={{
+                minWidth: 0,
+                minHeight: 30,
+                borderRadius: 999,
+                border: active
+                  ? '1px solid rgba(15,23,42,0.32)'
+                  : '1px solid rgba(255,255,255,0.7)',
+                background: active ? 'rgba(31,42,61,0.92)' : 'rgba(255,255,255,0.46)',
+                color: active ? '#fff' : 'var(--ink)',
+                fontSize: 10,
+                fontWeight: 900,
+                lineHeight: 1,
+                cursor: 'pointer',
+              }}
+            >
+              {item.label}
+            </button>
+          );
+        })}
+      </div>
       <div className="glass" style={{ borderRadius: 22, padding: 14, display: 'grid', gap: 10 }}>
-        {entries.length === 0 ? (
+        {filteredEntries.length === 0 ? (
           <div style={{ color: 'var(--muted)', fontSize: 13, fontWeight: 750 }}>
-            Покупок пока нет.
+            Операций пока нет.
           </div>
         ) : (
-          entries.map((entry) => (
+          filteredEntries.map((entry) => (
             <div
               key={entry.id}
               style={{
@@ -903,24 +989,91 @@ function PurchaseHistorySection({
                   {entry.title}
                 </div>
                 <div style={{ marginTop: 3, color: 'var(--muted)', fontSize: 11, fontWeight: 750 }}>
-                  {entry.subtitle}
+                  {transactionSubtitleText(entry)}
                 </div>
               </div>
               <div
                 style={{
-                  color: entry.tone === 'positive' ? '#0f766e' : 'var(--ink)',
-                  fontSize: 12,
-                  fontWeight: 950,
-                  textAlign: 'right',
+                  display: 'grid',
+                  justifyItems: 'end',
+                  gap: 4,
                 }}
               >
-                {entry.value}
+                {entry.amounts.map((amount) => (
+                  <TransactionAmountBadge key={`${entry.id}-${amount.currency}`} amount={amount} />
+                ))}
               </div>
             </div>
           ))
         )}
       </div>
     </section>
+  );
+}
+
+function transactionSubtitleText(entry: InventoryTransaction): string {
+  const parts = entry.subtitle.split(' · ').filter(Boolean);
+  if (parts[0] && Date.parse(parts[0])) {
+    return [formatPurchaseDate(entry.createdAt), ...parts.slice(1)].join(' · ');
+  }
+  return entry.subtitle;
+}
+
+function transactionAmountColor(amount: InventoryTransactionAmount): string {
+  if (amount.value > 0) return '#0f766e';
+  if (amount.currency === 'coin') return rewardColor('coin');
+  if (amount.currency === 'star') return rewardColor('star');
+  if (amount.currency === 'experience') return rewardColor('experience');
+  return 'var(--ink)';
+}
+
+function transactionAmountIcon(currency: InventoryTransactionCurrency): JSX.Element {
+  if (currency === 'coin') return <CircleDollarSign size={13} strokeWidth={2.55} />;
+  if (currency === 'star') return <Star size={13} strokeWidth={2.55} fill="currentColor" />;
+  if (currency === 'experience') return <Sparkles size={13} strokeWidth={2.35} />;
+  return <RussianRuble size={13} strokeWidth={2.55} />;
+}
+
+function transactionAmountLabel(amount: InventoryTransactionAmount): string {
+  const action = amount.value > 0 ? 'Начисление' : amount.value < 0 ? 'Списание' : 'Операция';
+  const abs = Math.abs(amount.value);
+  if (amount.currency === 'coin') return `${action} монет: ${numberText(abs)}`;
+  if (amount.currency === 'star') return `${action} звёзд: ${numberText(abs)}`;
+  if (amount.currency === 'experience') return `${action} опыта: ${numberText(abs)}`;
+  return `${action} рублей: ${numberText(abs)} ₽`;
+}
+
+function transactionAmountText(amount: InventoryTransactionAmount): string {
+  const prefix = amount.value > 0 ? '+' : amount.value < 0 ? '-' : '';
+  const abs = Math.abs(amount.value);
+  if (amount.currency === 'ruble') return `${prefix}${numberText(abs)} ₽`;
+  return `${prefix}${numberText(abs)}`;
+}
+
+function TransactionAmountBadge({ amount }: { amount: InventoryTransactionAmount }): JSX.Element {
+  const color = transactionAmountColor(amount);
+  return (
+    <span
+      aria-label={transactionAmountLabel(amount)}
+      style={{
+        minHeight: 18,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'flex-end',
+        gap: 4,
+        color,
+        fontSize: 12,
+        fontWeight: 950,
+        lineHeight: 1,
+        fontVariantNumeric: 'tabular-nums',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      <span aria-hidden="true" style={{ display: 'inline-flex', color }}>
+        {transactionAmountIcon(amount.currency)}
+      </span>
+      <span>{transactionAmountText(amount)}</span>
+    </span>
   );
 }
 
