@@ -205,6 +205,12 @@ const startPeriodBodySchema = z
   })
   .default({});
 
+const activeLoadoutBodySchema = z.object({
+  loadout: z.object({
+    stick: uuid.nullable(),
+  }),
+});
+
 interface DuelTemplateRow {
   id: string;
   title: string;
@@ -1304,6 +1310,31 @@ function loadoutWithUpdatedShotStick(
   const nextStick = stickOnly.items.find((item) => item.kind === 'stick');
   if (nextStick && nextStick.resourceUnit !== 'shot') {
     throw new AppError('conflict', 'only shot-resource sticks can be switched between periods', 409);
+  }
+  const items = [
+    ...current.items.filter((item) => item.kind !== 'stick'),
+    ...(nextStick ? [nextStick] : []),
+  ];
+  const powerScore = items.reduce((sum, item) => sum + item.powerScore, 0);
+  if (rules.rankedEnabled && powerScore > rules.powerCap) {
+    throw new AppError('conflict', 'duel loadout exceeds power cap', 409);
+  }
+  return { items, powerScore, powerCap: rules.powerCap };
+}
+
+function loadoutWithActiveShotStick(
+  current: LoadoutSnapshot,
+  stickOnly: LoadoutSnapshot,
+  rules: DuelRulesSnapshot,
+): LoadoutSnapshot {
+  const nextStick = stickOnly.items.find((item) => item.kind === 'stick');
+  if (nextStick) {
+    if (nextStick.resourceUnit !== 'shot') {
+      throw new AppError('conflict', 'only shot-resource sticks can be switched during a duel', 409);
+    }
+    if (nextStick.resourceAvailable <= 0) {
+      throw new AppError('conflict', 'selected duel stick has no shots available', 409);
+    }
   }
   const items = [
     ...current.items.filter((item) => item.kind !== 'stick'),
@@ -3420,6 +3451,62 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
       return { match: await buildMatchStateDto(client, match, req.user.id, now) };
     });
   });
+
+  app.patch(
+    '/duel/amateur/matches/:matchId/loadout',
+    { preHandler: [app.authenticate] },
+    async (req) => {
+      const params = z.object({ matchId: uuid }).parse(req.params);
+      const parsed = activeLoadoutBodySchema.safeParse(req.body);
+      if (!parsed.success) throw new AppError('bad_request', 'invalid duel loadout payload', 400);
+      return withTransaction(app, async (client) => {
+        const now = new Date();
+        let match = await reconcileMatch(
+          client,
+          await fetchMatchForUpdate(client, params.matchId),
+          now,
+        );
+        if (match.challenger_user_id !== req.user.id && match.opponent_user_id !== req.user.id) {
+          throw new AppError('forbidden', 'duel match access denied', 403);
+        }
+        if (match.status !== 'active') {
+          throw new AppError(
+            'conflict',
+            `cannot update loadout in duel status '${match.status}'`,
+            409,
+          );
+        }
+        const rules = parseRulesSnapshot(match.rules_snapshot);
+        const participants = await fetchParticipants(client, match.id);
+        const participant = participants.find((p) => p.user_id === req.user.id);
+        if (!participant) throw new AppError('forbidden', 'duel match access denied', 403);
+        if (participant.state !== 'period_active') {
+          throw new AppError(
+            'conflict',
+            `cannot update loadout in state '${participant.state}'`,
+            409,
+          );
+        }
+        const currentLoadout = loadoutFromUnknown(participant.loadout_snapshot, rules.powerCap);
+        const stickOnly = await buildLoadoutSnapshot(
+          client,
+          req.user.id,
+          { stick: parsed.data.loadout.stick },
+          rules,
+        );
+        const nextLoadout = loadoutWithActiveShotStick(currentLoadout, stickOnly, rules);
+        await client.query(
+          `update amateur_duel_participant
+              set loadout_snapshot = $3,
+                  updated_at = now()
+            where match_id = $1 and user_id = $2`,
+          [match.id, req.user.id, JSON.stringify(nextLoadout)],
+        );
+        match = await fetchMatchForUpdate(client, match.id);
+        return { match: await buildMatchStateDto(client, match, req.user.id, now) };
+      });
+    },
+  );
 
   app.post(
     '/duel/amateur/matches/:matchId/period/start',

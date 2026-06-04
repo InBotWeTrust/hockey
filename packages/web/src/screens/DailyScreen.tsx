@@ -5514,6 +5514,7 @@ function AmateurDuelPlayView({
   const refresh = useAmateurDuelStore((s) => s.refresh);
   const ready = useAmateurDuelStore((s) => s.ready);
   const startPeriod = useAmateurDuelStore((s) => s.startPeriod);
+  const updateLoadout = useAmateurDuelStore((s) => s.updateLoadout);
   const optimisticAddShot = useAmateurDuelStore((s) => s.optimisticAddShot);
   const submitShot = useAmateurDuelStore((s) => s.submitShot);
   const applyState = useAmateurDuelStore((s) => s.applyState);
@@ -5646,6 +5647,11 @@ function AmateurDuelPlayView({
   const opponentDisplayName = match.opponent.display_name || 'Игрок';
   const duelCondition = (elapsedMs: number, speeds: SpeedOverrides): DuelPlayerCondition | null =>
     duelConditionForMatch(match, elapsedMs, speeds);
+  const handleActiveLoadoutSelect = async (itemId: string | null): Promise<void> => {
+    if (selectedLoadoutKind !== 'stick') return;
+    const next = await updateLoadout({ stick: itemId });
+    if (next) setSelectedLoadoutKind(null);
+  };
 
   if (directPlayOnly && match.me.state !== 'period_active') {
     const timing = duelEventTiming(match, now);
@@ -5784,42 +5790,55 @@ function AmateurDuelPlayView({
   if (match.me.state === 'period_active') {
     const activePeriodRule = currentDuelPeriodRule(match);
     return (
-      <PlayView<AmateurDuelMatchState>
-        suppressedByModal={false}
-        showIceCar={false}
-        playEntranceOnMount={playEntranceOnMount}
-        onEntranceConsumed={onEntranceConsumed}
-        playRouteTransitionOnMount={playRouteTransitionOnMount}
-        onRouteTransitionConsumed={onRouteTransitionConsumed}
-        onBack={onBack}
-        active={match.status === 'active'}
-        seed={match.match_seed}
-        goalieId={match.rules.goalieId}
-        periodNumber={match.me.current_period}
-        periodSpeedPresets={match.period_speed_presets}
-        stickEffects={match.stick_effects}
-        periodsTotal={match.rules.totalPeriods}
-        sessionStartedAt={match.period_started_at}
-        serverNow={match.server_now}
-        receivedAtPerformanceMs={match.received_at_performance_ms}
-        goals={match.current_period_goals}
-        scoreboardGoals={match.me.goals}
-        shots={match.current_period_shots}
-        shotsTotal={
-          activePeriodRule.mode === 'quota' ? (activePeriodRule.shotsLimit ?? 30) : undefined
-        }
-        periodEndsAt={periodEndsAt}
-        onTimerExpired={refresh}
-        backLabel="К дуэлям"
-        optimisticAddShot={optimisticAddShot}
-        submitShot={submitShot}
-        applyState={applyState}
-        duelCondition={duelCondition}
-        longCourtBackground={AMATEUR_DUEL_COURT_BACKGROUND}
-        longCourtTableau={DUEL_LED_TABLEAU_IMAGE}
-        hudAddon={<DuelInventoryMiniHud match={match} />}
-        scoreboardOpponent={duelScoreboardOpponent(match)}
-      />
+      <>
+        <PlayView<AmateurDuelMatchState>
+          suppressedByModal={selectedLoadoutKind !== null}
+          showIceCar={false}
+          playEntranceOnMount={playEntranceOnMount}
+          onEntranceConsumed={onEntranceConsumed}
+          playRouteTransitionOnMount={playRouteTransitionOnMount}
+          onRouteTransitionConsumed={onRouteTransitionConsumed}
+          onBack={onBack}
+          active={match.status === 'active'}
+          seed={match.match_seed}
+          goalieId={match.rules.goalieId}
+          periodNumber={match.me.current_period}
+          periodSpeedPresets={match.period_speed_presets}
+          stickEffects={match.stick_effects}
+          periodsTotal={match.rules.totalPeriods}
+          sessionStartedAt={match.period_started_at}
+          serverNow={match.server_now}
+          receivedAtPerformanceMs={match.received_at_performance_ms}
+          goals={match.current_period_goals}
+          scoreboardGoals={match.me.goals}
+          shots={match.current_period_shots}
+          shotsTotal={
+            activePeriodRule.mode === 'quota' ? (activePeriodRule.shotsLimit ?? 30) : undefined
+          }
+          periodEndsAt={periodEndsAt}
+          onTimerExpired={refresh}
+          backLabel="К дуэлям"
+          optimisticAddShot={optimisticAddShot}
+          submitShot={submitShot}
+          applyState={applyState}
+          duelCondition={duelCondition}
+          longCourtBackground={AMATEUR_DUEL_COURT_BACKGROUND}
+          longCourtTableau={DUEL_LED_TABLEAU_IMAGE}
+          hudAddon={<DuelInventoryMiniHud match={match} onSelectKind={setSelectedLoadoutKind} />}
+          scoreboardOpponent={duelScoreboardOpponent(match)}
+        />
+        {selectedLoadoutKind === 'stick' && (
+          <DuelRinkLoadoutModal
+            kind="stick"
+            match={match}
+            selectedId={match.me.loadout.items.find((item) => item.kind === 'stick')?.id ?? null}
+            onClose={() => setSelectedLoadoutKind(null)}
+            onSelect={(itemId) => {
+              void handleActiveLoadoutSelect(itemId);
+            }}
+          />
+        )}
+      </>
     );
   }
 
@@ -7316,7 +7335,13 @@ function duelConditionForMatch(
   });
 }
 
-function DuelInventoryMiniHud({ match }: { match: AmateurDuelMatch }): JSX.Element | null {
+function DuelInventoryMiniHud({
+  match,
+  onSelectKind,
+}: {
+  match: AmateurDuelMatch;
+  onSelectKind?: (kind: InventoryEquipmentKind) => void;
+}): JSX.Element | null {
   const availableItems = match.me.inventory_available ?? [];
 
   return (
@@ -7326,7 +7351,7 @@ function DuelInventoryMiniHud({ match }: { match: AmateurDuelMatch }): JSX.Eleme
         display: 'flex',
         justifyContent: 'flex-start',
         gap: 9,
-        pointerEvents: 'none',
+        pointerEvents: onSelectKind ? 'auto' : 'none',
       }}
     >
       {DUEL_INVENTORY_SLOTS.map((slot) => {
@@ -7357,19 +7382,26 @@ function DuelInventoryMiniHud({ match }: { match: AmateurDuelMatch }): JSX.Eleme
             : slot.kind === 'nutrition'
               ? 'нет'
               : 'обычный';
+        const interactive = slot.kind === 'stick' && Boolean(onSelectKind);
 
         return (
-          <span
+          <button
             key={slot.kind}
+            type="button"
             aria-label={`${slot.label}: ${statusText}`}
+            disabled={!interactive}
+            onClick={() => onSelectKind?.(slot.kind)}
             className={stickLow ? 'inventory-icon-pulse' : undefined}
             style={{
+              appearance: 'none',
+              padding: 0,
               position: 'relative',
               width: 31,
               height: 31,
               borderRadius: 999,
               overflow: 'visible',
               display: 'block',
+              cursor: interactive ? 'pointer' : 'default',
               background: 'rgba(255,255,255,0.72)',
               border: isSelected ? `2px solid ${rarityColor}` : '1px solid rgba(255,255,255,0.78)',
               boxShadow: isSelected
@@ -7415,7 +7447,7 @@ function DuelInventoryMiniHud({ match }: { match: AmateurDuelMatch }): JSX.Eleme
                 {stickBadge}
               </span>
             )}
-          </span>
+          </button>
         );
       })}
     </div>

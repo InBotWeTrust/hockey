@@ -321,6 +321,28 @@ describe('ProfileScreen', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('shows the carbon profile stick when the player owns an ultimate stick', async () => {
+    mockProfileFetch(telegramProfile, {
+      ...emptyInventoryState,
+      items: {
+        ...emptyInventoryState.items,
+        stick: [ultimateOneStick],
+      },
+    });
+
+    renderProfile();
+
+    expect(await screen.findByLabelText('Раздевалка игрока')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        document.querySelector('img[src="/inventory/profile-stick-carbon-red.webp"]'),
+      ).toBeInTheDocument();
+    });
+    expect(
+      document.querySelector('img[src="/inventory/profile-hockey-stick.webp"]'),
+    ).not.toBeInTheDocument();
+  });
+
   it('shows exact resource balances instead of compact labels', async () => {
     mockProfileFetch(telegramProfile, {
       ...emptyInventoryState,

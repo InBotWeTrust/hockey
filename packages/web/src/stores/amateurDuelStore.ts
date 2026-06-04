@@ -4,6 +4,7 @@ import {
   readyAmateurDuel,
   startAmateurDuelPeriod,
   submitAmateurDuelShot,
+  updateAmateurDuelLoadout,
   type AmateurDuelLoadoutSelection,
   type AmateurDuelMatchState,
 } from '../api/amateurDuel.js';
@@ -18,6 +19,9 @@ interface AmateurDuelStoreState {
   refresh: () => Promise<void>;
   ready: (loadout?: AmateurDuelLoadoutSelection) => Promise<AmateurDuelMatchState | null>;
   startPeriod: (loadout?: AmateurDuelLoadoutSelection) => Promise<AmateurDuelMatchState | null>;
+  updateLoadout: (
+    loadout: Pick<AmateurDuelLoadoutSelection, 'stick'>,
+  ) => Promise<AmateurDuelMatchState | null>;
   applyState: (next: AmateurDuelMatchState) => void;
   optimisticAddShot: (claimed: ShotResultType) => void;
   submitShot: (args: {
@@ -83,6 +87,23 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
       set({
         inFlight: false,
         error: err instanceof Error ? err.message : 'failed to start duel period',
+      });
+      return null;
+    }
+  },
+
+  updateLoadout: async (loadout) => {
+    const current = get().match;
+    if (!current) return null;
+    set({ inFlight: true, error: null });
+    try {
+      const { match } = await updateAmateurDuelLoadout(current.id, loadout);
+      set({ match, inFlight: false, error: null });
+      return match;
+    } catch (err) {
+      set({
+        inFlight: false,
+        error: err instanceof Error ? err.message : 'failed to update duel loadout',
       });
       return null;
     }

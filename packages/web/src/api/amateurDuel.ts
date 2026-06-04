@@ -402,6 +402,16 @@ export function startAmateurDuelPeriod(
   ).then((res) => ({ match: stampMatch(res.match) }));
 }
 
+export function updateAmateurDuelLoadout(
+  matchId: string,
+  loadout: Pick<AmateurDuelLoadoutSelection, 'stick'>,
+): Promise<{ match: AmateurDuelMatchState }> {
+  return apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}/loadout`, {
+    method: 'PATCH',
+    body: JSON.stringify({ loadout }),
+  }).then((res) => ({ match: stampMatch(res.match) }));
+}
+
 export function submitAmateurDuelShot(
   matchId: string,
   body: SubmitAmateurDuelShotRequest,

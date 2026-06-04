@@ -189,6 +189,18 @@ function hasOwnedNutrition(inventory: InventoryState | undefined): boolean {
   return (inventory?.items.nutrition ?? []).some(isAvailableLockerItem);
 }
 
+function hasOwnedUltimateStick(inventory: InventoryState | undefined): boolean {
+  return (inventory?.items.stick ?? []).some(
+    (item) => isAvailableLockerItem(item) && /^Ультимейт Ван(?:\s|$)/i.test(item.title.trim()),
+  );
+}
+
+function profileStickArtworkSrc(inventory: InventoryState | undefined): string {
+  return hasOwnedUltimateStick(inventory)
+    ? '/inventory/profile-stick-carbon-red.webp'
+    : '/inventory/profile-hockey-stick.webp';
+}
+
 function formatReservedLabel(count: number): string | null {
   const normalized = Math.max(0, Math.trunc(count));
   if (normalized === 0) return null;
@@ -864,6 +876,7 @@ export function ProfileScreen(): JSX.Element {
   const experienceBalance =
     inventoryQuery.data?.balances.experience ?? data?.experienceBalance ?? 0;
   const showNutritionCans = hasOwnedNutrition(inventoryQuery.data);
+  const stickArtworkSrc = profileStickArtworkSrc(inventoryQuery.data);
   const jerseyArtworkSrc =
     data?.competitionLevel === 'beginner'
       ? '/inventory/profile-hoodie-training.webp'
@@ -936,7 +949,7 @@ export function ProfileScreen(): JSX.Element {
           />
           <img
             className="profile-locker-prop profile-locker-prop--stick"
-            src="/inventory/profile-hockey-stick.webp"
+            src={stickArtworkSrc}
             alt=""
             style={lockerPropStyle(LOCKER_PROPS.stick)}
           />
