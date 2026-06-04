@@ -5784,7 +5784,7 @@ function AmateurDuelPlayView({
     return (
       <>
         <PlayView<AmateurDuelMatchState>
-          suppressedByModal={selectedLoadoutKind !== null}
+          suppressedByModal={false}
           showIceCar={false}
           playEntranceOnMount={playEntranceOnMount}
           onEntranceConsumed={onEntranceConsumed}
