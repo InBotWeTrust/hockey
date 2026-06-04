@@ -354,6 +354,8 @@ interface LoadoutSelection {
 
 interface LoadoutItemSnapshot {
   id: string;
+  itemId: string;
+  instanceId: string | null;
   kind: InventoryKind;
   title: string;
   rarity: 'common' | 'rare' | 'epic' | 'legendary';
@@ -375,6 +377,8 @@ interface LoadoutSnapshot {
 
 interface InventoryAvailabilityItem {
   id: string;
+  itemId: string;
+  instanceId: string | null;
   kind: InventoryKind;
   title: string;
   description: string;
@@ -391,6 +395,8 @@ interface InventoryPeriodReport {
   periodNumber: number;
   consumed: Array<{
     id: string;
+    itemId?: string;
+    instanceId?: string | null;
     kind: InventoryKind;
     title: string;
     charges: number;
@@ -621,6 +627,8 @@ function loadoutFromUnknown(value: unknown, powerCap = 0): LoadoutSnapshot {
         .array(
           z.object({
             id: uuid,
+            itemId: uuid.optional(),
+            instanceId: uuid.nullable().optional(),
             kind: z.enum(['stick', 'skates', 'nutrition']),
             title: z.string(),
             rarity: z.enum(['common', 'rare', 'epic', 'legendary']).default('common'),
@@ -670,6 +678,8 @@ function loadoutFromUnknown(value: unknown, powerCap = 0): LoadoutSnapshot {
         item.kind === 'stick' && item.resourceUnit === 'period' ? 'shot' : item.resourceUnit;
       return {
         ...item,
+        itemId: item.itemId ?? item.id,
+        instanceId: item.instanceId ?? null,
         resourceUnit,
         effectPuckSpeedPoints: puckSpeedPointsFromValues(
           item.effectPuckSpeedPoints,
@@ -692,6 +702,8 @@ function inventoryReportFromUnknown(value: unknown): InventoryPeriodReport[] {
         consumed: z.array(
           z.object({
             id: uuid,
+            itemId: uuid.optional(),
+            instanceId: uuid.nullable().optional(),
             kind: z.enum(['stick', 'skates', 'nutrition']),
             title: z.string(),
             charges: z.number().min(0),
@@ -701,7 +713,19 @@ function inventoryReportFromUnknown(value: unknown): InventoryPeriodReport[] {
       }),
     )
     .safeParse(value ?? []);
-  return parsed.success ? parsed.data : [];
+  if (!parsed.success) return [];
+  return parsed.data.map((entry) => ({
+    periodNumber: entry.periodNumber,
+    consumed: entry.consumed.map((item) => ({
+      id: item.id,
+      ...(item.itemId !== undefined ? { itemId: item.itemId } : {}),
+      ...(item.instanceId !== undefined ? { instanceId: item.instanceId } : {}),
+      kind: item.kind,
+      title: item.title,
+      charges: item.charges,
+      remainingReserved: item.remainingReserved,
+    })),
+  }));
 }
 
 function duelInventoryItemFromSnapshot(
@@ -1182,6 +1206,8 @@ async function buildLoadoutSnapshot(
 
   const { rows } = await client.query<{
     id: string;
+    item_id: string;
+    instance_id: string | null;
     title: string;
     item_kind: InventoryKind;
     rarity: 'common' | 'rare' | 'epic' | 'legendary';
@@ -1208,8 +1234,15 @@ async function buildLoadoutSnapshot(
     effect_fatigue_delay_ms: number;
     effect_fatigue_speed_multiplier: string | number;
   }>(
-    `select i.id, i.title, i.item_kind, i.rarity, i.power_score, i.duel_period_cost,
-            i.resource_unit, coalesce(ui.charges_available, 0)::int as charges_available,
+    `select coalesce(instance.id, i.id) as id,
+            i.id as item_id,
+            instance.id as instance_id,
+            i.title, i.item_kind, i.rarity, i.power_score, i.duel_period_cost,
+            i.resource_unit,
+            case
+              when instance.id is not null then instance.charges_available
+              else coalesce(legacy.charges_available, 0)
+            end::int as charges_available,
             i.effect_puck_speed_points,
             i.effect_puck_speed_delta, i.effect_shooter_frequency_delta,
             i.effect_goalie_frequency_delta, i.effect_goal_frequency_delta,
@@ -1221,13 +1254,30 @@ async function buildLoadoutSnapshot(
             i.effect_nutrition_slowdown_ms, i.effect_nutrition_stop_ms,
             i.effect_fatigue_delay_ms, i.effect_fatigue_speed_multiplier
        from admin_inventory_items i
-       left join user_inventory_item ui
-         on ui.inventory_item_id = i.id and ui.user_id = $1
-      where i.id = any($2::uuid[]) and i.deleted_at is null`,
+       left join lateral (
+         select owned.id, owned.charges_available
+           from user_inventory_instance owned
+          where owned.user_id = $1
+            and owned.inventory_item_id = i.id
+            and (owned.id = any($2::uuid[]) or i.id = any($2::uuid[]))
+          order by case when owned.id = any($2::uuid[]) then 0 else 1 end,
+                   case when owned.charges_available > 0 then 0 else 1 end,
+                   owned.created_at,
+                   owned.id
+          limit 1
+       ) instance on true
+       left join user_inventory_item legacy
+         on legacy.inventory_item_id = i.id and legacy.user_id = $1 and instance.id is null
+      where (i.id = any($2::uuid[]) or instance.id = any($2::uuid[]))
+        and i.deleted_at is null`,
     [userId, selectedIds],
   );
 
-  const byId = new Map(rows.map((row) => [row.id, row]));
+  const byId = new Map<string, (typeof rows)[number]>();
+  for (const row of rows) {
+    byId.set(row.id, row);
+    byId.set(row.item_id, row);
+  }
   const requested: Array<{ kind: InventoryKind; id: string | null | undefined }> = [
     { kind: 'stick', id: resolvedSelection.stick },
     { kind: 'skates', id: resolvedSelection.skates },
@@ -1264,6 +1314,8 @@ async function buildLoadoutSnapshot(
     };
     items.push({
       id: row.id,
+      itemId: row.item_id,
+      instanceId: row.instance_id,
       kind: row.item_kind,
       title: row.title,
       rarity: row.rarity,
@@ -1347,6 +1399,32 @@ function loadoutWithActiveShotStick(
   return { items, powerScore, powerCap: rules.powerCap };
 }
 
+async function syncLegacyInventoryAggregate(
+  client: PoolClient,
+  userId: string,
+  itemId: string,
+): Promise<void> {
+  const { rows } = await client.query<{ charges_available: number; charges_reserved: number }>(
+    `select coalesce(sum(charges_available), 0)::int as charges_available,
+            coalesce(sum(charges_reserved), 0)::int as charges_reserved
+       from user_inventory_instance
+      where user_id = $1 and inventory_item_id = $2`,
+    [userId, itemId],
+  );
+  const aggregate = rows[0] ?? { charges_available: 0, charges_reserved: 0 };
+  await client.query(
+    `insert into user_inventory_item
+       (user_id, inventory_item_id, charges_available, charges_reserved, updated_at)
+     values ($1, $2, $3, $4, now())
+     on conflict (user_id, inventory_item_id)
+     do update
+       set charges_available = excluded.charges_available,
+           charges_reserved = excluded.charges_reserved,
+           updated_at = now()`,
+    [userId, itemId, Number(aggregate.charges_available), Number(aggregate.charges_reserved)],
+  );
+}
+
 async function reserveLoadoutInventory(
   client: PoolClient,
   userId: string,
@@ -1355,23 +1433,42 @@ async function reserveLoadoutInventory(
 ): Promise<void> {
   for (const item of loadout.items) {
     if (item.chargesReserved <= 0) continue;
-    const { rows } = await client.query<{ charges_available: number; charges_reserved: number }>(
-      `update user_inventory_item
-          set charges_available = charges_available - $3,
-              charges_reserved = charges_reserved + $3,
-              updated_at = now()
-        where user_id = $1
-          and inventory_item_id = $2
-          and charges_available >= $3
-        returning charges_available, charges_reserved`,
-      [userId, item.id, item.chargesReserved],
-    );
-    if (!rows[0]) {
-      throw new AppError('conflict', 'not enough inventory charges for duel loadout', 409);
+    if (item.instanceId) {
+      const { rows } = await client.query<{ charges_available: number; charges_reserved: number }>(
+        `update user_inventory_instance
+            set charges_available = charges_available - $3,
+                charges_reserved = charges_reserved + $3,
+                updated_at = now()
+          where user_id = $1
+            and id = $2
+            and charges_available >= $3
+          returning charges_available, charges_reserved`,
+        [userId, item.instanceId, item.chargesReserved],
+      );
+      if (!rows[0]) {
+        throw new AppError('conflict', 'not enough inventory charges for duel loadout', 409);
+      }
+      await syncLegacyInventoryAggregate(client, userId, item.itemId);
+    } else {
+      const { rows } = await client.query<{ charges_available: number; charges_reserved: number }>(
+        `update user_inventory_item
+            set charges_available = charges_available - $3,
+                charges_reserved = charges_reserved + $3,
+                updated_at = now()
+          where user_id = $1
+            and inventory_item_id = $2
+            and charges_available >= $3
+          returning charges_available, charges_reserved`,
+        [userId, item.itemId, item.chargesReserved],
+      );
+      if (!rows[0]) {
+        throw new AppError('conflict', 'not enough inventory charges for duel loadout', 409);
+      }
     }
     await appendEvent(client, userId, 'amateur_duel_inventory_reserved', {
       match_id: matchId,
-      inventory_item_id: item.id,
+      inventory_item_id: item.itemId,
+      inventory_instance_id: item.instanceId,
       charges: item.chargesReserved,
     });
   }
@@ -1390,15 +1487,28 @@ async function consumeInventoryForPeriod(
   for (const item of loadout.items) {
     if (item.resourceUnit !== 'period') continue;
     if (item.duelPeriodCost <= 0) continue;
-    await client.query(
-      `update user_inventory_item
-          set charges_reserved = charges_reserved - $3,
-              updated_at = now()
-        where user_id = $1
-          and inventory_item_id = $2
-          and charges_reserved >= $3`,
-      [participant.user_id, item.id, item.duelPeriodCost],
-    );
+    if (item.instanceId) {
+      await client.query(
+        `update user_inventory_instance
+            set charges_reserved = charges_reserved - $3,
+                updated_at = now()
+          where user_id = $1
+            and id = $2
+            and charges_reserved >= $3`,
+        [participant.user_id, item.instanceId, item.duelPeriodCost],
+      );
+      await syncLegacyInventoryAggregate(client, participant.user_id, item.itemId);
+    } else {
+      await client.query(
+        `update user_inventory_item
+            set charges_reserved = charges_reserved - $3,
+                updated_at = now()
+          where user_id = $1
+            and inventory_item_id = $2
+            and charges_reserved >= $3`,
+        [participant.user_id, item.itemId, item.duelPeriodCost],
+      );
+    }
     const alreadyConsumed = Number(participant.consumed_inventory_charges);
     const remainingReserved = Math.max(
       0,
@@ -1406,6 +1516,8 @@ async function consumeInventoryForPeriod(
     );
     consumed.push({
       id: item.id,
+      itemId: item.itemId,
+      instanceId: item.instanceId,
       kind: item.kind,
       title: item.title,
       charges: item.duelPeriodCost,
@@ -1463,23 +1575,38 @@ async function consumeInventoryForShot(
         ? Math.ceil(delta)
         : Math.max(0, integerAfter - integerBefore);
     if (availableDelta > 0) {
-      const { rowCount } = await client.query(
-        `update user_inventory_item
-            set charges_available = charges_available - $3,
-                updated_at = now()
-          where user_id = $1
-            and inventory_item_id = $2
-            and charges_available >= $3`,
-        [participant.user_id, item.id, availableDelta],
-      );
+      const { rowCount } = item.instanceId
+        ? await client.query(
+            `update user_inventory_instance
+                set charges_available = charges_available - $3,
+                    updated_at = now()
+              where user_id = $1
+                and id = $2
+                and charges_available >= $3`,
+            [participant.user_id, item.instanceId, availableDelta],
+          )
+        : await client.query(
+            `update user_inventory_item
+                set charges_available = charges_available - $3,
+                    updated_at = now()
+              where user_id = $1
+                and inventory_item_id = $2
+                and charges_available >= $3`,
+            [participant.user_id, item.itemId, availableDelta],
+          );
       if (rowCount === 0) {
         throw new AppError('conflict', 'not enough inventory resource for duel shot', 409);
+      }
+      if (item.instanceId) {
+        await syncLegacyInventoryAggregate(client, participant.user_id, item.itemId);
       }
       consumedInventoryChargesDelta += availableDelta;
     }
 
     consumed.push({
       id: item.id,
+      itemId: item.itemId,
+      instanceId: item.instanceId,
       kind: item.kind,
       title: item.title,
       charges: delta,
@@ -1528,14 +1655,26 @@ async function releaseRemainingInventoryReserve(
     const consumedForItem = Math.min(item.chargesReserved, periodsConsumed * item.duelPeriodCost);
     const remaining = Math.max(0, item.chargesReserved - consumedForItem);
     if (remaining <= 0) continue;
-    await client.query(
-      `update user_inventory_item
-          set charges_available = charges_available + $3,
-              charges_reserved = greatest(0, charges_reserved - $3),
-              updated_at = now()
-        where user_id = $1 and inventory_item_id = $2`,
-      [participant.user_id, item.id, remaining],
-    );
+    if (item.instanceId) {
+      await client.query(
+        `update user_inventory_instance
+            set charges_available = charges_available + $3,
+                charges_reserved = greatest(0, charges_reserved - $3),
+                updated_at = now()
+          where user_id = $1 and id = $2`,
+        [participant.user_id, item.instanceId, remaining],
+      );
+      await syncLegacyInventoryAggregate(client, participant.user_id, item.itemId);
+    } else {
+      await client.query(
+        `update user_inventory_item
+            set charges_available = charges_available + $3,
+                charges_reserved = greatest(0, charges_reserved - $3),
+                updated_at = now()
+          where user_id = $1 and inventory_item_id = $2`,
+        [participant.user_id, item.itemId, remaining],
+      );
+    }
   }
   await client.query(
     `update amateur_duel_participant
@@ -2147,6 +2286,8 @@ async function fetchAvailableInventory(
 ): Promise<InventoryAvailabilityItem[]> {
   const { rows } = await client.query<{
     id: string;
+    item_id: string;
+    instance_id: string | null;
     title: string;
     description: string;
     image_url: string | null;
@@ -2158,20 +2299,33 @@ async function fetchAvailableInventory(
     charges_available: number;
     charges_reserved: number;
   }>(
-    `select i.id, i.title, i.description, i.photo_url as image_url, i.item_kind, i.rarity,
+    `select coalesce(instance.id, i.id) as id,
+            i.id as item_id,
+            instance.id as instance_id,
+            i.title, i.description, i.photo_url as image_url, i.item_kind, i.rarity,
             i.power_score, i.duel_period_cost, i.resource_unit,
-            coalesce(ui.charges_available, 0)::int as charges_available,
-            coalesce(ui.charges_reserved, 0)::int as charges_reserved
+            case
+              when instance.id is not null then instance.charges_available
+              else coalesce(legacy.charges_available, 0)
+            end::int as charges_available,
+            case
+              when instance.id is not null then instance.charges_reserved
+              else coalesce(legacy.charges_reserved, 0)
+            end::int as charges_reserved
        from admin_inventory_items i
-       left join user_inventory_item ui
-         on ui.inventory_item_id = i.id and ui.user_id = $1
+       left join user_inventory_instance instance
+         on instance.inventory_item_id = i.id and instance.user_id = $1
+       left join user_inventory_item legacy
+         on legacy.inventory_item_id = i.id and legacy.user_id = $1 and instance.id is null
       where i.deleted_at is null
         and i.item_kind in ('stick', 'skates', 'nutrition')
-      order by i.item_kind, i.created_at desc`,
+      order by i.item_kind, i.created_at desc, instance.created_at nulls first, instance.id`,
     [userId],
   );
   return rows.map((row) => ({
     id: row.id,
+    itemId: row.item_id,
+    instanceId: row.instance_id,
     kind: row.item_kind,
     title: row.title,
     description: row.description,

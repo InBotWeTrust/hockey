@@ -61,5 +61,5 @@ export function formatInventoryResourceAmount(
 
 export function formatInventoryStockLabel(item: InventoryItem): string {
   if (item.chargesAvailable <= 0) return 'Нет запаса';
-  return `На ${formatInventoryResourceAmount(item.kind, item.chargesAvailable, item.resourceUnit)}`;
+  return `Осталось ${formatInventoryResourceAmount(item.kind, item.chargesAvailable, item.resourceUnit)}`;
 }

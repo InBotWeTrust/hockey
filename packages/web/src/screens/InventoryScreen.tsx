@@ -178,7 +178,7 @@ export function InventoryScreen(): JSX.Element {
     queryFn: fetchMyInventory,
   });
   const purchaseMutation = useMutation<InventoryState, Error, InventoryItem>({
-    mutationFn: (item) => purchaseInventoryItem(item.id),
+    mutationFn: (item) => purchaseInventoryItem(item.itemId ?? item.id),
     onSuccess: (inventory, item) => {
       queryClient.setQueryData(['inventory', 'me'], inventory);
       setPurchaseItem(null);

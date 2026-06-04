@@ -27,6 +27,8 @@ export interface PixiStageProps {
 
 export function PixiStage({ onReady, onResize }: PixiStageProps): JSX.Element {
   const hostRef = useRef<HTMLDivElement | null>(null);
+  const callbacksRef = useRef({ onReady, onResize });
+  callbacksRef.current = { onReady, onResize };
 
   useEffect(() => {
     const host = hostRef.current;
@@ -59,12 +61,12 @@ export function PixiStage({ onReady, onResize }: PixiStageProps): JSX.Element {
         return;
       }
       host.appendChild(app.canvas);
-      onReady(app, measure());
+      callbacksRef.current.onReady(app, measure());
     })();
 
     const ro = new ResizeObserver(() => {
       if (disposed) return;
-      onResize(measure());
+      callbacksRef.current.onResize(measure());
     });
     ro.observe(host);
 
@@ -77,7 +79,7 @@ export function PixiStage({ onReady, onResize }: PixiStageProps): JSX.Element {
         /* ignore */
       }
     };
-  }, [onReady, onResize]);
+  }, []);
 
   return <div ref={hostRef} style={{ width: '100%', height: '100%' }} />;
 }

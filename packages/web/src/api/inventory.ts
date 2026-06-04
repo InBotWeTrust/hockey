@@ -5,6 +5,8 @@ export type InventoryEquipmentKind = 'stick' | 'skates' | 'nutrition';
 
 export interface InventoryItem {
   id: string;
+  itemId?: string;
+  instanceId?: string | null;
   kind: InventoryEquipmentKind;
   title: string;
   description: string;

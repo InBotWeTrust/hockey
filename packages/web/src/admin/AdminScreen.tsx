@@ -5860,6 +5860,9 @@ function DuelTemplateCard({
           Перерыв {minutesText(msToMinutes(template.breakDurationMs))}
         </span>
         <span className="pill" style={{ fontSize: 10 }}>
+          Ответ {minutesText(msToMinutes(template.challengeTtlMs))}
+        </span>
+        <span className="pill" style={{ fontSize: 10 }}>
           Ожидание {minutesText(msToMinutes(template.readyDurationMs))}
         </span>
         <span className="pill" style={{ fontSize: 10 }}>
@@ -6132,6 +6135,9 @@ function DuelTemplateEditor({
   const [breakMinutes, setBreakMinutes] = useState(
     fieldNumber(template ? msToMinutes(template.breakDurationMs) : 15),
   );
+  const [challengeMinutes, setChallengeMinutes] = useState(
+    fieldNumber(template ? msToMinutes(template.challengeTtlMs) : 15),
+  );
   const [readyMinutes, setReadyMinutes] = useState(
     fieldNumber(template ? msToMinutes(template.readyDurationMs) : 15),
   );
@@ -6155,6 +6161,7 @@ function DuelTemplateEditor({
     shotsPerPeriod,
     periodMinutes,
     breakMinutes,
+    challengeMinutes,
     readyMinutes,
     winPoints,
     drawPoints,
@@ -6189,6 +6196,7 @@ function DuelTemplateEditor({
     parseAdminNumberInput(shotsPerPeriod) >= 1 &&
     parseAdminNumberInput(periodMinutes) > 0 &&
     parseAdminNumberInput(breakMinutes) >= 0 &&
+    parseAdminNumberInput(challengeMinutes) > 0 &&
     parseAdminNumberInput(readyMinutes) > 0 &&
     parseAdminNumberInput(winPoints) >= 0 &&
     parseAdminNumberInput(drawPoints) >= 0 &&
@@ -6231,7 +6239,7 @@ function DuelTemplateEditor({
         shotsPerPeriod: parseAdminNumberInput(shotsPerPeriod),
         periodDurationMs: minutesToMs(periodMinutes),
         breakDurationMs: minutesToMs(breakMinutes),
-        challengeTtlMs: template?.challengeTtlMs ?? 1_800_000,
+        challengeTtlMs: minutesToMs(challengeMinutes),
         readyDurationMs: minutesToMs(readyMinutes),
         readyNoShowCooldownMs: template?.readyNoShowCooldownMs ?? 900_000,
         matchmakingTimeoutMs: template?.matchmakingTimeoutMs ?? 180_000,
@@ -6373,6 +6381,14 @@ function DuelTemplateEditor({
               min="0"
               value={breakMinutes}
               onChange={(event) => setBreakMinutes(event.target.value)}
+            />
+          </AdminField>
+          <AdminField label="Минут на ответ">
+            <input
+              type="number"
+              min="1"
+              value={challengeMinutes}
+              onChange={(event) => setChallengeMinutes(event.target.value)}
             />
           </AdminField>
           <AdminField label="Минут ожидание">
@@ -6879,9 +6895,9 @@ function SettingEditor({
 
 function AdminField({ label, children }: { label: string; children: JSX.Element }): JSX.Element {
   return (
-    <div style={{ display: 'grid', gap: 5, minWidth: 0 }}>
+    <label style={{ display: 'grid', gap: 5, minWidth: 0 }}>
       <span style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 800 }}>{label}</span>
       {children}
-    </div>
+    </label>
   );
 }

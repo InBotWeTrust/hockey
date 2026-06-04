@@ -959,6 +959,123 @@ describe('AdminScreen', () => {
     expect(screen.getByText('Нет доступа')).toBeInTheDocument();
   });
 
+  it('saves duel challenge auto-cancel minutes separately from ready room waiting', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'a',
+      refreshToken: 'r',
+      user: { id: 'admin', displayName: 'Egor', role: 'admin' },
+    });
+    let templatePatchBody: Record<string, unknown> | null = null;
+    const duelTemplate = {
+      id: 'duel-template-1',
+      title: 'Классика',
+      description: 'Три периода как ежедневная игра.',
+      duelKind: 'classic',
+      duelVariant: 'classic',
+      isActive: true,
+      startsAt: '2026-01-01T00:00:00.000Z',
+      endsAt: '2100-01-01T00:00:00.000Z',
+      totalPeriods: 3,
+      shotsPerPeriod: 30,
+      periodDurationMs: 300_000,
+      breakDurationMs: 120_000,
+      goalieId: 'rookie',
+      periodSpeedPresets: [],
+      periodRules: null,
+      stakeAmount: 0,
+      entryFeeAmount: 0,
+      requiredInventoryItemId: null,
+      inventoryChargesPerPeriod: 0,
+      rankedEnabled: true,
+      matchmakingEnabled: true,
+      challengeTtlMs: 1_800_000,
+      readyDurationMs: 900_000,
+      readyNoShowCooldownMs: 900_000,
+      matchmakingTimeoutMs: 180_000,
+      rankedDailyLimit: 100,
+      rankedSameOpponentLimit: 100,
+      powerCap: 100,
+      winPoints: 3,
+      drawPoints: 1,
+      winCurrencyReward: 0,
+      drawCurrencyReward: 0,
+      winStarReward: 0,
+      createdAt: '2026-05-03T08:00:00.000Z',
+      updatedAt: '2026-05-03T08:00:00.000Z',
+    };
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.includes('/admin/summary')) {
+        return new Response(JSON.stringify(makeAdminSummary()), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/admin/duels/history')) {
+        return new Response(JSON.stringify({ duels: [], total: 0, limit: 25, offset: 0 }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/admin/users')) {
+        return new Response(
+          JSON.stringify({
+            users: [],
+            total: 0,
+            limit: 20,
+            offset: 0,
+            notificationStats: makeNotificationStats(),
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.includes('/admin/feedback')) {
+        return new Response(
+          JSON.stringify({
+            feedback: [],
+            total: 0,
+            unreadCount: 0,
+            ratingStats: { count: 0, average: null },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.includes('/admin/duel-templates/duel-template-1')) {
+        templatePatchBody = typeof init?.body === 'string' ? JSON.parse(init.body) : null;
+        return new Response(JSON.stringify({ template: duelTemplate }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/admin/duel-templates')) {
+        return new Response(JSON.stringify({ templates: [duelTemplate] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+
+    renderAdmin();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Дуэли' }));
+    expect(await screen.findByText('Ответ 30 мин')).toBeInTheDocument();
+    expect(screen.getByText('Ожидание 15 мин')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать Классика' }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Редактирование дуэли' });
+    fireEvent.change(within(dialog).getByLabelText('Минут на ответ'), {
+      target: { value: '15' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
+
+    await waitFor(() => expect(templatePatchBody).not.toBeNull());
+    const savedTemplatePatchBody = templatePatchBody as unknown as Record<string, unknown>;
+    expect(savedTemplatePatchBody.challengeTtlMs).toBe(900_000);
+    expect(savedTemplatePatchBody.readyDurationMs).toBe(900_000);
+  });
+
   it('saves inventory gameplay with comma decimal inputs', async () => {
     useAuthStore.getState().setSession({
       accessToken: 'a',

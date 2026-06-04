@@ -9,6 +9,8 @@ type DbClient = Pick<PoolClient, 'query'>;
 
 interface InventoryItemRow {
   id: string;
+  item_id: string;
+  instance_id: string | null;
   item_kind: EquipmentKind;
   title: string;
   description: string;
@@ -50,6 +52,8 @@ interface InventoryState {
 
 interface InventoryItemDto {
   id: string;
+  itemId: string;
+  instanceId: string | null;
   kind: EquipmentKind;
   title: string;
   description: string;
@@ -266,20 +270,109 @@ async function ensureInventoryRows(client: DbClient, userId: string): Promise<vo
   ]);
 }
 
+async function syncLegacyInventoryAggregate(
+  client: DbClient,
+  userId: string,
+  itemId: string,
+): Promise<void> {
+  const { rows } = await client.query<{ charges_available: number; charges_reserved: number }>(
+    `select coalesce(sum(charges_available), 0)::int as charges_available,
+            coalesce(sum(charges_reserved), 0)::int as charges_reserved
+       from user_inventory_instance
+      where user_id = $1 and inventory_item_id = $2`,
+    [userId, itemId],
+  );
+  const aggregate = rows[0] ?? { charges_available: 0, charges_reserved: 0 };
+  await client.query(
+    `insert into user_inventory_item
+       (user_id, inventory_item_id, charges_available, charges_reserved, updated_at)
+     values ($1, $2, $3, $4, now())
+     on conflict (user_id, inventory_item_id)
+     do update
+       set charges_available = excluded.charges_available,
+           charges_reserved = excluded.charges_reserved,
+           updated_at = now()`,
+    [userId, itemId, Number(aggregate.charges_available), Number(aggregate.charges_reserved)],
+  );
+}
+
+async function resolveEquippableInventorySelection(
+  client: DbClient,
+  userId: string,
+  kind: EquipmentKind,
+  selectionId: string,
+): Promise<{ instanceId: string | null; itemId: string }> {
+  const instance = await client.query<{ instance_id: string; item_id: string }>(
+    `select instance.id as instance_id, item.id as item_id
+       from user_inventory_instance instance
+       join admin_inventory_items item on item.id = instance.inventory_item_id
+      where instance.user_id = $1
+        and instance.id = $2
+        and item.item_kind = $3
+        and item.deleted_at is null
+        and instance.charges_available > 0
+      limit 1`,
+    [userId, selectionId, kind],
+  );
+  if (instance.rows[0]) {
+    return { instanceId: instance.rows[0].instance_id, itemId: instance.rows[0].item_id };
+  }
+
+  const fallback = await client.query<{ instance_id: string | null; item_id: string }>(
+    `select instance.id as instance_id, item.id as item_id
+       from admin_inventory_items item
+       left join lateral (
+         select owned.id
+           from user_inventory_instance owned
+          where owned.user_id = $1
+            and owned.inventory_item_id = item.id
+            and owned.charges_available > 0
+          order by owned.created_at, owned.id
+          limit 1
+       ) instance on true
+       left join user_inventory_item legacy
+         on legacy.user_id = $1 and legacy.inventory_item_id = item.id
+      where item.id = $2
+        and item.item_kind = $3
+        and item.deleted_at is null
+        and instance.id is not null`,
+    [userId, selectionId, kind],
+  );
+  if (fallback.rows[0]) {
+    return { instanceId: fallback.rows[0].instance_id, itemId: fallback.rows[0].item_id };
+  }
+
+  const legacy = await client.query<{ item_id: string }>(
+    `select item.id as item_id
+       from admin_inventory_items item
+       join user_inventory_item legacy
+         on legacy.inventory_item_id = item.id and legacy.user_id = $1
+      where item.id = $2
+        and item.item_kind = $3
+        and item.deleted_at is null
+        and legacy.charges_available > 0
+      limit 1`,
+    [userId, selectionId, kind],
+  );
+  if (legacy.rows[0]) return { instanceId: null, itemId: legacy.rows[0].item_id };
+
+  throw new AppError('conflict', `invalid ${kind} equipment item`, 409);
+}
+
 async function fetchInventoryState(client: DbClient, userId: string): Promise<InventoryState> {
   await ensureInventoryRows(client, userId);
   const { rows: accountRows } = await client.query<{
     balance: number;
     stars: number;
-    equipped_stick_item_id: string | null;
-    equipped_skates_item_id: string | null;
-    equipped_nutrition_item_id: string | null;
+    equipped_stick_id: string | null;
+    equipped_skates_id: string | null;
+    equipped_nutrition_id: string | null;
   }>(
     `select coalesce(c.balance, 0)::int as balance,
             coalesce(u.xp, 0)::int as stars,
-            e.equipped_stick_item_id,
-            e.equipped_skates_item_id,
-            e.equipped_nutrition_item_id
+            coalesce(e.equipped_stick_instance_id, e.equipped_stick_item_id) as equipped_stick_id,
+            coalesce(e.equipped_skates_instance_id, e.equipped_skates_item_id) as equipped_skates_id,
+            coalesce(e.equipped_nutrition_instance_id, e.equipped_nutrition_item_id) as equipped_nutrition_id
        from users u
        left join user_currency_account c on c.user_id = u.id
        left join user_equipment e on e.user_id = u.id
@@ -290,21 +383,32 @@ async function fetchInventoryState(client: DbClient, userId: string): Promise<In
   if (!account) throw new AppError('not_found', 'user not found', 404);
 
   const { rows } = await client.query<InventoryItemRow>(
-    `select i.id, i.item_kind, i.title, i.description, i.photo_url, i.currency_price,
+    `select coalesce(instance.id, i.id) as id,
+            i.id as item_id,
+            instance.id as instance_id,
+            i.item_kind, i.title, i.description, i.photo_url, i.currency_price,
             i.charges_per_purchase, i.resource_unit, i.rarity, i.power_score, i.duel_period_cost,
             i.effect_puck_speed_points,
             i.effect_stumble_interval_min_ms, i.effect_stumble_interval_max_ms,
             i.effect_stumble_duration_min_ms, i.effect_stumble_duration_max_ms,
             i.effect_nutrition_slowdown_ms, i.effect_nutrition_stop_ms,
             i.effect_fatigue_delay_ms, i.effect_fatigue_speed_multiplier,
-            coalesce(ui.charges_available, 0)::int as charges_available,
-            coalesce(ui.charges_reserved, 0)::int as charges_reserved
+            case
+              when instance.id is not null then instance.charges_available
+              else coalesce(legacy.charges_available, 0)
+            end::int as charges_available,
+            case
+              when instance.id is not null then instance.charges_reserved
+              else coalesce(legacy.charges_reserved, 0)
+            end::int as charges_reserved
        from admin_inventory_items i
-       left join user_inventory_item ui
-         on ui.inventory_item_id = i.id and ui.user_id = $1
+       left join user_inventory_instance instance
+         on instance.inventory_item_id = i.id and instance.user_id = $1
+       left join user_inventory_item legacy
+         on legacy.inventory_item_id = i.id and legacy.user_id = $1 and instance.id is null
       where i.deleted_at is null
         and i.item_kind in ('stick', 'skates', 'nutrition')
-      order by i.item_kind, i.currency_price, i.title`,
+      order by i.item_kind, i.currency_price, i.title, instance.created_at nulls first, instance.id`,
     [userId],
   );
 
@@ -317,6 +421,8 @@ async function fetchInventoryState(client: DbClient, userId: string): Promise<In
     const chargesAvailable = Number(row.charges_available);
     items[row.item_kind].push({
       id: row.id,
+      itemId: row.item_id,
+      instanceId: row.instance_id,
       kind: row.item_kind,
       title: row.title,
       description: row.description,
@@ -343,6 +449,14 @@ async function fetchInventoryState(client: DbClient, userId: string): Promise<In
       chargesReserved: Number(row.charges_reserved),
     });
   }
+
+  const activeEquipmentId = (kind: EquipmentKind, selectedId: string | null): string | null => {
+    if (!selectedId) return null;
+    const active = items[kind].find(
+      (item) => (item.id === selectedId || item.itemId === selectedId) && item.chargesAvailable > 0,
+    );
+    return active?.id ?? null;
+  };
 
   const { rows: historyRows } = await client.query<{
     id: string;
@@ -438,9 +552,9 @@ async function fetchInventoryState(client: DbClient, userId: string): Promise<In
       stars: Number(account.stars),
     },
     equipped: {
-      stickItemId: account.equipped_stick_item_id,
-      skatesItemId: account.equipped_skates_item_id,
-      nutritionItemId: account.equipped_nutrition_item_id,
+      stickItemId: activeEquipmentId('stick', account.equipped_stick_id),
+      skatesItemId: activeEquipmentId('skates', account.equipped_skates_id),
+      nutritionItemId: activeEquipmentId('nutrition', account.equipped_nutrition_id),
     },
     items,
     purchaseHistory: historyRows.map((row) => ({
@@ -462,28 +576,6 @@ async function fetchInventoryState(client: DbClient, userId: string): Promise<In
     })),
     transactionHistory,
   };
-}
-
-async function assertCanEquipItem(
-  client: DbClient,
-  userId: string,
-  kind: EquipmentKind,
-  itemId: string,
-): Promise<void> {
-  const { rows } = await client.query<{ id: string }>(
-    `select i.id
-       from admin_inventory_items i
-       join user_inventory_item ui
-         on ui.inventory_item_id = i.id and ui.user_id = $1
-      where i.id = $2
-        and i.item_kind = $3
-        and i.deleted_at is null
-        and ui.charges_available + ui.charges_reserved > 0`,
-    [userId, itemId, kind],
-  );
-  if (!rows[0]) {
-    throw new AppError('conflict', `invalid ${kind} equipment item`, 409);
-  }
 }
 
 async function purchaseInventoryItem(
@@ -531,16 +623,15 @@ async function purchaseInventoryItem(
   const account = accountRows[0];
   if (!account) throw new AppError('conflict', 'not enough currency balance', 409);
 
-  await client.query(
-    `insert into user_inventory_item
+  const { rows: instanceRows } = await client.query<{ id: string }>(
+    `insert into user_inventory_instance
        (user_id, inventory_item_id, charges_available, updated_at)
      values ($1, $2, $3, now())
-     on conflict (user_id, inventory_item_id)
-     do update
-       set charges_available = user_inventory_item.charges_available + excluded.charges_available,
-           updated_at = now()`,
+     returning id`,
     [userId, item.id, charges],
   );
+  const instanceId = instanceRows[0]?.id ?? null;
+  await syncLegacyInventoryAggregate(client, userId, item.id);
 
   await client.query(
     `insert into currency_ledger
@@ -553,6 +644,7 @@ async function purchaseInventoryItem(
       Number(account.reserved_balance),
       JSON.stringify({
         inventory_item_id: item.id,
+        inventory_instance_id: instanceId,
         title: item.title,
         item_kind: item.item_kind,
         charges_added: charges,
@@ -594,15 +686,6 @@ export const inventoryRoutes: FastifyPluginAsync = async (app) => {
     try {
       await client.query('begin');
       await ensureInventoryRows(client, req.user.id);
-      if (parsed.data.stickItemId) {
-        await assertCanEquipItem(client, req.user.id, 'stick', parsed.data.stickItemId);
-      }
-      if (parsed.data.skatesItemId) {
-        await assertCanEquipItem(client, req.user.id, 'skates', parsed.data.skatesItemId);
-      }
-      if (parsed.data.nutritionItemId) {
-        await assertCanEquipItem(client, req.user.id, 'nutrition', parsed.data.nutritionItemId);
-      }
 
       const assignments: string[] = [];
       const values: unknown[] = [req.user.id];
@@ -611,13 +694,43 @@ export const inventoryRoutes: FastifyPluginAsync = async (app) => {
         assignments.push(`${column} = $${values.length}`);
       };
       if (parsed.data.stickItemId !== undefined) {
-        addAssignment('equipped_stick_item_id', parsed.data.stickItemId);
+        const resolved =
+          parsed.data.stickItemId === null
+            ? null
+            : await resolveEquippableInventorySelection(
+                client,
+                req.user.id,
+                'stick',
+                parsed.data.stickItemId,
+              );
+        addAssignment('equipped_stick_instance_id', resolved?.instanceId ?? null);
+        addAssignment('equipped_stick_item_id', resolved?.itemId ?? null);
       }
       if (parsed.data.skatesItemId !== undefined) {
-        addAssignment('equipped_skates_item_id', parsed.data.skatesItemId);
+        const resolved =
+          parsed.data.skatesItemId === null
+            ? null
+            : await resolveEquippableInventorySelection(
+                client,
+                req.user.id,
+                'skates',
+                parsed.data.skatesItemId,
+              );
+        addAssignment('equipped_skates_instance_id', resolved?.instanceId ?? null);
+        addAssignment('equipped_skates_item_id', resolved?.itemId ?? null);
       }
       if (parsed.data.nutritionItemId !== undefined) {
-        addAssignment('equipped_nutrition_item_id', parsed.data.nutritionItemId);
+        const resolved =
+          parsed.data.nutritionItemId === null
+            ? null
+            : await resolveEquippableInventorySelection(
+                client,
+                req.user.id,
+                'nutrition',
+                parsed.data.nutritionItemId,
+              );
+        addAssignment('equipped_nutrition_instance_id', resolved?.instanceId ?? null);
+        addAssignment('equipped_nutrition_item_id', resolved?.itemId ?? null);
       }
 
       await client.query(

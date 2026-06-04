@@ -191,7 +191,7 @@ function hasOwnedNutrition(inventory: InventoryState | undefined): boolean {
 
 function hasOwnedUltimateStick(inventory: InventoryState | undefined): boolean {
   return (inventory?.items.stick ?? []).some(
-    (item) => isAvailableLockerItem(item) && /^Ультимейт Ван(?:\s|$)/i.test(item.title.trim()),
+    (item) => item.chargesAvailable > 0 && /^Ультимейт Ван(?:\s|$)/i.test(item.title.trim()),
   );
 }
 
@@ -218,6 +218,24 @@ function formatReservedLabel(count: number): string | null {
 
 function formatLockerCount(value: number): string {
   return new Intl.NumberFormat('ru-RU').format(Math.max(0, Math.trunc(value)));
+}
+
+function equipmentModalCopy(kind: InventoryEquipmentKind): string {
+  if (kind === 'stick') {
+    return 'Выберите клюшку, с которой будете начинать матчи. Перед стартом игры выбор можно изменить';
+  }
+  return 'Выберите купленный предмет для активного слота.';
+}
+
+function equipmentStockLineStyle(selected: boolean): CSSProperties {
+  return {
+    display: 'inline-block',
+    marginTop: 3,
+    color: selected ? 'rgba(255,255,255,0.92)' : '#334155',
+    fontSize: 12,
+    fontWeight: 920,
+    lineHeight: 1.15,
+  };
 }
 
 function availableStickShots(inventory: InventoryState | undefined): number {
@@ -568,7 +586,7 @@ function EquipmentDetailsModal({
         </button>
         <div style={{ minWidth: 0, paddingRight: 42 }}>
           <div className="modal-title">{meta.title}</div>
-          <div className="modal-copy">Купленные расходники для активного слота.</div>
+          <div className="modal-copy">{equipmentModalCopy(kind)}</div>
         </div>
 
         <div
@@ -686,7 +704,7 @@ function EquipmentDetailsModal({
                     ? '0 14px 26px rgba(15,23,42,0.2), inset 0 1px 0 rgba(255,255,255,0.2)'
                     : '0 8px 18px rgba(15,23,42,0.1), inset 0 1px 0 rgba(255,255,255,0.74)',
                 }}
-                >
+              >
                 <span
                   aria-hidden="true"
                   style={{
@@ -730,7 +748,9 @@ function EquipmentDetailsModal({
                     }}
                   >
                     <span>{equipmentEffectLabel(kind, item.powerScore)}</span>
-                    <span>{formatInventoryStockLabel(item)}</span>
+                    <span style={equipmentStockLineStyle(selected)}>
+                      {formatInventoryStockLabel(item)}
+                    </span>
                     {reservedLabel !== null && <span>{reservedLabel}</span>}
                   </span>
                 </span>

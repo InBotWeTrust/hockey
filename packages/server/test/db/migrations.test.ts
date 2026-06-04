@@ -310,6 +310,8 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '050_duel_inventory_usage_resources.sql',
       '051_dedupe_active_duel_templates.sql',
       '052_backfill_duel_inventory_gameplay_fields.sql',
+      '053_duel_challenge_ttl_admin_default.sql',
+      '054_inventory_item_instances.sql',
     ]);
   });
 });

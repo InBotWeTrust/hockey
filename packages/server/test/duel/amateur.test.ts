@@ -215,6 +215,20 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     return rows[0]!.id;
   }
 
+  async function createInventoryInstance(
+    userId: string,
+    itemId: string,
+    chargesAvailable: number,
+  ) {
+    const { rows } = await pool.query<{ id: string }>(
+      `insert into user_inventory_instance (user_id, inventory_item_id, charges_available)
+       values ($1, $2, $3)
+       returning id`,
+      [userId, itemId, chargesAvailable],
+    );
+    return rows[0]!.id;
+  }
+
   async function acceptReadyAndStart(
     matchId: string,
     opts: { token?: string; loadout?: Record<string, string | null> } = {},
@@ -676,7 +690,9 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
 
     expect(purchased.statusCode).toBe(200);
     expect(purchased.json().balances.tokens).toBe(60);
-    const stick = purchased.json().items.stick.find((item: { id: string }) => item.id === stickId);
+    const stick = purchased
+      .json()
+      .items.stick.find((item: { itemId: string }) => item.itemId === stickId);
     expect(stick?.chargesAvailable).toBe(5);
     expect(stick?.chargesPerPurchase).toBe(5);
     expect(purchased.json().purchaseHistory[0]).toMatchObject({
@@ -736,6 +752,78 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
           amounts: [{ currency: 'ruble', value: -299 }],
         }),
       ]),
+    );
+  });
+
+  it('keeps duplicate inventory purchases as separate instances', async () => {
+    const stickId = await createInventoryItem('stick', 'Duplicate shop stick');
+    await pool.query(
+      `update admin_inventory_items
+          set currency_price = 10,
+              charges_per_purchase = 5,
+              resource_unit = 'shot'
+        where id = $1`,
+      [stickId],
+    );
+
+    const first = await app.inject({
+      method: 'POST',
+      url: `/inventory/items/${stickId}/purchase`,
+      headers: auth(tokenA),
+    });
+    expect(first.statusCode).toBe(200);
+
+    const second = await app.inject({
+      method: 'POST',
+      url: `/inventory/items/${stickId}/purchase`,
+      headers: auth(tokenA),
+    });
+
+    expect(second.statusCode).toBe(200);
+    expect(second.json().balances.tokens).toBe(80);
+    const sticks = second
+      .json()
+      .items.stick.filter((item: { itemId: string }) => item.itemId === stickId);
+    expect(sticks).toHaveLength(2);
+    expect(new Set(sticks.map((item: { id: string }) => item.id)).size).toBe(2);
+    expect(sticks.map((item: { chargesAvailable: number }) => item.chargesAvailable)).toEqual([
+      5, 5,
+    ]);
+
+    const legacyAggregate = await pool.query<{ charges_available: number }>(
+      `select charges_available
+         from user_inventory_item
+        where user_id = $1 and inventory_item_id = $2`,
+      [userA, stickId],
+    );
+    expect(legacyAggregate.rows[0]?.charges_available).toBe(10);
+  });
+
+  it('equips one concrete inventory instance instead of the whole catalogue item', async () => {
+    const stickId = await createInventoryItem('stick', 'Concrete stick');
+    const firstInstanceId = await createInventoryInstance(userA, stickId, 1);
+    const secondInstanceId = await createInventoryInstance(userA, stickId, 3);
+
+    const saved = await app.inject({
+      method: 'PATCH',
+      url: '/inventory/equipment',
+      headers: auth(tokenA),
+      payload: { stickItemId: secondInstanceId },
+    });
+
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json().equipped.stickItemId).toBe(secondInstanceId);
+    const activeStick = saved
+      .json()
+      .items.stick.find((item: { id: string }) => item.id === secondInstanceId);
+    expect(activeStick).toMatchObject({
+      id: secondInstanceId,
+      instanceId: secondInstanceId,
+      itemId: stickId,
+      chargesAvailable: 3,
+    });
+    expect(saved.json().items.stick.some((item: { id: string }) => item.id === firstInstanceId)).toBe(
+      true,
     );
   });
 
@@ -1224,6 +1312,74 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       )
       .find((item: { id: string }) => item.id === stickId);
     expect(consumed?.charges).toBe(1);
+  });
+
+  it('consumes charges from the selected duel inventory instance only', async () => {
+    const stickId = await createInventoryItem('stick', 'Instance duel stick');
+    await pool.query(
+      `update admin_inventory_items
+          set resource_unit = 'shot',
+              charges_per_purchase = 2,
+              duel_period_cost = 0
+        where id = $1`,
+      [stickId],
+    );
+    const firstInstanceId = await createInventoryInstance(userA, stickId, 1);
+    const secondInstanceId = await createInventoryInstance(userA, stickId, 2);
+    const templateId = await createTemplate();
+    const created = await challenge(templateId);
+    const matchId = created.json().match.id;
+    const started = await acceptReadyAndStart(matchId, { loadout: { stick: secondInstanceId } });
+    expect(started.statusCode).toBe(200);
+    expect(
+      started.json().match.me.loadout.items.find((item: { kind: string }) => item.kind === 'stick'),
+    ).toMatchObject({
+      id: secondInstanceId,
+      instanceId: secondInstanceId,
+      itemId: stickId,
+      resourceAvailable: 2,
+    });
+
+    const shot = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/shot`,
+      headers: auth(tokenA),
+      payload: {
+        shot_index: 1,
+        input: { tapTime: 1000 },
+        claimed_result: 'goal',
+      },
+    });
+
+    expect(shot.statusCode).toBe(200);
+    const instances = await pool.query<{ id: string; charges_available: number }>(
+      `select id, charges_available
+         from user_inventory_instance
+        where id = any($1::uuid[])
+        order by id`,
+      [[firstInstanceId, secondInstanceId]],
+    );
+    const chargesByInstance = new Map(
+      instances.rows.map((row) => [row.id, Number(row.charges_available)]),
+    );
+    expect(chargesByInstance.get(firstInstanceId)).toBe(1);
+    expect(chargesByInstance.get(secondInstanceId)).toBe(1);
+
+    const legacyAggregate = await pool.query<{ charges_available: number }>(
+      `select charges_available
+         from user_inventory_item
+        where user_id = $1 and inventory_item_id = $2`,
+      [userA, stickId],
+    );
+    expect(legacyAggregate.rows[0]?.charges_available).toBe(2);
+    const consumed = shot
+      .json()
+      .match.me.inventory_report.flatMap(
+        (report: { consumed: Array<{ id: string; itemId: string; charges: number }> }) =>
+          report.consumed,
+      )
+      .find((item: { id: string }) => item.id === secondInstanceId);
+    expect(consumed).toMatchObject({ id: secondInstanceId, itemId: stickId, charges: 1 });
   });
 
   it('does not reset shot-stick resource on the next duel period', async () => {

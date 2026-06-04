@@ -326,15 +326,30 @@ describe('InventoryScreen', () => {
   });
 
   it('confirms purchase before spending tokens', async () => {
-    const purchasedInventory: InventoryState = {
+    const inventoryWithInstanceItem: InventoryState = {
       ...inventoryWithItems,
-      balances: { ...inventoryWithItems.balances, tokens: 880 },
+      equipped: { ...inventoryWithItems.equipped, stickItemId: 'instance-stick-bronze' },
       items: {
         ...inventoryWithItems.items,
-        stick: [{ ...inventoryWithItems.items.stick[0]!, chargesAvailable: 8 }],
+        stick: [
+          {
+            ...inventoryWithItems.items.stick[0]!,
+            id: 'instance-stick-bronze',
+            itemId: 'stick-bronze',
+            instanceId: 'instance-stick-bronze',
+          },
+        ],
       },
     };
-    mockInventoryFetch(inventoryWithItems, purchasedInventory);
+    const purchasedInventory: InventoryState = {
+      ...inventoryWithInstanceItem,
+      balances: { ...inventoryWithInstanceItem.balances, tokens: 880 },
+      items: {
+        ...inventoryWithInstanceItem.items,
+        stick: [{ ...inventoryWithInstanceItem.items.stick[0]!, chargesAvailable: 8 }],
+      },
+    };
+    mockInventoryFetch(inventoryWithInstanceItem, purchasedInventory);
 
     renderInventory();
 

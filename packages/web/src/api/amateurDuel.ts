@@ -137,6 +137,8 @@ export interface AmateurDuelParticipant {
 
 export interface AmateurDuelLoadoutItem {
   id: string;
+  itemId?: string;
+  instanceId?: string | null;
   kind: 'stick' | 'skates' | 'nutrition';
   title: string;
   rarity: 'common' | 'rare' | 'epic' | 'legendary';
@@ -157,6 +159,8 @@ export interface AmateurDuelLoadout {
 
 export interface AmateurDuelInventoryAvailabilityItem {
   id: string;
+  itemId?: string;
+  instanceId?: string | null;
   kind: 'stick' | 'skates' | 'nutrition';
   title: string;
   description: string;
@@ -173,6 +177,8 @@ export interface AmateurDuelInventoryPeriodReport {
   periodNumber: number;
   consumed: Array<{
     id: string;
+    itemId?: string;
+    instanceId?: string | null;
     kind: 'stick' | 'skates' | 'nutrition';
     title: string;
     charges: number;

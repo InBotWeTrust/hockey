@@ -3841,35 +3841,25 @@ function DuelKindPreferenceButton({
       aria-pressed={checked}
       onClick={onClick}
       style={{
-        minHeight: 32,
+        minWidth: 0,
+        minHeight: 30,
         borderRadius: 999,
-        border: active ? '1px solid rgba(15, 23, 42, 0.18)' : '1px solid rgba(255,255,255,0.72)',
-        background: active ? 'rgba(255,255,255,0.68)' : 'rgba(255,255,255,0.3)',
-        color: 'var(--ink)',
+        border: active ? '1px solid rgba(15,23,42,0.32)' : '1px solid rgba(255,255,255,0.7)',
+        background: active ? 'rgba(31,42,61,0.92)' : 'rgba(255,255,255,0.46)',
+        color: active ? '#fff' : 'var(--ink)',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'flex-start',
-        gap: 6,
+        justifyContent: 'center',
         padding: '0 9px',
         fontSize: 10,
         fontWeight: 900,
+        lineHeight: 1,
         letterSpacing: '0',
-        boxShadow: active ? '0 8px 18px rgba(15, 23, 42, 0.08)' : 'none',
+        boxShadow: 'none',
         whiteSpace: 'nowrap',
-        minWidth: 0,
+        cursor: 'pointer',
       }}
     >
-      <span
-        aria-hidden="true"
-        style={{
-          width: 7,
-          height: 7,
-          borderRadius: 999,
-          background: active ? 'rgba(15, 23, 42, 0.78)' : 'rgba(71,85,105,0.2)',
-          boxShadow: active ? '0 0 0 4px rgba(15, 23, 42, 0.06)' : 'none',
-          flexShrink: 0,
-        }}
-      />
       {label}
     </button>
   );
@@ -5125,7 +5115,7 @@ function DuelEquipmentDetailsModal({
         </button>
         <div style={{ minWidth: 0, paddingRight: 42 }}>
           <div className="modal-title">{meta.title}</div>
-          <div className="modal-copy">Выбор купленного инвентаря для дуэлей.</div>
+          <div className="modal-copy">{duelEquipmentModalCopy(kind)}</div>
         </div>
 
         <div
@@ -5296,7 +5286,9 @@ function DuelEquipmentDetailsModal({
                     }}
                   >
                     <span>{duelEquipmentEffectLabel(kind, item.powerScore)}</span>
-                    <span>{formatInventoryStockLabel(item)}</span>
+                    <span style={duelEquipmentStockLineStyle(selected)}>
+                      {formatInventoryStockLabel(item)}
+                    </span>
                   </span>
                 </span>
                 <DuelEquipmentSelectionRadio selected={selected} />
@@ -6689,7 +6681,25 @@ function duelBaseEquipmentTitle(kind: InventoryEquipmentKind): string {
 
 function duelInventoryStockLabel(item: AmateurDuelInventoryAvailabilityItem): string {
   if (item.chargesAvailable <= 0) return 'Нет запаса';
-  return `На ${formatInventoryResourceAmount(item.kind, item.chargesAvailable, item.resourceUnit)}`;
+  return `Осталось ${formatInventoryResourceAmount(item.kind, item.chargesAvailable, item.resourceUnit)}`;
+}
+
+function duelEquipmentModalCopy(kind: InventoryEquipmentKind): string {
+  if (kind === 'stick') {
+    return 'Выберите клюшку, с которой будете начинать матчи. Перед стартом игры выбор можно изменить';
+  }
+  return 'Выберите купленный предмет для активного слота.';
+}
+
+function duelEquipmentStockLineStyle(selected: boolean): CSSProperties {
+  return {
+    display: 'inline-block',
+    marginTop: 3,
+    color: selected ? 'rgba(255,255,255,0.92)' : '#334155',
+    fontSize: 12,
+    fontWeight: 920,
+    lineHeight: 1.15,
+  };
 }
 
 function duelEquipmentPointLabel(value: number): string {
@@ -7046,7 +7056,7 @@ function DuelRinkLoadoutModal({
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="modal-title">{meta.title}</div>
-            <div className="modal-copy">Выберите предмет для этой дуэли.</div>
+            <div className="modal-copy">{duelEquipmentModalCopy(kind)}</div>
           </div>
           <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
             <X size={15} />
@@ -7206,7 +7216,9 @@ function DuelRinkLoadoutModal({
                     }}
                   >
                     <span>{duelEquipmentEffectLabel(kind, item.powerScore)}</span>
-                    <span>{duelInventoryStockLabel(item)}</span>
+                    <span style={duelEquipmentStockLineStyle(selected)}>
+                      {duelInventoryStockLabel(item)}
+                    </span>
                   </span>
                 </span>
                 <DuelEquipmentSelectionRadio selected={selected} />

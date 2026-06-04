@@ -1790,9 +1790,12 @@ describe('DailyScreen', () => {
     expect(express).toHaveAttribute('aria-pressed', 'true');
     expect(expressPlus).toHaveAttribute('aria-pressed', 'true');
     expect(classic).toHaveAttribute('aria-pressed', 'true');
+    expect(express.childElementCount).toBe(0);
+    expect(express.style.background).toBe('rgba(31, 42, 61, 0.92)');
 
     fireEvent.click(expressPlus);
     expect(expressPlus).toHaveAttribute('aria-pressed', 'false');
+    expect(expressPlus.style.background).toBe('rgba(255, 255, 255, 0.46)');
 
     fireEvent.click(screen.getByRole('button', { name: 'Начать поиск' }));
 
