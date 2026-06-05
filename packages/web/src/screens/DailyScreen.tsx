@@ -8960,7 +8960,7 @@ export function PlayView<TState>({
   inactiveAction,
   entranceBeforeInactiveAction = false,
   backLabel = 'К режимам',
-  bottomInset = 'calc(8px + max(20px, var(--app-safe-bottom)))',
+  bottomInset = 'calc(8px + var(--app-dock-safe-bottom))',
   sessionStartedAt,
   serverNow,
   receivedAtPerformanceMs,

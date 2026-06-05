@@ -17,6 +17,7 @@
 
 :root {
   color-scheme: only light;
+  --app-viewport-height: 100dvh;
   --app-bg-top: #c9dcf0;
   --app-bg-bottom: #9cbfdf;
   --app-safe-top-raw: env(safe-area-inset-top, 0px);
@@ -78,14 +79,14 @@
   --app-safe-top: var(--app-safe-top-raw);
   --app-safe-bottom: clamp(12px, var(--app-safe-bottom-raw), 26px);
   --app-dock-safe-bottom: clamp(8px, calc(var(--app-safe-bottom-raw) - 18px), 14px);
-  --bottom-nav-bottom-gap: 5px;
+  --bottom-nav-bottom-gap: var(--app-dock-safe-bottom);
 }
 
 :root.app-ios-standalone {
   --app-safe-top: var(--app-safe-top-raw);
   --app-safe-bottom: max(24px, var(--app-safe-bottom-raw));
   --app-dock-safe-bottom: clamp(8px, calc(var(--app-safe-bottom-raw) - 22px), 12px);
-  --bottom-nav-bottom-gap: 4px;
+  --bottom-nav-bottom-gap: var(--app-dock-safe-bottom);
 }
 
 @media (hover: hover) and (pointer: fine) {

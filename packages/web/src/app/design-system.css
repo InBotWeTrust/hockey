@@ -4,7 +4,7 @@
     radial-gradient(circle at 80% 90%, rgba(59, 130, 246, 0.18), transparent 55%),
     linear-gradient(180deg, #c9dcf0 0%, #9cbfdf 100%);
   height: 100vh;
-  height: 100dvh;
+  height: var(--app-viewport-height, 100dvh);
 }
 .app-shell::before {
   content: '';
@@ -139,10 +139,10 @@
 .glass-edge-fade--bottom {
   --glass-edge-bg: linear-gradient(
     to top,
-    rgba(152, 190, 222, 0.52),
-    rgba(152, 190, 222, 0.34) 42%,
-    rgba(152, 190, 222, 0.16) 70%,
-    rgba(152, 190, 222, 0.06) 86%,
+    rgba(226, 241, 255, 0.24),
+    rgba(226, 241, 255, 0.16) 42%,
+    rgba(226, 241, 255, 0.08) 70%,
+    rgba(226, 241, 255, 0.03) 86%,
     rgba(152, 190, 222, 0)
   );
   --glass-edge-mask: linear-gradient(

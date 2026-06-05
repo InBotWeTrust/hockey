@@ -125,6 +125,16 @@ describe('PlayView rink availability visuals', () => {
     });
   });
 
+  it('keeps play controls above the compact dock inset by default', async () => {
+    renderPlayView({ showIceCar: false });
+
+    const root = await screen.findByRole('main');
+
+    expect(root).toHaveStyle({
+      bottom: 'calc(8px + var(--app-dock-safe-bottom))',
+    });
+  });
+
   it('keeps an already-visible goal in place while starting an inactive rink', async () => {
     const goalUpdate = vi.spyOn(Goal.prototype, 'update');
     const inactiveAction = vi.fn(() => null);
