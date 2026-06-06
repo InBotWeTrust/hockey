@@ -147,6 +147,7 @@ export interface AmateurDuelLoadoutItem {
   chargesReserved: number;
   resourceUnit?: DuelInventoryResourceUnit;
   resourceAvailable?: number;
+  lowStockThreshold?: number;
   effectPuckSpeedPoints?: number;
   timing?: DuelInventoryTiming;
 }
@@ -169,6 +170,7 @@ export interface AmateurDuelInventoryAvailabilityItem {
   powerScore: number;
   duelPeriodCost: number;
   resourceUnit?: DuelInventoryResourceUnit;
+  lowStockThreshold?: number;
   chargesAvailable: number;
   chargesReserved: number;
 }

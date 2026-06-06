@@ -513,6 +513,13 @@ function inventoryChargeValueForSave(kind: AdminInventoryItemKind, value: number
   return kind === 'nutrition' ? Math.max(0, Math.round(value * 60_000)) : Math.round(value);
 }
 
+function inventoryLowStockDefault(kind: AdminInventoryItemKind): number {
+  if (kind === 'stick') return 10;
+  if (kind === 'skates') return 50;
+  if (kind === 'nutrition') return 60_000;
+  return 0;
+}
+
 function puckSpeedDeltaToPoints(value: number | undefined): string {
   if (value === undefined || !Number.isFinite(value)) return '';
   return String(Math.round(value * 100));
@@ -5040,6 +5047,11 @@ function InventoryEditor({
   const [itemKind, setItemKind] = useState<AdminInventoryItemKind>(item?.itemKind ?? 'consumable');
   const [currencyPrice, setCurrencyPrice] = useState(fieldNumber(item?.currencyPrice ?? 0));
   const [chargesPerPurchase, setChargesPerPurchase] = useState(inventoryChargeFieldValue(item));
+  const [lowStockThreshold, setLowStockThreshold] = useState(
+    fieldNumber(
+      item?.lowStockThreshold ?? inventoryLowStockDefault(item?.itemKind ?? 'consumable'),
+    ),
+  );
   const [duelPeriodCost, setDuelPeriodCost] = useState(fieldNumber(item?.duelPeriodCost ?? 0));
   const [effectPuckSpeedPoints, setEffectPuckSpeedPoints] = useState(
     puckSpeedPointsFieldValue(item),
@@ -5110,6 +5122,7 @@ function InventoryEditor({
   const parsedPriceRub = parseAdminIntegerInput(priceRub);
   const parsedCurrencyPrice = parseAdminIntegerInput(currencyPrice);
   const parsedChargesPerPurchase = parseAdminNumberInput(chargesPerPurchase);
+  const parsedLowStockThreshold = parseAdminIntegerInput(lowStockThreshold);
   const parsedDuelPeriodCost = parseAdminIntegerInput(duelPeriodCost);
   const parsedEffectPuckSpeedPoints = parseAdminNumberInput(effectPuckSpeedPoints);
   const parsedEffectShooterFrequencyDelta = parseAdminNumberInput(effectShooterFrequencyDelta);
@@ -5147,6 +5160,7 @@ function InventoryEditor({
         itemKind,
         currencyPrice: parsedCurrencyPrice,
         chargesPerPurchase: inventoryChargeValueForSave(itemKind, parsedChargesPerPurchase),
+        lowStockThreshold: parsedLowStockThreshold,
         duelPeriodCost: parsedDuelPeriodCost,
         powerScore:
           itemKind === 'stick'
@@ -5192,10 +5206,19 @@ function InventoryEditor({
     },
     onSuccess: onSaved,
   });
+  const handleItemKindChange = (nextKind: AdminInventoryItemKind) => {
+    setLowStockThreshold((current) =>
+      current === fieldNumber(inventoryLowStockDefault(itemKind))
+        ? fieldNumber(inventoryLowStockDefault(nextKind))
+        : current,
+    );
+    setItemKind(nextKind);
+  };
   const numericValues = [
     parsedPriceRub,
     parsedCurrencyPrice,
     parsedChargesPerPurchase,
+    parsedLowStockThreshold,
     parsedDuelPeriodCost,
     parsedEffectPuckSpeedPoints,
     parsedEffectShooterFrequencyDelta,
@@ -5226,6 +5249,7 @@ function InventoryEditor({
     parsedPriceRub >= 0 &&
     parsedCurrencyPrice >= 0 &&
     parsedChargesPerPurchase >= 0 &&
+    parsedLowStockThreshold >= 0 &&
     parsedDuelPeriodCost >= 0 &&
     parsedEffectShotZoneMultiplier >= 1 &&
     parsedEffectPuckSpeedPoints >= -500 &&
@@ -5318,7 +5342,7 @@ function InventoryEditor({
             <GlassSelect
               value={itemKind}
               options={inventoryItemKindOptions}
-              onChange={setItemKind}
+              onChange={handleItemKindChange}
               ariaLabel="Тип предмета"
             />
           </AdminField>
@@ -5369,6 +5393,19 @@ function InventoryEditor({
               />
               <span style={adminInventoryHintStyle}>
                 {isStickItem ? 'Клюшка: 0, списание 1/бросок.' : ' '}
+              </span>
+            </div>
+          </AdminField>
+          <AdminField label="Порог пульсации">
+            <div style={adminInventoryFieldBodyStyle}>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={lowStockThreshold}
+                onChange={(event) => setLowStockThreshold(event.target.value)}
+              />
+              <span style={adminInventoryHintStyle}>
+                Когда остаток станет не больше этого числа, иконка начнёт пульсировать.
               </span>
             </div>
           </AdminField>

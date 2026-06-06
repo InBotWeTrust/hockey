@@ -171,6 +171,7 @@ const inventoryItemPatchSchema = z
     rarity: z.enum(['common', 'rare', 'epic', 'legendary']).optional(),
     currencyPrice: z.number().int().min(0).max(9_000_000_000).optional(),
     chargesPerPurchase: z.number().int().min(0).max(100_000).optional(),
+    lowStockThreshold: z.number().int().min(0).max(10_000_000).optional(),
     duelPeriodCost: z.number().int().min(0).max(100_000).optional(),
     powerScore: z.number().int().min(0).max(100_000).optional(),
     resourceUnit: duelInventoryResourceUnitSchema.optional(),
@@ -402,6 +403,7 @@ interface LoadoutItemSnapshot {
   chargesReserved: number;
   resourceUnit: DuelInventoryResourceUnit;
   resourceAvailable: number;
+  lowStockThreshold: number;
   effectPuckSpeedPoints: number;
   timing: DuelInventoryTiming;
   effects: InventoryItemEffects;
@@ -425,6 +427,7 @@ interface InventoryAvailabilityItem {
   powerScore: number;
   duelPeriodCost: number;
   resourceUnit: DuelInventoryResourceUnit;
+  lowStockThreshold: number;
   chargesAvailable: number;
   chargesReserved: number;
 }
@@ -704,6 +707,7 @@ function loadoutFromUnknown(value: unknown, powerCap = 0): LoadoutSnapshot {
             chargesReserved: z.number().int().min(0).default(0),
             resourceUnit: duelInventoryResourceUnitSchema.default('period'),
             resourceAvailable: z.number().int().min(0).default(0),
+            lowStockThreshold: z.number().int().min(0).default(0),
             effectPuckSpeedPoints: z.number().int().default(0),
             timing: z
               .object({
@@ -1325,6 +1329,7 @@ async function buildLoadoutSnapshot(
     power_score: number;
     duel_period_cost: number;
     resource_unit: DuelInventoryResourceUnit;
+    low_stock_threshold: number;
     charges_available: number;
     effect_puck_speed_points: number;
     effect_puck_speed_delta: string | number;
@@ -1365,6 +1370,7 @@ async function buildLoadoutSnapshot(
             instance.id as instance_id,
             i.title, i.item_kind, i.rarity, i.power_score, i.duel_period_cost,
             i.resource_unit,
+            i.low_stock_threshold,
             case
               when instance.id is not null then instance.charges_available
               else coalesce(legacy.charges_available, 0)
@@ -1472,6 +1478,7 @@ async function buildLoadoutSnapshot(
       duelPeriodCost: Number(row.duel_period_cost),
       chargesReserved,
       resourceUnit: row.resource_unit,
+      lowStockThreshold: Number(row.low_stock_threshold),
       resourceAvailable,
       effectPuckSpeedPoints,
       timing,
@@ -2453,6 +2460,7 @@ async function fetchAvailableInventory(
     power_score: number;
     duel_period_cost: number;
     resource_unit: DuelInventoryResourceUnit;
+    low_stock_threshold: number;
     charges_available: number;
     charges_reserved: number;
   }>(
@@ -2460,7 +2468,7 @@ async function fetchAvailableInventory(
             i.id as item_id,
             instance.id as instance_id,
             i.title, i.description, i.photo_url as image_url, i.item_kind, i.rarity,
-            i.power_score, i.duel_period_cost, i.resource_unit,
+            i.power_score, i.duel_period_cost, i.resource_unit, i.low_stock_threshold,
             case
               when instance.id is not null then instance.charges_available
               else coalesce(legacy.charges_available, 0)
@@ -2491,6 +2499,7 @@ async function fetchAvailableInventory(
     powerScore: Number(row.power_score),
     duelPeriodCost: Number(row.duel_period_cost),
     resourceUnit: row.resource_unit,
+    lowStockThreshold: Number(row.low_stock_threshold),
     chargesAvailable: Number(row.charges_available),
     chargesReserved: Number(row.charges_reserved),
   }));
@@ -4508,6 +4517,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
       addPatch(assignments, values, 'rarity', body.data.rarity);
       addPatch(assignments, values, 'currency_price', body.data.currencyPrice);
       addPatch(assignments, values, 'charges_per_purchase', body.data.chargesPerPurchase);
+      addPatch(assignments, values, 'low_stock_threshold', body.data.lowStockThreshold);
       addPatch(assignments, values, 'duel_period_cost', body.data.duelPeriodCost);
       addPatch(assignments, values, 'power_score', body.data.powerScore);
       addPatch(assignments, values, 'resource_unit', body.data.resourceUnit);

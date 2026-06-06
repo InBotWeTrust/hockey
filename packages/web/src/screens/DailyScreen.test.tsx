@@ -10,6 +10,7 @@ import {
   duelInventoryBadgeLabel,
   duelScoreboardOpponent,
   duelRinkReadyPresenceForMatch,
+  isDuelInventoryLow,
   isDuelReadyPresenceState,
 } from './DailyScreen.js';
 import { useAuthStore } from '../auth/authStore.js';
@@ -260,6 +261,16 @@ describe('DailyScreen', () => {
     expect(duelInventoryBadgeLabel('skates', 8500, 'distance')?.replace(/\s/g, ' ')).toBe('8 500');
     expect(duelInventoryBadgeLabel('nutrition', 300_000, 'energy_ms')).toBe('5 мин');
     expect(duelInventoryBadgeLabel('nutrition', 45_000, 'energy_ms')).toBe('45 сек');
+  });
+
+  it('detects low duel inventory for every equipment kind', () => {
+    expect(isDuelInventoryLow('stick', 10, 10)).toBe(true);
+    expect(isDuelInventoryLow('stick', 11, 10)).toBe(false);
+    expect(isDuelInventoryLow('skates', 50, 50)).toBe(true);
+    expect(isDuelInventoryLow('skates', 51, 50)).toBe(false);
+    expect(isDuelInventoryLow('nutrition', 60_000, 60_000)).toBe(true);
+    expect(isDuelInventoryLow('nutrition', 60_001, 60_000)).toBe(false);
+    expect(isDuelInventoryLow('nutrition', 0, 60_000)).toBe(false);
   });
 
   it('uses understandable duel equipment effect labels for skates and energy', () => {

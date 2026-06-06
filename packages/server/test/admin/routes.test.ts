@@ -852,6 +852,7 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
         itemKind: 'stick',
         currencyPrice: 1490,
         chargesPerPurchase: 1300,
+        lowStockThreshold: 12,
         duelPeriodCost: 0,
         powerScore: 25,
         resourceUnit: 'shot',
@@ -860,6 +861,18 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
       },
     });
     expect(gameplay.statusCode).toBe(200);
+
+    const inventoryAfterGameplay = await app.inject({
+      method: 'GET',
+      url: '/admin/inventory',
+      headers: auth(adminToken),
+    });
+    expect(inventoryAfterGameplay.statusCode).toBe(200);
+    expect(inventoryAfterGameplay.json().items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: itemId, lowStockThreshold: 12 }),
+      ]),
+    );
 
     await pool.query(
       `insert into payments

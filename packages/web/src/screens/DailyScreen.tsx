@@ -6784,6 +6784,15 @@ export function duelInventoryBadgeLabel(
   return formatInventoryBadgeAmount(kind, normalized, resourceUnit);
 }
 
+export function isDuelInventoryLow(
+  kind: InventoryEquipmentKind,
+  remaining: number,
+  lowStockThreshold?: number,
+): boolean {
+  const threshold = Math.max(0, Math.floor(lowStockThreshold ?? (kind === 'stick' ? 10 : 0)));
+  return threshold > 0 && remaining > 0 && remaining <= threshold;
+}
+
 function duelStartPeriodLoadoutSelection(
   match: AmateurDuelMatch,
   selectedLoadout: AmateurDuelLoadoutSelection,
@@ -6988,7 +6997,9 @@ function DuelRinkLoadoutHud({
         const inventoryBadge = item
           ? duelInventoryBadgeLabel(item.kind, item.chargesAvailable, item.resourceUnit)
           : null;
-        const stickLow = slot.kind === 'stick' && item !== null && item.chargesAvailable <= 10;
+        const inventoryLow =
+          item !== null &&
+          isDuelInventoryLow(slot.kind, item.chargesAvailable, item.lowStockThreshold);
         const title = item ? duelEquipmentDisplayTitle(item) : duelBaseEquipmentTitle(slot.kind);
         const status = item
           ? formatInventoryResourceAmount(item.kind, item.chargesAvailable, item.resourceUnit)
@@ -7000,7 +7011,7 @@ function DuelRinkLoadoutHud({
             key={slot.kind}
             type="button"
             aria-label={`${slot.label}: ${title}. ${status}`}
-            className={stickLow ? 'inventory-icon-pulse' : undefined}
+            className={inventoryLow ? 'inventory-icon-pulse' : undefined}
             disabled={!canOpen}
             onClick={() => onSelectKind(slot.kind)}
             style={{
@@ -7485,7 +7496,9 @@ function DuelInventoryMiniHud({
         const inventoryBadge = item
           ? duelInventoryBadgeLabel(item.kind, remainingCharges, item.resourceUnit)
           : null;
-        const stickLow = slot.kind === 'stick' && remainingCharges > 0 && remainingCharges <= 10;
+        const inventoryLow =
+          item !== undefined &&
+          isDuelInventoryLow(slot.kind, remainingCharges, item.lowStockThreshold);
         const statusText = isSelected
           ? formatInventoryResourceAmount(item.kind, remainingCharges, item.resourceUnit)
           : available
@@ -7502,7 +7515,7 @@ function DuelInventoryMiniHud({
             aria-label={`${slot.label}: ${statusText}`}
             disabled={!interactive}
             onClick={() => onSelectKind?.(slot.kind)}
-            className={stickLow ? 'inventory-icon-pulse' : undefined}
+            className={inventoryLow ? 'inventory-icon-pulse' : undefined}
             style={{
               appearance: 'none',
               padding: 0,

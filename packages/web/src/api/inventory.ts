@@ -13,6 +13,7 @@ export interface InventoryItem {
   imageUrl: string | null;
   currencyPrice: number;
   chargesPerPurchase: number;
+  lowStockThreshold?: number;
   resourceUnit?: DuelInventoryResourceUnit;
   resourceLabel?: string;
   rarity: 'common' | 'rare' | 'epic' | 'legendary';

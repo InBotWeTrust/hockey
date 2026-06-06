@@ -1093,6 +1093,7 @@ describe('AdminScreen', () => {
       itemKind: 'stick',
       currencyPrice: 1490,
       chargesPerPurchase: 1300,
+      lowStockThreshold: 10,
       duelPeriodCost: 0,
       effectPuckSpeedDelta: 0.1,
       effectShooterFrequencyDelta: 0,
@@ -1169,8 +1170,11 @@ describe('AdminScreen', () => {
     const inputs = within(dialog).getAllByRole('textbox');
     fireEvent.change(inputs[3]!, { target: { value: '1490,00' } });
     fireEvent.change(inputs[4]!, { target: { value: '2490,00' } });
-    fireEvent.change(inputs[7]!, { target: { value: '10,5' } });
-    fireEvent.change(inputs[8]!, { target: { value: '0,25' } });
+    fireEvent.change(within(dialog).getByLabelText(/Порог пульсации/), {
+      target: { value: '12' },
+    });
+    fireEvent.change(inputs[8]!, { target: { value: '10,5' } });
+    fireEvent.change(inputs[9]!, { target: { value: '0,25' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
 
     await waitFor(() => expect(gameplayPatchBody).not.toBeNull());
@@ -1179,6 +1183,7 @@ describe('AdminScreen', () => {
     expect(savedItemPatchBody.priceRub).toBe(1490);
     expect(savedGameplayPatchBody.currencyPrice).toBe(2490);
     expect(savedGameplayPatchBody.chargesPerPurchase).toBe(1300);
+    expect(savedGameplayPatchBody.lowStockThreshold).toBe(12);
     expect(savedGameplayPatchBody.duelPeriodCost).toBe(0);
     expect(savedGameplayPatchBody.effectPuckSpeedDelta).toBeCloseTo(0.105, 5);
     expect(savedGameplayPatchBody.effectShooterFrequencyDelta).toBe(0.25);
@@ -1200,6 +1205,7 @@ describe('AdminScreen', () => {
       itemKind: 'skates',
       currencyPrice: 490,
       chargesPerPurchase: 8500,
+      lowStockThreshold: 50,
       duelPeriodCost: 0,
       effectPuckSpeedDelta: 0,
       effectShooterFrequencyDelta: 0,
@@ -1267,6 +1273,12 @@ describe('AdminScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Редактировать' }));
 
     const dialog = await screen.findByRole('dialog', { name: 'Редактирование предмета' });
+    expect(within(dialog).getByLabelText(/Порог пульсации/)).toHaveValue('50');
+    expect(
+      within(dialog).getByText(
+        'Когда остаток станет не больше этого числа, иконка начнёт пульсировать.',
+      ),
+    ).toBeInTheDocument();
     expect(within(dialog).getByText('Коньки и спотыкание')).toBeInTheDocument();
     expect(
       within(dialog).getByText(

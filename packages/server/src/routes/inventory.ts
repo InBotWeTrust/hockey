@@ -17,6 +17,7 @@ interface InventoryItemRow {
   photo_url: string | null;
   currency_price: number;
   charges_per_purchase: number;
+  low_stock_threshold: number;
   resource_unit: ResourceUnit;
   rarity: 'common' | 'rare' | 'epic' | 'legendary';
   power_score: number;
@@ -60,6 +61,7 @@ interface InventoryItemDto {
   imageUrl: string | null;
   currencyPrice: number;
   chargesPerPurchase: number;
+  lowStockThreshold: number;
   resourceUnit: ResourceUnit;
   resourceLabel: string;
   rarity: 'common' | 'rare' | 'epic' | 'legendary';
@@ -387,7 +389,8 @@ async function fetchInventoryState(client: DbClient, userId: string): Promise<In
             i.id as item_id,
             instance.id as instance_id,
             i.item_kind, i.title, i.description, i.photo_url, i.currency_price,
-            i.charges_per_purchase, i.resource_unit, i.rarity, i.power_score, i.duel_period_cost,
+            i.charges_per_purchase, i.low_stock_threshold, i.resource_unit, i.rarity,
+            i.power_score, i.duel_period_cost,
             i.effect_puck_speed_points,
             i.effect_stumble_interval_min_ms, i.effect_stumble_interval_max_ms,
             i.effect_stumble_duration_min_ms, i.effect_stumble_duration_max_ms,
@@ -429,6 +432,7 @@ async function fetchInventoryState(client: DbClient, userId: string): Promise<In
       imageUrl: row.photo_url,
       currencyPrice: Number(row.currency_price),
       chargesPerPurchase: Number(row.charges_per_purchase),
+      lowStockThreshold: Number(row.low_stock_threshold),
       resourceUnit: row.resource_unit,
       resourceLabel: resourceLabel(row.resource_unit, chargesAvailable),
       rarity: row.rarity,

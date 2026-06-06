@@ -361,6 +361,7 @@ export interface AdminInventoryItem {
   itemKind: AdminInventoryItemKind;
   currencyPrice: number;
   chargesPerPurchase: number;
+  lowStockThreshold: number;
   duelPeriodCost: number;
   powerScore: number;
   resourceUnit: AdminInventoryResourceUnit;
@@ -720,6 +721,7 @@ export interface AdminInventoryGameplayPatch {
   itemKind?: AdminInventoryItemKind;
   currencyPrice?: number;
   chargesPerPurchase?: number;
+  lowStockThreshold?: number;
   duelPeriodCost?: number;
   powerScore?: number;
   resourceUnit?: AdminInventoryResourceUnit;
