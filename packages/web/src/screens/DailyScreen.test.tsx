@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { DAILY_PERIOD_SPEED_PRESETS, STICK_NEUTRAL } from '@hockey/game-core';
 import {
   DailyScreen,
+  PlayView,
   duelEquipmentEffectLabel,
   duelEventTiming,
   duelInventoryBadgeLabel,
@@ -351,8 +352,8 @@ describe('DailyScreen', () => {
 
     expect(duelPrimaryButtonLabel('БРОСОК', null)).toBe('БРОСОК');
     expect(
-      duelPrimaryButtonLabel('БРОСОК', { ...baseCondition, canShoot: false, status: 'tired' }),
-    ).toBe('УСТАЛОСТЬ');
+      duelPrimaryButtonLabel('БРОСОК', { ...baseCondition, canShoot: true, status: 'tired' }),
+    ).toBe('БРОСОК');
     expect(
       duelPrimaryButtonLabel('БРОСОК', {
         ...baseCondition,
@@ -362,7 +363,55 @@ describe('DailyScreen', () => {
     ).toBe('ОТДЫХ');
     expect(
       duelPrimaryButtonLabel('БРОСОК', { ...baseCondition, canShoot: false, status: 'stumble' }),
-    ).toBe('СБОЙ');
+    ).toBe('БРОСОК');
+  });
+
+  it('shows a short stumble notice near the player instead of renaming the shot button', () => {
+    vi.useFakeTimers();
+    const stumbleCondition = {
+      puckSpeedDelta: 0,
+      shooterSpeedMultiplier: 1,
+      canShoot: false,
+      status: 'stumble',
+      stumbleActive: true,
+      shooterXOffsetPx: 24,
+      fatigueMs: 0,
+      nutritionConsumed: 0,
+      skatesConsumed: 0,
+    } as const;
+
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="seed"
+        goalieId="rookie"
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        shotsTotal={30}
+        sessionStartedAt="2026-04-25T12:00:00.000Z"
+        serverNow="2026-04-25T12:00:00.000Z"
+        receivedAtPerformanceMs={0}
+        periodEndsAt={Date.now() + 10_000}
+        optimisticAddShot={() => undefined}
+        submitShot={async () => null}
+        applyState={() => undefined}
+        rinkLayer={<div data-testid="test-rink-layer" />}
+        duelCondition={() => stumbleCondition}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'БРОСОК' })).toBeDisabled();
+    expect(screen.getByText('СПОТКНУЛСЯ')).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(700);
+    });
+
+    expect(screen.queryByText('СПОТКНУЛСЯ')).not.toBeInTheDocument();
   });
 
   it('uses understandable duel equipment effect labels for skates and energy', () => {

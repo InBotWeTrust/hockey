@@ -405,6 +405,8 @@ function formatMs(ms: number): string {
   return `${m}:${s}`;
 }
 
+const DUEL_STUMBLE_NOTICE_MS = 650;
+
 function parseAspectRatio(value: string): number {
   const [widthRaw, heightRaw] = value.split('/');
   const width = Number(widthRaw?.trim());
@@ -7407,8 +7409,7 @@ export function duelPrimaryButtonLabel(
 ): string {
   if (!condition || condition.canShoot) return baseLabel;
   if (condition.status === 'exhausted_stop') return 'ОТДЫХ';
-  if (condition.status === 'stumble') return 'СБОЙ';
-  return 'УСТАЛОСТЬ';
+  return baseLabel;
 }
 
 function duelConsumedForPeriodItem(
@@ -9205,6 +9206,9 @@ export function PlayView<TState>({
   const [isInactiveActionPending, setIsInactiveActionPending] = useState(false);
   const [soundToastVisible, setSoundToastVisible] = useState(false);
   const soundToastTimerRef = useRef<number | null>(null);
+  const [duelStumbleNoticeVisible, setDuelStumbleNoticeVisible] = useState(false);
+  const duelStumbleNoticeTimerRef = useRef<number | null>(null);
+  const wasDuelStumblingRef = useRef(false);
   const [resultSubText, setResultSubText] = useState<string | null>(null);
   const [resultDisplayKind, setResultDisplayKind] = useState<ResultModalKind | null>(null);
   const [lastResult, setLastResult] = useState<ShotResult | null>(null);
@@ -9280,10 +9284,39 @@ export function PlayView<TState>({
     [active, duelCondition, now, speeds],
   );
 
+  const isDuelStumbling = currentDuelCondition?.stumbleActive === true;
+
+  useEffect(() => {
+    if (!active) {
+      wasDuelStumblingRef.current = false;
+      setDuelStumbleNoticeVisible(false);
+      if (duelStumbleNoticeTimerRef.current !== null) {
+        window.clearTimeout(duelStumbleNoticeTimerRef.current);
+        duelStumbleNoticeTimerRef.current = null;
+      }
+      return;
+    }
+
+    if (isDuelStumbling && !wasDuelStumblingRef.current) {
+      setDuelStumbleNoticeVisible(true);
+      if (duelStumbleNoticeTimerRef.current !== null) {
+        window.clearTimeout(duelStumbleNoticeTimerRef.current);
+      }
+      duelStumbleNoticeTimerRef.current = window.setTimeout(() => {
+        setDuelStumbleNoticeVisible(false);
+        duelStumbleNoticeTimerRef.current = null;
+      }, DUEL_STUMBLE_NOTICE_MS);
+    }
+    wasDuelStumblingRef.current = isDuelStumbling;
+  }, [active, isDuelStumbling]);
+
   useEffect(
     () => () => {
       if (soundToastTimerRef.current !== null) {
         window.clearTimeout(soundToastTimerRef.current);
+      }
+      if (duelStumbleNoticeTimerRef.current !== null) {
+        window.clearTimeout(duelStumbleNoticeTimerRef.current);
       }
     },
     [],
@@ -10102,6 +10135,7 @@ export function PlayView<TState>({
 
   const timerValue = timer ?? formatMs(remaining);
   const isDuelShotBlocked = active && currentDuelCondition?.canShoot === false;
+  const isDuelRestBlocked = isDuelShotBlocked && currentDuelCondition?.status === 'exhausted_stop';
   const effectiveShotButtonLabel = duelPrimaryButtonLabel(shotButtonLabel, currentDuelCondition);
   const primaryButtonDisabled =
     (suppressedByModal && !inactiveAction) ||
@@ -10269,6 +10303,16 @@ export function PlayView<TState>({
               {hudAddon}
             </div>
           )}
+          {duelStumbleNoticeVisible && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="duel-stumble-notice"
+              style={routeGameStyle}
+            >
+              СПОТКНУЛСЯ
+            </div>
+          )}
         </div>
       </div>
 
@@ -10303,7 +10347,7 @@ export function PlayView<TState>({
         </button>
         <button
           type="button"
-          className={isDuelShotBlocked ? 'btn btn--cta btn--duel-blocked' : 'btn btn--cta'}
+          className={isDuelRestBlocked ? 'btn btn--cta btn--duel-blocked' : 'btn btn--cta'}
           onClick={handlePrimaryTap}
           disabled={primaryButtonDisabled}
           style={{
