@@ -8,6 +8,7 @@ import {
   duelEquipmentEffectLabel,
   duelEventTiming,
   duelInventoryBadgeLabel,
+  duelInventoryItemRemaining,
   duelScoreboardOpponent,
   duelRinkReadyPresenceForMatch,
   isDuelInventoryLow,
@@ -271,6 +272,67 @@ describe('DailyScreen', () => {
     expect(isDuelInventoryLow('nutrition', 60_000, 60_000)).toBe(true);
     expect(isDuelInventoryLow('nutrition', 60_001, 60_000)).toBe(false);
     expect(isDuelInventoryLow('nutrition', 0, 60_000)).toBe(false);
+  });
+
+  it('subtracts live duel skates and energy usage from HUD inventory numbers', () => {
+    const activeMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      status: 'active',
+      period_started_at: '2026-05-16T10:00:00.000Z',
+      period_ends_at: '2026-05-16T10:03:00.000Z',
+      me: {
+        ...settledDuelMatch.me,
+        state: 'period_active',
+        current_period: 1,
+        loadout: {
+          ...settledDuelMatch.me.loadout,
+          items: [
+            {
+              id: 'skates-1',
+              kind: 'skates',
+              title: 'Коньки',
+              rarity: 'common',
+              powerScore: 0,
+              duelPeriodCost: 0,
+              chargesReserved: 0,
+              resourceUnit: 'distance',
+              resourceAvailable: 50,
+              lowStockThreshold: 50,
+            },
+            {
+              id: 'energy-1',
+              kind: 'nutrition',
+              title: 'Энергия',
+              rarity: 'common',
+              powerScore: 0,
+              duelPeriodCost: 0,
+              chargesReserved: 0,
+              resourceUnit: 'energy_ms',
+              resourceAvailable: 60_000,
+              lowStockThreshold: 60_000,
+            },
+          ],
+        },
+      },
+    };
+    const liveCondition = {
+      puckSpeedDelta: 0,
+      shooterSpeedMultiplier: 1,
+      canShoot: true,
+      status: 'normal',
+      stumbleActive: false,
+      shooterXOffsetPx: 0,
+      fatigueMs: 0,
+      nutritionConsumed: 15_000,
+      skatesConsumed: 11,
+    } as const;
+
+    expect(
+      duelInventoryItemRemaining(activeMatch, activeMatch.me.loadout.items[0]!, liveCondition),
+    ).toBe(39);
+    expect(
+      duelInventoryItemRemaining(activeMatch, activeMatch.me.loadout.items[1]!, liveCondition),
+    ).toBe(45_000);
   });
 
   it('uses understandable duel equipment effect labels for skates and energy', () => {

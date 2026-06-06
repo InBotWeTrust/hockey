@@ -5647,6 +5647,17 @@ function AmateurDuelPlayView({
   const opponentDisplayName = match.opponent.display_name || 'Игрок';
   const duelCondition = (elapsedMs: number, speeds: SpeedOverrides): DuelPlayerCondition | null =>
     duelConditionForMatch(match, elapsedMs, speeds);
+  const liveDuelCondition =
+    match.me.state === 'period_active'
+      ? duelCondition(
+          computeInitialElapsedMs({
+            sessionStartedAt: match.period_started_at,
+            serverNow: match.server_now,
+            receivedAtPerformanceMs: match.received_at_performance_ms ?? null,
+          }),
+          speedOverridesForPeriod(match.me.current_period, match.period_speed_presets),
+        )
+      : null;
   const handleActiveLoadoutSelect = async (itemId: string | null): Promise<void> => {
     if (selectedLoadoutKind !== 'stick') return;
     const next = await updateLoadout({ stick: itemId });
@@ -5824,7 +5835,13 @@ function AmateurDuelPlayView({
           duelCondition={duelCondition}
           longCourtBackground={AMATEUR_DUEL_COURT_BACKGROUND}
           longCourtTableau={DUEL_LED_TABLEAU_IMAGE}
-          hudAddon={<DuelInventoryMiniHud match={match} onSelectKind={setSelectedLoadoutKind} />}
+          hudAddon={
+            <DuelInventoryMiniHud
+              match={match}
+              liveCondition={liveDuelCondition}
+              onSelectKind={setSelectedLoadoutKind}
+            />
+          }
           scoreboardOpponent={duelScoreboardOpponent(match)}
         />
         {selectedLoadoutKind === 'stick' && (
@@ -7359,21 +7376,41 @@ function duelInventoryRemaining(match: AmateurDuelMatch, itemId: string, fallbac
   return fallback;
 }
 
-function duelInventoryItemRemaining(
+export function duelInventoryItemRemaining(
   match: AmateurDuelMatch,
   item: AmateurDuelMatch['me']['loadout']['items'][number],
+  liveCondition?: DuelPlayerCondition | null,
 ): number {
   if (item.resourceUnit === 'shot') {
     return Math.max(0, (item.resourceAvailable ?? 0) - duelConsumedForItem(match, item.id));
   }
   if (item.resourceUnit === 'distance' || item.resourceUnit === 'energy_ms') {
     const periodNumber = Math.max(1, match.me.current_period);
+    const currentPeriodConsumed = duelConsumedForPeriodItem(match, periodNumber, item.id);
+    const liveConsumed =
+      item.resourceUnit === 'distance'
+        ? (liveCondition?.skatesConsumed ?? 0)
+        : (liveCondition?.nutritionConsumed ?? 0);
     return Math.max(
       0,
-      (item.resourceAvailable ?? 0) - duelConsumedBeforePeriodItem(match, periodNumber, item.id),
+      (item.resourceAvailable ?? 0) -
+        duelConsumedBeforePeriodItem(match, periodNumber, item.id) -
+        Math.max(currentPeriodConsumed, liveConsumed),
     );
   }
   return duelInventoryRemaining(match, item.id, item.chargesReserved);
+}
+
+function duelConsumedForPeriodItem(
+  match: AmateurDuelMatch,
+  periodNumber: number,
+  itemId: string,
+): number {
+  return match.me.inventory_report
+    .filter((report) => report.periodNumber === periodNumber)
+    .flatMap((report) => report.consumed)
+    .filter((item) => item.id === itemId)
+    .reduce((sum, item) => sum + item.charges, 0);
 }
 
 function duelConsumedBeforePeriodItem(
@@ -7456,9 +7493,11 @@ function duelConditionForMatch(
 
 function DuelInventoryMiniHud({
   match,
+  liveCondition,
   onSelectKind,
 }: {
   match: AmateurDuelMatch;
+  liveCondition?: DuelPlayerCondition | null;
   onSelectKind?: (kind: InventoryEquipmentKind) => void;
 }): JSX.Element | null {
   const availableItems = match.me.inventory_available ?? [];
@@ -7476,7 +7515,7 @@ function DuelInventoryMiniHud({
       {DUEL_INVENTORY_SLOTS.map((slot) => {
         const selectedItem = match.me.loadout.items.find((cur) => cur.kind === slot.kind);
         const selectedRemaining = selectedItem
-          ? duelInventoryItemRemaining(match, selectedItem)
+          ? duelInventoryItemRemaining(match, selectedItem, liveCondition)
           : 0;
         const item =
           selectedItem && !(slot.kind === 'stick' && selectedRemaining <= 0)
@@ -7490,7 +7529,7 @@ function DuelInventoryMiniHud({
           : available
             ? artworkForInventoryItem(available)
             : placeholderArtworkForKind(slot.kind);
-        const remainingCharges = item ? duelInventoryItemRemaining(match, item) : 0;
+        const remainingCharges = item ? duelInventoryItemRemaining(match, item, liveCondition) : 0;
         const rarityColor = duelInventoryRarityColor(item?.rarity ?? available?.rarity);
         const isSelected = item !== undefined;
         const inventoryBadge = item
