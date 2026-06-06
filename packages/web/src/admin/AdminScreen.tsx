@@ -538,17 +538,16 @@ function inventoryResourceUnitForKind(kind: AdminInventoryItemKind): AdminInvent
 }
 
 const adminInventoryHintStyle: CSSProperties = {
-  minHeight: 11,
   color: 'rgba(71, 85, 105, 0.78)',
   fontSize: 9.5,
   fontWeight: 500,
-  lineHeight: 1.15,
+  lineHeight: 1.18,
 };
 
 const adminInventoryFieldBodyStyle: CSSProperties = {
   display: 'grid',
-  gap: 5,
-  gridTemplateRows: '44px 11px',
+  alignContent: 'start',
+  gap: 6,
 };
 
 function isHiddenGameSetting(setting: AdminGameSetting): boolean {
@@ -5244,7 +5243,15 @@ function InventoryEditor({
     parsedEffectFatigueHeavyMultiplier >= 0 &&
     parsedEffectFatigueHeavyMultiplier <= 1;
   const isStickItem = itemKind === 'stick';
+  const isSkatesItem = itemKind === 'skates';
   const isNutritionItem = itemKind === 'nutrition';
+  const editorIntro = isStickItem
+    ? 'Скорость шайбы: 10 пунктов = +0.10.'
+    : isSkatesItem
+      ? 'Коньки расходуются в прокатах и управляют спотыканием без рабочего инвентаря.'
+      : isNutritionItem
+        ? 'Энергия задаётся в минутах, расход зависит от скорости игрока.'
+        : 'Базовые параметры расходуемого предмета.';
 
   return createPortal(
     <div
@@ -5276,7 +5283,7 @@ function InventoryEditor({
               className="modal-copy"
               style={{ marginTop: 4, fontSize: 11, fontWeight: 520, lineHeight: 1.22 }}
             >
-              Скорость шайбы: 10 пунктов = +0.10.
+              {editorIntro}
             </div>
           </div>
           <button
@@ -5331,7 +5338,7 @@ function InventoryEditor({
                 ? 'Бросков при покупке'
                 : isNutritionItem
                   ? 'Минут энергии при покупке'
-                  : itemKind === 'skates'
+                  : isSkatesItem
                     ? 'Прокатов при покупке'
                     : 'Зарядов при покупке'
             }
@@ -5346,7 +5353,7 @@ function InventoryEditor({
               <span style={adminInventoryHintStyle}>
                 {isNutritionItem
                   ? 'Редактируется в минутах, в базе хранится в миллисекундах.'
-                  : itemKind === 'skates'
+                  : isSkatesItem
                     ? 'Один прокат — движение игрока от одного борта до другого.'
                     : 'Сколько ресурса игрок получает после покупки предмета.'}
               </span>
@@ -5366,305 +5373,329 @@ function InventoryEditor({
             </div>
           </AdminField>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
-          <AdminField label="Шайба +пункты">
-            <div style={adminInventoryFieldBodyStyle}>
+        {isStickItem && (
+          <>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                gap: 12,
+              }}
+            >
+              <AdminField label="Шайба +пункты">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={effectPuckSpeedPoints}
+                    onChange={(event) => setEffectPuckSpeedPoints(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>
+                    Для клюшки это скорость шайбы: 25 = +0.25 к скорости.
+                  </span>
+                </div>
+              </AdminField>
+              <AdminField label="Игрок Δ">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={effectShooterFrequencyDelta}
+                    onChange={(event) => setEffectShooterFrequencyDelta(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle} aria-hidden="true">
+                    {' '}
+                  </span>
+                </div>
+              </AdminField>
+              <AdminField label="Вратарь Δ">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={effectGoalieFrequencyDelta}
+                    onChange={(event) => setEffectGoalieFrequencyDelta(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle} aria-hidden="true">
+                    {' '}
+                  </span>
+                </div>
+              </AdminField>
+              <AdminField label="Ворота Δ">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={effectGoalFrequencyDelta}
+                    onChange={(event) => setEffectGoalFrequencyDelta(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle} aria-hidden="true">
+                    {' '}
+                  </span>
+                </div>
+              </AdminField>
+            </div>
+            <AdminField label="Множитель зоны броска">
               <input
                 type="text"
                 inputMode="decimal"
-                value={effectPuckSpeedPoints}
-                onChange={(event) => setEffectPuckSpeedPoints(event.target.value)}
+                value={effectShotZoneMultiplier}
+                onChange={(event) => setEffectShotZoneMultiplier(event.target.value)}
               />
-              <span style={adminInventoryHintStyle}>
-                Для клюшки это скорость шайбы: 25 = +0.25 к скорости.
-              </span>
+            </AdminField>
+          </>
+        )}
+        {isSkatesItem && (
+          <section style={{ display: 'grid', gap: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--ink)' }}>
+              Коньки и спотыкание
             </div>
-          </AdminField>
-          <AdminField label="Игрок Δ">
-            <div style={adminInventoryFieldBodyStyle}>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={effectShooterFrequencyDelta}
-                onChange={(event) => setEffectShooterFrequencyDelta(event.target.value)}
-              />
-              <span style={adminInventoryHintStyle} aria-hidden="true">
-                {' '}
-              </span>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                columnGap: 12,
+                rowGap: 14,
+              }}
+            >
+              <AdminField label="Мин. интервал спотыкания">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={effectStumbleIntervalMinRolls}
+                    onChange={(event) => setEffectStumbleIntervalMinRolls(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>
+                    Минимум прокатов до следующего спотыкания без рабочих коньков.
+                  </span>
+                </div>
+              </AdminField>
+              <AdminField label="Макс. интервал спотыкания">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={effectStumbleIntervalMaxRolls}
+                    onChange={(event) => setEffectStumbleIntervalMaxRolls(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>
+                    Максимум прокатов до спотыкания. Больше — спотыкается реже.
+                  </span>
+                </div>
+              </AdminField>
+              <AdminField label="Мин. длительность, мс">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={effectStumbleDurationMinMs}
+                    onChange={(event) => setEffectStumbleDurationMinMs(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>
+                    Минимальное время потери равновесия. В это время бросок заблокирован.
+                  </span>
+                </div>
+              </AdminField>
+              <AdminField label="Макс. длительность, мс">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={effectStumbleDurationMaxMs}
+                    onChange={(event) => setEffectStumbleDurationMaxMs(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>Максимальное время потери равновесия.</span>
+                </div>
+              </AdminField>
+              <AdminField label="Мин. сбой позиции, px">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={effectStumbleOffsetMinPx}
+                    onChange={(event) => setEffectStumbleOffsetMinPx(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>
+                    Минимальный рывок игрока в сторону при спотыкании.
+                  </span>
+                </div>
+              </AdminField>
+              <AdminField label="Макс. сбой позиции, px">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={effectStumbleOffsetMaxPx}
+                    onChange={(event) => setEffectStumbleOffsetMaxPx(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>
+                    Максимальный рывок. Большие значения сильнее ломают тайминг.
+                  </span>
+                </div>
+              </AdminField>
+              <AdminField label="Мин. возврат, мс">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={effectStumbleRecoveryMinMs}
+                    onChange={(event) => setEffectStumbleRecoveryMinMs(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>
+                    Минимальное время возврата к обычной траектории после рывка.
+                  </span>
+                </div>
+              </AdminField>
+              <AdminField label="Макс. возврат, мс">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={effectStumbleRecoveryMaxMs}
+                    onChange={(event) => setEffectStumbleRecoveryMaxMs(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>
+                    Максимальное время возврата после спотыкания.
+                  </span>
+                </div>
+              </AdminField>
             </div>
-          </AdminField>
-          <AdminField label="Вратарь Δ">
-            <div style={adminInventoryFieldBodyStyle}>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={effectGoalieFrequencyDelta}
-                onChange={(event) => setEffectGoalieFrequencyDelta(event.target.value)}
-              />
-              <span style={adminInventoryHintStyle} aria-hidden="true">
-                {' '}
-              </span>
+          </section>
+        )}
+        {isNutritionItem && (
+          <section style={{ display: 'grid', gap: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--ink)' }}>
+              Энергия и усталость
             </div>
-          </AdminField>
-          <AdminField label="Ворота Δ">
-            <div style={adminInventoryFieldBodyStyle}>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={effectGoalFrequencyDelta}
-                onChange={(event) => setEffectGoalFrequencyDelta(event.target.value)}
-              />
-              <span style={adminInventoryHintStyle} aria-hidden="true">
-                {' '}
-              </span>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                columnGap: 12,
+                rowGap: 14,
+              }}
+            >
+              <AdminField label="Базовая скорость энергии">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={effectEnergyBaselineSpeed}
+                    onChange={(event) => setEffectEnergyBaselineSpeed(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>
+                    Скорость, при которой энергия тратится 1 к 1. Выше — расход быстрее.
+                  </span>
+                </div>
+              </AdminField>
+              <AdminField label="Отсрочка усталости, мс">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={effectFatigueGraceMs}
+                    onChange={(event) => setEffectFatigueGraceMs(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>
+                    Сколько можно играть без энергии до первых штрафов.
+                  </span>
+                </div>
+              </AdminField>
+              <AdminField label="Лёгкая усталость, мс">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={effectFatigueSlowdownStartMs}
+                    onChange={(event) => setEffectFatigueSlowdownStartMs(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>
+                    После этого времени без энергии игрок немного замедляется.
+                  </span>
+                </div>
+              </AdminField>
+              <AdminField label="Сильная усталость, мс">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={effectFatigueHeavySlowdownStartMs}
+                    onChange={(event) => setEffectFatigueHeavySlowdownStartMs(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>
+                    После этого времени без энергии игрок замедляется сильнее.
+                  </span>
+                </div>
+              </AdminField>
+              <AdminField label="Остановка на отдых, мс">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={effectFatigueStopStartMs}
+                    onChange={(event) => setEffectFatigueStopStartMs(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>
+                    Когда игрок полностью останавливается и не может бросать.
+                  </span>
+                </div>
+              </AdminField>
+              <AdminField label="Длительность отдыха, мс">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={effectFatigueStopDurationMs}
+                    onChange={(event) => setEffectFatigueStopDurationMs(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>
+                    Сколько длится принудительный отдых без броска.
+                  </span>
+                </div>
+              </AdminField>
+              <AdminField label="Усталость после отдыха, мс">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={effectFatigueAfterRestMs}
+                    onChange={(event) => setEffectFatigueAfterRestMs(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>
+                    До какого уровня откатывается усталость после остановки.
+                  </span>
+                </div>
+              </AdminField>
+              <AdminField label="Скорость при лёгкой усталости">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={effectFatigueSlowMultiplier}
+                    onChange={(event) => setEffectFatigueSlowMultiplier(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>
+                    Множитель скорости. 0.9 значит 90% обычной скорости.
+                  </span>
+                </div>
+              </AdminField>
+              <AdminField label="Скорость при сильной усталости">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={effectFatigueHeavyMultiplier}
+                    onChange={(event) => setEffectFatigueHeavyMultiplier(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>
+                    Множитель скорости перед остановкой на отдых.
+                  </span>
+                </div>
+              </AdminField>
             </div>
-          </AdminField>
-        </div>
-        <AdminField label="Множитель зоны броска">
-          <input
-            type="text"
-            inputMode="decimal"
-            value={effectShotZoneMultiplier}
-            onChange={(event) => setEffectShotZoneMultiplier(event.target.value)}
-          />
-        </AdminField>
-        <section style={{ display: 'grid', gap: 8 }}>
-          <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--ink)' }}>
-            Коньки и спотыкание
-          </div>
-          <div
-            style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}
-          >
-            <AdminField label="Мин. интервал спотыкания">
-              <div style={adminInventoryFieldBodyStyle}>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={effectStumbleIntervalMinRolls}
-                  onChange={(event) => setEffectStumbleIntervalMinRolls(event.target.value)}
-                />
-                <span style={adminInventoryHintStyle}>
-                  Минимум прокатов до следующего спотыкания без рабочих коньков.
-                </span>
-              </div>
-            </AdminField>
-            <AdminField label="Макс. интервал спотыкания">
-              <div style={adminInventoryFieldBodyStyle}>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={effectStumbleIntervalMaxRolls}
-                  onChange={(event) => setEffectStumbleIntervalMaxRolls(event.target.value)}
-                />
-                <span style={adminInventoryHintStyle}>
-                  Максимум прокатов до спотыкания. Больше — спотыкается реже.
-                </span>
-              </div>
-            </AdminField>
-            <AdminField label="Мин. длительность, мс">
-              <div style={adminInventoryFieldBodyStyle}>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={effectStumbleDurationMinMs}
-                  onChange={(event) => setEffectStumbleDurationMinMs(event.target.value)}
-                />
-                <span style={adminInventoryHintStyle}>
-                  Минимальное время потери равновесия. В это время бросок заблокирован.
-                </span>
-              </div>
-            </AdminField>
-            <AdminField label="Макс. длительность, мс">
-              <div style={adminInventoryFieldBodyStyle}>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={effectStumbleDurationMaxMs}
-                  onChange={(event) => setEffectStumbleDurationMaxMs(event.target.value)}
-                />
-                <span style={adminInventoryHintStyle}>Максимальное время потери равновесия.</span>
-              </div>
-            </AdminField>
-            <AdminField label="Мин. сбой позиции, px">
-              <div style={adminInventoryFieldBodyStyle}>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={effectStumbleOffsetMinPx}
-                  onChange={(event) => setEffectStumbleOffsetMinPx(event.target.value)}
-                />
-                <span style={adminInventoryHintStyle}>
-                  Минимальный рывок игрока в сторону при спотыкании.
-                </span>
-              </div>
-            </AdminField>
-            <AdminField label="Макс. сбой позиции, px">
-              <div style={adminInventoryFieldBodyStyle}>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={effectStumbleOffsetMaxPx}
-                  onChange={(event) => setEffectStumbleOffsetMaxPx(event.target.value)}
-                />
-                <span style={adminInventoryHintStyle}>
-                  Максимальный рывок. Большие значения сильнее ломают тайминг.
-                </span>
-              </div>
-            </AdminField>
-            <AdminField label="Мин. возврат, мс">
-              <div style={adminInventoryFieldBodyStyle}>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={effectStumbleRecoveryMinMs}
-                  onChange={(event) => setEffectStumbleRecoveryMinMs(event.target.value)}
-                />
-                <span style={adminInventoryHintStyle}>
-                  Минимальное время возврата к обычной траектории после рывка.
-                </span>
-              </div>
-            </AdminField>
-            <AdminField label="Макс. возврат, мс">
-              <div style={adminInventoryFieldBodyStyle}>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={effectStumbleRecoveryMaxMs}
-                  onChange={(event) => setEffectStumbleRecoveryMaxMs(event.target.value)}
-                />
-                <span style={adminInventoryHintStyle}>
-                  Максимальное время возврата после спотыкания.
-                </span>
-              </div>
-            </AdminField>
-          </div>
-        </section>
-        <section style={{ display: 'grid', gap: 8 }}>
-          <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--ink)' }}>
-            Энергия и усталость
-          </div>
-          <div
-            style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}
-          >
-            <AdminField label="Базовая скорость энергии">
-              <div style={adminInventoryFieldBodyStyle}>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={effectEnergyBaselineSpeed}
-                  onChange={(event) => setEffectEnergyBaselineSpeed(event.target.value)}
-                />
-                <span style={adminInventoryHintStyle}>
-                  Скорость, при которой энергия тратится 1 к 1. Выше — расход быстрее.
-                </span>
-              </div>
-            </AdminField>
-            <AdminField label="Отсрочка усталости, мс">
-              <div style={adminInventoryFieldBodyStyle}>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={effectFatigueGraceMs}
-                  onChange={(event) => setEffectFatigueGraceMs(event.target.value)}
-                />
-                <span style={adminInventoryHintStyle}>
-                  Сколько можно играть без энергии до первых штрафов.
-                </span>
-              </div>
-            </AdminField>
-            <AdminField label="Лёгкая усталость, мс">
-              <div style={adminInventoryFieldBodyStyle}>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={effectFatigueSlowdownStartMs}
-                  onChange={(event) => setEffectFatigueSlowdownStartMs(event.target.value)}
-                />
-                <span style={adminInventoryHintStyle}>
-                  После этого времени без энергии игрок немного замедляется.
-                </span>
-              </div>
-            </AdminField>
-            <AdminField label="Сильная усталость, мс">
-              <div style={adminInventoryFieldBodyStyle}>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={effectFatigueHeavySlowdownStartMs}
-                  onChange={(event) => setEffectFatigueHeavySlowdownStartMs(event.target.value)}
-                />
-                <span style={adminInventoryHintStyle}>
-                  После этого времени без энергии игрок замедляется сильнее.
-                </span>
-              </div>
-            </AdminField>
-            <AdminField label="Остановка на отдых, мс">
-              <div style={adminInventoryFieldBodyStyle}>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={effectFatigueStopStartMs}
-                  onChange={(event) => setEffectFatigueStopStartMs(event.target.value)}
-                />
-                <span style={adminInventoryHintStyle}>
-                  Когда игрок полностью останавливается и не может бросать.
-                </span>
-              </div>
-            </AdminField>
-            <AdminField label="Длительность отдыха, мс">
-              <div style={adminInventoryFieldBodyStyle}>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={effectFatigueStopDurationMs}
-                  onChange={(event) => setEffectFatigueStopDurationMs(event.target.value)}
-                />
-                <span style={adminInventoryHintStyle}>
-                  Сколько длится принудительный отдых без броска.
-                </span>
-              </div>
-            </AdminField>
-            <AdminField label="Усталость после отдыха, мс">
-              <div style={adminInventoryFieldBodyStyle}>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={effectFatigueAfterRestMs}
-                  onChange={(event) => setEffectFatigueAfterRestMs(event.target.value)}
-                />
-                <span style={adminInventoryHintStyle}>
-                  До какого уровня откатывается усталость после остановки.
-                </span>
-              </div>
-            </AdminField>
-            <AdminField label="Скорость при лёгкой усталости">
-              <div style={adminInventoryFieldBodyStyle}>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={effectFatigueSlowMultiplier}
-                  onChange={(event) => setEffectFatigueSlowMultiplier(event.target.value)}
-                />
-                <span style={adminInventoryHintStyle}>
-                  Множитель скорости. 0.9 значит 90% обычной скорости.
-                </span>
-              </div>
-            </AdminField>
-            <AdminField label="Скорость при сильной усталости">
-              <div style={adminInventoryFieldBodyStyle}>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={effectFatigueHeavyMultiplier}
-                  onChange={(event) => setEffectFatigueHeavyMultiplier(event.target.value)}
-                />
-                <span style={adminInventoryHintStyle}>
-                  Множитель скорости перед остановкой на отдых.
-                </span>
-              </div>
-            </AdminField>
-          </div>
-        </section>
+          </section>
+        )}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           <button
             type="button"

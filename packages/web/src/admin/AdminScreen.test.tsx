@@ -1185,6 +1185,98 @@ describe('AdminScreen', () => {
     expect(savedGameplayPatchBody.effectShotZoneMultiplier).toBe(1);
   });
 
+  it('shows only skate tuning fields while editing skates', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'a',
+      refreshToken: 'r',
+      user: { id: 'admin', displayName: 'Egor', role: 'admin' },
+    });
+    const inventoryItem = {
+      id: '22222222-2222-2222-2222-222222222222',
+      photoUrl: '/inventory/skates.webp',
+      title: 'Разгон',
+      description: 'Комплект коньков',
+      priceRub: 490,
+      itemKind: 'skates',
+      currencyPrice: 490,
+      chargesPerPurchase: 8500,
+      duelPeriodCost: 0,
+      effectPuckSpeedDelta: 0,
+      effectShooterFrequencyDelta: 0,
+      effectGoalieFrequencyDelta: 0,
+      effectGoalFrequencyDelta: 0,
+      effectShotZoneMultiplier: 1,
+      effectStumbleIntervalMinRolls: 90,
+      effectStumbleIntervalMaxRolls: 130,
+      effectStumbleDurationMinMs: 500,
+      effectStumbleDurationMaxMs: 700,
+      effectStumbleOffsetMinPx: 20,
+      effectStumbleOffsetMaxPx: 45,
+      effectStumbleRecoveryMinMs: 200,
+      effectStumbleRecoveryMaxMs: 300,
+      createdAt: '2026-05-03T08:00:00.000Z',
+      updatedAt: '2026-05-03T08:00:00.000Z',
+      paymentsCount: 0,
+      paidRevenueRub: 0,
+    };
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes('/admin/summary')) {
+        return new Response(JSON.stringify(makeAdminSummary()), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/admin/users')) {
+        return new Response(
+          JSON.stringify({
+            users: [],
+            total: 0,
+            limit: 20,
+            offset: 0,
+            notificationStats: makeNotificationStats(),
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.includes('/admin/feedback')) {
+        return new Response(
+          JSON.stringify({
+            feedback: [],
+            total: 0,
+            unreadCount: 0,
+            ratingStats: { count: 0, average: null },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.includes('/admin/inventory')) {
+        return new Response(JSON.stringify({ items: [inventoryItem] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+
+    renderAdmin();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Инвентарь' }));
+    expect(await screen.findByText('Разгон')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать' }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Редактирование предмета' });
+    expect(within(dialog).getByText('Коньки и спотыкание')).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        'Коньки расходуются в прокатах и управляют спотыканием без рабочего инвентаря.',
+      ),
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByText('Энергия и усталость')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('Шайба +пункты')).not.toBeInTheDocument();
+  });
+
   it('keeps weekly challenges inside the achievements admin section', async () => {
     useAuthStore.getState().setSession({
       accessToken: 'a',
