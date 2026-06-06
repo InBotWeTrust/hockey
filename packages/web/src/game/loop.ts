@@ -79,16 +79,21 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
 
   let shooterPausedTotal = 0;
   let shooterPauseStartedAt: number | null = null;
-  let stumblePausedTotal = 0;
-  let stumblePauseStartedAt: number | null = null;
+  let conditionPausedTotal = 0;
+  let conditionPauseStartedAt: number | null = null;
   let scenePausedTotal = 0;
   let scenePauseStartedAt: number | null = null;
 
   function shooterT(now: number): number {
     const activeManual = shooterPauseStartedAt !== null ? now - shooterPauseStartedAt : 0;
-    const activeStumble = stumblePauseStartedAt !== null ? now - stumblePauseStartedAt : 0;
+    const activeCondition = conditionPauseStartedAt !== null ? now - conditionPauseStartedAt : 0;
     return (
-      now - sessionStartMs - shooterPausedTotal - stumblePausedTotal - activeManual - activeStumble
+      now -
+      sessionStartMs -
+      shooterPausedTotal -
+      conditionPausedTotal -
+      activeManual -
+      activeCondition
     );
   }
 
@@ -125,14 +130,18 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
     const o = getOffsets();
     const tScene = sceneT(now);
     const condition = overrides ? opts.getDuelCondition?.(tScene, overrides) : null;
-    if (condition?.stumbleActive) {
-      if (stumblePauseStartedAt === null) stumblePauseStartedAt = now;
-    } else if (stumblePauseStartedAt !== null) {
-      stumblePausedTotal += now - stumblePauseStartedAt;
-      stumblePauseStartedAt = null;
+    const conditionPausesShooter =
+      condition?.stumbleActive === true || condition?.status === 'exhausted_stop';
+    if (conditionPausesShooter) {
+      if (conditionPauseStartedAt === null) conditionPauseStartedAt = now;
+    } else if (conditionPauseStartedAt !== null) {
+      conditionPausedTotal += now - conditionPauseStartedAt;
+      conditionPauseStartedAt = null;
     }
     const tShooter = shooterT(now);
-    const effectiveShooterFreq = Math.max(0.1, sf * (condition?.shooterSpeedMultiplier ?? 1));
+    const effectiveShooterFreq = conditionPausesShooter
+      ? sf
+      : Math.max(0.1, sf * (condition?.shooterSpeedMultiplier ?? 1));
     const goalState: GoalState = simulateGoal(activeCfg, tScene, o.goal);
     const goalieState: GoalieState = simulateGoalie(
       activeCfg,
@@ -192,10 +201,10 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
       renderNowMs = performance.now();
       sessionStartMs = renderNowMs - Math.max(0, elapsedMs);
       shooterPausedTotal = 0;
-      stumblePausedTotal = 0;
+      conditionPausedTotal = 0;
       scenePausedTotal = 0;
       shooterPauseStartedAt = null;
-      stumblePauseStartedAt = null;
+      conditionPauseStartedAt = null;
       scenePauseStartedAt = null;
     },
     get sessionStartMs() {

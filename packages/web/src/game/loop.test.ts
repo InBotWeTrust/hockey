@@ -140,7 +140,7 @@ describe('createGameLoop', () => {
         puckSpeed: 1,
       }),
       getDuelCondition: (elapsedMs) =>
-        elapsedMs >= 5000 && elapsedMs < 5600
+        elapsedMs >= 5000 && elapsedMs < 5800
           ? {
               puckSpeedDelta: 0,
               shooterSpeedMultiplier: 1,
@@ -175,7 +175,69 @@ describe('createGameLoop', () => {
 
     nowSpy.mockReturnValue(6800);
     onTick?.(ticker);
+    expect(playerUpdate.mock.calls.at(-1)?.[1]).toBe(stumbleStartX);
+
+    nowSpy.mockReturnValue(7000);
+    onTick?.(ticker);
     expect(playerUpdate.mock.calls.at(-1)?.[1]).not.toBe(stumbleStartX);
+
+    nowSpy.mockRestore();
+  });
+
+  it('freezes shooter movement during exhausted rest', () => {
+    const nowSpy = vi.spyOn(performance, 'now');
+    nowSpy.mockReturnValue(1000);
+    const playerUpdate = vi.fn();
+    const loop = makeLoop({
+      playerRenderer: { update: playerUpdate } as never,
+      getGoalieId: () => 'rookie',
+      getSpeedOverrides: () => ({
+        goalFreq: 1,
+        goalieFreq: 1,
+        shooterFreq: 1,
+        puckSpeed: 1,
+      }),
+      getDuelCondition: (elapsedMs) =>
+        elapsedMs >= 5000 && elapsedMs < 5800
+          ? {
+              puckSpeedDelta: 0,
+              shooterSpeedMultiplier: 0,
+              canShoot: false,
+              status: 'exhausted_stop',
+              fatigueLevel: 'resting',
+              stumbleActive: false,
+              shooterXOffsetPx: 0,
+              fatigueMs: elapsedMs,
+              nutritionConsumed: 0,
+              skatesConsumed: 0,
+            }
+          : null,
+    });
+    const ticker = makeTicker();
+
+    loop.attach(ticker);
+    const onTick = ticker.add.mock.calls[0]?.[0] as ((ticker: Ticker) => void) | undefined;
+    expect(onTick).toBeDefined();
+
+    nowSpy.mockReturnValue(6000);
+    onTick?.(ticker);
+    const restStartX = playerUpdate.mock.calls.at(-1)?.[1] as number;
+
+    nowSpy.mockReturnValue(6200);
+    onTick?.(ticker);
+    expect(playerUpdate.mock.calls.at(-1)?.[1]).toBe(restStartX);
+
+    nowSpy.mockReturnValue(6600);
+    onTick?.(ticker);
+    expect(playerUpdate.mock.calls.at(-1)?.[1]).toBe(restStartX);
+
+    nowSpy.mockReturnValue(6800);
+    onTick?.(ticker);
+    expect(playerUpdate.mock.calls.at(-1)?.[1]).toBe(restStartX);
+
+    nowSpy.mockReturnValue(7000);
+    onTick?.(ticker);
+    expect(playerUpdate.mock.calls.at(-1)?.[1]).not.toBe(restStartX);
 
     nowSpy.mockRestore();
   });
