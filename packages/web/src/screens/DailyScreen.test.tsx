@@ -9,6 +9,7 @@ import {
   duelEventTiming,
   duelInventoryBadgeLabel,
   duelInventoryItemRemaining,
+  duelPrimaryButtonLabel,
   duelScoreboardOpponent,
   duelRinkReadyPresenceForMatch,
   isDuelInventoryLow,
@@ -333,6 +334,35 @@ describe('DailyScreen', () => {
     expect(
       duelInventoryItemRemaining(activeMatch, activeMatch.me.loadout.items[1]!, liveCondition),
     ).toBe(45_000);
+  });
+
+  it('names blocked duel shot button states by condition', () => {
+    const baseCondition = {
+      puckSpeedDelta: 0,
+      shooterSpeedMultiplier: 1,
+      canShoot: true,
+      status: 'normal',
+      stumbleActive: false,
+      shooterXOffsetPx: 0,
+      fatigueMs: 0,
+      nutritionConsumed: 0,
+      skatesConsumed: 0,
+    } as const;
+
+    expect(duelPrimaryButtonLabel('БРОСОК', null)).toBe('БРОСОК');
+    expect(
+      duelPrimaryButtonLabel('БРОСОК', { ...baseCondition, canShoot: false, status: 'tired' }),
+    ).toBe('УСТАЛОСТЬ');
+    expect(
+      duelPrimaryButtonLabel('БРОСОК', {
+        ...baseCondition,
+        canShoot: false,
+        status: 'exhausted_stop',
+      }),
+    ).toBe('ОТДЫХ');
+    expect(
+      duelPrimaryButtonLabel('БРОСОК', { ...baseCondition, canShoot: false, status: 'stumble' }),
+    ).toBe('СБОЙ');
   });
 
   it('uses understandable duel equipment effect labels for skates and energy', () => {

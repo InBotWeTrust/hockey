@@ -7401,6 +7401,16 @@ export function duelInventoryItemRemaining(
   return duelInventoryRemaining(match, item.id, item.chargesReserved);
 }
 
+export function duelPrimaryButtonLabel(
+  baseLabel: string,
+  condition: DuelPlayerCondition | null,
+): string {
+  if (!condition || condition.canShoot) return baseLabel;
+  if (condition.status === 'exhausted_stop') return 'ОТДЫХ';
+  if (condition.status === 'stumble') return 'СБОЙ';
+  return 'УСТАЛОСТЬ';
+}
+
 function duelConsumedForPeriodItem(
   match: AmateurDuelMatch,
   periodNumber: number,
@@ -10091,6 +10101,8 @@ export function PlayView<TState>({
   }, [handleInactiveAction, handleShotTap, inactiveAction]);
 
   const timerValue = timer ?? formatMs(remaining);
+  const isDuelShotBlocked = active && currentDuelCondition?.canShoot === false;
+  const effectiveShotButtonLabel = duelPrimaryButtonLabel(shotButtonLabel, currentDuelCondition);
   const primaryButtonDisabled =
     (suppressedByModal && !inactiveAction) ||
     isInactiveActionPending ||
@@ -10098,7 +10110,7 @@ export function PlayView<TState>({
     isShotSubmitPending ||
     isShowingResult ||
     (!active && !inactiveAction) ||
-    (active && currentDuelCondition?.canShoot === false) ||
+    isDuelShotBlocked ||
     (active &&
       (routeCameraPhase === 'zoomed' || routeCameraPhase === 'exiting' || isEntrancePlaying)) ||
     (active && typeof shotsTotal === 'number' && shots >= shotsTotal);
@@ -10291,7 +10303,7 @@ export function PlayView<TState>({
         </button>
         <button
           type="button"
-          className="btn btn--cta"
+          className={isDuelShotBlocked ? 'btn btn--cta btn--duel-blocked' : 'btn btn--cta'}
           onClick={handlePrimaryTap}
           disabled={primaryButtonDisabled}
           style={{
@@ -10302,7 +10314,7 @@ export function PlayView<TState>({
             fontSize: 16,
           }}
         >
-          {shotButtonLabel}
+          {effectiveShotButtonLabel}
         </button>
         <button
           type="button"
