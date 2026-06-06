@@ -184,6 +184,29 @@ const inventoryItemPatchSchema = z
     effectStumbleChance: z.number().min(0).max(1).optional(),
     effectStumbleMs: z.number().int().min(0).max(60_000).optional(),
     effectStumbleBlocksPerPeriod: z.number().int().min(0).max(1000).optional(),
+    effectStumbleIntervalMinRolls: z.number().min(0).max(10_000).optional(),
+    effectStumbleIntervalMaxRolls: z.number().min(0).max(10_000).optional(),
+    effectStumbleIntervalMinMs: z.number().int().min(0).max(3_600_000).optional(),
+    effectStumbleIntervalMaxMs: z.number().int().min(0).max(3_600_000).optional(),
+    effectStumbleDurationMinMs: z.number().int().min(0).max(60_000).optional(),
+    effectStumbleDurationMaxMs: z.number().int().min(0).max(60_000).optional(),
+    effectStumbleOffsetMinPx: z.number().int().min(0).max(500).optional(),
+    effectStumbleOffsetMaxPx: z.number().int().min(0).max(500).optional(),
+    effectStumbleRecoveryMinMs: z.number().int().min(0).max(60_000).optional(),
+    effectStumbleRecoveryMaxMs: z.number().int().min(0).max(60_000).optional(),
+    effectEnergyBaselineSpeed: z.number().min(0.1).max(3).optional(),
+    effectNutritionSlowdownMs: z.number().int().min(0).max(60_000).optional(),
+    effectNutritionStopMs: z.number().int().min(0).max(60_000).optional(),
+    effectFatigueDelayMs: z.number().int().min(0).max(600_000).optional(),
+    effectFatigueSpeedMultiplier: z.number().min(0).max(1).optional(),
+    effectFatigueGraceMs: z.number().int().min(0).max(600_000).optional(),
+    effectFatigueSlowdownStartMs: z.number().int().min(0).max(600_000).optional(),
+    effectFatigueHeavySlowdownStartMs: z.number().int().min(0).max(600_000).optional(),
+    effectFatigueStopStartMs: z.number().int().min(0).max(600_000).optional(),
+    effectFatigueStopDurationMs: z.number().int().min(0).max(60_000).optional(),
+    effectFatigueAfterRestMs: z.number().int().min(0).max(600_000).optional(),
+    effectFatigueSlowMultiplier: z.number().min(0).max(1).optional(),
+    effectFatigueHeavyMultiplier: z.number().min(0).max(1).optional(),
   })
   .refine((value) => Object.keys(value).length > 0, 'no changes');
 
@@ -336,14 +359,29 @@ interface InventoryItemEffects {
   stumbleChance: number;
   stumbleMs: number;
   stumbleBlocksPerPeriod: number;
+  stumbleIntervalMinRolls: number;
+  stumbleIntervalMaxRolls: number;
   stumbleIntervalMinMs: number;
   stumbleIntervalMaxMs: number;
   stumbleDurationMinMs: number;
   stumbleDurationMaxMs: number;
+  stumbleOffsetMinPx: number;
+  stumbleOffsetMaxPx: number;
+  stumbleRecoveryMinMs: number;
+  stumbleRecoveryMaxMs: number;
   nutritionSlowdownMs: number;
   nutritionStopMs: number;
+  energyBaselineSpeed: number;
   fatigueDelayMs: number;
   fatigueSpeedMultiplier: number;
+  fatigueGraceMs: number;
+  fatigueSlowdownStartMs: number;
+  fatigueHeavySlowdownStartMs: number;
+  fatigueStopStartMs: number;
+  fatigueStopDurationMs: number;
+  fatigueAfterRestMs: number;
+  fatigueSlowMultiplier: number;
+  fatigueHeavyMultiplier: number;
 }
 
 interface LoadoutSelection {
@@ -586,16 +624,45 @@ function effectsFromUnknown(value: unknown): InventoryItemEffects {
       stumbleChance: z.number().default(0),
       stumbleMs: z.number().default(0),
       stumbleBlocksPerPeriod: z.number().default(0),
+      stumbleIntervalMinRolls: z
+        .number()
+        .default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleIntervalMinRolls),
+      stumbleIntervalMaxRolls: z
+        .number()
+        .default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleIntervalMaxRolls),
       stumbleIntervalMinMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleIntervalMinMs),
       stumbleIntervalMaxMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleIntervalMaxMs),
       stumbleDurationMinMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleDurationMinMs),
       stumbleDurationMaxMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleDurationMaxMs),
+      stumbleOffsetMinPx: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleOffsetMinPx),
+      stumbleOffsetMaxPx: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleOffsetMaxPx),
+      stumbleRecoveryMinMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleRecoveryMinMs),
+      stumbleRecoveryMaxMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleRecoveryMaxMs),
       nutritionSlowdownMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.nutritionSlowdownMs),
       nutritionStopMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.nutritionStopMs),
+      energyBaselineSpeed: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.energyBaselineSpeed),
       fatigueDelayMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueDelayMs),
       fatigueSpeedMultiplier: z
         .number()
         .default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueSpeedMultiplier),
+      fatigueGraceMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueGraceMs),
+      fatigueSlowdownStartMs: z
+        .number()
+        .default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueSlowdownStartMs),
+      fatigueHeavySlowdownStartMs: z
+        .number()
+        .default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueHeavySlowdownStartMs),
+      fatigueStopStartMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueStopStartMs),
+      fatigueStopDurationMs: z
+        .number()
+        .default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueStopDurationMs),
+      fatigueAfterRestMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueAfterRestMs),
+      fatigueSlowMultiplier: z
+        .number()
+        .default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueSlowMultiplier),
+      fatigueHeavyMultiplier: z
+        .number()
+        .default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueHeavyMultiplier),
     })
     .safeParse(value ?? {});
   if (!parsed.success) {
@@ -640,6 +707,12 @@ function loadoutFromUnknown(value: unknown, powerCap = 0): LoadoutSnapshot {
             effectPuckSpeedPoints: z.number().int().default(0),
             timing: z
               .object({
+                stumbleIntervalMinRolls: z
+                  .number()
+                  .default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleIntervalMinRolls),
+                stumbleIntervalMaxRolls: z
+                  .number()
+                  .default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleIntervalMaxRolls),
                 stumbleIntervalMinMs: z
                   .number()
                   .default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleIntervalMinMs),
@@ -652,14 +725,51 @@ function loadoutFromUnknown(value: unknown, powerCap = 0): LoadoutSnapshot {
                 stumbleDurationMaxMs: z
                   .number()
                   .default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleDurationMaxMs),
+                stumbleOffsetMinPx: z
+                  .number()
+                  .default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleOffsetMinPx),
+                stumbleOffsetMaxPx: z
+                  .number()
+                  .default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleOffsetMaxPx),
+                stumbleRecoveryMinMs: z
+                  .number()
+                  .default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleRecoveryMinMs),
+                stumbleRecoveryMaxMs: z
+                  .number()
+                  .default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleRecoveryMaxMs),
                 nutritionSlowdownMs: z
                   .number()
                   .default(DEFAULT_DUEL_INVENTORY_TIMING.nutritionSlowdownMs),
                 nutritionStopMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.nutritionStopMs),
+                energyBaselineSpeed: z
+                  .number()
+                  .default(DEFAULT_DUEL_INVENTORY_TIMING.energyBaselineSpeed),
                 fatigueDelayMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueDelayMs),
                 fatigueSpeedMultiplier: z
                   .number()
                   .default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueSpeedMultiplier),
+                fatigueGraceMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueGraceMs),
+                fatigueSlowdownStartMs: z
+                  .number()
+                  .default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueSlowdownStartMs),
+                fatigueHeavySlowdownStartMs: z
+                  .number()
+                  .default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueHeavySlowdownStartMs),
+                fatigueStopStartMs: z
+                  .number()
+                  .default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueStopStartMs),
+                fatigueStopDurationMs: z
+                  .number()
+                  .default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueStopDurationMs),
+                fatigueAfterRestMs: z
+                  .number()
+                  .default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueAfterRestMs),
+                fatigueSlowMultiplier: z
+                  .number()
+                  .default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueSlowMultiplier),
+                fatigueHeavyMultiplier: z
+                  .number()
+                  .default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueHeavyMultiplier),
               })
               .default(DEFAULT_DUEL_INVENTORY_TIMING),
             effects: z.unknown().optional(),
@@ -818,6 +928,7 @@ function roundInventoryCharge(value: number): number {
 function combineEffects(items: LoadoutItemSnapshot[]): InventoryItemEffects {
   return items.reduce<InventoryItemEffects>(
     (acc, item) => ({
+      ...acc,
       puckSpeedPoints: acc.puckSpeedPoints + item.effects.puckSpeedPoints,
       puckSpeedDelta: acc.puckSpeedDelta + item.effects.puckSpeedDelta,
       shooterFrequencyDelta: acc.shooterFrequencyDelta + item.effects.shooterFrequencyDelta,
@@ -1225,14 +1336,29 @@ async function buildLoadoutSnapshot(
     effect_stumble_chance: string | number;
     effect_stumble_ms: number;
     effect_stumble_blocks_per_period: number;
+    effect_stumble_interval_min_rolls: string | number;
+    effect_stumble_interval_max_rolls: string | number;
     effect_stumble_interval_min_ms: number;
     effect_stumble_interval_max_ms: number;
     effect_stumble_duration_min_ms: number;
     effect_stumble_duration_max_ms: number;
+    effect_stumble_offset_min_px: number;
+    effect_stumble_offset_max_px: number;
+    effect_stumble_recovery_min_ms: number;
+    effect_stumble_recovery_max_ms: number;
     effect_nutrition_slowdown_ms: number;
     effect_nutrition_stop_ms: number;
+    effect_energy_baseline_speed: string | number;
     effect_fatigue_delay_ms: number;
     effect_fatigue_speed_multiplier: string | number;
+    effect_fatigue_grace_ms: number;
+    effect_fatigue_slowdown_start_ms: number;
+    effect_fatigue_heavy_slowdown_start_ms: number;
+    effect_fatigue_stop_start_ms: number;
+    effect_fatigue_stop_duration_ms: number;
+    effect_fatigue_after_rest_ms: number;
+    effect_fatigue_slow_multiplier: string | number;
+    effect_fatigue_heavy_multiplier: string | number;
   }>(
     `select coalesce(instance.id, i.id) as id,
             i.id as item_id,
@@ -1249,10 +1375,18 @@ async function buildLoadoutSnapshot(
             i.effect_shot_zone_multiplier, i.effect_recovery_delay_ms,
             i.effect_stumble_chance, i.effect_stumble_ms,
             i.effect_stumble_blocks_per_period,
+            i.effect_stumble_interval_min_rolls, i.effect_stumble_interval_max_rolls,
             i.effect_stumble_interval_min_ms, i.effect_stumble_interval_max_ms,
             i.effect_stumble_duration_min_ms, i.effect_stumble_duration_max_ms,
+            i.effect_stumble_offset_min_px, i.effect_stumble_offset_max_px,
+            i.effect_stumble_recovery_min_ms, i.effect_stumble_recovery_max_ms,
             i.effect_nutrition_slowdown_ms, i.effect_nutrition_stop_ms,
-            i.effect_fatigue_delay_ms, i.effect_fatigue_speed_multiplier
+            i.effect_energy_baseline_speed,
+            i.effect_fatigue_delay_ms, i.effect_fatigue_speed_multiplier,
+            i.effect_fatigue_grace_ms, i.effect_fatigue_slowdown_start_ms,
+            i.effect_fatigue_heavy_slowdown_start_ms, i.effect_fatigue_stop_start_ms,
+            i.effect_fatigue_stop_duration_ms, i.effect_fatigue_after_rest_ms,
+            i.effect_fatigue_slow_multiplier, i.effect_fatigue_heavy_multiplier
        from admin_inventory_items i
        left join lateral (
          select owned.id, owned.charges_available
@@ -1303,14 +1437,29 @@ async function buildLoadoutSnapshot(
       effectPuckSpeedDelta,
     );
     const timing: DuelInventoryTiming = {
+      stumbleIntervalMinRolls: Number(row.effect_stumble_interval_min_rolls),
+      stumbleIntervalMaxRolls: Number(row.effect_stumble_interval_max_rolls),
       stumbleIntervalMinMs: Number(row.effect_stumble_interval_min_ms),
       stumbleIntervalMaxMs: Number(row.effect_stumble_interval_max_ms),
       stumbleDurationMinMs: Number(row.effect_stumble_duration_min_ms),
       stumbleDurationMaxMs: Number(row.effect_stumble_duration_max_ms),
+      stumbleOffsetMinPx: Number(row.effect_stumble_offset_min_px),
+      stumbleOffsetMaxPx: Number(row.effect_stumble_offset_max_px),
+      stumbleRecoveryMinMs: Number(row.effect_stumble_recovery_min_ms),
+      stumbleRecoveryMaxMs: Number(row.effect_stumble_recovery_max_ms),
       nutritionSlowdownMs: Number(row.effect_nutrition_slowdown_ms),
       nutritionStopMs: Number(row.effect_nutrition_stop_ms),
+      energyBaselineSpeed: Number(row.effect_energy_baseline_speed),
       fatigueDelayMs: Number(row.effect_fatigue_delay_ms),
       fatigueSpeedMultiplier: Number(row.effect_fatigue_speed_multiplier),
+      fatigueGraceMs: Number(row.effect_fatigue_grace_ms),
+      fatigueSlowdownStartMs: Number(row.effect_fatigue_slowdown_start_ms),
+      fatigueHeavySlowdownStartMs: Number(row.effect_fatigue_heavy_slowdown_start_ms),
+      fatigueStopStartMs: Number(row.effect_fatigue_stop_start_ms),
+      fatigueStopDurationMs: Number(row.effect_fatigue_stop_duration_ms),
+      fatigueAfterRestMs: Number(row.effect_fatigue_after_rest_ms),
+      fatigueSlowMultiplier: Number(row.effect_fatigue_slow_multiplier),
+      fatigueHeavyMultiplier: Number(row.effect_fatigue_heavy_multiplier),
     };
     items.push({
       id: row.id,
@@ -1361,7 +1510,11 @@ function loadoutWithUpdatedShotStick(
   }
   const nextStick = stickOnly.items.find((item) => item.kind === 'stick');
   if (nextStick && nextStick.resourceUnit !== 'shot') {
-    throw new AppError('conflict', 'only shot-resource sticks can be switched between periods', 409);
+    throw new AppError(
+      'conflict',
+      'only shot-resource sticks can be switched between periods',
+      409,
+    );
   }
   const items = [
     ...current.items.filter((item) => item.kind !== 'stick'),
@@ -1382,7 +1535,11 @@ function loadoutWithActiveShotStick(
   const nextStick = stickOnly.items.find((item) => item.kind === 'stick');
   if (nextStick) {
     if (nextStick.resourceUnit !== 'shot') {
-      throw new AppError('conflict', 'only shot-resource sticks can be switched during a duel', 409);
+      throw new AppError(
+        'conflict',
+        'only shot-resource sticks can be switched during a duel',
+        409,
+      );
     }
     if (nextStick.resourceAvailable <= 0) {
       throw new AppError('conflict', 'selected duel stick has no shots available', 409);
@@ -3836,6 +3993,11 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
             409,
           );
         }
+        const effectiveShooterFrequency = clampSpeed(
+          periodSpeeds.shooterFrequency * condition.shooterSpeedMultiplier,
+          0.1,
+          3,
+        );
         const shotInput = {
           tapTime: body.input.tapTime,
           ...(body.input.shooterTapTime !== undefined
@@ -3846,7 +4008,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
             0.2,
             5,
           ),
-          shooterFrequency: periodSpeeds.shooterFrequency,
+          shooterFrequency: effectiveShooterFrequency,
           goalieFrequency: periodSpeeds.goalieFrequency,
           goalFrequency: periodSpeeds.goalFrequency,
         };
@@ -4383,6 +4545,129 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
         values,
         'effect_stumble_blocks_per_period',
         body.data.effectStumbleBlocksPerPeriod,
+      );
+      addPatch(
+        assignments,
+        values,
+        'effect_stumble_interval_min_rolls',
+        body.data.effectStumbleIntervalMinRolls,
+      );
+      addPatch(
+        assignments,
+        values,
+        'effect_stumble_interval_max_rolls',
+        body.data.effectStumbleIntervalMaxRolls,
+      );
+      addPatch(
+        assignments,
+        values,
+        'effect_stumble_interval_min_ms',
+        body.data.effectStumbleIntervalMinMs,
+      );
+      addPatch(
+        assignments,
+        values,
+        'effect_stumble_interval_max_ms',
+        body.data.effectStumbleIntervalMaxMs,
+      );
+      addPatch(
+        assignments,
+        values,
+        'effect_stumble_duration_min_ms',
+        body.data.effectStumbleDurationMinMs,
+      );
+      addPatch(
+        assignments,
+        values,
+        'effect_stumble_duration_max_ms',
+        body.data.effectStumbleDurationMaxMs,
+      );
+      addPatch(
+        assignments,
+        values,
+        'effect_stumble_offset_min_px',
+        body.data.effectStumbleOffsetMinPx,
+      );
+      addPatch(
+        assignments,
+        values,
+        'effect_stumble_offset_max_px',
+        body.data.effectStumbleOffsetMaxPx,
+      );
+      addPatch(
+        assignments,
+        values,
+        'effect_stumble_recovery_min_ms',
+        body.data.effectStumbleRecoveryMinMs,
+      );
+      addPatch(
+        assignments,
+        values,
+        'effect_stumble_recovery_max_ms',
+        body.data.effectStumbleRecoveryMaxMs,
+      );
+      addPatch(
+        assignments,
+        values,
+        'effect_energy_baseline_speed',
+        body.data.effectEnergyBaselineSpeed,
+      );
+      addPatch(
+        assignments,
+        values,
+        'effect_nutrition_slowdown_ms',
+        body.data.effectNutritionSlowdownMs,
+      );
+      addPatch(assignments, values, 'effect_nutrition_stop_ms', body.data.effectNutritionStopMs);
+      addPatch(assignments, values, 'effect_fatigue_delay_ms', body.data.effectFatigueDelayMs);
+      addPatch(
+        assignments,
+        values,
+        'effect_fatigue_speed_multiplier',
+        body.data.effectFatigueSpeedMultiplier,
+      );
+      addPatch(assignments, values, 'effect_fatigue_grace_ms', body.data.effectFatigueGraceMs);
+      addPatch(
+        assignments,
+        values,
+        'effect_fatigue_slowdown_start_ms',
+        body.data.effectFatigueSlowdownStartMs,
+      );
+      addPatch(
+        assignments,
+        values,
+        'effect_fatigue_heavy_slowdown_start_ms',
+        body.data.effectFatigueHeavySlowdownStartMs,
+      );
+      addPatch(
+        assignments,
+        values,
+        'effect_fatigue_stop_start_ms',
+        body.data.effectFatigueStopStartMs,
+      );
+      addPatch(
+        assignments,
+        values,
+        'effect_fatigue_stop_duration_ms',
+        body.data.effectFatigueStopDurationMs,
+      );
+      addPatch(
+        assignments,
+        values,
+        'effect_fatigue_after_rest_ms',
+        body.data.effectFatigueAfterRestMs,
+      );
+      addPatch(
+        assignments,
+        values,
+        'effect_fatigue_slow_multiplier',
+        body.data.effectFatigueSlowMultiplier,
+      );
+      addPatch(
+        assignments,
+        values,
+        'effect_fatigue_heavy_multiplier',
+        body.data.effectFatigueHeavyMultiplier,
       );
       values.push(params.itemId);
       const { rowCount } = await app.pg.query(

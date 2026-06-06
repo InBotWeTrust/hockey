@@ -5195,8 +5195,7 @@ function DuelEquipmentDetailsModal({
                 </span>
                 <span
                   style={{
-                    color:
-                      activeId === null ? 'rgba(255,255,255,0.76)' : 'rgba(15, 23, 42, 0.62)',
+                    color: activeId === null ? 'rgba(255,255,255,0.76)' : 'rgba(15, 23, 42, 0.62)',
                     fontSize: 12,
                     fontWeight: 760,
                     lineHeight: 1.28,
@@ -6575,15 +6574,38 @@ function DuelLoadoutSummary({ match }: { match: AmateurDuelMatch }): JSX.Element
         </div>
       </div>
       <DuelInventorySlots match={match} />
-      {match.me.inventory_report.length > 0 && (
-        <div style={{ color: 'var(--muted)', fontSize: 12, lineHeight: 1.45 }}>
-          Последний отчёт: период {match.me.inventory_report.at(-1)?.periodNumber}, списано{' '}
-          {match.me.inventory_report
-            .at(-1)
-            ?.consumed.reduce((sum, item) => sum + item.charges, 0) ?? 0}{' '}
-          зарядов.
-        </div>
-      )}
+      <DuelInventoryUsageSummary match={match} />
+    </div>
+  );
+}
+
+function DuelInventoryUsageSummary({ match }: { match: AmateurDuelMatch }): JSX.Element | null {
+  const usage = duelInventoryUsageRows(match);
+  if (usage.length === 0) return null;
+  return (
+    <div style={{ display: 'grid', gap: 6 }}>
+      <div style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 900 }}>
+        Расход в этой дуэли
+      </div>
+      <div style={{ display: 'grid', gap: 5 }}>
+        {usage.map((item) => (
+          <div
+            key={`${item.kind}:${item.id}`}
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              gap: 8,
+              fontSize: 12,
+              lineHeight: 1.25,
+            }}
+          >
+            <span style={{ color: 'var(--muted)', fontWeight: 750 }}>{item.title}</span>
+            <span style={{ color: 'var(--ink)', fontWeight: 900, textAlign: 'right' }}>
+              {item.label}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -7005,8 +7027,7 @@ function DuelRinkLoadoutHud({
                   lineHeight: 1,
                   letterSpacing: 0,
                   textAlign: 'center',
-                  textShadow:
-                    '0 1px 0 rgba(255,255,255,0.92), 0 0 6px rgba(255,255,255,0.78)',
+                  textShadow: '0 1px 0 rgba(255,255,255,0.92), 0 0 6px rgba(255,255,255,0.78)',
                   zIndex: 2,
                 }}
               >
@@ -7243,6 +7264,49 @@ function duelInventoryRarityColor(
         : '#64748b';
 }
 
+function duelInventoryUsageRows(match: AmateurDuelMatch): Array<{
+  id: string;
+  kind: AmateurDuelMatch['me']['loadout']['items'][number]['kind'];
+  title: string;
+  label: string;
+}> {
+  const totals = new Map<
+    string,
+    {
+      id: string;
+      kind: AmateurDuelMatch['me']['loadout']['items'][number]['kind'];
+      title: string;
+      charges: number;
+    }
+  >();
+  for (const consumed of match.me.inventory_report.flatMap((report) => report.consumed)) {
+    const key = `${consumed.kind}:${consumed.id}`;
+    const current = totals.get(key);
+    if (current) {
+      current.charges += consumed.charges;
+    } else {
+      totals.set(key, {
+        id: consumed.id,
+        kind: consumed.kind,
+        title: consumed.title,
+        charges: consumed.charges,
+      });
+    }
+  }
+  return [...totals.values()]
+    .filter((item) => item.charges > 0)
+    .map((item) => ({
+      id: item.id,
+      kind: item.kind,
+      title: item.title,
+      label: formatInventoryResourceAmount(
+        item.kind,
+        item.kind === 'skates' ? Math.floor(item.charges) : item.charges,
+        item.kind === 'stick' ? 'shot' : item.kind === 'skates' ? 'distance' : 'energy_ms',
+      ),
+    }));
+}
+
 function duelInventoryRemaining(match: AmateurDuelMatch, itemId: string, fallback: number): number {
   for (let index = match.me.inventory_report.length - 1; index >= 0; index -= 1) {
     const report = match.me.inventory_report[index];
@@ -7368,7 +7432,9 @@ function DuelInventoryMiniHud({
     >
       {DUEL_INVENTORY_SLOTS.map((slot) => {
         const selectedItem = match.me.loadout.items.find((cur) => cur.kind === slot.kind);
-        const selectedRemaining = selectedItem ? duelInventoryItemRemaining(match, selectedItem) : 0;
+        const selectedRemaining = selectedItem
+          ? duelInventoryItemRemaining(match, selectedItem)
+          : 0;
         const item =
           selectedItem && !(slot.kind === 'stick' && selectedRemaining <= 0)
             ? selectedItem
@@ -7451,8 +7517,7 @@ function DuelInventoryMiniHud({
                   lineHeight: 1,
                   letterSpacing: 0,
                   textAlign: 'center',
-                  textShadow:
-                    '0 1px 0 rgba(255,255,255,0.92), 0 0 6px rgba(255,255,255,0.78)',
+                  textShadow: '0 1px 0 rgba(255,255,255,0.92), 0 0 6px rgba(255,255,255,0.78)',
                   zIndex: 2,
                 }}
               >
@@ -9568,6 +9633,8 @@ export function PlayView<TState>({
         getGoalieId: () => sessionRef.current.goalieId,
         getSpeedOverrides: () => speedsRef.current,
         getInitialElapsedMs: () => computeInitialElapsedMs(sessionTimingRef.current),
+        getDuelCondition: (elapsedMs, activeSpeeds) =>
+          duelConditionRef.current?.(elapsedMs, activeSpeeds) ?? null,
       });
       tickerRef.current = app.ticker;
       loopRef.current = loop;
@@ -9762,9 +9829,15 @@ export function PlayView<TState>({
 
     const tapTime = loop.getSceneT();
     const shooterTapTime = loop.getShooterT();
-    const sx = computeShooterX(shooterTapTime + offsets.shooter, overrides.shooterFreq);
     const duelShotCondition = duelConditionRef.current?.(tapTime, overrides) ?? null;
     if (duelShotCondition && !duelShotCondition.canShoot) return;
+    const effectiveShooterFreq = Math.max(
+      0.1,
+      overrides.shooterFreq * (duelShotCondition?.shooterSpeedMultiplier ?? 1),
+    );
+    const sx =
+      computeShooterX(shooterTapTime + offsets.shooter, effectiveShooterFreq) +
+      (duelShotCondition?.shooterXOffsetPx ?? 0);
     const puckSpeed = clampPuckSpeed(
       overrides.puckSpeed + (duelShotCondition?.puckSpeedDelta ?? 0),
     );
@@ -9773,7 +9846,7 @@ export function PlayView<TState>({
       tapTime,
       shooterTapTime,
       puckSpeedPerMs: puckSpeed,
-      shooterFrequency: overrides.shooterFreq,
+      shooterFrequency: effectiveShooterFreq,
       goalieFrequency: overrides.goalieFreq,
       goalFrequency: overrides.goalFreq,
     };

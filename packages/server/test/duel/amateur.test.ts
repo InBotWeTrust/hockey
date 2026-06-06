@@ -215,11 +215,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     return rows[0]!.id;
   }
 
-  async function createInventoryInstance(
-    userId: string,
-    itemId: string,
-    chargesAvailable: number,
-  ) {
+  async function createInventoryInstance(userId: string, itemId: string, chargesAvailable: number) {
     const { rows } = await pool.query<{ id: string }>(
       `insert into user_inventory_instance (user_id, inventory_item_id, charges_available)
        values ($1, $2, $3)
@@ -822,9 +818,9 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       itemId: stickId,
       chargesAvailable: 3,
     });
-    expect(saved.json().items.stick.some((item: { id: string }) => item.id === firstInstanceId)).toBe(
-      true,
-    );
+    expect(
+      saved.json().items.stick.some((item: { id: string }) => item.id === firstInstanceId),
+    ).toBe(true);
   });
 
   it('rejects inventory purchase when currency balance is too low', async () => {
@@ -1644,15 +1640,20 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     ).toEqual([firstStickId, secondStickId].sort().map((id) => ({ id, charges: 0 })));
   });
 
-  it('rejects duel shots during deterministic exhausted stop', async () => {
+  it('rejects duel shots during accumulated fatigue rest after nutrition is depleted', async () => {
     const nutritionId = await createInventoryItem('nutrition', 'Tiny nutrition');
     await pool.query(
       `update admin_inventory_items
           set resource_unit = 'energy_ms',
               charges_per_purchase = 1000,
               duel_period_cost = 0,
-              effect_nutrition_slowdown_ms = 2000,
-              effect_nutrition_stop_ms = 5000
+              effect_energy_baseline_speed = 0.8,
+              effect_fatigue_grace_ms = 30000,
+              effect_fatigue_slowdown_start_ms = 30000,
+              effect_fatigue_heavy_slowdown_start_ms = 75000,
+              effect_fatigue_stop_start_ms = 90000,
+              effect_fatigue_stop_duration_ms = 5000,
+              effect_fatigue_after_rest_ms = 45000
         where id = $1`,
       [nutritionId],
     );
@@ -1670,7 +1671,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(started.statusCode).toBe(200);
     await pool.query(
       `update amateur_duel_participant
-          set period_started_at = now() - interval '3500 milliseconds'
+          set period_started_at = now() - interval '93000 milliseconds'
         where match_id = $1 and user_id = $2`,
       [matchId, userA],
     );
@@ -1681,7 +1682,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       headers: auth(tokenA),
       payload: {
         shot_index: 1,
-        input: { tapTime: 3500 },
+        input: { tapTime: 93000 },
         claimed_result: 'goal',
       },
     });
@@ -1757,7 +1758,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
         where user_id = $1 and inventory_item_id = $2`,
       [userA, nutritionId],
     );
-    expect(inventory.rows[0]?.charges_available).toBe(7000);
+    expect(inventory.rows[0]?.charges_available).toBe(6799);
     const participant = await pool.query<{ inventory_report: unknown }>(
       `select inventory_report
          from amateur_duel_participant
@@ -1770,7 +1771,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       }>
     ).flatMap((report) => report.consumed);
     expect(consumed.filter((item) => item.id === nutritionId).map((item) => item.charges)).toEqual([
-      2000, 1000,
+      2134, 1067,
     ]);
   });
 

@@ -104,6 +104,143 @@ describe('duel inventory condition', () => {
         effectPuckSpeedPoints: 0,
         timing: {
           ...DEFAULT_DUEL_INVENTORY_TIMING,
+          stumbleIntervalMinRolls: 10,
+          stumbleIntervalMaxRolls: 10,
+          stumbleDurationMinMs: 500,
+          stumbleDurationMaxMs: 500,
+          stumbleOffsetMinPx: 24,
+          stumbleOffsetMaxPx: 24,
+          stumbleRecoveryMinMs: 250,
+          stumbleRecoveryMaxMs: 250,
+        },
+      },
+    });
+    const baseInput = {
+      seed: 'match-seed',
+      userId: 'user-a',
+      periodNumber: 1,
+      movementDistancePx: 0,
+      baseLaneWidthPx: 572,
+      baselineShooterSpeed: 1,
+      currentShooterSpeed: 1,
+      loadout: timedLoadout,
+    };
+
+    const atStart = getDuelPlayerCondition({ ...baseInput, elapsedMs: 0 });
+    const beforeFirstInterval = getDuelPlayerCondition({
+      ...baseInput,
+      elapsedMs: 4_999,
+      movementDistancePx: 9.998 * 572,
+    });
+    const atFirstInterval = getDuelPlayerCondition({
+      ...baseInput,
+      elapsedMs: 5_000,
+      movementDistancePx: 10 * 572,
+    });
+    const duringRecovery = getDuelPlayerCondition({
+      ...baseInput,
+      elapsedMs: 5_625,
+      movementDistancePx: 11.25 * 572,
+    });
+    const afterRecovery = getDuelPlayerCondition({
+      ...baseInput,
+      elapsedMs: 5_751,
+      movementDistancePx: 11.502 * 572,
+    });
+
+    expect(atStart.stumbleActive).toBe(false);
+    expect(atStart.canShoot).toBe(true);
+    expect(beforeFirstInterval.stumbleActive).toBe(false);
+    expect(beforeFirstInterval.canShoot).toBe(true);
+    expect(atFirstInterval.stumbleActive).toBe(true);
+    expect(atFirstInterval.canShoot).toBe(false);
+    expect(atFirstInterval.shooterXOffsetPx).toBe(24);
+    expect(duringRecovery.stumbleActive).toBe(true);
+    expect(duringRecovery.canShoot).toBe(false);
+    expect(duringRecovery.shooterXOffsetPx).toBeGreaterThan(0);
+    expect(duringRecovery.shooterXOffsetPx).toBeLessThan(24);
+    expect(afterRecovery.stumbleActive).toBe(false);
+    expect(afterRecovery.canShoot).toBe(true);
+    expect(afterRecovery.shooterXOffsetPx).toBe(0);
+  });
+
+  it('uses speed-adjusted accumulated fatigue after energy is gone', () => {
+    const common = {
+      seed: 'match-seed',
+      userId: 'user-a',
+      periodNumber: 1,
+      movementDistancePx: 0,
+      baseLaneWidthPx: 572,
+      baselineShooterSpeed: 0.75,
+      currentShooterSpeed: 0.75,
+      loadout: loadout(),
+    };
+
+    const grace = getDuelPlayerCondition({ ...common, elapsedMs: 29_999 });
+    const tired = getDuelPlayerCondition({ ...common, elapsedMs: 45_000 });
+    const heavy = getDuelPlayerCondition({ ...common, elapsedMs: 80_000 });
+    const stopped = getDuelPlayerCondition({ ...common, elapsedMs: 92_000 });
+    const afterRest = getDuelPlayerCondition({ ...common, elapsedMs: 96_000 });
+
+    expect(grace.status).toBe('normal');
+    expect(grace.shooterSpeedMultiplier).toBe(1);
+    expect(tired.status).toBe('tired');
+    expect(tired.shooterSpeedMultiplier).toBe(0.9);
+    expect(heavy.status).toBe('tired');
+    expect(heavy.shooterSpeedMultiplier).toBe(0.75);
+    expect(stopped.status).toBe('exhausted_stop');
+    expect(stopped.canShoot).toBe(false);
+    expect(stopped.shooterSpeedMultiplier).toBe(0);
+    expect(afterRest.status).toBe('tired');
+    expect(afterRest.canShoot).toBe(true);
+    expect(afterRest.fatigueMs).toBe(46_000);
+  });
+
+  it('accumulates fatigue only after selected nutrition resource is depleted', () => {
+    const common = {
+      seed: 'match-seed',
+      userId: 'user-a',
+      periodNumber: 1,
+      movementDistancePx: 0,
+      baseLaneWidthPx: 572,
+      baselineShooterSpeed: 0.75,
+      currentShooterSpeed: 1.5,
+      loadout: loadout({
+        nutrition: {
+          id: 'nutrition-1',
+          title: 'Изотоник',
+          resourceUnit: 'energy_ms' as const,
+          resourceAvailable: 60_000,
+          effectPuckSpeedPoints: 0,
+          timing: DEFAULT_DUEL_INVENTORY_TIMING,
+        },
+      }),
+    };
+
+    const beforeDepletion = getDuelPlayerCondition({ ...common, elapsedMs: 29_000 });
+    const afterDepletionGrace = getDuelPlayerCondition({ ...common, elapsedMs: 40_000 });
+    const tired = getDuelPlayerCondition({ ...common, elapsedMs: 53_000 });
+
+    expect(beforeDepletion.status).toBe('normal');
+    expect(beforeDepletion.nutritionConsumed).toBe(58_000);
+    expect(afterDepletionGrace.status).toBe('normal');
+    expect(afterDepletionGrace.nutritionConsumed).toBe(60_000);
+    expect(tired.status).toBe('tired');
+    expect(tired.fatigueMs).toBe(46_000);
+  });
+
+  it('does not start legacy millisecond default-skate stumble before the first deterministic interval', () => {
+    const timedLoadout = loadout({
+      skates: {
+        id: 'spent-skates',
+        title: 'Старт',
+        resourceUnit: 'distance',
+        resourceAvailable: 0,
+        effectPuckSpeedPoints: 0,
+        timing: {
+          ...DEFAULT_DUEL_INVENTORY_TIMING,
+          stumbleIntervalMinRolls: 0,
+          stumbleIntervalMaxRolls: 0,
           stumbleIntervalMinMs: 25_000,
           stumbleIntervalMaxMs: 25_000,
           stumbleDurationMinMs: 300,
@@ -320,7 +457,7 @@ describe('duel inventory condition', () => {
     expect(condition.canShoot).toBe(true);
   });
 
-  it('nutrition depletion follows before, slowdown, stop, and recovery boundaries', () => {
+  it('nutrition depletion feeds accumulated fatigue instead of forcing an immediate stop', () => {
     const common = {
       seed: 'match-seed',
       userId: 'user-a',
@@ -342,18 +479,15 @@ describe('duel inventory condition', () => {
     };
 
     const beforeDepletion = getDuelPlayerCondition({ ...common, elapsedMs: 9_999 });
-    const slowed = getDuelPlayerCondition({ ...common, elapsedMs: 10_500 });
-    const stopped = getDuelPlayerCondition({ ...common, elapsedMs: 12_500 });
-    const recovered = getDuelPlayerCondition({ ...common, elapsedMs: 17_000 });
+    const grace = getDuelPlayerCondition({ ...common, elapsedMs: 17_000 });
+    const tired = getDuelPlayerCondition({ ...common, elapsedMs: 45_000 });
 
     expect(beforeDepletion.status).toBe('normal');
     expect(beforeDepletion.canShoot).toBe(true);
-    expect(slowed.status).toBe('nutrition_slowdown');
-    expect(slowed.canShoot).toBe(true);
-    expect(stopped.status).toBe('exhausted_stop');
-    expect(stopped.canShoot).toBe(false);
-    expect(['normal', 'tired']).toContain(recovered.status);
-    expect(recovered.canShoot).toBe(true);
+    expect(grace.status).toBe('normal');
+    expect(grace.canShoot).toBe(true);
+    expect(tired.status).toBe('tired');
+    expect(tired.canShoot).toBe(true);
   });
 
   it('normalizes distance and energy resource consumption', () => {

@@ -503,6 +503,16 @@ function fieldNumber(value: number | undefined): string {
   return value === undefined ? '' : String(value);
 }
 
+function inventoryChargeFieldValue(item: AdminInventoryItem | null): string {
+  if (!item) return '1';
+  if (item.itemKind === 'nutrition') return String(Math.ceil(item.chargesPerPurchase / 60_000));
+  return fieldNumber(item.chargesPerPurchase);
+}
+
+function inventoryChargeValueForSave(kind: AdminInventoryItemKind, value: number): number {
+  return kind === 'nutrition' ? Math.max(0, Math.round(value * 60_000)) : Math.round(value);
+}
+
 function puckSpeedDeltaToPoints(value: number | undefined): string {
   if (value === undefined || !Number.isFinite(value)) return '';
   return String(Math.round(value * 100));
@@ -5030,9 +5040,7 @@ function InventoryEditor({
   const [priceRub, setPriceRub] = useState(item ? String(item.priceRub) : '');
   const [itemKind, setItemKind] = useState<AdminInventoryItemKind>(item?.itemKind ?? 'consumable');
   const [currencyPrice, setCurrencyPrice] = useState(fieldNumber(item?.currencyPrice ?? 0));
-  const [chargesPerPurchase, setChargesPerPurchase] = useState(
-    fieldNumber(item?.chargesPerPurchase ?? 1),
-  );
+  const [chargesPerPurchase, setChargesPerPurchase] = useState(inventoryChargeFieldValue(item));
   const [duelPeriodCost, setDuelPeriodCost] = useState(fieldNumber(item?.duelPeriodCost ?? 0));
   const [effectPuckSpeedPoints, setEffectPuckSpeedPoints] = useState(
     puckSpeedPointsFieldValue(item),
@@ -5049,15 +5057,85 @@ function InventoryEditor({
   const [effectShotZoneMultiplier, setEffectShotZoneMultiplier] = useState(
     fieldNumber(item?.effectShotZoneMultiplier ?? 1),
   );
+  const [effectStumbleIntervalMinRolls, setEffectStumbleIntervalMinRolls] = useState(
+    fieldNumber(item?.effectStumbleIntervalMinRolls ?? 90),
+  );
+  const [effectStumbleIntervalMaxRolls, setEffectStumbleIntervalMaxRolls] = useState(
+    fieldNumber(item?.effectStumbleIntervalMaxRolls ?? 130),
+  );
+  const [effectStumbleDurationMinMs, setEffectStumbleDurationMinMs] = useState(
+    fieldNumber(item?.effectStumbleDurationMinMs ?? 500),
+  );
+  const [effectStumbleDurationMaxMs, setEffectStumbleDurationMaxMs] = useState(
+    fieldNumber(item?.effectStumbleDurationMaxMs ?? 700),
+  );
+  const [effectStumbleOffsetMinPx, setEffectStumbleOffsetMinPx] = useState(
+    fieldNumber(item?.effectStumbleOffsetMinPx ?? 20),
+  );
+  const [effectStumbleOffsetMaxPx, setEffectStumbleOffsetMaxPx] = useState(
+    fieldNumber(item?.effectStumbleOffsetMaxPx ?? 45),
+  );
+  const [effectStumbleRecoveryMinMs, setEffectStumbleRecoveryMinMs] = useState(
+    fieldNumber(item?.effectStumbleRecoveryMinMs ?? 200),
+  );
+  const [effectStumbleRecoveryMaxMs, setEffectStumbleRecoveryMaxMs] = useState(
+    fieldNumber(item?.effectStumbleRecoveryMaxMs ?? 300),
+  );
+  const [effectEnergyBaselineSpeed, setEffectEnergyBaselineSpeed] = useState(
+    fieldNumber(item?.effectEnergyBaselineSpeed ?? 0.75),
+  );
+  const [effectFatigueGraceMs, setEffectFatigueGraceMs] = useState(
+    fieldNumber(item?.effectFatigueGraceMs ?? 30_000),
+  );
+  const [effectFatigueSlowdownStartMs, setEffectFatigueSlowdownStartMs] = useState(
+    fieldNumber(item?.effectFatigueSlowdownStartMs ?? 30_000),
+  );
+  const [effectFatigueHeavySlowdownStartMs, setEffectFatigueHeavySlowdownStartMs] = useState(
+    fieldNumber(item?.effectFatigueHeavySlowdownStartMs ?? 75_000),
+  );
+  const [effectFatigueStopStartMs, setEffectFatigueStopStartMs] = useState(
+    fieldNumber(item?.effectFatigueStopStartMs ?? 90_000),
+  );
+  const [effectFatigueStopDurationMs, setEffectFatigueStopDurationMs] = useState(
+    fieldNumber(item?.effectFatigueStopDurationMs ?? 5_000),
+  );
+  const [effectFatigueAfterRestMs, setEffectFatigueAfterRestMs] = useState(
+    fieldNumber(item?.effectFatigueAfterRestMs ?? 45_000),
+  );
+  const [effectFatigueSlowMultiplier, setEffectFatigueSlowMultiplier] = useState(
+    fieldNumber(item?.effectFatigueSlowMultiplier ?? 0.9),
+  );
+  const [effectFatigueHeavyMultiplier, setEffectFatigueHeavyMultiplier] = useState(
+    fieldNumber(item?.effectFatigueHeavyMultiplier ?? 0.75),
+  );
   const parsedPriceRub = parseAdminIntegerInput(priceRub);
   const parsedCurrencyPrice = parseAdminIntegerInput(currencyPrice);
-  const parsedChargesPerPurchase = parseAdminIntegerInput(chargesPerPurchase);
+  const parsedChargesPerPurchase = parseAdminNumberInput(chargesPerPurchase);
   const parsedDuelPeriodCost = parseAdminIntegerInput(duelPeriodCost);
   const parsedEffectPuckSpeedPoints = parseAdminNumberInput(effectPuckSpeedPoints);
   const parsedEffectShooterFrequencyDelta = parseAdminNumberInput(effectShooterFrequencyDelta);
   const parsedEffectGoalieFrequencyDelta = parseAdminNumberInput(effectGoalieFrequencyDelta);
   const parsedEffectGoalFrequencyDelta = parseAdminNumberInput(effectGoalFrequencyDelta);
   const parsedEffectShotZoneMultiplier = parseAdminNumberInput(effectShotZoneMultiplier);
+  const parsedEffectStumbleIntervalMinRolls = parseAdminNumberInput(effectStumbleIntervalMinRolls);
+  const parsedEffectStumbleIntervalMaxRolls = parseAdminNumberInput(effectStumbleIntervalMaxRolls);
+  const parsedEffectStumbleDurationMinMs = parseAdminIntegerInput(effectStumbleDurationMinMs);
+  const parsedEffectStumbleDurationMaxMs = parseAdminIntegerInput(effectStumbleDurationMaxMs);
+  const parsedEffectStumbleOffsetMinPx = parseAdminIntegerInput(effectStumbleOffsetMinPx);
+  const parsedEffectStumbleOffsetMaxPx = parseAdminIntegerInput(effectStumbleOffsetMaxPx);
+  const parsedEffectStumbleRecoveryMinMs = parseAdminIntegerInput(effectStumbleRecoveryMinMs);
+  const parsedEffectStumbleRecoveryMaxMs = parseAdminIntegerInput(effectStumbleRecoveryMaxMs);
+  const parsedEffectEnergyBaselineSpeed = parseAdminNumberInput(effectEnergyBaselineSpeed);
+  const parsedEffectFatigueGraceMs = parseAdminIntegerInput(effectFatigueGraceMs);
+  const parsedEffectFatigueSlowdownStartMs = parseAdminIntegerInput(effectFatigueSlowdownStartMs);
+  const parsedEffectFatigueHeavySlowdownStartMs = parseAdminIntegerInput(
+    effectFatigueHeavySlowdownStartMs,
+  );
+  const parsedEffectFatigueStopStartMs = parseAdminIntegerInput(effectFatigueStopStartMs);
+  const parsedEffectFatigueStopDurationMs = parseAdminIntegerInput(effectFatigueStopDurationMs);
+  const parsedEffectFatigueAfterRestMs = parseAdminIntegerInput(effectFatigueAfterRestMs);
+  const parsedEffectFatigueSlowMultiplier = parseAdminNumberInput(effectFatigueSlowMultiplier);
+  const parsedEffectFatigueHeavyMultiplier = parseAdminNumberInput(effectFatigueHeavyMultiplier);
   const mutation = useMutation({
     mutationFn: async () => {
       const body: Required<AdminInventoryItemPatch> = {
@@ -5069,7 +5147,7 @@ function InventoryEditor({
       const gameplay: Required<AdminInventoryGameplayPatch> = {
         itemKind,
         currencyPrice: parsedCurrencyPrice,
-        chargesPerPurchase: parsedChargesPerPurchase,
+        chargesPerPurchase: inventoryChargeValueForSave(itemKind, parsedChargesPerPurchase),
         duelPeriodCost: parsedDuelPeriodCost,
         powerScore:
           itemKind === 'stick'
@@ -5082,6 +5160,29 @@ function InventoryEditor({
         effectGoalieFrequencyDelta: parsedEffectGoalieFrequencyDelta,
         effectGoalFrequencyDelta: parsedEffectGoalFrequencyDelta,
         effectShotZoneMultiplier: parsedEffectShotZoneMultiplier,
+        effectStumbleIntervalMinRolls: parsedEffectStumbleIntervalMinRolls,
+        effectStumbleIntervalMaxRolls: parsedEffectStumbleIntervalMaxRolls,
+        effectStumbleIntervalMinMs: item?.effectStumbleIntervalMinMs ?? 25_000,
+        effectStumbleIntervalMaxMs: item?.effectStumbleIntervalMaxMs ?? 45_000,
+        effectStumbleDurationMinMs: parsedEffectStumbleDurationMinMs,
+        effectStumbleDurationMaxMs: parsedEffectStumbleDurationMaxMs,
+        effectStumbleOffsetMinPx: parsedEffectStumbleOffsetMinPx,
+        effectStumbleOffsetMaxPx: parsedEffectStumbleOffsetMaxPx,
+        effectStumbleRecoveryMinMs: parsedEffectStumbleRecoveryMinMs,
+        effectStumbleRecoveryMaxMs: parsedEffectStumbleRecoveryMaxMs,
+        effectEnergyBaselineSpeed: parsedEffectEnergyBaselineSpeed,
+        effectNutritionSlowdownMs: item?.effectNutritionSlowdownMs ?? 0,
+        effectNutritionStopMs: item?.effectNutritionStopMs ?? 0,
+        effectFatigueDelayMs: item?.effectFatigueDelayMs ?? 90_000,
+        effectFatigueSpeedMultiplier: item?.effectFatigueSpeedMultiplier ?? 0.88,
+        effectFatigueGraceMs: parsedEffectFatigueGraceMs,
+        effectFatigueSlowdownStartMs: parsedEffectFatigueSlowdownStartMs,
+        effectFatigueHeavySlowdownStartMs: parsedEffectFatigueHeavySlowdownStartMs,
+        effectFatigueStopStartMs: parsedEffectFatigueStopStartMs,
+        effectFatigueStopDurationMs: parsedEffectFatigueStopDurationMs,
+        effectFatigueAfterRestMs: parsedEffectFatigueAfterRestMs,
+        effectFatigueSlowMultiplier: parsedEffectFatigueSlowMultiplier,
+        effectFatigueHeavyMultiplier: parsedEffectFatigueHeavyMultiplier,
       };
       const saved =
         item === null
@@ -5102,6 +5203,23 @@ function InventoryEditor({
     parsedEffectGoalieFrequencyDelta,
     parsedEffectGoalFrequencyDelta,
     parsedEffectShotZoneMultiplier,
+    parsedEffectStumbleIntervalMinRolls,
+    parsedEffectStumbleIntervalMaxRolls,
+    parsedEffectStumbleDurationMinMs,
+    parsedEffectStumbleDurationMaxMs,
+    parsedEffectStumbleOffsetMinPx,
+    parsedEffectStumbleOffsetMaxPx,
+    parsedEffectStumbleRecoveryMinMs,
+    parsedEffectStumbleRecoveryMaxMs,
+    parsedEffectEnergyBaselineSpeed,
+    parsedEffectFatigueGraceMs,
+    parsedEffectFatigueSlowdownStartMs,
+    parsedEffectFatigueHeavySlowdownStartMs,
+    parsedEffectFatigueStopStartMs,
+    parsedEffectFatigueStopDurationMs,
+    parsedEffectFatigueAfterRestMs,
+    parsedEffectFatigueSlowMultiplier,
+    parsedEffectFatigueHeavyMultiplier,
   ];
   const canSave =
     title.trim() !== '' &&
@@ -5112,8 +5230,21 @@ function InventoryEditor({
     parsedDuelPeriodCost >= 0 &&
     parsedEffectShotZoneMultiplier >= 1 &&
     parsedEffectPuckSpeedPoints >= -500 &&
-    parsedEffectPuckSpeedPoints <= 500;
+    parsedEffectPuckSpeedPoints <= 500 &&
+    parsedEffectStumbleIntervalMaxRolls >= parsedEffectStumbleIntervalMinRolls &&
+    parsedEffectStumbleDurationMaxMs >= parsedEffectStumbleDurationMinMs &&
+    parsedEffectStumbleOffsetMaxPx >= parsedEffectStumbleOffsetMinPx &&
+    parsedEffectStumbleRecoveryMaxMs >= parsedEffectStumbleRecoveryMinMs &&
+    parsedEffectEnergyBaselineSpeed > 0 &&
+    parsedEffectFatigueHeavySlowdownStartMs >= parsedEffectFatigueSlowdownStartMs &&
+    parsedEffectFatigueStopStartMs >= parsedEffectFatigueHeavySlowdownStartMs &&
+    parsedEffectFatigueAfterRestMs <= parsedEffectFatigueStopStartMs &&
+    parsedEffectFatigueSlowMultiplier >= 0 &&
+    parsedEffectFatigueSlowMultiplier <= 1 &&
+    parsedEffectFatigueHeavyMultiplier >= 0 &&
+    parsedEffectFatigueHeavyMultiplier <= 1;
   const isStickItem = itemKind === 'stick';
+  const isNutritionItem = itemKind === 'nutrition';
 
   return createPortal(
     <div
@@ -5194,16 +5325,30 @@ function InventoryEditor({
           </AdminField>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
-          <AdminField label={isStickItem ? 'Бросков при покупке' : 'Зарядов при покупке'}>
+          <AdminField
+            label={
+              isStickItem
+                ? 'Бросков при покупке'
+                : isNutritionItem
+                  ? 'Минут энергии при покупке'
+                  : itemKind === 'skates'
+                    ? 'Прокатов при покупке'
+                    : 'Зарядов при покупке'
+            }
+          >
             <div style={adminInventoryFieldBodyStyle}>
               <input
                 type="text"
-                inputMode="numeric"
+                inputMode="decimal"
                 value={chargesPerPurchase}
                 onChange={(event) => setChargesPerPurchase(event.target.value)}
               />
-              <span style={adminInventoryHintStyle} aria-hidden="true">
-                {' '}
+              <span style={adminInventoryHintStyle}>
+                {isNutritionItem
+                  ? 'Редактируется в минутах, в базе хранится в миллисекундах.'
+                  : itemKind === 'skates'
+                    ? 'Один прокат — движение игрока от одного борта до другого.'
+                    : 'Сколько ресурса игрок получает после покупки предмета.'}
               </span>
             </div>
           </AdminField>
@@ -5283,6 +5428,243 @@ function InventoryEditor({
             onChange={(event) => setEffectShotZoneMultiplier(event.target.value)}
           />
         </AdminField>
+        <section style={{ display: 'grid', gap: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--ink)' }}>
+            Коньки и спотыкание
+          </div>
+          <div
+            style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}
+          >
+            <AdminField label="Мин. интервал спотыкания">
+              <div style={adminInventoryFieldBodyStyle}>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={effectStumbleIntervalMinRolls}
+                  onChange={(event) => setEffectStumbleIntervalMinRolls(event.target.value)}
+                />
+                <span style={adminInventoryHintStyle}>
+                  Минимум прокатов до следующего спотыкания без рабочих коньков.
+                </span>
+              </div>
+            </AdminField>
+            <AdminField label="Макс. интервал спотыкания">
+              <div style={adminInventoryFieldBodyStyle}>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={effectStumbleIntervalMaxRolls}
+                  onChange={(event) => setEffectStumbleIntervalMaxRolls(event.target.value)}
+                />
+                <span style={adminInventoryHintStyle}>
+                  Максимум прокатов до спотыкания. Больше — спотыкается реже.
+                </span>
+              </div>
+            </AdminField>
+            <AdminField label="Мин. длительность, мс">
+              <div style={adminInventoryFieldBodyStyle}>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={effectStumbleDurationMinMs}
+                  onChange={(event) => setEffectStumbleDurationMinMs(event.target.value)}
+                />
+                <span style={adminInventoryHintStyle}>
+                  Минимальное время потери равновесия. В это время бросок заблокирован.
+                </span>
+              </div>
+            </AdminField>
+            <AdminField label="Макс. длительность, мс">
+              <div style={adminInventoryFieldBodyStyle}>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={effectStumbleDurationMaxMs}
+                  onChange={(event) => setEffectStumbleDurationMaxMs(event.target.value)}
+                />
+                <span style={adminInventoryHintStyle}>Максимальное время потери равновесия.</span>
+              </div>
+            </AdminField>
+            <AdminField label="Мин. сбой позиции, px">
+              <div style={adminInventoryFieldBodyStyle}>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={effectStumbleOffsetMinPx}
+                  onChange={(event) => setEffectStumbleOffsetMinPx(event.target.value)}
+                />
+                <span style={adminInventoryHintStyle}>
+                  Минимальный рывок игрока в сторону при спотыкании.
+                </span>
+              </div>
+            </AdminField>
+            <AdminField label="Макс. сбой позиции, px">
+              <div style={adminInventoryFieldBodyStyle}>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={effectStumbleOffsetMaxPx}
+                  onChange={(event) => setEffectStumbleOffsetMaxPx(event.target.value)}
+                />
+                <span style={adminInventoryHintStyle}>
+                  Максимальный рывок. Большие значения сильнее ломают тайминг.
+                </span>
+              </div>
+            </AdminField>
+            <AdminField label="Мин. возврат, мс">
+              <div style={adminInventoryFieldBodyStyle}>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={effectStumbleRecoveryMinMs}
+                  onChange={(event) => setEffectStumbleRecoveryMinMs(event.target.value)}
+                />
+                <span style={adminInventoryHintStyle}>
+                  Минимальное время возврата к обычной траектории после рывка.
+                </span>
+              </div>
+            </AdminField>
+            <AdminField label="Макс. возврат, мс">
+              <div style={adminInventoryFieldBodyStyle}>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={effectStumbleRecoveryMaxMs}
+                  onChange={(event) => setEffectStumbleRecoveryMaxMs(event.target.value)}
+                />
+                <span style={adminInventoryHintStyle}>
+                  Максимальное время возврата после спотыкания.
+                </span>
+              </div>
+            </AdminField>
+          </div>
+        </section>
+        <section style={{ display: 'grid', gap: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--ink)' }}>
+            Энергия и усталость
+          </div>
+          <div
+            style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}
+          >
+            <AdminField label="Базовая скорость энергии">
+              <div style={adminInventoryFieldBodyStyle}>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={effectEnergyBaselineSpeed}
+                  onChange={(event) => setEffectEnergyBaselineSpeed(event.target.value)}
+                />
+                <span style={adminInventoryHintStyle}>
+                  Скорость, при которой энергия тратится 1 к 1. Выше — расход быстрее.
+                </span>
+              </div>
+            </AdminField>
+            <AdminField label="Отсрочка усталости, мс">
+              <div style={adminInventoryFieldBodyStyle}>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={effectFatigueGraceMs}
+                  onChange={(event) => setEffectFatigueGraceMs(event.target.value)}
+                />
+                <span style={adminInventoryHintStyle}>
+                  Сколько можно играть без энергии до первых штрафов.
+                </span>
+              </div>
+            </AdminField>
+            <AdminField label="Лёгкая усталость, мс">
+              <div style={adminInventoryFieldBodyStyle}>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={effectFatigueSlowdownStartMs}
+                  onChange={(event) => setEffectFatigueSlowdownStartMs(event.target.value)}
+                />
+                <span style={adminInventoryHintStyle}>
+                  После этого времени без энергии игрок немного замедляется.
+                </span>
+              </div>
+            </AdminField>
+            <AdminField label="Сильная усталость, мс">
+              <div style={adminInventoryFieldBodyStyle}>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={effectFatigueHeavySlowdownStartMs}
+                  onChange={(event) => setEffectFatigueHeavySlowdownStartMs(event.target.value)}
+                />
+                <span style={adminInventoryHintStyle}>
+                  После этого времени без энергии игрок замедляется сильнее.
+                </span>
+              </div>
+            </AdminField>
+            <AdminField label="Остановка на отдых, мс">
+              <div style={adminInventoryFieldBodyStyle}>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={effectFatigueStopStartMs}
+                  onChange={(event) => setEffectFatigueStopStartMs(event.target.value)}
+                />
+                <span style={adminInventoryHintStyle}>
+                  Когда игрок полностью останавливается и не может бросать.
+                </span>
+              </div>
+            </AdminField>
+            <AdminField label="Длительность отдыха, мс">
+              <div style={adminInventoryFieldBodyStyle}>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={effectFatigueStopDurationMs}
+                  onChange={(event) => setEffectFatigueStopDurationMs(event.target.value)}
+                />
+                <span style={adminInventoryHintStyle}>
+                  Сколько длится принудительный отдых без броска.
+                </span>
+              </div>
+            </AdminField>
+            <AdminField label="Усталость после отдыха, мс">
+              <div style={adminInventoryFieldBodyStyle}>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={effectFatigueAfterRestMs}
+                  onChange={(event) => setEffectFatigueAfterRestMs(event.target.value)}
+                />
+                <span style={adminInventoryHintStyle}>
+                  До какого уровня откатывается усталость после остановки.
+                </span>
+              </div>
+            </AdminField>
+            <AdminField label="Скорость при лёгкой усталости">
+              <div style={adminInventoryFieldBodyStyle}>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={effectFatigueSlowMultiplier}
+                  onChange={(event) => setEffectFatigueSlowMultiplier(event.target.value)}
+                />
+                <span style={adminInventoryHintStyle}>
+                  Множитель скорости. 0.9 значит 90% обычной скорости.
+                </span>
+              </div>
+            </AdminField>
+            <AdminField label="Скорость при сильной усталости">
+              <div style={adminInventoryFieldBodyStyle}>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={effectFatigueHeavyMultiplier}
+                  onChange={(event) => setEffectFatigueHeavyMultiplier(event.target.value)}
+                />
+                <span style={adminInventoryHintStyle}>
+                  Множитель скорости перед остановкой на отдых.
+                </span>
+              </div>
+            </AdminField>
+          </div>
+        </section>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           <button
             type="button"

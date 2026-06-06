@@ -55,6 +55,10 @@ export function formatInventoryResourceAmount(
     return `${numberText(normalized)} ${pluralRu(normalized, 'заряд', 'заряда', 'зарядов')}`;
   }
 
+  if (normalized > 0 && normalized < 60_000) {
+    const seconds = Math.ceil(normalized / 1000);
+    return `${numberText(seconds)} ${pluralRu(seconds, 'секунда', 'секунды', 'секунд')} энергии`;
+  }
   const minutes = normalized > 0 ? Math.ceil(normalized / 60_000) : 0;
   return `${numberText(minutes)} ${pluralRu(minutes, 'минута', 'минуты', 'минут')} энергии`;
 }

@@ -9,6 +9,7 @@ import {
   type SessionPhaseOffsets,
   SHOOTER_CENTER_X,
   SHOOTER_AMPLITUDE,
+  type DuelPlayerCondition,
 } from '@hockey/game-core';
 import type { Scale } from './coords.js';
 import type { Goal } from './renderer/Goal.js';
@@ -36,6 +37,7 @@ export interface GameLoopOpts {
   getGoalieId: () => string | null;
   getSpeedOverrides?: () => SpeedOverrides;
   getInitialElapsedMs?: () => number;
+  getDuelCondition?: (elapsedMs: number, speeds: SpeedOverrides) => DuelPlayerCondition | null;
 }
 
 export interface GameLoop {
@@ -118,6 +120,8 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
     const o = getOffsets();
     const tScene = sceneT(now);
     const tShooter = shooterT(now);
+    const condition = overrides ? opts.getDuelCondition?.(tScene, overrides) : null;
+    const effectiveShooterFreq = Math.max(0.1, sf * (condition?.shooterSpeedMultiplier ?? 1));
     const goalState: GoalState = simulateGoal(activeCfg, tScene, o.goal);
     const goalieState: GoalieState = simulateGoalie(
       activeCfg,
@@ -126,7 +130,8 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
       tScene,
       o.goalie,
     );
-    const sx = shooterX(tShooter + o.shooter, sf);
+    const sx =
+      shooterX(tShooter + o.shooter, effectiveShooterFreq) + (condition?.shooterXOffsetPx ?? 0);
     const scale = opts.getScale();
 
     opts.goalRenderer.update(scale, goalState.offsetX);

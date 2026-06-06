@@ -339,6 +339,29 @@ interface AdminInventoryItemRow {
   effect_goalie_frequency_delta: number;
   effect_goal_frequency_delta: number;
   effect_shot_zone_multiplier: number;
+  effect_stumble_interval_min_rolls: string | number;
+  effect_stumble_interval_max_rolls: string | number;
+  effect_stumble_interval_min_ms: number;
+  effect_stumble_interval_max_ms: number;
+  effect_stumble_duration_min_ms: number;
+  effect_stumble_duration_max_ms: number;
+  effect_stumble_offset_min_px: number;
+  effect_stumble_offset_max_px: number;
+  effect_stumble_recovery_min_ms: number;
+  effect_stumble_recovery_max_ms: number;
+  effect_energy_baseline_speed: string | number;
+  effect_nutrition_slowdown_ms: number;
+  effect_nutrition_stop_ms: number;
+  effect_fatigue_delay_ms: number;
+  effect_fatigue_speed_multiplier: string | number;
+  effect_fatigue_grace_ms: number;
+  effect_fatigue_slowdown_start_ms: number;
+  effect_fatigue_heavy_slowdown_start_ms: number;
+  effect_fatigue_stop_start_ms: number;
+  effect_fatigue_stop_duration_ms: number;
+  effect_fatigue_after_rest_ms: number;
+  effect_fatigue_slow_multiplier: string | number;
+  effect_fatigue_heavy_multiplier: string | number;
   created_at: Date;
   updated_at: Date;
   payments_count?: string;
@@ -1269,6 +1292,29 @@ function mapInventoryItem(row: AdminInventoryItemRow) {
     effectGoalieFrequencyDelta: row.effect_goalie_frequency_delta,
     effectGoalFrequencyDelta: row.effect_goal_frequency_delta,
     effectShotZoneMultiplier: row.effect_shot_zone_multiplier,
+    effectStumbleIntervalMinRolls: Number(row.effect_stumble_interval_min_rolls),
+    effectStumbleIntervalMaxRolls: Number(row.effect_stumble_interval_max_rolls),
+    effectStumbleIntervalMinMs: row.effect_stumble_interval_min_ms,
+    effectStumbleIntervalMaxMs: row.effect_stumble_interval_max_ms,
+    effectStumbleDurationMinMs: row.effect_stumble_duration_min_ms,
+    effectStumbleDurationMaxMs: row.effect_stumble_duration_max_ms,
+    effectStumbleOffsetMinPx: row.effect_stumble_offset_min_px,
+    effectStumbleOffsetMaxPx: row.effect_stumble_offset_max_px,
+    effectStumbleRecoveryMinMs: row.effect_stumble_recovery_min_ms,
+    effectStumbleRecoveryMaxMs: row.effect_stumble_recovery_max_ms,
+    effectEnergyBaselineSpeed: Number(row.effect_energy_baseline_speed),
+    effectNutritionSlowdownMs: row.effect_nutrition_slowdown_ms,
+    effectNutritionStopMs: row.effect_nutrition_stop_ms,
+    effectFatigueDelayMs: row.effect_fatigue_delay_ms,
+    effectFatigueSpeedMultiplier: Number(row.effect_fatigue_speed_multiplier),
+    effectFatigueGraceMs: row.effect_fatigue_grace_ms,
+    effectFatigueSlowdownStartMs: row.effect_fatigue_slowdown_start_ms,
+    effectFatigueHeavySlowdownStartMs: row.effect_fatigue_heavy_slowdown_start_ms,
+    effectFatigueStopStartMs: row.effect_fatigue_stop_start_ms,
+    effectFatigueStopDurationMs: row.effect_fatigue_stop_duration_ms,
+    effectFatigueAfterRestMs: row.effect_fatigue_after_rest_ms,
+    effectFatigueSlowMultiplier: Number(row.effect_fatigue_slow_multiplier),
+    effectFatigueHeavyMultiplier: Number(row.effect_fatigue_heavy_multiplier),
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
     paymentsCount: Number(row.payments_count ?? 0),
@@ -2876,6 +2922,29 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
               i.effect_goalie_frequency_delta,
               i.effect_goal_frequency_delta,
               i.effect_shot_zone_multiplier,
+              i.effect_stumble_interval_min_rolls,
+              i.effect_stumble_interval_max_rolls,
+              i.effect_stumble_interval_min_ms,
+              i.effect_stumble_interval_max_ms,
+              i.effect_stumble_duration_min_ms,
+              i.effect_stumble_duration_max_ms,
+              i.effect_stumble_offset_min_px,
+              i.effect_stumble_offset_max_px,
+              i.effect_stumble_recovery_min_ms,
+              i.effect_stumble_recovery_max_ms,
+              i.effect_energy_baseline_speed,
+              i.effect_nutrition_slowdown_ms,
+              i.effect_nutrition_stop_ms,
+              i.effect_fatigue_delay_ms,
+              i.effect_fatigue_speed_multiplier,
+              i.effect_fatigue_grace_ms,
+              i.effect_fatigue_slowdown_start_ms,
+              i.effect_fatigue_heavy_slowdown_start_ms,
+              i.effect_fatigue_stop_start_ms,
+              i.effect_fatigue_stop_duration_ms,
+              i.effect_fatigue_after_rest_ms,
+              i.effect_fatigue_slow_multiplier,
+              i.effect_fatigue_heavy_multiplier,
               i.created_at,
               i.updated_at,
               count(p.id)::int as payments_count,
@@ -2902,6 +2971,18 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
                  effect_puck_speed_points, effect_puck_speed_delta,
                  effect_shooter_frequency_delta, effect_goalie_frequency_delta,
                  effect_goal_frequency_delta, effect_shot_zone_multiplier,
+                 effect_stumble_interval_min_rolls, effect_stumble_interval_max_rolls,
+                 effect_stumble_interval_min_ms, effect_stumble_interval_max_ms,
+                 effect_stumble_duration_min_ms, effect_stumble_duration_max_ms,
+                 effect_stumble_offset_min_px, effect_stumble_offset_max_px,
+                 effect_stumble_recovery_min_ms, effect_stumble_recovery_max_ms,
+                 effect_energy_baseline_speed, effect_nutrition_slowdown_ms,
+                 effect_nutrition_stop_ms, effect_fatigue_delay_ms,
+                 effect_fatigue_speed_multiplier, effect_fatigue_grace_ms,
+                 effect_fatigue_slowdown_start_ms, effect_fatigue_heavy_slowdown_start_ms,
+                 effect_fatigue_stop_start_ms, effect_fatigue_stop_duration_ms,
+                 effect_fatigue_after_rest_ms, effect_fatigue_slow_multiplier,
+                 effect_fatigue_heavy_multiplier,
                  created_at, updated_at`,
       [body.data.photoUrl, body.data.title, body.data.description, body.data.priceRub],
     );
@@ -2942,6 +3023,18 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
                 effect_puck_speed_points, effect_puck_speed_delta,
                 effect_shooter_frequency_delta, effect_goalie_frequency_delta,
                 effect_goal_frequency_delta, effect_shot_zone_multiplier,
+                effect_stumble_interval_min_rolls, effect_stumble_interval_max_rolls,
+                effect_stumble_interval_min_ms, effect_stumble_interval_max_ms,
+                effect_stumble_duration_min_ms, effect_stumble_duration_max_ms,
+                effect_stumble_offset_min_px, effect_stumble_offset_max_px,
+                effect_stumble_recovery_min_ms, effect_stumble_recovery_max_ms,
+                effect_energy_baseline_speed, effect_nutrition_slowdown_ms,
+                effect_nutrition_stop_ms, effect_fatigue_delay_ms,
+                effect_fatigue_speed_multiplier, effect_fatigue_grace_ms,
+                effect_fatigue_slowdown_start_ms, effect_fatigue_heavy_slowdown_start_ms,
+                effect_fatigue_stop_start_ms, effect_fatigue_stop_duration_ms,
+                effect_fatigue_after_rest_ms, effect_fatigue_slow_multiplier,
+                effect_fatigue_heavy_multiplier,
                 created_at, updated_at`,
       values,
     );
