@@ -90,7 +90,7 @@ export const DEFAULT_DUEL_INVENTORY_TIMING: DuelInventoryTiming = {
   nutritionStopMs: 5_000,
   energyBaselineSpeed: 0.75,
   fatigueDelayMs: 90_000,
-  fatigueSpeedMultiplier: 0.88,
+  fatigueSpeedMultiplier: 1,
   fatigueGraceMs: 30_000,
   fatigueSlowdownStartMs: 30_000,
   fatigueHeavySlowdownStartMs: 75_000,
@@ -171,11 +171,6 @@ function defaultSkateStumbleWindow(
     timing.stumbleRecoveryMinMs,
     timing.stumbleRecoveryMaxMs,
   );
-  const offset = deterministicRange(
-    `${input.seed}:${input.userId}:${input.periodNumber}:stumble-offset`,
-    timing.stumbleOffsetMinPx,
-    timing.stumbleOffsetMaxPx,
-  );
   if (interval <= 0 || duration <= 0) return { active: false, offsetPx: 0 };
 
   const intervalMs = usesRollInterval
@@ -185,9 +180,7 @@ function defaultSkateStumbleWindow(
   const windowMs = duration + Math.max(0, recovery);
   const phaseMs = (input.elapsedMs - intervalMs) % intervalMs;
   if (phaseMs >= windowMs) return { active: false, offsetPx: 0 };
-  const recoveryProgress =
-    phaseMs <= duration || recovery <= 0 ? 0 : Math.min(1, (phaseMs - duration) / recovery);
-  return { active: true, offsetPx: round4(offset * (1 - recoveryProgress)) };
+  return { active: true, offsetPx: 0 };
 }
 
 export function getDuelPlayerCondition(input: DuelPlayerConditionInput): DuelPlayerCondition {
@@ -220,7 +213,7 @@ export function getDuelPlayerCondition(input: DuelPlayerConditionInput): DuelPla
   if (stumble.active) {
     return condition({
       puckSpeedDelta,
-      shooterSpeedMultiplier: movementTiming.fatigueSpeedMultiplier,
+      shooterSpeedMultiplier: 1,
       canShoot: false,
       status: 'stumble',
       fatigueLevel: 'none',

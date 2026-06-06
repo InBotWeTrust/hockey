@@ -5187,7 +5187,7 @@ function InventoryEditor({
         effectNutritionSlowdownMs: item?.effectNutritionSlowdownMs ?? 0,
         effectNutritionStopMs: item?.effectNutritionStopMs ?? 0,
         effectFatigueDelayMs: item?.effectFatigueDelayMs ?? 90_000,
-        effectFatigueSpeedMultiplier: item?.effectFatigueSpeedMultiplier ?? 0.88,
+        effectFatigueSpeedMultiplier: item?.effectFatigueSpeedMultiplier ?? 1,
         effectFatigueGraceMs: parsedEffectFatigueGraceMs,
         effectFatigueSlowdownStartMs: parsedEffectFatigueSlowdownStartMs,
         effectFatigueHeavySlowdownStartMs: parsedEffectFatigueHeavySlowdownStartMs,
@@ -5545,7 +5545,7 @@ function InventoryEditor({
                   <span style={adminInventoryHintStyle}>Максимальное время потери равновесия.</span>
                 </div>
               </AdminField>
-              <AdminField label="Мин. сбой позиции, px">
+              <AdminField label="Мин. снос позиции, px">
                 <div style={adminInventoryFieldBodyStyle}>
                   <input
                     type="text"
@@ -5554,11 +5554,11 @@ function InventoryEditor({
                     onChange={(event) => setEffectStumbleOffsetMinPx(event.target.value)}
                   />
                   <span style={adminInventoryHintStyle}>
-                    Минимальный рывок игрока в сторону при спотыкании.
+                    Сейчас боковой рывок отключён: спотыкание сбивает тайминг короткой заминкой.
                   </span>
                 </div>
               </AdminField>
-              <AdminField label="Макс. сбой позиции, px">
+              <AdminField label="Макс. снос позиции, px">
                 <div style={adminInventoryFieldBodyStyle}>
                   <input
                     type="text"
@@ -5567,11 +5567,11 @@ function InventoryEditor({
                     onChange={(event) => setEffectStumbleOffsetMaxPx(event.target.value)}
                   />
                   <span style={adminInventoryHintStyle}>
-                    Максимальный рывок. Большие значения сильнее ломают тайминг.
+                    Поле сохранено для совместимости; текущая механика не двигает игрока рывком.
                   </span>
                 </div>
               </AdminField>
-              <AdminField label="Мин. возврат, мс">
+              <AdminField label="Мин. восстановление, мс">
                 <div style={adminInventoryFieldBodyStyle}>
                   <input
                     type="text"
@@ -5580,11 +5580,11 @@ function InventoryEditor({
                     onChange={(event) => setEffectStumbleRecoveryMinMs(event.target.value)}
                   />
                   <span style={adminInventoryHintStyle}>
-                    Минимальное время возврата к обычной траектории после рывка.
+                    Минимальное дополнительное время заминки после основной потери равновесия.
                   </span>
                 </div>
               </AdminField>
-              <AdminField label="Макс. возврат, мс">
+              <AdminField label="Макс. восстановление, мс">
                 <div style={adminInventoryFieldBodyStyle}>
                   <input
                     type="text"
@@ -5593,7 +5593,7 @@ function InventoryEditor({
                     onChange={(event) => setEffectStumbleRecoveryMaxMs(event.target.value)}
                   />
                   <span style={adminInventoryHintStyle}>
-                    Максимальное время возврата после спотыкания.
+                    Максимальное дополнительное время, пока бросок ещё заблокирован.
                   </span>
                 </div>
               </AdminField>

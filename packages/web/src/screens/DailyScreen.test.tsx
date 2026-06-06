@@ -463,7 +463,7 @@ describe('DailyScreen', () => {
       status: 'stumble',
       fatigueLevel: 'none',
       stumbleActive: true,
-      shooterXOffsetPx: 24,
+      shooterXOffsetPx: 0,
       fatigueMs: 0,
       nutritionConsumed: 0,
       skatesConsumed: 0,

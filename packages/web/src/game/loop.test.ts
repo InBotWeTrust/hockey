@@ -125,4 +125,58 @@ describe('createGameLoop', () => {
 
     nowSpy.mockRestore();
   });
+
+  it('freezes shooter movement during a duel stumble without jumping on recovery', () => {
+    const nowSpy = vi.spyOn(performance, 'now');
+    nowSpy.mockReturnValue(1000);
+    const playerUpdate = vi.fn();
+    const loop = makeLoop({
+      playerRenderer: { update: playerUpdate } as never,
+      getGoalieId: () => 'rookie',
+      getSpeedOverrides: () => ({
+        goalFreq: 1,
+        goalieFreq: 1,
+        shooterFreq: 1,
+        puckSpeed: 1,
+      }),
+      getDuelCondition: (elapsedMs) =>
+        elapsedMs >= 5000 && elapsedMs < 5600
+          ? {
+              puckSpeedDelta: 0,
+              shooterSpeedMultiplier: 1,
+              canShoot: false,
+              status: 'stumble',
+              fatigueLevel: 'none',
+              stumbleActive: true,
+              shooterXOffsetPx: 0,
+              fatigueMs: 0,
+              nutritionConsumed: 0,
+              skatesConsumed: 0,
+            }
+          : null,
+    });
+    const ticker = makeTicker();
+
+    loop.attach(ticker);
+    const onTick = ticker.add.mock.calls[0]?.[0] as ((ticker: Ticker) => void) | undefined;
+    expect(onTick).toBeDefined();
+
+    nowSpy.mockReturnValue(6000);
+    onTick?.(ticker);
+    const stumbleStartX = playerUpdate.mock.calls.at(-1)?.[1] as number;
+
+    nowSpy.mockReturnValue(6200);
+    onTick?.(ticker);
+    expect(playerUpdate.mock.calls.at(-1)?.[1]).toBe(stumbleStartX);
+
+    nowSpy.mockReturnValue(6600);
+    onTick?.(ticker);
+    expect(playerUpdate.mock.calls.at(-1)?.[1]).toBe(stumbleStartX);
+
+    nowSpy.mockReturnValue(6800);
+    onTick?.(ticker);
+    expect(playerUpdate.mock.calls.at(-1)?.[1]).not.toBe(stumbleStartX);
+
+    nowSpy.mockRestore();
+  });
 });

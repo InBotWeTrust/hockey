@@ -154,11 +154,12 @@ describe('duel inventory condition', () => {
     expect(beforeFirstInterval.canShoot).toBe(true);
     expect(atFirstInterval.stumbleActive).toBe(true);
     expect(atFirstInterval.canShoot).toBe(false);
-    expect(atFirstInterval.shooterXOffsetPx).toBe(24);
+    expect(atFirstInterval.shooterSpeedMultiplier).toBe(1);
+    expect(atFirstInterval.shooterXOffsetPx).toBe(0);
     expect(duringRecovery.stumbleActive).toBe(true);
     expect(duringRecovery.canShoot).toBe(false);
-    expect(duringRecovery.shooterXOffsetPx).toBeGreaterThan(0);
-    expect(duringRecovery.shooterXOffsetPx).toBeLessThan(24);
+    expect(duringRecovery.shooterSpeedMultiplier).toBe(1);
+    expect(duringRecovery.shooterXOffsetPx).toBe(0);
     expect(afterRecovery.stumbleActive).toBe(false);
     expect(afterRecovery.canShoot).toBe(true);
     expect(afterRecovery.shooterXOffsetPx).toBe(0);
