@@ -5,8 +5,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { DAILY_PERIOD_SPEED_PRESETS, STICK_NEUTRAL } from '@hockey/game-core';
 import {
   DailyScreen,
+  duelEquipmentEffectLabel,
   duelEventTiming,
-  duelStickChargeBadgeLabel,
+  duelInventoryBadgeLabel,
   duelScoreboardOpponent,
   duelRinkReadyPresenceForMatch,
   isDuelReadyPresenceState,
@@ -253,12 +254,21 @@ afterEach(() => {
 });
 
 describe('DailyScreen', () => {
-  it('formats duel stick charge badges without showing exhausted zero', () => {
-    expect(duelStickChargeBadgeLabel(0)).toBeNull();
-    expect(duelStickChargeBadgeLabel(10)).toBe('10');
-    expect(duelStickChargeBadgeLabel(99)).toBe('99');
-    expect(duelStickChargeBadgeLabel(101)).toBe('>100');
-    expect(duelStickChargeBadgeLabel(201)).toBe('>200');
+  it('formats duel inventory badges without showing exhausted zero', () => {
+    expect(duelInventoryBadgeLabel('stick', 0, 'shot')).toBeNull();
+    expect(duelInventoryBadgeLabel('stick', 1300, 'shot')?.replace(/\s/g, ' ')).toBe('1 300');
+    expect(duelInventoryBadgeLabel('skates', 8500, 'distance')?.replace(/\s/g, ' ')).toBe('8 500');
+    expect(duelInventoryBadgeLabel('nutrition', 300_000, 'energy_ms')).toBe('5 мин');
+    expect(duelInventoryBadgeLabel('nutrition', 45_000, 'energy_ms')).toBe('45 сек');
+  });
+
+  it('uses understandable duel equipment effect labels for skates and energy', () => {
+    expect(duelEquipmentEffectLabel('skates', 20, 50, 'distance')).toBe('Защищают от спотыканий');
+    expect(duelEquipmentEffectLabel('skates', 0)).toBe('Возможны спотыкания');
+    expect(duelEquipmentEffectLabel('nutrition', 12, 60_000, 'energy_ms')).toBe(
+      'Запас энергии: 1 мин',
+    );
+    expect(duelEquipmentEffectLabel('nutrition', 0)).toBe('Без дополнительной энергии');
   });
 
   it('shows loader while fetching state', () => {

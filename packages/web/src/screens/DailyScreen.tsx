@@ -143,6 +143,7 @@ import {
   settleAmateurDuel,
   type AmateurDuelKind,
   type AmateurDuelInventoryAvailabilityItem,
+  type AmateurDuelLoadoutItem,
   type AmateurDuelLoadoutSelection,
   type AmateurDuelMatch,
   type AmateurDuelMatchState,
@@ -156,6 +157,7 @@ import { StartPeriodModal } from '../components/StartPeriodModal.js';
 import { getLastSeenAt, setLastSeenAt } from '../stores/seenPeriods.js';
 import { artworkForInventoryItem, placeholderArtworkForKind } from './inventoryArtwork.js';
 import {
+  formatInventoryBadgeAmount,
   formatInventoryResourceAmount,
   formatInventoryStockLabel,
 } from './inventoryResourceLabels.js';
@@ -5284,7 +5286,14 @@ function DuelEquipmentDetailsModal({
                       lineHeight: 1.25,
                     }}
                   >
-                    <span>{duelEquipmentEffectLabel(kind, item.powerScore)}</span>
+                    <span>
+                      {duelEquipmentEffectLabel(
+                        kind,
+                        item.powerScore,
+                        item.chargesAvailable,
+                        item.resourceUnit,
+                      )}
+                    </span>
                     <span style={duelEquipmentStockLineStyle(selected)}>
                       {formatInventoryStockLabel(item)}
                     </span>
@@ -6737,27 +6746,42 @@ function duelEquipmentPointLabel(value: number): string {
   return `${normalized} ${noun}`;
 }
 
-function duelEquipmentEffectLabel(
+export function duelEquipmentEffectLabel(
   kind: InventoryEquipmentKind,
   powerScore: number | undefined,
+  resourceAmount?: number,
+  resourceUnit?:
+    | AmateurDuelLoadoutItem['resourceUnit']
+    | AmateurDuelInventoryAvailabilityItem['resourceUnit'],
 ): string {
+  if (kind === 'skates') {
+    return resourceAmount !== undefined && resourceAmount > 0
+      ? 'Защищают от спотыканий'
+      : 'Возможны спотыкания';
+  }
+  if (kind === 'nutrition') {
+    return resourceAmount !== undefined && resourceAmount > 0
+      ? `Запас энергии: ${formatInventoryBadgeAmount(kind, resourceAmount, resourceUnit)}`
+      : 'Без дополнительной энергии';
+  }
   const score = Math.max(0, Math.trunc(powerScore ?? 0));
   if (score <= 0) {
     if (kind === 'stick') return 'Базовая скорость полёта шайбы';
-    if (kind === 'skates') return 'Базовая скорость игрока';
-    return 'Без усиления энергии';
   }
   if (kind === 'stick') return `Ускоряет полёт шайбы на ${duelEquipmentPointLabel(score)}`;
-  if (kind === 'skates') return `Ускоряет игрока на ${duelEquipmentPointLabel(score)}`;
-  return `Добавляет энергию на ${duelEquipmentPointLabel(score)}`;
+  return 'Базовая скорость полёта шайбы';
 }
 
-export function duelStickChargeBadgeLabel(remaining: number): string | null {
+export function duelInventoryBadgeLabel(
+  kind: InventoryEquipmentKind,
+  remaining: number,
+  resourceUnit?:
+    | AmateurDuelLoadoutItem['resourceUnit']
+    | AmateurDuelInventoryAvailabilityItem['resourceUnit'],
+): string | null {
   const normalized = Math.max(0, Math.floor(remaining));
   if (normalized <= 0) return null;
-  if (normalized > 200) return '>200';
-  if (normalized > 100) return '>100';
-  return String(normalized);
+  return formatInventoryBadgeAmount(kind, normalized, resourceUnit);
 }
 
 function duelStartPeriodLoadoutSelection(
@@ -6961,8 +6985,9 @@ function DuelRinkLoadoutHud({
         const hasBase = isDuelRequiredEquipment(slot.kind);
         const hasVisibleEquipment = item !== null || hasBase;
         const canOpen = !locked && availableItems.length > 0;
-        const stickBadge =
-          slot.kind === 'stick' && item ? duelStickChargeBadgeLabel(item.chargesAvailable) : null;
+        const inventoryBadge = item
+          ? duelInventoryBadgeLabel(item.kind, item.chargesAvailable, item.resourceUnit)
+          : null;
         const stickLow = slot.kind === 'stick' && item !== null && item.chargesAvailable <= 10;
         const title = item ? duelEquipmentDisplayTitle(item) : duelBaseEquipmentTitle(slot.kind);
         const status = item
@@ -7011,7 +7036,7 @@ function DuelRinkLoadoutHud({
                 opacity: item ? 1 : hasVisibleEquipment ? 0.72 : 0.38,
               }}
             />
-            {stickBadge && (
+            {inventoryBadge && (
               <span
                 aria-hidden="true"
                 style={{
@@ -7031,7 +7056,7 @@ function DuelRinkLoadoutHud({
                   zIndex: 2,
                 }}
               >
-                {stickBadge}
+                {inventoryBadge}
               </span>
             )}
           </button>
@@ -7236,7 +7261,14 @@ function DuelRinkLoadoutModal({
                       lineHeight: 1.25,
                     }}
                   >
-                    <span>{duelEquipmentEffectLabel(kind, item.powerScore)}</span>
+                    <span>
+                      {duelEquipmentEffectLabel(
+                        kind,
+                        item.powerScore,
+                        item.chargesAvailable,
+                        item.resourceUnit,
+                      )}
+                    </span>
                     <span style={duelEquipmentStockLineStyle(selected)}>
                       {duelInventoryStockLabel(item)}
                     </span>
@@ -7450,8 +7482,9 @@ function DuelInventoryMiniHud({
         const remainingCharges = item ? duelInventoryItemRemaining(match, item) : 0;
         const rarityColor = duelInventoryRarityColor(item?.rarity ?? available?.rarity);
         const isSelected = item !== undefined;
-        const stickBadge =
-          slot.kind === 'stick' && item ? duelStickChargeBadgeLabel(remainingCharges) : null;
+        const inventoryBadge = item
+          ? duelInventoryBadgeLabel(item.kind, remainingCharges, item.resourceUnit)
+          : null;
         const stickLow = slot.kind === 'stick' && remainingCharges > 0 && remainingCharges <= 10;
         const statusText = isSelected
           ? formatInventoryResourceAmount(item.kind, remainingCharges, item.resourceUnit)
@@ -7501,7 +7534,7 @@ function DuelInventoryMiniHud({
                 opacity: isSelected ? 1 : available ? 0.72 : 0.34,
               }}
             />
-            {stickBadge && (
+            {inventoryBadge && (
               <span
                 aria-hidden="true"
                 style={{
@@ -7521,7 +7554,7 @@ function DuelInventoryMiniHud({
                   zIndex: 2,
                 }}
               >
-                {stickBadge}
+                {inventoryBadge}
               </span>
             )}
           </button>

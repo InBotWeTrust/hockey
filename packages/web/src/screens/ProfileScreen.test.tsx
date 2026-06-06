@@ -69,7 +69,7 @@ const consumableInventoryState: InventoryState = {
         rarity: 'common',
         powerScore: 12,
         duelPeriodCost: 1,
-        chargesAvailable: 0,
+        chargesAvailable: 8500,
         chargesReserved: 0,
       },
     ],
@@ -454,9 +454,17 @@ describe('ProfileScreen', () => {
       document.querySelector('.profile-locker-hotspot--stick .profile-locker-hotspot__count'),
     ).toHaveTextContent('3');
     expect(
-      screen.getByRole('button', { name: /Коньки.*Обычные коньки.*Базовая/i }),
+      document.querySelector('.profile-locker-hotspot--skates .profile-locker-hotspot__count'),
+    ).toHaveTextContent('8 500');
+    expect(
+      document.querySelector('.profile-locker-hotspot--nutrition .profile-locker-hotspot__count'),
+    ).toHaveTextContent('5 мин');
+    expect(
+      screen.getByRole('button', { name: /Коньки.*Обычные коньки.*Базовая.*8\s500 прокатов/i }),
     ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Питание.*Энергогель/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Питание.*Энергогель.*5 минут энергии/i }),
+    ).toBeInTheDocument();
     expect(screen.queryByText('Осталось 3 броска')).not.toBeInTheDocument();
     expect(screen.queryByText('Осталось 5 минут энергии')).not.toBeInTheDocument();
     expect(screen.queryByText('Бросок +24')).not.toBeInTheDocument();
@@ -499,6 +507,20 @@ describe('ProfileScreen', () => {
       'aria-pressed',
       'true',
     );
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Закрыть' }));
+
+    fireEvent.click(screen.getByRole('button', { name: /Коньки.*Обычные коньки/i }));
+    const skatesDialog = screen.getByRole('dialog', { name: 'Коньки' });
+    expect(within(skatesDialog).getByText('Лёгкие коньки')).toBeInTheDocument();
+    expect(within(skatesDialog).getByText('Защищают от спотыканий')).toBeInTheDocument();
+    expect(within(skatesDialog).queryByText(/Ускоряет игрока.*пункт/)).not.toBeInTheDocument();
+    fireEvent.click(within(skatesDialog).getByRole('button', { name: 'Закрыть' }));
+
+    fireEvent.click(screen.getByRole('button', { name: /Питание.*Энергогель/i }));
+    const nutritionDialog = screen.getByRole('dialog', { name: 'Питание' });
+    expect(within(nutritionDialog).getByText('Энергогель')).toBeInTheDocument();
+    expect(within(nutritionDialog).getByText('Запас энергии: 5 мин')).toBeInTheDocument();
+    expect(within(nutritionDialog).queryByText(/Добавляет энергию.*пункт/)).not.toBeInTheDocument();
   });
 
   it('shows base required equipment and offers the shop inside missing nutrition details', async () => {

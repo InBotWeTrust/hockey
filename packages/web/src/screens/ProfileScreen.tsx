@@ -29,7 +29,11 @@ import {
   ProfileStatsGrid,
 } from './profileSections.js';
 import { artworkForInventoryItem, placeholderArtworkForKind } from './inventoryArtwork.js';
-import { formatInventoryStockLabel } from './inventoryResourceLabels.js';
+import {
+  formatInventoryBadgeAmount,
+  formatInventoryResourceAmount,
+  formatInventoryStockLabel,
+} from './inventoryResourceLabels.js';
 
 const LOCKER_IMAGE_WIDTH = 853;
 const LOCKER_IMAGE_HEIGHT = 1844;
@@ -238,11 +242,39 @@ function equipmentStockLineStyle(selected: boolean): CSSProperties {
   };
 }
 
-function availableStickShots(inventory: InventoryState | undefined): number {
-  return (inventory?.items.stick ?? []).reduce(
+function totalEquipmentResourceAmount(
+  inventory: InventoryState | undefined,
+  kind: InventoryEquipmentKind,
+): number {
+  return (inventory?.items[kind] ?? []).reduce(
     (sum, item) => sum + Math.max(0, Math.trunc(item.chargesAvailable)),
     0,
   );
+}
+
+function totalEquipmentResourceUnit(
+  inventory: InventoryState | undefined,
+  kind: InventoryEquipmentKind,
+): InventoryItem['resourceUnit'] | undefined {
+  return inventory?.items[kind].find((item) => item.resourceUnit)?.resourceUnit;
+}
+
+function totalEquipmentBadgeLabel(
+  inventory: InventoryState | undefined,
+  kind: InventoryEquipmentKind,
+): string | undefined {
+  const total = totalEquipmentResourceAmount(inventory, kind);
+  if (total <= 0) return kind === 'stick' ? formatLockerCount(0) : undefined;
+  return formatInventoryBadgeAmount(kind, total, totalEquipmentResourceUnit(inventory, kind));
+}
+
+function totalEquipmentStockText(
+  inventory: InventoryState | undefined,
+  kind: InventoryEquipmentKind,
+): string | null {
+  const total = totalEquipmentResourceAmount(inventory, kind);
+  if (total <= 0) return null;
+  return `Всего ${formatInventoryResourceAmount(kind, total, totalEquipmentResourceUnit(inventory, kind))}`;
 }
 
 function equipmentPointLabel(value: number): string {
@@ -258,15 +290,27 @@ function equipmentPointLabel(value: number): string {
   return `${normalized} ${noun}`;
 }
 
-function equipmentEffectLabel(kind: InventoryEquipmentKind, powerScore: number): string {
+function equipmentEffectLabel(
+  kind: InventoryEquipmentKind,
+  powerScore: number,
+  resourceAmount?: number,
+  resourceUnit?: InventoryItem['resourceUnit'],
+): string {
+  if (kind === 'skates') {
+    return resourceAmount !== undefined && resourceAmount > 0
+      ? 'Защищают от спотыканий'
+      : 'Возможны спотыкания';
+  }
+  if (kind === 'nutrition') {
+    return resourceAmount !== undefined && resourceAmount > 0
+      ? `Запас энергии: ${formatInventoryBadgeAmount(kind, resourceAmount, resourceUnit)}`
+      : 'Без дополнительной энергии';
+  }
   if (powerScore <= 0) {
-    if (kind === 'stick') return 'Базовая скорость полёта шайбы';
-    if (kind === 'skates') return 'Базовая скорость игрока';
-    return 'Без усиления энергии';
+    return 'Базовая скорость полёта шайбы';
   }
   if (kind === 'stick') return `Ускоряет полёт шайбы на ${equipmentPointLabel(powerScore)}`;
-  if (kind === 'skates') return `Ускоряет игрока на ${equipmentPointLabel(powerScore)}`;
-  return `Добавляет энергию на ${equipmentPointLabel(powerScore)}`;
+  return 'Базовая скорость полёта шайбы';
 }
 
 function equipmentDisplayTitle(item: InventoryItem): string {
@@ -313,7 +357,8 @@ function equipmentHotspotLabel(
     : hasBaseEquipment
       ? baseEquipmentTitle(kind)
       : meta.empty;
-  return `${meta.title}: ${title}. ${status}`;
+  const total = totalEquipmentStockText(inventory, kind);
+  return `${meta.title}: ${title}. ${status}${total ? `. ${total}` : ''}`;
 }
 
 function ProfileLockerIcon({ src }: { src: string }): JSX.Element {
@@ -351,7 +396,7 @@ function ProfileLockerHotspotButton({
   className: string;
   label: string;
   badge?: number;
-  countLabel?: string;
+  countLabel?: string | undefined;
   style?: CSSProperties;
   onClick: () => void;
   children: ReactNode;
@@ -747,7 +792,14 @@ function EquipmentDetailsModal({
                       lineHeight: 1.25,
                     }}
                   >
-                    <span>{equipmentEffectLabel(kind, item.powerScore)}</span>
+                    <span>
+                      {equipmentEffectLabel(
+                        kind,
+                        item.powerScore,
+                        item.chargesAvailable,
+                        item.resourceUnit,
+                      )}
+                    </span>
                     <span style={equipmentStockLineStyle(selected)}>
                       {formatInventoryStockLabel(item)}
                     </span>
@@ -889,7 +941,9 @@ export function ProfileScreen(): JSX.Element {
   const unlockedAchievementsCount = achievements.filter(
     (achievement) => achievement.isUnlocked,
   ).length;
-  const stickShotsAvailable = availableStickShots(inventoryQuery.data);
+  const stickStockBadge = totalEquipmentBadgeLabel(inventoryQuery.data, 'stick');
+  const skatesStockBadge = totalEquipmentBadgeLabel(inventoryQuery.data, 'skates');
+  const nutritionStockBadge = totalEquipmentBadgeLabel(inventoryQuery.data, 'nutrition');
   const unclaimedAchievementsCount = data?.unclaimedAchievementsCount ?? 0;
   const tokenBalance = inventoryQuery.data?.balances.tokens ?? data?.currencyBalance ?? 0;
   const starBalance = inventoryQuery.data?.balances.stars ?? data?.starBalance ?? 0;
@@ -1004,7 +1058,7 @@ export function ProfileScreen(): JSX.Element {
           <ProfileLockerHotspotButton
             className="profile-locker-hotspot--stick"
             label={equipmentHotspotLabel('stick', inventoryQuery.data)}
-            countLabel={formatLockerCount(stickShotsAvailable)}
+            countLabel={stickStockBadge}
             style={lockerHotspotStyle(LOCKER_HOTSPOTS.stick)}
             onClick={() => setSelectedEquipmentKind('stick')}
           >
@@ -1013,6 +1067,7 @@ export function ProfileScreen(): JSX.Element {
           <ProfileLockerHotspotButton
             className="profile-locker-hotspot--skates"
             label={equipmentHotspotLabel('skates', inventoryQuery.data)}
+            countLabel={skatesStockBadge}
             style={lockerHotspotStyle(LOCKER_HOTSPOTS.skates)}
             onClick={() => setSelectedEquipmentKind('skates')}
           >
@@ -1021,6 +1076,7 @@ export function ProfileScreen(): JSX.Element {
           <ProfileLockerHotspotButton
             className="profile-locker-hotspot--nutrition"
             label={equipmentHotspotLabel('nutrition', inventoryQuery.data)}
+            countLabel={nutritionStockBadge}
             style={lockerHotspotStyle(LOCKER_HOTSPOTS.nutrition)}
             onClick={() => setSelectedEquipmentKind('nutrition')}
           >

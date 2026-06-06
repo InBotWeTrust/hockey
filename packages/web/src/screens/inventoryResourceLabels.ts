@@ -63,6 +63,24 @@ export function formatInventoryResourceAmount(
   return `${numberText(minutes)} ${pluralRu(minutes, 'минута', 'минуты', 'минут')} энергии`;
 }
 
+export function formatInventoryBadgeAmount(
+  kind: InventoryEquipmentKind | null | undefined,
+  amount: number,
+  unit?: InventoryItem['resourceUnit'],
+): string {
+  const normalized = Math.max(0, Math.trunc(amount));
+  const resourceUnit = effectiveResourceUnit(kind, unit);
+
+  if (resourceUnit === 'energy_ms') {
+    if (normalized > 0 && normalized < 60_000) {
+      return `${numberText(Math.ceil(normalized / 1000))} сек`;
+    }
+    return `${numberText(normalized > 0 ? Math.ceil(normalized / 60_000) : 0)} мин`;
+  }
+
+  return numberText(normalized);
+}
+
 export function formatInventoryStockLabel(item: InventoryItem): string {
   if (item.chargesAvailable <= 0) return 'Нет запаса';
   return `Осталось ${formatInventoryResourceAmount(item.kind, item.chargesAvailable, item.resourceUnit)}`;
