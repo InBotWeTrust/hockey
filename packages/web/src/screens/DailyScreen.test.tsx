@@ -8,6 +8,7 @@ import {
   PlayView,
   duelEquipmentEffectLabel,
   duelEventTiming,
+  duelFatigueNoticeLabel,
   duelInventoryBadgeLabel,
   duelInventoryItemRemaining,
   duelPrimaryButtonLabel,
@@ -322,6 +323,7 @@ describe('DailyScreen', () => {
       shooterSpeedMultiplier: 1,
       canShoot: true,
       status: 'normal',
+      fatigueLevel: 'none',
       stumbleActive: false,
       shooterXOffsetPx: 0,
       fatigueMs: 0,
@@ -343,6 +345,7 @@ describe('DailyScreen', () => {
       shooterSpeedMultiplier: 1,
       canShoot: true,
       status: 'normal',
+      fatigueLevel: 'none',
       stumbleActive: false,
       shooterXOffsetPx: 0,
       fatigueMs: 0,
@@ -366,6 +369,91 @@ describe('DailyScreen', () => {
     ).toBe('БРОСОК');
   });
 
+  it('names visible duel fatigue states while the shot button stays available', () => {
+    const baseCondition = {
+      puckSpeedDelta: 0,
+      shooterSpeedMultiplier: 1,
+      canShoot: true,
+      status: 'normal',
+      fatigueLevel: 'none',
+      stumbleActive: false,
+      shooterXOffsetPx: 0,
+      fatigueMs: 0,
+      nutritionConsumed: 0,
+      skatesConsumed: 0,
+    } as const;
+
+    expect(duelFatigueNoticeLabel(null)).toBeNull();
+    expect(duelFatigueNoticeLabel(baseCondition)).toBeNull();
+    expect(
+      duelFatigueNoticeLabel({
+        ...baseCondition,
+        status: 'tired',
+        fatigueLevel: 'medium',
+        shooterSpeedMultiplier: 0.9,
+      }),
+    ).toBe('УСТАЛОСТЬ');
+    expect(
+      duelFatigueNoticeLabel({
+        ...baseCondition,
+        status: 'tired',
+        fatigueLevel: 'heavy',
+        shooterSpeedMultiplier: 0.75,
+      }),
+    ).toBe('СИЛЬНАЯ УСТАЛОСТЬ');
+    expect(
+      duelFatigueNoticeLabel({
+        ...baseCondition,
+        canShoot: false,
+        status: 'exhausted_stop',
+        fatigueLevel: 'resting',
+        shooterSpeedMultiplier: 0,
+      }),
+    ).toBeNull();
+  });
+
+  it('shows fatigue notice while keeping the duel shot button available', () => {
+    const tiredCondition = {
+      puckSpeedDelta: 0,
+      shooterSpeedMultiplier: 0.9,
+      canShoot: true,
+      status: 'tired',
+      fatigueLevel: 'medium',
+      stumbleActive: false,
+      shooterXOffsetPx: 0,
+      fatigueMs: 45_000,
+      nutritionConsumed: 60_000,
+      skatesConsumed: 0,
+    } as const;
+
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="seed"
+        goalieId="rookie"
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        shotsTotal={30}
+        sessionStartedAt="2026-04-25T12:00:00.000Z"
+        serverNow="2026-04-25T12:00:00.000Z"
+        receivedAtPerformanceMs={0}
+        periodEndsAt={Date.now() + 10_000}
+        optimisticAddShot={() => undefined}
+        submitShot={async () => null}
+        applyState={() => undefined}
+        rinkLayer={<div data-testid="test-rink-layer" />}
+        duelCondition={() => tiredCondition}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'БРОСОК' })).toBeEnabled();
+    expect(screen.getByText('УСТАЛОСТЬ')).toBeInTheDocument();
+  });
+
   it('shows a short stumble notice near the player instead of renaming the shot button', () => {
     vi.useFakeTimers();
     const stumbleCondition = {
@@ -373,6 +461,7 @@ describe('DailyScreen', () => {
       shooterSpeedMultiplier: 1,
       canShoot: false,
       status: 'stumble',
+      fatigueLevel: 'none',
       stumbleActive: true,
       shooterXOffsetPx: 24,
       fatigueMs: 0,

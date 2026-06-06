@@ -7,6 +7,7 @@ export type DuelPlayerConditionStatus =
   | 'tired'
   | 'nutrition_slowdown'
   | 'exhausted_stop';
+export type DuelPlayerFatigueLevel = 'none' | 'medium' | 'heavy' | 'resting';
 
 export interface DuelInventoryTiming {
   stumbleIntervalMinRolls: number;
@@ -66,6 +67,7 @@ export interface DuelPlayerCondition {
   shooterSpeedMultiplier: number;
   canShoot: boolean;
   status: DuelPlayerConditionStatus;
+  fatigueLevel: DuelPlayerFatigueLevel;
   stumbleActive: boolean;
   shooterXOffsetPx: number;
   fatigueMs: number;
@@ -221,6 +223,7 @@ export function getDuelPlayerCondition(input: DuelPlayerConditionInput): DuelPla
       shooterSpeedMultiplier: movementTiming.fatigueSpeedMultiplier,
       canShoot: false,
       status: 'stumble',
+      fatigueLevel: 'none',
       stumbleActive: true,
       shooterXOffsetPx: stumble.offsetPx,
       fatigueMs: 0,
@@ -238,6 +241,7 @@ export function getDuelPlayerCondition(input: DuelPlayerConditionInput): DuelPla
     shooterSpeedMultiplier: fatigue.speedMultiplier,
     canShoot: fatigue.canShoot,
     status: fatigue.status,
+    fatigueLevel: fatigue.level,
     stumbleActive: false,
     shooterXOffsetPx: 0,
     fatigueMs: fatigue.normalizedFatigueMs,
@@ -300,6 +304,7 @@ function fatigueState(
   timing: DuelInventoryTiming,
 ): {
   status: DuelPlayerConditionStatus;
+  level: DuelPlayerFatigueLevel;
   canShoot: boolean;
   speedMultiplier: number;
   normalizedFatigueMs: number;
@@ -325,6 +330,7 @@ function fatigueState(
   if (resting) {
     return {
       status: 'exhausted_stop',
+      level: 'resting',
       canShoot: false,
       speedMultiplier: 0,
       normalizedFatigueMs: Math.ceil(fatigueMs),
@@ -333,6 +339,7 @@ function fatigueState(
   if (fatigueMs >= Math.max(0, timing.fatigueHeavySlowdownStartMs)) {
     return {
       status: 'tired',
+      level: 'heavy',
       canShoot: true,
       speedMultiplier: timing.fatigueHeavyMultiplier,
       normalizedFatigueMs: Math.ceil(fatigueMs),
@@ -341,6 +348,7 @@ function fatigueState(
   if (fatigueMs >= Math.max(0, timing.fatigueSlowdownStartMs, timing.fatigueGraceMs)) {
     return {
       status: 'tired',
+      level: 'medium',
       canShoot: true,
       speedMultiplier: timing.fatigueSlowMultiplier,
       normalizedFatigueMs: Math.ceil(fatigueMs),
@@ -348,6 +356,7 @@ function fatigueState(
   }
   return {
     status: 'normal',
+    level: 'none',
     canShoot: true,
     speedMultiplier: 1,
     normalizedFatigueMs: Math.ceil(fatigueMs),

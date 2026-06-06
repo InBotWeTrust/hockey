@@ -600,6 +600,28 @@
   animation: duel-stumble-notice-pop 650ms ease-out both;
 }
 
+.duel-fatigue-notice {
+  position: absolute;
+  left: 50%;
+  bottom: clamp(92px, 18%, 136px);
+  z-index: 7;
+  max-width: calc(100% - 32px);
+  padding: 7px 12px;
+  border-radius: var(--r-pill);
+  background: rgba(51, 65, 85, 0.72);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.2);
+  animation: duel-fatigue-notice-in 180ms ease-out both;
+}
+
 @keyframes duel-stumble-notice-pop {
   0% {
     opacity: 0;
@@ -613,6 +635,17 @@
   100% {
     opacity: 0;
     transform: translate(-50%, -4px) scale(0.98);
+  }
+}
+
+@keyframes duel-fatigue-notice-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 6px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
   }
 }
 

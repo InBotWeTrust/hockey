@@ -7412,6 +7412,13 @@ export function duelPrimaryButtonLabel(
   return baseLabel;
 }
 
+export function duelFatigueNoticeLabel(condition: DuelPlayerCondition | null): string | null {
+  if (!condition || condition.status !== 'tired') return null;
+  if (condition.fatigueLevel === 'heavy') return 'СИЛЬНАЯ УСТАЛОСТЬ';
+  if (condition.fatigueLevel === 'medium') return 'УСТАЛОСТЬ';
+  return null;
+}
+
 function duelConsumedForPeriodItem(
   match: AmateurDuelMatch,
   periodNumber: number,
@@ -10137,6 +10144,7 @@ export function PlayView<TState>({
   const isDuelShotBlocked = active && currentDuelCondition?.canShoot === false;
   const isDuelRestBlocked = isDuelShotBlocked && currentDuelCondition?.status === 'exhausted_stop';
   const effectiveShotButtonLabel = duelPrimaryButtonLabel(shotButtonLabel, currentDuelCondition);
+  const duelFatigueNotice = duelFatigueNoticeLabel(currentDuelCondition);
   const primaryButtonDisabled =
     (suppressedByModal && !inactiveAction) ||
     isInactiveActionPending ||
@@ -10303,7 +10311,7 @@ export function PlayView<TState>({
               {hudAddon}
             </div>
           )}
-          {duelStumbleNoticeVisible && (
+          {duelStumbleNoticeVisible ? (
             <div
               role="status"
               aria-live="polite"
@@ -10312,7 +10320,16 @@ export function PlayView<TState>({
             >
               СПОТКНУЛСЯ
             </div>
-          )}
+          ) : duelFatigueNotice ? (
+            <div
+              role="status"
+              aria-live="polite"
+              className="duel-fatigue-notice"
+              style={routeGameStyle}
+            >
+              {duelFatigueNotice}
+            </div>
+          ) : null}
         </div>
       </div>
 

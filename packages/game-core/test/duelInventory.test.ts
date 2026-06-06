@@ -183,15 +183,20 @@ describe('duel inventory condition', () => {
     const afterRest = getDuelPlayerCondition({ ...common, elapsedMs: 96_000 });
 
     expect(grace.status).toBe('normal');
+    expect(grace.fatigueLevel).toBe('none');
     expect(grace.shooterSpeedMultiplier).toBe(1);
     expect(tired.status).toBe('tired');
+    expect(tired.fatigueLevel).toBe('medium');
     expect(tired.shooterSpeedMultiplier).toBe(0.9);
     expect(heavy.status).toBe('tired');
+    expect(heavy.fatigueLevel).toBe('heavy');
     expect(heavy.shooterSpeedMultiplier).toBe(0.75);
     expect(stopped.status).toBe('exhausted_stop');
+    expect(stopped.fatigueLevel).toBe('resting');
     expect(stopped.canShoot).toBe(false);
     expect(stopped.shooterSpeedMultiplier).toBe(0);
     expect(afterRest.status).toBe('tired');
+    expect(afterRest.fatigueLevel).toBe('medium');
     expect(afterRest.canShoot).toBe(true);
     expect(afterRest.fatigueMs).toBe(46_000);
   });

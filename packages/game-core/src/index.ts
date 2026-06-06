@@ -63,5 +63,6 @@ export {
   type DuelInventoryTiming,
   type DuelPlayerCondition,
   type DuelPlayerConditionInput,
+  type DuelPlayerFatigueLevel,
   type DuelPlayerConditionStatus,
 } from './duelInventory.js';
