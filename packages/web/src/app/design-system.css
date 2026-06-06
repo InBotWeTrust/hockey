@@ -902,19 +902,26 @@
 
 .profile-locker-hotspot__count {
   position: absolute;
-  left: calc(100% + 2px);
-  top: 58%;
-  min-width: 0;
-  height: auto;
-  padding: 0;
-  color: rgba(226, 246, 255, 0.94);
-  font-size: 10px;
+  left: 50%;
+  top: calc(100% - 3px);
+  transform: translateX(-50%);
+  max-width: 56px;
+  min-width: 18px;
+  padding: 2px 5px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.64);
+  color: rgba(255, 255, 255, 0.96);
+  font-size: 9.5px;
   font-weight: 950;
-  line-height: 1;
+  line-height: 1.05;
   text-align: center;
   letter-spacing: 0;
   white-space: nowrap;
-  text-shadow: 0 1px 5px rgba(3, 7, 18, 0.72);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 5px 12px rgba(3, 7, 18, 0.22);
+  text-shadow: 0 1px 3px rgba(3, 7, 18, 0.62);
   pointer-events: none;
 }
 
