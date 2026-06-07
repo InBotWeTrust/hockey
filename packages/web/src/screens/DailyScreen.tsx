@@ -7415,7 +7415,9 @@ export function duelPrimaryButtonLabel(
 }
 
 export function duelFatigueNoticeLabel(condition: DuelPlayerCondition | null): string | null {
-  if (!condition || condition.status !== 'tired') return null;
+  if (!condition) return null;
+  if (condition.status === 'exhausted_stop') return 'Надо отдышаться';
+  if (condition.status !== 'tired') return null;
   return 'Усталость';
 }
 
@@ -9313,6 +9315,7 @@ export function PlayView<TState>({
   }, []);
 
   useEffect(() => {
+    if (pixiReady && active) return;
     syncCurrentDuelCondition(
       active && duelCondition
         ? duelCondition(computeInitialElapsedMs(sessionTimingRef.current), speeds)
@@ -9324,6 +9327,7 @@ export function PlayView<TState>({
     receivedAtPerformanceMs,
     serverNow,
     sessionStartedAt,
+    pixiReady,
     speeds,
     syncCurrentDuelCondition,
   ]);
@@ -9843,7 +9847,7 @@ export function PlayView<TState>({
       }
       setPixiReady(true);
     },
-    [drawReadyPresence, startEntranceAnimation],
+    [drawReadyPresence, startEntranceAnimation, syncCurrentDuelCondition],
   );
 
   // React to suppressedByModal flips after Pixi is up. handleReady applies
@@ -10183,6 +10187,8 @@ export function PlayView<TState>({
   const isDuelRestBlocked = isDuelShotBlocked && currentDuelCondition?.status === 'exhausted_stop';
   const effectiveShotButtonLabel = duelPrimaryButtonLabel(shotButtonLabel, currentDuelCondition);
   const duelFatigueNotice = duelFatigueNoticeLabel(currentDuelCondition);
+  const showDuelStumbleNotice =
+    duelStumbleNoticeVisible && currentDuelCondition?.status !== 'exhausted_stop';
   const primaryButtonDisabled =
     (suppressedByModal && !inactiveAction) ||
     isInactiveActionPending ||
@@ -10349,7 +10355,7 @@ export function PlayView<TState>({
               {hudAddon}
             </div>
           )}
-          {duelStumbleNoticeVisible ? (
+          {showDuelStumbleNotice ? (
             <div
               role="status"
               aria-live="polite"
@@ -10362,7 +10368,11 @@ export function PlayView<TState>({
             <div
               role="status"
               aria-live="polite"
-              className="duel-fatigue-notice"
+              className={
+                currentDuelCondition?.status === 'exhausted_stop'
+                  ? 'duel-fatigue-notice duel-rest-notice'
+                  : 'duel-fatigue-notice'
+              }
               style={routeGameStyle}
             >
               {duelFatigueNotice}

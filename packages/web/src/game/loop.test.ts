@@ -179,6 +179,14 @@ describe('createGameLoop', () => {
 
     nowSpy.mockReturnValue(7000);
     onTick?.(ticker);
+    expect(playerUpdate.mock.calls.at(-1)?.[1]).toBe(stumbleStartX);
+
+    nowSpy.mockReturnValue(7450);
+    onTick?.(ticker);
+    expect(playerUpdate.mock.calls.at(-1)?.[1]).toBe(stumbleStartX);
+
+    nowSpy.mockReturnValue(7600);
+    onTick?.(ticker);
     expect(playerUpdate.mock.calls.at(-1)?.[1]).not.toBe(stumbleStartX);
 
     nowSpy.mockRestore();
@@ -238,6 +246,160 @@ describe('createGameLoop', () => {
     nowSpy.mockReturnValue(7000);
     onTick?.(ticker);
     expect(playerUpdate.mock.calls.at(-1)?.[1]).not.toBe(restStartX);
+
+    nowSpy.mockRestore();
+  });
+
+  it('freezes shooter movement even when the first rendered duel frame is paused', () => {
+    const nowSpy = vi.spyOn(performance, 'now');
+    nowSpy.mockReturnValue(1000);
+    const playerUpdate = vi.fn();
+    const loop = makeLoop({
+      playerRenderer: { update: playerUpdate } as never,
+      getGoalieId: () => 'rookie',
+      getSpeedOverrides: () => ({
+        goalFreq: 1,
+        goalieFreq: 1,
+        shooterFreq: 1,
+        puckSpeed: 1,
+      }),
+      getDuelCondition: () => ({
+        puckSpeedDelta: 0,
+        shooterSpeedMultiplier: 1,
+        canShoot: false,
+        status: 'stumble',
+        fatigueLevel: 'none',
+        stumbleActive: true,
+        shooterXOffsetPx: 0,
+        fatigueMs: 0,
+        nutritionConsumed: 0,
+        skatesConsumed: 0,
+      }),
+    });
+    const ticker = makeTicker();
+
+    loop.attach(ticker);
+    const onTick = ticker.add.mock.calls[0]?.[0] as ((ticker: Ticker) => void) | undefined;
+    expect(onTick).toBeDefined();
+
+    nowSpy.mockReturnValue(2000);
+    onTick?.(ticker);
+    const firstPausedX = playerUpdate.mock.calls.at(-1)?.[1] as number;
+
+    nowSpy.mockReturnValue(2123);
+    onTick?.(ticker);
+    expect(playerUpdate.mock.calls.at(-1)?.[1]).toBe(firstPausedX);
+
+    nowSpy.mockReturnValue(2456);
+    onTick?.(ticker);
+    expect(playerUpdate.mock.calls.at(-1)?.[1]).toBe(firstPausedX);
+
+    nowSpy.mockRestore();
+  });
+
+  it('keeps reporting the latest paused duel condition while frozen', () => {
+    const nowSpy = vi.spyOn(performance, 'now');
+    nowSpy.mockReturnValue(1000);
+    const onDuelConditionChange = vi.fn();
+    const loop = makeLoop({
+      getGoalieId: () => 'rookie',
+      getSpeedOverrides: () => ({
+        goalFreq: 1,
+        goalieFreq: 1,
+        shooterFreq: 1,
+        puckSpeed: 1,
+      }),
+      getDuelCondition: () => ({
+        puckSpeedDelta: 0,
+        shooterSpeedMultiplier: 0,
+        canShoot: false,
+        status: 'exhausted_stop',
+        fatigueLevel: 'resting',
+        stumbleActive: false,
+        shooterXOffsetPx: 0,
+        fatigueMs: 90_000,
+        nutritionConsumed: 0,
+        skatesConsumed: 0,
+      }),
+      onDuelConditionChange,
+    });
+    const ticker = makeTicker();
+
+    loop.attach(ticker);
+    const onTick = ticker.add.mock.calls[0]?.[0] as ((ticker: Ticker) => void) | undefined;
+    expect(onTick).toBeDefined();
+
+    nowSpy.mockReturnValue(2000);
+    onTick?.(ticker);
+    nowSpy.mockReturnValue(2400);
+    onTick?.(ticker);
+
+    expect(onDuelConditionChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ status: 'exhausted_stop', canShoot: false }),
+    );
+
+    nowSpy.mockRestore();
+  });
+
+  it('keeps stumble active for the visible notice window after the core window ends', () => {
+    const nowSpy = vi.spyOn(performance, 'now');
+    nowSpy.mockReturnValue(1000);
+    const playerUpdate = vi.fn();
+    const onDuelConditionChange = vi.fn();
+    const loop = makeLoop({
+      playerRenderer: { update: playerUpdate } as never,
+      getGoalieId: () => 'rookie',
+      getSpeedOverrides: () => ({
+        goalFreq: 1,
+        goalieFreq: 1,
+        shooterFreq: 1,
+        puckSpeed: 1,
+      }),
+      getDuelCondition: (elapsedMs) =>
+        elapsedMs < 510
+          ? {
+              puckSpeedDelta: 0,
+              shooterSpeedMultiplier: 1,
+              canShoot: false,
+              status: 'stumble',
+              fatigueLevel: 'none',
+              stumbleActive: true,
+              shooterXOffsetPx: 0,
+              fatigueMs: 0,
+              nutritionConsumed: 0,
+              skatesConsumed: 0,
+            }
+          : {
+              puckSpeedDelta: 0,
+              shooterSpeedMultiplier: 1,
+              canShoot: true,
+              status: 'normal',
+              fatigueLevel: 'none',
+              stumbleActive: false,
+              shooterXOffsetPx: 0,
+              fatigueMs: 0,
+              nutritionConsumed: 0,
+              skatesConsumed: 0,
+            },
+      onDuelConditionChange,
+    });
+    const ticker = makeTicker();
+
+    loop.attach(ticker);
+    const onTick = ticker.add.mock.calls[0]?.[0] as ((ticker: Ticker) => void) | undefined;
+    expect(onTick).toBeDefined();
+
+    nowSpy.mockReturnValue(1500);
+    onTick?.(ticker);
+    const stumbleX = playerUpdate.mock.calls.at(-1)?.[1] as number;
+
+    nowSpy.mockReturnValue(1700);
+    onTick?.(ticker);
+
+    expect(playerUpdate.mock.calls.at(-1)?.[1]).toBe(stumbleX);
+    expect(onDuelConditionChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ status: 'stumble', canShoot: false }),
+    );
 
     nowSpy.mockRestore();
   });

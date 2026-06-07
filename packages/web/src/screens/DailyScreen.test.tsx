@@ -409,7 +409,49 @@ describe('DailyScreen', () => {
         fatigueLevel: 'resting',
         shooterSpeedMultiplier: 0,
       }),
-    ).toBeNull();
+    ).toBe('Надо отдышаться');
+  });
+
+  it('shows a rest notice while the exhausted shot button is blocked', () => {
+    const restCondition = {
+      puckSpeedDelta: 0,
+      shooterSpeedMultiplier: 0,
+      canShoot: false,
+      status: 'exhausted_stop',
+      fatigueLevel: 'resting',
+      stumbleActive: false,
+      shooterXOffsetPx: 0,
+      fatigueMs: 90_000,
+      nutritionConsumed: 60_000,
+      skatesConsumed: 0,
+    } as const;
+
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="seed"
+        goalieId="rookie"
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        shotsTotal={30}
+        sessionStartedAt="2026-04-25T12:00:00.000Z"
+        serverNow="2026-04-25T12:00:00.000Z"
+        receivedAtPerformanceMs={0}
+        periodEndsAt={Date.now() + 10_000}
+        optimisticAddShot={() => undefined}
+        submitShot={async () => null}
+        applyState={() => undefined}
+        rinkLayer={<div data-testid="test-rink-layer" />}
+        duelCondition={() => restCondition}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'ОТДЫХ' })).toBeDisabled();
+    expect(screen.getByText('Надо отдышаться')).toBeInTheDocument();
   });
 
   it('shows fatigue notice while keeping the duel shot button available', () => {

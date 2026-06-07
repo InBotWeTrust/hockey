@@ -206,6 +206,51 @@ describe('duel inventory condition', () => {
     expect(afterRecovery.canShoot).toBe(true);
   });
 
+  it('starts a new period without energy from the same recovered state as after rest', () => {
+    const timing = {
+      ...DEFAULT_DUEL_INVENTORY_TIMING,
+      fatigueGraceMs: 30_000,
+      fatigueSlowdownStartMs: 30_000,
+      fatigueAfterRestMs: 45_000,
+    };
+    const common = {
+      seed: 'match-seed',
+      userId: 'user-a',
+      movementDistancePx: 0,
+      baseLaneWidthPx: 572,
+      baselineShooterSpeed: 0.75,
+      currentShooterSpeed: 0.75,
+      loadout: loadout({
+        nutrition: {
+          id: 'spent-nutrition',
+          title: 'Изотоник',
+          resourceUnit: 'energy_ms' as const,
+          resourceAvailable: 0,
+          effectPuckSpeedPoints: 0,
+          timing,
+        },
+      }),
+    };
+
+    const recoveredStart = getDuelPlayerCondition({
+      ...common,
+      periodNumber: 2,
+      elapsedMs: 40_000,
+    });
+    const tiredAfterRecovery = getDuelPlayerCondition({
+      ...common,
+      periodNumber: 2,
+      elapsedMs: 45_000,
+    });
+
+    expect(recoveredStart.status).toBe('normal');
+    expect(recoveredStart.fatigueLevel).toBe('none');
+    expect(recoveredStart.canShoot).toBe(true);
+    expect(recoveredStart.shooterSpeedMultiplier).toBe(1);
+    expect(tiredAfterRecovery.status).toBe('tired');
+    expect(tiredAfterRecovery.fatigueLevel).toBe('medium');
+  });
+
   it('accumulates fatigue only after selected nutrition resource is depleted', () => {
     const common = {
       seed: 'match-seed',

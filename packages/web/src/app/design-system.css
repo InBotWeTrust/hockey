@@ -638,6 +638,14 @@
   background: #38bdf8;
 }
 
+.duel-rest-notice {
+  color: #263a56;
+}
+
+.duel-rest-notice::before {
+  background: #8b9bb3;
+}
+
 @keyframes duel-stumble-notice-pop {
   0% {
     opacity: 0;

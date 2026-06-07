@@ -18,6 +18,8 @@ import type { Hitboxes } from './renderer/Hitboxes.js';
 import type { Player } from './renderer/Player.js';
 import type { Puck } from './renderer/Puck.js';
 
+const MIN_STUMBLE_PAUSE_MS = 650;
+
 export interface SpeedOverrides {
   goalFreq: number;
   goalieFreq: number;
@@ -104,6 +106,8 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
   let lastShooterDirection: 1 | -1 = 1;
   let lastRenderedShooterX: number | null = null;
   let frozenConditionShooterX: number | null = null;
+  let heldStumbleCondition: DuelPlayerCondition | null = null;
+  let heldStumbleUntilMs = 0;
 
   function shooterT(now: number): number {
     const activeManual = shooterPauseStartedAt !== null ? now - shooterPauseStartedAt : 0;
@@ -150,7 +154,18 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
     const sf = overrides?.shooterFreq ?? 0.45;
     const o = getOffsets();
     const tScene = sceneT(now);
-    const condition = overrides ? opts.getDuelCondition?.(tScene, overrides) : null;
+    const rawCondition = overrides ? opts.getDuelCondition?.(tScene, overrides) : null;
+    if (rawCondition?.stumbleActive === true) {
+      heldStumbleCondition = rawCondition;
+      heldStumbleUntilMs = Math.max(heldStumbleUntilMs, now + MIN_STUMBLE_PAUSE_MS);
+    } else if (heldStumbleCondition !== null && now >= heldStumbleUntilMs) {
+      heldStumbleCondition = null;
+      heldStumbleUntilMs = 0;
+    }
+    const condition =
+      rawCondition?.status === 'exhausted_stop'
+        ? rawCondition
+        : (heldStumbleCondition ?? rawCondition);
     opts.onDuelConditionChange?.(condition ?? null);
     const conditionPausesShooter =
       condition?.stumbleActive === true || condition?.status === 'exhausted_stop';
@@ -159,7 +174,10 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
     if (conditionPausesShooter) {
       if (conditionPauseStartedAt === null) {
         conditionPauseStartedAt = now;
-        frozenConditionShooterX = lastRenderedShooterX;
+        const baseFreezeT = shooterT(now) + o.shooter + shooterTimeShift;
+        frozenConditionShooterX =
+          lastRenderedShooterX ??
+          shooterX(baseFreezeT, Math.max(0.1, sf)) + (condition?.shooterXOffsetPx ?? 0);
       }
     } else if (conditionPauseStartedAt !== null) {
       conditionPausedTotal += now - conditionPauseStartedAt;
@@ -268,6 +286,8 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
       lastShooterDirection = 1;
       lastRenderedShooterX = null;
       frozenConditionShooterX = null;
+      heldStumbleCondition = null;
+      heldStumbleUntilMs = 0;
       opts.onDuelConditionChange?.(null);
     },
     get sessionStartMs() {

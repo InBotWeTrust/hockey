@@ -285,10 +285,16 @@ function accumulatedFatigueMs(
   if (nutrition?.resourceUnit === 'energy_ms' && nutrition.resourceAvailable > 0) {
     return Math.max(0, rawNutritionCost - nutrition.resourceAvailable);
   }
-  return Math.ceil(
+  const rawFatigueMs = Math.ceil(
     input.elapsedMs *
       duelSpeedPressureMultiplier(timing.energyBaselineSpeed, input.currentShooterSpeed),
   );
+  if (input.periodNumber <= 1) return rawFatigueMs;
+
+  const recoveredWindowMs = Math.max(0, timing.fatigueAfterRestMs);
+  if (rawFatigueMs < recoveredWindowMs) return 0;
+  const fatigueStartAt = Math.max(0, timing.fatigueSlowdownStartMs, timing.fatigueGraceMs);
+  return fatigueStartAt + (rawFatigueMs - recoveredWindowMs);
 }
 
 function fatigueState(
