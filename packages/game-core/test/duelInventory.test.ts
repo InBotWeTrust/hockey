@@ -94,6 +94,32 @@ describe('duel inventory condition', () => {
     expect(getDuelPlayerCondition(input)).toEqual(getDuelPlayerCondition(input));
   });
 
+  it('shows multiple default-skate stumbles during the first express minute without skates', () => {
+    const common = {
+      seed: 'match-seed',
+      userId: 'user-a',
+      periodNumber: 1,
+      movementDistancePx: 0,
+      baseLaneWidthPx: 572,
+      baselineShooterSpeed: 0.8,
+      currentShooterSpeed: 0.8,
+      loadout: loadout(),
+    };
+    let stumbleWindows = 0;
+    let wasStumbling = false;
+
+    for (let elapsedMs = 0; elapsedMs <= 90_000; elapsedMs += 100) {
+      const condition = getDuelPlayerCondition({
+        ...common,
+        elapsedMs,
+      });
+      if (condition.stumbleActive && !wasStumbling) stumbleWindows += 1;
+      wasStumbling = condition.stumbleActive;
+    }
+
+    expect(stumbleWindows).toBeGreaterThanOrEqual(2);
+  });
+
   it('does not start default-skate stumble before the first deterministic interval', () => {
     const timedLoadout = loadout({
       skates: {
@@ -165,6 +191,38 @@ describe('duel inventory condition', () => {
     expect(afterRecovery.shooterXOffsetPx).toBe(0);
   });
 
+  it('uses configured fallback timing when no skates are selected', () => {
+    const configuredTiming = {
+      ...DEFAULT_DUEL_INVENTORY_TIMING,
+      stumbleIntervalMinRolls: 8,
+      stumbleIntervalMaxRolls: 8,
+      stumbleDurationMinMs: 500,
+      stumbleDurationMaxMs: 500,
+      stumbleRecoveryMinMs: 250,
+      stumbleRecoveryMaxMs: 250,
+    };
+    const common = {
+      seed: 'match-seed',
+      userId: 'user-a',
+      periodNumber: 1,
+      movementDistancePx: 0,
+      baseLaneWidthPx: 572,
+      baselineShooterSpeed: 1,
+      currentShooterSpeed: 1,
+      loadout: loadout({
+        fallbackSkatesTiming: configuredTiming,
+      }),
+    };
+
+    const beforeConfiguredInterval = getDuelPlayerCondition({ ...common, elapsedMs: 3_999 });
+    const atConfiguredInterval = getDuelPlayerCondition({ ...common, elapsedMs: 4_000 });
+
+    expect(beforeConfiguredInterval.stumbleActive).toBe(false);
+    expect(beforeConfiguredInterval.canShoot).toBe(true);
+    expect(atConfiguredInterval.stumbleActive).toBe(true);
+    expect(atConfiguredInterval.canShoot).toBe(false);
+  });
+
   it('cycles accumulated fatigue through tired, rest, and normal recovery without heavy state', () => {
     const common = {
       seed: 'match-seed',
@@ -177,12 +235,12 @@ describe('duel inventory condition', () => {
       loadout: loadout(),
     };
 
-    const grace = getDuelPlayerCondition({ ...common, elapsedMs: 29_999 });
-    const tired = getDuelPlayerCondition({ ...common, elapsedMs: 45_000 });
-    const formerHeavy = getDuelPlayerCondition({ ...common, elapsedMs: 80_000 });
-    const stopped = getDuelPlayerCondition({ ...common, elapsedMs: 92_000 });
-    const recovery = getDuelPlayerCondition({ ...common, elapsedMs: 96_000 });
-    const afterRecovery = getDuelPlayerCondition({ ...common, elapsedMs: 141_000 });
+    const grace = getDuelPlayerCondition({ ...common, elapsedMs: 14_999 });
+    const tired = getDuelPlayerCondition({ ...common, elapsedMs: 20_000 });
+    const formerHeavy = getDuelPlayerCondition({ ...common, elapsedMs: 50_000 });
+    const stopped = getDuelPlayerCondition({ ...common, elapsedMs: 61_000 });
+    const recovery = getDuelPlayerCondition({ ...common, elapsedMs: 66_000 });
+    const afterRecovery = getDuelPlayerCondition({ ...common, elapsedMs: 96_000 });
 
     expect(grace.status).toBe('normal');
     expect(grace.fatigueLevel).toBe('none');
@@ -204,6 +262,41 @@ describe('duel inventory condition', () => {
     expect(afterRecovery.status).toBe('tired');
     expect(afterRecovery.fatigueLevel).toBe('medium');
     expect(afterRecovery.canShoot).toBe(true);
+  });
+
+  it('uses configured fallback timing when no nutrition is selected', () => {
+    const configuredTiming = {
+      ...DEFAULT_DUEL_INVENTORY_TIMING,
+      energyBaselineSpeed: 1,
+      fatigueGraceMs: 5_000,
+      fatigueSlowdownStartMs: 5_000,
+      fatigueStopStartMs: 9_000,
+      fatigueStopDurationMs: 2_000,
+      fatigueAfterRestMs: 5_000,
+      fatigueSlowMultiplier: 0.5,
+    };
+    const common = {
+      seed: 'match-seed',
+      userId: 'user-a',
+      periodNumber: 1,
+      movementDistancePx: 0,
+      baseLaneWidthPx: 572,
+      baselineShooterSpeed: 1,
+      currentShooterSpeed: 1,
+      loadout: loadout({
+        fallbackNutritionTiming: configuredTiming,
+      }),
+    };
+
+    const beforeFatigue = getDuelPlayerCondition({ ...common, elapsedMs: 4_999 });
+    const tired = getDuelPlayerCondition({ ...common, elapsedMs: 5_000 });
+    const resting = getDuelPlayerCondition({ ...common, elapsedMs: 9_500 });
+
+    expect(beforeFatigue.status).toBe('normal');
+    expect(tired.status).toBe('tired');
+    expect(tired.shooterSpeedMultiplier).toBe(0.5);
+    expect(resting.status).toBe('exhausted_stop');
+    expect(resting.canShoot).toBe(false);
   });
 
   it('starts a new period without energy from the same recovered state as after rest', () => {
@@ -273,15 +366,15 @@ describe('duel inventory condition', () => {
     };
 
     const beforeDepletion = getDuelPlayerCondition({ ...common, elapsedMs: 29_000 });
-    const afterDepletionGrace = getDuelPlayerCondition({ ...common, elapsedMs: 40_000 });
-    const tired = getDuelPlayerCondition({ ...common, elapsedMs: 53_000 });
+    const afterDepletionGrace = getDuelPlayerCondition({ ...common, elapsedMs: 37_000 });
+    const tired = getDuelPlayerCondition({ ...common, elapsedMs: 38_000 });
 
     expect(beforeDepletion.status).toBe('normal');
     expect(beforeDepletion.nutritionConsumed).toBe(58_000);
     expect(afterDepletionGrace.status).toBe('normal');
     expect(afterDepletionGrace.nutritionConsumed).toBe(60_000);
     expect(tired.status).toBe('tired');
-    expect(tired.fatigueMs).toBe(46_000);
+    expect(tired.fatigueMs).toBe(16_000);
   });
 
   it('does not start legacy millisecond default-skate stumble before the first deterministic interval', () => {

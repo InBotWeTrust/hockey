@@ -78,6 +78,52 @@ const periodRuleSchema = z
     message: 'quota period requires shotsLimit',
   });
 
+const duelInventoryTimingSchema = z.object({
+  stumbleIntervalMinRolls: z
+    .number()
+    .default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleIntervalMinRolls),
+  stumbleIntervalMaxRolls: z
+    .number()
+    .default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleIntervalMaxRolls),
+  stumbleIntervalMinMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleIntervalMinMs),
+  stumbleIntervalMaxMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleIntervalMaxMs),
+  stumbleDurationMinMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleDurationMinMs),
+  stumbleDurationMaxMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleDurationMaxMs),
+  stumbleOffsetMinPx: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleOffsetMinPx),
+  stumbleOffsetMaxPx: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleOffsetMaxPx),
+  stumbleRecoveryMinMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleRecoveryMinMs),
+  stumbleRecoveryMaxMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleRecoveryMaxMs),
+  nutritionSlowdownMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.nutritionSlowdownMs),
+  nutritionStopMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.nutritionStopMs),
+  energyBaselineSpeed: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.energyBaselineSpeed),
+  fatigueDelayMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueDelayMs),
+  fatigueSpeedMultiplier: z
+    .number()
+    .default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueSpeedMultiplier),
+  fatigueGraceMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueGraceMs),
+  fatigueSlowdownStartMs: z
+    .number()
+    .default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueSlowdownStartMs),
+  fatigueHeavySlowdownStartMs: z
+    .number()
+    .default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueHeavySlowdownStartMs),
+  fatigueStopStartMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueStopStartMs),
+  fatigueStopDurationMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueStopDurationMs),
+  fatigueAfterRestMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueAfterRestMs),
+  fatigueSlowMultiplier: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueSlowMultiplier),
+  fatigueHeavyMultiplier: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueHeavyMultiplier),
+});
+
+const noInventoryTimingSchema = z
+  .object({
+    skates: duelInventoryTimingSchema.default(DEFAULT_DUEL_INVENTORY_TIMING),
+    nutrition: duelInventoryTimingSchema.default(DEFAULT_DUEL_INVENTORY_TIMING),
+  })
+  .default({
+    skates: DEFAULT_DUEL_INVENTORY_TIMING,
+    nutrition: DEFAULT_DUEL_INVENTORY_TIMING,
+  });
+
 const shotBodySchema = z.object({
   shot_index: z.number().int().min(1),
   input: z.object({
@@ -468,6 +514,10 @@ interface DuelRulesSnapshot {
   powerCap: number;
   goalieId: string;
   periodSpeedPresets: DailyPeriodSpeedPreset[];
+  noInventoryTiming: {
+    skates: DuelInventoryTiming;
+    nutrition: DuelInventoryTiming;
+  };
   stakeAmount: number;
   entryFeeAmount: number;
   requiredInventoryItemId: string | null;
@@ -709,73 +759,7 @@ function loadoutFromUnknown(value: unknown, powerCap = 0): LoadoutSnapshot {
             resourceAvailable: z.number().int().min(0).default(0),
             lowStockThreshold: z.number().int().min(0).default(0),
             effectPuckSpeedPoints: z.number().int().default(0),
-            timing: z
-              .object({
-                stumbleIntervalMinRolls: z
-                  .number()
-                  .default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleIntervalMinRolls),
-                stumbleIntervalMaxRolls: z
-                  .number()
-                  .default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleIntervalMaxRolls),
-                stumbleIntervalMinMs: z
-                  .number()
-                  .default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleIntervalMinMs),
-                stumbleIntervalMaxMs: z
-                  .number()
-                  .default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleIntervalMaxMs),
-                stumbleDurationMinMs: z
-                  .number()
-                  .default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleDurationMinMs),
-                stumbleDurationMaxMs: z
-                  .number()
-                  .default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleDurationMaxMs),
-                stumbleOffsetMinPx: z
-                  .number()
-                  .default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleOffsetMinPx),
-                stumbleOffsetMaxPx: z
-                  .number()
-                  .default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleOffsetMaxPx),
-                stumbleRecoveryMinMs: z
-                  .number()
-                  .default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleRecoveryMinMs),
-                stumbleRecoveryMaxMs: z
-                  .number()
-                  .default(DEFAULT_DUEL_INVENTORY_TIMING.stumbleRecoveryMaxMs),
-                nutritionSlowdownMs: z
-                  .number()
-                  .default(DEFAULT_DUEL_INVENTORY_TIMING.nutritionSlowdownMs),
-                nutritionStopMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.nutritionStopMs),
-                energyBaselineSpeed: z
-                  .number()
-                  .default(DEFAULT_DUEL_INVENTORY_TIMING.energyBaselineSpeed),
-                fatigueDelayMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueDelayMs),
-                fatigueSpeedMultiplier: z
-                  .number()
-                  .default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueSpeedMultiplier),
-                fatigueGraceMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueGraceMs),
-                fatigueSlowdownStartMs: z
-                  .number()
-                  .default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueSlowdownStartMs),
-                fatigueHeavySlowdownStartMs: z
-                  .number()
-                  .default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueHeavySlowdownStartMs),
-                fatigueStopStartMs: z
-                  .number()
-                  .default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueStopStartMs),
-                fatigueStopDurationMs: z
-                  .number()
-                  .default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueStopDurationMs),
-                fatigueAfterRestMs: z
-                  .number()
-                  .default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueAfterRestMs),
-                fatigueSlowMultiplier: z
-                  .number()
-                  .default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueSlowMultiplier),
-                fatigueHeavyMultiplier: z
-                  .number()
-                  .default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueHeavyMultiplier),
-              })
-              .default(DEFAULT_DUEL_INVENTORY_TIMING),
+            timing: duelInventoryTimingSchema.default(DEFAULT_DUEL_INVENTORY_TIMING),
             effects: z.unknown().optional(),
           }),
         )
@@ -892,6 +876,7 @@ function conditionLoadoutFromSnapshot(
   loadout: LoadoutSnapshot,
   report: InventoryPeriodReport[],
   periodNumber: number,
+  rules: DuelRulesSnapshot,
 ): DuelInventoryLoadoutSnapshot {
   const stick = loadout.items.find((item) => item.kind === 'stick');
   const skates = loadout.items.find((item) => item.kind === 'skates');
@@ -916,6 +901,8 @@ function conditionLoadoutFromSnapshot(
       nutrition,
       Math.max(0, (nutrition?.resourceAvailable ?? 0) - nutritionConsumedBeforePeriod),
     ),
+    fallbackSkatesTiming: rules.noInventoryTiming.skates,
+    fallbackNutritionTiming: rules.noInventoryTiming.nutrition,
   };
 }
 
@@ -972,7 +959,10 @@ function periodSpeedEffectsForLoadout(
   };
 }
 
-function makeRulesSnapshot(template: DuelTemplateRow): DuelRulesSnapshot {
+function makeRulesSnapshot(
+  template: DuelTemplateRow,
+  settings: { amateur: { noInventoryTiming: DuelRulesSnapshot['noInventoryTiming'] } },
+): DuelRulesSnapshot {
   const startsAt = template.starts_at.getTime();
   const endsAt = template.ends_at.getTime();
   if (!(startsAt < endsAt)) {
@@ -1014,6 +1004,7 @@ function makeRulesSnapshot(template: DuelTemplateRow): DuelRulesSnapshot {
     powerCap: Number(template.power_cap),
     goalieId: template.goalie_id,
     periodSpeedPresets: presets,
+    noInventoryTiming: settings.amateur.noInventoryTiming,
     stakeAmount: 0,
     entryFeeAmount: 0,
     requiredInventoryItemId: template.required_inventory_item_id,
@@ -1100,6 +1091,7 @@ function parseRulesSnapshot(value: unknown): DuelRulesSnapshot {
       powerCap: z.number().int().min(0).default(100),
       goalieId: z.string(),
       periodSpeedPresets: z.array(periodPresetSchema).min(1).max(9),
+      noInventoryTiming: noInventoryTimingSchema,
       stakeAmount: z.number().int().min(0),
       entryFeeAmount: z.number().int().min(0),
       requiredInventoryItemId: uuid.nullable(),
@@ -2862,7 +2854,8 @@ async function createOpenMatch(
     source: 'challenge' | 'matchmaking';
   },
 ): Promise<{ match: DuelMatchRow; rules: DuelRulesSnapshot }> {
-  const rules = makeRulesSnapshot(opts.template);
+  const settings = await getGameSettings(client);
+  const rules = makeRulesSnapshot(opts.template, settings);
   const duplicate = await client.query<{ id: string }>(
     `select id
        from amateur_duel_match
@@ -3408,7 +3401,8 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
           throw new AppError('conflict', 'duel template is inactive', 409);
         }
         if (now >= template.ends_at) throw new AppError('conflict', 'duel window is closed', 409);
-        const rules = makeRulesSnapshot(template);
+        const settings = await getGameSettings(client);
+        const rules = makeRulesSnapshot(template, settings);
         const readyExpiresAt = new Date(now.getTime() + rules.readyDurationMs);
         const { rows } = await client.query<DuelMatchRow>(
           `update amateur_duel_match
@@ -3993,6 +3987,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
             loadout,
             inventoryReport,
             participant.current_period,
+            rules,
           ),
         });
         if (!condition.canShoot) {

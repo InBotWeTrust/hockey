@@ -40,4 +40,20 @@ describe('Puck', () => {
     expect(puck.container.position.x).toBe(100);
     expect(puck.container.position.y).toBe(500);
   });
+
+  it('holds the completed shot endpoint until it is explicitly released', () => {
+    const puck = new Puck('right');
+    const scale = { factor: 1, offsetX: 0, offsetY: 0 };
+
+    puck.playShot({ x: 100, y: 500 }, { x: 180, y: 100 }, 1000, 300);
+    puck.update(1300, scale);
+
+    expect(puck.isFlying()).toBe(false);
+    expect(puck.isHeld()).toBe(true);
+    expect(puck.container.position.x).toBe(180);
+    expect(puck.container.position.y).toBe(100);
+
+    puck.release();
+    expect(puck.isHeld()).toBe(false);
+  });
 });

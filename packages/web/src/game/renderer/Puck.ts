@@ -128,6 +128,7 @@ export class Puck {
       t >= 1 ? null : { start: flight.start, progress: t },
     );
     if (t >= 1) {
+      this.held = flight.end;
       this.flight = null;
       this.clearMotionEffects();
     }

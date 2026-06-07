@@ -48,6 +48,8 @@ export interface DuelInventoryLoadoutSnapshot {
   stick: DuelInventoryItemSnapshot | null;
   skates: DuelInventoryItemSnapshot | null;
   nutrition: DuelInventoryItemSnapshot | null;
+  fallbackSkatesTiming?: DuelInventoryTiming;
+  fallbackNutritionTiming?: DuelInventoryTiming;
 }
 
 export interface DuelPlayerConditionInput {
@@ -76,8 +78,8 @@ export interface DuelPlayerCondition {
 }
 
 export const DEFAULT_DUEL_INVENTORY_TIMING: DuelInventoryTiming = {
-  stumbleIntervalMinRolls: 90,
-  stumbleIntervalMaxRolls: 130,
+  stumbleIntervalMinRolls: 35,
+  stumbleIntervalMaxRolls: 55,
   stumbleIntervalMinMs: 25_000,
   stumbleIntervalMaxMs: 45_000,
   stumbleDurationMinMs: 500,
@@ -91,12 +93,12 @@ export const DEFAULT_DUEL_INVENTORY_TIMING: DuelInventoryTiming = {
   energyBaselineSpeed: 0.75,
   fatigueDelayMs: 90_000,
   fatigueSpeedMultiplier: 1,
-  fatigueGraceMs: 30_000,
-  fatigueSlowdownStartMs: 30_000,
-  fatigueHeavySlowdownStartMs: 75_000,
-  fatigueStopStartMs: 90_000,
+  fatigueGraceMs: 15_000,
+  fatigueSlowdownStartMs: 15_000,
+  fatigueHeavySlowdownStartMs: 40_000,
+  fatigueStopStartMs: 60_000,
   fatigueStopDurationMs: 5_000,
-  fatigueAfterRestMs: 45_000,
+  fatigueAfterRestMs: 30_000,
   fatigueSlowMultiplier: 0.9,
   fatigueHeavyMultiplier: 0.75,
 };
@@ -134,8 +136,11 @@ function round4(value: number): number {
   return Number(value.toFixed(4));
 }
 
-function timingFor(item: DuelInventoryItemSnapshot | null): DuelInventoryTiming {
-  return item?.timing ?? DEFAULT_DUEL_INVENTORY_TIMING;
+function timingFor(
+  item: DuelInventoryItemSnapshot | null,
+  fallback?: DuelInventoryTiming,
+): DuelInventoryTiming {
+  return item?.timing ?? fallback ?? DEFAULT_DUEL_INVENTORY_TIMING;
 }
 
 function deterministicRange(seed: string, min: number, max: number): number {
@@ -183,7 +188,7 @@ function defaultSkateStumbleWindow(
 }
 
 export function getDuelPlayerCondition(input: DuelPlayerConditionInput): DuelPlayerCondition {
-  const nutritionTiming = timingFor(input.loadout.nutrition);
+  const nutritionTiming = timingFor(input.loadout.nutrition, input.loadout.fallbackNutritionTiming);
   const speedPressureMultiplier = duelSpeedPressureMultiplier(
     nutritionTiming.energyBaselineSpeed,
     input.currentShooterSpeed,
@@ -205,7 +210,7 @@ export function getDuelPlayerCondition(input: DuelPlayerConditionInput): DuelPla
   const skatesActive =
     input.loadout.skates?.resourceUnit === 'distance' &&
     input.loadout.skates.resourceAvailable > rawSkatesCost;
-  const movementTiming = timingFor(input.loadout.skates);
+  const movementTiming = timingFor(input.loadout.skates, input.loadout.fallbackSkatesTiming);
   const stumble = skatesActive
     ? { active: false, offsetPx: 0 }
     : defaultSkateStumbleWindow(input, movementTiming);
@@ -224,7 +229,7 @@ export function getDuelPlayerCondition(input: DuelPlayerConditionInput): DuelPla
     });
   }
 
-  const fatigueTiming = timingFor(nutrition);
+  const fatigueTiming = timingFor(nutrition, input.loadout.fallbackNutritionTiming);
   const fatigueMs = accumulatedFatigueMs(input, rawNutritionCost, fatigueTiming);
   const fatigue = fatigueState(fatigueMs, fatigueTiming);
 

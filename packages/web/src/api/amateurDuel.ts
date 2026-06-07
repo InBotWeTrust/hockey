@@ -100,6 +100,10 @@ export interface AmateurDuelRules {
   powerCap: number;
   goalieId: string;
   periodSpeedPresets: DailyPeriodSpeedPreset[];
+  noInventoryTiming: {
+    skates: DuelInventoryTiming;
+    nutrition: DuelInventoryTiming;
+  };
   stakeAmount: number;
   entryFeeAmount: number;
   requiredInventoryItemId: string | null;

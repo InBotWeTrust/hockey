@@ -2,7 +2,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent, act, within, cleanup } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { DAILY_PERIOD_SPEED_PRESETS, STICK_NEUTRAL } from '@hockey/game-core';
+import {
+  DAILY_PERIOD_SPEED_PRESETS,
+  DEFAULT_DUEL_INVENTORY_TIMING,
+  STICK_NEUTRAL,
+} from '@hockey/game-core';
 import {
   DailyScreen,
   PlayView,
@@ -130,6 +134,10 @@ const settledDuelMatch: AmateurDuelMatchState = {
     powerCap: 100,
     goalieId: 'rookie',
     periodSpeedPresets: [...DAILY_PERIOD_SPEED_PRESETS],
+    noInventoryTiming: {
+      skates: DEFAULT_DUEL_INVENTORY_TIMING,
+      nutrition: DEFAULT_DUEL_INVENTORY_TIMING,
+    },
     stakeAmount: 0,
     entryFeeAmount: 0,
     requiredInventoryItemId: null,

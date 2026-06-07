@@ -367,6 +367,50 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(template.ranked_same_opponent_limit).toBe(100);
   });
 
+  it('stores configured no-inventory skates and nutrition timings in duel rules snapshot', async () => {
+    await pool.query(
+      `insert into game_settings (key, value, label, description)
+       values
+         ('amateur.no_inventory.skates.stumble_interval_min_rolls', '8'::jsonb, '', ''),
+         ('amateur.no_inventory.skates.stumble_interval_max_rolls', '8'::jsonb, '', ''),
+         ('amateur.no_inventory.nutrition.fatigue_grace_ms', '5000'::jsonb, '', ''),
+         ('amateur.no_inventory.nutrition.fatigue_slowdown_start_ms', '5000'::jsonb, '', ''),
+         ('amateur.no_inventory.nutrition.fatigue_stop_start_ms', '9000'::jsonb, '', ''),
+         ('amateur.no_inventory.nutrition.fatigue_stop_duration_ms', '2000'::jsonb, '', ''),
+         ('amateur.no_inventory.nutrition.fatigue_after_rest_ms', '5000'::jsonb, '', '')
+       on conflict (key) do update
+         set value = excluded.value`,
+    );
+    try {
+      const templateId = await createTemplate();
+      const created = await challenge(templateId);
+
+      expect(created.statusCode).toBe(200);
+      expect(created.json().match.rules.noInventoryTiming.skates.stumbleIntervalMinRolls).toBe(8);
+      expect(created.json().match.rules.noInventoryTiming.skates.stumbleIntervalMaxRolls).toBe(8);
+      expect(created.json().match.rules.noInventoryTiming.nutrition.fatigueGraceMs).toBe(5000);
+      expect(created.json().match.rules.noInventoryTiming.nutrition.fatigueStopStartMs).toBe(9000);
+      expect(created.json().match.rules.noInventoryTiming.nutrition.fatigueStopDurationMs).toBe(
+        2000,
+      );
+    } finally {
+      await pool.query(
+        `update game_settings gs
+            set value = defaults.value
+           from (values
+             ('amateur.no_inventory.skates.stumble_interval_min_rolls', '35'::jsonb),
+             ('amateur.no_inventory.skates.stumble_interval_max_rolls', '55'::jsonb),
+             ('amateur.no_inventory.nutrition.fatigue_grace_ms', '15000'::jsonb),
+             ('amateur.no_inventory.nutrition.fatigue_slowdown_start_ms', '15000'::jsonb),
+             ('amateur.no_inventory.nutrition.fatigue_stop_start_ms', '60000'::jsonb),
+             ('amateur.no_inventory.nutrition.fatigue_stop_duration_ms', '5000'::jsonb),
+             ('amateur.no_inventory.nutrition.fatigue_after_rest_ms', '30000'::jsonb)
+           ) as defaults(key, value)
+          where gs.key = defaults.key`,
+      );
+    }
+  });
+
   it('keeps null period rules as SQL null when admin updates a duel template', async () => {
     await pool.query(`update users set role = 'admin' where id = $1`, [userA]);
     const templateId = await createTemplate({

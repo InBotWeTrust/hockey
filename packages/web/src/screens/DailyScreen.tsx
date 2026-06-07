@@ -7486,6 +7486,9 @@ function duelConditionLoadout(match: AmateurDuelMatch): DuelInventoryLoadoutSnap
       nutrition,
       (nutrition?.resourceAvailable ?? 0) - nutritionConsumedBeforePeriod,
     ),
+    fallbackSkatesTiming: match.rules.noInventoryTiming?.skates ?? DEFAULT_DUEL_INVENTORY_TIMING,
+    fallbackNutritionTiming:
+      match.rules.noInventoryTiming?.nutrition ?? DEFAULT_DUEL_INVENTORY_TIMING,
   };
 }
 
@@ -7880,7 +7883,7 @@ const PERSPECTIVE_PLAYER_OPTIONS: PlayerOptions = {
   stumbleSpriteWidth: 110,
   stumbleSpriteAspect: 1130 / 1150,
   stumbleRotation: 0,
-  restSpriteWidth: 96,
+  restSpriteWidth: 84,
   restSpriteAspect: 1000 / 1374,
   restRotation: 0,
   baseRotation: 0,

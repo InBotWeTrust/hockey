@@ -1,1 +1,1 @@
-export const GAME_CORE_VERSION = 52 as const;
+export const GAME_CORE_VERSION = 54 as const;
