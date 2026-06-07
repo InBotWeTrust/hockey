@@ -2033,6 +2033,190 @@ describe('DailyScreen', () => {
     expect(screen.queryByText('Duel Opponent')).not.toBeInTheDocument();
   });
 
+  it('shows total and per-period inventory usage in duel history result', async () => {
+    const inventoryMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      id: 'match-inventory',
+      duel_kind: 'classic',
+      starts_at: '2026-05-17T10:00:00.000Z',
+      opponent: {
+        ...settledDuelMatch.opponent,
+        display_name: 'Inventory Opponent',
+      },
+      rules: {
+        ...settledDuelMatch.rules,
+        title: 'Классика',
+        duelKind: 'classic',
+        totalPeriods: 2,
+        periodRules: [
+          { periodNumber: 1, mode: 'quota', durationMs: 300000, shotsLimit: 30 },
+          { periodNumber: 2, mode: 'quota', durationMs: 300000, shotsLimit: 30 },
+        ],
+      },
+      me: {
+        ...settledDuelMatch.me,
+        inventory_report: [
+          {
+            periodNumber: 1,
+            consumed: [
+              {
+                id: 'stick-1',
+                kind: 'stick',
+                title: 'Клюшка тест',
+                charges: 12,
+                remainingReserved: 2388,
+              },
+              {
+                id: 'skates-1',
+                kind: 'skates',
+                title: 'Коньки тест',
+                charges: 3.8,
+                remainingReserved: 46.2,
+              },
+              {
+                id: 'nutrition-1',
+                kind: 'nutrition',
+                title: 'Питание тест',
+                charges: 45000,
+                remainingReserved: 15000,
+              },
+            ],
+          },
+          {
+            periodNumber: 2,
+            consumed: [
+              {
+                id: 'stick-1',
+                kind: 'stick',
+                title: 'Клюшка тест',
+                charges: 9,
+                remainingReserved: 2379,
+              },
+              {
+                id: 'skates-1',
+                kind: 'skates',
+                title: 'Коньки тест',
+                charges: 2.2,
+                remainingReserved: 44,
+              },
+              {
+                id: 'nutrition-1',
+                kind: 'nutrition',
+                title: 'Питание тест',
+                charges: 30000,
+                remainingReserved: 0,
+              },
+            ],
+          },
+        ],
+      },
+      recent_periods: [
+        {
+          period_number: 1,
+          shots_taken: 30,
+          goals: 10,
+          duration_ms: 150000,
+          closed_reason: 'quota',
+          ended_at: '2026-05-17T10:02:30.000Z',
+        },
+        {
+          period_number: 2,
+          shots_taken: 30,
+          goals: 8,
+          duration_ms: 160000,
+          closed_reason: 'quota',
+          ended_at: '2026-05-17T10:08:10.000Z',
+        },
+      ],
+      opponent_recent_periods: [
+        {
+          period_number: 1,
+          shots_taken: 30,
+          goals: 7,
+          duration_ms: 160000,
+          closed_reason: 'quota',
+          ended_at: '2026-05-17T10:02:40.000Z',
+        },
+        {
+          period_number: 2,
+          shots_taken: 30,
+          goals: 9,
+          duration_ms: 170000,
+          closed_reason: 'quota',
+          ended_at: '2026-05-17T10:08:30.000Z',
+        },
+      ],
+    };
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/templates')) {
+        return new Response(JSON.stringify({ templates: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/history')) {
+        return new Response(
+          JSON.stringify({
+            season_key: '2026-05',
+            seasons: ['2026-05'],
+            rating_place: 4,
+            stats: { duels: 1, wins: 1, points: 3 },
+            matches: [inventoryMatch],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.includes('/duel/amateur/matches/match-inventory')) {
+        return new Response(JSON.stringify({ match: inventoryMatch }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/matches')) {
+        return new Response(JSON.stringify({ matches: [inventoryMatch] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/rating')) {
+        return new Response(JSON.stringify({ season_key: '2026-05', rating: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=amateur&section=duels']);
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'История' }));
+    fireEvent.click(await screen.findByText('Inventory Opponent'));
+
+    const totalUsage = await screen.findByLabelText('Общий расход инвентаря');
+    expect(within(totalUsage).getByText('Клюшка тест')).toBeInTheDocument();
+    expect(within(totalUsage).getByText('21 бросок')).toBeInTheDocument();
+    expect(within(totalUsage).getByText('Коньки тест')).toBeInTheDocument();
+    expect(within(totalUsage).getByText('6 прокатов')).toBeInTheDocument();
+    expect(within(totalUsage).getByText('Питание тест')).toBeInTheDocument();
+    expect(within(totalUsage).getByText('2 минуты энергии')).toBeInTheDocument();
+
+    const secondPeriodUsage = screen.getByLabelText('2-й период: расход инвентаря');
+    expect(within(secondPeriodUsage).getByText('9 бросков')).toBeInTheDocument();
+    expect(within(secondPeriodUsage).getByText('2 проката')).toBeInTheDocument();
+    expect(within(secondPeriodUsage).getByText('30 секунд энергии')).toBeInTheDocument();
+  });
+
   it('uses only concrete duel formats for matchmaking filters', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch');
     fetchMock.mockReset();

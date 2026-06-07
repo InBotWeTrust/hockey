@@ -6036,6 +6036,12 @@ function DuelResultModal({
           )}
           <DuelResultDetailRow label="Начало" value={formatShortDateTime(match.starts_at)} />
         </div>
+        <DuelInventoryUsageSummary
+          match={match}
+          title="Общий расход инвентаря"
+          label="Общий расход инвентаря"
+          style={{ marginTop: 14 }}
+        />
         <div
           style={{
             marginTop: 16,
@@ -6060,6 +6066,7 @@ function DuelResultModal({
               }}
             >
               <DuelResultPeriodComparison
+                match={match}
                 totalPeriods={match.rules.totalPeriods}
                 mePeriods={mePeriods}
                 opponentPeriods={opponentPeriods}
@@ -6101,11 +6108,13 @@ function hasDuelPeriodDetails(match: AmateurDuelMatch): match is AmateurDuelMatc
 }
 
 function DuelResultPeriodComparison({
+  match,
   totalPeriods,
   mePeriods,
   opponentPeriods,
   opponentName,
 }: {
+  match: AmateurDuelMatch;
   totalPeriods: number;
   mePeriods: AmateurDuelPeriodLog[];
   opponentPeriods: AmateurDuelPeriodLog[];
@@ -6230,6 +6239,16 @@ function DuelResultPeriodComparison({
               >
                 <DuelResultParticipantPeriodStats title="Вы" period={mePeriod} />
                 <DuelResultParticipantPeriodStats title={opponentName} period={opponentPeriod} />
+                {hasMultiplePeriods && (
+                  <DuelInventoryUsageSummary
+                    match={match}
+                    periodNumber={periodNumber}
+                    title="Расход за период"
+                    label={`${periodNumber}-й период: расход инвентаря`}
+                    compact
+                    style={{ gridColumn: '1 / -1' }}
+                  />
+                )}
               </div>
             )}
           </div>
@@ -6607,13 +6626,27 @@ function DuelLoadoutSummary({ match }: { match: AmateurDuelMatch }): JSX.Element
   );
 }
 
-function DuelInventoryUsageSummary({ match }: { match: AmateurDuelMatch }): JSX.Element | null {
-  const usage = duelInventoryUsageRows(match);
+function DuelInventoryUsageSummary({
+  match,
+  periodNumber,
+  title = 'Расход в этой дуэли',
+  label,
+  compact = false,
+  style,
+}: {
+  match: AmateurDuelMatch;
+  periodNumber?: number;
+  title?: string;
+  label?: string;
+  compact?: boolean;
+  style?: CSSProperties;
+}): JSX.Element | null {
+  const usage = duelInventoryUsageRows(match, periodNumber);
   if (usage.length === 0) return null;
   return (
-    <div style={{ display: 'grid', gap: 6 }}>
+    <div aria-label={label ?? title} style={{ display: 'grid', gap: compact ? 5 : 6, ...style }}>
       <div style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 900 }}>
-        Расход в этой дуэли
+        {title}
       </div>
       <div style={{ display: 'grid', gap: 5 }}>
         {usage.map((item) => (
@@ -6623,7 +6656,7 @@ function DuelInventoryUsageSummary({ match }: { match: AmateurDuelMatch }): JSX.
               display: 'flex',
               justifyContent: 'space-between',
               gap: 8,
-              fontSize: 12,
+              fontSize: compact ? 11 : 12,
               lineHeight: 1.25,
             }}
           >
@@ -7314,7 +7347,10 @@ function DuelRinkLoadoutModal({
   );
 }
 
-function duelInventoryUsageRows(match: AmateurDuelMatch): Array<{
+function duelInventoryUsageRows(
+  match: AmateurDuelMatch,
+  periodNumber?: number,
+): Array<{
   id: string;
   kind: AmateurDuelMatch['me']['loadout']['items'][number]['kind'];
   title: string;
@@ -7329,7 +7365,9 @@ function duelInventoryUsageRows(match: AmateurDuelMatch): Array<{
       charges: number;
     }
   >();
-  for (const consumed of match.me.inventory_report.flatMap((report) => report.consumed)) {
+  for (const consumed of match.me.inventory_report
+    .filter((report) => periodNumber === undefined || report.periodNumber === periodNumber)
+    .flatMap((report) => report.consumed)) {
     const key = `${consumed.kind}:${consumed.id}`;
     const current = totals.get(key);
     if (current) {
