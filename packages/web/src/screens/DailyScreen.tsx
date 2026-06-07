@@ -7416,7 +7416,7 @@ export function duelPrimaryButtonLabel(
 
 export function duelFatigueNoticeLabel(condition: DuelPlayerCondition | null): string | null {
   if (!condition || condition.status !== 'tired') return null;
-  return 'УСТАЛОСТЬ';
+  return 'Усталость';
 }
 
 function duelConditionSignature(condition: DuelPlayerCondition | null): string {
@@ -10356,7 +10356,7 @@ export function PlayView<TState>({
               className="duel-stumble-notice"
               style={routeGameStyle}
             >
-              СПОТКНУЛСЯ
+              Споткнулся
             </div>
           ) : duelFatigueNotice ? (
             <div
