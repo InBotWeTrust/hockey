@@ -148,7 +148,6 @@ function defaultSkateStumbleWindow(
   input: DuelPlayerConditionInput,
   timing: DuelInventoryTiming,
 ): { active: boolean; offsetPx: number } {
-  const rolls = input.movementDistancePx / Math.max(1, input.baseLaneWidthPx);
   const usesRollInterval = timing.stumbleIntervalMinRolls > 0 || timing.stumbleIntervalMaxRolls > 0;
   const interval = usesRollInterval
     ? deterministicRange(

@@ -7071,9 +7071,10 @@ function DuelRinkLoadoutHud({
                 aria-hidden="true"
                 style={{
                   position: 'absolute',
-                  right: -7,
-                  bottom: -11,
-                  minWidth: 18,
+                  left: '50%',
+                  bottom: -16,
+                  minWidth: 'max-content',
+                  transform: 'translateX(-50%)',
                   display: 'block',
                   color: '#16233b',
                   fontFamily: 'var(--font-ui)',
@@ -7082,6 +7083,7 @@ function DuelRinkLoadoutHud({
                   lineHeight: 1,
                   letterSpacing: 0,
                   textAlign: 'center',
+                  whiteSpace: 'nowrap',
                   textShadow: '0 1px 0 rgba(255,255,255,0.92), 0 0 6px rgba(255,255,255,0.78)',
                   zIndex: 2,
                 }}
@@ -7417,6 +7419,18 @@ export function duelFatigueNoticeLabel(condition: DuelPlayerCondition | null): s
   return 'УСТАЛОСТЬ';
 }
 
+function duelConditionSignature(condition: DuelPlayerCondition | null): string {
+  if (!condition) return 'none';
+  return [
+    condition.status,
+    condition.fatigueLevel,
+    condition.canShoot ? '1' : '0',
+    condition.stumbleActive ? '1' : '0',
+    condition.shooterSpeedMultiplier.toFixed(4),
+    condition.puckSpeedDelta.toFixed(4),
+  ].join(':');
+}
+
 function duelConsumedForPeriodItem(
   match: AmateurDuelMatch,
   periodNumber: number,
@@ -7607,9 +7621,10 @@ function DuelInventoryMiniHud({
                 aria-hidden="true"
                 style={{
                   position: 'absolute',
-                  right: -7,
-                  bottom: -11,
-                  minWidth: 18,
+                  left: '50%',
+                  bottom: -16,
+                  minWidth: 'max-content',
+                  transform: 'translateX(-50%)',
                   display: 'block',
                   color: '#16233b',
                   fontFamily: 'var(--font-ui)',
@@ -7618,6 +7633,7 @@ function DuelInventoryMiniHud({
                   lineHeight: 1,
                   letterSpacing: 0,
                   textAlign: 'center',
+                  whiteSpace: 'nowrap',
                   textShadow: '0 1px 0 rgba(255,255,255,0.92), 0 0 6px rgba(255,255,255,0.78)',
                   zIndex: 2,
                 }}
@@ -9281,13 +9297,36 @@ export function PlayView<TState>({
   stickEffectsRef.current = stickEffects;
 
   const [now, setNow] = useState(Date.now());
-  const currentDuelCondition = useMemo(
+  const [currentDuelCondition, setCurrentDuelCondition] = useState<DuelPlayerCondition | null>(
     () =>
       active && duelCondition
         ? duelCondition(computeInitialElapsedMs(sessionTimingRef.current), speeds)
         : null,
-    [active, duelCondition, now, speeds],
   );
+  const currentDuelConditionSignatureRef = useRef<string>('');
+
+  const syncCurrentDuelCondition = useCallback((condition: DuelPlayerCondition | null): void => {
+    const signature = duelConditionSignature(condition);
+    if (signature === currentDuelConditionSignatureRef.current) return;
+    currentDuelConditionSignatureRef.current = signature;
+    setCurrentDuelCondition(condition);
+  }, []);
+
+  useEffect(() => {
+    syncCurrentDuelCondition(
+      active && duelCondition
+        ? duelCondition(computeInitialElapsedMs(sessionTimingRef.current), speeds)
+        : null,
+    );
+  }, [
+    active,
+    duelCondition,
+    receivedAtPerformanceMs,
+    serverNow,
+    sessionStartedAt,
+    speeds,
+    syncCurrentDuelCondition,
+  ]);
 
   const isDuelStumbling = currentDuelCondition?.stumbleActive === true;
 
@@ -9768,6 +9807,7 @@ export function PlayView<TState>({
         getInitialElapsedMs: () => computeInitialElapsedMs(sessionTimingRef.current),
         getDuelCondition: (elapsedMs, activeSpeeds) =>
           duelConditionRef.current?.(elapsedMs, activeSpeeds) ?? null,
+        onDuelConditionChange: syncCurrentDuelCondition,
       });
       tickerRef.current = app.ticker;
       loopRef.current = loop;

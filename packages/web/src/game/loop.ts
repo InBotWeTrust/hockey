@@ -38,6 +38,7 @@ export interface GameLoopOpts {
   getSpeedOverrides?: () => SpeedOverrides;
   getInitialElapsedMs?: () => number;
   getDuelCondition?: (elapsedMs: number, speeds: SpeedOverrides) => DuelPlayerCondition | null;
+  onDuelConditionChange?: (condition: DuelPlayerCondition | null) => void;
 }
 
 export interface GameLoop {
@@ -70,6 +71,21 @@ function shooterX(t: number, freq: number): number {
   return SHOOTER_CENTER_X + SHOOTER_AMPLITUDE * tri;
 }
 
+function shooterDirection(t: number, freq: number): 1 | -1 {
+  const period = 1000 / freq;
+  const phase = (((t % period) + period) % period) / period;
+  return phase < 0.5 ? 1 : -1;
+}
+
+function shooterTimeForXNear(x: number, freq: number, direction: 1 | -1, nearT: number): number {
+  const period = 1000 / freq;
+  const normalized = Math.max(-1, Math.min(1, (x - SHOOTER_CENTER_X) / SHOOTER_AMPLITUDE));
+  const phase = direction === 1 ? (normalized + 1) / 4 : (3 - normalized) / 4;
+  const base = phase * period;
+  const cycle = Math.round((nearT - base) / period);
+  return base + cycle * period;
+}
+
 export function createGameLoop(opts: GameLoopOpts): GameLoop {
   const initialElapsedMs = (): number => Math.max(0, opts.getInitialElapsedMs?.() ?? 0);
   let renderNowMs = performance.now();
@@ -83,6 +99,11 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
   let conditionPauseStartedAt: number | null = null;
   let scenePausedTotal = 0;
   let scenePauseStartedAt: number | null = null;
+  let shooterTimeShift = 0;
+  let lastShooterFreq: number | null = null;
+  let lastShooterDirection: 1 | -1 = 1;
+  let lastRenderedShooterX: number | null = null;
+  let frozenConditionShooterX: number | null = null;
 
   function shooterT(now: number): number {
     const activeManual = shooterPauseStartedAt !== null ? now - shooterPauseStartedAt : 0;
@@ -130,18 +151,44 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
     const o = getOffsets();
     const tScene = sceneT(now);
     const condition = overrides ? opts.getDuelCondition?.(tScene, overrides) : null;
+    opts.onDuelConditionChange?.(condition ?? null);
     const conditionPausesShooter =
       condition?.stumbleActive === true || condition?.status === 'exhausted_stop';
+    let justEndedConditionPause = false;
+    let conditionPauseReleaseX: number | null = null;
     if (conditionPausesShooter) {
-      if (conditionPauseStartedAt === null) conditionPauseStartedAt = now;
+      if (conditionPauseStartedAt === null) {
+        conditionPauseStartedAt = now;
+        frozenConditionShooterX = lastRenderedShooterX;
+      }
     } else if (conditionPauseStartedAt !== null) {
       conditionPausedTotal += now - conditionPauseStartedAt;
       conditionPauseStartedAt = null;
+      justEndedConditionPause = true;
+      conditionPauseReleaseX = frozenConditionShooterX;
     }
     const tShooter = shooterT(now);
     const effectiveShooterFreq = conditionPausesShooter
       ? sf
       : Math.max(0.1, sf * (condition?.shooterSpeedMultiplier ?? 1));
+    const rawShooterTWithOffset = tShooter + o.shooter;
+    if (!conditionPausesShooter) {
+      const targetX = justEndedConditionPause ? conditionPauseReleaseX : lastRenderedShooterX;
+      if (
+        targetX !== null &&
+        (justEndedConditionPause ||
+          (lastShooterFreq !== null && Math.abs(lastShooterFreq - effectiveShooterFreq) > 0.0001))
+      ) {
+        const alignedT = shooterTimeForXNear(
+          targetX,
+          effectiveShooterFreq,
+          lastShooterDirection,
+          rawShooterTWithOffset + shooterTimeShift,
+        );
+        shooterTimeShift = alignedT - rawShooterTWithOffset;
+      }
+      frozenConditionShooterX = null;
+    }
     const goalState: GoalState = simulateGoal(activeCfg, tScene, o.goal);
     const goalieState: GoalieState = simulateGoalie(
       activeCfg,
@@ -150,8 +197,18 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
       tScene,
       o.goalie,
     );
-    const sx =
-      shooterX(tShooter + o.shooter, effectiveShooterFreq) + (condition?.shooterXOffsetPx ?? 0);
+    const shiftedShooterTWithOffset = rawShooterTWithOffset + shooterTimeShift;
+    const sx = conditionPausesShooter
+      ? (frozenConditionShooterX ??
+        shooterX(shiftedShooterTWithOffset, effectiveShooterFreq) +
+          (condition?.shooterXOffsetPx ?? 0))
+      : shooterX(shiftedShooterTWithOffset, effectiveShooterFreq) +
+        (condition?.shooterXOffsetPx ?? 0);
+    lastRenderedShooterX = sx;
+    if (!conditionPausesShooter) {
+      lastShooterFreq = effectiveShooterFreq;
+      lastShooterDirection = shooterDirection(shiftedShooterTWithOffset, effectiveShooterFreq);
+    }
     const scale = opts.getScale();
 
     opts.goalRenderer.update(scale, goalState.offsetX);
@@ -206,6 +263,12 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
       shooterPauseStartedAt = null;
       conditionPauseStartedAt = null;
       scenePauseStartedAt = null;
+      shooterTimeShift = 0;
+      lastShooterFreq = null;
+      lastShooterDirection = 1;
+      lastRenderedShooterX = null;
+      frozenConditionShooterX = null;
+      opts.onDuelConditionChange?.(null);
     },
     get sessionStartMs() {
       return sessionStartMs;
@@ -232,7 +295,7 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
       }
     },
     getShooterT() {
-      return shooterT(renderNowMs);
+      return shooterT(renderNowMs) + shooterTimeShift;
     },
     getSceneT() {
       return sceneT(renderNowMs);

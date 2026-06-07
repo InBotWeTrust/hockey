@@ -241,4 +241,115 @@ describe('createGameLoop', () => {
 
     nowSpy.mockRestore();
   });
+
+  it('does not jump when exhausted rest starts after slowed fatigue', () => {
+    const nowSpy = vi.spyOn(performance, 'now');
+    nowSpy.mockReturnValue(1000);
+    const playerUpdate = vi.fn();
+    const loop = makeLoop({
+      playerRenderer: { update: playerUpdate } as never,
+      getGoalieId: () => 'rookie',
+      getSpeedOverrides: () => ({
+        goalFreq: 1,
+        goalieFreq: 1,
+        shooterFreq: 1,
+        puckSpeed: 1,
+      }),
+      getDuelCondition: (elapsedMs) => {
+        if (elapsedMs >= 6001 && elapsedMs < 6800) {
+          return {
+            puckSpeedDelta: 0,
+            shooterSpeedMultiplier: 0,
+            canShoot: false,
+            status: 'exhausted_stop',
+            fatigueLevel: 'resting',
+            stumbleActive: false,
+            shooterXOffsetPx: 0,
+            fatigueMs: elapsedMs,
+            nutritionConsumed: 0,
+            skatesConsumed: 0,
+          };
+        }
+        if (elapsedMs >= 5000) {
+          return {
+            puckSpeedDelta: 0,
+            shooterSpeedMultiplier: 0.9,
+            canShoot: true,
+            status: 'tired',
+            fatigueLevel: 'medium',
+            stumbleActive: false,
+            shooterXOffsetPx: 0,
+            fatigueMs: elapsedMs,
+            nutritionConsumed: 0,
+            skatesConsumed: 0,
+          };
+        }
+        return null;
+      },
+    });
+    const ticker = makeTicker();
+
+    loop.attach(ticker);
+    const onTick = ticker.add.mock.calls[0]?.[0] as ((ticker: Ticker) => void) | undefined;
+    expect(onTick).toBeDefined();
+
+    nowSpy.mockReturnValue(6000);
+    onTick?.(ticker);
+    const tiredX = playerUpdate.mock.calls.at(-1)?.[1] as number;
+
+    nowSpy.mockReturnValue(6001);
+    onTick?.(ticker);
+    const restStartX = playerUpdate.mock.calls.at(-1)?.[1] as number;
+
+    expect(Math.abs(restStartX - tiredX)).toBeLessThan(1);
+
+    nowSpy.mockRestore();
+  });
+
+  it('reports duel condition from the same tick that drives the player', () => {
+    const nowSpy = vi.spyOn(performance, 'now');
+    nowSpy.mockReturnValue(1000);
+    const onDuelConditionChange = vi.fn();
+    const loop = makeLoop({
+      getGoalieId: () => 'rookie',
+      getSpeedOverrides: () => ({
+        goalFreq: 1,
+        goalieFreq: 1,
+        shooterFreq: 1,
+        puckSpeed: 1,
+      }),
+      getDuelCondition: (elapsedMs) =>
+        elapsedMs >= 5000
+          ? {
+              puckSpeedDelta: 0,
+              shooterSpeedMultiplier: 1,
+              canShoot: false,
+              status: 'stumble',
+              fatigueLevel: 'none',
+              stumbleActive: true,
+              shooterXOffsetPx: 0,
+              fatigueMs: 0,
+              nutritionConsumed: 0,
+              skatesConsumed: 0,
+            }
+          : null,
+      onDuelConditionChange,
+    });
+    const ticker = makeTicker();
+
+    loop.attach(ticker);
+    const onTick = ticker.add.mock.calls[0]?.[0] as ((ticker: Ticker) => void) | undefined;
+    expect(onTick).toBeDefined();
+
+    nowSpy.mockReturnValue(5999);
+    onTick?.(ticker);
+    nowSpy.mockReturnValue(6000);
+    onTick?.(ticker);
+
+    expect(onDuelConditionChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ status: 'stumble', stumbleActive: true }),
+    );
+
+    nowSpy.mockRestore();
+  });
 });
