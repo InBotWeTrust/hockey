@@ -24,6 +24,15 @@ function hasHttpStatus(err: unknown): err is { statusCode: number; code?: string
   );
 }
 
+function isPostgresUniqueViolation(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'code' in err &&
+    (err as { code?: unknown }).code === '23505'
+  );
+}
+
 const plugin: FastifyPluginAsync = async (app) => {
   app.setErrorHandler((err, req, reply) => {
     if (err instanceof AppError) {
@@ -47,6 +56,12 @@ const plugin: FastifyPluginAsync = async (app) => {
     if (hasHttpStatus(err)) {
       reply.status(err.statusCode).send({
         error: { code: err.code ?? 'bad_request', message: err.message },
+      });
+      return;
+    }
+    if (isPostgresUniqueViolation(err)) {
+      reply.status(409).send({
+        error: { code: 'conflict', message: 'request conflicts with current state' },
       });
       return;
     }

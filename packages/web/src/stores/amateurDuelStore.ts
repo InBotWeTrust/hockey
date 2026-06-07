@@ -61,6 +61,7 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
   ready: async (loadout = {}) => {
     const current = get().match;
     if (!current) return null;
+    if (get().inFlight) return null;
     set({ inFlight: true, error: null });
     try {
       const { match } = await readyAmateurDuel(current.id, loadout);
@@ -78,6 +79,7 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
   startPeriod: async (loadout) => {
     const current = get().match;
     if (!current) return null;
+    if (get().inFlight) return null;
     set({ inFlight: true, error: null });
     try {
       const { match } = await startAmateurDuelPeriod(current.id, loadout);
@@ -95,6 +97,7 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
   updateLoadout: async (loadout) => {
     const current = get().match;
     if (!current) return null;
+    if (get().inFlight) return null;
     set({ inFlight: true, error: null });
     try {
       const { match } = await updateAmateurDuelLoadout(current.id, loadout);

@@ -68,4 +68,24 @@ describe('errorsPlugin', () => {
     const body = res.json() as { error: { code: string; message: string } };
     expect(body.error.code).not.toBe('internal_error');
   });
+
+  it('maps Postgres unique constraint races to conflict instead of internal error', async () => {
+    const app = Fastify();
+    await app.register(errorsPlugin);
+    app.post('/race', async () => {
+      const err = new Error('duplicate key value violates unique constraint');
+      Object.assign(err, {
+        code: '23505',
+        constraint: 'day_pool_one_open_per_user',
+      });
+      throw err;
+    });
+
+    const res = await app.inject({ method: 'POST', url: '/race' });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toEqual({
+      error: { code: 'conflict', message: 'request conflicts with current state' },
+    });
+  });
 });

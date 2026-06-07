@@ -52,6 +52,7 @@ export const useDailyStore = create<DailyStoreState>()((set, get) => ({
   },
 
   startPeriod: async () => {
+    if (get().inFlight) return null;
     set({ inFlight: true, error: null });
     try {
       const data = await startDailyPeriod();
