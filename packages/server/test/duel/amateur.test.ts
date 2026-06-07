@@ -1868,6 +1868,53 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(state.json().match.opponent.goals).toBe(1);
   });
 
+  it('settles express tied goals by better accuracy before time', async () => {
+    const templateId = await createTemplate({ duelKind: 'express', variant: 'time_attack' });
+    const created = await challenge(templateId);
+    const matchId = created.json().match.id;
+    await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/accept`,
+      headers: auth(tokenB),
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/ready`,
+      headers: auth(tokenA),
+      payload: { loadout: {} },
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/ready`,
+      headers: auth(tokenB),
+      payload: { loadout: {} },
+    });
+    await pool.query(
+      `update amateur_duel_participant
+          set state = 'completed',
+              current_period = 1,
+              shots_taken = case when user_id = $2 then 50 else 80 end,
+              goals = 40,
+              active_duration_ms = 180000,
+              completed_at = now()
+        where match_id = $1`,
+      [matchId, userB],
+    );
+
+    const settled = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/settle`,
+      headers: auth(tokenA),
+    });
+
+    expect(settled.statusCode).toBe(200);
+    expect(settled.json().match.status).toBe('settled');
+    expect(settled.json().match.outcome).toBe('opponent_win');
+    expect(settled.json().match.winner_user_id).toBe(userB);
+    expect(settled.json().match.me.result_points).toBe(0);
+    expect(settled.json().match.opponent.result_points).toBe(3);
+  });
+
   it('snapshots express plus with mixed period rules and completes time attack on timeout', async () => {
     const templateId = await createTemplate({
       duelKind: 'express_plus',

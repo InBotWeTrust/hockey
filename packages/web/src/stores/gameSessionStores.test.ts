@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AmateurDuelMatchState } from '../api/amateurDuel.js';
 import { readyAmateurDuel, startAmateurDuelPeriod } from '../api/amateurDuel.js';
 import type { DailyStateResponse } from '../api/duel.js';
-import { startDailyPeriod } from '../api/duel.js';
+import { fetchDailyState, startDailyPeriod, submitDailyShot } from '../api/duel.js';
 import type { TrainingStateResponse } from '../api/training.js';
 import { startTraining } from '../api/training.js';
 import { useAmateurDuelStore } from './amateurDuelStore.js';
@@ -99,6 +99,41 @@ describe('game session stores', () => {
 
     expect(result).toBeNull();
     expect(startDailyPeriod).not.toHaveBeenCalled();
+  });
+
+  it('does not roll back an optimistic final daily shot to a stale active state after submit fails', async () => {
+    const staleActiveState = {
+      state: 'period_active',
+      current_period: 1,
+      current_period_shots: 29,
+      current_period_goals: 10,
+      daily_total_shots: 29,
+      daily_total_goals: 10,
+      shots_per_period: 30,
+      total_periods: 3,
+      day_date: '2026-04-25',
+    } as DailyStateResponse;
+    const optimisticFinalState = {
+      ...staleActiveState,
+      current_period_shots: 30,
+      current_period_goals: 11,
+      daily_total_shots: 30,
+      daily_total_goals: 11,
+    };
+    vi.mocked(submitDailyShot).mockRejectedValueOnce(new Error('internal error'));
+    vi.mocked(fetchDailyState).mockResolvedValueOnce(staleActiveState);
+    useDailyStore.setState({ data: optimisticFinalState, error: null });
+
+    const result = await useDailyStore.getState().submitShot({
+      shotIndex: 30,
+      input: { tapTime: 3000 },
+      claimedResult: 'goal',
+    });
+
+    expect(result).toBeNull();
+    expect(useDailyStore.getState().data?.current_period_shots).toBe(30);
+    expect(useDailyStore.getState().data?.daily_total_shots).toBe(30);
+    expect(useDailyStore.getState().error).toBe('internal error');
   });
 
   it('does not start a second training request while one is already in flight', async () => {

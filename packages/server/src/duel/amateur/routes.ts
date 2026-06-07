@@ -1841,6 +1841,26 @@ async function releaseRemainingInventoryReserve(
   );
 }
 
+function usesAccuracyTiebreaker(rules: DuelRulesSnapshot): boolean {
+  return (
+    rules.duelKind === 'express' ||
+    rules.periodRules.every((rule) => rule.mode === 'time_attack')
+  );
+}
+
+function compareAccuracy(
+  a: Pick<DuelParticipantRow, 'goals' | 'shots_taken'>,
+  b: Pick<DuelParticipantRow, 'goals' | 'shots_taken'>,
+): number {
+  const aShots = Math.max(0, Number(a.shots_taken));
+  const bShots = Math.max(0, Number(b.shots_taken));
+  const aGoals = Math.max(0, Number(a.goals));
+  const bGoals = Math.max(0, Number(b.goals));
+  const left = aGoals * (bShots === 0 ? 1 : bShots);
+  const right = bGoals * (aShots === 0 ? 1 : aShots);
+  return Math.sign(left - right);
+}
+
 async function fetchMatchForUpdate(client: PoolClient, matchId: string): Promise<DuelMatchRow> {
   const { rows } = await client.query<DuelMatchRow>(
     `select m.*, cu.display_name as challenger_name, cu.avatar_url as challenger_avatar_url,
@@ -2147,9 +2167,16 @@ async function settleMatchIfReady(
       outcome = 'opponent_win';
       winnerUserId = b.user_id;
     } else {
+      const accuracyComparison = usesAccuracyTiebreaker(rules) ? compareAccuracy(a, b) : 0;
       const aSeconds = durationSeconds(a.active_duration_ms);
       const bSeconds = durationSeconds(b.active_duration_ms);
-      if (aSeconds < bSeconds) {
+      if (accuracyComparison > 0) {
+        outcome = 'challenger_win';
+        winnerUserId = a.user_id;
+      } else if (accuracyComparison < 0) {
+        outcome = 'opponent_win';
+        winnerUserId = b.user_id;
+      } else if (aSeconds < bSeconds) {
         outcome = 'challenger_win';
         winnerUserId = a.user_id;
       } else if (bSeconds < aSeconds) {

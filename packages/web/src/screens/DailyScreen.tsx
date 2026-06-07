@@ -5967,6 +5967,7 @@ function DuelResultModal({
   const opponentPeriods = hasDuelPeriodDetails(match) ? match.opponent_recent_periods : [];
   const hasPeriodDetails = mePeriods.length > 0 || opponentPeriods.length > 0;
   const hasMultiplePeriods = match.rules.totalPeriods > 1;
+  const tiebreaker = duelTiebreakerExplanation(match);
 
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Результат дуэли">
@@ -6027,6 +6028,12 @@ function DuelResultModal({
         >
           <DuelResultDetailRow label="Тип" value={duelKindText(match.rules.duelKind)} />
           <DuelResultDetailRow label="Соперник" value={match.opponent.display_name || 'Игрок'} />
+          {tiebreaker && (
+            <>
+              <DuelResultDetailRow label={tiebreaker.label} value={tiebreaker.value} />
+              <DuelResultDetailRow label="Итог" value={tiebreaker.result} />
+            </>
+          )}
           {match.rules.winStarReward > 0 && (
             <DuelResultDetailRow
               label="Звёзды за победу"
@@ -6101,6 +6108,69 @@ function DuelResultModal({
       </div>
     </div>
   );
+}
+
+function duelTiebreakerExplanation(
+  match: AmateurDuelMatch,
+): { label: string; value: string; result: string } | null {
+  if (match.status !== 'settled' || match.me.goals !== match.opponent.goals) return null;
+  if (usesAccuracyTiebreaker(match) && compareDuelAccuracy(match) !== 0) {
+    const meAccuracy = duelAccuracy(match.me);
+    const opponentAccuracy = duelAccuracy(match.opponent);
+    const iAmMoreAccurate = meAccuracy > opponentAccuracy;
+    return {
+      label: 'Решил процент',
+      value: `${meAccuracy}% / ${opponentAccuracy}%`,
+      result: iAmMoreAccurate
+        ? 'Победа за счёт лучшего процента'
+        : 'Поражение из-за процента соперника',
+    };
+  }
+  const meSeconds = Math.round(match.me.active_duration_ms / 1000);
+  const opponentSeconds = Math.round(match.opponent.active_duration_ms / 1000);
+  const value = `${formatDurationMs(meSeconds * 1000)} / ${formatDurationMs(
+    opponentSeconds * 1000,
+  )}`;
+  if (meSeconds === opponentSeconds) {
+    return { label: 'Решило время', value, result: 'Время одинаковое' };
+  }
+  const diffText = formatTiebreakerDiff(Math.abs(meSeconds - opponentSeconds));
+  return {
+    label: 'Решило время',
+    value,
+    result:
+      meSeconds < opponentSeconds
+        ? `Вы быстрее на ${diffText}`
+        : `Соперник быстрее на ${diffText}`,
+  };
+}
+
+function usesAccuracyTiebreaker(match: AmateurDuelMatch): boolean {
+  return (
+    match.rules.duelKind === 'express' ||
+    match.rules.periodRules.every((rule) => rule.mode === 'time_attack')
+  );
+}
+
+function duelAccuracy(participant: AmateurDuelMatch['me']): number {
+  return participant.shots_taken > 0
+    ? Math.round((participant.goals / participant.shots_taken) * 100)
+    : 0;
+}
+
+function compareDuelAccuracy(match: AmateurDuelMatch): number {
+  const meShots = Math.max(0, match.me.shots_taken);
+  const opponentShots = Math.max(0, match.opponent.shots_taken);
+  const left = match.me.goals * (opponentShots === 0 ? 1 : opponentShots);
+  const right = match.opponent.goals * (meShots === 0 ? 1 : meShots);
+  return Math.sign(left - right);
+}
+
+function formatTiebreakerDiff(seconds: number): string {
+  if (seconds < 60) return `${seconds} сек`;
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return rest === 0 ? `${minutes} мин` : `${minutes} мин ${rest} сек`;
 }
 
 function hasDuelPeriodDetails(match: AmateurDuelMatch): match is AmateurDuelMatchState {

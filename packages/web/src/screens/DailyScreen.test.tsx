@@ -2955,6 +2955,151 @@ describe('DailyScreen', () => {
     expect(screen.queryByRole('dialog', { name: 'Результат дуэли' })).not.toBeInTheDocument();
   });
 
+  it('explains a tied-goals duel result with the time tiebreaker', async () => {
+    const timeWinMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      duel_kind: 'classic',
+      rules: {
+        ...settledDuelMatch.rules,
+        title: 'Классика',
+        duelKind: 'classic',
+        duelVariant: 'classic',
+        periodRules: [
+          { periodNumber: 1, mode: 'quota', durationMs: 1200000, shotsLimit: 30 },
+          { periodNumber: 2, mode: 'quota', durationMs: 1200000, shotsLimit: 90 },
+        ],
+      },
+      me: {
+        ...settledDuelMatch.me,
+        goals: 91,
+        active_duration_ms: 274000,
+        result_points: 3,
+      },
+      opponent: {
+        ...settledDuelMatch.opponent,
+        goals: 91,
+        active_duration_ms: 296000,
+        result_points: 0,
+      },
+      recent_periods: [
+        {
+          period_number: 1,
+          shots_taken: 30,
+          goals: 25,
+          duration_ms: 94000,
+          closed_reason: 'quota',
+          ended_at: '2026-05-16T10:01:34.000Z',
+        },
+        {
+          period_number: 2,
+          shots_taken: 76,
+          goals: 66,
+          duration_ms: 180000,
+          closed_reason: 'quota',
+          ended_at: '2026-05-16T10:04:34.000Z',
+        },
+      ],
+      opponent_recent_periods: [
+        {
+          period_number: 1,
+          shots_taken: 30,
+          goals: 28,
+          duration_ms: 116000,
+          closed_reason: 'quota',
+          ended_at: '2026-05-16T10:01:56.000Z',
+        },
+        {
+          period_number: 2,
+          shots_taken: 86,
+          goals: 63,
+          duration_ms: 180000,
+          closed_reason: 'quota',
+          ended_at: '2026-05-16T10:04:56.000Z',
+        },
+      ],
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/matches/match-1')) {
+        return new Response(JSON.stringify({ match: timeWinMatch }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=amateur&match=match-1']);
+
+    const dialog = await screen.findByRole('dialog', { name: 'Результат дуэли' });
+    expect(within(dialog).getByText('Победа')).toBeInTheDocument();
+    expect(within(dialog).getByText('91:91')).toBeInTheDocument();
+    expect(within(dialog).getByText('Решило время')).toBeInTheDocument();
+    expect(within(dialog).getByText('04:34 / 04:56')).toBeInTheDocument();
+    expect(within(dialog).getByText('Вы быстрее на 22 сек')).toBeInTheDocument();
+  });
+
+  it('explains an express tied-goals result with the accuracy tiebreaker', async () => {
+    const accuracyLossMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      winner_user_id: 'u2',
+      outcome: 'opponent_win',
+      me: {
+        ...settledDuelMatch.me,
+        shots_taken: 80,
+        goals: 40,
+        accuracy: 50,
+        active_duration_ms: 180000,
+        result_points: 0,
+      },
+      opponent: {
+        ...settledDuelMatch.opponent,
+        shots_taken: 50,
+        goals: 40,
+        accuracy: 80,
+        active_duration_ms: 180000,
+        result_points: 3,
+      },
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/matches/match-1')) {
+        return new Response(JSON.stringify({ match: accuracyLossMatch }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=amateur&match=match-1']);
+
+    const dialog = await screen.findByRole('dialog', { name: 'Результат дуэли' });
+    expect(within(dialog).getByText('Поражение')).toBeInTheDocument();
+    expect(within(dialog).getByText('40:40')).toBeInTheDocument();
+    expect(within(dialog).getByText('Решил процент')).toBeInTheDocument();
+    expect(within(dialog).getByText('50% / 80%')).toBeInTheDocument();
+    expect(within(dialog).getByText('Поражение из-за процента соперника')).toBeInTheDocument();
+  });
+
   it('polls an unfinished amateur duel and shows result when it settles', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const fetchMock = vi.spyOn(globalThis, 'fetch');
