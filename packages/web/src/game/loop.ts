@@ -231,7 +231,10 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
 
     opts.goalRenderer.update(scale, goalState.offsetX);
     opts.goalieRenderer.update(goalieState, scale);
-    opts.playerRenderer.update(scale, sx);
+    opts.playerRenderer.update(scale, sx, undefined, {
+      stumbling: condition?.stumbleActive === true,
+      resting: condition?.status === 'exhausted_stop',
+    });
     opts.hitboxRenderer?.update(scale, goalState.offsetX, goalieState);
 
     if (opts.puckRenderer.isHeld()) {

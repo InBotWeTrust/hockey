@@ -13,6 +13,8 @@ const SPRITE_ASSETS = [
   '/sprites/ultimate-player-left-shoot.webp',
   '/sprites/ultimate-player-right.webp',
   '/sprites/ultimate-player-right-shoot.webp',
+  '/sprites/player-falling.webp',
+  '/sprites/player-rest.webp',
   '/sprites/ice-resurfacer-center.webp',
   '/sprites/ice-resurfacer-left-down.webp',
   '/sprites/ice-resurfacer-left-up.webp',

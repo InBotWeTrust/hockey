@@ -6688,6 +6688,16 @@ const DUEL_INVENTORY_SLOTS = [
   { kind: 'nutrition', label: 'Энергия' },
 ] as const;
 
+const DUEL_INVENTORY_ICON_GLASS_STYLE: CSSProperties = {
+  background:
+    'radial-gradient(circle at 28% 0%, rgba(255,255,255,0.94), rgba(255,255,255,0) 42%), linear-gradient(145deg, rgba(255,255,255,0.76), rgba(226,242,250,0.5) 58%, rgba(255,255,255,0.64))',
+  border: '1px solid rgba(255,255,255,0.82)',
+  boxShadow:
+    '0 0 0 1px rgba(15,23,42,0.07), 0 8px 18px rgba(15,23,42,0.14), inset 0 1.5px 0 rgba(255,255,255,0.88), inset 0 -8px 16px rgba(15,23,42,0.06)',
+  backdropFilter: 'blur(14px) saturate(1.24)',
+  WebkitBackdropFilter: 'blur(14px) saturate(1.24)',
+};
+
 const DUEL_EQUIPMENT_META: Record<
   InventoryEquipmentKind,
   { title: string; empty: string; patchKey: 'stickItemId' | 'skatesItemId' | 'nutritionItemId' }
@@ -6869,14 +6879,6 @@ function DuelInventorySlots({ match }: { match: AmateurDuelMatch }): JSX.Element
           : available
             ? artworkForInventoryItem(available)
             : placeholderArtworkForKind(slot.kind);
-        const rarityColor =
-          (item?.rarity ?? available?.rarity) === 'legendary'
-            ? '#f59e0b'
-            : (item?.rarity ?? available?.rarity) === 'epic'
-              ? '#a855f7'
-              : (item?.rarity ?? available?.rarity) === 'rare'
-                ? '#0ea5e9'
-                : '#64748b';
         const emptyText = hasAvailable ? 'не выбрано' : 'нет в наличии';
         return (
           <div
@@ -6907,9 +6909,8 @@ function DuelInventorySlots({ match }: { match: AmateurDuelMatch }): JSX.Element
                 alignItems: 'center',
                 justifyContent: 'center',
                 overflow: 'hidden',
-                background: item ? `${rarityColor}18` : 'rgba(15,23,42,0.05)',
-                border: item ? `1px solid ${rarityColor}66` : '1px solid rgba(15,23,42,0.08)',
-                boxShadow: item ? `0 0 12px ${rarityColor}33` : 'none',
+                ...DUEL_INVENTORY_ICON_GLASS_STYLE,
+                opacity: item || hasAvailable ? 1 : 0.56,
               }}
             >
               <img
@@ -7041,13 +7042,10 @@ function DuelRinkLoadoutHud({
               overflow: 'visible',
               padding: 0,
               display: 'block',
-              background: 'rgba(255,255,255,0.72)',
-              border: hasVisibleEquipment
-                ? '1px solid rgba(255,255,255,0.78)'
-                : '1px solid rgba(15,23,42,0.08)',
+              ...DUEL_INVENTORY_ICON_GLASS_STYLE,
               boxShadow: hasVisibleEquipment
-                ? '0 0 0 1px rgba(15,23,42,0.08), 0 5px 12px rgba(15,23,42,0.12)'
-                : 'none',
+                ? DUEL_INVENTORY_ICON_GLASS_STYLE.boxShadow
+                : '0 0 0 1px rgba(15,23,42,0.04), inset 0 1px 0 rgba(255,255,255,0.5)',
               opacity: hasVisibleEquipment ? 1 : 0.48,
               cursor: canOpen ? 'pointer' : 'default',
               WebkitTapHighlightColor: 'transparent',
@@ -7316,18 +7314,6 @@ function DuelRinkLoadoutModal({
   );
 }
 
-function duelInventoryRarityColor(
-  rarity: AmateurDuelMatch['me']['loadout']['items'][number]['rarity'] | undefined,
-): string {
-  return rarity === 'legendary'
-    ? '#f59e0b'
-    : rarity === 'epic'
-      ? '#a855f7'
-      : rarity === 'rare'
-        ? '#0ea5e9'
-        : '#64748b';
-}
-
 function duelInventoryUsageRows(match: AmateurDuelMatch): Array<{
   id: string;
   kind: AmateurDuelMatch['me']['loadout']['items'][number]['kind'];
@@ -7562,7 +7548,6 @@ function DuelInventoryMiniHud({
             ? artworkForInventoryItem(available)
             : placeholderArtworkForKind(slot.kind);
         const remainingCharges = item ? duelInventoryItemRemaining(match, item, liveCondition) : 0;
-        const rarityColor = duelInventoryRarityColor(item?.rarity ?? available?.rarity);
         const isSelected = item !== undefined;
         const inventoryBadge = item
           ? duelInventoryBadgeLabel(item.kind, remainingCharges, item.resourceUnit)
@@ -7597,11 +7582,11 @@ function DuelInventoryMiniHud({
               overflow: 'visible',
               display: 'block',
               cursor: interactive ? 'pointer' : 'default',
-              background: 'rgba(255,255,255,0.72)',
-              border: isSelected ? `2px solid ${rarityColor}` : '1px solid rgba(255,255,255,0.78)',
+              ...DUEL_INVENTORY_ICON_GLASS_STYLE,
+              border: '1px solid rgba(255,255,255,0.82)',
               boxShadow: isSelected
-                ? `0 0 0 1px rgba(255,255,255,0.72), 0 6px 14px ${rarityColor}42`
-                : '0 0 0 1px rgba(15,23,42,0.08), 0 5px 12px rgba(15,23,42,0.12)',
+                ? '0 0 0 1px rgba(255,255,255,0.72), 0 10px 22px rgba(15,23,42,0.18), inset 0 1.5px 0 rgba(255,255,255,0.92), inset 0 -8px 16px rgba(15,23,42,0.07)'
+                : DUEL_INVENTORY_ICON_GLASS_STYLE.boxShadow,
             }}
           >
             <img
@@ -7888,8 +7873,16 @@ const PERSPECTIVE_PLAYER_OPTIONS: PlayerOptions = {
     left: '/sprites/ultimate-player-left-shoot.webp',
     right: '/sprites/ultimate-player-right-shoot.webp',
   },
+  stumbleSpriteUrl: '/sprites/player-falling.webp',
+  restSpriteUrl: '/sprites/player-rest.webp',
   spriteWidth: 101,
   spriteAspect: 942 / 1067,
+  stumbleSpriteWidth: 110,
+  stumbleSpriteAspect: 1130 / 1150,
+  stumbleRotation: 0,
+  restSpriteWidth: 96,
+  restSpriteAspect: 1000 / 1374,
+  restRotation: 0,
   baseRotation: 0,
   shotMaxRotation: 0,
   shotDurationMs: 500,

@@ -164,10 +164,18 @@ describe('createGameLoop', () => {
     nowSpy.mockReturnValue(6000);
     onTick?.(ticker);
     const stumbleStartX = playerUpdate.mock.calls.at(-1)?.[1] as number;
+    expect(playerUpdate.mock.calls.at(-1)?.[3]).toEqual({
+      resting: false,
+      stumbling: true,
+    });
 
     nowSpy.mockReturnValue(6200);
     onTick?.(ticker);
     expect(playerUpdate.mock.calls.at(-1)?.[1]).toBe(stumbleStartX);
+    expect(playerUpdate.mock.calls.at(-1)?.[3]).toEqual({
+      resting: false,
+      stumbling: true,
+    });
 
     nowSpy.mockReturnValue(6600);
     onTick?.(ticker);
@@ -188,6 +196,10 @@ describe('createGameLoop', () => {
     nowSpy.mockReturnValue(7600);
     onTick?.(ticker);
     expect(playerUpdate.mock.calls.at(-1)?.[1]).not.toBe(stumbleStartX);
+    expect(playerUpdate.mock.calls.at(-1)?.[3]).toEqual({
+      resting: false,
+      stumbling: false,
+    });
 
     nowSpy.mockRestore();
   });
@@ -230,10 +242,18 @@ describe('createGameLoop', () => {
     nowSpy.mockReturnValue(6000);
     onTick?.(ticker);
     const restStartX = playerUpdate.mock.calls.at(-1)?.[1] as number;
+    expect(playerUpdate.mock.calls.at(-1)?.[3]).toEqual({
+      resting: true,
+      stumbling: false,
+    });
 
     nowSpy.mockReturnValue(6200);
     onTick?.(ticker);
     expect(playerUpdate.mock.calls.at(-1)?.[1]).toBe(restStartX);
+    expect(playerUpdate.mock.calls.at(-1)?.[3]).toEqual({
+      resting: true,
+      stumbling: false,
+    });
 
     nowSpy.mockReturnValue(6600);
     onTick?.(ticker);
@@ -246,6 +266,10 @@ describe('createGameLoop', () => {
     nowSpy.mockReturnValue(7000);
     onTick?.(ticker);
     expect(playerUpdate.mock.calls.at(-1)?.[1]).not.toBe(restStartX);
+    expect(playerUpdate.mock.calls.at(-1)?.[3]).toEqual({
+      resting: false,
+      stumbling: false,
+    });
 
     nowSpy.mockRestore();
   });
