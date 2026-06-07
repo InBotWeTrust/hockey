@@ -7414,9 +7414,7 @@ export function duelPrimaryButtonLabel(
 
 export function duelFatigueNoticeLabel(condition: DuelPlayerCondition | null): string | null {
   if (!condition || condition.status !== 'tired') return null;
-  if (condition.fatigueLevel === 'heavy') return 'СИЛЬНАЯ УСТАЛОСТЬ';
-  if (condition.fatigueLevel === 'medium') return 'УСТАЛОСТЬ';
-  return null;
+  return 'УСТАЛОСТЬ';
 }
 
 function duelConsumedForPeriodItem(

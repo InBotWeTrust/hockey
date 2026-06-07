@@ -369,7 +369,7 @@ describe('DailyScreen', () => {
     ).toBe('БРОСОК');
   });
 
-  it('names visible duel fatigue states while the shot button stays available', () => {
+  it('shows one visible fatigue state while the shot button stays available', () => {
     const baseCondition = {
       puckSpeedDelta: 0,
       shooterSpeedMultiplier: 1,
@@ -400,7 +400,7 @@ describe('DailyScreen', () => {
         fatigueLevel: 'heavy',
         shooterSpeedMultiplier: 0.75,
       }),
-    ).toBe('СИЛЬНАЯ УСТАЛОСТЬ');
+    ).toBe('УСТАЛОСТЬ');
     expect(
       duelFatigueNoticeLabel({
         ...baseCondition,

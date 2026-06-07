@@ -5259,9 +5259,8 @@ function InventoryEditor({
     parsedEffectStumbleOffsetMaxPx >= parsedEffectStumbleOffsetMinPx &&
     parsedEffectStumbleRecoveryMaxMs >= parsedEffectStumbleRecoveryMinMs &&
     parsedEffectEnergyBaselineSpeed > 0 &&
-    parsedEffectFatigueHeavySlowdownStartMs >= parsedEffectFatigueSlowdownStartMs &&
-    parsedEffectFatigueStopStartMs >= parsedEffectFatigueHeavySlowdownStartMs &&
-    parsedEffectFatigueAfterRestMs <= parsedEffectFatigueStopStartMs &&
+    parsedEffectFatigueStopStartMs >= parsedEffectFatigueSlowdownStartMs &&
+    parsedEffectFatigueAfterRestMs >= 0 &&
     parsedEffectFatigueSlowMultiplier >= 0 &&
     parsedEffectFatigueSlowMultiplier <= 1 &&
     parsedEffectFatigueHeavyMultiplier >= 0 &&
@@ -5639,7 +5638,7 @@ function InventoryEditor({
                   </span>
                 </div>
               </AdminField>
-              <AdminField label="Лёгкая усталость, мс">
+              <AdminField label="Начало усталости, мс">
                 <div style={adminInventoryFieldBodyStyle}>
                   <input
                     type="text"
@@ -5648,7 +5647,7 @@ function InventoryEditor({
                     onChange={(event) => setEffectFatigueSlowdownStartMs(event.target.value)}
                   />
                   <span style={adminInventoryHintStyle}>
-                    После этого времени без энергии игрок немного замедляется.
+                    После этого времени без энергии игрок замедляется один раз.
                   </span>
                 </div>
               </AdminField>
@@ -5661,7 +5660,7 @@ function InventoryEditor({
                     onChange={(event) => setEffectFatigueHeavySlowdownStartMs(event.target.value)}
                   />
                   <span style={adminInventoryHintStyle}>
-                    После этого времени без энергии игрок замедляется сильнее.
+                    Поле совместимости. Сейчас в дуэлях не влияет на скорость.
                   </span>
                 </div>
               </AdminField>
@@ -5691,7 +5690,7 @@ function InventoryEditor({
                   </span>
                 </div>
               </AdminField>
-              <AdminField label="Усталость после отдыха, мс">
+              <AdminField label="Нормальное окно после отдыха, мс">
                 <div style={adminInventoryFieldBodyStyle}>
                   <input
                     type="text"
@@ -5700,11 +5699,11 @@ function InventoryEditor({
                     onChange={(event) => setEffectFatigueAfterRestMs(event.target.value)}
                   />
                   <span style={adminInventoryHintStyle}>
-                    До какого уровня откатывается усталость после остановки.
+                    Сколько после отдыха игрок едет нормально, если энергия всё ещё закончилась.
                   </span>
                 </div>
               </AdminField>
-              <AdminField label="Скорость при лёгкой усталости">
+              <AdminField label="Скорость при усталости">
                 <div style={adminInventoryFieldBodyStyle}>
                   <input
                     type="text"
@@ -5726,7 +5725,7 @@ function InventoryEditor({
                     onChange={(event) => setEffectFatigueHeavyMultiplier(event.target.value)}
                   />
                   <span style={adminInventoryHintStyle}>
-                    Множитель скорости перед остановкой на отдых.
+                    Поле совместимости. Сейчас в дуэлях не применяется.
                   </span>
                 </div>
               </AdminField>

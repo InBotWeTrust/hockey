@@ -302,21 +302,26 @@ function fatigueState(
   speedMultiplier: number;
   normalizedFatigueMs: number;
 } {
+  const fatigueStartAt = Math.max(0, timing.fatigueSlowdownStartMs, timing.fatigueGraceMs);
   const stopAt = Math.max(0, timing.fatigueStopStartMs);
   const stopDuration = Math.max(0, timing.fatigueStopDurationMs);
-  const afterRest = Math.min(Math.max(0, timing.fatigueAfterRestMs), stopAt);
+  const recoveryDuration = Math.max(0, timing.fatigueAfterRestMs);
   let fatigueMs = rawFatigueMs;
   let resting = false;
+  let recovering = false;
 
   if (stopDuration > 0 && fatigueMs >= stopAt) {
-    const activeSpan = Math.max(1, stopAt - afterRest);
-    const cycle = stopDuration + activeSpan;
+    const tiredSpan = Math.max(0, stopAt - fatigueStartAt);
+    const cycle = Math.max(1, stopDuration + recoveryDuration + tiredSpan);
     const phase = (fatigueMs - stopAt) % cycle;
     if (phase < stopDuration) {
       resting = true;
       fatigueMs = stopAt + phase;
+    } else if (phase < stopDuration + recoveryDuration) {
+      recovering = true;
+      fatigueMs = phase - stopDuration;
     } else {
-      fatigueMs = afterRest + (phase - stopDuration);
+      fatigueMs = fatigueStartAt + (phase - stopDuration - recoveryDuration);
     }
   }
 
@@ -329,16 +334,16 @@ function fatigueState(
       normalizedFatigueMs: Math.ceil(fatigueMs),
     };
   }
-  if (fatigueMs >= Math.max(0, timing.fatigueHeavySlowdownStartMs)) {
+  if (recovering) {
     return {
-      status: 'tired',
-      level: 'heavy',
+      status: 'normal',
+      level: 'none',
       canShoot: true,
-      speedMultiplier: timing.fatigueHeavyMultiplier,
+      speedMultiplier: 1,
       normalizedFatigueMs: Math.ceil(fatigueMs),
     };
   }
-  if (fatigueMs >= Math.max(0, timing.fatigueSlowdownStartMs, timing.fatigueGraceMs)) {
+  if (fatigueMs >= fatigueStartAt) {
     return {
       status: 'tired',
       level: 'medium',

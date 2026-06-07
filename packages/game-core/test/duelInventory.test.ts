@@ -165,7 +165,7 @@ describe('duel inventory condition', () => {
     expect(afterRecovery.shooterXOffsetPx).toBe(0);
   });
 
-  it('uses speed-adjusted accumulated fatigue after energy is gone', () => {
+  it('cycles accumulated fatigue through tired, rest, and normal recovery without heavy state', () => {
     const common = {
       seed: 'match-seed',
       userId: 'user-a',
@@ -179,9 +179,10 @@ describe('duel inventory condition', () => {
 
     const grace = getDuelPlayerCondition({ ...common, elapsedMs: 29_999 });
     const tired = getDuelPlayerCondition({ ...common, elapsedMs: 45_000 });
-    const heavy = getDuelPlayerCondition({ ...common, elapsedMs: 80_000 });
+    const formerHeavy = getDuelPlayerCondition({ ...common, elapsedMs: 80_000 });
     const stopped = getDuelPlayerCondition({ ...common, elapsedMs: 92_000 });
-    const afterRest = getDuelPlayerCondition({ ...common, elapsedMs: 96_000 });
+    const recovery = getDuelPlayerCondition({ ...common, elapsedMs: 96_000 });
+    const afterRecovery = getDuelPlayerCondition({ ...common, elapsedMs: 141_000 });
 
     expect(grace.status).toBe('normal');
     expect(grace.fatigueLevel).toBe('none');
@@ -189,17 +190,20 @@ describe('duel inventory condition', () => {
     expect(tired.status).toBe('tired');
     expect(tired.fatigueLevel).toBe('medium');
     expect(tired.shooterSpeedMultiplier).toBe(0.9);
-    expect(heavy.status).toBe('tired');
-    expect(heavy.fatigueLevel).toBe('heavy');
-    expect(heavy.shooterSpeedMultiplier).toBe(0.75);
+    expect(formerHeavy.status).toBe('tired');
+    expect(formerHeavy.fatigueLevel).toBe('medium');
+    expect(formerHeavy.shooterSpeedMultiplier).toBe(0.9);
     expect(stopped.status).toBe('exhausted_stop');
     expect(stopped.fatigueLevel).toBe('resting');
     expect(stopped.canShoot).toBe(false);
     expect(stopped.shooterSpeedMultiplier).toBe(0);
-    expect(afterRest.status).toBe('tired');
-    expect(afterRest.fatigueLevel).toBe('medium');
-    expect(afterRest.canShoot).toBe(true);
-    expect(afterRest.fatigueMs).toBe(46_000);
+    expect(recovery.status).toBe('normal');
+    expect(recovery.fatigueLevel).toBe('none');
+    expect(recovery.canShoot).toBe(true);
+    expect(recovery.shooterSpeedMultiplier).toBe(1);
+    expect(afterRecovery.status).toBe('tired');
+    expect(afterRecovery.fatigueLevel).toBe('medium');
+    expect(afterRecovery.canShoot).toBe(true);
   });
 
   it('accumulates fatigue only after selected nutrition resource is depleted', () => {
