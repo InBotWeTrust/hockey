@@ -135,7 +135,7 @@ describe('PlayView rink availability visuals', () => {
     });
   });
 
-  it('keeps an already-visible goal in place while starting an inactive rink', async () => {
+  it('locks an inactive rink start immediately while keeping the visible goal in place', async () => {
     const goalUpdate = vi.spyOn(Goal.prototype, 'update');
     const inactiveAction = vi.fn(() => null);
     render(
@@ -163,9 +163,11 @@ describe('PlayView rink availability visuals', () => {
     await screen.findByRole('button', { name: 'НАЧАТЬ' });
     goalUpdate.mockClear();
 
-    fireEvent.click(screen.getByRole('button', { name: 'НАЧАТЬ' }));
+    const startButton = screen.getByRole('button', { name: 'НАЧАТЬ' });
+    fireEvent.click(startButton);
 
     await waitFor(() => expect(goalUpdate).toHaveBeenCalled());
+    expect(startButton).toBeDisabled();
     expect(inactiveAction).not.toHaveBeenCalled();
     expect(goalUpdate).toHaveBeenCalledWith(expect.anything(), 0, 0);
     expect(goalUpdate).not.toHaveBeenCalledWith(expect.anything(), 0, -140);

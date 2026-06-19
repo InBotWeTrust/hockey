@@ -31,20 +31,6 @@ interface DailyStoreState {
   }) => Promise<{ serverResult: ShotResultType; state: DailyStateResponse } | null>;
 }
 
-function isStaleFinalShotRefresh(
-  current: DailyStateResponse | null,
-  next: DailyStateResponse,
-  shotIndex: number,
-): boolean {
-  if (!current || current.state !== 'period_active' || next.state !== 'period_active') return false;
-  if (current.day_date !== next.day_date || current.current_period !== next.current_period) {
-    return false;
-  }
-  if (shotIndex < current.shots_per_period) return false;
-  if (current.current_period_shots < current.shots_per_period) return false;
-  return next.current_period_shots < current.current_period_shots;
-}
-
 export const useDailyStore = create<DailyStoreState>()((set, get) => ({
   data: null,
   deferredState: null,
@@ -118,10 +104,9 @@ export const useDailyStore = create<DailyStoreState>()((set, get) => ({
       return { serverResult: res.server_result, state: res.state };
     } catch (err) {
       try {
-        const current = get().data;
         const data = await fetchDailyState();
         set({
-          data: isStaleFinalShotRefresh(current, data, shotIndex) ? current : data,
+          data,
           error: err instanceof Error ? err.message : 'shot failed',
         });
       } catch {

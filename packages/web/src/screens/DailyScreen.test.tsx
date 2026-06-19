@@ -246,7 +246,13 @@ beforeEach(() => {
     refreshToken: 'r',
     user: { id: 'u1', displayName: 'Tester' },
   });
-  useDailyStore.setState({ data: null, loading: false, inFlight: false, error: null });
+  useDailyStore.setState({
+    data: null,
+    deferredState: null,
+    loading: false,
+    inFlight: false,
+    error: null,
+  });
   useTrainingSessionStore.setState({ data: null, loading: false, inFlight: false, error: null });
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = input instanceof Request ? input.url : String(input);

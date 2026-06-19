@@ -101,7 +101,7 @@ describe('game session stores', () => {
     expect(startDailyPeriod).not.toHaveBeenCalled();
   });
 
-  it('does not roll back an optimistic final daily shot to a stale active state after submit fails', async () => {
+  it('rolls back an optimistic final daily shot to the latest server state after submit fails', async () => {
     const staleActiveState = {
       state: 'period_active',
       current_period: 1,
@@ -131,8 +131,8 @@ describe('game session stores', () => {
     });
 
     expect(result).toBeNull();
-    expect(useDailyStore.getState().data?.current_period_shots).toBe(30);
-    expect(useDailyStore.getState().data?.daily_total_shots).toBe(30);
+    expect(useDailyStore.getState().data?.current_period_shots).toBe(29);
+    expect(useDailyStore.getState().data?.daily_total_shots).toBe(29);
     expect(useDailyStore.getState().error).toBe('internal error');
   });
 
