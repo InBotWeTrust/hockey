@@ -59,9 +59,17 @@ export const useDailyStore = create<DailyStoreState>()((set, get) => ({
       set({ data, inFlight: false, error: null });
       return data;
     } catch (err) {
+      const message = err instanceof Error ? err.message : 'failed to start period';
+      try {
+        const data = await fetchDailyState();
+        set({ data, inFlight: false, error: message });
+        return data.state === 'idle' ? null : data;
+      } catch {
+        // Keep the original start error; the follow-up state refresh is best effort.
+      }
       set({
         inFlight: false,
-        error: err instanceof Error ? err.message : 'failed to start period',
+        error: message,
       });
       return null;
     }

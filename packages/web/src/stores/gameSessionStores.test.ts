@@ -101,6 +101,28 @@ describe('game session stores', () => {
     expect(startDailyPeriod).not.toHaveBeenCalled();
   });
 
+  it('refreshes daily state when starting a period fails because the client is stale', async () => {
+    const staleIdleState = {
+      state: 'idle',
+      current_period: 0,
+    } as unknown as DailyStateResponse;
+    const activeState = {
+      state: 'period_active',
+      current_period: 1,
+    } as unknown as DailyStateResponse;
+    vi.mocked(startDailyPeriod).mockRejectedValueOnce(new Error('already active'));
+    vi.mocked(fetchDailyState).mockResolvedValueOnce(activeState);
+    useDailyStore.setState({ data: staleIdleState, error: null });
+
+    const result = await useDailyStore.getState().startPeriod();
+
+    expect(result).toBe(activeState);
+    expect(fetchDailyState).toHaveBeenCalledTimes(1);
+    expect(useDailyStore.getState().data).toBe(activeState);
+    expect(useDailyStore.getState().error).toBe('already active');
+    expect(useDailyStore.getState().inFlight).toBe(false);
+  });
+
   it('rolls back an optimistic final daily shot to the latest server state after submit fails', async () => {
     const staleActiveState = {
       state: 'period_active',
