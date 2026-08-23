@@ -1,5 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import { GAME_CORE_VERSION, resolveShot, STICK_NEUTRAL, type ShotInput } from '@hockey/game-core';
+import {
+  GAME_CORE_VERSION,
+  GOAL_OPENING,
+  PUCK_START,
+  resolveShot,
+  STICK_NEUTRAL,
+  type ShotInput,
+} from '@hockey/game-core';
 import type { Pool, PoolClient } from 'pg';
 import { appendEvent } from '../duel/eventLog.js';
 import { getGameSettings } from '../duel/gameSettings.js';
@@ -59,6 +66,14 @@ interface BonusAttemptVersionRow {
 
 /** Stable service conflict code for the Task 7 HTTP/client error mapping. */
 export const BONUS_GAME_CORE_VERSION_MISMATCH_CODE = 'bonus_game_core_version_mismatch';
+export const BONUS_SHOT_TIME_INVALID_CODE = 'bonus_shot_time_invalid';
+export const BONUS_SHOT_TIME_STALE_CODE = 'bonus_shot_time_stale';
+
+export class BonusAttemptAlreadyActiveError extends AppError {
+  constructor(public readonly activeAttempt: { id: string; gameId: string }) {
+    super('bonus_attempt_already_active', 'another bonus attempt is already active', 409);
+  }
+}
 
 export const BONUS_GAME_CATALOG_LOCK_CLASS_ID = 0x42474d45;
 export const BONUS_GAME_CATALOG_LOCK_OBJECT_ID = 1;
@@ -301,11 +316,10 @@ export async function startOrResumeBonusAttempt(
           await client.query('commit');
           return { attempt: toBonusAttemptDto(reconciled), created: false };
         }
-        deferredError = new AppError(
-          'bonus_attempt_already_active',
-          `active bonus attempt: ${reconciled.id}`,
-          409,
-        );
+        deferredError = new BonusAttemptAlreadyActiveError({
+          id: reconciled.id,
+          gameId: reconciled.bonus_game_id,
+        });
       }
     }
 
@@ -555,6 +569,64 @@ function authoritativeShotInput(input: ShotInput, rule: BonusPeriodRule): ShotIn
   };
 }
 
+const TAP_TIME_FUTURE_TOLERANCE_MS = 2_500;
+const TAP_TIME_STALE_TOLERANCE_MS = 12_000;
+const TAP_TIME_PAUSE_ALLOWANCE_PER_SHOT_MS = 2_000;
+const SHOOTER_TIME_RELATION_TOLERANCE_MS = 250;
+
+function invalidBonusShotTime(): AppError {
+  return new AppError(BONUS_SHOT_TIME_INVALID_CODE, 'bonus shot timing is invalid', 400);
+}
+
+function assertBonusShotTimeFresh(
+  attempt: BonusGameAttemptRow,
+  previousShots: number,
+  input: ShotInput,
+  rule: BonusPeriodRule,
+  now: Date,
+): void {
+  if (
+    !Number.isFinite(input.tapTime) ||
+    input.tapTime < 0 ||
+    (input.shooterTapTime !== undefined &&
+      (!Number.isFinite(input.shooterTapTime) || input.shooterTapTime < 0))
+  ) {
+    throw invalidBonusShotTime();
+  }
+  if (attempt.period_started_at === null) {
+    throw new AppError('bonus_period_not_ready', 'active bonus period has no start time', 409);
+  }
+
+  const elapsedMs = Math.max(0, now.getTime() - attempt.period_started_at.getTime());
+  const futureLimit = elapsedMs + TAP_TIME_FUTURE_TOLERANCE_MS;
+  const staleLimit = Math.max(
+    0,
+    elapsedMs - TAP_TIME_STALE_TOLERANCE_MS - previousShots * TAP_TIME_PAUSE_ALLOWANCE_PER_SHOT_MS,
+  );
+  if (input.tapTime > futureLimit || input.tapTime < staleLimit) {
+    throw new AppError(BONUS_SHOT_TIME_STALE_CODE, 'bonus shot timing is stale', 409);
+  }
+
+  if (input.shooterTapTime === undefined) return;
+
+  // The shooter pauses at tap while the scene pauses only at impact, so each
+  // completed shot adds exactly one flight duration to their clock difference.
+  // A reload resets both local pause accumulators, which makes any whole number
+  // of flight pauses from zero through the accepted shot count possible.
+  const flightMs = (PUCK_START.y - GOAL_OPENING.y) / rule.puckSpeedPerMs;
+  const shooterLag = input.tapTime - input.shooterTapTime;
+  const nearestPauseCount = Math.round(shooterLag / flightMs);
+  const isPossiblePauseCount = nearestPauseCount >= 0 && nearestPauseCount <= previousShots;
+  const nearestExpectedLag = nearestPauseCount * flightMs;
+  if (
+    shooterLag < 0 ||
+    !isPossiblePauseCount ||
+    Math.abs(shooterLag - nearestExpectedLag) > SHOOTER_TIME_RELATION_TOLERANCE_MS
+  ) {
+    throw invalidBonusShotTime();
+  }
+}
+
 export async function submitBonusShot(
   pool: Pool,
   input: SubmitBonusShotInput,
@@ -624,6 +696,7 @@ export async function submitBonusShot(
           409,
         );
       } else {
+        assertBonusShotTimeFresh(attempt, acceptedShotCount, input.input, rule, input.now);
         const shotSeed = deriveShotSeed(
           attempt.attempt_seed,
           attempt.current_period,

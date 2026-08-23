@@ -160,10 +160,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
     return rows[0]!;
   }
 
-  async function reconcile(
-    attemptId: string,
-    now: Date,
-  ): Promise<BonusGameAttemptRow> {
+  async function reconcile(attemptId: string, now: Date): Promise<BonusGameAttemptRow> {
     const client = await pool.connect();
     try {
       await client.query('begin');
@@ -271,10 +268,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
     const next = await reconcile(created.attempt.id, new Date('2026-08-23T12:05:00Z'));
     expect(next.state).toBe('break_active');
     expect(next.break_started_at).toEqual(new Date('2026-08-23T12:05:00Z'));
-    const afterBreak = await reconcile(
-      created.attempt.id,
-      new Date('2026-08-23T12:05:31Z'),
-    );
+    const afterBreak = await reconcile(created.attempt.id, new Date('2026-08-23T12:05:31Z'));
     expect(afterBreak.state).toBe('idle');
     expect(afterBreak.current_period).toBe(1);
     expect(await periodLogs(created.attempt.id)).toMatchObject([
@@ -327,7 +321,10 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
       }),
     ).rejects.toMatchObject({
       code: 'bonus_attempt_already_active',
-      message: expect.stringContaining(active.attempt.id),
+      activeAttempt: {
+        id: active.attempt.id,
+        gameId: firstGame.id,
+      },
     });
   });
 
@@ -411,21 +408,23 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
       }),
     ).rejects.toMatchObject({ code: 'bonus_purchase_required' });
 
-    await pool.query(
-      `insert into bonus_game_economy_event
+    await pool
+      .query(
+        `insert into bonus_game_economy_event
          (user_id, bonus_game_id, kind, stars_delta,
           coins_after, stars_after, experience_after, snapshot, created_at)
        values ($1, $2, 'unlock_purchase', -2, 0, 0, 0, $3::jsonb, $4)
        returning id`,
-      [amateurId, paid.id, JSON.stringify({ priceStars: 2 }), NOW],
-    ).then(async ({ rows }) => {
-      await pool.query(
-        `insert into user_bonus_game_unlock
+        [amateurId, paid.id, JSON.stringify({ priceStars: 2 }), NOW],
+      )
+      .then(async ({ rows }) => {
+        await pool.query(
+          `insert into user_bonus_game_unlock
            (user_id, bonus_game_id, paid_price_stars, economy_event_id, unlocked_at)
          values ($1, $2, 2, $3, $4)`,
-        [amateurId, paid.id, rows[0]!.id, NOW],
-      );
-    });
+          [amateurId, paid.id, rows[0]!.id, NOW],
+        );
+      });
     await expect(
       startOrResumeBonusAttempt(pool, {
         userId: amateurId,
@@ -683,9 +682,11 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
     });
 
     expect(created.attempt).toMatchObject({ state: 'idle', currentPeriod: 0 });
-    expect(await reconcile(created.attempt.id, new Date('2026-08-23T12:01:00Z'))).toMatchObject(
-      { state: 'idle', current_period: 0, period_started_at: null },
-    );
+    expect(await reconcile(created.attempt.id, new Date('2026-08-23T12:01:00Z'))).toMatchObject({
+      state: 'idle',
+      current_period: 0,
+      period_started_at: null,
+    });
     const started = await startBonusPeriod(pool, {
       userId,
       attemptId: created.attempt.id,

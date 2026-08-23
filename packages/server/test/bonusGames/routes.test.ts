@@ -261,6 +261,30 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
     return (response.json() as { attempt: AttemptDto }).attempt;
   }
 
+  async function shotMutationSnapshot(attemptId: string) {
+    const { rows } = await pool.query<{
+      status: string;
+      state: string;
+      shots_taken: number;
+      goals: number;
+      shots: number;
+      completions: number;
+      economy_events: number;
+    }>(
+      `select attempt.status, attempt.state, attempt.shots_taken::int, attempt.goals::int,
+              (select count(*)::int from shot_session
+                where bonus_game_attempt_id = attempt.id) as shots,
+              (select count(*)::int from user_bonus_game_completion
+                where attempt_id = attempt.id) as completions,
+              (select count(*)::int from bonus_game_economy_event
+                where attempt_id = attempt.id) as economy_events
+         from bonus_game_attempt attempt
+        where attempt.id = $1`,
+      [attemptId],
+    );
+    return rows[0]!;
+  }
+
   function expectedShot(attempt: AttemptDto, tapTime = 125): 'goal' | 'save' | 'miss' {
     const rule = attempt.rules.periods[attempt.current_period - 1]!;
     const shotInput = {
@@ -497,6 +521,97 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
     expect(invalidShot.json()).toEqual({
       error: { code: 'bad_request', message: 'invalid bonus game request' },
     });
+  });
+
+  it.each([
+    {
+      name: 'JSON overflow tapTime',
+      payload: '{"claimed_shot_index":1,"input":{"tapTime":1e309},"claimed_result":"goal"}',
+      expectedCode: 'bonus_shot_time_invalid',
+      expectedStatus: 400,
+    },
+    {
+      name: 'JSON overflow shooterTapTime',
+      payload:
+        '{"claimed_shot_index":1,"input":{"tapTime":0,"shooterTapTime":1e309},"claimed_result":"goal"}',
+      expectedCode: 'bonus_shot_time_invalid',
+      expectedStatus: 400,
+    },
+    {
+      name: 'negative tapTime',
+      payload: { claimed_shot_index: 1, input: { tapTime: -1 }, claimed_result: 'goal' },
+      expectedCode: 'bonus_shot_time_invalid',
+      expectedStatus: 400,
+    },
+    {
+      name: 'negative shooterTapTime',
+      payload: {
+        claimed_shot_index: 1,
+        input: { tapTime: 0, shooterTapTime: -1 },
+        claimed_result: 'goal',
+      },
+      expectedCode: 'bonus_shot_time_invalid',
+      expectedStatus: 400,
+    },
+    {
+      name: 'stale tapTime',
+      payload: { claimed_shot_index: 1, input: { tapTime: 0 }, claimed_result: 'goal' },
+      expectedCode: 'bonus_shot_time_stale',
+      expectedStatus: 409,
+      periodAgeSeconds: 20,
+    },
+    {
+      name: 'future tapTime',
+      payload: { claimed_shot_index: 1, input: { tapTime: 100_000 }, claimed_result: 'goal' },
+      expectedCode: 'bonus_shot_time_stale',
+      expectedStatus: 409,
+    },
+    {
+      name: 'independently forged shooterTapTime',
+      payload: {
+        claimed_shot_index: 1,
+        input: { tapTime: 1_000, shooterTapTime: 0 },
+        claimed_result: 'goal',
+      },
+      expectedCode: 'bonus_shot_time_invalid',
+      expectedStatus: 400,
+    },
+  ])('rejects $name without shot, aggregate, or reward writes', async (testCase) => {
+    const longPeriod = { ...PERIODS[0]!, durationMs: 300_000 };
+    const game = await createGame({ periods: [longPeriod], targetGoals: 1 });
+    const attempt = await startAttempt(game.id);
+    await startPeriod(attempt.id);
+    if (testCase.periodAgeSeconds !== undefined) {
+      await pool.query(
+        `update bonus_game_attempt
+            set period_started_at = now() - ($2::int * interval '1 second')
+          where id = $1`,
+        [attempt.id, testCase.periodAgeSeconds],
+      );
+    }
+    const before = await shotMutationSnapshot(attempt.id);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/bonus-games/attempts/${attempt.id}/shot`,
+      headers: {
+        ...headers,
+        ...(typeof testCase.payload === 'string' ? { 'content-type': 'application/json' } : {}),
+      },
+      payload: testCase.payload,
+    });
+
+    expect(response.statusCode).toBe(testCase.expectedStatus);
+    expect(response.json()).toEqual({
+      error: {
+        code: testCase.expectedCode,
+        message:
+          testCase.expectedCode === 'bonus_shot_time_stale'
+            ? 'bonus shot timing is stale'
+            : 'bonus shot timing is invalid',
+      },
+    });
+    expect(await shotMutationSnapshot(attempt.id)).toEqual(before);
   });
 
   it('lazily reconciles GET current and persists the terminal state before returning null', async () => {

@@ -40,6 +40,7 @@ const PERIODS: BonusPeriodRule[] = [
 // the server trusts them instead of rebuilding the authoritative input.
 const GOAL_INPUT: ShotInput = {
   tapTime: 730,
+  shooterTapTime: 730,
   puckSpeedPerMs: 0.2,
   shooterFrequency: 3,
   goalieFrequency: 3,
@@ -151,11 +152,15 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
     return { id: game.rows[0]!.id, arenaId: defaultArenaId };
   }
 
-  async function createActiveAttempt(userId: string, gameId: string): Promise<string> {
+  async function createActiveAttempt(
+    userId: string,
+    gameId: string,
+    startedAt = NOW,
+  ): Promise<string> {
     const created = await startOrResumeBonusAttempt(pool, {
       userId,
       gameId,
-      now: NOW,
+      now: startedAt,
       seedSecret: SEED_SECRET,
     });
     await pool.query(
@@ -164,7 +169,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
         where id = $1`,
       [created.attempt.id, ATTEMPT_SEED],
     );
-    await startBonusPeriod(pool, { userId, attemptId: created.attempt.id, now: NOW });
+    await startBonusPeriod(pool, { userId, attemptId: created.attempt.id, now: startedAt });
     return created.attempt.id;
   }
 
@@ -287,6 +292,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
       seed: deriveShotSeed(ATTEMPT_SEED, 1, 1),
       input_payload: {
         tapTime: 730,
+        shooterTapTime: 730,
         puckSpeedPerMs: 1.2,
         shooterFrequency: 0.65,
         goalieFrequency: 0.5,
@@ -313,6 +319,129 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
       }),
     ).rejects.toMatchObject({ code: 'bonus_shot_index_mismatch', statusCode: 409 });
     expect(await countRows('shot_session', 'bonus_game_attempt_id = $1', [attemptId])).toBe(0);
+  });
+
+  it.each([
+    {
+      name: 'negative tap time',
+      shotInput: { ...GOAL_INPUT, tapTime: -1 },
+      now: SHOT_AT,
+      code: 'bonus_shot_time_invalid',
+      statusCode: 400,
+    },
+    {
+      name: 'non-finite shooter time',
+      shotInput: { ...GOAL_INPUT, shooterTapTime: Number.POSITIVE_INFINITY },
+      now: SHOT_AT,
+      code: 'bonus_shot_time_invalid',
+      statusCode: 400,
+    },
+    {
+      name: 'stale tap time',
+      shotInput: { ...GOAL_INPUT, tapTime: 0, shooterTapTime: 0 },
+      now: new Date('2026-08-23T12:00:20.000Z'),
+      code: 'bonus_shot_time_stale',
+      statusCode: 409,
+    },
+    {
+      name: 'future tap time',
+      shotInput: { ...GOAL_INPUT, tapTime: 4_000, shooterTapTime: 4_000 },
+      now: SHOT_AT,
+      code: 'bonus_shot_time_stale',
+      statusCode: 409,
+    },
+    {
+      name: 'independently forged shooter time',
+      shotInput: { ...GOAL_INPUT, shooterTapTime: 0 },
+      now: SHOT_AT,
+      code: 'bonus_shot_time_invalid',
+      statusCode: 400,
+    },
+  ])('rejects $name before any shot, aggregate, or reward mutation', async (testCase) => {
+    const userId = await createUser();
+    const game = await createGame({ targetGoals: 1 });
+    const attemptId = await createActiveAttempt(userId, game.id);
+    const before = await mutationSnapshot(userId, attemptId);
+
+    await expect(
+      submitBonusShot(pool, {
+        userId,
+        attemptId,
+        claimedShotIndex: 1,
+        input: testCase.shotInput,
+        claimedResult: 'goal',
+        now: testCase.now,
+      }),
+    ).rejects.toMatchObject({ code: testCase.code, statusCode: testCase.statusCode });
+
+    expect(await mutationSnapshot(userId, attemptId)).toEqual(before);
+  });
+
+  it('rejects a forged shooter phase after an accepted shot', async () => {
+    const userId = await createUser();
+    const game = await createGame({ targetGoals: 3 });
+    const attemptId = await createActiveAttempt(userId, game.id);
+    await submitBonusShot(pool, {
+      userId,
+      attemptId,
+      claimedShotIndex: 1,
+      input: GOAL_INPUT,
+      claimedResult: 'goal',
+      now: SHOT_AT,
+    });
+    const before = await mutationSnapshot(userId, attemptId);
+
+    await expect(
+      submitBonusShot(pool, {
+        userId,
+        attemptId,
+        claimedShotIndex: 2,
+        input: { ...GOAL_INPUT, tapTime: 2_000, shooterTapTime: 1_000 },
+        claimedResult: 'goal',
+        now: new Date('2026-08-23T12:00:02.000Z'),
+      }),
+    ).rejects.toMatchObject({ code: 'bonus_shot_time_invalid', statusCode: 400 });
+
+    expect(await mutationSnapshot(userId, attemptId)).toEqual(before);
+  });
+
+  it.each([
+    {
+      name: 'one accumulated flight pause',
+      shooterTapTime: 1_566.666_666_666_666_5,
+      claimedResult: 'miss' as const,
+    },
+    {
+      name: 'reload-reset clocks',
+      shooterTapTime: 2_000,
+      claimedResult: 'miss' as const,
+    },
+  ])('accepts $name after a previous shot', async ({ shooterTapTime, claimedResult }) => {
+    const userId = await createUser();
+    const game = await createGame({ targetGoals: 3 });
+    const attemptId = await createActiveAttempt(userId, game.id);
+    await submitBonusShot(pool, {
+      userId,
+      attemptId,
+      claimedShotIndex: 1,
+      input: GOAL_INPUT,
+      claimedResult: 'goal',
+      now: SHOT_AT,
+    });
+
+    const response = await submitBonusShot(pool, {
+      userId,
+      attemptId,
+      claimedShotIndex: 2,
+      input: { ...GOAL_INPUT, tapTime: 2_000, shooterTapTime },
+      claimedResult,
+      now: new Date('2026-08-23T12:00:02.000Z'),
+    });
+
+    expect(response).toMatchObject({
+      serverResult: claimedResult,
+      attempt: { status: 'active', state: 'period_active', shotsTaken: 2, goals: 1 },
+    });
   });
 
   it('rejects an unsupported game-core version before mutating shot or reward state', async () => {
@@ -492,7 +621,8 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
     });
     const afterFirstClear = await balances(userId);
 
-    const replayAttemptId = await createActiveAttempt(userId, game.id);
+    const replayStartedAt = new Date('2026-08-23T12:01:00.000Z');
+    const replayAttemptId = await createActiveAttempt(userId, game.id, replayStartedAt);
     const replay = await submitBonusShot(pool, {
       userId,
       attemptId: replayAttemptId,

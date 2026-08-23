@@ -8,6 +8,7 @@ import { purchaseBonusGame } from './economy.js';
 import { reconcileBonusAttempt } from './reconcile.js';
 import {
   abandonBonusAttempt,
+  BonusAttemptAlreadyActiveError,
   startBonusPeriod,
   startOrResumeBonusAttempt,
   submitBonusShot,
@@ -26,8 +27,8 @@ const shotBodySchema = z
     claimed_shot_index: z.number().int().min(1),
     input: z
       .object({
-        tapTime: z.number(),
-        shooterTapTime: z.number().optional(),
+        tapTime: z.number().finite().nonnegative(),
+        shooterTapTime: z.number().finite().nonnegative().optional(),
         puckSpeedPerMs: z.number().optional(),
         shooterFrequency: z.number().optional(),
         goalieFrequency: z.number().optional(),
@@ -85,11 +86,35 @@ const SAFE_BONUS_ERRORS: Readonly<
     statusCode: 409,
     message: 'this bonus attempt uses an unsupported game version',
   },
+  bonus_shot_time_invalid: {
+    statusCode: 400,
+    message: 'bonus shot timing is invalid',
+  },
+  bonus_shot_time_stale: {
+    statusCode: 409,
+    message: 'bonus shot timing is stale',
+  },
 };
 
 function parseRequest<T>(schema: ZodType<T>, value: unknown): T {
   const parsed = schema.safeParse(value);
   if (!parsed.success) {
+    throw new AppError('bad_request', 'invalid bonus game request', 400);
+  }
+  return parsed.data;
+}
+
+function parseShotBody(value: unknown): z.infer<typeof shotBodySchema> {
+  const parsed = shotBodySchema.safeParse(value);
+  if (!parsed.success) {
+    const hasTimeIssue = parsed.error.issues.some(
+      (issue) =>
+        issue.path[0] === 'input' &&
+        (issue.path[1] === 'tapTime' || issue.path[1] === 'shooterTapTime'),
+    );
+    if (hasTimeIssue) {
+      throw new AppError('bonus_shot_time_invalid', 'bonus shot timing is invalid', 400);
+    }
     throw new AppError('bad_request', 'invalid bonus game request', 400);
   }
   return parsed.data;
@@ -229,20 +254,6 @@ function toCatalogGameHttpDto(game: BonusGameCardDto) {
   };
 }
 
-async function findActiveAttemptSummary(
-  app: FastifyInstance,
-  userId: string,
-): Promise<{ id: string; game_id: string } | null> {
-  const { rows } = await app.pg.query<{ id: string; bonus_game_id: string }>(
-    `select id, bonus_game_id
-       from bonus_game_attempt
-      where user_id = $1 and status = 'active'`,
-    [userId],
-  );
-  const attempt = rows[0];
-  return attempt === undefined ? null : { id: attempt.id, game_id: attempt.bonus_game_id };
-}
-
 async function reconcileCurrentAttempt(
   app: FastifyInstance,
   userId: string,
@@ -285,14 +296,16 @@ async function reconcileOwnedAttempt(
   });
 }
 
-async function activeAttemptConflict(app: FastifyInstance, reply: FastifyReply, userId: string) {
-  const activeAttempt = await findActiveAttemptSummary(app, userId);
+function activeAttemptConflict(reply: FastifyReply, error: BonusAttemptAlreadyActiveError) {
   return reply.status(409).send({
     error: {
       code: 'bonus_attempt_already_active',
       message: SAFE_BONUS_ERRORS.bonus_attempt_already_active!.message,
     },
-    active_attempt: activeAttempt,
+    active_attempt: {
+      id: error.activeAttempt.id,
+      game_id: error.activeAttempt.gameId,
+    },
   });
 }
 
@@ -346,8 +359,8 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
           .status(result.created ? 201 : 200)
           .send({ attempt: toAttemptHttpDto(result.attempt, now) });
       } catch (error) {
-        if (error instanceof AppError && error.code === 'bonus_attempt_already_active') {
-          return activeAttemptConflict(app, reply, request.user.id);
+        if (error instanceof BonusAttemptAlreadyActiveError) {
+          return activeAttemptConflict(reply, error);
         }
         throwSafeBonusError(error);
       }
@@ -385,7 +398,7 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
     async (request) =>
       runBonusRoute(async () => {
         const params = parseRequest(attemptParamsSchema, request.params);
-        const body = parseRequest(shotBodySchema, request.body);
+        const body = parseShotBody(request.body);
         const now = new Date();
         const result = await submitBonusShot(app.pg, {
           userId: request.user.id,
