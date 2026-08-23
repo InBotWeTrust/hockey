@@ -97,13 +97,9 @@ const duelInventoryTimingSchema = z.object({
   nutritionStopMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.nutritionStopMs),
   energyBaselineSpeed: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.energyBaselineSpeed),
   fatigueDelayMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueDelayMs),
-  fatigueSpeedMultiplier: z
-    .number()
-    .default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueSpeedMultiplier),
+  fatigueSpeedMultiplier: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueSpeedMultiplier),
   fatigueGraceMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueGraceMs),
-  fatigueSlowdownStartMs: z
-    .number()
-    .default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueSlowdownStartMs),
+  fatigueSlowdownStartMs: z.number().default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueSlowdownStartMs),
   fatigueHeavySlowdownStartMs: z
     .number()
     .default(DEFAULT_DUEL_INVENTORY_TIMING.fatigueHeavySlowdownStartMs),
@@ -1843,8 +1839,7 @@ async function releaseRemainingInventoryReserve(
 
 function usesAccuracyTiebreaker(rules: DuelRulesSnapshot): boolean {
   return (
-    rules.duelKind === 'express' ||
-    rules.periodRules.every((rule) => rule.mode === 'time_attack')
+    rules.duelKind === 'express' || rules.periodRules.every((rule) => rule.mode === 'time_attack')
   );
 }
 
@@ -2194,6 +2189,11 @@ async function settleMatchIfReady(
     winnerUserId = b.user_id;
   } else {
     outcome = 'double_loss';
+  }
+
+  // Coin and star rewards share the global users -> currency-account lock order.
+  if (winnerUserId !== null && rules.winStarReward > 0) {
+    await client.query('select id from users where id = $1 for update', [winnerUserId]);
   }
 
   const stake = Number(match.stake_amount);

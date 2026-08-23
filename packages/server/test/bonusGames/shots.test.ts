@@ -57,6 +57,22 @@ interface BalanceRow {
   experience: number;
 }
 
+interface MutationSnapshot extends BalanceRow {
+  status: string;
+  state: string;
+  shotsTaken: number;
+  goals: number;
+  updatedAt: Date;
+  shots: number;
+  periodLogs: number;
+  completions: number;
+  arenaUnlocks: number;
+  ledgerEvents: number;
+  economyEvents: number;
+  auditEvents: number;
+  currencyAccounts: number;
+}
+
 describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards', () => {
   let pool: Pool;
   let defaultArenaId: string;
@@ -173,6 +189,68 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
     return rows[0]!.count;
   }
 
+  async function mutationSnapshot(userId: string, attemptId: string): Promise<MutationSnapshot> {
+    const { rows } = await pool.query<{
+      status: string;
+      state: string;
+      shots_taken: number;
+      goals: number;
+      updated_at: Date;
+      coins: number;
+      stars: number;
+      experience: number;
+      shots: number;
+      period_logs: number;
+      completions: number;
+      arena_unlocks: number;
+      ledger_events: number;
+      economy_events: number;
+      audit_events: number;
+      currency_accounts: number;
+    }>(
+      `select attempt.status,
+              attempt.state,
+              attempt.shots_taken::int,
+              attempt.goals::int,
+              attempt.updated_at,
+              coalesce(account.balance, 0)::int as coins,
+              users.xp::int as stars,
+              users.experience::int,
+              (select count(*)::int from shot_session where bonus_game_attempt_id = attempt.id) as shots,
+              (select count(*)::int from bonus_game_period_log where attempt_id = attempt.id) as period_logs,
+              (select count(*)::int from user_bonus_game_completion where attempt_id = attempt.id) as completions,
+              (select count(*)::int from user_arena_unlock where user_id = users.id) as arena_unlocks,
+              (select count(*)::int from currency_ledger where user_id = users.id) as ledger_events,
+              (select count(*)::int from bonus_game_economy_event where attempt_id = attempt.id) as economy_events,
+              (select count(*)::int from event_log where user_id = users.id) as audit_events,
+              (select count(*)::int from user_currency_account where user_id = users.id) as currency_accounts
+         from bonus_game_attempt attempt
+         join users on users.id = attempt.user_id
+         left join user_currency_account account on account.user_id = users.id
+        where attempt.id = $1 and users.id = $2`,
+      [attemptId, userId],
+    );
+    const snapshot = rows[0]!;
+    return {
+      status: snapshot.status,
+      state: snapshot.state,
+      shotsTaken: Number(snapshot.shots_taken),
+      goals: Number(snapshot.goals),
+      updatedAt: snapshot.updated_at,
+      coins: Number(snapshot.coins),
+      stars: Number(snapshot.stars),
+      experience: Number(snapshot.experience),
+      shots: Number(snapshot.shots),
+      periodLogs: Number(snapshot.period_logs),
+      completions: Number(snapshot.completions),
+      arenaUnlocks: Number(snapshot.arena_unlocks),
+      ledgerEvents: Number(snapshot.ledger_events),
+      economyEvents: Number(snapshot.economy_events),
+      auditEvents: Number(snapshot.audit_events),
+      currencyAccounts: Number(snapshot.currency_accounts),
+    };
+  }
+
   it('accepts the snapshot-derived result and ignores inventory and client speed overrides', async () => {
     const userId = await createUser();
     const game = await createGame({ targetGoals: 2 });
@@ -237,6 +315,37 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
     expect(await countRows('shot_session', 'bonus_game_attempt_id = $1', [attemptId])).toBe(0);
   });
 
+  it('rejects an unsupported game-core version before mutating shot or reward state', async () => {
+    const userId = await createUser();
+    const game = await createGame({ targetGoals: 1 });
+    const attemptId = await createActiveAttempt(userId, game.id);
+    await pool.query(
+      `update bonus_game_attempt
+          set game_core_version = $2
+        where id = $1`,
+      [attemptId, GAME_CORE_VERSION + 1],
+    );
+    await pool.query('delete from user_currency_account where user_id = $1', [userId]);
+    const before = await mutationSnapshot(userId, attemptId);
+
+    const [submission] = await Promise.allSettled([
+      submitBonusShot(pool, {
+        userId,
+        attemptId,
+        claimedShotIndex: 1,
+        input: GOAL_INPUT,
+        claimedResult: 'goal',
+        now: SHOT_AT,
+      }),
+    ]);
+
+    expect(await mutationSnapshot(userId, attemptId)).toEqual(before);
+    expect(submission).toMatchObject({
+      status: 'rejected',
+      reason: { code: 'bonus_game_core_version_mismatch', statusCode: 409 },
+    });
+  });
+
   it('persists mismatch audit while rejecting the unaccepted shot', async () => {
     const userId = await createUser();
     const game = await createGame({ targetGoals: 2 });
@@ -254,8 +363,8 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
     ).rejects.toMatchObject({ code: 'bonus_shot_result_mismatch', statusCode: 409 });
 
     expect(await countRows('shot_session', 'bonus_game_attempt_id = $1', [attemptId])).toBe(0);
-    const audit = await pool.query<{ payload: Record<string, unknown> }>(
-      `select payload
+    const audit = await pool.query<{ payload: Record<string, unknown>; created_at: Date }>(
+      `select payload, created_at
          from event_log
         where user_id = $1 and type = 'shot_mismatch'`,
       [userId],
@@ -268,6 +377,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
       claimed_result: 'save',
       server_result: 'goal',
     });
+    expect(audit.rows[0]?.created_at).toEqual(SHOT_AT);
   });
 
   it('completes immediately at the target and grants every first-clear value atomically', async () => {

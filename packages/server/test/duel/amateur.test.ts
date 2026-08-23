@@ -15,6 +15,7 @@ import {
   resetDatabase,
   resetRedis,
 } from '../helpers/testDb.js';
+import { waitForBlockedWriter } from '../helpers/postgresLocks.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
@@ -1228,8 +1229,11 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(settled.json().match.opponent.state).toBe('forfeit');
   });
 
-  it('settles no-show as a win for the player who completed the duel', async () => {
+  it('settles no-show after locking the star winner before currency accounts', async () => {
     const templateId = await createTemplate({ winStarReward: 7 });
+    await pool.query('update amateur_duel_template set win_currency_reward = 10 where id = $1', [
+      templateId,
+    ]);
     const created = await challenge(templateId);
     const matchId = created.json().match.id;
 
@@ -1278,12 +1282,32 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
         where id = $1`,
       [matchId],
     );
-    const settled = await app.inject({
-      method: 'POST',
-      url: `/duel/amateur/matches/${matchId}/settle`,
-      headers: auth(tokenA),
-    });
+    const blocker = await pool.connect();
+    let settled;
+    let blocked;
+    try {
+      await blocker.query('begin');
+      const blockerBackend = await blocker.query<{ pid: number }>('select pg_backend_pid() as pid');
+      await blocker.query('select id from users where id = $1 for update', [userA]);
+      const settlePromise = app.inject({
+        method: 'POST',
+        url: `/duel/amateur/matches/${matchId}/settle`,
+        headers: auth(tokenA),
+      });
+      blocked = await waitForBlockedWriter(
+        pool,
+        blockerBackend.rows[0]!.pid,
+        /select id\s+from users/i,
+      );
+      await blocker.query('commit');
+      settled = await settlePromise;
+    } finally {
+      await blocker.query('rollback').catch(() => undefined);
+      blocker.release();
+    }
     expect(settled.statusCode).toBe(200);
+    expect(blocked.accountWriteLockHeld).toBe(false);
+    expect(blocked.query).toMatch(/users/i);
     expect(settled.json().match.status).toBe('settled');
     expect(settled.json().match.winner_user_id).toBe(userA);
     expect(settled.json().match.outcome).toBe('challenger_win');

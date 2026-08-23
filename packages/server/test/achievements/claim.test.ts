@@ -14,6 +14,7 @@ import {
   resetDatabase,
   resetRedis,
 } from '../helpers/testDb.js';
+import { waitForBlockedWriter } from '../helpers/postgresLocks.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
@@ -115,6 +116,43 @@ describe.skipIf(!hasIntegrationEnv)('achievement claim routes', () => {
     expect(userRows.rows[0]).toMatchObject({ xp: 3, experience: 40 });
   });
 
+  it('waits for the users row before taking a currency-account write lock', async () => {
+    const userId = await createUser(app);
+    const token = await issueAccessToken(userId);
+    await app.pg.query(
+      `insert into user_achievements (user_id, achievement_id, completed_at)
+       values ($1, 'first-goal', now())`,
+      [userId],
+    );
+
+    const blocker = await app.pg.connect();
+    try {
+      await blocker.query('begin');
+      const blockerBackend = await blocker.query<{ pid: number }>('select pg_backend_pid() as pid');
+      await blocker.query('select id from users where id = $1 for update', [userId]);
+
+      const claimPromise = app.inject({
+        method: 'POST',
+        url: '/achievements/first-goal/claim',
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const blocked = await waitForBlockedWriter(
+        app.pg,
+        blockerBackend.rows[0]!.pid,
+        /select id\s+from users/i,
+      );
+
+      await blocker.query('commit');
+      const claim = await claimPromise;
+      expect(claim.statusCode).toBe(200);
+      expect(blocked.accountWriteLockHeld).toBe(false);
+      expect(blocked.query).toMatch(/users/i);
+    } finally {
+      await blocker.query('rollback').catch(() => undefined);
+      blocker.release();
+    }
+  });
+
   it('lists active and future achievements with status and unclaimed count', async () => {
     const userId = await createUser(app);
     const token = await issueAccessToken(userId);
@@ -142,12 +180,10 @@ describe.skipIf(!hasIntegrationEnv)('achievement claim routes', () => {
       }>;
     };
     expect(body.unclaimedCount).toBe(1);
-    expect(body.achievements.find((achievement) => achievement.id === 'first-goal')).toMatchObject(
-      {
-        status: 'completed_unclaimed',
-        isClaimable: true,
-      },
-    );
+    expect(body.achievements.find((achievement) => achievement.id === 'first-goal')).toMatchObject({
+      status: 'completed_unclaimed',
+      isClaimable: true,
+    });
     expect(body.achievements.find((achievement) => achievement.id === 'pro-ticket')).toMatchObject({
       availability: 'future',
       futureTag: 'future/pro',

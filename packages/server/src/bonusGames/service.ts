@@ -53,6 +53,13 @@ interface BonusShotRow {
   server_result: BonusShotResult;
 }
 
+interface BonusAttemptVersionRow {
+  game_core_version: number;
+}
+
+/** Stable service conflict code for the Task 7 HTTP/client error mapping. */
+export const BONUS_GAME_CORE_VERSION_MISMATCH_CODE = 'bonus_game_core_version_mismatch';
+
 export const BONUS_GAME_CATALOG_LOCK_CLASS_ID = 0x42474d45;
 export const BONUS_GAME_CATALOG_LOCK_OBJECT_ID = 1;
 
@@ -178,6 +185,33 @@ async function fetchOwnedAttempt(
     throw new AppError('bonus_attempt_not_active', 'bonus attempt is not active', 409);
   }
   return attempt;
+}
+
+async function fetchOwnedAttemptVersion(
+  client: PoolClient,
+  userId: string,
+  attemptId: string,
+): Promise<number> {
+  const { rows } = await client.query<BonusAttemptVersionRow>(
+    `select game_core_version
+       from bonus_game_attempt
+      where id = $1 and user_id = $2`,
+    [attemptId, userId],
+  );
+  const attempt = rows[0];
+  if (attempt === undefined) {
+    throw new AppError('bonus_attempt_not_active', 'bonus attempt is not active', 409);
+  }
+  return Number(attempt.game_core_version);
+}
+
+function unsupportedBonusGameCoreVersion(): AppError {
+  // There is no historical bonus resolver: never validate an old snapshot with current rules.
+  return new AppError(
+    BONUS_GAME_CORE_VERSION_MISMATCH_CODE,
+    'bonus game version is no longer supported',
+    409,
+  );
 }
 
 async function fetchStartableGame(
@@ -529,9 +563,19 @@ export async function submitBonusShot(
   let deferredError: AppError | null = null;
   let response: SubmitBonusShotResult | null = null;
   try {
+    // Read-only preflight keeps unsupported attempts free of account, shot, reward, and audit writes.
+    if (
+      (await fetchOwnedAttemptVersion(client, input.userId, input.attemptId)) !== GAME_CORE_VERSION
+    ) {
+      throw unsupportedBonusGameCoreVersion();
+    }
+
     // Keep the global economy lock order stable: users, currency account, attempt.
     let balances = await lockBonusEconomyBalances(client, input.userId, input.now);
     const owned = await fetchOwnedAttempt(client, input.userId, input.attemptId);
+    if (Number(owned.game_core_version) !== GAME_CORE_VERSION) {
+      throw unsupportedBonusGameCoreVersion();
+    }
     let attempt = await reconcileBonusAttempt(client, owned, input.now);
 
     if (attempt.status === 'completed') {
@@ -600,14 +644,20 @@ export async function submitBonusShot(
         ).type;
 
         if (input.claimedResult !== serverResult) {
-          await appendEvent(client, input.userId, 'shot_mismatch', {
-            mode: 'bonus',
-            bonus_game_attempt_id: attempt.id,
-            period_number: attempt.current_period,
-            shot_index: expectedShotIndex,
-            claimed_result: input.claimedResult,
-            server_result: serverResult,
-          });
+          await appendEvent(
+            client,
+            input.userId,
+            'shot_mismatch',
+            {
+              mode: 'bonus',
+              bonus_game_attempt_id: attempt.id,
+              period_number: attempt.current_period,
+              shot_index: expectedShotIndex,
+              claimed_result: input.claimedResult,
+              server_result: serverResult,
+            },
+            input.now,
+          );
           deferredError = new AppError(
             'bonus_shot_result_mismatch',
             'bonus shot result mismatch',

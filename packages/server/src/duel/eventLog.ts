@@ -40,10 +40,11 @@ export async function appendEvent(
   userId: string,
   type: EventType,
   payload: Record<string, unknown>,
+  createdAt?: Date,
 ): Promise<void> {
-  await conn.query('insert into event_log (user_id, type, payload) values ($1, $2, $3)', [
-    userId,
-    type,
-    JSON.stringify(payload),
-  ]);
+  await conn.query(
+    `insert into event_log (user_id, type, payload, created_at)
+     values ($1, $2, $3, coalesce($4::timestamptz, now()))`,
+    [userId, type, JSON.stringify(payload), createdAt ?? null],
+  );
 }

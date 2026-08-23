@@ -23,6 +23,18 @@ export async function grantWeeklyChallengeReward(
     throw new AppError('conflict', 'weekly challenge reward already claimed', 409);
   }
 
+  // Global economy lock order: users before user_currency_account.
+  const userResult = await client.query<{ stars: number; experience: number }>(
+    `update users
+        set stars = stars + $2,
+            experience = experience + $3
+      where id = $1
+      returning stars, experience`,
+    [input.userId, input.stars, input.experience],
+  );
+  const user = userResult.rows[0];
+  if (!user) throw new AppError('not_found', 'user not found', 404);
+
   await client.query(
     `insert into user_currency_account (user_id) values ($1) on conflict do nothing`,
     [input.userId],
@@ -37,7 +49,8 @@ export async function grantWeeklyChallengeReward(
     [input.userId, input.coins],
   );
   const account = accountResult.rows[0];
-  if (!account) throw new AppError('server_error', 'weekly challenge currency account missing', 500);
+  if (!account)
+    throw new AppError('server_error', 'weekly challenge currency account missing', 500);
 
   await client.query(
     `insert into currency_ledger
@@ -55,17 +68,6 @@ export async function grantWeeklyChallengeReward(
       }),
     ],
   );
-
-  const userResult = await client.query<{ stars: number; experience: number }>(
-    `update users
-        set stars = stars + $2,
-            experience = experience + $3
-      where id = $1
-      returning stars, experience`,
-    [input.userId, input.stars, input.experience],
-  );
-  const user = userResult.rows[0];
-  if (!user) throw new AppError('not_found', 'user not found', 404);
 
   const claimResult = await client.query<{ claimed_at: Date }>(
     `insert into weekly_challenge_reward_claims
