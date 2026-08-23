@@ -22,6 +22,7 @@ const uuid = z.string().uuid();
 const mediaKinds = ['arena', 'thumbnail', 'goalkeeper_ready', 'goalkeeper_save'] as const;
 type BonusMediaKind = (typeof mediaKinds)[number];
 type BonusMediaReferenceField = 'arena' | 'goalkeeper_ready' | 'goalkeeper_save';
+const BONUS_MEDIA_MAX_PIXELS = 2048 * 2048;
 
 const approvedStaticMediaSlugs = [
   'beach',
@@ -854,7 +855,10 @@ function cleanFileName(value: string | string[] | undefined, kind: BonusMediaKin
 
 async function isDecodableWebp(body: Buffer): Promise<boolean> {
   try {
-    const image = sharp(body, { failOn: 'warning' });
+    const image = sharp(body, {
+      failOn: 'warning',
+      limitInputPixels: BONUS_MEDIA_MAX_PIXELS,
+    });
     const metadata = await image.metadata();
     if (metadata.format !== 'webp') return false;
     await image.raw().toBuffer();
