@@ -255,6 +255,69 @@ describe.skipIf(!hasIntegrationEnv)('bonus game catalog and paid unlocks', () =>
     expect(cards[2]?.id).toBe(third.id);
   });
 
+  it('does not charge or create a paid unlock when a free active attempt becomes paid', async () => {
+    const userId = await createUser({ stars: 10 });
+    const game = await createGame({ sortOrder: 1 });
+    const attemptId = await createAttempt(userId, game);
+    await pool.query(
+      `update bonus_game
+          set access_type = 'paid', unlock_price_stars = 4
+        where id = $1`,
+      [game.id],
+    );
+
+    expect((await listBonusGameCards(pool, userId))[0]).toMatchObject({
+      state: 'in_progress',
+      active_attempt: { id: attemptId },
+    });
+    expect(await purchaseBonusGame(pool, { userId, gameId: game.id, now: NOW })).toEqual({
+      unlocked: true,
+      starBalance: 10,
+    });
+
+    const sideEffects = await pool.query<{ xp: number; unlocks: number; events: number }>(
+      `select u.xp::int as xp,
+              (select count(*)::int from user_bonus_game_unlock
+                where user_id = u.id and bonus_game_id = $2) as unlocks,
+              (select count(*)::int from bonus_game_economy_event
+                where user_id = u.id and bonus_game_id = $2) as events
+         from users u
+        where u.id = $1`,
+      [userId, game.id],
+    );
+    expect(sideEffects.rows[0]).toEqual({ xp: 10, unlocks: 0, events: 0 });
+  });
+
+  it('does not charge or create a paid unlock when a completed free game becomes paid', async () => {
+    const userId = await createUser({ stars: 10 });
+    const game = await createGame({ sortOrder: 1 });
+    await completeGame(userId, game);
+    await pool.query(
+      `update bonus_game
+          set access_type = 'paid', unlock_price_stars = 4
+        where id = $1`,
+      [game.id],
+    );
+
+    expect((await listBonusGameCards(pool, userId))[0]?.state).toBe('completed');
+    expect(await purchaseBonusGame(pool, { userId, gameId: game.id, now: NOW })).toEqual({
+      unlocked: true,
+      starBalance: 10,
+    });
+
+    const sideEffects = await pool.query<{ xp: number; unlocks: number; events: number }>(
+      `select u.xp::int as xp,
+              (select count(*)::int from user_bonus_game_unlock
+                where user_id = u.id and bonus_game_id = $2) as unlocks,
+              (select count(*)::int from bonus_game_economy_event
+                where user_id = u.id and bonus_game_id = $2) as events
+         from users u
+        where u.id = $1`,
+      [userId, game.id],
+    );
+    expect(sideEffects.rows[0]).toEqual({ xp: 10, unlocks: 0, events: 0 });
+  });
+
   it('marks every active card level locked until the amateur access rule is met', async () => {
     const beginnerId = await createUser({ level: 1, lifetimeGoals: 0 });
     const goalsQualifiedId = await createUser({ level: 1, lifetimeGoals: 300, stars: 1 });

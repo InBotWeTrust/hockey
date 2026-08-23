@@ -22,6 +22,8 @@ interface PurchasableGameRow {
   predecessor_id: string | null;
   predecessor_completed: boolean;
   unlock_id: string | null;
+  completion_id: string | null;
+  active_attempt_id: string | null;
 }
 
 async function lockUser(client: PoolClient, userId: string): Promise<LockedUserRow> {
@@ -49,7 +51,9 @@ async function fetchPurchasableGame(
             game.unlock_price_stars, game.revision,
             predecessor.id as predecessor_id,
             (predecessor_completion.id is not null) as predecessor_completed,
-            unlock.id as unlock_id
+            unlock.id as unlock_id,
+            completion.id as completion_id,
+            active_attempt.id as active_attempt_id
        from bonus_game game
        left join lateral (
          select previous.id
@@ -64,6 +68,12 @@ async function fetchPurchasableGame(
         and predecessor_completion.bonus_game_id = predecessor.id
        left join user_bonus_game_unlock unlock
          on unlock.user_id = $1 and unlock.bonus_game_id = game.id
+       left join user_bonus_game_completion completion
+         on completion.user_id = $1 and completion.bonus_game_id = game.id
+       left join bonus_game_attempt active_attempt
+         on active_attempt.user_id = $1
+        and active_attempt.bonus_game_id = game.id
+        and active_attempt.status = 'active'
       where game.id = $2`,
     [userId, gameId],
   );
@@ -102,6 +112,12 @@ export async function purchaseBonusGame(
     }
     if (game.status !== 'active') {
       throw new AppError('bonus_game_inactive', 'bonus game is inactive', 409);
+    }
+    if (game.active_attempt_id !== null || game.completion_id !== null) {
+      // `unlocked` means the stale request's access goal is already satisfied.
+      // Existing attempts/completions are grandfathered without creating a paid unlock.
+      await client.query('commit');
+      return { unlocked: true, starBalance: Number(user.xp) };
     }
     if (game.predecessor_id !== null && !game.predecessor_completed) {
       throw new AppError(
