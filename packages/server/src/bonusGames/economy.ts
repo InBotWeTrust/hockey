@@ -2,7 +2,22 @@ import type { Pool, PoolClient } from 'pg';
 import { getGameSettings } from '../duel/gameSettings.js';
 import { AppError } from '../plugins/errors.js';
 import { resolveCompetitionLevel } from '../profile/summary.js';
-import type { BonusGameAccessType } from './types.js';
+import type { BonusGameAccessType, BonusRewardSnapshot } from './types.js';
+
+export interface BalanceSnapshot {
+  coins: number;
+  stars: number;
+  experience: number;
+}
+
+export interface FirstClearRewardInput {
+  userId: string;
+  gameId: string;
+  attemptId: string;
+  reward: BonusRewardSnapshot;
+  arenaThemeId: string;
+  now: Date;
+}
 
 interface LockedUserRow {
   level: number;
@@ -10,6 +25,11 @@ interface LockedUserRow {
   xp: number;
   experience: number;
   coins: number;
+}
+
+interface LockedCurrencyAccountRow {
+  balance: number;
+  reserved_balance: number;
 }
 
 interface PurchasableGameRow {
@@ -26,19 +46,65 @@ interface PurchasableGameRow {
   active_attempt_id: string | null;
 }
 
-async function lockUser(client: PoolClient, userId: string): Promise<LockedUserRow> {
-  const { rows } = await client.query<LockedUserRow>(
-    `select u.level, u.lifetime_goals_total, u.xp, u.experience,
-            coalesce(account.balance, 0)::int as coins
-       from users u
-       left join user_currency_account account on account.user_id = u.id
-      where u.id = $1
-      for update of u`,
+async function lockCurrencyAccount(
+  client: PoolClient,
+  userId: string,
+  now: Date,
+): Promise<LockedCurrencyAccountRow> {
+  await client.query(
+    `insert into user_currency_account (user_id, created_at, updated_at)
+     values ($1, $2, $2)
+     on conflict (user_id) do nothing`,
+    [userId, now],
+  );
+  const { rows } = await client.query<LockedCurrencyAccountRow>(
+    `select balance, reserved_balance
+       from user_currency_account
+      where user_id = $1
+      for update`,
+    [userId],
+  );
+  const account = rows[0];
+  if (account === undefined) {
+    throw new AppError('internal_error', 'currency account not found', 500);
+  }
+  return account;
+}
+
+export async function lockBonusEconomyBalances(
+  client: PoolClient,
+  userId: string,
+  now: Date,
+): Promise<BalanceSnapshot> {
+  const { rows } = await client.query<{ xp: number; experience: number }>(
+    `select xp, experience
+       from users
+      where id = $1
+      for update`,
     [userId],
   );
   const user = rows[0];
   if (user === undefined) throw new AppError('not_found', 'user not found', 404);
-  return user;
+  const account = await lockCurrencyAccount(client, userId, now);
+  return {
+    coins: Number(account.balance),
+    stars: Number(user.xp),
+    experience: Number(user.experience),
+  };
+}
+
+async function lockUser(client: PoolClient, userId: string, now: Date): Promise<LockedUserRow> {
+  const { rows } = await client.query<Omit<LockedUserRow, 'coins'>>(
+    `select level, lifetime_goals_total, xp, experience
+       from users
+      where id = $1
+      for update`,
+    [userId],
+  );
+  const user = rows[0];
+  if (user === undefined) throw new AppError('not_found', 'user not found', 404);
+  const account = await lockCurrencyAccount(client, userId, now);
+  return { ...user, coins: Number(account.balance) };
 }
 
 async function fetchPurchasableGame(
@@ -91,7 +157,7 @@ export async function purchaseBonusGame(
   const client = await pool.connect();
   try {
     await client.query('begin');
-    const user = await lockUser(client, input.userId);
+    const user = await lockUser(client, input.userId, input.now);
     const [settings, game] = await Promise.all([
       getGameSettings(client),
       fetchPurchasableGame(client, input.userId, input.gameId),
@@ -189,4 +255,130 @@ export async function purchaseBonusGame(
   } finally {
     client.release();
   }
+}
+
+async function readBalanceSnapshot(client: PoolClient, userId: string): Promise<BalanceSnapshot> {
+  const { rows } = await client.query<{
+    coins: number;
+    stars: number;
+    experience: number;
+  }>(
+    `select account.balance::int as coins,
+            users.xp::int as stars,
+            users.experience::int as experience
+       from users
+       join user_currency_account account on account.user_id = users.id
+      where users.id = $1`,
+    [userId],
+  );
+  const balances = rows[0];
+  if (balances === undefined) {
+    throw new AppError('internal_error', 'locked bonus balances not found', 500);
+  }
+  return {
+    coins: Number(balances.coins),
+    stars: Number(balances.stars),
+    experience: Number(balances.experience),
+  };
+}
+
+export async function grantFirstClearReward(
+  client: PoolClient,
+  input: FirstClearRewardInput,
+): Promise<{ granted: boolean; balances: BalanceSnapshot }> {
+  const completion = await client.query<{ id: string }>(
+    `insert into user_bonus_game_completion
+       (user_id, bonus_game_id, attempt_id, reward_snapshot, completed_at)
+     values ($1, $2, $3, $4::jsonb, $5)
+     on conflict (user_id, bonus_game_id) do nothing
+     returning id`,
+    [input.userId, input.gameId, input.attemptId, JSON.stringify(input.reward), input.now],
+  );
+  const completionId = completion.rows[0]?.id;
+  if (completionId === undefined) {
+    return { granted: false, balances: await readBalanceSnapshot(client, input.userId) };
+  }
+
+  const accountResult = await client.query<LockedCurrencyAccountRow>(
+    `update user_currency_account
+        set balance = balance + $2,
+            updated_at = $3
+      where user_id = $1
+      returning balance, reserved_balance`,
+    [input.userId, input.reward.coins, input.now],
+  );
+  const account = accountResult.rows[0];
+  if (account === undefined) {
+    throw new AppError('internal_error', 'currency account not found', 500);
+  }
+
+  const userResult = await client.query<{ xp: number; experience: number }>(
+    `update users
+        set xp = xp + $2,
+            experience = experience + $3
+      where id = $1
+      returning xp, experience`,
+    [input.userId, input.reward.stars, input.reward.experience],
+  );
+  const user = userResult.rows[0];
+  if (user === undefined) throw new AppError('not_found', 'user not found', 404);
+
+  await client.query(
+    `insert into currency_ledger
+       (user_id, reason, available_delta, reserved_delta,
+        balance_after, reserved_after, metadata, created_at)
+     values ($1, 'bonus_game_reward', $2, 0, $3, $4, $5::jsonb, $6)`,
+    [
+      input.userId,
+      input.reward.coins,
+      Number(account.balance),
+      Number(account.reserved_balance),
+      JSON.stringify({
+        bonus_game_id: input.gameId,
+        bonus_game_attempt_id: input.attemptId,
+        stars: input.reward.stars,
+        experience: input.reward.experience,
+      }),
+      input.now,
+    ],
+  );
+  await client.query(
+    `insert into user_arena_unlock
+       (user_id, arena_theme_id, source_type, source_bonus_game_id,
+        source_completion_id, unlocked_at)
+     values ($1, $2, 'bonus_game', $3, $4, $5)
+     on conflict (user_id, arena_theme_id) do nothing`,
+    [input.userId, input.arenaThemeId, input.gameId, completionId, input.now],
+  );
+  await client.query(
+    `insert into bonus_game_economy_event
+       (user_id, bonus_game_id, attempt_id, kind,
+        coins_delta, stars_delta, experience_delta,
+        coins_after, stars_after, experience_after, snapshot, created_at)
+     values ($1, $2, $3, 'first_clear_reward',
+             $4, $5, $6,
+             $7, $8, $9, $10::jsonb, $11)`,
+    [
+      input.userId,
+      input.gameId,
+      input.attemptId,
+      input.reward.coins,
+      input.reward.stars,
+      input.reward.experience,
+      Number(account.balance),
+      Number(user.xp),
+      Number(user.experience),
+      JSON.stringify(input.reward),
+      input.now,
+    ],
+  );
+
+  return {
+    granted: true,
+    balances: {
+      coins: Number(account.balance),
+      stars: Number(user.xp),
+      experience: Number(user.experience),
+    },
+  };
 }

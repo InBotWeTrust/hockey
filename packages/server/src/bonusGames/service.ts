@@ -1,17 +1,25 @@
 import { randomUUID } from 'node:crypto';
-import { GAME_CORE_VERSION } from '@hockey/game-core';
+import { GAME_CORE_VERSION, resolveShot, STICK_NEUTRAL, type ShotInput } from '@hockey/game-core';
 import type { Pool, PoolClient } from 'pg';
+import { appendEvent } from '../duel/eventLog.js';
 import { getGameSettings } from '../duel/gameSettings.js';
-import { deriveBonusAttemptSeed } from '../duel/seed.js';
+import { deriveBonusAttemptSeed, deriveShotSeed } from '../duel/seed.js';
 import { AppError } from '../plugins/errors.js';
 import { resolveCompetitionLevel } from '../profile/summary.js';
+import {
+  grantFirstClearReward,
+  lockBonusEconomyBalances,
+  type BalanceSnapshot,
+} from './economy.js';
 import { closeBonusPeriod, reconcileBonusAttempt } from './reconcile.js';
 import {
+  buildBonusGoalieConfig,
   parseBonusPeriodRules,
   type BonusArenaSnapshot,
   type BonusGameAccessType,
   type BonusGameAttemptDTO,
   type BonusGameAttemptRow,
+  type BonusRewardSnapshot,
   type BonusGameStatus,
   type BonusPeriodRule,
 } from './types.js';
@@ -19,6 +27,30 @@ import {
 interface LockedUserRow {
   level: number;
   lifetime_goals_total: number;
+}
+
+type BonusShotResult = 'goal' | 'save' | 'miss';
+
+export interface SubmitBonusShotInput {
+  userId: string;
+  attemptId: string;
+  claimedShotIndex: number;
+  input: ShotInput;
+  claimedResult: BonusShotResult;
+  now: Date;
+}
+
+export interface SubmitBonusShotResult {
+  serverResult: BonusShotResult;
+  attempt: BonusGameAttemptDTO;
+  rewardGranted: BonusRewardSnapshot | null;
+  balances: BalanceSnapshot;
+}
+
+interface BonusShotRow {
+  period_number: number;
+  shot_index: number;
+  server_result: BonusShotResult;
 }
 
 export const BONUS_GAME_CATALOG_LOCK_CLASS_ID = 0x42474d45;
@@ -264,11 +296,7 @@ export async function startOrResumeBonusAttempt(
           409,
         );
       }
-      if (
-        game.access_type === 'paid' &&
-        game.unlock_id === null &&
-        game.completion_id === null
-      ) {
+      if (game.access_type === 'paid' && game.unlock_id === null && game.completion_id === null) {
         throw new AppError('bonus_purchase_required', 'bonus game purchase required', 409);
       }
 
@@ -364,11 +392,7 @@ export async function startBonusPeriod(
     const owned = await fetchOwnedAttempt(client, input.userId, input.attemptId);
     const attempt = await reconcileBonusAttempt(client, owned, input.now);
     if (attempt.status !== 'active') {
-      deferredError = new AppError(
-        'bonus_attempt_not_active',
-        'bonus attempt is not active',
-        409,
-      );
+      deferredError = new AppError('bonus_attempt_not_active', 'bonus attempt is not active', 409);
     } else if (
       attempt.state !== 'idle' ||
       attempt.current_period >= attempt.rules_snapshot.totalPeriods
@@ -407,11 +431,7 @@ export async function abandonBonusAttempt(
     const owned = await fetchOwnedAttempt(client, input.userId, input.attemptId);
     const attempt = await reconcileBonusAttempt(client, owned, input.now);
     if (attempt.status !== 'active') {
-      deferredError = new AppError(
-        'bonus_attempt_not_active',
-        'bonus attempt is not active',
-        409,
-      );
+      deferredError = new AppError('bonus_attempt_not_active', 'bonus attempt is not active', 409);
     } else {
       if (attempt.state === 'period_active') {
         await closeBonusPeriod(client, attempt, input.now, 'attempt_abandoned');
@@ -434,4 +454,236 @@ export async function abandonBonusAttempt(
   client.release();
   if (deferredError !== null) throw deferredError;
   return result!;
+}
+
+async function fetchAcceptedBonusShot(
+  client: PoolClient,
+  attemptId: string,
+  periodNumber: number,
+  shotIndex: number,
+): Promise<BonusShotRow | null> {
+  const { rows } = await client.query<BonusShotRow>(
+    `select period_number, shot_index, server_result
+       from shot_session
+      where mode = 'bonus'
+        and bonus_game_attempt_id = $1
+        and period_number = $2
+        and shot_index = $3
+      order by id
+      limit 1`,
+    [attemptId, periodNumber, shotIndex],
+  );
+  return rows[0] ?? null;
+}
+
+async function countBonusPeriodShots(
+  client: PoolClient,
+  attemptId: string,
+  periodNumber: number,
+): Promise<number> {
+  const { rows } = await client.query<{ count: number }>(
+    `select count(*)::int as count
+       from shot_session
+      where mode = 'bonus'
+        and bonus_game_attempt_id = $1
+        and period_number = $2`,
+    [attemptId, periodNumber],
+  );
+  return Number(rows[0]!.count);
+}
+
+function periodRuleForAttempt(attempt: BonusGameAttemptRow): BonusPeriodRule {
+  let periods: BonusPeriodRule[];
+  try {
+    periods = parseBonusPeriodRules(
+      attempt.rules_snapshot.periods,
+      attempt.rules_snapshot.totalPeriods,
+      attempt.rules_snapshot.targetGoals,
+    );
+  } catch {
+    throw new AppError('internal_error', 'invalid bonus attempt rules snapshot', 500);
+  }
+  const period = periods[attempt.current_period - 1];
+  if (period === undefined) {
+    throw new AppError('internal_error', 'active bonus period is outside its snapshot', 500);
+  }
+  return period;
+}
+
+function authoritativeShotInput(input: ShotInput, rule: BonusPeriodRule): ShotInput {
+  return {
+    tapTime: input.tapTime,
+    ...(input.shooterTapTime !== undefined ? { shooterTapTime: input.shooterTapTime } : {}),
+    puckSpeedPerMs: rule.puckSpeedPerMs,
+    shooterFrequency: rule.shooterFrequency,
+    goalieFrequency: rule.goalieFrequency,
+    goalFrequency: rule.goalFrequency,
+  };
+}
+
+export async function submitBonusShot(
+  pool: Pool,
+  input: SubmitBonusShotInput,
+): Promise<SubmitBonusShotResult> {
+  const client = await begin(pool);
+  let deferredError: AppError | null = null;
+  let response: SubmitBonusShotResult | null = null;
+  try {
+    // Keep the global economy lock order stable: users, currency account, attempt.
+    let balances = await lockBonusEconomyBalances(client, input.userId, input.now);
+    const owned = await fetchOwnedAttempt(client, input.userId, input.attemptId);
+    let attempt = await reconcileBonusAttempt(client, owned, input.now);
+
+    if (attempt.status === 'completed') {
+      const accepted = await fetchAcceptedBonusShot(
+        client,
+        attempt.id,
+        attempt.current_period,
+        input.claimedShotIndex,
+      );
+      if (accepted !== null) {
+        response = {
+          serverResult: accepted.server_result,
+          attempt: toBonusAttemptDto(attempt),
+          rewardGranted: null,
+          balances,
+        };
+      } else {
+        deferredError = new AppError(
+          'bonus_attempt_not_active',
+          'bonus attempt is not active',
+          409,
+        );
+      }
+    } else if (attempt.status !== 'active') {
+      deferredError = new AppError('bonus_attempt_not_active', 'bonus attempt is not active', 409);
+    } else if (attempt.state !== 'period_active') {
+      deferredError = new AppError('bonus_period_not_ready', 'bonus period is not active', 409);
+    } else {
+      const rule = periodRuleForAttempt(attempt);
+      const acceptedShotCount = await countBonusPeriodShots(
+        client,
+        attempt.id,
+        attempt.current_period,
+      );
+      const expectedShotIndex = acceptedShotCount + 1;
+      if (input.claimedShotIndex !== expectedShotIndex) {
+        deferredError = new AppError(
+          'bonus_shot_index_mismatch',
+          `bonus shot index mismatch: expected ${expectedShotIndex}`,
+          409,
+        );
+      } else if (acceptedShotCount >= rule.shotsLimit) {
+        deferredError = new AppError(
+          'bonus_period_not_ready',
+          'bonus period shot quota is exhausted',
+          409,
+        );
+      } else {
+        const shotSeed = deriveShotSeed(
+          attempt.attempt_seed,
+          attempt.current_period,
+          expectedShotIndex,
+        );
+        const shotInput = authoritativeShotInput(input.input, rule);
+        const goalie = buildBonusGoalieConfig(
+          attempt.rules_snapshot.slug,
+          attempt.rules_snapshot.title,
+          rule,
+        );
+        const serverResult = resolveShot(
+          shotInput,
+          goalie,
+          shotSeed,
+          expectedShotIndex,
+          STICK_NEUTRAL,
+        ).type;
+
+        if (input.claimedResult !== serverResult) {
+          await appendEvent(client, input.userId, 'shot_mismatch', {
+            mode: 'bonus',
+            bonus_game_attempt_id: attempt.id,
+            period_number: attempt.current_period,
+            shot_index: expectedShotIndex,
+            claimed_result: input.claimedResult,
+            server_result: serverResult,
+          });
+          deferredError = new AppError(
+            'bonus_shot_result_mismatch',
+            'bonus shot result mismatch',
+            409,
+          );
+        } else {
+          await client.query(
+            `insert into shot_session
+               (user_id, mode, bonus_game_attempt_id, period_number, shot_index,
+                seed, input_payload, server_result, game_core_version, created_at)
+             values ($1, 'bonus', $2, $3, $4,
+                     $5, $6::jsonb, $7, $8, $9)`,
+            [
+              input.userId,
+              attempt.id,
+              attempt.current_period,
+              expectedShotIndex,
+              shotSeed,
+              JSON.stringify(shotInput),
+              serverResult,
+              attempt.game_core_version,
+              input.now,
+            ],
+          );
+          const updated = await client.query<BonusGameAttemptRow>(
+            `update bonus_game_attempt
+                set shots_taken = shots_taken + 1,
+                    goals = goals + $2,
+                    updated_at = $3
+              where id = $1
+              returning *`,
+            [attempt.id, serverResult === 'goal' ? 1 : 0, input.now],
+          );
+          attempt = updated.rows[0]!;
+
+          let rewardGranted: BonusRewardSnapshot | null = null;
+          if (attempt.goals >= attempt.rules_snapshot.targetGoals) {
+            await closeBonusPeriod(client, attempt, input.now, 'target_reached');
+            const reward = await grantFirstClearReward(client, {
+              userId: input.userId,
+              gameId: attempt.bonus_game_id,
+              attemptId: attempt.id,
+              reward: attempt.reward_snapshot,
+              arenaThemeId: attempt.arena_theme_id_snapshot,
+              now: input.now,
+            });
+            balances = reward.balances;
+            rewardGranted = reward.granted ? attempt.reward_snapshot : null;
+            const completed = await client.query<BonusGameAttemptRow>(
+              `update bonus_game_attempt
+                  set status = 'completed', state = 'closed', closed_at = $1,
+                      period_started_at = null, break_started_at = null, updated_at = $1
+                where id = $2
+                returning *`,
+              [input.now, attempt.id],
+            );
+            attempt = completed.rows[0]!;
+          }
+
+          response = {
+            serverResult,
+            attempt: toBonusAttemptDto(attempt),
+            rewardGranted,
+            balances,
+          };
+        }
+      }
+    }
+
+    await client.query('commit');
+  } catch (error) {
+    await client.query('rollback').catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+  if (deferredError !== null) throw deferredError;
+  return response!;
 }
