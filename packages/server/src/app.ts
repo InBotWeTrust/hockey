@@ -23,6 +23,7 @@ import { adminRoutes } from './admin/routes.js';
 import { pushRoutes } from './push/routes.js';
 import { pushSchedulerPlugin } from './plugins/pushScheduler.js';
 import { createObjectStorageClient } from './storage/objectStorage.js';
+import { arenaRoutes } from './arenas/routes.js';
 
 export interface BuildAppOptions {
   config?: AppConfig;
@@ -98,6 +99,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await app.register(achievementRoutes);
   await app.register(feedbackRoutes);
   await app.register(meRoutes);
+  await app.register(arenaRoutes);
   await app.register(inventoryRoutes);
   await app.register(
     mediaRoutes,
