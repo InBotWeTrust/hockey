@@ -16,6 +16,7 @@ import { deleteChannelPost, updateChannelPostContent } from '../chat/channel.js'
 import { publishMessageDeleted, publishMessageUpdated } from '../chat/events.js';
 import { DEFAULT_NEWS_CHANNEL_SLUG } from '../chat/service.js';
 import { registerWeeklyChallengeAdminRoutes } from '../weeklyChallenge/admin.js';
+import { registerBonusGameAdminRoutes } from '../bonusGames/admin.js';
 import { createMediaObjectKey, type ObjectStorageClient } from '../storage/objectStorage.js';
 import { createMediaProxyUrl } from '../storage/mediaAccess.js';
 import {
@@ -1923,13 +1924,11 @@ async function fetchAdminFeedbackById(
 }
 
 export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, opts) => {
-  await registerWeeklyChallengeAdminRoutes(app);
-
   app.addContentTypeParser(
-    /^image\/webp$/i,
+    /^image\/(?:webp|png|jpeg)$/i,
     {
       parseAs: 'buffer',
-      bodyLimit: adminChatAvatarMaxBytes,
+      bodyLimit: opts.objectStorage?.maxUploadBytes ?? adminChatAvatarMaxBytes,
     },
     (_req, body, done) => done(null, body),
   );
@@ -1938,6 +1937,18 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
     app.authenticate,
     async (req: FastifyRequest) => requireAdmin(app, req),
   ];
+
+  await registerWeeklyChallengeAdminRoutes(app);
+  await registerBonusGameAdminRoutes(
+    app,
+    opts.objectStorage !== undefined
+      ? {
+          preHandlers: adminPreHandlers,
+          objectStorage: opts.objectStorage,
+          mediaAccessSecret: opts.mediaAccessSecret,
+        }
+      : { preHandlers: adminPreHandlers, mediaAccessSecret: opts.mediaAccessSecret },
+  );
 
   app.get('/admin/summary', { preHandler: adminPreHandlers }, async (req) => {
     const parsed = dashboardPeriodQuerySchema.safeParse(req.query);
