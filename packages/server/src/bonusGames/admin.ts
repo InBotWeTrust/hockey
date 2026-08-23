@@ -1,6 +1,7 @@
 import { Buffer } from 'node:buffer';
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
 import type { PoolClient } from 'pg';
+import sharp from 'sharp';
 import { z } from 'zod';
 import { AppError } from '../plugins/errors.js';
 import { createMediaProxyUrl } from '../storage/mediaAccess.js';
@@ -20,6 +21,30 @@ import {
 const uuid = z.string().uuid();
 const mediaKinds = ['arena', 'thumbnail', 'goalkeeper_ready', 'goalkeeper_save'] as const;
 type BonusMediaKind = (typeof mediaKinds)[number];
+type BonusMediaReferenceField = 'arena' | 'goalkeeper_ready' | 'goalkeeper_save';
+
+const approvedStaticMediaSlugs = [
+  'beach',
+  'ski-resort',
+  'cyberpunk-yard',
+  'abandoned-waterpark',
+  'pirate-bay',
+  'north-pole',
+  'desert',
+  'volcanic-ice',
+  'castle',
+  'space',
+] as const;
+
+const approvedStaticMediaPaths = {
+  arena: new Set(approvedStaticMediaSlugs.map((slug) => `/bonus-games/arenas/${slug}.webp`)),
+  goalkeeper_ready: new Set(
+    approvedStaticMediaSlugs.map((slug) => `/bonus-games/goalkeepers/${slug}-ready.webp`),
+  ),
+  goalkeeper_save: new Set(
+    approvedStaticMediaSlugs.map((slug) => `/bonus-games/goalkeepers/${slug}-save.webp`),
+  ),
+} satisfies Record<BonusMediaReferenceField, ReadonlySet<string>>;
 
 const slug = z
   .string()
@@ -529,18 +554,17 @@ function revisionFingerprint(definition: MutableDefinition, arena: ArenaRow): st
   });
 }
 
-function isCommittedStaticMediaPath(value: string): boolean {
-  return /^\/bonus-games\/(?:[A-Za-z0-9][A-Za-z0-9_-]*\/)*[A-Za-z0-9][A-Za-z0-9_-]*\.webp$/.test(
-    value,
-  );
+function isCommittedStaticMediaPath(value: string, field: BonusMediaReferenceField): boolean {
+  return approvedStaticMediaPaths[field].has(value);
 }
 
 async function isValidMediaReference(
   client: PoolClient,
   value: string,
   mediaAccessSecret: string,
+  field: BonusMediaReferenceField,
 ): Promise<boolean> {
-  if (isCommittedStaticMediaPath(value)) return true;
+  if (isCommittedStaticMediaPath(value, field)) return true;
 
   const match = /^\/api\/media\/([0-9a-f-]{36})\?t=([A-Za-z0-9_-]+)$/i.exec(value);
   const mediaId = match?.[1];
@@ -578,14 +602,14 @@ async function assertActiveDefinitionComplete(
   }
 
   parsePeriods(definition.periods, definition.totalPeriods, definition.targetGoals, true);
-  const mediaReferences = [
-    arena.artwork_url,
-    arena.thumbnail_url,
-    definition.goalkeeperReadyUrl,
-    definition.goalkeeperSaveUrl,
+  const mediaReferences: Array<[string, BonusMediaReferenceField]> = [
+    [arena.artwork_url, 'arena'],
+    [arena.thumbnail_url, 'arena'],
+    [definition.goalkeeperReadyUrl, 'goalkeeper_ready'],
+    [definition.goalkeeperSaveUrl, 'goalkeeper_save'],
   ];
-  for (const reference of mediaReferences) {
-    if (!(await isValidMediaReference(client, reference, mediaAccessSecret))) {
+  for (const [reference, field] of mediaReferences) {
+    if (!(await isValidMediaReference(client, reference, mediaAccessSecret, field))) {
       throw incompleteDefinition();
     }
   }
@@ -828,29 +852,19 @@ function cleanFileName(value: string | string[] | undefined, kind: BonusMediaKin
   return cleaned.length > 0 ? cleaned : `${kind}.webp`;
 }
 
-function isStructurallyValidWebp(body: Buffer): boolean {
-  if (body.byteLength < 20) return false;
-  if (body.toString('ascii', 0, 4) !== 'RIFF') return false;
-  if (body.readUInt32LE(4) !== body.byteLength - 8) return false;
-  if (body.toString('ascii', 8, 12) !== 'WEBP') return false;
-
-  const chunkKind = body.toString('ascii', 12, 16);
-  const chunkSize = body.readUInt32LE(16);
-  const paddedChunkSize = chunkSize + (chunkSize % 2);
-  if (20 + paddedChunkSize > body.byteLength) return false;
-
-  if (chunkKind === 'VP8X') return chunkSize === 10;
-  if (chunkKind === 'VP8L') return chunkSize >= 5 && body[20] === 0x2f;
-  return (
-    chunkKind === 'VP8 ' &&
-    chunkSize >= 10 &&
-    body[23] === 0x9d &&
-    body[24] === 0x01 &&
-    body[25] === 0x2a
-  );
+async function isDecodableWebp(body: Buffer): Promise<boolean> {
+  try {
+    const image = sharp(body, { failOn: 'warning' });
+    const metadata = await image.metadata();
+    if (metadata.format !== 'webp') return false;
+    await image.raw().toBuffer();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-function uploadBody(body: unknown, contentType: string, maxBytes: number): Buffer {
+async function uploadBody(body: unknown, contentType: string, maxBytes: number): Promise<Buffer> {
   if (contentType !== 'image/webp') {
     throw new AppError('unsupported_media_type', 'bonus game media must be WebP', 415);
   }
@@ -860,7 +874,7 @@ function uploadBody(body: unknown, contentType: string, maxBytes: number): Buffe
   if (body.byteLength > maxBytes) {
     throw new AppError('payload_too_large', 'bonus game media is too large', 413);
   }
-  if (!isStructurallyValidWebp(body)) {
+  if (!(await isDecodableWebp(body))) {
     throw new AppError('invalid_webp', 'invalid WebP body', 415);
   }
   return body;
@@ -930,7 +944,11 @@ export async function registerBonusGameAdminRoutes(
       }
       const { kind } = parseBody(mediaParamsSchema, request.params, 'invalid bonus media kind');
       const contentType = normalizeContentType(request.headers['content-type']);
-      const body = uploadBody(request.body, contentType, options.objectStorage.maxUploadBytes);
+      const body = await uploadBody(
+        request.body,
+        contentType,
+        options.objectStorage.maxUploadBytes,
+      );
       const originalName = cleanFileName(request.headers['x-file-name'], kind);
       const key = createMediaObjectKey({
         prefix: `bonus-games/${mediaPrefix[kind]}`,

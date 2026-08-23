@@ -40,7 +40,39 @@ const PERIODS: BonusPeriodRule[] = [
   },
 ];
 
+const APPROVED_STATIC_SLUGS = [
+  'beach',
+  'ski-resort',
+  'cyberpunk-yard',
+  'abandoned-waterpark',
+  'pirate-bay',
+  'north-pole',
+  'desert',
+  'volcanic-ice',
+  'castle',
+  'space',
+] as const;
+
+type ApprovedStaticSlug = (typeof APPROVED_STATIC_SLUGS)[number];
+
+function committedMedia(slug: ApprovedStaticSlug) {
+  return {
+    arena: {
+      slug: `${slug}-arena`,
+      title: `${slug} arena`,
+      artworkUrl: `/bonus-games/arenas/${slug}.webp`,
+      thumbnailUrl: `/bonus-games/arenas/${slug}.webp`,
+    },
+    goalkeeperReadyUrl: `/bonus-games/goalkeepers/${slug}-ready.webp`,
+    goalkeeperSaveUrl: `/bonus-games/goalkeepers/${slug}-save.webp`,
+  };
+}
+
 function validWebpBytes(): Buffer {
+  return Buffer.from('UklGRh4AAABXRUJQVlA4TBEAAAAvAUAAAAdQkTIUp/+BiOh/AAA=', 'base64');
+}
+
+function headerOnlyVp8lBytes(): Buffer {
   const body = Buffer.alloc(26);
   body.write('RIFF', 0, 'ascii');
   body.writeUInt32LE(body.byteLength - 8, 4);
@@ -48,6 +80,16 @@ function validWebpBytes(): Buffer {
   body.write('VP8L', 12, 'ascii');
   body.writeUInt32LE(5, 16);
   body[20] = 0x2f;
+  return body;
+}
+
+function vp8xWithoutImageChunkBytes(): Buffer {
+  const body = Buffer.alloc(30);
+  body.write('RIFF', 0, 'ascii');
+  body.writeUInt32LE(body.byteLength - 8, 4);
+  body.write('WEBP', 8, 'ascii');
+  body.write('VP8X', 12, 'ascii');
+  body.writeUInt32LE(10, 16);
   return body;
 }
 
@@ -287,27 +329,13 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
     expect(missingMedia.statusCode).toBe(409);
     expect(missingMedia.json().error.code).toBe('bonus_game_incomplete');
 
-    const validMedia = {
-      arena: {
-        artworkUrl: '/bonus-games/arenas/one.webp',
-        thumbnailUrl: '/bonus-games/arenas/one-thumb.webp',
-      },
-      goalkeeperReadyUrl: '/bonus-games/goalkeepers/one-ready.webp',
-      goalkeeperSaveUrl: '/bonus-games/goalkeepers/one-save.webp',
-    };
+    const validMedia = committedMedia('beach');
     await patchGame(incomplete.id, validMedia);
     await patchGame(incomplete.id, { status: 'active' });
 
     const gap = await createGame({
       sortOrder: 3,
-      arena: {
-        slug: 'gap-arena',
-        title: 'Gap arena',
-        artworkUrl: '/bonus-games/arenas/gap.webp',
-        thumbnailUrl: '/bonus-games/arenas/gap-thumb.webp',
-      },
-      goalkeeperReadyUrl: '/bonus-games/goalkeepers/gap-ready.webp',
-      goalkeeperSaveUrl: '/bonus-games/goalkeepers/gap-save.webp',
+      ...committedMedia('ski-resort'),
     });
     const invalidOrder = await app.inject({
       method: 'PATCH',
@@ -320,15 +348,15 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
   });
 
   it('rejects unsafe media schemes during activation', async () => {
+    const safeMedia = committedMedia('beach');
     const game = await createGame({
+      ...safeMedia,
       arena: {
+        ...safeMedia.arena,
         slug: 'unsafe-arena',
         title: 'Unsafe arena',
-        artworkUrl: '/bonus-games/arenas/safe.webp',
-        thumbnailUrl: '/bonus-games/arenas/safe-thumb.webp',
       },
       goalkeeperReadyUrl: 'javascript:keeper.webp',
-      goalkeeperSaveUrl: '/bonus-games/goalkeepers/safe-save.webp',
     });
 
     const response = await app.inject({
@@ -343,12 +371,15 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
 
   it('accepts only canonical committed or signed media paths during activation', async () => {
     const uploaded = await uploadMedia('arena');
+    const safeMedia = committedMedia('beach');
     const invalidReferences = [
       'http://cdn.example.test/bonus-games/arena.webp',
       'https://evil.example/bonus-games/arena.webp',
       '//evil.example/bonus-games/arena.webp',
       'relative/arena.webp',
       '/other/arena.webp',
+      '/bonus-games/arbitrary/missing.webp',
+      '/bonus-games/arenas/missing.webp',
       '/bonus-games/../private/arena.webp',
       '/bonus-games/arena.webp?cache=1',
       '/bonus-games/arena.webp#fragment',
@@ -362,13 +393,13 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
       const game = await createGame({
         sortOrder: 1,
         arena: {
+          ...safeMedia.arena,
           slug: `invalid-media-arena-${index}`,
           title: `Invalid media arena ${index}`,
           artworkUrl: invalidReference,
-          thumbnailUrl: '/bonus-games/arenas/safe-thumb.webp',
         },
-        goalkeeperReadyUrl: '/bonus-games/goalkeepers/safe-ready.webp',
-        goalkeeperSaveUrl: '/bonus-games/goalkeepers/safe-save.webp',
+        goalkeeperReadyUrl: safeMedia.goalkeeperReadyUrl,
+        goalkeeperSaveUrl: safeMedia.goalkeeperSaveUrl,
       });
       const response = await app.inject({
         method: 'PATCH',
@@ -380,8 +411,68 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
       expect(response.json().error.code, invalidReference).toBe('bonus_game_incomplete');
     }
 
+    const wrongFieldCases = [
+      {
+        label: 'goalkeeper path in arena artwork',
+        media: {
+          ...safeMedia,
+          arena: {
+            ...safeMedia.arena,
+            artworkUrl: '/bonus-games/goalkeepers/beach-ready.webp',
+          },
+        },
+      },
+      {
+        label: 'goalkeeper path in arena thumbnail',
+        media: {
+          ...safeMedia,
+          arena: {
+            ...safeMedia.arena,
+            thumbnailUrl: '/bonus-games/goalkeepers/beach-save.webp',
+          },
+        },
+      },
+      {
+        label: 'arena path in goalkeeper ready',
+        media: {
+          ...safeMedia,
+          goalkeeperReadyUrl: '/bonus-games/arenas/beach.webp',
+        },
+      },
+      {
+        label: 'ready path in goalkeeper save',
+        media: {
+          ...safeMedia,
+          goalkeeperSaveUrl: '/bonus-games/goalkeepers/beach-ready.webp',
+        },
+      },
+    ];
+    for (const [index, { label, media }] of wrongFieldCases.entries()) {
+      const game = await createGame({
+        sortOrder: 1,
+        ...media,
+        arena: {
+          ...media.arena,
+          slug: `wrong-field-arena-${index}`,
+          title: `Wrong field arena ${index}`,
+        },
+      });
+      const response = await app.inject({
+        method: 'PATCH',
+        url: `/admin/bonus-games/${game.id}`,
+        headers: adminHeaders,
+        payload: { status: 'active' },
+      });
+      expect(response.statusCode, label).toBe(409);
+      expect(response.json().error.code, label).toBe('bonus_game_incomplete');
+    }
+
+    const committed = await createGame({ sortOrder: 1, ...safeMedia });
+    const committedActivation = await patchGame(committed.id, { status: 'active' });
+    expect(committedActivation.status).toBe('active');
+
     const signed = await createGame({
-      sortOrder: 1,
+      sortOrder: 2,
       arena: {
         slug: 'signed-media-arena',
         title: 'Signed media arena',
@@ -398,14 +489,7 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
   it('rejects in-place edits of an arena shared with another bonus game', async () => {
     const active = await createGame({
       status: 'active',
-      arena: {
-        slug: 'shared-arena',
-        title: 'Shared arena',
-        artworkUrl: '/bonus-games/arenas/shared.webp',
-        thumbnailUrl: '/bonus-games/arenas/shared-thumb.webp',
-      },
-      goalkeeperReadyUrl: '/bonus-games/goalkeepers/shared-ready.webp',
-      goalkeeperSaveUrl: '/bonus-games/goalkeepers/shared-save.webp',
+      ...committedMedia('beach'),
     });
     const draft = await createGame({
       arena: undefined,
@@ -446,14 +530,7 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
   it('increments revision without changing an active attempt snapshot', async () => {
     const game = await createGame({
       status: 'active',
-      arena: {
-        slug: 'snapshot-arena',
-        title: 'Snapshot arena',
-        artworkUrl: '/bonus-games/arenas/snapshot.webp',
-        thumbnailUrl: '/bonus-games/arenas/snapshot-thumb.webp',
-      },
-      goalkeeperReadyUrl: '/bonus-games/goalkeepers/snapshot-ready.webp',
-      goalkeeperSaveUrl: '/bonus-games/goalkeepers/snapshot-save.webp',
+      ...committedMedia('ski-resort'),
     });
     const start = await app.inject({
       method: 'POST',
@@ -492,11 +569,11 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
     expect(metadata.revision).toBe(1);
 
     const media = await patchGame(game.id, {
-      goalkeeperReadyUrl: '/bonus-games/goalkeepers/revised-ready.webp',
+      goalkeeperReadyUrl: '/bonus-games/goalkeepers/beach-ready.webp',
     });
     expect(media.revision).toBe(2);
     const mediaNoOp = await patchGame(game.id, {
-      goalkeeperReadyUrl: '/bonus-games/goalkeepers/revised-ready.webp',
+      goalkeeperReadyUrl: '/bonus-games/goalkeepers/beach-ready.webp',
     });
     expect(mediaNoOp.revision).toBe(2);
     const price = await patchGame(game.id, { accessType: 'paid', unlockPriceStars: 2 });
@@ -507,11 +584,11 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
     });
     expect(gameplayAndReward.revision).toBe(4);
     const arenaMedia = await patchGame(game.id, {
-      arena: { artworkUrl: '/bonus-games/arenas/revised.webp' },
+      arena: { artworkUrl: '/bonus-games/arenas/beach.webp' },
     });
     expect(arenaMedia.revision).toBe(5);
     const arenaMediaNoOp = await patchGame(game.id, {
-      arena: { artworkUrl: '/bonus-games/arenas/revised.webp' },
+      arena: { artworkUrl: '/bonus-games/arenas/beach.webp' },
     });
     expect(arenaMediaNoOp.revision).toBe(5);
 
@@ -522,19 +599,9 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
   });
 
   it('rejects incomplete price, target, and arena activation states', async () => {
-    const completeMedia = (name: string) => ({
-      arena: {
-        slug: `${name}-arena`,
-        title: `${name} arena`,
-        artworkUrl: `/bonus-games/arenas/${name}.webp`,
-        thumbnailUrl: `/bonus-games/arenas/${name}-thumb.webp`,
-      },
-      goalkeeperReadyUrl: `/bonus-games/goalkeepers/${name}-ready.webp`,
-      goalkeeperSaveUrl: `/bonus-games/goalkeepers/${name}-save.webp`,
-    });
     const cases = [
-      { accessType: 'free', unlockPriceStars: 1, ...completeMedia('free-price') },
-      { accessType: 'paid', unlockPriceStars: 0, ...completeMedia('paid-price') },
+      { accessType: 'free', unlockPriceStars: 1, ...committedMedia('beach') },
+      { accessType: 'paid', unlockPriceStars: 0, ...committedMedia('ski-resort') },
     ];
     for (const payload of cases) {
       const game = await createGame({ sortOrder: 1, ...payload });
@@ -548,7 +615,10 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
       expect(response.json().error.code).toBe('bonus_game_incomplete');
     }
 
-    const impossibleTarget = await createGame({ sortOrder: 1, ...completeMedia('target') });
+    const impossibleTarget = await createGame({
+      sortOrder: 1,
+      ...committedMedia('cyberpunk-yard'),
+    });
     await pool.query('update bonus_game set target_goals = 31 where id = $1', [
       impossibleTarget.id,
     ]);
@@ -561,7 +631,10 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
     expect(targetResponse.statusCode).toBe(409);
     expect(targetResponse.json().error.code).toBe('bonus_game_incomplete');
 
-    const archivedArena = await createGame({ sortOrder: 1, ...completeMedia('archived') });
+    const archivedArena = await createGame({
+      sortOrder: 1,
+      ...committedMedia('abandoned-waterpark'),
+    });
     await patchGame(archivedArena.id, { arena: { status: 'archived' } });
     const archivedResponse = await app.inject({
       method: 'PATCH',
@@ -571,7 +644,7 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
     });
     expect(archivedResponse.statusCode).toBe(409);
 
-    const unselectableArena = await createGame({ sortOrder: 1, ...completeMedia('unselectable') });
+    const unselectableArena = await createGame({ sortOrder: 1, ...committedMedia('pirate-bay') });
     await patchGame(unselectableArena.id, { arena: { isSelectable: false } });
     const unselectableResponse = await app.inject({
       method: 'PATCH',
@@ -583,19 +656,9 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
   });
 
   it('reorders the exact active set atomically and compacts order on archive', async () => {
-    const media = (name: string) => ({
-      arena: {
-        slug: `${name}-arena`,
-        title: `${name} arena`,
-        artworkUrl: `/bonus-games/arenas/${name}.webp`,
-        thumbnailUrl: `/bonus-games/arenas/${name}-thumb.webp`,
-      },
-      goalkeeperReadyUrl: `/bonus-games/goalkeepers/${name}-ready.webp`,
-      goalkeeperSaveUrl: `/bonus-games/goalkeepers/${name}-save.webp`,
-    });
-    const one = await createGame({ status: 'active', ...media('one') });
-    const two = await createGame({ status: 'active', ...media('two') });
-    const three = await createGame({ status: 'active', ...media('three') });
+    const one = await createGame({ status: 'active', ...committedMedia('beach') });
+    const two = await createGame({ status: 'active', ...committedMedia('ski-resort') });
+    const three = await createGame({ status: 'active', ...committedMedia('cyberpunk-yard') });
 
     const invalid = await app.inject({
       method: 'POST',
@@ -736,6 +799,8 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
         0x52, 0x49, 0x46, 0x46, 0xff, 0xff, 0xff, 0x7f, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38,
         0x4c,
       ]),
+      headerOnlyVp8lBytes(),
+      vp8xWithoutImageChunkBytes(),
     ];
 
     for (const body of forgedBodies) {
