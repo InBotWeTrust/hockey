@@ -581,6 +581,25 @@ function invalidBonusShotTime(): AppError {
   return new AppError(BONUS_SHOT_TIME_INVALID_CODE, 'bonus shot timing is invalid', 400);
 }
 
+function assertBonusShotInputClockBase(
+  input: unknown,
+): asserts input is SubmitBonusShotInput['input'] {
+  if (typeof input !== 'object' || input === null) {
+    throw invalidBonusShotTime();
+  }
+  const clocks = input as { tapTime?: unknown; shooterTapTime?: unknown };
+  if (
+    typeof clocks.tapTime !== 'number' ||
+    !Number.isFinite(clocks.tapTime) ||
+    clocks.tapTime < 0 ||
+    typeof clocks.shooterTapTime !== 'number' ||
+    !Number.isFinite(clocks.shooterTapTime) ||
+    clocks.shooterTapTime < 0
+  ) {
+    throw invalidBonusShotTime();
+  }
+}
+
 function assertBonusShotTimeFresh(
   attempt: BonusGameAttemptRow,
   previousShots: number,
@@ -588,14 +607,6 @@ function assertBonusShotTimeFresh(
   rule: BonusPeriodRule,
   now: Date,
 ): void {
-  if (
-    !Number.isFinite(input.tapTime) ||
-    input.tapTime < 0 ||
-    !Number.isFinite(input.shooterTapTime) ||
-    input.shooterTapTime < 0
-  ) {
-    throw invalidBonusShotTime();
-  }
   if (attempt.period_started_at === null) {
     throw new AppError('bonus_period_not_ready', 'active bonus period has no start time', 409);
   }
@@ -629,6 +640,7 @@ export async function submitBonusShot(
   pool: Pool,
   input: SubmitBonusShotInput,
 ): Promise<SubmitBonusShotResult> {
+  assertBonusShotInputClockBase(input.input);
   const client = await begin(pool);
   let deferredError: AppError | null = null;
   let response: SubmitBonusShotResult | null = null;

@@ -48,6 +48,11 @@ const GOAL_INPUT: ShotInput = {
   goalFrequency: 3,
 };
 
+function withoutShooterTime(): SubmitBonusShotInput['input'] {
+  const { shooterTapTime: _omitted, ...input } = GOAL_INPUT;
+  return input as SubmitBonusShotInput['input'];
+}
+
 interface TestGame {
   id: string;
   arenaId: string;
@@ -383,19 +388,103 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
     const game = await createGame({ targetGoals: 1 });
     const attemptId = await createActiveAttempt(userId, game.id);
     const before = await mutationSnapshot(userId, attemptId);
-    const { shooterTapTime: _omitted, ...inputWithoutShooterTime } = GOAL_INPUT;
 
     await expect(
       submitBonusShot(pool, {
         userId,
         attemptId,
         claimedShotIndex: 1,
-        input: inputWithoutShooterTime as SubmitBonusShotInput['input'],
+        input: withoutShooterTime(),
         claimedResult: 'goal',
         now: SHOT_AT,
       }),
     ).rejects.toMatchObject({ code: 'bonus_shot_time_invalid', statusCode: 400 });
 
+    expect(await mutationSnapshot(userId, attemptId)).toEqual(before);
+  });
+
+  it('rejects missing clocks before an expired attempt can reconcile or write a period log', async () => {
+    const userId = await createUser();
+    const game = await createGame({ targetGoals: 1 });
+    const attemptId = await createActiveAttempt(userId, game.id);
+    const before = await mutationSnapshot(userId, attemptId);
+
+    await expect(
+      submitBonusShot(pool, {
+        userId,
+        attemptId,
+        claimedShotIndex: 1,
+        input: withoutShooterTime(),
+        claimedResult: 'goal',
+        now: new Date('2026-08-23T12:05:01.000Z'),
+      }),
+    ).rejects.toMatchObject({ code: 'bonus_shot_time_invalid', statusCode: 400 });
+
+    expect(await mutationSnapshot(userId, attemptId)).toEqual(before);
+  });
+
+  it.each([
+    { name: 'missing shooter time', shotInput: withoutShooterTime() },
+    {
+      name: 'non-finite tap time',
+      shotInput: { ...GOAL_INPUT, tapTime: Number.POSITIVE_INFINITY },
+    },
+  ])('rejects $name on a completed duplicate before any mutation', async ({ shotInput }) => {
+    const userId = await createUser();
+    const game = await createGame({ targetGoals: 1 });
+    const attemptId = await createActiveAttempt(userId, game.id);
+    await submitBonusShot(pool, {
+      userId,
+      attemptId,
+      claimedShotIndex: 1,
+      input: GOAL_INPUT,
+      claimedResult: 'goal',
+      now: SHOT_AT,
+    });
+    const before = await mutationSnapshot(userId, attemptId);
+
+    await expect(
+      submitBonusShot(pool, {
+        userId,
+        attemptId,
+        claimedShotIndex: 1,
+        input: shotInput,
+        claimedResult: 'goal',
+        now: new Date('2026-08-23T12:00:10.000Z'),
+      }),
+    ).rejects.toMatchObject({ code: 'bonus_shot_time_invalid', statusCode: 400 });
+
+    expect(await mutationSnapshot(userId, attemptId)).toEqual(before);
+  });
+
+  it('keeps a valid completed-shot duplicate idempotently successful', async () => {
+    const userId = await createUser();
+    const game = await createGame({ targetGoals: 1 });
+    const attemptId = await createActiveAttempt(userId, game.id);
+    await submitBonusShot(pool, {
+      userId,
+      attemptId,
+      claimedShotIndex: 1,
+      input: GOAL_INPUT,
+      claimedResult: 'goal',
+      now: SHOT_AT,
+    });
+    const before = await mutationSnapshot(userId, attemptId);
+
+    const duplicate = await submitBonusShot(pool, {
+      userId,
+      attemptId,
+      claimedShotIndex: 1,
+      input: GOAL_INPUT,
+      claimedResult: 'goal',
+      now: new Date('2026-08-23T12:00:10.000Z'),
+    });
+
+    expect(duplicate).toMatchObject({
+      serverResult: 'goal',
+      rewardGranted: null,
+      attempt: { status: 'completed', state: 'closed', shotsTaken: 1, goals: 1 },
+    });
     expect(await mutationSnapshot(userId, attemptId)).toEqual(before);
   });
 
