@@ -40,6 +40,17 @@ const PERIODS: BonusPeriodRule[] = [
   },
 ];
 
+function validWebpBytes(): Buffer {
+  const body = Buffer.alloc(26);
+  body.write('RIFF', 0, 'ascii');
+  body.writeUInt32LE(body.byteLength - 8, 4);
+  body.write('WEBP', 8, 'ascii');
+  body.write('VP8L', 12, 'ascii');
+  body.writeUInt32LE(5, 16);
+  body[20] = 0x2f;
+  return body;
+}
+
 interface AdminGameDto {
   id: string;
   slug: string;
@@ -47,7 +58,15 @@ interface AdminGameDto {
   status: 'draft' | 'active' | 'archived';
   rewardStars: number;
   revision: number;
-  arena: { id: string; artworkUrl: string; thumbnailUrl: string };
+  arena: {
+    id: string;
+    slug: string;
+    title: string;
+    artworkUrl: string;
+    thumbnailUrl: string;
+    status: 'active' | 'archived';
+    isSelectable: boolean;
+  };
 }
 
 describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
@@ -187,6 +206,19 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
     return (response.json() as { game: AdminGameDto }).game;
   }
 
+  async function uploadMedia(
+    kind: 'arena' | 'thumbnail' | 'goalkeeper_ready' | 'goalkeeper_save',
+  ): Promise<{ id: string; url: string }> {
+    const response = await app.inject({
+      method: 'POST',
+      url: `/admin/bonus-games/media/${kind}`,
+      headers: { ...adminHeaders, 'content-type': 'image/webp' },
+      payload: validWebpBytes(),
+    });
+    expect(response.statusCode, response.body).toBe(201);
+    return (response.json() as { media: { id: string; url: string } }).media;
+  }
+
   it('requires an admin for all six endpoints', async () => {
     const id = '11111111-1111-4111-8111-111111111111';
     const requests = [
@@ -199,7 +231,7 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
         method: 'POST',
         url: '/admin/bonus-games/media/arena',
         headers: { 'content-type': 'image/webp' },
-        payload: Buffer.from('webp'),
+        payload: validWebpBytes(),
       },
     ];
 
@@ -309,6 +341,108 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
     expect(response.json().error.code).toBe('bonus_game_incomplete');
   });
 
+  it('accepts only canonical committed or signed media paths during activation', async () => {
+    const uploaded = await uploadMedia('arena');
+    const invalidReferences = [
+      'http://cdn.example.test/bonus-games/arena.webp',
+      'https://evil.example/bonus-games/arena.webp',
+      '//evil.example/bonus-games/arena.webp',
+      'relative/arena.webp',
+      '/other/arena.webp',
+      '/bonus-games/../private/arena.webp',
+      '/bonus-games/arena.webp?cache=1',
+      '/bonus-games/arena.webp#fragment',
+      `https://evil.example${uploaded.url}`,
+      `//evil.example${uploaded.url}`,
+      `${uploaded.url}&extra=1`,
+      `${uploaded.url}#fragment`,
+    ];
+
+    for (const [index, invalidReference] of invalidReferences.entries()) {
+      const game = await createGame({
+        sortOrder: 1,
+        arena: {
+          slug: `invalid-media-arena-${index}`,
+          title: `Invalid media arena ${index}`,
+          artworkUrl: invalidReference,
+          thumbnailUrl: '/bonus-games/arenas/safe-thumb.webp',
+        },
+        goalkeeperReadyUrl: '/bonus-games/goalkeepers/safe-ready.webp',
+        goalkeeperSaveUrl: '/bonus-games/goalkeepers/safe-save.webp',
+      });
+      const response = await app.inject({
+        method: 'PATCH',
+        url: `/admin/bonus-games/${game.id}`,
+        headers: adminHeaders,
+        payload: { status: 'active' },
+      });
+      expect(response.statusCode, invalidReference).toBe(409);
+      expect(response.json().error.code, invalidReference).toBe('bonus_game_incomplete');
+    }
+
+    const signed = await createGame({
+      sortOrder: 1,
+      arena: {
+        slug: 'signed-media-arena',
+        title: 'Signed media arena',
+        artworkUrl: uploaded.url,
+        thumbnailUrl: uploaded.url,
+      },
+      goalkeeperReadyUrl: uploaded.url,
+      goalkeeperSaveUrl: uploaded.url,
+    });
+    const signedActivation = await patchGame(signed.id, { status: 'active' });
+    expect(signedActivation.status).toBe('active');
+  });
+
+  it('rejects in-place edits of an arena shared with another bonus game', async () => {
+    const active = await createGame({
+      status: 'active',
+      arena: {
+        slug: 'shared-arena',
+        title: 'Shared arena',
+        artworkUrl: '/bonus-games/arenas/shared.webp',
+        thumbnailUrl: '/bonus-games/arenas/shared-thumb.webp',
+      },
+      goalkeeperReadyUrl: '/bonus-games/goalkeepers/shared-ready.webp',
+      goalkeeperSaveUrl: '/bonus-games/goalkeepers/shared-save.webp',
+    });
+    const draft = await createGame({
+      arena: undefined,
+      arenaThemeId: active.arena.id,
+    });
+    const originalArena = { ...active.arena };
+
+    const unsafePatches = [
+      { arena: { artworkUrl: '' } },
+      { arena: { thumbnailUrl: 'javascript:shared.webp' } },
+      { arena: { status: 'archived' } },
+      { arena: { isSelectable: false } },
+    ];
+    for (const payload of unsafePatches) {
+      const response = await app.inject({
+        method: 'PATCH',
+        url: `/admin/bonus-games/${draft.id}`,
+        headers: adminHeaders,
+        payload,
+      });
+      expect(response.statusCode).toBe(409);
+      expect(response.json().error.code).toBe('bonus_game_arena_shared');
+    }
+
+    const games = await app.inject({
+      method: 'GET',
+      url: '/admin/bonus-games',
+      headers: adminHeaders,
+    });
+    const rows = (games.json() as { games: AdminGameDto[] }).games;
+    expect(rows.find((game) => game.id === active.id)).toMatchObject({
+      revision: 1,
+      arena: originalArena,
+    });
+    expect(rows.find((game) => game.id === draft.id)).toMatchObject({ revision: 1 });
+  });
+
   it('increments revision without changing an active attempt snapshot', async () => {
     const game = await createGame({
       status: 'active',
@@ -343,6 +477,109 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
       definition_revision: 1,
       reward_snapshot: { stars: 1 },
     });
+  });
+
+  it('increments revision only for effective price, gameplay, reward, or media changes', async () => {
+    const game = await createGame();
+
+    const noOp = await patchGame(game.id, { rewardStars: 1 });
+    expect(noOp.revision).toBe(1);
+    const metadata = await patchGame(game.id, {
+      title: 'Новое название',
+      description: 'Новый текст',
+      sortOrder: 7,
+    });
+    expect(metadata.revision).toBe(1);
+
+    const media = await patchGame(game.id, {
+      goalkeeperReadyUrl: '/bonus-games/goalkeepers/revised-ready.webp',
+    });
+    expect(media.revision).toBe(2);
+    const mediaNoOp = await patchGame(game.id, {
+      goalkeeperReadyUrl: '/bonus-games/goalkeepers/revised-ready.webp',
+    });
+    expect(mediaNoOp.revision).toBe(2);
+    const price = await patchGame(game.id, { accessType: 'paid', unlockPriceStars: 2 });
+    expect(price.revision).toBe(3);
+    const gameplayAndReward = await patchGame(game.id, {
+      targetGoals: 17,
+      rewardCoins: 101,
+    });
+    expect(gameplayAndReward.revision).toBe(4);
+    const arenaMedia = await patchGame(game.id, {
+      arena: { artworkUrl: '/bonus-games/arenas/revised.webp' },
+    });
+    expect(arenaMedia.revision).toBe(5);
+    const arenaMediaNoOp = await patchGame(game.id, {
+      arena: { artworkUrl: '/bonus-games/arenas/revised.webp' },
+    });
+    expect(arenaMediaNoOp.revision).toBe(5);
+
+    const other = await createGame();
+    const switched = await patchGame(game.id, { arenaThemeId: other.arena.id });
+    expect(switched.revision).toBe(6);
+    expect(switched.arena.id).toBe(other.arena.id);
+  });
+
+  it('rejects incomplete price, target, and arena activation states', async () => {
+    const completeMedia = (name: string) => ({
+      arena: {
+        slug: `${name}-arena`,
+        title: `${name} arena`,
+        artworkUrl: `/bonus-games/arenas/${name}.webp`,
+        thumbnailUrl: `/bonus-games/arenas/${name}-thumb.webp`,
+      },
+      goalkeeperReadyUrl: `/bonus-games/goalkeepers/${name}-ready.webp`,
+      goalkeeperSaveUrl: `/bonus-games/goalkeepers/${name}-save.webp`,
+    });
+    const cases = [
+      { accessType: 'free', unlockPriceStars: 1, ...completeMedia('free-price') },
+      { accessType: 'paid', unlockPriceStars: 0, ...completeMedia('paid-price') },
+    ];
+    for (const payload of cases) {
+      const game = await createGame({ sortOrder: 1, ...payload });
+      const response = await app.inject({
+        method: 'PATCH',
+        url: `/admin/bonus-games/${game.id}`,
+        headers: adminHeaders,
+        payload: { status: 'active' },
+      });
+      expect(response.statusCode).toBe(409);
+      expect(response.json().error.code).toBe('bonus_game_incomplete');
+    }
+
+    const impossibleTarget = await createGame({ sortOrder: 1, ...completeMedia('target') });
+    await pool.query('update bonus_game set target_goals = 31 where id = $1', [
+      impossibleTarget.id,
+    ]);
+    const targetResponse = await app.inject({
+      method: 'PATCH',
+      url: `/admin/bonus-games/${impossibleTarget.id}`,
+      headers: adminHeaders,
+      payload: { status: 'active' },
+    });
+    expect(targetResponse.statusCode).toBe(409);
+    expect(targetResponse.json().error.code).toBe('bonus_game_incomplete');
+
+    const archivedArena = await createGame({ sortOrder: 1, ...completeMedia('archived') });
+    await patchGame(archivedArena.id, { arena: { status: 'archived' } });
+    const archivedResponse = await app.inject({
+      method: 'PATCH',
+      url: `/admin/bonus-games/${archivedArena.id}`,
+      headers: adminHeaders,
+      payload: { status: 'active' },
+    });
+    expect(archivedResponse.statusCode).toBe(409);
+
+    const unselectableArena = await createGame({ sortOrder: 1, ...completeMedia('unselectable') });
+    await patchGame(unselectableArena.id, { arena: { isSelectable: false } });
+    const unselectableResponse = await app.inject({
+      method: 'PATCH',
+      url: `/admin/bonus-games/${unselectableArena.id}`,
+      headers: adminHeaders,
+      payload: { status: 'active' },
+    });
+    expect(unselectableResponse.statusCode).toBe(409);
   });
 
   it('reorders the exact active set atomically and compacts order on archive', async () => {
@@ -413,7 +650,7 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
   });
 
   it('stores non-empty WebP media and returns a signed proxy URL', async () => {
-    const body = Buffer.from('non-empty-webp');
+    const body = validWebpBytes();
     const response = await app.inject({
       method: 'POST',
       url: '/admin/bonus-games/media/goalkeeper_ready',
@@ -477,11 +714,41 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
       method: 'POST',
       url: '/admin/bonus-games/media/goalkeeper_save',
       headers: { ...adminHeaders, 'content-type': 'image/webp' },
-      payload: Buffer.from('webp'),
+      payload: validWebpBytes(),
     });
     expect(failed.statusCode).toBe(502);
     expect(failed.json().error.code).toBe('storage_upload_failed');
 
+    const count = await pool.query<{ count: string }>(
+      `select count(*) from media_objects where purpose = 'bonus_game_media'`,
+    );
+    expect(Number(count.rows[0]?.count)).toBe(0);
+  });
+
+  it('rejects forged WebP bodies before storage or database side effects', async () => {
+    const forgedBodies = [
+      Buffer.from('plain ASCII pretending to be WebP'),
+      Buffer.from([
+        0x52, 0x49, 0x46, 0x46, 0x04, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50, 0x3c, 0x73, 0x63,
+        0x72, 0x69, 0x70, 0x74, 0x3e,
+      ]),
+      Buffer.from([
+        0x52, 0x49, 0x46, 0x46, 0xff, 0xff, 0xff, 0x7f, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38,
+        0x4c,
+      ]),
+    ];
+
+    for (const body of forgedBodies) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/admin/bonus-games/media/arena',
+        headers: { ...adminHeaders, 'content-type': 'image/webp' },
+        payload: body,
+      });
+      expect(response.statusCode).toBe(415);
+      expect(response.json().error.code).toBe('invalid_webp');
+    }
+    expect(storageFetch).not.toHaveBeenCalled();
     const count = await pool.query<{ count: string }>(
       `select count(*) from media_objects where purpose = 'bonus_game_media'`,
     );
@@ -508,7 +775,7 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
         method: 'POST',
         url: '/admin/bonus-games/media/arena',
         headers: { ...adminHeaders, 'content-type': 'image/webp' },
-        payload: Buffer.from('webp'),
+        payload: validWebpBytes(),
       });
       expect(response.statusCode).toBe(500);
 

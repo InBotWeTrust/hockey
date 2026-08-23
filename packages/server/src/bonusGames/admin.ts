@@ -3,7 +3,7 @@ import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
 import type { PoolClient } from 'pg';
 import { z } from 'zod';
 import { AppError } from '../plugins/errors.js';
-import { createMediaProxyUrl, verifyMediaAccessToken } from '../storage/mediaAccess.js';
+import { createMediaProxyUrl } from '../storage/mediaAccess.js';
 import {
   createMediaObjectKey,
   type ObjectStorageClient,
@@ -232,6 +232,14 @@ function invalidOrder(): AppError {
   return new AppError('bonus_game_order_invalid', 'active bonus game order is invalid', 409);
 }
 
+function sharedArenaConflict(): AppError {
+  return new AppError(
+    'bonus_game_arena_shared',
+    'arena theme is shared by another bonus game',
+    409,
+  );
+}
+
 function parseBody<TSchema extends z.ZodTypeAny>(
   schema: TSchema,
   value: unknown,
@@ -418,6 +426,23 @@ async function patchArena(
   return rows[0]!;
 }
 
+async function assertArenaIsExclusive(
+  client: PoolClient,
+  arenaId: string,
+  gameId: string,
+): Promise<void> {
+  const shared = await client.query<{ shared: boolean }>(
+    `select exists (
+       select 1
+         from bonus_game
+        where arena_theme_id = $1
+          and id <> $2
+     ) as shared`,
+    [arenaId, gameId],
+  );
+  if (shared.rows[0]?.shared === true) throw sharedArenaConflict();
+}
+
 function toDefinition(row: AdminGameRow, periods: BonusPeriodRule[]): MutableDefinition {
   return {
     id: row.id,
@@ -504,17 +529,10 @@ function revisionFingerprint(definition: MutableDefinition, arena: ArenaRow): st
   });
 }
 
-function staticOrRemoteWebp(value: string): boolean {
-  const trimmed = value.trim();
-  if (trimmed.length === 0) return false;
-  try {
-    const parsed = new URL(trimmed, 'https://local.invalid');
-    const allowedLocation =
-      trimmed.startsWith('/') || parsed.protocol === 'https:' || parsed.protocol === 'http:';
-    return allowedLocation && parsed.pathname.toLowerCase().endsWith('.webp');
-  } catch {
-    return false;
-  }
+function isCommittedStaticMediaPath(value: string): boolean {
+  return /^\/bonus-games\/(?:[A-Za-z0-9][A-Za-z0-9_-]*\/)*[A-Za-z0-9][A-Za-z0-9_-]*\.webp$/.test(
+    value,
+  );
 }
 
 async function isValidMediaReference(
@@ -522,22 +540,14 @@ async function isValidMediaReference(
   value: string,
   mediaAccessSecret: string,
 ): Promise<boolean> {
-  if (staticOrRemoteWebp(value)) return true;
+  if (isCommittedStaticMediaPath(value)) return true;
 
-  let parsed: URL;
-  try {
-    parsed = new URL(value, 'https://local.invalid');
-  } catch {
-    return false;
-  }
-  const match = /^\/api\/media\/([0-9a-f-]{36})$/i.exec(parsed.pathname);
-  const token = parsed.searchParams.get('t');
+  const match = /^\/api\/media\/([0-9a-f-]{36})\?t=([A-Za-z0-9_-]+)$/i.exec(value);
   const mediaId = match?.[1];
   if (
     mediaId === undefined ||
     !uuid.safeParse(mediaId).success ||
-    token === null ||
-    !verifyMediaAccessToken(mediaAccessSecret, mediaId, token)
+    value !== createMediaProxyUrl(mediaAccessSecret, mediaId)
   ) {
     return false;
   }
@@ -568,13 +578,17 @@ async function assertActiveDefinitionComplete(
   }
 
   parsePeriods(definition.periods, definition.totalPeriods, definition.targetGoals, true);
-  const mediaIsComplete = await Promise.all([
-    isValidMediaReference(client, arena.artwork_url, mediaAccessSecret),
-    isValidMediaReference(client, arena.thumbnail_url, mediaAccessSecret),
-    isValidMediaReference(client, definition.goalkeeperReadyUrl, mediaAccessSecret),
-    isValidMediaReference(client, definition.goalkeeperSaveUrl, mediaAccessSecret),
-  ]);
-  if (mediaIsComplete.some((valid) => !valid)) throw incompleteDefinition();
+  const mediaReferences = [
+    arena.artwork_url,
+    arena.thumbnail_url,
+    definition.goalkeeperReadyUrl,
+    definition.goalkeeperSaveUrl,
+  ];
+  for (const reference of mediaReferences) {
+    if (!(await isValidMediaReference(client, reference, mediaAccessSecret))) {
+      throw incompleteDefinition();
+    }
+  }
 
   const activeOrders = await client.query<{ sort_order: number }>(
     `select sort_order from bonus_game
@@ -700,11 +714,12 @@ async function patchGame(
 ) {
   const currentRow = await lockGame(client, gameId);
   const currentArena = await getArena(client, currentRow.arena_theme_id, false);
+  const activation = input.status === 'active' || currentRow.status === 'active';
   const currentPeriods = parsePeriods(
     currentRow.period_rules,
     Number(currentRow.total_periods),
     Number(currentRow.target_goals),
-    currentRow.status === 'active',
+    activation,
   );
   const currentDefinition = toDefinition(currentRow, currentPeriods);
 
@@ -714,10 +729,10 @@ async function patchGame(
     nextArena = await getArena(client, input.arenaThemeId, true);
     nextArenaThemeId = nextArena.id;
   } else if (input.arena !== undefined) {
+    await assertArenaIsExclusive(client, currentArena.id, gameId);
     nextArena = await patchArena(client, currentArena, input.arena);
   }
 
-  const activation = input.status === 'active' || currentRow.status === 'active';
   const nextDefinition = applyPatch(currentDefinition, input, nextArenaThemeId, activation);
   if (
     currentDefinition.status === 'active' &&
@@ -813,6 +828,28 @@ function cleanFileName(value: string | string[] | undefined, kind: BonusMediaKin
   return cleaned.length > 0 ? cleaned : `${kind}.webp`;
 }
 
+function isStructurallyValidWebp(body: Buffer): boolean {
+  if (body.byteLength < 20) return false;
+  if (body.toString('ascii', 0, 4) !== 'RIFF') return false;
+  if (body.readUInt32LE(4) !== body.byteLength - 8) return false;
+  if (body.toString('ascii', 8, 12) !== 'WEBP') return false;
+
+  const chunkKind = body.toString('ascii', 12, 16);
+  const chunkSize = body.readUInt32LE(16);
+  const paddedChunkSize = chunkSize + (chunkSize % 2);
+  if (20 + paddedChunkSize > body.byteLength) return false;
+
+  if (chunkKind === 'VP8X') return chunkSize === 10;
+  if (chunkKind === 'VP8L') return chunkSize >= 5 && body[20] === 0x2f;
+  return (
+    chunkKind === 'VP8 ' &&
+    chunkSize >= 10 &&
+    body[23] === 0x9d &&
+    body[24] === 0x01 &&
+    body[25] === 0x2a
+  );
+}
+
 function uploadBody(body: unknown, contentType: string, maxBytes: number): Buffer {
   if (contentType !== 'image/webp') {
     throw new AppError('unsupported_media_type', 'bonus game media must be WebP', 415);
@@ -822,6 +859,9 @@ function uploadBody(body: unknown, contentType: string, maxBytes: number): Buffe
   }
   if (body.byteLength > maxBytes) {
     throw new AppError('payload_too_large', 'bonus game media is too large', 413);
+  }
+  if (!isStructurallyValidWebp(body)) {
+    throw new AppError('invalid_webp', 'invalid WebP body', 415);
   }
   return body;
 }
