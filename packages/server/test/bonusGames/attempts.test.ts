@@ -6,7 +6,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { findOrCreateTelegramUser } from '../../src/auth/users.js';
 import { reconcileBonusAttempt } from '../../src/bonusGames/reconcile.js';
 import {
+  BONUS_GAME_CATALOG_LOCK_CLASS_ID,
+  BONUS_GAME_CATALOG_LOCK_OBJECT_ID,
   abandonBonusAttempt,
+  lockBonusGameCatalogForMutation,
   startBonusPeriod,
   startOrResumeBonusAttempt,
 } from '../../src/bonusGames/service.js';
@@ -221,6 +224,26 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
     return rows;
   }
 
+  async function waitForBlockedCatalogReader(): Promise<void> {
+    for (let attempt = 0; attempt < 1_000; attempt += 1) {
+      const { rows } = await pool.query<{ waiting: boolean }>(
+        `select exists (
+           select 1
+             from pg_locks
+            where locktype = 'advisory'
+              and classid = $1::int::oid
+              and objid = $2::int::oid
+              and mode = 'ShareLock'
+              and not granted
+         ) as waiting`,
+        [BONUS_GAME_CATALOG_LOCK_CLASS_ID, BONUS_GAME_CATALOG_LOCK_OBJECT_ID],
+      );
+      if (rows[0]?.waiting === true) return;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+    throw new Error('start did not wait for the shared bonus catalog lock');
+  }
+
   it('returns the same active attempt for the same game', async () => {
     const userId = await createUser();
     const game = await createGame({ sortOrder: 1 });
@@ -424,6 +447,12 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
       seedSecret: SEED_SECRET,
     });
     const persisted = await fetchAttempt(created.attempt.id);
+    const resumed = await startOrResumeBonusAttempt(pool, {
+      userId,
+      gameId: game.id,
+      now: new Date('2026-08-23T12:00:01Z'),
+      seedSecret: SEED_SECRET,
+    });
 
     expect(persisted).toMatchObject({
       definition_revision: 3,
@@ -454,6 +483,11 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
     expect(persisted.attempt_seed).toBe(
       deriveBonusAttemptSeed(created.attempt.id, userId, game.id, SEED_SECRET),
     );
+    expect(created.attempt.attemptSeed).toBe(persisted.attempt_seed);
+    expect(resumed).toMatchObject({
+      created: false,
+      attempt: { id: created.attempt.id, attemptSeed: persisted.attempt_seed },
+    });
   });
 
   it('continues an archived active attempt from its stable snapshot but blocks a new one', async () => {
@@ -504,12 +538,61 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
     ).rejects.toMatchObject({ code: 'bonus_game_inactive' });
   });
 
+  it('commits final timeout reconciliation before returning an archived-game error', async () => {
+    const userId = await createUser();
+    const game = await createGame({
+      sortOrder: 1,
+      targetGoals: 1,
+      periods: [PERIODS[0]!],
+    });
+    const created = await startOrResumeBonusAttempt(pool, {
+      userId,
+      gameId: game.id,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+    });
+    await startBonusPeriod(pool, { userId, attemptId: created.attempt.id, now: NOW });
+    await pool.query(
+      `update bonus_game
+          set status = 'archived', archived_at = $2
+        where id = $1`,
+      [game.id, new Date('2026-08-23T12:01:00Z')],
+    );
+
+    await expect(
+      startOrResumeBonusAttempt(pool, {
+        userId,
+        gameId: game.id,
+        now: new Date('2026-08-23T12:05:00Z'),
+        seedSecret: SEED_SECRET,
+      }),
+    ).rejects.toMatchObject({ code: 'bonus_game_inactive' });
+
+    expect(await fetchAttempt(created.attempt.id)).toMatchObject({
+      status: 'failed',
+      state: 'closed',
+      current_period: 1,
+      period_started_at: null,
+      closed_at: new Date('2026-08-23T12:05:00Z'),
+    });
+    expect(await periodLogs(created.attempt.id)).toMatchObject([
+      {
+        period_number: 1,
+        ended_at: new Date('2026-08-23T12:05:00Z'),
+        duration_ms: 300_000,
+        closed_reason: 'timeout',
+      },
+    ]);
+  });
+
   it('does not create from a definition archived concurrently with start', async () => {
     const userId = await createUser();
     const game = await createGame({ sortOrder: 1 });
     const admin = await pool.connect();
+    let starting: ReturnType<typeof startOrResumeBonusAttempt> | null = null;
     try {
       await admin.query('begin');
+      await lockBonusGameCatalogForMutation(admin);
       await admin.query(
         `update bonus_game
             set status = 'archived', archived_at = $2
@@ -517,13 +600,14 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
         [game.id, NOW],
       );
 
-      const starting = startOrResumeBonusAttempt(pool, {
+      starting = startOrResumeBonusAttempt(pool, {
         userId,
         gameId: game.id,
         now: NOW,
         seedSecret: SEED_SECRET,
       });
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      void starting.catch(() => undefined);
+      await waitForBlockedCatalogReader();
       await admin.query('commit');
 
       await expect(starting).rejects.toMatchObject({ code: 'bonus_game_inactive' });
@@ -536,6 +620,52 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
       expect(attempts.rows[0]?.count).toBe(0);
     } catch (error) {
       await admin.query('rollback').catch(() => undefined);
+      await starting?.catch(() => undefined);
+      throw error;
+    } finally {
+      admin.release();
+    }
+  });
+
+  it('revalidates the active predecessor chain after a concurrent catalog mutation', async () => {
+    const userId = await createUser();
+    const predecessor = await createGame({ sortOrder: 1, status: 'archived' });
+    const target = await createGame({ sortOrder: 2 });
+    const admin = await pool.connect();
+    let starting: ReturnType<typeof startOrResumeBonusAttempt> | null = null;
+    try {
+      await admin.query('begin');
+      await lockBonusGameCatalogForMutation(admin);
+      await admin.query(
+        `update bonus_game
+            set status = 'active', archived_at = null
+          where id = $1`,
+        [predecessor.id],
+      );
+
+      starting = startOrResumeBonusAttempt(pool, {
+        userId,
+        gameId: target.id,
+        now: NOW,
+        seedSecret: SEED_SECRET,
+      });
+      void starting.catch(() => undefined);
+      await waitForBlockedCatalogReader();
+      await admin.query('commit');
+
+      await expect(starting).rejects.toMatchObject({
+        code: 'bonus_previous_game_required',
+      });
+      const attempts = await pool.query<{ count: number }>(
+        `select count(*)::int as count
+           from bonus_game_attempt
+          where user_id = $1`,
+        [userId],
+      );
+      expect(attempts.rows[0]?.count).toBe(0);
+    } catch (error) {
+      await admin.query('rollback').catch(() => undefined);
+      await starting?.catch(() => undefined);
       throw error;
     } finally {
       admin.release();

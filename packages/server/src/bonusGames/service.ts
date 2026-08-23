@@ -21,6 +21,28 @@ interface LockedUserRow {
   lifetime_goals_total: number;
 }
 
+export const BONUS_GAME_CATALOG_LOCK_CLASS_ID = 0x42474d45;
+export const BONUS_GAME_CATALOG_LOCK_OBJECT_ID = 1;
+
+/**
+ * Catalog readers take the shared side of this transaction-scoped protocol.
+ * Every admin transaction that mutates bonus-game activation/order must take
+ * `lockBonusGameCatalogForMutation` before reading or writing the catalog.
+ */
+export async function lockBonusGameCatalogForRead(client: PoolClient): Promise<void> {
+  await client.query('select pg_advisory_xact_lock_shared($1::int, $2::int)', [
+    BONUS_GAME_CATALOG_LOCK_CLASS_ID,
+    BONUS_GAME_CATALOG_LOCK_OBJECT_ID,
+  ]);
+}
+
+export async function lockBonusGameCatalogForMutation(client: PoolClient): Promise<void> {
+  await client.query('select pg_advisory_xact_lock($1::int, $2::int)', [
+    BONUS_GAME_CATALOG_LOCK_CLASS_ID,
+    BONUS_GAME_CATALOG_LOCK_OBJECT_ID,
+  ]);
+}
+
 interface StartableGameRow {
   id: string;
   slug: string;
@@ -48,6 +70,17 @@ interface StartableGameRow {
   completion_id: string | null;
 }
 
+const EXPECTED_START_ERROR_CODES_AFTER_RECONCILE = new Set([
+  'bonus_level_locked',
+  'bonus_previous_game_required',
+  'bonus_purchase_required',
+  'bonus_game_inactive',
+]);
+
+function isExpectedStartErrorAfterReconcile(error: unknown): error is AppError {
+  return error instanceof AppError && EXPECTED_START_ERROR_CODES_AFTER_RECONCILE.has(error.code);
+}
+
 function toIso(value: Date | null): string | null {
   return value === null ? null : value.toISOString();
 }
@@ -64,6 +97,7 @@ export function toBonusAttemptDto(attempt: BonusGameAttemptRow): BonusGameAttemp
     closedAt: toIso(attempt.closed_at),
     shotsTaken: Number(attempt.shots_taken),
     goals: Number(attempt.goals),
+    attemptSeed: attempt.attempt_seed,
     gameCoreVersion: Number(attempt.game_core_version),
     rules: attempt.rules_snapshot,
     reward: attempt.reward_snapshot,
@@ -189,11 +223,13 @@ export async function startOrResumeBonusAttempt(
 ): Promise<{ attempt: BonusGameAttemptDTO; created: boolean }> {
   const client = await begin(pool);
   let deferredError: AppError | null = null;
+  let terminalReconcilePerformed = false;
   try {
     const user = await lockUser(client, input.userId);
     const active = await fetchActiveAttempt(client, input.userId);
     if (active !== null) {
       const reconciled = await reconcileBonusAttempt(client, active, input.now);
+      terminalReconcilePerformed = reconciled.status !== 'active';
       if (reconciled.status === 'active') {
         if (reconciled.bonus_game_id === input.gameId) {
           await client.query('commit');
@@ -208,6 +244,7 @@ export async function startOrResumeBonusAttempt(
     }
 
     if (deferredError === null) {
+      await lockBonusGameCatalogForRead(client);
       const [settings, game] = await Promise.all([
         getGameSettings(client),
         fetchStartableGame(client, input.userId, input.gameId),
@@ -302,8 +339,13 @@ export async function startOrResumeBonusAttempt(
 
     await client.query('commit');
   } catch (error) {
-    await client.query('rollback').catch(() => undefined);
-    throw error;
+    if (terminalReconcilePerformed && isExpectedStartErrorAfterReconcile(error)) {
+      await client.query('commit');
+      deferredError = error;
+    } else {
+      await client.query('rollback').catch(() => undefined);
+      throw error;
+    }
   } finally {
     client.release();
   }

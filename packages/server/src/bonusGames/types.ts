@@ -207,6 +207,7 @@ export interface BonusGameAttemptDTO {
   closedAt: string | null;
   shotsTaken: number;
   goals: number;
+  attemptSeed: string;
   gameCoreVersion: number;
   rules: BonusRulesSnapshot;
   reward: BonusRewardSnapshot;
