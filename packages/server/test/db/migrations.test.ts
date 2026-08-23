@@ -17,9 +17,7 @@ async function createMigrationsDirBefore(cutoff: string): Promise<string> {
     .sort((a, b) => a.localeCompare(b));
 
   await Promise.all(
-    files.map((file) =>
-      fs.copyFile(path.join(MIGRATIONS_DIR, file), path.join(targetDir, file)),
-    ),
+    files.map((file) => fs.copyFile(path.join(MIGRATIONS_DIR, file), path.join(targetDir, file))),
   );
 
   return targetDir;
@@ -360,6 +358,198 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '057_amateur_no_inventory_penalty_settings.sql',
       '058_bonus_games_and_home_arenas.sql',
     ]);
+  });
+
+  it('enforces the bonus snapshot, index, and enum constraint contract', async () => {
+    const userId = '00000000-0000-4000-8000-000000000581';
+    const invalidUserId = '00000000-0000-4000-8000-000000000582';
+    const arenaThemeId = '00000000-0000-4000-8000-000000000583';
+    const bonusGameId = '00000000-0000-4000-8000-000000000584';
+    const attemptId = '00000000-0000-4000-8000-000000000585';
+    const periodRule = {
+      periodNumber: 1,
+      durationMs: 240_000,
+      shotsLimit: 30,
+      goalFrequency: 0.45,
+      goalieFrequency: 0.5,
+      shooterFrequency: 0.65,
+      puckSpeedPerMs: 1.2,
+      goaliePattern: 'linear',
+      goalieAmplitude: 1,
+      goalAmplitude: 220,
+    };
+    const arenaSnapshot = {
+      id: arenaThemeId,
+      slug: 'migration-contract-arena',
+      title: 'Migration Contract Arena',
+      artworkUrl: '/bonus-games/arenas/migration-contract.webp',
+      thumbnailUrl: '/bonus-games/arenas/migration-contract-thumb.webp',
+    };
+    const rulesSnapshot = {
+      gameId: bonusGameId,
+      slug: 'migration-contract-game',
+      title: 'Migration Contract Game',
+      revision: 1,
+      targetGoals: 18,
+      totalPeriods: 1,
+      breakDurationMs: 30_000,
+      periods: [periodRule],
+      goalkeeperReadyUrl: '/bonus-games/goalkeepers/migration-contract-ready.webp',
+      goalkeeperSaveUrl: '/bonus-games/goalkeepers/migration-contract-save.webp',
+      arena: arenaSnapshot,
+    };
+
+    await pool.query(
+      `insert into users (id, display_name, timezone)
+       values
+         ($1, 'Bonus Migration Contract', 'Europe/Moscow'),
+         ($2, 'Invalid Bonus Snapshot', 'Europe/Moscow')`,
+      [userId, invalidUserId],
+    );
+    await pool.query(
+      `insert into arena_theme
+         (id, slug, title, artwork_url, thumbnail_url)
+       values ($1, $2, $3, $4, $5)`,
+      [
+        arenaThemeId,
+        arenaSnapshot.slug,
+        arenaSnapshot.title,
+        arenaSnapshot.artworkUrl,
+        arenaSnapshot.thumbnailUrl,
+      ],
+    );
+    await pool.query(
+      `insert into bonus_game
+         (id, slug, title, sort_order, target_goals, total_periods, break_duration_ms,
+          period_rules, arena_theme_id, goalkeeper_ready_url, goalkeeper_save_url)
+       values ($1, $2, $3, 1, 18, 1, 30000, $4::jsonb, $5, $6, $7)`,
+      [
+        bonusGameId,
+        rulesSnapshot.slug,
+        rulesSnapshot.title,
+        JSON.stringify([periodRule]),
+        arenaThemeId,
+        rulesSnapshot.goalkeeperReadyUrl,
+        rulesSnapshot.goalkeeperSaveUrl,
+      ],
+    );
+
+    const insertAttempt = (id: string, attemptUserId: string, snapshot: unknown) =>
+      pool.query(
+        `insert into bonus_game_attempt
+           (id, user_id, bonus_game_id, attempt_seed, game_core_version,
+            definition_revision, rules_snapshot, reward_snapshot,
+            arena_theme_id_snapshot, arena_snapshot, goalkeeper_ready_url,
+            goalkeeper_save_url)
+         values ($1, $2, $3, $4, 1, 1, $5::jsonb, $6::jsonb, $7, $8::jsonb, $9, $10)`,
+        [
+          id,
+          attemptUserId,
+          bonusGameId,
+          `bonus-attempt:${id}`,
+          JSON.stringify(snapshot),
+          JSON.stringify({ coins: 100, stars: 1, experience: 50 }),
+          arenaThemeId,
+          JSON.stringify(arenaSnapshot),
+          rulesSnapshot.goalkeeperReadyUrl,
+          rulesSnapshot.goalkeeperSaveUrl,
+        ],
+      );
+
+    await expect(insertAttempt(attemptId, userId, rulesSnapshot)).resolves.toMatchObject({
+      rowCount: 1,
+    });
+    const persistedAttempt = await pool.query<{ rules_snapshot: unknown }>(
+      'select rules_snapshot from bonus_game_attempt where id = $1',
+      [attemptId],
+    );
+    expect(persistedAttempt.rows[0]?.rules_snapshot).toEqual(rulesSnapshot);
+    await expect(
+      insertAttempt('00000000-0000-4000-8000-000000000586', invalidUserId, [periodRule]),
+    ).rejects.toMatchObject({ code: '23514' });
+    await expect(
+      insertAttempt('00000000-0000-4000-8000-000000000587', invalidUserId, {
+        periods: [periodRule],
+      }),
+    ).rejects.toMatchObject({ code: '23514' });
+
+    await expect(
+      pool.query(
+        `insert into shot_session
+           (user_id, mode, bonus_game_attempt_id, period_number, shot_index, seed,
+            input_payload, server_result, game_core_version)
+         values ($1, 'bonus', $2, 1, 1, 'bonus-shot:1', '{}'::jsonb, 'goal', 1)`,
+        [userId, attemptId],
+      ),
+    ).resolves.toMatchObject({ rowCount: 1 });
+    await expect(
+      pool.query(
+        `insert into shot_session
+           (user_id, mode, period_number, shot_index, seed, input_payload,
+            server_result, game_core_version)
+         values ($1, 'bonus', 1, 2, 'bonus-shot:2', '{}'::jsonb, 'save', 1)`,
+        [userId],
+      ),
+    ).rejects.toMatchObject({ code: '23514' });
+
+    const partialUniqueIndexes = await pool.query<{
+      indexname: string;
+      indexdef: string;
+    }>(
+      `select indexname, indexdef
+         from pg_indexes
+        where schemaname = 'public'
+          and indexname = any($1::text[])
+        order by indexname`,
+      [
+        [
+          'bonus_game_attempt_one_active_user_idx',
+          'bonus_game_economy_one_unlock_purchase_idx',
+          'bonus_game_economy_one_first_clear_reward_idx',
+        ],
+      ],
+    );
+    expect(partialUniqueIndexes.rows).toHaveLength(3);
+    for (const index of partialUniqueIndexes.rows) {
+      expect(index.indexdef).toContain('CREATE UNIQUE INDEX');
+      expect(index.indexdef).toContain(' WHERE ');
+    }
+
+    const bonusShotIndex = await pool.query<{ indexdef: string }>(
+      `select indexdef
+         from pg_indexes
+        where schemaname = 'public'
+          and indexname = 'shot_session_bonus_attempt_idx'`,
+    );
+    expect(bonusShotIndex.rows[0]?.indexdef).toContain(
+      '(bonus_game_attempt_id, period_number, shot_index)',
+    );
+    expect(bonusShotIndex.rows[0]?.indexdef).toContain(' WHERE ');
+
+    const constraintDefinitions = await pool.query<{
+      conname: string;
+      definition: string;
+    }>(
+      `select conname, pg_get_constraintdef(oid) as definition
+         from pg_constraint
+        where conname = any($1::text[])`,
+      [
+        [
+          'shot_session_mode_check',
+          'shot_session_check',
+          'currency_ledger_reason_check',
+          'media_objects_purpose_check',
+        ],
+      ],
+    );
+    const constraints = new Map(
+      constraintDefinitions.rows.map((row) => [row.conname, row.definition]),
+    );
+    expect(constraints.get('shot_session_mode_check')).toContain("'bonus'::text");
+    expect(constraints.get('shot_session_check')).toContain('bonus_game_attempt_id');
+    expect(constraints.get('shot_session_check')).toContain('period_number');
+    expect(constraints.get('currency_ledger_reason_check')).toContain("'bonus_game_reward'::text");
+    expect(constraints.get('media_objects_purpose_check')).toContain("'bonus_game_media'::text");
   });
 });
 

@@ -87,7 +87,36 @@ create table bonus_game_attempt (
   attempt_seed text not null,
   game_core_version int not null,
   definition_revision int not null check (definition_revision > 0),
-  rules_snapshot jsonb not null check (jsonb_typeof(rules_snapshot) = 'array'),
+  rules_snapshot jsonb not null check (
+    jsonb_typeof(rules_snapshot) = 'object'
+    and rules_snapshot ?& array[
+      'gameId',
+      'slug',
+      'title',
+      'revision',
+      'targetGoals',
+      'totalPeriods',
+      'breakDurationMs',
+      'periods',
+      'goalkeeperReadyUrl',
+      'goalkeeperSaveUrl',
+      'arena'
+    ]
+    and jsonb_typeof(rules_snapshot->'gameId') = 'string'
+    and jsonb_typeof(rules_snapshot->'slug') = 'string'
+    and jsonb_typeof(rules_snapshot->'title') = 'string'
+    and jsonb_typeof(rules_snapshot->'revision') = 'number'
+    and jsonb_typeof(rules_snapshot->'targetGoals') = 'number'
+    and jsonb_typeof(rules_snapshot->'totalPeriods') = 'number'
+    and jsonb_typeof(rules_snapshot->'breakDurationMs') = 'number'
+    and jsonb_typeof(rules_snapshot->'periods') = 'array'
+    and jsonb_typeof(rules_snapshot->'goalkeeperReadyUrl') = 'string'
+    and jsonb_typeof(rules_snapshot->'goalkeeperSaveUrl') = 'string'
+    and jsonb_typeof(rules_snapshot->'arena') = 'object'
+    and (rules_snapshot->'arena') ?& array[
+      'id', 'slug', 'title', 'artworkUrl', 'thumbnailUrl'
+    ]
+  ),
   reward_snapshot jsonb not null check (jsonb_typeof(reward_snapshot) = 'object'),
   arena_theme_id_snapshot uuid not null,
   arena_snapshot jsonb not null check (jsonb_typeof(arena_snapshot) = 'object'),
