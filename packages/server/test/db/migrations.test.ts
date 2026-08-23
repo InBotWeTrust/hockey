@@ -93,6 +93,40 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     );
     expect(names).toContain('_migrations');
 
+    const seededBonusGames = await pool.query<{
+      slug: string;
+      sort_order: number;
+      unlock_price_stars: number;
+      reward_stars: number;
+    }>(
+      `select slug, sort_order, unlock_price_stars, reward_stars
+         from bonus_game
+        where status = 'active'
+        order by sort_order`,
+    );
+    expect(seededBonusGames.rows).toEqual([
+      { slug: 'beach', sort_order: 1, unlock_price_stars: 0, reward_stars: 1 },
+      { slug: 'ski-resort', sort_order: 2, unlock_price_stars: 1, reward_stars: 1 },
+      { slug: 'cyberpunk-yard', sort_order: 3, unlock_price_stars: 0, reward_stars: 1 },
+      {
+        slug: 'abandoned-waterpark',
+        sort_order: 4,
+        unlock_price_stars: 2,
+        reward_stars: 2,
+      },
+      { slug: 'pirate-bay', sort_order: 5, unlock_price_stars: 0, reward_stars: 2 },
+      { slug: 'north-pole', sort_order: 6, unlock_price_stars: 3, reward_stars: 3 },
+      { slug: 'desert', sort_order: 7, unlock_price_stars: 0, reward_stars: 3 },
+      { slug: 'volcanic-ice', sort_order: 8, unlock_price_stars: 5, reward_stars: 4 },
+      { slug: 'castle', sort_order: 9, unlock_price_stars: 0, reward_stars: 5 },
+      { slug: 'space', sort_order: 10, unlock_price_stars: 8, reward_stars: 8 },
+    ]);
+
+    expect(seededBonusGames.rows.reduce((total, game) => total + game.unlock_price_stars, 0)).toBe(
+      19,
+    );
+    expect(seededBonusGames.rows.reduce((total, game) => total + game.reward_stars, 0)).toBe(30);
+
     const attemptColumns = await pool.query<{ column_name: string }>(
       `select column_name from information_schema.columns
         where table_schema = 'public' and table_name = 'bonus_game_attempt'`,
@@ -357,6 +391,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '056_inventory_low_stock_threshold.sql',
       '057_amateur_no_inventory_penalty_settings.sql',
       '058_bonus_games_and_home_arenas.sql',
+      '059_seed_bonus_games.sql',
     ]);
   });
 
@@ -683,6 +718,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '056_inventory_low_stock_threshold.sql',
       '057_amateur_no_inventory_penalty_settings.sql',
       '058_bonus_games_and_home_arenas.sql',
+      '059_seed_bonus_games.sql',
     ]);
 
     const activeInventory = await pool.query<{
