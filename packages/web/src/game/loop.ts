@@ -5,6 +5,7 @@ import {
   getGoalie,
   getSessionPhaseOffsets,
   type GoalieState,
+  type GoalieConfig,
   type GoalState,
   type SessionPhaseOffsets,
   SHOOTER_CENTER_X,
@@ -37,6 +38,7 @@ export interface GameLoopOpts {
   getSeed: () => string;
   getShotIndex: () => number;
   getGoalieId: () => string | null;
+  getGoalieConfig?: () => GoalieConfig | null;
   getSpeedOverrides?: () => SpeedOverrides;
   getInitialElapsedMs?: () => number;
   getDuelCondition?: (elapsedMs: number, speeds: SpeedOverrides) => DuelPlayerCondition | null;
@@ -143,9 +145,10 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
   }
 
   const onTick = (): void => {
+    const custom = opts.getGoalieConfig?.() ?? null;
     const id = opts.getGoalieId();
-    if (!id) return;
-    const cfg = getGoalie(id);
+    const cfg = custom ?? (id ? getGoalie(id) : null);
+    if (!cfg) return;
     const now = advanceRenderClock();
     const overrides = opts.getSpeedOverrides?.();
     const activeCfg = overrides

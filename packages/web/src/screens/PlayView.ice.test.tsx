@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { DAILY_PERIOD_SPEED_PRESETS } from '@hockey/game-core';
-import { PlayView } from './DailyScreen.js';
+import { PlayView } from '../game/PlayView.js';
 import type * as ReactModule from 'react';
 import { Goal } from '../game/renderer/Goal.js';
 

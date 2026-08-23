@@ -7892,7 +7892,7 @@ function TotalCell({ label, value }: { label: string; value: string }): JSX.Elem
   );
 }
 
-interface PlayViewProps<TState> {
+export interface PlayViewProps<TState> {
   suppressedByModal: boolean;
   showIceCar: boolean;
   playEntranceOnMount?: boolean | undefined;
@@ -7902,7 +7902,8 @@ interface PlayViewProps<TState> {
   onBack: () => void;
   active: boolean;
   seed: string | null;
-  goalieId: string;
+  goalieId: string | null;
+  goalieConfig?: GoalieConfig | undefined;
   periodNumber: number;
   periodSpeedPresets?: readonly DailyPeriodSpeedPreset[] | undefined;
   speedOverrides?: SpeedOverrides | undefined;
@@ -7969,7 +7970,8 @@ interface ReadyPresence {
 interface PlaySessionSnapshot {
   active: boolean;
   seed: string | null;
-  goalieId: string;
+  goalieId: string | null;
+  goalieConfig: GoalieConfig | null;
   periodNumber: number;
   shots: number;
   shotsTotal: number | undefined;
@@ -9231,6 +9233,7 @@ export function PlayView<TState>({
   active,
   seed,
   goalieId,
+  goalieConfig,
   periodNumber,
   periodSpeedPresets,
   speedOverrides,
@@ -9285,11 +9288,12 @@ export function PlayView<TState>({
       active,
       seed,
       goalieId,
+      goalieConfig: goalieConfig ?? null,
       periodNumber,
       shots,
       shotsTotal,
     }),
-    [active, seed, goalieId, periodNumber, shots, shotsTotal],
+    [active, seed, goalieId, goalieConfig, periodNumber, shots, shotsTotal],
   );
   const sessionRef = useRef(session);
   sessionRef.current = session;
@@ -9376,6 +9380,8 @@ export function PlayView<TState>({
   goalOptionsRef.current = goalOptions;
   const goalieOptionsRef = useRef(goalieOptions);
   goalieOptionsRef.current = goalieOptions;
+  const goalieConfigRef = useRef<GoalieConfig | null>(goalieConfig ?? null);
+  goalieConfigRef.current = goalieConfig ?? null;
   const puckOptionsRef = useRef(puckOptions);
   puckOptionsRef.current = puckOptions;
   const hitboxesVisibleRef = useRef(hitboxesVisible);
@@ -9911,6 +9917,7 @@ export function PlayView<TState>({
         getSeed: () => sessionRef.current.seed ?? 'fallback',
         getShotIndex: () => sessionRef.current.shots + 1,
         getGoalieId: () => sessionRef.current.goalieId,
+        getGoalieConfig: () => goalieConfigRef.current,
         getSpeedOverrides: () => speedsRef.current,
         getInitialElapsedMs: () => computeInitialElapsedMs(sessionTimingRef.current),
         getDuelCondition: (elapsedMs, activeSpeeds) =>
@@ -10095,7 +10102,8 @@ export function PlayView<TState>({
     if (typeof cur.shotsTotal === 'number' && cur.shots >= cur.shotsTotal) return;
 
     const shotIndex = cur.shots + 1;
-    const goalieCfg = getGoalie(cur.goalieId);
+    const goalieCfg = cur.goalieConfig ?? (cur.goalieId ? getGoalie(cur.goalieId) : null);
+    if (!goalieCfg) return;
     const overrides = speedsRef.current;
     // Apply the same frequency overrides that resolveShot uses internally, so
     // subText simulateGoal/simulateGoalie calls see the same goal/goalie

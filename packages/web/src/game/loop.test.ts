@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Ticker } from 'pixi.js';
+import type { GoalieConfig } from '@hockey/game-core';
 import { createGameLoop } from './loop.js';
 
 function makeLoop(overrides: Partial<Parameters<typeof createGameLoop>[0]> = {}) {
@@ -36,6 +37,34 @@ function makeTicker(): TestTicker {
 }
 
 describe('createGameLoop', () => {
+  it('renders a supplied goalie configuration when no goalie id is available', () => {
+    const customGoalie: GoalieConfig = {
+      id: 'bonus:beach:p1',
+      name: 'Пляж',
+      pattern: 'linear',
+      hp: 0,
+      baseReward: 0,
+      firstClearBonus: 0,
+      speed: 0,
+      amplitude: 1,
+      frequency: 0.5,
+      goalAmplitude: 220,
+      goalFrequency: 0.45,
+    };
+    const goalieUpdate = vi.fn();
+    const loop = makeLoop({
+      goalieRenderer: { update: goalieUpdate } as never,
+      getGoalieConfig: () => customGoalie,
+    });
+    const ticker = makeTicker();
+
+    loop.attach(ticker);
+    const onTick = ticker.add.mock.calls[0]?.[0] as (ticker: Ticker) => void;
+    onTick(ticker);
+
+    expect(goalieUpdate).toHaveBeenCalled();
+  });
+
   it('does not add the same ticker callback twice', () => {
     const loop = makeLoop();
     const ticker = makeTicker();
