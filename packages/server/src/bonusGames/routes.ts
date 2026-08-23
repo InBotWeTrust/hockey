@@ -1,5 +1,4 @@
 import type { FastifyInstance, FastifyPluginAsync, FastifyReply } from 'fastify';
-import type { ShotInput } from '@hockey/game-core';
 import type { PoolClient } from 'pg';
 import { z, type ZodType } from 'zod';
 import { AppError } from '../plugins/errors.js';
@@ -13,6 +12,7 @@ import {
   startOrResumeBonusAttempt,
   submitBonusShot,
   toBonusAttemptDto,
+  type SubmitBonusShotInput,
 } from './service.js';
 import type { BonusGameAttemptDTO, BonusGameAttemptRow, BonusPeriodRule } from './types.js';
 
@@ -28,7 +28,7 @@ const shotBodySchema = z
     input: z
       .object({
         tapTime: z.number().finite().nonnegative(),
-        shooterTapTime: z.number().finite().nonnegative().optional(),
+        shooterTapTime: z.number().finite().nonnegative(),
         puckSpeedPerMs: z.number().optional(),
         shooterFrequency: z.number().optional(),
         goalieFrequency: z.number().optional(),
@@ -183,10 +183,12 @@ function addMilliseconds(value: string | null, milliseconds: number): string | n
   return new Date(new Date(value).getTime() + milliseconds).toISOString();
 }
 
-function toShotInput(input: z.infer<typeof shotBodySchema>['input']): ShotInput {
+function toShotInput(
+  input: z.infer<typeof shotBodySchema>['input'],
+): SubmitBonusShotInput['input'] {
   return {
     tapTime: input.tapTime,
-    ...(input.shooterTapTime !== undefined ? { shooterTapTime: input.shooterTapTime } : {}),
+    shooterTapTime: input.shooterTapTime,
     ...(input.puckSpeedPerMs !== undefined ? { puckSpeedPerMs: input.puckSpeedPerMs } : {}),
     ...(input.shooterFrequency !== undefined ? { shooterFrequency: input.shooterFrequency } : {}),
     ...(input.goalieFrequency !== undefined ? { goalieFrequency: input.goalieFrequency } : {}),

@@ -8,6 +8,7 @@ import {
   startBonusPeriod,
   startOrResumeBonusAttempt,
   submitBonusShot,
+  type SubmitBonusShotInput,
 } from '../../src/bonusGames/service.js';
 import type { BonusPeriodRule } from '../../src/bonusGames/types.js';
 import { applyMigrations } from '../../src/db/migrations.js';
@@ -35,12 +36,12 @@ const PERIODS: BonusPeriodRule[] = [
   },
 ];
 
-// Hand-checked against the fixed attempt seed and period snapshot: 730 ms is
+// Hand-checked against the fixed attempt seed and period snapshot: 1000 ms is
 // a goal. The hostile optional overrides intentionally produce a non-goal if
 // the server trusts them instead of rebuilding the authoritative input.
 const GOAL_INPUT: ShotInput = {
-  tapTime: 730,
-  shooterTapTime: 730,
+  tapTime: 1_000,
+  shooterTapTime: 1_000,
   puckSpeedPerMs: 0.2,
   shooterFrequency: 3,
   goalieFrequency: 3,
@@ -291,8 +292,8 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
     expect(shot.rows[0]).toEqual({
       seed: deriveShotSeed(ATTEMPT_SEED, 1, 1),
       input_payload: {
-        tapTime: 730,
-        shooterTapTime: 730,
+        tapTime: 1_000,
+        shooterTapTime: 1_000,
         puckSpeedPerMs: 1.2,
         shooterFrequency: 0.65,
         goalieFrequency: 0.5,
@@ -377,6 +378,47 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
     expect(await mutationSnapshot(userId, attemptId)).toEqual(before);
   });
 
+  it('requires shooter time at the service boundary before any mutation', async () => {
+    const userId = await createUser();
+    const game = await createGame({ targetGoals: 1 });
+    const attemptId = await createActiveAttempt(userId, game.id);
+    const before = await mutationSnapshot(userId, attemptId);
+    const { shooterTapTime: _omitted, ...inputWithoutShooterTime } = GOAL_INPUT;
+
+    await expect(
+      submitBonusShot(pool, {
+        userId,
+        attemptId,
+        claimedShotIndex: 1,
+        input: inputWithoutShooterTime as SubmitBonusShotInput['input'],
+        claimedResult: 'goal',
+        now: SHOT_AT,
+      }),
+    ).rejects.toMatchObject({ code: 'bonus_shot_time_invalid', statusCode: 400 });
+
+    expect(await mutationSnapshot(userId, attemptId)).toEqual(before);
+  });
+
+  it('rejects jointly forged first-shot clocks far behind the authoritative period timeline', async () => {
+    const userId = await createUser();
+    const game = await createGame({ targetGoals: 1 });
+    const attemptId = await createActiveAttempt(userId, game.id);
+    const before = await mutationSnapshot(userId, attemptId);
+
+    await expect(
+      submitBonusShot(pool, {
+        userId,
+        attemptId,
+        claimedShotIndex: 1,
+        input: { ...GOAL_INPUT, tapTime: 730, shooterTapTime: 730 },
+        claimedResult: 'goal',
+        now: new Date('2026-08-23T12:00:10.000Z'),
+      }),
+    ).rejects.toMatchObject({ code: 'bonus_shot_time_stale', statusCode: 409 });
+
+    expect(await mutationSnapshot(userId, attemptId)).toEqual(before);
+  });
+
   it('rejects a forged shooter phase after an accepted shot', async () => {
     const userId = await createUser();
     const game = await createGame({ targetGoals: 3 });
@@ -396,7 +438,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
         userId,
         attemptId,
         claimedShotIndex: 2,
-        input: { ...GOAL_INPUT, tapTime: 2_000, shooterTapTime: 1_000 },
+        input: { ...GOAL_INPUT, tapTime: 1_000, shooterTapTime: 800 },
         claimedResult: 'goal',
         now: new Date('2026-08-23T12:00:02.000Z'),
       }),
@@ -405,18 +447,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
     expect(await mutationSnapshot(userId, attemptId)).toEqual(before);
   });
 
-  it.each([
-    {
-      name: 'one accumulated flight pause',
-      shooterTapTime: 1_566.666_666_666_666_5,
-      claimedResult: 'miss' as const,
-    },
-    {
-      name: 'reload-reset clocks',
-      shooterTapTime: 2_000,
-      claimedResult: 'miss' as const,
-    },
-  ])('accepts $name after a previous shot', async ({ shooterTapTime, claimedResult }) => {
+  it('accepts the continuous scene and shooter clocks after one completed flight pause', async () => {
     const userId = await createUser();
     const game = await createGame({ targetGoals: 3 });
     const attemptId = await createActiveAttempt(userId, game.id);
@@ -433,13 +464,48 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
       userId,
       attemptId,
       claimedShotIndex: 2,
-      input: { ...GOAL_INPUT, tapTime: 2_000, shooterTapTime },
-      claimedResult,
-      now: new Date('2026-08-23T12:00:02.000Z'),
+      input: { ...GOAL_INPUT, tapTime: 2_000, shooterTapTime: 1_566.666_666_666_666_5 },
+      claimedResult: 'miss',
+      now: new Date('2026-08-23T12:00:03.000Z'),
     });
 
     expect(response).toMatchObject({
-      serverResult: claimedResult,
+      serverResult: 'miss',
+      attempt: { status: 'active', state: 'period_active', shotsTaken: 2, goals: 1 },
+    });
+  });
+
+  it('accepts resumed clocks derived from authoritative elapsed time and accepted pauses', async () => {
+    const userId = await createUser();
+    const game = await createGame({ targetGoals: 3 });
+    const attemptId = await createActiveAttempt(userId, game.id);
+    await submitBonusShot(pool, {
+      userId,
+      attemptId,
+      claimedShotIndex: 1,
+      input: GOAL_INPUT,
+      claimedResult: 'goal',
+      now: SHOT_AT,
+    });
+    const resumed = await startOrResumeBonusAttempt(pool, {
+      userId,
+      gameId: game.id,
+      now: new Date('2026-08-23T12:00:10.000Z'),
+      seedSecret: SEED_SECRET,
+    });
+    expect(resumed).toMatchObject({ created: false, attempt: { id: attemptId, shotsTaken: 1 } });
+
+    const response = await submitBonusShot(pool, {
+      userId,
+      attemptId,
+      claimedShotIndex: 2,
+      input: { ...GOAL_INPUT, tapTime: 9_000, shooterTapTime: 8_566.666_666_666_666 },
+      claimedResult: 'miss',
+      now: new Date('2026-08-23T12:00:10.000Z'),
+    });
+
+    expect(response).toMatchObject({
+      serverResult: 'miss',
       attempt: { status: 'active', state: 'period_active', shotsTaken: 2, goals: 1 },
     });
   });
@@ -663,9 +729,13 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
       userId,
       attemptId,
       claimedShotIndex: 2,
-      input: GOAL_INPUT,
+      input: {
+        ...GOAL_INPUT,
+        tapTime: 1_854,
+        shooterTapTime: 1_420.666_666_666_666_5,
+      },
       claimedResult: 'goal' as const,
-      now: new Date('2026-08-23T12:00:02.000Z'),
+      now: new Date('2026-08-23T12:00:02.854Z'),
     };
 
     const results = await Promise.allSettled([

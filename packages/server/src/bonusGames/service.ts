@@ -42,7 +42,7 @@ export interface SubmitBonusShotInput {
   userId: string;
   attemptId: string;
   claimedShotIndex: number;
-  input: ShotInput;
+  input: ShotInput & { shooterTapTime: number };
   claimedResult: BonusShotResult;
   now: Date;
 }
@@ -558,10 +558,13 @@ function periodRuleForAttempt(attempt: BonusGameAttemptRow): BonusPeriodRule {
   return period;
 }
 
-function authoritativeShotInput(input: ShotInput, rule: BonusPeriodRule): ShotInput {
+function authoritativeShotInput(
+  input: SubmitBonusShotInput['input'],
+  rule: BonusPeriodRule,
+): ShotInput {
   return {
     tapTime: input.tapTime,
-    ...(input.shooterTapTime !== undefined ? { shooterTapTime: input.shooterTapTime } : {}),
+    shooterTapTime: input.shooterTapTime,
     puckSpeedPerMs: rule.puckSpeedPerMs,
     shooterFrequency: rule.shooterFrequency,
     goalieFrequency: rule.goalieFrequency,
@@ -569,10 +572,10 @@ function authoritativeShotInput(input: ShotInput, rule: BonusPeriodRule): ShotIn
   };
 }
 
-const TAP_TIME_FUTURE_TOLERANCE_MS = 2_500;
-const TAP_TIME_STALE_TOLERANCE_MS = 12_000;
-const TAP_TIME_PAUSE_ALLOWANCE_PER_SHOT_MS = 2_000;
-const SHOOTER_TIME_RELATION_TOLERANCE_MS = 250;
+const BONUS_SHOT_RESULT_PAUSE_MS = 1_000;
+const BONUS_SHOT_NETWORK_LAG_TOLERANCE_MS = 2_500;
+const BONUS_SHOT_FUTURE_TOLERANCE_MS = 250;
+const BONUS_SHOT_CLOCK_RELATION_TOLERANCE_MS = 100;
 
 function invalidBonusShotTime(): AppError {
   return new AppError(BONUS_SHOT_TIME_INVALID_CODE, 'bonus shot timing is invalid', 400);
@@ -581,15 +584,15 @@ function invalidBonusShotTime(): AppError {
 function assertBonusShotTimeFresh(
   attempt: BonusGameAttemptRow,
   previousShots: number,
-  input: ShotInput,
+  input: SubmitBonusShotInput['input'],
   rule: BonusPeriodRule,
   now: Date,
 ): void {
   if (
     !Number.isFinite(input.tapTime) ||
     input.tapTime < 0 ||
-    (input.shooterTapTime !== undefined &&
-      (!Number.isFinite(input.shooterTapTime) || input.shooterTapTime < 0))
+    !Number.isFinite(input.shooterTapTime) ||
+    input.shooterTapTime < 0
   ) {
     throw invalidBonusShotTime();
   }
@@ -598,31 +601,26 @@ function assertBonusShotTimeFresh(
   }
 
   const elapsedMs = Math.max(0, now.getTime() - attempt.period_started_at.getTime());
-  const futureLimit = elapsedMs + TAP_TIME_FUTURE_TOLERANCE_MS;
-  const staleLimit = Math.max(
-    0,
-    elapsedMs - TAP_TIME_STALE_TOLERANCE_MS - previousShots * TAP_TIME_PAUSE_ALLOWANCE_PER_SHOT_MS,
-  );
-  if (input.tapTime > futureLimit || input.tapTime < staleLimit) {
+  const flightMs = (PUCK_START.y - GOAL_OPENING.y) / rule.puckSpeedPerMs;
+  // PlayView freezes the scene for the fixed result display and freezes the
+  // shooter for that display plus puck flight. Task 13 resume must restore
+  // these continuous period clocks from server elapsed time and accepted shots.
+  const expectedSceneTime = elapsedMs - previousShots * BONUS_SHOT_RESULT_PAUSE_MS;
+  const expectedShooterTime = expectedSceneTime - previousShots * flightMs;
+  const isNearAuthoritativeClock = (actual: number, expected: number): boolean =>
+    actual >= expected - BONUS_SHOT_NETWORK_LAG_TOLERANCE_MS &&
+    actual <= expected + BONUS_SHOT_FUTURE_TOLERANCE_MS;
+
+  if (
+    !isNearAuthoritativeClock(input.tapTime, expectedSceneTime) ||
+    !isNearAuthoritativeClock(input.shooterTapTime, expectedShooterTime)
+  ) {
     throw new AppError(BONUS_SHOT_TIME_STALE_CODE, 'bonus shot timing is stale', 409);
   }
 
-  if (input.shooterTapTime === undefined) return;
-
-  // The shooter pauses at tap while the scene pauses only at impact, so each
-  // completed shot adds exactly one flight duration to their clock difference.
-  // A reload resets both local pause accumulators, which makes any whole number
-  // of flight pauses from zero through the accepted shot count possible.
-  const flightMs = (PUCK_START.y - GOAL_OPENING.y) / rule.puckSpeedPerMs;
   const shooterLag = input.tapTime - input.shooterTapTime;
-  const nearestPauseCount = Math.round(shooterLag / flightMs);
-  const isPossiblePauseCount = nearestPauseCount >= 0 && nearestPauseCount <= previousShots;
-  const nearestExpectedLag = nearestPauseCount * flightMs;
-  if (
-    shooterLag < 0 ||
-    !isPossiblePauseCount ||
-    Math.abs(shooterLag - nearestExpectedLag) > SHOOTER_TIME_RELATION_TOLERANCE_MS
-  ) {
+  const expectedShooterLag = previousShots * flightMs;
+  if (Math.abs(shooterLag - expectedShooterLag) > BONUS_SHOT_CLOCK_RELATION_TOLERANCE_MS) {
     throw invalidBonusShotTime();
   }
 }

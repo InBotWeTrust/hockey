@@ -289,6 +289,7 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
     const rule = attempt.rules.periods[attempt.current_period - 1]!;
     const shotInput = {
       tapTime,
+      shooterTapTime: tapTime,
       puckSpeedPerMs: rule.puck_speed_per_ms,
       shooterFrequency: rule.shooter_frequency,
       goalieFrequency: rule.goalie_frequency,
@@ -474,7 +475,11 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
       method: 'POST',
       url: `/bonus-games/attempts/${attempt.id}/shot`,
       headers,
-      payload: { claimed_shot_index: 1, input: { tapTime: 125 }, claimed_result: serverResult },
+      payload: {
+        claimed_shot_index: 1,
+        input: { tapTime: 125, shooterTapTime: 125 },
+        claimed_result: serverResult,
+      },
     });
     expect(shot.statusCode).toBe(200);
     expect(shot.json()).toMatchObject({
@@ -513,7 +518,7 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
       headers,
       payload: {
         claimed_shot_index: 1,
-        input: { tapTime: 0, unexpected: true },
+        input: { tapTime: 0, shooterTapTime: 0, unexpected: true },
         claimed_result: 'save',
       },
     });
@@ -526,7 +531,8 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
   it.each([
     {
       name: 'JSON overflow tapTime',
-      payload: '{"claimed_shot_index":1,"input":{"tapTime":1e309},"claimed_result":"goal"}',
+      payload:
+        '{"claimed_shot_index":1,"input":{"tapTime":1e309,"shooterTapTime":0},"claimed_result":"goal"}',
       expectedCode: 'bonus_shot_time_invalid',
       expectedStatus: 400,
     },
@@ -539,7 +545,11 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
     },
     {
       name: 'negative tapTime',
-      payload: { claimed_shot_index: 1, input: { tapTime: -1 }, claimed_result: 'goal' },
+      payload: {
+        claimed_shot_index: 1,
+        input: { tapTime: -1, shooterTapTime: 0 },
+        claimed_result: 'goal',
+      },
       expectedCode: 'bonus_shot_time_invalid',
       expectedStatus: 400,
     },
@@ -554,15 +564,29 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
       expectedStatus: 400,
     },
     {
-      name: 'stale tapTime',
+      name: 'omitted shooterTapTime',
       payload: { claimed_shot_index: 1, input: { tapTime: 0 }, claimed_result: 'goal' },
+      expectedCode: 'bonus_shot_time_invalid',
+      expectedStatus: 400,
+    },
+    {
+      name: 'stale tapTime',
+      payload: {
+        claimed_shot_index: 1,
+        input: { tapTime: 0, shooterTapTime: 0 },
+        claimed_result: 'goal',
+      },
       expectedCode: 'bonus_shot_time_stale',
       expectedStatus: 409,
       periodAgeSeconds: 20,
     },
     {
       name: 'future tapTime',
-      payload: { claimed_shot_index: 1, input: { tapTime: 100_000 }, claimed_result: 'goal' },
+      payload: {
+        claimed_shot_index: 1,
+        input: { tapTime: 100_000, shooterTapTime: 100_000 },
+        claimed_result: 'goal',
+      },
       expectedCode: 'bonus_shot_time_stale',
       expectedStatus: 409,
     },
@@ -570,11 +594,22 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
       name: 'independently forged shooterTapTime',
       payload: {
         claimed_shot_index: 1,
-        input: { tapTime: 1_000, shooterTapTime: 0 },
+        input: { tapTime: 200, shooterTapTime: 0 },
         claimed_result: 'goal',
       },
       expectedCode: 'bonus_shot_time_invalid',
       expectedStatus: 400,
+    },
+    {
+      name: 'jointly forged first-shot clocks',
+      payload: {
+        claimed_shot_index: 1,
+        input: { tapTime: 730, shooterTapTime: 730 },
+        claimed_result: 'goal',
+      },
+      expectedCode: 'bonus_shot_time_stale',
+      expectedStatus: 409,
+      periodAgeSeconds: 10,
     },
   ])('rejects $name without shot, aggregate, or reward writes', async (testCase) => {
     const longPeriod = { ...PERIODS[0]!, durationMs: 300_000 };
@@ -785,7 +820,11 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
           method: 'POST',
           url: `/bonus-games/attempts/${attempt.id}/shot`,
           headers,
-          payload: { claimed_shot_index: 1, input: { tapTime: 125 }, claimed_result: 'save' },
+          payload: {
+            claimed_shot_index: 1,
+            input: { tapTime: 125, shooterTapTime: 125 },
+            claimed_result: 'save',
+          },
         });
       } else {
         const active = await startPeriod(attempt.id);
@@ -802,7 +841,7 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
           headers,
           payload: {
             claimed_shot_index: code === 'bonus_shot_index_mismatch' ? 2 : 1,
-            input: { tapTime: 125 },
+            input: { tapTime: 125, shooterTapTime: 125 },
             claimed_result:
               code === 'bonus_shot_result_mismatch'
                 ? actual === 'goal'
