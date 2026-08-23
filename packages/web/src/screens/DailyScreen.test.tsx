@@ -9,18 +9,16 @@ import {
 } from '@hockey/game-core';
 import {
   DailyScreen,
-  PlayView,
   duelEquipmentEffectLabel,
   duelEventTiming,
-  duelFatigueNoticeLabel,
   duelInventoryBadgeLabel,
   duelInventoryItemRemaining,
-  duelPrimaryButtonLabel,
   duelScoreboardOpponent,
   duelRinkReadyPresenceForMatch,
   isDuelInventoryLow,
   isDuelReadyPresenceState,
 } from './DailyScreen.js';
+import { PlayView, duelFatigueNoticeLabel, duelPrimaryButtonLabel } from '../game/PlayView.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';

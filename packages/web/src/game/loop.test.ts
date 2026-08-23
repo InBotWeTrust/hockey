@@ -3,6 +3,20 @@ import type { Ticker } from 'pixi.js';
 import type { GoalieConfig } from '@hockey/game-core';
 import { createGameLoop } from './loop.js';
 
+const stationaryCustomGoalie: GoalieConfig = {
+  id: 'bonus:beach:p1',
+  name: 'Пляж',
+  pattern: 'linear',
+  hp: 0,
+  baseReward: 0,
+  firstClearBonus: 0,
+  speed: 0,
+  amplitude: 0,
+  frequency: 0.5,
+  goalAmplitude: 0,
+  goalFrequency: 0.45,
+};
+
 function makeLoop(overrides: Partial<Parameters<typeof createGameLoop>[0]> = {}) {
   return createGameLoop({
     goalRenderer: { update: vi.fn() } as never,
@@ -37,24 +51,16 @@ function makeTicker(): TestTicker {
 }
 
 describe('createGameLoop', () => {
-  it('renders a supplied goalie configuration when no goalie id is available', () => {
-    const customGoalie: GoalieConfig = {
-      id: 'bonus:beach:p1',
-      name: 'Пляж',
-      pattern: 'linear',
-      hp: 0,
-      baseReward: 0,
-      firstClearBonus: 0,
-      speed: 0,
-      amplitude: 1,
-      frequency: 0.5,
-      goalAmplitude: 220,
-      goalFrequency: 0.45,
-    };
+  it('renders the supplied goalie configuration when no goalie id is available', () => {
+    const nowSpy = vi.spyOn(performance, 'now').mockReturnValue(1000);
+    const scale = { factor: 1, offsetX: 0, offsetY: 0 };
+    const goalUpdate = vi.fn();
     const goalieUpdate = vi.fn();
     const loop = makeLoop({
+      goalRenderer: { update: goalUpdate } as never,
       goalieRenderer: { update: goalieUpdate } as never,
-      getGoalieConfig: () => customGoalie,
+      getScale: () => scale,
+      getGoalieConfig: () => stationaryCustomGoalie,
     });
     const ticker = makeTicker();
 
@@ -62,7 +68,38 @@ describe('createGameLoop', () => {
     const onTick = ticker.add.mock.calls[0]?.[0] as (ticker: Ticker) => void;
     onTick(ticker);
 
-    expect(goalieUpdate).toHaveBeenCalled();
+    expect(goalUpdate).toHaveBeenCalledWith(scale, 0);
+    expect(goalieUpdate).toHaveBeenCalledWith(
+      { position: { x: 286, y: 78 }, width: 58, height: 28 },
+      scale,
+    );
+    nowSpy.mockRestore();
+  });
+
+  it('prefers the supplied goalie configuration over a valid goalie id', () => {
+    const nowSpy = vi.spyOn(performance, 'now').mockReturnValue(1000);
+    const scale = { factor: 1, offsetX: 0, offsetY: 0 };
+    const goalUpdate = vi.fn();
+    const goalieUpdate = vi.fn();
+    const loop = makeLoop({
+      goalRenderer: { update: goalUpdate } as never,
+      goalieRenderer: { update: goalieUpdate } as never,
+      getScale: () => scale,
+      getGoalieId: () => 'rookie',
+      getGoalieConfig: () => stationaryCustomGoalie,
+    });
+    const ticker = makeTicker();
+
+    loop.attach(ticker);
+    const onTick = ticker.add.mock.calls[0]?.[0] as (ticker: Ticker) => void;
+    onTick(ticker);
+
+    expect(goalUpdate).toHaveBeenCalledWith(scale, 0);
+    expect(goalieUpdate).toHaveBeenCalledWith(
+      { position: { x: 286, y: 78 }, width: 58, height: 28 },
+      scale,
+    );
+    nowSpy.mockRestore();
   });
 
   it('does not add the same ticker callback twice', () => {
