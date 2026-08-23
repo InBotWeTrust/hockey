@@ -81,7 +81,34 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     expect(names).toContain('weekly_challenge_reward_claims');
     expect(names).toContain('achievement_progress');
     expect(names).toContain('feedback_messages');
+    expect(names).toEqual(
+      expect.arrayContaining([
+        'arena_theme',
+        'bonus_game',
+        'bonus_game_attempt',
+        'bonus_game_period_log',
+        'user_bonus_game_unlock',
+        'user_bonus_game_completion',
+        'user_arena_unlock',
+        'bonus_game_economy_event',
+      ]),
+    );
     expect(names).toContain('_migrations');
+
+    const attemptColumns = await pool.query<{ column_name: string }>(
+      `select column_name from information_schema.columns
+        where table_schema = 'public' and table_name = 'bonus_game_attempt'`,
+    );
+    expect(attemptColumns.rows.map((row) => row.column_name)).toEqual(
+      expect.arrayContaining([
+        'rules_snapshot',
+        'reward_snapshot',
+        'arena_theme_id_snapshot',
+        'game_core_version',
+        'period_started_at',
+        'break_started_at',
+      ]),
+    );
 
     const activeDuelTemplateKinds = await pool.query<{ duel_kind: string; count: string }>(
       `select duel_kind, count(*)::text as count
@@ -181,7 +208,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         item_kind: 'nutrition',
         resource_unit: 'energy_ms',
         currency_price: 1490,
-        charges_per_purchase: 8_400_000,
+        charges_per_purchase: 5_700_000,
         effect_puck_speed_points: 0,
       },
       {
@@ -189,7 +216,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         item_kind: 'nutrition',
         resource_unit: 'energy_ms',
         currency_price: 2490,
-        charges_per_purchase: 15_000_000,
+        charges_per_purchase: 8_400_000,
         effect_puck_speed_points: 0,
       },
       {
@@ -197,7 +224,15 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         item_kind: 'nutrition',
         resource_unit: 'energy_ms',
         currency_price: 3490,
-        charges_per_purchase: 21_600_000,
+        charges_per_purchase: 10_800_000,
+        effect_puck_speed_points: 0,
+      },
+      {
+        title: 'Разгон',
+        item_kind: 'skates',
+        resource_unit: 'distance',
+        currency_price: 2490,
+        charges_per_purchase: 12_500,
         effect_puck_speed_points: 0,
       },
       {
@@ -205,7 +240,15 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         item_kind: 'skates',
         resource_unit: 'distance',
         currency_price: 2990,
-        charges_per_purchase: 1000,
+        charges_per_purchase: 8500,
+        effect_puck_speed_points: 0,
+      },
+      {
+        title: 'Профи',
+        item_kind: 'skates',
+        resource_unit: 'distance',
+        currency_price: 3740,
+        charges_per_purchase: 16_000,
         effect_puck_speed_points: 0,
       },
       {
@@ -312,6 +355,10 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '052_backfill_duel_inventory_gameplay_fields.sql',
       '053_duel_challenge_ttl_admin_default.sql',
       '054_inventory_item_instances.sql',
+      '055_inventory_skates_energy_balance.sql',
+      '056_inventory_low_stock_threshold.sql',
+      '057_amateur_no_inventory_penalty_settings.sql',
+      '058_bonus_games_and_home_arenas.sql',
     ]);
   });
 });
@@ -439,6 +486,13 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
     expect(applied.applied).toEqual([
       '050_duel_inventory_usage_resources.sql',
       '051_dedupe_active_duel_templates.sql',
+      '052_backfill_duel_inventory_gameplay_fields.sql',
+      '053_duel_challenge_ttl_admin_default.sql',
+      '054_inventory_item_instances.sql',
+      '055_inventory_skates_energy_balance.sql',
+      '056_inventory_low_stock_threshold.sql',
+      '057_amateur_no_inventory_penalty_settings.sql',
+      '058_bonus_games_and_home_arenas.sql',
     ]);
 
     const activeInventory = await pool.query<{
@@ -462,7 +516,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
         title: 'Изотоник',
         resource_unit: 'energy_ms',
         currency_price: 1490,
-        charges_per_purchase: 8_400_000,
+        charges_per_purchase: 5_700_000,
         effect_puck_speed_points: 0,
       },
       {
@@ -470,7 +524,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
         title: 'Энерго-заряд',
         resource_unit: 'energy_ms',
         currency_price: 2490,
-        charges_per_purchase: 15_000_000,
+        charges_per_purchase: 8_400_000,
         effect_puck_speed_points: 0,
       },
       {
@@ -478,7 +532,15 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
         title: 'Энерго-комплекс',
         resource_unit: 'energy_ms',
         currency_price: 3490,
-        charges_per_purchase: 21_600_000,
+        charges_per_purchase: 10_800_000,
+        effect_puck_speed_points: 0,
+      },
+      {
+        item_kind: 'skates',
+        title: 'Разгон',
+        resource_unit: 'distance',
+        currency_price: 2490,
+        charges_per_purchase: 12_500,
         effect_puck_speed_points: 0,
       },
       {
@@ -486,7 +548,15 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
         title: 'Старт',
         resource_unit: 'distance',
         currency_price: 2990,
-        charges_per_purchase: 1000,
+        charges_per_purchase: 8500,
+        effect_puck_speed_points: 0,
+      },
+      {
+        item_kind: 'skates',
+        title: 'Профи',
+        resource_unit: 'distance',
+        currency_price: 3740,
+        charges_per_purchase: 16_000,
         effect_puck_speed_points: 0,
       },
       {
