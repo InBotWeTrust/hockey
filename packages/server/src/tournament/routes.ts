@@ -32,6 +32,7 @@ import {
   type TournamentRulesSnapshot,
 } from './service.js';
 import { openTournamentFixtureSegment } from './fixtureLifecycle.js';
+import { publishTournamentFixtureProgress } from './realtimeProgress.js';
 import { finalizeTournamentDailyDay } from './dailyAggregate.js';
 import { grantTournamentStageRewards } from './rewards.js';
 import {
@@ -163,11 +164,16 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
     async (req) => {
       await requireTournamentFeature(app);
       const params = z.object({ tournamentId: uuid, fixtureId: uuid }).parse(req.params);
-      return openTournamentFixtureSegment(
+      const opened = await openTournamentFixtureSegment(
         app.pg,
         { ...params, userId: req.user.id, now: new Date() },
         createTournamentDuelMatch,
       );
+      await publishTournamentFixtureProgress(app.pg, app.realtime, app.log, {
+        duelMatchId: opened.duelMatchId,
+        sequence: Date.now(),
+      });
+      return opened;
     },
   );
 

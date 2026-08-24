@@ -372,6 +372,11 @@ interface DuelMatchRow {
   opponent_avatar_url?: string | null;
 }
 
+interface ReconciledMatch {
+  match: DuelMatchRow;
+  changed: boolean;
+}
+
 interface DuelPeriodRule {
   periodNumber: number;
   mode: DuelPeriodMode;
@@ -2010,8 +2015,8 @@ async function closeParticipantPeriod(
   rules: DuelRulesSnapshot,
   now: Date,
   reason: 'quota' | 'timeout' | 'window_end',
-): Promise<void> {
-  if (participant.period_started_at === null) return;
+): Promise<boolean> {
+  if (participant.period_started_at === null) return false;
   const stats = await fetchCurrentPeriodStats(
     client,
     participant.match_id,
@@ -2048,7 +2053,7 @@ async function closeParticipantPeriod(
     : periodCompleted
       ? 'break_active'
       : 'forfeit';
-  await client.query(
+  const updated = await client.query(
     `update amateur_duel_participant
         set state = $3,
             period_started_at = null,
@@ -2070,6 +2075,7 @@ async function closeParticipantPeriod(
       durationMs,
     ],
   );
+  return (updated.rowCount ?? 0) > 0;
 }
 
 async function markExpiredInvitedMatch(client: PoolClient, match: DuelMatchRow, now: Date) {
@@ -2120,15 +2126,15 @@ async function settleMatchIfReady(
   client: PoolClient,
   match: DuelMatchRow,
   now: Date,
-): Promise<DuelMatchRow> {
+): Promise<ReconciledMatch> {
   if (match.status === 'settled' || match.status === 'expired' || match.status === 'cancelled')
-    return match;
+    return { match, changed: false };
   if (match.status === 'invited') {
     if (match.ready_expires_at !== null && now >= match.ready_expires_at) {
       await markExpiredInvitedMatch(client, match, now);
-      return fetchMatchForUpdate(client, match.id);
+      return { match: await fetchMatchForUpdate(client, match.id), changed: true };
     }
-    return match;
+    return { match, changed: false };
   }
   const rules = parseRulesSnapshot(match.rules_snapshot);
   const settlementPolicy = getDuelSettlementPolicy(match.source);
@@ -2137,7 +2143,7 @@ async function settleMatchIfReady(
     match.ready_expires_at !== null &&
     now >= match.ready_expires_at
   ) {
-    return cancelReadyNoShow(client, match, rules, now);
+    return { match: await cancelReadyNoShow(client, match, rules, now), changed: true };
   }
 
   const participants = await fetchParticipants(client, match.id);
@@ -2199,7 +2205,7 @@ async function settleMatchIfReady(
           where id = $1 and status = 'active'`,
         [match.id, now],
       );
-      return fetchMatchForUpdate(client, match.id);
+      return { match: await fetchMatchForUpdate(client, match.id), changed: true };
     }
     for (const participant of participants) {
       if (participant.state !== 'completed' && participant.state !== 'forfeit') {
@@ -2223,7 +2229,7 @@ async function settleMatchIfReady(
   const bDone = b.state === 'completed';
   const aTerminal = aDone || a.state === 'forfeit';
   const bTerminal = bDone || b.state === 'forfeit';
-  if (!windowEnded && !(aTerminal && bTerminal)) return match;
+  if (!windowEnded && !(aTerminal && bTerminal)) return { match, changed: false };
 
   let outcome: DuelOutcome;
   let winnerUserId: string | null = null;
@@ -2456,7 +2462,7 @@ async function settleMatchIfReady(
   if (settlementPolicy.evaluateAchievements) {
     await evaluateDuelSettledAchievements(client, { matchId: match.id, winnerUserId });
   }
-  return rows[0]!;
+  return { match: rows[0]!, changed: true };
 }
 
 async function fetchMatchmakingTemplates(
@@ -2502,29 +2508,34 @@ async function reconcileMatch(
   client: PoolClient,
   match: DuelMatchRow,
   now: Date,
-): Promise<DuelMatchRow> {
+): Promise<ReconciledMatch> {
   if (match.status === 'settled' || match.status === 'expired' || match.status === 'cancelled')
-    return match;
+    return { match, changed: false };
   if (match.status === 'invited' || match.status === 'ready_check') {
     return settleMatchIfReady(client, match, now);
   }
 
   const rules = parseRulesSnapshot(match.rules_snapshot);
   const participants = await fetchParticipants(client, match.id);
+  let changed = false;
   for (const participant of participants) {
     if (participant.state === 'period_active' && participant.period_started_at !== null) {
       const periodRule = getDuelPeriodRule(rules, participant.current_period);
       const timeoutAt = new Date(participant.period_started_at.getTime() + periodRule.durationMs);
       if (now >= match.ends_at) {
-        await closeParticipantPeriod(client, participant, rules, match.ends_at, 'window_end');
+        changed =
+          (await closeParticipantPeriod(client, participant, rules, match.ends_at, 'window_end')) ||
+          changed;
       } else if (now >= timeoutAt) {
-        await closeParticipantPeriod(client, participant, rules, timeoutAt, 'timeout');
+        changed =
+          (await closeParticipantPeriod(client, participant, rules, timeoutAt, 'timeout')) ||
+          changed;
       }
     }
     if (participant.state === 'break_active' && participant.break_started_at !== null) {
       const breakEndsAt = new Date(participant.break_started_at.getTime() + rules.breakDurationMs);
       if (now >= breakEndsAt) {
-        await client.query(
+        const updated = await client.query(
           `update amateur_duel_participant
               set state = 'accepted',
                   break_started_at = null,
@@ -2533,6 +2544,7 @@ async function reconcileMatch(
             where match_id = $1 and user_id = $2 and state = 'break_active'`,
           [match.id, participant.user_id, breakEndsAt],
         );
+        changed = (updated.rowCount ?? 0) > 0 || changed;
       }
     }
     if (
@@ -2553,7 +2565,7 @@ async function reconcileMatch(
           participant.ready_at.getTime() + DUEL_INTERMISSION_CONTINUE_GRACE_MS,
         );
         if (now >= continueDeadline) {
-          await client.query(
+          const updated = await client.query(
             `update amateur_duel_participant
                 set state = 'forfeit',
                     period_started_at = null,
@@ -2562,12 +2574,14 @@ async function reconcileMatch(
               where match_id = $1 and user_id = $2 and state = 'accepted'`,
             [match.id, participant.user_id],
           );
+          changed = (updated.rowCount ?? 0) > 0 || changed;
         }
       }
     }
   }
   const refreshed = await fetchMatchForUpdate(client, match.id);
-  return settleMatchIfReady(client, refreshed, now);
+  const settled = await settleMatchIfReady(client, refreshed, now);
+  return { match: settled.match, changed: changed || settled.changed };
 }
 
 async function fetchAvailableInventory(
@@ -3250,7 +3264,7 @@ async function publishDuelFixtureProgress(
   app: Parameters<FastifyPluginAsync>[0],
   duelMatchId: string,
 ): Promise<void> {
-  await publishTournamentFixtureProgress(app.pg, app.realtime, {
+  await publishTournamentFixtureProgress(app.pg, app.realtime, app.log, {
     duelMatchId,
     sequence: Date.now(),
   });
@@ -3379,7 +3393,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
   });
 
   app.get('/duel/amateur/matches', { preHandler: [app.authenticate] }, async (req) => {
-    return withTransaction(app, async (client) => {
+    const response = await withTransaction(app, async (client) => {
       const now = new Date();
       const { rows } = await client.query<DuelMatchRow>(
         `select m.*, cu.display_name as challenger_name, cu.avatar_url as challenger_avatar_url,
@@ -3395,8 +3409,15 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
         [req.user.id],
       );
       const matches: DuelMatchDTO[] = [];
+      const changedMatchIds = new Set<string>();
       for (const row of rows) {
-        const match = await reconcileMatch(client, row, now);
+        const reconciled = await reconcileMatch(
+          client,
+          await fetchMatchForUpdate(client, row.id),
+          now,
+        );
+        if (reconciled.changed) changedMatchIds.add(reconciled.match.id);
+        const match = reconciled.match;
         if (
           match.status === 'invited' ||
           match.status === 'ready_check' ||
@@ -3406,8 +3427,12 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
           matches.push(await buildMatchDto(client, match, req.user.id, now));
         }
       }
-      return { matches };
+      return { matches, changedMatchIds: [...changedMatchIds] };
     });
+    for (const matchId of response.changedMatchIds) {
+      await publishDuelFixtureProgress(app, matchId);
+    }
+    return { matches: response.matches };
   });
 
   app.get('/duel/amateur/history', { preHandler: [app.authenticate] }, async (req) => {
@@ -3498,7 +3523,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
   });
 
   app.get('/duel/amateur/events', { preHandler: [app.authenticate] }, async (req) => {
-    return withTransaction(app, async (client) => {
+    const response = await withTransaction(app, async (client) => {
       const now = new Date();
       const { rows } = await client.query<DuelMatchRow>(
         `select m.*, cu.display_name as challenger_name, cu.avatar_url as challenger_avatar_url,
@@ -3513,8 +3538,15 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
         [req.user.id],
       );
       const events: DuelMatchDTO[] = [];
+      const changedMatchIds = new Set<string>();
       for (const row of rows) {
-        const match = await reconcileMatch(client, row, now);
+        const reconciled = await reconcileMatch(
+          client,
+          await fetchMatchForUpdate(client, row.id),
+          now,
+        );
+        if (reconciled.changed) changedMatchIds.add(reconciled.match.id);
+        const match = reconciled.match;
         if (
           match.status === 'invited' ||
           match.status === 'ready_check' ||
@@ -3523,8 +3555,12 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
           events.push(await buildMatchDto(client, match, req.user.id, now));
         }
       }
-      return { events };
+      return { events, changedMatchIds: [...changedMatchIds] };
     });
+    for (const matchId of response.changedMatchIds) {
+      await publishDuelFixtureProgress(app, matchId);
+    }
+    return { events: response.events };
   });
 
   app.post('/duel/amateur/challenge', { preHandler: [app.authenticate] }, async (req) => {
@@ -3701,7 +3737,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
         if (match.opponent_user_id !== req.user.id) {
           throw new AppError('forbidden', 'only challenged player can decline duel', 403);
         }
-        match = await reconcileMatch(client, match, now);
+        match = (await reconcileMatch(client, match, now)).match;
         if (match.status !== 'invited') {
           throw new AppError('conflict', 'duel challenge is not pending', 409);
         }
@@ -3756,11 +3792,9 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
       const params = z.object({ matchId: uuid }).parse(req.params);
       const cancelled = await withTransaction(app, async (client) => {
         const now = new Date();
-        let match = await reconcileMatch(
-          client,
-          await fetchMatchForUpdate(client, params.matchId),
-          now,
-        );
+        let match = (
+          await reconcileMatch(client, await fetchMatchForUpdate(client, params.matchId), now)
+        ).match;
         if (match.challenger_user_id !== req.user.id) {
           throw new AppError('forbidden', 'only challenger can cancel duel', 403);
         }
@@ -3812,11 +3846,9 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
       if (!parsed.success) throw new AppError('bad_request', 'invalid duel ready payload', 400);
       const response = await withTransaction(app, async (client) => {
         const now = new Date();
-        let match = await reconcileMatch(
-          client,
-          await fetchMatchForUpdate(client, params.matchId),
-          now,
-        );
+        let match = (
+          await reconcileMatch(client, await fetchMatchForUpdate(client, params.matchId), now)
+        ).match;
         if (match.challenger_user_id !== req.user.id && match.opponent_user_id !== req.user.id) {
           throw new AppError('forbidden', 'duel match access denied', 403);
         }
@@ -3977,18 +4009,22 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
     const params = z.object({ matchId: uuid }).parse(req.params);
     const response = await withTransaction(app, async (client) => {
       const now = new Date();
-      const match = await reconcileMatch(
+      const reconciled = await reconcileMatch(
         client,
         await fetchMatchForUpdate(client, params.matchId),
         now,
       );
+      const match = reconciled.match;
       if (match.challenger_user_id !== req.user.id && match.opponent_user_id !== req.user.id) {
         throw new AppError('forbidden', 'duel match access denied', 403);
       }
-      return { match: await buildMatchStateDto(client, match, req.user.id, now) };
+      return {
+        match: await buildMatchStateDto(client, match, req.user.id, now),
+        changed: reconciled.changed,
+      };
     });
-    await publishDuelFixtureProgress(app, response.match.id);
-    return response;
+    if (response.changed) await publishDuelFixtureProgress(app, response.match.id);
+    return { match: response.match };
   });
 
   app.patch(
@@ -4000,11 +4036,9 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
       if (!parsed.success) throw new AppError('bad_request', 'invalid duel loadout payload', 400);
       return withTransaction(app, async (client) => {
         const now = new Date();
-        let match = await reconcileMatch(
-          client,
-          await fetchMatchForUpdate(client, params.matchId),
-          now,
-        );
+        let match = (
+          await reconcileMatch(client, await fetchMatchForUpdate(client, params.matchId), now)
+        ).match;
         if (match.challenger_user_id !== req.user.id && match.opponent_user_id !== req.user.id) {
           throw new AppError('forbidden', 'duel match access denied', 403);
         }
@@ -4056,11 +4090,9 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
       if (!parsed.success) throw new AppError('bad_request', 'invalid duel period payload', 400);
       const response = await withTransaction(app, async (client) => {
         const now = new Date();
-        let match = await reconcileMatch(
-          client,
-          await fetchMatchForUpdate(client, params.matchId),
-          now,
-        );
+        let match = (
+          await reconcileMatch(client, await fetchMatchForUpdate(client, params.matchId), now)
+        ).match;
         if (match.challenger_user_id !== req.user.id && match.opponent_user_id !== req.user.id) {
           throw new AppError('forbidden', 'duel match access denied', 403);
         }
@@ -4137,11 +4169,9 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
 
       const response = await withTransaction(app, async (client) => {
         const now = new Date();
-        let match = await reconcileMatch(
-          client,
-          await fetchMatchForUpdate(client, params.matchId),
-          now,
-        );
+        let match = (
+          await reconcileMatch(client, await fetchMatchForUpdate(client, params.matchId), now)
+        ).match;
         if (match.challenger_user_id !== req.user.id && match.opponent_user_id !== req.user.id) {
           throw new AppError('forbidden', 'duel match access denied', 403);
         }
@@ -4298,7 +4328,8 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
         ) {
           await closeParticipantPeriod(client, participant, rules, now, 'quota');
         }
-        match = await reconcileMatch(client, await fetchMatchForUpdate(client, match.id), now);
+        match = (await reconcileMatch(client, await fetchMatchForUpdate(client, match.id), now))
+          .match;
         return {
           matchId: match.id,
           settled: match.status === 'settled',
@@ -4319,11 +4350,9 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
       const params = z.object({ matchId: uuid }).parse(req.params);
       const response = await withTransaction(app, async (client) => {
         const now = new Date();
-        const match = await reconcileMatch(
-          client,
-          await fetchMatchForUpdate(client, params.matchId),
-          now,
-        );
+        const match = (
+          await reconcileMatch(client, await fetchMatchForUpdate(client, params.matchId), now)
+        ).match;
         if (match.challenger_user_id !== req.user.id && match.opponent_user_id !== req.user.id) {
           throw new AppError('forbidden', 'duel match access denied', 403);
         }

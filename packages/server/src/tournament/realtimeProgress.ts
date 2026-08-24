@@ -1,3 +1,4 @@
+import type { FastifyBaseLogger } from 'fastify';
 import type { Pool } from 'pg';
 import type { Realtime } from '../plugins/realtime.js';
 import { getFixtureLiveSnapshot } from './live.js';
@@ -14,6 +15,7 @@ export interface TournamentFixtureProgressInput {
 export async function publishTournamentFixtureProgress(
   pool: Pool,
   publisher: Pick<Realtime, 'publish'>,
+  logger: Pick<FastifyBaseLogger, 'warn'>,
   input: TournamentFixtureProgressInput,
 ): Promise<void> {
   try {
@@ -35,7 +37,8 @@ export async function publishTournamentFixtureProgress(
       sequence: input.sequence,
       payload: { live },
     });
-  } catch {
+  } catch (err) {
     // Redis/WebSocket delivery is best-effort; HTTP gameplay is already committed.
+    logger.warn({ err }, 'tournament fixture progress publication failed');
   }
 }

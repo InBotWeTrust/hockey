@@ -156,6 +156,11 @@ describe.skipIf(!hasIntegrationEnv)('tournament duel realtime progress', () => {
 
   beforeEach(async () => {
     await pool.query('truncate users restart identity cascade');
+    await pool.query(
+      `insert into game_settings (key, value, label, description)
+       values ('tournaments.enabled', 'false'::jsonb, 'Турниры включены', 'Тестовый feature toggle')
+       on conflict (key) do update set value = excluded.value`,
+    );
     const redis = createTestRedis();
     await resetRedis(redis);
     redis.disconnect();
@@ -415,8 +420,138 @@ describe.skipIf(!hasIntegrationEnv)('tournament duel realtime progress', () => {
     );
   });
 
+  it('publishes a canonical snapshot after the matches list lazily reconciles a tournament duel', async () => {
+    const duel = await createFixtureDuel();
+    const events = recordPublisher();
+    await readyBoth(duel);
+    const started = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${duel.duelMatchId}/period/start`,
+      headers: auth(tokenFor(duel.homeUserId)),
+    });
+    expect(started.statusCode).toBe(200);
+    events.length = 0;
+    await pool.query(
+      `update amateur_duel_participant
+          set period_started_at = now() - interval '2 hours'
+        where match_id = $1 and user_id = $2`,
+      [duel.duelMatchId, duel.homeUserId],
+    );
+
+    const matches = await app.inject({
+      method: 'GET',
+      url: '/duel/amateur/matches',
+      headers: auth(tokenFor(duel.homeUserId)),
+    });
+
+    expect(matches.statusCode).toBe(200);
+    expect(liveFrom(latestFixtureUpdate(events, duel.fixtureId)).participants).toContainEqual(
+      expect.objectContaining({
+        userId: duel.homeUserId,
+        state: expect.not.stringMatching('period_active'),
+      }),
+    );
+  });
+
+  it('publishes a canonical snapshot after the events list lazily reconciles a tournament duel', async () => {
+    const duel = await createFixtureDuel();
+    const events = recordPublisher();
+    await readyBoth(duel);
+    const started = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${duel.duelMatchId}/period/start`,
+      headers: auth(tokenFor(duel.homeUserId)),
+    });
+    expect(started.statusCode).toBe(200);
+    events.length = 0;
+    await pool.query(
+      `update amateur_duel_participant
+          set period_started_at = now() - interval '2 hours'
+        where match_id = $1 and user_id = $2`,
+      [duel.duelMatchId, duel.homeUserId],
+    );
+
+    const eventsResponse = await app.inject({
+      method: 'GET',
+      url: '/duel/amateur/events',
+      headers: auth(tokenFor(duel.homeUserId)),
+    });
+
+    expect(eventsResponse.statusCode).toBe(200);
+    expect(liveFrom(latestFixtureUpdate(events, duel.fixtureId)).participants).toContainEqual(
+      expect.objectContaining({
+        userId: duel.homeUserId,
+        state: expect.not.stringMatching('period_active'),
+      }),
+    );
+  });
+
+  it('does not publish when a tournament match read has no reconciliation transition', async () => {
+    const duel = await createFixtureDuel();
+    const events = recordPublisher();
+
+    const state = await app.inject({
+      method: 'GET',
+      url: `/duel/amateur/matches/${duel.duelMatchId}`,
+      headers: auth(tokenFor(duel.homeUserId)),
+    });
+
+    expect(state.statusCode).toBe(200);
+    expect(events).toEqual([]);
+  });
+
+  it('publishes a canonical snapshot after opening a pending next fixture segment', async () => {
+    const duel = await createFixtureDuel();
+    const tournament = await pool.query<{ tournament_id: string }>(
+      'select tournament_id from tournament_fixture where id = $1',
+      [duel.fixtureId],
+    );
+    await pool.query(
+      `update tournament_fixture
+          set scheduled_starts_at = now() - interval '1 minute',
+              window_ends_at = now() + interval '1 hour'
+        where id = $1`,
+      [duel.fixtureId],
+    );
+    await pool.query(
+      `update tournament_fixture_segment
+          set status = 'settled', settled_at = now()
+        where duel_match_id = $1`,
+      [duel.duelMatchId],
+    );
+    await pool.query(`update amateur_duel_match set status = 'settled' where id = $1`, [
+      duel.duelMatchId,
+    ]);
+    await pool.query(
+      `insert into tournament_fixture_segment
+         (fixture_id, sequence_number, kind, status, rules_snapshot)
+       values ($1, 2, 'overtime', 'pending', '{}'::jsonb)`,
+      [duel.fixtureId],
+    );
+    await pool.query(
+      `update game_settings set value = 'true'::jsonb where key = 'tournaments.enabled'`,
+    );
+    const events = recordPublisher();
+
+    const opened = await app.inject({
+      method: 'POST',
+      url: `/tournaments/${tournament.rows[0]!.tournament_id}/fixtures/${duel.fixtureId}/segments/open`,
+      headers: auth(tokenFor(duel.homeUserId)),
+    });
+
+    expect(opened.statusCode).toBe(200);
+    expect(liveFrom(latestFixtureUpdate(events, duel.fixtureId))).toMatchObject({
+      duelMatchId: opened.json().duelMatchId,
+      participants: [
+        expect.objectContaining({ userId: duel.homeUserId, state: 'loadout_pending' }),
+        expect.objectContaining({ userId: duel.awayUserId, state: 'loadout_pending' }),
+      ],
+    });
+  });
+
   it('keeps tournament gameplay successful when fixture publication rejects', async () => {
     const duel = await createFixtureDuel();
+    vi.spyOn(app.log, 'warn').mockImplementation(() => undefined);
     const publish = vi.spyOn(app.realtime, 'publish').mockRejectedValue(new Error('redis offline'));
 
     const ready = await app.inject({
@@ -431,6 +566,26 @@ describe.skipIf(!hasIntegrationEnv)('tournament duel realtime progress', () => {
       `tournament:fixture:${duel.fixtureId}`,
       expect.objectContaining({ type: 'tournament:fixture_update' }),
     );
+  });
+
+  it('warns without fixture payload when tournament fixture publication rejects', async () => {
+    const duel = await createFixtureDuel();
+    const warn = vi.spyOn(app.log, 'warn').mockImplementation(() => undefined);
+    vi.spyOn(app.realtime, 'publish').mockRejectedValue(new Error('redis offline'));
+
+    const ready = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${duel.duelMatchId}/ready`,
+      headers: auth(tokenFor(duel.homeUserId)),
+      payload: { loadout: {} },
+    });
+
+    expect(ready.statusCode).toBe(200);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]).toEqual([
+      { err: expect.any(Error) },
+      'tournament fixture progress publication failed',
+    ]);
   });
 
   it('publishes a terminal fixture snapshot after tournament settlement', async () => {
