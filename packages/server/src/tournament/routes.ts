@@ -43,6 +43,11 @@ import {
   enqueueTournamentAudiencePush,
   enqueueTournamentPush,
 } from '../push/tournament.js';
+import {
+  dispatchTournamentCommunication,
+  listTournamentDispatches,
+  previewTournamentAudience,
+} from './communications.js';
 
 const uuid = z.string().uuid();
 const nullableDate = z.string().datetime({ offset: true }).nullable().default(null);
@@ -110,7 +115,11 @@ async function requireTournamentFeature(app: Parameters<FastifyPluginAsync>[0]) 
   }
 }
 
-export const tournamentRoutes: FastifyPluginAsync = async (app) => {
+interface TournamentRoutesOptions {
+  systemUserId?: string;
+}
+
+export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = async (app, options) => {
   const authenticated = { preHandler: [app.authenticate] };
   const admin = {
     preHandler: [app.authenticate, async (req: FastifyRequest) => requireAdmin(app, req)],
@@ -161,6 +170,40 @@ export const tournamentRoutes: FastifyPluginAsync = async (app) => {
       );
     },
   );
+
+  app.get('/admin/tournaments/:tournamentId/dispatches', admin, async (req) => {
+    const params = z.object({ tournamentId: uuid }).parse(req.params);
+    return { dispatches: await listTournamentDispatches(app.pg, params.tournamentId) };
+  });
+
+  app.get('/admin/tournaments/:tournamentId/audience-preview', admin, async (req) => {
+    const params = z.object({ tournamentId: uuid }).parse(req.params);
+    const query = z
+      .object({ audience: z.enum(['approved', 'all_participants']).default('approved') })
+      .parse(req.query);
+    return previewTournamentAudience(app.pg, params.tournamentId, query.audience);
+  });
+
+  app.post('/admin/tournaments/:tournamentId/dispatches', admin, async (req, reply) => {
+    const params = z.object({ tournamentId: uuid }).parse(req.params);
+    const body = z
+      .object({
+        idempotencyKey: z.string().trim().min(8).max(200),
+        kind: z.enum(['push', 'direct_message']),
+        audience: z.enum(['approved', 'all_participants']),
+        title: z.string().trim().min(1).max(120),
+        body: z.string().trim().min(1).max(4000),
+      })
+      .parse(req.body);
+    const result = await dispatchTournamentCommunication(app.pg, app.realtime, {
+      tournamentId: params.tournamentId,
+      ...body,
+      createdBy: req.user.id,
+      ...(options.systemUserId !== undefined ? { systemUserId: options.systemUserId } : {}),
+    });
+    reply.status(202);
+    return result;
+  });
 
   app.get('/tournaments/fixtures/:fixtureId/live', authenticated, async (req) => {
     await requireTournamentFeature(app);

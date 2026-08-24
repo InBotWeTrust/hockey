@@ -65,6 +65,7 @@ const TEMPLATE_ORDER: PushEventType[] = [
   'tournament.playoff_started',
   'tournament.series_next_game',
   'tournament.completed',
+  'tournament.manual',
   'news.posted',
 ];
 

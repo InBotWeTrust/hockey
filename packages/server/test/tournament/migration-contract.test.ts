@@ -6,6 +6,10 @@ const concurrencyMigrationUrl = new URL(
   '../../db/migrations/062_tournament_duel_concurrency.sql',
   import.meta.url,
 );
+const manualPushMigrationUrl = new URL(
+  '../../db/migrations/063_tournament_manual_push.sql',
+  import.meta.url,
+);
 
 describe('tournament migration contract', () => {
   it('creates the complete tournament orchestration schema', async () => {
@@ -48,5 +52,10 @@ describe('tournament migration contract', () => {
     const sql = await readFile(concurrencyMigrationUrl, 'utf8');
     expect(sql).toContain("source <> 'tournament'");
     expect(sql).toContain("source = 'tournament'");
+  });
+
+  it('registers the manual tournament push template', async () => {
+    const sql = await readFile(manualPushMigrationUrl, 'utf8');
+    expect(sql).toContain("'tournament.manual'");
   });
 });
