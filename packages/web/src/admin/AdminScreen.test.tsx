@@ -959,7 +959,7 @@ describe('AdminScreen', () => {
     expect(screen.getByText('Нет доступа')).toBeInTheDocument();
   });
 
-  it('saves duel challenge auto-cancel minutes separately from ready room waiting', async () => {
+  it('round-trips every duel venue policy and saves challenge auto-cancel separately', async () => {
     useAuthStore.getState().setSession({
       accessToken: 'a',
       refreshToken: 'r',
@@ -988,6 +988,7 @@ describe('AdminScreen', () => {
       inventoryChargesPerPeriod: 0,
       rankedEnabled: true,
       matchmakingEnabled: true,
+      matchmakingVenuePolicy: 'neutral_default',
       challengeTtlMs: 1_800_000,
       readyDurationMs: 900_000,
       readyNoShowCooldownMs: 900_000,
@@ -1065,6 +1066,16 @@ describe('AdminScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Редактировать Классика' }));
 
     const dialog = await screen.findByRole('dialog', { name: 'Редактирование дуэли' });
+    expect(screen.getByLabelText('Площадка при автоматическом подборе')).toHaveTextContent(
+      'Нейтральная стандартная',
+    );
+    fireEvent.click(screen.getByLabelText('Площадка при автоматическом подборе'));
+    fireEvent.click(await screen.findByRole('option', { name: 'Случайный хозяин' }));
+    expect(screen.getByLabelText('Площадка при автоматическом подборе')).toHaveTextContent(
+      'Случайный хозяин',
+    );
+    fireEvent.click(screen.getByLabelText('Площадка при автоматическом подборе'));
+    fireEvent.click(await screen.findByRole('option', { name: 'Случайная нейтральная' }));
     fireEvent.change(within(dialog).getByLabelText('Минут на ответ'), {
       target: { value: '15' },
     });
@@ -1074,6 +1085,7 @@ describe('AdminScreen', () => {
     const savedTemplatePatchBody = templatePatchBody as unknown as Record<string, unknown>;
     expect(savedTemplatePatchBody.challengeTtlMs).toBe(900_000);
     expect(savedTemplatePatchBody.readyDurationMs).toBe(900_000);
+    expect(savedTemplatePatchBody.matchmakingVenuePolicy).toBe('random_unselected');
   });
 
   it('saves inventory gameplay with comma decimal inputs', async () => {

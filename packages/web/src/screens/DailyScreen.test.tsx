@@ -91,6 +91,15 @@ const settledDuelMatch: AmateurDuelMatchState = {
   ranked: true,
   season_key: '2026-05',
   duel_kind: 'express',
+  home_user_id: 'u1',
+  venue_policy: 'direct_challenge',
+  arena: {
+    id: 'arena-beach',
+    slug: 'beach',
+    title: 'Пляж',
+    artwork_url: '/bonus-games/arenas/beach.webp',
+    thumbnail_url: '/bonus-games/arenas/beach.webp',
+  },
   starts_at: '2026-05-16T10:00:00.000Z',
   ends_at: '2026-05-16T12:00:00.000Z',
   ready_expires_at: null,
@@ -814,7 +823,7 @@ describe('DailyScreen', () => {
     });
   });
 
-  it('opens waiting amateur duel on the rink from the arena', async () => {
+  it('renders the immutable amateur duel arena snapshot on the rink', async () => {
     const waitingMatch: AmateurDuelMatchState = {
       ...settledDuelMatch,
       status: 'active',
@@ -874,6 +883,7 @@ describe('DailyScreen', () => {
     expect(screen.getByText('До поражения соперника')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Дуэль' })).not.toBeInTheDocument();
     expect(screen.queryByText(/Эта дуэль сейчас не на площадке/)).not.toBeInTheDocument();
+    expect(document.querySelector('img[src="/bonus-games/arenas/beach.webp"]')).toBeTruthy();
   });
 
   it('opens an idle daily rink without starting the period from the arena', async () => {
@@ -2727,7 +2737,7 @@ describe('DailyScreen', () => {
 
     const startButton = await screen.findByRole('button', { name: 'НАЧАТЬ' });
     expect(startButton).toBeEnabled();
-    expect(document.querySelector('img[src="/sprites/amateur-duel-court.webp"]')).toBeTruthy();
+    expect(document.querySelector('img[src="/bonus-games/arenas/beach.webp"]')).toBeTruthy();
     expect(document.querySelector('img[src="/sprites/duel-tableau.webp"]')).toBeTruthy();
     fireEvent.click(startButton);
 

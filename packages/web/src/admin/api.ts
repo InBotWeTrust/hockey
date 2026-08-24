@@ -411,6 +411,118 @@ export interface AdminDuelPeriodSpeedPreset {
   puckSpeedPerMs: number;
 }
 
+export type AdminBonusGameStatus = 'draft' | 'active' | 'archived';
+export type AdminBonusGameAccessType = 'free' | 'paid';
+export type AdminBonusGoaliePattern = 'linear' | 'sine' | 'dash';
+
+export interface AdminBonusPeriodRule {
+  periodNumber: number;
+  durationMs: number;
+  shotsLimit: number;
+  goalFrequency: number;
+  goalieFrequency: number;
+  shooterFrequency: number;
+  puckSpeedPerMs: number;
+  goaliePattern: AdminBonusGoaliePattern;
+  goalieAmplitude: number;
+  goalAmplitude: number;
+}
+
+export interface AdminBonusArena {
+  id: string;
+  slug: string;
+  title: string;
+  artworkUrl: string;
+  thumbnailUrl: string;
+  status: 'active' | 'archived';
+  isSelectable: boolean;
+}
+
+export interface AdminBonusGame {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  sortOrder: number;
+  status: AdminBonusGameStatus;
+  accessType: AdminBonusGameAccessType;
+  unlockPriceStars: number;
+  targetGoals: number;
+  totalPeriods: number;
+  breakDurationMs: number;
+  periods: AdminBonusPeriodRule[];
+  rewardCoins: number;
+  rewardStars: number;
+  rewardExperience: number;
+  goalkeeperReadyUrl: string;
+  goalkeeperSaveUrl: string;
+  revision: number;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt: string | null;
+  arena: AdminBonusArena;
+}
+
+export interface AdminBonusArenaInput {
+  slug: string;
+  title: string;
+  artworkUrl: string;
+  thumbnailUrl: string;
+  status?: 'active' | 'archived';
+  isSelectable?: boolean;
+}
+
+export interface AdminBonusGameDefinitionInput {
+  slug: string;
+  title: string;
+  description: string;
+  sortOrder: number;
+  status: AdminBonusGameStatus;
+  accessType: AdminBonusGameAccessType;
+  unlockPriceStars: number;
+  targetGoals: number;
+  totalPeriods: number;
+  breakDurationMs: number;
+  periods: AdminBonusPeriodRule[];
+  rewardCoins: number;
+  rewardStars: number;
+  rewardExperience: number;
+  goalkeeperReadyUrl: string;
+  goalkeeperSaveUrl: string;
+}
+
+export type AdminBonusGameInput = AdminBonusGameDefinitionInput &
+  ({ arena: AdminBonusArenaInput; arenaThemeId?: never } | { arenaThemeId: string; arena?: never });
+
+export type AdminBonusGamePatch = Partial<AdminBonusGameDefinitionInput> &
+  (
+    | { arena?: Partial<AdminBonusArenaInput>; arenaThemeId?: never }
+    | { arenaThemeId: string; arena?: never }
+  );
+
+export type AdminBonusMediaKind = 'arena' | 'thumbnail' | 'goalkeeper_ready' | 'goalkeeper_save';
+
+export interface AdminBonusMedia {
+  id: string;
+  url: string;
+  kind: AdminBonusMediaKind;
+  key: string;
+  contentType: string;
+  size: number;
+  originalName: string;
+  createdAt: string;
+}
+
+export interface AdminBonusGameReorderRequest {
+  gameIds: string[];
+}
+
+export type AdminMatchmakingVenuePolicy =
+  | 'neutral_default'
+  | 'random_participant_home'
+  | 'random_unselected';
+
 export type AdminDuelKind = 'express' | 'express_plus' | 'classic';
 
 export interface AdminDuelPeriodRule {
@@ -429,6 +541,7 @@ export interface AdminDuelTemplate {
   duelVariant: 'classic' | 'time_attack';
   rankedEnabled: boolean;
   matchmakingEnabled: boolean;
+  matchmakingVenuePolicy: AdminMatchmakingVenuePolicy;
   startsAt: string;
   endsAt: string;
   totalPeriods: number;
@@ -1019,6 +1132,56 @@ export function patchAdminInventoryGameplay(
 export function deleteAdminInventoryItem(itemId: string): Promise<{ ok: true }> {
   return apiFetch<{ ok: true }>(`/admin/inventory/${itemId}`, {
     method: 'DELETE',
+  });
+}
+
+export function fetchAdminBonusGames(): Promise<{ games: AdminBonusGame[] }> {
+  return apiFetch<{ games: AdminBonusGame[] }>('/admin/bonus-games');
+}
+
+export function createAdminBonusGame(body: AdminBonusGameInput): Promise<{ game: AdminBonusGame }> {
+  return apiFetch<{ game: AdminBonusGame }>('/admin/bonus-games', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export function patchAdminBonusGame(
+  gameId: string,
+  body: AdminBonusGamePatch,
+): Promise<{ game: AdminBonusGame }> {
+  return apiFetch<{ game: AdminBonusGame }>(`/admin/bonus-games/${gameId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+}
+
+export function archiveAdminBonusGame(gameId: string): Promise<{ game: AdminBonusGame }> {
+  return apiFetch<{ game: AdminBonusGame }>(`/admin/bonus-games/${gameId}`, {
+    method: 'DELETE',
+  });
+}
+
+export function reorderAdminBonusGames(
+  body: AdminBonusGameReorderRequest,
+): Promise<{ games: AdminBonusGame[] }> {
+  return apiFetch<{ games: AdminBonusGame[] }>('/admin/bonus-games/reorder', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export function uploadAdminBonusGameMedia(
+  kind: AdminBonusMediaKind,
+  file: File,
+): Promise<{ media: AdminBonusMedia }> {
+  return apiFetch<{ media: AdminBonusMedia }>(`/admin/bonus-games/media/${kind}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'image/webp',
+      'X-File-Name': file.name,
+    },
+    body: file,
   });
 }
 

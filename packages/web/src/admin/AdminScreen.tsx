@@ -53,6 +53,7 @@ import { convertChatAvatarToWebp } from '../lib/chatAvatarImage.js';
 import { useDebouncedValue } from '../lib/useDebouncedValue.js';
 import { AchievementDetailsSheet, AchievementTile } from '../screens/profileSections.js';
 import { WeeklyChallengesAdmin } from './WeeklyChallengesAdmin.js';
+import { BonusGamesAdmin } from './BonusGamesAdmin.js';
 import {
   createAdminInventoryItem,
   createAdminDuelTemplate,
@@ -112,6 +113,7 @@ import {
   type AdminInventoryResourceUnit,
   type AdminMismatchLog,
   type AdminMismatchPeriod,
+  type AdminMatchmakingVenuePolicy,
   type AdminMismatchesResponse,
   type AdminNotificationStats,
   type AdminPushNotification,
@@ -140,6 +142,7 @@ type AdminTab =
   | 'payments'
   | 'inventory'
   | 'achievements'
+  | 'bonus-games'
   | 'duels'
   | 'feedback'
   | 'settings';
@@ -160,6 +163,7 @@ const tabs: Array<{ id: AdminTab; label: string; icon: JSX.Element }> = [
   { id: 'payments', label: 'Платежи', icon: <CreditCard size={15} /> },
   { id: 'inventory', label: 'Инвентарь', icon: <Package size={15} /> },
   { id: 'achievements', label: 'Задания', icon: <Medal size={15} /> },
+  { id: 'bonus-games', label: 'Бонусные игры', icon: <Gamepad2 size={15} /> },
   { id: 'duels', label: 'Дуэли', icon: <Trophy size={15} /> },
   { id: 'feedback', label: 'Отзывы', icon: <MessageSquare size={15} /> },
   { id: 'settings', label: 'Параметры', icon: <SlidersHorizontal size={15} /> },
@@ -177,6 +181,15 @@ const dashboardPeriodOptions: Array<GlassSelectOption<AdminDashboardPeriod>> = [
   { value: '90d', label: '90 дней' },
   { value: '365d', label: '1 год' },
 ];
+
+const venueOptions = [
+  { value: 'neutral_default', label: 'Нейтральная стандартная' },
+  { value: 'random_participant_home', label: 'Случайный хозяин' },
+  { value: 'random_unselected', label: 'Случайная нейтральная' },
+] as const satisfies ReadonlyArray<GlassSelectOption<AdminMatchmakingVenuePolicy>>;
+const venueSelectOptions: Array<GlassSelectOption<AdminMatchmakingVenuePolicy>> = venueOptions.map(
+  (option) => ({ ...option }),
+);
 
 const adminAchievementsTabs: Array<{ id: AdminAchievementsTab; label: string }> = [
   { id: 'achievements', label: 'Задания' },
@@ -954,6 +967,7 @@ export function AdminScreen(): JSX.Element {
           }}
         />
       )}
+      {tab === 'bonus-games' && <BonusGamesAdmin />}
       {tab === 'duels' && (
         <DuelTemplatesPanel
           loading={duelTemplates.isLoading}
@@ -6565,11 +6579,17 @@ function DuelTemplateEditor({
   onCancel: () => void;
   onSaved: () => void;
 }): JSX.Element {
+  const editorRef = useRef<HTMLElement | null>(null);
+  const onCancelRef = useRef(onCancel);
+  onCancelRef.current = onCancel;
   const defaultStartsAt = new Date().toISOString();
   const defaultEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
   const [title, setTitle] = useState(template?.title ?? 'Классическая дуэль');
   const [description, setDescription] = useState(template?.description ?? '');
   const [isActive, setIsActive] = useState(template?.isActive ?? true);
+  const [matchmakingVenuePolicy, setMatchmakingVenuePolicy] = useState<AdminMatchmakingVenuePolicy>(
+    template?.matchmakingVenuePolicy ?? 'neutral_default',
+  );
   const [duelKind] = useState(template?.duelKind ?? 'classic');
   const [duelVariant] = useState(template?.duelVariant ?? 'classic');
   const [startsAt, setStartsAt] = useState(
@@ -6659,6 +6679,33 @@ function DuelTemplateEditor({
     setPeriodSpeedPresets((current) => normalizeDuelPresets(current, totalPeriodsCount));
   }, [totalPeriodsCount]);
 
+  useEffect(() => {
+    const editor = editorRef.current;
+    editor?.querySelector<HTMLElement>('input, select, textarea, button')?.focus();
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') onCancelRef.current();
+      if (event.key !== 'Tab' || !editor) return;
+      const focusable = Array.from(
+        editor.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled)',
+        ),
+      );
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (!first || !last) return;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      }
+      if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, []);
+
   function updateSpeedPreset(
     periodNumber: number,
     key: Exclude<keyof AdminDuelPeriodSpeedPreset, 'periodNumber'>,
@@ -6682,6 +6729,7 @@ function DuelTemplateEditor({
         duelVariant,
         rankedEnabled: template?.rankedEnabled ?? true,
         matchmakingEnabled: template?.matchmakingEnabled ?? true,
+        matchmakingVenuePolicy,
         startsAt: startsIso,
         endsAt: endsIso,
         totalPeriods: parseAdminNumberInput(totalPeriods),
@@ -6717,26 +6765,21 @@ function DuelTemplateEditor({
 
   return createPortal(
     <div
+      className="modal-backdrop"
       role="dialog"
       aria-modal="true"
       aria-label={template === null ? 'Новый шаблон дуэли' : 'Редактирование дуэли'}
-      onClick={onCancel}
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onCancel();
+      }}
       style={{
-        position: 'fixed',
-        inset: 0,
         zIndex: 1000,
-        background: 'rgba(15, 23, 42, 0.35)',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
         padding: 'calc(16px + var(--app-safe-top)) 14px calc(16px + var(--app-safe-bottom))',
       }}
     >
       <section
-        className="glass"
-        onClick={(event) => event.stopPropagation()}
+        ref={editorRef}
+        className="modal-card"
         style={{
           width: '100%',
           maxWidth: 430,
@@ -6748,9 +6791,12 @@ function DuelTemplateEditor({
           gap: 10,
         }}
       >
-        <div style={{ color: 'var(--ink)', fontSize: 15, fontWeight: 950 }}>
+        <h2 className="modal-title">
           {template === null ? 'Новый шаблон дуэли' : 'Редактирование дуэли'}
-        </div>
+        </h2>
+        <p className="modal-copy" style={{ marginTop: 0 }}>
+          Площадка и правила сохраняются для новых матчей после подтверждения.
+        </p>
         <AdminField label="Название">
           <input value={title} onChange={(event) => setTitle(event.target.value)} />
         </AdminField>
@@ -6781,6 +6827,14 @@ function DuelTemplateEditor({
             style={{ width: 18, height: 18 }}
           />
         </label>
+        <AdminField label="Площадка при автоматическом подборе">
+          <GlassSelect
+            ariaLabel="Площадка при автоматическом подборе"
+            value={matchmakingVenuePolicy}
+            options={venueSelectOptions}
+            onChange={setMatchmakingVenuePolicy}
+          />
+        </AdminField>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
           <AdminField label="Старт">
             <input
@@ -6949,7 +7003,7 @@ function DuelTemplateEditor({
             Скорости заполнены некорректно
           </div>
         )}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        <div className="modal-actions" style={{ gridTemplateColumns: '1fr 1fr' }}>
           <button
             type="button"
             className="btn btn--ghost"
@@ -6960,7 +7014,7 @@ function DuelTemplateEditor({
           </button>
           <button
             type="button"
-            className="btn btn--cta"
+            className="modal-primary btn--cta"
             onClick={() => mutation.mutate()}
             disabled={mutation.isPending || !canSave}
             style={{ padding: '10px', fontSize: 12, letterSpacing: 0 }}

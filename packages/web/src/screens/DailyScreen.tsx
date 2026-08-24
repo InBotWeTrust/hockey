@@ -224,7 +224,6 @@ const DAILY_LED_TABLEAU_IMAGE = '/sprites/daily-tableau.webp';
 const DUEL_LED_TABLEAU_IMAGE = '/sprites/duel-tableau.webp';
 const TOURNAMENT_LED_TABLEAU_IMAGE = '/sprites/tournament-tableau.webp';
 const AMATEUR_DAILY_COURT_BACKGROUND = '/sprites/amateur-daily-court.webp';
-const AMATEUR_DUEL_COURT_BACKGROUND = '/sprites/amateur-duel-court.webp';
 const AMATEUR_TOURNAMENT_COURT_BACKGROUND = '/sprites/amateur-tournament-court.webp';
 const ARENA_ICE_COURT_BACKGROUND = '/sprites/arena-ice-court-v2.webp';
 const ARENA_ICE_TABLEAU_IMAGE = '/sprites/arena-ice-tableau-v2.webp';
@@ -5547,7 +5546,7 @@ function AmateurDuelPlayView({
           submitShot={submitShot}
           applyState={applyState}
           duelCondition={duelCondition}
-          longCourtBackground={AMATEUR_DUEL_COURT_BACKGROUND}
+          longCourtBackground={match.arena.artwork_url}
           longCourtTableau={DUEL_LED_TABLEAU_IMAGE}
           hudAddon={
             <DuelRinkLoadoutHud
@@ -5668,7 +5667,7 @@ function AmateurDuelPlayView({
           submitShot={submitShot}
           applyState={applyState}
           duelCondition={duelCondition}
-          longCourtBackground={AMATEUR_DUEL_COURT_BACKGROUND}
+          longCourtBackground={match.arena.artwork_url}
           longCourtTableau={DUEL_LED_TABLEAU_IMAGE}
           hudAddon={
             <DuelInventoryMiniHud

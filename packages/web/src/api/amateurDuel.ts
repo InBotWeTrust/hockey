@@ -26,6 +26,19 @@ export type AmateurDuelParticipantState =
 export type AmateurDuelOutcome = 'challenger_win' | 'opponent_win' | 'draw' | 'double_loss';
 export type AmateurDuelKind = 'express' | 'express_plus' | 'classic';
 export type AmateurDuelPeriodMode = 'quota' | 'time_attack';
+export type AmateurDuelVenuePolicy =
+  | 'direct_challenge'
+  | 'neutral_default'
+  | 'random_participant_home'
+  | 'random_unselected';
+
+export interface AmateurDuelArena {
+  id: string;
+  slug: string;
+  title: string;
+  artwork_url: string;
+  thumbnail_url: string;
+}
 
 export interface AmateurDuelMatchmakingTicket {
   id: string;
@@ -209,6 +222,9 @@ export interface AmateurDuelMatch {
   ranked: boolean;
   season_key: string;
   duel_kind: AmateurDuelKind;
+  home_user_id: string | null;
+  venue_policy: AmateurDuelVenuePolicy;
+  arena: AmateurDuelArena;
   starts_at: string;
   ends_at: string;
   ready_expires_at: string | null;
