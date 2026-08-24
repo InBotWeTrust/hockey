@@ -62,6 +62,27 @@ export async function finalizeTournamentDailyDay(
     if (input.tournamentDay < 1 || input.tournamentDay > tournament.rules_snapshot.config.dailyDays) {
       throw new AppError('bad_request', 'invalid tournament day', 400);
     }
+    const completion = await client.query<{ participant_count: number; result_count: number }>(
+      `select
+         count(*)::int as participant_count,
+         count(r.id)::int as result_count
+       from tournament_participant p
+       left join tournament_daily_result r
+         on r.tournament_id = p.tournament_id
+        and r.participant_id = p.id
+        and r.tournament_day = $2
+      where p.tournament_id = $1
+        and p.state in ('approved', 'withdrawn', 'removed', 'disqualified')`,
+      [input.tournamentId, input.tournamentDay],
+    );
+    const counts = completion.rows[0];
+    if (
+      counts === undefined ||
+      Number(counts.participant_count) === 0 ||
+      Number(counts.result_count) >= Number(counts.participant_count)
+    ) {
+      return { tournamentId: input.tournamentId, tournamentDay: input.tournamentDay, finalized: 0 };
+    }
     const sources = await client.query<DailyParticipantSourceRow>(
       `with participant_dates as (
          select p.id as participant_id, p.user_id, u.timezone,
@@ -177,4 +198,63 @@ export async function finalizeTournamentDailyDay(
     }
     return { tournamentId: input.tournamentId, tournamentDay: input.tournamentDay, finalized: sources.rows.length };
   });
+}
+
+export async function finalizeDueTournamentDailyDays(pool: Pool, now: Date) {
+  const { rows } = await pool.query<{ tournament_id: string; tournament_day: number }>(
+    `select t.id as tournament_id, days.tournament_day
+       from tournament t
+       join tournament_revision r on r.id = t.published_revision_id
+       cross join lateral generate_series(
+         1,
+         greatest(0, coalesce((r.rules_snapshot->'config'->>'dailyDays')::int, 0))
+       ) as days(tournament_day)
+      where t.status = 'regular'
+        and t.regular_source = 'daily_aggregate'
+        and t.starts_at is not null
+        and exists (
+          select 1 from tournament_participant p
+           where p.tournament_id = t.id
+             and p.state in ('approved', 'withdrawn', 'removed', 'disqualified')
+        )
+        and not exists (
+          select 1
+            from tournament_participant p
+            join users u on u.id = p.user_id
+           where p.tournament_id = t.id
+             and p.state in ('approved', 'withdrawn', 'removed', 'disqualified')
+             and $1::timestamptz < (
+               ((t.starts_at at time zone u.timezone)::date + days.tournament_day)::timestamp
+               at time zone u.timezone
+             )
+        )
+        and exists (
+          select 1
+            from tournament_participant p
+           where p.tournament_id = t.id
+             and p.state in ('approved', 'withdrawn', 'removed', 'disqualified')
+             and not exists (
+               select 1 from tournament_daily_result result
+                where result.tournament_id = t.id
+                  and result.participant_id = p.id
+                  and result.tournament_day = days.tournament_day
+             )
+        )
+      order by t.id, days.tournament_day`,
+    [now],
+  );
+  let finalizedDays = 0;
+  let finalizedParticipants = 0;
+  for (const row of rows) {
+    const result = await finalizeTournamentDailyDay(pool, {
+      tournamentId: row.tournament_id,
+      tournamentDay: Number(row.tournament_day),
+      now,
+    });
+    if (result.finalized > 0) {
+      finalizedDays += 1;
+      finalizedParticipants += result.finalized;
+    }
+  }
+  return { finalizedDays, finalizedParticipants };
 }

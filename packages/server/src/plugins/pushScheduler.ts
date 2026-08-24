@@ -3,6 +3,7 @@ import fp from 'fastify-plugin';
 import { cleanupPushDeliveryLog, processPushDeliveryQueue } from '../push/queue.js';
 import { runScheduledPushes } from '../push/scheduled.js';
 import type { PushVapidOptions } from '../push/service.js';
+import { finalizeDueTournamentDailyDays } from '../tournament/dailyAggregate.js';
 
 export interface PushSchedulerPluginOptions extends PushVapidOptions {
   scheduleEnabled?: boolean;
@@ -25,6 +26,10 @@ const plugin: FastifyPluginAsync<PushSchedulerPluginOptions> = async (app, opts)
     if (running) return;
     running = true;
     try {
+      const tournamentMaintenance =
+        opts.scheduleEnabled === false
+          ? { finalizedDays: 0, finalizedParticipants: 0 }
+          : await finalizeDueTournamentDailyDays(app.pg, new Date());
       const result =
         opts.scheduleEnabled === false
           ? {
@@ -67,11 +72,18 @@ const plugin: FastifyPluginAsync<PushSchedulerPluginOptions> = async (app, opts)
           workerResult.sent +
           workerResult.failed +
           workerResult.retried +
+          tournamentMaintenance.finalizedDays +
+          tournamentMaintenance.finalizedParticipants +
           cleaned,
       );
       if (touched > 0) {
         app.log.info(
-          { pushScheduler: result, pushWorker: workerResult, pushCleanupDeleted: cleaned },
+          {
+            tournamentMaintenance,
+            pushScheduler: result,
+            pushWorker: workerResult,
+            pushCleanupDeleted: cleaned,
+          },
           'push tick completed',
         );
       }
