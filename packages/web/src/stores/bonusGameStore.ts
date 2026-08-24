@@ -11,9 +11,14 @@ import {
 import { ApiError } from '../api/apiFetch.js';
 import type { ShotResultType } from '../api/duel.js';
 
+interface PendingBonusShot {
+  attempt: BonusGameAttempt;
+  receivedAtPerformanceMs: number;
+}
+
 interface BonusGameStoreState {
   attempt: BonusGameAttempt | null;
-  pendingShotAttempt: BonusGameAttempt | null;
+  pendingShot: PendingBonusShot | null;
   loading: boolean;
   error: string | null;
   errorCode: string | null;
@@ -51,16 +56,18 @@ function applyServerAttempt(
   set: (partial: Partial<BonusGameStoreState>) => void,
   get: () => BonusGameStoreState,
   attempt: BonusGameAttempt | null,
+  receivedAtPerformanceMs?: number,
 ): void {
   set({
     attempt,
-    pendingShotAttempt: null,
+    pendingShot: null,
     loading: false,
     error: null,
     errorCode: null,
     needsReconcile: false,
     requestEpoch: get().requestEpoch + 1,
-    receivedAtPerformanceMs: attempt === null ? null : performance.now(),
+    receivedAtPerformanceMs:
+      attempt === null ? null : (receivedAtPerformanceMs ?? performance.now()),
   });
 }
 
@@ -75,7 +82,7 @@ function beginMutation(
     loading: false,
     error: null,
     errorCode: null,
-    pendingShotAttempt: null,
+    pendingShot: null,
     requestEpoch: get().requestEpoch + 1,
   });
 }
@@ -93,14 +100,14 @@ function recordMutationFailure(
     error: details.message,
     errorCode: details.code,
     needsReconcile: true,
-    pendingShotAttempt: null,
+    pendingShot: null,
     requestEpoch: get().requestEpoch + 1,
   });
 }
 
 export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
   attempt: null,
-  pendingShotAttempt: null,
+  pendingShot: null,
   loading: false,
   error: null,
   errorCode: null,
@@ -110,7 +117,7 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
   receivedAtPerformanceMs: null,
 
   loadCurrent: async () => {
-    if (get().pendingShotAttempt !== null) return get().attempt;
+    if (get().pendingShot !== null) return get().attempt;
     const requestEpoch = get().requestEpoch + 1;
     set({ loading: true, requestEpoch });
     try {
@@ -132,7 +139,7 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
   },
 
   loadAttempt: async (attemptId) => {
-    if (get().pendingShotAttempt !== null) return get().attempt;
+    if (get().pendingShot !== null) return get().attempt;
     const requestEpoch = get().requestEpoch + 1;
     set({ loading: true, requestEpoch });
     try {
@@ -156,20 +163,20 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
   applyState: (next) => applyServerAttempt(set, get, next),
 
   applyPendingShot: () => {
-    const pendingShotAttempt = get().pendingShotAttempt;
-    if (pendingShotAttempt === null) return null;
+    const pendingShot = get().pendingShot;
+    if (pendingShot === null) return null;
     set({
-      attempt: pendingShotAttempt,
-      pendingShotAttempt: null,
+      attempt: pendingShot.attempt,
+      pendingShot: null,
       loading: false,
       error: null,
       errorCode: null,
       inFlight: false,
       needsReconcile: false,
       requestEpoch: get().requestEpoch + 1,
-      receivedAtPerformanceMs: performance.now(),
+      receivedAtPerformanceMs: pendingShot.receivedAtPerformanceMs,
     });
-    return pendingShotAttempt;
+    return pendingShot.attempt;
   },
 
   optimisticAddShot: (claimed) => {
@@ -209,10 +216,14 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
     let keepLockedForDeferredApply = false;
     try {
       const response = await submitBonusShot(attempt.id, body);
+      const receivedAtPerformanceMs = performance.now();
       if (options?.deferApply) {
         keepLockedForDeferredApply = true;
         set({
-          pendingShotAttempt: response.attempt,
+          pendingShot: {
+            attempt: response.attempt,
+            receivedAtPerformanceMs,
+          },
           loading: false,
           error: null,
           errorCode: null,
@@ -220,7 +231,7 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
           requestEpoch: get().requestEpoch + 1,
         });
       } else {
-        applyServerAttempt(set, get, response.attempt);
+        applyServerAttempt(set, get, response.attempt, receivedAtPerformanceMs);
       }
       return {
         serverResult: response.server_result,
@@ -261,7 +272,7 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
       !shotInFlight &&
       !get().inFlight &&
       !get().needsReconcile &&
-      get().pendingShotAttempt === null &&
+      get().pendingShot === null &&
       attempt?.status === 'active' &&
       attempt.state === 'period_active'
     );

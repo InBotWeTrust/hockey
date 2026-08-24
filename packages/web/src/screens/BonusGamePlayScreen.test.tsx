@@ -160,7 +160,7 @@ function setStore(overrides: Partial<ReturnType<typeof useBonusGameStore.getStat
     needsReconcile: false,
     requestEpoch: 0,
     receivedAtPerformanceMs: 1_000,
-    pendingShotAttempt: null,
+    pendingShot: null,
     loadCurrent: vi.fn(async () => null),
     loadAttempt: vi.fn(async () => null),
     applyState: vi.fn(),
@@ -280,7 +280,7 @@ describe('BonusGamePlayScreen', () => {
     const applyPendingShot = vi.fn(() => {
       useBonusGameStore.setState({
         attempt: completedAttempt,
-        pendingShotAttempt: null,
+        pendingShot: null,
         inFlight: false,
       });
       return completedAttempt;
@@ -288,7 +288,7 @@ describe('BonusGamePlayScreen', () => {
     setStore({
       submitShot,
       applyPendingShot,
-      pendingShotAttempt: completedAttempt,
+      pendingShot: { attempt: completedAttempt, receivedAtPerformanceMs: 1_000 },
       inFlight: true,
     });
     renderScreen();
@@ -329,20 +329,28 @@ describe('BonusGamePlayScreen', () => {
       reward_granted: true,
       goals: 20,
     });
+    vi.spyOn(performance, 'now').mockReturnValue(1_000);
     const submitShot = vi.fn(async () => {
       const result = await responsePending.promise;
-      useBonusGameStore.setState({ pendingShotAttempt: result.attempt, inFlight: true });
+      useBonusGameStore.setState({
+        pendingShot: {
+          attempt: result.attempt,
+          receivedAtPerformanceMs: performance.now(),
+        },
+        inFlight: true,
+      });
       return result;
     });
     const applyPendingShot = vi.fn(() => {
-      const pendingAttempt = useBonusGameStore.getState().pendingShotAttempt;
-      if (!pendingAttempt) return null;
+      const pendingShot = useBonusGameStore.getState().pendingShot;
+      if (!pendingShot) return null;
       useBonusGameStore.setState({
-        attempt: pendingAttempt,
-        pendingShotAttempt: null,
+        attempt: pendingShot.attempt,
+        pendingShot: null,
         inFlight: false,
+        receivedAtPerformanceMs: pendingShot.receivedAtPerformanceMs,
       });
-      return pendingAttempt;
+      return pendingShot.attempt;
     });
     setStore({ submitShot, applyPendingShot });
     const view = renderScreen();
@@ -361,9 +369,30 @@ describe('BonusGamePlayScreen', () => {
     expect(applyPendingShot).toHaveBeenCalledTimes(2);
     expect(useBonusGameStore.getState()).toMatchObject({
       attempt: completedAttempt,
-      pendingShotAttempt: null,
+      pendingShot: null,
       inFlight: false,
+      receivedAtPerformanceMs: 1_000,
     });
+  });
+
+  it('uses the deferred response receipt when rendering the break countdown', () => {
+    vi.useFakeTimers();
+    vi.spyOn(performance, 'now').mockReturnValue(4_321);
+    setStore({
+      attempt: attempt({
+        state: 'break_active',
+        period_started_at: null,
+        period_ends_at: null,
+        break_started_at: '2026-08-24T10:00:00.000Z',
+        break_ends_at: '2026-08-24T10:00:05.000Z',
+        server_now: '2026-08-24T10:00:00.000Z',
+      }),
+      receivedAtPerformanceMs: 1_000,
+    });
+
+    renderScreen();
+
+    expect(screen.getByRole('timer')).toHaveTextContent('00:02');
   });
 
   it('blocks play and requests authoritative detail during reconciliation', () => {

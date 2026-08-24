@@ -241,6 +241,49 @@ describe('PlayView', () => {
     );
   });
 
+  it('includes time elapsed since a deferred active response in the next slow-puck clock basis', () => {
+    // Response receipt was t=1000; the visual boundary applies at t=4321, so both clocks add 3321ms.
+    vi.spyOn(performance, 'now').mockReturnValue(4_321);
+    const shotResolver: PlayShotResolver = vi.fn(() => ({ type: 'miss', reason: 'wide' }));
+
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="bonus-seed"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        speedOverrides={{ goalFreq: 0.45, goalieFreq: 0.5, shooterFreq: 0.65, puckSpeed: 0.25 }}
+        goals={2}
+        shots={3}
+        shotsTotal={30}
+        initialSceneElapsedMs={7_000}
+        initialShooterElapsedMs={760}
+        receivedAtPerformanceMs={1_000}
+        clockRebaseKey="period-1:deferred-response"
+        shotResolver={shotResolver}
+        optimisticAddShot={() => undefined}
+        submitShot={() => new Promise(() => undefined)}
+        applyState={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+
+    expect(shotResolver).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.objectContaining({
+          tapTime: 10_321,
+          shooterTapTime: 4_081,
+          puckSpeedPerMs: 0.25,
+        }),
+      }),
+    );
+  });
+
   it('allows one optimistic display increment for two synchronous taps', () => {
     vi.spyOn(performance, 'now').mockReturnValue(1_000);
     const optimisticAddShot = vi.fn();
