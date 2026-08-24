@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildFixedPlayoffBracket,
+  buildPlayoffFixtureWindows,
   buildPlayoffSeriesPlan,
   expandSeriesSchedule,
 } from '../../src/tournament/playoffs.js';
@@ -37,5 +38,20 @@ describe('fixed playoff bracket', () => {
       higherSource: { type: 'loser', seriesKey: 'R1S1' },
       lowerSource: { type: 'loser', seriesKey: 'R1S2' },
     });
+  });
+
+  it('builds injectable series windows with configured breaks', () => {
+    expect(
+      buildPlayoffFixtureWindows({
+        gameCount: 3,
+        firstStart: new Date('2030-09-01T10:00:00.000Z'),
+        gameWindowMs: 60 * 60_000,
+        gameBreakMs: 30 * 60_000,
+      }),
+    ).toEqual([
+      { gameNumber: 1, startsAt: '2030-09-01T10:00:00.000Z', endsAt: '2030-09-01T11:00:00.000Z' },
+      { gameNumber: 2, startsAt: '2030-09-01T11:30:00.000Z', endsAt: '2030-09-01T12:30:00.000Z' },
+      { gameNumber: 3, startsAt: '2030-09-01T13:00:00.000Z', endsAt: '2030-09-01T14:00:00.000Z' },
+    ]);
   });
 });

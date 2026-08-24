@@ -16,6 +16,7 @@ import {
   generateRegularSchedule,
   publishRegularSchedule,
   publishTournament,
+  startTournamentPlayoffs,
   type TournamentRulesSnapshot,
 } from '../../src/tournament/service.js';
 import { createTestPool, hasIntegrationEnv, resetDatabase } from '../helpers/testDb.js';
@@ -75,19 +76,24 @@ async function seedUsers(pool: Pool, playerBalance: number): Promise<void> {
        values ($1, $2, 'Europe/Moscow', 5, 500, 500)`,
       [playerId, `Tournament Player ${index + 1}`],
     );
-    await pool.query(
-      `insert into user_currency_account (user_id, balance) values ($1, $2)`,
-      [playerId, playerBalance],
-    );
+    await pool.query(`insert into user_currency_account (user_id, balance) values ($1, $2)`, [
+      playerId,
+      playerBalance,
+    ]);
   }
 }
 
-async function createPublishedTournament(pool: Pool, slug: string, entryFeeCoins: number) {
+async function createPublishedTournament(
+  pool: Pool,
+  slug: string,
+  entryFeeCoins: number,
+  tournamentRules: TournamentRulesSnapshot = rules(entryFeeCoins),
+) {
   const tournament = await createTournamentDraft(pool, {
     slug,
     title: 'Integration Championship',
     description: 'Tournament integration test',
-    rules: rules(entryFeeCoins),
+    rules: tournamentRules,
     createdBy: ADMIN_ID,
     registrationOpensAt: null,
     registrationClosesAt: null,
@@ -95,6 +101,82 @@ async function createPublishedTournament(pool: Pool, slug: string, entryFeeCoins
   });
   await publishTournament(pool, tournament.id, tournament.revision, ADMIN_ID);
   return tournament;
+}
+
+function playoffTournamentRules(
+  playoffSize: 2 | 4,
+  extra: Record<string, unknown> = {},
+): TournamentRulesSnapshot {
+  return {
+    ...rules(0),
+    config: parseTournamentConfig({
+      regularSource: 'head_to_head',
+      participantLimit: 4,
+      playoffSize,
+      timezone: 'Europe/Moscow',
+      registrationMode: 'open',
+      visibility: 'public',
+      entryFeeCoins: 0,
+      roundRobinCycles: 1,
+      roundsPerDay: 1,
+      firstRoundLocalTime: '10:00',
+      fixtureWindowMs: 3_600_000,
+      roundBreakMs: 900_000,
+      dailyDays: null,
+      dailyMetric: null,
+      bestDays: null,
+    }),
+    ...extra,
+  };
+}
+
+async function prepareTournamentForPlayoffs(
+  pool: Pool,
+  tournamentId: string,
+  points: number[],
+): Promise<string[]> {
+  for (const playerId of PLAYER_IDS) {
+    await pool.query(
+      `insert into tournament_participant (tournament_id, user_id, state)
+       values ($1, $2, 'approved')`,
+      [tournamentId, playerId],
+    );
+  }
+  const participants = await pool.query<{ id: string }>(
+    `select id from tournament_participant where tournament_id = $1 order by user_id`,
+    [tournamentId],
+  );
+  const participantIds = participants.rows.map((participant) => participant.id);
+  const regularRound = await pool.query<{ id: string }>(
+    `insert into tournament_round
+       (tournament_id, stage, number, starts_at, ends_at, rules_snapshot)
+     values ($1, 'regular', 1, $2, $3, '{}'::jsonb) returning id`,
+    [tournamentId, new Date('2030-09-01T10:00:00.000Z'), new Date('2030-09-01T11:00:00.000Z')],
+  );
+  await pool.query(
+    `insert into tournament_fixture
+       (tournament_id, round_id, fixture_number, home_participant_id, away_participant_id,
+        scheduled_starts_at, window_ends_at, status)
+     values ($1, $2, 1, $3, $4, $5, $6, 'scheduled')`,
+    [
+      tournamentId,
+      regularRound.rows[0]!.id,
+      participantIds[0]!,
+      participantIds[1]!,
+      new Date('2030-09-01T10:00:00.000Z'),
+      new Date('2030-09-01T11:00:00.000Z'),
+    ],
+  );
+  for (const [index, participantId] of participantIds.entries()) {
+    await pool.query(
+      `insert into tournament_adjustment
+         (tournament_id, participant_id, kind, payload, reason, created_by)
+       values ($1, $2, 'points', $3, 'integration standings seed', $4)`,
+      [tournamentId, participantId, JSON.stringify({ delta: points[index]! }), ADMIN_ID],
+    );
+  }
+  await pool.query(`update tournament set status = 'regular' where id = $1`, [tournamentId]);
+  return participantIds;
 }
 
 describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
@@ -207,10 +289,15 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
            where f.tournament_id = $1
              and ($2 = f.home_participant_id or $2 = f.away_participant_id))::text
            as participant_appearances`,
-      [tournament.id, (await pool.query<{ id: string }>(
-        `select id from tournament_participant where tournament_id = $1 and user_id = $2`,
-        [tournament.id, PLAYER_IDS[0]],
-      )).rows[0]!.id],
+      [
+        tournament.id,
+        (
+          await pool.query<{ id: string }>(
+            `select id from tournament_participant where tournament_id = $1 and user_id = $2`,
+            [tournament.id, PLAYER_IDS[0]],
+          )
+        ).rows[0]!.id,
+      ],
     );
     expect(persisted.rows[0]).toEqual({
       matchdays: '3',
@@ -264,6 +351,335 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         proposedAt: '2030-09-01T07:30:00.000Z',
         proposedByUserId: PLAYER_IDS[0],
         state: 'accepted',
+      },
+    });
+  });
+
+  it('materializes deterministic playoff windows from dependencies and configured round slots', async () => {
+    await seedUsers(pool, 0);
+    const tournament = await createPublishedTournament(
+      pool,
+      'deterministic-playoff-windows',
+      0,
+      playoffTournamentRules(4, {
+        playoffRounds: [
+          {
+            roundNumber: 1,
+            winsRequired: 2,
+            homeSequence: ['H', 'A', 'H'],
+            duelTemplateId: '00000000-0000-4000-8000-000000000801',
+            gameWindowMs: 3_600_000,
+            gameBreakMs: 1_800_000,
+            roundBreakMs: 5_400_000,
+            firstGameStartsAt: '2030-09-01T13:00:00.000Z',
+          },
+          {
+            roundNumber: 2,
+            winsRequired: 1,
+            homeSequence: ['H'],
+            duelTemplateId: '00000000-0000-4000-8000-000000000802',
+            gameWindowMs: 1_800_000,
+            gameBreakMs: 0,
+            roundBreakMs: 0,
+            firstGameStartsAt: '2030-09-01T16:00:00.000Z',
+          },
+        ],
+      }),
+    );
+    await prepareTournamentForPlayoffs(pool, tournament.id, [4, 3, 2, 1]);
+
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-01T08:00:00.000Z'));
+
+    const rounds = await pool.query<{
+      stage: string;
+      number: number;
+      starts_at: Date;
+      ends_at: Date;
+      rules_snapshot: { duelTemplateId: string };
+    }>(
+      `select stage, number, starts_at, ends_at, rules_snapshot
+         from tournament_round
+        where tournament_id = $1 and stage in ('playoff', 'third_place')
+        order by stage, number`,
+      [tournament.id],
+    );
+    expect(
+      rounds.rows.map((round) => ({
+        stage: round.stage,
+        number: Number(round.number),
+        startsAt: round.starts_at?.toISOString() ?? null,
+        endsAt: round.ends_at?.toISOString() ?? null,
+        duelTemplateId: round.rules_snapshot.duelTemplateId,
+      })),
+    ).toEqual([
+      {
+        stage: 'playoff',
+        number: 1,
+        startsAt: '2030-09-01T13:00:00.000Z',
+        endsAt: '2030-09-01T17:00:00.000Z',
+        duelTemplateId: '00000000-0000-4000-8000-000000000801',
+      },
+      {
+        stage: 'playoff',
+        number: 2,
+        startsAt: '2030-09-01T18:30:00.000Z',
+        endsAt: '2030-09-01T19:00:00.000Z',
+        duelTemplateId: '00000000-0000-4000-8000-000000000802',
+      },
+      {
+        stage: 'third_place',
+        number: 2,
+        startsAt: '2030-09-01T18:30:00.000Z',
+        endsAt: '2030-09-01T19:00:00.000Z',
+        duelTemplateId: '00000000-0000-4000-8000-000000000802',
+      },
+    ]);
+
+    const fixtures = await pool.query<{
+      stage: string;
+      round_number: number;
+      scheduled_starts_at: Date;
+      window_ends_at: Date;
+      result_snapshot: { duelTemplateId: string };
+    }>(
+      `select r.stage, r.number as round_number, f.scheduled_starts_at, f.window_ends_at,
+              f.result_snapshot
+         from tournament_fixture f
+         join tournament_round r on r.id = f.round_id
+        where f.tournament_id = $1 and r.stage in ('playoff', 'third_place')
+        order by r.stage, r.number, f.fixture_number`,
+      [tournament.id],
+    );
+    expect(
+      fixtures.rows.map((fixture) => ({
+        stage: fixture.stage,
+        roundNumber: Number(fixture.round_number),
+        startsAt: fixture.scheduled_starts_at?.toISOString() ?? null,
+        endsAt: fixture.window_ends_at?.toISOString() ?? null,
+        duelTemplateId: fixture.result_snapshot.duelTemplateId,
+      })),
+    ).toEqual([
+      {
+        stage: 'playoff',
+        roundNumber: 1,
+        startsAt: '2030-09-01T13:00:00.000Z',
+        endsAt: '2030-09-01T14:00:00.000Z',
+        duelTemplateId: '00000000-0000-4000-8000-000000000801',
+      },
+      {
+        stage: 'playoff',
+        roundNumber: 1,
+        startsAt: '2030-09-01T14:30:00.000Z',
+        endsAt: '2030-09-01T15:30:00.000Z',
+        duelTemplateId: '00000000-0000-4000-8000-000000000801',
+      },
+      {
+        stage: 'playoff',
+        roundNumber: 1,
+        startsAt: '2030-09-01T16:00:00.000Z',
+        endsAt: '2030-09-01T17:00:00.000Z',
+        duelTemplateId: '00000000-0000-4000-8000-000000000801',
+      },
+      {
+        stage: 'playoff',
+        roundNumber: 1,
+        startsAt: '2030-09-01T13:00:00.000Z',
+        endsAt: '2030-09-01T14:00:00.000Z',
+        duelTemplateId: '00000000-0000-4000-8000-000000000801',
+      },
+      {
+        stage: 'playoff',
+        roundNumber: 1,
+        startsAt: '2030-09-01T14:30:00.000Z',
+        endsAt: '2030-09-01T15:30:00.000Z',
+        duelTemplateId: '00000000-0000-4000-8000-000000000801',
+      },
+      {
+        stage: 'playoff',
+        roundNumber: 1,
+        startsAt: '2030-09-01T16:00:00.000Z',
+        endsAt: '2030-09-01T17:00:00.000Z',
+        duelTemplateId: '00000000-0000-4000-8000-000000000801',
+      },
+      {
+        stage: 'playoff',
+        roundNumber: 2,
+        startsAt: '2030-09-01T18:30:00.000Z',
+        endsAt: '2030-09-01T19:00:00.000Z',
+        duelTemplateId: '00000000-0000-4000-8000-000000000802',
+      },
+      {
+        stage: 'third_place',
+        roundNumber: 2,
+        startsAt: '2030-09-01T18:30:00.000Z',
+        endsAt: '2030-09-01T19:00:00.000Z',
+        duelTemplateId: '00000000-0000-4000-8000-000000000802',
+      },
+    ]);
+  });
+
+  it('materializes sequential playable tie-break fixtures with explicit timing and duel rules', async () => {
+    await seedUsers(pool, 0);
+    const tournament = await createPublishedTournament(
+      pool,
+      'timed-playoff-tie-break',
+      0,
+      playoffTournamentRules(2, {
+        tieBreakDuelTemplateId: '00000000-0000-4000-8000-000000000803',
+        tieBreakGameWindowMs: 1_800_000,
+        tieBreakGameBreakMs: 600_000,
+        tieBreakFirstGameStartsAt: '2030-09-01T12:00:00.000Z',
+      }),
+    );
+    await prepareTournamentForPlayoffs(pool, tournament.id, [4, 3, 3, 3]);
+
+    await expect(
+      startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-01T08:00:00.000Z')),
+    ).resolves.toEqual({
+      tournamentId: tournament.id,
+      status: 'tiebreak_required',
+      participantIds: expect.any(Array),
+    });
+
+    const round = await pool.query<{
+      starts_at: Date;
+      ends_at: Date;
+      status: string;
+      rules_snapshot: { duelTemplateId: string };
+    }>(
+      `select starts_at, ends_at, status, rules_snapshot
+         from tournament_round
+        where tournament_id = $1 and stage = 'tiebreak'`,
+      [tournament.id],
+    );
+    expect(round.rows).toHaveLength(1);
+    expect(round.rows[0]).toMatchObject({
+      starts_at: new Date('2030-09-01T12:00:00.000Z'),
+      ends_at: new Date('2030-09-01T13:50:00.000Z'),
+      status: 'scheduled',
+      rules_snapshot: { duelTemplateId: '00000000-0000-4000-8000-000000000803' },
+    });
+
+    const fixtures = await pool.query<{
+      scheduled_starts_at: Date;
+      window_ends_at: Date;
+      status: string;
+      result_snapshot: { duelTemplateId: string };
+    }>(
+      `select f.scheduled_starts_at, f.window_ends_at, f.status, f.result_snapshot
+         from tournament_fixture f
+         join tournament_round r on r.id = f.round_id
+        where f.tournament_id = $1 and r.stage = 'tiebreak'
+        order by f.fixture_number`,
+      [tournament.id],
+    );
+    expect(
+      fixtures.rows.map((fixture) => ({
+        startsAt: fixture.scheduled_starts_at?.toISOString() ?? null,
+        endsAt: fixture.window_ends_at?.toISOString() ?? null,
+        status: fixture.status,
+        duelTemplateId: fixture.result_snapshot.duelTemplateId,
+      })),
+    ).toEqual([
+      {
+        startsAt: '2030-09-01T12:00:00.000Z',
+        endsAt: '2030-09-01T12:30:00.000Z',
+        status: 'scheduled',
+        duelTemplateId: '00000000-0000-4000-8000-000000000803',
+      },
+      {
+        startsAt: '2030-09-01T12:40:00.000Z',
+        endsAt: '2030-09-01T13:10:00.000Z',
+        status: 'scheduled',
+        duelTemplateId: '00000000-0000-4000-8000-000000000803',
+      },
+      {
+        startsAt: '2030-09-01T13:20:00.000Z',
+        endsAt: '2030-09-01T13:50:00.000Z',
+        status: 'scheduled',
+        duelTemplateId: '00000000-0000-4000-8000-000000000803',
+      },
+    ]);
+  });
+
+  it('falls back to safe playoff timing when configured rule durations or ISO time are invalid', async () => {
+    await seedUsers(pool, 0);
+    const tournament = await createPublishedTournament(
+      pool,
+      'safe-playoff-timing-defaults',
+      0,
+      playoffTournamentRules(2, {
+        playoffRounds: [
+          {
+            roundNumber: 1,
+            winsRequired: 1,
+            homeSequence: ['H'],
+            duelTemplateId: '00000000-0000-4000-8000-000000000804',
+            gameWindowMs: 0,
+            gameBreakMs: -1,
+            roundBreakMs: -1,
+            firstGameStartsAt: '2031-02-31T12:00:00.000Z',
+          },
+        ],
+      }),
+    );
+    await prepareTournamentForPlayoffs(pool, tournament.id, [4, 3, 2, 1]);
+
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-01T08:00:00.000Z'));
+
+    const round = await pool.query<{
+      starts_at: Date;
+      ends_at: Date;
+      rules_snapshot: Record<string, unknown>;
+    }>(
+      `select starts_at, ends_at, rules_snapshot
+         from tournament_round
+        where tournament_id = $1 and stage = 'playoff' and number = 1`,
+      [tournament.id],
+    );
+    expect(round.rows[0]).toMatchObject({
+      starts_at: new Date('2030-09-01T11:00:00.000Z'),
+      ends_at: new Date('2030-09-02T11:00:00.000Z'),
+      rules_snapshot: {
+        gameWindowMs: 86_400_000,
+        gameBreakMs: 0,
+        roundBreakMs: 0,
+        firstGameStartsAt: null,
+      },
+    });
+  });
+
+  it('uses regular tournament template and schedule defaults for an unspecified tie-break', async () => {
+    await seedUsers(pool, 0);
+    const tournament = await createPublishedTournament(
+      pool,
+      'tie-break-regular-defaults',
+      0,
+      playoffTournamentRules(2),
+    );
+    await prepareTournamentForPlayoffs(pool, tournament.id, [4, 3, 3, 3]);
+
+    await expect(
+      startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-01T08:00:00.000Z')),
+    ).resolves.toMatchObject({ status: 'tiebreak_required' });
+
+    const round = await pool.query<{
+      starts_at: Date;
+      ends_at: Date;
+      rules_snapshot: Record<string, unknown>;
+    }>(
+      `select starts_at, ends_at, rules_snapshot
+         from tournament_round
+        where tournament_id = $1 and stage = 'tiebreak'`,
+      [tournament.id],
+    );
+    expect(round.rows[0]).toMatchObject({
+      starts_at: new Date('2030-09-01T11:00:00.000Z'),
+      ends_at: new Date('2030-09-01T14:30:00.000Z'),
+      rules_snapshot: {
+        duelTemplateId: '00000000-0000-4000-8000-000000000799',
+        gameWindowMs: 3_600_000,
+        gameBreakMs: 900_000,
       },
     });
   });

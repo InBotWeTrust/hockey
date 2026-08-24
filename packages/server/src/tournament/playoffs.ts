@@ -52,6 +52,24 @@ export function expandSeriesSchedule(
   }));
 }
 
+export function buildPlayoffFixtureWindows(input: {
+  gameCount: number;
+  firstStart: Date;
+  gameWindowMs: number;
+  gameBreakMs: number;
+}): Array<{ gameNumber: number; startsAt: string; endsAt: string }> {
+  return Array.from({ length: input.gameCount }, (_, index) => {
+    const startsAt = new Date(
+      input.firstStart.getTime() + index * (input.gameWindowMs + input.gameBreakMs),
+    );
+    return {
+      gameNumber: index + 1,
+      startsAt: startsAt.toISOString(),
+      endsAt: new Date(startsAt.getTime() + input.gameWindowMs).toISOString(),
+    };
+  });
+}
+
 export type PlayoffParticipantSource =
   | { type: 'seed'; participantId: string }
   | { type: 'winner' | 'loser'; seriesKey: string };
