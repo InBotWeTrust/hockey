@@ -3,6 +3,7 @@ import type {
   BonusAttemptResponse,
   BonusGameAttempt,
   BonusShotRequest,
+  BonusShotResponse,
 } from '../api/bonusGames.js';
 import {
   abandonBonusAttempt,
@@ -337,6 +338,128 @@ describe('bonusGameStore', () => {
       error: null,
       errorCode: null,
       needsReconcile: false,
+    });
+  });
+
+  it('invalidates a refresh begun during a rejected shot until a fresh refresh succeeds', async () => {
+    // This catches the during-shot read clearing a new ambiguity lock after the shot rejects.
+    const shotRequest = deferred<BonusShotResponse>();
+    const duringShotRead = deferred<BonusAttemptResponse>();
+    const staleError = new ApiError(
+      409,
+      'bonus_shot_index_mismatch',
+      'Бросок уже обработан. Обновляем состояние попытки.',
+    );
+    vi.mocked(submitBonusShot).mockReturnValueOnce(shotRequest.promise);
+    vi.mocked(fetchCurrentBonusAttempt)
+      .mockReturnValueOnce(duringShotRead.promise)
+      .mockResolvedValueOnce(response(initialAttempt));
+    useBonusGameStore.getState().applyState(initialAttempt);
+
+    const submit = useBonusGameStore.getState().submitShot(shot);
+    const staleRead = useBonusGameStore.getState().refresh();
+    shotRequest.reject(staleError);
+    await submit;
+
+    expect(useBonusGameStore.getState()).toMatchObject({
+      attempt: initialAttempt,
+      loading: false,
+      error: staleError.message,
+      errorCode: staleError.code,
+      needsReconcile: true,
+    });
+
+    duringShotRead.resolve(response({ ...initialAttempt, shots_taken: 1, goals: 0 }));
+    await staleRead;
+
+    expect(useBonusGameStore.getState()).toMatchObject({
+      attempt: initialAttempt,
+      error: staleError.message,
+      errorCode: staleError.code,
+      needsReconcile: true,
+    });
+
+    await useBonusGameStore.getState().refresh();
+
+    expect(useBonusGameStore.getState()).toMatchObject({
+      attempt: initialAttempt,
+      error: null,
+      errorCode: null,
+      needsReconcile: false,
+    });
+  });
+
+  it('keeps a newer refresh pending when the obsolete during-start read rejects', async () => {
+    // This catches an invalidated read failure ending the fresh post-failure reconciliation spinner.
+    const startRequest = deferred<BonusAttemptResponse>();
+    const duringStartRead = deferred<BonusAttemptResponse>();
+    const freshRead = deferred<BonusAttemptResponse>();
+    const idleAttempt = { ...initialAttempt, state: 'idle' as const, current_period: 0 };
+    const staleError = new ApiError(
+      409,
+      'bonus_period_not_ready',
+      'Сейчас нельзя начать или продолжить этот период.',
+    );
+    vi.mocked(startBonusPeriod).mockReturnValueOnce(startRequest.promise);
+    vi.mocked(fetchCurrentBonusAttempt)
+      .mockReturnValueOnce(duringStartRead.promise)
+      .mockReturnValueOnce(freshRead.promise);
+    useBonusGameStore.getState().applyState(idleAttempt);
+
+    const start = useBonusGameStore.getState().startPeriod();
+    const staleRead = useBonusGameStore.getState().refresh();
+    startRequest.reject(staleError);
+    await start;
+    const freshReconcile = useBonusGameStore.getState().refresh();
+    duringStartRead.reject(new TypeError('network'));
+    await staleRead;
+
+    expect(useBonusGameStore.getState()).toMatchObject({
+      attempt: idleAttempt,
+      loading: true,
+      error: staleError.message,
+      errorCode: staleError.code,
+      needsReconcile: true,
+    });
+
+    freshRead.resolve(response(initialAttempt));
+    await freshReconcile;
+
+    expect(useBonusGameStore.getState()).toMatchObject({
+      attempt: initialAttempt,
+      loading: false,
+      error: null,
+      errorCode: null,
+      needsReconcile: false,
+    });
+  });
+
+  it('invalidates a refresh begun during a rejected abandon attempt', async () => {
+    // This catches a late GET resurrecting an attempt after its abandon result is ambiguous.
+    const abandonRequest = deferred<BonusAttemptResponse>();
+    const duringAbandonRead = deferred<BonusAttemptResponse>();
+    const staleError = new ApiError(
+      409,
+      'bonus_attempt_not_active',
+      'Эта бонус-попытка больше не активна.',
+    );
+    vi.mocked(abandonBonusAttempt).mockReturnValueOnce(abandonRequest.promise);
+    vi.mocked(fetchCurrentBonusAttempt).mockReturnValueOnce(duringAbandonRead.promise);
+    useBonusGameStore.getState().applyState(initialAttempt);
+
+    const abandon = useBonusGameStore.getState().abandon();
+    const staleRead = useBonusGameStore.getState().refresh();
+    abandonRequest.reject(staleError);
+    await abandon;
+    duringAbandonRead.resolve(response({ ...initialAttempt, shots_taken: 1, goals: 0 }));
+    await staleRead;
+
+    expect(useBonusGameStore.getState()).toMatchObject({
+      attempt: initialAttempt,
+      loading: false,
+      error: staleError.message,
+      errorCode: staleError.code,
+      needsReconcile: true,
     });
   });
 

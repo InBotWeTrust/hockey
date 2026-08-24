@@ -69,6 +69,23 @@ function beginMutation(
   });
 }
 
+function recordMutationFailure(
+  set: (partial: Partial<BonusGameStoreState>) => void,
+  get: () => BonusGameStoreState,
+  details: { message: string; code: string | null },
+): void {
+  // Reads may have been issued after beginMutation. Invalidate them atomically
+  // with the ambiguity lock so none can clear this failure before a fresh read.
+  set({
+    inFlight: false,
+    loading: false,
+    error: details.message,
+    errorCode: details.code,
+    needsReconcile: true,
+    requestEpoch: get().requestEpoch + 1,
+  });
+}
+
 export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
   attempt: null,
   loading: false,
@@ -124,12 +141,7 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
       return response.attempt;
     } catch (error) {
       const details = errorDetails(error, 'Не удалось начать период.');
-      set({
-        inFlight: false,
-        error: details.message,
-        errorCode: details.code,
-        needsReconcile: true,
-      });
+      recordMutationFailure(set, get, details);
       return null;
     }
   },
@@ -149,11 +161,7 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
       };
     } catch (error) {
       const details = errorDetails(error, 'Не удалось отправить бросок.');
-      set({
-        error: details.message,
-        errorCode: details.code,
-        needsReconcile: true,
-      });
+      recordMutationFailure(set, get, details);
       return null;
     } finally {
       shotInFlight = false;
@@ -172,12 +180,7 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
       return response.attempt;
     } catch (error) {
       const details = errorDetails(error, 'Не удалось завершить попытку.');
-      set({
-        inFlight: false,
-        error: details.message,
-        errorCode: details.code,
-        needsReconcile: true,
-      });
+      recordMutationFailure(set, get, details);
       return null;
     }
   },
