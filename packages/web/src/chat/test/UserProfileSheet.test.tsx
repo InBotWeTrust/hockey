@@ -168,6 +168,11 @@ describe('UserProfileSheet', () => {
     expect(screen.getByText('Выполненные задания (1)')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Первая шайба.*получено/i })).toBeInTheDocument();
     expect(screen.getByRole('dialog', { name: 'Профиль игрока' })).toHaveClass('sheet-card');
+    expect(
+      screen
+        .getByRole('heading', { name: 'Профиль игрока' })
+        .parentElement?.querySelector(':scope > button[aria-label="Закрыть"]'),
+    ).toBeInTheDocument();
   });
 
   it('clicking "Написать в личку" calls findOrCreateDM and closes the sheet', async () => {

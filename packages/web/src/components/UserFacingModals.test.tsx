@@ -48,6 +48,11 @@ describe('user-facing modal consistency', () => {
 
     const dialog = screen.getByRole('dialog', { name: 'Снайпер' });
     expect(dialog).toHaveClass('modal-card');
+    expect(
+      screen
+        .getByRole('heading', { name: 'Снайпер' })
+        .parentElement?.querySelector(':scope > button[aria-label="Закрыть"]'),
+    ).toBeInTheDocument();
 
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(onClose).toHaveBeenCalledOnce();

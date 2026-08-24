@@ -39,6 +39,11 @@ describe('ChannelPostEditorSheet', () => {
     );
 
     expect(screen.getByRole('dialog', { name: 'Редактирование поста' })).toHaveClass('sheet-card');
+    expect(
+      screen
+        .getByRole('heading', { name: 'Редактирование поста' })
+        .parentElement?.querySelector(':scope > button[aria-label="Закрыть"]'),
+    ).toBeInTheDocument();
     fireEvent.change(screen.getByRole('textbox', { name: 'Текст поста' }), {
       target: { value: 'Изменённый текст' },
     });

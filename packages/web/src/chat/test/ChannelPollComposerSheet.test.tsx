@@ -34,6 +34,11 @@ describe('ChannelPollComposerSheet', () => {
     render(<ChannelPollComposerSheet open onSubmit={() => undefined} onClose={onClose} />);
 
     expect(screen.getByRole('dialog', { name: 'Создание опроса' })).toHaveClass('sheet-card');
+    expect(
+      screen
+        .getByRole('heading', { name: 'Создание опроса' })
+        .parentElement?.querySelector(':scope > button[aria-label="Закрыть"]'),
+    ).toBeInTheDocument();
     fireEvent.change(screen.getByRole('textbox', { name: 'Вопрос опроса' }), {
       target: { value: 'Кто победит?' },
     });

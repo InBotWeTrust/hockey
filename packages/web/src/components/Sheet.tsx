@@ -18,6 +18,7 @@ export interface SheetProps {
   dirty?: boolean;
   maxHeight?: string;
   backdropTestId?: string;
+  headerAction?: ReactNode;
 }
 
 export function Sheet({
@@ -29,6 +30,7 @@ export function Sheet({
   dirty = false,
   maxHeight = '82dvh',
   backdropTestId,
+  headerAction,
 }: SheetProps): JSX.Element {
   return (
     <AccessibleModal
@@ -36,6 +38,7 @@ export function Sheet({
       title={title}
       presentation="sheet"
       {...(backdropTestId === undefined ? {} : { backdropTestId })}
+      {...(headerAction === undefined ? {} : { headerAction })}
       onRequestClose={onRequestClose}
       closeBlocked={!dismissible}
       cardClassName="sheet-card"

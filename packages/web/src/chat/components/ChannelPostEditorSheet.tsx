@@ -71,6 +71,17 @@ export function ChannelPostEditorSheet({
       dirty={canSave}
       dismissible={!disabled}
       onRequestClose={requestClose}
+      headerAction={
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label="Закрыть"
+          disabled={disabled}
+          onClick={requestClose}
+        >
+          <X size={16} />
+        </button>
+      }
     >
       <div
         style={{
@@ -142,24 +153,6 @@ export function ChannelPostEditorSheet({
               <Trash2 size={16} />
             </button>
           )}
-          <button
-            type="button"
-            className="icon-btn"
-            aria-label="Закрыть"
-            disabled={disabled}
-            onClick={requestClose}
-            style={{
-              width: 34,
-              height: 34,
-              minWidth: 34,
-              minHeight: 34,
-              borderRadius: 10,
-              background: 'rgba(255,255,255,0.72)',
-              color: 'var(--ink)',
-            }}
-          >
-            <X size={16} />
-          </button>
         </div>
 
         <textarea

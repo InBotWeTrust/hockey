@@ -91,6 +91,11 @@ export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JS
       onRequestClose={() => onClose()}
       maxHeight="80dvh"
       backdropTestId="profile-sheet-backdrop"
+      headerAction={
+        <button type="button" className="icon-btn" onClick={onClose} aria-label="Закрыть">
+          <X size={14} />
+        </button>
+      }
     >
       <div
         style={{
@@ -100,16 +105,6 @@ export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JS
           gap: 0,
         }}
       >
-        <button
-          type="button"
-          className="icon-btn"
-          onClick={onClose}
-          aria-label="Закрыть"
-          style={{ position: 'absolute', top: 12, right: 12 }}
-        >
-          <X size={14} />
-        </button>
-
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <UserAvatar
             avatarUrl={avatarUrl}

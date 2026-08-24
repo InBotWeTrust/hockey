@@ -296,6 +296,17 @@ export function AchievementDetailsSheet({
       open
       title={achievement.title}
       onRequestClose={() => onClose()}
+      headerAction={
+        <button
+          type="button"
+          className="icon-btn"
+          data-no-drag-scroll="true"
+          aria-label="Закрыть"
+          onClick={onClose}
+        >
+          <X size={16} />
+        </button>
+      }
       cardStyle={{
         width: 'min(320px, calc(100vw - 40px))',
         maxHeight: 'calc(100dvh - 40px - var(--app-safe-top) - var(--app-safe-bottom))',
@@ -310,23 +321,6 @@ export function AchievementDetailsSheet({
           position: 'relative',
         }}
       >
-        <button
-          type="button"
-          className="icon-btn"
-          data-no-drag-scroll="true"
-          aria-label="Закрыть"
-          onClick={onClose}
-          style={{
-            position: 'absolute',
-            top: 14,
-            right: 14,
-            width: 34,
-            height: 34,
-            background: 'rgba(255,255,255,0.62)',
-          }}
-        >
-          <X size={16} />
-        </button>
         <div style={{ display: 'grid', gridTemplateColumns: '72px minmax(0, 1fr)', gap: 14 }}>
           <div
             style={{
