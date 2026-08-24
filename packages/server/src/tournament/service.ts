@@ -1,0 +1,669 @@
+import type { Pool, PoolClient } from 'pg';
+import { AppError } from '../plugins/errors.js';
+import { decideTournamentApplication, evaluateTournamentEligibility } from './registration.js';
+import type { TournamentConfig, TournamentStatus } from './types.js';
+
+export interface TournamentRulesSnapshot {
+  config: TournamentConfig;
+  eligibility: {
+    minLevel: number | null;
+    maxLevel: number | null;
+    minGoals: number;
+    minExperience: number;
+    invitedUserIds: string[];
+    bannedUserIds: string[];
+  };
+  [key: string]: unknown;
+}
+
+interface TournamentRow {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  status: TournamentStatus;
+  regular_source: TournamentConfig['regularSource'];
+  visibility: 'public' | 'hidden';
+  current_revision: number;
+  published_revision_id: string | null;
+  registration_opens_at: Date | null;
+  registration_closes_at: Date | null;
+  starts_at: Date | null;
+  completed_at: Date | null;
+  cancelled_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+  rules_snapshot: TournamentRulesSnapshot;
+  participant_count: number;
+  my_participant_state?: string | null;
+}
+
+function mapTournament(row: TournamentRow) {
+  return {
+    id: row.id,
+    slug: row.slug,
+    title: row.title,
+    description: row.description,
+    status: row.status,
+    regularSource: row.regular_source,
+    visibility: row.visibility,
+    revision: Number(row.current_revision),
+    publishedRevisionId: row.published_revision_id,
+    registrationOpensAt: row.registration_opens_at?.toISOString() ?? null,
+    registrationClosesAt: row.registration_closes_at?.toISOString() ?? null,
+    startsAt: row.starts_at?.toISOString() ?? null,
+    completedAt: row.completed_at?.toISOString() ?? null,
+    cancelledAt: row.cancelled_at?.toISOString() ?? null,
+    participantCount: Number(row.participant_count),
+    rules: row.rules_snapshot,
+    ...(row.my_participant_state !== undefined
+      ? { myParticipantState: row.my_participant_state }
+      : {}),
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
+  };
+}
+
+async function inTransaction<T>(pool: Pool, work: (client: PoolClient) => Promise<T>): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    const result = await work(client);
+    await client.query('commit');
+    return result;
+  } catch (error) {
+    await client.query('rollback');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function lockTournament(client: PoolClient, tournamentId: string): Promise<void> {
+  await client.query(`select pg_advisory_xact_lock(hashtext($1))`, [`tournament:${tournamentId}`]);
+}
+
+const tournamentSelect = `
+  select t.*, r.rules_snapshot,
+         (select count(*)::int from tournament_participant p
+           where p.tournament_id = t.id and p.state = 'approved') as participant_count
+    from tournament t
+    join tournament_revision r
+      on r.tournament_id = t.id and r.revision = t.current_revision`;
+
+export async function isTournamentFeatureEnabled(pool: Pool): Promise<boolean> {
+  const { rows } = await pool.query<{ enabled: boolean }>(
+    `select coalesce((value #>> '{}')::boolean, false) as enabled
+       from game_settings where key = 'tournaments.enabled'`,
+  );
+  return rows[0]?.enabled === true;
+}
+
+export async function createTournamentDraft(
+  pool: Pool,
+  input: {
+    slug: string;
+    title: string;
+    description: string;
+    rules: TournamentRulesSnapshot;
+    createdBy: string;
+    registrationOpensAt: Date | null;
+    registrationClosesAt: Date | null;
+    startsAt: Date | null;
+  },
+) {
+  return inTransaction(pool, async (client) => {
+    const { rows } = await client.query<TournamentRow>(
+      `insert into tournament
+         (slug, title, description, regular_source, visibility, current_revision,
+          registration_opens_at, registration_closes_at, starts_at, created_by, updated_by)
+       values ($1, $2, $3, $4, $5, 1, $6, $7, $8, $9, $9)
+       returning *, 0::int as participant_count, $10::jsonb as rules_snapshot`,
+      [
+        input.slug,
+        input.title,
+        input.description,
+        input.rules.config.regularSource,
+        input.rules.config.visibility,
+        input.registrationOpensAt,
+        input.registrationClosesAt,
+        input.startsAt,
+        input.createdBy,
+        JSON.stringify(input.rules),
+      ],
+    );
+    const tournament = rows[0]!;
+    await client.query(
+      `insert into tournament_revision
+         (tournament_id, revision, rules_snapshot, created_by)
+       values ($1, 1, $2, $3)`,
+      [tournament.id, JSON.stringify(input.rules), input.createdBy],
+    );
+    return mapTournament(tournament);
+  });
+}
+
+export async function listAdminTournaments(pool: Pool) {
+  const { rows } = await pool.query<TournamentRow>(
+    `${tournamentSelect} order by t.created_at desc`,
+  );
+  return rows.map(mapTournament);
+}
+
+export async function listPlayerTournaments(pool: Pool, userId: string) {
+  const { rows } = await pool.query<TournamentRow & { my_participant_state: string | null }>(
+    `select listed.*, mine.state as my_participant_state
+       from (${tournamentSelect}) listed
+       left join tournament_participant mine
+         on mine.tournament_id = listed.id and mine.user_id = $1
+      where listed.status not in ('draft', 'archived')
+        and (listed.visibility = 'public' or mine.id is not null)
+      order by listed.starts_at nulls last, listed.created_at desc`,
+    [userId],
+  );
+  return rows.map(mapTournament);
+}
+
+export async function getTournament(pool: Pool, tournamentId: string, userId?: string) {
+  const values: unknown[] = [tournamentId];
+  const mineSelect =
+    userId === undefined
+      ? 'null::text as my_participant_state'
+      : `(select state from tournament_participant where tournament_id = t.id and user_id = $2)
+           as my_participant_state`;
+  if (userId !== undefined) values.push(userId);
+  const { rows } = await pool.query<TournamentRow>(
+    `${tournamentSelect.replace('select t.*,', `select t.*, ${mineSelect},`)} where t.id = $1`,
+    values,
+  );
+  const row = rows[0];
+  if (!row) throw new AppError('not_found', 'tournament not found', 404);
+  if (userId !== undefined && row.visibility === 'hidden' && row.my_participant_state === null) {
+    throw new AppError('not_found', 'tournament not found', 404);
+  }
+  return mapTournament(row);
+}
+
+export async function updateTournamentDraft(
+  pool: Pool,
+  input: {
+    tournamentId: string;
+    expectedRevision: number;
+    title: string;
+    description: string;
+    rules: TournamentRulesSnapshot;
+    updatedBy: string;
+    registrationOpensAt: Date | null;
+    registrationClosesAt: Date | null;
+    startsAt: Date | null;
+  },
+) {
+  return inTransaction(pool, async (client) => {
+    await lockTournament(client, input.tournamentId);
+    const current = await client.query<{ status: TournamentStatus; current_revision: number }>(
+      `select status, current_revision from tournament where id = $1 for update`,
+      [input.tournamentId],
+    );
+    const tournament = current.rows[0];
+    if (!tournament) throw new AppError('not_found', 'tournament not found', 404);
+    if (tournament.status !== 'draft') {
+      throw new AppError('conflict', 'published tournament rules are immutable', 409);
+    }
+    if (Number(tournament.current_revision) !== input.expectedRevision) {
+      throw new AppError('revision_conflict', 'tournament was changed in another tab', 409);
+    }
+    const revision = input.expectedRevision + 1;
+    await client.query(
+      `insert into tournament_revision
+         (tournament_id, revision, rules_snapshot, created_by)
+       values ($1, $2, $3, $4)`,
+      [input.tournamentId, revision, JSON.stringify(input.rules), input.updatedBy],
+    );
+    await client.query(
+      `update tournament
+          set title = $2, description = $3, regular_source = $4, visibility = $5,
+              current_revision = $6, registration_opens_at = $7,
+              registration_closes_at = $8, starts_at = $9, updated_by = $10,
+              updated_at = now()
+        where id = $1`,
+      [
+        input.tournamentId,
+        input.title,
+        input.description,
+        input.rules.config.regularSource,
+        input.rules.config.visibility,
+        revision,
+        input.registrationOpensAt,
+        input.registrationClosesAt,
+        input.startsAt,
+        input.updatedBy,
+      ],
+    );
+    const updated = await client.query<TournamentRow>(
+      `${tournamentSelect} where t.id = $1`,
+      [input.tournamentId],
+    );
+    return mapTournament(updated.rows[0]!);
+  });
+}
+
+export async function publishTournament(
+  pool: Pool,
+  tournamentId: string,
+  expectedRevision: number,
+  userId: string,
+) {
+  return inTransaction(pool, async (client) => {
+    await lockTournament(client, tournamentId);
+    const { rows } = await client.query<{
+      status: TournamentStatus;
+      current_revision: number;
+      revision_id: string;
+    }>(
+      `select t.status, t.current_revision, r.id as revision_id
+         from tournament t
+         join tournament_revision r
+           on r.tournament_id = t.id and r.revision = t.current_revision
+        where t.id = $1 for update of t`,
+      [tournamentId],
+    );
+    const tournament = rows[0];
+    if (!tournament) throw new AppError('not_found', 'tournament not found', 404);
+    if (tournament.status !== 'draft') throw new AppError('conflict', 'tournament is published', 409);
+    if (Number(tournament.current_revision) !== expectedRevision) {
+      throw new AppError('revision_conflict', 'tournament was changed in another tab', 409);
+    }
+    await client.query(
+      `update tournament_revision set is_published = true, published_at = now()
+        where id = $1`,
+      [tournament.revision_id],
+    );
+    await client.query(
+      `update tournament
+          set status = 'registration', published_revision_id = $2,
+              updated_by = $3, updated_at = now()
+        where id = $1`,
+      [tournamentId, tournament.revision_id, userId],
+    );
+    return { tournamentId, status: 'registration' as const, revision: expectedRevision };
+  });
+}
+
+async function applyEntryFee(
+  client: PoolClient,
+  input: { tournamentId: string; participantId: string; userId: string; amount: number },
+): Promise<void> {
+  if (input.amount === 0) return;
+  const key = `tournament:${input.tournamentId}:entry:${input.userId}`;
+  const inserted = await client.query(
+    `insert into tournament_economy_event
+       (tournament_id, participant_id, idempotency_key, kind, coins)
+     values ($1, $2, $3, 'entry_fee', $4)
+     on conflict (idempotency_key) do nothing
+     returning id`,
+    [input.tournamentId, input.participantId, key, input.amount],
+  );
+  if (inserted.rowCount === 0) return;
+  await client.query('select id from users where id = $1 for update', [input.userId]);
+  await client.query(`insert into user_currency_account (user_id) values ($1) on conflict do nothing`, [
+    input.userId,
+  ]);
+  const account = await client.query<{ balance: number; reserved_balance: number }>(
+    `update user_currency_account set balance = balance - $2, updated_at = now()
+      where user_id = $1 and balance >= $2 returning balance, reserved_balance`,
+    [input.userId, input.amount],
+  );
+  if (!account.rows[0]) throw new AppError('insufficient_coins', 'not enough coins', 409);
+  await client.query(
+    `insert into currency_ledger
+       (user_id, reason, available_delta, reserved_delta, balance_after, reserved_after, metadata)
+     values ($1, 'tournament_entry_fee', $2, 0, $3, $4, $5)`,
+    [
+      input.userId,
+      -input.amount,
+      Number(account.rows[0].balance),
+      Number(account.rows[0].reserved_balance),
+      JSON.stringify({ tournament_id: input.tournamentId, participant_id: input.participantId }),
+    ],
+  );
+  await client.query(
+    `update tournament_economy_event set status = 'applied', applied_at = now() where id = $1`,
+    [inserted.rows[0].id],
+  );
+  await client.query(
+    `update tournament_participant set entry_fee_state = 'paid', updated_at = now() where id = $1`,
+    [input.participantId],
+  );
+}
+
+export async function applyToTournament(pool: Pool, tournamentId: string, userId: string) {
+  return inTransaction(pool, async (client) => {
+    await lockTournament(client, tournamentId);
+    const { rows } = await client.query<{
+      status: TournamentStatus;
+      registration_opens_at: Date | null;
+      registration_closes_at: Date | null;
+      rules_snapshot: TournamentRulesSnapshot;
+    }>(
+      `select t.status, t.registration_opens_at, t.registration_closes_at, r.rules_snapshot
+         from tournament t join tournament_revision r on r.id = t.published_revision_id
+        where t.id = $1 for update of t`,
+      [tournamentId],
+    );
+    const tournament = rows[0];
+    if (!tournament) throw new AppError('not_found', 'tournament not found', 404);
+    if (tournament.status !== 'registration') {
+      throw new AppError('registration_closed', 'registration is closed', 409);
+    }
+    const now = new Date();
+    if (
+      (tournament.registration_opens_at !== null && now < tournament.registration_opens_at) ||
+      (tournament.registration_closes_at !== null && now >= tournament.registration_closes_at)
+    ) {
+      throw new AppError('registration_closed', 'registration is closed', 409);
+    }
+    const existing = await client.query<{ id: string; state: string }>(
+      `select id, state from tournament_participant where tournament_id = $1 and user_id = $2`,
+      [tournamentId, userId],
+    );
+    const invited = existing.rows[0]?.state === 'invited';
+    if (existing.rows[0] && !invited) throw new AppError('conflict', 'application already exists', 409);
+    const playerResult = await client.query<{
+      level: number;
+      lifetime_goals_total: number;
+      experience: number;
+    }>(`select level, lifetime_goals_total, experience from users where id = $1`, [userId]);
+    const player = playerResult.rows[0];
+    if (!player) throw new AppError('not_found', 'user not found', 404);
+    const approved = await client.query<{ count: string }>(
+      `select count(*)::text as count from tournament_participant
+        where tournament_id = $1 and state = 'approved'`,
+      [tournamentId],
+    );
+    const rules = tournament.rules_snapshot;
+    const eligibility = evaluateTournamentEligibility(
+      {
+        userId,
+        level: Number(player.level),
+        goals: Number(player.lifetime_goals_total),
+        experience: Number(player.experience),
+      },
+      rules.eligibility,
+    );
+    const decision = decideTournamentApplication({
+      mode: rules.config.registrationMode,
+      invited,
+      eligible: eligibility.eligible,
+      approvedParticipants: Number(approved.rows[0]?.count ?? 0),
+      participantLimit: rules.config.participantLimit,
+    });
+    if (!decision.accepted) throw new AppError(decision.reason, decision.reason, 409);
+    const participant = await client.query<{ id: string }>(
+      `insert into tournament_participant
+         (tournament_id, user_id, state, entry_fee_coins, entry_fee_state, joined_at)
+       values ($1, $2, $3, $4, $5, case when $3 = 'approved' then now() else null end)
+       on conflict (tournament_id, user_id) do update
+         set state = excluded.state, entry_fee_coins = excluded.entry_fee_coins,
+             entry_fee_state = excluded.entry_fee_state, joined_at = excluded.joined_at,
+             updated_at = now()
+       returning id`,
+      [
+        tournamentId,
+        userId,
+        decision.state,
+        rules.config.entryFeeCoins,
+        rules.config.entryFeeCoins === 0 ? 'not_required' : 'pending',
+      ],
+    );
+    if (decision.state === 'approved') {
+      await applyEntryFee(client, {
+        tournamentId,
+        participantId: participant.rows[0]!.id,
+        userId,
+        amount: rules.config.entryFeeCoins,
+      });
+    }
+    return { tournamentId, participantId: participant.rows[0]!.id, state: decision.state };
+  });
+}
+
+export async function deleteEmptyDraft(pool: Pool, tournamentId: string): Promise<void> {
+  const result = await pool.query(
+    `delete from tournament t
+      where t.id = $1 and t.status = 'draft'
+        and not exists (select 1 from tournament_participant p where p.tournament_id = t.id)`,
+    [tournamentId],
+  );
+  if (result.rowCount === 0) {
+    throw new AppError('conflict', 'only an empty draft can be deleted', 409);
+  }
+}
+
+async function refundEntryFee(
+  client: PoolClient,
+  input: { tournamentId: string; participantId: string; userId: string; amount: number },
+): Promise<void> {
+  if (input.amount === 0) return;
+  const key = `tournament:${input.tournamentId}:refund:${input.userId}`;
+  const inserted = await client.query<{ id: string }>(
+    `insert into tournament_economy_event
+       (tournament_id, participant_id, idempotency_key, kind, coins)
+     values ($1, $2, $3, 'entry_refund', $4)
+     on conflict (idempotency_key) do nothing returning id`,
+    [input.tournamentId, input.participantId, key, input.amount],
+  );
+  if (inserted.rowCount === 0) return;
+  await client.query('select id from users where id = $1 for update', [input.userId]);
+  await client.query(`insert into user_currency_account (user_id) values ($1) on conflict do nothing`, [
+    input.userId,
+  ]);
+  const account = await client.query<{ balance: number; reserved_balance: number }>(
+    `update user_currency_account set balance = balance + $2, updated_at = now()
+      where user_id = $1 returning balance, reserved_balance`,
+    [input.userId, input.amount],
+  );
+  await client.query(
+    `insert into currency_ledger
+       (user_id, reason, available_delta, reserved_delta, balance_after, reserved_after, metadata)
+     values ($1, 'tournament_entry_refund', $2, 0, $3, $4, $5)`,
+    [
+      input.userId,
+      input.amount,
+      Number(account.rows[0]!.balance),
+      Number(account.rows[0]!.reserved_balance),
+      JSON.stringify({ tournament_id: input.tournamentId, participant_id: input.participantId }),
+    ],
+  );
+  await client.query(
+    `update tournament_economy_event set status = 'applied', applied_at = now() where id = $1`,
+    [inserted.rows[0]!.id],
+  );
+  await client.query(
+    `update tournament_participant set entry_fee_state = 'refunded', updated_at = now() where id = $1`,
+    [input.participantId],
+  );
+}
+
+export async function withdrawTournamentApplication(
+  pool: Pool,
+  tournamentId: string,
+  userId: string,
+) {
+  return inTransaction(pool, async (client) => {
+    await lockTournament(client, tournamentId);
+    const tournament = await client.query<{ status: TournamentStatus }>(
+      `select status from tournament where id = $1 for update`,
+      [tournamentId],
+    );
+    if (!tournament.rows[0]) throw new AppError('not_found', 'tournament not found', 404);
+    if (!['registration', 'registration_blocked'].includes(tournament.rows[0].status)) {
+      throw new AppError('conflict', 'application can no longer be withdrawn', 409);
+    }
+    const participantResult = await client.query<{
+      id: string;
+      state: string;
+      entry_fee_coins: number;
+      entry_fee_state: string;
+    }>(
+      `select id, state, entry_fee_coins, entry_fee_state
+         from tournament_participant
+        where tournament_id = $1 and user_id = $2 for update`,
+      [tournamentId, userId],
+    );
+    const participant = participantResult.rows[0];
+    if (!participant || !['applied', 'approved', 'invited'].includes(participant.state)) {
+      throw new AppError('conflict', 'active application not found', 409);
+    }
+    if (participant.entry_fee_state === 'paid') {
+      await refundEntryFee(client, {
+        tournamentId,
+        participantId: participant.id,
+        userId,
+        amount: Number(participant.entry_fee_coins),
+      });
+    }
+    await client.query(
+      `update tournament_participant
+          set state = 'withdrawn', withdrawn_at = now(), updated_at = now()
+        where id = $1`,
+      [participant.id],
+    );
+    return { tournamentId, state: 'withdrawn' as const };
+  });
+}
+
+export async function inviteTournamentParticipant(
+  pool: Pool,
+  tournamentId: string,
+  userId: string,
+  invitedBy: string,
+) {
+  const { rows } = await pool.query<{ id: string }>(
+    `insert into tournament_participant
+       (tournament_id, user_id, state, invited_by)
+     values ($1, $2, 'invited', $3)
+     on conflict (tournament_id, user_id) do update
+       set state = case
+             when tournament_participant.state in ('rejected', 'declined', 'withdrawn')
+             then 'invited' else tournament_participant.state end,
+           invited_by = $3, updated_at = now()
+     returning id`,
+    [tournamentId, userId, invitedBy],
+  );
+  return { participantId: rows[0]!.id, state: 'invited' as const };
+}
+
+export async function approveTournamentParticipant(
+  pool: Pool,
+  tournamentId: string,
+  participantId: string,
+  approvedBy: string,
+) {
+  return inTransaction(pool, async (client) => {
+    await lockTournament(client, tournamentId);
+    const tournamentResult = await client.query<{
+      status: TournamentStatus;
+      rules_snapshot: TournamentRulesSnapshot;
+    }>(
+      `select t.status, r.rules_snapshot from tournament t
+         join tournament_revision r on r.id = t.published_revision_id
+        where t.id = $1 for update of t`,
+      [tournamentId],
+    );
+    const tournament = tournamentResult.rows[0];
+    if (!tournament || tournament.status !== 'registration') {
+      throw new AppError('registration_closed', 'registration is closed', 409);
+    }
+    const participantResult = await client.query<{
+      id: string;
+      user_id: string;
+      state: string;
+      entry_fee_coins: number;
+    }>(
+      `select id, user_id, state, entry_fee_coins from tournament_participant
+        where id = $1 and tournament_id = $2 for update`,
+      [participantId, tournamentId],
+    );
+    const participant = participantResult.rows[0];
+    if (!participant || !['applied', 'invited'].includes(participant.state)) {
+      throw new AppError('conflict', 'participant cannot be approved', 409);
+    }
+    const count = await client.query<{ count: string }>(
+      `select count(*)::text as count from tournament_participant
+        where tournament_id = $1 and state = 'approved'`,
+      [tournamentId],
+    );
+    if (Number(count.rows[0]?.count ?? 0) >= tournament.rules_snapshot.config.participantLimit) {
+      throw new AppError('capacity_reached', 'capacity reached', 409);
+    }
+    await client.query(
+      `update tournament_participant
+          set state = 'approved', approved_by = $2, joined_at = now(), updated_at = now()
+        where id = $1`,
+      [participant.id, approvedBy],
+    );
+    await applyEntryFee(client, {
+      tournamentId,
+      participantId: participant.id,
+      userId: participant.user_id,
+      amount: Number(participant.entry_fee_coins),
+    });
+    return { participantId, state: 'approved' as const };
+  });
+}
+
+export async function cancelTournament(
+  pool: Pool,
+  tournamentId: string,
+  expectedRevision: number,
+  cancelledBy: string,
+) {
+  return inTransaction(pool, async (client) => {
+    await lockTournament(client, tournamentId);
+    const tournament = await client.query<{ status: TournamentStatus; current_revision: number }>(
+      `select status, current_revision from tournament where id = $1 for update`,
+      [tournamentId],
+    );
+    const row = tournament.rows[0];
+    if (!row) throw new AppError('not_found', 'tournament not found', 404);
+    if (Number(row.current_revision) !== expectedRevision) {
+      throw new AppError('revision_conflict', 'tournament was changed in another tab', 409);
+    }
+    if (['completed', 'cancelled', 'archived'].includes(row.status)) {
+      throw new AppError('conflict', 'tournament cannot be cancelled', 409);
+    }
+    const participants = await client.query<{
+      id: string;
+      user_id: string;
+      entry_fee_coins: number;
+    }>(
+      `select id, user_id, entry_fee_coins from tournament_participant
+        where tournament_id = $1 and entry_fee_state = 'paid' for update`,
+      [tournamentId],
+    );
+    for (const participant of participants.rows) {
+      await refundEntryFee(client, {
+        tournamentId,
+        participantId: participant.id,
+        userId: participant.user_id,
+        amount: Number(participant.entry_fee_coins),
+      });
+    }
+    await client.query(
+      `update tournament set status = 'cancelled', cancelled_at = now(),
+              updated_by = $2, updated_at = now() where id = $1`,
+      [tournamentId, cancelledBy],
+    );
+    return { tournamentId, status: 'cancelled' as const };
+  });
+}
+
+export async function archiveTournament(pool: Pool, tournamentId: string, userId: string) {
+  const result = await pool.query(
+    `update tournament set status = 'archived', archived_at = now(), updated_by = $2, updated_at = now()
+      where id = $1 and status in ('completed', 'cancelled')`,
+    [tournamentId, userId],
+  );
+  if (result.rowCount === 0) throw new AppError('conflict', 'tournament cannot be archived', 409);
+  return { tournamentId, status: 'archived' as const };
+}

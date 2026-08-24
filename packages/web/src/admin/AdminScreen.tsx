@@ -339,6 +339,7 @@ const pushNotificationTypeItems: Array<{
   { key: 'dailyGame', label: 'Ежедневная игра', shortLabel: 'Дневная' },
   { key: 'trainingAvailable', label: 'Тренировка доступна', shortLabel: 'Тренировка' },
   { key: 'duelEvents', label: 'Дуэли', shortLabel: 'Дуэли' },
+  { key: 'tournamentEvents', label: 'Турниры', shortLabel: 'Турниры' },
   { key: 'gameNews', label: 'Новости игры', shortLabel: 'Новости' },
 ];
 

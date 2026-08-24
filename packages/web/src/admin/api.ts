@@ -160,6 +160,7 @@ export interface AdminNotificationStats {
     dailyGame: { count: number; percent: number };
     trainingAvailable: { count: number; percent: number };
     duelEvents: { count: number; percent: number };
+    tournamentEvents: { count: number; percent: number };
     gameNews: { count: number; percent: number };
   };
 }
@@ -280,6 +281,7 @@ export interface AdminUser {
       dailyGame: boolean;
       trainingAvailable: boolean;
       duelEvents: boolean;
+      tournamentEvents: boolean;
       gameNews: boolean;
     };
   };
