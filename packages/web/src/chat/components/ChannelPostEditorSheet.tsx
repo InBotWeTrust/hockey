@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { Bold, Italic, Trash2, X } from 'lucide-react';
+import { Sheet } from '../../components/Sheet.js';
 interface ChannelPostEditorSheetProps {
   post: { id: string; content: string } | null;
   disabled?: boolean;
@@ -26,21 +26,14 @@ export function ChannelPostEditorSheet({
 }: ChannelPostEditorSheetProps): JSX.Element | null {
   const [value, setValue] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     setValue(post?.content ?? '');
     setConfirmDelete(false);
+    setConfirmDiscard(false);
   }, [post]);
-
-  useEffect(() => {
-    if (!post) return;
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [post, onClose]);
 
   if (!post) return null;
 
@@ -66,34 +59,22 @@ export function ChannelPostEditorSheet({
   const trimmed = value.trim();
   const canSave = hasMeaningfulContent(trimmed) && trimmed !== post.content && !disabled;
   const deleteActionDisabled = disabled || deleteDisabled;
+  const requestClose = (): void => {
+    if (canSave) setConfirmDiscard(true);
+    else onClose();
+  };
 
-  return createPortal(
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Редактирование поста"
-      onPointerDown={onClose}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 950,
-        background: 'rgba(15, 23, 42, 0.35)',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
-        display: 'flex',
-        alignItems: 'flex-end',
-        padding: '16px 14px max(16px, var(--app-safe-bottom))',
-      }}
+  return (
+    <Sheet
+      open
+      title="Редактирование поста"
+      dirty={canSave}
+      dismissible={!disabled}
+      onRequestClose={requestClose}
     >
       <div
-        className="glass"
-        onPointerDown={(event) => event.stopPropagation()}
         style={{
           width: '100%',
-          maxWidth: 520,
-          margin: '0 auto',
-          borderRadius: 22,
-          padding: 14,
           color: 'var(--ink)',
           display: 'flex',
           flexDirection: 'column',
@@ -166,7 +147,7 @@ export function ChannelPostEditorSheet({
             className="icon-btn"
             aria-label="Закрыть"
             disabled={disabled}
-            onClick={onClose}
+            onClick={requestClose}
             style={{
               width: 34,
               height: 34,
@@ -253,12 +234,31 @@ export function ChannelPostEditorSheet({
           </div>
         )}
 
+        {confirmDiscard && (
+          <div className="glass" role="alertdialog" aria-label="Несохранённые изменения">
+            <div className="modal-title">Закрыть без сохранения?</div>
+            <div className="modal-copy">Изменённый текст будет потерян.</div>
+            <div className="modal-actions" style={{ gridTemplateColumns: '1fr 1fr' }}>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => setConfirmDiscard(false)}
+              >
+                Продолжить
+              </button>
+              <button type="button" className="btn btn--cta" onClick={onClose}>
+                Закрыть
+              </button>
+            </div>
+          </div>
+        )}
+
         <div style={{ display: 'flex', gap: 8 }}>
           <button
             type="button"
             className="btn btn--ghost"
             disabled={disabled}
-            onClick={onClose}
+            onClick={requestClose}
             style={{ flex: 1, minHeight: 44, letterSpacing: 0 }}
           >
             Отмена
@@ -274,7 +274,6 @@ export function ChannelPostEditorSheet({
           </button>
         </div>
       </div>
-    </div>,
-    document.body,
+    </Sheet>
   );
 }

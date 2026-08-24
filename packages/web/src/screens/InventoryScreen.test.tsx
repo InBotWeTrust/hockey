@@ -326,6 +326,8 @@ describe('InventoryScreen', () => {
   });
 
   it('confirms purchase before spending tokens', async () => {
+    const vibrate = vi.fn(() => true);
+    Object.defineProperty(window.navigator, 'vibrate', { configurable: true, value: vibrate });
     const inventoryWithInstanceItem: InventoryState = {
       ...inventoryWithItems,
       equipped: { ...inventoryWithItems.equipped, stickItemId: 'instance-stick-bronze' },
@@ -371,5 +373,6 @@ describe('InventoryScreen', () => {
       '/api/inventory/items/stick-bronze/purchase',
       expect.objectContaining({ method: 'POST' }),
     );
+    expect(vibrate).toHaveBeenCalledWith([10, 35, 15]);
   });
 });

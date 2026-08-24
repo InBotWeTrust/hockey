@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { triggerHaptic } from '../feedback/haptics.js';
 import type { UseMutationResult } from '@tanstack/react-query';
 import { ArrowLeft, CircleDollarSign, RussianRuble, Sparkles, Star, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -180,6 +181,7 @@ export function InventoryScreen(): JSX.Element {
   const purchaseMutation = useMutation<InventoryState, Error, InventoryItem>({
     mutationFn: (item) => purchaseInventoryItem(item.itemId ?? item.id),
     onSuccess: (inventory, item) => {
+      triggerHaptic('success');
       queryClient.setQueryData(['inventory', 'me'], inventory);
       setPurchaseItem(null);
       setPurchaseNotice({
@@ -188,6 +190,7 @@ export function InventoryScreen(): JSX.Element {
       });
       window.setTimeout(() => setPurchaseNotice(null), 2800);
     },
+    onError: () => triggerHaptic('error'),
   });
 
   const inventory = inventoryQuery.data;

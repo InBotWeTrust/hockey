@@ -178,12 +178,18 @@ describe('ProfileSettingsScreen', () => {
 
   it('switches display source through PATCH /me', async () => {
     const fetchMock = mockSettingsFetch();
+    const vibrate = vi.fn(() => true);
+    Object.defineProperty(window.navigator, 'vibrate', { configurable: true, value: vibrate });
 
     renderProfileSettings();
     expect(await screen.findByText('Аккаунт (u1)')).toBeInTheDocument();
     expect(screen.queryByText('ID игрока')).not.toBeInTheDocument();
-    expect(document.querySelector('img[src="/sprites/ultimate-player-left.webp"]')).toBeInTheDocument();
-    expect(document.querySelector('img[src="/sprites/ultimate-player-right.webp"]')).toBeInTheDocument();
+    expect(
+      document.querySelector('img[src="/sprites/ultimate-player-left.webp"]'),
+    ).toBeInTheDocument();
+    expect(
+      document.querySelector('img[src="/sprites/ultimate-player-right.webp"]'),
+    ).toBeInTheDocument();
     const vkButton = await screen.findByRole('button', { name: /из вконтакте/i });
     fireEvent.click(vkButton);
 
@@ -203,6 +209,7 @@ describe('ProfileSettingsScreen', () => {
     expect((patchCall[1] as RequestInit).method).toBe('PATCH');
     expect((patchCall[1] as RequestInit).body).toBe(JSON.stringify({ displaySource: 'vk' }));
     await waitFor(() => expect(screen.getAllByText('Vera V').length).toBeGreaterThan(0));
+    expect(vibrate).toHaveBeenCalledWith([10, 35, 15]);
   });
 
   it('links Telegram from a VK-only profile through Telegram widget payload', async () => {

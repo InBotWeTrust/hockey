@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { triggerHaptic } from '../feedback/haptics.js';
 import { ArrowLeft, Info, LogOut } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../api/apiFetch.js';
@@ -192,11 +193,13 @@ export function ProfileSettingsScreen(): JSX.Element {
       updateUser({ grip: g });
     },
     onSuccess: (_res, g) => {
+      triggerHaptic('success');
       queryClient.setQueryData<ProfileData>(['profile'], (old) =>
         old ? { ...old, grip: g } : old,
       );
     },
     onError: () => {
+      triggerHaptic('error');
       if (data) {
         setGrip(data.grip);
         updateUser({ grip: data.grip });
@@ -232,6 +235,7 @@ export function ProfileSettingsScreen(): JSX.Element {
       return previous ? { previous } : {};
     },
     onSuccess: (profile) => {
+      triggerHaptic('success');
       queryClient.setQueryData<ProfileData>(['profile'], profile);
       updateUser({
         displayName: profile.displayName,
@@ -253,6 +257,7 @@ export function ProfileSettingsScreen(): JSX.Element {
       });
     },
     onError: (err, _source, context) => {
+      triggerHaptic('error');
       if (context?.previous) {
         queryClient.setQueryData<ProfileData>(['profile'], context.previous);
       }
@@ -275,6 +280,7 @@ export function ProfileSettingsScreen(): JSX.Element {
         }),
       }),
     onSuccess: (profile) => {
+      triggerHaptic('success');
       queryClient.setQueryData<ProfileData>(['profile'], profile);
       updateUser({
         displayName: profile.displayName,
@@ -295,6 +301,7 @@ export function ProfileSettingsScreen(): JSX.Element {
       setCustomProfileModalOpen(false);
     },
     onError: (err) => {
+      triggerHaptic('error');
       setSourceError(err.message);
     },
   });
@@ -319,6 +326,7 @@ export function ProfileSettingsScreen(): JSX.Element {
       );
     },
     onSuccess: (uploaded) => {
+      triggerHaptic('success');
       queryClient.setQueryData<ProfileData>(['profile'], (old) =>
         old
           ? {
@@ -337,6 +345,7 @@ export function ProfileSettingsScreen(): JSX.Element {
       setSourceError(null);
     },
     onError: (err) => {
+      triggerHaptic('error');
       setSourceError(err.message);
     },
   });
@@ -352,6 +361,7 @@ export function ProfileSettingsScreen(): JSX.Element {
         body: JSON.stringify({ ...payload, timezone: detectTimezone() }),
       }),
     onSuccess: (session) => {
+      triggerHaptic('success');
       const currentUser = useAuthStore.getState().user;
       setSession({
         accessToken: session.accessToken,
@@ -368,6 +378,7 @@ export function ProfileSettingsScreen(): JSX.Element {
       void queryClient.invalidateQueries({ queryKey: ['profile'] });
     },
     onError: (err) => {
+      triggerHaptic('error');
       setSourceError(err.message);
     },
   });

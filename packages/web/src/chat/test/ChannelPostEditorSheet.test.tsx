@@ -27,4 +27,26 @@ describe('ChannelPostEditorSheet', () => {
     );
     expect(onDelete).toHaveBeenCalledWith('post-1');
   });
+
+  it('protects edited content from an accidental sheet dismissal', () => {
+    const onClose = vi.fn();
+    render(
+      <ChannelPostEditorSheet
+        post={{ id: 'post-1', content: 'Исходный текст' }}
+        onSave={() => undefined}
+        onClose={onClose}
+      />,
+    );
+
+    expect(screen.getByRole('dialog', { name: 'Редактирование поста' })).toHaveClass('sheet-card');
+    fireEvent.change(screen.getByRole('textbox', { name: 'Текст поста' }), {
+      target: { value: 'Изменённый текст' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+
+    expect(
+      screen.getByRole('alertdialog', { name: 'Несохранённые изменения' }),
+    ).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
 });
