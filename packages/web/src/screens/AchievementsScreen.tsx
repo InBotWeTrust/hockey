@@ -10,6 +10,7 @@ import {
   Sparkles,
   Star,
   TrendingUp,
+  X,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -21,6 +22,7 @@ import {
 import { fetchWeeklyChallenge } from '../api/weeklyChallenge.js';
 import { rewardColor, type RewardTone } from '../app/rewardColors.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
+import { AccessibleModal } from '../components/AccessibleModal.js';
 
 type AchievementFilter =
   | 'all'
@@ -358,60 +360,58 @@ export function AchievementsScreen(): JSX.Element {
       </section>
 
       {selected && (
-        <div
-          className="modal-backdrop"
-          role="dialog"
-          aria-modal="true"
-          aria-label={selected.title}
-          onClick={() => setSelected(null)}
+        <AccessibleModal
+          title={selected.title}
+          copy={selected.requirement}
+          onRequestClose={() => setSelected(null)}
+          closeBlocked={claimMutation.isPending}
+          headerAction={
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Закрыть окно"
+              disabled={claimMutation.isPending}
+              onClick={() => setSelected(null)}
+            >
+              <X size={15} />
+            </button>
+          }
         >
-          <div className="modal-card" onClick={(event) => event.stopPropagation()}>
-            <h2 className="modal-title">{selected.title}</h2>
-            <p className="modal-copy">{selected.requirement}</p>
-            <div style={{ marginTop: 12, color: 'var(--muted)', fontSize: 13, lineHeight: 1.45 }}>
-              {selected.description}
-            </div>
-            {rewardText(selected) && (
-              <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <RewardChip
-                  icon={<CircleDollarSign size={13} />}
-                  value={selected.rewardCurrency}
-                  tone="coin"
-                />
-                <RewardChip
-                  icon={<Star size={13} fill="currentColor" />}
-                  value={selected.rewardStars}
-                  tone="star"
-                />
-                <RewardChip
-                  icon={<TrendingUp size={13} />}
-                  value={selected.rewardExperience}
-                  tone="experience"
-                />
-              </div>
-            )}
-            <div className="modal-actions">
-              {selected.isClaimable ? (
-                <button
-                  type="button"
-                  className="modal-primary btn btn--cta"
-                  disabled={claimMutation.isPending}
-                  onClick={() => claimMutation.mutate(selected.id)}
-                >
-                  Забрать
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="modal-primary btn btn--cta"
-                  onClick={() => setSelected(null)}
-                >
-                  Закрыть
-                </button>
-              )}
-            </div>
+          <div style={{ color: 'var(--muted)', fontSize: 13, lineHeight: 1.45 }}>
+            {selected.description}
           </div>
-        </div>
+          {rewardText(selected) && (
+            <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <RewardChip
+                icon={<CircleDollarSign size={13} />}
+                value={selected.rewardCurrency}
+                tone="coin"
+              />
+              <RewardChip
+                icon={<Star size={13} fill="currentColor" />}
+                value={selected.rewardStars}
+                tone="star"
+              />
+              <RewardChip
+                icon={<TrendingUp size={13} />}
+                value={selected.rewardExperience}
+                tone="experience"
+              />
+            </div>
+          )}
+          {selected.isClaimable && (
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="modal-primary btn--cta"
+                disabled={claimMutation.isPending}
+                onClick={() => claimMutation.mutate(selected.id)}
+              >
+                Забрать
+              </button>
+            </div>
+          )}
+        </AccessibleModal>
       )}
 
       {claimedReward && (

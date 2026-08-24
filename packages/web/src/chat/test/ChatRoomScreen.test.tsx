@@ -523,6 +523,7 @@ describe('ChatRoomScreen', () => {
 
     const dialog = await screen.findByRole('dialog', { name: 'photo.webp' });
     expect(dialog).toBeInTheDocument();
+    expect(document.body.firstElementChild).toHaveAttribute('inert');
     expect(screen.getByAltText('photo.webp')).toHaveAttribute(
       'src',
       'https://cdn.example/photo.webp',
