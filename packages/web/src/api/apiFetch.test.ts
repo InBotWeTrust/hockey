@@ -83,6 +83,32 @@ describe('apiFetch', () => {
     });
   });
 
+  it.each([
+    ['bonus_level_locked', 'Бонус-игры доступны после открытия любительского уровня.'],
+    ['bonus_previous_game_required', 'Сначала завершите предыдущую бонус-игру.'],
+    ['bonus_purchase_required', 'Сначала откройте эту бонус-игру.'],
+    ['bonus_insufficient_stars', 'Недостаточно звёзд для открытия бонус-игры.'],
+    ['bonus_game_inactive', 'Эта бонус-игра сейчас недоступна.'],
+    ['bonus_attempt_already_active', 'У вас уже есть незавершённая бонус-попытка.'],
+    ['bonus_attempt_not_active', 'Эта бонус-попытка больше не активна.'],
+    ['bonus_period_not_ready', 'Сейчас нельзя начать или продолжить этот период.'],
+    ['bonus_shot_index_mismatch', 'Бросок уже обработан. Обновляем состояние попытки.'],
+    ['bonus_shot_result_mismatch', 'Результат броска уточнён сервером.'],
+    ['bonus_game_core_version_mismatch', 'Версия игры изменилась. Обновите попытку.'],
+    ['bonus_shot_time_invalid', 'Время броска указано неверно.'],
+    ['bonus_shot_time_stale', 'Время броска устарело. Обновляем состояние попытки.'],
+    ['arena_not_owned', 'Эта домашняя площадка ещё не открыта.'],
+    ['arena_not_selectable', 'Эту домашнюю площадку сейчас нельзя выбрать.'],
+    ['arena_unavailable', 'Домашняя площадка временно недоступна.'],
+  ])('localizes the stable player error %s without replacing its code', async (code, message) => {
+    // This catches leaking server copy into player UI while preserving a stable branchable code.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockJson({ error: { code, message: 'internal server copy' } }, { status: 409 }),
+    );
+
+    await expect(apiFetch('/bonus-games')).rejects.toMatchObject({ code, message });
+  });
+
   it('retries original request once after successful refresh', async () => {
     useAuthStore.getState().setSession({
       accessToken: 'stale',
