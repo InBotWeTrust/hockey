@@ -120,7 +120,6 @@ export function BonusGamesScreen(): JSX.Element {
             <ArrowLeft size={16} aria-hidden="true" />
           </button>
           <div>
-            <div className="section-label section-label--page">Разделы</div>
             <h1 id="bonus-games-title" className="bonus-games-catalog__title">
               Бонусные игры
             </h1>

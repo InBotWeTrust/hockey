@@ -150,6 +150,15 @@ describe('BonusGamesScreen', () => {
     vi.restoreAllMocks();
   });
 
+  it('shows the subsection title without repeating the parent sections label', async () => {
+    mockCatalog([]);
+    renderCatalog();
+
+    expect(await screen.findByRole('heading', { name: 'Бонусные игры' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Назад' })).toBeInTheDocument();
+    expect(screen.queryByText('Разделы')).not.toBeInTheDocument();
+  });
+
   it('renders server-provided sequence and paid states without deriving availability', async () => {
     mockCatalog([
       card({ id: 'beach', title: 'Пляж', state: 'completed', is_completed: true }),
