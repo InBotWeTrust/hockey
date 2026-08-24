@@ -110,6 +110,7 @@ import {
 } from '../api/amateurDuel.js';
 import { StartPeriodModal } from '../components/StartPeriodModal.js';
 import { getLastSeenAt, setLastSeenAt } from '../stores/seenPeriods.js';
+import { TournamentCatalog } from '../tournament/TournamentCatalog.js';
 import { artworkForInventoryItem, placeholderArtworkForKind } from './inventoryArtwork.js';
 import {
   formatInventoryBadgeAmount,
@@ -219,9 +220,7 @@ function readTrainingSpeedOverrides(): SpeedOverrides | null {
     return null;
   }
 }
-const TOURNAMENT_LED_TABLEAU_IMAGE = '/sprites/tournament-tableau.webp';
 const AMATEUR_DAILY_COURT_BACKGROUND = '/sprites/amateur-daily-court.webp';
-const AMATEUR_TOURNAMENT_COURT_BACKGROUND = '/sprites/amateur-tournament-court.webp';
 const ARENA_ICE_COURT_BACKGROUND = '/sprites/app-arena-ice.webp';
 const ARENA_CUBE_IMAGE = '/sprites/app-arena-cube.webp';
 
@@ -3502,79 +3501,7 @@ function AmateurHub({
 function AmateurTournamentsPage({ onBack }: { onBack: () => void }): JSX.Element {
   return (
     <ModeShell title="Турниры" onBack={onBack}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
-        <TotalCell label="СТАТУС" value="скоро" />
-        <TotalCell label="МЕСТА" value="топ" />
-      </div>
-
-      <section
-        className="glass"
-        aria-label="Площадка любительских турниров"
-        style={{
-          borderRadius: 22,
-          padding: 10,
-          overflow: 'hidden',
-          border: '1px solid rgba(255,255,255,0.76)',
-        }}
-      >
-        <div
-          style={{
-            position: 'relative',
-            aspectRatio: '1212 / 2000',
-            borderRadius: 18,
-            overflow: 'hidden',
-            background: '#dceaf5',
-            boxShadow: 'inset 0 0 0 1px rgba(15, 23, 42, 0.08)',
-          }}
-        >
-          <img
-            src={AMATEUR_TOURNAMENT_COURT_BACKGROUND}
-            alt=""
-            aria-hidden="true"
-            style={{
-              display: 'block',
-              width: '100%',
-              height: '100%',
-              objectFit: 'cover',
-            }}
-          />
-          <img
-            src={TOURNAMENT_LED_TABLEAU_IMAGE}
-            alt=""
-            aria-hidden="true"
-            style={{
-              position: 'absolute',
-              left: '50%',
-              top: 0,
-              width: '76%',
-              maxWidth: 456,
-              height: 'auto',
-              transform: 'translateX(-50%)',
-              filter: 'drop-shadow(0 18px 24px rgba(3, 10, 18, 0.34))',
-            }}
-          />
-        </div>
-      </section>
-
-      <section
-        className="glass"
-        style={{ borderRadius: 22, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}
-      >
-        <div className="section-label" style={{ margin: 0 }}>
-          Турнирный путь
-        </div>
-        <div style={{ color: 'var(--ink)', fontSize: 18, fontWeight: 900 }}>
-          Лидеры дуэлей попадут в турнир бесплатно
-        </div>
-        <div style={{ color: 'var(--muted)', fontSize: 14, lineHeight: 1.45, fontWeight: 700 }}>
-          Здесь позже появятся сетки, регламент месяца и список квалифицированных игроков. Сейчас
-          рейтинг дуэлей уже готовится под этот сценарий.
-        </div>
-      </section>
-
-      <button type="button" className="btn btn--cta" disabled>
-        Турниры скоро
-      </button>
+      <TournamentCatalog />
     </ModeShell>
   );
 }
