@@ -178,6 +178,15 @@ describe('BonusGamesScreen', () => {
     expect(screen.getByRole('button', { name: 'Играть снова' })).toBeInTheDocument();
   });
 
+  it('focuses arena thumbnails on the location above the ice', async () => {
+    mockCatalog([card({ id: 'north-pole', slug: 'north-pole', title: 'Северный полюс' })]);
+    renderCatalog();
+
+    expect(await screen.findByAltText('Площадка «Пляж»')).toHaveStyle({
+      objectPosition: 'center top',
+    });
+  });
+
   it('opens the server-reported active attempt when continuing a game', async () => {
     mockCatalog([
       card({

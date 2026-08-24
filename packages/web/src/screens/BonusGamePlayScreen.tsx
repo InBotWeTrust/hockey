@@ -3,7 +3,6 @@ import {
   PERSPECTIVE_COURT_GOALIE_VISUAL_X_SCALE,
   PERSPECTIVE_COURT_GOALIE_VISUAL_Y_OFFSET,
   PERSPECTIVE_COURT_VISUAL_Y_SCALE,
-  RINK,
   STICK_NEUTRAL,
   type GoalieConfig,
 } from '@hockey/game-core';
@@ -16,8 +15,6 @@ import type { SpeedOverrides } from '../game/loop.js';
 import type { GoalieOptions } from '../game/renderer/Goalie.js';
 import { useBonusGameStore } from '../stores/bonusGameStore.js';
 import { formatRussianCount } from '../lib/russianPlural.js';
-
-const BONUS_GAME_LAYER_STYLE = { top: '24.55%', height: '74.2%', bottom: 'auto' } as const;
 
 const BONUS_GAME_GOALIE_OPTIONS: Omit<GoalieOptions, 'idleSpriteUrl' | 'saveSpriteUrl'> = {
   visualYScale: PERSPECTIVE_COURT_VISUAL_Y_SCALE,
@@ -373,7 +370,7 @@ export function BonusGamePlayScreen(): JSX.Element {
       <PlayView
         suppressedByModal={confirmAbandon}
         showIceCar={false}
-        onBack={goToCatalog}
+        onBack={() => setConfirmAbandon(true)}
         backLabel="К бонусным играм"
         active={!needsReconcile}
         seed={attempt.attempt_seed}
@@ -432,24 +429,13 @@ export function BonusGamePlayScreen(): JSX.Element {
         applyState={() => undefined}
         applyResolvedState={() => applyPendingShot()}
         longCourtBackground={attempt.arena.artwork_url}
-        rinkAspectRatio={`${RINK.width} / ${RINK.height}`}
         rinkBorderRadius={28}
-        gameLayerStyle={BONUS_GAME_LAYER_STYLE}
-        overlayControls={
-          <button
-            type="button"
-            className="btn btn--ghost bonus-game-abandon-button"
-            onClick={() => setConfirmAbandon(true)}
-          >
-            Завершить попытку
-          </button>
-        }
       />
 
       {confirmAbandon ? (
         <AccessibleModal
-          title="Завершить попытку?"
-          copy="Прогресс попытки пропадёт. Оплаченное открытие останется."
+          title="Выйти из бонусной игры?"
+          copy="Попытка сохранится, если продолжить позже. Завершение удалит текущий прогресс."
           closeBlocked={isConfirmingAbandon}
           onClose={() => setConfirmAbandon(false)}
         >
@@ -463,9 +449,9 @@ export function BonusGamePlayScreen(): JSX.Element {
               type="button"
               className="btn btn--ghost"
               disabled={isConfirmingAbandon}
-              onClick={() => setConfirmAbandon(false)}
+              onClick={goToCatalog}
             >
-              Продолжить игру
+              Продолжить позже
             </button>
             <button
               type="button"
@@ -473,7 +459,7 @@ export function BonusGamePlayScreen(): JSX.Element {
               disabled={isConfirmingAbandon}
               onClick={() => void confirmAndAbandon()}
             >
-              {isConfirmingAbandon ? 'Завершаем…' : 'Да, завершить'}
+              {isConfirmingAbandon ? 'Завершаем…' : 'Завершить попытку'}
             </button>
           </div>
         </AccessibleModal>

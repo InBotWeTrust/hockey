@@ -1,5 +1,4 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import type { ReactNode } from 'react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { STICK_NEUTRAL } from '@hockey/game-core';
@@ -12,7 +11,8 @@ vi.mock('../game/PlayView.js', () => ({
   PlayView(props: {
     active: boolean;
     longCourtBackground?: string;
-    overlayControls?: ReactNode;
+    onBack: () => void;
+    backLabel?: string;
     optimisticAddShot: (result: 'goal' | 'save' | 'miss') => void;
     submitShot: (args: {
       shotIndex: number;
@@ -33,7 +33,9 @@ vi.mock('../game/PlayView.js', () => ({
     return (
       <section data-testid="bonus-play-view">
         <img data-testid="bonus-rink-background" src={props.longCourtBackground} alt="" />
-        {props.overlayControls}
+        <button type="button" onClick={props.onBack}>
+          {props.backLabel ?? 'Назад'}
+        </button>
         <button
           type="button"
           disabled={!props.active}
@@ -236,7 +238,6 @@ describe('BonusGamePlayScreen', () => {
       shotsTotal: 25,
       stickEffects: STICK_NEUTRAL,
       longCourtBackground: '/bonus-games/arenas/beach.webp',
-      rinkAspectRatio: '572 / 700',
       initialSceneElapsedMs: 6_000,
       initialShooterElapsedMs: 4_800,
       goalieOptions: {
@@ -264,8 +265,9 @@ describe('BonusGamePlayScreen', () => {
         '/bonus-games/goalkeepers/beach-ready.webp',
         '/bonus-games/goalkeepers/beach-save.webp',
       ],
-      gameLayerStyle: { top: '24.55%', height: '74.2%', bottom: 'auto' },
     });
+    expect(props).not.toHaveProperty('rinkAspectRatio');
+    expect(props).not.toHaveProperty('gameLayerStyle');
   });
 
   it('defers the shot DTO until PlayView reaches its visual boundary', async () => {
@@ -503,7 +505,7 @@ describe('BonusGamePlayScreen', () => {
     ).toBeInTheDocument();
   });
 
-  it('requires confirmation and abandons once before returning to the catalog', async () => {
+  it('keeps the attempt active until the exit prompt is explicitly confirmed', async () => {
     const pending = deferred<BonusGameAttempt | null>();
     const abandoned = attempt({
       status: 'abandoned',
@@ -515,19 +517,21 @@ describe('BonusGamePlayScreen', () => {
     setStore({ abandon });
     renderScreen();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Завершить попытку' }));
+    expect(screen.queryByRole('button', { name: 'Завершить попытку' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'К бонусным играм' }));
     expect(abandon).not.toHaveBeenCalled();
-    const dialog = screen.getByRole('dialog', { name: 'Завершить попытку?' });
-    expect(dialog).toHaveTextContent('Прогресс попытки пропадёт. Оплаченное открытие останется.');
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Продолжить игру' }));
-    expect(abandon).not.toHaveBeenCalled();
-    expect(screen.queryByRole('dialog', { name: 'Завершить попытку?' })).toBeNull();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Завершить попытку' }));
-    const confirm = within(screen.getByRole('dialog', { name: 'Завершить попытку?' })).getByRole(
-      'button',
-      { name: 'Да, завершить' },
+    const dialog = screen.getByRole('dialog', { name: 'Выйти из бонусной игры?' });
+    expect(dialog).toHaveTextContent(
+      'Попытка сохранится, если продолжить позже. Завершение удалит текущий прогресс.',
     );
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(abandon).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog', { name: 'Выйти из бонусной игры?' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'К бонусным играм' }));
+    const confirm = within(
+      screen.getByRole('dialog', { name: 'Выйти из бонусной игры?' }),
+    ).getByRole('button', { name: 'Завершить попытку' });
     fireEvent.click(confirm);
     fireEvent.click(confirm);
     expect(abandon).toHaveBeenCalledTimes(1);
@@ -539,15 +543,31 @@ describe('BonusGamePlayScreen', () => {
     });
   });
 
+  it('returns to the catalog without abandoning when continuing later', () => {
+    const abandon = vi.fn(async () => null);
+    setStore({ abandon });
+    renderScreen();
+
+    fireEvent.click(screen.getByRole('button', { name: 'К бонусным играм' }));
+    fireEvent.click(
+      within(screen.getByRole('dialog', { name: 'Выйти из бонусной игры?' })).getByRole('button', {
+        name: 'Продолжить позже',
+      }),
+    );
+
+    expect(abandon).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('location')).toHaveTextContent('/bonus-games');
+  });
+
   it('traps the abandon modal and restores the exact gameplay trigger after Escape', async () => {
     renderScreen();
-    const trigger = screen.getByRole('button', { name: 'Завершить попытку' });
+    const trigger = screen.getByRole('button', { name: 'К бонусным играм' });
     trigger.focus();
     fireEvent.click(trigger);
 
-    const dialog = screen.getByRole('dialog', { name: 'Завершить попытку?' });
-    const cancel = within(dialog).getByRole('button', { name: 'Продолжить игру' });
-    const confirm = within(dialog).getByRole('button', { name: 'Да, завершить' });
+    const dialog = screen.getByRole('dialog', { name: 'Выйти из бонусной игры?' });
+    const cancel = within(dialog).getByRole('button', { name: 'Продолжить позже' });
+    const confirm = within(dialog).getByRole('button', { name: 'Завершить попытку' });
     await waitFor(() => expect(cancel).toHaveFocus());
     confirm.focus();
     fireEvent.keyDown(dialog, { key: 'Tab' });
@@ -555,7 +575,7 @@ describe('BonusGamePlayScreen', () => {
     fireEvent.keyDown(dialog, { key: 'Escape' });
 
     await waitFor(() =>
-      expect(screen.queryByRole('dialog', { name: 'Завершить попытку?' })).toBeNull(),
+      expect(screen.queryByRole('dialog', { name: 'Выйти из бонусной игры?' })).toBeNull(),
     );
     expect(trigger).toHaveFocus();
   });
@@ -565,15 +585,15 @@ describe('BonusGamePlayScreen', () => {
     setStore({ abandon });
     renderScreen();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Завершить попытку' }));
+    fireEvent.click(screen.getByRole('button', { name: 'К бонусным играм' }));
     fireEvent.click(
-      within(screen.getByRole('dialog', { name: 'Завершить попытку?' })).getByRole('button', {
-        name: 'Да, завершить',
+      within(screen.getByRole('dialog', { name: 'Выйти из бонусной игры?' })).getByRole('button', {
+        name: 'Завершить попытку',
       }),
     );
 
     await waitFor(() => expect(abandon).toHaveBeenCalledTimes(1));
     expect(screen.getByLabelText('location')).toHaveTextContent('/bonus-games/game-1/play');
-    expect(screen.getByRole('dialog', { name: 'Завершить попытку?' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Выйти из бонусной игры?' })).toBeInTheDocument();
   });
 });

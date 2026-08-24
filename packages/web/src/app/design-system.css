@@ -371,12 +371,6 @@
   font-size: 34px;
 }
 
-.bonus-game-abandon-button {
-  min-height: 38px;
-  padding: 0 14px;
-  white-space: nowrap;
-}
-
 .bonus-game-abandon-error {
   margin: 12px 0 0;
   color: #b91c1c;

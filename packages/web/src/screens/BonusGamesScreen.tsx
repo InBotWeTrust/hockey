@@ -228,6 +228,7 @@ function BonusGameCard({
         className="bonus-game-card__artwork"
         src={game.arena.thumbnail_url}
         alt={`Площадка «${game.arena.title}»`}
+        style={{ objectPosition: 'center top' }}
       />
       <div className="bonus-game-card__content">
         <div className="bonus-game-card__eyebrow">Игра {numberText(game.sort_order)}</div>
