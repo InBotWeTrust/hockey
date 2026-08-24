@@ -1,6 +1,7 @@
 import type { Pool, PoolClient } from 'pg';
 import { AppError } from '../plugins/errors.js';
 import { decideTournamentApplication, evaluateTournamentEligibility } from './registration.js';
+import { buildHeadToHeadSchedulePlan } from './materialize.js';
 import type { TournamentConfig, TournamentStatus } from './types.js';
 
 export interface TournamentRulesSnapshot {
@@ -666,4 +667,200 @@ export async function archiveTournament(pool: Pool, tournamentId: string, userId
   );
   if (result.rowCount === 0) throw new AppError('conflict', 'tournament cannot be archived', 409);
   return { tournamentId, status: 'archived' as const };
+}
+
+export async function generateRegularSchedule(
+  pool: Pool,
+  tournamentId: string,
+  expectedRevision: number,
+) {
+  return inTransaction(pool, async (client) => {
+    await lockTournament(client, tournamentId);
+    const tournamentResult = await client.query<{
+      status: TournamentStatus;
+      current_revision: number;
+      starts_at: Date | null;
+      rules_snapshot: TournamentRulesSnapshot;
+    }>(
+      `select t.status, t.current_revision, t.starts_at, r.rules_snapshot
+         from tournament t join tournament_revision r on r.id = t.published_revision_id
+        where t.id = $1 for update of t`,
+      [tournamentId],
+    );
+    const tournament = tournamentResult.rows[0];
+    if (!tournament) throw new AppError('not_found', 'tournament not found', 404);
+    if (!['registration', 'registration_blocked', 'scheduling'].includes(tournament.status)) {
+      throw new AppError('conflict', 'schedule cannot be regenerated after publication', 409);
+    }
+    if (Number(tournament.current_revision) !== expectedRevision) {
+      throw new AppError('revision_conflict', 'tournament was changed in another tab', 409);
+    }
+    if (tournament.starts_at === null) throw new AppError('conflict', 'start time is required', 409);
+    const participants = await client.query<{ id: string }>(
+      `select id from tournament_participant
+        where tournament_id = $1 and state = 'approved'
+        order by seed nulls last, joined_at, id`,
+      [tournamentId],
+    );
+    const config = tournament.rules_snapshot.config;
+    if (participants.rows.length < config.playoffSize) {
+      await client.query(
+        `update tournament set status = 'registration_blocked', updated_at = now() where id = $1`,
+        [tournamentId],
+      );
+      return { tournamentId, status: 'registration_blocked' as const, participantCount: participants.rows.length };
+    }
+    await client.query(`delete from tournament_matchday where tournament_id = $1`, [tournamentId]);
+    let roundCount = 0;
+    let fixtureCount = 0;
+    if (config.regularSource === 'head_to_head') {
+      const plan = buildHeadToHeadSchedulePlan({
+        participantIds: participants.rows.map((participant) => participant.id),
+        cycles: config.roundRobinCycles,
+        roundsPerDay: config.roundsPerDay,
+        firstStart: tournament.starts_at,
+        fixtureWindowMs: config.fixtureWindowMs,
+        roundBreakMs: config.roundBreakMs,
+      });
+      const grouped = new Map<number, typeof plan>();
+      for (const round of plan) {
+        const day = grouped.get(round.matchdayNumber) ?? [];
+        day.push(round);
+        grouped.set(round.matchdayNumber, day);
+      }
+      const matchdayIds = new Map<number, string>();
+      for (const [number, rounds] of grouped) {
+        const startsAt = rounds[0]!.startsAt;
+        const endsAt = rounds[rounds.length - 1]!.endsAt;
+        const inserted = await client.query<{ id: string }>(
+          `insert into tournament_matchday
+             (tournament_id, number, local_date, starts_at, ends_at)
+           values ($1, $2, ($3::timestamptz at time zone $5)::date, $3, $4)
+           returning id`,
+          [tournamentId, number, startsAt, endsAt, config.timezone],
+        );
+        matchdayIds.set(number, inserted.rows[0]!.id);
+      }
+      for (const round of plan) {
+        const insertedRound = await client.query<{ id: string }>(
+          `insert into tournament_round
+             (tournament_id, matchday_id, stage, number, cycle_number, starts_at, ends_at,
+              rules_snapshot)
+           values ($1, $2, 'regular', $3, $4, $5, $6, $7) returning id`,
+          [
+            tournamentId,
+            matchdayIds.get(round.matchdayNumber),
+            round.roundNumber,
+            round.cycleNumber,
+            round.startsAt,
+            round.endsAt,
+            JSON.stringify({ byeParticipantId: round.byeParticipantId }),
+          ],
+        );
+        roundCount += 1;
+        for (const fixture of round.fixtures) {
+          fixtureCount += 1;
+          await client.query(
+            `insert into tournament_fixture
+               (tournament_id, round_id, fixture_number, home_participant_id,
+                away_participant_id, scheduled_starts_at, window_ends_at, status)
+             values ($1, $2, $3, $4, $5, $6, $7, 'scheduled')`,
+            [
+              tournamentId,
+              insertedRound.rows[0]!.id,
+              fixtureCount,
+              fixture.homeParticipantId,
+              fixture.awayParticipantId,
+              round.startsAt,
+              round.endsAt,
+            ],
+          );
+        }
+      }
+    } else {
+      for (let day = 1; day <= config.dailyDays; day += 1) {
+        const startsAt = new Date(tournament.starts_at.getTime() + (day - 1) * 86_400_000);
+        const endsAt = new Date(startsAt.getTime() + 86_400_000);
+        await client.query(
+          `insert into tournament_matchday
+             (tournament_id, number, local_date, starts_at, ends_at)
+           values ($1, $2, ($3::timestamptz at time zone $5)::date, $3, $4)`,
+          [tournamentId, day, startsAt, endsAt, config.timezone],
+        );
+      }
+    }
+    await client.query(`update tournament set status = 'scheduling', updated_at = now() where id = $1`, [
+      tournamentId,
+    ]);
+    return { tournamentId, status: 'scheduling' as const, roundCount, fixtureCount };
+  });
+}
+
+export async function publishRegularSchedule(pool: Pool, tournamentId: string) {
+  const result = await pool.query(
+    `update tournament set status = 'regular', updated_at = now()
+      where id = $1 and status = 'scheduling'`,
+    [tournamentId],
+  );
+  if (result.rowCount === 0) throw new AppError('conflict', 'schedule is not ready', 409);
+  return { tournamentId, status: 'regular' as const };
+}
+
+export async function getTournamentSchedule(pool: Pool, tournamentId: string) {
+  const { rows } = await pool.query<{
+    id: string;
+    fixture_number: number;
+    stage: string;
+    round_number: number;
+    scheduled_starts_at: Date | null;
+    window_ends_at: Date | null;
+    status: string;
+    home_user_id: string | null;
+    home_name: string | null;
+    away_user_id: string | null;
+    away_name: string | null;
+    home_score: number;
+    away_score: number;
+  }>(
+    `select f.id, f.fixture_number, r.stage, r.number as round_number,
+            f.scheduled_starts_at, f.window_ends_at, f.status,
+            hp.user_id as home_user_id, hu.display_name as home_name,
+            ap.user_id as away_user_id, au.display_name as away_name,
+            f.home_score, f.away_score
+       from tournament_fixture f
+       join tournament_round r on r.id = f.round_id
+       left join tournament_participant hp on hp.id = f.home_participant_id
+       left join users hu on hu.id = hp.user_id
+       left join tournament_participant ap on ap.id = f.away_participant_id
+       left join users au on au.id = ap.user_id
+      where f.tournament_id = $1
+      order by f.fixture_number`,
+    [tournamentId],
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    fixtureNumber: Number(row.fixture_number),
+    stage: row.stage,
+    roundNumber: Number(row.round_number),
+    scheduledStartsAt: row.scheduled_starts_at?.toISOString() ?? null,
+    windowEndsAt: row.window_ends_at?.toISOString() ?? null,
+    status: row.status,
+    home: row.home_user_id === null ? null : { userId: row.home_user_id, name: row.home_name },
+    away: row.away_user_id === null ? null : { userId: row.away_user_id, name: row.away_name },
+    score: { home: Number(row.home_score), away: Number(row.away_score) },
+  }));
+}
+
+export async function getTournamentStandings(pool: Pool, tournamentId: string) {
+  const { rows } = await pool.query(
+    `select s.rank, p.user_id, u.display_name, s.played, s.wins, s.draws, s.losses,
+            s.goals_for, s.goals_against, s.points, s.metrics
+       from tournament_standing s
+       join tournament_participant p on p.id = s.participant_id
+       join users u on u.id = p.user_id
+      where s.tournament_id = $1
+      order by s.rank nulls last, u.display_name`,
+    [tournamentId],
+  );
+  return rows;
 }

@@ -10,11 +10,15 @@ import {
   createTournamentDraft,
   deleteEmptyDraft,
   getTournament,
+  getTournamentSchedule,
+  getTournamentStandings,
+  generateRegularSchedule,
   isTournamentFeatureEnabled,
   inviteTournamentParticipant,
   listAdminTournaments,
   listPlayerTournaments,
   publishTournament,
+  publishRegularSchedule,
   updateTournamentDraft,
   withdrawTournamentApplication,
   type TournamentRulesSnapshot,
@@ -101,6 +105,20 @@ export const tournamentRoutes: FastifyPluginAsync = async (app) => {
     await requireTournamentFeature(app);
     const params = z.object({ tournamentId: uuid }).parse(req.params);
     return { tournament: await getTournament(app.pg, params.tournamentId, req.user.id) };
+  });
+
+  app.get('/tournaments/:tournamentId/schedule', authenticated, async (req) => {
+    await requireTournamentFeature(app);
+    const params = z.object({ tournamentId: uuid }).parse(req.params);
+    await getTournament(app.pg, params.tournamentId, req.user.id);
+    return { fixtures: await getTournamentSchedule(app.pg, params.tournamentId) };
+  });
+
+  app.get('/tournaments/:tournamentId/standings', authenticated, async (req) => {
+    await requireTournamentFeature(app);
+    const params = z.object({ tournamentId: uuid }).parse(req.params);
+    await getTournament(app.pg, params.tournamentId, req.user.id);
+    return { standings: await getTournamentStandings(app.pg, params.tournamentId) };
   });
 
   app.post('/tournaments/:tournamentId/applications', authenticated, async (req) => {
@@ -198,6 +216,17 @@ export const tournamentRoutes: FastifyPluginAsync = async (app) => {
   app.post('/admin/tournaments/:tournamentId/archive', admin, async (req) => {
     const params = z.object({ tournamentId: uuid }).parse(req.params);
     return archiveTournament(app.pg, params.tournamentId, req.user.id);
+  });
+
+  app.post('/admin/tournaments/:tournamentId/schedule/generate', admin, async (req) => {
+    const params = z.object({ tournamentId: uuid }).parse(req.params);
+    const body = z.object({ expectedRevision: z.number().int().min(1) }).parse(req.body);
+    return generateRegularSchedule(app.pg, params.tournamentId, body.expectedRevision);
+  });
+
+  app.post('/admin/tournaments/:tournamentId/schedule/publish', admin, async (req) => {
+    const params = z.object({ tournamentId: uuid }).parse(req.params);
+    return publishRegularSchedule(app.pg, params.tournamentId);
   });
 
   app.delete('/admin/tournaments/:tournamentId', admin, async (req, reply) => {
