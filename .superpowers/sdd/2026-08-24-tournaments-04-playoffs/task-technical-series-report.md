@@ -57,3 +57,19 @@ Additional verification:
 - PASS — `git diff --check`.
 
 The full server suite remains intentionally delegated to the controller.
+
+## Fix round 2
+
+Two further PostgreSQL regressions were implemented with independent RED/GREEN cycles:
+
+1. A controlled concurrent opening held its duel factory behind a barrier while another fixture received a double no-show. Before the fix, the pause committed before the opening was released. Tournament fixture paths now use the documented lock order: tournament advisory lock, fixture advisory/row lock, then affected series rows. This serializes opening, no-show, and rescheduling at tournament scope and prevents an opening from observing stale unpaused tournament state.
+2. A technically cancelled fixture terminalized its segment but left an active linked `source='tournament'` duel. Series completion now cancels linked active tournament duels only, with no call into normal duel settlement. The regression verifies the linked duel is cancelled while rating rows and duel economy ledger records remain absent.
+
+Additional verification:
+
+- PASS — focused tournament integration: 17/17 tests, including controlled concurrent pause/open and active tournament-duel cancellation.
+- PASS — `pnpm --filter @hockey/server typecheck`.
+- PASS — `pnpm lint`.
+- PASS — `git diff --check`.
+
+The full server suite remains intentionally delegated to the controller.

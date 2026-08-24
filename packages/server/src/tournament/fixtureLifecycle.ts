@@ -4,6 +4,7 @@ import { decideNextFixtureSegment, type FixtureSegmentKind } from './segments.js
 import { rebuildHeadToHeadStandings } from './standingsPersistence.js';
 import { advanceTournamentPlayoffSeries } from './playoffSeriesLifecycle.js';
 import { enqueueTournamentFixtureResultPush } from './fixtureNotifications.js';
+import { lockTournamentFixture } from './locks.js';
 
 interface FixtureContextRow {
   id: string;
@@ -52,7 +53,7 @@ export async function openTournamentFixtureSegment(
   const client = await pool.connect();
   try {
     await client.query('begin');
-    await client.query(`select pg_advisory_xact_lock(hashtext($1))`, [`fixture:${input.fixtureId}`]);
+    await lockTournamentFixture(client, input);
     const contextResult = await client.query<FixtureContextRow>(
       `select f.id, f.tournament_id, f.status, t.status as tournament_status,
               series.status as series_status, f.scheduled_starts_at, f.window_ends_at,

@@ -12,6 +12,7 @@ import {
 import { rebuildHeadToHeadStandings } from './standingsPersistence.js';
 import { advanceTournamentPlayoffSeries } from './playoffSeriesLifecycle.js';
 import { enqueueTournamentFixtureResultPush } from './fixtureNotifications.js';
+import { lockTournament, lockTournamentFixture } from './locks.js';
 import type { TournamentConfig, TournamentStatus } from './types.js';
 
 export interface TournamentRulesSnapshot {
@@ -88,10 +89,6 @@ async function inTransaction<T>(pool: Pool, work: (client: PoolClient) => Promis
   } finally {
     client.release();
   }
-}
-
-async function lockTournament(client: PoolClient, tournamentId: string): Promise<void> {
-  await client.query(`select pg_advisory_xact_lock(hashtext($1))`, [`tournament:${tournamentId}`]);
 }
 
 const tournamentSelect = `
@@ -1388,9 +1385,7 @@ export async function rescheduleTournamentFixture(
   },
 ) {
   return inTransaction(pool, async (client) => {
-    await client.query(`select pg_advisory_xact_lock(hashtext($1))`, [
-      `fixture:${input.fixtureId}`,
-    ]);
+    await lockTournamentFixture(client, input);
     const updated = await client.query(
       `update tournament_fixture
           set scheduled_starts_at = $3, window_ends_at = $4,
@@ -1433,9 +1428,7 @@ export async function resolveTournamentNoShow(
   },
 ) {
   return inTransaction(pool, async (client) => {
-    await client.query(`select pg_advisory_xact_lock(hashtext($1))`, [
-      `fixture:${input.fixtureId}`,
-    ]);
+    await lockTournamentFixture(client, input);
     const fixtureResult = await client.query<{
       home_participant_id: string | null;
       away_participant_id: string | null;

@@ -83,6 +83,19 @@ export async function advanceTournamentPlayoffSeries(
         and segment.status in ('pending', 'scheduled', 'active')`,
     [completedSeries.id],
   );
+  await client.query(
+    `update amateur_duel_match duel
+        set status = 'cancelled', settled_reason = 'tournament_series_cancelled',
+            settled_at = now(), updated_at = now()
+       from tournament_fixture_segment segment
+       join tournament_fixture fixture on fixture.id = segment.fixture_id
+      where duel.id = segment.duel_match_id
+        and fixture.series_id = $1
+        and fixture.status = 'cancelled'
+        and duel.source = 'tournament'
+        and duel.status in ('invited', 'ready_check', 'active')`,
+    [completedSeries.id],
+  );
 
   const completedKey = completedSeries.depends_on.key;
   const loserParticipantId =
