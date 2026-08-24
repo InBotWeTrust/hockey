@@ -30,6 +30,7 @@ import { getGameSettings } from '../gameSettings.js';
 import { deriveAmateurDuelSeed, deriveShotSeed } from '../seed.js';
 import { resolveDuelVenue } from '../../arenas/service.js';
 import type { MatchmakingVenuePolicy } from '../../arenas/types.js';
+import { getDuelSettlementPolicy, type AmateurDuelSource } from './lifecycle.js';
 
 type MatchStatus = 'invited' | 'ready_check' | 'active' | 'settled' | 'cancelled' | 'expired';
 type ParticipantState =
@@ -332,7 +333,7 @@ interface DuelMatchRow {
   challenger_user_id: string;
   opponent_user_id: string;
   status: MatchStatus;
-  source: 'challenge' | 'matchmaking';
+  source: AmateurDuelSource;
   ranked: boolean;
   season_key: string;
   duel_kind: DuelKind;
@@ -568,7 +569,7 @@ interface DuelMatchDTO {
   id: string;
   template_id: string | null;
   status: MatchStatus;
-  source: 'challenge' | 'matchmaking';
+  source: AmateurDuelSource;
   ranked: boolean;
   season_key: string;
   duel_kind: DuelKind;
@@ -2168,6 +2169,7 @@ async function settleMatchIfReady(
     return match;
   }
   const rules = parseRulesSnapshot(match.rules_snapshot);
+  const settlementPolicy = getDuelSettlementPolicy(match.source);
   if (
     match.status === 'ready_check' &&
     match.ready_expires_at !== null &&
@@ -2195,8 +2197,8 @@ async function settleMatchIfReady(
         participant.period_started_at === null,
     );
     if (noParticipantStarted) {
-      const stake = Number(match.stake_amount);
-      const entryFee = Number(match.entry_fee_amount);
+      const stake = settlementPolicy.settleStake ? Number(match.stake_amount) : 0;
+      const entryFee = settlementPolicy.settleStake ? Number(match.entry_fee_amount) : 0;
       for (const participant of participants) {
         if (stake > 0) {
           await applyCurrencyDelta(client, {
@@ -2295,11 +2297,15 @@ async function settleMatchIfReady(
   }
 
   // Coin and star rewards share the global users -> currency-account lock order.
-  if (winnerUserId !== null && rules.winStarReward > 0) {
+  if (
+    settlementPolicy.grantTemplateRewards &&
+    winnerUserId !== null &&
+    rules.winStarReward > 0
+  ) {
     await client.query('select id from users where id = $1 for update', [winnerUserId]);
   }
 
-  const stake = Number(match.stake_amount);
+  const stake = settlementPolicy.settleStake ? Number(match.stake_amount) : 0;
   if (stake > 0) {
     if (outcome === 'draw') {
       for (const participant of refreshed) {
@@ -2345,7 +2351,11 @@ async function settleMatchIfReady(
     await releaseRemainingInventoryReserve(client, participant);
   }
 
-  if (outcome === 'draw' && rules.drawCurrencyReward > 0) {
+  if (
+    settlementPolicy.grantTemplateRewards &&
+    outcome === 'draw' &&
+    rules.drawCurrencyReward > 0
+  ) {
     for (const participant of refreshed) {
       await applyCurrencyDelta(client, {
         userId: participant.user_id,
@@ -2356,7 +2366,11 @@ async function settleMatchIfReady(
         metadata: { outcome, template_id: rules.templateId },
       });
     }
-  } else if (winnerUserId !== null && rules.winCurrencyReward > 0) {
+  } else if (
+    settlementPolicy.grantTemplateRewards &&
+    winnerUserId !== null &&
+    rules.winCurrencyReward > 0
+  ) {
     await applyCurrencyDelta(client, {
       userId: winnerUserId,
       availableDelta: rules.winCurrencyReward,
@@ -2366,7 +2380,11 @@ async function settleMatchIfReady(
       metadata: { outcome, template_id: rules.templateId },
     });
   }
-  if (winnerUserId !== null && rules.winStarReward > 0) {
+  if (
+    settlementPolicy.grantTemplateRewards &&
+    winnerUserId !== null &&
+    rules.winStarReward > 0
+  ) {
     await client.query(`update users set xp = xp + $2 where id = $1`, [
       winnerUserId,
       rules.winStarReward,
@@ -2395,11 +2413,12 @@ async function settleMatchIfReady(
     [match.id, a.user_id, aPoints, b.user_id, bPoints],
   );
 
-  for (const participant of [
-    { mine: a, other: b, points: aPoints },
-    { mine: b, other: a, points: bPoints },
-  ]) {
-    await client.query(
+  if (settlementPolicy.updateRating) {
+    for (const participant of [
+      { mine: a, other: b, points: aPoints },
+      { mine: b, other: a, points: bPoints },
+    ]) {
+      await client.query(
       `insert into amateur_duel_rating
          (season_key, user_id, points, wins, draws, losses, goals_for, goals_against,
           matches_played, active_duration_seconds, updated_at)
@@ -2431,7 +2450,8 @@ async function settleMatchIfReady(
         outcome === 'draw',
         outcome !== 'draw' && participant.mine.user_id !== winnerUserId,
       ],
-    );
+      );
+    }
   }
 
   const { rows } = await client.query<DuelMatchRow>(
@@ -2451,7 +2471,9 @@ async function settleMatchIfReady(
     outcome,
     winner_user_id: winnerUserId,
   });
-  await evaluateDuelSettledAchievements(client, { matchId: match.id, winnerUserId });
+  if (settlementPolicy.evaluateAchievements) {
+    await evaluateDuelSettledAchievements(client, { matchId: match.id, winnerUserId });
+  }
   return rows[0]!;
 }
 
@@ -4310,7 +4332,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
         template_id: string | null;
         template_title: string | null;
         status: MatchStatus;
-        source: 'challenge' | 'matchmaking';
+        source: AmateurDuelSource;
         ranked: boolean;
         duel_kind: DuelKind;
         outcome: DuelOutcome | null;
