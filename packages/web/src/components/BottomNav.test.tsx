@@ -128,14 +128,20 @@ describe('BottomNav remembered navigation', () => {
     expect(sectionsSurface?.getAttribute('style')).toContain('rgba(15, 23, 42, 0.92)');
   });
 
-  it.each(['/bonus-games', '/bonus-games/beach/play'])('keeps %s on the sections tab', (path) => {
-    renderBottomNav(path);
+  it('keeps the bonus games catalog on the sections tab', () => {
+    renderBottomNav('/bonus-games');
 
     const gameSurface = screen.getByRole('button', { name: 'Игра' }).querySelector('div');
     const sectionsSurface = screen.getByRole('button', { name: 'Разделы' }).querySelector('div');
 
     expect(gameSurface?.getAttribute('style')).toContain('rgba(255, 255, 255, 0.55)');
     expect(sectionsSurface?.getAttribute('style')).toContain('rgba(15, 23, 42, 0.92)');
+  });
+
+  it('hides the dock inside an active bonus game rink', () => {
+    renderBottomNav('/bonus-games/00000000-0000-4000-8000-000000000601/play?attempt=attempt-id');
+
+    expect(screen.queryByRole('button', { name: 'Игра' })).toBeNull();
   });
 
   it('hides the dock on the open rink screen', () => {
