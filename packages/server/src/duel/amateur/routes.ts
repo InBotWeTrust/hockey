@@ -37,6 +37,7 @@ import {
 } from './lifecycle.js';
 import { settleTournamentSegmentForDuel } from '../../tournament/fixtureLifecycle.js';
 import { lockTournamentForDuelMutation } from '../../tournament/locks.js';
+import { publishTournamentFixtureProgress } from '../../tournament/realtimeProgress.js';
 
 type MatchStatus = 'invited' | 'ready_check' | 'active' | 'settled' | 'cancelled' | 'expired';
 type ParticipantState =
@@ -3245,6 +3246,16 @@ async function notifySettlement(app: Parameters<FastifyPluginAsync>[0], matchId:
   }
 }
 
+async function publishDuelFixtureProgress(
+  app: Parameters<FastifyPluginAsync>[0],
+  duelMatchId: string,
+): Promise<void> {
+  await publishTournamentFixtureProgress(app.pg, app.realtime, {
+    duelMatchId,
+    sequence: Date.now(),
+  });
+}
+
 async function isSettled(client: PoolClient, matchId: string): Promise<boolean> {
   const { rows } = await client.query<{ status: MatchStatus }>(
     `select status from amateur_duel_match where id = $1`,
@@ -3658,6 +3669,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
           title: rules.title,
         };
       });
+      await publishDuelFixtureProgress(app, accepted.matchId);
 
       const opponentName = await fetchDisplayName(app.pg, req.user.id);
       await notifyDuelMessage(
@@ -3798,7 +3810,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
       const params = z.object({ matchId: uuid }).parse(req.params);
       const parsed = readyBodySchema.safeParse(req.body);
       if (!parsed.success) throw new AppError('bad_request', 'invalid duel ready payload', 400);
-      return withTransaction(app, async (client) => {
+      const response = await withTransaction(app, async (client) => {
         const now = new Date();
         let match = await reconcileMatch(
           client,
@@ -3833,6 +3845,8 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
         );
         return { match: await buildMatchStateDto(client, match, req.user.id, now) };
       });
+      await publishDuelFixtureProgress(app, response.match.id);
+      return response;
     },
   );
 
@@ -3961,7 +3975,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
 
   app.get('/duel/amateur/matches/:matchId', { preHandler: [app.authenticate] }, async (req) => {
     const params = z.object({ matchId: uuid }).parse(req.params);
-    return withTransaction(app, async (client) => {
+    const response = await withTransaction(app, async (client) => {
       const now = new Date();
       const match = await reconcileMatch(
         client,
@@ -3973,6 +3987,8 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
       }
       return { match: await buildMatchStateDto(client, match, req.user.id, now) };
     });
+    await publishDuelFixtureProgress(app, response.match.id);
+    return response;
   });
 
   app.patch(
@@ -4038,7 +4054,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
       const params = z.object({ matchId: uuid }).parse(req.params);
       const parsed = startPeriodBodySchema.safeParse(req.body ?? {});
       if (!parsed.success) throw new AppError('bad_request', 'invalid duel period payload', 400);
-      return withTransaction(app, async (client) => {
+      const response = await withTransaction(app, async (client) => {
         const now = new Date();
         let match = await reconcileMatch(
           client,
@@ -4105,6 +4121,8 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
         match = await fetchMatchForUpdate(client, match.id);
         return { match: await buildMatchStateDto(client, match, req.user.id, now) };
       });
+      await publishDuelFixtureProgress(app, response.match.id);
+      return response;
     },
   );
 
@@ -4288,6 +4306,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
           match: await buildMatchStateDto(client, match, req.user.id, now),
         };
       });
+      await publishDuelFixtureProgress(app, response.matchId);
       if (response.settled) void notifySettlement(app, response.matchId);
       return response;
     },
@@ -4314,6 +4333,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
           match: await buildMatchStateDto(client, match, req.user.id, now),
         };
       });
+      await publishDuelFixtureProgress(app, response.matchId);
       if (response.settled) void notifySettlement(app, response.matchId);
       return { match: response.match };
     },

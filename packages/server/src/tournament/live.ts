@@ -8,6 +8,28 @@ export interface TournamentRealtimeEvent {
   payload: Record<string, unknown>;
 }
 
+export interface TournamentFixtureLiveState {
+  fixtureId: string;
+  status: string;
+  score: { home: number; away: number };
+  scheduledStartsAt: string | null;
+  windowEndsAt: string | null;
+  proposal: {
+    id: string;
+    proposedAt: string | null;
+    proposedByUserId: string | null;
+    state: string | null;
+  } | null;
+  duelMatchId: string | null;
+  participants: Array<{
+    userId: string;
+    state: string;
+    currentPeriod: number;
+    goals: number;
+    shotsTaken: number;
+  }>;
+}
+
 async function transaction<T>(pool: Pool, work: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await pool.connect();
   try {
@@ -127,8 +149,10 @@ export async function respondFixtureLiveProposal(
   });
 }
 
-export async function getFixtureLiveState(pool: Pool, fixtureId: string, userId: string) {
-  await assertFixtureParticipant(pool, fixtureId, userId);
+export async function getFixtureLiveSnapshot(
+  pool: Pool,
+  fixtureId: string,
+): Promise<TournamentFixtureLiveState | null> {
   const { rows } = await pool.query<{
     id: string;
     status: string;
@@ -193,4 +217,9 @@ export async function getFixtureLiveState(pool: Pool, fixtureId: string, userId:
       shotsTaken: Number(participant.shotsTaken),
     })),
   };
+}
+
+export async function getFixtureLiveState(pool: Pool, fixtureId: string, userId: string) {
+  await assertFixtureParticipant(pool, fixtureId, userId);
+  return getFixtureLiveSnapshot(pool, fixtureId);
 }
