@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useLocation, useNavigate, type Location } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Gamepad2, MessageCircle, Package, ShieldCheck, User } from 'lucide-react';
+import { motion } from 'motion/react';
 import { apiFetch } from '../api/apiFetch.js';
 import { achievementKeys, fetchAchievements } from '../api/achievements.js';
 import { fetchAmateurEvents, type AmateurDuelMatch } from '../api/amateurDuel.js';
@@ -11,6 +12,7 @@ import type { AuthUser } from '../auth/authStore.js';
 import { fetchUnreadCounts } from '../chat/api.js';
 import { useChatStore } from '../chat/chatStore.js';
 import { chatKeys } from '../lib/queryKeys.js';
+import { triggerHaptic } from '../feedback/haptics.js';
 
 export const NAV_HEIGHT = 68;
 
@@ -436,10 +438,15 @@ interface NavTabProps {
 }
 
 function NavTab({ label, active, icon, onClick, disabled = false }: NavTabProps): JSX.Element {
+  const handleClick = (): void => {
+    triggerHaptic('selection');
+    onClick();
+  };
+
   return (
     <button
       type="button"
-      onClick={disabled ? undefined : onClick}
+      onClick={disabled ? undefined : handleClick}
       disabled={disabled}
       aria-label={label}
       aria-current={active ? 'page' : undefined}
@@ -447,7 +454,15 @@ function NavTab({ label, active, icon, onClick, disabled = false }: NavTabProps)
     >
       <span className={`bottom-nav__icon-wrap${active ? ' bottom-nav__icon-wrap--active' : ''}`}>
         {icon}
-        {active && <span className="bottom-nav__active-indicator" aria-hidden="true" />}
+        {active && (
+          <motion.span
+            layoutId="bottom-nav-active-indicator"
+            className="bottom-nav__active-indicator"
+            data-motion-indicator="shared"
+            aria-hidden="true"
+            transition={{ type: 'spring', stiffness: 430, damping: 34, mass: 0.85 }}
+          />
+        )}
       </span>
     </button>
   );

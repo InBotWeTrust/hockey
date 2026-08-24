@@ -17,6 +17,7 @@ export interface SheetProps {
   dismissible?: boolean;
   dirty?: boolean;
   maxHeight?: string;
+  backdropTestId?: string;
 }
 
 export function Sheet({
@@ -27,12 +28,14 @@ export function Sheet({
   dismissible = true,
   dirty = false,
   maxHeight = '82dvh',
+  backdropTestId,
 }: SheetProps): JSX.Element {
   return (
     <AccessibleModal
       open={open}
       title={title}
       presentation="sheet"
+      {...(backdropTestId === undefined ? {} : { backdropTestId })}
       onRequestClose={onRequestClose}
       closeBlocked={!dismissible}
       cardClassName="sheet-card"

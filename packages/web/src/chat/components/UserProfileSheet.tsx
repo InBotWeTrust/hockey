@@ -85,7 +85,13 @@ export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JS
   const avatarUrl = profile?.avatarUrl ?? sender.avatarUrl;
 
   return (
-    <Sheet open title="Профиль игрока" onRequestClose={() => onClose()} maxHeight="80dvh">
+    <Sheet
+      open
+      title="Профиль игрока"
+      onRequestClose={() => onClose()}
+      maxHeight="80dvh"
+      backdropTestId="profile-sheet-backdrop"
+    >
       <div
         style={{
           position: 'relative',

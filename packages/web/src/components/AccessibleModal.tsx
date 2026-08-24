@@ -49,6 +49,7 @@ export function AccessibleModal({
   cardClassName,
   cardStyle,
   backdropStyle,
+  backdropTestId,
   children,
 }: {
   title: string;
@@ -64,6 +65,7 @@ export function AccessibleModal({
   cardClassName?: string;
   cardStyle?: CSSProperties;
   backdropStyle?: CSSProperties;
+  backdropTestId?: string;
   children: ReactNode;
 }): JSX.Element {
   const reduceMotion = useReducedMotion();
@@ -150,6 +152,7 @@ export function AccessibleModal({
       {open && (
         <motion.div
           ref={backdropRef}
+          data-testid={backdropTestId}
           className={
             presentation === 'sheet' ? 'modal-backdrop modal-backdrop--sheet' : 'modal-backdrop'
           }

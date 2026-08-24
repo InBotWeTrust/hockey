@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { rewardColor, type RewardTone } from '../app/rewardColors.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
+import { triggerHaptic } from '../feedback/haptics.js';
 import {
   claimWeeklyChallengeReward,
   declineWeeklyChallenge,
@@ -138,7 +139,11 @@ export function WeeklyChallengeScreen(): JSX.Element {
     challenge?.canJoin === true || challenge?.canClaimReward === true || pendingRewards.length > 0;
   const join = useMutation({
     mutationFn: (id: string) => joinWeeklyChallenge(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['weekly-challenge'] }),
+    onSuccess: () => {
+      triggerHaptic('success');
+      return queryClient.invalidateQueries({ queryKey: ['weekly-challenge'] });
+    },
+    onError: () => triggerHaptic('error'),
   });
   const decline = useMutation({
     mutationFn: (id: string) => declineWeeklyChallenge(id),
@@ -151,12 +156,14 @@ export function WeeklyChallengeScreen(): JSX.Element {
       setClaimError(null);
     },
     onSuccess: (_response, challengeToClaim) => {
+      triggerHaptic('success');
       setClaimError(null);
       setClaimedReward({ title: challengeToClaim.title, reward: challengeToClaim.reward });
       window.setTimeout(() => setClaimedReward(null), 2800);
       void queryClient.invalidateQueries({ queryKey: ['weekly-challenge'] });
     },
     onError: (error) => {
+      triggerHaptic('error');
       setClaimError(error instanceof Error ? error.message : 'Не удалось получить награду');
     },
   });
