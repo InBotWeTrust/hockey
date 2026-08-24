@@ -5,11 +5,7 @@ export type BonusGameStatus = 'draft' | 'active' | 'archived';
 export type BonusGameAccessType = 'free' | 'paid';
 export type BonusGameAttemptStatus = 'active' | 'completed' | 'failed' | 'abandoned';
 export type BonusGameAttemptState = 'idle' | 'period_active' | 'break_active' | 'closed';
-export type BonusPeriodClosedReason =
-  | 'quota'
-  | 'timeout'
-  | 'target_reached'
-  | 'attempt_abandoned';
+export type BonusPeriodClosedReason = 'quota' | 'timeout' | 'target_reached' | 'attempt_abandoned';
 export type BonusGameEconomyEventKind = 'unlock_purchase' | 'first_clear_reward';
 export type BonusGoaliePattern = Extract<GoaliePatternId, 'linear' | 'sine' | 'dash'>;
 
@@ -206,7 +202,9 @@ export interface BonusGameAttemptDTO {
   breakStartedAt: string | null;
   closedAt: string | null;
   shotsTaken: number;
+  currentPeriodShotsTaken: number;
   goals: number;
+  rewardGranted: boolean;
   attemptSeed: string;
   gameCoreVersion: number;
   rules: BonusRulesSnapshot;

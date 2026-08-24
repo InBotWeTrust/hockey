@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import {
   abandonBonusAttempt,
+  fetchBonusAttempt,
   fetchCurrentBonusAttempt,
   startBonusPeriod,
   submitBonusShot,
@@ -18,7 +19,9 @@ interface BonusGameStoreState {
   inFlight: boolean;
   needsReconcile: boolean;
   requestEpoch: number;
+  receivedAtPerformanceMs: number | null;
   loadCurrent: () => Promise<BonusGameAttempt | null>;
+  loadAttempt: (attemptId: string) => Promise<BonusGameAttempt | null>;
   applyState: (next: BonusGameAttempt | null) => void;
   optimisticAddShot: (claimed: ShotResultType) => void;
   startPeriod: () => Promise<BonusGameAttempt | null>;
@@ -51,6 +54,7 @@ function applyServerAttempt(
     errorCode: null,
     needsReconcile: false,
     requestEpoch: get().requestEpoch + 1,
+    receivedAtPerformanceMs: attempt === null ? null : performance.now(),
   });
 }
 
@@ -94,12 +98,34 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
   inFlight: false,
   needsReconcile: false,
   requestEpoch: 0,
+  receivedAtPerformanceMs: null,
 
   loadCurrent: async () => {
     const requestEpoch = get().requestEpoch + 1;
     set({ loading: true, requestEpoch });
     try {
       const { attempt } = await fetchCurrentBonusAttempt();
+      if (get().requestEpoch !== requestEpoch) return get().attempt;
+      applyServerAttempt(set, get, attempt);
+      return attempt;
+    } catch (error) {
+      if (get().requestEpoch !== requestEpoch) return get().attempt;
+      const current = get();
+      if (current.needsReconcile && current.error !== null) {
+        set({ loading: false });
+        return null;
+      }
+      const details = errorDetails(error, 'Не удалось загрузить бонус-попытку.');
+      set({ loading: false, error: details.message, errorCode: details.code });
+      return null;
+    }
+  },
+
+  loadAttempt: async (attemptId) => {
+    const requestEpoch = get().requestEpoch + 1;
+    set({ loading: true, requestEpoch });
+    try {
+      const { attempt } = await fetchBonusAttempt(attemptId);
       if (get().requestEpoch !== requestEpoch) return get().attempt;
       applyServerAttempt(set, get, attempt);
       return attempt;
@@ -125,6 +151,7 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
       attempt: {
         ...attempt,
         shots_taken: attempt.shots_taken + 1,
+        current_period_shots_taken: attempt.current_period_shots_taken + 1,
         goals: attempt.goals + (claimed === 'goal' ? 1 : 0),
       },
     });

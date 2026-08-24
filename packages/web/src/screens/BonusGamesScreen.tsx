@@ -65,7 +65,9 @@ export function BonusGamesScreen(): JSX.Element {
     mutationFn: startBonusAttempt,
     onSuccess: async (response) => {
       await queryClient.invalidateQueries({ queryKey: ['bonus-games'] });
-      navigate(`/bonus-games/${response.attempt.game_id}/play`);
+      navigate(
+        `/bonus-games/${response.attempt.game_id}/play?attempt=${encodeURIComponent(response.attempt.id)}`,
+      );
     },
   });
   const purchaseMutation = useMutation({
@@ -86,7 +88,9 @@ export function BonusGamesScreen(): JSX.Element {
       return;
     }
     if (game.state === 'in_progress') {
-      navigate(`/bonus-games/${game.id}/play`);
+      navigate(
+        `/bonus-games/${game.id}/play?attempt=${encodeURIComponent(game.active_attempt!.id)}`,
+      );
       return;
     }
     if (isPlayable(game)) startMutation.mutate(game.id);

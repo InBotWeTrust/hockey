@@ -329,6 +329,61 @@
   line-height: 1.4;
 }
 
+.bonus-game-mode-state {
+  min-height: 100dvh;
+  align-items: center;
+  justify-content: center;
+  padding: calc(20px + var(--app-safe-top)) 18px calc(96px + var(--app-safe-bottom));
+}
+
+.bonus-game-mode-card {
+  width: min(100%, 340px);
+  display: grid;
+  gap: 14px;
+  padding: 24px 20px;
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  border-radius: 24px;
+  background: rgba(226, 233, 241, 0.72);
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.16);
+  text-align: center;
+}
+
+.bonus-game-mode-card h1,
+.bonus-game-mode-card p {
+  margin: 0;
+}
+
+.bonus-game-mode-card h1 {
+  font-size: 24px;
+  font-weight: 950;
+}
+
+.bonus-game-mode-card p {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 750;
+  line-height: 1.42;
+}
+
+.bonus-game-mode-card [role='timer'] {
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 34px;
+}
+
+.bonus-game-abandon-button {
+  min-height: 38px;
+  padding: 0 14px;
+  white-space: nowrap;
+}
+
+.bonus-game-abandon-error {
+  margin: 12px 0 0;
+  color: #b91c1c;
+  font-size: 13px;
+  font-weight: 800;
+}
+
 /* === Modal standard: blurred ice backdrop + centered frosted card === */
 .modal-backdrop {
   position: fixed;

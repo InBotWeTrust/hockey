@@ -5,7 +5,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LoginScreen } from '../screens/LoginScreen.js';
 import { PrivateRoute } from '../auth/PrivateRoute.js';
 import { useAuthStore } from '../auth/authStore.js';
+import { useBonusGameStore } from '../stores/bonusGameStore.js';
 import { App } from './App.js';
+
+vi.mock('../game/PlayView.js', () => ({
+  PlayView: () => <div data-testid="play-view" />,
+}));
 
 function renderAt(path: string): void {
   const client = new QueryClient({
@@ -44,6 +49,16 @@ describe('App routing + auth', () => {
     window.history.replaceState({}, '', '/');
     vi.restoreAllMocks();
     useAuthStore.getState().clearSession();
+    useBonusGameStore.setState({
+      attempt: null,
+      loading: false,
+      error: null,
+      errorCode: null,
+      inFlight: false,
+      needsReconcile: false,
+      requestEpoch: 0,
+      receivedAtPerformanceMs: null,
+    });
   });
 
   it('redirects unauthenticated users from / to /login', () => {
@@ -84,5 +99,77 @@ describe('App routing + auth', () => {
     render(<App />);
 
     expect(await screen.findByRole('heading', { name: 'Бонусные игры' })).toBeInTheDocument();
+  });
+
+  it('loads a bonus attempt detail on the authenticated play route', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'a',
+      refreshToken: 'r',
+      user: { id: 'u', displayName: 'A' },
+    });
+    window.history.replaceState({}, '', '/bonus-games/game-1/play?attempt=attempt-1');
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL) => {
+      if (String(input).endsWith('/api/bonus-games/attempts/attempt-1')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              attempt: {
+                id: 'attempt-1',
+                game_id: 'game-1',
+                game_slug: 'beach',
+                game_title: 'Пляж',
+                status: 'active',
+                state: 'idle',
+                current_period: 0,
+                period_started_at: null,
+                period_ends_at: null,
+                break_started_at: null,
+                break_ends_at: null,
+                closed_at: null,
+                shots_taken: 0,
+                current_period_shots_taken: 0,
+                goals: 0,
+                reward_granted: false,
+                attempt_seed: 'seed',
+                game_core_version: 1,
+                definition_revision: 1,
+                server_now: '2026-08-24T10:00:00.000Z',
+                rules: {
+                  game_id: 'game-1',
+                  slug: 'beach',
+                  title: 'Пляж',
+                  revision: 1,
+                  target_goals: 18,
+                  total_periods: 1,
+                  break_duration_ms: 30_000,
+                  periods: [],
+                },
+                reward: { coins: 100, stars: 1, experience: 50 },
+                arena: {
+                  id: 'arena-1',
+                  slug: 'beach',
+                  title: 'Пляж',
+                  artwork_url: '/bonus-games/arenas/beach.webp',
+                  thumbnail_url: '/bonus-games/arenas/beach.webp',
+                },
+                goalkeeper_ready_url: '/bonus-games/goalkeepers/beach-ready.webp',
+                goalkeeper_save_url: '/bonus-games/goalkeepers/beach-save.webp',
+              },
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole('button', { name: 'Начать период 1' })).toBeInTheDocument();
   });
 });

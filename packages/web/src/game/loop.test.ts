@@ -145,6 +145,32 @@ describe('createGameLoop', () => {
     nowSpy.mockRestore();
   });
 
+  it('starts scene and shooter from separate authoritative clocks', () => {
+    const nowSpy = vi.spyOn(performance, 'now').mockReturnValue(1_000);
+    const loop = makeLoop({
+      getInitialClocks: () => ({ sceneElapsedMs: 5_000, shooterElapsedMs: 3_500 }),
+    });
+
+    expect(loop.getSceneT()).toBe(5_000);
+    expect(loop.getShooterT()).toBe(3_500);
+    nowSpy.mockRestore();
+  });
+
+  it('rebases scene and shooter clocks independently after reconciliation', () => {
+    const nowSpy = vi.spyOn(performance, 'now').mockReturnValue(1_000);
+    const loop = makeLoop({ getInitialElapsedMs: () => 500 });
+
+    (
+      loop as unknown as {
+        rebaseTime?: (clocks: { sceneElapsedMs: number; shooterElapsedMs: number }) => void;
+      }
+    ).rebaseTime?.({ sceneElapsedMs: 8_000, shooterElapsedMs: 6_500 });
+
+    expect(loop.getSceneT()).toBe(8_000);
+    expect(loop.getShooterT()).toBe(6_500);
+    nowSpy.mockRestore();
+  });
+
   it('keeps moving sprites aligned with real time after a dropped frame', () => {
     const nowSpy = vi.spyOn(performance, 'now');
     nowSpy.mockReturnValue(1000);

@@ -8,10 +8,10 @@ import { reconcileBonusAttempt } from './reconcile.js';
 import {
   abandonBonusAttempt,
   BonusAttemptAlreadyActiveError,
+  loadBonusAttemptDto,
   startBonusPeriod,
   startOrResumeBonusAttempt,
   submitBonusShot,
-  toBonusAttemptDto,
   type SubmitBonusShotInput,
 } from './service.js';
 import type { BonusGameAttemptDTO, BonusGameAttemptRow, BonusPeriodRule } from './types.js';
@@ -221,7 +221,9 @@ function toAttemptHttpDto(attempt: BonusGameAttemptDTO, now: Date) {
     break_ends_at: breakEndsAt,
     closed_at: attempt.closedAt,
     shots_taken: attempt.shotsTaken,
+    current_period_shots_taken: attempt.currentPeriodShotsTaken,
     goals: attempt.goals,
+    reward_granted: attempt.rewardGranted,
     attempt_seed: attempt.attemptSeed,
     game_core_version: attempt.gameCoreVersion,
     definition_revision: attempt.rules.revision,
@@ -271,7 +273,7 @@ async function reconcileCurrentAttempt(
     const attempt = rows[0];
     if (attempt === undefined) return null;
     const reconciled = await reconcileBonusAttempt(client, attempt, now);
-    return reconciled.status === 'active' ? toBonusAttemptDto(reconciled) : null;
+    return reconciled.status === 'active' ? loadBonusAttemptDto(client, reconciled) : null;
   });
 }
 
@@ -294,7 +296,7 @@ async function reconcileOwnedAttempt(
     }
     const reconciled =
       attempt.status === 'active' ? await reconcileBonusAttempt(client, attempt, now) : attempt;
-    return toBonusAttemptDto(reconciled);
+    return loadBonusAttemptDto(client, reconciled);
   });
 }
 
@@ -413,7 +415,7 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
         return {
           server_result: result.serverResult,
           attempt: toAttemptHttpDto(result.attempt, now),
-          reward_granted: result.rewardGranted,
+          reward_granted: result.attempt.rewardGranted,
           balances: result.balances,
         };
       }),

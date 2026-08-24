@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { type GoalieConfig } from '@hockey/game-core';
 import { PlayView, type PlayShotResolver } from './PlayView.js';
 import type * as ReactModule from 'react';
@@ -111,6 +111,10 @@ const beachGoalie: GoalieConfig = {
 };
 
 describe('PlayView', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('passes the exact supplied goalie configuration to local shot resolution', () => {
     const resolvedContexts: Parameters<PlayShotResolver>[0][] = [];
     const shotResolver: PlayShotResolver = (context) => {
@@ -148,5 +152,124 @@ describe('PlayView', () => {
 
     expect(resolvedContexts).toHaveLength(1);
     expect(resolvedContexts[0]?.goalieConfig).toEqual(beachGoalie);
+  });
+
+  it('uses separate authoritative scene and shooter clocks for the next tap', () => {
+    vi.spyOn(performance, 'now').mockReturnValue(1_000);
+    const shotResolver: PlayShotResolver = vi.fn(() => ({ type: 'miss', reason: 'wide' }));
+
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="bonus-seed"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        speedOverrides={{ goalFreq: 0.45, goalieFreq: 0.5, shooterFreq: 0.65, puckSpeed: 1.2 }}
+        goals={0}
+        shots={3}
+        shotsTotal={30}
+        initialSceneElapsedMs={6_000}
+        initialShooterElapsedMs={4_700}
+        receivedAtPerformanceMs={1_000}
+        clockRebaseKey="period-1:response-1"
+        shotResolver={shotResolver}
+        optimisticAddShot={() => undefined}
+        submitShot={() => new Promise(() => undefined)}
+        applyState={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+
+    expect(shotResolver).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.objectContaining({ tapTime: 6_000, shooterTapTime: 4_700 }),
+      }),
+    );
+  });
+
+  it('rebases separate clocks when a reconciled authoritative snapshot arrives', () => {
+    vi.spyOn(performance, 'now').mockReturnValue(1_000);
+    const shotResolver: PlayShotResolver = vi.fn(() => ({ type: 'miss', reason: 'wide' }));
+    const commonProps = {
+      suppressedByModal: false,
+      showIceCar: false,
+      onBack: () => undefined,
+      active: true,
+      seed: 'bonus-seed',
+      goalieId: null,
+      goalieConfig: beachGoalie,
+      periodNumber: 1,
+      speedOverrides: { goalFreq: 0.45, goalieFreq: 0.5, shooterFreq: 0.65, puckSpeed: 1.2 },
+      goals: 0,
+      shots: 3,
+      shotsTotal: 30,
+      receivedAtPerformanceMs: 1_000,
+      shotResolver,
+      optimisticAddShot: () => undefined,
+      submitShot: () => new Promise<null>(() => undefined),
+      applyState: () => undefined,
+    } as const;
+    const view = render(
+      <PlayView
+        {...commonProps}
+        initialSceneElapsedMs={500}
+        initialShooterElapsedMs={500}
+        clockRebaseKey="period-1:response-1"
+      />,
+    );
+
+    view.rerender(
+      <PlayView
+        {...commonProps}
+        initialSceneElapsedMs={8_000}
+        initialShooterElapsedMs={6_500}
+        clockRebaseKey="period-1:response-2"
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+
+    expect(shotResolver).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.objectContaining({ tapTime: 8_000, shooterTapTime: 6_500 }),
+      }),
+    );
+  });
+
+  it('allows one optimistic display increment for two synchronous taps', () => {
+    vi.spyOn(performance, 'now').mockReturnValue(1_000);
+    const optimisticAddShot = vi.fn();
+    const submitShot = vi.fn(() => new Promise<null>(() => undefined));
+
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="bonus-seed"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        shotsTotal={30}
+        shotResolver={() => ({ type: 'miss', reason: 'wide' })}
+        optimisticAddShot={optimisticAddShot}
+        submitShot={submitShot}
+        applyState={() => undefined}
+      />,
+    );
+    const shotButton = screen.getByRole('button', { name: 'БРОСОК' });
+
+    fireEvent.click(shotButton);
+    fireEvent.click(shotButton);
+
+    expect(optimisticAddShot).toHaveBeenCalledTimes(1);
+    expect(submitShot).toHaveBeenCalledTimes(1);
   });
 });

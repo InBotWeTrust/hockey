@@ -75,7 +75,9 @@ interface AttemptDto {
   break_ends_at: string | null;
   closed_at: string | null;
   shots_taken: number;
+  current_period_shots_taken: number;
   goals: number;
+  reward_granted: boolean;
   attempt_seed: string;
   game_core_version: number;
   definition_revision: number;
@@ -392,7 +394,9 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
       break_ends_at: null,
       closed_at: null,
       shots_taken: 0,
+      current_period_shots_taken: 0,
       goals: 0,
+      reward_granted: false,
       game_core_version: GAME_CORE_VERSION,
       definition_revision: 7,
       rules: {
@@ -461,6 +465,8 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
     expect(detail.json().attempt).toMatchObject({
       id: attempt.id,
       attempt_seed: attempt.attempt_seed,
+      current_period_shots_taken: 0,
+      reward_granted: false,
     });
 
     const active = await startPeriod(attempt.id);
@@ -485,9 +491,33 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
     expect(shot.statusCode).toBe(200);
     expect(shot.json()).toMatchObject({
       server_result: serverResult,
-      reward_granted: null,
+      reward_granted: false,
       balances: { coins: 0, stars: 0, experience: 0 },
-      attempt: { id: attempt.id, shots_taken: 1 },
+      attempt: {
+        id: attempt.id,
+        shots_taken: 1,
+        current_period_shots_taken: 1,
+        reward_granted: false,
+      },
+    });
+
+    const currentAfterShot = await app.inject({
+      method: 'GET',
+      url: '/bonus-games/attempts/current',
+      headers,
+    });
+    const detailAfterShot = await app.inject({
+      method: 'GET',
+      url: `/bonus-games/attempts/${attempt.id}`,
+      headers,
+    });
+    expect(currentAfterShot.json().attempt).toMatchObject({
+      current_period_shots_taken: 1,
+      reward_granted: false,
+    });
+    expect(detailAfterShot.json().attempt).toMatchObject({
+      current_period_shots_taken: 1,
+      reward_granted: false,
     });
 
     const abandon = await app.inject({
@@ -497,6 +527,134 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
     });
     expect(abandon.statusCode).toBe(200);
     expect(abandon.json().attempt).toMatchObject({ status: 'abandoned', state: 'closed' });
+  });
+
+  it('reports current-period shots separately from prior-period totals', async () => {
+    const secondPeriod: BonusPeriodRule = { ...PERIODS[0]!, periodNumber: 2 };
+    const game = await createGame({
+      periods: [PERIODS[0]!, secondPeriod],
+      targetGoals: 6,
+    });
+    const attempt = await startAttempt(game.id);
+    await pool.query(
+      `insert into shot_session
+         (user_id, mode, bonus_game_attempt_id, period_number, shot_index,
+          seed, input_payload, server_result, game_core_version, created_at)
+       values
+         ($1, 'bonus', $2, 1, 1, 'period-1-shot-1', '{}'::jsonb, 'save', $3, now()),
+         ($1, 'bonus', $2, 1, 2, 'period-1-shot-2', '{}'::jsonb, 'miss', $3, now()),
+         ($1, 'bonus', $2, 2, 1, 'period-2-shot-1', '{}'::jsonb, 'save', $3, now())`,
+      [userId, attempt.id, GAME_CORE_VERSION],
+    );
+    await pool.query(
+      `update bonus_game_attempt
+          set state = 'period_active', current_period = 2,
+              period_started_at = now(), shots_taken = 3
+        where id = $1`,
+      [attempt.id],
+    );
+
+    const detail = await app.inject({
+      method: 'GET',
+      url: `/bonus-games/attempts/${attempt.id}`,
+      headers,
+    });
+
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json().attempt).toMatchObject({
+      current_period: 2,
+      shots_taken: 3,
+      current_period_shots_taken: 1,
+    });
+  });
+
+  it('keeps first-clear reward truth durable across duplicate shot, detail, and replay', async () => {
+    const goalPeriod: BonusPeriodRule = {
+      ...PERIODS[0]!,
+      durationMs: 10_000,
+      goalFrequency: 0.1,
+      goalAmplitude: 0,
+    };
+    const game = await createGame({ periods: [goalPeriod], targetGoals: 1 });
+    const firstAttempt = await startAttempt(game.id);
+    const firstActive = await startPeriod(firstAttempt.id);
+    const tapTime = 385;
+    expect(expectedShot(firstActive, tapTime)).toBe('goal');
+    await pool.query(
+      `update bonus_game_attempt
+          set period_started_at = clock_timestamp() - interval '385 milliseconds'
+        where id = $1`,
+      [firstAttempt.id],
+    );
+    const shotRequest = {
+      method: 'POST' as const,
+      url: `/bonus-games/attempts/${firstAttempt.id}/shot`,
+      headers,
+      payload: {
+        claimed_shot_index: 1,
+        input: { tapTime, shooterTapTime: tapTime },
+        claimed_result: 'goal',
+      },
+    };
+
+    const firstClear = await app.inject(shotRequest);
+    expect(firstClear.statusCode).toBe(200);
+    expect(firstClear.json()).toMatchObject({
+      reward_granted: true,
+      attempt: {
+        status: 'completed',
+        current_period_shots_taken: 1,
+        reward_granted: true,
+      },
+    });
+
+    const duplicate = await app.inject(shotRequest);
+    expect(duplicate.statusCode).toBe(200);
+    expect(duplicate.json()).toMatchObject({
+      reward_granted: true,
+      attempt: { status: 'completed', reward_granted: true },
+    });
+
+    const firstDetail = await app.inject({
+      method: 'GET',
+      url: `/bonus-games/attempts/${firstAttempt.id}`,
+      headers,
+    });
+    expect(firstDetail.statusCode).toBe(200);
+    expect(firstDetail.json().attempt).toMatchObject({
+      status: 'completed',
+      reward_granted: true,
+    });
+
+    const replayAttempt = await startAttempt(game.id);
+    const replayActive = await startPeriod(replayAttempt.id);
+    expect(expectedShot(replayActive, tapTime)).toBe('goal');
+    await pool.query(
+      `update bonus_game_attempt
+          set period_started_at = clock_timestamp() - interval '385 milliseconds'
+        where id = $1`,
+      [replayAttempt.id],
+    );
+    const replay = await app.inject({
+      ...shotRequest,
+      url: `/bonus-games/attempts/${replayAttempt.id}/shot`,
+    });
+    expect(replay.statusCode).toBe(200);
+    expect(replay.json()).toMatchObject({
+      reward_granted: false,
+      attempt: { status: 'completed', reward_granted: false },
+    });
+
+    const replayDetail = await app.inject({
+      method: 'GET',
+      url: `/bonus-games/attempts/${replayAttempt.id}`,
+      headers,
+    });
+    expect(replayDetail.statusCode).toBe(200);
+    expect(replayDetail.json().attempt).toMatchObject({
+      status: 'completed',
+      reward_granted: false,
+    });
   });
 
   it('uses UUID and strict Zod request schemas', async () => {

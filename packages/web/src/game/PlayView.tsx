@@ -260,6 +260,9 @@ export interface PlayViewProps<TState> {
   sessionStartedAt?: string | null | undefined;
   serverNow?: string | null | undefined;
   receivedAtPerformanceMs?: number | undefined;
+  initialSceneElapsedMs?: number | undefined;
+  initialShooterElapsedMs?: number | undefined;
+  clockRebaseKey?: string | number | undefined;
   periodEndsAt?: number | undefined;
   onTimerExpired?: (() => void | Promise<void>) | undefined;
   optimisticAddShot: (claimed: ShotResult['type']) => void;
@@ -283,6 +286,7 @@ export interface PlayViewProps<TState> {
   playerOptions?: PlayerOptions | undefined;
   goalOptions?: GoalOptions | undefined;
   goalieOptions?: GoalieOptions | undefined;
+  preloadAssets?: readonly string[] | undefined;
   puckOptions?: PuckOptions | undefined;
   hitboxesVisible?: boolean | undefined;
   hitboxesOptions?: HitboxesOptions | undefined;
@@ -404,16 +408,36 @@ interface PlaySessionTiming {
   sessionStartedAt: string | null;
   serverNow: string | null;
   receivedAtPerformanceMs: number | null;
+  initialSceneElapsedMs?: number | null;
+  initialShooterElapsedMs?: number | null;
+}
+
+export function computeInitialPlayClocks(timing: PlaySessionTiming): {
+  sceneElapsedMs: number;
+  shooterElapsedMs: number;
+} {
+  const receivedAt = timing.receivedAtPerformanceMs ?? performance.now();
+  const clientElapsed = Math.max(0, performance.now() - receivedAt);
+  if (timing.initialSceneElapsedMs != null && timing.initialShooterElapsedMs != null) {
+    return {
+      sceneElapsedMs: Math.max(0, timing.initialSceneElapsedMs) + clientElapsed,
+      shooterElapsedMs: Math.max(0, timing.initialShooterElapsedMs) + clientElapsed,
+    };
+  }
+  if (!timing.sessionStartedAt || !timing.serverNow) {
+    return { sceneElapsedMs: 0, shooterElapsedMs: 0 };
+  }
+  const started = Date.parse(timing.sessionStartedAt);
+  const serverNowMs = Date.parse(timing.serverNow);
+  if (!Number.isFinite(started) || !Number.isFinite(serverNowMs)) {
+    return { sceneElapsedMs: 0, shooterElapsedMs: 0 };
+  }
+  const elapsedMs = Math.max(0, serverNowMs - started) + clientElapsed;
+  return { sceneElapsedMs: elapsedMs, shooterElapsedMs: elapsedMs };
 }
 
 export function computeInitialElapsedMs(timing: PlaySessionTiming): number {
-  if (!timing.sessionStartedAt || !timing.serverNow) return 0;
-  const started = Date.parse(timing.sessionStartedAt);
-  const serverNowMs = Date.parse(timing.serverNow);
-  if (!Number.isFinite(started) || !Number.isFinite(serverNowMs)) return 0;
-  const syncedElapsed = Math.max(0, serverNowMs - started);
-  const receivedAt = timing.receivedAtPerformanceMs ?? performance.now();
-  return syncedElapsed + Math.max(0, performance.now() - receivedAt);
+  return computeInitialPlayClocks(timing).sceneElapsedMs;
 }
 
 function TrainingPerspectiveRink({
@@ -723,6 +747,9 @@ export function PlayView<TState>({
   sessionStartedAt,
   serverNow,
   receivedAtPerformanceMs,
+  initialSceneElapsedMs,
+  initialShooterElapsedMs,
+  clockRebaseKey,
   periodEndsAt,
   onTimerExpired,
   optimisticAddShot,
@@ -742,6 +769,7 @@ export function PlayView<TState>({
   playerOptions = PERSPECTIVE_PLAYER_OPTIONS,
   goalOptions = PERSPECTIVE_GOAL_OPTIONS,
   goalieOptions = PERSPECTIVE_GOALIE_OPTIONS,
+  preloadAssets,
   puckOptions = PERSPECTIVE_PUCK_OPTIONS,
   hitboxesVisible = false,
   hitboxesOptions = PERSPECTIVE_HITBOX_OPTIONS,
@@ -769,11 +797,15 @@ export function PlayView<TState>({
     sessionStartedAt: sessionStartedAt ?? null,
     serverNow: serverNow ?? null,
     receivedAtPerformanceMs: receivedAtPerformanceMs ?? null,
+    initialSceneElapsedMs: initialSceneElapsedMs ?? null,
+    initialShooterElapsedMs: initialShooterElapsedMs ?? null,
   });
   sessionTimingRef.current = {
     sessionStartedAt: sessionStartedAt ?? null,
     serverNow: serverNow ?? null,
     receivedAtPerformanceMs: receivedAtPerformanceMs ?? null,
+    initialSceneElapsedMs: initialSceneElapsedMs ?? null,
+    initialShooterElapsedMs: initialShooterElapsedMs ?? null,
   };
 
   const scaleRef = useRef<Scale>({ factor: 1, offsetX: 0, offsetY: 0 });
@@ -820,6 +852,7 @@ export function PlayView<TState>({
   // Server state is held until shot animation ends, so ScoreBoard counters
   // don't jump while the puck is still flying.
   const pendingMidShotApplyRef = useRef<(() => void) | null>(null);
+  const pendingClockRebaseRef = useRef(false);
   const shotAnimationInProgressRef = useRef(false);
   const shotSubmitPendingRef = useRef(false);
   const [pixiReady, setPixiReady] = useState(false);
@@ -1387,7 +1420,7 @@ export function PlayView<TState>({
         getGoalieId: () => sessionRef.current.goalieId,
         getGoalieConfig: () => goalieConfigRef.current,
         getSpeedOverrides: () => speedsRef.current,
-        getInitialElapsedMs: () => computeInitialElapsedMs(sessionTimingRef.current),
+        getInitialClocks: () => computeInitialPlayClocks(sessionTimingRef.current),
         getDuelCondition: (elapsedMs, activeSpeeds) =>
           duelConditionRef.current?.(elapsedMs, activeSpeeds) ?? null,
         onDuelConditionChange: syncCurrentDuelCondition,
@@ -1428,6 +1461,17 @@ export function PlayView<TState>({
     },
     [drawReadyPresence, startEntranceAnimation, syncCurrentDuelCondition],
   );
+
+  useLayoutEffect(() => {
+    if (!pixiReady || clockRebaseKey === undefined) return;
+    const loop = loopRef.current;
+    if (!loop) return;
+    if (shotAnimationInProgressRef.current) {
+      pendingClockRebaseRef.current = true;
+      return;
+    }
+    loop.rebaseTime(computeInitialPlayClocks(sessionTimingRef.current));
+  }, [clockRebaseKey, pixiReady]);
 
   // React to suppressedByModal flips after Pixi is up. handleReady applies
   // the initial state inline; this hook handles transitions only.
@@ -1693,6 +1737,10 @@ export function PlayView<TState>({
     scheduleShotTimeout(() => {
       loop.endScenePause();
       loop.endShooterPause();
+      if (pendingClockRebaseRef.current) {
+        pendingClockRebaseRef.current = false;
+        loop.rebaseTime(computeInitialPlayClocks(sessionTimingRef.current));
+      }
       puck.release();
       if (result.type === 'save') goalie.setSavePose(false);
       setIsShowingResult(false);
@@ -1904,7 +1952,11 @@ export function PlayView<TState>({
               ...routeGameStyle,
             }}
           >
-            <PixiStage onReady={handleReady} onResize={handleResize} />
+            <PixiStage
+              onReady={handleReady}
+              onResize={handleResize}
+              preloadAssets={preloadAssets}
+            />
           </div>
           {overlayControls && (
             <div

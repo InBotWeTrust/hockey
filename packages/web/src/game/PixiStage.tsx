@@ -25,12 +25,17 @@ const SPRITE_ASSETS = [
 export interface PixiStageProps {
   onReady: (app: Application, scale: Scale) => void;
   onResize: (scale: Scale) => void;
+  preloadAssets?: readonly string[] | undefined;
 }
 
-export function PixiStage({ onReady, onResize }: PixiStageProps): JSX.Element {
+export function PixiStage({ onReady, onResize, preloadAssets = [] }: PixiStageProps): JSX.Element {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const callbacksRef = useRef({ onReady, onResize });
   callbacksRef.current = { onReady, onResize };
+  const preloadAssetsRef = useRef(preloadAssets);
+  preloadAssetsRef.current = preloadAssets;
+  const initializedRef = useRef(false);
+  const preloadKey = preloadAssets.join('\u0000');
 
   useEffect(() => {
     const host = hostRef.current;
@@ -53,7 +58,7 @@ export function PixiStage({ onReady, onResize }: PixiStageProps): JSX.Element {
         resolution: Math.min(window.devicePixelRatio ?? 1, 3),
         autoDensity: true,
       });
-      await Assets.load(SPRITE_ASSETS).catch(() => undefined);
+      await Assets.load([...SPRITE_ASSETS, ...preloadAssetsRef.current]).catch(() => undefined);
       if (disposed) {
         try {
           app.destroy(true, { children: true });
@@ -63,6 +68,7 @@ export function PixiStage({ onReady, onResize }: PixiStageProps): JSX.Element {
         return;
       }
       host.appendChild(app.canvas);
+      initializedRef.current = true;
       callbacksRef.current.onReady(app, measure());
     })();
 
@@ -74,6 +80,7 @@ export function PixiStage({ onReady, onResize }: PixiStageProps): JSX.Element {
 
     return () => {
       disposed = true;
+      initializedRef.current = false;
       ro.disconnect();
       try {
         app.destroy(true, { children: true });
@@ -82,6 +89,11 @@ export function PixiStage({ onReady, onResize }: PixiStageProps): JSX.Element {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!initializedRef.current || preloadAssetsRef.current.length === 0) return;
+    void Assets.load(preloadAssetsRef.current).catch(() => undefined);
+  }, [preloadKey]);
 
   return <div ref={hostRef} style={{ width: '100%', height: '100%' }} />;
 }

@@ -105,7 +105,9 @@ export interface BonusGameAttempt {
   break_ends_at: string | null;
   closed_at: string | null;
   shots_taken: number;
+  current_period_shots_taken: number;
   goals: number;
+  reward_granted: boolean;
   attempt_seed: string;
   game_core_version: number;
   definition_revision: number;

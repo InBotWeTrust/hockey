@@ -7,6 +7,7 @@ import type {
 } from '../api/bonusGames.js';
 import {
   abandonBonusAttempt,
+  fetchBonusAttempt,
   fetchCurrentBonusAttempt,
   startBonusPeriod,
   submitBonusShot,
@@ -16,6 +17,7 @@ import { useBonusGameStore } from './bonusGameStore.js';
 
 vi.mock('../api/bonusGames.js', () => ({
   abandonBonusAttempt: vi.fn(),
+  fetchBonusAttempt: vi.fn(),
   fetchCurrentBonusAttempt: vi.fn(),
   startBonusPeriod: vi.fn(),
   submitBonusShot: vi.fn(),
@@ -35,7 +37,9 @@ const initialAttempt: BonusGameAttempt = {
   break_ends_at: null,
   closed_at: null,
   shots_taken: 2,
+  current_period_shots_taken: 2,
   goals: 1,
+  reward_granted: false,
   attempt_seed: 'bonus:attempt-1',
   game_core_version: 1,
   definition_revision: 3,
@@ -110,7 +114,36 @@ describe('bonusGameStore', () => {
       inFlight: false,
       needsReconcile: false,
       requestEpoch: 0,
+      receivedAtPerformanceMs: null,
     });
+  });
+
+  it('captures the client receipt clock when an authoritative response is installed', async () => {
+    const nowSpy = vi.spyOn(performance, 'now').mockReturnValue(4_321);
+    vi.mocked(fetchCurrentBonusAttempt).mockResolvedValueOnce(response(initialAttempt));
+
+    await useBonusGameStore.getState().loadCurrent();
+
+    expect(useBonusGameStore.getState().receivedAtPerformanceMs).toBe(4_321);
+    nowSpy.mockRestore();
+  });
+
+  it('loads a terminal attempt by id so timer reconciliation cannot discard the result', async () => {
+    const failedAttempt = {
+      ...initialAttempt,
+      status: 'failed' as const,
+      state: 'closed' as const,
+      period_started_at: null,
+      period_ends_at: null,
+    };
+    vi.mocked(fetchBonusAttempt).mockResolvedValueOnce(response(failedAttempt));
+    useBonusGameStore.getState().applyState(initialAttempt);
+
+    const result = await useBonusGameStore.getState().loadAttempt(initialAttempt.id);
+
+    expect(fetchBonusAttempt).toHaveBeenCalledWith(initialAttempt.id);
+    expect(result).toEqual(failedAttempt);
+    expect(useBonusGameStore.getState().attempt).toEqual(failedAttempt);
   });
 
   it('blocks the next shot after an uncertain network failure until refresh succeeds', async () => {
@@ -475,6 +508,7 @@ describe('bonusGameStore', () => {
     useBonusGameStore.getState().applyState(initialAttempt);
 
     useBonusGameStore.getState().optimisticAddShot('goal');
+    expect(useBonusGameStore.getState().attempt?.current_period_shots_taken).toBe(3);
     await useBonusGameStore.getState().submitShot(shot);
 
     expect(useBonusGameStore.getState().attempt).toEqual(authoritativeAttempt);

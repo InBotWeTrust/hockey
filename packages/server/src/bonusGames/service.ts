@@ -139,7 +139,15 @@ function toIso(value: Date | null): string | null {
   return value === null ? null : value.toISOString();
 }
 
-export function toBonusAttemptDto(attempt: BonusGameAttemptRow): BonusGameAttemptDTO {
+interface BonusAttemptDerivedState {
+  currentPeriodShotsTaken: number;
+  rewardGranted: boolean;
+}
+
+export function toBonusAttemptDto(
+  attempt: BonusGameAttemptRow,
+  derived: BonusAttemptDerivedState,
+): BonusGameAttemptDTO {
   return {
     id: attempt.id,
     gameId: attempt.bonus_game_id,
@@ -150,12 +158,42 @@ export function toBonusAttemptDto(attempt: BonusGameAttemptRow): BonusGameAttemp
     breakStartedAt: toIso(attempt.break_started_at),
     closedAt: toIso(attempt.closed_at),
     shotsTaken: Number(attempt.shots_taken),
+    currentPeriodShotsTaken: derived.currentPeriodShotsTaken,
     goals: Number(attempt.goals),
+    rewardGranted: derived.rewardGranted,
     attemptSeed: attempt.attempt_seed,
     gameCoreVersion: Number(attempt.game_core_version),
     rules: attempt.rules_snapshot,
     reward: attempt.reward_snapshot,
   };
+}
+
+export async function loadBonusAttemptDto(
+  client: PoolClient,
+  attempt: BonusGameAttemptRow,
+): Promise<BonusGameAttemptDTO> {
+  const { rows } = await client.query<{
+    current_period_shots_taken: number;
+    reward_granted: boolean;
+  }>(
+    `select
+       (select count(*)::int
+          from shot_session
+         where mode = 'bonus'
+           and bonus_game_attempt_id = $1
+           and period_number = $2) as current_period_shots_taken,
+       exists(
+         select 1
+           from user_bonus_game_completion
+          where attempt_id = $1
+       ) as reward_granted`,
+    [attempt.id, attempt.current_period],
+  );
+  const derived = rows[0]!;
+  return toBonusAttemptDto(attempt, {
+    currentPeriodShotsTaken: Number(derived.current_period_shots_taken),
+    rewardGranted: derived.reward_granted,
+  });
 }
 
 async function lockUser(client: PoolClient, userId: string): Promise<LockedUserRow> {
@@ -313,8 +351,9 @@ export async function startOrResumeBonusAttempt(
       terminalReconcilePerformed = reconciled.status !== 'active';
       if (reconciled.status === 'active') {
         if (reconciled.bonus_game_id === input.gameId) {
+          const attempt = await loadBonusAttemptDto(client, reconciled);
           await client.query('commit');
-          return { attempt: toBonusAttemptDto(reconciled), created: false };
+          return { attempt, created: false };
         }
         deferredError = new BonusAttemptAlreadyActiveError({
           id: reconciled.id,
@@ -409,8 +448,9 @@ export async function startOrResumeBonusAttempt(
           input.now,
         ],
       );
+      const attempt = await loadBonusAttemptDto(client, rows[0]!);
       await client.query('commit');
-      return { attempt: toBonusAttemptDto(rows[0]!), created: true };
+      return { attempt, created: true };
     }
 
     await client.query('commit');
@@ -455,7 +495,7 @@ export async function startBonusPeriod(
         returning *`,
         [input.now, attempt.id],
       );
-      result = toBonusAttemptDto(rows[0]!);
+      result = await loadBonusAttemptDto(client, rows[0]!);
     }
     await client.query('commit');
   } catch (error) {
@@ -492,7 +532,7 @@ export async function abandonBonusAttempt(
         returning *`,
         [input.now, attempt.id],
       );
-      result = toBonusAttemptDto(rows[0]!);
+      result = await loadBonusAttemptDto(client, rows[0]!);
     }
     await client.query('commit');
   } catch (error) {
@@ -670,7 +710,7 @@ export async function submitBonusShot(
       if (accepted !== null) {
         response = {
           serverResult: accepted.server_result,
-          attempt: toBonusAttemptDto(attempt),
+          attempt: await loadBonusAttemptDto(client, attempt),
           rewardGranted: null,
           balances,
         };
@@ -802,7 +842,7 @@ export async function submitBonusShot(
 
           response = {
             serverResult,
-            attempt: toBonusAttemptDto(attempt),
+            attempt: await loadBonusAttemptDto(client, attempt),
             rewardGranted,
             balances,
           };

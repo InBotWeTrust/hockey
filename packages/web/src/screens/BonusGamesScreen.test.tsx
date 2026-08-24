@@ -6,7 +6,7 @@ import { BonusGamesScreen } from './BonusGamesScreen.js';
 
 function LocationProbe(): JSX.Element {
   const location = useLocation();
-  return <output aria-label="location">{location.pathname}</output>;
+  return <output aria-label="location">{`${location.pathname}${location.search}`}</output>;
 }
 
 function card(overrides: Record<string, unknown>) {
@@ -118,6 +118,7 @@ function mockCatalog(
           new Response(
             JSON.stringify({
               attempt: {
+                id: 'attempt-new',
                 game_id: '00000000-0000-4000-8000-000000000601',
               },
             }),
@@ -198,7 +199,20 @@ describe('BonusGamesScreen', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Продолжить' }));
 
-    expect(screen.getByLabelText('location')).toHaveTextContent('/bonus-games/beach/play');
+    expect(screen.getByLabelText('location')).toHaveTextContent(
+      '/bonus-games/beach/play?attempt=attempt-1',
+    );
+  });
+
+  it('keeps the created attempt id in the play URL for durable reload', async () => {
+    mockCatalog([card({})]);
+    renderCatalog();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Играть' }));
+
+    expect(await screen.findByLabelText('location')).toHaveTextContent(
+      '/bonus-games/00000000-0000-4000-8000-000000000601/play?attempt=attempt-new',
+    );
   });
 
   it('confirms the current server price and balance before one paid unlock request', async () => {
