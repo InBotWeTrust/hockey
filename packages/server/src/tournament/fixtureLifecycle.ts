@@ -9,6 +9,8 @@ interface FixtureContextRow {
   id: string;
   tournament_id: string;
   status: string;
+  tournament_status: string;
+  series_status: string | null;
   scheduled_starts_at: Date | null;
   window_ends_at: Date | null;
   home_user_id: string | null;
@@ -52,13 +54,15 @@ export async function openTournamentFixtureSegment(
     await client.query('begin');
     await client.query(`select pg_advisory_xact_lock(hashtext($1))`, [`fixture:${input.fixtureId}`]);
     const contextResult = await client.query<FixtureContextRow>(
-      `select f.id, f.tournament_id, f.status, f.scheduled_starts_at, f.window_ends_at,
+      `select f.id, f.tournament_id, f.status, t.status as tournament_status,
+              series.status as series_status, f.scheduled_starts_at, f.window_ends_at,
               hp.user_id as home_user_id, ap.user_id as away_user_id,
               r.rules_snapshot as round_rules, tr.rules_snapshot as tournament_rules
          from tournament_fixture f
          join tournament_round r on r.id = f.round_id
          join tournament t on t.id = f.tournament_id
          join tournament_revision tr on tr.id = t.published_revision_id
+         left join tournament_playoff_series series on series.id = f.series_id
          left join tournament_participant hp on hp.id = f.home_participant_id
          left join tournament_participant ap on ap.id = f.away_participant_id
         where f.id = $1 and f.tournament_id = $2
@@ -67,6 +71,9 @@ export async function openTournamentFixtureSegment(
     );
     const fixture = contextResult.rows[0];
     if (!fixture) throw new AppError('not_found', 'fixture not found', 404);
+    if (fixture.tournament_status === 'paused' || fixture.series_status === 'paused') {
+      throw new AppError('conflict', 'tournament flow is paused', 409);
+    }
     if (fixture.home_user_id !== input.userId && fixture.away_user_id !== input.userId) {
       throw new AppError('forbidden', 'fixture participant required', 403);
     }
@@ -174,6 +181,7 @@ export async function settleTournamentSegmentForDuel(
     kind: FixtureSegmentKind;
     pair_number: number | null;
     status: string;
+    fixture_status: string;
     series_id: string | null;
     tournament_id: string;
     round_stage: string;
@@ -182,6 +190,7 @@ export async function settleTournamentSegmentForDuel(
     tournament_rules: Record<string, unknown>;
   }>(
     `select s.id, s.fixture_id, s.sequence_number, s.kind, s.pair_number, s.status,
+            f.status as fixture_status,
             f.series_id, f.tournament_id, r.stage as round_stage,
             f.home_participant_id, f.away_participant_id,
             tr.rules_snapshot as tournament_rules
@@ -201,6 +210,12 @@ export async function settleTournamentSegmentForDuel(
       [segment.fixture_id],
     );
     return { fixtureId: segment.fixture_id, completed: fixture.rows[0]?.status === 'settled' };
+  }
+  if (
+    !['scheduled', 'active'].includes(segment.status) ||
+    !['scheduled', 'open', 'active'].includes(segment.fixture_status)
+  ) {
+    return { fixtureId: segment.fixture_id, completed: false };
   }
   await client.query(
     `update tournament_fixture_segment

@@ -22,6 +22,10 @@ import {
   startTournamentPlayoffs,
   type TournamentRulesSnapshot,
 } from '../../src/tournament/service.js';
+import {
+  openTournamentFixtureSegment,
+  settleTournamentSegmentForDuel,
+} from '../../src/tournament/fixtureLifecycle.js';
 import { createTestPool, hasIntegrationEnv, resetDatabase } from '../helpers/testDb.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -485,6 +489,94 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     expect(notifications.rows).toHaveLength(4);
   });
 
+  it('promotes the deciding conditional game after a best-of-three series is split 1:1', async () => {
+    await seedUsers(pool, 0);
+    const tournament = await createPublishedTournament(
+      pool,
+      'technical-playoff-decider',
+      0,
+      playoffTournamentRules(4, {
+        playoffRounds: [
+          {
+            roundNumber: 1,
+            winsRequired: 2,
+            homeSequence: ['H', 'A', 'H'],
+            duelTemplateId: '00000000-0000-4000-8000-000000000810',
+            gameWindowMs: 3_600_000,
+            gameBreakMs: 0,
+            roundBreakMs: 0,
+            firstGameStartsAt: '2030-09-01T13:00:00.000Z',
+          },
+          {
+            roundNumber: 2,
+            winsRequired: 1,
+            homeSequence: ['H'],
+            duelTemplateId: '00000000-0000-4000-8000-000000000811',
+            gameWindowMs: 3_600_000,
+            gameBreakMs: 0,
+            roundBreakMs: 0,
+            firstGameStartsAt: '2030-09-01T17:00:00.000Z',
+          },
+        ],
+      }),
+    );
+    await prepareTournamentForPlayoffs(pool, tournament.id, [4, 3, 2, 1]);
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-01T08:00:00.000Z'));
+
+    const games = await pool.query<{
+      fixture_id: string;
+      home_participant_id: string;
+      higher_seed_participant_id: string;
+      series_id: string;
+    }>(
+      `select f.id as fixture_id, f.home_participant_id,
+              s.higher_seed_participant_id, s.id as series_id
+         from tournament_fixture f
+         join tournament_playoff_series s on s.id = f.series_id
+        where s.tournament_id = $1 and s.depends_on->>'key' = 'R1S1'
+        order by f.fixture_number`,
+      [tournament.id],
+    );
+    const higherSeedId = games.rows[0]!.higher_seed_participant_id;
+    const higherAbsent = games.rows[0]!.home_participant_id === higherSeedId ? 'away' : 'home';
+    const lowerAbsent = games.rows[1]!.home_participant_id === higherSeedId ? 'home' : 'away';
+    await resolveTournamentNoShow(pool, {
+      tournamentId: tournament.id,
+      fixtureId: games.rows[0]!.fixture_id,
+      absent: higherAbsent,
+      reason: 'integration higher seed technical win',
+      adminUserId: ADMIN_ID,
+    });
+    await resolveTournamentNoShow(pool, {
+      tournamentId: tournament.id,
+      fixtureId: games.rows[1]!.fixture_id,
+      absent: lowerAbsent,
+      reason: 'integration lower seed technical win',
+      adminUserId: ADMIN_ID,
+    });
+
+    const state = await pool.query<{
+      status: string;
+      higher_seed_wins: number;
+      lower_seed_wins: number;
+      deciding_fixture_status: string;
+    }>(
+      `select s.status, s.higher_seed_wins, s.lower_seed_wins,
+              (select f.status from tournament_fixture f
+                where f.series_id = s.id
+                  and (f.result_snapshot->>'gameNumber')::int = 3) as deciding_fixture_status
+         from tournament_playoff_series s
+        where s.id = $1`,
+      [games.rows[0]!.series_id],
+    );
+    expect(state.rows[0]).toEqual({
+      status: 'active',
+      higher_seed_wins: 1,
+      lower_seed_wins: 1,
+      deciding_fixture_status: 'scheduled',
+    });
+  });
+
   it('propagates a playoff disqualification through the newly resolved third-place series', async () => {
     await seedUsers(pool, 0);
     const tournament = await createPublishedTournament(
@@ -679,6 +771,190 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       [fixture.rows[0]!.fixture_id],
     );
     expect(adjustments.rows[0]?.count).toBe('1');
+  });
+
+  it('blocks opening another playoff fixture while a double no-show has paused the tournament flow', async () => {
+    await seedUsers(pool, 0);
+    const tournament = await createPublishedTournament(
+      pool,
+      'technical-playoff-pause-blocks-opening',
+      0,
+      playoffTournamentRules(4),
+    );
+    await prepareTournamentForPlayoffs(pool, tournament.id, [4, 3, 2, 1]);
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-01T08:00:00.000Z'));
+
+    const fixtures = await pool.query<{
+      key: string;
+      fixture_id: string;
+      home_user_id: string;
+      scheduled_starts_at: Date;
+    }>(
+      `select s.depends_on->>'key' as key, f.id as fixture_id,
+              home_participant.user_id as home_user_id, f.scheduled_starts_at
+         from tournament_playoff_series s
+         join tournament_fixture f on f.series_id = s.id
+         join tournament_participant home_participant on home_participant.id = f.home_participant_id
+        where s.tournament_id = $1 and s.depends_on->>'key' in ('R1S1', 'R1S2')
+        order by s.depends_on->>'key'`,
+      [tournament.id],
+    );
+    const pausedFixture = fixtures.rows[0]!;
+    const otherFixture = fixtures.rows[1]!;
+    await resolveTournamentNoShow(pool, {
+      tournamentId: tournament.id,
+      fixtureId: pausedFixture.fixture_id,
+      absent: 'both',
+      reason: 'integration pauses playoff flow',
+      adminUserId: ADMIN_ID,
+    });
+
+    await expect(
+      openTournamentFixtureSegment(
+        pool,
+        {
+          fixtureId: otherFixture.fixture_id,
+          tournamentId: tournament.id,
+          userId: otherFixture.home_user_id,
+          now: otherFixture.scheduled_starts_at,
+        },
+        async () => {
+          throw new Error('duel factory must not run while tournament is paused');
+        },
+      ),
+    ).rejects.toMatchObject({ code: 'conflict' });
+  });
+
+  it('ignores a late duel callback for a technically cancelled playoff fixture', async () => {
+    await seedUsers(pool, 0);
+    const tournament = await createPublishedTournament(
+      pool,
+      'technical-playoff-late-callback',
+      0,
+      playoffTournamentRules(4, {
+        playoffRounds: [
+          {
+            roundNumber: 1,
+            winsRequired: 2,
+            homeSequence: ['H', 'A', 'H'],
+            duelTemplateId: '00000000-0000-4000-8000-000000000812',
+            gameWindowMs: 3_600_000,
+            gameBreakMs: 0,
+            roundBreakMs: 0,
+            firstGameStartsAt: '2030-09-01T13:00:00.000Z',
+          },
+          {
+            roundNumber: 2,
+            winsRequired: 1,
+            homeSequence: ['H'],
+            duelTemplateId: '00000000-0000-4000-8000-000000000813',
+            gameWindowMs: 3_600_000,
+            gameBreakMs: 0,
+            roundBreakMs: 0,
+            firstGameStartsAt: '2030-09-01T17:00:00.000Z',
+          },
+        ],
+      }),
+    );
+    await prepareTournamentForPlayoffs(pool, tournament.id, [4, 3, 2, 1]);
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-01T08:00:00.000Z'));
+
+    const games = await pool.query<{
+      fixture_id: string;
+      home_participant_id: string;
+      higher_seed_participant_id: string;
+      home_user_id: string;
+      away_user_id: string;
+      series_id: string;
+    }>(
+      `select f.id as fixture_id, f.home_participant_id, s.higher_seed_participant_id,
+              home_participant.user_id as home_user_id, away_participant.user_id as away_user_id,
+              s.id as series_id
+         from tournament_fixture f
+         join tournament_playoff_series s on s.id = f.series_id
+         join tournament_participant home_participant on home_participant.id = f.home_participant_id
+         join tournament_participant away_participant on away_participant.id = f.away_participant_id
+        where s.tournament_id = $1 and s.depends_on->>'key' = 'R1S1'
+        order by f.fixture_number`,
+      [tournament.id],
+    );
+    const delayedGame = games.rows[2]!;
+    const duel = await pool.query<{ id: string }>(
+      `insert into amateur_duel_match
+         (challenger_user_id, opponent_user_id, status, source, rules_snapshot,
+          match_seed, starts_at, ends_at, game_core_version)
+       values ($1, $2, 'active', 'tournament', '{}'::jsonb,
+               'late-callback', $3, $4, 1)
+       returning id`,
+      [
+        delayedGame.home_user_id,
+        delayedGame.away_user_id,
+        new Date('2030-09-01T15:00:00.000Z'),
+        new Date('2030-09-01T16:00:00.000Z'),
+      ],
+    );
+    await pool.query(
+      `insert into tournament_fixture_segment
+         (fixture_id, sequence_number, kind, duel_match_id, status, rules_snapshot)
+       values ($1, 1, 'regulation', $2, 'scheduled', '{}'::jsonb)`,
+      [delayedGame.fixture_id, duel.rows[0]!.id],
+    );
+
+    const higherAbsent = (game: (typeof games.rows)[number]) =>
+      game.home_participant_id === game.higher_seed_participant_id ? 'away' : 'home';
+    for (const game of games.rows.slice(0, 2)) {
+      await resolveTournamentNoShow(pool, {
+        tournamentId: tournament.id,
+        fixtureId: game.fixture_id,
+        absent: higherAbsent(game),
+        reason: 'integration technical series close',
+        adminUserId: ADMIN_ID,
+      });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      await settleTournamentSegmentForDuel(client, {
+        duelMatchId: duel.rows[0]!.id,
+        homeScore: 1,
+        awayScore: 0,
+        settledAt: new Date('2030-09-01T15:30:00.000Z'),
+      });
+      await client.query('commit');
+    } finally {
+      client.release();
+    }
+
+    const state = await pool.query<{
+      fixture_status: string;
+      home_score: number;
+      away_score: number;
+      segment_status: string;
+      higher_seed_wins: number;
+      lower_seed_wins: number;
+      series_status: string;
+      winner_participant_id: string;
+    }>(
+      `select f.status as fixture_status, f.home_score, f.away_score,
+              segment.status as segment_status, s.higher_seed_wins, s.lower_seed_wins,
+              s.status as series_status, s.winner_participant_id
+         from tournament_fixture f
+         join tournament_fixture_segment segment on segment.fixture_id = f.id
+         join tournament_playoff_series s on s.id = f.series_id
+        where f.id = $1`,
+      [delayedGame.fixture_id],
+    );
+    expect(state.rows[0]).toEqual({
+      fixture_status: 'cancelled',
+      home_score: 0,
+      away_score: 0,
+      segment_status: 'cancelled',
+      higher_seed_wins: 2,
+      lower_seed_wins: 0,
+      series_status: 'completed',
+      winner_participant_id: games.rows[0]!.higher_seed_participant_id,
+    });
   });
 
   it('materializes deterministic playoff windows from dependencies and configured round slots', async () => {

@@ -40,3 +40,20 @@ The full server suite was intentionally not run in this task because the control
 - Series counters only update while the series is `scheduled` or `active`; a completed series cannot overshoot.
 - DQ processing remains inside the existing tournament advisory lock; no-show remains inside the existing fixture advisory lock.
 - No pre-existing `tournament.series_next_game` enqueue path exists in the current lifecycle. The implemented technical notification parity therefore covers the existing `tournament.result_ready` contract.
+
+## Fix round 1
+
+Review regressions were added with separate PostgreSQL RED/GREEN cycles:
+
+1. A split best-of-three series left game 3 `conditional` after `1:1`. The shared `advanceTournamentPlayoffSeries` now promotes the next conditional fixture whose `gameNumber` matches total completed series wins plus one. This is used by both normal duel settlement and technical settlement.
+2. A double no-show paused the tournament but another playoff fixture could still call the duel factory. `openTournamentFixtureSegment` now reads the tournament and series state in its locked fixture context and rejects when either is paused.
+3. A late callback for an already-created duel changed a technically cancelled fixture and its segment. Series completion now terminalizes segments belonging to cancelled fixtures; `settleTournamentSegmentForDuel` checks segment and fixture terminal state before any write. The late callback is a no-op and cannot alter fixture scores, counters, or winner.
+
+Additional verification:
+
+- PASS — focused tournament integration: 16/16 tests, including all three review regressions.
+- PASS — `pnpm --filter @hockey/server typecheck`.
+- PASS — `pnpm lint`.
+- PASS — `git diff --check`.
+
+The full server suite remains intentionally delegated to the controller.

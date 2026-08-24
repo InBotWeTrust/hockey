@@ -45,6 +45,14 @@ export async function advanceTournamentPlayoffSeries(
     Number(series.higher_seed_wins) < Number(series.wins_required) &&
     Number(series.lower_seed_wins) < Number(series.wins_required)
   ) {
+    const nextGameNumber = Number(series.higher_seed_wins) + Number(series.lower_seed_wins) + 1;
+    await client.query(
+      `update tournament_fixture
+          set status = 'scheduled', updated_at = now()
+        where series_id = $1 and status = 'conditional'
+          and coalesce((result_snapshot->>'gameNumber')::int, 1) = $2`,
+      [series.id, nextGameNumber],
+    );
     return { completed: false };
   }
 
@@ -63,6 +71,16 @@ export async function advanceTournamentPlayoffSeries(
     `update tournament_fixture
         set status = 'cancelled', updated_at = now()
       where series_id = $1 and status in ('conditional', 'scheduled', 'open', 'active')`,
+    [completedSeries.id],
+  );
+  await client.query(
+    `update tournament_fixture_segment segment
+        set status = 'cancelled'
+       from tournament_fixture fixture
+      where fixture.id = segment.fixture_id
+        and fixture.series_id = $1
+        and fixture.status = 'cancelled'
+        and segment.status in ('pending', 'scheduled', 'active')`,
     [completedSeries.id],
   );
 
