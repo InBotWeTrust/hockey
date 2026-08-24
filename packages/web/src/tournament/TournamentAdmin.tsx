@@ -1,7 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { X } from 'lucide-react';
-import { createAdminTournament, fetchAdminTournaments } from './adminApi.js';
+import {
+  createAdminTournament,
+  fetchAdminTournaments,
+  type AdminTournament,
+} from './adminApi.js';
+import { TournamentOperations } from './TournamentOperations.js';
 
 const stages = [
   'Основное',
@@ -32,6 +37,7 @@ export function TournamentAdmin(): JSX.Element {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [stage, setStage] = useState(0);
   const [draft, setDraft] = useState(defaultDraft);
+  const [selectedTournament, setSelectedTournament] = useState<AdminTournament | null>(null);
   const create = useMutation({
     mutationFn: () =>
       createAdminTournament({
@@ -68,6 +74,12 @@ export function TournamentAdmin(): JSX.Element {
       void client.invalidateQueries({ queryKey: ['admin', 'tournaments'] });
     },
   });
+
+  if (selectedTournament !== null) {
+    return (
+      <TournamentOperations tournament={selectedTournament} onBack={() => setSelectedTournament(null)} />
+    );
+  }
   return (
     <section style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
@@ -76,11 +88,20 @@ export function TournamentAdmin(): JSX.Element {
       </div>
       {tournaments.data?.tournaments.length === 0 && <div className="glass" style={{ borderRadius: 22, padding: 18 }}>Турниров пока нет</div>}
       {tournaments.data?.tournaments.map((tournament) => (
-        <article key={tournament.id} className="glass" style={{ borderRadius: 22, padding: 16 }}>
+        <button
+          key={tournament.id}
+          type="button"
+          aria-label={`Открыть ${tournament.title}`}
+          className="glass"
+          style={{ borderRadius: 22, padding: 16, textAlign: 'left', border: '1px solid rgba(255,255,255,.78)' }}
+          onClick={() => {
+            setSelectedTournament(tournament);
+          }}
+        >
           <div className="section-label" style={{ margin: 0 }}>{tournament.status} · ревизия {tournament.revision}</div>
           <div style={{ fontSize: 18, fontWeight: 900, marginTop: 5 }}>{tournament.title}</div>
           <div style={{ color: 'var(--muted)', marginTop: 4 }}>{tournament.participantCount} участников</div>
-        </article>
+        </button>
       ))}
       {wizardOpen && (
         <div className="modal-backdrop" role="presentation">

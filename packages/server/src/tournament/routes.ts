@@ -292,6 +292,24 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
     return { participants: await listTournamentParticipants(app.pg, params.tournamentId) };
   });
 
+  app.get('/admin/tournaments/:tournamentId/schedule', admin, async (req) => {
+    const params = z.object({ tournamentId: uuid }).parse(req.params);
+    await getTournament(app.pg, params.tournamentId);
+    return { fixtures: await getTournamentSchedule(app.pg, params.tournamentId) };
+  });
+
+  app.get('/admin/tournaments/:tournamentId/standings', admin, async (req) => {
+    const params = z.object({ tournamentId: uuid }).parse(req.params);
+    await getTournament(app.pg, params.tournamentId);
+    return { standings: await getTournamentStandings(app.pg, params.tournamentId) };
+  });
+
+  app.get('/admin/tournaments/:tournamentId/bracket', admin, async (req) => {
+    const params = z.object({ tournamentId: uuid }).parse(req.params);
+    await getTournament(app.pg, params.tournamentId);
+    return { series: await getTournamentBracket(app.pg, params.tournamentId) };
+  });
+
   app.post('/admin/tournaments', admin, async (req, reply) => {
     const body = draftSchema.parse(req.body);
     const tournament = await createTournamentDraft(app.pg, {
