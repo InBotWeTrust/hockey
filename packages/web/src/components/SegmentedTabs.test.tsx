@@ -10,7 +10,7 @@ describe('SegmentedTabs', () => {
     Object.defineProperty(window.navigator, 'vibrate', { configurable: true, value: vibrate });
   });
 
-  it('uses selection feedback only when switching to another tab', () => {
+  it('switches tabs without physical feedback', () => {
     const onChange = vi.fn();
     render(
       <SegmentedTabs
@@ -28,7 +28,7 @@ describe('SegmentedTabs', () => {
     expect(vibrate).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('tab', { name: 'Челленджи' }));
-    expect(vibrate).toHaveBeenCalledWith(8);
+    expect(vibrate).not.toHaveBeenCalled();
     expect(onChange).toHaveBeenCalledWith('challenges');
   });
 });

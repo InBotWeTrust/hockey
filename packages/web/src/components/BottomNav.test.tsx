@@ -75,7 +75,7 @@ describe('BottomNav remembered navigation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Игра' }));
 
     expect(screen.getByLabelText('location')).toHaveTextContent('/?view=arena');
-    expect(vibrate).toHaveBeenCalledWith(8);
+    expect(vibrate).not.toHaveBeenCalled();
   });
 
   it('opens the arena from another section', () => {

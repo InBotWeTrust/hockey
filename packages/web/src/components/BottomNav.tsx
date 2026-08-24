@@ -12,7 +12,6 @@ import type { AuthUser } from '../auth/authStore.js';
 import { fetchUnreadCounts } from '../chat/api.js';
 import { useChatStore } from '../chat/chatStore.js';
 import { chatKeys } from '../lib/queryKeys.js';
-import { triggerHaptic } from '../feedback/haptics.js';
 
 export const NAV_HEIGHT = 68;
 
@@ -439,7 +438,6 @@ interface NavTabProps {
 
 function NavTab({ label, active, icon, onClick, disabled = false }: NavTabProps): JSX.Element {
   const handleClick = (): void => {
-    triggerHaptic('selection');
     onClick();
   };
 

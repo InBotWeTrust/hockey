@@ -37,7 +37,6 @@ export function SegmentedTabs<T extends string>({
             aria-selected={active}
             onClick={() => {
               if (active) return;
-              triggerHaptic('selection');
               onChange(tab.id);
             }}
             className={active ? 'segmented-tabs__item segmented-tabs__item--active' : 'segmented-tabs__item'}
@@ -55,4 +54,3 @@ export function SegmentedTabs<T extends string>({
     </div>
   );
 }
-import { triggerHaptic } from '../feedback/haptics.js';
