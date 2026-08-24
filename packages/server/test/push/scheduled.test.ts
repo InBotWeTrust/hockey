@@ -304,4 +304,183 @@ describe.skipIf(!hasIntegrationEnv)('scheduled push delivery', () => {
       { event_type: 'daily.period_ending', status: 'sent' },
     ]);
   });
+
+  it('sends each configured tournament live reminder exactly once', async () => {
+    const adminId = await createUser(pool, 'Tournament scheduler admin');
+    const playerId = await createUser(pool, 'Tournament scheduler player');
+    await pool.query(
+      `insert into user_push_preferences
+         (user_id, daily_game, training_available, tournament_events)
+       values ($1, false, false, true)`,
+      [playerId],
+    );
+    await addSubscription(pool, playerId, 'https://push.example.test/send/tournament-live');
+    const tournament = await pool.query<{ id: string }>(
+      `insert into tournament
+         (slug, title, status, regular_source, current_revision, created_by)
+       values ('scheduler-cup', 'Scheduler Cup', 'regular', 'head_to_head', 1, $1)
+       returning id`,
+      [adminId],
+    );
+    const tournamentId = tournament.rows[0]!.id;
+    const revision = await pool.query<{ id: string }>(
+      `insert into tournament_revision
+         (tournament_id, revision, rules_snapshot, is_published, created_by, published_at)
+       values ($1, 1, $2, true, $3, now()) returning id`,
+      [
+        tournamentId,
+        JSON.stringify({ notificationReminderOffsetsMs: [3_600_000] }),
+        adminId,
+      ],
+    );
+    await pool.query(`update tournament set published_revision_id = $2 where id = $1`, [
+      tournamentId,
+      revision.rows[0]!.id,
+    ]);
+    const participant = await pool.query<{ id: string }>(
+      `insert into tournament_participant (tournament_id, user_id, state)
+       values ($1, $2, 'approved') returning id`,
+      [tournamentId, playerId],
+    );
+    const round = await pool.query<{ id: string }>(
+      `insert into tournament_round (tournament_id, stage, number)
+       values ($1, 'regular', 1) returning id`,
+      [tournamentId],
+    );
+    await pool.query(
+      `insert into tournament_fixture
+         (tournament_id, round_id, fixture_number, home_participant_id,
+          scheduled_starts_at, window_ends_at, status)
+       values ($1, $2, 1, $3, $4, $5, 'scheduled')`,
+      [
+        tournamentId,
+        round.rows[0]!.id,
+        participant.rows[0]!.id,
+        new Date('2026-05-04T10:00:00.000Z'),
+        new Date('2026-05-04T11:00:00.000Z'),
+      ],
+    );
+    const fetchMock = vi.fn(async () => new Response('', { status: 201 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const first = await runScheduledPushes(pool, {
+      ...vapid,
+      now: new Date('2026-05-04T09:00:00.000Z'),
+    });
+    const second = await runScheduledPushes(pool, {
+      ...vapid,
+      now: new Date('2026-05-04T09:01:00.000Z'),
+    });
+
+    expect(first.events.find((event) => event.eventType === 'tournament.live_soon')).toMatchObject({
+      targets: 1,
+      claimed: 1,
+      sent: 1,
+      failed: 0,
+    });
+    expect(second.events.find((event) => event.eventType === 'tournament.live_soon')).toMatchObject({
+      targets: 0,
+      claimed: 0,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends fixture-opened and deadline pushes once at their configured times', async () => {
+    const adminId = await createUser(pool, 'Tournament window scheduler admin');
+    const playerId = await createUser(pool, 'Tournament window scheduler player');
+    await pool.query(
+      `insert into user_push_preferences
+         (user_id, daily_game, training_available, tournament_events)
+       values ($1, false, false, true)`,
+      [playerId],
+    );
+    await addSubscription(pool, playerId, 'https://push.example.test/send/tournament-window');
+    const tournament = await pool.query<{ id: string }>(
+      `insert into tournament
+         (slug, title, status, regular_source, current_revision, created_by)
+       values ('window-cup', 'Window Cup', 'regular', 'head_to_head', 1, $1)
+       returning id`,
+      [adminId],
+    );
+    const tournamentId = tournament.rows[0]!.id;
+    const revision = await pool.query<{ id: string }>(
+      `insert into tournament_revision
+         (tournament_id, revision, rules_snapshot, is_published, created_by, published_at)
+       values ($1, 1, $2, true, $3, now()) returning id`,
+      [
+        tournamentId,
+        JSON.stringify({
+          notificationReminderOffsetsMs: [],
+          notificationDeadlineLeadMs: 30 * 60_000,
+        }),
+        adminId,
+      ],
+    );
+    await pool.query(`update tournament set published_revision_id = $2 where id = $1`, [
+      tournamentId,
+      revision.rows[0]!.id,
+    ]);
+    const participant = await pool.query<{ id: string }>(
+      `insert into tournament_participant (tournament_id, user_id, state)
+       values ($1, $2, 'approved') returning id`,
+      [tournamentId, playerId],
+    );
+    const round = await pool.query<{ id: string }>(
+      `insert into tournament_round (tournament_id, stage, number)
+       values ($1, 'regular', 1) returning id`,
+      [tournamentId],
+    );
+    await pool.query(
+      `insert into tournament_fixture
+         (tournament_id, round_id, fixture_number, home_participant_id,
+          scheduled_starts_at, window_ends_at, status)
+       values ($1, $2, 1, $3, $4, $5, 'scheduled')`,
+      [
+        tournamentId,
+        round.rows[0]!.id,
+        participant.rows[0]!.id,
+        new Date('2026-05-04T10:00:00.000Z'),
+        new Date('2026-05-04T11:00:00.000Z'),
+      ],
+    );
+    const fetchMock = vi.fn(async () => new Response('', { status: 201 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const opened = await runScheduledPushes(pool, {
+      ...vapid,
+      now: new Date('2026-05-04T10:00:00.000Z'),
+    });
+    const openedAgain = await runScheduledPushes(pool, {
+      ...vapid,
+      now: new Date('2026-05-04T10:01:00.000Z'),
+    });
+    const deadline = await runScheduledPushes(pool, {
+      ...vapid,
+      now: new Date('2026-05-04T10:30:00.000Z'),
+    });
+    const deadlineAgain = await runScheduledPushes(pool, {
+      ...vapid,
+      now: new Date('2026-05-04T10:31:00.000Z'),
+    });
+
+    expect(opened.events.find((event) => event.eventType === 'tournament.fixture_opened')).toMatchObject({
+      targets: 1,
+      claimed: 1,
+      sent: 1,
+    });
+    expect(openedAgain.events.find((event) => event.eventType === 'tournament.fixture_opened')).toMatchObject({
+      targets: 0,
+      claimed: 0,
+    });
+    expect(deadline.events.find((event) => event.eventType === 'tournament.fixture_deadline')).toMatchObject({
+      targets: 1,
+      claimed: 1,
+      sent: 1,
+    });
+    expect(deadlineAgain.events.find((event) => event.eventType === 'tournament.fixture_deadline')).toMatchObject({
+      targets: 0,
+      claimed: 0,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });
