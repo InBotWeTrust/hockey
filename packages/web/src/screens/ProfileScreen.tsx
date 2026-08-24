@@ -3,6 +3,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type MouseEvent,
   type PointerEvent,
   type ReactNode,
 } from 'react';
@@ -850,6 +851,8 @@ export function ProfileScreen(): JSX.Element {
   const queryClient = useQueryClient();
   const updateUser = useAuthStore((s) => s.updateUser);
   const lockerSceneRef = useRef<HTMLElement | null>(null);
+  const rinkPhotoRef = useRef<HTMLButtonElement | null>(null);
+  const restoreArenaFocusRef = useRef(false);
   const dragScrollRef = useRef<{ startY: number; scrollTop: number } | null>(null);
   const suppressClickRef = useRef(false);
   const [lockerHotspotLayerStyle, setLockerHotspotLayerStyle] = useState<CSSProperties>({});
@@ -935,6 +938,14 @@ export function ProfileScreen(): JSX.Element {
     };
   }, [isLoading]);
 
+  useEffect(() => {
+    if (arenaModalOpen || !restoreArenaFocusRef.current) return;
+
+    restoreArenaFocusRef.current = false;
+    const rinkPhoto = rinkPhotoRef.current;
+    if (rinkPhoto?.isConnected) rinkPhoto.focus();
+  }, [arenaModalOpen]);
+
   if (isLoading) {
     return (
       <main className="screen" style={{ alignItems: 'center', justifyContent: 'center' }}>
@@ -969,6 +980,16 @@ export function ProfileScreen(): JSX.Element {
     queryClient.setQueryData<HomeArenasResponse>(['home-arenas'], (current) =>
       current === undefined ? current : { ...current, selected_arena: arena },
     );
+  }
+
+  function openArenaModal(event: MouseEvent<HTMLButtonElement>): void {
+    rinkPhotoRef.current = event.currentTarget;
+    setArenaModalOpen(true);
+  }
+
+  function closeArenaModal(): void {
+    restoreArenaFocusRef.current = true;
+    setArenaModalOpen(false);
   }
 
   function handlePointerDown(event: PointerEvent<HTMLElement>): void {
@@ -1057,12 +1078,13 @@ export function ProfileScreen(): JSX.Element {
             />
           )}
           <button
+            ref={rinkPhotoRef}
             type="button"
             className="profile-locker-rink-hotspot"
             data-no-drag-scroll="true"
             style={lockerPropStyle(LOCKER_PROPS.rinkPhoto)}
             aria-label="Выбрать домашнюю площадку"
-            onClick={() => setArenaModalOpen(true)}
+            onClick={openArenaModal}
           >
             {selectedHomeArena !== undefined && (
               <img src={selectedHomeArena.thumbnail_url} alt="" />
@@ -1182,7 +1204,7 @@ export function ProfileScreen(): JSX.Element {
           arenas={homeArenasQuery.data.arenas}
           selectedArena={homeArenasQuery.data.selected_arena}
           onSaved={handleArenaSaved}
-          onClose={() => setArenaModalOpen(false)}
+          onClose={closeArenaModal}
         />
       )}
     </main>

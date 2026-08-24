@@ -201,8 +201,11 @@ function getFetchUrl(input: Parameters<typeof fetch>[0]): string {
 function mockProfileFetch(
   profile: typeof telegramProfile,
   inventory: InventoryState = emptyInventoryState,
+  options: {
+    homeArenaSelection?: (init: RequestInit | undefined) => Response | Promise<Response>;
+  } = {},
 ) {
-  return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, _init) => {
+  return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     const url = getFetchUrl(input);
     if (url.endsWith('/api/me')) {
       return new Response(JSON.stringify(profile), {
@@ -221,6 +224,9 @@ function mockProfileFetch(
         status: 200,
         headers: { 'content-type': 'application/json' },
       });
+    }
+    if (url.endsWith('/api/me/home-arena') && options.homeArenaSelection !== undefined) {
+      return options.homeArenaSelection(init);
     }
     return new Response(JSON.stringify({ error: { code: 'not_found', message: 'not found' } }), {
       status: 404,
@@ -359,10 +365,59 @@ describe('ProfileScreen', () => {
     fireEvent.click(rinkPhoto);
 
     const dialog = await screen.findByRole('dialog', { name: 'Домашняя площадка' });
+    await waitFor(() => {
+      expect(within(dialog).getByRole('radio', { name: 'По умолчанию' })).toHaveFocus();
+    });
     expect(within(dialog).getByRole('radio', { name: 'По умолчанию' })).toBeChecked();
     expect(within(dialog).getByRole('radio', { name: 'Пляж' })).toBeInTheDocument();
     expect(within(dialog).queryByRole('radio', { name: 'Космос' })).not.toBeInTheDocument();
     expect(document.querySelector('.profile-locker-prop--rink-photo')).toBeInTheDocument();
+  });
+
+  it('returns focus to the rink photograph after every selector close path', async () => {
+    // Break caught: closing the modal could strand keyboard focus on removed UI or elsewhere in Profile.
+    const selectedBeach = homeArenas.arenas[1]!;
+    const fetchSpy = mockProfileFetch(telegramProfile, emptyInventoryState, {
+      homeArenaSelection: (init) => {
+        expect(init?.method).toBe('PATCH');
+        expect(init?.body).toBe(JSON.stringify({ arena_theme_id: selectedBeach.selection_id }));
+        return new Response(JSON.stringify({ selected_arena: selectedBeach }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      },
+    });
+    renderProfile();
+
+    const rinkPhoto = await screen.findByRole('button', { name: 'Выбрать домашнюю площадку' });
+
+    fireEvent.click(rinkPhoto);
+    const escapeDialog = await screen.findByRole('dialog', { name: 'Домашняя площадка' });
+    fireEvent.keyDown(within(escapeDialog).getByRole('radio', { name: 'По умолчанию' }), {
+      key: 'Escape',
+    });
+    await waitFor(() => expect(rinkPhoto).toHaveFocus());
+    expect(fetchSpy).not.toHaveBeenCalledWith('/api/me/home-arena', expect.anything());
+
+    fireEvent.click(rinkPhoto);
+    const closeDialog = await screen.findByRole('dialog', { name: 'Домашняя площадка' });
+    fireEvent.click(within(closeDialog).getByRole('button', { name: 'Закрыть' }));
+    await waitFor(() => expect(rinkPhoto).toHaveFocus());
+
+    fireEvent.click(rinkPhoto);
+    const cancelDialog = await screen.findByRole('dialog', { name: 'Домашняя площадка' });
+    fireEvent.click(within(cancelDialog).getByRole('button', { name: 'Отмена' }));
+    await waitFor(() => expect(rinkPhoto).toHaveFocus());
+
+    fireEvent.click(rinkPhoto);
+    const saveDialog = await screen.findByRole('dialog', { name: 'Домашняя площадка' });
+    fireEvent.click(within(saveDialog).getByRole('radio', { name: 'Пляж' }));
+    fireEvent.click(within(saveDialog).getByRole('button', { name: 'Сохранить' }));
+    await waitFor(() => expect(rinkPhoto).toHaveFocus());
+    expect(fetchSpy).toHaveBeenCalledWith(
+      '/api/me/home-arena',
+      expect.objectContaining({ method: 'PATCH' }),
+    );
   });
 
   it('shows the hockey jersey for amateur players', async () => {
