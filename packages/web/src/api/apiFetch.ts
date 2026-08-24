@@ -1,6 +1,7 @@
 import { useAuthStore } from '../auth/authStore.js';
 
 const API_BASE = '/api';
+const GENERIC_SERVER_ERROR_MESSAGE = 'Не удалось выполнить запрос. Попробуйте ещё раз.';
 
 const SERVER_ERROR_MESSAGES: Record<string, string> = {
   telegram_already_linked: 'Аккаунт уже занят',
@@ -39,7 +40,9 @@ export class ApiError extends Error {
 }
 
 function localizeServerError(message: string, code: string): string {
-  return SERVER_ERROR_MESSAGES[message] ?? SERVER_ERROR_MESSAGES[code] ?? message;
+  return (
+    SERVER_ERROR_MESSAGES[message] ?? SERVER_ERROR_MESSAGES[code] ?? GENERIC_SERVER_ERROR_MESSAGE
+  );
 }
 
 let refreshInFlight: Promise<string | null> | null = null;

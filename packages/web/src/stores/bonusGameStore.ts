@@ -32,6 +32,7 @@ interface BonusGameStoreState {
 }
 
 let shotInFlight = false;
+let serverStateRevision = 0;
 
 function errorDetails(error: unknown, fallback: string): { message: string; code: string | null } {
   if (error instanceof ApiError) return { message: error.message, code: error.code };
@@ -42,12 +43,21 @@ function applyServerAttempt(
   set: (partial: Partial<BonusGameStoreState>) => void,
   attempt: BonusGameAttempt | null,
 ): void {
+  serverStateRevision += 1;
   set({
     attempt,
+    loading: false,
     error: null,
     errorCode: null,
     needsReconcile: false,
   });
+}
+
+function beginMutation(set: (partial: Partial<BonusGameStoreState>) => void): void {
+  // A read that started before this mutation cannot be used to clear a later
+  // reconciliation lock or replace its server-confirmed result.
+  serverStateRevision += 1;
+  set({ inFlight: true, loading: false, error: null, errorCode: null });
 }
 
 export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
@@ -59,13 +69,20 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
   needsReconcile: false,
 
   loadCurrent: async () => {
-    set({ loading: true, error: null, errorCode: null });
+    const revisionAtStart = serverStateRevision;
+    set({ loading: true });
     try {
       const { attempt } = await fetchCurrentBonusAttempt();
+      if (serverStateRevision !== revisionAtStart) return get().attempt;
       applyServerAttempt(set, attempt);
-      set({ loading: false });
       return attempt;
     } catch (error) {
+      if (serverStateRevision !== revisionAtStart) return get().attempt;
+      const current = get();
+      if (current.needsReconcile && current.error !== null) {
+        set({ loading: false });
+        return null;
+      }
       const details = errorDetails(error, 'Не удалось загрузить бонус-попытку.');
       set({ loading: false, error: details.message, errorCode: details.code });
       return null;
@@ -89,7 +106,7 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
   startPeriod: async () => {
     const attempt = get().attempt;
     if (!attempt || get().inFlight || get().needsReconcile) return null;
-    set({ inFlight: true, error: null, errorCode: null });
+    beginMutation(set);
     try {
       const response = await startBonusPeriod(attempt.id);
       applyServerAttempt(set, response.attempt);
@@ -111,7 +128,7 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
     const attempt = get().attempt;
     if (!attempt || !get().canSubmitShot() || shotInFlight) return null;
     shotInFlight = true;
-    set({ inFlight: true, error: null, errorCode: null });
+    beginMutation(set);
     try {
       const response = await submitBonusShot(attempt.id, body);
       applyServerAttempt(set, response.attempt);
@@ -137,7 +154,7 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
   abandon: async () => {
     const attempt = get().attempt;
     if (!attempt || get().inFlight || get().needsReconcile) return null;
-    set({ inFlight: true, error: null, errorCode: null });
+    beginMutation(set);
     try {
       const response = await abandonBonusAttempt(attempt.id);
       applyServerAttempt(set, response.attempt);

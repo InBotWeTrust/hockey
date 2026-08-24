@@ -53,6 +53,24 @@ describe('apiFetch', () => {
     await expect(apiFetch('/x')).rejects.toBeInstanceOf(ApiError);
   });
 
+  it.each(['bad_request', 'unexpected_internal_code'])(
+    'keeps unknown server code %s but never exposes its internal message',
+    async (code) => {
+      // This catches using server-provided diagnostics as player-facing UI copy.
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        mockJson(
+          { error: { code, message: 'constraint users_private_secret violated' } },
+          { status: 400 },
+        ),
+      );
+
+      await expect(apiFetch('/x')).rejects.toMatchObject({
+        code,
+        message: 'Не удалось выполнить запрос. Попробуйте ещё раз.',
+      });
+    },
+  );
+
   it.each(['telegram_already_linked', 'vk_already_linked'])(
     'localizes auth conflict message %s',
     async (serverMessage) => {

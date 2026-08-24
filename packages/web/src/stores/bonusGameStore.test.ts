@@ -10,6 +10,7 @@ import {
   startBonusPeriod,
   submitBonusShot,
 } from '../api/bonusGames.js';
+import { ApiError } from '../api/apiFetch.js';
 import { useBonusGameStore } from './bonusGameStore.js';
 
 vi.mock('../api/bonusGames.js', () => ({
@@ -83,6 +84,14 @@ function response(attempt: BonusGameAttempt): BonusAttemptResponse {
   return { attempt };
 }
 
+function deferred<T>() {
+  let resolve: (value: T) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve: (value: T) => resolve(value) };
+}
+
 describe('bonusGameStore', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -111,6 +120,96 @@ describe('bonusGameStore', () => {
 
     expect(useBonusGameStore.getState().needsReconcile).toBe(false);
     expect(useBonusGameStore.getState().attempt).toEqual(initialAttempt);
+  });
+
+  it('keeps the rejected shot code and lock when its reconciliation request fails', async () => {
+    // This catches clearing a stable stale-shot branch before a replacement server state exists.
+    const staleError = new ApiError(
+      409,
+      'bonus_shot_index_mismatch',
+      'Бросок уже обработан. Обновляем состояние попытки.',
+    );
+    vi.mocked(submitBonusShot).mockRejectedValueOnce(staleError);
+    vi.mocked(fetchCurrentBonusAttempt)
+      .mockRejectedValueOnce(new TypeError('network'))
+      .mockResolvedValueOnce(response(initialAttempt));
+    useBonusGameStore.getState().applyState(initialAttempt);
+
+    await useBonusGameStore.getState().submitShot(shot);
+    await useBonusGameStore.getState().refresh();
+
+    expect(useBonusGameStore.getState()).toMatchObject({
+      error: staleError.message,
+      errorCode: 'bonus_shot_index_mismatch',
+      needsReconcile: true,
+    });
+
+    await useBonusGameStore.getState().refresh();
+
+    expect(useBonusGameStore.getState()).toMatchObject({
+      attempt: initialAttempt,
+      error: null,
+      errorCode: null,
+      needsReconcile: false,
+    });
+  });
+
+  it('does not let a refresh started before a shot overwrite its newer server state', async () => {
+    // This catches a late GET replacing a successful shot response with a stale accepted-shot count.
+    const staleRefresh = deferred<BonusAttemptResponse>();
+    const afterShot = { ...initialAttempt, shots_taken: 3, goals: 2 };
+    vi.mocked(fetchCurrentBonusAttempt).mockReturnValueOnce(staleRefresh.promise);
+    vi.mocked(submitBonusShot).mockResolvedValueOnce({
+      server_result: 'goal',
+      attempt: afterShot,
+      reward_granted: false,
+      balances: { coins: 10, stars: 2, experience: 7 },
+    });
+    useBonusGameStore.getState().applyState(initialAttempt);
+
+    const refresh = useBonusGameStore.getState().refresh();
+    await useBonusGameStore.getState().submitShot(shot);
+    staleRefresh.resolve(response(initialAttempt));
+    await refresh;
+
+    expect(useBonusGameStore.getState().attempt).toEqual(afterShot);
+  });
+
+  it('does not let a refresh started before a period start overwrite its newer server state', async () => {
+    // This catches a late GET moving an authoritative started period back to idle.
+    const staleRefresh = deferred<BonusAttemptResponse>();
+    const idleAttempt = { ...initialAttempt, state: 'idle' as const, current_period: 0 };
+    vi.mocked(fetchCurrentBonusAttempt).mockReturnValueOnce(staleRefresh.promise);
+    vi.mocked(startBonusPeriod).mockResolvedValueOnce(response(initialAttempt));
+    useBonusGameStore.getState().applyState(idleAttempt);
+
+    const refresh = useBonusGameStore.getState().refresh();
+    await useBonusGameStore.getState().startPeriod();
+    staleRefresh.resolve(response(idleAttempt));
+    await refresh;
+
+    expect(useBonusGameStore.getState().attempt).toEqual(initialAttempt);
+  });
+
+  it('does not let a refresh started before abandon overwrite its newer server state', async () => {
+    // This catches a late GET resurrecting an attempt after its server-confirmed abandon.
+    const staleRefresh = deferred<BonusAttemptResponse>();
+    const abandonedAttempt = {
+      ...initialAttempt,
+      status: 'abandoned' as const,
+      state: 'closed' as const,
+      closed_at: '2026-08-24T10:02:00.000Z',
+    };
+    vi.mocked(fetchCurrentBonusAttempt).mockReturnValueOnce(staleRefresh.promise);
+    vi.mocked(abandonBonusAttempt).mockResolvedValueOnce(response(abandonedAttempt));
+    useBonusGameStore.getState().applyState(initialAttempt);
+
+    const refresh = useBonusGameStore.getState().refresh();
+    await useBonusGameStore.getState().abandon();
+    staleRefresh.resolve(response(initialAttempt));
+    await refresh;
+
+    expect(useBonusGameStore.getState().attempt).toEqual(abandonedAttempt);
   });
 
   it('replaces an optimistic shot with the authoritative shot response', async () => {
