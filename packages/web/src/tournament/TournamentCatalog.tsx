@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   applyToTournament,
   fetchTournamentSchedule,
   fetchTournamentStandings,
   fetchTournaments,
+  openTournamentFixtureSegment,
   withdrawFromTournament,
   type TournamentSummary,
 } from '../api/tournament.js';
@@ -34,6 +36,7 @@ function statusLabel(status: TournamentSummary['status']): string {
 }
 
 function TournamentDetails({ tournament, onBack }: { tournament: TournamentSummary; onBack: () => void }) {
+  const navigate = useNavigate();
   const [tab, setTab] = useState<TournamentTab>('overview');
   const queryClient = useQueryClient();
   const schedule = useQuery({
@@ -52,6 +55,12 @@ function TournamentDetails({ tournament, onBack }: { tournament: TournamentSumma
       else await withdrawFromTournament(tournament.id);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tournaments'] }),
+  });
+  const openFixture = useMutation({
+    mutationFn: (fixtureId: string) => openTournamentFixtureSegment(tournament.id, fixtureId),
+    onSuccess: (segment) => {
+      navigate(`/?view=amateur&match=${encodeURIComponent(segment.duelMatchId)}&play=1`);
+    },
   });
 
   return (
@@ -92,6 +101,9 @@ function TournamentDetails({ tournament, onBack }: { tournament: TournamentSumma
             schedule.data?.fixtures.length ? schedule.data.fixtures.map((fixture) => (
               <div key={fixture.id} style={{ padding: '8px 0', borderBottom: '1px solid rgba(100,116,139,.15)' }}>
                 {fixture.home?.name ?? 'Участник'} — {fixture.away?.name ?? 'Участник'}
+                {(fixture.status === 'scheduled' || fixture.status === 'open' || fixture.status === 'active') && (
+                  <button type="button" className="btn btn--cta" style={{ marginTop: 6 }} onClick={() => openFixture.mutate(fixture.id)}>Играть fixture</button>
+                )}
               </div>
             )) : <div>Расписание ещё не опубликовано.</div>
         )}

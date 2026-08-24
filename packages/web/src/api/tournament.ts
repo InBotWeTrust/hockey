@@ -75,3 +75,13 @@ export function fetchTournamentStandings(tournamentId: string) {
     `/tournaments/${tournamentId}/standings`,
   );
 }
+
+export function openTournamentFixtureSegment(tournamentId: string, fixtureId: string) {
+  return apiFetch<{
+    fixtureId: string;
+    segmentId: string;
+    duelMatchId: string;
+    kind: string;
+    sequenceNumber: number;
+  }>(`/tournaments/${tournamentId}/fixtures/${fixtureId}/segments/open`, { method: 'POST' });
+}

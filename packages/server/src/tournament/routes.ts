@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { AppError } from '../plugins/errors.js';
+import { createTournamentDuelMatch } from '../duel/amateur/routes.js';
 import { parseTournamentConfig } from './config.js';
 import {
   applyToTournament,
@@ -23,6 +24,7 @@ import {
   withdrawTournamentApplication,
   type TournamentRulesSnapshot,
 } from './service.js';
+import { openTournamentFixtureSegment } from './fixtureLifecycle.js';
 
 const uuid = z.string().uuid();
 const nullableDate = z.string().datetime({ offset: true }).nullable().default(null);
@@ -120,6 +122,20 @@ export const tournamentRoutes: FastifyPluginAsync = async (app) => {
     await getTournament(app.pg, params.tournamentId, req.user.id);
     return { standings: await getTournamentStandings(app.pg, params.tournamentId) };
   });
+
+  app.post(
+    '/tournaments/:tournamentId/fixtures/:fixtureId/segments/open',
+    authenticated,
+    async (req) => {
+      await requireTournamentFeature(app);
+      const params = z.object({ tournamentId: uuid, fixtureId: uuid }).parse(req.params);
+      return openTournamentFixtureSegment(
+        app.pg,
+        { ...params, userId: req.user.id, now: new Date() },
+        createTournamentDuelMatch,
+      );
+    },
+  );
 
   app.post('/tournaments/:tournamentId/applications', authenticated, async (req) => {
     await requireTournamentFeature(app);
