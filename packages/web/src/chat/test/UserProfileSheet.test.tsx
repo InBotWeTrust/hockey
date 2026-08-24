@@ -167,6 +167,7 @@ describe('UserProfileSheet', () => {
     expect(screen.getByText('(12)')).toBeInTheDocument();
     expect(screen.getByText('Выполненные задания (1)')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Первая шайба.*получено/i })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Профиль игрока' })).toHaveClass('sheet-card');
   });
 
   it('clicking "Написать в личку" calls findOrCreateDM and closes the sheet', async () => {
@@ -263,11 +264,9 @@ describe('UserProfileSheet', () => {
         </MemoryRouter>
       </QueryClientProvider>,
     );
-    const backdrop = document.body.querySelector<HTMLElement>(
-      '[data-testid="profile-sheet-backdrop"]',
-    );
+    const backdrop = document.body.querySelector<HTMLElement>('.modal-backdrop--sheet');
     expect(backdrop).not.toBeNull();
-    fireEvent.click(backdrop!);
+    fireEvent.mouseDown(backdrop!);
     expect(onClose).toHaveBeenCalled();
   });
 });

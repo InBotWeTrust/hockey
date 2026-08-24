@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
@@ -22,6 +21,7 @@ import {
 } from '../../screens/profileSections.js';
 import { useAuthStore } from '../../auth/authStore.js';
 import { DuelChallengeModal, hasOpenDuelWithUser } from './DuelChallengeModal.js';
+import { Sheet } from '../../components/Sheet.js';
 
 interface UserProfileSheetProps {
   sender: UserPickerItem | null;
@@ -36,16 +36,8 @@ export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JS
   const [selectedAchievement, setSelectedAchievement] = useState<ProfileAchievement | null>(null);
   const [duelPickerOpen, setDuelPickerOpen] = useState(false);
 
-  // Slide-up: render off-screen on first frame, then animate in.
-  const [entered, setEntered] = useState(false);
   useEffect(() => {
     setSelectedAchievement(null);
-    if (sender) {
-      const id = requestAnimationFrame(() => setEntered(true));
-      return () => cancelAnimationFrame(id);
-    }
-    setEntered(false);
-    return undefined;
   }, [sender]);
 
   const { mutate, isPending } = useMutation({
@@ -92,50 +84,16 @@ export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JS
   const displayName = profile?.displayName ?? sender.displayName;
   const avatarUrl = profile?.avatarUrl ?? sender.avatarUrl;
 
-  return createPortal(
-    <div
-      data-testid="profile-sheet-backdrop"
-      onClick={onClose}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(15,23,42,0.35)',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
-        zIndex: 300,
-        display: 'flex',
-        alignItems: 'flex-end',
-        justifyContent: 'center',
-      }}
-    >
+  return (
+    <Sheet open title="Профиль игрока" onRequestClose={() => onClose()} maxHeight="80dvh">
       <div
-        className="glass"
-        onClick={(e) => e.stopPropagation()}
         style={{
           position: 'relative',
-          width: '100%',
-          maxWidth: 480,
-          maxHeight: '80dvh',
-          overflowY: 'auto',
-          padding: '16px 16px calc(16px + var(--app-safe-bottom))',
-          borderRadius: '24px 24px 0 0',
           display: 'flex',
           flexDirection: 'column',
           gap: 0,
-          transform: entered ? 'translateY(0)' : 'translateY(100%)',
-          transition: 'transform 0.2s ease',
         }}
       >
-        <div
-          aria-hidden
-          style={{
-            width: 36,
-            height: 4,
-            borderRadius: 2,
-            background: 'rgba(15,23,42,0.2)',
-            margin: '0 auto 14px',
-          }}
-        />
         <button
           type="button"
           className="icon-btn"
@@ -264,7 +222,6 @@ export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JS
           />
         )}
       </div>
-    </div>,
-    document.body,
+    </Sheet>
   );
 }

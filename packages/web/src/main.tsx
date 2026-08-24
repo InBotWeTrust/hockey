@@ -1,5 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { MotionConfig } from 'motion/react';
 import { App } from './app/App.js';
 
 const LOCAL_DEV_CACHE_RESET_KEY = 'hockey.localDevCacheReset.v1';
@@ -55,6 +56,8 @@ if (!rootElement) {
 
 ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
-    <App />
+    <MotionConfig reducedMotion="user">
+      <App />
+    </MotionConfig>
   </React.StrictMode>,
 );
