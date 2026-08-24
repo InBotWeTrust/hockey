@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { type GoalieConfig } from '@hockey/game-core';
 import { PlayView, type PlayShotResolver } from './PlayView.js';
@@ -112,6 +112,7 @@ const beachGoalie: GoalieConfig = {
 
 describe('PlayView', () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -271,5 +272,63 @@ describe('PlayView', () => {
 
     expect(optimisticAddShot).toHaveBeenCalledTimes(1);
     expect(submitShot).toHaveBeenCalledTimes(1);
+  });
+
+  it('applies a fast authoritative result only after the flight and result pause', async () => {
+    // This catches a completed, failed, or break DTO replacing the rink during its final animation.
+    vi.useFakeTimers();
+    vi.spyOn(performance, 'now').mockReturnValue(1_000);
+    const applyState = vi.fn();
+    const applyResolvedState = vi.fn();
+    const submitShot = vi.fn(async () => ({
+      serverResult: 'goal' as const,
+      state: { status: 'completed' as const, rewardGranted: true },
+    }));
+
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="bonus-seed"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        speedOverrides={{ goalFreq: 0.45, goalieFreq: 0.5, shooterFreq: 0.65, puckSpeed: 1.2 }}
+        goals={2}
+        shots={2}
+        shotsTotal={3}
+        shotResolver={() => ({ type: 'goal', hitPoint: { x: 286, y: 60 } })}
+        optimisticAddShot={() => undefined}
+        submitShot={submitShot}
+        applyState={applyState}
+        applyResolvedState={applyResolvedState}
+      />,
+    );
+
+    const shotButton = screen.getByRole('button', { name: 'БРОСОК' });
+    fireEvent.click(shotButton);
+    await act(async () => Promise.resolve());
+
+    expect(shotButton).toBeDisabled();
+    expect(applyResolvedState).not.toHaveBeenCalled();
+    expect(applyState).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_430);
+    });
+    expect(applyResolvedState).not.toHaveBeenCalled();
+    expect(shotButton).toBeDisabled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10);
+    });
+    expect(applyResolvedState).toHaveBeenCalledTimes(1);
+    expect(applyResolvedState).toHaveBeenCalledWith({
+      status: 'completed',
+      rewardGranted: true,
+    });
+    expect(applyState).not.toHaveBeenCalled();
   });
 });

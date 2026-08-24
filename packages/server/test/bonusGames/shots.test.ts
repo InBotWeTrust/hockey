@@ -48,6 +48,21 @@ const GOAL_INPUT: ShotInput = {
   goalFrequency: 3,
 };
 
+const SECOND_SHOT_INPUT: ShotInput = {
+  ...GOAL_INPUT,
+  tapTime: 2_000,
+  shooterTapTime: 1_566.666_666_666_666_5,
+};
+
+const THIRD_SHOT_INPUT: ShotInput = {
+  ...GOAL_INPUT,
+  tapTime: 3_000,
+  shooterTapTime: 2_133.333_333_333_333,
+};
+
+const SECOND_SHOT_AT = new Date('2026-08-23T12:00:03.000Z');
+const THIRD_SHOT_AT = new Date('2026-08-23T12:00:05.000Z');
+
 function withoutShooterTime(): SubmitBonusShotInput['input'] {
   const { shooterTapTime: _omitted, ...input } = GOAL_INPUT;
   return input as SubmitBonusShotInput['input'];
@@ -131,7 +146,13 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
     return user.id;
   }
 
-  async function createGame({ targetGoals }: { targetGoals: number }): Promise<TestGame> {
+  async function createGame({
+    targetGoals,
+    periods = PERIODS,
+  }: {
+    targetGoals: number;
+    periods?: BonusPeriodRule[];
+  }): Promise<TestGame> {
     gameSequence += 1;
     const slug = `shot-game-${gameSequence}`;
     const game = await pool.query<{ id: string }>(
@@ -141,15 +162,16 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
           reward_coins, reward_stars, reward_experience, arena_theme_id,
           goalkeeper_ready_url, goalkeeper_save_url, revision)
        values ($1, $2, '', $3, 'active', 'free', 0,
-               $4, 1, 30000, $5::jsonb,
-               100, 1, 50, $6, $7, $8, 3)
+               $4, $5, 30000, $6::jsonb,
+               100, 1, 50, $7, $8, $9, 3)
        returning id`,
       [
         slug,
         `Игра ${gameSequence}`,
         gameSequence,
         targetGoals,
-        JSON.stringify(PERIODS),
+        periods.length,
+        JSON.stringify(periods),
         defaultArenaId,
         `/goalies/${slug}-ready.webp`,
         `/goalies/${slug}-save.webp`,
@@ -597,6 +619,208 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
       serverResult: 'miss',
       attempt: { status: 'active', state: 'period_active', shotsTaken: 2, goals: 1 },
     });
+  });
+
+  it('closes a nonfinal period at quota in the accepted-shot transaction and keeps duplicate retry idempotent', async () => {
+    const userId = await createUser();
+    const secondPeriod: BonusPeriodRule = { ...PERIODS[0]!, periodNumber: 2 };
+    const game = await createGame({ targetGoals: 5, periods: [PERIODS[0]!, secondPeriod] });
+    const attemptId = await createActiveAttempt(userId, game.id);
+    await submitBonusShot(pool, {
+      userId,
+      attemptId,
+      claimedShotIndex: 1,
+      input: GOAL_INPUT,
+      claimedResult: 'goal',
+      now: SHOT_AT,
+    });
+    await submitBonusShot(pool, {
+      userId,
+      attemptId,
+      claimedShotIndex: 2,
+      input: SECOND_SHOT_INPUT,
+      claimedResult: 'miss',
+      now: SECOND_SHOT_AT,
+    });
+
+    const finalInput = {
+      userId,
+      attemptId,
+      claimedShotIndex: 3,
+      input: THIRD_SHOT_INPUT,
+      claimedResult: 'miss' as const,
+      now: THIRD_SHOT_AT,
+    };
+    const response = await submitBonusShot(pool, finalInput);
+
+    expect(response).toMatchObject({
+      serverResult: 'miss',
+      rewardGranted: null,
+      attempt: {
+        status: 'active',
+        state: 'break_active',
+        currentPeriod: 1,
+        periodStartedAt: null,
+        breakStartedAt: THIRD_SHOT_AT.toISOString(),
+        closedAt: null,
+        shotsTaken: 3,
+        currentPeriodShotsTaken: 3,
+        goals: 1,
+      },
+    });
+    const period = await pool.query<{
+      shots_taken: number;
+      goals: number;
+      closed_reason: string;
+      ended_at: Date;
+    }>(
+      `select shots_taken, goals, closed_reason, ended_at
+         from bonus_game_period_log
+        where attempt_id = $1`,
+      [attemptId],
+    );
+    expect(period.rows).toEqual([
+      { shots_taken: 3, goals: 1, closed_reason: 'quota', ended_at: THIRD_SHOT_AT },
+    ]);
+    const beforeDuplicate = await mutationSnapshot(userId, attemptId);
+
+    const duplicate = await submitBonusShot(pool, finalInput);
+
+    expect(duplicate).toMatchObject({
+      serverResult: 'miss',
+      rewardGranted: null,
+      attempt: { status: 'active', state: 'break_active', currentPeriodShotsTaken: 3 },
+    });
+    expect(await mutationSnapshot(userId, attemptId)).toEqual(beforeDuplicate);
+  });
+
+  it('fails the attempt at final-period quota in the accepted-shot transaction and keeps duplicate retry idempotent', async () => {
+    const userId = await createUser();
+    const game = await createGame({ targetGoals: 5 });
+    const attemptId = await createActiveAttempt(userId, game.id);
+    await submitBonusShot(pool, {
+      userId,
+      attemptId,
+      claimedShotIndex: 1,
+      input: GOAL_INPUT,
+      claimedResult: 'goal',
+      now: SHOT_AT,
+    });
+    await submitBonusShot(pool, {
+      userId,
+      attemptId,
+      claimedShotIndex: 2,
+      input: SECOND_SHOT_INPUT,
+      claimedResult: 'miss',
+      now: SECOND_SHOT_AT,
+    });
+    const finalInput = {
+      userId,
+      attemptId,
+      claimedShotIndex: 3,
+      input: THIRD_SHOT_INPUT,
+      claimedResult: 'miss' as const,
+      now: THIRD_SHOT_AT,
+    };
+
+    const response = await submitBonusShot(pool, finalInput);
+
+    expect(response).toMatchObject({
+      serverResult: 'miss',
+      rewardGranted: null,
+      attempt: {
+        status: 'failed',
+        state: 'closed',
+        currentPeriod: 1,
+        periodStartedAt: null,
+        breakStartedAt: null,
+        closedAt: THIRD_SHOT_AT.toISOString(),
+        shotsTaken: 3,
+        currentPeriodShotsTaken: 3,
+        goals: 1,
+      },
+    });
+    const beforeDuplicate = await mutationSnapshot(userId, attemptId);
+
+    const duplicate = await submitBonusShot(pool, finalInput);
+
+    expect(duplicate).toMatchObject({
+      serverResult: 'miss',
+      rewardGranted: null,
+      attempt: { status: 'failed', state: 'closed', currentPeriodShotsTaken: 3 },
+    });
+    expect(await mutationSnapshot(userId, attemptId)).toEqual(beforeDuplicate);
+    expect(beforeDuplicate.periodLogs).toBe(1);
+    expect(beforeDuplicate.economyEvents).toBe(0);
+  });
+
+  it('completes instead of failing when the target is reached on the quota-edge shot', async () => {
+    const userId = await createUser();
+    const game = await createGame({ targetGoals: 3 });
+    const attemptId = await createActiveAttempt(userId, game.id);
+    await submitBonusShot(pool, {
+      userId,
+      attemptId,
+      claimedShotIndex: 1,
+      input: GOAL_INPUT,
+      claimedResult: 'goal',
+      now: SHOT_AT,
+    });
+    await submitBonusShot(pool, {
+      userId,
+      attemptId,
+      claimedShotIndex: 2,
+      input: {
+        ...SECOND_SHOT_INPUT,
+        tapTime: 1_854,
+        shooterTapTime: 1_420.666_666_666_666_5,
+      },
+      claimedResult: 'goal',
+      now: new Date('2026-08-23T12:00:02.854Z'),
+    });
+    const quotaEdgeInput = {
+      userId,
+      attemptId,
+      claimedShotIndex: 3,
+      input: {
+        ...THIRD_SHOT_INPUT,
+        tapTime: 2_117,
+        shooterTapTime: 1_250.333_333_333_333_5,
+      },
+      claimedResult: 'goal' as const,
+      now: new Date('2026-08-23T12:00:04.117Z'),
+    };
+
+    const response = await submitBonusShot(pool, quotaEdgeInput);
+
+    expect(response).toMatchObject({
+      serverResult: 'goal',
+      rewardGranted: { coins: 100, stars: 1, experience: 50 },
+      attempt: {
+        status: 'completed',
+        state: 'closed',
+        shotsTaken: 3,
+        currentPeriodShotsTaken: 3,
+        goals: 3,
+      },
+    });
+    const period = await pool.query<{ closed_reason: string }>(
+      'select closed_reason from bonus_game_period_log where attempt_id = $1',
+      [attemptId],
+    );
+    expect(period.rows).toEqual([{ closed_reason: 'target_reached' }]);
+    const beforeDuplicate = await mutationSnapshot(userId, attemptId);
+
+    const duplicate = await submitBonusShot(pool, quotaEdgeInput);
+
+    expect(duplicate).toMatchObject({
+      serverResult: 'goal',
+      rewardGranted: null,
+      attempt: { status: 'completed', state: 'closed', rewardGranted: true },
+    });
+    expect(await mutationSnapshot(userId, attemptId)).toEqual(beforeDuplicate);
+    expect(beforeDuplicate.periodLogs).toBe(1);
+    expect(beforeDuplicate.economyEvents).toBe(1);
   });
 
   it('rejects an unsupported game-core version before mutating shot or reward state', async () => {

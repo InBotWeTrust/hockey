@@ -26,6 +26,8 @@ vi.mock('../game/PlayView.js', () => ({
       };
       claimedResult: 'goal' | 'save' | 'miss';
     }) => Promise<unknown>;
+    applyState: (next: BonusGameAttempt) => void;
+    applyResolvedState?: (next: BonusGameAttempt) => void;
   }) {
     playViewProbe(props);
     return (
@@ -136,8 +138,8 @@ function LocationProbe(): JSX.Element {
   return <div aria-label="location">{`${location.pathname}${location.search}`}</div>;
 }
 
-function renderScreen(path = '/bonus-games/game-1/play?attempt=attempt-1'): void {
-  render(
+function renderScreen(path = '/bonus-games/game-1/play?attempt=attempt-1') {
+  return render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route path="/bonus-games/:gameId/play" element={<BonusGamePlayScreen />} />
@@ -158,9 +160,11 @@ function setStore(overrides: Partial<ReturnType<typeof useBonusGameStore.getStat
     needsReconcile: false,
     requestEpoch: 0,
     receivedAtPerformanceMs: 1_000,
+    pendingShotAttempt: null,
     loadCurrent: vi.fn(async () => null),
     loadAttempt: vi.fn(async () => null),
     applyState: vi.fn(),
+    applyPendingShot: vi.fn(() => null),
     optimisticAddShot: vi.fn(),
     startPeriod: vi.fn(async () => null),
     submitShot: vi.fn(async () => null),
@@ -252,6 +256,113 @@ describe('BonusGamePlayScreen', () => {
         '/bonus-games/goalkeepers/beach-ready.webp',
         '/bonus-games/goalkeepers/beach-save.webp',
       ],
+    });
+  });
+
+  it('defers the shot DTO until PlayView reaches its visual boundary', async () => {
+    // This catches the screen disappearing before the final puck animation and result pause finish.
+    const completedAttempt = attempt({
+      status: 'completed',
+      state: 'closed',
+      period_started_at: null,
+      period_ends_at: null,
+      closed_at: '2026-08-24T10:01:00.000Z',
+      reward_granted: true,
+      goals: 20,
+      shots_taken: 29,
+      current_period_shots_taken: 4,
+    });
+    const submitShot = vi.fn(async () => ({
+      serverResult: 'goal' as const,
+      attempt: completedAttempt,
+      rewardGranted: true,
+    }));
+    const applyPendingShot = vi.fn(() => {
+      useBonusGameStore.setState({
+        attempt: completedAttempt,
+        pendingShotAttempt: null,
+        inFlight: false,
+      });
+      return completedAttempt;
+    });
+    setStore({
+      submitShot,
+      applyPendingShot,
+      pendingShotAttempt: completedAttempt,
+      inFlight: true,
+    });
+    renderScreen();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Тестовый бросок' }));
+    await waitFor(() => expect(submitShot).toHaveBeenCalledTimes(1));
+
+    expect(submitShot).toHaveBeenCalledWith(
+      expect.objectContaining({ claimed_shot_index: 4, claimed_result: 'goal' }),
+      { deferApply: true },
+    );
+    expect(screen.getByTestId('bonus-play-view')).toBeInTheDocument();
+    expect(screen.queryByText('Награда за первое прохождение')).toBeNull();
+
+    const props = playViewProbe.mock.calls.at(-1)?.[0] as {
+      applyResolvedState?: (next: BonusGameAttempt) => void;
+    };
+    act(() => props.applyResolvedState?.(completedAttempt));
+
+    expect(applyPendingShot).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('Награда за первое прохождение')).toBeInTheDocument();
+    expect(screen.queryByTestId('bonus-play-view')).toBeNull();
+  });
+
+  it('applies a deferred response that arrives after the play route unmounts', async () => {
+    // This catches a late successful response leaving the store permanently locked with no reward view.
+    const responsePending = deferred<{
+      serverResult: 'goal';
+      attempt: BonusGameAttempt;
+      rewardGranted: true;
+    }>();
+    const completedAttempt = attempt({
+      status: 'completed',
+      state: 'closed',
+      period_started_at: null,
+      period_ends_at: null,
+      closed_at: '2026-08-24T10:01:00.000Z',
+      reward_granted: true,
+      goals: 20,
+    });
+    const submitShot = vi.fn(async () => {
+      const result = await responsePending.promise;
+      useBonusGameStore.setState({ pendingShotAttempt: result.attempt, inFlight: true });
+      return result;
+    });
+    const applyPendingShot = vi.fn(() => {
+      const pendingAttempt = useBonusGameStore.getState().pendingShotAttempt;
+      if (!pendingAttempt) return null;
+      useBonusGameStore.setState({
+        attempt: pendingAttempt,
+        pendingShotAttempt: null,
+        inFlight: false,
+      });
+      return pendingAttempt;
+    });
+    setStore({ submitShot, applyPendingShot });
+    const view = renderScreen();
+    fireEvent.click(screen.getByRole('button', { name: 'Тестовый бросок' }));
+
+    view.unmount();
+    await act(async () => {
+      responsePending.resolve({
+        serverResult: 'goal',
+        attempt: completedAttempt,
+        rewardGranted: true,
+      });
+      await responsePending.promise;
+    });
+
+    expect(applyPendingShot).toHaveBeenCalledTimes(2);
+    expect(useBonusGameStore.getState()).toMatchObject({
+      attempt: completedAttempt,
+      pendingShotAttempt: null,
+      inFlight: false,
     });
   });
 

@@ -115,6 +115,7 @@ describe('bonusGameStore', () => {
       needsReconcile: false,
       requestEpoch: 0,
       receivedAtPerformanceMs: null,
+      pendingShotAttempt: null,
     });
   });
 
@@ -513,6 +514,149 @@ describe('bonusGameStore', () => {
 
     expect(useBonusGameStore.getState().attempt).toEqual(authoritativeAttempt);
     expect(useBonusGameStore.getState().needsReconcile).toBe(false);
+    expect(useBonusGameStore.getState().pendingShotAttempt).toBeNull();
+    expect(useBonusGameStore.getState().inFlight).toBe(false);
+  });
+
+  it('defers an authoritative shot response until the visual boundary applies it once', async () => {
+    // This catches terminal or break state replacing the play screen while the puck is still flying.
+    let performanceNow = 1_000;
+    vi.spyOn(performance, 'now').mockImplementation(() => performanceNow);
+    const failedAttempt = {
+      ...initialAttempt,
+      status: 'failed' as const,
+      state: 'closed' as const,
+      period_started_at: null,
+      period_ends_at: null,
+      closed_at: '2026-08-24T10:01:01.000Z',
+      shots_taken: 3,
+      current_period_shots_taken: 3,
+    };
+    vi.mocked(submitBonusShot).mockResolvedValueOnce({
+      server_result: 'save',
+      attempt: failedAttempt,
+      reward_granted: false,
+      balances: { coins: 10, stars: 2, experience: 7 },
+    });
+    useBonusGameStore.getState().applyState(initialAttempt);
+    useBonusGameStore.getState().optimisticAddShot('goal');
+    const optimisticAttempt = useBonusGameStore.getState().attempt;
+    const receiptBeforeBoundary = useBonusGameStore.getState().receivedAtPerformanceMs;
+
+    const result = await useBonusGameStore.getState().submitShot(shot, { deferApply: true });
+
+    expect(result).toMatchObject({ attempt: failedAttempt, rewardGranted: false });
+    expect(useBonusGameStore.getState()).toMatchObject({
+      attempt: optimisticAttempt,
+      pendingShotAttempt: failedAttempt,
+      inFlight: true,
+      needsReconcile: false,
+      receivedAtPerformanceMs: receiptBeforeBoundary,
+    });
+    expect(useBonusGameStore.getState().canSubmitShot()).toBe(false);
+    await useBonusGameStore.getState().refresh();
+    await useBonusGameStore.getState().loadAttempt(initialAttempt.id);
+    expect(fetchCurrentBonusAttempt).not.toHaveBeenCalled();
+    expect(fetchBonusAttempt).not.toHaveBeenCalled();
+    expect(useBonusGameStore.getState().pendingShotAttempt).toEqual(failedAttempt);
+
+    performanceNow = 4_321;
+    const applied = useBonusGameStore.getState().applyPendingShot();
+    const stateAfterBoundary = useBonusGameStore.getState();
+
+    expect(applied).toEqual(failedAttempt);
+    expect(stateAfterBoundary).toMatchObject({
+      attempt: failedAttempt,
+      pendingShotAttempt: null,
+      inFlight: false,
+      receivedAtPerformanceMs: 4_321,
+    });
+    expect(useBonusGameStore.getState().applyPendingShot()).toBeNull();
+    expect(useBonusGameStore.getState()).toEqual(stateAfterBoundary);
+  });
+
+  it('invalidates a read started during a deferred shot before applying the pending result', async () => {
+    // This catches an in-flight GET replacing either the optimistic frame or the saved terminal DTO.
+    const shotRequest = deferred<BonusShotResponse>();
+    const duringShotRead = deferred<BonusAttemptResponse>();
+    const completedAttempt = {
+      ...initialAttempt,
+      status: 'completed' as const,
+      state: 'closed' as const,
+      period_started_at: null,
+      period_ends_at: null,
+      closed_at: '2026-08-24T10:01:01.000Z',
+      shots_taken: 3,
+      current_period_shots_taken: 3,
+      goals: 3,
+      reward_granted: true,
+    };
+    vi.mocked(submitBonusShot).mockReturnValueOnce(shotRequest.promise);
+    vi.mocked(fetchCurrentBonusAttempt).mockReturnValueOnce(duringShotRead.promise);
+    useBonusGameStore.getState().applyState(initialAttempt);
+    useBonusGameStore.getState().optimisticAddShot('goal');
+    const optimisticAttempt = useBonusGameStore.getState().attempt;
+
+    const submit = useBonusGameStore.getState().submitShot(shot, { deferApply: true });
+    const staleRead = useBonusGameStore.getState().refresh();
+    shotRequest.resolve({
+      server_result: 'goal',
+      attempt: completedAttempt,
+      reward_granted: true,
+      balances: { coins: 110, stars: 3, experience: 57 },
+    });
+    await submit;
+    duringShotRead.resolve(response(initialAttempt));
+    await staleRead;
+
+    expect(useBonusGameStore.getState()).toMatchObject({
+      attempt: optimisticAttempt,
+      pendingShotAttempt: completedAttempt,
+      inFlight: true,
+    });
+
+    useBonusGameStore.getState().applyPendingShot();
+    expect(useBonusGameStore.getState().attempt).toEqual(completedAttempt);
+  });
+
+  it('uses a safe fallback for an initial non-API load failure', async () => {
+    // This catches browser or parser details leaking into player-visible copy.
+    vi.mocked(fetchBonusAttempt).mockRejectedValueOnce(
+      new TypeError('Failed to fetch internal /api response body'),
+    );
+
+    await useBonusGameStore.getState().loadAttempt(initialAttempt.id);
+
+    expect(useBonusGameStore.getState()).toMatchObject({
+      error: 'Не удалось загрузить бонус-попытку.',
+      errorCode: null,
+    });
+    expect(useBonusGameStore.getState().error).not.toContain('Failed to fetch');
+    expect(useBonusGameStore.getState().error).not.toContain('/api');
+  });
+
+  it('keeps the reconciliation lock and safe copy when its read fails with a raw error', async () => {
+    // This catches an ambiguous committed shot becoming retryable or exposing transport internals.
+    vi.mocked(submitBonusShot).mockRejectedValueOnce(
+      new TypeError('Failed to fetch: upstream JSON was invalid'),
+    );
+    vi.mocked(fetchBonusAttempt).mockRejectedValueOnce(
+      new Error('Unexpected token < in JSON at position 0'),
+    );
+    useBonusGameStore.getState().applyState(initialAttempt);
+
+    await useBonusGameStore.getState().submitShot(shot);
+    await useBonusGameStore.getState().loadAttempt(initialAttempt.id);
+
+    expect(useBonusGameStore.getState()).toMatchObject({
+      error: 'Не удалось отправить бросок.',
+      errorCode: null,
+      needsReconcile: true,
+      inFlight: false,
+    });
+    expect(useBonusGameStore.getState().canSubmitShot()).toBe(false);
+    expect(useBonusGameStore.getState().error).not.toContain('Failed to fetch');
+    expect(useBonusGameStore.getState().error).not.toContain('JSON');
   });
 
   it('sends one shot while the first submission is still pending', async () => {

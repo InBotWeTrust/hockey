@@ -42,6 +42,13 @@ const PERIODS: BonusPeriodRule[] = [
   },
 ];
 
+const QUOTA_PERIOD: BonusPeriodRule = {
+  ...PERIODS[0]!,
+  durationMs: 10_000,
+  goalFrequency: 0.1,
+  goalAmplitude: 0,
+};
+
 interface TestGame {
   id: string;
   slug: string;
@@ -270,12 +277,15 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
       shots_taken: number;
       goals: number;
       shots: number;
+      period_logs: number;
       completions: number;
       economy_events: number;
     }>(
       `select attempt.status, attempt.state, attempt.shots_taken::int, attempt.goals::int,
               (select count(*)::int from shot_session
                 where bonus_game_attempt_id = attempt.id) as shots,
+              (select count(*)::int from bonus_game_period_log
+                where attempt_id = attempt.id) as period_logs,
               (select count(*)::int from user_bonus_game_completion
                 where attempt_id = attempt.id) as completions,
               (select count(*)::int from bonus_game_economy_event
@@ -287,11 +297,16 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
     return rows[0]!;
   }
 
-  function expectedShot(attempt: AttemptDto, tapTime = 125): 'goal' | 'save' | 'miss' {
+  function expectedShot(
+    attempt: AttemptDto,
+    tapTime = 125,
+    shooterTapTime = tapTime,
+    shotIndex = 1,
+  ): 'goal' | 'save' | 'miss' {
     const rule = attempt.rules.periods[attempt.current_period - 1]!;
     const shotInput = {
       tapTime,
-      shooterTapTime: tapTime,
+      shooterTapTime,
       puckSpeedPerMs: rule.puck_speed_per_ms,
       shooterFrequency: rule.shooter_frequency,
       goalieFrequency: rule.goalie_frequency,
@@ -312,10 +327,39 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
     return resolveShot(
       shotInput,
       goalie,
-      deriveShotSeed(attempt.attempt_seed, attempt.current_period, 1),
-      1,
+      deriveShotSeed(attempt.attempt_seed, attempt.current_period, shotIndex),
+      shotIndex,
       STICK_NEUTRAL,
     ).type;
+  }
+
+  async function submitTimedRouteShot(
+    attempt: AttemptDto,
+    input: {
+      shotIndex: number;
+      tapTime: number;
+      shooterTapTime: number;
+      wallElapsedMs: number;
+    },
+  ) {
+    await pool.query(
+      `update bonus_game_attempt
+          set period_started_at = clock_timestamp() - ($2::double precision * interval '1 millisecond')
+        where id = $1`,
+      [attempt.id, input.wallElapsedMs],
+    );
+    const payload = {
+      claimed_shot_index: input.shotIndex,
+      input: { tapTime: input.tapTime, shooterTapTime: input.shooterTapTime },
+      claimed_result: expectedShot(attempt, input.tapTime, input.shooterTapTime, input.shotIndex),
+    };
+    const response = await app.inject({
+      method: 'POST',
+      url: `/bonus-games/attempts/${attempt.id}/shot`,
+      headers,
+      payload,
+    });
+    return { response, payload };
   }
 
   it('requires authentication on exactly all eight player endpoints', async () => {
@@ -655,6 +699,182 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
       status: 'completed',
       reward_granted: false,
     });
+  });
+
+  it('returns break state on the accepted nonfinal quota shot and keeps its duplicate idempotent', async () => {
+    const secondPeriod: BonusPeriodRule = { ...QUOTA_PERIOD, periodNumber: 2 };
+    const game = await createGame({
+      periods: [QUOTA_PERIOD, secondPeriod],
+      targetGoals: 6,
+    });
+    const attempt = await startAttempt(game.id);
+    const active = await startPeriod(attempt.id);
+    await submitTimedRouteShot(active, {
+      shotIndex: 1,
+      tapTime: 100,
+      shooterTapTime: 100,
+      wallElapsedMs: 100,
+    });
+    await submitTimedRouteShot(active, {
+      shotIndex: 2,
+      tapTime: 500,
+      shooterTapTime: 66.666_666_666_666_69,
+      wallElapsedMs: 1_500,
+    });
+    const final = await submitTimedRouteShot(active, {
+      shotIndex: 3,
+      tapTime: 1_242,
+      shooterTapTime: 375.333_333_333_333_37,
+      wallElapsedMs: 3_242,
+    });
+
+    expect(final.response.statusCode).toBe(200);
+    expect(final.response.json()).toMatchObject({
+      reward_granted: false,
+      attempt: {
+        status: 'active',
+        state: 'break_active',
+        current_period: 1,
+        period_started_at: null,
+        break_started_at: expect.any(String),
+        shots_taken: 3,
+        current_period_shots_taken: 3,
+      },
+    });
+    const beforeDuplicate = await shotMutationSnapshot(attempt.id);
+    expect(beforeDuplicate).toMatchObject({ period_logs: 1, economy_events: 0 });
+
+    const duplicate = await app.inject({
+      method: 'POST',
+      url: `/bonus-games/attempts/${attempt.id}/shot`,
+      headers,
+      payload: final.payload,
+    });
+
+    expect(duplicate.statusCode).toBe(200);
+    expect(duplicate.json().attempt).toMatchObject({
+      status: 'active',
+      state: 'break_active',
+      current_period_shots_taken: 3,
+    });
+    expect(await shotMutationSnapshot(attempt.id)).toEqual(beforeDuplicate);
+  });
+
+  it('returns failed state on the accepted final quota shot and keeps its duplicate idempotent', async () => {
+    const game = await createGame({ periods: [QUOTA_PERIOD], targetGoals: 6 });
+    const attempt = await startAttempt(game.id);
+    const active = await startPeriod(attempt.id);
+    await submitTimedRouteShot(active, {
+      shotIndex: 1,
+      tapTime: 100,
+      shooterTapTime: 100,
+      wallElapsedMs: 100,
+    });
+    await submitTimedRouteShot(active, {
+      shotIndex: 2,
+      tapTime: 500,
+      shooterTapTime: 66.666_666_666_666_69,
+      wallElapsedMs: 1_500,
+    });
+    const final = await submitTimedRouteShot(active, {
+      shotIndex: 3,
+      tapTime: 1_242,
+      shooterTapTime: 375.333_333_333_333_37,
+      wallElapsedMs: 3_242,
+    });
+
+    expect(final.response.statusCode).toBe(200);
+    expect(final.response.json()).toMatchObject({
+      reward_granted: false,
+      attempt: {
+        status: 'failed',
+        state: 'closed',
+        current_period: 1,
+        period_started_at: null,
+        break_started_at: null,
+        closed_at: expect.any(String),
+        shots_taken: 3,
+        current_period_shots_taken: 3,
+      },
+    });
+    const beforeDuplicate = await shotMutationSnapshot(attempt.id);
+    expect(beforeDuplicate).toMatchObject({ period_logs: 1, economy_events: 0 });
+
+    const duplicate = await app.inject({
+      method: 'POST',
+      url: `/bonus-games/attempts/${attempt.id}/shot`,
+      headers,
+      payload: final.payload,
+    });
+
+    expect(duplicate.statusCode).toBe(200);
+    expect(duplicate.json().attempt).toMatchObject({
+      status: 'failed',
+      state: 'closed',
+      current_period_shots_taken: 3,
+    });
+    expect(await shotMutationSnapshot(attempt.id)).toEqual(beforeDuplicate);
+  });
+
+  it('returns completed rather than failed when target is reached on the quota-edge shot', async () => {
+    const game = await createGame({ periods: [QUOTA_PERIOD], targetGoals: 1 });
+    const attempt = await startAttempt(game.id);
+    const active = await startPeriod(attempt.id);
+    const first = await submitTimedRouteShot(active, {
+      shotIndex: 1,
+      tapTime: 100,
+      shooterTapTime: 100,
+      wallElapsedMs: 100,
+    });
+    const second = await submitTimedRouteShot(active, {
+      shotIndex: 2,
+      tapTime: 500,
+      shooterTapTime: 66.666_666_666_666_69,
+      wallElapsedMs: 1_500,
+    });
+    expect(first.response.json().server_result).not.toBe('goal');
+    expect(second.response.json().server_result).not.toBe('goal');
+    const final = await submitTimedRouteShot(active, {
+      shotIndex: 3,
+      tapTime: 1_242,
+      shooterTapTime: 375.333_333_333_333_37,
+      wallElapsedMs: 3_242,
+    });
+
+    expect(final.response.statusCode).toBe(200);
+    expect(final.response.json()).toMatchObject({
+      server_result: 'goal',
+      reward_granted: true,
+      attempt: {
+        status: 'completed',
+        state: 'closed',
+        shots_taken: 3,
+        current_period_shots_taken: 3,
+        goals: 1,
+        reward_granted: true,
+      },
+    });
+    const period = await pool.query<{ closed_reason: string }>(
+      'select closed_reason from bonus_game_period_log where attempt_id = $1',
+      [attempt.id],
+    );
+    expect(period.rows).toEqual([{ closed_reason: 'target_reached' }]);
+    const beforeDuplicate = await shotMutationSnapshot(attempt.id);
+    expect(beforeDuplicate).toMatchObject({ period_logs: 1, economy_events: 1 });
+
+    const duplicate = await app.inject({
+      method: 'POST',
+      url: `/bonus-games/attempts/${attempt.id}/shot`,
+      headers,
+      payload: final.payload,
+    });
+
+    expect(duplicate.statusCode).toBe(200);
+    expect(duplicate.json()).toMatchObject({
+      reward_granted: true,
+      attempt: { status: 'completed', state: 'closed', reward_granted: true },
+    });
+    expect(await shotMutationSnapshot(attempt.id)).toEqual(beforeDuplicate);
   });
 
   it('uses UUID and strict Zod request schemas', async () => {

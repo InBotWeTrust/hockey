@@ -187,6 +187,7 @@ export function BonusGamePlayScreen(): JSX.Element {
   const receivedAtPerformanceMs = useBonusGameStore((state) => state.receivedAtPerformanceMs);
   const loadCurrent = useBonusGameStore((state) => state.loadCurrent);
   const loadAttempt = useBonusGameStore((state) => state.loadAttempt);
+  const applyPendingShot = useBonusGameStore((state) => state.applyPendingShot);
   const startPeriod = useBonusGameStore((state) => state.startPeriod);
   const optimisticAddShot = useBonusGameStore((state) => state.optimisticAddShot);
   const submitShot = useBonusGameStore((state) => state.submitShot);
@@ -195,6 +196,15 @@ export function BonusGamePlayScreen(): JSX.Element {
   const [isConfirmingAbandon, setIsConfirmingAbandon] = useState(false);
   const abandonRequestRef = useRef(false);
   const loadedRouteRef = useRef<string | null>(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      useBonusGameStore.getState().applyPendingShot();
+    };
+  }, []);
 
   const reconcileAttempt = useCallback(async (): Promise<void> => {
     const id = attempt?.id ?? routeAttemptId;
@@ -364,27 +374,34 @@ export function BonusGamePlayScreen(): JSX.Element {
         optimisticAddShot={optimisticAddShot}
         submitShot={async ({ shotIndex, input, claimedResult }) => {
           if (input.shooterTapTime === undefined) return null;
-          const result = await submitShot({
-            claimed_shot_index: shotIndex,
-            input: {
-              tapTime: input.tapTime,
-              shooterTapTime: input.shooterTapTime,
-              ...(input.puckSpeedPerMs !== undefined
-                ? { puckSpeedPerMs: input.puckSpeedPerMs }
-                : {}),
-              ...(input.shooterFrequency !== undefined
-                ? { shooterFrequency: input.shooterFrequency }
-                : {}),
-              ...(input.goalieFrequency !== undefined
-                ? { goalieFrequency: input.goalieFrequency }
-                : {}),
-              ...(input.goalFrequency !== undefined ? { goalFrequency: input.goalFrequency } : {}),
+          const result = await submitShot(
+            {
+              claimed_shot_index: shotIndex,
+              input: {
+                tapTime: input.tapTime,
+                shooterTapTime: input.shooterTapTime,
+                ...(input.puckSpeedPerMs !== undefined
+                  ? { puckSpeedPerMs: input.puckSpeedPerMs }
+                  : {}),
+                ...(input.shooterFrequency !== undefined
+                  ? { shooterFrequency: input.shooterFrequency }
+                  : {}),
+                ...(input.goalieFrequency !== undefined
+                  ? { goalieFrequency: input.goalieFrequency }
+                  : {}),
+                ...(input.goalFrequency !== undefined
+                  ? { goalFrequency: input.goalFrequency }
+                  : {}),
+              },
+              claimed_result: claimedResult,
             },
-            claimed_result: claimedResult,
-          });
+            { deferApply: true },
+          );
+          if (!mountedRef.current) applyPendingShot();
           return result ? { serverResult: result.serverResult, state: result.attempt } : null;
         }}
         applyState={() => undefined}
+        applyResolvedState={() => applyPendingShot()}
         longCourtBackground={attempt.arena.artwork_url}
         rinkAspectRatio={`${RINK.width} / ${RINK.height}`}
         rinkBorderRadius={28}

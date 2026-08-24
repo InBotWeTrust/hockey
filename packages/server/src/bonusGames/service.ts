@@ -700,7 +700,7 @@ export async function submitBonusShot(
     }
     let attempt = await reconcileBonusAttempt(client, owned, input.now);
 
-    if (attempt.status === 'completed') {
+    if (attempt.status !== 'active' || attempt.state !== 'period_active') {
       const accepted = await fetchAcceptedBonusShot(
         client,
         attempt.id,
@@ -714,17 +714,15 @@ export async function submitBonusShot(
           rewardGranted: null,
           balances,
         };
-      } else {
+      } else if (attempt.status !== 'active') {
         deferredError = new AppError(
           'bonus_attempt_not_active',
           'bonus attempt is not active',
           409,
         );
+      } else {
+        deferredError = new AppError('bonus_period_not_ready', 'bonus period is not active', 409);
       }
-    } else if (attempt.status !== 'active') {
-      deferredError = new AppError('bonus_attempt_not_active', 'bonus attempt is not active', 409);
-    } else if (attempt.state !== 'period_active') {
-      deferredError = new AppError('bonus_period_not_ready', 'bonus period is not active', 409);
     } else {
       const rule = periodRuleForAttempt(attempt);
       const acceptedShotCount = await countBonusPeriodShots(
@@ -838,6 +836,8 @@ export async function submitBonusShot(
               [input.now, attempt.id],
             );
             attempt = completed.rows[0]!;
+          } else if (expectedShotIndex >= rule.shotsLimit) {
+            attempt = await reconcileBonusAttempt(client, attempt, input.now);
           }
 
           response = {
