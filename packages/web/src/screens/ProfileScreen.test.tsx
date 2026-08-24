@@ -620,7 +620,8 @@ describe('ProfileScreen', () => {
       'aria-pressed',
       'true',
     );
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Закрыть' }));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Клюшка' })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Коньки.*Обычные коньки/i }));
     const skatesDialog = screen.getByRole('dialog', { name: 'Коньки' });

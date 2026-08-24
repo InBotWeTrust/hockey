@@ -6,6 +6,7 @@ import { ArrowLeft, CircleDollarSign, RussianRuble, Sparkles, Star, X } from 'lu
 import { useNavigate } from 'react-router-dom';
 import { rewardColor, type RewardTone } from '../app/rewardColors.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
+import { AccessibleModal } from '../components/AccessibleModal.js';
 import {
   fetchMyInventory,
   purchaseInventoryItem,
@@ -780,30 +781,31 @@ function InventoryItemModal({
   onBuy: () => void;
 }): JSX.Element {
   return (
-    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 420 }}>
-      <section
-        role="dialog"
-        aria-label={item.title}
-        className="modal-card inventory-item-modal-card"
-        onClick={(event) => event.stopPropagation()}
-        style={{
-          width: 'min(430px, calc(100vw - 28px))',
-          maxHeight: 'calc(100dvh - 48px - var(--app-safe-top) - var(--app-safe-bottom))',
-          display: 'grid',
-          gap: 14,
-          overflowY: 'auto',
-          WebkitOverflowScrolling: 'touch',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="modal-title">{item.title}</div>
-          </div>
-          <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
-            <X size={15} />
-          </button>
-        </div>
-
+    <AccessibleModal
+      title={item.title}
+      onRequestClose={onClose}
+      closeBlocked={isBuying}
+      cardClassName="inventory-item-modal-card"
+      backdropStyle={{ zIndex: 420 }}
+      cardStyle={{
+        width: 'min(430px, calc(100vw - 28px))',
+        maxHeight: 'calc(100dvh - 48px - var(--app-safe-top) - var(--app-safe-bottom))',
+        overflowY: 'auto',
+        WebkitOverflowScrolling: 'touch',
+      }}
+      headerAction={
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label="Закрыть"
+          disabled={isBuying}
+          onClick={onClose}
+        >
+          <X size={15} />
+        </button>
+      }
+    >
+      <div style={{ display: 'grid', gap: 14 }}>
         <div
           style={{
             width: '100%',
@@ -853,8 +855,8 @@ function InventoryItemModal({
         >
           {isBuying ? 'Покупка...' : canBuy ? 'Купить' : 'Не хватает монет'}
         </button>
-      </section>
-    </div>
+      </div>
+    </AccessibleModal>
   );
 }
 
@@ -872,19 +874,20 @@ function PurchaseConfirmModal({
   onConfirm: () => void;
 }): JSX.Element {
   return (
-    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 430 }}>
-      <section
-        role="dialog"
-        aria-label={`Купить ${item.title}?`}
-        className="modal-card"
-        onClick={(event) => event.stopPropagation()}
-        style={{ width: 'min(390px, calc(100vw - 28px))', display: 'grid', gap: 14 }}
-      >
-        <div className="modal-title">Купить {item.title}?</div>
-        <p className="modal-copy" style={{ margin: 0 }}>
+    <AccessibleModal
+      title={`Купить ${item.title}?`}
+      copy={
+        <>
           Будет списано {numberText(item.currencyPrice)} монет. В инвентарь добавится{' '}
           {purchaseBundleLabel(item)}.
-        </p>
+        </>
+      }
+      onRequestClose={onClose}
+      closeBlocked={isSaving}
+      backdropStyle={{ zIndex: 430 }}
+      cardStyle={{ width: 'min(390px, calc(100vw - 28px))' }}
+    >
+      <div style={{ display: 'grid', gap: 14 }}>
         {error !== null && (
           <div role="alert" style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 800 }}>
             {error}
@@ -903,8 +906,8 @@ function PurchaseConfirmModal({
             {isSaving ? 'Покупка...' : 'Купить'}
           </button>
         </div>
-      </section>
-    </div>
+      </div>
+    </AccessibleModal>
   );
 }
 

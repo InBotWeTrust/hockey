@@ -252,6 +252,7 @@ describe('ProfileSettingsScreen', () => {
     renderProfileSettings();
     fireEvent.click(await screen.findByRole('button', { name: /Кастом.*Alice T/i }));
     expect(screen.getByRole('dialog', { name: 'Кастомный профиль' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Закрыть кастомный профиль' })).toBeInTheDocument();
     fireEvent.change(await screen.findByLabelText('Кастомное имя'), {
       target: { value: 'Егор' },
     });
@@ -296,6 +297,10 @@ describe('ProfileSettingsScreen', () => {
     expect(await screen.findByText('Пуш-уведомления')).toBeInTheDocument();
     expect(screen.getByText('Обратная связь')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Написать в обратную связь' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Написать в обратную связь' }));
+    expect(screen.getByRole('dialog', { name: 'Обратная связь' })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Обратная связь' })).not.toBeInTheDocument();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Настройки уведомлений' }));
 

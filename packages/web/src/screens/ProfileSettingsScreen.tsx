@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { triggerHaptic } from '../feedback/haptics.js';
-import { ArrowLeft, Info, LogOut } from 'lucide-react';
+import { ArrowLeft, Info, LogOut, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../api/apiFetch.js';
 import { TelegramLoginButton, type TelegramAuthPayload } from '../auth/TelegramLoginButton.js';
@@ -10,6 +10,7 @@ import { useLogout } from '../auth/useLogout.js';
 import { startVkOAuth } from '../auth/vkAuth.js';
 import { ProfileSupportSections } from './ProfileSupportSections.js';
 import type { ProfileData } from './profileTypes.js';
+import { AccessibleModal } from '../components/AccessibleModal.js';
 
 type DisplaySource = 'telegram' | 'vk' | 'custom';
 
@@ -614,62 +615,48 @@ export function ProfileSettingsScreen(): JSX.Element {
       )}
 
       {gripInfoOpen && (
-        <div
-          onClick={() => setGripInfoOpen(false)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(15, 23, 42, 0.35)',
-            backdropFilter: 'blur(8px)',
-            WebkitBackdropFilter: 'blur(8px)',
-            zIndex: 250,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 20,
-          }}
-        >
-          <div
-            className="glass"
-            onClick={(e) => e.stopPropagation()}
-            style={{ borderRadius: 24, padding: '22px 22px 18px', maxWidth: 320, width: '100%' }}
-          >
-            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)', marginBottom: 10 }}>
-              Хват клюшки
-            </div>
-            <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>
-              При правом хвате можно бросить вплотную у правого борта - слева шайба не докатится.
-              При левом - наоборот.
-            </div>
+        <AccessibleModal
+          title="Хват клюшки"
+          onRequestClose={() => setGripInfoOpen(false)}
+          backdropStyle={{ zIndex: 250 }}
+          cardStyle={{ maxWidth: 320 }}
+          headerAction={
             <button
               type="button"
-              className="btn btn--cta"
+              className="icon-btn"
+              aria-label="Закрыть подсказку"
               onClick={() => setGripInfoOpen(false)}
-              style={{ marginTop: 18, width: '100%', padding: '12px 0', fontSize: 14 }}
             >
-              Понятно
+              <X size={15} />
             </button>
+          }
+        >
+          <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>
+            При правом хвате можно бросить вплотную у правого борта - слева шайба не докатится. При
+            левом - наоборот.
           </div>
-        </div>
+        </AccessibleModal>
       )}
       {customProfileModalOpen && (
-        <div
-          className="modal-backdrop"
-          onClick={() => setCustomProfileModalOpen(false)}
-          style={{ zIndex: 260 }}
+        <AccessibleModal
+          title="Кастомный профиль"
+          onRequestClose={() => setCustomProfileModalOpen(false)}
+          closeBlocked={savingCustomProfile || uploadAvatar.isPending}
+          backdropStyle={{ zIndex: 260 }}
+          cardStyle={{ width: 'min(430px, calc(100vw - 28px))' }}
+          headerAction={
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Закрыть кастомный профиль"
+              disabled={savingCustomProfile || uploadAvatar.isPending}
+              onClick={() => setCustomProfileModalOpen(false)}
+            >
+              <X size={15} />
+            </button>
+          }
         >
-          <section
-            role="dialog"
-            aria-label="Кастомный профиль"
-            className="modal-card"
-            onClick={(event) => event.stopPropagation()}
-            style={{
-              width: 'min(430px, calc(100vw - 28px))',
-              display: 'grid',
-              gap: 12,
-              position: 'relative',
-            }}
-          >
+          <div style={{ display: 'grid', gap: 12 }}>
             <div className="modal-title">Кастомный профиль</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <input
@@ -759,8 +746,8 @@ export function ProfileSettingsScreen(): JSX.Element {
                 {sourceError}
               </div>
             )}
-          </section>
-        </div>
+          </div>
+        </AccessibleModal>
       )}
     </main>
   );

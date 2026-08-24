@@ -312,6 +312,8 @@ describe('InventoryScreen', () => {
     expect(within(dialog).getByText('Надёжная клюшка для первых дуэлей.')).toBeInTheDocument();
     expect(within(dialog).queryByText('5 периодов')).not.toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: 'Купить' })).toBeEnabled();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Бронзовая клюшка' })).not.toBeInTheDocument();
   });
 
   it('disables purchase when tokens are not enough', async () => {
@@ -361,6 +363,7 @@ describe('InventoryScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Купить Бронзовая клюшка за 120 монет' }));
 
     const confirm = screen.getByRole('dialog', { name: 'Купить Бронзовая клюшка?' });
+    expect(document.body.firstElementChild).toHaveAttribute('inert');
     expect(
       within(confirm).getByText('Будет списано 120 монет. В инвентарь добавится 5 бросков.'),
     ).toBeInTheDocument();

@@ -593,36 +593,30 @@ function EquipmentDetailsModal({
   const baseSelected = activeId === null;
 
   return (
-    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 420 }}>
-      <section
-        role="dialog"
-        aria-label={meta.title}
-        className="modal-card"
-        onClick={(event) => event.stopPropagation()}
-        style={{
-          width: 'min(430px, calc(100vw - 28px))',
-          maxHeight: 'calc(100dvh - 112px - var(--app-safe-top) - var(--app-safe-bottom))',
-          display: 'grid',
-          gridTemplateRows: 'auto minmax(0, 1fr) auto',
-          gap: 10,
-          position: 'relative',
-          overflow: 'hidden',
-        }}
-      >
+    <AccessibleModal
+      title={meta.title}
+      copy={equipmentModalCopy(kind)}
+      onRequestClose={onClose}
+      closeBlocked={isSaving}
+      backdropStyle={{ zIndex: 420 }}
+      cardStyle={{
+        width: 'min(430px, calc(100vw - 28px))',
+        maxHeight: 'calc(100dvh - 112px - var(--app-safe-top) - var(--app-safe-bottom))',
+        overflow: 'hidden',
+      }}
+      headerAction={
         <button
           type="button"
           className="icon-btn"
           aria-label="Закрыть"
+          disabled={isSaving}
           onClick={onClose}
-          style={{ position: 'absolute', top: 14, right: 14 }}
         >
           <X size={15} />
         </button>
-        <div style={{ minWidth: 0, paddingRight: 42 }}>
-          <div className="modal-title">{meta.title}</div>
-          <div className="modal-copy">{equipmentModalCopy(kind)}</div>
-        </div>
-
+      }
+    >
+      <div style={{ minHeight: 0, display: 'grid', gap: 10 }}>
         <div
           className="no-scrollbar"
           style={{
@@ -827,8 +821,8 @@ function EquipmentDetailsModal({
             {error}
           </div>
         )}
-      </section>
-    </div>
+      </div>
+    </AccessibleModal>
   );
 }
 
