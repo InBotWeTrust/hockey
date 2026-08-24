@@ -170,6 +170,15 @@ describe('SectionsScreen', () => {
     ]);
   });
 
+  it('starts directly with quick access without a duplicate page label', async () => {
+    // Break caught: the redundant page label would waste vertical space above the first action.
+    mockSectionsApi();
+    renderSections();
+
+    await screen.findByRole('region', { name: 'Быстрый доступ' });
+    expect(screen.queryByText('Разделы')).toBeNull();
+  });
+
   it('places bonus games immediately between amateur and professional sections', async () => {
     mockSectionsApi();
     renderSections();
