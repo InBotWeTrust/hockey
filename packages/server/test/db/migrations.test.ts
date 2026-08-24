@@ -401,6 +401,9 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '058_bonus_games_and_home_arenas.sql',
       '059_seed_bonus_games.sql',
       '060_bonus_games_linear_goalies.sql',
+      '061_tournaments.sql',
+      '062_tournament_duel_concurrency.sql',
+      '063_tournament_manual_push.sql',
     ]);
   });
 
@@ -729,6 +732,9 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '058_bonus_games_and_home_arenas.sql',
       '059_seed_bonus_games.sql',
       '060_bonus_games_linear_goalies.sql',
+      '061_tournaments.sql',
+      '062_tournament_duel_concurrency.sql',
+      '063_tournament_manual_push.sql',
     ]);
 
     const activeInventory = await pool.query<{
