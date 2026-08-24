@@ -1,8 +1,12 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { buildApp } from '../../src/app.js';
+import { createJwt } from '../../src/auth/jwt.js';
 import { applyMigrations } from '../../src/db/migrations.js';
+import { createTournamentDuelMatch } from '../../src/duel/amateur/routes.js';
 import { parseTournamentConfig } from '../../src/tournament/config.js';
 import {
   getFixtureLiveState,
@@ -26,12 +30,21 @@ import {
   openTournamentFixtureSegment,
   settleTournamentSegmentForDuel,
 } from '../../src/tournament/fixtureLifecycle.js';
-import { createTestPool, hasIntegrationEnv, resetDatabase } from '../helpers/testDb.js';
+import {
+  createTestPool,
+  getTestUrls,
+  hasIntegrationEnv,
+  resetDatabase,
+} from '../helpers/testDb.js';
+import { waitForBlockedWriter } from '../helpers/postgresLocks.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
 
 const ADMIN_ID = '00000000-0000-4000-8000-000000000701';
+const JWT_SECRET = 'access-secret-at-least-16-chars';
+const REFRESH_SECRET = 'refresh-secret-at-least-16-chars';
+const DAILY_SEED_SECRET = 'daily-seed-secret-at-least-16!!';
 const PLAYER_IDS = [
   '00000000-0000-4000-8000-000000000711',
   '00000000-0000-4000-8000-000000000712',
@@ -908,6 +921,199 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     await Promise.all([opening, pausing]);
   });
 
+  it('serializes a normal tournament duel settlement before an administrative playoff pause', async () => {
+    await seedUsers(pool, 0);
+    const template = await pool.query<{ id: string }>(
+      `select id from amateur_duel_template
+        where duel_kind = 'classic' and is_active and deleted_at is null
+        limit 1`,
+    );
+    const templateId = template.rows[0]!.id;
+    const tournament = await createPublishedTournament(
+      pool,
+      'technical-playoff-settle-pause-race',
+      0,
+      playoffTournamentRules(4, {
+        playoffRounds: [
+          {
+            roundNumber: 1,
+            winsRequired: 2,
+            homeSequence: ['H', 'A', 'H'],
+            duelTemplateId: templateId,
+            gameWindowMs: 3_600_000,
+            gameBreakMs: 0,
+            roundBreakMs: 0,
+            firstGameStartsAt: '2030-09-01T13:00:00.000Z',
+          },
+          {
+            roundNumber: 2,
+            winsRequired: 1,
+            homeSequence: ['H'],
+            duelTemplateId: templateId,
+            gameWindowMs: 3_600_000,
+            gameBreakMs: 0,
+            roundBreakMs: 0,
+            firstGameStartsAt: '2030-09-01T17:00:00.000Z',
+          },
+        ],
+      }),
+    );
+    await prepareTournamentForPlayoffs(pool, tournament.id, [4, 3, 2, 1]);
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-01T08:00:00.000Z'));
+
+    const fixtures = await pool.query<{
+      key: string;
+      fixture_id: string;
+      home_user_id: string;
+      away_user_id: string;
+      scheduled_starts_at: Date;
+    }>(
+      `select s.depends_on->>'key' as key, f.id as fixture_id,
+              home_participant.user_id as home_user_id, away_participant.user_id as away_user_id,
+              f.scheduled_starts_at
+         from tournament_playoff_series s
+         join tournament_fixture f on f.series_id = s.id
+         join tournament_participant home_participant on home_participant.id = f.home_participant_id
+         join tournament_participant away_participant on away_participant.id = f.away_participant_id
+        where s.tournament_id = $1 and s.depends_on->>'key' in ('R1S1', 'R1S2')
+        order by s.depends_on->>'key'`,
+      [tournament.id],
+    );
+    const pausedFixture = fixtures.rows[0]!;
+    const settledFixture = fixtures.rows[1]!;
+    const inventoryItem = await pool.query<{ id: string }>(
+      `select id from admin_inventory_items
+        where item_kind = 'stick' and rarity = 'common' and deleted_at is null
+        limit 1`,
+    );
+    const inventoryItemId = inventoryItem.rows[0]!.id;
+    await pool.query(
+      `update admin_inventory_items
+          set duel_period_cost = 1, resource_unit = 'period'
+        where id = $1`,
+      [inventoryItemId],
+    );
+    for (const userId of [settledFixture.home_user_id, settledFixture.away_user_id]) {
+      await pool.query(
+        `insert into user_inventory_instance (user_id, inventory_item_id, charges_available)
+         values ($1, $2, 4)`,
+        [userId, inventoryItemId],
+      );
+    }
+
+    const opened = await openTournamentFixtureSegment(
+      pool,
+      {
+        fixtureId: settledFixture.fixture_id,
+        tournamentId: tournament.id,
+        userId: settledFixture.home_user_id,
+        now: settledFixture.scheduled_starts_at,
+      },
+      createTournamentDuelMatch,
+    );
+    await pool.query(
+      `update amateur_duel_match
+          set starts_at = now() - interval '1 minute', ends_at = now() + interval '1 hour'
+        where id = $1`,
+      [opened.duelMatchId],
+    );
+
+    const { databaseUrl, redisUrl } = getTestUrls();
+    let app: FastifyInstance | undefined;
+    const blocker = await pool.connect();
+    let blockerTransactionOpen = false;
+    let settlePromise: ReturnType<FastifyInstance['inject']> | undefined;
+    let pausing:
+      | ReturnType<typeof resolveTournamentNoShow>
+      | undefined;
+    try {
+      app = await buildApp({
+        config: {
+          NODE_ENV: 'test',
+          HOST: '0.0.0.0',
+          PORT: 3000,
+          LOG_LEVEL: 'warn',
+          DATABASE_URL: databaseUrl,
+          REDIS_URL: redisUrl,
+          JWT_SECRET,
+          REFRESH_SECRET,
+          TELEGRAM_BOT_TOKEN: 'test-bot-token',
+          DAILY_SEED_SECRET,
+        },
+        pushSchedulerEnabled: false,
+        pushWorkerEnabled: false,
+      });
+      const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+      const homeToken = await jwt.issueAccessToken({ sub: settledFixture.home_user_id });
+      const awayToken = await jwt.issueAccessToken({ sub: settledFixture.away_user_id });
+      const auth = (token: string) => ({ authorization: `Bearer ${token}` });
+      const homeReady = await app.inject({
+        method: 'POST',
+        url: `/duel/amateur/matches/${opened.duelMatchId}/ready`,
+        headers: auth(homeToken),
+        payload: { loadout: { stick: inventoryItemId } },
+      });
+      expect(homeReady.statusCode).toBe(200);
+      const awayReady = await app.inject({
+        method: 'POST',
+        url: `/duel/amateur/matches/${opened.duelMatchId}/ready`,
+        headers: auth(awayToken),
+        payload: { loadout: { stick: inventoryItemId } },
+      });
+      expect(awayReady.statusCode).toBe(200);
+
+      await pool.query(
+        `update amateur_duel_participant
+            set state = 'completed', goals = case when user_id = $2 then 1 else 0 end,
+                completed_at = now(), updated_at = now()
+          where match_id = $1`,
+        [opened.duelMatchId, settledFixture.home_user_id],
+      );
+      await blocker.query('begin');
+      blockerTransactionOpen = true;
+      const blockerBackend = await blocker.query<{ pid: number }>('select pg_backend_pid() as pid');
+      await blocker.query('select id from amateur_duel_match where id = $1 for update', [
+        opened.duelMatchId,
+      ]);
+      settlePromise = app.inject({
+        method: 'POST',
+        url: `/duel/amateur/matches/${opened.duelMatchId}/settle`,
+        headers: auth(homeToken),
+      });
+      const blocked = await waitForBlockedWriter(
+        pool,
+        blockerBackend.rows[0]!.pid,
+        /amateur_duel_match/i,
+      );
+      expect(blocked.query).toMatch(/amateur_duel_match/i);
+
+      pausing = resolveTournamentNoShow(pool, {
+        tournamentId: tournament.id,
+        fixtureId: pausedFixture.fixture_id,
+        absent: 'both',
+        reason: 'integration settlement/pause race',
+        adminUserId: ADMIN_ID,
+      });
+      const pauseCompletedBeforeDuelRelease = await Promise.race([
+        pausing.then(() => true),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 500)),
+      ]);
+
+      await blocker.query('commit');
+      blockerTransactionOpen = false;
+      const [settled] = await Promise.all([settlePromise, pausing]);
+      expect(pauseCompletedBeforeDuelRelease).toBe(false);
+      expect(settled.statusCode).toBe(200);
+      expect(settled.json().match.status).toBe('settled');
+    } finally {
+      if (blockerTransactionOpen) await blocker.query('rollback').catch(() => undefined);
+      blocker.release();
+      if (settlePromise !== undefined) await settlePromise.catch(() => undefined);
+      if (pausing !== undefined) await pausing.catch(() => undefined);
+      await app?.close();
+    }
+  });
+
   it('ignores a late duel callback for a technically cancelled playoff fixture', async () => {
     await seedUsers(pool, 0);
     const tournament = await createPublishedTournament(
@@ -962,6 +1168,46 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       [tournament.id],
     );
     const delayedGame = games.rows[2]!;
+    const inventoryItem = await pool.query<{ id: string }>(
+      `select id from admin_inventory_items
+        where item_kind = 'stick' and rarity = 'common' and deleted_at is null
+        limit 1`,
+    );
+    const inventoryItemId = inventoryItem.rows[0]!.id;
+    await pool.query(
+      `update admin_inventory_items
+          set duel_period_cost = 1, resource_unit = 'period'
+        where id = $1`,
+      [inventoryItemId],
+    );
+    const inventoryInstances = await pool.query<{ id: string; user_id: string }>(
+      `insert into user_inventory_instance
+         (user_id, inventory_item_id, charges_available, charges_reserved)
+       values ($1, $3, 1, 2), ($2, $3, 1, 3)
+       returning id, user_id`,
+      [delayedGame.home_user_id, delayedGame.away_user_id, inventoryItemId],
+    );
+    const homeInventoryInstanceId = inventoryInstances.rows.find(
+      (instance) => instance.user_id === delayedGame.home_user_id,
+    )!.id;
+    const awayInventoryInstanceId = inventoryInstances.rows.find(
+      (instance) => instance.user_id === delayedGame.away_user_id,
+    )!.id;
+    const reservedLoadout = (instanceId: string) => ({
+      items: [
+        {
+          id: instanceId,
+          itemId: inventoryItemId,
+          instanceId,
+          kind: 'stick',
+          title: 'Cancelled tournament reserve',
+          duelPeriodCost: 1,
+          chargesReserved: 3,
+        },
+      ],
+      powerScore: 10,
+      powerCap: 100,
+    });
     const duel = await pool.query<{ id: string }>(
       `insert into amateur_duel_match
          (challenger_user_id, opponent_user_id, status, source, rules_snapshot,
@@ -974,6 +1220,21 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         delayedGame.away_user_id,
         new Date('2030-09-01T15:00:00.000Z'),
         new Date('2030-09-01T16:00:00.000Z'),
+      ],
+    );
+    await pool.query(
+      `insert into amateur_duel_participant
+         (match_id, user_id, side, state, loadout_snapshot,
+          reserved_inventory_charges, consumed_inventory_charges)
+       values
+         ($1, $2, 'challenger', 'accepted', $4::jsonb, 3, 1),
+         ($1, $3, 'opponent', 'accepted', $5::jsonb, 3, 0)`,
+      [
+        duel.rows[0]!.id,
+        delayedGame.home_user_id,
+        delayedGame.away_user_id,
+        JSON.stringify(reservedLoadout(homeInventoryInstanceId)),
+        JSON.stringify(reservedLoadout(awayInventoryInstanceId)),
       ],
     );
     await pool.query(
@@ -1054,6 +1315,38 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
                          'duel_stake_payout', 'duel_stake_burn', 'duel_reward')`,
     );
     expect(duelEconomy.rows[0]?.count).toBe('0');
+    const cancelledParticipants = await pool.query<{
+      user_id: string;
+      state: string;
+      consumed_inventory_charges: number;
+      charges_available: number;
+      charges_reserved: number;
+    }>(
+      `select participant.user_id, participant.state, participant.consumed_inventory_charges,
+              instance.charges_available, instance.charges_reserved
+         from amateur_duel_participant participant
+        join user_inventory_instance instance on instance.id = case participant.user_id
+          when $2::uuid then $3::uuid else $4::uuid end
+        where participant.match_id = $1
+        order by participant.side`,
+      [duel.rows[0]!.id, delayedGame.home_user_id, homeInventoryInstanceId, awayInventoryInstanceId],
+    );
+    expect(cancelledParticipants.rows).toEqual([
+      {
+        user_id: delayedGame.home_user_id,
+        state: 'forfeit',
+        consumed_inventory_charges: 3,
+        charges_available: 3,
+        charges_reserved: 0,
+      },
+      {
+        user_id: delayedGame.away_user_id,
+        state: 'forfeit',
+        consumed_inventory_charges: 3,
+        charges_available: 4,
+        charges_reserved: 0,
+      },
+    ]);
   });
 
   it('materializes deterministic playoff windows from dependencies and configured round slots', async () => {

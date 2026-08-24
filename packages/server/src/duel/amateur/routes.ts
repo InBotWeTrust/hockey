@@ -30,8 +30,13 @@ import { getGameSettings } from '../gameSettings.js';
 import { deriveAmateurDuelSeed, deriveShotSeed } from '../seed.js';
 import { resolveDuelVenue } from '../../arenas/service.js';
 import type { MatchmakingVenuePolicy } from '../../arenas/types.js';
-import { getDuelSettlementPolicy, type AmateurDuelSource } from './lifecycle.js';
+import {
+  getDuelSettlementPolicy,
+  releaseRemainingDuelInventoryReserve,
+  type AmateurDuelSource,
+} from './lifecycle.js';
 import { settleTournamentSegmentForDuel } from '../../tournament/fixtureLifecycle.js';
+import { lockTournamentForDuelMutation } from '../../tournament/locks.js';
 
 type MatchStatus = 'invited' | 'ready_check' | 'active' | 'settled' | 'cancelled' | 'expired';
 type ParticipantState =
@@ -1896,52 +1901,6 @@ async function consumeInventoryForShot(
   );
 }
 
-async function releaseRemainingInventoryReserve(
-  client: PoolClient,
-  participant: DuelParticipantRow,
-): Promise<void> {
-  const loadout = loadoutFromUnknown(participant.loadout_snapshot);
-  for (const item of loadout.items) {
-    const periodsConsumed = Math.floor(
-      Number(participant.consumed_inventory_charges) /
-        Math.max(
-          1,
-          loadout.items.reduce((sum, cur) => sum + cur.duelPeriodCost, 0),
-        ),
-    );
-    const consumedForItem = Math.min(item.chargesReserved, periodsConsumed * item.duelPeriodCost);
-    const remaining = Math.max(0, item.chargesReserved - consumedForItem);
-    if (remaining <= 0) continue;
-    if (item.instanceId) {
-      await client.query(
-        `update user_inventory_instance
-            set charges_available = charges_available + $3,
-                charges_reserved = greatest(0, charges_reserved - $3),
-                updated_at = now()
-          where user_id = $1 and id = $2`,
-        [participant.user_id, item.instanceId, remaining],
-      );
-      await syncLegacyInventoryAggregate(client, participant.user_id, item.itemId);
-    } else {
-      await client.query(
-        `update user_inventory_item
-            set charges_available = charges_available + $3,
-                charges_reserved = greatest(0, charges_reserved - $3),
-                updated_at = now()
-          where user_id = $1 and inventory_item_id = $2`,
-        [participant.user_id, item.itemId, remaining],
-      );
-    }
-  }
-  await client.query(
-    `update amateur_duel_participant
-        set consumed_inventory_charges = reserved_inventory_charges,
-            updated_at = now()
-      where match_id = $1 and user_id = $2`,
-    [participant.match_id, participant.user_id],
-  );
-}
-
 function usesAccuracyTiebreaker(rules: DuelRulesSnapshot): boolean {
   return (
     rules.duelKind === 'express' || rules.periodRules.every((rule) => rule.mode === 'time_attack')
@@ -1962,6 +1921,7 @@ function compareAccuracy(
 }
 
 async function fetchMatchForUpdate(client: PoolClient, matchId: string): Promise<DuelMatchRow> {
+  await lockTournamentForDuelMutation(client, matchId);
   const { rows } = await client.query<DuelMatchRow>(
     `select m.*, cu.display_name as challenger_name, cu.avatar_url as challenger_avatar_url,
             ou.display_name as opponent_name, ou.avatar_url as opponent_avatar_url
@@ -2221,7 +2181,13 @@ async function settleMatchIfReady(
             metadata: { reason: 'no_play_entry_fee_refund' },
           });
         }
-        await releaseRemainingInventoryReserve(client, participant);
+        await releaseRemainingDuelInventoryReserve(client, {
+          matchId: participant.match_id,
+          userId: participant.user_id,
+          loadoutSnapshot: participant.loadout_snapshot,
+          reservedInventoryCharges: Number(participant.reserved_inventory_charges),
+          consumedInventoryCharges: Number(participant.consumed_inventory_charges),
+        });
       }
       await client.query(
         `update amateur_duel_match
@@ -2349,7 +2315,13 @@ async function settleMatchIfReady(
   }
 
   for (const participant of refreshed) {
-    await releaseRemainingInventoryReserve(client, participant);
+    await releaseRemainingDuelInventoryReserve(client, {
+      matchId: participant.match_id,
+      userId: participant.user_id,
+      loadoutSnapshot: participant.loadout_snapshot,
+      reservedInventoryCharges: Number(participant.reserved_inventory_charges),
+      consumedInventoryCharges: Number(participant.consumed_inventory_charges),
+    });
   }
 
   if (

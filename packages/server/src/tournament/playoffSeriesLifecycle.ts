@@ -1,4 +1,5 @@
 import type { PoolClient } from 'pg';
+import { cancelTournamentDuel } from '../duel/amateur/lifecycle.js';
 
 interface SeriesDependencySource {
   type?: string;
@@ -83,19 +84,24 @@ export async function advanceTournamentPlayoffSeries(
         and segment.status in ('pending', 'scheduled', 'active')`,
     [completedSeries.id],
   );
-  await client.query(
-    `update amateur_duel_match duel
-        set status = 'cancelled', settled_reason = 'tournament_series_cancelled',
-            settled_at = now(), updated_at = now()
-       from tournament_fixture_segment segment
+  const cancelledDuels = await client.query<{ id: string }>(
+    `select duel.id
+       from amateur_duel_match duel
+       join tournament_fixture_segment segment on segment.duel_match_id = duel.id
        join tournament_fixture fixture on fixture.id = segment.fixture_id
-      where duel.id = segment.duel_match_id
-        and fixture.series_id = $1
+      where fixture.series_id = $1
         and fixture.status = 'cancelled'
         and duel.source = 'tournament'
-        and duel.status in ('invited', 'ready_check', 'active')`,
+        and duel.status in ('invited', 'ready_check', 'active')
+      order by duel.id`,
     [completedSeries.id],
   );
+  for (const duel of cancelledDuels.rows) {
+    await cancelTournamentDuel(client, {
+      duelMatchId: duel.id,
+      reason: 'tournament_series_cancelled',
+    });
+  }
 
   const completedKey = completedSeries.depends_on.key;
   const loserParticipantId =

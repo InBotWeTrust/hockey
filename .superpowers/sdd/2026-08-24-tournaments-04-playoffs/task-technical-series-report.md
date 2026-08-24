@@ -73,3 +73,19 @@ Additional verification:
 - PASS — `git diff --check`.
 
 The full server suite remains intentionally delegated to the controller.
+
+## Fix round 3
+
+Two further PostgreSQL regressions were added with controlled RED/GREEN cycles:
+
+1. A real tournament duel was opened, readied through the public duel route with actual inventory reservations, and held on its duel row while a normal settlement started. Before the fix, an administrative double no-show on another playoff fixture committed before that duel-row lock was released (`expected false, received true`). Tournament duel mutations now resolve the immutable segment-to-fixture mapping, acquire the tournament advisory lock, and only then lock the duel row.
+2. A linked active tournament duel carried participant rows and per-instance inventory reservations. Before the fix, technical series cancellation left both participants `accepted` and retained reservations. The shared duel lifecycle cleanup now terminalizes participants and releases only remaining reserved charges: a player with one of three charges consumed retained that spent charge, while unused reservations returned. It does not run rating, stakes, template-reward, or achievement settlement.
+
+Additional verification:
+
+- PASS — focused tournament integration: 18/18 tests, including normal settlement versus administrative pause and inventory-reservation cleanup.
+- PASS — `pnpm --filter @hockey/server typecheck`.
+- PASS — `pnpm lint`.
+- PASS — `git diff --check`.
+
+The full server suite remains intentionally delegated to the controller.
