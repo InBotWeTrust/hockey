@@ -485,6 +485,24 @@ describe('BonusGamePlayScreen', () => {
     },
   );
 
+  it('uses Russian plural forms for every granted reward', () => {
+    setStore({
+      attempt: attempt({
+        status: 'completed',
+        state: 'closed',
+        period_started_at: null,
+        period_ends_at: null,
+        reward_granted: true,
+        reward: { coins: 21, stars: 22, experience: 25 },
+      }),
+    });
+    renderScreen();
+
+    expect(
+      screen.getByText('21 монета · 25 очков опыта · 22 звезды · площадка «Пляж» открыта'),
+    ).toBeInTheDocument();
+  });
+
   it('requires confirmation and abandons once before returning to the catalog', async () => {
     const pending = deferred<BonusGameAttempt | null>();
     const abandoned = attempt({
@@ -519,6 +537,27 @@ describe('BonusGamePlayScreen', () => {
     await waitFor(() => {
       expect(screen.getByLabelText('location')).toHaveTextContent('/bonus-games');
     });
+  });
+
+  it('traps the abandon modal and restores the exact gameplay trigger after Escape', async () => {
+    renderScreen();
+    const trigger = screen.getByRole('button', { name: 'Завершить попытку' });
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    const dialog = screen.getByRole('dialog', { name: 'Завершить попытку?' });
+    const cancel = within(dialog).getByRole('button', { name: 'Продолжить игру' });
+    const confirm = within(dialog).getByRole('button', { name: 'Да, завершить' });
+    await waitFor(() => expect(cancel).toHaveFocus());
+    confirm.focus();
+    fireEvent.keyDown(dialog, { key: 'Tab' });
+    expect(cancel).toHaveFocus();
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Завершить попытку?' })).toBeNull(),
+    );
+    expect(trigger).toHaveFocus();
   });
 
   it('stays in the attempt when authoritative abandon does not succeed', async () => {

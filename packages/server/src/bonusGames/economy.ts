@@ -140,7 +140,8 @@ async function fetchPurchasableGame(
          on active_attempt.user_id = $1
         and active_attempt.bonus_game_id = game.id
         and active_attempt.status = 'active'
-      where game.id = $2`,
+      where game.id = $2
+      for update of game`,
     [userId, gameId],
   );
   const game = rows[0];
@@ -152,16 +153,14 @@ async function fetchPurchasableGame(
 
 export async function purchaseBonusGame(
   pool: Pool,
-  input: { userId: string; gameId: string; now: Date },
+  input: { userId: string; gameId: string; expectedPriceStars: number; now: Date },
 ): Promise<{ unlocked: true; starBalance: number }> {
   const client = await pool.connect();
   try {
     await client.query('begin');
     const user = await lockUser(client, input.userId, input.now);
-    const [settings, game] = await Promise.all([
-      getGameSettings(client),
-      fetchPurchasableGame(client, input.userId, input.gameId),
-    ]);
+    const settings = await getGameSettings(client);
+    const game = await fetchPurchasableGame(client, input.userId, input.gameId);
 
     if (game.unlock_id !== null) {
       await client.query('commit');
@@ -198,6 +197,9 @@ export async function purchaseBonusGame(
     }
 
     const price = Number(game.unlock_price_stars);
+    if (price !== input.expectedPriceStars) {
+      throw new AppError('bonus_price_changed', 'bonus game price changed', 409);
+    }
     const debited = await client.query<{ xp: number }>(
       `update users
           set xp = xp - $2

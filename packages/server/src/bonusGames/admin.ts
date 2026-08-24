@@ -452,6 +452,17 @@ async function patchArena(
   return rows[0]!;
 }
 
+function isArenaPatchNoOp(arena: ArenaRow, input: ArenaPatchInput): boolean {
+  return (
+    (input.slug === undefined || input.slug === arena.slug) &&
+    (input.title === undefined || input.title === arena.title) &&
+    (input.artworkUrl === undefined || input.artworkUrl === arena.artwork_url) &&
+    (input.thumbnailUrl === undefined || input.thumbnailUrl === arena.thumbnail_url) &&
+    (input.status === undefined || input.status === arena.status) &&
+    (input.isSelectable === undefined || input.isSelectable === arena.is_selectable)
+  );
+}
+
 async function assertArenaIsExclusive(
   client: PoolClient,
   arenaId: string,
@@ -738,7 +749,7 @@ async function patchGame(
   mediaAccessSecret: string,
 ) {
   const currentRow = await lockGame(client, gameId);
-  const currentArena = await getArena(client, currentRow.arena_theme_id, false);
+  const currentArena = await getArena(client, currentRow.arena_theme_id, input.arena !== undefined);
   const activation = input.status === 'active' || currentRow.status === 'active';
   const currentPeriods = parsePeriods(
     currentRow.period_rules,
@@ -753,7 +764,7 @@ async function patchGame(
   if (input.arenaThemeId !== undefined && input.arenaThemeId !== currentArena.id) {
     nextArena = await getArena(client, input.arenaThemeId, true);
     nextArenaThemeId = nextArena.id;
-  } else if (input.arena !== undefined) {
+  } else if (input.arena !== undefined && !isArenaPatchNoOp(currentArena, input.arena)) {
     await assertArenaIsExclusive(client, currentArena.id, gameId);
     nextArena = await patchArena(client, currentArena, input.arena);
   }

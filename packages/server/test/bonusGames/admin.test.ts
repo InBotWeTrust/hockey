@@ -558,6 +558,41 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
     expect(rows.find((game) => game.id === draft.id)).toMatchObject({ revision: 1 });
   });
 
+  it('allows a game-only edit when its full shared arena payload is an effective no-op', async () => {
+    const owner = await createGame({
+      status: 'active',
+      ...committedMedia('beach'),
+    });
+    const shared = await createGame({
+      arena: undefined,
+      arenaThemeId: owner.arena.id,
+    });
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/admin/bonus-games/${shared.id}`,
+      headers: adminHeaders,
+      payload: {
+        title: 'Shared arena game renamed',
+        arena: {
+          slug: owner.arena.slug,
+          title: owner.arena.title,
+          artworkUrl: owner.arena.artworkUrl,
+          thumbnailUrl: owner.arena.thumbnailUrl,
+          status: owner.arena.status,
+          isSelectable: owner.arena.isSelectable,
+        },
+      },
+    });
+
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json().game).toMatchObject({
+      id: shared.id,
+      title: 'Shared arena game renamed',
+      arena: owner.arena,
+    });
+  });
+
   it('increments revision without changing an active attempt snapshot', async () => {
     const game = await createGame({
       status: 'active',

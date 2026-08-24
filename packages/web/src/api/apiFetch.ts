@@ -14,6 +14,7 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   bonus_previous_game_required: 'Сначала завершите предыдущую бонус-игру.',
   bonus_purchase_required: 'Сначала откройте эту бонус-игру.',
   bonus_insufficient_stars: 'Недостаточно звёзд для открытия бонус-игры.',
+  bonus_price_changed: 'Цена игры изменилась. Проверьте каталог и подтвердите открытие снова.',
   bonus_game_inactive: 'Эта бонус-игра сейчас недоступна.',
   bonus_attempt_already_active: 'У вас уже есть незавершённая бонус-попытка.',
   bonus_attempt_not_active: 'Эта бонус-попытка больше не активна.',

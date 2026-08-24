@@ -8,6 +8,7 @@ import { purchaseBonusGame } from '../../src/bonusGames/economy.js';
 import type { BonusPeriodRule } from '../../src/bonusGames/types.js';
 import { applyMigrations } from '../../src/db/migrations.js';
 import { createTestPool, hasIntegrationEnv, resetDatabase } from '../helpers/testDb.js';
+import { trackPoolConnections } from '../helpers/trackPoolClientConcurrency.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
@@ -211,7 +212,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game catalog and paid unlocks', () =>
     expect(cards.map((card) => card.id)).not.toContain(ignoredArchived.id);
 
     await expect(
-      purchaseBonusGame(pool, { userId, gameId: paid.id, now: NOW }),
+      purchaseBonusGame(pool, { userId, gameId: paid.id, expectedPriceStars: 2, now: NOW }),
     ).rejects.toMatchObject({ code: 'bonus_previous_game_required' });
     const events = await pool.query<{ count: number }>(
       `select count(*)::int as count
@@ -236,7 +237,12 @@ describe.skipIf(!hasIntegrationEnv)('bonus game catalog and paid unlocks', () =>
       'sequence_locked',
     ]);
 
-    await purchaseBonusGame(pool, { userId, gameId: paid.id, now: NOW });
+    await purchaseBonusGame(pool, {
+      userId,
+      gameId: paid.id,
+      expectedPriceStars: 2,
+      now: NOW,
+    });
     cards = await listBonusGameCards(pool, userId);
     expect(cards[1]?.state).toBe('available');
 
@@ -264,7 +270,14 @@ describe.skipIf(!hasIntegrationEnv)('bonus game catalog and paid unlocks', () =>
       state: 'in_progress',
       active_attempt: { id: attemptId },
     });
-    expect(await purchaseBonusGame(pool, { userId, gameId: game.id, now: NOW })).toEqual({
+    expect(
+      await purchaseBonusGame(pool, {
+        userId,
+        gameId: game.id,
+        expectedPriceStars: 4,
+        now: NOW,
+      }),
+    ).toEqual({
       unlocked: true,
       starBalance: 10,
     });
@@ -294,7 +307,14 @@ describe.skipIf(!hasIntegrationEnv)('bonus game catalog and paid unlocks', () =>
     );
 
     expect((await listBonusGameCards(pool, userId))[0]?.state).toBe('completed');
-    expect(await purchaseBonusGame(pool, { userId, gameId: game.id, now: NOW })).toEqual({
+    expect(
+      await purchaseBonusGame(pool, {
+        userId,
+        gameId: game.id,
+        expectedPriceStars: 4,
+        now: NOW,
+      }),
+    ).toEqual({
       unlocked: true,
       starBalance: 10,
     });
@@ -320,7 +340,12 @@ describe.skipIf(!hasIntegrationEnv)('bonus game catalog and paid unlocks', () =>
     expect((await listBonusGameCards(pool, beginnerId))[0]?.state).toBe('level_locked');
     expect((await listBonusGameCards(pool, goalsQualifiedId))[0]?.state).toBe('purchase_required');
     await expect(
-      purchaseBonusGame(pool, { userId: beginnerId, gameId: game.id, now: NOW }),
+      purchaseBonusGame(pool, {
+        userId: beginnerId,
+        gameId: game.id,
+        expectedPriceStars: 1,
+        now: NOW,
+      }),
     ).rejects.toMatchObject({ code: 'bonus_level_locked' });
   });
 
@@ -374,7 +399,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game catalog and paid unlocks', () =>
     const paid = await createGame({ sortOrder: 1, accessType: 'paid', price: 2 });
 
     await expect(
-      purchaseBonusGame(pool, { userId, gameId: paid.id, now: NOW }),
+      purchaseBonusGame(pool, { userId, gameId: paid.id, expectedPriceStars: 2, now: NOW }),
     ).rejects.toMatchObject({ code: 'bonus_insufficient_stars' });
 
     const result = await pool.query<{
@@ -394,13 +419,57 @@ describe.skipIf(!hasIntegrationEnv)('bonus game catalog and paid unlocks', () =>
     expect(result.rows[0]).toEqual({ xp: 1, unlocks: 0, events: 0 });
   });
 
+  it('rejects a changed locked price before debit or unlock writes', async () => {
+    const userId = await createUser({ stars: 10 });
+    const paid = await createGame({ sortOrder: 1, accessType: 'paid', price: 2 });
+    const staleConfirmation = {
+      userId,
+      gameId: paid.id,
+      expectedPriceStars: 2,
+      now: NOW,
+    };
+    await pool.query('update bonus_game set unlock_price_stars = 5 where id = $1', [paid.id]);
+
+    await expect(purchaseBonusGame(pool, staleConfirmation)).rejects.toMatchObject({
+      code: 'bonus_price_changed',
+      statusCode: 409,
+    });
+
+    const result = await pool.query<{ xp: number; unlocks: number; events: number }>(
+      `select u.xp::int as xp,
+              (select count(*)::int from user_bonus_game_unlock
+                where user_id = u.id) as unlocks,
+              (select count(*)::int from bonus_game_economy_event
+                where user_id = u.id) as events
+         from users u
+        where u.id = $1`,
+      [userId],
+    );
+    expect(result.rows[0]).toEqual({ xp: 10, unlocks: 0, events: 0 });
+  });
+
+  it('runs purchase transaction queries sequentially on its PoolClient', async () => {
+    const userId = await createUser({ stars: 10 });
+    const paid = await createGame({ sortOrder: 1, accessType: 'paid', price: 2 });
+    const tracked = trackPoolConnections(pool);
+
+    await purchaseBonusGame(tracked.pool, {
+      userId,
+      gameId: paid.id,
+      expectedPriceStars: 2,
+      now: NOW,
+    });
+
+    expect(tracked.tracker.maxConcurrentQueries).toBe(1);
+  });
+
   it('debits a paid unlock once under concurrent requests and returns the committed balance', async () => {
     const userId = await createUser({ stars: 10 });
     const paid = await createGame({ sortOrder: 1, accessType: 'paid', price: 1 });
 
     const results = await Promise.all([
-      purchaseBonusGame(pool, { userId, gameId: paid.id, now: NOW }),
-      purchaseBonusGame(pool, { userId, gameId: paid.id, now: NOW }),
+      purchaseBonusGame(pool, { userId, gameId: paid.id, expectedPriceStars: 1, now: NOW }),
+      purchaseBonusGame(pool, { userId, gameId: paid.id, expectedPriceStars: 1, now: NOW }),
     ]);
 
     expect(results).toEqual([
@@ -439,12 +508,26 @@ describe.skipIf(!hasIntegrationEnv)('bonus game catalog and paid unlocks', () =>
     const userId = await createUser({ stars: 10 });
     const paid = await createGame({ sortOrder: 1, accessType: 'paid', price: 2 });
 
-    expect(await purchaseBonusGame(pool, { userId, gameId: paid.id, now: NOW })).toEqual({
+    expect(
+      await purchaseBonusGame(pool, {
+        userId,
+        gameId: paid.id,
+        expectedPriceStars: 2,
+        now: NOW,
+      }),
+    ).toEqual({
       unlocked: true,
       starBalance: 8,
     });
     await pool.query('update bonus_game set unlock_price_stars = 7 where id = $1', [paid.id]);
-    expect(await purchaseBonusGame(pool, { userId, gameId: paid.id, now: NOW })).toEqual({
+    expect(
+      await purchaseBonusGame(pool, {
+        userId,
+        gameId: paid.id,
+        expectedPriceStars: 2,
+        now: NOW,
+      }),
+    ).toEqual({
       unlocked: true,
       starBalance: 8,
     });

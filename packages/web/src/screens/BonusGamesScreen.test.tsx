@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BonusGamesScreen } from './BonusGamesScreen.js';
@@ -204,6 +204,76 @@ describe('BonusGamesScreen', () => {
     );
   });
 
+  it('continues a snapshotted active attempt after its game is archived', async () => {
+    mockCatalog([
+      card({
+        id: 'beach',
+        state: 'archived',
+        active_attempt: {
+          id: 'attempt-archived',
+          game_id: 'beach',
+          state: 'idle',
+          current_period: 1,
+          period_started_at: null,
+          break_started_at: null,
+          shots_taken: 4,
+          goals: 2,
+        },
+      }),
+    ]);
+    renderCatalog();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Продолжить' }));
+
+    expect(screen.getByLabelText('location')).toHaveTextContent(
+      '/bonus-games/beach/play?attempt=attempt-archived',
+    );
+  });
+
+  it('uses the authoritative arena thumbnail even when a seeded slug has a bundled asset', async () => {
+    mockCatalog([
+      card({
+        arena: {
+          id: 'arena-beach',
+          slug: 'beach',
+          title: 'Пляж',
+          artwork_url: 'https://media.example.test/beach.webp?generation=7',
+          thumbnail_url: 'https://media.example.test/beach-thumb.webp?generation=8',
+        },
+      }),
+    ]);
+    renderCatalog();
+
+    expect(await screen.findByAltText('Площадка «Пляж»')).toHaveAttribute(
+      'src',
+      'https://media.example.test/beach-thumb.webp?generation=8',
+    );
+  });
+
+  it('uses Russian plural forms for price, periods, shots, and first-clear rewards', async () => {
+    mockCatalog([
+      card({
+        state: 'purchase_required',
+        access_type: 'paid',
+        unlock_price_stars: 22,
+        target_goals: 21,
+        total_periods: 2,
+        period_rules: [
+          { ...card({}).period_rules[0], shots_limit: 5 },
+          { ...card({}).period_rules[0], period_number: 2, shots_limit: 16 },
+        ],
+        reward: { coins: 21, stars: 22, experience: 25 },
+      }),
+    ]);
+    renderCatalog();
+
+    expect(await screen.findByText('Открытие: 22 звезды')).toBeInTheDocument();
+    expect(screen.getByText('Цель: 21 шайба · 2 периода · 21 бросок')).toBeInTheDocument();
+    expect(
+      screen.getByText('За первое прохождение: 21 монета · 22 звезды · 25 очков опыта'),
+    ).toBeInTheDocument();
+  });
+
   it('keeps the created attempt id in the play URL for durable reload', async () => {
     mockCatalog([card({})]);
     renderCatalog();
@@ -261,6 +331,109 @@ describe('BonusGamesScreen', () => {
             ) && init?.method === 'POST',
         ),
     ).toHaveLength(1);
+    const unlockCall = vi
+      .mocked(globalThis.fetch)
+      .mock.calls.find(
+        ([input, init]) => String(input).endsWith('/unlock') && init?.method === 'POST',
+      );
+    expect(JSON.parse(String(unlockCall?.[1]?.body))).toEqual({ expected_price_stars: 1 });
+  });
+
+  it('focuses the purchase modal and restores its exact trigger after Escape', async () => {
+    mockCatalog([
+      card({
+        state: 'purchase_required',
+        access_type: 'paid',
+        unlock_price_stars: 1,
+        is_unlocked: false,
+      }),
+    ]);
+    renderCatalog();
+    const trigger = await screen.findByRole('button', { name: 'Открыть за 1 звезду' });
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    const dialog = screen.getByRole('dialog', { name: 'Открыть игру?' });
+    await waitFor(() =>
+      expect(within(dialog).getByRole('button', { name: 'Отмена' })).toHaveFocus(),
+    );
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Открыть игру?' })).toBeNull());
+    expect(trigger).toHaveFocus();
+  });
+
+  it('refreshes the catalog and requires a fresh confirmation when the locked price changed', async () => {
+    let currentGames = [
+      card({
+        state: 'purchase_required',
+        access_type: 'paid',
+        unlock_price_stars: 1,
+        is_unlocked: false,
+      }),
+    ];
+    let catalogRequests = 0;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith('/api/bonus-games')) {
+          catalogRequests += 1;
+          return Promise.resolve(
+            new Response(JSON.stringify({ games: currentGames, active_attempt: null }), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            }),
+          );
+        }
+        if (url.endsWith('/api/inventory/me')) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                balances: { tokens: 0, stars: 5, experience: 0 },
+                equipped: { stickItemId: null, skatesItemId: null, nutritionItemId: null },
+                items: { stick: [], skates: [], nutrition: [] },
+              }),
+              { status: 200, headers: { 'Content-Type': 'application/json' } },
+            ),
+          );
+        }
+        if (url.endsWith('/unlock') && init?.method === 'POST') {
+          currentGames = [
+            card({
+              state: 'purchase_required',
+              access_type: 'paid',
+              unlock_price_stars: 2,
+              is_unlocked: false,
+            }),
+          ];
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                error: { code: 'bonus_price_changed', message: 'internal current price is 2' },
+              }),
+              { status: 409, headers: { 'Content-Type': 'application/json' } },
+            ),
+          );
+        }
+        return Promise.resolve(new Response('{}', { status: 200 }));
+      },
+    );
+    renderCatalog();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть за 1 звезду' }));
+    fireEvent.click(
+      within(screen.getByRole('dialog', { name: 'Открыть игру?' })).getByRole('button', {
+        name: 'Открыть за 1 звезду',
+      }),
+    );
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Цена игры изменилась. Проверьте каталог и подтвердите открытие снова.',
+    );
+    expect(screen.queryByRole('dialog', { name: 'Открыть игру?' })).toBeNull();
+    await waitFor(() => expect(catalogRequests).toBe(2));
+    expect(screen.getByRole('button', { name: /Открыть за 2/ })).toBeInTheDocument();
+    expect(screen.queryByText(/internal current price/i)).toBeNull();
   });
 
   it('does not expose a rejected catalog request error', async () => {
@@ -291,7 +464,7 @@ describe('BonusGamesScreen', () => {
     });
     renderCatalog();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Открыть за 0 звезду' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть за 0 звёзд' }));
 
     expect(screen.getByRole('dialog', { name: 'Открыть игру?' })).toHaveTextContent(
       'Не удалось выполнить запрос. Попробуйте ещё раз.',
@@ -305,10 +478,10 @@ describe('BonusGamesScreen', () => {
     });
     renderCatalog();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Открыть за 0 звезду' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть за 0 звёзд' }));
     fireEvent.click(
       within(screen.getByRole('dialog', { name: 'Открыть игру?' })).getByRole('button', {
-        name: 'Открыть за 0 звезду',
+        name: 'Открыть за 0 звёзд',
       }),
     );
 

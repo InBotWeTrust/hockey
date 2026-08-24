@@ -22,6 +22,9 @@ export interface BonusGameRouteOptions {
 
 const gameParamsSchema = z.object({ gameId: z.string().uuid() }).strict();
 const attemptParamsSchema = z.object({ attemptId: z.string().uuid() }).strict();
+const unlockBodySchema = z
+  .object({ expected_price_stars: z.number().int().min(0).max(10_000_000) })
+  .strict();
 const shotBodySchema = z
   .object({
     claimed_shot_index: z.number().int().min(1),
@@ -57,6 +60,10 @@ const SAFE_BONUS_ERRORS: Readonly<
   bonus_insufficient_stars: {
     statusCode: 409,
     message: 'not enough stars to unlock this bonus game',
+  },
+  bonus_price_changed: {
+    statusCode: 409,
+    message: 'bonus game price changed; refresh the catalog',
   },
   bonus_game_inactive: {
     statusCode: 409,
@@ -337,9 +344,11 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
   app.post('/bonus-games/:gameId/unlock', { preHandler: [app.authenticate] }, async (request) =>
     runBonusRoute(async () => {
       const params = parseRequest(gameParamsSchema, request.params);
+      const body = parseRequest(unlockBodySchema, request.body);
       const result = await purchaseBonusGame(app.pg, {
         userId: request.user.id,
         gameId: params.gameId,
+        expectedPriceStars: body.expected_price_stars,
         now: new Date(),
       });
       return { unlocked: result.unlocked, star_balance: result.starBalance };

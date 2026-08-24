@@ -194,10 +194,8 @@ export async function resolveDuelVenue(
     return resolvedVenue(input.policy, homeUserId, arena);
   }
 
-  const [challengerArena, opponentArena] = await Promise.all([
-    resolveEffectiveArena(client, input.challengerUserId),
-    resolveEffectiveArena(client, input.opponentUserId),
-  ]);
+  const challengerArena = await resolveEffectiveArena(client, input.challengerUserId);
+  const opponentArena = await resolveEffectiveArena(client, input.opponentUserId);
   const { rows } = await client.query<ArenaRow>(
     `select id, slug, title, artwork_url, thumbnail_url, is_selectable
        from arena_theme

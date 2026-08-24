@@ -443,6 +443,7 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
       method: 'POST',
       url: `/bonus-games/${game.id}/unlock`,
       headers,
+      payload: { expected_price_stars: 0 },
     });
     expect(unlock.statusCode).toBe(200);
     expect(unlock.json()).toEqual({ unlocked: true, star_balance: 0 });
@@ -1177,6 +1178,7 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
     ['bonus_previous_game_required', 409],
     ['bonus_purchase_required', 409],
     ['bonus_insufficient_stars', 409],
+    ['bonus_price_changed', 409],
     ['bonus_game_inactive', 409],
     ['bonus_attempt_not_active', 409],
     ['bonus_period_not_ready', 409],
@@ -1214,6 +1216,15 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
         method: 'POST',
         url: `/bonus-games/${game.id}/unlock`,
         headers,
+        payload: { expected_price_stars: 1 },
+      });
+    } else if (code === 'bonus_price_changed') {
+      const game = await createGame({ accessType: 'paid', price: 1 });
+      response = await app.inject({
+        method: 'POST',
+        url: `/bonus-games/${game.id}/unlock`,
+        headers,
+        payload: { expected_price_stars: 0 },
       });
     } else if (code === 'bonus_game_inactive') {
       response = await app.inject({

@@ -192,6 +192,21 @@ describe('SectionsScreen', () => {
     expect(screen.getByRole('dialog', { name: 'Нужен любительский уровень' })).toBeInTheDocument();
   });
 
+  it('focuses locked info and restores the exact section card after Escape', async () => {
+    mockSectionsApi({ dailyLifetimeTotalGoals: 0, profileCompetitionLevel: 'beginner' });
+    renderSections();
+    const trigger = await screen.findByRole('button', { name: 'Бонусные игры' });
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    const dialog = screen.getByRole('dialog', { name: 'Нужен любительский уровень' });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Понятно' })).toHaveFocus());
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(trigger).toHaveFocus();
+  });
+
   it.each([{ profileRequest: 'loading' as const }, { profileRequest: 'error' as const }])(
     'keeps the daily-goal fallback when the profile request is $profileRequest',
     async ({ profileRequest }) => {

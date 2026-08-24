@@ -219,7 +219,11 @@ const bonusPeriodRuleSchema = z
     goalFrequency: z.number().min(0.1).max(3),
     goalieFrequency: z.number().min(0.1).max(3),
     shooterFrequency: z.number().min(0.1).max(3),
-    puckSpeedPerMs: z.number().min(0.2).max(5),
+    puckSpeedPerMs: z
+      .number()
+      .min(0.2)
+      .max(5)
+      .transform((value) => Number(value.toFixed(4))),
     goaliePattern: z.enum(['linear', 'sine', 'dash']),
     goalieAmplitude: z.number().min(0).max(1),
     goalAmplitude: z.number().min(0).max(220),

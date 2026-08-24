@@ -10,7 +10,8 @@ import {
 } from '../api/bonusGames.js';
 import { ApiError } from '../api/apiFetch.js';
 import { fetchMyInventory } from '../api/inventory.js';
-import { BONUS_GAME_ASSETS } from '../game/bonusGameAssets.js';
+import { AccessibleModal } from '../components/AccessibleModal.js';
+import { formatRussianCount } from '../lib/russianPlural.js';
 
 const SAFE_UI_ERROR_MESSAGE = 'Не удалось выполнить запрос. Попробуйте ещё раз.';
 
@@ -22,18 +23,13 @@ function numberText(value: number): string {
   return new Intl.NumberFormat('ru-RU', { useGrouping: false }).format(value);
 }
 
-function approvedArenaArtwork(game: BonusGameCard): string {
-  const knownAssets = BONUS_GAME_ASSETS[game.slug as keyof typeof BONUS_GAME_ASSETS];
-  return knownAssets?.arena ?? game.arena.thumbnail_url;
-}
-
 function cardStatusText(game: BonusGameCard): string {
   if (game.state === 'level_locked') return 'Нужен любительский уровень';
   if (game.state === 'sequence_locked') {
     return game.prerequisite ? `Нужно пройти: ${game.prerequisite.title}` : 'Обновите каталог.';
   }
   if (game.state === 'purchase_required') {
-    return `Открытие: ${numberText(game.unlock_price_stars)} звезда`;
+    return `Открытие: ${formatRussianCount(game.unlock_price_stars, 'звезда', 'звезды', 'звёзд')}`;
   }
   if (game.state === 'in_progress') return 'Попытка в процессе';
   if (game.state === 'completed') return 'Пройдено · повтор без награды';
@@ -43,9 +39,9 @@ function cardStatusText(game: BonusGameCard): string {
 
 function actionLabel(game: BonusGameCard): string {
   if (game.state === 'purchase_required') {
-    return `Открыть за ${numberText(game.unlock_price_stars)} звезду`;
+    return `Открыть за ${formatRussianCount(game.unlock_price_stars, 'звезду', 'звезды', 'звёзд')}`;
   }
-  if (game.state === 'in_progress') return 'Продолжить';
+  if (game.state === 'in_progress' || game.active_attempt !== null) return 'Продолжить';
   if (game.state === 'completed') return 'Играть снова';
   if (game.state === 'available') return 'Играть';
   return game.state === 'archived' ? 'Недоступна' : 'Закрыта';
@@ -59,6 +55,7 @@ export function BonusGamesScreen(): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [purchaseGame, setPurchaseGame] = useState<BonusGameCard | null>(null);
+  const [purchaseNotice, setPurchaseNotice] = useState<string | null>(null);
   const catalogQuery = useQuery({ queryKey: ['bonus-games'], queryFn: fetchBonusGames });
   const inventoryQuery = useQuery({ queryKey: ['inventory', 'me'], queryFn: fetchMyInventory });
   const startMutation = useMutation({
@@ -72,12 +69,19 @@ export function BonusGamesScreen(): JSX.Element {
   });
   const purchaseMutation = useMutation({
     mutationFn: purchaseBonusGame,
+    onMutate: () => setPurchaseNotice(null),
     onSuccess: async () => {
       setPurchaseGame(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['bonus-games'] }),
         queryClient.invalidateQueries({ queryKey: ['inventory', 'me'] }),
       ]);
+    },
+    onError: (error) => {
+      if (!(error instanceof ApiError) || error.code !== 'bonus_price_changed') return;
+      setPurchaseGame(null);
+      setPurchaseNotice(error.message);
+      void queryClient.invalidateQueries({ queryKey: ['bonus-games'] });
     },
   });
 
@@ -87,7 +91,7 @@ export function BonusGamesScreen(): JSX.Element {
       setPurchaseGame(game);
       return;
     }
-    if (game.state === 'in_progress') {
+    if (game.state === 'in_progress' || game.active_attempt !== null) {
       navigate(
         `/bonus-games/${game.id}/play?attempt=${encodeURIComponent(game.active_attempt!.id)}`,
       );
@@ -152,6 +156,11 @@ export function BonusGamesScreen(): JSX.Element {
             {safeUiError(startMutation.error)}
           </div>
         )}
+        {purchaseNotice !== null && (
+          <div className="bonus-games-catalog__notice" role="alert">
+            {purchaseNotice}
+          </div>
+        )}
       </section>
 
       {purchaseGame && (
@@ -167,7 +176,12 @@ export function BonusGamesScreen(): JSX.Element {
             purchaseMutation.reset();
             setPurchaseGame(null);
           }}
-          onConfirm={() => purchaseMutation.mutate(purchaseGame.id)}
+          onConfirm={() =>
+            purchaseMutation.mutate({
+              gameId: purchaseGame.id,
+              expectedPriceStars: purchaseGame.unlock_price_stars,
+            })
+          }
         />
       )}
     </main>
@@ -186,19 +200,33 @@ function BonusGameCard({
   onAction: () => void;
 }): JSX.Element {
   const canAct =
-    game.state === 'purchase_required' || game.state === 'in_progress' || isPlayable(game);
+    game.state === 'purchase_required' || game.active_attempt !== null || isPlayable(game);
   const firstReward =
     game.state === 'completed'
       ? 'Повторная игра без награды'
-      : `За первое прохождение: ${numberText(game.reward.coins)} монет · ${numberText(
+      : `За первое прохождение: ${formatRussianCount(
+          game.reward.coins,
+          'монета',
+          'монеты',
+          'монет',
+        )} · ${formatRussianCount(
           game.reward.stars,
-        )} звезда · ${numberText(game.reward.experience)} опыта`;
+          'звезда',
+          'звезды',
+          'звёзд',
+        )} · ${formatRussianCount(
+          game.reward.experience,
+          'очко опыта',
+          'очка опыта',
+          'очков опыта',
+        )}`;
+  const totalShots = game.period_rules.reduce((total, period) => total + period.shots_limit, 0);
 
   return (
     <article className="bonus-game-card">
       <img
         className="bonus-game-card__artwork"
-        src={approvedArenaArtwork(game)}
+        src={game.arena.thumbnail_url}
         alt={`Площадка «${game.arena.title}»`}
       />
       <div className="bonus-game-card__content">
@@ -207,9 +235,9 @@ function BonusGameCard({
         {game.description && <p className="bonus-game-card__description">{game.description}</p>}
         <p className="bonus-game-card__status">{cardStatusText(game)}</p>
         <p className="bonus-game-card__details">
-          Цель: {numberText(game.target_goals)} шайб · {numberText(game.total_periods)} периодов ·{' '}
-          {numberText(game.period_rules.reduce((total, period) => total + period.shots_limit, 0))}{' '}
-          бросков
+          Цель: {formatRussianCount(game.target_goals, 'шайба', 'шайбы', 'шайб')} ·{' '}
+          {formatRussianCount(game.total_periods, 'период', 'периода', 'периодов')} ·{' '}
+          {formatRussianCount(totalShots, 'бросок', 'броска', 'бросков')}
         </p>
         <p className="bonus-game-card__reward">{firstReward}</p>
         <p className="bonus-game-card__arena">Новая домашняя площадка: {game.arena.title}</p>
@@ -245,51 +273,45 @@ function PurchaseBonusGameModal({
   onClose: () => void;
   onConfirm: () => void;
 }): JSX.Element {
-  const price = numberText(game.unlock_price_stars);
+  const price = formatRussianCount(game.unlock_price_stars, 'звезда', 'звезды', 'звёзд');
+  const actionPrice = formatRussianCount(game.unlock_price_stars, 'звезду', 'звезды', 'звёзд');
   const balanceCopy = balanceLoading
     ? 'Проверяем баланс звёзд…'
     : balanceError
       ? balanceError
-      : `Стоимость: ${price} звезда. На балансе: ${numberText(starBalance ?? 0)} звезда.`;
+      : `Стоимость: ${price}. На балансе: ${formatRussianCount(
+          starBalance ?? 0,
+          'звезда',
+          'звезды',
+          'звёзд',
+        )}.`;
 
   return (
-    <div className="modal-backdrop" role="presentation" onClick={onClose}>
-      <section
-        className="modal-card"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Открыть игру?"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <h2 className="modal-title">Открыть игру?</h2>
-        <p className="modal-copy">
-          {game.title}. Открытие оплачивается один раз, а повторные попытки будут бесплатными.
+    <AccessibleModal
+      title="Открыть игру?"
+      copy={`${game.title}. Открытие оплачивается один раз, а повторные попытки будут бесплатными.`}
+      closeBlocked={isPurchasing}
+      onClose={onClose}
+    >
+      <p className="modal-copy">{balanceCopy}</p>
+      {error && (
+        <p className="bonus-games-purchase-error" role="alert">
+          {error}
         </p>
-        <p className="modal-copy">{balanceCopy}</p>
-        {error && (
-          <p className="bonus-games-purchase-error" role="alert">
-            {error}
-          </p>
-        )}
-        <div className="modal-actions">
-          <button
-            type="button"
-            className="btn btn--ghost"
-            disabled={isPurchasing}
-            onClick={onClose}
-          >
-            Отмена
-          </button>
-          <button
-            type="button"
-            className="modal-primary btn btn--cta"
-            disabled={isPurchasing || balanceLoading || balanceError !== null}
-            onClick={onConfirm}
-          >
-            {isPurchasing ? 'Открываем…' : `Открыть за ${price} звезду`}
-          </button>
-        </div>
-      </section>
-    </div>
+      )}
+      <div className="modal-actions">
+        <button type="button" className="btn btn--ghost" disabled={isPurchasing} onClick={onClose}>
+          Отмена
+        </button>
+        <button
+          type="button"
+          className="modal-primary btn btn--cta"
+          disabled={isPurchasing || balanceLoading || balanceError !== null}
+          onClick={onConfirm}
+        >
+          {isPurchasing ? 'Открываем…' : `Открыть за ${actionPrice}`}
+        </button>
+      </div>
+    </AccessibleModal>
   );
 }

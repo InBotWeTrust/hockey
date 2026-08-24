@@ -142,8 +142,11 @@ describe('LoginScreen', () => {
     cb({ id: 42, first_name: 'Alice', auth_date: 1, hash: 'bad' });
 
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent(/bad hash|unauthenticated|login failed/i);
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Не удалось выполнить запрос. Попробуйте ещё раз.',
+      );
     });
+    expect(screen.queryByText(/bad hash|unauthenticated/i)).toBeNull();
     expect(useAuthStore.getState().accessToken).toBeNull();
   });
 

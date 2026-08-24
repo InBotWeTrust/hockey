@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { AccessibleModal } from '../components/AccessibleModal.js';
 import {
   archiveAdminBonusGame,
   createAdminBonusGame,
@@ -61,7 +61,7 @@ interface BonusGameFormState {
 }
 
 interface UploadRequest {
-  kind: 'goalkeeper_ready' | 'goalkeeper_save';
+  kind: AdminBonusMediaKind;
   file: File;
   editorIdentity: string | null;
   generation: number;
@@ -257,8 +257,10 @@ function formToPatch(form: BonusGameFormState): AdminBonusGamePatch {
 export function BonusGamesAdmin(): JSX.Element {
   const queryClient = useQueryClient();
   const archivePendingRef = useRef(false);
+  const reorderPendingRef = useRef(false);
   const [form, setForm] = useState<BonusGameFormState | null>(null);
   const [archiveTarget, setArchiveTarget] = useState<AdminBonusGame | null>(null);
+  const [reorderTarget, setReorderTarget] = useState<string[] | null>(null);
   const query = useQuery({ queryKey: bonusGamesQueryKey, queryFn: fetchAdminBonusGames });
   const games = query.data?.games ?? [];
   const refresh = (): void => {
@@ -276,7 +278,13 @@ export function BonusGamesAdmin(): JSX.Element {
   });
   const reorderMutation = useMutation({
     mutationFn: (gameIds: string[]) => reorderAdminBonusGames({ gameIds }),
-    onSuccess: (data) => queryClient.setQueryData(bonusGamesQueryKey, data),
+    onSuccess: (data) => {
+      queryClient.setQueryData(bonusGamesQueryKey, data);
+      setReorderTarget(null);
+    },
+    onSettled: () => {
+      reorderPendingRef.current = false;
+    },
   });
 
   function moveActive(gameId: string, direction: -1 | 1): void {
@@ -286,7 +294,8 @@ export function BonusGamesAdmin(): JSX.Element {
     if (index < 0 || targetIndex < 0 || targetIndex >= activeIds.length) return;
     const next = [...activeIds];
     [next[index], next[targetIndex]] = [next[targetIndex]!, next[index]!];
-    reorderMutation.mutate(next);
+    reorderMutation.reset();
+    setReorderTarget(next);
   }
 
   return (
@@ -330,9 +339,10 @@ export function BonusGamesAdmin(): JSX.Element {
           onMediaUploaded={(gameId, kind, url) => {
             setForm((current) => {
               if (current === null || current.gameId !== gameId) return current;
-              return kind === 'goalkeeper_ready'
-                ? { ...current, goalkeeperReadyUrl: url }
-                : { ...current, goalkeeperSaveUrl: url };
+              if (kind === 'arena') return { ...current, arenaArtworkUrl: url };
+              if (kind === 'thumbnail') return { ...current, arenaThumbnailUrl: url };
+              if (kind === 'goalkeeper_ready') return { ...current, goalkeeperReadyUrl: url };
+              return { ...current, goalkeeperSaveUrl: url };
             });
           }}
           onArchiveRequested={(gameId) => {
@@ -360,6 +370,20 @@ export function BonusGamesAdmin(): JSX.Element {
             if (archivePendingRef.current) return;
             archivePendingRef.current = true;
             archiveMutation.mutate(archiveTarget.id);
+          }}
+        />
+      )}
+      {reorderTarget !== null && (
+        <ReorderBonusGamesModal
+          pending={reorderMutation.isPending}
+          error={reorderMutation.isError ? errorMessage(reorderMutation.error) : null}
+          onCancel={() => {
+            if (!reorderPendingRef.current) setReorderTarget(null);
+          }}
+          onConfirm={() => {
+            if (reorderPendingRef.current) return;
+            reorderPendingRef.current = true;
+            reorderMutation.mutate(reorderTarget);
           }}
         />
       )}
@@ -461,11 +485,7 @@ function BonusGameEditor({
 }: {
   form: BonusGameFormState;
   onChange: (form: BonusGameFormState) => void;
-  onMediaUploaded: (
-    gameId: string | null,
-    kind: 'goalkeeper_ready' | 'goalkeeper_save',
-    url: string,
-  ) => void;
+  onMediaUploaded: (gameId: string | null, kind: AdminBonusMediaKind, url: string) => void;
   onArchiveRequested: (gameId: string) => void;
   onCancel: () => void;
   onSaved: () => void;
@@ -475,7 +495,9 @@ function BonusGameEditor({
   const uploadPendingRef = useRef(false);
   const mountedRef = useRef(true);
   const editorIdentityRef = useRef(form.gameId);
-  const uploadGenerationRef = useRef<Record<'goalkeeper_ready' | 'goalkeeper_save', number>>({
+  const uploadGenerationRef = useRef<Record<AdminBonusMediaKind, number>>({
+    arena: 0,
+    thumbnail: 0,
     goalkeeper_ready: 0,
     goalkeeper_save: 0,
   });
@@ -557,17 +579,16 @@ function BonusGameEditor({
     mutation.mutate(form);
   }
 
-  function setMediaValue(kind: 'goalkeeper_ready' | 'goalkeeper_save', value: string): void {
+  function setMediaValue(kind: AdminBonusMediaKind, value: string): void {
     uploadGenerationRef.current[kind] += 1;
-    setField(kind === 'goalkeeper_ready' ? 'goalkeeperReadyUrl' : 'goalkeeperSaveUrl', value);
+    if (kind === 'arena') setField('arenaArtworkUrl', value);
+    else if (kind === 'thumbnail') setField('arenaThumbnailUrl', value);
+    else if (kind === 'goalkeeper_ready') setField('goalkeeperReadyUrl', value);
+    else setField('goalkeeperSaveUrl', value);
   }
 
   function requestUpload(kind: AdminBonusMediaKind, file: File): void {
-    if (
-      savePendingRef.current ||
-      uploadPendingRef.current ||
-      (kind !== 'goalkeeper_ready' && kind !== 'goalkeeper_save')
-    ) {
+    if (savePendingRef.current || uploadPendingRef.current) {
       return;
     }
     uploadPendingRef.current = true;
@@ -593,7 +614,7 @@ function BonusGameEditor({
       wide
     >
       <div style={{ display: 'grid', gap: 10 }}>
-        <Field label="Slug">
+        <Field label="Код игры">
           <input value={form.slug} onChange={(event) => setField('slug', event.target.value)} />
         </Field>
         <Field label="Название">
@@ -687,7 +708,7 @@ function BonusGameEditor({
             onChange={(value) => setField('rewardExperience', value)}
           />
         </Grid>
-        <Field label="Slug площадки">
+        <Field label="Код площадки">
           <input
             value={form.arenaSlug}
             onChange={(event) => setField('arenaSlug', event.target.value)}
@@ -699,18 +720,22 @@ function BonusGameEditor({
             onChange={(event) => setField('arenaTitle', event.target.value)}
           />
         </Field>
-        <Field label="Фон площадки">
-          <input
-            value={form.arenaArtworkUrl}
-            onChange={(event) => setField('arenaArtworkUrl', event.target.value)}
-          />
-        </Field>
-        <Field label="Миниатюра площадки">
-          <input
-            value={form.arenaThumbnailUrl}
-            onChange={(event) => setField('arenaThumbnailUrl', event.target.value)}
-          />
-        </Field>
+        <MediaField
+          label="Фон площадки"
+          value={form.arenaArtworkUrl}
+          kind="arena"
+          pending={uploadMutation.isPending}
+          onValue={(value) => setMediaValue('arena', value)}
+          onFile={requestUpload}
+        />
+        <MediaField
+          label="Миниатюра площадки"
+          value={form.arenaThumbnailUrl}
+          kind="thumbnail"
+          pending={uploadMutation.isPending}
+          onValue={(value) => setMediaValue('thumbnail', value)}
+          onFile={requestUpload}
+        />
         <Grid>
           <Field label="Статус площадки">
             <select
@@ -914,6 +939,46 @@ function MediaField({
   );
 }
 
+function ReorderBonusGamesModal({
+  pending,
+  error,
+  onCancel,
+  onConfirm,
+}: {
+  pending: boolean;
+  error: string | null;
+  onCancel: () => void;
+  onConfirm: () => void;
+}): JSX.Element {
+  return (
+    <Modal
+      title="Изменить порядок игр?"
+      copy="Изменение порядка перестроит условия прохождения для будущих попыток. Уже завершённые игры и активные попытки сохранятся."
+      onClose={onCancel}
+      closeBlocked={pending}
+    >
+      <div className="modal-actions">
+        <button type="button" className="btn btn--ghost" onClick={onCancel} disabled={pending}>
+          Отмена
+        </button>
+        <button
+          type="button"
+          className="modal-primary btn--cta"
+          onClick={onConfirm}
+          disabled={pending}
+        >
+          Изменить порядок
+        </button>
+      </div>
+      {error !== null && (
+        <div role="alert" style={{ marginTop: 10, color: 'var(--red-deep)', fontSize: 12 }}>
+          {error}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 function ArchiveBonusGameModal({
   game,
   pending,
@@ -971,63 +1036,24 @@ function Modal({
   wide?: boolean;
   children: ReactNode;
 }): JSX.Element {
-  const cardRef = useRef<HTMLElement | null>(null);
-  const onCloseRef = useRef(onClose);
-  const closeBlockedRef = useRef(closeBlocked);
-  onCloseRef.current = onClose;
-  closeBlockedRef.current = closeBlocked;
-  useEffect(() => {
-    const card = cardRef.current;
-    const first = card?.querySelector<HTMLElement>('input, select, textarea, button');
-    first?.focus();
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape' && !closeBlockedRef.current) onCloseRef.current();
-      if (event.key !== 'Tab' || !card) return;
-      const focusable = Array.from(
-        card.querySelectorAll<HTMLElement>(
-          'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled)',
-        ),
-      );
-      const firstFocusable = focusable[0];
-      const lastFocusable = focusable.at(-1);
-      if (!firstFocusable || !lastFocusable) return;
-      if (event.shiftKey && document.activeElement === firstFocusable) {
-        event.preventDefault();
-        lastFocusable.focus();
-      }
-      if (!event.shiftKey && document.activeElement === lastFocusable) {
-        event.preventDefault();
-        firstFocusable.focus();
-      }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, []);
-  return createPortal(
-    <div
-      className="modal-backdrop"
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !closeBlocked) onClose();
-      }}
+  return (
+    <AccessibleModal
+      title={title}
+      copy={copy}
+      onClose={onClose}
+      closeBlocked={closeBlocked}
+      {...(wide
+        ? {
+            cardStyle: {
+              width: 'min(720px, calc(100vw - 24px))',
+              maxHeight: '100%',
+              overflowY: 'auto' as const,
+            },
+          }
+        : {})}
     >
-      <section
-        ref={cardRef}
-        className="modal-card"
-        style={
-          wide
-            ? { width: 'min(720px, calc(100vw - 24px))', maxHeight: '100%', overflowY: 'auto' }
-            : undefined
-        }
-      >
-        <h2 className="modal-title">{title}</h2>
-        <p className="modal-copy">{copy}</p>
-        <div style={{ marginTop: 14 }}>{children}</div>
-      </section>
-    </div>,
-    document.body,
+      {children}
+    </AccessibleModal>
   );
 }
 

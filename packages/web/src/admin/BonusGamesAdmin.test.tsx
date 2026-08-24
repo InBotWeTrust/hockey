@@ -122,14 +122,14 @@ function requestPath(input: RequestInfo | URL): string {
 }
 
 function fillRequiredDraft(dialog: HTMLElement): void {
-  fireEvent.change(within(dialog).getByLabelText('Slug'), { target: { value: 'ice-test' } });
+  fireEvent.change(within(dialog).getByLabelText('Код игры'), { target: { value: 'ice-test' } });
   fireEvent.change(within(dialog).getByLabelText('Название'), {
     target: { value: '  Ледовый тест  ' },
   });
   fireEvent.change(within(dialog).getByLabelText('Описание'), {
     target: { value: '  Черновик  ' },
   });
-  fireEvent.change(within(dialog).getByLabelText('Slug площадки'), {
+  fireEvent.change(within(dialog).getByLabelText('Код площадки'), {
     target: { value: 'ice-test-arena' },
   });
   fireEvent.change(within(dialog).getByLabelText('Название площадки'), {
@@ -225,6 +225,8 @@ describe('bonus games admin', () => {
       'Награда: монеты',
       'Награда: звёзды',
       'Награда: опыт',
+      'Код игры',
+      'Код площадки',
       'Фон площадки',
       'Миниатюра площадки',
       'Вратарь: готов',
@@ -232,6 +234,8 @@ describe('bonus games admin', () => {
     ]) {
       expect(within(editor).getByLabelText(label)).toBeInTheDocument();
     }
+    expect(within(editor).getByLabelText('Загрузить Фон площадки')).toBeInTheDocument();
+    expect(within(editor).getByLabelText('Загрузить Миниатюра площадки')).toBeInTheDocument();
 
     fireEvent.click(within(editor).getByRole('button', { name: 'Отмена' }));
     fireEvent.click(screen.getByRole('button', { name: 'Архивировать Пляжный хоккей' }));
@@ -241,6 +245,41 @@ describe('bonus games admin', () => {
         'Новые попытки станут недоступны. Активные попытки продолжатся по сохранённым снимкам правил.',
       ),
     ).toBeInTheDocument();
+  });
+
+  it('restores focus to the exact Create, Edit, and Archive triggers', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ games: [bonusGame] }));
+    renderBonusGames();
+    await screen.findByText(bonusGame.title);
+
+    const create = screen.getByRole('button', { name: 'Создать' });
+    create.focus();
+    fireEvent.click(create);
+    fireEvent.click(
+      within(screen.getByRole('dialog', { name: 'Новая бонусная игра' })).getByRole('button', {
+        name: 'Отмена',
+      }),
+    );
+    await waitFor(() => expect(create).toHaveFocus());
+
+    const edit = screen.getByRole('button', { name: `Редактировать ${bonusGame.title}` });
+    edit.focus();
+    fireEvent.click(edit);
+    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Редактирование бонусной игры' }), {
+      key: 'Escape',
+    });
+    await waitFor(() => expect(edit).toHaveFocus());
+
+    const archive = screen.getByRole('button', { name: `Архивировать ${bonusGame.title}` });
+    archive.focus();
+    fireEvent.click(archive);
+    fireEvent.click(
+      within(screen.getByRole('dialog', { name: 'Архивировать бонусную игру' })).getByRole(
+        'button',
+        { name: 'Отмена' },
+      ),
+    );
+    await waitFor(() => expect(archive).toHaveFocus());
   });
 
   it('submits exact trimmed create and patch payloads', async () => {
@@ -489,7 +528,7 @@ describe('bonus games admin', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('sends the exact active reorder request', async () => {
+  it('warns that reorder changes future progression before sending the exact request', async () => {
     const second = makeBonusGame({
       id: '44444444-4444-4444-8444-444444444444',
       title: 'Ледяной замок',
@@ -508,6 +547,12 @@ describe('bonus games admin', () => {
     renderBonusGames();
     await screen.findByText('Ледяной замок');
     fireEvent.click(screen.getAllByRole('button', { name: 'Ниже' })[0]!);
+    const confirmation = await screen.findByRole('dialog', { name: 'Изменить порядок игр?' });
+    expect(confirmation).toHaveTextContent(
+      'Изменение порядка перестроит условия прохождения для будущих попыток.',
+    );
+    expect(reorderBody).toBeNull();
+    fireEvent.click(within(confirmation).getByRole('button', { name: 'Изменить порядок' }));
     await waitFor(() =>
       expect(reorderBody).toEqual({
         gameIds: ['44444444-4444-4444-8444-444444444444', '11111111-1111-4111-8111-111111111111'],
@@ -529,7 +574,7 @@ describe('bonus games admin', () => {
 
     renderBonusGames();
     const editor = await openBonusEditor();
-    const picker = within(editor).getByLabelText('Загрузить Вратарь: готов');
+    const picker = within(editor).getByLabelText('Загрузить Фон площадки');
     fireEvent.change(picker, {
       target: { files: [new File([new Uint8Array([1])], 'goalie.png', { type: 'image/png' })] },
     });
@@ -560,8 +605,8 @@ describe('bonus games admin', () => {
           media: {
             id: '55555555-5555-4555-8555-555555555555',
             url: '/api/media/55555555-5555-4555-8555-555555555555?t=safe',
-            kind: 'goalkeeper_ready',
-            key: 'bonus-games/goalkeeper-ready/file.webp',
+            kind: 'arena',
+            key: 'bonus-games/arena/file.webp',
             contentType: 'image/webp',
             size: 1,
             originalName: 'вратарь готов.webp',
@@ -571,6 +616,11 @@ describe('bonus games admin', () => {
       );
       await upload.promise;
     });
+    await waitFor(() =>
+      expect(within(editor).getByLabelText('Фон площадки')).toHaveValue(
+        '/api/media/55555555-5555-4555-8555-555555555555?t=safe',
+      ),
+    );
   });
 
   it('applies the current deferred upload under StrictMode and includes it in the save payload', async () => {
@@ -588,7 +638,7 @@ describe('bonus games admin', () => {
 
     renderBonusGamesInStrictMode();
     const editor = await openBonusEditor();
-    fireEvent.change(within(editor).getByLabelText('Загрузить Вратарь: готов'), {
+    fireEvent.change(within(editor).getByLabelText('Загрузить Миниатюра площадки'), {
       target: {
         files: [new File([new Uint8Array([1])], 'strict-ready.webp', { type: 'image/webp' })],
       },
@@ -599,8 +649,8 @@ describe('bonus games admin', () => {
           media: {
             id: '66666666-6666-4666-8666-666666666666',
             url: '/api/media/66666666-6666-4666-8666-666666666666?t=current',
-            kind: 'goalkeeper_ready',
-            key: 'bonus-games/goalkeeper-ready/strict-ready.webp',
+            kind: 'thumbnail',
+            key: 'bonus-games/thumbnail/strict-ready.webp',
             contentType: 'image/webp',
             size: 1,
             originalName: 'strict-ready.webp',
@@ -611,7 +661,7 @@ describe('bonus games admin', () => {
       await upload.promise;
     });
     await waitFor(() =>
-      expect(within(editor).getByLabelText('Вратарь: готов')).toHaveValue(
+      expect(within(editor).getByLabelText('Миниатюра площадки')).toHaveValue(
         '/api/media/66666666-6666-4666-8666-666666666666?t=current',
       ),
     );
@@ -619,7 +669,9 @@ describe('bonus games admin', () => {
     fireEvent.click(within(editor).getByRole('button', { name: 'Сохранить' }));
     await waitFor(() => expect(patchBody).not.toBeNull());
     expect(patchBody).toMatchObject({
-      goalkeeperReadyUrl: '/api/media/66666666-6666-4666-8666-666666666666?t=current',
+      arena: {
+        thumbnailUrl: '/api/media/66666666-6666-4666-8666-666666666666?t=current',
+      },
     });
   });
 
@@ -679,12 +731,12 @@ describe('bonus games admin', () => {
 
     renderBonusGames();
     const editor = await openBonusEditor();
-    const picker = within(editor).getByLabelText('Загрузить Вратарь: готов');
+    const picker = within(editor).getByLabelText('Загрузить Фон площадки');
     const file = new File([new Uint8Array([1])], 'ready.webp', { type: 'image/webp' });
     fireEvent.change(picker, { target: { files: [file] } });
     fireEvent.change(picker, { target: { files: [file] } });
     await waitFor(() => expect(uploadCount).toBe(1));
-    fireEvent.change(within(editor).getByLabelText('Вратарь: готов'), {
+    fireEvent.change(within(editor).getByLabelText('Фон площадки'), {
       target: { value: '/manual/newer.webp' },
     });
     expect(within(editor).getByRole('button', { name: 'Сохранить' })).toBeDisabled();
@@ -701,8 +753,8 @@ describe('bonus games admin', () => {
           media: {
             id: '55555555-5555-4555-8555-555555555555',
             url: '/api/media/old-upload?t=stale',
-            kind: 'goalkeeper_ready',
-            key: 'bonus-games/goalkeeper-ready/file.webp',
+            kind: 'arena',
+            key: 'bonus-games/arena/file.webp',
             contentType: 'image/webp',
             size: 1,
             originalName: 'ready.webp',
@@ -713,7 +765,7 @@ describe('bonus games admin', () => {
       await upload.promise;
     });
     await waitFor(() =>
-      expect(within(editor).getByLabelText('Вратарь: готов')).toHaveValue('/manual/newer.webp'),
+      expect(within(editor).getByLabelText('Фон площадки')).toHaveValue('/manual/newer.webp'),
     );
   });
 

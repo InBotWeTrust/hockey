@@ -16,6 +16,7 @@ import {
   resetDatabase,
   resetRedis,
 } from '../helpers/testDb.js';
+import { trackPoolClientQueries } from '../helpers/trackPoolClientConcurrency.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
@@ -483,6 +484,25 @@ describe.skipIf(!hasIntegrationEnv)('/me/home-arena*', () => {
       arenaThemeId: neutralArenaId,
       arena: { slug: 'neutral' },
     });
+  });
+
+  it('resolves both participant arenas sequentially on one PoolClient', async () => {
+    const opponentUserId = await createOpponent();
+    const client = await pool.connect();
+    const tracked = trackPoolClientQueries(client);
+    try {
+      await resolveDuelVenue(tracked.client, {
+        source: 'matchmaking',
+        policy: 'random_unselected',
+        challengerUserId: userId,
+        opponentUserId,
+        randomUnit: 0.5,
+      });
+    } finally {
+      tracked.client.release();
+    }
+
+    expect(tracked.tracker.maxConcurrentQueries).toBe(1);
   });
 
   it('excludes archived themes from random-unselected matchmaking', async () => {

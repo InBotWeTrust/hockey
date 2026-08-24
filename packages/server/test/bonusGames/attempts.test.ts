@@ -21,6 +21,7 @@ import type {
 import { applyMigrations } from '../../src/db/migrations.js';
 import { deriveBonusAttemptSeed } from '../../src/duel/seed.js';
 import { createTestPool, hasIntegrationEnv, resetDatabase } from '../helpers/testDb.js';
+import { trackPoolConnections } from '../helpers/trackPoolClientConcurrency.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
@@ -252,6 +253,21 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
     expect(first.created).toBe(true);
     expect(second.created).toBe(false);
     expect(second.attempt.id).toBe(first.attempt.id);
+  });
+
+  it('runs attempt-start transaction queries sequentially on its PoolClient', async () => {
+    const userId = await createUser();
+    const game = await createGame({ sortOrder: 1 });
+    const tracked = trackPoolConnections(pool);
+
+    await startOrResumeBonusAttempt(tracked.pool, {
+      userId,
+      gameId: game.id,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+    });
+
+    expect(tracked.tracker.maxConcurrentQueries).toBe(1);
   });
 
   it('closes an expired period and waits for the next explicit start', async () => {

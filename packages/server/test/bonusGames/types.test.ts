@@ -48,6 +48,14 @@ describe('bonus game rule contracts', () => {
     );
   });
 
+  it('normalizes bonus puck speed to the PlayView four-decimal shot contract', () => {
+    // A full-precision snapshot at this exact reviewed boundary can resolve differently from
+    // PlayView, which submits and resolves the same value rounded to four decimal places.
+    const [rule] = parseBonusPeriodRules([{ ...validRule(1), puckSpeedPerMs: 1.234549 }], 1);
+
+    expect(rule?.puckSpeedPerMs).toBe(1.2345);
+  });
+
   it('builds the exact configured goalkeeper', () => {
     const config = buildBonusGoalieConfig('beach', 'Пляж', validRule(1));
 

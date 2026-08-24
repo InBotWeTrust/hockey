@@ -365,10 +365,8 @@ export async function startOrResumeBonusAttempt(
 
     if (deferredError === null) {
       await lockBonusGameCatalogForRead(client);
-      const [settings, game] = await Promise.all([
-        getGameSettings(client),
-        fetchStartableGame(client, input.userId, input.gameId),
-      ]);
+      const settings = await getGameSettings(client);
+      const game = await fetchStartableGame(client, input.userId, input.gameId);
       const competitionLevel = resolveCompetitionLevel(
         Number(user.level),
         Number(user.lifetime_goals_total),

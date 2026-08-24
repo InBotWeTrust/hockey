@@ -154,8 +154,17 @@ export const fetchCurrentBonusAttempt = (): Promise<BonusCurrentAttemptResponse>
 export const fetchBonusAttempt = (attemptId: string): Promise<BonusAttemptResponse> =>
   apiFetch<BonusAttemptResponse>(`/bonus-games/attempts/${attemptId}`);
 
-export const purchaseBonusGame = (gameId: string): Promise<BonusUnlockResponse> =>
-  apiFetch<BonusUnlockResponse>(`/bonus-games/${gameId}/unlock`, { method: 'POST' });
+export const purchaseBonusGame = ({
+  gameId,
+  expectedPriceStars,
+}: {
+  gameId: string;
+  expectedPriceStars: number;
+}): Promise<BonusUnlockResponse> =>
+  apiFetch<BonusUnlockResponse>(`/bonus-games/${gameId}/unlock`, {
+    method: 'POST',
+    body: JSON.stringify({ expected_price_stars: expectedPriceStars }),
+  });
 
 export const startBonusAttempt = (gameId: string): Promise<BonusAttemptResponse> =>
   apiFetch<BonusAttemptResponse>(`/bonus-games/${gameId}/attempts`, { method: 'POST' });

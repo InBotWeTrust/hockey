@@ -9,6 +9,7 @@ import type { ProfileData } from './profileTypes.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
 import { BONUS_GAME_SECTION_ARTWORK } from '../game/bonusGameAssets.js';
+import { AccessibleModal } from '../components/AccessibleModal.js';
 
 const DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED = 300;
 const SECTION_ARTWORK_SIZE = 86;
@@ -218,27 +219,21 @@ export function SectionsScreen(): JSX.Element {
       </section>
 
       {lockedInfo && (
-        <div className="modal-backdrop" role="presentation" onClick={() => setLockedInfo(null)}>
-          <div
-            className="modal-card"
-            role="dialog"
-            aria-modal="true"
-            aria-label={lockedInfo.title}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <h2 className="modal-title">{lockedInfo.title}</h2>
-            <p className="modal-copy">{lockedInfo.text}</p>
-            <div className="modal-actions">
-              <button
-                type="button"
-                className="modal-primary btn btn--cta"
-                onClick={() => setLockedInfo(null)}
-              >
-                Понятно
-              </button>
-            </div>
+        <AccessibleModal
+          title={lockedInfo.title}
+          copy={lockedInfo.text}
+          onClose={() => setLockedInfo(null)}
+        >
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="modal-primary btn btn--cta"
+              onClick={() => setLockedInfo(null)}
+            >
+              Понятно
+            </button>
           </div>
-        </div>
+        </AccessibleModal>
       )}
     </main>
   );

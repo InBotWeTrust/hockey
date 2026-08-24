@@ -9,11 +9,13 @@ import {
 } from '@hockey/game-core';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import type { BonusGameAttempt, BonusPeriodRule } from '../api/bonusGames.js';
+import { AccessibleModal } from '../components/AccessibleModal.js';
 import { PlayView } from '../game/PlayView.js';
 import { deriveBonusGameClockBasis } from '../game/bonusGameTiming.js';
 import type { SpeedOverrides } from '../game/loop.js';
 import type { GoalieOptions } from '../game/renderer/Goalie.js';
 import { useBonusGameStore } from '../stores/bonusGameStore.js';
+import { formatRussianCount } from '../lib/russianPlural.js';
 
 const BONUS_GAME_LAYER_STYLE = { top: '24.55%', height: '74.2%', bottom: 'auto' } as const;
 
@@ -146,8 +148,15 @@ function BonusResult({
         <p>{copy}</p>
         {kind === 'completed' && attempt.reward_granted ? (
           <p>
-            {attempt.reward.coins} монет · {attempt.reward.experience} опыта ·{' '}
-            {attempt.reward.stars} звезда · площадка «{attempt.arena.title}» открыта
+            {formatRussianCount(attempt.reward.coins, 'монета', 'монеты', 'монет')} ·{' '}
+            {formatRussianCount(
+              attempt.reward.experience,
+              'очко опыта',
+              'очка опыта',
+              'очков опыта',
+            )}{' '}
+            · {formatRussianCount(attempt.reward.stars, 'звезда', 'звезды', 'звёзд')} · площадка «
+            {attempt.arena.title}» открыта
           </p>
         ) : null}
         <p>
@@ -438,40 +447,36 @@ export function BonusGamePlayScreen(): JSX.Element {
       />
 
       {confirmAbandon ? (
-        <div className="modal-backdrop" role="presentation">
-          <section
-            className="modal-card"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Завершить попытку?"
-          >
-            <h2 className="modal-title">Завершить попытку?</h2>
-            <p className="modal-copy">Прогресс попытки пропадёт. Оплаченное открытие останется.</p>
-            {error ? (
-              <p role="alert" className="bonus-game-abandon-error">
-                {error}
-              </p>
-            ) : null}
-            <div className="modal-actions">
-              <button
-                type="button"
-                className="btn btn--ghost"
-                disabled={isConfirmingAbandon}
-                onClick={() => setConfirmAbandon(false)}
-              >
-                Продолжить игру
-              </button>
-              <button
-                type="button"
-                className="modal-primary btn btn--cta"
-                disabled={isConfirmingAbandon}
-                onClick={() => void confirmAndAbandon()}
-              >
-                {isConfirmingAbandon ? 'Завершаем…' : 'Да, завершить'}
-              </button>
-            </div>
-          </section>
-        </div>
+        <AccessibleModal
+          title="Завершить попытку?"
+          copy="Прогресс попытки пропадёт. Оплаченное открытие останется."
+          closeBlocked={isConfirmingAbandon}
+          onClose={() => setConfirmAbandon(false)}
+        >
+          {error ? (
+            <p role="alert" className="bonus-game-abandon-error">
+              {error}
+            </p>
+          ) : null}
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={isConfirmingAbandon}
+              onClick={() => setConfirmAbandon(false)}
+            >
+              Продолжить игру
+            </button>
+            <button
+              type="button"
+              className="modal-primary btn btn--cta"
+              disabled={isConfirmingAbandon}
+              onClick={() => void confirmAndAbandon()}
+            >
+              {isConfirmingAbandon ? 'Завершаем…' : 'Да, завершить'}
+            </button>
+          </div>
+        </AccessibleModal>
       ) : null}
     </>
   );
