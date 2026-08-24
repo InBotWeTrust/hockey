@@ -922,7 +922,8 @@ describe('DailyScreen', () => {
 
     expect(await screen.findByRole('button', { name: 'К режимам' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'НАЧАТЬ' })).toBeInTheDocument();
-    expect(document.querySelector('img[src="/sprites/daily-tableau.webp"]')).toBeTruthy();
+    expect(screen.getByLabelText('Игровое табло')).toBeInTheDocument();
+    expect(document.querySelector('img[src="/sprites/daily-tableau.webp"]')).toBeFalsy();
     expect(document.querySelector('img[src="/sprites/wide-tableau-led-dark-v2.webp"]')).toBeFalsy();
     expect(document.querySelector('img[src="/sprites/street-tableau.webp"]')).toBeFalsy();
     const calls = fetchMock.mock.calls.map((c) => String(c[0]));
@@ -1003,10 +1004,10 @@ describe('DailyScreen', () => {
 
     const shotButton = await screen.findByRole('button', { name: 'БРОСОК' });
     expect(shotButton).toBeEnabled();
-    const cubeText = screen.getByLabelText('Статистика на видеокубе').textContent ?? '';
-    expect(cubeText.indexOf('ВРЕМЯ')).toBeGreaterThan(cubeText.indexOf('Период'));
-    expect(cubeText.indexOf('Голы')).toBeGreaterThan(cubeText.indexOf('ВРЕМЯ'));
-    expect(cubeText.indexOf('Броски')).toBeGreaterThan(cubeText.indexOf('Голы'));
+    const scoreboardText = screen.getByLabelText('Игровое табло').textContent ?? '';
+    expect(scoreboardText.indexOf('ВРЕМЯ')).toBeGreaterThan(scoreboardText.indexOf('ПЕРИОД'));
+    expect(scoreboardText.indexOf('ГОЛЫ')).toBeGreaterThan(scoreboardText.indexOf('ВРЕМЯ'));
+    expect(scoreboardText.indexOf('БРОСКИ')).toBeGreaterThan(scoreboardText.indexOf('ГОЛЫ'));
     fireEvent.click(screen.getByRole('button', { name: 'Звук в разработке' }));
     expect(screen.getByRole('status')).toHaveTextContent('Звук в разработке');
     expect(screen.getByText('00/30')).toBeInTheDocument();
@@ -1481,7 +1482,7 @@ describe('DailyScreen', () => {
     expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();
   });
 
-  it('keeps multi-period rink cube metrics in the compact two-column layout', async () => {
+  it('keeps multi-period rink metrics in the compact two-column layout', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input);
       if (url.includes('/duel/training/state')) {
@@ -1498,16 +1499,20 @@ describe('DailyScreen', () => {
 
     renderWith(['/?view=training&play=1']);
 
-    const cube = await screen.findByLabelText('Статистика на видеокубе');
-    expect((cube as HTMLElement).style.gridTemplateColumns).toBe('repeat(2, minmax(0, 1fr))');
-    expect((cube as HTMLElement).style.alignContent).toBe('center');
-    expect(within(cube).getByText('Период')).toBeInTheDocument();
-    expect(within(cube).getByText('2/3')).toBeInTheDocument();
-    expect(within(cube).getByText('Броски')).toBeInTheDocument();
-    expect(within(cube).getByText('12/500')).toBeInTheDocument();
+    const scoreboard = await screen.findByLabelText('Игровое табло');
+    expect(screen.getByTestId('scoreboard-row-status')).toHaveStyle({
+      gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    });
+    expect(screen.getByTestId('scoreboard-row-score')).toHaveStyle({
+      gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    });
+    expect(within(scoreboard).getByText('ПЕРИОД')).toBeInTheDocument();
+    expect(within(scoreboard).getByText('2/3')).toBeInTheDocument();
+    expect(within(scoreboard).getByText('БРОСКИ')).toBeInTheDocument();
+    expect(within(scoreboard).getByText('12/500')).toBeInTheDocument();
   });
 
-  it('separates time and period rows on a one-period duel rink cube', async () => {
+  it('groups period, score and shots below the timer on a one-period duel scoreboard', async () => {
     const now = Date.now();
     const expressMatch: AmateurDuelMatchState = {
       ...settledDuelMatch,
@@ -1566,16 +1571,15 @@ describe('DailyScreen', () => {
 
     renderWith(['/?view=amateur&match=match-1&play=1']);
 
-    const cube = await screen.findByLabelText('Статистика на видеокубе');
-    expect((cube as HTMLElement).style.gridTemplateRows).toBe('auto auto minmax(0, 1fr)');
-    expect((cube as HTMLElement).style.rowGap).toBe('clamp(6px, 3cqw, 12px)');
-    expect(within(cube).getByText('Период')).toBeInTheDocument();
-    expect(within(cube).getByText('1/1')).toBeInTheDocument();
-    expect(within(cube).getByText('Счёт')).toBeInTheDocument();
-    expect(within(cube).getByText('4:0')).toBeInTheDocument();
-
-    const bottomMetrics = within(cube).getByText('Счёт').parentElement?.parentElement;
-    expect(bottomMetrics?.style.alignSelf).toBe('end');
+    const scoreboard = await screen.findByLabelText('Игровое табло');
+    expect(screen.getByTestId('scoreboard-row-timer')).toBeInTheDocument();
+    expect(screen.getByTestId('scoreboard-row-summary')).toHaveStyle({
+      gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+    });
+    expect(within(scoreboard).getByText('ПЕРИОД')).toBeInTheDocument();
+    expect(within(scoreboard).getByText('1/1')).toBeInTheDocument();
+    expect(within(scoreboard).getByText('СЧЁТ')).toBeInTheDocument();
+    expect(within(scoreboard).getByText('4:0')).toBeInTheDocument();
   });
 
   it('opens the daily rink with an ice car after a training shot', async () => {
@@ -1732,7 +1736,8 @@ describe('DailyScreen', () => {
       await screen.findByRole('img', { name: 'Игровая площадка в перспективе' }),
     ).toBeInTheDocument();
     expect(document.querySelector('img[src="/sprites/training-court.webp"]')).toBeTruthy();
-    expect(document.querySelector('img[src="/sprites/street-tableau.webp"]')).toBeTruthy();
+    expect(screen.getByLabelText('Игровое табло')).toBeInTheDocument();
+    expect(document.querySelector('img[src="/sprites/street-tableau.webp"]')).toBeFalsy();
     const hitboxesToggle = screen.getByRole('checkbox', { name: 'Хитбоксы' });
     expect(hitboxesToggle).not.toBeChecked();
     fireEvent.click(hitboxesToggle);
@@ -2738,7 +2743,8 @@ describe('DailyScreen', () => {
     const startButton = await screen.findByRole('button', { name: 'НАЧАТЬ' });
     expect(startButton).toBeEnabled();
     expect(document.querySelector('img[src="/bonus-games/arenas/beach.webp"]')).toBeTruthy();
-    expect(document.querySelector('img[src="/sprites/duel-tableau.webp"]')).toBeTruthy();
+    expect(screen.getByLabelText('Игровое табло')).toBeInTheDocument();
+    expect(document.querySelector('img[src="/sprites/duel-tableau.webp"]')).toBeFalsy();
     fireEvent.click(startButton);
 
     await waitFor(() => {
@@ -2892,14 +2898,15 @@ describe('DailyScreen', () => {
 
     renderWith(['/?view=amateur&match=match-1&play=1']);
 
-    expect(await screen.findByText('Счёт')).toBeInTheDocument();
+    expect(await screen.findByText('СЧЁТ')).toBeInTheDocument();
     expect(screen.getByText('20:19')).toBeInTheDocument();
-    const cubeText = screen.getByLabelText('Статистика на видеокубе').textContent ?? '';
-    expect(cubeText.indexOf('ВРЕМЯ')).toBeGreaterThan(cubeText.indexOf('Период'));
-    expect(cubeText.indexOf('Счёт')).toBeGreaterThan(cubeText.indexOf('Броски'));
-    expect(screen.getByLabelText('Сообщение на видеокубе')).toHaveTextContent(
-      'СОПЕРНИК 07/30 · ИГРАЕТ 2/3',
-    );
+    const scoreboardText = screen.getByLabelText('Игровое табло').textContent ?? '';
+    expect(scoreboardText.indexOf('ВРЕМЯ')).toBeGreaterThan(scoreboardText.indexOf('ПЕРИОД'));
+    expect(scoreboardText.indexOf('СЧЁТ')).toBeGreaterThan(scoreboardText.indexOf('БРОСКИ'));
+    const opponentLine = screen.getByLabelText('Соперник: Duel Opponent');
+    expect(opponentLine).toHaveClass('game-scoreboard__status-line--active');
+    expect(within(opponentLine).getByText('Duel Opponent')).toBeInTheDocument();
+    expect(within(opponentLine).getByText('07/30 · ИГРАЕТ 2/3')).toBeInTheDocument();
   });
 
   it('shows five minutes to forfeit after an intermission period is ready', () => {

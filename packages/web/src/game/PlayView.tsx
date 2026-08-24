@@ -36,7 +36,12 @@ import {
   type StickEffects,
 } from '@hockey/game-core';
 import { useAuthStore } from '../auth/authStore.js';
-import { ScoreBoard, type ScoreBoardOpponent } from '../components/ScoreBoard.js';
+import {
+  buildGameScoreboardModel,
+  GameScoreboard,
+  ScoreBoard,
+  type ScoreBoardOpponent,
+} from '../components/ScoreBoard.js';
 import { ResultModal, type ResultModalKind } from '../components/ResultModal.js';
 import type { Scale } from './coords.js';
 import { createGameLoop, type GameLoop, type SpeedOverrides } from './loop.js';
@@ -95,8 +100,6 @@ const LONG_COURT_GAME_LAYER_STYLE: CSSProperties = {
   height: '74.2%',
   bottom: 'auto',
 };
-
-const GAME_LED_TABLEAU_IMAGE = '/sprites/wide-tableau-led-dark-v2.webp';
 
 function shouldReduceMotion(): boolean {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
@@ -275,7 +278,6 @@ export interface PlayViewProps<TState> {
   applyResolvedState?: ((next: TState) => void) | undefined;
   rinkLayer?: ReactNode;
   longCourtBackground?: string | undefined;
-  longCourtTableau?: string | undefined;
   rinkAspectRatio?: string | undefined;
   rinkBorderRadius?: number | string | undefined;
   rinkBorder?: string | undefined;
@@ -442,14 +444,12 @@ export function computeInitialElapsedMs(timing: PlaySessionTiming): number {
 
 function TrainingPerspectiveRink({
   design = 'standard',
-  cubeHud,
+  scoreboard,
   longBackground = TRAINING_LONG_COURT_BACKGROUND,
-  tableauImage = GAME_LED_TABLEAU_IMAGE,
 }: {
   design?: TrainingCourtDesign | undefined;
-  cubeHud?: ReactNode;
+  scoreboard?: ReactNode;
   longBackground?: string | undefined;
-  tableauImage?: string | undefined;
 }): JSX.Element {
   const isLong = design === 'long';
   return (
@@ -480,236 +480,21 @@ function TrainingPerspectiveRink({
       />
       {isLong && (
         <div
-          aria-hidden={cubeHud ? undefined : true}
+          aria-hidden={scoreboard ? undefined : true}
+          className="game-scoreboard-overlay"
           style={{
             position: 'absolute',
-            top: 0,
+            top: '3%',
             left: '50%',
-            width: '76%',
-            maxWidth: 456,
+            width: '86%',
+            maxWidth: 404,
             transform: 'translateX(-50%)',
-            filter: 'drop-shadow(0 18px 24px rgba(3, 10, 18, 0.34))',
             containerType: 'inline-size',
           }}
         >
-          <img
-            src={tableauImage}
-            alt=""
-            aria-hidden="true"
-            style={{ display: 'block', width: '100%', height: 'auto' }}
-          />
-          {cubeHud}
+          {scoreboard}
         </div>
       )}
-    </div>
-  );
-}
-
-function TrainingCubeScoreboard({
-  period,
-  periodsTotal,
-  timer,
-  timerLabel,
-  goals,
-  shots,
-  shotsTotal,
-  notice,
-  opponent,
-}: {
-  period: number;
-  periodsTotal: number;
-  timer: string;
-  timerLabel: string;
-  goals: number;
-  shots: number;
-  shotsTotal?: number | undefined;
-  notice?: string | undefined;
-  opponent?: ScoreBoardOpponent | undefined;
-}): JSX.Element {
-  const shotsText =
-    typeof shotsTotal === 'number'
-      ? `${String(shots).padStart(2, '0')}/${String(shotsTotal).padStart(2, '0')}`
-      : String(shots).padStart(2, '0');
-  const goalsText = opponent ? `${goals}:${opponent.goals}` : String(goals).padStart(2, '0');
-  const opponentNotice = opponent
-    ? `СОПЕРНИК ${opponent.shotsLabel ?? String(opponent.shots)} · ${opponent.time.toUpperCase()}`
-    : undefined;
-  const effectiveNotice = notice ?? opponentNotice;
-  const isSinglePeriod = periodsTotal === 1;
-  const metrics = opponent
-    ? [
-        { label: 'Период', value: `${period}/${periodsTotal}` },
-        { label: timerLabel, value: timer },
-        { label: 'Броски', value: shotsText },
-        { label: 'Счёт', value: goalsText },
-      ]
-    : [
-        { label: 'Период', value: `${period}/${periodsTotal}` },
-        { label: timerLabel, value: timer },
-        { label: 'Голы', value: goalsText },
-        { label: 'Броски', value: shotsText },
-      ];
-
-  if (isSinglePeriod) {
-    return (
-      <>
-        <div
-          aria-label="Статистика на видеокубе"
-          style={{
-            position: 'absolute',
-            left: '8%',
-            right: '8%',
-            top: '27%',
-            bottom: effectiveNotice ? '29%' : '24%',
-            display: 'grid',
-            gridTemplateRows: 'auto auto minmax(0, 1fr)',
-            rowGap: 'clamp(6px, 3cqw, 12px)',
-            alignItems: 'center',
-            justifyItems: 'center',
-            pointerEvents: 'none',
-          }}
-        >
-          <TrainingCubeMetric label={timerLabel} value={timer} emphasis="large" />
-          <TrainingCubeMetric label="Период" value={`${period}/${periodsTotal}`} emphasis="small" />
-          <div
-            style={{
-              width: '100%',
-              alignSelf: 'end',
-              display: 'grid',
-              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-              columnGap: 'clamp(22px, 14cqw, 64px)',
-              alignItems: 'end',
-            }}
-          >
-            <TrainingCubeMetric label={opponent ? 'Счёт' : 'Голы'} value={goalsText} />
-            <TrainingCubeMetric label="Броски" value={shotsText} />
-          </div>
-        </div>
-        {effectiveNotice && <TrainingCubeNotice text={effectiveNotice} />}
-      </>
-    );
-  }
-
-  return (
-    <>
-      <div
-        aria-label="Статистика на видеокубе"
-        style={{
-          position: 'absolute',
-          left: '8%',
-          right: '8%',
-          top: '27%',
-          bottom: effectiveNotice ? '29%' : '24%',
-          display: 'grid',
-          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-          columnGap: 'clamp(14px, 9cqw, 44px)',
-          rowGap: 'clamp(7px, 3.2cqw, 12px)',
-          alignContent: 'center',
-          pointerEvents: 'none',
-        }}
-      >
-        {metrics.map((metric) => (
-          <TrainingCubeMetric key={metric.label} label={metric.label} value={metric.value} />
-        ))}
-      </div>
-      {effectiveNotice && <TrainingCubeNotice text={effectiveNotice} />}
-    </>
-  );
-}
-
-function TrainingCubeNotice({ text }: { text: string }): JSX.Element {
-  return (
-    <div
-      aria-label="Сообщение на видеокубе"
-      style={{
-        position: 'absolute',
-        left: '10%',
-        right: '10%',
-        bottom: '16%',
-        color: 'rgba(232, 251, 255, 0.94)',
-        fontFamily: 'var(--font-mono)',
-        fontSize: 'clamp(7px, 2.45cqw, 10px)',
-        fontWeight: 950,
-        lineHeight: 1.08,
-        letterSpacing: '0.06em',
-        textAlign: 'center',
-        textTransform: 'uppercase',
-        textShadow: '0 0 8px rgba(143, 232, 255, 0.66), 0 0 14px rgba(0, 8, 20, 0.72)',
-        whiteSpace: 'nowrap',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        pointerEvents: 'none',
-      }}
-    >
-      {text}
-    </div>
-  );
-}
-
-function TrainingCubeMetric({
-  label,
-  value,
-  emphasis = 'default',
-}: {
-  label: string;
-  value: string;
-  emphasis?: 'default' | 'large' | 'small';
-}): JSX.Element {
-  const labelIsLong = label.length > 8;
-  const valueIsLong = value.length > 5;
-  const valueFont =
-    emphasis === 'large'
-      ? valueIsLong
-        ? 'clamp(19px, 8.2cqw, 34px)'
-        : 'clamp(21px, 9cqw, 36px)'
-      : emphasis === 'small'
-        ? 'clamp(12px, 4.2cqw, 18px)'
-        : valueIsLong
-          ? 'clamp(14px, 5.4cqw, 22px)'
-          : 'clamp(16px, 6.2cqw, 26px)';
-
-  return (
-    <div
-      style={{
-        minWidth: 0,
-        textAlign: 'center',
-        color: '#e9fbff',
-        textShadow: '0 0 8px rgba(122, 229, 255, 0.36)',
-      }}
-    >
-      <div
-        style={{
-          fontFamily: 'var(--font-mono)',
-          fontSize: labelIsLong ? 'clamp(6px, 2cqw, 8px)' : 'clamp(7px, 2.3cqw, 9px)',
-          fontWeight: 950,
-          lineHeight: 1,
-          textTransform: 'uppercase',
-          letterSpacing: labelIsLong ? '0.08em' : '0.12em',
-          color: 'rgba(205, 246, 255, 0.86)',
-          textShadow: '0 0 8px rgba(99, 218, 255, 0.4)',
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          marginTop: 2,
-          fontFamily: 'var(--font-mono)',
-          fontSize: valueFont,
-          fontWeight: 950,
-          lineHeight: 0.96,
-          letterSpacing: valueIsLong ? '0.04em' : '0.08em',
-          fontVariantNumeric: 'tabular-nums',
-          color: '#f7feff',
-          textShadow: '0 0 7px rgba(143, 232, 255, 0.72), 0 0 14px rgba(44, 177, 255, 0.38)',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {value}
-      </div>
     </div>
   );
 }
@@ -758,7 +543,6 @@ export function PlayView<TState>({
   applyResolvedState,
   rinkLayer,
   longCourtBackground,
-  longCourtTableau = GAME_LED_TABLEAU_IMAGE,
   rinkAspectRatio = LONG_COURT_RINK_ASPECT_RATIO,
   rinkBorderRadius = 36,
   rinkBorder = '3px solid #1e3a5f',
@@ -1832,18 +1616,19 @@ export function PlayView<TState>({
     <TrainingPerspectiveRink
       design="long"
       longBackground={longCourtBackground}
-      tableauImage={longCourtTableau}
-      cubeHud={
-        <TrainingCubeScoreboard
-          period={periodNumber}
-          periodsTotal={periodsTotal}
-          timer={timerValue}
-          timerLabel={timerLabel ?? 'ВРЕМЯ'}
-          goals={scoreboardGoals ?? goals}
-          shots={shots}
-          shotsTotal={shotsTotal}
-          notice={scoreboardNotice}
-          opponent={scoreboardOpponent}
+      scoreboard={
+        <GameScoreboard
+          {...buildGameScoreboardModel({
+            period: periodNumber,
+            periodsTotal,
+            timer: timerValue,
+            timerLabel: timerLabel ?? 'ВРЕМЯ',
+            goals: scoreboardGoals ?? goals,
+            shots,
+            ...(shotsTotal !== undefined ? { shotsTotal } : {}),
+            ...(scoreboardNotice !== undefined ? { notice: scoreboardNotice } : {}),
+            ...(scoreboardOpponent !== undefined ? { opponent: scoreboardOpponent } : {}),
+          })}
         />
       }
     />
@@ -1962,7 +1747,7 @@ export function PlayView<TState>({
             <div
               style={{
                 position: 'absolute',
-                top: 'clamp(10px, 3.2%, 18px)',
+                top: 'clamp(112px, 22%, 148px)',
                 left: 'clamp(10px, 3.4%, 18px)',
                 zIndex: 7,
                 pointerEvents: 'auto',

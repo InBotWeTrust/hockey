@@ -225,7 +225,6 @@ export function BottomNav(): JSX.Element | null {
     currentSectionActionCount +
     (weeklyChallenge?.pendingRewards?.length ?? 0) +
     (achievements?.unclaimedCount ?? 0);
-  const inactiveIconColor = isDemo ? 'rgba(71, 85, 105, 0.48)' : 'var(--muted)';
   const openLastGameRoute = (): void => {
     rememberRoute(LAST_GAME_ROUTE_KEY, DEFAULT_GAME_ROUTE);
     navigate(DEFAULT_GAME_ROUTE);
@@ -286,7 +285,7 @@ export function BottomNav(): JSX.Element | null {
       }}
     >
       <nav
-        className="glass-dock-surface"
+        className="bottom-nav__dock glass-dock-surface"
         aria-label={isDemo ? 'Демо-навигация' : 'Навигация'}
         style={{
           position: 'relative',
@@ -309,11 +308,7 @@ export function BottomNav(): JSX.Element | null {
           active={isGame}
           icon={
             <span style={{ position: 'relative', display: 'inline-flex' }}>
-              <Gamepad2
-                size={ICON_SIZE}
-                color={isGame ? '#ffffff' : inactiveIconColor}
-                strokeWidth={2}
-              />
+              <Gamepad2 size={ICON_SIZE} strokeWidth={2} />
               {!isDemo && gameActionCount > 0 && (
                 <span
                   aria-label={`События игры: ${gameActionCount}`}
@@ -348,11 +343,7 @@ export function BottomNav(): JSX.Element | null {
           active={isSections}
           icon={
             <span style={{ position: 'relative', display: 'inline-flex' }}>
-              <Package
-                size={ICON_SIZE}
-                color={isSections ? '#ffffff' : inactiveIconColor}
-                strokeWidth={2}
-              />
+              <Package size={ICON_SIZE} strokeWidth={2} />
               {!isDemo && sectionActionCount > 0 && (
                 <span
                   aria-label={`События разделов: ${sectionActionCount}`}
@@ -387,11 +378,7 @@ export function BottomNav(): JSX.Element | null {
           active={isChat}
           icon={
             <span style={{ position: 'relative', display: 'inline-flex' }}>
-              <MessageCircle
-                size={ICON_SIZE}
-                color={isChat ? '#ffffff' : inactiveIconColor}
-                strokeWidth={2}
-              />
+              <MessageCircle size={ICON_SIZE} strokeWidth={2} />
               {!isDemo && totalUnread > 0 && (
                 <span
                   aria-label={`Непрочитанные: ${totalUnread}`}
@@ -424,26 +411,14 @@ export function BottomNav(): JSX.Element | null {
           label="Раздевалка"
           disabled={isDemo}
           active={isProfile}
-          icon={
-            <User
-              size={ICON_SIZE}
-              color={isProfile ? '#ffffff' : inactiveIconColor}
-              strokeWidth={2}
-            />
-          }
+          icon={<User size={ICON_SIZE} strokeWidth={2} />}
           onClick={openProfileRoute}
         />
         {showAdmin && (
           <NavTab
             label="Админ"
             active={isAdmin}
-            icon={
-              <ShieldCheck
-                size={ICON_SIZE}
-                color={isAdmin ? '#ffffff' : 'var(--muted)'}
-                strokeWidth={2}
-              />
-            }
+            icon={<ShieldCheck size={ICON_SIZE} strokeWidth={2} />}
             onClick={openAdminRoute}
           />
         )}
@@ -467,34 +442,13 @@ function NavTab({ label, active, icon, onClick, disabled = false }: NavTabProps)
       onClick={disabled ? undefined : onClick}
       disabled={disabled}
       aria-label={label}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'none',
-        border: 'none',
-        cursor: disabled ? 'default' : 'pointer',
-        padding: 0,
-        height: '100%',
-        touchAction: 'manipulation',
-        opacity: disabled && !active ? 0.58 : 1,
-      }}
+      aria-current={active ? 'page' : undefined}
+      className={`bottom-nav__tab${active ? ' bottom-nav__tab--active' : ''}`}
     >
-      <div
-        style={{
-          width: 40,
-          height: 40,
-          borderRadius: 12,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: active ? 'rgba(15, 23, 42, 0.92)' : 'rgba(255, 255, 255, 0.55)',
-          border: active ? 'none' : '1px solid rgba(255, 255, 255, 0.7)',
-          transition: 'background 0.15s',
-        }}
-      >
+      <span className={`bottom-nav__icon-wrap${active ? ' bottom-nav__icon-wrap--active' : ''}`}>
         {icon}
-      </div>
+        {active && <span className="bottom-nav__active-indicator" aria-hidden="true" />}
+      </span>
     </button>
   );
 }

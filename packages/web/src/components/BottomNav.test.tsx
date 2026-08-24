@@ -111,31 +111,35 @@ describe('BottomNav remembered navigation', () => {
   it('keeps section setup screens on the sections tab until play starts', () => {
     renderBottomNav('/?view=training&from=sections');
 
-    const gameSurface = screen.getByRole('button', { name: 'Игра' }).querySelector('div');
-    const sectionsSurface = screen.getByRole('button', { name: 'Разделы' }).querySelector('div');
+    const gameTab = screen.getByRole('button', { name: 'Игра' });
+    const sectionsTab = screen.getByRole('button', { name: 'Разделы' });
 
-    expect(gameSurface?.getAttribute('style')).toContain('rgba(255, 255, 255, 0.55)');
-    expect(sectionsSurface?.getAttribute('style')).toContain('rgba(15, 23, 42, 0.92)');
+    expect(gameTab).not.toHaveAttribute('aria-current');
+    expect(sectionsTab).toHaveAttribute('aria-current', 'page');
+    expect(sectionsTab).toHaveClass('bottom-nav__tab--active');
+    expect(sectionsTab.querySelector('.bottom-nav__icon-wrap--active')).toBeInTheDocument();
+    expect(sectionsTab.querySelector('.bottom-nav__active-indicator')).toBeInTheDocument();
+    expect(gameTab.querySelector('.bottom-nav__icon-wrap--active')).toBeNull();
   });
 
   it('keeps amateur duel setup screens on the sections tab', () => {
     renderBottomNav('/?view=amateur&section=duels');
 
-    const gameSurface = screen.getByRole('button', { name: 'Игра' }).querySelector('div');
-    const sectionsSurface = screen.getByRole('button', { name: 'Разделы' }).querySelector('div');
+    const gameTab = screen.getByRole('button', { name: 'Игра' });
+    const sectionsTab = screen.getByRole('button', { name: 'Разделы' });
 
-    expect(gameSurface?.getAttribute('style')).toContain('rgba(255, 255, 255, 0.55)');
-    expect(sectionsSurface?.getAttribute('style')).toContain('rgba(15, 23, 42, 0.92)');
+    expect(gameTab).not.toHaveAttribute('aria-current');
+    expect(sectionsTab).toHaveAttribute('aria-current', 'page');
   });
 
   it('keeps the bonus games catalog on the sections tab', () => {
     renderBottomNav('/bonus-games');
 
-    const gameSurface = screen.getByRole('button', { name: 'Игра' }).querySelector('div');
-    const sectionsSurface = screen.getByRole('button', { name: 'Разделы' }).querySelector('div');
+    const gameTab = screen.getByRole('button', { name: 'Игра' });
+    const sectionsTab = screen.getByRole('button', { name: 'Разделы' });
 
-    expect(gameSurface?.getAttribute('style')).toContain('rgba(255, 255, 255, 0.55)');
-    expect(sectionsSurface?.getAttribute('style')).toContain('rgba(15, 23, 42, 0.92)');
+    expect(gameTab).not.toHaveAttribute('aria-current');
+    expect(sectionsTab).toHaveAttribute('aria-current', 'page');
   });
 
   it('hides the dock inside an active bonus game rink', () => {

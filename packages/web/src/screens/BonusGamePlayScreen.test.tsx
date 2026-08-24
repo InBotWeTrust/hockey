@@ -9,8 +9,15 @@ const playViewProbe = vi.hoisted(() => vi.fn());
 
 vi.mock('../game/PlayView.js', () => ({
   PlayView(props: {
+    suppressedByModal: boolean;
+    showIceCar: boolean;
     active: boolean;
     longCourtBackground?: string;
+    periodNumber: number;
+    timer?: string;
+    shotButtonLabel?: string;
+    inactiveAction?: () => unknown | Promise<unknown>;
+    entranceBeforeInactiveAction?: boolean;
     onBack: () => void;
     backLabel?: string;
     optimisticAddShot: (result: 'goal' | 'save' | 'miss') => void;
@@ -57,6 +64,11 @@ vi.mock('../game/PlayView.js', () => ({
         >
           Тестовый бросок
         </button>
+        {!props.active && props.inactiveAction ? (
+          <button type="button" onClick={() => void props.inactiveAction?.()}>
+            {props.shotButtonLabel}
+          </button>
+        ) : null}
       </section>
     );
   },
@@ -203,7 +215,7 @@ describe('BonusGamePlayScreen', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Загружаем бонусную игру…');
   });
 
-  it('starts an idle period only through the store action', () => {
+  it('shows the idle period on the rink and starts it through the primary button', () => {
     const startPeriod = vi.fn(async () => attempt());
     setStore({
       attempt: attempt({
@@ -217,7 +229,21 @@ describe('BonusGamePlayScreen', () => {
     });
     renderScreen();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Начать период 2' }));
+    expect(screen.getByTestId('bonus-play-view')).toBeInTheDocument();
+    expect(screen.queryByText('Цель: 20 голов. Текущий результат: 18.')).not.toBeInTheDocument();
+
+    const props = playViewProbe.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(props).toMatchObject({
+      active: false,
+      suppressedByModal: true,
+      showIceCar: false,
+      periodNumber: 2,
+      timer: '04:00',
+      shotButtonLabel: 'НАЧАТЬ',
+      entranceBeforeInactiveAction: true,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'НАЧАТЬ' }));
 
     expect(startPeriod).toHaveBeenCalledTimes(1);
   });
@@ -320,8 +346,18 @@ describe('BonusGamePlayScreen', () => {
     act(() => props.applyResolvedState?.(completedAttempt));
 
     expect(applyPendingShot).toHaveBeenCalledTimes(1);
-    expect(screen.getByText('Награда за первое прохождение')).toBeInTheDocument();
-    expect(screen.queryByTestId('bonus-play-view')).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Игра пройдена' })).toHaveTextContent(
+      'Награда за первое прохождение',
+    );
+    expect(screen.getByTestId('bonus-play-view')).toBeInTheDocument();
+    expect(playViewProbe.mock.calls.at(-1)?.[0]).toMatchObject({
+      active: false,
+      suppressedByModal: true,
+      showIceCar: true,
+      timer: '00:00',
+      shots: 29,
+      shotsTotal: 50,
+    });
   });
 
   it('applies a deferred response that arrives after the play route unmounts', async () => {
@@ -464,13 +500,13 @@ describe('BonusGamePlayScreen', () => {
   });
 
   it.each([
-    ['failed', false, 'Цель не достигнута'],
-    ['completed', true, 'Награда за первое прохождение'],
-    ['completed', false, 'Повтор завершён без награды'],
-    ['abandoned', false, 'Прогресс попытки потерян'],
+    ['failed', false, 'Попытка завершена', 'Цель не достигнута'],
+    ['completed', true, 'Игра пройдена', 'Награда за первое прохождение'],
+    ['completed', false, 'Игра пройдена', 'Повтор завершён без награды'],
+    ['abandoned', false, 'Попытка завершена', 'Прогресс попытки потерян'],
   ] as const)(
-    'renders %s terminal state from the authoritative DTO',
-    (status, rewardGranted, copy) => {
+    'renders %s terminal state as a stopped rink result modal',
+    (status, rewardGranted, title, copy) => {
       setStore({
         attempt: attempt({
           status,
@@ -482,10 +518,40 @@ describe('BonusGamePlayScreen', () => {
       });
       renderScreen();
 
-      expect(screen.getByText(copy)).toBeInTheDocument();
-      expect(screen.queryByTestId('bonus-play-view')).toBeNull();
+      const dialog = screen.getByRole('dialog', { name: title });
+      expect(dialog).toHaveTextContent(copy);
+      expect(dialog).toHaveTextContent('Голы18');
+      expect(dialog).toHaveTextContent('Броски28');
+      expect(dialog).toHaveTextContent('Точность64%');
+      expect(screen.getByTestId('bonus-play-view')).toBeInTheDocument();
+      expect(playViewProbe.mock.calls.at(-1)?.[0]).toMatchObject({
+        active: false,
+        suppressedByModal: true,
+        showIceCar: true,
+        timer: '00:00',
+      });
     },
   );
+
+  it('keeps the terminal result open until the catalog button is pressed', () => {
+    setStore({
+      attempt: attempt({
+        status: 'failed',
+        state: 'closed',
+        period_started_at: null,
+        period_ends_at: null,
+      }),
+    });
+    renderScreen();
+
+    const dialog = screen.getByRole('dialog', { name: 'Попытка завершена' });
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    fireEvent.mouseDown(document.querySelector('.modal-backdrop') as HTMLElement);
+
+    expect(screen.getByRole('dialog', { name: 'Попытка завершена' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'К бонусным играм' }));
+    expect(screen.getByLabelText('location')).toHaveTextContent('/bonus-games');
+  });
 
   it('uses Russian plural forms for every granted reward', () => {
     setStore({
@@ -500,9 +566,9 @@ describe('BonusGamePlayScreen', () => {
     });
     renderScreen();
 
-    expect(
-      screen.getByText('21 монета · 25 очков опыта · 22 звезды · площадка «Пляж» открыта'),
-    ).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog', { name: 'Игра пройдена' });
+    expect(within(dialog).getByText('21 монета · 25 очков опыта · 22 звезды')).toBeInTheDocument();
+    expect(within(dialog).getByText('Площадка «Пляж» открыта')).toBeInTheDocument();
   });
 
   it('keeps the attempt active until the exit prompt is explicitly confirmed', async () => {
@@ -557,6 +623,18 @@ describe('BonusGamePlayScreen', () => {
 
     expect(abandon).not.toHaveBeenCalled();
     expect(screen.getByLabelText('location')).toHaveTextContent('/bonus-games');
+  });
+
+  it('keeps the active rink simulation running while the exit prompt is open', () => {
+    renderScreen();
+
+    fireEvent.click(screen.getByRole('button', { name: 'К бонусным играм' }));
+
+    expect(screen.getByRole('dialog', { name: 'Выйти из бонусной игры?' })).toBeInTheDocument();
+    expect(playViewProbe.mock.calls.at(-1)?.[0]).toMatchObject({
+      active: true,
+      suppressedByModal: false,
+    });
   });
 
   it('traps the abandon modal and restores the exact gameplay trigger after Escape', async () => {

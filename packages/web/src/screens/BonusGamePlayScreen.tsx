@@ -137,13 +137,33 @@ function BonusResult({
   else if (kind === 'abandoned') copy = 'Прогресс попытки потерян';
   else if (attempt.reward_granted) copy = 'Награда за первое прохождение';
   else copy = 'Повтор завершён без награды';
+  const accuracy =
+    attempt.shots_taken > 0 ? Math.round((attempt.goals / attempt.shots_taken) * 100) : 0;
 
   return (
-    <main className="screen bonus-game-mode-state">
-      <section className="bonus-game-mode-card">
-        <h1>{title}</h1>
-        <p>{copy}</p>
-        {kind === 'completed' && attempt.reward_granted ? (
+    <AccessibleModal
+      title={title}
+      copy={copy}
+      closeBlocked={true}
+      onClose={() => undefined}
+      cardClassName="bonus-game-result-modal"
+      backdropStyle={{
+        background: 'rgba(15, 23, 42, 0.35)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+      }}
+    >
+      <div
+        className="bonus-game-result-metrics"
+        aria-label={`Итого: ${attempt.goals} голов из ${attempt.shots_taken} бросков, точность ${accuracy}%`}
+      >
+        <BonusResultMetric label="Голы" value={String(attempt.goals)} />
+        <BonusResultMetric label="Броски" value={String(attempt.shots_taken)} />
+        <BonusResultMetric label="Точность" value={`${accuracy}%`} />
+      </div>
+      {kind === 'completed' && attempt.reward_granted ? (
+        <div className="bonus-game-result-reward">
+          <span className="bonus-game-result-reward-label">Награда</span>
           <p>
             {formatRussianCount(attempt.reward.coins, 'монета', 'монеты', 'монет')} ·{' '}
             {formatRussianCount(
@@ -152,25 +172,32 @@ function BonusResult({
               'очка опыта',
               'очков опыта',
             )}{' '}
-            · {formatRussianCount(attempt.reward.stars, 'звезда', 'звезды', 'звёзд')} · площадка «
-            {attempt.arena.title}» открыта
+            · {formatRussianCount(attempt.reward.stars, 'звезда', 'звезды', 'звёзд')}
           </p>
-        ) : null}
-        <p>
-          Голы: {attempt.goals} · броски: {attempt.shots_taken}
-        </p>
-        <button type="button" className="btn btn--cta" onClick={onCatalog}>
+          <p>Площадка «{attempt.arena.title}» открыта</p>
+        </div>
+      ) : null}
+      <div className="modal-actions bonus-game-result-actions">
+        <button type="button" className="modal-primary btn btn--cta" onClick={onCatalog}>
           К бонусным играм
         </button>
-      </section>
-    </main>
+      </div>
+    </AccessibleModal>
   );
 }
 
-function ruleForAttempt(attempt: BonusGameAttempt): BonusPeriodRule | null {
+function BonusResultMetric({ label, value }: { label: string; value: string }): JSX.Element {
   return (
-    attempt.rules.periods.find((candidate) => candidate.period_number === attempt.current_period) ??
-    null
+    <div className="bonus-game-result-metric">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function ruleForPeriod(attempt: BonusGameAttempt, periodNumber: number): BonusPeriodRule | null {
+  return (
+    attempt.rules.periods.find((candidate) => candidate.period_number === periodNumber) ?? null
   );
 }
 
@@ -263,6 +290,10 @@ export function BonusGamePlayScreen(): JSX.Element {
   const refreshAttempt = useCallback(async (): Promise<void> => {
     if (attempt) await loadAttempt(attempt.id);
   }, [attempt, loadAttempt]);
+  const handleStartPeriod = useCallback(async (): Promise<BonusGameAttempt | null> => {
+    if (inFlight) return null;
+    return startPeriod();
+  }, [inFlight, startPeriod]);
 
   const confirmAndAbandon = useCallback(async (): Promise<void> => {
     if (abandonRequestRef.current) return;
@@ -314,16 +345,12 @@ export function BonusGamePlayScreen(): JSX.Element {
       />
     );
   }
-  if (attempt.status === 'failed') {
-    return <BonusResult kind="failed" attempt={attempt} onCatalog={goToCatalog} />;
-  }
-  if (attempt.status === 'completed') {
-    return <BonusResult kind="completed" attempt={attempt} onCatalog={goToCatalog} />;
-  }
-  if (attempt.status === 'abandoned') {
-    return <BonusResult kind="abandoned" attempt={attempt} onCatalog={goToCatalog} />;
-  }
-  if (attempt.state === 'break_active') {
+  const terminalKind =
+    attempt.status === 'failed' || attempt.status === 'completed' || attempt.status === 'abandoned'
+      ? attempt.status
+      : null;
+  const isTerminal = terminalKind !== null;
+  if (!isTerminal && attempt.state === 'break_active') {
     return (
       <BonusBreak
         attempt={attempt}
@@ -332,30 +359,20 @@ export function BonusGamePlayScreen(): JSX.Element {
       />
     );
   }
-  if (attempt.state === 'idle') {
-    const nextPeriod = attempt.current_period + 1;
-    return (
-      <ModeState
-        title={attempt.game_title}
-        text={`Цель: ${attempt.rules.target_goals} голов. Текущий результат: ${attempt.goals}.`}
-        actionLabel={`Начать период ${nextPeriod}`}
-        busy={inFlight}
-        onAction={() => void startPeriod()}
-      />
-    );
-  }
-
-  const rule = ruleForAttempt(attempt);
-  if (rule === null || attempt.period_started_at === null) {
+  const isIdle = attempt.state === 'idle';
+  const isPeriodActive = attempt.state === 'period_active';
+  const periodNumber = isIdle ? attempt.current_period + 1 : attempt.current_period;
+  const rule = ruleForPeriod(attempt, periodNumber);
+  if (rule === null || (isPeriodActive && attempt.period_started_at === null)) {
     return <ModeState role="alert" text="Не удалось прочитать правила активного периода." />;
   }
-  const clockBasis = deriveBonusGameClockBasis(attempt);
-  const remainingMs = authoritativeRemainingMs(
-    attempt.period_ends_at,
-    attempt.server_now,
-    receivedAtPerformanceMs,
-  );
-  const localPeriodEndsAt = Date.now() + remainingMs;
+  const clockBasis = isPeriodActive
+    ? deriveBonusGameClockBasis(attempt)
+    : { sceneElapsedMs: 0, shooterElapsedMs: 0 };
+  const localPeriodEndsAt = isPeriodActive
+    ? Date.now() +
+      authoritativeRemainingMs(attempt.period_ends_at, attempt.server_now, receivedAtPerformanceMs)
+    : undefined;
   const goalieConfig = goalieConfigFor(attempt, rule);
   const speedOverrides = speedOverridesFor(rule);
   const preloadAssets = [
@@ -363,16 +380,24 @@ export function BonusGamePlayScreen(): JSX.Element {
     attempt.goalkeeper_ready_url,
     attempt.goalkeeper_save_url,
   ];
-  const clockRebaseKey = `${attempt.period_started_at}:${attempt.server_now}:${receivedAtPerformanceMs ?? ''}`;
+  const clockRebaseKey = isPeriodActive
+    ? `${attempt.period_started_at}:${attempt.server_now}:${receivedAtPerformanceMs ?? ''}`
+    : isTerminal
+      ? `terminal:${attempt.id}:${attempt.closed_at ?? attempt.status}`
+      : `idle:${periodNumber}`;
+  const terminalShotsTotal = attempt.rules.periods.reduce(
+    (total, period) => total + period.shots_limit,
+    0,
+  );
 
   return (
     <>
       <PlayView
-        suppressedByModal={confirmAbandon}
-        showIceCar={false}
+        suppressedByModal={isIdle || isTerminal}
+        showIceCar={isTerminal}
         onBack={() => setConfirmAbandon(true)}
         backLabel="К бонусным играм"
-        active={!needsReconcile}
+        active={isPeriodActive && !needsReconcile}
         seed={attempt.attempt_seed}
         goalieId={null}
         goalieConfig={goalieConfig}
@@ -382,13 +407,19 @@ export function BonusGamePlayScreen(): JSX.Element {
           saveSpriteUrl: attempt.goalkeeper_save_url,
         }}
         preloadAssets={preloadAssets}
-        periodNumber={attempt.current_period}
+        periodNumber={periodNumber}
         periodsTotal={attempt.rules.total_periods}
         speedOverrides={speedOverrides}
         stickEffects={STICK_NEUTRAL}
         goals={attempt.goals}
-        shots={attempt.current_period_shots_taken}
-        shotsTotal={rule.shots_limit}
+        shots={isTerminal ? attempt.shots_taken : attempt.current_period_shots_taken}
+        shotsTotal={isTerminal ? terminalShotsTotal : rule.shots_limit}
+        timer={isTerminal ? '00:00' : isIdle ? formatCountdown(rule.duration_ms) : undefined}
+        shotButtonLabel={
+          isTerminal ? 'ИГРА ЗАВЕРШЕНА' : isIdle ? (inFlight ? 'НАЧИНАЕМ...' : 'НАЧАТЬ') : undefined
+        }
+        inactiveAction={isIdle ? handleStartPeriod : undefined}
+        entranceBeforeInactiveAction={true}
         sessionStartedAt={attempt.period_started_at}
         serverNow={attempt.server_now}
         receivedAtPerformanceMs={receivedAtPerformanceMs ?? undefined}
@@ -396,7 +427,7 @@ export function BonusGamePlayScreen(): JSX.Element {
         initialShooterElapsedMs={clockBasis.shooterElapsedMs}
         clockRebaseKey={clockRebaseKey}
         periodEndsAt={localPeriodEndsAt}
-        onTimerExpired={refreshAttempt}
+        onTimerExpired={isPeriodActive ? refreshAttempt : undefined}
         optimisticAddShot={optimisticAddShot}
         submitShot={async ({ shotIndex, input, claimedResult }) => {
           if (input.shooterTapTime === undefined) return null;
@@ -432,7 +463,11 @@ export function BonusGamePlayScreen(): JSX.Element {
         rinkBorderRadius={28}
       />
 
-      {confirmAbandon ? (
+      {terminalKind ? (
+        <BonusResult kind={terminalKind} attempt={attempt} onCatalog={goToCatalog} />
+      ) : null}
+
+      {confirmAbandon && !isTerminal ? (
         <AccessibleModal
           title="Выйти из бонусной игры?"
           copy="Попытка сохранится, если продолжить позже. Завершение удалит текущий прогресс."

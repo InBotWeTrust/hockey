@@ -1,6 +1,6 @@
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { ScoreBoard } from './ScoreBoard.js';
+import { buildGameScoreboardModel, GameScoreboard, ScoreBoard } from './ScoreBoard.js';
 
 function expectTextOrder(text: string, parts: string[]): void {
   let lastIndex = -1;
@@ -12,6 +12,120 @@ function expectTextOrder(text: string, parts: string[]): void {
 }
 
 describe('ScoreBoard', () => {
+  it('renders configurable rows with their own metric counts and a notice', () => {
+    render(
+      <GameScoreboard
+        rows={[
+          {
+            id: 'summary',
+            metrics: [
+              { id: 'period', label: 'ПЕРИОД', value: '2/3', emphasis: 'small' },
+              { id: 'timer', label: 'ПЕРЕРЫВ', value: '14:59', tone: 'timer' },
+              { id: 'goals', label: 'ГОЛЫ', value: '18' },
+            ],
+          },
+          {
+            id: 'opponent',
+            variant: 'secondary',
+            metrics: [
+              { id: 'opponent-shots', label: 'СОПЕРНИК', value: '19/30' },
+              { id: 'opponent-status', label: 'СТАТУС', value: 'ИГРАЕТ 1/2' },
+            ],
+          },
+        ]}
+        statusLine={{
+          id: 'opponent',
+          label: 'Соперник',
+          value: '19/30 · играет 1/2',
+          avatarUrl: null,
+          tone: 'active',
+        }}
+        notice="Нужно восстановиться"
+      />,
+    );
+
+    expect(screen.getByLabelText('Игровое табло')).toHaveClass('game-scoreboard');
+    expect(screen.getByTestId('scoreboard-row-summary')).toHaveStyle({
+      gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+    });
+    expect(screen.getByTestId('scoreboard-row-opponent')).toHaveClass(
+      'game-scoreboard__row--secondary',
+    );
+    expect(screen.getByText('14:59').closest('.game-scoreboard__metric')).toHaveClass(
+      'game-scoreboard__metric--timer',
+    );
+    expect(screen.getByLabelText('Соперник: Соперник')).toHaveTextContent(
+      'Соперник19/30 · играет 1/2',
+    );
+    expect(screen.getByText('Нужно восстановиться')).toHaveClass('game-scoreboard__notice');
+  });
+
+  it('keeps the timer prominent and groups single-period progress into one compact row', () => {
+    const model = buildGameScoreboardModel({
+      period: 1,
+      periodsTotal: 1,
+      timer: '50',
+      timerLabel: 'ЛИМИТ',
+      goals: 7,
+      shots: 18,
+      shotsTotal: 50,
+    });
+
+    expect(model.rows).toEqual([
+      {
+        id: 'timer',
+        metrics: [{ id: 'timer', label: 'ЛИМИТ', value: '50', tone: 'timer', emphasis: 'large' }],
+      },
+      {
+        id: 'summary',
+        metrics: [
+          { id: 'period', label: 'ПЕРИОД', value: '1/1', emphasis: 'small' },
+          { id: 'goals', label: 'ГОЛЫ', value: '07' },
+          { id: 'shots', label: 'БРОСКИ', value: '18/50' },
+        ],
+      },
+    ]);
+    expect(model.notice).toBeUndefined();
+  });
+
+  it('builds the existing duel order and opponent status notice', () => {
+    const model = buildGameScoreboardModel({
+      period: 1,
+      periodsTotal: 2,
+      timer: '02:10',
+      timerLabel: 'ВРЕМЯ',
+      goals: 12,
+      shots: 17,
+      shotsTotal: 30,
+      opponent: {
+        name: 'Соперник',
+        avatarUrl: null,
+        goals: 14,
+        shots: 19,
+        shotsLabel: '19/30',
+        time: 'играет 1/2',
+        timeTone: 'active',
+      },
+    });
+
+    expect(model.rows[0]?.metrics.map(({ label, value }) => [label, value])).toEqual([
+      ['ПЕРИОД', '1/2'],
+      ['ВРЕМЯ', '02:10'],
+    ]);
+    expect(model.rows[1]?.metrics.map(({ label, value }) => [label, value])).toEqual([
+      ['БРОСКИ', '17/30'],
+      ['СЧЁТ', '12:14'],
+    ]);
+    expect(model.statusLine).toEqual({
+      id: 'opponent',
+      label: 'Соперник',
+      value: '19/30 · ИГРАЕТ 1/2',
+      avatarUrl: null,
+      tone: 'active',
+    });
+    expect(model.notice).toBeUndefined();
+  });
+
   it('keeps the regular game metric order without an opponent', () => {
     const { container } = render(<ScoreBoard period={1} timer="02:10" goals={12} shots={17} />);
 

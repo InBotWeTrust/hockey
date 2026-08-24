@@ -142,7 +142,20 @@ describe('App routing + auth', () => {
                   target_goals: 18,
                   total_periods: 1,
                   break_duration_ms: 30_000,
-                  periods: [],
+                  periods: [
+                    {
+                      period_number: 1,
+                      duration_ms: 240_000,
+                      shots_limit: 30,
+                      goal_frequency: 0.45,
+                      goalie_frequency: 0.5,
+                      shooter_frequency: 0.65,
+                      puck_speed_per_ms: 1.2,
+                      goalie_pattern: 'linear',
+                      goalie_amplitude: 1,
+                      goal_amplitude: 220,
+                    },
+                  ],
                 },
                 reward: { coins: 100, stars: 1, experience: 50 },
                 arena: {
@@ -170,6 +183,6 @@ describe('App routing + auth', () => {
 
     render(<App />);
 
-    expect(await screen.findByRole('button', { name: 'Начать период 1' })).toBeInTheDocument();
+    expect(await screen.findByTestId('play-view')).toBeInTheDocument();
   });
 });

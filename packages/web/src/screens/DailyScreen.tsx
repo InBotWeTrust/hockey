@@ -219,9 +219,6 @@ function readTrainingSpeedOverrides(): SpeedOverrides | null {
     return null;
   }
 }
-const TRAINING_LED_TABLEAU_IMAGE = '/sprites/street-tableau.webp';
-const DAILY_LED_TABLEAU_IMAGE = '/sprites/daily-tableau.webp';
-const DUEL_LED_TABLEAU_IMAGE = '/sprites/duel-tableau.webp';
 const TOURNAMENT_LED_TABLEAU_IMAGE = '/sprites/tournament-tableau.webp';
 const AMATEUR_DAILY_COURT_BACKGROUND = '/sprites/amateur-daily-court.webp';
 const AMATEUR_TOURNAMENT_COURT_BACKGROUND = '/sprites/amateur-tournament-court.webp';
@@ -5547,7 +5544,6 @@ function AmateurDuelPlayView({
           applyState={applyState}
           duelCondition={duelCondition}
           longCourtBackground={match.arena.artwork_url}
-          longCourtTableau={DUEL_LED_TABLEAU_IMAGE}
           hudAddon={
             <DuelRinkLoadoutHud
               match={match}
@@ -5668,7 +5664,6 @@ function AmateurDuelPlayView({
           applyState={applyState}
           duelCondition={duelCondition}
           longCourtBackground={match.arena.artwork_url}
-          longCourtTableau={DUEL_LED_TABLEAU_IMAGE}
           hudAddon={
             <DuelInventoryMiniHud
               match={match}
@@ -7894,7 +7889,6 @@ function DailyPlayView({
         applyState={applyState}
         applyResolvedState={applyDailyResolvedState}
         longCourtBackground={AMATEUR_DAILY_COURT_BACKGROUND}
-        longCourtTableau={DAILY_LED_TABLEAU_IMAGE}
       />
       {statsModal && (
         <DailyGameStatsModal
@@ -8294,7 +8288,6 @@ function TrainingPlayView({
         submitShot={submitTrainingShotAndRefreshDaily}
         applyState={applyState}
         hitboxesVisible={hitboxesVisible}
-        longCourtTableau={TRAINING_LED_TABLEAU_IMAGE}
         playerOptions={TRAINING_STREET_PLAYER_OPTIONS}
         goalieOptions={TRAINING_AMATEUR_GOALIE_OPTIONS}
         overlayControls={
