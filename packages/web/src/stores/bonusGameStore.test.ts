@@ -85,16 +85,22 @@ function response(attempt: BonusGameAttempt): BonusAttemptResponse {
 }
 
 function deferred<T>() {
-  let resolve: (value: T) => void;
-  const promise = new Promise<T>((next) => {
-    resolve = next;
+  let resolve: ((value: T) => void) | undefined;
+  let reject: ((reason?: unknown) => void) | undefined;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
   });
-  return { promise, resolve: (value: T) => resolve(value) };
+  return {
+    promise,
+    resolve: (value: T) => resolve?.(value),
+    reject: (reason?: unknown) => reject?.(reason),
+  };
 }
 
 describe('bonusGameStore', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     useBonusGameStore.setState({
       attempt: null,
       loading: false,
@@ -102,6 +108,7 @@ describe('bonusGameStore', () => {
       errorCode: null,
       inFlight: false,
       needsReconcile: false,
+      requestEpoch: 0,
     });
   });
 
@@ -210,6 +217,127 @@ describe('bonusGameStore', () => {
     await refresh;
 
     expect(useBonusGameStore.getState().attempt).toEqual(abandonedAttempt);
+  });
+
+  it('applies only R2 when R1 resolves before the later current-attempt read', async () => {
+    // This catches treating two reads from the same server-state revision as equally current.
+    const r1 = deferred<BonusAttemptResponse>();
+    const r2 = deferred<BonusAttemptResponse>();
+    const staleAttempt = { ...initialAttempt, shots_taken: 1, goals: 0 };
+    const freshAttempt = { ...initialAttempt, shots_taken: 3, goals: 2 };
+    vi.mocked(fetchCurrentBonusAttempt)
+      .mockReturnValueOnce(r1.promise)
+      .mockReturnValueOnce(r2.promise);
+    useBonusGameStore.getState().applyState(initialAttempt);
+
+    const first = useBonusGameStore.getState().refresh();
+    const second = useBonusGameStore.getState().refresh();
+    r1.resolve(response(staleAttempt));
+    await first;
+
+    expect(useBonusGameStore.getState().attempt).toEqual(initialAttempt);
+    expect(useBonusGameStore.getState().loading).toBe(true);
+
+    r2.resolve(response(freshAttempt));
+    await second;
+
+    expect(useBonusGameStore.getState()).toMatchObject({
+      attempt: freshAttempt,
+      loading: false,
+    });
+  });
+
+  it('ignores R1 when R2 resolves first and R1 arrives late', async () => {
+    // This catches an older response resurrecting state after the latest read already applied.
+    const r1 = deferred<BonusAttemptResponse>();
+    const r2 = deferred<BonusAttemptResponse>();
+    const staleAttempt = { ...initialAttempt, shots_taken: 1, goals: 0 };
+    const freshAttempt = { ...initialAttempt, shots_taken: 3, goals: 2 };
+    vi.mocked(fetchCurrentBonusAttempt)
+      .mockReturnValueOnce(r1.promise)
+      .mockReturnValueOnce(r2.promise);
+    useBonusGameStore.getState().applyState(initialAttempt);
+
+    const first = useBonusGameStore.getState().refresh();
+    const second = useBonusGameStore.getState().refresh();
+    r2.resolve(response(freshAttempt));
+    await second;
+    r1.resolve(response(staleAttempt));
+    await first;
+
+    expect(useBonusGameStore.getState()).toMatchObject({
+      attempt: freshAttempt,
+      loading: false,
+    });
+  });
+
+  it('invalidates both outstanding reads when a newer shot response installs state', async () => {
+    // This catches either pre-shot read applying after the mutation has become authoritative.
+    const r1 = deferred<BonusAttemptResponse>();
+    const r2 = deferred<BonusAttemptResponse>();
+    const afterShot = { ...initialAttempt, shots_taken: 3, goals: 2 };
+    vi.mocked(fetchCurrentBonusAttempt)
+      .mockReturnValueOnce(r1.promise)
+      .mockReturnValueOnce(r2.promise);
+    vi.mocked(submitBonusShot).mockResolvedValueOnce({
+      server_result: 'goal',
+      attempt: afterShot,
+      reward_granted: false,
+      balances: { coins: 10, stars: 2, experience: 7 },
+    });
+    useBonusGameStore.getState().applyState(initialAttempt);
+
+    const first = useBonusGameStore.getState().refresh();
+    const second = useBonusGameStore.getState().refresh();
+    await useBonusGameStore.getState().submitShot(shot);
+    r1.resolve(response({ ...initialAttempt, shots_taken: 1, goals: 0 }));
+    r2.resolve(response(initialAttempt));
+    await Promise.all([first, second]);
+
+    expect(useBonusGameStore.getState().attempt).toEqual(afterShot);
+  });
+
+  it('does not let an obsolete read failure clear loading or error for the newer read', async () => {
+    // This catches a stale catch branch ending the loading state belonging to R2.
+    const r1 = deferred<BonusAttemptResponse>();
+    const r2 = deferred<BonusAttemptResponse>();
+    const staleError = new ApiError(
+      409,
+      'bonus_shot_index_mismatch',
+      'Бросок уже обработан. Обновляем состояние попытки.',
+    );
+    vi.mocked(fetchCurrentBonusAttempt)
+      .mockReturnValueOnce(r1.promise)
+      .mockReturnValueOnce(r2.promise);
+    useBonusGameStore.setState({
+      attempt: initialAttempt,
+      error: staleError.message,
+      errorCode: staleError.code,
+      needsReconcile: true,
+    });
+
+    const first = useBonusGameStore.getState().refresh();
+    const second = useBonusGameStore.getState().refresh();
+    r1.reject(new TypeError('network'));
+    await first;
+
+    expect(useBonusGameStore.getState()).toMatchObject({
+      loading: true,
+      error: staleError.message,
+      errorCode: staleError.code,
+      needsReconcile: true,
+    });
+
+    r2.resolve(response(initialAttempt));
+    await second;
+
+    expect(useBonusGameStore.getState()).toMatchObject({
+      attempt: initialAttempt,
+      loading: false,
+      error: null,
+      errorCode: null,
+      needsReconcile: false,
+    });
   });
 
   it('replaces an optimistic shot with the authoritative shot response', async () => {

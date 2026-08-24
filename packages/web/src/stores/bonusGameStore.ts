@@ -17,6 +17,7 @@ interface BonusGameStoreState {
   errorCode: string | null;
   inFlight: boolean;
   needsReconcile: boolean;
+  requestEpoch: number;
   loadCurrent: () => Promise<BonusGameAttempt | null>;
   applyState: (next: BonusGameAttempt | null) => void;
   optimisticAddShot: (claimed: ShotResultType) => void;
@@ -32,7 +33,6 @@ interface BonusGameStoreState {
 }
 
 let shotInFlight = false;
-let serverStateRevision = 0;
 
 function errorDetails(error: unknown, fallback: string): { message: string; code: string | null } {
   if (error instanceof ApiError) return { message: error.message, code: error.code };
@@ -41,23 +41,32 @@ function errorDetails(error: unknown, fallback: string): { message: string; code
 
 function applyServerAttempt(
   set: (partial: Partial<BonusGameStoreState>) => void,
+  get: () => BonusGameStoreState,
   attempt: BonusGameAttempt | null,
 ): void {
-  serverStateRevision += 1;
   set({
     attempt,
     loading: false,
     error: null,
     errorCode: null,
     needsReconcile: false,
+    requestEpoch: get().requestEpoch + 1,
   });
 }
 
-function beginMutation(set: (partial: Partial<BonusGameStoreState>) => void): void {
+function beginMutation(
+  set: (partial: Partial<BonusGameStoreState>) => void,
+  get: () => BonusGameStoreState,
+): void {
   // A read that started before this mutation cannot be used to clear a later
   // reconciliation lock or replace its server-confirmed result.
-  serverStateRevision += 1;
-  set({ inFlight: true, loading: false, error: null, errorCode: null });
+  set({
+    inFlight: true,
+    loading: false,
+    error: null,
+    errorCode: null,
+    requestEpoch: get().requestEpoch + 1,
+  });
 }
 
 export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
@@ -67,17 +76,18 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
   errorCode: null,
   inFlight: false,
   needsReconcile: false,
+  requestEpoch: 0,
 
   loadCurrent: async () => {
-    const revisionAtStart = serverStateRevision;
-    set({ loading: true });
+    const requestEpoch = get().requestEpoch + 1;
+    set({ loading: true, requestEpoch });
     try {
       const { attempt } = await fetchCurrentBonusAttempt();
-      if (serverStateRevision !== revisionAtStart) return get().attempt;
-      applyServerAttempt(set, attempt);
+      if (get().requestEpoch !== requestEpoch) return get().attempt;
+      applyServerAttempt(set, get, attempt);
       return attempt;
     } catch (error) {
-      if (serverStateRevision !== revisionAtStart) return get().attempt;
+      if (get().requestEpoch !== requestEpoch) return get().attempt;
       const current = get();
       if (current.needsReconcile && current.error !== null) {
         set({ loading: false });
@@ -89,7 +99,7 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
     }
   },
 
-  applyState: (next) => applyServerAttempt(set, next),
+  applyState: (next) => applyServerAttempt(set, get, next),
 
   optimisticAddShot: (claimed) => {
     const attempt = get().attempt;
@@ -106,10 +116,10 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
   startPeriod: async () => {
     const attempt = get().attempt;
     if (!attempt || get().inFlight || get().needsReconcile) return null;
-    beginMutation(set);
+    beginMutation(set, get);
     try {
       const response = await startBonusPeriod(attempt.id);
-      applyServerAttempt(set, response.attempt);
+      applyServerAttempt(set, get, response.attempt);
       set({ inFlight: false });
       return response.attempt;
     } catch (error) {
@@ -128,10 +138,10 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
     const attempt = get().attempt;
     if (!attempt || !get().canSubmitShot() || shotInFlight) return null;
     shotInFlight = true;
-    beginMutation(set);
+    beginMutation(set, get);
     try {
       const response = await submitBonusShot(attempt.id, body);
-      applyServerAttempt(set, response.attempt);
+      applyServerAttempt(set, get, response.attempt);
       return {
         serverResult: response.server_result,
         attempt: response.attempt,
@@ -154,10 +164,10 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
   abandon: async () => {
     const attempt = get().attempt;
     if (!attempt || get().inFlight || get().needsReconcile) return null;
-    beginMutation(set);
+    beginMutation(set, get);
     try {
       const response = await abandonBonusAttempt(attempt.id);
-      applyServerAttempt(set, response.attempt);
+      applyServerAttempt(set, get, response.attempt);
       set({ inFlight: false });
       return response.attempt;
     } catch (error) {
