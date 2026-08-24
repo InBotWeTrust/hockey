@@ -24,6 +24,8 @@ interface BackgroundSnapshot {
   ariaHidden: string | null;
 }
 
+const activeModalStack: symbol[] = [];
+
 export type DismissReason = 'backdrop' | 'escape' | 'close-button' | 'drag';
 
 function focusableElements(dialog: HTMLElement): HTMLElement[] {
@@ -37,6 +39,7 @@ function restoreAttribute(element: HTMLElement, name: string, value: string | nu
 
 export function AccessibleModal({
   title,
+  ariaLabel,
   copy,
   onClose,
   onRequestClose,
@@ -54,6 +57,7 @@ export function AccessibleModal({
   children,
 }: {
   title: string;
+  ariaLabel?: string;
   copy?: ReactNode;
   onClose?: () => void;
   onRequestClose?: (reason: DismissReason) => void;
@@ -72,6 +76,7 @@ export function AccessibleModal({
 }): JSX.Element {
   const reduceMotion = useReducedMotion();
   const titleId = useId();
+  const modalIdRef = useRef(Symbol('accessible-modal'));
   const backdropRef = useRef<HTMLDivElement | null>(null);
   const dialogRef = useRef<HTMLElement | null>(null);
   const onRequestCloseRef = useRef<(reason: DismissReason) => void>(() => undefined);
@@ -108,10 +113,14 @@ export function AccessibleModal({
       background.element.setAttribute('aria-hidden', 'true');
     }
 
+    const modalId = modalIdRef.current;
+    activeModalStack.push(modalId);
+
     const initialFocus = initialFocusRef?.current ?? focusableElements(dialog)[0] ?? dialog;
     initialFocus.focus();
 
     const onKeyDown = (event: KeyboardEvent): void => {
+      if (activeModalStack.at(-1) !== modalId) return;
       if (event.key === 'Escape') {
         event.preventDefault();
         if (!closeBlockedRef.current) onRequestCloseRef.current('escape');
@@ -140,6 +149,8 @@ export function AccessibleModal({
 
     return () => {
       document.removeEventListener('keydown', onKeyDown);
+      const stackIndex = activeModalStack.lastIndexOf(modalId);
+      if (stackIndex !== -1) activeModalStack.splice(stackIndex, 1);
       for (const background of backgrounds) {
         restoreAttribute(background.element, 'inert', background.inert);
         restoreAttribute(background.element, 'aria-hidden', background.ariaHidden);
@@ -175,7 +186,9 @@ export function AccessibleModal({
             className={cardClassName ? `modal-card ${cardClassName}` : 'modal-card'}
             role="dialog"
             aria-modal="true"
-            aria-labelledby={titleId}
+            {...(ariaLabel === undefined
+              ? { 'aria-labelledby': titleId }
+              : { 'aria-label': ariaLabel })}
             tabIndex={-1}
             style={cardStyle as MotionStyle}
             initial={

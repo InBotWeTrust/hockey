@@ -257,6 +257,31 @@ describe('UserProfileSheet', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  it('closes the duel type modal with Escape without closing the profile sheet', async () => {
+    useAuthStore.setState({
+      accessToken: 'tok',
+      refreshToken: 'rtok',
+      user: { id: 'me', displayName: 'Me' },
+    });
+    vi.mocked(api.fetchUserProfile).mockImplementation(async (userId) =>
+      userId === 'me' ? { ...publicProfile, id: 'me' } : publicProfile,
+    );
+    const onClose = vi.fn();
+
+    renderSheet({
+      sender: { userId: 'u1', displayName: 'Иван', avatarUrl: null },
+      onClose,
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: /вызвать на дуэль/i }));
+    expect(await screen.findByRole('dialog', { name: 'Выбор типа дуэли' })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.queryByRole('dialog', { name: 'Выбор типа дуэли' })).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Профиль игрока' })).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it('clicking the backdrop calls onClose', () => {
     const onClose = vi.fn();
     render(
