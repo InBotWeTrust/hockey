@@ -99,6 +99,9 @@ describe('App routing + auth', () => {
     render(<App />);
 
     expect(await screen.findByRole('heading', { name: 'Бонусные игры' })).toBeInTheDocument();
+    const ambientLights = screen.getByTestId('arena-ambient-lights');
+    expect(ambientLights).toHaveAttribute('aria-hidden', 'true');
+    expect(ambientLights.children).toHaveLength(10);
   });
 
   it('loads a bonus attempt detail on the authenticated play route', async () => {
@@ -184,6 +187,7 @@ describe('App routing + auth', () => {
     render(<App />);
 
     expect(await screen.findByTestId('play-view')).toBeInTheDocument();
+    expect(screen.queryByTestId('arena-ambient-lights')).toBeNull();
   });
 });
 

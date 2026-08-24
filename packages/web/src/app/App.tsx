@@ -138,6 +138,7 @@ function AppFrame(): JSX.Element {
   const user = useAuthStore((s) => s.user);
   const bottomNavVisible = isBottomNavVisible(location, user);
   const backdropClassName = appBackdropClassName(location.pathname);
+  const hasArenaBackdrop = backdropClassName.split(' ').includes('app-shell--arena');
 
   return (
     <>
@@ -157,6 +158,13 @@ function AppFrame(): JSX.Element {
           boxShadow: '0 0 0 1px rgba(15,23,42,0.08), 0 8px 48px rgba(15,23,42,0.14)',
         }}
       >
+        {hasArenaBackdrop && (
+          <div className="arena-ambient-lights" data-testid="arena-ambient-lights" aria-hidden="true">
+            {Array.from({ length: 10 }, (_, index) => (
+              <span key={index} />
+            ))}
+          </div>
+        )}
         <div className="app-content">
           <Suspense fallback={<RouteLoading />}>
             <Routes>
