@@ -165,16 +165,27 @@
     color 180ms ease,
     background-color 180ms ease,
     border-color 180ms ease,
+    box-shadow 180ms ease,
     transform 180ms ease;
 }
 
 .bottom-nav__icon-wrap--active {
   background: rgba(13, 51, 87, 0.98);
   border-color: rgba(120, 185, 238, 0.2);
+  box-shadow:
+    0 5px 12px rgba(10, 42, 72, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .bottom-nav__icon-wrap svg {
   display: block;
+  filter: drop-shadow(0 1px 1px rgba(28, 54, 80, 0.82)) drop-shadow(0 0 2px rgba(28, 54, 80, 0.32));
+  transition: filter 180ms ease;
+}
+
+.bottom-nav__tab--active .bottom-nav__icon-wrap svg {
+  filter: drop-shadow(0 1px 1px rgba(3, 22, 42, 0.88))
+    drop-shadow(0 0 3px rgba(168, 220, 255, 0.32));
 }
 
 @media (prefers-reduced-motion: reduce) {
