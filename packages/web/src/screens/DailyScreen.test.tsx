@@ -2897,8 +2897,9 @@ describe('DailyScreen', () => {
     expect(await screen.findByText('СЧЁТ')).toBeInTheDocument();
     expect(screen.getByText('20:19')).toBeInTheDocument();
     const scoreboardText = screen.getByLabelText('Игровое табло').textContent ?? '';
-    expect(scoreboardText.indexOf('ВРЕМЯ')).toBeGreaterThan(scoreboardText.indexOf('ПЕРИОД'));
-    expect(scoreboardText.indexOf('СЧЁТ')).toBeGreaterThan(scoreboardText.indexOf('БРОСКИ'));
+    expect(scoreboardText.indexOf('СЧЁТ')).toBeGreaterThan(scoreboardText.indexOf('ПЕРИОД'));
+    expect(scoreboardText.indexOf('БРОСКИ')).toBeGreaterThan(scoreboardText.indexOf('СЧЁТ'));
+    expect(scoreboardText.indexOf('ВРЕМЯ')).toBeGreaterThan(scoreboardText.indexOf('БРОСКИ'));
     const opponentLine = screen.getByLabelText('Соперник: Duel Opponent');
     expect(opponentLine).toHaveClass('game-scoreboard__status-line--active');
     expect(within(opponentLine).getByText('Duel Opponent')).toBeInTheDocument();
