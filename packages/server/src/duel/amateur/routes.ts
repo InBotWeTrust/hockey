@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import type { PoolClient } from 'pg';
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import {
   DEFAULT_DUEL_INVENTORY_TIMING,
@@ -27,6 +28,8 @@ import { enqueueDuelPush } from '../../push/duel.js';
 import { appendEvent } from '../eventLog.js';
 import { getGameSettings } from '../gameSettings.js';
 import { deriveAmateurDuelSeed, deriveShotSeed } from '../seed.js';
+import { resolveDuelVenue } from '../../arenas/service.js';
+import type { MatchmakingVenuePolicy } from '../../arenas/types.js';
 
 type MatchStatus = 'invited' | 'ready_check' | 'active' | 'settled' | 'cancelled' | 'expired';
 type ParticipantState =
@@ -57,6 +60,11 @@ const DUEL_INTERMISSION_CONTINUE_GRACE_MS = 5 * 60_000;
 const uuid = z.string().uuid();
 const isoDate = z.string().datetime({ offset: true });
 const duelKindSchema = z.enum(['express', 'express_plus', 'classic']);
+const matchmakingVenuePolicySchema = z.enum([
+  'neutral_default',
+  'random_participant_home',
+  'random_unselected',
+]);
 const duelInventoryResourceUnitSchema = z.enum(['period', 'shot', 'distance', 'energy_ms']);
 
 const periodPresetSchema = z.object({
@@ -142,6 +150,7 @@ const createTemplateSchema = z.object({
   duelVariant: z.enum(['classic', 'time_attack']).default('classic'),
   rankedEnabled: z.boolean().default(true),
   matchmakingEnabled: z.boolean().default(true),
+  matchmakingVenuePolicy: matchmakingVenuePolicySchema.default('neutral_default'),
   startsAt: isoDate,
   endsAt: isoDate,
   totalPeriods: z.number().int().min(1).max(9).default(3),
@@ -287,6 +296,7 @@ interface DuelTemplateRow {
   duel_variant: DuelVariant;
   ranked_enabled: boolean;
   matchmaking_enabled: boolean;
+  matchmaking_venue_policy: MatchmakingVenuePolicy;
   starts_at: Date;
   ends_at: Date;
   total_periods: number;
@@ -328,6 +338,10 @@ interface DuelMatchRow {
   duel_kind: DuelKind;
   rules_snapshot: unknown;
   match_seed: string;
+  home_user_id: string | null;
+  arena_theme_id: string | null;
+  arena_snapshot: unknown | null;
+  venue_policy: MatchmakingVenuePolicy | 'direct_challenge' | null;
   starts_at: Date;
   ends_at: Date;
   ready_expires_at: Date | null;
@@ -496,6 +510,7 @@ interface DuelRulesSnapshot {
   duelVariant: DuelVariant;
   rankedEnabled: boolean;
   matchmakingEnabled: boolean;
+  matchmakingVenuePolicy: MatchmakingVenuePolicy;
   totalPeriods: number;
   shotsPerPeriod: number;
   periodDurationMs: number;
@@ -557,6 +572,15 @@ interface DuelMatchDTO {
   ranked: boolean;
   season_key: string;
   duel_kind: DuelKind;
+  home_user_id: string | null;
+  venue_policy: MatchmakingVenuePolicy | 'direct_challenge';
+  arena: {
+    id: string;
+    slug: string;
+    title: string;
+    artwork_url: string;
+    thumbnail_url: string;
+  };
   starts_at: string;
   ends_at: string;
   ready_expires_at: string | null;
@@ -986,6 +1010,7 @@ function makeRulesSnapshot(
     duelVariant: template.duel_variant,
     rankedEnabled: template.ranked_enabled,
     matchmakingEnabled: template.matchmaking_enabled,
+    matchmakingVenuePolicy: template.matchmaking_venue_policy,
     totalPeriods,
     shotsPerPeriod: Number(template.shots_per_period),
     periodDurationMs: Number(template.period_duration_ms),
@@ -1073,6 +1098,7 @@ function parseRulesSnapshot(value: unknown): DuelRulesSnapshot {
       duelVariant: z.enum(['classic', 'time_attack']).default('classic'),
       rankedEnabled: z.boolean().default(true),
       matchmakingEnabled: z.boolean().default(true),
+      matchmakingVenuePolicy: matchmakingVenuePolicySchema.default('neutral_default'),
       totalPeriods: z.number().int().min(1).max(9),
       shotsPerPeriod: z.number().int().min(1).max(100),
       periodDurationMs: z.number().int().min(1000).max(10_800_000),
@@ -1112,6 +1138,33 @@ function parseRulesSnapshot(value: unknown): DuelRulesSnapshot {
         shotsPerPeriod: parsed.data.shotsPerPeriod,
         periodDurationMs: parsed.data.periodDurationMs,
       }),
+  };
+}
+
+function deterministicUnitFromSeed(seed: string, label: string): number {
+  const prefix = createHash('sha256').update(`${seed}:${label}`).digest('hex').slice(0, 8);
+  return Number.parseInt(prefix, 16) / 0xffffffff;
+}
+
+function arenaDtoFromSnapshot(snapshot: unknown): DuelMatchDTO['arena'] {
+  const parsed = z
+    .object({
+      id: uuid,
+      slug: z.string(),
+      title: z.string(),
+      artworkUrl: z.string(),
+      thumbnailUrl: z.string(),
+    })
+    .safeParse(snapshot);
+  if (!parsed.success) {
+    throw new AppError('server_error', 'invalid duel arena snapshot', 500);
+  }
+  return {
+    id: parsed.data.id,
+    slug: parsed.data.slug,
+    title: parsed.data.title,
+    artwork_url: parsed.data.artworkUrl,
+    thumbnail_url: parsed.data.thumbnailUrl,
   };
 }
 
@@ -1184,7 +1237,7 @@ async function withTransaction<T>(
 async function fetchTemplate(client: PoolClient, templateId: string): Promise<DuelTemplateRow> {
   const { rows } = await client.query<DuelTemplateRow>(
     `select id, title, description, is_active, difficulty, duel_kind, duel_variant, ranked_enabled,
-            matchmaking_enabled, starts_at, ends_at, total_periods, shots_per_period,
+            matchmaking_enabled, matchmaking_venue_policy, starts_at, ends_at, total_periods, shots_per_period,
             period_duration_ms, break_duration_ms, challenge_ttl_ms, ready_duration_ms,
             ready_no_show_cooldown_ms, matchmaking_timeout_ms, ranked_daily_limit,
             ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules,
@@ -2360,7 +2413,7 @@ async function fetchMatchmakingTemplates(
   const { rows } = await client.query<DuelTemplateRow>(
     `with ranked_templates as (
        select id, title, description, is_active, difficulty, duel_kind, duel_variant, ranked_enabled,
-              matchmaking_enabled, starts_at, ends_at, total_periods, shots_per_period,
+              matchmaking_enabled, matchmaking_venue_policy, starts_at, ends_at, total_periods, shots_per_period,
               period_duration_ms, break_duration_ms, challenge_ttl_ms, ready_duration_ms,
               ready_no_show_cooldown_ms, matchmaking_timeout_ms, ranked_daily_limit,
               ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules,
@@ -2376,7 +2429,7 @@ async function fetchMatchmakingTemplates(
           and duel_kind = any($1::text[])
       )
       select id, title, description, is_active, difficulty, duel_kind, duel_variant, ranked_enabled,
-             matchmaking_enabled, starts_at, ends_at, total_periods, shots_per_period,
+             matchmaking_enabled, matchmaking_venue_policy, starts_at, ends_at, total_periods, shots_per_period,
              period_duration_ms, break_duration_ms, challenge_ttl_ms, ready_duration_ms,
              ready_no_show_cooldown_ms, matchmaking_timeout_ms, ranked_daily_limit,
              ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules,
@@ -2612,6 +2665,9 @@ async function buildMatchDto(
     ranked: match.ranked,
     season_key: match.season_key,
     duel_kind: match.duel_kind,
+    home_user_id: match.home_user_id,
+    venue_policy: match.venue_policy ?? 'neutral_default',
+    arena: arenaDtoFromSnapshot(match.arena_snapshot),
     starts_at: match.starts_at.toISOString(),
     ends_at: match.ends_at.toISOString(),
     ready_expires_at: match.ready_expires_at?.toISOString() ?? null,
@@ -2934,7 +2990,32 @@ async function createOpenMatch(
       GAME_CORE_VERSION,
     ],
   );
-  const match = rows[0]!;
+  const createdMatch = rows[0]!;
+  const venue = await resolveDuelVenue(client, {
+    source: opts.source,
+    policy:
+      opts.source === 'challenge' ? 'neutral_default' : opts.template.matchmaking_venue_policy,
+    challengerUserId: opts.challengerUserId,
+    opponentUserId: opts.opponentUserId,
+    randomUnit: deterministicUnitFromSeed(seedBasis, 'venue'),
+  });
+  const { rows: venueRows } = await client.query<DuelMatchRow>(
+    `update amateur_duel_match
+        set home_user_id = $2,
+            arena_theme_id = $3,
+            arena_snapshot = $4::jsonb,
+            venue_policy = $5
+      where id = $1
+      returning *`,
+    [
+      createdMatch.id,
+      venue.homeUserId,
+      venue.arenaThemeId,
+      JSON.stringify(venue.arena),
+      venue.policy,
+    ],
+  );
+  const match = venueRows[0]!;
   await client.query(
     `insert into amateur_duel_participant (match_id, user_id, side, state)
      values ($1, $2, 'challenger', $4), ($1, $3, 'opponent', $5)`,
@@ -3080,7 +3161,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
     const { rows } = await app.pg.query<DuelTemplateRow>(
       `with ranked_templates as (
          select id, title, description, is_active, difficulty, duel_kind, duel_variant, ranked_enabled,
-                matchmaking_enabled, starts_at, ends_at, total_periods, shots_per_period,
+                matchmaking_enabled, matchmaking_venue_policy, starts_at, ends_at, total_periods, shots_per_period,
                 period_duration_ms, break_duration_ms, challenge_ttl_ms, ready_duration_ms,
                 ready_no_show_cooldown_ms, matchmaking_timeout_ms, ranked_daily_limit,
                 ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules,
@@ -3092,7 +3173,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
           where deleted_at is null and is_active
        )
        select id, title, description, is_active, difficulty, duel_kind, duel_variant, ranked_enabled,
-              matchmaking_enabled, starts_at, ends_at, total_periods, shots_per_period,
+              matchmaking_enabled, matchmaking_venue_policy, starts_at, ends_at, total_periods, shots_per_period,
               period_duration_ms, break_duration_ms, challenge_ttl_ms, ready_duration_ms,
               ready_no_show_cooldown_ms, matchmaking_timeout_ms, ranked_daily_limit,
               ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules,
@@ -3113,6 +3194,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
         duel_variant: template.duel_variant,
         ranked_enabled: template.ranked_enabled,
         matchmaking_enabled: template.matchmaking_enabled,
+        matchmaking_venue_policy: template.matchmaking_venue_policy,
         starts_at: template.starts_at.toISOString(),
         ends_at: template.ends_at.toISOString(),
         total_periods: Number(template.total_periods),
@@ -4309,7 +4391,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
     async () => {
       const { rows } = await app.pg.query<DuelTemplateRow>(
         `select id, title, description, is_active, difficulty, duel_kind, duel_variant, ranked_enabled,
-              matchmaking_enabled, starts_at, ends_at, total_periods, shots_per_period,
+              matchmaking_enabled, matchmaking_venue_policy, starts_at, ends_at, total_periods, shots_per_period,
               period_duration_ms, break_duration_ms, challenge_ttl_ms, ready_duration_ms,
               ready_no_show_cooldown_ms, matchmaking_timeout_ms, ranked_daily_limit,
               ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules,
@@ -4341,12 +4423,13 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
             ready_no_show_cooldown_ms, matchmaking_timeout_ms, ranked_daily_limit,
             ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules,
             stake_amount, entry_fee_amount, required_inventory_item_id, inventory_charges_per_period,
-            win_points, draw_points, win_currency_reward, draw_currency_reward, win_star_reward)
+            win_points, draw_points, win_currency_reward, draw_currency_reward, win_star_reward,
+            matchmaking_venue_policy)
          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
                  $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27,
-                 $28, $29, $30, $31, $32)
+                 $28, $29, $30, $31, $32, $33)
          returning id, title, description, is_active, difficulty, duel_kind, duel_variant, ranked_enabled,
-                   matchmaking_enabled, starts_at, ends_at, total_periods, shots_per_period,
+                   matchmaking_enabled, matchmaking_venue_policy, starts_at, ends_at, total_periods, shots_per_period,
                    period_duration_ms, break_duration_ms, challenge_ttl_ms, ready_duration_ms,
                    ready_no_show_cooldown_ms, matchmaking_timeout_ms, ranked_daily_limit,
                    ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules,
@@ -4387,6 +4470,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
             data.winCurrencyReward,
             data.drawCurrencyReward,
             data.winStarReward,
+            data.matchmakingVenuePolicy,
           ],
         ));
       } catch (err) {
@@ -4419,6 +4503,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
       addPatch(assignments, values, 'duel_variant', body.data.duelVariant);
       addPatch(assignments, values, 'ranked_enabled', body.data.rankedEnabled);
       addPatch(assignments, values, 'matchmaking_enabled', body.data.matchmakingEnabled);
+      addPatch(assignments, values, 'matchmaking_venue_policy', body.data.matchmakingVenuePolicy);
       addPatch(assignments, values, 'starts_at', body.data.startsAt);
       addPatch(assignments, values, 'ends_at', body.data.endsAt);
       addPatch(assignments, values, 'total_periods', body.data.totalPeriods);
@@ -4482,7 +4567,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
                   updated_at = now()
             where id = $${values.length} and deleted_at is null
             returning id, title, description, is_active, difficulty, duel_kind, duel_variant, ranked_enabled,
-                      matchmaking_enabled, starts_at, ends_at, total_periods, shots_per_period,
+                      matchmaking_enabled, matchmaking_venue_policy, starts_at, ends_at, total_periods, shots_per_period,
                       period_duration_ms, break_duration_ms, challenge_ttl_ms, ready_duration_ms,
                       ready_no_show_cooldown_ms, matchmaking_timeout_ms, ranked_daily_limit,
                       ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules,
@@ -4776,6 +4861,7 @@ function mapAdminTemplate(template: DuelTemplateRow) {
     duelVariant: template.duel_variant,
     rankedEnabled: template.ranked_enabled,
     matchmakingEnabled: template.matchmaking_enabled,
+    matchmakingVenuePolicy: template.matchmaking_venue_policy,
     startsAt: template.starts_at.toISOString(),
     endsAt: template.ends_at.toISOString(),
     totalPeriods: Number(template.total_periods),

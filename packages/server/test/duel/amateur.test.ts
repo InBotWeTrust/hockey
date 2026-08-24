@@ -144,6 +144,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       challengeTtlMs?: number;
       readyDurationMs?: number;
       winStarReward?: number;
+      matchmakingVenuePolicy?: 'neutral_default' | 'random_participant_home' | 'random_unselected';
     } = {},
   ) {
     const startsAt = opts.startsAt ?? '2026-01-01T00:00:00.000Z';
@@ -153,9 +154,9 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
          (title, description, starts_at, ends_at, duel_kind, total_periods, shots_per_period,
           period_duration_ms, break_duration_ms, goalie_id, period_speed_presets,
           stake_amount, entry_fee_amount, ranked_enabled, duel_variant, period_rules,
-          challenge_ttl_ms, ready_duration_ms, win_star_reward)
+          challenge_ttl_ms, ready_duration_ms, win_star_reward, matchmaking_venue_policy)
        values ('Test duel', '', $1, $2, $10, $6, 1, $7, $12, 'rookie', $3, $4, $5, $8, $9, $11,
-               $13, $14, $15)
+               $13, $14, $15, $16)
        returning id`,
       [
         startsAt,
@@ -173,6 +174,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
         opts.challengeTtlMs ?? 900000,
         opts.readyDurationMs ?? 900000,
         opts.winStarReward ?? 0,
+        opts.matchmakingVenuePolicy ?? 'neutral_default',
       ],
     );
     return rows[0]!.id;
@@ -202,6 +204,112 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       payload: { template_id: templateId, opponent_user_id: opponentUserId },
     });
     return res;
+  }
+
+  async function setHomeArena(userId: string, slug: string): Promise<string> {
+    const arena = await pool.query<{
+      id: string;
+      slug: string;
+      title: string;
+      artwork_url: string;
+      thumbnail_url: string;
+    }>(
+      `select id, slug, title, artwork_url, thumbnail_url
+         from arena_theme
+        where slug = $1`,
+      [slug],
+    );
+    const theme = arena.rows[0]!;
+    const game = await pool.query<{ id: string }>(
+      `insert into bonus_game
+         (slug, title, description, sort_order, status, access_type, unlock_price_stars,
+          target_goals, total_periods, break_duration_ms, period_rules,
+          reward_coins, reward_stars, reward_experience, arena_theme_id,
+          goalkeeper_ready_url, goalkeeper_save_url)
+       values ($1, $2, '', 1, 'draft', 'free', 0, 1, 1, 0, '[]'::jsonb,
+               0, 0, 0, $3, '/goalies/ready.webp', '/goalies/save.webp')
+       returning id`,
+      [`duel-${userId}-${slug}`, `Duel ${slug}`, theme.id],
+    );
+    const snapshot = {
+      id: theme.id,
+      slug: theme.slug,
+      title: theme.title,
+      artworkUrl: theme.artwork_url,
+      thumbnailUrl: theme.thumbnail_url,
+    };
+    const attempt = await pool.query<{ id: string }>(
+      `insert into bonus_game_attempt
+         (user_id, bonus_game_id, status, state, current_period, closed_at,
+          attempt_seed, game_core_version, definition_revision, rules_snapshot,
+          reward_snapshot, arena_theme_id_snapshot, arena_snapshot,
+          goalkeeper_ready_url, goalkeeper_save_url)
+       values ($1, $2, 'completed', 'closed', 1, now(), $3, 1, 1, $4::jsonb, $5::jsonb,
+               $6, $7::jsonb, '/goalies/ready.webp', '/goalies/save.webp')
+       returning id`,
+      [
+        userId,
+        game.rows[0]!.id,
+        `duel-attempt-${userId}-${slug}`,
+        JSON.stringify({
+          gameId: game.rows[0]!.id,
+          slug: `duel-${userId}-${slug}`,
+          title: `Duel ${slug}`,
+          revision: 1,
+          targetGoals: 1,
+          totalPeriods: 1,
+          breakDurationMs: 0,
+          periods: [],
+          goalkeeperReadyUrl: '/goalies/ready.webp',
+          goalkeeperSaveUrl: '/goalies/save.webp',
+          arena: snapshot,
+        }),
+        JSON.stringify({ coins: 0, stars: 0, experience: 0 }),
+        theme.id,
+        JSON.stringify(snapshot),
+      ],
+    );
+    const completion = await pool.query<{ id: string }>(
+      `insert into user_bonus_game_completion
+         (user_id, bonus_game_id, attempt_id, reward_snapshot)
+       values ($1, $2, $3, $4::jsonb)
+       returning id`,
+      [
+        userId,
+        game.rows[0]!.id,
+        attempt.rows[0]!.id,
+        JSON.stringify({ coins: 0, stars: 0, experience: 0 }),
+      ],
+    );
+    await pool.query(
+      `insert into user_arena_unlock
+         (user_id, arena_theme_id, source_bonus_game_id, source_completion_id)
+       values ($1, $2, $3, $4)`,
+      [userId, theme.id, game.rows[0]!.id, completion.rows[0]!.id],
+    );
+    await pool.query('update users set home_arena_theme_id = $1 where id = $2', [theme.id, userId]);
+    return theme.id;
+  }
+
+  async function createMatchmakingPair(
+    matchmakingVenuePolicy: 'neutral_default' | 'random_participant_home' | 'random_unselected',
+  ) {
+    const templateId = await createTemplate({ matchmakingVenuePolicy });
+    const first = await app.inject({
+      method: 'POST',
+      url: '/duel/amateur/matchmaking/join',
+      headers: auth(tokenA),
+      payload: { template_id: templateId },
+    });
+    expect(first.statusCode).toBe(200);
+    const second = await app.inject({
+      method: 'POST',
+      url: '/duel/amateur/matchmaking/join',
+      headers: auth(tokenB),
+      payload: { template_id: templateId },
+    });
+    expect(second.statusCode).toBe(200);
+    return second.json().match;
   }
 
   async function createInventoryItem(kind: 'stick' | 'skates' | 'nutrition', title: string) {
@@ -1112,6 +1220,81 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(second.statusCode).toBe(200);
     expect(second.json().match.status).toBe('ready_check');
     expect(second.json().match.opponent.user_id).toBe(userA);
+  });
+
+  it('snapshots the challenger home arena for a direct challenge', async () => {
+    const beachId = await setHomeArena(userA, 'beach');
+    const created = await challenge(await createTemplate());
+
+    expect(created.statusCode).toBe(200);
+    expect(created.json().match.home_user_id).toBe(userA);
+    expect(created.json().match.venue_policy).toBe('direct_challenge');
+    expect(created.json().match.arena).toEqual({
+      id: beachId,
+      slug: 'beach',
+      title: 'Пляж',
+      artwork_url: '/bonus-games/arenas/beach.webp',
+      thumbnail_url: '/bonus-games/arenas/beach.webp',
+    });
+  });
+
+  it('uses the default neutral arena for the neutral matchmaking venue policy', async () => {
+    const match = await createMatchmakingPair('neutral_default');
+
+    expect(match.venue_policy).toBe('neutral_default');
+    expect(match.home_user_id).toBeNull();
+    expect(match.arena.slug).toBe('default');
+  });
+
+  it('uses the selected arena of the server-chosen home participant for matchmaking', async () => {
+    const beachId = await setHomeArena(userA, 'beach');
+    const castleId = await setHomeArena(userB, 'castle');
+    const match = await createMatchmakingPair('random_participant_home');
+
+    expect(match.venue_policy).toBe('random_participant_home');
+    expect([userA, userB]).toContain(match.home_user_id);
+    expect(match.arena.slug).toBe(match.home_user_id === userA ? 'beach' : 'castle');
+    expect(match.arena.id).toBe(match.home_user_id === userA ? beachId : castleId);
+  });
+
+  it('uses an arena selected by neither participant for the unselected matchmaking venue policy', async () => {
+    const beachId = await setHomeArena(userA, 'beach');
+    const castleId = await setHomeArena(userB, 'castle');
+    const match = await createMatchmakingPair('random_unselected');
+
+    expect(match.venue_policy).toBe('random_unselected');
+    expect(match.home_user_id).toBeNull();
+    expect([beachId, castleId]).not.toContain(match.arena.id);
+  });
+
+  it('keeps the venue snapshot after the challenger changes home arena', async () => {
+    await setHomeArena(userA, 'beach');
+    const created = await challenge(await createTemplate());
+    const matchId = created.json().match.id;
+    await setHomeArena(userA, 'castle');
+
+    const loaded = await app.inject({
+      method: 'GET',
+      url: `/duel/amateur/matches/${matchId}`,
+      headers: auth(tokenA),
+    });
+
+    expect(loaded.statusCode).toBe(200);
+    expect(loaded.json().match.arena.slug).toBe('beach');
+  });
+
+  it('exposes the default matchmaking venue policy in templates and duel rule snapshots', async () => {
+    const templateId = await createTemplate();
+    const listed = await app.inject({
+      method: 'GET',
+      url: '/duel/amateur/templates',
+      headers: auth(tokenA),
+    });
+    const template = listed.json().templates.find((item: { id: string }) => item.id === templateId);
+    const created = await challenge(templateId);
+
+    expect(template.matchmaking_venue_policy).toBe('neutral_default');
+    expect(created.json().match.rules.matchmakingVenuePolicy).toBe('neutral_default');
   });
 
   it('pairs matchmaking players only when duel kind preferences overlap', async () => {
