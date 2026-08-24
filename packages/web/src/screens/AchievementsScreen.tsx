@@ -286,7 +286,12 @@ export function AchievementsScreen(): JSX.Element {
           >
             <ArrowLeft size={16} />
           </button>
-          <h1 style={{ margin: 0, minWidth: 0, fontSize: 24, fontWeight: 800 }}>Задания</h1>
+          <h1
+            className="screen-title-on-arena"
+            style={{ margin: 0, minWidth: 0, fontSize: 24, fontWeight: 800 }}
+          >
+            Задания
+          </h1>
         </div>
         <SegmentedTabs
           items={ACHIEVEMENT_PAGE_TABS.map((tab) => ({
@@ -518,6 +523,7 @@ function AchievementCard({
   return (
     <button
       type="button"
+      className={`achievement-card${claimable ? ' achievement-card--claimable' : ''}`}
       disabled={claimable && claimDisabled}
       onClick={() => {
         if (claimable) {
@@ -534,7 +540,6 @@ function AchievementCard({
         display: 'grid',
         gridTemplateRows: 'auto 88px',
         alignSelf: 'stretch',
-        background: claimable ? 'rgba(255,255,255,0.78)' : 'rgba(255,255,255,0.52)',
         color: 'var(--ink)',
         textAlign: 'left',
         boxShadow: claimable
@@ -601,6 +606,7 @@ function AchievementCard({
         )}
       </div>
       <div
+        className="achievement-card__body"
         style={{
           minHeight: 0,
           padding: '8px 10px 9px',
@@ -612,11 +618,11 @@ function AchievementCard({
         <FitOneLineTitle text={achievement.title} />
         <div
           data-achievement-requirement
+          className="achievement-card__requirement"
           style={{
             fontSize: 11,
             lineHeight: '14px',
             maxHeight: 42,
-            color: 'var(--muted)',
             fontWeight: 700,
             display: '-webkit-box',
             WebkitLineClamp: 3,

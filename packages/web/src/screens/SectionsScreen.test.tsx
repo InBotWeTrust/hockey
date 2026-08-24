@@ -168,6 +168,12 @@ describe('SectionsScreen', () => {
       'Бонусные игры',
       'Профессионалы',
     ]);
+    within(quickAccess)
+      .getAllByRole('button')
+      .forEach((button) => expect(button).toHaveClass('section-card-surface'));
+    within(modes)
+      .getAllByRole('button')
+      .forEach((button) => expect(button).toHaveClass('section-card-surface'));
   });
 
   it('starts directly with quick access without a duplicate page label', async () => {

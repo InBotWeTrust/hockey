@@ -222,8 +222,8 @@ function readTrainingSpeedOverrides(): SpeedOverrides | null {
 const TOURNAMENT_LED_TABLEAU_IMAGE = '/sprites/tournament-tableau.webp';
 const AMATEUR_DAILY_COURT_BACKGROUND = '/sprites/amateur-daily-court.webp';
 const AMATEUR_TOURNAMENT_COURT_BACKGROUND = '/sprites/amateur-tournament-court.webp';
-const ARENA_ICE_COURT_BACKGROUND = '/sprites/arena-ice-court-v2.webp';
-const ARENA_ICE_TABLEAU_IMAGE = '/sprites/arena-ice-tableau-v2.webp';
+const ARENA_ICE_COURT_BACKGROUND = '/sprites/app-arena-ice.webp';
+const ARENA_CUBE_IMAGE = '/sprites/app-arena-cube.webp';
 
 function saveTrainingHitboxesVisible(value: boolean): void {
   if (typeof window === 'undefined') return;
@@ -412,11 +412,9 @@ export function DailyScreen(): JSX.Element {
         }}
       >
         {error ? (
-          <>
-            <div style={{ color: 'var(--red-deep, #b91c1c)', fontWeight: 600 }}>
-              Не удалось загрузить
-            </div>
-            <div style={{ color: 'var(--muted)', fontSize: 13, maxWidth: 280 }}>{error}</div>
+          <div className="arena-error-state" role="alert">
+            <div className="arena-error-state__title">Не удалось загрузить</div>
+            <div className="arena-error-state__copy">{error}</div>
             <button
               type="button"
               className="btn btn--cta"
@@ -425,10 +423,10 @@ export function DailyScreen(): JSX.Element {
             >
               Повторить
             </button>
-            <div style={{ color: 'var(--muted)', fontSize: 11 }}>
+            <div className="arena-error-state__hint">
               Если ошибка повторяется — выйди и зайди заново через /login.
             </div>
-          </>
+          </div>
         ) : (
           <div style={{ color: 'var(--muted)' }}>Загрузка…</div>
         )}
@@ -1170,54 +1168,27 @@ function ArenaVideoCube({
         alt=""
         aria-hidden="true"
       />
-      <div
-        aria-label="Разделы на табло"
-        onPointerDown={handlePointerDown}
-        onPointerUp={handlePointerEnd}
-        onPointerCancel={handlePointerCancel}
-        style={{
-          position: 'absolute',
-          left: '50%',
-          top: 'calc((100dvh - 92px - var(--bottom-nav-bottom-gap) - var(--app-safe-bottom) + var(--app-safe-top)) / 2)',
-          width: 'min(100%, 620px)',
-          aspectRatio: '1024 / 1536',
-          overflow: 'hidden',
-          transform: 'translate3d(-50%, -74%, 0)',
-          touchAction: 'pan-y',
-        }}
-      >
-        <img
-          src={ARENA_ICE_TABLEAU_IMAGE}
-          alt=""
-          aria-hidden="true"
-          style={{
-            position: 'absolute',
-            inset: 0,
-            width: '100%',
-            height: '100%',
-            objectFit: 'fill',
-          }}
-        />
+      <div className="arena-video-cube__plate">
+        <img className="arena-video-cube__cube" src={ARENA_CUBE_IMAGE} alt="" aria-hidden="true" />
         <div
+          className="arena-video-cube__screen"
+          aria-label="Разделы на табло"
+          onPointerDown={handlePointerDown}
+          onPointerUp={handlePointerEnd}
+          onPointerCancel={handlePointerCancel}
           style={{
-            position: 'absolute',
-            left: '8.3%',
-            right: '8.3%',
-            top: '50.8%',
-            bottom: '5.4%',
-            zIndex: 2,
             display: 'grid',
             gridTemplateRows: 'auto minmax(0, 1fr) auto',
-            rowGap: 'clamp(18px, 2.6vh, 24px)',
-            padding: 'clamp(30px, 4.2vh, 36px) 0 clamp(15px, 2.3vh, 20px)',
+            rowGap: 'clamp(5px, 0.8vh, 8px)',
+            padding: 'clamp(10px, 1.6vh, 14px) 0 clamp(9px, 1.4vh, 13px)',
             boxSizing: 'border-box',
           }}
         >
           <div
             style={{
               position: 'absolute',
-              left: '1.2%',
-              right: '1.2%',
+              left: '4%',
+              right: '4%',
               top: '50%',
               transform: 'translateY(-50%)',
               zIndex: 4,
@@ -1373,7 +1344,7 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
         minHeight: 0,
         display: 'grid',
         alignItems: 'stretch',
-        padding: '0 clamp(8px, 1.6vw, 12px)',
+        padding: '0 clamp(38px, 11vw, 46px)',
         boxSizing: 'border-box',
         color: '#e9fbff',
         fontFamily: 'var(--font-mono)',
@@ -1388,7 +1359,7 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
           gridTemplateRows: 'auto auto auto auto',
           alignContent: 'space-evenly',
           justifyItems: 'center',
-          gap: 'clamp(5px, 0.9vh, 8px)',
+          gap: 'clamp(4px, 0.7vh, 6px)',
           textAlign: 'center',
           padding: 0,
         }}
@@ -2022,6 +1993,7 @@ function LevelHubCard({
   return (
     <button
       type="button"
+      className={`section-card-surface section-card-surface--${tone}`}
       aria-label={title}
       onClick={onClick}
       style={{
@@ -2033,7 +2005,6 @@ function LevelHubCard({
         gridTemplateColumns: `${MODE_ARTWORK_SIZE}px minmax(0, 1fr) 18px`,
         gap: 12,
         alignItems: 'center',
-        background: tone === 'active' ? 'rgba(255, 255, 255, 0.64)' : 'rgba(255, 255, 255, 0.48)',
         border: '1px solid rgba(255,255,255,0.66)',
         boxShadow: '0 8px 22px rgba(15,23,42,0.1), inset 0 1px 0 rgba(255,255,255,0.78)',
         width: '100%',
@@ -2880,7 +2851,7 @@ function ModeShell({
           gap: 14,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div className="mode-shell__header" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button
             type="button"
             className="icon-btn"
@@ -2902,7 +2873,12 @@ function ModeShell({
           >
             <ArrowLeft size={16} />
           </button>
-          <h1 style={{ margin: 0, minWidth: 0, fontSize: 24, fontWeight: 800 }}>{title}</h1>
+          <h1
+            className="mode-shell__title"
+            style={{ margin: 0, minWidth: 0, fontSize: 24, fontWeight: 800 }}
+          >
+            {title}
+          </h1>
         </div>
         {children}
       </section>
@@ -3011,63 +2987,72 @@ function TrainingPlaceholder({
 
   return (
     <ModeShell title="Тренировка" onBack={onBack}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
-        <TotalCell label="ЛИМИТ" value={`${shotsTaken}/${shotsLimit}`} />
-        <TotalCell label="ЧАСТОТА" value="24ч" />
-        <TotalCell label="ДО ОБНОВЛЕНИЯ" value={data ? formatHms(nextDayRemaining) : '--:--:--'} />
-      </div>
-      {loading && !data ? (
-        <div style={{ color: 'var(--muted)', fontSize: 14 }}>Загрузка...</div>
-      ) : (
-        <>
-          {error && (
-            <div style={{ color: 'var(--red-deep, #b91c1c)', fontSize: 13, fontWeight: 700 }}>
-              {error}
-            </div>
-          )}
-          {canConfigureTraining && (
-            <>
-              <div style={{ color: 'var(--muted)', fontSize: 14, lineHeight: 1.45 }}>
+      <section
+        className="mode-info-card training-info-card"
+        aria-label="Информация о тренировке"
+      >
+        <div className="training-summary-grid">
+          <TotalCell label="ЛИМИТ" value={`${shotsTaken}/${shotsLimit}`} />
+          <TotalCell label="ЧАСТОТА" value="24ч" />
+          <TotalCell
+            label="ДО ОБНОВЛЕНИЯ"
+            value={data ? formatHms(nextDayRemaining) : '--:--:--'}
+          />
+        </div>
+        {loading && !data ? (
+          <div className="training-info-copy">Загрузка...</div>
+        ) : (
+          <>
+            {error && <div className="training-info-error">{error}</div>}
+            {canConfigureTraining && (
+              <div className="training-info-copy">
                 Выбери модель периода. Скорости игрока, ворот, шайбы и вратаря будут такими же, как
                 в дневной игре выбранного периода.
               </div>
-              <SegmentedTabs
-                ariaLabel="Период тренировки"
-                items={[
-                  { id: '1', label: '1 период' },
-                  { id: '2', label: '2 период' },
-                  { id: '3', label: '3 период' },
-                ]}
-                activeTab={String(selectedPeriod)}
-                onChange={(id) => setSelectedPeriod(Number(id) as 1 | 2 | 3)}
-              />
-              <PeriodSpeedSummary
-                periodNumber={selectedPeriod}
-                presets={data?.period_speed_presets}
-              />
-              <button
-                type="button"
-                className="btn btn--cta"
-                disabled={inFlight}
-                onClick={() => void handleTrainingAction()}
-              >
-                {trainingActionLabel}
-              </button>
-            </>
-          )}
-          {data?.state === 'closed' && (
-            <>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-                <TotalCell label="ГОЛЫ" value={String(goals)} />
-                <TotalCell label="БРОСКИ" value={`${shotsTaken}/${shotsLimit}`} />
-                <TotalCell label="ТОЧНОСТЬ" value={`${accuracy}%`} />
-              </div>
-              <div style={{ color: 'var(--muted)', fontSize: 14, lineHeight: 1.45 }}>
-                Тренировка на сегодня завершена. Новая откроется завтра.
-              </div>
-            </>
-          )}
-        </>
+            )}
+            {data?.state === 'closed' && (
+              <>
+                <div className="training-summary-grid">
+                  <TotalCell label="ГОЛЫ" value={String(goals)} />
+                  <TotalCell label="БРОСКИ" value={`${shotsTaken}/${shotsLimit}`} />
+                  <TotalCell label="ТОЧНОСТЬ" value={`${accuracy}%`} />
+                </div>
+                <div className="training-info-copy">
+                  Тренировка на сегодня завершена. Новая откроется завтра.
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </section>
+      {!loading && canConfigureTraining && (
+        <section
+          className="mode-setup-card training-config-card"
+          aria-label="Настройка тренировки"
+        >
+          <SegmentedTabs
+            ariaLabel="Период тренировки"
+            items={[
+              { id: '1', label: '1 период' },
+              { id: '2', label: '2 период' },
+              { id: '3', label: '3 период' },
+            ]}
+            activeTab={String(selectedPeriod)}
+            onChange={(id) => setSelectedPeriod(Number(id) as 1 | 2 | 3)}
+          />
+          <PeriodSpeedSummary
+            periodNumber={selectedPeriod}
+            presets={data?.period_speed_presets}
+          />
+          <button
+            type="button"
+            className="btn btn--cta"
+            disabled={inFlight}
+            onClick={() => void handleTrainingAction()}
+          >
+            {trainingActionLabel}
+          </button>
+        </section>
       )}
     </ModeShell>
   );
@@ -3614,7 +3599,7 @@ function DuelKindPreferencePicker({
   };
 
   return (
-    <div className="glass" style={{ borderRadius: 16, padding: '10px 10px 12px' }}>
+    <div className="duel-kind-picker" style={{ borderRadius: 16, padding: '10px 10px 12px' }}>
       <div
         style={{
           display: 'flex',
@@ -3946,7 +3931,11 @@ function AmateurDuelsPage({
 
       {duelTab === 'game' && (
         <>
-          <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <section
+            className="mode-setup-card duel-creation-card"
+            aria-label="Новая дуэль"
+            style={{ display: 'flex', flexDirection: 'column', gap: 10 }}
+          >
             <div className="section-label section-label--page">Новая дуэль</div>
             <SegmentedTabs
               ariaLabel="Сценарий новой дуэли"
@@ -4380,8 +4369,11 @@ function AmateurDuelsPage({
             {activeMatches.length === 0 && (
               <div
                 role="status"
+                className="glass"
                 style={{
                   minHeight: 132,
+                  borderRadius: 22,
+                  padding: 16,
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',

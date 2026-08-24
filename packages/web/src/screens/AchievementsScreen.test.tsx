@@ -130,6 +130,20 @@ describe('AchievementsScreen', () => {
     expect(document.body.firstElementChild).toHaveAttribute('inert');
   });
 
+  it('uses a dense text surface for achievement card copy', async () => {
+    mockAchievementsApi([
+      makeAchievement({ title: 'Первая шайба', requirement: 'Забросить первую шайбу в игре.' }),
+    ]);
+    renderAchievements();
+
+    const title = await screen.findByText('Первая шайба');
+    expect(title.closest('button')).toHaveClass('achievement-card');
+    expect(title.closest('.achievement-card__body')).not.toBeNull();
+    expect(screen.getByText('Забросить первую шайбу в игре.')).toHaveClass(
+      'achievement-card__requirement',
+    );
+  });
+
   it('shows completed and total counts in the section label for the selected filter', async () => {
     mockAchievementsApi([
       makeAchievement({

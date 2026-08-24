@@ -580,6 +580,19 @@ describe('DailyScreen', () => {
     expect(screen.getByText(/Загрузка/)).toBeInTheDocument();
   });
 
+  it('renders a high-contrast arena error state when the daily request fails', async () => {
+    vi.restoreAllMocks();
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Network unavailable'));
+
+    renderWith();
+
+    const title = await screen.findByText('Не удалось загрузить');
+    expect(title.parentElement).toHaveClass('arena-error-state');
+    expect(title).toHaveClass('arena-error-state__title');
+    expect(screen.getByText('Network unavailable')).toHaveClass('arena-error-state__copy');
+    expect(screen.getByText(/Если ошибка повторяется/)).toHaveClass('arena-error-state__hint');
+  });
+
   it('renders idle view with start button after fetch', async () => {
     renderWith();
     expect(await findArenaCta('Ежедневная игра: 1-й период доступен')).toBeInTheDocument();
@@ -587,18 +600,26 @@ describe('DailyScreen', () => {
     expect(
       screen.getByRole('article', { name: 'Ежедневная игра: 1-й период доступен' }),
     ).toBeInTheDocument();
+    const previousTableauButton = screen.getByRole('button', {
+      name: 'Предыдущий экран табло',
+    });
+    expect(previousTableauButton.parentElement).toHaveStyle({ left: '4%', right: '4%' });
+    expect(
+      screen.getByRole('article', { name: 'Ежедневная игра: 1-й период доступен' }),
+    ).toHaveStyle({ padding: '0 clamp(38px, 11vw, 46px)' });
     expect(document.querySelector('.arena-video-cube__background')).toHaveAttribute(
       'src',
-      '/sprites/arena-ice-court-v2.webp',
+      '/sprites/app-arena-ice.webp',
     );
+    expect(document.querySelector('.arena-video-cube__cube')).toHaveAttribute(
+      'src',
+      '/sprites/app-arena-cube.webp',
+    );
+    expect(document.querySelector('img[src="/sprites/arena-ice-tableau-v2.webp"]')).toBeNull();
     expect(screen.queryByRole('img', { name: 'Игровая площадка в перспективе' })).toBeNull();
     const tableau = screen.getByLabelText('Разделы на табло');
-    expect(tableau).toHaveStyle({ width: 'min(100%, 620px)' });
-    expect(tableau.parentElement).toHaveStyle({
-      position: 'absolute',
-      width: '100%',
-      height: '100%',
-    });
+    expect(tableau).toHaveClass('arena-video-cube__screen');
+    expect(tableau.parentElement).toHaveClass('arena-video-cube__plate');
     expect(screen.getByText('Ежедневная игра')).toBeInTheDocument();
     expect(screen.getByText('1-й период доступен')).toBeInTheDocument();
     expect(screen.getByText('Время')).toBeInTheDocument();
@@ -1418,6 +1439,16 @@ describe('DailyScreen', () => {
     expect(screen.getByText('ДО ОБНОВЛЕНИЯ')).toBeInTheDocument();
     expect(screen.getByText('Скорости 1-го периода')).toBeInTheDocument();
     expect(screen.getByText('0,50/с')).toBeInTheDocument();
+
+    const trainingInfo = screen.getByRole('region', { name: 'Информация о тренировке' });
+    expect(trainingInfo).toHaveClass('mode-info-card', 'training-info-card');
+    expect(within(trainingInfo).getByText('0/500')).toBeInTheDocument();
+    expect(within(trainingInfo).getByText(/Выбери модель периода/)).toBeInTheDocument();
+
+    const trainingSetup = screen.getByRole('region', { name: 'Настройка тренировки' });
+    expect(trainingSetup).toHaveClass('mode-setup-card', 'training-config-card');
+    expect(within(trainingSetup).getByRole('tab', { name: '1 период' })).toBeInTheDocument();
+    expect(within(trainingSetup).getByRole('button', { name: 'На лёд' })).toBeInTheDocument();
   });
 
   it('opens the training rink with an ice car while the daily game is in progress', async () => {
@@ -2283,6 +2314,10 @@ describe('DailyScreen', () => {
     renderWith(['/?view=amateur&section=duels']);
 
     expect(screen.queryByRole('button', { name: 'Все' })).not.toBeInTheDocument();
+
+    const duelSetup = await screen.findByRole('region', { name: 'Новая дуэль' });
+    expect(duelSetup).toHaveClass('mode-setup-card', 'duel-creation-card');
+    expect(within(duelSetup).getByRole('button', { name: 'Начать поиск' })).toBeInTheDocument();
 
     const express = await screen.findByRole('button', { name: 'Экспресс' });
     const expressPlus = await screen.findByRole('button', { name: 'Экспресс+' });

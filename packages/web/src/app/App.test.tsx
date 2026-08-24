@@ -6,7 +6,7 @@ import { LoginScreen } from '../screens/LoginScreen.js';
 import { PrivateRoute } from '../auth/PrivateRoute.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { useBonusGameStore } from '../stores/bonusGameStore.js';
-import { App } from './App.js';
+import { App, appBackdropClassName } from './App.js';
 
 vi.mock('../game/PlayView.js', () => ({
   PlayView: () => <div data-testid="play-view" />,
@@ -184,5 +184,25 @@ describe('App routing + auth', () => {
     render(<App />);
 
     expect(await screen.findByTestId('play-view')).toBeInTheDocument();
+  });
+});
+
+describe('app backdrop variants', () => {
+  it('keeps the chat list on the standard arena and lightens only nested chat routes', () => {
+    expect(appBackdropClassName('/chat')).toBe('app-shell--arena');
+    expect(appBackdropClassName('/chat/conversation-1')).toBe(
+      'app-shell--arena app-shell--arena-chat',
+    );
+  });
+
+  it('uses the arena backdrop in admin while keeping it off full-rink utility routes', () => {
+    expect(appBackdropClassName('/admin')).toBe('app-shell--arena app-shell--arena-admin');
+    expect(appBackdropClassName('/test-court')).toBe('');
+  });
+
+  it('uses the standard arena backdrop for user-facing screens', () => {
+    expect(appBackdropClassName('/sections')).toBe('app-shell--arena');
+    expect(appBackdropClassName('/profile')).toBe('app-shell--arena');
+    expect(appBackdropClassName('/inventory')).toBe('app-shell--arena');
   });
 });

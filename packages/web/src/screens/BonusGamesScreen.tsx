@@ -108,7 +108,10 @@ export function BonusGamesScreen(): JSX.Element {
             <ArrowLeft size={16} aria-hidden="true" />
           </button>
           <div className="bonus-games-catalog__heading">
-            <h1 id="bonus-games-title" className="bonus-games-catalog__title">
+            <h1
+              id="bonus-games-title"
+              className="bonus-games-catalog__title screen-title-on-arena"
+            >
               Бонусные игры
             </h1>
             <button
@@ -127,7 +130,10 @@ export function BonusGamesScreen(): JSX.Element {
             Загружаем бонусные игры…
           </div>
         ) : catalogQuery.isError ? (
-          <div className="bonus-games-catalog__notice" role="alert">
+          <div
+            className="bonus-games-catalog__notice bonus-games-catalog__notice--error"
+            role="alert"
+          >
             {safeUiError(catalogQuery.error)}
           </div>
         ) : catalogQuery.data?.games.length === 0 ? (

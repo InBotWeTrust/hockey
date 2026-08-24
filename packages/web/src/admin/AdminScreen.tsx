@@ -1060,21 +1060,21 @@ function DashboardPanel({
         subtitle={periodLabel}
         series={dashboard.series}
         valueKey="activeUsers"
-        color="#1d4ed8"
+        color="#2f7dd3"
       />
       <DashboardChartCard
         title="Новые пользователи"
         subtitle={periodLabel}
         series={dashboard.series}
         valueKey="newUsers"
-        color="#0f766e"
+        color="#149aa4"
       />
       <DashboardChartCard
         title="Выручка"
         subtitle={periodLabel}
         series={dashboard.series}
         valueKey="revenueRub"
-        color="#7c2d12"
+        color="#d78332"
         formatValue={moneyText}
         formatAxisValue={compactMoneyText}
       />
@@ -1083,14 +1083,14 @@ function DashboardPanel({
         subtitle={periodLabel}
         series={dashboard.series}
         valueKey="shots"
-        color="#4338ca"
+        color="#4057c9"
       />
       <DashboardChartCard
         title="Сообщения"
         subtitle={periodLabel}
         series={dashboard.series}
         valueKey="messages"
-        color="#047857"
+        color="#197c70"
       />
     </>
   );

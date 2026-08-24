@@ -67,4 +67,50 @@
 - P2: none.
 - P3: row content intentionally follows real game-mode data rather than reproducing mockup-only metrics; the requested single-period compact layout is implemented.
 
+## Arena background and detached cube comparison
+
+- Source visual truth: `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-c388df2b-0c1a-480c-aa7f-36d8d3cdc55a.png`.
+- Follow-up arrow-spacing references: `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-076f4e29-2ae2-42e2-ba21-7bc0573bad5d.png` and `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-822aee54-8016-4756-9ed1-ed0e0f87111d.png`.
+- Implementation screenshot: `/private/tmp/ultimate-hockey-design-qa/arena-home-final-390x844.png`.
+- Full-view comparison: `/private/tmp/ultimate-hockey-design-qa/arena-home-comparison-final.png`.
+- Focused arrow state: `/private/tmp/ultimate-hockey-design-qa/arena-arrows-final-390x844.png`; a separate crop was not needed because both arrows and all central copy are readable in the full-size 390 px capture.
+- Viewport and density: source 884 × 1864 px normalized to 390 × 844 px; implementation 390 × 844 CSS px at device scale factor 1.
+- State: authenticated arena lobby, daily-game card selected; training card was also checked after the arrow-spacing adjustment.
+- Typography: live mode copy remains centered and legible. The navigation arrows no longer visually merge with multiline status text.
+- Spacing and layout: the cube retains the source height and top position. The content face now reserves `clamp(38px, 11vw, 46px)` on each side, while the arrows sit 4% in from the display edges, leaving visible air both outside and inside each control.
+- Colors and tokens: the grey page veil and image filters are absent; the arena image keeps its native cold contrast and the cube uses its own transparent asset.
+- Image quality: the arena and cube are independent WebP assets. The cube keeps its side faces and suspension detail without a visible rectangular background.
+- Copy and content: daily, training and duel content remains live application text rather than rasterized mockup copy; no gameplay state or mechanic changed.
+- Primary interaction tested: previous/next tableau navigation switches cards, and the daily and training CTA states remain available.
+- Browser console errors: none observed in the final visual pass.
+- Comparison history: the initial implementation had a grey veil; it was removed. The arena and cube were then separated, the cube was resized and raised to the source position, and 2 px/9 px content overflow was removed. The first arrow revision moved controls away from central text; the final revision added edge breathing room while preserving the central safe area. The post-fix comparison has no actionable P0/P1/P2 mismatch.
+
+## Arena readability audit across user sections
+
+- User references: `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-10722ca6-b47f-4f2c-9960-4faa5e6e82af.png`, `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-dcad48ab-95ee-44b1-8b02-b7c0ddd9b25e.png`, `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-41f02905-8ca4-48ca-a511-b356070742cc.png`, and `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-9947c745-7193-4ce3-ab96-ad9d5634c7ee.png`.
+- Viewport: 390 × 844 CSS px at device scale factor 1.
+- Full pre-fix audit contact sheet: `/private/tmp/ultimate-hockey-section-audit/contact-sheet.png`.
+- Full post-fix audit contact sheet: `/private/tmp/ultimate-hockey-section-audit/final-contact-sheet.png`.
+- Captured routes: sections, amateur duels, profile, inventory, achievements, bonus games, chat list, and chat room.
+- Typography: page titles and arena-level section labels now use a high-contrast cold-white foreground with a restrained dark text shadow. Labels inside light glass surfaces remain dark, avoiding an inverted-label regression.
+- Cards and materials: reusable arena glass opacity increased to 0.80; section navigation cards use dedicated active/default/muted opacity levels, and the empty current-duels state is now a glass card instead of loose low-contrast text.
+- Chat: chat routes receive a separate pale ice wash over the arena image. It lowers background detail without grey dimming and leaves bubbles, headers, dates, and the composer above the wash.
+- Image quality: the arena source image is unchanged; only app-owned overlay and surface opacity changed.
+- Copy and content: no text, data, navigation, or game mechanics changed.
+- Primary interactions checked: section navigation hierarchy, duel tabs/search controls, shop tabs, achievement filters, bonus-game CTA states, chat list, and chat room composer.
+- Browser console errors: none.
+- Accessibility limit: screenshots support the visible contrast assessment, but do not replace automated color-contrast measurement or screen-reader testing.
+- Comparison history: initial captures showed dark page titles disappearing into the arena ceiling and 0.50 glass allowing bright lamps through section cards. After the first pass, section headings and cards were readable, but top-level shop, achievements, and bonus-game titles still blended into the ceiling. The second pass applied the shared arena title style to those routes and added a dedicated pale chat treatment. The final contact sheet has no actionable P0/P1/P2 readability issue.
+
+## Chat-list header simplification
+
+- User references: `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-7f9f44eb-2b89-4984-ace1-881cd73e4b28.png` and `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-e2e8aa65-053b-4aff-b2de-3b1c90ffffc2.png`.
+- Implementation screenshot: `/private/tmp/ultimate-hockey-design-qa/chat-list-header-separated-2026-08-24.png`.
+- State: authenticated chat list with the system-news channel and a direct message visible.
+- Layering: the redundant outer glass capsule is removed; search and the circular create action remain independent controls on the arena background.
+- Spacing: the detached header reserves 12 px below its controls, preventing the first chat card from sticking to the search field.
+- Typography: the search placeholder uses a darker secondary ink at full opacity and remains clearly subordinate to entered text.
+- Functionality: search, create-chat action, chat cards and bottom navigation remain unchanged.
+- Browser check: the final mobile render has no actionable P0/P1/P2 mismatch.
+
 final result: passed

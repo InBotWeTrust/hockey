@@ -177,6 +177,16 @@ describe('BonusGamesScreen', () => {
     expect(infoButton).toHaveFocus();
   });
 
+  it('marks a failed catalog request as a high-contrast arena notice', async () => {
+    mockCatalog([], { catalogFailure: new TypeError('Network unavailable') });
+    renderCatalog();
+
+    expect(await screen.findByRole('alert')).toHaveClass(
+      'bonus-games-catalog__notice',
+      'bonus-games-catalog__notice--error',
+    );
+  });
+
   it('uses action buttons for availability without rendering a separate status line', async () => {
     mockCatalog([
       card({ id: 'beach', title: 'Пляж', state: 'completed', is_completed: true }),

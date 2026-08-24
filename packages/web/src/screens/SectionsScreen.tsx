@@ -266,7 +266,7 @@ function QuickSectionCard({
   return (
     <button
       type="button"
-      className={`sections-quick-card sections-quick-card--${tone}`}
+      className={`section-card-surface sections-quick-card sections-quick-card--${tone}`}
       aria-label={title}
       onClick={onClick}
     >
@@ -307,6 +307,7 @@ function SectionCard({
   return (
     <button
       type="button"
+      className={`section-card-surface section-card-surface--${tone}`}
       onClick={onClick}
       aria-label={title}
       style={{
@@ -325,12 +326,6 @@ function SectionCard({
         cursor: 'pointer',
         appearance: 'none',
         WebkitAppearance: 'none',
-        background:
-          tone === 'active'
-            ? 'rgba(255, 255, 255, 0.66)'
-            : muted
-              ? 'rgba(255, 255, 255, 0.34)'
-              : 'rgba(255, 255, 255, 0.5)',
         border: '1px solid rgba(255,255,255,0.68)',
         boxShadow: '0 8px 22px rgba(15,23,42,0.1), inset 0 1px 0 rgba(255,255,255,0.78)',
       }}

@@ -122,7 +122,12 @@ describe('BottomNav remembered navigation', () => {
     expect(sectionsTab).toHaveAttribute('aria-current', 'page');
     expect(sectionsTab).toHaveClass('bottom-nav__tab--active');
     expect(sectionsTab.querySelector('.bottom-nav__icon-wrap--active')).toBeInTheDocument();
-    expect(sectionsTab.querySelector('.bottom-nav__active-indicator')).toBeNull();
+    const navigation = screen.getByRole('navigation', { name: 'Навигация' });
+    const activeGlow = navigation.querySelector('.bottom-nav__active-glow');
+    expect(activeGlow).toBeInTheDocument();
+    expect(activeGlow?.parentElement).toBe(navigation);
+    expect(activeGlow).toHaveStyle({ transform: 'translateX(100%)' });
+    expect(sectionsTab.querySelector('.bottom-nav__active-glow')).toBeNull();
     expect(gameTab.querySelector('.bottom-nav__icon-wrap--active')).toBeNull();
   });
 

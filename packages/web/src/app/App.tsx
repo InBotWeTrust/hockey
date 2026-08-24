@@ -112,17 +112,39 @@ function RouteLoading(): JSX.Element {
   );
 }
 
+export function appBackdropClassName(pathname: string): string {
+  if (pathname === '/admin') {
+    return 'app-shell--arena app-shell--arena-admin';
+  }
+
+  if (
+    pathname === '/test-court' ||
+    pathname === '/demo' ||
+    pathname.startsWith('/duel/') ||
+    /^\/bonus-games\/[^/]+\/play$/.test(pathname)
+  ) {
+    return '';
+  }
+
+  if (pathname.startsWith('/chat/')) {
+    return 'app-shell--arena app-shell--arena-chat';
+  }
+
+  return 'app-shell--arena';
+}
+
 function AppFrame(): JSX.Element {
   const location = useLocation();
   const user = useAuthStore((s) => s.user);
   const bottomNavVisible = isBottomNavVisible(location, user);
+  const backdropClassName = appBackdropClassName(location.pathname);
 
   return (
     <>
       <ChatRealtime />
       <DuelInviteToast />
       <div
-        className={`app-shell${bottomNavVisible ? ' app-shell--bottom-nav-visible' : ''}`}
+        className={`app-shell${bottomNavVisible ? ' app-shell--bottom-nav-visible' : ''}${backdropClassName ? ` ${backdropClassName}` : ''}`}
         style={{
           maxWidth: 430,
           margin: '0 auto',
@@ -132,7 +154,6 @@ function AppFrame(): JSX.Element {
           position: 'relative',
           transform: 'translateZ(0)',
           overflow: 'hidden',
-          background: 'linear-gradient(180deg, var(--app-bg-top) 0%, var(--app-bg-bottom) 100%)',
           boxShadow: '0 0 0 1px rgba(15,23,42,0.08), 0 8px 48px rgba(15,23,42,0.14)',
         }}
       >

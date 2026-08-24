@@ -221,7 +221,7 @@ export function ChatListScreen(): JSX.Element {
         style={{ paddingTop: 'calc(10px + var(--app-safe-top))' }}
       >
         <div
-          className="chat-dock-header glass-dock-surface"
+          className="chat-dock-header chat-dock-header--bare"
           style={{
             gap: 8,
           }}
@@ -235,6 +235,7 @@ export function ChatListScreen(): JSX.Element {
             <Search size={14} color="var(--muted)" aria-hidden />
             <input
               type="search"
+              className="chat-list-search-input"
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               placeholder="Поиск чатов"
@@ -282,10 +283,8 @@ export function ChatListScreen(): JSX.Element {
       )}
 
       {!dropdownOpen && isError && (
-        <div style={{ padding: 24, textAlign: 'center' }}>
-          <div style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 8 }}>
-            Не удалось загрузить чаты
-          </div>
+        <div className="chat-list-error" role="alert">
+          <div className="chat-list-error__copy">Не удалось загрузить чаты</div>
           <button type="button" className="btn btn--ghost" onClick={() => void refetch()}>
             Повторить
           </button>

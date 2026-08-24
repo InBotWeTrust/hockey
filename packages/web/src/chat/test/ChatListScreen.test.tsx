@@ -62,6 +62,17 @@ describe('ChatListScreen — global search dropdown', () => {
     expect(api.searchMessagesApi).not.toHaveBeenCalled();
   });
 
+  it('keeps the retry action inside a readable error state when chat loading fails', async () => {
+    vi.mocked(api.fetchChatList).mockRejectedValue(new TypeError('Network unavailable'));
+
+    renderScreen();
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveClass('chat-list-error');
+    expect(alert).toHaveTextContent('Не удалось загрузить чаты');
+    expect(screen.getByRole('button', { name: 'Повторить' })).toBeInTheDocument();
+  });
+
   it('renders the dropdown when filter reaches 2 chars and debounces /chat/search', async () => {
     renderScreen();
     const input = await screen.findByLabelText(/Поиск чатов/);

@@ -215,6 +215,8 @@ export function BottomNav(): JSX.Element | null {
   const isAdmin = location.pathname.startsWith('/admin');
   const isChat = !isDemo && isChatRoute(location.pathname);
   const showAdmin = !isDemo && user?.role === 'admin';
+  const navCount = showAdmin ? 5 : 4;
+  const activeIndex = isGame ? 0 : isSections ? 1 : isChat ? 2 : isProfile ? 3 : 4;
   const gameActionCount = (amateurEvents?.events ?? []).filter(isActionableDuelEvent).length;
   const currentSectionActionCount =
     weeklyChallenge?.challenge?.canJoin === true ||
@@ -295,13 +297,21 @@ export function BottomNav(): JSX.Element | null {
           height: 54,
           borderRadius: 999,
           display: 'grid',
-          gridTemplateColumns: `repeat(${showAdmin ? 5 : 4}, 1fr)`,
+          gridTemplateColumns: `repeat(${navCount}, 1fr)`,
           alignItems: 'center',
           padding: '0 6px',
           zIndex: 500,
           pointerEvents: isDemo ? 'none' : 'auto',
         }}
       >
+        <span
+          className="bottom-nav__active-glow"
+          aria-hidden="true"
+          style={{
+            width: `calc((100% - 12px) / ${navCount})`,
+            transform: `translateX(${activeIndex * 100}%)`,
+          }}
+        />
         <NavTab
           label="Игра"
           disabled={isDemo}
