@@ -1057,11 +1057,15 @@ async function playoffBaseTime(
   );
   const tieBreak = await client.query<{
     ends_at: Date | null;
+    latest_fixture_end: Date | null;
     rules_snapshot: Record<string, unknown>;
   }>(
-    `select ends_at, rules_snapshot from tournament_round
-      where tournament_id = $1 and stage = 'tiebreak'
-      order by ends_at desc nulls last limit 1`,
+    `select r.ends_at, r.rules_snapshot, max(f.window_ends_at) as latest_fixture_end
+       from tournament_round r
+       left join tournament_fixture f on f.round_id = r.id and f.window_ends_at is not null
+      where r.tournament_id = $1 and r.stage = 'tiebreak'
+      group by r.id
+      order by r.ends_at desc nulls last limit 1`,
     [tournamentId],
   );
   const candidates = [now];
@@ -1070,13 +1074,15 @@ async function playoffBaseTime(
     candidates.push(existing.rows[0].latest_end);
   }
   const completedTieBreak = tieBreak.rows[0];
-  if (completedTieBreak?.ends_at !== null && completedTieBreak?.ends_at !== undefined) {
+  const actualTieBreakEnd =
+    completedTieBreak?.latest_fixture_end ?? completedTieBreak?.ends_at ?? null;
+  if (completedTieBreak && actualTieBreakEnd !== null) {
     const roundBreakMs = nonNegativeDuration(
       completedTieBreak.rules_snapshot.roundBreakMs,
       0,
       MAX_PLAYOFF_ROUND_BREAK_MS,
     );
-    candidates.push(new Date(completedTieBreak.ends_at.getTime() + roundBreakMs));
+    candidates.push(new Date(actualTieBreakEnd.getTime() + roundBreakMs));
   }
   return maxDate(...candidates);
 }

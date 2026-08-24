@@ -16,6 +16,7 @@ import {
   generateRegularSchedule,
   publishRegularSchedule,
   publishTournament,
+  rescheduleTournamentFixture,
   startTournamentPlayoffs,
   type TournamentRulesSnapshot,
 } from '../../src/tournament/service.js';
@@ -684,7 +685,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     });
   });
 
-  it('starts playoffs after the saved tie-break round break', async () => {
+  it('starts playoffs after the saved break from a rescheduled last tie-break fixture', async () => {
     await seedUsers(pool, 0);
     const tournament = await createPublishedTournament(
       pool,
@@ -696,7 +697,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     const tieBreakRound = await pool.query<{ id: string }>(
       `insert into tournament_round
          (tournament_id, stage, number, starts_at, ends_at, status, rules_snapshot)
-       values ($1, 'tiebreak', 1, $2, $3, 'settled', $4) returning id`,
+       values ($1, 'tiebreak', 1, $2, $3, 'scheduled', $4) returning id`,
       [
         tournament.id,
         new Date('2030-09-01T11:00:00.000Z'),
@@ -704,11 +705,11 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         JSON.stringify({ roundBreakMs: 1_800_000 }),
       ],
     );
-    await pool.query(
+    const tieBreakFixture = await pool.query<{ id: string }>(
       `insert into tournament_fixture
          (tournament_id, round_id, fixture_number, home_participant_id, away_participant_id,
           scheduled_starts_at, window_ends_at, status)
-       values ($1, $2, 100001, $3, $4, $5, $6, 'settled')`,
+       values ($1, $2, 100001, $3, $4, $5, $6, 'scheduled') returning id`,
       [
         tournament.id,
         tieBreakRound.rows[0]!.id,
@@ -718,6 +719,20 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         new Date('2030-09-01T12:00:00.000Z'),
       ],
     );
+    await rescheduleTournamentFixture(pool, {
+      tournamentId: tournament.id,
+      fixtureId: tieBreakFixture.rows[0]!.id,
+      startsAt: new Date('2030-09-01T12:00:00.000Z'),
+      endsAt: new Date('2030-09-01T13:00:00.000Z'),
+      reason: 'integration tie-break delay',
+      adminUserId: ADMIN_ID,
+    });
+    await pool.query(`update tournament_fixture set status = 'settled' where id = $1`, [
+      tieBreakFixture.rows[0]!.id,
+    ]);
+    await pool.query(`update tournament_round set status = 'settled' where id = $1`, [
+      tieBreakRound.rows[0]!.id,
+    ]);
 
     await expect(
       startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-01T08:00:00.000Z')),
@@ -728,7 +743,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         where tournament_id = $1 and stage = 'playoff' and number = 1`,
       [tournament.id],
     );
-    expect(firstPlayoffRound.rows[0]?.starts_at?.toISOString()).toBe('2030-09-01T12:30:00.000Z');
+    expect(firstPlayoffRound.rows[0]?.starts_at?.toISOString()).toBe('2030-09-01T13:30:00.000Z');
   });
 
   it('falls back from fractional and oversized playoff timing durations', async () => {
