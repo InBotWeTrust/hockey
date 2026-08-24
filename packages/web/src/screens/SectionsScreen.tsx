@@ -6,6 +6,7 @@ import { fetchAchievements } from '../api/achievements.js';
 import { fetchWeeklyChallenge } from '../api/weeklyChallenge.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
+import { BONUS_GAME_SECTION_ARTWORK } from '../game/bonusGameAssets.js';
 
 const DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED = 300;
 const SECTION_ARTWORK_SIZE = 86;
@@ -102,6 +103,17 @@ export function SectionsScreen(): JSX.Element {
     navigate('/?view=amateur&from=sections');
   };
 
+  const openBonusGames = (): void => {
+    if (!isAmateurUnlocked) {
+      setLockedInfo({
+        title: 'Нужен любительский уровень',
+        text: 'Бонусные игры доступны после открытия любительского уровня.',
+      });
+      return;
+    }
+    navigate('/bonus-games');
+  };
+
   return (
     <main
       className="screen"
@@ -167,6 +179,18 @@ export function SectionsScreen(): JSX.Element {
           onClick={openAmateurs}
         />
         <SectionCard
+          title="Бонусные игры"
+          description="Серия тематических матчей и новые домашние площадки"
+          meta={
+            isAmateurUnlocked
+              ? 'Игры и награды за первое прохождение'
+              : 'Нужен любительский уровень'
+          }
+          tone={isAmateurUnlocked ? 'default' : 'muted'}
+          artworkSrc={BONUS_GAME_SECTION_ARTWORK}
+          onClick={openBonusGames}
+        />
+        <SectionCard
           title="Профессионалы"
           description="Игры самого высокого уровня"
           meta="Раздел в разработке"
@@ -185,43 +209,25 @@ export function SectionsScreen(): JSX.Element {
       </section>
 
       {lockedInfo && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={lockedInfo.title}
-          onClick={() => setLockedInfo(null)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 250,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 20,
-            background: 'rgba(15, 23, 42, 0.35)',
-            backdropFilter: 'blur(8px)',
-            WebkitBackdropFilter: 'blur(8px)',
-          }}
-        >
+        <div className="modal-backdrop" role="presentation" onClick={() => setLockedInfo(null)}>
           <div
-            className="glass"
+            className="modal-card"
+            role="dialog"
+            aria-modal="true"
+            aria-label={lockedInfo.title}
             onClick={(event) => event.stopPropagation()}
-            style={{ borderRadius: 24, padding: '22px 22px 18px', maxWidth: 320, width: '100%' }}
           >
-            <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--ink)', marginBottom: 10 }}>
-              {lockedInfo.title}
+            <h2 className="modal-title">{lockedInfo.title}</h2>
+            <p className="modal-copy">{lockedInfo.text}</p>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="modal-primary btn btn--cta"
+                onClick={() => setLockedInfo(null)}
+              >
+                Понятно
+              </button>
             </div>
-            <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>
-              {lockedInfo.text}
-            </div>
-            <button
-              type="button"
-              className="btn btn--cta"
-              onClick={() => setLockedInfo(null)}
-              style={{ marginTop: 18, width: '100%', padding: '12px 0', fontSize: 14 }}
-            >
-              Понятно
-            </button>
           </div>
         </div>
       )}

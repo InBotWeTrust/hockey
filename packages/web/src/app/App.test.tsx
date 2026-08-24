@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LoginScreen } from '../screens/LoginScreen.js';
 import { PrivateRoute } from '../auth/PrivateRoute.js';
 import { useAuthStore } from '../auth/authStore.js';
+import { App } from './App.js';
 
 function renderAt(path: string): void {
   const client = new QueryClient({
@@ -40,6 +41,8 @@ function renderAt(path: string): void {
 describe('App routing + auth', () => {
   beforeEach(() => {
     localStorage.clear();
+    window.history.replaceState({}, '', '/');
+    vi.restoreAllMocks();
     useAuthStore.getState().clearSession();
   });
 
@@ -62,5 +65,24 @@ describe('App routing + auth', () => {
     renderAt('/duel/rookie');
     expect(screen.queryByText('duel content')).toBeNull();
     expect(screen.getByRole('heading', { name: /ультимейт хоккей/i })).toBeInTheDocument();
+  });
+
+  it('loads the authenticated bonus games route', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'a',
+      refreshToken: 'r',
+      user: { id: 'u', displayName: 'A' },
+    });
+    window.history.replaceState({}, '', '/bonus-games');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ games: [], active_attempt: null }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: 'Бонусные игры' })).toBeInTheDocument();
   });
 });

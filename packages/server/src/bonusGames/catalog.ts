@@ -45,6 +45,7 @@ export interface BonusGameCardDto {
   reward: BonusRewardSnapshot;
   goalkeeper_ready_url: string;
   goalkeeper_save_url: string;
+  prerequisite: { game_id: string; title: string } | null;
   arena: {
     id: string;
     slug: string;
@@ -87,6 +88,7 @@ interface CatalogRow {
   arena_artwork_url: string;
   arena_thumbnail_url: string;
   predecessor_id: string | null;
+  predecessor_title: string | null;
   predecessor_completed: boolean;
   unlock_id: string | null;
   completion_id: string | null;
@@ -168,6 +170,14 @@ export async function listBonusGameCards(
                  order by previous.sort_order desc, previous.id desc
                  limit 1
               ) else null end as predecessor_id
+             ,case when bg.status = 'active' then (
+                select previous.title
+                  from bonus_game previous
+                 where previous.status = 'active'
+                   and previous.sort_order < bg.sort_order
+                 order by previous.sort_order desc, previous.id desc
+                 limit 1
+              ) else null end as predecessor_title
          from bonus_game bg
         where bg.status = 'active'
            or (
@@ -190,6 +200,7 @@ export async function listBonusGameCards(
             arena.artwork_url as arena_artwork_url,
             arena.thumbnail_url as arena_thumbnail_url,
             game.predecessor_id,
+            game.predecessor_title,
             (predecessor_completion.id is not null) as predecessor_completed,
             unlock.id as unlock_id,
             completion.id as completion_id,
@@ -217,35 +228,42 @@ export async function listBonusGameCards(
     [userId],
   );
 
-  return rows.map((row) => ({
-    id: row.id,
-    slug: row.slug,
-    title: row.title,
-    description: row.description,
-    sort_order: Number(row.sort_order),
-    access_type: row.access_type,
-    unlock_price_stars: Number(row.unlock_price_stars),
-    target_goals: Number(row.target_goals),
-    total_periods: Number(row.total_periods),
-    break_duration_ms: Number(row.break_duration_ms),
-    period_rules: row.period_rules,
-    reward: {
-      coins: Number(row.reward_coins),
-      stars: Number(row.reward_stars),
-      experience: Number(row.reward_experience),
-    },
-    goalkeeper_ready_url: row.goalkeeper_ready_url,
-    goalkeeper_save_url: row.goalkeeper_save_url,
-    arena: {
-      id: row.arena_id,
-      slug: row.arena_slug,
-      title: row.arena_title,
-      artwork_url: row.arena_artwork_url,
-      thumbnail_url: row.arena_thumbnail_url,
-    },
-    is_unlocked: row.access_type === 'free' || row.unlock_id !== null,
-    is_completed: row.completion_id !== null,
-    state: deriveCardState(row, hasAmateurAccess),
-    active_attempt: toActiveAttempt(row),
-  }));
+  return rows.map((row) => {
+    const state = deriveCardState(row, hasAmateurAccess);
+    return {
+      id: row.id,
+      slug: row.slug,
+      title: row.title,
+      description: row.description,
+      sort_order: Number(row.sort_order),
+      access_type: row.access_type,
+      unlock_price_stars: Number(row.unlock_price_stars),
+      target_goals: Number(row.target_goals),
+      total_periods: Number(row.total_periods),
+      break_duration_ms: Number(row.break_duration_ms),
+      period_rules: row.period_rules,
+      reward: {
+        coins: Number(row.reward_coins),
+        stars: Number(row.reward_stars),
+        experience: Number(row.reward_experience),
+      },
+      goalkeeper_ready_url: row.goalkeeper_ready_url,
+      goalkeeper_save_url: row.goalkeeper_save_url,
+      arena: {
+        id: row.arena_id,
+        slug: row.arena_slug,
+        title: row.arena_title,
+        artwork_url: row.arena_artwork_url,
+        thumbnail_url: row.arena_thumbnail_url,
+      },
+      is_unlocked: row.access_type === 'free' || row.unlock_id !== null,
+      is_completed: row.completion_id !== null,
+      state,
+      prerequisite:
+        state === 'sequence_locked' && row.predecessor_id !== null && row.predecessor_title !== null
+          ? { game_id: row.predecessor_id, title: row.predecessor_title }
+          : null,
+      active_attempt: toActiveAttempt(row),
+    };
+  });
 }

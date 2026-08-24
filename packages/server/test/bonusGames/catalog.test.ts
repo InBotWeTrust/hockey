@@ -7,11 +7,7 @@ import { listBonusGameCards } from '../../src/bonusGames/catalog.js';
 import { purchaseBonusGame } from '../../src/bonusGames/economy.js';
 import type { BonusPeriodRule } from '../../src/bonusGames/types.js';
 import { applyMigrations } from '../../src/db/migrations.js';
-import {
-  createTestPool,
-  hasIntegrationEnv,
-  resetDatabase,
-} from '../helpers/testDb.js';
+import { createTestPool, hasIntegrationEnv, resetDatabase } from '../helpers/testDb.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
@@ -190,13 +186,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game catalog and paid unlocks', () =>
       `insert into user_bonus_game_completion
          (user_id, bonus_game_id, attempt_id, reward_snapshot, completed_at)
        values ($1, $2, $3, $4::jsonb, $5)`,
-      [
-        userId,
-        game.id,
-        attemptId,
-        JSON.stringify({ coins: 100, stars: 1, experience: 50 }),
-        NOW,
-      ],
+      [userId, game.id, attemptId, JSON.stringify({ coins: 100, stars: 1, experience: 50 }), NOW],
     );
   }
 
@@ -213,12 +203,16 @@ describe.skipIf(!hasIntegrationEnv)('bonus game catalog and paid unlocks', () =>
       [first.id, 'available'],
       [paid.id, 'sequence_locked'],
     ]);
+    expect(cards).toMatchObject([
+      { id: first.id, prerequisite: null },
+      { id: paid.id, prerequisite: { game_id: first.id, title: 'Игра 1' } },
+    ]);
     expect(cards.map((card) => card.id)).not.toContain(ignoredDraft.id);
     expect(cards.map((card) => card.id)).not.toContain(ignoredArchived.id);
 
-    await expect(purchaseBonusGame(pool, { userId, gameId: paid.id, now: NOW })).rejects.toMatchObject(
-      { code: 'bonus_previous_game_required' },
-    );
+    await expect(
+      purchaseBonusGame(pool, { userId, gameId: paid.id, now: NOW }),
+    ).rejects.toMatchObject({ code: 'bonus_previous_game_required' });
     const events = await pool.query<{ count: number }>(
       `select count(*)::int as count
          from bonus_game_economy_event
@@ -324,9 +318,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game catalog and paid unlocks', () =>
     const game = await createGame({ sortOrder: 1, accessType: 'paid', price: 1 });
 
     expect((await listBonusGameCards(pool, beginnerId))[0]?.state).toBe('level_locked');
-    expect((await listBonusGameCards(pool, goalsQualifiedId))[0]?.state).toBe(
-      'purchase_required',
-    );
+    expect((await listBonusGameCards(pool, goalsQualifiedId))[0]?.state).toBe('purchase_required');
     await expect(
       purchaseBonusGame(pool, { userId: beginnerId, gameId: game.id, now: NOW }),
     ).rejects.toMatchObject({ code: 'bonus_level_locked' });
@@ -354,10 +346,10 @@ describe.skipIf(!hasIntegrationEnv)('bonus game catalog and paid unlocks', () =>
     const userId = await createUser();
     const archived = await createGame({ sortOrder: 1 });
     const attemptId = await createAttempt(userId, archived);
-    await pool.query(
-      `update bonus_game set status = 'archived', archived_at = $2 where id = $1`,
-      [archived.id, NOW],
-    );
+    await pool.query(`update bonus_game set status = 'archived', archived_at = $2 where id = $1`, [
+      archived.id,
+      NOW,
+    ]);
 
     const cards = await listBonusGameCards(pool, userId);
 

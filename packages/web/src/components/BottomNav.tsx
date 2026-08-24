@@ -60,7 +60,8 @@ function isSectionContext(location: ReturnType<typeof useLocation>): boolean {
     location.pathname.startsWith('/achievements') ||
     location.pathname.startsWith('/weekly-challenge') ||
     location.pathname.startsWith('/inventory') ||
-    location.pathname.startsWith('/daily')
+    location.pathname.startsWith('/daily') ||
+    location.pathname.startsWith('/bonus-games')
   ) {
     return true;
   }

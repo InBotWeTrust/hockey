@@ -359,6 +359,7 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
             artwork_url: `/arenas/${game.slug}.webp`,
           },
           state: 'available',
+          prerequisite: null,
         },
       ],
     });

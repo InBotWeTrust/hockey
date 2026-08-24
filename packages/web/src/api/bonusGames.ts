@@ -68,6 +68,7 @@ export interface BonusGameCard {
   goalkeeper_ready_url: string;
   goalkeeper_save_url: string;
   arena: BonusArena;
+  prerequisite: { game_id: string; title: string } | null;
   is_unlocked: boolean;
   is_completed: boolean;
   state: BonusGameCardState;

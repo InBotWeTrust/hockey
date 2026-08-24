@@ -123,6 +123,20 @@ describe('SectionsScreen', () => {
     expect(screen.queryByRole('button', { name: 'Челлендж недели' })).toBeNull();
   });
 
+  it('places bonus games immediately between amateur and professional sections', async () => {
+    mockSectionsApi();
+    renderSections();
+
+    await screen.findByRole('button', { name: 'Бонусные игры' });
+    const labels = screen.getAllByRole('button').map((button) => button.textContent ?? '');
+    const amateurIndex = labels.findIndex((label) => label.includes('Любители'));
+    const bonusIndex = labels.findIndex((label) => label.includes('Бонусные игры'));
+    const proIndex = labels.findIndex((label) => label.includes('Профессионалы'));
+
+    expect(bonusIndex).toBe(amateurIndex + 1);
+    expect(proIndex).toBe(bonusIndex + 1);
+  });
+
   it('summarizes achievement rewards and weekly challenge actions on the achievements card', async () => {
     mockSectionsApi({
       achievementsUnclaimedCount: 2,
