@@ -8,6 +8,7 @@ import {
   PUSH_SCHEDULER_LOCK_NAMESPACE,
   runScheduledPushes,
 } from '../../src/push/scheduled.js';
+import { rescheduleTournamentFixture } from '../../src/tournament/service.js';
 import type { ResolvedPushVapidOptions } from '../../src/push/service.js';
 import {
   createTestPool,
@@ -78,6 +79,71 @@ async function addTrainingShot(
   );
 }
 
+async function createScheduledTournamentFixture(
+  pool: ReturnType<typeof createTestPool>,
+  input: {
+    adminId: string;
+    slug: string;
+    rulesSnapshot: Record<string, unknown>;
+    participants: Array<{ userId: string; state: string }>;
+    scheduledStartsAt: Date;
+    windowEndsAt: Date;
+  },
+): Promise<{ tournamentId: string; fixtureId: string }> {
+  const tournament = await pool.query<{ id: string }>(
+    `insert into tournament
+       (slug, title, status, regular_source, current_revision, created_by)
+     values ($1, $2, 'regular', 'head_to_head', 1, $3)
+     returning id`,
+    [input.slug, input.slug, input.adminId],
+  );
+  const tournamentId = tournament.rows[0]!.id;
+  const revision = await pool.query<{ id: string }>(
+    `insert into tournament_revision
+       (tournament_id, revision, rules_snapshot, is_published, created_by, published_at)
+     values ($1, 1, $2, true, $3, now())
+     returning id`,
+    [tournamentId, JSON.stringify(input.rulesSnapshot), input.adminId],
+  );
+  await pool.query(`update tournament set published_revision_id = $2 where id = $1`, [
+    tournamentId,
+    revision.rows[0]!.id,
+  ]);
+
+  const participantIds: string[] = [];
+  for (const participantInput of input.participants) {
+    const participant = await pool.query<{ id: string }>(
+      `insert into tournament_participant (tournament_id, user_id, state)
+       values ($1, $2, $3)
+       returning id`,
+      [tournamentId, participantInput.userId, participantInput.state],
+    );
+    participantIds.push(participant.rows[0]!.id);
+  }
+  const round = await pool.query<{ id: string }>(
+    `insert into tournament_round (tournament_id, stage, number)
+     values ($1, 'regular', 1)
+     returning id`,
+    [tournamentId],
+  );
+  const fixture = await pool.query<{ id: string }>(
+    `insert into tournament_fixture
+       (tournament_id, round_id, fixture_number, home_participant_id, away_participant_id,
+        scheduled_starts_at, window_ends_at, status)
+     values ($1, $2, 1, $3, $4, $5, $6, 'scheduled')
+     returning id`,
+    [
+      tournamentId,
+      round.rows[0]!.id,
+      participantIds[0]!,
+      participantIds[1] ?? null,
+      input.scheduledStartsAt,
+      input.windowEndsAt,
+    ],
+  );
+  return { tournamentId, fixtureId: fixture.rows[0]!.id };
+}
+
 describe.skipIf(!hasIntegrationEnv)('scheduled push delivery', () => {
   let pool: ReturnType<typeof createTestPool>;
   let vapid: ResolvedPushVapidOptions;
@@ -96,6 +162,405 @@ describe.skipIf(!hasIntegrationEnv)('scheduled push delivery', () => {
   afterEach(async () => {
     vi.unstubAllGlobals();
     await pool.end();
+  });
+
+  it('enqueues each valid reminder offset only for active opted-in participants', async () => {
+    const adminId = await createUser(pool, 'Reminder scheduler admin');
+    const activeUserId = await createUser(pool, 'Active reminder player');
+    const withdrawnUserId = await createUser(pool, 'Withdrawn reminder player');
+    const optedOutUserId = await createUser(pool, 'Opted out reminder player');
+    await pool.query(
+      `insert into user_push_preferences
+         (user_id, daily_game, training_available, tournament_events)
+       values
+         ($1, false, false, true),
+         ($2, false, false, true),
+         ($3, false, false, false)`,
+      [activeUserId, withdrawnUserId, optedOutUserId],
+    );
+    await addSubscription(pool, activeUserId, 'https://push.example.test/send/reminder-active');
+    await addSubscription(
+      pool,
+      withdrawnUserId,
+      'https://push.example.test/send/reminder-withdrawn',
+    );
+    await addSubscription(
+      pool,
+      optedOutUserId,
+      'https://push.example.test/send/reminder-opted-out',
+    );
+    const startsAt = new Date('2026-05-04T10:00:00.000Z');
+    const windowEndsAt = new Date('2026-05-04T11:00:00.000Z');
+    const activeFixture = await createScheduledTournamentFixture(pool, {
+      adminId,
+      slug: 'active-reminder-cup',
+      rulesSnapshot: { notificationReminderOffsetsMs: [3_600_000, 1_800_000] },
+      participants: [
+        { userId: activeUserId, state: 'approved' },
+        { userId: withdrawnUserId, state: 'withdrawn' },
+      ],
+      scheduledStartsAt: startsAt,
+      windowEndsAt,
+    });
+    await createScheduledTournamentFixture(pool, {
+      adminId,
+      slug: 'opted-out-reminder-cup',
+      rulesSnapshot: { notificationReminderOffsetsMs: [3_600_000, 1_800_000] },
+      participants: [{ userId: optedOutUserId, state: 'approved' }],
+      scheduledStartsAt: startsAt,
+      windowEndsAt,
+    });
+
+    const first = await runScheduledPushes(pool, {
+      ...vapid,
+      now: new Date('2026-05-04T09:00:00.000Z'),
+      processQueue: false,
+    });
+    const second = await runScheduledPushes(pool, {
+      ...vapid,
+      now: new Date('2026-05-04T09:30:00.000Z'),
+      processQueue: false,
+    });
+
+    expect(first.events.find((event) => event.eventType === 'tournament.live_soon')).toMatchObject({
+      targets: 1,
+      claimed: 1,
+      sent: 0,
+      failed: 0,
+    });
+    expect(second.events.find((event) => event.eventType === 'tournament.live_soon')).toMatchObject(
+      {
+        targets: 1,
+        claimed: 1,
+        sent: 0,
+        failed: 0,
+      },
+    );
+    const deliveries = await pool.query<{ user_id: string; event_key: string }>(
+      `select user_id::text, event_key
+         from push_delivery_log
+        where event_type = 'tournament.live_soon'
+        order by event_key`,
+    );
+    expect(deliveries.rows).toHaveLength(2);
+    expect(deliveries.rows.map((delivery) => delivery.user_id)).toEqual([
+      activeUserId,
+      activeUserId,
+    ]);
+    expect(deliveries.rows.map((delivery) => delivery.event_key)).toEqual([
+      `${activeFixture.fixtureId}:live-soon:${startsAt.getTime()}:1800000`,
+      `${activeFixture.fixtureId}:live-soon:${startsAt.getTime()}:3600000`,
+    ]);
+  });
+
+  it('renders the minutes template variable for a tournament live reminder', async () => {
+    const adminId = await createUser(pool, 'Minutes template admin');
+    const playerId = await createUser(pool, 'Minutes template player');
+    await pool.query(
+      `insert into user_push_preferences
+         (user_id, daily_game, training_available, tournament_events)
+       values ($1, false, false, true)`,
+      [playerId],
+    );
+    await addSubscription(pool, playerId, 'https://push.example.test/send/reminder-minutes');
+    await createScheduledTournamentFixture(pool, {
+      adminId,
+      slug: 'minutes-template-cup',
+      rulesSnapshot: { notificationReminderOffsetsMs: [3_600_000] },
+      participants: [{ userId: playerId, state: 'approved' }],
+      scheduledStartsAt: new Date('2026-05-04T10:00:00.000Z'),
+      windowEndsAt: new Date('2026-05-04T11:00:00.000Z'),
+    });
+
+    await runScheduledPushes(pool, {
+      ...vapid,
+      now: new Date('2026-05-04T09:00:00.000Z'),
+      processQueue: false,
+    });
+
+    const delivery = await pool.query<{ body: string }>(
+      `select payload->>'body' as body
+         from push_delivery_log
+        where event_type = 'tournament.live_soon'`,
+    );
+    expect(delivery.rows).toEqual([{ body: 'До согласованного старта осталось 60 мин.' }]);
+  });
+
+  it('ignores malformed notification rules without rolling back unrelated scheduled deliveries', async () => {
+    const adminId = await createUser(pool, 'Malformed rules admin');
+    const playerId = await createUser(pool, 'Malformed rules player');
+    await pool.query(
+      `insert into user_push_preferences
+         (user_id, daily_game, training_available, tournament_events)
+       values ($1, true, false, true)`,
+      [playerId],
+    );
+    await addSubscription(pool, playerId, 'https://push.example.test/send/malformed-rules');
+    const lateStart = new Date('2026-05-04T07:00:00.000Z');
+    const lateEnd = new Date('2026-05-04T08:00:00.000Z');
+    const deadlineStart = new Date('2026-05-04T05:30:00.000Z');
+    const deadlineEnd = new Date('2026-05-04T06:30:00.000Z');
+    await createScheduledTournamentFixture(pool, {
+      adminId,
+      slug: 'mixed-reminder-rules-cup',
+      rulesSnapshot: { notificationReminderOffsetsMs: [3_600_000, 'bad', 1.5, 86_400_001] },
+      participants: [{ userId: playerId, state: 'approved' }],
+      scheduledStartsAt: lateStart,
+      windowEndsAt: lateEnd,
+    });
+    await createScheduledTournamentFixture(pool, {
+      adminId,
+      slug: 'scalar-reminder-rules-cup',
+      rulesSnapshot: { notificationReminderOffsetsMs: 'not-an-array' },
+      participants: [{ userId: playerId, state: 'approved' }],
+      scheduledStartsAt: lateStart,
+      windowEndsAt: lateEnd,
+    });
+    await createScheduledTournamentFixture(pool, {
+      adminId,
+      slug: 'fractional-deadline-rules-cup',
+      rulesSnapshot: {
+        notificationReminderOffsetsMs: [],
+        notificationDeadlineLeadMs: 1.5,
+      },
+      participants: [{ userId: playerId, state: 'approved' }],
+      scheduledStartsAt: deadlineStart,
+      windowEndsAt: deadlineEnd,
+    });
+    await createScheduledTournamentFixture(pool, {
+      adminId,
+      slug: 'oversized-deadline-rules-cup',
+      rulesSnapshot: {
+        notificationReminderOffsetsMs: [],
+        notificationDeadlineLeadMs: 86_400_001,
+      },
+      participants: [{ userId: playerId, state: 'approved' }],
+      scheduledStartsAt: deadlineStart,
+      windowEndsAt: deadlineEnd,
+    });
+
+    const result = await runScheduledPushes(pool, {
+      ...vapid,
+      now: new Date('2026-05-04T06:00:00.000Z'),
+      processQueue: false,
+    });
+
+    expect(result.enabled).toBe(true);
+    const deliveries = await pool.query<{ event_type: string; count: string }>(
+      `select event_type, count(*)::text as count
+         from push_delivery_log
+        group by event_type
+        order by event_type`,
+    );
+    expect(deliveries.rows).toEqual([
+      { event_type: 'daily.available', count: '1' },
+      { event_type: 'tournament.fixture_deadline', count: '2' },
+      { event_type: 'tournament.live_soon', count: '2' },
+    ]);
+  });
+
+  it('uses distinct but tick-deduplicated event keys for each rescheduled fixture window', async () => {
+    const adminId = await createUser(pool, 'Reschedule scheduler admin');
+    const playerId = await createUser(pool, 'Reschedule scheduler player');
+    await pool.query(
+      `insert into user_push_preferences
+         (user_id, daily_game, training_available, tournament_events)
+       values ($1, false, false, true)`,
+      [playerId],
+    );
+    await addSubscription(pool, playerId, 'https://push.example.test/send/rescheduled-window');
+    const firstStartsAt = new Date('2026-05-04T10:00:00.000Z');
+    const firstEndsAt = new Date('2026-05-04T11:00:00.000Z');
+    const fixture = await createScheduledTournamentFixture(pool, {
+      adminId,
+      slug: 'rescheduled-window-cup',
+      rulesSnapshot: { notificationReminderOffsetsMs: [3_600_000] },
+      participants: [{ userId: playerId, state: 'approved' }],
+      scheduledStartsAt: firstStartsAt,
+      windowEndsAt: firstEndsAt,
+    });
+
+    const firstLive = await runScheduledPushes(pool, {
+      ...vapid,
+      now: new Date('2026-05-04T09:00:00.000Z'),
+      processQueue: false,
+    });
+    const firstLiveAgain = await runScheduledPushes(pool, {
+      ...vapid,
+      now: new Date('2026-05-04T09:01:00.000Z'),
+      processQueue: false,
+    });
+    const firstOpened = await runScheduledPushes(pool, {
+      ...vapid,
+      now: new Date('2026-05-04T10:00:00.000Z'),
+      processQueue: false,
+    });
+    const firstOpenedAgain = await runScheduledPushes(pool, {
+      ...vapid,
+      now: new Date('2026-05-04T10:01:00.000Z'),
+      processQueue: false,
+    });
+    const firstDeadline = await runScheduledPushes(pool, {
+      ...vapid,
+      now: new Date('2026-05-04T10:30:00.000Z'),
+      processQueue: false,
+    });
+    const firstDeadlineAgain = await runScheduledPushes(pool, {
+      ...vapid,
+      now: new Date('2026-05-04T10:31:00.000Z'),
+      processQueue: false,
+    });
+
+    const secondStartsAt = new Date('2026-05-04T12:00:00.000Z');
+    const secondEndsAt = new Date('2026-05-04T13:00:00.000Z');
+    await rescheduleTournamentFixture(pool, {
+      tournamentId: fixture.tournamentId,
+      fixtureId: fixture.fixtureId,
+      startsAt: secondStartsAt,
+      endsAt: secondEndsAt,
+      reason: 'test reschedule',
+      adminUserId: adminId,
+    });
+
+    const secondLive = await runScheduledPushes(pool, {
+      ...vapid,
+      now: new Date('2026-05-04T11:00:00.000Z'),
+      processQueue: false,
+    });
+    const secondLiveAgain = await runScheduledPushes(pool, {
+      ...vapid,
+      now: new Date('2026-05-04T11:01:00.000Z'),
+      processQueue: false,
+    });
+    const secondOpened = await runScheduledPushes(pool, {
+      ...vapid,
+      now: new Date('2026-05-04T12:00:00.000Z'),
+      processQueue: false,
+    });
+    const secondOpenedAgain = await runScheduledPushes(pool, {
+      ...vapid,
+      now: new Date('2026-05-04T12:01:00.000Z'),
+      processQueue: false,
+    });
+    const secondDeadline = await runScheduledPushes(pool, {
+      ...vapid,
+      now: new Date('2026-05-04T12:30:00.000Z'),
+      processQueue: false,
+    });
+    const secondDeadlineAgain = await runScheduledPushes(pool, {
+      ...vapid,
+      now: new Date('2026-05-04T12:31:00.000Z'),
+      processQueue: false,
+    });
+
+    for (const [result, eventType] of [
+      [firstLive, 'tournament.live_soon'],
+      [firstOpened, 'tournament.fixture_opened'],
+      [firstDeadline, 'tournament.fixture_deadline'],
+      [secondLive, 'tournament.live_soon'],
+      [secondOpened, 'tournament.fixture_opened'],
+      [secondDeadline, 'tournament.fixture_deadline'],
+    ] as const) {
+      expect(result.events.find((event) => event.eventType === eventType)).toMatchObject({
+        targets: 1,
+        claimed: 1,
+      });
+    }
+    for (const [result, eventType] of [
+      [firstLiveAgain, 'tournament.live_soon'],
+      [firstOpenedAgain, 'tournament.fixture_opened'],
+      [firstDeadlineAgain, 'tournament.fixture_deadline'],
+      [secondLiveAgain, 'tournament.live_soon'],
+      [secondOpenedAgain, 'tournament.fixture_opened'],
+      [secondDeadlineAgain, 'tournament.fixture_deadline'],
+    ] as const) {
+      expect(result.events.find((event) => event.eventType === eventType)).toMatchObject({
+        targets: 0,
+        claimed: 0,
+      });
+    }
+
+    const deliveries = await pool.query<{ event_type: string; event_key: string }>(
+      `select event_type, event_key
+         from push_delivery_log
+        where user_id = $1
+        order by event_type, event_key`,
+      [playerId],
+    );
+    expect(deliveries.rows).toEqual([
+      {
+        event_type: 'tournament.fixture_deadline',
+        event_key: `${fixture.fixtureId}:deadline:${firstEndsAt.getTime()}:1800000`,
+      },
+      {
+        event_type: 'tournament.fixture_deadline',
+        event_key: `${fixture.fixtureId}:deadline:${secondEndsAt.getTime()}:1800000`,
+      },
+      {
+        event_type: 'tournament.fixture_opened',
+        event_key: `${fixture.fixtureId}:opened:${firstStartsAt.getTime()}`,
+      },
+      {
+        event_type: 'tournament.fixture_opened',
+        event_key: `${fixture.fixtureId}:opened:${secondStartsAt.getTime()}`,
+      },
+      {
+        event_type: 'tournament.live_soon',
+        event_key: `${fixture.fixtureId}:live-soon:${firstStartsAt.getTime()}:3600000`,
+      },
+      {
+        event_type: 'tournament.live_soon',
+        event_key: `${fixture.fixtureId}:live-soon:${secondStartsAt.getTime()}:3600000`,
+      },
+    ]);
+  });
+
+  it('does not enqueue fixture-opened or deadline pushes after the fixture window closes', async () => {
+    const adminId = await createUser(pool, 'Closed window admin');
+    const playerId = await createUser(pool, 'Closed window player');
+    await pool.query(
+      `insert into user_push_preferences
+         (user_id, daily_game, training_available, tournament_events)
+       values ($1, false, false, true)`,
+      [playerId],
+    );
+    await addSubscription(pool, playerId, 'https://push.example.test/send/closed-window');
+    await createScheduledTournamentFixture(pool, {
+      adminId,
+      slug: 'closed-window-cup',
+      rulesSnapshot: {
+        notificationReminderOffsetsMs: [],
+        notificationDeadlineLeadMs: 0,
+      },
+      participants: [{ userId: playerId, state: 'approved' }],
+      scheduledStartsAt: new Date('2026-05-04T10:00:00.000Z'),
+      windowEndsAt: new Date('2026-05-04T10:15:00.000Z'),
+    });
+
+    const result = await runScheduledPushes(pool, {
+      ...vapid,
+      now: new Date('2026-05-04T10:16:00.000Z'),
+      processQueue: false,
+    });
+
+    expect(
+      result.events.find((event) => event.eventType === 'tournament.fixture_opened'),
+    ).toMatchObject({
+      targets: 0,
+      claimed: 0,
+    });
+    expect(
+      result.events.find((event) => event.eventType === 'tournament.fixture_deadline'),
+    ).toMatchObject({
+      targets: 0,
+      claimed: 0,
+    });
+    const deliveries = await pool.query<{ count: string }>(
+      `select count(*)::text as count
+         from push_delivery_log
+        where event_type in ('tournament.fixture_opened', 'tournament.fixture_deadline')`,
+    );
+    expect(deliveries.rows).toEqual([{ count: '0' }]);
   });
 
   it('sends daily available once at the configured local morning hour', async () => {
@@ -232,9 +697,7 @@ describe.skipIf(!hasIntegrationEnv)('scheduled push delivery', () => {
       event_type: 'daily.unlocked_after_training',
       status: 'sent',
     });
-    expect(deliveries.rows[0]?.event_key).toMatch(
-      /^daily-training-unlock:2026-05-04:/,
-    );
+    expect(deliveries.rows[0]?.event_key).toMatch(/^daily-training-unlock:2026-05-04:/);
   });
 
   it('sends active-period warning and break-finished pushes', async () => {
@@ -255,11 +718,7 @@ describe.skipIf(!hasIntegrationEnv)('scheduled push delivery', () => {
        values
          ($1, '2026-05-04'::date, 'period_active', 1, $3, 1, 'seed-period'),
          ($2, '2026-05-04'::date, 'break_active', 1, null, 1, 'seed-break')`,
-      [
-        periodUserId,
-        breakUserId,
-        new Date('2026-05-04T05:00:00.000Z'),
-      ],
+      [periodUserId, breakUserId, new Date('2026-05-04T05:00:00.000Z')],
     );
     await pool.query(
       `update day_pool
@@ -277,14 +736,12 @@ describe.skipIf(!hasIntegrationEnv)('scheduled push delivery', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(result.events.find((event) => event.eventType === 'daily.period_ending')).toMatchObject(
-      {
-        targets: 1,
-        claimed: 1,
-        sent: 1,
-        failed: 0,
-      },
-    );
+    expect(result.events.find((event) => event.eventType === 'daily.period_ending')).toMatchObject({
+      targets: 1,
+      claimed: 1,
+      sent: 1,
+      failed: 0,
+    });
     expect(result.events.find((event) => event.eventType === 'daily.break_finished')).toMatchObject(
       {
         targets: 1,
@@ -327,11 +784,7 @@ describe.skipIf(!hasIntegrationEnv)('scheduled push delivery', () => {
       `insert into tournament_revision
          (tournament_id, revision, rules_snapshot, is_published, created_by, published_at)
        values ($1, 1, $2, true, $3, now()) returning id`,
-      [
-        tournamentId,
-        JSON.stringify({ notificationReminderOffsetsMs: [3_600_000] }),
-        adminId,
-      ],
+      [tournamentId, JSON.stringify({ notificationReminderOffsetsMs: [3_600_000] }), adminId],
     );
     await pool.query(`update tournament set published_revision_id = $2 where id = $1`, [
       tournamentId,
@@ -378,10 +831,12 @@ describe.skipIf(!hasIntegrationEnv)('scheduled push delivery', () => {
       sent: 1,
       failed: 0,
     });
-    expect(second.events.find((event) => event.eventType === 'tournament.live_soon')).toMatchObject({
-      targets: 0,
-      claimed: 0,
-    });
+    expect(second.events.find((event) => event.eventType === 'tournament.live_soon')).toMatchObject(
+      {
+        targets: 0,
+        claimed: 0,
+      },
+    );
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -463,21 +918,29 @@ describe.skipIf(!hasIntegrationEnv)('scheduled push delivery', () => {
       now: new Date('2026-05-04T10:31:00.000Z'),
     });
 
-    expect(opened.events.find((event) => event.eventType === 'tournament.fixture_opened')).toMatchObject({
+    expect(
+      opened.events.find((event) => event.eventType === 'tournament.fixture_opened'),
+    ).toMatchObject({
       targets: 1,
       claimed: 1,
       sent: 1,
     });
-    expect(openedAgain.events.find((event) => event.eventType === 'tournament.fixture_opened')).toMatchObject({
+    expect(
+      openedAgain.events.find((event) => event.eventType === 'tournament.fixture_opened'),
+    ).toMatchObject({
       targets: 0,
       claimed: 0,
     });
-    expect(deadline.events.find((event) => event.eventType === 'tournament.fixture_deadline')).toMatchObject({
+    expect(
+      deadline.events.find((event) => event.eventType === 'tournament.fixture_deadline'),
+    ).toMatchObject({
       targets: 1,
       claimed: 1,
       sent: 1,
     });
-    expect(deadlineAgain.events.find((event) => event.eventType === 'tournament.fixture_deadline')).toMatchObject({
+    expect(
+      deadlineAgain.events.find((event) => event.eventType === 'tournament.fixture_deadline'),
+    ).toMatchObject({
       targets: 0,
       claimed: 0,
     });
