@@ -480,12 +480,12 @@ function BonusGameEditor({
     goalkeeper_save: 0,
   });
   editorIdentityRef.current = form.gameId;
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
       mountedRef.current = false;
-    },
-    [],
-  );
+    };
+  }, []);
   const mutation = useMutation({
     mutationFn: (snapshot: BonusGameFormState) => {
       const input = formToInput(snapshot);

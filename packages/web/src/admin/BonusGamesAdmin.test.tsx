@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthStore } from '../auth/authStore.js';
 import { AdminScreen } from './AdminScreen.js';
@@ -74,6 +75,19 @@ function renderBonusGames(): QueryClient {
     </QueryClientProvider>,
   );
   return client;
+}
+
+function renderBonusGamesInStrictMode(): ReturnType<typeof render> {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(
+    <StrictMode>
+      <QueryClientProvider client={client}>
+        <BonusGamesAdmin />
+      </QueryClientProvider>
+    </StrictMode>,
+  );
 }
 
 function makeBonusGame(overrides: Partial<AdminBonusGame> = {}): AdminBonusGame {
@@ -557,6 +571,98 @@ describe('bonus games admin', () => {
       );
       await upload.promise;
     });
+  });
+
+  it('applies the current deferred upload under StrictMode and includes it in the save payload', async () => {
+    const upload = deferredResponse();
+    let patchBody: Record<string, unknown> | null = null;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const path = requestPath(input);
+      if (path.includes('/media/')) return upload.promise;
+      if (path === `/api/admin/bonus-games/${bonusGame.id}` && init?.method === 'PATCH') {
+        patchBody = typeof init.body === 'string' ? JSON.parse(init.body) : null;
+        return jsonResponse({ game: bonusGame });
+      }
+      return jsonResponse({ games: [bonusGame] });
+    });
+
+    renderBonusGamesInStrictMode();
+    const editor = await openBonusEditor();
+    fireEvent.change(within(editor).getByLabelText('Загрузить Вратарь: готов'), {
+      target: {
+        files: [new File([new Uint8Array([1])], 'strict-ready.webp', { type: 'image/webp' })],
+      },
+    });
+    await act(async () => {
+      upload.resolve(
+        jsonResponse({
+          media: {
+            id: '66666666-6666-4666-8666-666666666666',
+            url: '/api/media/66666666-6666-4666-8666-666666666666?t=current',
+            kind: 'goalkeeper_ready',
+            key: 'bonus-games/goalkeeper-ready/strict-ready.webp',
+            contentType: 'image/webp',
+            size: 1,
+            originalName: 'strict-ready.webp',
+            createdAt: '2026-08-24T00:00:00.000Z',
+          },
+        }),
+      );
+      await upload.promise;
+    });
+    await waitFor(() =>
+      expect(within(editor).getByLabelText('Вратарь: готов')).toHaveValue(
+        '/api/media/66666666-6666-4666-8666-666666666666?t=current',
+      ),
+    );
+
+    fireEvent.click(within(editor).getByRole('button', { name: 'Сохранить' }));
+    await waitFor(() => expect(patchBody).not.toBeNull());
+    expect(patchBody).toMatchObject({
+      goalkeeperReadyUrl: '/api/media/66666666-6666-4666-8666-666666666666?t=current',
+    });
+  });
+
+  it('ignores deferred upload completion after a real StrictMode unmount', async () => {
+    const upload = deferredResponse();
+    let patchCount = 0;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const path = requestPath(input);
+      if (path.includes('/media/')) return upload.promise;
+      if (init?.method === 'PATCH') patchCount += 1;
+      return jsonResponse({ games: [bonusGame] });
+    });
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const rendered = renderBonusGamesInStrictMode();
+    const editor = await openBonusEditor();
+    fireEvent.change(within(editor).getByLabelText('Загрузить Вратарь: готов'), {
+      target: {
+        files: [new File([new Uint8Array([1])], 'unmounted.webp', { type: 'image/webp' })],
+      },
+    });
+    rendered.unmount();
+    await act(async () => {
+      upload.resolve(
+        jsonResponse({
+          media: {
+            id: '77777777-7777-4777-8777-777777777777',
+            url: '/api/media/77777777-7777-4777-8777-777777777777?t=late',
+            kind: 'goalkeeper_ready',
+            key: 'bonus-games/goalkeeper-ready/unmounted.webp',
+            contentType: 'image/webp',
+            size: 1,
+            originalName: 'unmounted.webp',
+            createdAt: '2026-08-24T00:00:00.000Z',
+          },
+        }),
+      );
+      await upload.promise;
+    });
+
+    expect(screen.queryByRole('dialog', { name: 'Редактирование бонусной игры' })).toBeNull();
+    expect(patchCount).toBe(0);
+    expect(consoleError).not.toHaveBeenCalled();
   });
 
   it('keeps manual media edits and blocks save, dismiss, and duplicate upload while pending', async () => {
