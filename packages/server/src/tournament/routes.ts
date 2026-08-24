@@ -9,6 +9,8 @@ import {
   archiveTournament,
   cancelTournament,
   createTournamentDraft,
+  disqualifyTournamentParticipant,
+  duplicateTournamentDraft,
   deleteEmptyDraft,
   getTournament,
   getTournamentSchedule,
@@ -18,10 +20,13 @@ import {
   isTournamentFeatureEnabled,
   inviteTournamentParticipant,
   listAdminTournaments,
+  listTournamentParticipants,
   listPlayerTournaments,
   publishTournament,
   publishRegularSchedule,
   startTournamentPlayoffs,
+  rescheduleTournamentFixture,
+  resolveTournamentNoShow,
   updateTournamentDraft,
   withdrawTournamentApplication,
   type TournamentRulesSnapshot,
@@ -239,6 +244,11 @@ export const tournamentRoutes: FastifyPluginAsync = async (app) => {
     return { tournament: await getTournament(app.pg, params.tournamentId) };
   });
 
+  app.get('/admin/tournaments/:tournamentId/participants', admin, async (req) => {
+    const params = z.object({ tournamentId: uuid }).parse(req.params);
+    return { participants: await listTournamentParticipants(app.pg, params.tournamentId) };
+  });
+
   app.post('/admin/tournaments', admin, async (req, reply) => {
     const body = draftSchema.parse(req.body);
     const tournament = await createTournamentDraft(app.pg, {
@@ -280,6 +290,19 @@ export const tournamentRoutes: FastifyPluginAsync = async (app) => {
     const params = z.object({ tournamentId: uuid }).parse(req.params);
     const body = z.object({ expectedRevision: z.number().int().min(1) }).parse(req.body);
     return publishTournament(app.pg, params.tournamentId, body.expectedRevision, req.user.id);
+  });
+
+  app.post('/admin/tournaments/:tournamentId/duplicate', admin, async (req, reply) => {
+    const params = z.object({ tournamentId: uuid }).parse(req.params);
+    const body = z.object({ slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/), title: z.string().trim().min(1).max(160) }).parse(req.body);
+    const tournament = await duplicateTournamentDraft(app.pg, {
+      tournamentId: params.tournamentId,
+      slug: body.slug,
+      title: body.title,
+      createdBy: req.user.id,
+    });
+    reply.status(201);
+    return { tournament };
   });
 
   app.post('/admin/tournaments/:tournamentId/invitations', admin, async (req) => {
@@ -406,6 +429,61 @@ export const tournamentRoutes: FastifyPluginAsync = async (app) => {
     }
     return result;
   });
+
+  app.patch('/admin/tournaments/:tournamentId/fixtures/:fixtureId/schedule', admin, async (req) => {
+    const params = z.object({ tournamentId: uuid, fixtureId: uuid }).parse(req.params);
+    const body = z
+      .object({
+        startsAt: z.string().datetime({ offset: true }),
+        endsAt: z.string().datetime({ offset: true }),
+        reason: z.string().trim().min(3).max(1000),
+      })
+      .refine((value) => new Date(value.startsAt) < new Date(value.endsAt), {
+        message: 'fixture start must precede end',
+      })
+      .parse(req.body);
+    const result = await rescheduleTournamentFixture(app.pg, {
+      ...params,
+      startsAt: new Date(body.startsAt),
+      endsAt: new Date(body.endsAt),
+      reason: body.reason,
+      adminUserId: req.user.id,
+    });
+    await enqueueTournamentAudiencePush(app.pg, {
+      tournamentId: params.tournamentId,
+      eventType: 'tournament.rescheduled',
+      eventKey: `${params.fixtureId}:rescheduled:${body.startsAt}`,
+      variables: { startsAt: body.startsAt },
+      fallback: {
+        title: 'Матч перенесён',
+        body: `Новое время: ${body.startsAt}`,
+        url: '/?view=amateur&section=tournaments',
+      },
+    });
+    return result;
+  });
+
+  app.post('/admin/tournaments/:tournamentId/fixtures/:fixtureId/no-show', admin, async (req) => {
+    const params = z.object({ tournamentId: uuid, fixtureId: uuid }).parse(req.params);
+    const body = z
+      .object({ absent: z.enum(['home', 'away', 'both']), reason: z.string().trim().min(3).max(1000) })
+      .parse(req.body);
+    return resolveTournamentNoShow(app.pg, { ...params, ...body, adminUserId: req.user.id });
+  });
+
+  app.post(
+    '/admin/tournaments/:tournamentId/participants/:participantId/disqualify',
+    admin,
+    async (req) => {
+      const params = z.object({ tournamentId: uuid, participantId: uuid }).parse(req.params);
+      const body = z.object({ reason: z.string().trim().min(3).max(1000) }).parse(req.body);
+      return disqualifyTournamentParticipant(app.pg, {
+        ...params,
+        reason: body.reason,
+        adminUserId: req.user.id,
+      });
+    },
+  );
 
   app.delete('/admin/tournaments/:tournamentId', admin, async (req, reply) => {
     const params = z.object({ tournamentId: uuid }).parse(req.params);

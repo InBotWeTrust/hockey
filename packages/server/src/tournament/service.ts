@@ -1096,3 +1096,194 @@ export async function getTournamentBracket(pool: Pool, tournamentId: string) {
   );
   return rows;
 }
+
+export async function duplicateTournamentDraft(
+  pool: Pool,
+  input: { tournamentId: string; slug: string; title: string; createdBy: string },
+) {
+  const source = await getTournament(pool, input.tournamentId);
+  return createTournamentDraft(pool, {
+    slug: input.slug,
+    title: input.title,
+    description: source.description,
+    rules: source.rules,
+    createdBy: input.createdBy,
+    registrationOpensAt: null,
+    registrationClosesAt: null,
+    startsAt: null,
+  });
+}
+
+export async function listTournamentParticipants(pool: Pool, tournamentId: string) {
+  const { rows } = await pool.query(
+    `select p.id, p.user_id, u.display_name, u.avatar_url, p.state, p.seed,
+            p.entry_fee_coins, p.entry_fee_state, p.joined_at, p.withdrawn_at,
+            p.created_at, p.updated_at
+       from tournament_participant p join users u on u.id = p.user_id
+      where p.tournament_id = $1 order by p.created_at, p.id`,
+    [tournamentId],
+  );
+  return rows;
+}
+
+export async function rescheduleTournamentFixture(
+  pool: Pool,
+  input: {
+    tournamentId: string;
+    fixtureId: string;
+    startsAt: Date;
+    endsAt: Date;
+    reason: string;
+    adminUserId: string;
+  },
+) {
+  return inTransaction(pool, async (client) => {
+    await client.query(`select pg_advisory_xact_lock(hashtext($1))`, [`fixture:${input.fixtureId}`]);
+    const updated = await client.query(
+      `update tournament_fixture
+          set scheduled_starts_at = $3, window_ends_at = $4,
+              rescheduled_reason = $5, updated_at = now()
+        where id = $1 and tournament_id = $2
+          and status in ('conditional', 'scheduled', 'open', 'paused')
+        returning id, scheduled_starts_at, window_ends_at`,
+      [input.fixtureId, input.tournamentId, input.startsAt, input.endsAt, input.reason],
+    );
+    if (updated.rowCount === 0) throw new AppError('conflict', 'fixture cannot be rescheduled', 409);
+    await client.query(
+      `insert into tournament_adjustment
+         (tournament_id, fixture_id, kind, payload, reason, created_by)
+       values ($1, $2, 'schedule', $3, $4, $5)`,
+      [
+        input.tournamentId,
+        input.fixtureId,
+        JSON.stringify({ startsAt: input.startsAt, endsAt: input.endsAt }),
+        input.reason,
+        input.adminUserId,
+      ],
+    );
+    return { fixtureId: input.fixtureId, startsAt: input.startsAt.toISOString(), endsAt: input.endsAt.toISOString() };
+  });
+}
+
+export async function resolveTournamentNoShow(
+  pool: Pool,
+  input: {
+    tournamentId: string;
+    fixtureId: string;
+    absent: 'home' | 'away' | 'both';
+    reason: string;
+    adminUserId: string;
+  },
+) {
+  return inTransaction(pool, async (client) => {
+    await client.query(`select pg_advisory_xact_lock(hashtext($1))`, [`fixture:${input.fixtureId}`]);
+    const fixtureResult = await client.query<{
+      home_participant_id: string | null;
+      away_participant_id: string | null;
+      series_id: string | null;
+      stage: string;
+    }>(
+      `select f.home_participant_id, f.away_participant_id, f.series_id, r.stage
+         from tournament_fixture f join tournament_round r on r.id = f.round_id
+        where f.id = $1 and f.tournament_id = $2 for update of f`,
+      [input.fixtureId, input.tournamentId],
+    );
+    const fixture = fixtureResult.rows[0];
+    if (!fixture || fixture.home_participant_id === null || fixture.away_participant_id === null) {
+      throw new AppError('not_found', 'fixture not found', 404);
+    }
+    if (input.absent === 'both' && fixture.stage !== 'regular') {
+      await client.query(`update tournament_fixture set status = 'paused', updated_at = now() where id = $1`, [
+        input.fixtureId,
+      ]);
+      if (fixture.series_id) {
+        await client.query(`update tournament_playoff_series set status = 'paused', updated_at = now() where id = $1`, [
+          fixture.series_id,
+        ]);
+      }
+      await client.query(`update tournament set status = 'paused', updated_at = now() where id = $1`, [
+        input.tournamentId,
+      ]);
+    } else {
+      const winner =
+        input.absent === 'home'
+          ? fixture.away_participant_id
+          : input.absent === 'away'
+            ? fixture.home_participant_id
+            : null;
+      const outcome =
+        input.absent === 'home'
+          ? 'away_win'
+          : input.absent === 'away'
+            ? 'home_win'
+            : 'double_forfeit';
+      await client.query(
+        `update tournament_fixture
+            set status = 'forfeit', winner_participant_id = $2, outcome = $3,
+                home_score = case when $3 = 'home_win' then 1 else 0 end,
+                away_score = case when $3 = 'away_win' then 1 else 0 end,
+                result_snapshot = $4, settled_at = now(), updated_at = now()
+          where id = $1`,
+        [input.fixtureId, winner, outcome, JSON.stringify({ technical: true, absent: input.absent })],
+      );
+      if (fixture.stage === 'regular') await rebuildHeadToHeadStandings(client, input.tournamentId);
+    }
+    await client.query(
+      `insert into tournament_adjustment
+         (tournament_id, fixture_id, kind, payload, reason, created_by)
+       values ($1, $2, 'forfeit', $3, $4, $5)`,
+      [
+        input.tournamentId,
+        input.fixtureId,
+        JSON.stringify({ absent: input.absent }),
+        input.reason,
+        input.adminUserId,
+      ],
+    );
+    return { fixtureId: input.fixtureId, resolution: input.absent };
+  });
+}
+
+export async function disqualifyTournamentParticipant(
+  pool: Pool,
+  input: { tournamentId: string; participantId: string; reason: string; adminUserId: string },
+) {
+  return inTransaction(pool, async (client) => {
+    await lockTournament(client, input.tournamentId);
+    const participant = await client.query(
+      `update tournament_participant set state = 'disqualified', withdrawn_at = now(), updated_at = now()
+        where id = $1 and tournament_id = $2 and state = 'approved' returning id`,
+      [input.participantId, input.tournamentId],
+    );
+    if (participant.rowCount === 0) throw new AppError('conflict', 'participant cannot be disqualified', 409);
+    const fixtures = await client.query<{ id: string; side: 'home' | 'away' }>(
+      `select id, case when home_participant_id = $2 then 'home' else 'away' end as side
+         from tournament_fixture
+        where tournament_id = $1 and status in ('conditional', 'scheduled', 'open')
+          and (home_participant_id = $2 or away_participant_id = $2)
+        for update`,
+      [input.tournamentId, input.participantId],
+    );
+    for (const fixture of fixtures.rows) {
+      await client.query(
+        `update tournament_fixture
+            set status = 'forfeit',
+                winner_participant_id = case when $2 = 'home' then away_participant_id else home_participant_id end,
+                outcome = case when $2 = 'home' then 'away_win' else 'home_win' end,
+                home_score = case when $2 = 'away' then 1 else 0 end,
+                away_score = case when $2 = 'home' then 1 else 0 end,
+                result_snapshot = $3, settled_at = now(), updated_at = now()
+          where id = $1`,
+        [fixture.id, fixture.side, JSON.stringify({ technical: true, disqualification: true })],
+      );
+    }
+    await client.query(
+      `insert into tournament_adjustment
+         (tournament_id, participant_id, kind, payload, reason, created_by)
+       values ($1, $2, 'disqualification', $3, $4, $5)`,
+      [input.tournamentId, input.participantId, JSON.stringify({ futureFixtures: fixtures.rowCount }), input.reason, input.adminUserId],
+    );
+    await rebuildHeadToHeadStandings(client, input.tournamentId);
+    return { participantId: input.participantId, futureForfeits: fixtures.rowCount ?? 0 };
+  });
+}
