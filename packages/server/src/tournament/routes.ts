@@ -27,6 +27,7 @@ import {
   type TournamentRulesSnapshot,
 } from './service.js';
 import { openTournamentFixtureSegment } from './fixtureLifecycle.js';
+import { finalizeTournamentDailyDay } from './dailyAggregate.js';
 
 const uuid = z.string().uuid();
 const nullableDate = z.string().datetime({ offset: true }).nullable().default(null);
@@ -257,6 +258,13 @@ export const tournamentRoutes: FastifyPluginAsync = async (app) => {
   app.post('/admin/tournaments/:tournamentId/playoffs/start', admin, async (req) => {
     const params = z.object({ tournamentId: uuid }).parse(req.params);
     return startTournamentPlayoffs(app.pg, params.tournamentId);
+  });
+
+  app.post('/admin/tournaments/:tournamentId/daily/:tournamentDay/finalize', admin, async (req) => {
+    const params = z
+      .object({ tournamentId: uuid, tournamentDay: z.coerce.number().int().min(1) })
+      .parse(req.params);
+    return finalizeTournamentDailyDay(app.pg, { ...params, now: new Date() });
   });
 
   app.delete('/admin/tournaments/:tournamentId', admin, async (req, reply) => {

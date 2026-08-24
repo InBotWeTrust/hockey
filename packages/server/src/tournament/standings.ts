@@ -63,7 +63,12 @@ export function calculateDailyAggregateStandings(
 ): DailyAggregateStanding[] {
   const byParticipant = new Map<string, Array<{ day: number; value: number }>>();
   for (const result of results) {
-    if (!result.completed) continue;
+    const participantResults = byParticipant.get(result.participantId) ?? [];
+    if (!result.completed) {
+      participantResults.push({ day: result.day, value: 0 });
+      byParticipant.set(result.participantId, participantResults);
+      continue;
+    }
     const value =
       options.metric === 'goals_sum'
         ? result.goals
@@ -72,7 +77,6 @@ export function calculateDailyAggregateStandings(
             ? 0
             : result.goals / result.shots
           : (result.placePoints ?? 0);
-    const participantResults = byParticipant.get(result.participantId) ?? [];
     participantResults.push({ day: result.day, value });
     byParticipant.set(result.participantId, participantResults);
   }
