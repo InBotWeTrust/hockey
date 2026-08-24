@@ -703,6 +703,60 @@
   font-size: 34px;
 }
 
+.bonus-game-reconcile {
+  max-width: min(250px, calc(100cqw - 28px));
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.66);
+  border-radius: 14px;
+  color: rgba(15, 23, 42, 0.86);
+  background: rgba(238, 247, 255, 0.58);
+  box-shadow:
+    0 8px 22px rgba(15, 23, 42, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.54);
+  backdrop-filter: blur(12px) saturate(135%);
+  -webkit-backdrop-filter: blur(12px) saturate(135%);
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.2;
+}
+
+.bonus-game-reconcile__spinner {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  border: 2px solid rgba(37, 99, 235, 0.2);
+  border-top-color: rgba(37, 99, 235, 0.82);
+  border-radius: 50%;
+  animation: bonus-game-reconcile-spin 700ms linear infinite;
+}
+
+.bonus-game-reconcile__retry {
+  min-height: 26px;
+  margin-left: auto;
+  padding: 0 8px;
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  border-radius: 999px;
+  color: #1d4ed8;
+  background: rgba(255, 255, 255, 0.5);
+  font: inherit;
+}
+
+@keyframes bonus-game-reconcile-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bonus-game-reconcile__spinner {
+    animation: none;
+  }
+}
+
 .bonus-game-abandon-error {
   margin: 12px 0 0;
   color: #b91c1c;

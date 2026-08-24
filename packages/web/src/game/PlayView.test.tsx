@@ -317,6 +317,31 @@ describe('PlayView', () => {
     expect(submitShot).toHaveBeenCalledTimes(1);
   });
 
+  it('blocks the primary action without stopping an active scene', () => {
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        primaryActionBlocked
+        seed="bonus-seed"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        shotsTotal={30}
+        shotButtonLabel="ПРОВЕРЯЕМ..."
+        optimisticAddShot={() => undefined}
+        submitShot={async () => null}
+        applyState={() => undefined}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'ПРОВЕРЯЕМ...' })).toBeDisabled();
+  });
+
   it('applies a fast authoritative result only after the flight and result pause', async () => {
     // This catches a completed, failed, or break DTO replacing the rink during its final animation.
     vi.useFakeTimers();

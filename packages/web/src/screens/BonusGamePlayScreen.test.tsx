@@ -16,6 +16,8 @@ vi.mock('../game/PlayView.js', () => ({
     periodNumber: number;
     timer?: string;
     shotButtonLabel?: string;
+    primaryActionBlocked?: boolean;
+    overlayControls?: JSX.Element;
     inactiveAction?: () => unknown | Promise<unknown>;
     entranceBeforeInactiveAction?: boolean;
     onBack: () => void;
@@ -45,7 +47,7 @@ vi.mock('../game/PlayView.js', () => ({
         </button>
         <button
           type="button"
-          disabled={!props.active}
+          disabled={!props.active || props.primaryActionBlocked}
           onClick={() => {
             props.optimisticAddShot('goal');
             void props.submitShot({
@@ -64,6 +66,7 @@ vi.mock('../game/PlayView.js', () => ({
         >
           Тестовый бросок
         </button>
+        {props.overlayControls}
         {!props.active && props.inactiveAction ? (
           <button type="button" onClick={() => void props.inactiveAction?.()}>
             {props.shotButtonLabel}
@@ -448,7 +451,12 @@ describe('BonusGamePlayScreen', () => {
     renderScreen();
 
     expect(screen.getByRole('status')).toHaveTextContent('Проверяем результат броска…');
-    expect(screen.queryByTestId('bonus-play-view')).toBeNull();
+    expect(screen.getByTestId('bonus-play-view')).toBeInTheDocument();
+    expect(playViewProbe.mock.calls.at(-1)?.[0]).toMatchObject({
+      active: true,
+      primaryActionBlocked: true,
+      shotButtonLabel: 'ПРОВЕРЯЕМ...',
+    });
     expect(loadAttempt).toHaveBeenCalledWith('attempt-1');
   });
 
@@ -466,7 +474,7 @@ describe('BonusGamePlayScreen', () => {
 
     expect(loadAttempt).toHaveBeenCalledTimes(2);
     expect(loadAttempt).toHaveBeenLastCalledWith('attempt-1');
-    expect(screen.queryByTestId('bonus-play-view')).toBeNull();
+    expect(screen.getByTestId('bonus-play-view')).toBeInTheDocument();
   });
 
   it('refreshes authoritative detail when the break countdown elapses', async () => {

@@ -256,6 +256,7 @@ export interface PlayViewProps<TState> {
   timerLabel?: string | undefined;
   scoreboardNotice?: string | undefined;
   shotButtonLabel?: string | undefined;
+  primaryActionBlocked?: boolean | undefined;
   inactiveAction?: (() => unknown | Promise<unknown>) | undefined;
   entranceBeforeInactiveAction?: boolean | undefined;
   backLabel?: string | undefined;
@@ -525,6 +526,7 @@ export function PlayView<TState>({
   timerLabel,
   scoreboardNotice,
   shotButtonLabel = 'БРОСОК',
+  primaryActionBlocked = false,
   inactiveAction,
   entranceBeforeInactiveAction = false,
   backLabel = 'К режимам',
@@ -1586,13 +1588,14 @@ export function PlayView<TState>({
   ]);
 
   const handlePrimaryTap = useCallback((): void => {
+    if (primaryActionBlocked) return;
     const cur = sessionRef.current;
     if (!cur.active && inactiveAction) {
       void handleInactiveAction();
       return;
     }
     handleShotTap();
-  }, [handleInactiveAction, handleShotTap, inactiveAction]);
+  }, [handleInactiveAction, handleShotTap, inactiveAction, primaryActionBlocked]);
 
   const timerValue = timer ?? formatMs(remaining);
   const isDuelShotBlocked = active && currentDuelCondition?.canShoot === false;
@@ -1602,6 +1605,7 @@ export function PlayView<TState>({
   const showDuelStumbleNotice =
     duelStumbleNoticeVisible && currentDuelCondition?.status !== 'exhausted_stop';
   const primaryButtonDisabled =
+    primaryActionBlocked ||
     (suppressedByModal && !inactiveAction) ||
     isInactiveActionPending ||
     isShotInProgress ||

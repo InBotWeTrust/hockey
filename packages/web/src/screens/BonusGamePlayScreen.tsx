@@ -77,6 +77,31 @@ function ModeState({
   );
 }
 
+function BonusReconcileOverlay({
+  loading,
+  onRetry,
+}: {
+  loading: boolean;
+  onRetry: () => void;
+}): JSX.Element {
+  return (
+    <div className="bonus-game-reconcile" role="status" aria-live="polite">
+      <span className="bonus-game-reconcile__spinner" aria-hidden="true" />
+      <span>Проверяем результат броска…</span>
+      {!loading ? (
+        <button
+          type="button"
+          className="bonus-game-reconcile__retry"
+          aria-label="Повторить проверку"
+          onClick={onRetry}
+        >
+          Повторить
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 function BonusBreak({
   attempt,
   receivedAtPerformanceMs,
@@ -308,7 +333,7 @@ export function BonusGamePlayScreen(): JSX.Element {
     setIsConfirmingAbandon(false);
   }, [abandon, navigate]);
 
-  if (needsReconcile) {
+  if (needsReconcile && attempt === null) {
     return (
       <ModeState
         role="status"
@@ -397,7 +422,7 @@ export function BonusGamePlayScreen(): JSX.Element {
         showIceCar={isTerminal}
         onBack={() => setConfirmAbandon(true)}
         backLabel="К бонусным играм"
-        active={isPeriodActive && !needsReconcile}
+        active={isPeriodActive}
         seed={attempt.attempt_seed}
         goalieId={null}
         goalieConfig={goalieConfig}
@@ -416,8 +441,17 @@ export function BonusGamePlayScreen(): JSX.Element {
         shotsTotal={isTerminal ? terminalShotsTotal : rule.shots_limit}
         timer={isTerminal ? '00:00' : isIdle ? formatCountdown(rule.duration_ms) : undefined}
         shotButtonLabel={
-          isTerminal ? 'ИГРА ЗАВЕРШЕНА' : isIdle ? (inFlight ? 'НАЧИНАЕМ...' : 'НАЧАТЬ') : undefined
+          needsReconcile
+            ? 'ПРОВЕРЯЕМ...'
+            : isTerminal
+              ? 'ИГРА ЗАВЕРШЕНА'
+              : isIdle
+                ? inFlight
+                  ? 'НАЧИНАЕМ...'
+                  : 'НАЧАТЬ'
+                : undefined
         }
+        primaryActionBlocked={needsReconcile}
         inactiveAction={isIdle ? handleStartPeriod : undefined}
         entranceBeforeInactiveAction={true}
         sessionStartedAt={attempt.period_started_at}
@@ -459,6 +493,11 @@ export function BonusGamePlayScreen(): JSX.Element {
         }}
         applyState={() => undefined}
         applyResolvedState={() => applyPendingShot()}
+        overlayControls={
+          needsReconcile ? (
+            <BonusReconcileOverlay loading={loading} onRetry={() => void reconcileAttempt()} />
+          ) : undefined
+        }
         longCourtBackground={attempt.arena.artwork_url}
         rinkBorderRadius={28}
       />
