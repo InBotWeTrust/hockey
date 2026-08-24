@@ -1283,6 +1283,86 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(loaded.json().match.arena.slug).toBe('beach');
   });
 
+  it('materializes an immutable default venue snapshot for a legacy match with null venue fields', async () => {
+    const created = await challenge(await createTemplate());
+    const matchId = created.json().match.id;
+    await pool.query(
+      `update amateur_duel_match
+          set home_user_id = null,
+              arena_theme_id = null,
+              arena_snapshot = null,
+              venue_policy = null
+        where id = $1`,
+      [matchId],
+    );
+
+    const first = await app.inject({
+      method: 'GET',
+      url: `/duel/amateur/matches/${matchId}`,
+      headers: auth(tokenA),
+    });
+
+    expect(first.statusCode).toBe(200);
+    expect(first.json().match).toMatchObject({
+      home_user_id: null,
+      venue_policy: 'neutral_default',
+      arena: {
+        slug: 'default',
+        title: 'Стандартная арена',
+        artwork_url: '/sprites/arena-ice-court-v2.webp',
+        thumbnail_url: '/sprites/arena-ice-court-v2.webp',
+      },
+    });
+    const materialized = await pool.query<{
+      home_user_id: string | null;
+      arena_theme_id: string | null;
+      arena_snapshot: {
+        id: string;
+        slug: string;
+        title: string;
+        artworkUrl: string;
+        thumbnailUrl: string;
+      } | null;
+      venue_policy: string | null;
+    }>(
+      `select home_user_id, arena_theme_id, arena_snapshot, venue_policy
+         from amateur_duel_match
+        where id = $1`,
+      [matchId],
+    );
+    expect(materialized.rows[0]).toEqual({
+      home_user_id: null,
+      arena_theme_id: '00000000-0000-4000-8000-000000000590',
+      arena_snapshot: {
+        id: '00000000-0000-4000-8000-000000000590',
+        slug: 'default',
+        title: 'Стандартная арена',
+        artworkUrl: '/sprites/arena-ice-court-v2.webp',
+        thumbnailUrl: '/sprites/arena-ice-court-v2.webp',
+      },
+      venue_policy: 'neutral_default',
+    });
+
+    await pool.query(
+      `update arena_theme
+          set title = 'Changed default',
+              artwork_url = '/changed-default.webp',
+              thumbnail_url = '/changed-default-thumb.webp'
+        where slug = 'default'`,
+    );
+    await setHomeArena(userA, 'beach');
+
+    const listed = await app.inject({
+      method: 'GET',
+      url: '/duel/amateur/matches',
+      headers: auth(tokenA),
+    });
+    const listedMatch = listed.json().matches.find((match: { id: string }) => match.id === matchId);
+
+    expect(listed.statusCode).toBe(200);
+    expect(listedMatch.arena).toEqual(first.json().match.arena);
+  });
+
   it('exposes the default matchmaking venue policy in templates and duel rule snapshots', async () => {
     const templateId = await createTemplate();
     const listed = await app.inject({

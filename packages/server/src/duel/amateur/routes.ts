@@ -1168,6 +1168,56 @@ function arenaDtoFromSnapshot(snapshot: unknown): DuelMatchDTO['arena'] {
   };
 }
 
+async function materializeLegacyVenueSnapshot(
+  client: PoolClient,
+  match: DuelMatchRow,
+): Promise<DuelMatchRow> {
+  if (
+    match.arena_theme_id !== null &&
+    match.arena_snapshot !== null &&
+    match.venue_policy !== null
+  ) {
+    return match;
+  }
+  const { rows } = await client.query<{
+    id: string;
+    slug: string;
+    title: string;
+    artwork_url: string;
+    thumbnail_url: string;
+  }>(
+    `select id, slug, title, artwork_url, thumbnail_url
+       from arena_theme
+      where slug = 'default'
+      limit 1`,
+  );
+  const arena = rows[0];
+  if (arena === undefined) {
+    throw new AppError('arena_unavailable', 'home arena is unavailable', 503);
+  }
+  await client.query(
+    `update amateur_duel_match
+        set home_user_id = null,
+            arena_theme_id = $2,
+            arena_snapshot = $3::jsonb,
+            venue_policy = 'neutral_default'
+      where id = $1
+        and (arena_theme_id is null or arena_snapshot is null or venue_policy is null)`,
+    [
+      match.id,
+      arena.id,
+      JSON.stringify({
+        id: arena.id,
+        slug: arena.slug,
+        title: arena.title,
+        artworkUrl: arena.artwork_url,
+        thumbnailUrl: arena.thumbnail_url,
+      }),
+    ],
+  );
+  return fetchMatchForUpdate(client, match.id);
+}
+
 function getDuelPeriodRule(rules: DuelRulesSnapshot, periodNumber: number): DuelPeriodRule {
   return (
     rules.periodRules.find((rule) => rule.periodNumber === periodNumber) ?? {
@@ -2634,6 +2684,7 @@ async function buildMatchDto(
   currentUserId: string,
   now: Date,
 ): Promise<DuelMatchDTO> {
+  match = await materializeLegacyVenueSnapshot(client, match);
   const participants = await fetchParticipants(client, match.id);
   const me = participants.find((participant) => participant.user_id === currentUserId);
   const opponent = participants.find((participant) => participant.user_id !== currentUserId);
