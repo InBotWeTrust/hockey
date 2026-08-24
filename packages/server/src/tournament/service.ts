@@ -896,6 +896,7 @@ function defaultHomeSequence(winsRequired: number): HomeDesignation[] {
 }
 
 const ONE_DAY_MS = 86_400_000;
+const MAX_PLAYOFF_ROUND_BREAK_MS = 30 * ONE_DAY_MS;
 
 interface PlayoffRoundRules {
   winsRequired: number;
@@ -935,12 +936,16 @@ function validIsoDate(value: unknown): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function positiveDuration(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback;
+function positiveDuration(value: unknown, fallback: number, maxMs = ONE_DAY_MS): number {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 && value <= maxMs
+    ? value
+    : fallback;
 }
 
-function nonNegativeDuration(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : fallback;
+function nonNegativeDuration(value: unknown, fallback: number, maxMs = ONE_DAY_MS): number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= maxMs
+    ? value
+    : fallback;
 }
 
 function maxDate(...dates: Date[]): Date {
@@ -982,7 +987,7 @@ function playoffRoundRules(rules: TournamentRulesSnapshot, roundNumber: number):
     duelTemplateId,
     gameWindowMs: positiveDuration(record.gameWindowMs, ONE_DAY_MS),
     gameBreakMs: nonNegativeDuration(record.gameBreakMs, 0),
-    roundBreakMs: nonNegativeDuration(record.roundBreakMs, 0),
+    roundBreakMs: nonNegativeDuration(record.roundBreakMs, 0, MAX_PLAYOFF_ROUND_BREAK_MS),
     firstGameStartsAt: validIsoDate(record.firstGameStartsAt),
   };
 }
@@ -1023,6 +1028,7 @@ function tieBreakRules(rules: TournamentRulesSnapshot): PlayoffRoundRules {
     roundBreakMs: nonNegativeDuration(
       firstDefined(configured.roundBreakMs, rules.tieBreakRoundBreakMs, rules.tiebreakRoundBreakMs),
       0,
+      MAX_PLAYOFF_ROUND_BREAK_MS,
     ),
     firstGameStartsAt: validIsoDate(
       firstDefined(
@@ -1049,10 +1055,28 @@ async function playoffBaseTime(
         and f.window_ends_at is not null`,
     [tournamentId],
   );
+  const tieBreak = await client.query<{
+    ends_at: Date | null;
+    rules_snapshot: Record<string, unknown>;
+  }>(
+    `select ends_at, rules_snapshot from tournament_round
+      where tournament_id = $1 and stage = 'tiebreak'
+      order by ends_at desc nulls last limit 1`,
+    [tournamentId],
+  );
   const candidates = [now];
   if (tournamentStartsAt !== null) candidates.push(tournamentStartsAt);
   if (existing.rows[0]?.latest_end !== null && existing.rows[0]?.latest_end !== undefined) {
     candidates.push(existing.rows[0].latest_end);
+  }
+  const completedTieBreak = tieBreak.rows[0];
+  if (completedTieBreak?.ends_at !== null && completedTieBreak?.ends_at !== undefined) {
+    const roundBreakMs = nonNegativeDuration(
+      completedTieBreak.rules_snapshot.roundBreakMs,
+      0,
+      MAX_PLAYOFF_ROUND_BREAK_MS,
+    );
+    candidates.push(new Date(completedTieBreak.ends_at.getTime() + roundBreakMs));
   }
   return maxDate(...candidates);
 }

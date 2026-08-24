@@ -683,4 +683,92 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       },
     });
   });
+
+  it('starts playoffs after the saved tie-break round break', async () => {
+    await seedUsers(pool, 0);
+    const tournament = await createPublishedTournament(
+      pool,
+      'playoffs-after-tie-break-round-break',
+      0,
+      playoffTournamentRules(2),
+    );
+    const participantIds = await prepareTournamentForPlayoffs(pool, tournament.id, [4, 3, 2, 1]);
+    const tieBreakRound = await pool.query<{ id: string }>(
+      `insert into tournament_round
+         (tournament_id, stage, number, starts_at, ends_at, status, rules_snapshot)
+       values ($1, 'tiebreak', 1, $2, $3, 'settled', $4) returning id`,
+      [
+        tournament.id,
+        new Date('2030-09-01T11:00:00.000Z'),
+        new Date('2030-09-01T12:00:00.000Z'),
+        JSON.stringify({ roundBreakMs: 1_800_000 }),
+      ],
+    );
+    await pool.query(
+      `insert into tournament_fixture
+         (tournament_id, round_id, fixture_number, home_participant_id, away_participant_id,
+          scheduled_starts_at, window_ends_at, status)
+       values ($1, $2, 100001, $3, $4, $5, $6, 'settled')`,
+      [
+        tournament.id,
+        tieBreakRound.rows[0]!.id,
+        participantIds[1]!,
+        participantIds[2]!,
+        new Date('2030-09-01T11:00:00.000Z'),
+        new Date('2030-09-01T12:00:00.000Z'),
+      ],
+    );
+
+    await expect(
+      startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-01T08:00:00.000Z')),
+    ).resolves.toMatchObject({ status: 'playoff' });
+
+    const firstPlayoffRound = await pool.query<{ starts_at: Date }>(
+      `select starts_at from tournament_round
+        where tournament_id = $1 and stage = 'playoff' and number = 1`,
+      [tournament.id],
+    );
+    expect(firstPlayoffRound.rows[0]?.starts_at?.toISOString()).toBe('2030-09-01T12:30:00.000Z');
+  });
+
+  it('falls back from fractional and oversized playoff timing durations', async () => {
+    await seedUsers(pool, 0);
+    const tournament = await createPublishedTournament(
+      pool,
+      'integral-bounded-playoff-durations',
+      0,
+      playoffTournamentRules(2, {
+        playoffRounds: [
+          {
+            roundNumber: 1,
+            winsRequired: 1,
+            homeSequence: ['H'],
+            duelTemplateId: '00000000-0000-4000-8000-000000000805',
+            gameWindowMs: 0.5,
+            gameBreakMs: 1.5,
+            roundBreakMs: 31 * 86_400_000,
+          },
+        ],
+      }),
+    );
+    await prepareTournamentForPlayoffs(pool, tournament.id, [4, 3, 2, 1]);
+
+    await expect(
+      startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-01T08:00:00.000Z')),
+    ).resolves.toMatchObject({ status: 'playoff' });
+
+    const round = await pool.query<{ ends_at: Date; rules_snapshot: Record<string, unknown> }>(
+      `select ends_at, rules_snapshot from tournament_round
+        where tournament_id = $1 and stage = 'playoff' and number = 1`,
+      [tournament.id],
+    );
+    expect(round.rows[0]).toMatchObject({
+      ends_at: new Date('2030-09-02T11:00:00.000Z'),
+      rules_snapshot: {
+        gameWindowMs: 86_400_000,
+        gameBreakMs: 0,
+        roundBreakMs: 0,
+      },
+    });
+  });
 });
