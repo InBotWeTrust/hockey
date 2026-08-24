@@ -1730,17 +1730,6 @@
   overflow: auto;
 }
 
-.home-arena-modal-close {
-  position: absolute;
-  top: 14px;
-  right: 14px;
-}
-
-.home-arena-modal-header {
-  min-width: 0;
-  padding-right: 42px;
-}
-
 .home-arena-options {
   min-width: 0;
   margin: 0;
