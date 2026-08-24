@@ -13,10 +13,12 @@ import {
   applyToTournament,
   cancelTournament,
   createTournamentDraft,
+  disqualifyTournamentParticipant,
   generateRegularSchedule,
   publishRegularSchedule,
   publishTournament,
   rescheduleTournamentFixture,
+  resolveTournamentNoShow,
   startTournamentPlayoffs,
   type TournamentRulesSnapshot,
 } from '../../src/tournament/service.js';
@@ -354,6 +356,329 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         state: 'accepted',
       },
     });
+  });
+
+  it('closes a best-of-three playoff series from technical wins exactly once and resolves its dependents', async () => {
+    await seedUsers(pool, 0);
+    const tournament = await createPublishedTournament(
+      pool,
+      'technical-playoff-series',
+      0,
+      playoffTournamentRules(4, {
+        playoffRounds: [
+          {
+            roundNumber: 1,
+            winsRequired: 2,
+            homeSequence: ['H', 'A', 'H'],
+            duelTemplateId: '00000000-0000-4000-8000-000000000806',
+            gameWindowMs: 3_600_000,
+            gameBreakMs: 0,
+            roundBreakMs: 0,
+            firstGameStartsAt: '2030-09-01T13:00:00.000Z',
+          },
+          {
+            roundNumber: 2,
+            winsRequired: 1,
+            homeSequence: ['H'],
+            duelTemplateId: '00000000-0000-4000-8000-000000000807',
+            gameWindowMs: 3_600_000,
+            gameBreakMs: 0,
+            roundBreakMs: 0,
+            firstGameStartsAt: '2030-09-01T17:00:00.000Z',
+          },
+        ],
+      }),
+    );
+    await prepareTournamentForPlayoffs(pool, tournament.id, [4, 3, 2, 1]);
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-01T08:00:00.000Z'));
+
+    const firstRound = await pool.query<{
+      fixture_id: string;
+      game_number: number;
+      home_participant_id: string;
+      away_participant_id: string;
+      higher_seed_participant_id: string;
+      series_id: string;
+    }>(
+      `select f.id as fixture_id, (f.result_snapshot->>'gameNumber')::int as game_number,
+              f.home_participant_id, f.away_participant_id,
+              s.higher_seed_participant_id, s.id as series_id
+         from tournament_fixture f
+         join tournament_playoff_series s on s.id = f.series_id
+        where s.tournament_id = $1 and s.depends_on->>'key' = 'R1S1'
+        order by (f.result_snapshot->>'gameNumber')::int`,
+      [tournament.id],
+    );
+    expect(firstRound.rows).toHaveLength(3);
+    for (const participantId of [
+      firstRound.rows[0]!.home_participant_id,
+      firstRound.rows[0]!.away_participant_id,
+    ]) {
+      const user = await pool.query<{ user_id: string }>(
+        `select user_id from tournament_participant where id = $1`,
+        [participantId],
+      );
+      await pool.query(
+        `insert into push_subscriptions (user_id, endpoint, p256dh, auth)
+         values ($1, $2, 'p256dh', 'auth')`,
+        [user.rows[0]!.user_id, `https://push.example.test/${participantId}`],
+      );
+    }
+
+    const technicalWinForHigherSeed = async (fixture: (typeof firstRound.rows)[number]) => {
+      await resolveTournamentNoShow(pool, {
+        tournamentId: tournament.id,
+        fixtureId: fixture.fixture_id,
+        absent: fixture.home_participant_id === fixture.higher_seed_participant_id ? 'away' : 'home',
+        reason: 'integration technical win',
+        adminUserId: ADMIN_ID,
+      });
+    };
+
+    await technicalWinForHigherSeed(firstRound.rows[0]!);
+    await technicalWinForHigherSeed(firstRound.rows[0]!);
+    await technicalWinForHigherSeed(firstRound.rows[1]!);
+
+    const completed = await pool.query<{
+      higher_seed_wins: number;
+      lower_seed_wins: number;
+      status: string;
+      winner_participant_id: string;
+    }>(
+      `select higher_seed_wins, lower_seed_wins, status, winner_participant_id
+         from tournament_playoff_series where id = $1`,
+      [firstRound.rows[0]!.series_id],
+    );
+    expect(completed.rows[0]).toEqual({
+      higher_seed_wins: 2,
+      lower_seed_wins: 0,
+      status: 'completed',
+      winner_participant_id: firstRound.rows[0]!.higher_seed_participant_id,
+    });
+
+    const firstRoundFixtures = await pool.query<{ fixture_number: number; status: string }>(
+      `select fixture_number, status
+         from tournament_fixture where series_id = $1
+        order by fixture_number`,
+      [firstRound.rows[0]!.series_id],
+    );
+    expect(firstRoundFixtures.rows.map((fixture) => fixture.status)).toEqual([
+      'forfeit',
+      'forfeit',
+      'cancelled',
+    ]);
+
+    const finalSeries = await pool.query<{ higher_seed_participant_id: string; status: string }>(
+      `select higher_seed_participant_id, status from tournament_playoff_series
+        where tournament_id = $1 and depends_on->>'key' = 'R2S1'`,
+      [tournament.id],
+    );
+    expect(finalSeries.rows[0]).toEqual({
+      higher_seed_participant_id: firstRound.rows[0]!.higher_seed_participant_id,
+      status: 'pending',
+    });
+    const notifications = await pool.query<{ event_key: string }>(
+      `select event_key from push_delivery_log
+        where event_type = 'tournament.result_ready'
+        order by event_key`,
+    );
+    expect(notifications.rows).toHaveLength(4);
+  });
+
+  it('propagates a playoff disqualification through the newly resolved third-place series', async () => {
+    await seedUsers(pool, 0);
+    const tournament = await createPublishedTournament(
+      pool,
+      'technical-playoff-disqualification',
+      0,
+      playoffTournamentRules(4, {
+        playoffRounds: [
+          {
+            roundNumber: 1,
+            winsRequired: 1,
+            homeSequence: ['H'],
+            duelTemplateId: '00000000-0000-4000-8000-000000000808',
+            gameWindowMs: 3_600_000,
+            gameBreakMs: 0,
+            roundBreakMs: 0,
+            firstGameStartsAt: '2030-09-01T13:00:00.000Z',
+          },
+          {
+            roundNumber: 2,
+            winsRequired: 1,
+            homeSequence: ['H'],
+            duelTemplateId: '00000000-0000-4000-8000-000000000809',
+            gameWindowMs: 3_600_000,
+            gameBreakMs: 0,
+            roundBreakMs: 0,
+            firstGameStartsAt: '2030-09-01T17:00:00.000Z',
+          },
+        ],
+      }),
+    );
+    await prepareTournamentForPlayoffs(pool, tournament.id, [4, 3, 2, 1]);
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-01T08:00:00.000Z'));
+
+    const semifinals = await pool.query<{
+      key: string;
+      fixture_id: string;
+      home_participant_id: string;
+      away_participant_id: string;
+      higher_seed_participant_id: string;
+    }>(
+      `select s.depends_on->>'key' as key, f.id as fixture_id, f.home_participant_id,
+              f.away_participant_id, s.higher_seed_participant_id
+         from tournament_playoff_series s
+         join tournament_fixture f on f.series_id = s.id
+        where s.tournament_id = $1 and s.depends_on->>'key' in ('R1S1', 'R1S2')
+        order by s.depends_on->>'key'`,
+      [tournament.id],
+    );
+    const firstSemi = semifinals.rows[0]!;
+    const secondSemi = semifinals.rows[1]!;
+    const secondSemiWinner = secondSemi.higher_seed_participant_id;
+    await resolveTournamentNoShow(pool, {
+      tournamentId: tournament.id,
+      fixtureId: secondSemi.fixture_id,
+      absent: secondSemi.home_participant_id === secondSemiWinner ? 'away' : 'home',
+      reason: 'integration other semifinal result',
+      adminUserId: ADMIN_ID,
+    });
+
+    const result = await disqualifyTournamentParticipant(pool, {
+      tournamentId: tournament.id,
+      participantId: firstSemi.higher_seed_participant_id,
+      reason: 'integration disqualification',
+      adminUserId: ADMIN_ID,
+    });
+    expect(result.futureForfeits).toBe(3);
+
+    const series = await pool.query<{
+      key: string;
+      status: string;
+      winner_participant_id: string | null;
+      higher_seed_wins: number;
+      lower_seed_wins: number;
+    }>(
+      `select depends_on->>'key' as key, status, winner_participant_id,
+              higher_seed_wins, lower_seed_wins
+         from tournament_playoff_series
+        where tournament_id = $1 and depends_on->>'key' in ('R1S1', 'BRONZE')
+        order by depends_on->>'key'`,
+      [tournament.id],
+    );
+    expect(series.rows).toEqual([
+      {
+        key: 'BRONZE',
+        status: 'completed',
+        winner_participant_id: expect.any(String),
+        higher_seed_wins: expect.any(Number),
+        lower_seed_wins: expect.any(Number),
+      },
+      {
+        key: 'R1S1',
+        status: 'completed',
+        winner_participant_id: firstSemi.away_participant_id,
+        higher_seed_wins: 0,
+        lower_seed_wins: 1,
+      },
+    ]);
+    expect(series.rows[0]!.winner_participant_id).not.toBe(firstSemi.higher_seed_participant_id);
+    expect(Number(series.rows[0]!.higher_seed_wins) + Number(series.rows[0]!.lower_seed_wins)).toBe(
+      1,
+    );
+
+    const dependentFixtures = await pool.query<{
+      key: string;
+      series_status: string;
+      higher_seed_participant_id: string | null;
+      lower_seed_participant_id: string | null;
+      fixture_status: string;
+    }>(
+      `select s.depends_on->>'key' as key, s.status as series_status,
+              s.higher_seed_participant_id, s.lower_seed_participant_id,
+              f.status as fixture_status
+         from tournament_playoff_series s
+         join tournament_fixture f on f.series_id = s.id
+        where s.tournament_id = $1 and s.depends_on->>'key' = 'R2S1'`,
+      [tournament.id],
+    );
+    expect(dependentFixtures.rows[0]).toMatchObject({
+      key: 'R2S1',
+      series_status: 'scheduled',
+      fixture_status: 'scheduled',
+    });
+    expect(dependentFixtures.rows[0]?.higher_seed_participant_id).not.toBeNull();
+    expect(dependentFixtures.rows[0]?.lower_seed_participant_id).not.toBeNull();
+
+    const regularFixture = await pool.query<{ status: string; result_snapshot: { technical?: boolean } }>(
+      `select f.status, f.result_snapshot from tournament_fixture f
+         join tournament_round r on r.id = f.round_id
+        where f.tournament_id = $1 and r.stage = 'regular'`,
+      [tournament.id],
+    );
+    expect(regularFixture.rows[0]).toEqual({
+      status: 'forfeit',
+      result_snapshot: { technical: true, disqualification: true },
+    });
+  });
+
+  it('pauses a playoff double no-show without awarding a series win or duplicating its adjustment', async () => {
+    await seedUsers(pool, 0);
+    const tournament = await createPublishedTournament(
+      pool,
+      'technical-playoff-double-no-show',
+      0,
+      playoffTournamentRules(4),
+    );
+    await prepareTournamentForPlayoffs(pool, tournament.id, [4, 3, 2, 1]);
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-01T08:00:00.000Z'));
+
+    const fixture = await pool.query<{ fixture_id: string; series_id: string }>(
+      `select f.id as fixture_id, s.id as series_id
+         from tournament_playoff_series s
+         join tournament_fixture f on f.series_id = s.id
+        where s.tournament_id = $1 and s.depends_on->>'key' = 'R1S1'`,
+      [tournament.id],
+    );
+    const input = {
+      tournamentId: tournament.id,
+      fixtureId: fixture.rows[0]!.fixture_id,
+      absent: 'both' as const,
+      reason: 'integration double no-show',
+      adminUserId: ADMIN_ID,
+    };
+    await resolveTournamentNoShow(pool, input);
+    await resolveTournamentNoShow(pool, input);
+
+    const state = await pool.query<{
+      fixture_status: string;
+      series_status: string;
+      higher_seed_wins: number;
+      lower_seed_wins: number;
+      tournament_status: string;
+    }>(
+      `select f.status as fixture_status, s.status as series_status,
+              s.higher_seed_wins, s.lower_seed_wins, t.status as tournament_status
+         from tournament_fixture f
+         join tournament_playoff_series s on s.id = f.series_id
+         join tournament t on t.id = f.tournament_id
+        where f.id = $1`,
+      [fixture.rows[0]!.fixture_id],
+    );
+    expect(state.rows[0]).toEqual({
+      fixture_status: 'paused',
+      series_status: 'paused',
+      higher_seed_wins: 0,
+      lower_seed_wins: 0,
+      tournament_status: 'paused',
+    });
+    const adjustments = await pool.query<{ count: string }>(
+      `select count(*)::text as count from tournament_adjustment
+        where fixture_id = $1 and kind = 'forfeit'`,
+      [fixture.rows[0]!.fixture_id],
+    );
+    expect(adjustments.rows[0]?.count).toBe('1');
   });
 
   it('materializes deterministic playoff windows from dependencies and configured round slots', async () => {

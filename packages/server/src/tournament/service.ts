@@ -10,6 +10,8 @@ import {
   type PlayoffParticipantSource,
 } from './playoffs.js';
 import { rebuildHeadToHeadStandings } from './standingsPersistence.js';
+import { advanceTournamentPlayoffSeries } from './playoffSeriesLifecycle.js';
+import { enqueueTournamentFixtureResultPush } from './fixtureNotifications.js';
 import type { TournamentConfig, TournamentStatus } from './types.js';
 
 export interface TournamentRulesSnapshot {
@@ -1449,21 +1451,31 @@ export async function resolveTournamentNoShow(
     if (!fixture || fixture.home_participant_id === null || fixture.away_participant_id === null) {
       throw new AppError('not_found', 'fixture not found', 404);
     }
+    let fixtureChanged = false;
     if (input.absent === 'both' && fixture.stage !== 'regular') {
-      await client.query(
-        `update tournament_fixture set status = 'paused', updated_at = now() where id = $1`,
+      const paused = await client.query(
+        `update tournament_fixture
+            set status = 'paused', updated_at = now()
+          where id = $1 and status in ('conditional', 'scheduled', 'open', 'active')
+          returning id`,
         [input.fixtureId],
       );
-      if (fixture.series_id) {
+      fixtureChanged = (paused.rowCount ?? 0) > 0;
+      if (fixtureChanged && fixture.series_id) {
         await client.query(
-          `update tournament_playoff_series set status = 'paused', updated_at = now() where id = $1`,
+          `update tournament_playoff_series
+              set status = 'paused', updated_at = now()
+            where id = $1 and status in ('pending', 'scheduled', 'active')`,
           [fixture.series_id],
         );
       }
-      await client.query(
-        `update tournament set status = 'paused', updated_at = now() where id = $1`,
-        [input.tournamentId],
-      );
+      if (fixtureChanged) {
+        await client.query(
+          `update tournament set status = 'paused', updated_at = now()
+            where id = $1 and status <> 'paused'`,
+          [input.tournamentId],
+        );
+      }
     } else {
       const winner =
         input.absent === 'home'
@@ -1477,13 +1489,14 @@ export async function resolveTournamentNoShow(
           : input.absent === 'away'
             ? 'home_win'
             : 'double_forfeit';
-      await client.query(
+      const updated = await client.query(
         `update tournament_fixture
             set status = 'forfeit', winner_participant_id = $2, outcome = $3,
                 home_score = case when $3 = 'home_win' then 1 else 0 end,
                 away_score = case when $3 = 'away_win' then 1 else 0 end,
                 result_snapshot = $4, settled_at = now(), updated_at = now()
-          where id = $1`,
+          where id = $1 and status in ('conditional', 'scheduled', 'open', 'active')
+          returning id`,
         [
           input.fixtureId,
           winner,
@@ -1491,20 +1504,37 @@ export async function resolveTournamentNoShow(
           JSON.stringify({ technical: true, absent: input.absent }),
         ],
       );
-      if (fixture.stage === 'regular') await rebuildHeadToHeadStandings(client, input.tournamentId);
+      if ((updated.rowCount ?? 0) > 0) {
+        fixtureChanged = true;
+        if (fixture.series_id !== null && winner !== null) {
+          await advanceTournamentPlayoffSeries(client, {
+            seriesId: fixture.series_id,
+            winnerParticipantId: winner,
+          });
+        }
+        if (fixture.stage === 'regular') await rebuildHeadToHeadStandings(client, input.tournamentId);
+        await enqueueTournamentFixtureResultPush(client, {
+          fixtureId: input.fixtureId,
+          homeParticipantId: fixture.home_participant_id,
+          awayParticipantId: fixture.away_participant_id,
+          winnerParticipantId: winner,
+        });
+      }
     }
-    await client.query(
-      `insert into tournament_adjustment
-         (tournament_id, fixture_id, kind, payload, reason, created_by)
-       values ($1, $2, 'forfeit', $3, $4, $5)`,
-      [
-        input.tournamentId,
-        input.fixtureId,
-        JSON.stringify({ absent: input.absent }),
-        input.reason,
-        input.adminUserId,
-      ],
-    );
+    if (fixtureChanged) {
+      await client.query(
+        `insert into tournament_adjustment
+           (tournament_id, fixture_id, kind, payload, reason, created_by)
+         values ($1, $2, 'forfeit', $3, $4, $5)`,
+        [
+          input.tournamentId,
+          input.fixtureId,
+          JSON.stringify({ absent: input.absent }),
+          input.reason,
+          input.adminUserId,
+        ],
+      );
+    }
     return { fixtureId: input.fixtureId, resolution: input.absent };
   });
 }
@@ -1522,16 +1552,37 @@ export async function disqualifyTournamentParticipant(
     );
     if (participant.rowCount === 0)
       throw new AppError('conflict', 'participant cannot be disqualified', 409);
-    const fixtures = await client.query<{ id: string; side: 'home' | 'away' }>(
-      `select id, case when home_participant_id = $2 then 'home' else 'away' end as side
-         from tournament_fixture
-        where tournament_id = $1 and status in ('conditional', 'scheduled', 'open')
-          and (home_participant_id = $2 or away_participant_id = $2)
-        for update`,
-      [input.tournamentId, input.participantId],
-    );
-    for (const fixture of fixtures.rows) {
-      await client.query(
+    let futureForfeits = 0;
+    let regularFixtureChanged = false;
+    for (;;) {
+      const fixtureResult = await client.query<{
+        id: string;
+        series_id: string | null;
+        stage: string;
+        home_participant_id: string;
+        away_participant_id: string;
+        side: 'home' | 'away';
+        winner_participant_id: string;
+      }>(
+        `select f.id, f.series_id, r.stage, f.home_participant_id, f.away_participant_id,
+                case when f.home_participant_id = $2 then 'home' else 'away' end as side,
+                case when f.home_participant_id = $2
+                     then f.away_participant_id else f.home_participant_id end
+                  as winner_participant_id
+           from tournament_fixture f
+           join tournament_round r on r.id = f.round_id
+          where f.tournament_id = $1
+            and f.status in ('conditional', 'scheduled', 'open', 'active')
+            and (f.home_participant_id = $2 or f.away_participant_id = $2)
+            and f.home_participant_id is not null and f.away_participant_id is not null
+          order by f.fixture_number
+          limit 1
+          for update of f`,
+        [input.tournamentId, input.participantId],
+      );
+      const fixture = fixtureResult.rows[0];
+      if (!fixture) break;
+      const updated = await client.query(
         `update tournament_fixture
             set status = 'forfeit',
                 winner_participant_id = case when $2 = 'home' then away_participant_id else home_participant_id end,
@@ -1539,9 +1590,25 @@ export async function disqualifyTournamentParticipant(
                 home_score = case when $2 = 'away' then 1 else 0 end,
                 away_score = case when $2 = 'home' then 1 else 0 end,
                 result_snapshot = $3, settled_at = now(), updated_at = now()
-          where id = $1`,
+          where id = $1 and status in ('conditional', 'scheduled', 'open', 'active')
+          returning id`,
         [fixture.id, fixture.side, JSON.stringify({ technical: true, disqualification: true })],
       );
+      if (updated.rowCount === 0) continue;
+      futureForfeits += 1;
+      if (fixture.series_id !== null) {
+        await advanceTournamentPlayoffSeries(client, {
+          seriesId: fixture.series_id,
+          winnerParticipantId: fixture.winner_participant_id,
+        });
+      }
+      if (fixture.stage === 'regular') regularFixtureChanged = true;
+      await enqueueTournamentFixtureResultPush(client, {
+        fixtureId: fixture.id,
+        homeParticipantId: fixture.home_participant_id,
+        awayParticipantId: fixture.away_participant_id,
+        winnerParticipantId: fixture.winner_participant_id,
+      });
     }
     await client.query(
       `insert into tournament_adjustment
@@ -1550,12 +1617,12 @@ export async function disqualifyTournamentParticipant(
       [
         input.tournamentId,
         input.participantId,
-        JSON.stringify({ futureFixtures: fixtures.rowCount }),
+        JSON.stringify({ futureFixtures: futureForfeits }),
         input.reason,
         input.adminUserId,
       ],
     );
-    await rebuildHeadToHeadStandings(client, input.tournamentId);
-    return { participantId: input.participantId, futureForfeits: fixtures.rowCount ?? 0 };
+    if (regularFixtureChanged) await rebuildHeadToHeadStandings(client, input.tournamentId);
+    return { participantId: input.participantId, futureForfeits };
   });
 }

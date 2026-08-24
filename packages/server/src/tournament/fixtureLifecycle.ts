@@ -2,7 +2,8 @@ import type { Pool, PoolClient } from 'pg';
 import { AppError } from '../plugins/errors.js';
 import { decideNextFixtureSegment, type FixtureSegmentKind } from './segments.js';
 import { rebuildHeadToHeadStandings } from './standingsPersistence.js';
-import { enqueueTournamentPush } from '../push/tournament.js';
+import { advanceTournamentPlayoffSeries } from './playoffSeriesLifecycle.js';
+import { enqueueTournamentFixtureResultPush } from './fixtureNotifications.js';
 
 interface FixtureContextRow {
   id: string;
@@ -252,11 +253,12 @@ export async function settleTournamentSegmentForDuel(
   }
   const winnerParticipantId =
     decision.winner === 'home' ? segment.home_participant_id : segment.away_participant_id;
-  await client.query(
+  const fixtureUpdated = await client.query(
     `update tournament_fixture
         set status = 'settled', winner_participant_id = $2,
             outcome = $3, settled_at = $4, updated_at = now()
-      where id = $1`,
+      where id = $1 and status in ('conditional', 'scheduled', 'open', 'active')
+      returning id`,
     [
       segment.fixture_id,
       winnerParticipantId,
@@ -264,125 +266,21 @@ export async function settleTournamentSegmentForDuel(
       input.settledAt,
     ],
   );
+  if (fixtureUpdated.rowCount === 0) return { fixtureId: segment.fixture_id, completed: true };
   if (segment.series_id !== null && winnerParticipantId !== null) {
-    const seriesResult = await client.query<{
-      wins_required: number;
-      higher_seed_participant_id: string | null;
-      lower_seed_participant_id: string | null;
-      higher_seed_wins: number;
-      lower_seed_wins: number;
-      depends_on: { key?: string };
-      tournament_id: string;
-    }>(
-      `update tournament_playoff_series
-          set higher_seed_wins = higher_seed_wins +
-                case when higher_seed_participant_id = $2 then 1 else 0 end,
-              lower_seed_wins = lower_seed_wins +
-                case when higher_seed_participant_id = $2 then 0 else 1 end,
-              status = 'active', updated_at = now()
-        where id = $1 returning wins_required, higher_seed_participant_id,
-              lower_seed_participant_id, higher_seed_wins, lower_seed_wins,
-              depends_on, tournament_id`,
-      [segment.series_id, winnerParticipantId],
-    );
-    const series = seriesResult.rows[0];
-    if (
-      series &&
-      (Number(series.higher_seed_wins) >= Number(series.wins_required) ||
-        Number(series.lower_seed_wins) >= Number(series.wins_required))
-    ) {
-      await client.query(
-        `update tournament_playoff_series
-            set status = 'completed', winner_participant_id = $2, updated_at = now()
-          where id = $1`,
-        [segment.series_id, winnerParticipantId],
-      );
-      await client.query(
-        `update tournament_fixture
-            set status = 'cancelled', updated_at = now()
-          where series_id = $1 and status = 'conditional'`,
-        [segment.series_id],
-      );
-      const completedKey = series.depends_on.key;
-      const loserParticipantId =
-        series.higher_seed_participant_id === winnerParticipantId
-          ? series.lower_seed_participant_id
-          : series.higher_seed_participant_id;
-      if (completedKey !== undefined && loserParticipantId !== null) {
-        const dependents = await client.query<{
-          id: string;
-          wins_required: number;
-          higher_seed_participant_id: string | null;
-          lower_seed_participant_id: string | null;
-          depends_on: { sources?: Array<{ type?: string; seriesKey?: string }> };
-        }>(
-          `select id, wins_required, higher_seed_participant_id, lower_seed_participant_id, depends_on
-             from tournament_playoff_series
-            where tournament_id = $1 and status = 'pending' for update`,
-          [series.tournament_id],
-        );
-        for (const dependent of dependents.rows) {
-          const sources = dependent.depends_on.sources ?? [];
-          let higher = dependent.higher_seed_participant_id;
-          let lower = dependent.lower_seed_participant_id;
-          for (const [index, source] of sources.entries()) {
-            if (source.seriesKey !== completedKey) continue;
-            const resolved = source.type === 'winner' ? winnerParticipantId : loserParticipantId;
-            if (index === 0) higher = resolved;
-            else lower = resolved;
-          }
-          await client.query(
-            `update tournament_playoff_series
-                set higher_seed_participant_id = $2, lower_seed_participant_id = $3,
-                    status = case when $2::uuid is not null and $3::uuid is not null
-                                  then 'scheduled' else status end,
-                    updated_at = now()
-              where id = $1`,
-            [dependent.id, higher, lower],
-          );
-          if (higher !== null && lower !== null) {
-            await client.query(
-              `update tournament_fixture
-                  set home_participant_id = case
-                        when coalesce((result_snapshot->>'higherSeedIsHome')::boolean, true)
-                        then $2 else $3 end,
-                      away_participant_id = case
-                        when coalesce((result_snapshot->>'higherSeedIsHome')::boolean, true)
-                        then $3 else $2 end,
-                      status = case
-                        when coalesce((result_snapshot->>'gameNumber')::int, 1) <= $4
-                        then 'scheduled' else 'conditional' end,
-                      updated_at = now()
-                where series_id = $1`,
-              [dependent.id, higher, lower, dependent.wins_required],
-            );
-          }
-        }
-      }
-    }
+    await advanceTournamentPlayoffSeries(client, {
+      seriesId: segment.series_id,
+      winnerParticipantId,
+    });
   }
   if (segment.round_stage === 'regular') {
     await rebuildHeadToHeadStandings(client, segment.tournament_id);
   }
-  const recipients = await client.query<{ participant_id: string; user_id: string; title: string }>(
-    `select p.id as participant_id, p.user_id, t.title from tournament_participant p
-       join tournament t on t.id = p.tournament_id
-      where p.id = any($1::uuid[])`,
-    [[segment.home_participant_id, segment.away_participant_id].filter(Boolean)],
-  );
-  for (const recipient of recipients.rows) {
-    const won = recipient.participant_id === winnerParticipantId;
-    await enqueueTournamentPush(client, {
-      userId: recipient.user_id,
-      eventType: 'tournament.result_ready',
-      eventKey: `${segment.fixture_id}:result:${recipient.user_id}`,
-      variables: { resultText: won ? 'Победа в турнирном матче' : 'Турнирный матч завершён' },
-      fallback: {
-        title: 'Результат матча',
-        body: won ? 'Победа в турнирном матче' : 'Турнирный матч завершён',
-        url: '/?view=amateur&section=tournaments',
-      },
-    });
-  }
+  await enqueueTournamentFixtureResultPush(client, {
+    fixtureId: segment.fixture_id,
+    homeParticipantId: segment.home_participant_id,
+    awayParticipantId: segment.away_participant_id,
+    winnerParticipantId,
+  });
   return { fixtureId: segment.fixture_id, completed: true };
 }
