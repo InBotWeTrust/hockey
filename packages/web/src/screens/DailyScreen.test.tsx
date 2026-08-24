@@ -1482,7 +1482,7 @@ describe('DailyScreen', () => {
     expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();
   });
 
-  it('keeps multi-period rink metrics in the compact two-column layout', async () => {
+  it('keeps multi-period rink metrics in one compact four-column row', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input);
       if (url.includes('/duel/training/state')) {
@@ -1500,11 +1500,8 @@ describe('DailyScreen', () => {
     renderWith(['/?view=training&play=1']);
 
     const scoreboard = await screen.findByLabelText('Игровое табло');
-    expect(screen.getByTestId('scoreboard-row-status')).toHaveStyle({
-      gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-    });
-    expect(screen.getByTestId('scoreboard-row-score')).toHaveStyle({
-      gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    expect(screen.getByTestId('scoreboard-row-summary')).toHaveStyle({
+      gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
     });
     expect(within(scoreboard).getByText('ПЕРИОД')).toBeInTheDocument();
     expect(within(scoreboard).getByText('2/3')).toBeInTheDocument();
@@ -1512,7 +1509,7 @@ describe('DailyScreen', () => {
     expect(within(scoreboard).getByText('12/500')).toBeInTheDocument();
   });
 
-  it('groups period, score and shots below the timer on a one-period duel scoreboard', async () => {
+  it('groups period, score, shots and time in one row on a one-period duel scoreboard', async () => {
     const now = Date.now();
     const expressMatch: AmateurDuelMatchState = {
       ...settledDuelMatch,
@@ -1572,9 +1569,8 @@ describe('DailyScreen', () => {
     renderWith(['/?view=amateur&match=match-1&play=1']);
 
     const scoreboard = await screen.findByLabelText('Игровое табло');
-    expect(screen.getByTestId('scoreboard-row-timer')).toBeInTheDocument();
     expect(screen.getByTestId('scoreboard-row-summary')).toHaveStyle({
-      gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+      gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
     });
     expect(within(scoreboard).getByText('ПЕРИОД')).toBeInTheDocument();
     expect(within(scoreboard).getByText('1/1')).toBeInTheDocument();

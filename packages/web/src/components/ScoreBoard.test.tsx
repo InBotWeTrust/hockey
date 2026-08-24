@@ -60,7 +60,7 @@ describe('ScoreBoard', () => {
     expect(screen.getByText('Нужно восстановиться')).toHaveClass('game-scoreboard__notice');
   });
 
-  it('keeps the timer prominent and groups single-period progress into one compact row', () => {
+  it('puts all single-period metrics in one compact row with time last', () => {
     const model = buildGameScoreboardModel({
       period: 1,
       periodsTotal: 1,
@@ -73,15 +73,12 @@ describe('ScoreBoard', () => {
 
     expect(model.rows).toEqual([
       {
-        id: 'timer',
-        metrics: [{ id: 'timer', label: 'ЛИМИТ', value: '50', tone: 'timer', emphasis: 'large' }],
-      },
-      {
         id: 'summary',
         metrics: [
-          { id: 'period', label: 'ПЕРИОД', value: '1/1', emphasis: 'small' },
+          { id: 'period', label: 'ПЕРИОД', value: '1/1' },
           { id: 'goals', label: 'ГОЛЫ', value: '07' },
           { id: 'shots', label: 'БРОСКИ', value: '18/50' },
+          { id: 'timer', label: 'ЛИМИТ', value: '50', tone: 'timer' },
         ],
       },
     ]);
@@ -110,11 +107,9 @@ describe('ScoreBoard', () => {
 
     expect(model.rows[0]?.metrics.map(({ label, value }) => [label, value])).toEqual([
       ['ПЕРИОД', '1/2'],
-      ['ВРЕМЯ', '02:10'],
-    ]);
-    expect(model.rows[1]?.metrics.map(({ label, value }) => [label, value])).toEqual([
-      ['БРОСКИ', '17/30'],
       ['СЧЁТ', '12:14'],
+      ['БРОСКИ', '17/30'],
+      ['ВРЕМЯ', '02:10'],
     ]);
     expect(model.statusLine).toEqual({
       id: 'opponent',
@@ -129,10 +124,10 @@ describe('ScoreBoard', () => {
   it('keeps the regular game metric order without an opponent', () => {
     const { container } = render(<ScoreBoard period={1} timer="02:10" goals={12} shots={17} />);
 
-    expectTextOrder(container.textContent ?? '', ['ПЕРИОД', 'ВРЕМЯ', 'ШАЙБЫ', 'БРОСКИ']);
+    expectTextOrder(container.textContent ?? '', ['ПЕРИОД', 'ШАЙБЫ', 'БРОСКИ', 'ВРЕМЯ']);
   });
 
-  it('puts duel time before score when an opponent is present', () => {
+  it('puts duel time after score and shots when an opponent is present', () => {
     const { container } = render(
       <ScoreBoard
         period={1}
@@ -153,6 +148,6 @@ describe('ScoreBoard', () => {
       />,
     );
 
-    expectTextOrder(container.textContent ?? '', ['ПЕРИОД', 'ВРЕМЯ', 'БРОСКИ', 'СЧЁТ']);
+    expectTextOrder(container.textContent ?? '', ['ПЕРИОД', 'СЧЁТ', 'БРОСКИ', 'ВРЕМЯ']);
   });
 });

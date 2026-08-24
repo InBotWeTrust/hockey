@@ -312,6 +312,14 @@
   );
 }
 
+.game-scoreboard__row--dense .game-scoreboard__metric {
+  padding-inline: clamp(2px, 1.2cqw, 6px);
+}
+
+.game-scoreboard__row--dense .game-scoreboard__value {
+  font-size: clamp(14px, 5.4cqw, 22px);
+}
+
 .game-scoreboard__label {
   display: block;
   max-width: 100%;

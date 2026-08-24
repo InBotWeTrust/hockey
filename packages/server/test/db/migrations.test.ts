@@ -127,6 +127,14 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     );
     expect(seededBonusGames.rows.reduce((total, game) => total + game.reward_stars, 0)).toBe(30);
 
+    const nonLinearBonusPeriods = await pool.query<{ count: string }>(
+      `select count(*)::text as count
+         from bonus_game
+         cross join lateral jsonb_array_elements(period_rules) as period
+        where period->>'goaliePattern' <> 'linear'`,
+    );
+    expect(nonLinearBonusPeriods.rows[0]?.count).toBe('0');
+
     const attemptColumns = await pool.query<{ column_name: string }>(
       `select column_name from information_schema.columns
         where table_schema = 'public' and table_name = 'bonus_game_attempt'`,
@@ -392,6 +400,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '057_amateur_no_inventory_penalty_settings.sql',
       '058_bonus_games_and_home_arenas.sql',
       '059_seed_bonus_games.sql',
+      '060_bonus_games_linear_goalies.sql',
     ]);
   });
 
@@ -719,6 +728,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '057_amateur_no_inventory_penalty_settings.sql',
       '058_bonus_games_and_home_arenas.sql',
       '059_seed_bonus_games.sql',
+      '060_bonus_games_linear_goalies.sql',
     ]);
 
     const activeInventory = await pool.query<{

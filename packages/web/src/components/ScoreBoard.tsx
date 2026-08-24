@@ -107,25 +107,12 @@ export function buildGameScoreboardModel({
       }
     : undefined;
 
-  const rows: GameScoreboardRow[] =
-    periodsTotal === 1
-      ? [
-          {
-            id: 'timer',
-            metrics: [{ ...timerMetric, emphasis: 'large' }],
-          },
-          {
-            id: 'summary',
-            metrics: [{ ...periodMetric, emphasis: 'small' }, scoreMetric, shotsMetric],
-          },
-        ]
-      : [
-          { id: 'status', metrics: [periodMetric, timerMetric] },
-          {
-            id: 'score',
-            metrics: opponent ? [shotsMetric, scoreMetric] : [scoreMetric, shotsMetric],
-          },
-        ];
+  const rows: GameScoreboardRow[] = [
+    {
+      id: 'summary',
+      metrics: [periodMetric, scoreMetric, shotsMetric, timerMetric],
+    },
+  ];
 
   return {
     rows,
@@ -148,7 +135,7 @@ export function GameScoreboard({
             key={row.id}
             className={`game-scoreboard__row${
               row.variant === 'secondary' ? ' game-scoreboard__row--secondary' : ''
-            }`}
+            }${row.metrics.length >= 4 ? ' game-scoreboard__row--dense' : ''}`}
             data-testid={`scoreboard-row-${row.id}`}
             style={{ gridTemplateColumns: `repeat(${row.metrics.length}, minmax(0, 1fr))` }}
           >
