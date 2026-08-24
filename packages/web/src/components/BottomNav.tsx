@@ -2,7 +2,6 @@ import { useEffect, useRef } from 'react';
 import { useLocation, useNavigate, type Location } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Gamepad2, MessageCircle, Package, ShieldCheck, User } from 'lucide-react';
-import { motion } from 'motion/react';
 import { apiFetch } from '../api/apiFetch.js';
 import { achievementKeys, fetchAchievements } from '../api/achievements.js';
 import { fetchAmateurEvents, type AmateurDuelMatch } from '../api/amateurDuel.js';
@@ -452,15 +451,6 @@ function NavTab({ label, active, icon, onClick, disabled = false }: NavTabProps)
     >
       <span className={`bottom-nav__icon-wrap${active ? ' bottom-nav__icon-wrap--active' : ''}`}>
         {icon}
-        {active && (
-          <motion.span
-            layoutId="bottom-nav-active-indicator"
-            className="bottom-nav__active-indicator"
-            data-motion-indicator="shared"
-            aria-hidden="true"
-            transition={{ type: 'spring', stiffness: 430, damping: 34, mass: 0.85 }}
-          />
-        )}
       </span>
     </button>
   );

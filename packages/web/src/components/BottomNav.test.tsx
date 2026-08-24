@@ -122,9 +122,7 @@ describe('BottomNav remembered navigation', () => {
     expect(sectionsTab).toHaveAttribute('aria-current', 'page');
     expect(sectionsTab).toHaveClass('bottom-nav__tab--active');
     expect(sectionsTab.querySelector('.bottom-nav__icon-wrap--active')).toBeInTheDocument();
-    expect(
-      sectionsTab.querySelector('.bottom-nav__active-indicator[data-motion-indicator="shared"]'),
-    ).toBeInTheDocument();
+    expect(sectionsTab.querySelector('.bottom-nav__active-indicator')).toBeNull();
     expect(gameTab.querySelector('.bottom-nav__icon-wrap--active')).toBeNull();
   });
 
