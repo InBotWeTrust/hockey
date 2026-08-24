@@ -142,8 +142,6 @@ export function SectionsScreen(): JSX.Element {
           gap: 16,
         }}
       >
-        <div className="section-label section-label--page">Разделы</div>
-
         <section className="sections-group" aria-labelledby="sections-quick-access-title">
           <h2 id="sections-quick-access-title" className="section-label sections-group__title">
             Быстрый доступ
