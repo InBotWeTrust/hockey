@@ -3,7 +3,9 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
 import { fetchAchievements } from '../api/achievements.js';
+import { apiFetch } from '../api/apiFetch.js';
 import { fetchWeeklyChallenge } from '../api/weeklyChallenge.js';
+import type { ProfileData } from './profileTypes.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
 import { BONUS_GAME_SECTION_ARTWORK } from '../game/bonusGameAssets.js';
@@ -57,6 +59,10 @@ export function SectionsScreen(): JSX.Element {
     queryKey: ['achievements', 'section'],
     queryFn: fetchAchievements,
   });
+  const profileQuery = useQuery<ProfileData>({
+    queryKey: ['profile'],
+    queryFn: () => apiFetch<ProfileData>('/me'),
+  });
 
   useEffect(() => {
     void refreshDaily();
@@ -68,7 +74,10 @@ export function SectionsScreen(): JSX.Element {
     dailyData?.amateur_unlock_goals_required ?? DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED,
   );
   const amateurGoals = Math.min(amateurUnlockGoalsRequired, dailyData?.lifetime_total_goals ?? 0);
-  const isAmateurUnlocked = (dailyData?.lifetime_total_goals ?? 0) >= amateurUnlockGoalsRequired;
+  const isAmateurUnlocked =
+    profileQuery.data?.competitionLevel === 'amateur' ||
+    profileQuery.data?.competitionLevel === 'professional' ||
+    (dailyData?.lifetime_total_goals ?? 0) >= amateurUnlockGoalsRequired;
   const trainingShotsLimit = trainingData?.shots_limit ?? 500;
   const trainingShotsTaken = trainingData?.shots_taken ?? 0;
   const dailyShotsLimit = (dailyData?.shots_per_period ?? 30) * (dailyData?.total_periods ?? 3);

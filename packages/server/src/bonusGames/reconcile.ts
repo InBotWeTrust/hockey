@@ -13,10 +13,7 @@ interface PeriodAggregate {
   goals: number;
 }
 
-async function lockAttempt(
-  client: PoolClient,
-  attemptId: string,
-): Promise<BonusGameAttemptRow> {
+async function lockAttempt(client: PoolClient, attemptId: string): Promise<BonusGameAttemptRow> {
   const { rows } = await client.query<BonusGameAttemptRow>(
     'select * from bonus_game_attempt where id = $1 for update',
     [attemptId],

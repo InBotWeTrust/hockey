@@ -696,7 +696,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
 
   it('fails the attempt at final-period quota in the accepted-shot transaction and keeps duplicate retry idempotent', async () => {
     const userId = await createUser();
-    const game = await createGame({ targetGoals: 5 });
+    const game = await createGame({ targetGoals: 2 });
     const attemptId = await createActiveAttempt(userId, game.id);
     await submitBonusShot(pool, {
       userId,

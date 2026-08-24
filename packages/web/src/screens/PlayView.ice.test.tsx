@@ -51,7 +51,9 @@ vi.mock('../game/RinkSvg.js', () => ({
 }));
 
 function rinkLayerChildren(): { visible: boolean }[] {
-  const layer = pixiHarness.app?.stage.children[0] as { children?: { visible: boolean }[] } | undefined;
+  const layer = pixiHarness.app?.stage.children[0] as
+    | { children?: { visible: boolean }[] }
+    | undefined;
   return layer?.children ?? [];
 }
 

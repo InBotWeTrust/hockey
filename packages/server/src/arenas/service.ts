@@ -28,10 +28,7 @@ function toSnapshot(row: ArenaRow): ArenaSnapshot {
   };
 }
 
-export function toUserArenaDTO(
-  arena: ArenaSnapshot,
-  selectionId: string | null,
-): UserArenaDTO {
+export function toUserArenaDTO(arena: ArenaSnapshot, selectionId: string | null): UserArenaDTO {
   return {
     id: arena.id,
     selection_id: selectionId,
@@ -56,10 +53,7 @@ async function fetchDefaultArena(db: Queryable): Promise<ArenaSnapshot> {
   return toSnapshot(row);
 }
 
-export async function resolveEffectiveArena(
-  db: Queryable,
-  userId: string,
-): Promise<ArenaSnapshot> {
+export async function resolveEffectiveArena(db: Queryable, userId: string): Promise<ArenaSnapshot> {
   const { rows } = await db.query<ArenaRow>(
     `select a.id, a.slug, a.title, a.artwork_url, a.thumbnail_url, a.is_selectable
        from users u
@@ -114,9 +108,7 @@ export async function listUserArenas(
   }
 
   return {
-    arenas: available.rows.map((arena) =>
-      toUserArenaDTO(toSnapshot(arena), arena.selection_id),
-    ),
+    arenas: available.rows.map((arena) => toUserArenaDTO(toSnapshot(arena), arena.selection_id)),
     selected_arena: toUserArenaDTO(selected, selected.slug === 'default' ? null : selected.id),
   };
 }
@@ -197,8 +189,7 @@ export async function resolveDuelVenue(
   assertRandomUnit(input.randomUnit);
 
   if (input.policy === 'random_participant_home') {
-    const homeUserId =
-      input.randomUnit < 0.5 ? input.challengerUserId : input.opponentUserId;
+    const homeUserId = input.randomUnit < 0.5 ? input.challengerUserId : input.opponentUserId;
     const arena = await resolveEffectiveArena(client, homeUserId);
     return resolvedVenue(input.policy, homeUserId, arena);
   }
@@ -219,8 +210,6 @@ export async function resolveDuelVenue(
   const selected =
     rows.length === 0
       ? await fetchDefaultArena(client)
-      : toSnapshot(
-          rows[Math.min(rows.length - 1, Math.floor(input.randomUnit * rows.length))]!,
-        );
+      : toSnapshot(rows[Math.min(rows.length - 1, Math.floor(input.randomUnit * rows.length))]!);
   return resolvedVenue(input.policy, null, selected);
 }

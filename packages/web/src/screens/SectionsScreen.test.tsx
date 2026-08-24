@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
@@ -10,6 +10,9 @@ interface MockSectionsData {
   achievementsUnclaimedCount?: number;
   weeklyChallenge?: Record<string, unknown> | null;
   weeklyPendingRewards?: Array<Record<string, unknown>>;
+  dailyLifetimeTotalGoals?: number;
+  profileCompetitionLevel?: 'beginner' | 'amateur' | 'professional';
+  profileRequest?: 'error' | 'loading';
 }
 
 function renderSections(): void {
@@ -20,15 +23,24 @@ function renderSections(): void {
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={['/sections']}>
         <SectionsScreen />
+        <LocationProbe />
       </MemoryRouter>
     </QueryClientProvider>,
   );
+}
+
+function LocationProbe(): JSX.Element {
+  const location = useLocation();
+  return <output data-testid="location">{location.pathname}</output>;
 }
 
 function mockSectionsApi({
   achievementsUnclaimedCount = 1,
   weeklyChallenge = null,
   weeklyPendingRewards = [],
+  dailyLifetimeTotalGoals = 300,
+  profileCompetitionLevel,
+  profileRequest,
 }: MockSectionsData = {}): void {
   vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL) => {
     const url = String(input);
@@ -62,11 +74,28 @@ function mockSectionsApi({
             shots_per_period: 30,
             total_periods: 3,
             daily_total_shots: 0,
-            lifetime_total_goals: 300,
+            lifetime_total_goals: dailyLifetimeTotalGoals,
             amateur_unlock_goals_required: 300,
           }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         ),
+      );
+    }
+    if (url.endsWith('/api/me')) {
+      if (profileRequest === 'loading') return new Promise<Response>(() => undefined);
+      if (profileRequest === 'error') {
+        return Promise.resolve(
+          new Response(JSON.stringify({ error: 'profile unavailable' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({ competitionLevel: profileCompetitionLevel }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
       );
     }
     if (url.endsWith('/api/duel/training/state')) {
@@ -136,6 +165,48 @@ describe('SectionsScreen', () => {
     expect(bonusIndex).toBe(amateurIndex + 1);
     expect(proIndex).toBe(bonusIndex + 1);
   });
+
+  it('opens bonus games for a server-authorized amateur below the daily goal threshold', async () => {
+    mockSectionsApi({ dailyLifetimeTotalGoals: 0, profileCompetitionLevel: 'amateur' });
+    renderSections();
+
+    expect(await screen.findByText('Игры и награды за первое прохождение')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Бонусные игры' }));
+
+    expect(screen.getByTestId('location')).toHaveTextContent('/bonus-games');
+    expect(screen.queryByRole('dialog', { name: 'Нужен любительский уровень' })).toBeNull();
+  });
+
+  it('keeps bonus games locked for a beginner below the daily goal threshold', async () => {
+    mockSectionsApi({ dailyLifetimeTotalGoals: 0, profileCompetitionLevel: 'beginner' });
+    renderSections();
+
+    await waitFor(() => {
+      expect(
+        vi.mocked(globalThis.fetch).mock.calls.some(([input]) => String(input).endsWith('/api/me')),
+      ).toBe(true);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Бонусные игры' }));
+
+    expect(screen.getByTestId('location')).toHaveTextContent('/sections');
+    expect(screen.getByRole('dialog', { name: 'Нужен любительский уровень' })).toBeInTheDocument();
+  });
+
+  it.each([{ profileRequest: 'loading' as const }, { profileRequest: 'error' as const }])(
+    'keeps the daily-goal fallback when the profile request is $profileRequest',
+    async ({ profileRequest }) => {
+      mockSectionsApi({
+        dailyLifetimeTotalGoals: 300,
+        profileRequest,
+      });
+      renderSections();
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Бонусные игры' }));
+
+      expect(screen.getByTestId('location')).toHaveTextContent('/bonus-games');
+      expect(screen.queryByRole('dialog', { name: 'Нужен любительский уровень' })).toBeNull();
+    },
+  );
 
   it('summarizes achievement rewards and weekly challenge actions on the achievements card', async () => {
     mockSectionsApi({

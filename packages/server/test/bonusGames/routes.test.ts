@@ -761,7 +761,7 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
   });
 
   it('returns failed state on the accepted final quota shot and keeps its duplicate idempotent', async () => {
-    const game = await createGame({ periods: [QUOTA_PERIOD], targetGoals: 6 });
+    const game = await createGame({ periods: [QUOTA_PERIOD], targetGoals: 2 });
     const attempt = await startAttempt(game.id);
     const active = await startPeriod(attempt.id);
     await submitTimedRouteShot(active, {
