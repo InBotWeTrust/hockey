@@ -20,6 +20,7 @@ import { chatKeys } from '../../lib/queryKeys.js';
 import { convertChatAvatarToWebp } from '../../lib/chatAvatarImage.js';
 import { UserAvatar } from '../components/UserAvatar.js';
 import { UserProfileSheet } from '../components/UserProfileSheet.js';
+import { AccessibleModal } from '../../components/AccessibleModal.js';
 
 function formatMemberCount(n: number): string {
   const mod10 = n % 10;
@@ -441,25 +442,26 @@ function GroupChatProfileModal({
   const canSave = name.trim().length > 0 && !saveMutation.isPending;
 
   return (
-    <div
-      className="modal-backdrop"
-      onClick={onClose}
-      style={{ alignItems: 'flex-start', paddingTop: 'calc(48px + var(--app-safe-top))' }}
+    <AccessibleModal
+      title="Настройки чата"
+      copy="Название и описание группового чата."
+      onRequestClose={onClose}
+      closeBlocked={saveMutation.isPending}
+      backdropStyle={{ alignItems: 'flex-start', paddingTop: 'calc(48px + var(--app-safe-top))' }}
+      cardStyle={{ width: 'min(420px, calc(100vw - 28px))' }}
+      headerAction={
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label="Закрыть"
+          disabled={saveMutation.isPending}
+          onClick={onClose}
+        >
+          <X size={15} />
+        </button>
+      }
     >
-      <div
-        className="modal-card"
-        onClick={(event) => event.stopPropagation()}
-        style={{ width: 'min(420px, calc(100vw - 28px))', display: 'grid', gap: 16 }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ flex: 1 }}>
-            <div className="modal-title">Настройки чата</div>
-            <div className="modal-copy">Название и описание группового чата.</div>
-          </div>
-          <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
-            <X size={15} />
-          </button>
-        </div>
+      <div style={{ display: 'grid', gap: 16 }}>
         <label style={{ display: 'grid', gap: 6, fontSize: 12, color: 'var(--muted)' }}>
           Название
           <input
@@ -491,7 +493,7 @@ function GroupChatProfileModal({
           Сохранить
         </button>
       </div>
-    </div>
+    </AccessibleModal>
   );
 }
 
@@ -546,25 +548,26 @@ function GroupMembersModal({
   }
 
   return (
-    <div
-      className="modal-backdrop"
-      onClick={onClose}
-      style={{ alignItems: 'flex-start', paddingTop: 'calc(48px + var(--app-safe-top))' }}
+    <AccessibleModal
+      title="Участники"
+      copy="Добавить игроков в групповой чат."
+      onRequestClose={onClose}
+      closeBlocked={addMutation.isPending}
+      backdropStyle={{ alignItems: 'flex-start', paddingTop: 'calc(48px + var(--app-safe-top))' }}
+      cardStyle={{ width: 'min(420px, calc(100vw - 28px))' }}
+      headerAction={
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label="Закрыть"
+          disabled={addMutation.isPending}
+          onClick={onClose}
+        >
+          <X size={15} />
+        </button>
+      }
     >
-      <div
-        className="modal-card"
-        onClick={(event) => event.stopPropagation()}
-        style={{ width: 'min(420px, calc(100vw - 28px))', display: 'grid', gap: 16 }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ flex: 1 }}>
-            <div className="modal-title">Участники</div>
-            <div className="modal-copy">Добавить игроков в групповой чат.</div>
-          </div>
-          <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
-            <X size={15} />
-          </button>
-        </div>
+      <div style={{ display: 'grid', gap: 16 }}>
         <div style={{ display: 'grid', gap: 10 }}>
           <div className="chat-create-search">
             <Search size={14} color="var(--muted)" />
@@ -644,7 +647,7 @@ function GroupMembersModal({
           Добавить
         </button>
       </div>
-    </div>
+    </AccessibleModal>
   );
 }
 
