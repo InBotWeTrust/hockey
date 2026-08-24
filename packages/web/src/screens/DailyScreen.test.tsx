@@ -1005,9 +1005,9 @@ describe('DailyScreen', () => {
     const shotButton = await screen.findByRole('button', { name: 'БРОСОК' });
     expect(shotButton).toBeEnabled();
     const scoreboardText = screen.getByLabelText('Игровое табло').textContent ?? '';
-    expect(scoreboardText.indexOf('ВРЕМЯ')).toBeGreaterThan(scoreboardText.indexOf('ПЕРИОД'));
-    expect(scoreboardText.indexOf('ГОЛЫ')).toBeGreaterThan(scoreboardText.indexOf('ВРЕМЯ'));
+    expect(scoreboardText.indexOf('ГОЛЫ')).toBeGreaterThan(scoreboardText.indexOf('ПЕРИОД'));
     expect(scoreboardText.indexOf('БРОСКИ')).toBeGreaterThan(scoreboardText.indexOf('ГОЛЫ'));
+    expect(scoreboardText.indexOf('ВРЕМЯ')).toBeGreaterThan(scoreboardText.indexOf('БРОСКИ'));
     fireEvent.click(screen.getByRole('button', { name: 'Звук в разработке' }));
     expect(screen.getByRole('status')).toHaveTextContent('Звук в разработке');
     expect(screen.getByText('00/30')).toBeInTheDocument();
