@@ -159,7 +159,25 @@ describe('BonusGamesScreen', () => {
     expect(screen.queryByText('Разделы')).not.toBeInTheDocument();
   });
 
-  it('renders server-provided sequence and paid states without deriving availability', async () => {
+  it('explains the bonus game rules in an accessible modal', async () => {
+    mockCatalog([card({})]);
+    renderCatalog();
+
+    const infoButton = await screen.findByRole('button', { name: 'Правила бонусных игр' });
+    infoButton.focus();
+    fireEvent.click(infoButton);
+
+    const dialog = screen.getByRole('dialog', { name: 'Правила бонусных игр' });
+    expect(dialog).toHaveTextContent('Игры открываются последовательно');
+    expect(dialog).toHaveTextContent('начисляются только за первое прохождение');
+    expect(dialog).toHaveTextContent('площадка открывается для домашних матчей');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Понятно' }));
+    expect(screen.queryByRole('dialog', { name: 'Правила бонусных игр' })).not.toBeInTheDocument();
+    expect(infoButton).toHaveFocus();
+  });
+
+  it('uses action buttons for availability without rendering a separate status line', async () => {
     mockCatalog([
       card({ id: 'beach', title: 'Пляж', state: 'completed', is_completed: true }),
       card({
@@ -182,9 +200,12 @@ describe('BonusGamesScreen', () => {
     ]);
     renderCatalog();
 
-    expect(await screen.findByText('Нужно пройти: Пляж')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Открыть за 1 звезду' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Открыть за 1 звезду' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Играть снова' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Закрыта' })).toBeInTheDocument();
+    expect(screen.getByText('Повторная игра без награды')).toBeInTheDocument();
+    expect(screen.queryByText('Нужно пройти: Пляж')).not.toBeInTheDocument();
+    expect(screen.queryByText('Готова к игре')).not.toBeInTheDocument();
   });
 
   it('focuses arena thumbnails on the location above the ice', async () => {
@@ -268,7 +289,7 @@ describe('BonusGamesScreen', () => {
     );
   });
 
-  it('uses Russian plural forms for price, periods, shots, and first-clear rewards', async () => {
+  it('renders first-clear rewards as accessible resource icons', async () => {
     mockCatalog([
       card({
         state: 'purchase_required',
@@ -285,11 +306,25 @@ describe('BonusGamesScreen', () => {
     ]);
     renderCatalog();
 
-    expect(await screen.findByText('Открытие: 22 звезды')).toBeInTheDocument();
-    expect(screen.getByText('Цель: 21 шайба · 2 периода · 21 бросок')).toBeInTheDocument();
-    expect(
-      screen.getByText('За первое прохождение: 21 монета · 22 звезды · 25 очков опыта'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Цель: 21 шайба · 2 периода · 21 бросок')).toBeInTheDocument();
+    expect(screen.getByText('За первое прохождение')).toBeInTheDocument();
+    expect(screen.getByLabelText('Монеты: 21')).toHaveTextContent('21');
+    expect(screen.getByLabelText('Звёзды: 22')).toHaveTextContent('22');
+    expect(screen.getByLabelText('Опыт: 25')).toHaveTextContent('25');
+    expect(screen.queryByText(/Новая домашняя площадка:/)).not.toBeInTheDocument();
+  });
+
+  it('omits zero first-clear rewards and the whole reward block when all values are zero', async () => {
+    mockCatalog([
+      card({ id: 'some-rewards', reward: { coins: 0, stars: 3, experience: 0 } }),
+      card({ id: 'no-rewards', title: 'Без награды', reward: { coins: 0, stars: 0, experience: 0 } }),
+    ]);
+    renderCatalog();
+
+    expect(await screen.findByLabelText('Звёзды: 3')).toHaveTextContent('3');
+    expect(screen.queryByLabelText('Монеты: 0')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Опыт: 0')).not.toBeInTheDocument();
+    expect(screen.getAllByText('За первое прохождение')).toHaveLength(1);
   });
 
   it('keeps the created attempt id in the play URL for durable reload', async () => {

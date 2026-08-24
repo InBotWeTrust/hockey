@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, CircleDollarSign, Info, Star, TrendingUp } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { rewardColor, type RewardTone } from '../app/rewardColors.js';
 import {
   fetchBonusGames,
   purchaseBonusGame,
@@ -23,20 +24,6 @@ function numberText(value: number): string {
   return new Intl.NumberFormat('ru-RU', { useGrouping: false }).format(value);
 }
 
-function cardStatusText(game: BonusGameCard): string {
-  if (game.state === 'level_locked') return 'Нужен любительский уровень';
-  if (game.state === 'sequence_locked') {
-    return game.prerequisite ? `Нужно пройти: ${game.prerequisite.title}` : 'Обновите каталог.';
-  }
-  if (game.state === 'purchase_required') {
-    return `Открытие: ${formatRussianCount(game.unlock_price_stars, 'звезда', 'звезды', 'звёзд')}`;
-  }
-  if (game.state === 'in_progress') return 'Попытка в процессе';
-  if (game.state === 'completed') return 'Пройдено · повтор без награды';
-  if (game.state === 'archived') return 'Недоступна для новых попыток';
-  return 'Готова к игре';
-}
-
 function actionLabel(game: BonusGameCard): string {
   if (game.state === 'purchase_required') {
     return `Открыть за ${formatRussianCount(game.unlock_price_stars, 'звезду', 'звезды', 'звёзд')}`;
@@ -56,6 +43,7 @@ export function BonusGamesScreen(): JSX.Element {
   const queryClient = useQueryClient();
   const [purchaseGame, setPurchaseGame] = useState<BonusGameCard | null>(null);
   const [purchaseNotice, setPurchaseNotice] = useState<string | null>(null);
+  const [rulesOpen, setRulesOpen] = useState(false);
   const catalogQuery = useQuery({ queryKey: ['bonus-games'], queryFn: fetchBonusGames });
   const inventoryQuery = useQuery({ queryKey: ['inventory', 'me'], queryFn: fetchMyInventory });
   const startMutation = useMutation({
@@ -119,10 +107,18 @@ export function BonusGamesScreen(): JSX.Element {
           >
             <ArrowLeft size={16} aria-hidden="true" />
           </button>
-          <div>
+          <div className="bonus-games-catalog__heading">
             <h1 id="bonus-games-title" className="bonus-games-catalog__title">
               Бонусные игры
             </h1>
+            <button
+              type="button"
+              className="section-info-btn"
+              onClick={() => setRulesOpen(true)}
+              aria-label="Правила бонусных игр"
+            >
+              <Info size={12} aria-hidden="true" />
+            </button>
           </div>
         </header>
 
@@ -183,7 +179,28 @@ export function BonusGamesScreen(): JSX.Element {
           }
         />
       )}
+      {rulesOpen && <BonusGamesRulesModal onClose={() => setRulesOpen(false)} />}
     </main>
+  );
+}
+
+function BonusGamesRulesModal({ onClose }: { onClose: () => void }): JSX.Element {
+  return (
+    <AccessibleModal title="Правила бонусных игр" onClose={onClose}>
+      <ol className="bonus-games-rules">
+        <li>Игры открываются последовательно: сначала нужно пройти предыдущую.</li>
+        <li>Некоторые игры бесплатные, другие нужно один раз открыть за звёзды.</li>
+        <li>Для прохождения выполните указанную цель за доступные периоды и броски.</li>
+        <li>Монеты, звёзды и опыт начисляются только за первое прохождение.</li>
+        <li>После первого прохождения площадка открывается для домашних матчей.</li>
+        <li>Пройденные игры можно повторять, но без повторной награды.</li>
+      </ol>
+      <div className="modal-actions">
+        <button type="button" className="modal-primary btn btn--cta" onClick={onClose}>
+          Понятно
+        </button>
+      </div>
+    </AccessibleModal>
   );
 }
 
@@ -200,25 +217,26 @@ function BonusGameCard({
 }): JSX.Element {
   const canAct =
     game.state === 'purchase_required' || game.active_attempt !== null || isPlayable(game);
-  const firstReward =
-    game.state === 'completed'
-      ? 'Повторная игра без награды'
-      : `За первое прохождение: ${formatRussianCount(
-          game.reward.coins,
-          'монета',
-          'монеты',
-          'монет',
-        )} · ${formatRussianCount(
-          game.reward.stars,
-          'звезда',
-          'звезды',
-          'звёзд',
-        )} · ${formatRussianCount(
-          game.reward.experience,
-          'очко опыта',
-          'очка опыта',
-          'очков опыта',
-        )}`;
+  const firstClearRewards = [
+    {
+      label: 'Монеты',
+      value: game.reward.coins,
+      tone: 'coin' as const,
+      icon: <CircleDollarSign size={15} strokeWidth={2.55} />,
+    },
+    {
+      label: 'Звёзды',
+      value: game.reward.stars,
+      tone: 'star' as const,
+      icon: <Star size={15} strokeWidth={2.55} fill="currentColor" />,
+    },
+    {
+      label: 'Опыт',
+      value: game.reward.experience,
+      tone: 'experience' as const,
+      icon: <TrendingUp size={15} strokeWidth={2.55} />,
+    },
+  ].filter((reward) => reward.value > 0);
   const totalShots = game.period_rules.reduce((total, period) => total + period.shots_limit, 0);
 
   return (
@@ -233,14 +251,29 @@ function BonusGameCard({
         <div className="bonus-game-card__eyebrow">Игра {numberText(game.sort_order)}</div>
         <h2 className="bonus-game-card__title">{game.title}</h2>
         {game.description && <p className="bonus-game-card__description">{game.description}</p>}
-        <p className="bonus-game-card__status">{cardStatusText(game)}</p>
         <p className="bonus-game-card__details">
           Цель: {formatRussianCount(game.target_goals, 'шайба', 'шайбы', 'шайб')} ·{' '}
           {formatRussianCount(game.total_periods, 'период', 'периода', 'периодов')} ·{' '}
           {formatRussianCount(totalShots, 'бросок', 'броска', 'бросков')}
         </p>
-        <p className="bonus-game-card__reward">{firstReward}</p>
-        <p className="bonus-game-card__arena">Новая домашняя площадка: {game.arena.title}</p>
+        {game.state === 'completed' ? (
+          <p className="bonus-game-card__reward-note">Повторная игра без награды</p>
+        ) : firstClearRewards.length > 0 ? (
+          <div className="bonus-game-card__reward">
+            <span className="bonus-game-card__reward-title">За первое прохождение</span>
+            <div className="bonus-game-card__reward-list">
+              {firstClearRewards.map((reward) => (
+                <BonusGameReward
+                  key={reward.tone}
+                  label={reward.label}
+                  value={reward.value}
+                  tone={reward.tone}
+                  icon={reward.icon}
+                />
+              ))}
+            </div>
+          </div>
+        ) : null}
         <button
           type="button"
           className="btn btn--cta bonus-game-card__action"
@@ -251,6 +284,31 @@ function BonusGameCard({
         </button>
       </div>
     </article>
+  );
+}
+
+function BonusGameReward({
+  label,
+  value,
+  tone,
+  icon,
+}: {
+  label: string;
+  value: number;
+  tone: RewardTone;
+  icon: JSX.Element;
+}): JSX.Element {
+  return (
+    <span className="bonus-game-card__reward-item" aria-label={`${label}: ${value}`}>
+      <span
+        className="bonus-game-card__reward-icon"
+        style={{ color: rewardColor(tone) }}
+        aria-hidden="true"
+      >
+        {icon}
+      </span>
+      <span>{numberText(value)}</span>
+    </span>
   );
 }
 

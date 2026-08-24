@@ -571,6 +571,30 @@
   line-height: 1.04;
 }
 
+.bonus-games-catalog__heading {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.bonus-games-rules {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+  padding-left: 20px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.bonus-games-rules li::marker {
+  color: var(--ink);
+  font-weight: 900;
+}
+
 .bonus-games-catalog__notice {
   border: 1px solid rgba(255, 255, 255, 0.72);
   border-radius: 18px;
@@ -632,9 +656,8 @@
 
 .bonus-game-card__description,
 .bonus-game-card__details,
-.bonus-game-card__reward,
-.bonus-game-card__arena,
-.bonus-game-card__status {
+.bonus-game-card__reward-note,
+.bonus-game-card__reward-title {
   margin: 0;
   font-size: 12px;
   font-weight: 750;
@@ -646,14 +669,40 @@
   color: rgba(15, 23, 42, 0.62);
 }
 
-.bonus-game-card__status {
-  color: #0f766e;
-  font-weight: 900;
+.bonus-game-card__reward-note {
+  color: rgba(15, 23, 42, 0.72);
 }
 
-.bonus-game-card__reward,
-.bonus-game-card__arena {
+.bonus-game-card__reward {
+  display: grid;
+  gap: 5px;
+}
+
+.bonus-game-card__reward-title {
   color: rgba(15, 23, 42, 0.72);
+}
+
+.bonus-game-card__reward-list {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.bonus-game-card__reward-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.bonus-game-card__reward-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .bonus-game-card__action {
