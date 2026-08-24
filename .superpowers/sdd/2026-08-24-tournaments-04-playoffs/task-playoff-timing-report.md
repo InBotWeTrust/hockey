@@ -100,3 +100,40 @@ Implementation commit: `246bdab` (`fix: honor tournament tie break timing`).
 ### Concerns
 
 None found in scope.
+
+## Review round 2 correction
+
+Review file: `task-playoff-timing-review-2.md`.
+
+Implementation commit: `754c033` (`fix: use rescheduled tie break window`).
+
+### Root cause
+
+`rescheduleTournamentFixture()` updates a fixture's `window_ends_at`, but intentionally does not rewrite the aggregate `tournament_round.ends_at`. `playoffBaseTime()` added the saved tie-break break to that stale aggregate, while it considered the actual later fixture end only without the break. A playoff could therefore begin immediately after a delayed final tie-break fixture.
+
+### Red-green evidence
+
+- Regression: `starts playoffs after the saved break from a rescheduled last tie-break fixture` creates a tie-break round with a 30-minute saved break, reschedules its final fixture through the real `rescheduleTournamentFixture()` service from `11:00–12:00` to `12:00–13:00`, then marks the round/fixture settled to model the completed tie-break.
+- Red command: `TEST_DATABASE_URL=... TEST_REDIS_URL=... pnpm --filter @hockey/server exec vitest run test/tournament/service.integration.test.ts -t "starts playoffs after the saved break from a rescheduled last tie-break fixture"`
+- Red result: first playoff round started at `2030-09-01T13:00:00.000Z`; expected `2030-09-01T13:30:00.000Z`.
+- Green: the same regression passed after `playoffBaseTime()` queried `max(tie-break fixture.window_ends_at)` for the selected tie-break round and added its saved `roundBreakMs`; it falls back to `round.ends_at` only when that round has no fixture window.
+
+### Final verification for review 2
+
+| Command | Result |
+| --- | --- |
+| `TEST_DATABASE_URL=... TEST_REDIS_URL=... pnpm --filter @hockey/server exec vitest run test/tournament/playoffs.test.ts test/tournament/service.integration.test.ts` | PASS — 2 files, 17 tests |
+| `pnpm --filter @hockey/server typecheck` | PASS |
+| `pnpm --filter @hockey/server exec eslint src/tournament/service.ts test/tournament/service.integration.test.ts` | PASS |
+| `pnpm exec prettier --check packages/server/src/tournament/service.ts packages/server/test/tournament/service.integration.test.ts` | PASS |
+| `git diff --check` | PASS |
+
+### Review 2 self-review
+
+- The saved break is now coupled to the actual maximum tie-break fixture end, including an administrator's later reschedule.
+- The generic base candidate still independently includes all regular/tie-break fixture ends, so no other dependency can move scheduling earlier.
+- Only the tournament service and its timing integration test changed in implementation commit `754c033`; unrelated commits/files were preserved.
+
+### Concerns
+
+None found in scope.
