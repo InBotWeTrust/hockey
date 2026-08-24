@@ -26,6 +26,7 @@ import { createObjectStorageClient } from './storage/objectStorage.js';
 import { arenaRoutes } from './arenas/routes.js';
 import { bonusGameRoutes } from './bonusGames/routes.js';
 import { tournamentRoutes } from './tournament/routes.js';
+import { tournamentWs } from './tournament/ws.js';
 
 export interface BuildAppOptions {
   config?: AppConfig;
@@ -117,6 +118,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await app.register(weeklyChallengeRoutes);
   await app.register(chatRoutes, { ...pushVapidOptions, mediaAccessSecret: config.JWT_SECRET });
   await app.register(chatWs, { accessSecret: config.JWT_SECRET });
+  await app.register(tournamentWs, { accessSecret: config.JWT_SECRET });
   await app.register(pushRoutes, pushVapidOptions);
   await app.register(
     adminRoutes,

@@ -29,6 +29,15 @@ import {
 import { openTournamentFixtureSegment } from './fixtureLifecycle.js';
 import { finalizeTournamentDailyDay } from './dailyAggregate.js';
 import { grantTournamentStageRewards } from './rewards.js';
+import {
+  getFixtureLiveState,
+  proposeFixtureLiveTime,
+  respondFixtureLiveProposal,
+} from './live.js';
+import {
+  enqueueTournamentAudiencePush,
+  enqueueTournamentPush,
+} from '../push/tournament.js';
 
 const uuid = z.string().uuid();
 const nullableDate = z.string().datetime({ offset: true }).nullable().default(null);
@@ -148,10 +157,71 @@ export const tournamentRoutes: FastifyPluginAsync = async (app) => {
     },
   );
 
+  app.get('/tournaments/fixtures/:fixtureId/live', authenticated, async (req) => {
+    await requireTournamentFeature(app);
+    const params = z.object({ fixtureId: uuid }).parse(req.params);
+    return { live: await getFixtureLiveState(app.pg, params.fixtureId, req.user.id) };
+  });
+
+  app.post('/tournaments/fixtures/:fixtureId/live/proposals', authenticated, async (req) => {
+    await requireTournamentFeature(app);
+    const params = z.object({ fixtureId: uuid }).parse(req.params);
+    const body = z.object({ proposedAt: z.string().datetime({ offset: true }) }).parse(req.body);
+    const proposal = await proposeFixtureLiveTime(app.pg, {
+      fixtureId: params.fixtureId,
+      userId: req.user.id,
+      proposedAt: new Date(body.proposedAt),
+    });
+    await app.realtime.publish(`tournament:fixture:${params.fixtureId}`, {
+      type: 'tournament:fixture_update',
+      fixtureId: params.fixtureId,
+      sequence: Date.now(),
+      payload: { proposal },
+    });
+    return proposal;
+  });
+
+  app.post(
+    '/tournaments/fixtures/:fixtureId/live/proposals/:proposalId/respond',
+    authenticated,
+    async (req) => {
+      await requireTournamentFeature(app);
+      const params = z.object({ fixtureId: uuid, proposalId: uuid }).parse(req.params);
+      const body = z.object({ accept: z.boolean() }).parse(req.body);
+      const response = await respondFixtureLiveProposal(app.pg, {
+        ...params,
+        userId: req.user.id,
+        accept: body.accept,
+      });
+      await app.realtime.publish(`tournament:fixture:${params.fixtureId}`, {
+        type: 'tournament:fixture_update',
+        fixtureId: params.fixtureId,
+        sequence: Date.now(),
+        payload: { proposal: response },
+      });
+      return response;
+    },
+  );
+
   app.post('/tournaments/:tournamentId/applications', authenticated, async (req) => {
     await requireTournamentFeature(app);
     const params = z.object({ tournamentId: uuid }).parse(req.params);
-    return applyToTournament(app.pg, params.tournamentId, req.user.id);
+    const result = await applyToTournament(app.pg, params.tournamentId, req.user.id);
+    if (result.state === 'approved') {
+      const tournament = await getTournament(app.pg, params.tournamentId, req.user.id);
+      await enqueueTournamentPush(app.pg, {
+        userId: req.user.id,
+        eventType: 'tournament.application_approved',
+        eventKey: `${params.tournamentId}:application-approved:${req.user.id}`,
+        variables: { tournamentTitle: tournament.title },
+        fallback: {
+          title: 'Заявка подтверждена',
+          body: `${tournament.title}: вы участвуете.`,
+          url: '/?view=amateur&section=tournaments',
+        },
+      });
+    }
+    return result;
   });
 
   app.delete('/tournaments/:tournamentId/applications/me', authenticated, async (req) => {
@@ -225,12 +295,31 @@ export const tournamentRoutes: FastifyPluginAsync = async (app) => {
       const params = z
         .object({ tournamentId: uuid, participantId: uuid })
         .parse(req.params);
-      return approveTournamentParticipant(
+      const result = await approveTournamentParticipant(
         app.pg,
         params.tournamentId,
         params.participantId,
         req.user.id,
       );
+      const participant = await app.pg.query<{ user_id: string; title: string }>(
+        `select p.user_id, t.title from tournament_participant p
+           join tournament t on t.id = p.tournament_id where p.id = $1`,
+        [params.participantId],
+      );
+      if (participant.rows[0]) {
+        await enqueueTournamentPush(app.pg, {
+          userId: participant.rows[0].user_id,
+          eventType: 'tournament.application_approved',
+          eventKey: `${params.tournamentId}:application-approved:${participant.rows[0].user_id}`,
+          variables: { tournamentTitle: participant.rows[0].title },
+          fallback: {
+            title: 'Заявка подтверждена',
+            body: `${participant.rows[0].title}: вы участвуете.`,
+            url: '/?view=amateur&section=tournaments',
+          },
+        });
+      }
+      return result;
     },
   );
 
@@ -253,12 +342,40 @@ export const tournamentRoutes: FastifyPluginAsync = async (app) => {
 
   app.post('/admin/tournaments/:tournamentId/schedule/publish', admin, async (req) => {
     const params = z.object({ tournamentId: uuid }).parse(req.params);
-    return publishRegularSchedule(app.pg, params.tournamentId);
+    const result = await publishRegularSchedule(app.pg, params.tournamentId);
+    const tournament = await getTournament(app.pg, params.tournamentId);
+    await enqueueTournamentAudiencePush(app.pg, {
+      tournamentId: params.tournamentId,
+      eventType: 'tournament.schedule_published',
+      eventKey: `${params.tournamentId}:schedule-published:${tournament.revision}`,
+      variables: { tournamentTitle: tournament.title },
+      fallback: {
+        title: 'Календарь опубликован',
+        body: `Расписание турнира ${tournament.title} готово.`,
+        url: '/?view=amateur&section=tournaments',
+      },
+    });
+    return result;
   });
 
   app.post('/admin/tournaments/:tournamentId/playoffs/start', admin, async (req) => {
     const params = z.object({ tournamentId: uuid }).parse(req.params);
-    return startTournamentPlayoffs(app.pg, params.tournamentId);
+    const result = await startTournamentPlayoffs(app.pg, params.tournamentId);
+    if (result.status === 'playoff') {
+      const tournament = await getTournament(app.pg, params.tournamentId);
+      await enqueueTournamentAudiencePush(app.pg, {
+        tournamentId: params.tournamentId,
+        eventType: 'tournament.playoff_started',
+        eventKey: `${params.tournamentId}:playoff-started`,
+        variables: { tournamentTitle: tournament.title },
+        fallback: {
+          title: 'Начинается плей-офф',
+          body: `Сетка турнира ${tournament.title} опубликована.`,
+          url: '/?view=amateur&section=tournaments',
+        },
+      });
+    }
+    return result;
   });
 
   app.post('/admin/tournaments/:tournamentId/daily/:tournamentDay/finalize', admin, async (req) => {
@@ -272,7 +389,22 @@ export const tournamentRoutes: FastifyPluginAsync = async (app) => {
     const params = z
       .object({ tournamentId: uuid, stage: z.enum(['regular', 'playoff']) })
       .parse(req.params);
-    return grantTournamentStageRewards(app.pg, params.tournamentId, params.stage);
+    const result = await grantTournamentStageRewards(app.pg, params.tournamentId, params.stage);
+    if (params.stage === 'playoff') {
+      const tournament = await getTournament(app.pg, params.tournamentId);
+      await enqueueTournamentAudiencePush(app.pg, {
+        tournamentId: params.tournamentId,
+        eventType: 'tournament.completed',
+        eventKey: `${params.tournamentId}:completed`,
+        variables: { tournamentTitle: tournament.title },
+        fallback: {
+          title: 'Турнир завершён',
+          body: `${tournament.title} завершён. Проверьте итоги и награды.`,
+          url: '/?view=amateur&section=tournaments',
+        },
+      });
+    }
+    return result;
   });
 
   app.delete('/admin/tournaments/:tournamentId', admin, async (req, reply) => {

@@ -2,6 +2,7 @@ import type { Pool, PoolClient } from 'pg';
 import { AppError } from '../plugins/errors.js';
 import { decideNextFixtureSegment, type FixtureSegmentKind } from './segments.js';
 import { rebuildHeadToHeadStandings } from './standingsPersistence.js';
+import { enqueueTournamentPush } from '../push/tournament.js';
 
 interface FixtureContextRow {
   id: string;
@@ -362,6 +363,26 @@ export async function settleTournamentSegmentForDuel(
   }
   if (segment.round_stage === 'regular') {
     await rebuildHeadToHeadStandings(client, segment.tournament_id);
+  }
+  const recipients = await client.query<{ participant_id: string; user_id: string; title: string }>(
+    `select p.id as participant_id, p.user_id, t.title from tournament_participant p
+       join tournament t on t.id = p.tournament_id
+      where p.id = any($1::uuid[])`,
+    [[segment.home_participant_id, segment.away_participant_id].filter(Boolean)],
+  );
+  for (const recipient of recipients.rows) {
+    const won = recipient.participant_id === winnerParticipantId;
+    await enqueueTournamentPush(client, {
+      userId: recipient.user_id,
+      eventType: 'tournament.result_ready',
+      eventKey: `${segment.fixture_id}:result:${recipient.user_id}`,
+      variables: { resultText: won ? 'Победа в турнирном матче' : 'Турнирный матч завершён' },
+      fallback: {
+        title: 'Результат матча',
+        body: won ? 'Победа в турнирном матче' : 'Турнирный матч завершён',
+        url: '/?view=amateur&section=tournaments',
+      },
+    });
   }
   return { fixtureId: segment.fixture_id, completed: true };
 }

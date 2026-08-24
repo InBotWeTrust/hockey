@@ -2,7 +2,7 @@ import type { Pool, PoolClient } from 'pg';
 import type { PushEventType } from './preferences.js';
 import type { WebPushPayload } from './service.js';
 
-export type PushNotificationCategory = 'chat' | 'daily' | 'training' | 'duel' | 'news';
+export type PushNotificationCategory = 'chat' | 'daily' | 'training' | 'duel' | 'tournament' | 'news';
 
 export interface PushNotificationTemplateRow {
   key: PushEventType;
@@ -55,6 +55,16 @@ const TEMPLATE_ORDER: PushEventType[] = [
   'training.available',
   'duel.challenge_received',
   'duel.result_ready',
+  'tournament.application_approved',
+  'tournament.schedule_published',
+  'tournament.fixture_opened',
+  'tournament.live_soon',
+  'tournament.fixture_deadline',
+  'tournament.result_ready',
+  'tournament.rescheduled',
+  'tournament.playoff_started',
+  'tournament.series_next_game',
+  'tournament.completed',
   'news.posted',
 ];
 

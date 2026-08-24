@@ -17,7 +17,13 @@ export type AdminPushNotificationKey =
   | 'duel.challenge_received'
   | 'duel.result_ready'
   | 'news.posted';
-export type AdminPushNotificationCategory = 'chat' | 'daily' | 'training' | 'duel' | 'news';
+export type AdminPushNotificationCategory =
+  | 'chat'
+  | 'daily'
+  | 'training'
+  | 'duel'
+  | 'tournament'
+  | 'news';
 export type AdminPushDeliveryStatus =
   | 'queued'
   | 'processing'

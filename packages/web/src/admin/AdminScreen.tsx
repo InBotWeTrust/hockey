@@ -209,6 +209,7 @@ const pushNotificationCategoryLabels: Record<AdminPushNotificationCategory, stri
   daily: 'Ежедневная игра',
   training: 'Тренировка',
   duel: 'Дуэли',
+  tournament: 'Турниры',
   news: 'Новости',
 };
 
