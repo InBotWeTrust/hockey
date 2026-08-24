@@ -51,3 +51,62 @@ export function expandSeriesSchedule(
     conditional: index + 1 > winsRequired,
   }));
 }
+
+export type PlayoffParticipantSource =
+  | { type: 'seed'; participantId: string }
+  | { type: 'winner' | 'loser'; seriesKey: string };
+
+export interface PlayoffSeriesPlanItem {
+  key: string;
+  roundNumber: number;
+  position: number;
+  kind: 'championship' | 'third_place';
+  higherSource: PlayoffParticipantSource;
+  lowerSource: PlayoffParticipantSource;
+}
+
+export function buildPlayoffSeriesPlan(seedParticipantIds: string[]): PlayoffSeriesPlanItem[] {
+  const first = buildFixedPlayoffBracket(seedParticipantIds).firstRound;
+  const plan: PlayoffSeriesPlanItem[] = first.map((pairing) => ({
+    key: `R1S${pairing.bracketPosition}`,
+    roundNumber: 1,
+    position: pairing.bracketPosition,
+    kind: 'championship',
+    higherSource: { type: 'seed', participantId: pairing.higherSeedId },
+    lowerSource: { type: 'seed', participantId: pairing.lowerSeedId },
+  }));
+  let previousRound = plan.map((item) => item.key);
+  let roundNumber = 2;
+  while (previousRound.length > 1) {
+    const nextRound: string[] = [];
+    for (let index = 0; index < previousRound.length; index += 2) {
+      const key = `R${roundNumber}S${index / 2 + 1}`;
+      plan.push({
+        key,
+        roundNumber,
+        position: index / 2 + 1,
+        kind: 'championship',
+        higherSource: { type: 'winner', seriesKey: previousRound[index]! },
+        lowerSource: { type: 'winner', seriesKey: previousRound[index + 1]! },
+      });
+      nextRound.push(key);
+    }
+    previousRound = nextRound;
+    roundNumber += 1;
+  }
+  if (seedParticipantIds.length >= 4) {
+    const semifinalsRound = Math.log2(seedParticipantIds.length) - 1;
+    const semifinals = plan.filter(
+      (item) => item.roundNumber === semifinalsRound && item.kind === 'championship',
+    );
+    plan.push({
+      key: 'BRONZE',
+      roundNumber: roundNumber - 1,
+      position: 1,
+      kind: 'third_place',
+      higherSource: { type: 'loser', seriesKey: semifinals[0]!.key },
+      lowerSource: { type: 'loser', seriesKey: semifinals[1]!.key },
+    });
+  }
+  return plan;
+}

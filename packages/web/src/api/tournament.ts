@@ -85,3 +85,9 @@ export function openTournamentFixtureSegment(tournamentId: string, fixtureId: st
     sequenceNumber: number;
   }>(`/tournaments/${tournamentId}/fixtures/${fixtureId}/segments/open`, { method: 'POST' });
 }
+
+export function fetchTournamentBracket(tournamentId: string) {
+  return apiFetch<{ series: Array<Record<string, unknown>> }>(
+    `/tournaments/${tournamentId}/bracket`,
+  );
+}

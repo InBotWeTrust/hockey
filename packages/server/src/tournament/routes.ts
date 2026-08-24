@@ -13,6 +13,7 @@ import {
   getTournament,
   getTournamentSchedule,
   getTournamentStandings,
+  getTournamentBracket,
   generateRegularSchedule,
   isTournamentFeatureEnabled,
   inviteTournamentParticipant,
@@ -20,6 +21,7 @@ import {
   listPlayerTournaments,
   publishTournament,
   publishRegularSchedule,
+  startTournamentPlayoffs,
   updateTournamentDraft,
   withdrawTournamentApplication,
   type TournamentRulesSnapshot,
@@ -121,6 +123,13 @@ export const tournamentRoutes: FastifyPluginAsync = async (app) => {
     const params = z.object({ tournamentId: uuid }).parse(req.params);
     await getTournament(app.pg, params.tournamentId, req.user.id);
     return { standings: await getTournamentStandings(app.pg, params.tournamentId) };
+  });
+
+  app.get('/tournaments/:tournamentId/bracket', authenticated, async (req) => {
+    await requireTournamentFeature(app);
+    const params = z.object({ tournamentId: uuid }).parse(req.params);
+    await getTournament(app.pg, params.tournamentId, req.user.id);
+    return { series: await getTournamentBracket(app.pg, params.tournamentId) };
   });
 
   app.post(
@@ -243,6 +252,11 @@ export const tournamentRoutes: FastifyPluginAsync = async (app) => {
   app.post('/admin/tournaments/:tournamentId/schedule/publish', admin, async (req) => {
     const params = z.object({ tournamentId: uuid }).parse(req.params);
     return publishRegularSchedule(app.pg, params.tournamentId);
+  });
+
+  app.post('/admin/tournaments/:tournamentId/playoffs/start', admin, async (req) => {
+    const params = z.object({ tournamentId: uuid }).parse(req.params);
+    return startTournamentPlayoffs(app.pg, params.tournamentId);
   });
 
   app.delete('/admin/tournaments/:tournamentId', admin, async (req, reply) => {

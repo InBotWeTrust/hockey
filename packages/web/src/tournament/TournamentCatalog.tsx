@@ -5,6 +5,7 @@ import {
   applyToTournament,
   fetchTournamentSchedule,
   fetchTournamentStandings,
+  fetchTournamentBracket,
   fetchTournaments,
   openTournamentFixtureSegment,
   withdrawFromTournament,
@@ -48,6 +49,11 @@ function TournamentDetails({ tournament, onBack }: { tournament: TournamentSumma
     queryKey: ['tournaments', tournament.id, 'standings'],
     queryFn: () => fetchTournamentStandings(tournament.id),
     enabled: tab === 'standings',
+  });
+  const bracket = useQuery({
+    queryKey: ['tournaments', tournament.id, 'bracket'],
+    queryFn: () => fetchTournamentBracket(tournament.id),
+    enabled: tab === 'playoff',
   });
   const registration = useMutation({
     mutationFn: async () => {
@@ -107,7 +113,14 @@ function TournamentDetails({ tournament, onBack }: { tournament: TournamentSumma
               </div>
             )) : <div>Расписание ещё не опубликовано.</div>
         )}
-        {tab === 'playoff' && <div>Сетка появится после завершения регулярного чемпионата.</div>}
+        {tab === 'playoff' && (
+          bracket.isLoading ? <div>Загрузка сетки…</div> :
+            bracket.data?.series.length ? bracket.data.series.map((series, index) => (
+              <div key={String(series.id ?? index)} style={{ padding: '8px 0', borderBottom: '1px solid rgba(100,116,139,.15)' }}>
+                {String(series.higher_name ?? 'Определяется')} — {String(series.lower_name ?? 'Определяется')}
+              </div>
+            )) : <div>Сетка появится после завершения регулярного чемпионата.</div>
+        )}
         {tab === 'rules' && <div>Опубликованная ревизия правил: №{tournament.revision}. После старта она не изменяется.</div>}
       </section>
       {tournament.status === 'registration' && (

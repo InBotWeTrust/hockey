@@ -2,6 +2,13 @@ import type { Pool, PoolClient } from 'pg';
 import { AppError } from '../plugins/errors.js';
 import { decideTournamentApplication, evaluateTournamentEligibility } from './registration.js';
 import { buildHeadToHeadSchedulePlan } from './materialize.js';
+import {
+  buildPlayoffSeriesPlan,
+  expandSeriesSchedule,
+  type HomeDesignation,
+  type PlayoffParticipantSource,
+} from './playoffs.js';
+import { rebuildHeadToHeadStandings } from './standingsPersistence.js';
 import type { TournamentConfig, TournamentStatus } from './types.js';
 
 export interface TournamentRulesSnapshot {
@@ -860,6 +867,231 @@ export async function getTournamentStandings(pool: Pool, tournamentId: string) {
        join users u on u.id = p.user_id
       where s.tournament_id = $1
       order by s.rank nulls last, u.display_name`,
+    [tournamentId],
+  );
+  return rows;
+}
+
+function resolveSeedSource(source: PlayoffParticipantSource): string | null {
+  return source.type === 'seed' ? source.participantId : null;
+}
+
+function defaultHomeSequence(winsRequired: number): HomeDesignation[] {
+  const bestOf = winsRequired * 2 - 1;
+  const standard: HomeDesignation[] = ['H', 'H', 'A', 'A', 'H', 'A', 'H'];
+  return Array.from({ length: bestOf }, (_, index) => standard[index] ?? (index % 2 === 0 ? 'H' : 'A'));
+}
+
+function playoffRoundRules(rules: TournamentRulesSnapshot, roundNumber: number) {
+  const configured = Array.isArray(rules.playoffRounds)
+    ? rules.playoffRounds.find(
+        (value) =>
+          typeof value === 'object' &&
+          value !== null &&
+          (value as Record<string, unknown>).roundNumber === roundNumber,
+      )
+    : undefined;
+  const record =
+    typeof configured === 'object' && configured !== null
+      ? (configured as Record<string, unknown>)
+      : {};
+  const winsRequired =
+    typeof record.winsRequired === 'number' && Number.isInteger(record.winsRequired)
+      ? Math.max(1, record.winsRequired)
+      : 4;
+  const homeSequence =
+    Array.isArray(record.homeSequence) &&
+    record.homeSequence.length === winsRequired * 2 - 1 &&
+    record.homeSequence.every((item) => item === 'H' || item === 'A')
+      ? (record.homeSequence as HomeDesignation[])
+      : defaultHomeSequence(winsRequired);
+  const duelTemplateId =
+    typeof record.duelTemplateId === 'string'
+      ? record.duelTemplateId
+      : typeof rules.regularDuelTemplateId === 'string'
+        ? rules.regularDuelTemplateId
+        : null;
+  return { winsRequired, homeSequence, duelTemplateId };
+}
+
+export async function startTournamentPlayoffs(pool: Pool, tournamentId: string) {
+  return inTransaction(pool, async (client) => {
+    await lockTournament(client, tournamentId);
+    const tournamentResult = await client.query<{
+      status: TournamentStatus;
+      rules_snapshot: TournamentRulesSnapshot;
+    }>(
+      `select t.status, r.rules_snapshot from tournament t
+         join tournament_revision r on r.id = t.published_revision_id
+        where t.id = $1 for update of t`,
+      [tournamentId],
+    );
+    const tournament = tournamentResult.rows[0];
+    if (!tournament || tournament.status !== 'regular') {
+      throw new AppError('conflict', 'regular season is not active', 409);
+    }
+    const rebuilt = await rebuildHeadToHeadStandings(client, tournamentId);
+    if (rebuilt.boundaryTieParticipantIds.length > 0) {
+      const existing = await client.query<{ id: string }>(
+        `select id from tournament_round where tournament_id = $1 and stage = 'tiebreak' limit 1`,
+        [tournamentId],
+      );
+      if (!existing.rows[0]) {
+        const round = await client.query<{ id: string }>(
+          `insert into tournament_round
+             (tournament_id, stage, number, name, status, rules_snapshot)
+           values ($1, 'tiebreak', 1, 'Тай-брейк за выход в плей-офф', 'scheduled', $2)
+           returning id`,
+          [tournamentId, JSON.stringify({ reason: 'playoff_boundary_tie' })],
+        );
+        let number = 1;
+        for (let left = 0; left < rebuilt.boundaryTieParticipantIds.length; left += 1) {
+          for (let right = left + 1; right < rebuilt.boundaryTieParticipantIds.length; right += 1) {
+            await client.query(
+              `insert into tournament_fixture
+                 (tournament_id, round_id, fixture_number, home_participant_id,
+                  away_participant_id, status)
+               values ($1, $2, 100000 + $3, $4, $5, 'scheduled')`,
+              [
+                tournamentId,
+                round.rows[0]!.id,
+                number,
+                rebuilt.boundaryTieParticipantIds[left],
+                rebuilt.boundaryTieParticipantIds[right],
+              ],
+            );
+            number += 1;
+          }
+        }
+      }
+      return {
+        tournamentId,
+        status: 'tiebreak_required' as const,
+        participantIds: rebuilt.boundaryTieParticipantIds,
+      };
+    }
+    const size = tournament.rules_snapshot.config.playoffSize;
+    const standings = await client.query<{ participant_id: string }>(
+      `select participant_id from tournament_standing
+        where tournament_id = $1 and rank <= $2 order by rank`,
+      [tournamentId, size],
+    );
+    if (standings.rows.length !== size) {
+      throw new AppError('conflict', 'playoff participants are not resolved', 409);
+    }
+    const plan = buildPlayoffSeriesPlan(standings.rows.map((row) => row.participant_id));
+    const roundIds = new Map<string, string>();
+    for (const item of plan) {
+      const stage = item.kind === 'third_place' ? 'third_place' : 'playoff';
+      const key = `${stage}:${item.roundNumber}`;
+      if (roundIds.has(key)) continue;
+      const round = await client.query<{ id: string }>(
+        `insert into tournament_round
+           (tournament_id, stage, number, name, status, rules_snapshot)
+         values ($1, $2, $3, $4, 'scheduled', $5) returning id`,
+        [
+          tournamentId,
+          stage,
+          item.roundNumber,
+          stage === 'third_place' ? 'Серия за третье место' : `Раунд плей-офф ${item.roundNumber}`,
+          JSON.stringify(playoffRoundRules(tournament.rules_snapshot, item.roundNumber)),
+        ],
+      );
+      roundIds.set(key, round.rows[0]!.id);
+    }
+    const seriesIds = new Map<string, string>();
+    const fixtureNumberResult = await client.query<{ next: number }>(
+      `select coalesce(max(fixture_number), 0)::int + 1 as next
+         from tournament_fixture where tournament_id = $1`,
+      [tournamentId],
+    );
+    let fixtureNumber = Number(fixtureNumberResult.rows[0]?.next ?? 1);
+    for (const item of plan) {
+      const rules = playoffRoundRules(tournament.rules_snapshot, item.roundNumber);
+      if (rules.duelTemplateId === null) {
+        throw new AppError('configuration_error', 'playoff duel template is not configured', 409);
+      }
+      const stage = item.kind === 'third_place' ? 'third_place' : 'playoff';
+      const higherParticipantId = resolveSeedSource(item.higherSource);
+      const lowerParticipantId = resolveSeedSource(item.lowerSource);
+      const series = await client.query<{ id: string }>(
+        `insert into tournament_playoff_series
+           (tournament_id, round_id, bracket_position, kind,
+            higher_seed_participant_id, lower_seed_participant_id, wins_required,
+            home_sequence, status, depends_on)
+         values ($1, $2, $3, $4, $5, $6, $7, $8,
+                 case when $5::uuid is null then 'pending' else 'scheduled' end, $9)
+         returning id`,
+        [
+          tournamentId,
+          roundIds.get(`${stage}:${item.roundNumber}`),
+          item.position,
+          item.kind,
+          higherParticipantId,
+          lowerParticipantId,
+          rules.winsRequired,
+          JSON.stringify(rules.homeSequence),
+          JSON.stringify({ key: item.key, sources: [item.higherSource, item.lowerSource] }),
+        ],
+      );
+      seriesIds.set(item.key, series.rows[0]!.id);
+      const schedule = expandSeriesSchedule(rules.winsRequired, rules.homeSequence);
+      for (const game of schedule) {
+        const higherIsHome = game.higherSeedIsHome;
+        const startsAt = new Date(
+          Date.now() + ((item.roundNumber - 1) * 14 + game.gameNumber) * 86_400_000,
+        );
+        const endsAt = new Date(startsAt.getTime() + 86_400_000);
+        await client.query(
+          `insert into tournament_fixture
+             (tournament_id, round_id, series_id, fixture_number,
+              home_participant_id, away_participant_id, scheduled_starts_at,
+              window_ends_at, status, result_snapshot)
+           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+          [
+            tournamentId,
+            roundIds.get(`${stage}:${item.roundNumber}`),
+            series.rows[0]!.id,
+            fixtureNumber,
+            higherIsHome ? higherParticipantId : lowerParticipantId,
+            higherIsHome ? lowerParticipantId : higherParticipantId,
+            startsAt,
+            endsAt,
+            higherParticipantId === null || lowerParticipantId === null || game.conditional
+              ? 'conditional'
+              : 'scheduled',
+            JSON.stringify({
+              gameNumber: game.gameNumber,
+              higherSeedIsHome: game.higherSeedIsHome,
+              duelTemplateId: rules.duelTemplateId,
+            }),
+          ],
+        );
+        fixtureNumber += 1;
+      }
+    }
+    await client.query(`update tournament set status = 'playoff', updated_at = now() where id = $1`, [
+      tournamentId,
+    ]);
+    return { tournamentId, status: 'playoff' as const, seriesCount: seriesIds.size };
+  });
+}
+
+export async function getTournamentBracket(pool: Pool, tournamentId: string) {
+  const { rows } = await pool.query(
+    `select s.id, s.bracket_position, s.kind, s.wins_required, s.higher_seed_wins,
+            s.lower_seed_wins, s.status, s.home_sequence, s.depends_on,
+            hp.user_id as higher_user_id, hu.display_name as higher_name,
+            lp.user_id as lower_user_id, lu.display_name as lower_name,
+            wp.user_id as winner_user_id
+       from tournament_playoff_series s
+       left join tournament_participant hp on hp.id = s.higher_seed_participant_id
+       left join users hu on hu.id = hp.user_id
+       left join tournament_participant lp on lp.id = s.lower_seed_participant_id
+       left join users lu on lu.id = lp.user_id
+       left join tournament_participant wp on wp.id = s.winner_participant_id
+      where s.tournament_id = $1
+      order by s.kind, s.round_id, s.bracket_position`,
     [tournamentId],
   );
   return rows;
