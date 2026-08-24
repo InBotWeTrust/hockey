@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
+import { AccessibleModal } from '../components/AccessibleModal.js';
 import type { CompetitionLevel, ProfileAchievement, ProfileStats } from './profileTypes.js';
 
 const LEVEL_LABELS: Record<CompetitionLevel, string> = {
@@ -291,35 +291,21 @@ export function AchievementDetailsSheet({
 }): JSX.Element {
   const status = achievement.isUnlocked ? 'Выполнено' : 'Не выполнено';
 
-  return createPortal(
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={achievement.title}
-      onClick={onClose}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 1000,
-        background: 'rgba(15, 23, 42, 0.35)',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 20,
+  return (
+    <AccessibleModal
+      open
+      title={achievement.title}
+      onRequestClose={() => onClose()}
+      cardStyle={{
+        width: 'min(320px, calc(100vw - 40px))',
+        maxHeight: 'calc(100dvh - 40px - var(--app-safe-top) - var(--app-safe-bottom))',
+        overflowY: 'auto',
+        position: 'relative',
       }}
     >
       <div
-        className="glass"
-        onClick={(event) => event.stopPropagation()}
         style={{
           width: '100%',
-          maxWidth: 320,
-          maxHeight: 'calc(100dvh - 40px - var(--app-safe-top) - var(--app-safe-bottom))',
-          overflowY: 'auto',
-          borderRadius: 24,
-          padding: '22px 22px 18px',
           color: 'var(--ink)',
           position: 'relative',
         }}
@@ -386,17 +372,6 @@ export function AchievementDetailsSheet({
             >
               {status}
             </span>
-            <h3
-              style={{
-                margin: 0,
-                fontSize: 19,
-                lineHeight: 1.15,
-                fontWeight: 900,
-                overflowWrap: 'anywhere',
-              }}
-            >
-              {achievement.title}
-            </h3>
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
@@ -415,7 +390,6 @@ export function AchievementDetailsSheet({
           </div>
         </div>
       </div>
-    </div>,
-    document.body,
+    </AccessibleModal>
   );
 }
