@@ -9,8 +9,10 @@ import {
   fetchTournaments,
   openTournamentFixtureSegment,
   withdrawFromTournament,
+  type TournamentFixture,
   type TournamentSummary,
 } from '../api/tournament.js';
+import { TournamentFixtureLive } from './TournamentFixtureLive.js';
 
 type TournamentTab = 'overview' | 'standings' | 'schedule' | 'playoff' | 'rules';
 
@@ -39,6 +41,7 @@ function statusLabel(status: TournamentSummary['status']): string {
 function TournamentDetails({ tournament, onBack }: { tournament: TournamentSummary; onBack: () => void }) {
   const navigate = useNavigate();
   const [tab, setTab] = useState<TournamentTab>('overview');
+  const [selectedFixture, setSelectedFixture] = useState<TournamentFixture | null>(null);
   const queryClient = useQueryClient();
   const schedule = useQuery({
     queryKey: ['tournaments', tournament.id, 'schedule'],
@@ -68,6 +71,16 @@ function TournamentDetails({ tournament, onBack }: { tournament: TournamentSumma
       navigate(`/?view=amateur&match=${encodeURIComponent(segment.duelMatchId)}&play=1`);
     },
   });
+
+  if (selectedFixture !== null) {
+    return (
+      <TournamentFixtureLive
+        fixture={selectedFixture}
+        onBack={() => setSelectedFixture(null)}
+        onPlay={() => openFixture.mutate(selectedFixture.id)}
+      />
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -108,7 +121,14 @@ function TournamentDetails({ tournament, onBack }: { tournament: TournamentSumma
               <div key={fixture.id} style={{ padding: '8px 0', borderBottom: '1px solid rgba(100,116,139,.15)' }}>
                 {fixture.home?.name ?? 'Участник'} — {fixture.away?.name ?? 'Участник'}
                 {(fixture.status === 'scheduled' || fixture.status === 'open' || fixture.status === 'active') && (
-                  <button type="button" className="btn btn--cta" style={{ marginTop: 6 }} onClick={() => openFixture.mutate(fixture.id)}>Играть fixture</button>
+                  <button
+                    type="button"
+                    className="btn btn--cta"
+                    style={{ marginTop: 6 }}
+                    onClick={() => setSelectedFixture(fixture)}
+                  >
+                    Открыть live
+                  </button>
                 )}
               </div>
             )) : <div>Расписание ещё не опубликовано.</div>

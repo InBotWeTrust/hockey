@@ -5,10 +5,16 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { applyMigrations } from '../../src/db/migrations.js';
 import { parseTournamentConfig } from '../../src/tournament/config.js';
 import {
+  getFixtureLiveState,
+  proposeFixtureLiveTime,
+  respondFixtureLiveProposal,
+} from '../../src/tournament/live.js';
+import {
   applyToTournament,
   cancelTournament,
   createTournamentDraft,
   generateRegularSchedule,
+  publishRegularSchedule,
   publishTournament,
   type TournamentRulesSnapshot,
 } from '../../src/tournament/service.js';
@@ -211,6 +217,54 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       rounds: '6',
       fixtures: '12',
       participant_appearances: '6',
+    });
+  });
+
+  it('returns a stable live DTO through proposal and acceptance', async () => {
+    await seedUsers(pool, 0);
+    const tournament = await createPublishedTournament(pool, 'live-proposal-contract', 0);
+    await applyToTournament(pool, tournament.id, PLAYER_IDS[0]);
+    await applyToTournament(pool, tournament.id, PLAYER_IDS[1]);
+    await generateRegularSchedule(pool, tournament.id, tournament.revision);
+    await publishRegularSchedule(pool, tournament.id);
+    const fixture = await pool.query<{ id: string }>(
+      `select id from tournament_fixture where tournament_id = $1 order by fixture_number limit 1`,
+      [tournament.id],
+    );
+    const fixtureId = fixture.rows[0]!.id;
+
+    expect(await getFixtureLiveState(pool, fixtureId, PLAYER_IDS[0])).toEqual({
+      fixtureId,
+      status: 'scheduled',
+      score: { home: 0, away: 0 },
+      scheduledStartsAt: '2030-09-01T07:00:00.000Z',
+      windowEndsAt: '2030-09-01T08:00:00.000Z',
+      proposal: null,
+      duelMatchId: null,
+      participants: [],
+    });
+
+    const proposal = await proposeFixtureLiveTime(pool, {
+      fixtureId,
+      userId: PLAYER_IDS[0],
+      proposedAt: new Date('2030-09-01T07:30:00.000Z'),
+    });
+    await respondFixtureLiveProposal(pool, {
+      fixtureId,
+      proposalId: proposal.id,
+      userId: PLAYER_IDS[1],
+      accept: true,
+    });
+
+    expect(await getFixtureLiveState(pool, fixtureId, PLAYER_IDS[1])).toMatchObject({
+      fixtureId,
+      scheduledStartsAt: '2030-09-01T07:30:00.000Z',
+      proposal: {
+        id: proposal.id,
+        proposedAt: '2030-09-01T07:30:00.000Z',
+        proposedByUserId: PLAYER_IDS[0],
+        state: 'accepted',
+      },
     });
   });
 });

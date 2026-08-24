@@ -48,6 +48,30 @@ export interface TournamentFixture {
   score: { home: number; away: number };
 }
 
+export interface TournamentLiveParticipant {
+  userId: string;
+  state: string;
+  currentPeriod: number;
+  goals: number;
+  shotsTaken: number;
+}
+
+export interface TournamentLiveState {
+  fixtureId: string;
+  status: string;
+  score: { home: number; away: number };
+  scheduledStartsAt: string | null;
+  windowEndsAt: string | null;
+  proposal: {
+    id: string;
+    proposedAt: string | null;
+    proposedByUserId: string | null;
+    state: string | null;
+  } | null;
+  duelMatchId: string | null;
+  participants: TournamentLiveParticipant[];
+}
+
 export function fetchTournaments(): Promise<{ tournaments: TournamentSummary[] }> {
   return apiFetch('/tournaments');
 }
@@ -90,4 +114,32 @@ export function fetchTournamentBracket(tournamentId: string) {
   return apiFetch<{ series: Array<Record<string, unknown>> }>(
     `/tournaments/${tournamentId}/bracket`,
   );
+}
+
+export function fetchFixtureLiveState(fixtureId: string) {
+  return apiFetch<{ live: TournamentLiveState | null }>(
+    `/tournaments/fixtures/${fixtureId}/live`,
+  );
+}
+
+export function proposeFixtureLiveTime(fixtureId: string, proposedAt: string) {
+  return apiFetch<{ id: string; fixtureId: string; proposedAt: string; state: 'pending' }>(
+    `/tournaments/fixtures/${fixtureId}/live/proposals`,
+    { method: 'POST', body: JSON.stringify({ proposedAt }) },
+  );
+}
+
+export function respondFixtureLiveProposal(
+  fixtureId: string,
+  proposalId: string,
+  accept: boolean,
+) {
+  return apiFetch<{
+    fixtureId: string;
+    proposalId: string;
+    state: 'accepted' | 'declined';
+  }>(`/tournaments/fixtures/${fixtureId}/live/proposals/${proposalId}/respond`, {
+    method: 'POST',
+    body: JSON.stringify({ accept }),
+  });
 }

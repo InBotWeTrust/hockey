@@ -129,9 +129,29 @@ export async function respondFixtureLiveProposal(
 
 export async function getFixtureLiveState(pool: Pool, fixtureId: string, userId: string) {
   await assertFixtureParticipant(pool, fixtureId, userId);
-  const { rows } = await pool.query(
+  const { rows } = await pool.query<{
+    id: string;
+    status: string;
+    home_score: number;
+    away_score: number;
+    scheduled_starts_at: Date | null;
+    window_ends_at: Date | null;
+    proposal_id: string | null;
+    proposed_at: Date | null;
+    proposal_state: string | null;
+    proposed_by_user_id: string | null;
+    duel_match_id: string | null;
+    participants: Array<{
+      userId: string;
+      state: string;
+      currentPeriod: number;
+      goals: number;
+      shotsTaken: number;
+    }>;
+  }>(
     `select f.id, f.status, f.home_score, f.away_score, f.scheduled_starts_at,
             f.window_ends_at, p.id as proposal_id, p.proposed_at, p.state as proposal_state,
+            proposer.user_id as proposed_by_user_id,
             m.id as duel_match_id,
             coalesce(jsonb_agg(jsonb_build_object(
               'userId', dp.user_id, 'state', dp.state, 'currentPeriod', dp.current_period,
@@ -139,12 +159,38 @@ export async function getFixtureLiveState(pool: Pool, fixtureId: string, userId:
             )) filter (where dp.user_id is not null), '[]'::jsonb) as participants
        from tournament_fixture f
        left join tournament_live_proposal p on p.fixture_id = f.id and p.state in ('pending', 'accepted')
+       left join tournament_participant proposer on proposer.id = p.proposed_by_participant_id
        left join tournament_fixture_segment s on s.fixture_id = f.id and s.status in ('scheduled', 'active')
        left join amateur_duel_match m on m.id = s.duel_match_id
        left join amateur_duel_participant dp on dp.match_id = m.id
       where f.id = $1
-      group by f.id, p.id, m.id`,
+      group by f.id, p.id, proposer.user_id, m.id`,
     [fixtureId],
   );
-  return rows[0] ?? null;
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    fixtureId: row.id,
+    status: row.status,
+    score: { home: Number(row.home_score), away: Number(row.away_score) },
+    scheduledStartsAt: row.scheduled_starts_at?.toISOString() ?? null,
+    windowEndsAt: row.window_ends_at?.toISOString() ?? null,
+    proposal:
+      row.proposal_id === null
+        ? null
+        : {
+            id: row.proposal_id,
+            proposedAt: row.proposed_at?.toISOString() ?? null,
+            proposedByUserId: row.proposed_by_user_id,
+            state: row.proposal_state,
+          },
+    duelMatchId: row.duel_match_id,
+    participants: row.participants.map((participant) => ({
+      userId: participant.userId,
+      state: participant.state,
+      currentPeriod: Number(participant.currentPeriod),
+      goals: Number(participant.goals),
+      shotsTaken: Number(participant.shotsTaken),
+    })),
+  };
 }
