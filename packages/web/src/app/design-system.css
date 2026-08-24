@@ -818,6 +818,21 @@
   -webkit-backdrop-filter: blur(22px) saturate(150%);
 }
 
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.modal-header .modal-title {
+  min-width: 0;
+}
+
+.modal-header .icon-btn {
+  flex: 0 0 auto;
+}
+
 .modal-title {
   margin: 0;
   color: var(--ink);

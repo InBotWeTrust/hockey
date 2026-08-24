@@ -19,6 +19,11 @@ describe('user-facing modal consistency', () => {
     const dialog = screen.getByRole('dialog', { name: 'Новый чат' });
     expect(dialog).toHaveClass('modal-card');
     expect(screen.queryByText('Введите имя для поиска')).not.toBeInTheDocument();
+    expect(
+      screen
+        .getByRole('heading', { name: 'Новый чат' })
+        .parentElement?.querySelector(':scope > button[aria-label="Закрыть"]'),
+    ).toBeInTheDocument();
 
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(onClose).toHaveBeenCalledOnce();

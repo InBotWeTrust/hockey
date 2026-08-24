@@ -54,6 +54,11 @@ export function UserPickerModal({
       title="Новый чат"
       copy="Найдите игрока, чтобы начать личный диалог."
       onRequestClose={() => onClose()}
+      headerAction={
+        <button type="button" className="icon-btn" onClick={onClose} aria-label="Закрыть">
+          <X size={14} />
+        </button>
+      }
       cardStyle={{ width: 'min(400px, calc(100vw - 28px))', maxHeight: 'calc(100dvh - 40px)' }}
     >
       <div
@@ -85,14 +90,6 @@ export function UserPickerModal({
               fontSize: 14,
             }}
           />
-          <button
-            type="button"
-            className="icon-btn"
-            onClick={onClose}
-            aria-label="Закрыть"
-          >
-            <X size={14} />
-          </button>
         </div>
 
         <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>

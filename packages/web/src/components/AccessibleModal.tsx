@@ -50,6 +50,7 @@ export function AccessibleModal({
   cardStyle,
   backdropStyle,
   backdropTestId,
+  headerAction,
   children,
 }: {
   title: string;
@@ -66,6 +67,7 @@ export function AccessibleModal({
   cardStyle?: CSSProperties;
   backdropStyle?: CSSProperties;
   backdropTestId?: string;
+  headerAction?: ReactNode;
   children: ReactNode;
 }): JSX.Element {
   const reduceMotion = useReducedMotion();
@@ -209,9 +211,18 @@ export function AccessibleModal({
               ? {}
               : { onDragEnd: (_event, info) => onDragEnd(info.offset.y, info.velocity.y) })}
           >
-            <h2 id={titleId} className="modal-title">
-              {title}
-            </h2>
+            {headerAction === undefined ? (
+              <h2 id={titleId} className="modal-title">
+                {title}
+              </h2>
+            ) : (
+              <div className="modal-header">
+                <h2 id={titleId} className="modal-title">
+                  {title}
+                </h2>
+                {headerAction}
+              </div>
+            )}
             {copy !== undefined && <p className="modal-copy">{copy}</p>}
             <div style={{ marginTop: 14 }}>{children}</div>
           </motion.section>
