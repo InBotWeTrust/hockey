@@ -30,11 +30,11 @@ function renderModal({
   selectedArena?: HomeArena;
   onSaved?: (arena: HomeArena) => void;
   onClose?: () => void;
-} = {}): { onSaved: (arena: HomeArena) => void; onClose: () => void } {
+} = {}): { onSaved: (arena: HomeArena) => void; onClose: () => void; unmount: () => void } {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  render(
+  const rendered = render(
     <QueryClientProvider client={queryClient}>
       <HomeArenaModal
         arenas={[defaultArena, beachArena]}
@@ -44,7 +44,7 @@ function renderModal({
       />
     </QueryClientProvider>,
   );
-  return { onSaved, onClose };
+  return { onSaved, onClose, unmount: rendered.unmount };
 }
 
 function json(body: unknown, status = 200): Response {
@@ -52,6 +52,14 @@ function json(body: unknown, status = 200): Response {
     status,
     headers: { 'content-type': 'application/json' },
   });
+}
+
+function deferredResponse(): { promise: Promise<Response>; resolve: (response: Response) => void } {
+  let resolve!: (response: Response) => void;
+  const promise = new Promise<Response>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
 }
 
 describe('HomeArenaModal', () => {
@@ -179,47 +187,100 @@ describe('HomeArenaModal', () => {
     expect(secondOnClose).toHaveBeenCalledTimes(1);
   });
 
-  it('wraps pending-save focus around enabled controls without issuing a second request', async () => {
-    // Break caught: disabled draft controls could break the trap or Escape could submit a duplicate PATCH.
-    const fetchSpy = vi
-      .spyOn(globalThis, 'fetch')
-      .mockImplementation(() => new Promise<Response>(() => {}));
+  it('moves Save focus to the pending status and keeps Tab in the dialog', async () => {
+    // Break caught: a disabled Save could retain focus and let Tab escape into the locker.
+    const deferred = deferredResponse();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() => deferred.promise);
+    renderModal();
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Пляж' }));
+    const saveButton = screen.getByRole('button', { name: 'Сохранить' });
+    saveButton.focus();
+    fireEvent.click(saveButton);
+
+    const status = await screen.findByRole('status');
+    expect(status).toHaveTextContent('Сохраняем выбор…');
+    expect(status).toHaveFocus();
+    expect(saveButton).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Закрыть' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Отмена' })).toBeDisabled();
+
+    fireEvent.keyDown(status, { key: 'Tab' });
+    expect(status).toHaveFocus();
+    fireEvent.keyDown(status, { key: 'Tab', shiftKey: true });
+    expect(status).toHaveFocus();
+
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    const dialog = screen.getByRole('dialog', { name: 'Домашняя площадка' });
+    outside.focus();
+    fireEvent.keyDown(dialog, { key: 'Tab' });
+    expect(status).toHaveFocus();
+    outside.focus();
+    fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
+    expect(status).toHaveFocus();
+    outside.remove();
+  });
+
+  it('does not close or send another request during a pending save', async () => {
+    // Break caught: a pending request must not allow Escape, backdrop, close, or Cancel to dismiss it.
+    const deferred = deferredResponse();
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(() => deferred.promise);
     const { onClose } = renderModal();
 
     fireEvent.click(screen.getByRole('radio', { name: 'Пляж' }));
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
-    const cancelButton = screen.getByRole('button', { name: 'Отмена' });
-    const closeButton = screen.getByRole('button', { name: 'Закрыть' });
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Сохраняем...' })).toBeDisabled(),
-    );
+    const status = await screen.findByRole('status');
 
-    cancelButton.focus();
-    fireEvent.keyDown(cancelButton, { key: 'Tab' });
-    expect(closeButton).toHaveFocus();
-    fireEvent.keyDown(closeButton, { key: 'Tab', shiftKey: true });
-    expect(cancelButton).toHaveFocus();
+    fireEvent.keyDown(status, { key: 'Escape' });
+    fireEvent.click(document.querySelector('.modal-backdrop') as HTMLElement);
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Отмена' }));
 
-    fireEvent.keyDown(cancelButton, { key: 'Escape' });
-    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('dialog', { name: 'Домашняя площадка' })).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('cancels a pending save without issuing a second request', async () => {
-    // Break caught: Cancel while pending must only close and never start another PATCH.
-    const fetchSpy = vi
-      .spyOn(globalThis, 'fetch')
-      .mockImplementation(() => new Promise<Response>(() => {}));
+  it('ignores a late successful response after the modal unmounts', async () => {
+    // Break caught: stale async success could update a new screen or steal focus after navigation.
+    const deferred = deferredResponse();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() => deferred.promise);
+    const { onSaved, onClose, unmount } = renderModal();
+    const outside = document.createElement('button');
+    document.body.append(outside);
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Пляж' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+    await screen.findByRole('status');
+    outside.focus();
+    unmount();
+    deferred.resolve(json({ selected_arena: beachArena }));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(outside).toHaveFocus();
+    outside.remove();
+  });
+
+  it('restores safe controls after a failed save', async () => {
+    // Break caught: a failed save must not strand focus on stale status or leave the modal locked.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      json({ error: { code: 'unexpected', message: 'internal failure' } }, 500),
+    );
     const { onClose } = renderModal();
 
     fireEvent.click(screen.getByRole('radio', { name: 'Пляж' }));
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Сохраняем...' })).toBeDisabled(),
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Отмена' }));
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
 
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Пляж' })).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Закрыть' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Отмена' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Отмена' }));
     expect(onClose).toHaveBeenCalledTimes(1);
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 });

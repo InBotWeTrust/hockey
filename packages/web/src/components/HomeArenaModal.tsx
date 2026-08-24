@@ -29,20 +29,32 @@ export function HomeArenaModal({
 }): JSX.Element {
   const [selectedId, setSelectedId] = useState<string | null>(selectedArena.selection_id);
   const dialogRef = useRef<HTMLElement | null>(null);
+  const savingStatusRef = useRef<HTMLParagraphElement | null>(null);
+  const mountedRef = useRef(true);
+  const activeRequestRef = useRef<number | null>(null);
+  const requestSequenceRef = useRef(0);
   const selection = useMutation({
-    mutationFn: () => selectHomeArena(selectedId),
-    onSuccess: ({ selected_arena }) => {
+    mutationFn: ({
+      selectedId: requestSelectedId,
+    }: {
+      selectedId: string | null;
+      requestId: number;
+    }) => selectHomeArena(requestSelectedId),
+    onSuccess: ({ selected_arena }, request) => {
+      if (!mountedRef.current || activeRequestRef.current !== request.requestId) return;
+      activeRequestRef.current = null;
       onSaved(selected_arena);
       onClose();
     },
   });
 
   function selectDraft(nextId: string | null): void {
+    if (selection.isPending) return;
     selection.reset();
     setSelectedId(nextId);
   }
 
-  useEffect(() => {
+  function focusSelectedOrFirstControl(): void {
     const dialog = dialogRef.current;
     if (dialog === null) return;
 
@@ -50,12 +62,46 @@ export function HomeArenaModal({
       'input[type="radio"]:checked:not(:disabled)',
     );
     (selectedRadio ?? enabledFocusableElements(dialog)[0])?.focus();
+  }
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      activeRequestRef.current = null;
+    };
   }, []);
+
+  useEffect(() => {
+    focusSelectedOrFirstControl();
+  }, []);
+
+  useEffect(() => {
+    if (selection.isPending) {
+      savingStatusRef.current?.focus();
+      return;
+    }
+    if (selection.isError) {
+      focusSelectedOrFirstControl();
+    }
+  }, [selection.isError, selection.isPending]);
+
+  function requestClose(): void {
+    if (!selection.isPending) onClose();
+  }
+
+  function saveSelection(): void {
+    if (selection.isPending) return;
+    const requestId = requestSequenceRef.current + 1;
+    requestSequenceRef.current = requestId;
+    activeRequestRef.current = requestId;
+    selection.mutate({ selectedId, requestId });
+  }
 
   function handleDialogKeyDown(event: KeyboardEvent<HTMLElement>): void {
     if (event.key === 'Escape') {
       event.preventDefault();
-      onClose();
+      requestClose();
       return;
     }
     if (event.key !== 'Tab') return;
@@ -67,18 +113,18 @@ export function HomeArenaModal({
     const last = focusable.at(-1);
     if (first === undefined || last === undefined) return;
 
-    const activeElement = document.activeElement;
-    if (event.shiftKey && (activeElement === first || !dialog.contains(activeElement))) {
+    const activeIndex = focusable.indexOf(document.activeElement as HTMLElement);
+    if (event.shiftKey && activeIndex <= 0) {
       event.preventDefault();
       last.focus();
-    } else if (!event.shiftKey && (activeElement === last || !dialog.contains(activeElement))) {
+    } else if (!event.shiftKey && (activeIndex === -1 || activeIndex >= focusable.length - 1)) {
       event.preventDefault();
       first.focus();
     }
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 420 }}>
+    <div className="modal-backdrop" onClick={requestClose} style={{ zIndex: 420 }}>
       <section
         ref={dialogRef}
         role="dialog"
@@ -92,7 +138,8 @@ export function HomeArenaModal({
           type="button"
           className="icon-btn home-arena-modal-close"
           aria-label="Закрыть"
-          onClick={onClose}
+          disabled={selection.isPending}
+          onClick={requestClose}
         >
           <X size={15} />
         </button>
@@ -133,15 +180,26 @@ export function HomeArenaModal({
           </p>
         )}
 
+        {selection.isPending && (
+          <p ref={savingStatusRef} className="home-arena-modal-status" role="status" tabIndex={0}>
+            Сохраняем выбор…
+          </p>
+        )}
+
         <div className="modal-actions">
-          <button type="button" className="btn btn--ghost" onClick={onClose}>
+          <button
+            type="button"
+            className="btn btn--ghost"
+            disabled={selection.isPending}
+            onClick={requestClose}
+          >
             Отмена
           </button>
           <button
             type="button"
             className="modal-primary btn btn--cta"
             disabled={selection.isPending}
-            onClick={() => selection.mutate()}
+            onClick={saveSelection}
           >
             {selection.isPending ? 'Сохраняем...' : 'Сохранить'}
           </button>
