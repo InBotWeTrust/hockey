@@ -60,6 +60,11 @@
   --shadow-elev: 0 12px 40px rgba(15, 23, 42, 0.28);
   --shadow-cta: 0 8px 22px rgba(15, 23, 42, 0.3);
 
+  --motion-press-duration: 100ms;
+  --motion-fade-duration: 180ms;
+  --motion-press-scale: 0.97;
+  --motion-icon-press-scale: 0.94;
+
   --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro', 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
 }

@@ -178,12 +178,18 @@ describe('ProfileSettingsScreen', () => {
 
   it('switches display source through PATCH /me', async () => {
     const fetchMock = mockSettingsFetch();
+    const vibrate = vi.fn(() => true);
+    Object.defineProperty(window.navigator, 'vibrate', { configurable: true, value: vibrate });
 
     renderProfileSettings();
     expect(await screen.findByText('Аккаунт (u1)')).toBeInTheDocument();
     expect(screen.queryByText('ID игрока')).not.toBeInTheDocument();
-    expect(document.querySelector('img[src="/sprites/ultimate-player-left.webp"]')).toBeInTheDocument();
-    expect(document.querySelector('img[src="/sprites/ultimate-player-right.webp"]')).toBeInTheDocument();
+    expect(
+      document.querySelector('img[src="/sprites/ultimate-player-left.webp"]'),
+    ).toBeInTheDocument();
+    expect(
+      document.querySelector('img[src="/sprites/ultimate-player-right.webp"]'),
+    ).toBeInTheDocument();
     const vkButton = await screen.findByRole('button', { name: /из вконтакте/i });
     fireEvent.click(vkButton);
 
@@ -203,6 +209,7 @@ describe('ProfileSettingsScreen', () => {
     expect((patchCall[1] as RequestInit).method).toBe('PATCH');
     expect((patchCall[1] as RequestInit).body).toBe(JSON.stringify({ displaySource: 'vk' }));
     await waitFor(() => expect(screen.getAllByText('Vera V').length).toBeGreaterThan(0));
+    expect(vibrate).toHaveBeenCalledWith([10, 35, 15]);
   });
 
   it('links Telegram from a VK-only profile through Telegram widget payload', async () => {
@@ -245,6 +252,7 @@ describe('ProfileSettingsScreen', () => {
     renderProfileSettings();
     fireEvent.click(await screen.findByRole('button', { name: /Кастом.*Alice T/i }));
     expect(screen.getByRole('dialog', { name: 'Кастомный профиль' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Закрыть кастомный профиль' })).toBeInTheDocument();
     fireEvent.change(await screen.findByLabelText('Кастомное имя'), {
       target: { value: 'Егор' },
     });
@@ -289,6 +297,10 @@ describe('ProfileSettingsScreen', () => {
     expect(await screen.findByText('Пуш-уведомления')).toBeInTheDocument();
     expect(screen.getByText('Обратная связь')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Написать в обратную связь' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Написать в обратную связь' }));
+    expect(screen.getByRole('dialog', { name: 'Обратная связь' })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Обратная связь' })).not.toBeInTheDocument();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Настройки уведомлений' }));
 

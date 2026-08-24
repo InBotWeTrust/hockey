@@ -144,78 +144,89 @@ export function SectionsScreen(): JSX.Element {
       >
         <div className="section-label section-label--page">Разделы</div>
 
-        <SectionCard
-          title="Задания"
-          description="Полный список целей и наград"
-          meta={achievementsMeta}
-          tone={sectionTasksActionCount > 0 ? 'active' : 'default'}
-          artworkSrc={SECTION_ARTWORK.achievements}
-          attention={sectionTasksActionCount > 0 || weeklyNeedsDecision}
-          onClick={() => navigate('/achievements')}
-        />
-        <SectionCard
-          title="Ежедневная игра"
-          description="Сегодняшняя игра и статистика прошедших дней"
-          meta={`${numberText(dailyData?.daily_total_shots ?? 0)}/${numberText(dailyShotsLimit)} бросков сегодня`}
-          tone="active"
-          artworkSrc={SECTION_ARTWORK.daily}
-          onClick={() => navigate('/daily')}
-        />
-        <SectionCard
-          title="Тренировка"
-          description="Периоды на выбор, броски без риска для дневной игры"
-          meta={`${trainingShotsTaken}/${trainingShotsLimit} бросков сегодня`}
-          tone="active"
-          artworkSrc={SECTION_ARTWORK.training}
-          onClick={() => navigate('/?view=training&from=sections')}
-        />
-        <SectionCard
-          title="Любители"
-          description="Дуэли, турниры и соревновательные форматы"
-          meta={
-            isAmateurUnlocked
-              ? 'Раздел открыт'
-              : `${numberText(amateurGoals)}/${numberText(amateurUnlockGoalsRequired)} шайб для открытия`
-          }
-          tone={isAmateurUnlocked ? 'default' : 'muted'}
-          artworkSrc={SECTION_ARTWORK.amateur}
-          progress={
-            isAmateurUnlocked
-              ? undefined
-              : amateurUnlockGoalsRequired > 0
-                ? Math.round((amateurGoals / amateurUnlockGoalsRequired) * 100)
-                : 100
-          }
-          onClick={openAmateurs}
-        />
-        <SectionCard
-          title="Бонусные игры"
-          description="Серия тематических матчей и новые домашние площадки"
-          meta={
-            isAmateurUnlocked
-              ? 'Игры и награды за первое прохождение'
-              : 'Нужен любительский уровень'
-          }
-          tone={isAmateurUnlocked ? 'default' : 'muted'}
-          artworkSrc={BONUS_GAME_SECTION_ARTWORK}
-          onClick={openBonusGames}
-        />
-        <SectionCard
-          title="Профессионалы"
-          description="Игры самого высокого уровня"
-          meta="Раздел в разработке"
-          tone="muted"
-          artworkSrc={SECTION_ARTWORK.pro}
-          onClick={() => navigate('/?view=pro&from=sections')}
-        />
-        <SectionCard
-          title="Магазин"
-          description="Валюта, инвентарь и предметы"
-          meta="Монеты, звёзды и экипировка"
-          tone="default"
-          artworkSrc={SECTION_ARTWORK.shop}
-          onClick={() => navigate('/inventory')}
-        />
+        <section className="sections-group" aria-labelledby="sections-quick-access-title">
+          <h2 id="sections-quick-access-title" className="section-label sections-group__title">
+            Быстрый доступ
+          </h2>
+          <div className="sections-quick-grid">
+            <QuickSectionCard
+              title="Ежедневная игра"
+              meta={`${numberText(dailyData?.daily_total_shots ?? 0)}/${numberText(dailyShotsLimit)} бросков`}
+              tone="active"
+              artworkSrc={SECTION_ARTWORK.daily}
+              onClick={() => navigate('/daily')}
+            />
+            <QuickSectionCard
+              title="Тренировка"
+              meta={`${trainingShotsTaken}/${trainingShotsLimit} бросков`}
+              tone="active"
+              artworkSrc={SECTION_ARTWORK.training}
+              onClick={() => navigate('/?view=training&from=sections')}
+            />
+            <QuickSectionCard
+              title="Задания"
+              meta={sectionTasksActionCount > 0 ? achievementsMeta : 'Цели и награды'}
+              tone={sectionTasksActionCount > 0 ? 'active' : 'default'}
+              artworkSrc={SECTION_ARTWORK.achievements}
+              attention={sectionTasksActionCount > 0 || weeklyNeedsDecision}
+              onClick={() => navigate('/achievements')}
+            />
+            <QuickSectionCard
+              title="Магазин"
+              meta="Инвентарь и предметы"
+              tone="default"
+              artworkSrc={SECTION_ARTWORK.shop}
+              onClick={() => navigate('/inventory')}
+            />
+          </div>
+        </section>
+
+        <section className="sections-group" aria-labelledby="sections-modes-title">
+          <h2 id="sections-modes-title" className="section-label sections-group__title">
+            Игровые режимы
+          </h2>
+          <div className="sections-mode-list">
+            <SectionCard
+              title="Любители"
+              description="Дуэли, турниры и соревновательные форматы"
+              meta={
+                isAmateurUnlocked
+                  ? 'Раздел открыт'
+                  : `${numberText(amateurGoals)}/${numberText(amateurUnlockGoalsRequired)} шайб для открытия`
+              }
+              tone={isAmateurUnlocked ? 'default' : 'muted'}
+              artworkSrc={SECTION_ARTWORK.amateur}
+              progress={
+                isAmateurUnlocked
+                  ? undefined
+                  : amateurUnlockGoalsRequired > 0
+                    ? Math.round((amateurGoals / amateurUnlockGoalsRequired) * 100)
+                    : 100
+              }
+              onClick={openAmateurs}
+            />
+            <SectionCard
+              title="Бонусные игры"
+              description="Серия тематических матчей и новые домашние площадки"
+              meta={
+                isAmateurUnlocked
+                  ? 'Игры и награды за первое прохождение'
+                  : 'Нужен любительский уровень'
+              }
+              tone={isAmateurUnlocked ? 'default' : 'muted'}
+              artworkSrc={BONUS_GAME_SECTION_ARTWORK}
+              onClick={openBonusGames}
+            />
+            <SectionCard
+              title="Профессионалы"
+              description="Игры самого высокого уровня"
+              meta="Раздел в разработке"
+              tone="muted"
+              artworkSrc={SECTION_ARTWORK.pro}
+              onClick={() => navigate('/?view=pro&from=sections')}
+            />
+          </div>
+        </section>
       </section>
 
       {lockedInfo && (
@@ -236,6 +247,42 @@ export function SectionsScreen(): JSX.Element {
         </AccessibleModal>
       )}
     </main>
+  );
+}
+
+function QuickSectionCard({
+  title,
+  meta,
+  tone,
+  artworkSrc,
+  attention,
+  onClick,
+}: {
+  title: string;
+  meta: string;
+  tone: Exclude<SectionTone, 'muted'>;
+  artworkSrc: string;
+  attention?: boolean | undefined;
+  onClick: () => void;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      className={`sections-quick-card sections-quick-card--${tone}`}
+      aria-label={title}
+      onClick={onClick}
+    >
+      <span className="sections-quick-card__art" aria-hidden="true">
+        <img src={artworkSrc} alt="" draggable={false} />
+      </span>
+      <span className="sections-quick-card__content">
+        <span className="sections-quick-card__title">{title}</span>
+        <span className="sections-quick-card__meta">
+          {attention && <span className="sections-quick-card__attention" aria-label="Требуется действие" />}
+          {meta}
+        </span>
+      </span>
+    </button>
   );
 }
 

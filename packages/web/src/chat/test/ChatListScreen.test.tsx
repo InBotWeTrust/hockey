@@ -115,4 +115,25 @@ describe('ChatListScreen — global search dropdown', () => {
       }),
     );
   });
+
+  it('closes the group chat modal with Escape', async () => {
+    useAuthStore.setState({
+      accessToken: 'tok',
+      refreshToken: 'rtok',
+      user: {
+        id: '00000000-0000-0000-0000-00000000aaaa',
+        displayName: 'Admin',
+        role: 'admin',
+        grip: 'right',
+      },
+    });
+
+    renderScreen();
+    fireEvent.click(await screen.findByRole('button', { name: 'Новый групповой чат' }));
+    expect(screen.getByRole('dialog', { name: 'Групповой чат' })).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.queryByRole('dialog', { name: 'Групповой чат' })).not.toBeInTheDocument();
+  });
 });

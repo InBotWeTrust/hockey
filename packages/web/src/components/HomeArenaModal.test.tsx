@@ -136,6 +136,23 @@ describe('HomeArenaModal', () => {
     expect(saveButton).toHaveFocus();
   });
 
+  it('makes the page behind the modal inert while the selector is open', async () => {
+    // Break caught: assistive technology and keyboard input must not reach the profile behind it.
+    const background = document.createElement('main');
+    background.setAttribute('aria-label', 'Профиль под модалкой');
+    document.body.append(background);
+
+    const { unmount } = renderModal();
+
+    await waitFor(() => expect(background).toHaveAttribute('inert'));
+    expect(background).toHaveAttribute('aria-hidden', 'true');
+
+    unmount();
+    expect(background).not.toHaveAttribute('inert');
+    expect(background).not.toHaveAttribute('aria-hidden');
+    background.remove();
+  });
+
   it('closes on Escape without sending a selection request', async () => {
     // Break caught: Escape must be a safe close path, not an implicit save.
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
@@ -233,7 +250,7 @@ describe('HomeArenaModal', () => {
     const status = await screen.findByRole('status');
 
     fireEvent.keyDown(status, { key: 'Escape' });
-    fireEvent.click(document.querySelector('.modal-backdrop') as HTMLElement);
+    fireEvent.mouseDown(document.querySelector('.modal-backdrop') as HTMLElement);
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
     fireEvent.click(screen.getByRole('button', { name: 'Отмена' }));
 

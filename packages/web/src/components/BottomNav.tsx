@@ -436,10 +436,14 @@ interface NavTabProps {
 }
 
 function NavTab({ label, active, icon, onClick, disabled = false }: NavTabProps): JSX.Element {
+  const handleClick = (): void => {
+    onClick();
+  };
+
   return (
     <button
       type="button"
-      onClick={disabled ? undefined : onClick}
+      onClick={disabled ? undefined : handleClick}
       disabled={disabled}
       aria-label={label}
       aria-current={active ? 'page' : undefined}
@@ -447,7 +451,6 @@ function NavTab({ label, active, icon, onClick, disabled = false }: NavTabProps)
     >
       <span className={`bottom-nav__icon-wrap${active ? ' bottom-nav__icon-wrap--active' : ''}`}>
         {icon}
-        {active && <span className="bottom-nav__active-indicator" aria-hidden="true" />}
       </span>
     </button>
   );

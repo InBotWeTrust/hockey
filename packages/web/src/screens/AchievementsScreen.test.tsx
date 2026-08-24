@@ -117,6 +117,19 @@ describe('AchievementsScreen', () => {
     );
   });
 
+  it('opens achievement details in the shared accessible modal', async () => {
+    mockAchievementsApi([makeAchievement({ title: 'Первая шайба' })]);
+    renderAchievements();
+
+    const card = (await screen.findByText('Первая шайба')).closest('button');
+    expect(card).not.toBeNull();
+    fireEvent.click(card!);
+
+    expect(screen.getByRole('dialog', { name: 'Первая шайба' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Закрыть окно' })).toBeInTheDocument();
+    expect(document.body.firstElementChild).toHaveAttribute('inert');
+  });
+
   it('shows completed and total counts in the section label for the selected filter', async () => {
     mockAchievementsApi([
       makeAchievement({
@@ -214,6 +227,8 @@ describe('AchievementsScreen', () => {
   });
 
   it('claims a ready achievement directly from the card', async () => {
+    const vibrate = vi.fn(() => true);
+    Object.defineProperty(window.navigator, 'vibrate', { configurable: true, value: vibrate });
     const readyAchievement = makeAchievement({
       id: 'daily-ready',
       title: 'Награда ждёт',
@@ -275,5 +290,6 @@ describe('AchievementsScreen', () => {
     expect(await screen.findByText('+10 монет')).toBeInTheDocument();
     expect(screen.queryByText('+0 зв.', { exact: false })).toBeNull();
     expect(screen.queryByText('+0 опыта', { exact: false })).toBeNull();
+    expect(vibrate).toHaveBeenCalledWith([10, 35, 15]);
   });
 });

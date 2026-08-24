@@ -22,8 +22,11 @@ function renderScreen(): void {
 }
 
 describe('WeeklyChallengeScreen', () => {
+  const vibrate = vi.fn();
+
   beforeEach(() => {
     vi.resetAllMocks();
+    Object.defineProperty(window.navigator, 'vibrate', { configurable: true, value: vibrate });
   });
 
   function challenge(overrides: Partial<WeeklyChallenge> = {}): WeeklyChallenge {
@@ -87,6 +90,7 @@ describe('WeeklyChallengeScreen', () => {
     await waitFor(() =>
       expect(api.joinWeeklyChallenge).toHaveBeenCalledWith('11111111-1111-1111-1111-111111111111'),
     );
+    expect(vibrate).toHaveBeenCalledWith([10, 35, 15]);
   });
 
   it('renders an unclaimed reward from a previous challenge below the current challenge', async () => {
@@ -133,5 +137,26 @@ describe('WeeklyChallengeScreen', () => {
     expect(await screen.findByText('+100')).toBeInTheDocument();
     expect(await screen.findByText('· +5')).toBeInTheDocument();
     expect(await screen.findByText('· +50')).toBeInTheDocument();
+    expect(vibrate).toHaveBeenCalledWith([10, 35, 15]);
+  });
+
+  it('uses error haptics when claiming a reward fails', async () => {
+    vi.mocked(api.fetchWeeklyChallenge).mockResolvedValue({
+      challenge: challenge({
+        status: 'finished',
+        canJoin: false,
+        canClaimReward: true,
+        allTasksCompleted: true,
+        participant: { joinedAt: '2026-06-01T09:00:00.000Z', rewardClaimedAt: null },
+      }),
+      pendingRewards: [],
+    });
+    vi.mocked(api.claimWeeklyChallengeReward).mockRejectedValue(new Error('Сервис недоступен'));
+
+    renderScreen();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Получить награду' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Сервис недоступен');
+    expect(vibrate).toHaveBeenCalledWith([25, 35, 25]);
   });
 });

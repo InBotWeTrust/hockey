@@ -1,19 +1,14 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import { ApiError } from '../api/apiFetch.js';
 import { selectHomeArena, type HomeArena } from '../api/arenas.js';
+import { AccessibleModal } from './AccessibleModal.js';
 
 const GENERIC_HOME_ARENA_ERROR = 'Не удалось выполнить запрос. Попробуйте ещё раз.';
-const FOCUSABLE_SELECTOR =
-  'button:not(:disabled), input:not(:disabled), [href], [tabindex]:not([tabindex="-1"])';
 
 function safeErrorMessage(error: Error): string {
   return error instanceof ApiError ? error.message : GENERIC_HOME_ARENA_ERROR;
-}
-
-function enabledFocusableElements(dialog: HTMLElement): HTMLElement[] {
-  return Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
 }
 
 export function HomeArenaModal({
@@ -28,7 +23,7 @@ export function HomeArenaModal({
   onClose: () => void;
 }): JSX.Element {
   const [selectedId, setSelectedId] = useState<string | null>(selectedArena.selection_id);
-  const dialogRef = useRef<HTMLElement | null>(null);
+  const selectedRadioRef = useRef<HTMLInputElement | null>(null);
   const savingStatusRef = useRef<HTMLParagraphElement | null>(null);
   const mountedRef = useRef(true);
   const activeRequestRef = useRef<number | null>(null);
@@ -54,16 +49,6 @@ export function HomeArenaModal({
     setSelectedId(nextId);
   }
 
-  function focusSelectedOrFirstControl(): void {
-    const dialog = dialogRef.current;
-    if (dialog === null) return;
-
-    const selectedRadio = dialog.querySelector<HTMLInputElement>(
-      'input[type="radio"]:checked:not(:disabled)',
-    );
-    (selectedRadio ?? enabledFocusableElements(dialog)[0])?.focus();
-  }
-
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -73,16 +58,12 @@ export function HomeArenaModal({
   }, []);
 
   useEffect(() => {
-    focusSelectedOrFirstControl();
-  }, []);
-
-  useEffect(() => {
     if (selection.isPending) {
       savingStatusRef.current?.focus();
       return;
     }
     if (selection.isError) {
-      focusSelectedOrFirstControl();
+      selectedRadioRef.current?.focus();
     }
   }, [selection.isError, selection.isPending]);
 
@@ -98,60 +79,28 @@ export function HomeArenaModal({
     selection.mutate({ selectedId, requestId });
   }
 
-  function handleDialogKeyDown(event: KeyboardEvent<HTMLElement>): void {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      requestClose();
-      return;
-    }
-    if (event.key !== 'Tab') return;
-
-    const dialog = dialogRef.current;
-    if (dialog === null) return;
-    const focusable = enabledFocusableElements(dialog);
-    const first = focusable[0];
-    const last = focusable.at(-1);
-    if (first === undefined || last === undefined) return;
-
-    const activeIndex = focusable.indexOf(document.activeElement as HTMLElement);
-    if (event.shiftKey && activeIndex <= 0) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && (activeIndex === -1 || activeIndex >= focusable.length - 1)) {
-      event.preventDefault();
-      first.focus();
-    }
-  }
-
   return (
-    <div className="modal-backdrop" onClick={requestClose} style={{ zIndex: 420 }}>
-      <section
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="home-arena-modal-title"
-        className="modal-card home-arena-modal-card"
-        onClick={(event) => event.stopPropagation()}
-        onKeyDown={handleDialogKeyDown}
-      >
+    <AccessibleModal
+      title="Домашняя площадка"
+      copy="Выберите фон для домашней площадки. Доступны только уже открытые площадки."
+      onRequestClose={requestClose}
+      closeBlocked={selection.isPending}
+      initialFocusRef={selectedRadioRef}
+      cardClassName="home-arena-modal-card"
+      backdropStyle={{ zIndex: 420 }}
+      headerAction={
         <button
           type="button"
-          className="icon-btn home-arena-modal-close"
+          className="icon-btn"
           aria-label="Закрыть"
           disabled={selection.isPending}
           onClick={requestClose}
         >
           <X size={15} />
         </button>
-        <div className="home-arena-modal-header">
-          <h2 id="home-arena-modal-title" className="modal-title">
-            Домашняя площадка
-          </h2>
-          <p className="modal-copy">
-            Выберите фон для домашней площадки. Доступны только уже открытые площадки.
-          </p>
-        </div>
-
+      }
+    >
+      <div style={{ display: 'grid', gap: 14 }}>
         <fieldset
           className="home-arena-options"
           aria-label="Выбор домашней площадки"
@@ -162,6 +111,7 @@ export function HomeArenaModal({
             return (
               <label key={arena.id} className="home-arena-option" data-no-drag-scroll="true">
                 <input
+                  ref={selected ? selectedRadioRef : undefined}
                   type="radio"
                   name="home-arena"
                   checked={selected}
@@ -204,7 +154,7 @@ export function HomeArenaModal({
             {selection.isPending ? 'Сохраняем...' : 'Сохранить'}
           </button>
         </div>
-      </section>
-    </div>
+      </div>
+    </AccessibleModal>
   );
 }

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useDailyStore } from '../stores/dailyStore.js';
@@ -150,6 +150,24 @@ describe('SectionsScreen', () => {
 
     expect(await screen.findByRole('button', { name: 'Задания' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Челлендж недели' })).toBeNull();
+  });
+
+  it('groups frequent actions before the longer game modes', async () => {
+    // Break caught: the shop must not fall below the long list of progression modes on phones.
+    mockSectionsApi();
+    renderSections();
+
+    const quickAccess = await screen.findByRole('region', { name: 'Быстрый доступ' });
+    expect(
+      within(quickAccess).getAllByRole('button').map((button) => button.getAttribute('aria-label')),
+    ).toEqual(['Ежедневная игра', 'Тренировка', 'Задания', 'Магазин']);
+
+    const modes = screen.getByRole('region', { name: 'Игровые режимы' });
+    expect(within(modes).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual([
+      'Любители',
+      'Бонусные игры',
+      'Профессионалы',
+    ]);
   });
 
   it('places bonus games immediately between amateur and professional sections', async () => {

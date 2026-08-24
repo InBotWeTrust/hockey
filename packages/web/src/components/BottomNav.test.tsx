@@ -43,10 +43,13 @@ function renderBottomNav(path: string, extra?: JSX.Element): void {
 }
 
 describe('BottomNav remembered navigation', () => {
+  const vibrate = vi.fn();
+
   beforeEach(() => {
     localStorage.clear();
     sessionStorage.clear();
     vi.restoreAllMocks();
+    Object.defineProperty(window.navigator, 'vibrate', { configurable: true, value: vibrate });
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({}), {
         status: 200,
@@ -72,6 +75,7 @@ describe('BottomNav remembered navigation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Игра' }));
 
     expect(screen.getByLabelText('location')).toHaveTextContent('/?view=arena');
+    expect(vibrate).not.toHaveBeenCalled();
   });
 
   it('opens the arena from another section', () => {
@@ -118,7 +122,7 @@ describe('BottomNav remembered navigation', () => {
     expect(sectionsTab).toHaveAttribute('aria-current', 'page');
     expect(sectionsTab).toHaveClass('bottom-nav__tab--active');
     expect(sectionsTab.querySelector('.bottom-nav__icon-wrap--active')).toBeInTheDocument();
-    expect(sectionsTab.querySelector('.bottom-nav__active-indicator')).toBeInTheDocument();
+    expect(sectionsTab.querySelector('.bottom-nav__active-indicator')).toBeNull();
     expect(gameTab.querySelector('.bottom-nav__icon-wrap--active')).toBeNull();
   });
 
