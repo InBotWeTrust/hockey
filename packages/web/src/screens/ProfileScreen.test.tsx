@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ProfileScreen } from './ProfileScreen.js';
 import { useAuthStore } from '../auth/authStore.js';
 import type { InventoryState } from '../api/inventory.js';
+import type { HomeArenasResponse } from '../api/arenas.js';
 
 type TelegramWebAppWindow = typeof window & {
   Telegram?: {
@@ -162,6 +163,35 @@ const telegramProfile = {
   vkUsername: 'vera',
 };
 
+const homeArenas: HomeArenasResponse = {
+  arenas: [
+    {
+      id: 'default-arena',
+      selection_id: null,
+      slug: 'default',
+      title: 'По умолчанию',
+      artwork_url: '/arenas/default.webp',
+      thumbnail_url: '/arenas/default-thumb.webp',
+    },
+    {
+      id: 'beach-arena',
+      selection_id: 'a1e80a1d-5b27-470f-8e4d-2102b1c10222',
+      slug: 'beach',
+      title: 'Пляж',
+      artwork_url: '/arenas/beach.webp',
+      thumbnail_url: '/arenas/beach-thumb.webp',
+    },
+  ],
+  selected_arena: {
+    id: 'default-arena',
+    selection_id: null,
+    slug: 'default',
+    title: 'По умолчанию',
+    artwork_url: '/arenas/default.webp',
+    thumbnail_url: '/arenas/default-thumb.webp',
+  },
+};
+
 function getFetchUrl(input: Parameters<typeof fetch>[0]): string {
   if (typeof input === 'string') return input;
   if (input instanceof URL) return input.href;
@@ -182,6 +212,12 @@ function mockProfileFetch(
     }
     if (url.endsWith('/api/inventory/me')) {
       return new Response(JSON.stringify(inventory), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    if (url.endsWith('/api/me/home-arenas')) {
+      return new Response(JSON.stringify(homeArenas), {
         status: 200,
         headers: { 'content-type': 'application/json' },
       });
@@ -236,6 +272,7 @@ describe('ProfileScreen', () => {
     expect(screen.queryByText('Форма обратной связи')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Тестовый пуш/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Шайба.*статистика/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Выбрать домашнюю площадку' })).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: /Клюшка.*Обычная клюшка.*Базовая/i }),
     ).toBeInTheDocument();
@@ -307,6 +344,25 @@ describe('ProfileScreen', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Награды ждут получения.*1/i }));
     expect(screen.getByText('achievements screen')).toBeInTheDocument();
+  });
+
+  it('opens the rink photograph selector with only server-listed home arenas', async () => {
+    // Break caught: making the decorative photo non-interactive or reconstructing options client-side.
+    mockProfileFetch(telegramProfile);
+
+    renderProfile();
+
+    const rinkPhoto = await screen.findByRole('button', { name: 'Выбрать домашнюю площадку' });
+    rinkPhoto.focus();
+    expect(rinkPhoto).toHaveFocus();
+    fireEvent.keyDown(rinkPhoto, { key: 'Enter' });
+    fireEvent.click(rinkPhoto);
+
+    const dialog = await screen.findByRole('dialog', { name: 'Домашняя площадка' });
+    expect(within(dialog).getByRole('radio', { name: 'По умолчанию' })).toBeChecked();
+    expect(within(dialog).getByRole('radio', { name: 'Пляж' })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('radio', { name: 'Космос' })).not.toBeInTheDocument();
+    expect(document.querySelector('.profile-locker-prop--rink-photo')).toBeInTheDocument();
   });
 
   it('shows the hockey jersey for amateur players', async () => {

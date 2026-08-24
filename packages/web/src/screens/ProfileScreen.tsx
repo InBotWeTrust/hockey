@@ -10,7 +10,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CircleDollarSign, Settings, Star, TrendingUp, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../api/apiFetch.js';
+import { fetchHomeArenas, type HomeArena, type HomeArenasResponse } from '../api/arenas.js';
 import { rewardColor, type RewardTone } from '../app/rewardColors.js';
+import { HomeArenaModal } from '../components/HomeArenaModal.js';
 import {
   fetchMyInventory,
   patchEquipment,
@@ -858,6 +860,7 @@ export function ProfileScreen(): JSX.Element {
   const [selectedEquipmentKind, setSelectedEquipmentKind] = useState<InventoryEquipmentKind | null>(
     null,
   );
+  const [arenaModalOpen, setArenaModalOpen] = useState(false);
 
   const { data, isLoading } = useQuery<ProfileData>({
     queryKey: ['profile'],
@@ -866,6 +869,11 @@ export function ProfileScreen(): JSX.Element {
   const inventoryQuery = useQuery<InventoryState>({
     queryKey: ['inventory', 'me'],
     queryFn: fetchMyInventory,
+    enabled: data !== undefined,
+  });
+  const homeArenasQuery = useQuery<HomeArenasResponse>({
+    queryKey: ['home-arenas'],
+    queryFn: fetchHomeArenas,
     enabled: data !== undefined,
   });
   const equipmentMut = useMutation<
@@ -955,6 +963,13 @@ export function ProfileScreen(): JSX.Element {
     data?.competitionLevel === 'beginner'
       ? '/inventory/profile-hoodie-training.webp'
       : '/inventory/profile-jersey-hanger.webp';
+  const selectedHomeArena = homeArenasQuery.data?.selected_arena;
+
+  function handleArenaSaved(arena: HomeArena): void {
+    queryClient.setQueryData<HomeArenasResponse>(['home-arenas'], (current) =>
+      current === undefined ? current : { ...current, selected_arena: arena },
+    );
+  }
 
   function handlePointerDown(event: PointerEvent<HTMLElement>): void {
     if (
@@ -1041,6 +1056,18 @@ export function ProfileScreen(): JSX.Element {
               style={lockerPropStyle(LOCKER_PROPS.achievementMedals)}
             />
           )}
+          <button
+            type="button"
+            className="profile-locker-rink-hotspot"
+            data-no-drag-scroll="true"
+            style={lockerPropStyle(LOCKER_PROPS.rinkPhoto)}
+            aria-label="Выбрать домашнюю площадку"
+            onClick={() => setArenaModalOpen(true)}
+          >
+            {selectedHomeArena !== undefined && (
+              <img src={selectedHomeArena.thumbnail_url} alt="" />
+            )}
+          </button>
           <img
             className="profile-locker-prop profile-locker-prop--rink-photo"
             src="/inventory/profile-rink-photo-frame.webp"
@@ -1148,6 +1175,14 @@ export function ProfileScreen(): JSX.Element {
               },
             );
           }}
+        />
+      )}
+      {arenaModalOpen && homeArenasQuery.data !== undefined && (
+        <HomeArenaModal
+          arenas={homeArenasQuery.data.arenas}
+          selectedArena={homeArenasQuery.data.selected_arena}
+          onSaved={handleArenaSaved}
+          onClose={() => setArenaModalOpen(false)}
         />
       )}
     </main>
