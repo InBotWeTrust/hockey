@@ -109,3 +109,48 @@ this task.
 None found in scope. Existing global scheduler transaction/advisory lock,
 preference semantics, `push_delivery_log` exactly-once constraint, injected
 daily-domain clock, and VAPID-independent finalization are preserved.
+
+## Review round 2 correction
+
+Review file: `task-schedulers-review-2.md`.
+
+### Root cause
+
+The first fix put a direct JSON-text-to-`bigint` cast in a target list and in
+an `AND` predicate beside a regex check. PostgreSQL is free to evaluate that
+cast before the regex predicate, so the query did not provide a structural
+guarantee against fractional or scientific numeric snapshot data aborting the
+global scheduler transaction.
+
+### Fix
+
+- Live reminder offsets now calculate `reminder_offset_ms` only with
+  `CASE WHEN jsonb text matches the strict integer grammar THEN text::bigint
+  END`; a following CTE applies the `0…86_400_000` bound to that guarded
+  result.
+- Deadline lead follows the same guarded-cast rule. A subsequent CTE applies
+  the bound only to the guarded value, retaining the previous safe 30-minute
+  fallback for out-of-range values.
+
+### Regression evidence
+
+- Added `case-guards fractional and scientific notification numbers without
+  rolling back daily delivery`. It persists `0.5` and `1e100` in live-reminder
+  offsets, plus separate fractional and scientific deadline leads. The test
+  proves one valid live reminder, two fallback deadline reminders, and the
+  unrelated `daily.available` delivery all commit in one scheduler tick.
+- The initial test run on the local PostgreSQL plan passed because that plan
+  happened to evaluate its regex filter first. This is not a safety guarantee;
+  the review's valid static finding requires the `CASE` structural guard.
+- A full scheduler test run after the fix passed 12/12 cases, including the
+  prior malformed-data regression that preserves oversized deadline fallback.
+
+### Final verification for review round 2
+
+| Command | Result |
+| --- | --- |
+| `pnpm --filter @hockey/server exec vitest run test/push/scheduled.test.ts` | PASS — 12/12 tests |
+| `pnpm --filter @hockey/server typecheck` | PASS |
+| `pnpm lint` | PASS |
+| `pnpm exec prettier --check packages/server/src/push/scheduled.ts packages/server/test/push/scheduled.test.ts .superpowers/sdd/2026-08-24-tournaments-04-playoffs/task-schedulers-fix-report.md` | PASS |
+| `git diff --check` | PASS |

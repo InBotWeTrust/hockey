@@ -472,19 +472,24 @@ async function fetchTournamentLiveSoonRows(
         where t.status in ('regular', 'playoff')
      ), reminder_offsets as (
        select rr.tournament_id, rr.tournament_title,
-              (reminder_rule.value #>> '{}')::bigint as reminder_offset_ms
+              case
+                when jsonb_typeof(reminder_rule.value) = 'number'
+                  and reminder_rule.value #>> '{}' ~ '^(0|[1-9][0-9]{0,7})$'
+                  then (reminder_rule.value #>> '{}')::bigint
+              end as reminder_offset_ms
          from reminder_rules rr
          cross join lateral jsonb_array_elements(rr.reminder_offsets) as reminder_rule(value)
-        where jsonb_typeof(reminder_rule.value) = 'number'
-          and reminder_rule.value #>> '{}' ~ '^(0|[1-9][0-9]{0,7})$'
-          and (reminder_rule.value #>> '{}')::bigint <= $3::bigint
+     ), valid_reminder_offsets as (
+       select tournament_id, tournament_title, reminder_offset_ms
+         from reminder_offsets
+        where reminder_offset_ms between 0 and $3::bigint
      ),
      candidates as (
        select f.id as fixture_id, f.scheduled_starts_at, ro.tournament_title,
               ro.reminder_offset_ms,
               participant.user_id
          from tournament_fixture f
-         join reminder_offsets ro on ro.tournament_id = f.tournament_id
+         join valid_reminder_offsets ro on ro.tournament_id = f.tournament_id
          cross join lateral (
            values (f.home_participant_id), (f.away_participant_id)
          ) as side(participant_id)
@@ -572,19 +577,16 @@ async function fetchTournamentFixtureDeadlineRows(
   lateWindowMs: number,
 ): Promise<ScheduledPushSubscriptionRow[]> {
   const { rows } = await pool.query<ScheduledPushSubscriptionRow>(
-    `with candidates as (
+    `with deadline_rule_candidates as (
        select f.id as fixture_id, t.title as tournament_title, f.window_ends_at,
               participant.user_id,
-              coalesce(
-                case
-                  when jsonb_typeof(r.rules_snapshot->'notificationDeadlineLeadMs') = 'number'
-                    and r.rules_snapshot->>'notificationDeadlineLeadMs'
-                          ~ '^(0|[1-9][0-9]{0,7})$'
-                    and (r.rules_snapshot->>'notificationDeadlineLeadMs')::bigint <= $4::bigint
-                    then (r.rules_snapshot->>'notificationDeadlineLeadMs')::bigint
-                  else $3::bigint
-                end
-              ) as deadline_lead_ms
+              case
+                when jsonb_typeof(r.rules_snapshot->'notificationDeadlineLeadMs') = 'number'
+                  and r.rules_snapshot->>'notificationDeadlineLeadMs'
+                        ~ '^(0|[1-9][0-9]{0,7})$'
+                  then (r.rules_snapshot->>'notificationDeadlineLeadMs')::bigint
+                else $3::bigint
+              end as deadline_lead_ms
          from tournament_fixture f
          join tournament t on t.id = f.tournament_id
          join tournament_revision r on r.id = t.published_revision_id
@@ -598,10 +600,18 @@ async function fetchTournamentFixtureDeadlineRows(
           and participant.state = 'approved'
           and coalesce(pref.tournament_events, true)
           and f.window_ends_at > $1::timestamptz
+     ), candidates as (
+       select fixture_id, tournament_title, window_ends_at, user_id,
+              coalesce(
+                case
+                  when deadline_lead_ms between 0 and $4::bigint then deadline_lead_ms
+                end,
+                $3::bigint
+              ) as deadline_lead_ms
+         from deadline_rule_candidates
      ), due as (
        select *, window_ends_at - (deadline_lead_ms * interval '1 millisecond') as event_due_at
          from candidates
-        where deadline_lead_ms >= 0
      )
      select ps.id as subscription_id, ps.user_id, ps.endpoint, ps.p256dh, ps.auth,
             d.fixture_id::text || ':deadline:' ||

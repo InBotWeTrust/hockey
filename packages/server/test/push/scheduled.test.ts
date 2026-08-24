@@ -359,6 +359,68 @@ describe.skipIf(!hasIntegrationEnv)('scheduled push delivery', () => {
     ]);
   });
 
+  it('case-guards fractional and scientific notification numbers without rolling back daily delivery', async () => {
+    const adminId = await createUser(pool, 'Case guard rules admin');
+    const playerId = await createUser(pool, 'Case guard rules player');
+    await pool.query(
+      `insert into user_push_preferences
+         (user_id, daily_game, training_available, tournament_events)
+       values ($1, true, false, true)`,
+      [playerId],
+    );
+    await addSubscription(pool, playerId, 'https://push.example.test/send/case-guard-rules');
+    const scientific = 1e100;
+    await createScheduledTournamentFixture(pool, {
+      adminId,
+      slug: 'case-guard-live-rules-cup',
+      rulesSnapshot: { notificationReminderOffsetsMs: [3_600_000, 0.5, scientific] },
+      participants: [{ userId: playerId, state: 'approved' }],
+      scheduledStartsAt: new Date('2026-05-04T07:00:00.000Z'),
+      windowEndsAt: new Date('2026-05-04T08:00:00.000Z'),
+    });
+    await createScheduledTournamentFixture(pool, {
+      adminId,
+      slug: 'case-guard-fractional-deadline-cup',
+      rulesSnapshot: {
+        notificationReminderOffsetsMs: [],
+        notificationDeadlineLeadMs: 0.5,
+      },
+      participants: [{ userId: playerId, state: 'approved' }],
+      scheduledStartsAt: new Date('2026-05-04T05:30:00.000Z'),
+      windowEndsAt: new Date('2026-05-04T06:30:00.000Z'),
+    });
+    await createScheduledTournamentFixture(pool, {
+      adminId,
+      slug: 'case-guard-scientific-deadline-cup',
+      rulesSnapshot: {
+        notificationReminderOffsetsMs: [],
+        notificationDeadlineLeadMs: scientific,
+      },
+      participants: [{ userId: playerId, state: 'approved' }],
+      scheduledStartsAt: new Date('2026-05-04T05:30:00.000Z'),
+      windowEndsAt: new Date('2026-05-04T06:30:00.000Z'),
+    });
+
+    const result = await runScheduledPushes(pool, {
+      ...vapid,
+      now: new Date('2026-05-04T06:00:00.000Z'),
+      processQueue: false,
+    });
+
+    expect(result.enabled).toBe(true);
+    const deliveries = await pool.query<{ event_type: string; count: string }>(
+      `select event_type, count(*)::text as count
+         from push_delivery_log
+        group by event_type
+        order by event_type`,
+    );
+    expect(deliveries.rows).toEqual([
+      { event_type: 'daily.available', count: '1' },
+      { event_type: 'tournament.fixture_deadline', count: '2' },
+      { event_type: 'tournament.live_soon', count: '1' },
+    ]);
+  });
+
   it('uses distinct but tick-deduplicated event keys for each rescheduled fixture window', async () => {
     const adminId = await createUser(pool, 'Reschedule scheduler admin');
     const playerId = await createUser(pool, 'Reschedule scheduler player');
