@@ -3,7 +3,8 @@ import {
   GAME_CORE_VERSION,
   GOAL_OPENING,
   PUCK_START,
-  resolveShot,
+  getSessionPhaseOffsets,
+  resolvePerspectiveCourtShot,
   STICK_NEUTRAL,
   type ShotInput,
 } from '@hockey/game-core';
@@ -756,12 +757,13 @@ export async function submitBonusShot(
           attempt.rules_snapshot.title,
           rule,
         );
-        const serverResult = resolveShot(
+        const serverResult = resolvePerspectiveCourtShot(
           shotInput,
           goalie,
           shotSeed,
           expectedShotIndex,
           STICK_NEUTRAL,
+          getSessionPhaseOffsets(attempt.attempt_seed),
         ).type;
 
         if (input.claimedResult !== serverResult) {

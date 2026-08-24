@@ -242,6 +242,14 @@ describe('BonusGamePlayScreen', () => {
       goalieOptions: {
         idleSpriteUrl: '/bonus-games/goalkeepers/beach-ready.webp',
         saveSpriteUrl: '/bonus-games/goalkeepers/beach-save.webp',
+        visualYScale: 0.72,
+        visualYOffset: 62,
+        visualXScale: 0.9,
+        sizeScale: 1.134,
+        idleSizeScale: 1.22,
+        saveSizeScale: 0.96,
+        saveVisualYOffset: 10,
+        shadow: true,
       },
       goalieConfig: {
         id: 'bonus:beach:p2',
@@ -256,6 +264,7 @@ describe('BonusGamePlayScreen', () => {
         '/bonus-games/goalkeepers/beach-ready.webp',
         '/bonus-games/goalkeepers/beach-save.webp',
       ],
+      gameLayerStyle: { top: '24.55%', height: '74.2%', bottom: 'auto' },
     });
   });
 

@@ -1,6 +1,13 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { deriveShotSeed, GAME_CORE_VERSION, type ShotInput } from '@hockey/game-core';
+import {
+  deriveShotSeed,
+  GAME_CORE_VERSION,
+  getSessionPhaseOffsets,
+  resolvePerspectiveCourtShot,
+  STICK_NEUTRAL,
+  type ShotInput,
+} from '@hockey/game-core';
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { findOrCreateTelegramUser } from '../../src/auth/users.js';
@@ -20,6 +27,8 @@ const NOW = new Date('2026-08-23T12:00:00.000Z');
 const SHOT_AT = new Date('2026-08-23T12:00:01.000Z');
 const SEED_SECRET = 'bonus-shot-test-secret';
 const ATTEMPT_SEED = 'fixed-bonus-attempt-seed';
+const RECORDED_ATTEMPT_SEED = '478567b225fa179b20d47bc27ee0658aa321572f4eada383a91c4e101f66d4d8';
+const RECORDED_SHOT_AT = new Date('2026-08-23T12:01:45.816Z');
 
 const PERIODS: BonusPeriodRule[] = [
   {
@@ -36,12 +45,12 @@ const PERIODS: BonusPeriodRule[] = [
   },
 ];
 
-// Hand-checked against the fixed attempt seed and period snapshot: 1000 ms is
+// Hand-checked against the fixed attempt seed and perspective period snapshot: 854 ms is
 // a goal. The hostile optional overrides intentionally produce a non-goal if
 // the server trusts them instead of rebuilding the authoritative input.
 const GOAL_INPUT: ShotInput = {
-  tapTime: 1_000,
-  shooterTapTime: 1_000,
+  tapTime: 854,
+  shooterTapTime: 854,
   puckSpeedPerMs: 0.2,
   shooterFrequency: 3,
   goalieFrequency: 3,
@@ -50,14 +59,23 @@ const GOAL_INPUT: ShotInput = {
 
 const SECOND_SHOT_INPUT: ShotInput = {
   ...GOAL_INPUT,
-  tapTime: 2_000,
-  shooterTapTime: 1_566.666_666_666_666_5,
+  tapTime: 2_023,
+  shooterTapTime: 1_589.666_666_666_666_5,
 };
 
 const THIRD_SHOT_INPUT: ShotInput = {
   ...GOAL_INPUT,
   tapTime: 3_000,
   shooterTapTime: 2_133.333_333_333_333,
+};
+
+const RECORDED_CLIENT_SAVE_INPUT: ShotInput = {
+  tapTime: 105_815.999_999_880_79,
+  shooterTapTime: 105_815.999_999_880_79,
+  puckSpeedPerMs: 1.2,
+  shooterFrequency: 0.65,
+  goalieFrequency: 0.5,
+  goalFrequency: 0.45,
 };
 
 const SECOND_SHOT_AT = new Date('2026-08-23T12:00:03.000Z');
@@ -184,6 +202,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
     userId: string,
     gameId: string,
     startedAt = NOW,
+    attemptSeed = ATTEMPT_SEED,
   ): Promise<string> {
     const created = await startOrResumeBonusAttempt(pool, {
       userId,
@@ -195,7 +214,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
       `update bonus_game_attempt
           set attempt_seed = $2
         where id = $1`,
-      [created.attempt.id, ATTEMPT_SEED],
+      [created.attempt.id, attemptSeed],
     );
     await startBonusPeriod(pool, { userId, attemptId: created.attempt.id, now: startedAt });
     return created.attempt.id;
@@ -319,8 +338,8 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
     expect(shot.rows[0]).toEqual({
       seed: deriveShotSeed(ATTEMPT_SEED, 1, 1),
       input_payload: {
-        tapTime: 1_000,
-        shooterTapTime: 1_000,
+        tapTime: 854,
+        shooterTapTime: 854,
         puckSpeedPerMs: 1.2,
         shooterFrequency: 0.65,
         goalieFrequency: 0.5,
@@ -329,6 +348,49 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
       server_result: 'goal',
       game_core_version: GAME_CORE_VERSION,
     });
+  });
+
+  it('accepts the recorded PlayView save using the same perspective session offsets', async () => {
+    const userId = await createUser();
+    const game = await createGame({ targetGoals: 1 });
+    const attemptId = await createActiveAttempt(userId, game.id, NOW, RECORDED_ATTEMPT_SEED);
+
+    const response = await submitBonusShot(pool, {
+      userId,
+      attemptId,
+      claimedShotIndex: 1,
+      input: RECORDED_CLIENT_SAVE_INPUT as SubmitBonusShotInput['input'],
+      claimedResult: 'save',
+      now: RECORDED_SHOT_AT,
+    });
+
+    expect(response).toMatchObject({
+      serverResult: 'save',
+      rewardGranted: null,
+      attempt: { status: 'active', state: 'period_active', shotsTaken: 1, goals: 0 },
+    });
+    expect(
+      resolvePerspectiveCourtShot(
+        RECORDED_CLIENT_SAVE_INPUT,
+        {
+          id: 'bonus:shot-game-1:p1',
+          name: 'Игра 1',
+          pattern: 'linear',
+          hp: 0,
+          baseReward: 0,
+          firstClearBonus: 0,
+          speed: 0,
+          amplitude: 1,
+          frequency: 0.5,
+          goalAmplitude: 220,
+          goalFrequency: 0.45,
+        },
+        deriveShotSeed(RECORDED_ATTEMPT_SEED, 1, 1),
+        1,
+        STICK_NEUTRAL,
+        getSessionPhaseOffsets(RECORDED_ATTEMPT_SEED),
+      ).type,
+    ).toBe('save');
   });
 
   it('rejects any shot index other than the authoritative period count plus one', async () => {
@@ -575,7 +637,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
       userId,
       attemptId,
       claimedShotIndex: 2,
-      input: { ...GOAL_INPUT, tapTime: 2_000, shooterTapTime: 1_566.666_666_666_666_5 },
+      input: SECOND_SHOT_INPUT,
       claimedResult: 'miss',
       now: new Date('2026-08-23T12:00:03.000Z'),
     });
@@ -772,8 +834,8 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
       claimedShotIndex: 2,
       input: {
         ...SECOND_SHOT_INPUT,
-        tapTime: 1_854,
-        shooterTapTime: 1_420.666_666_666_666_5,
+        tapTime: 1_940,
+        shooterTapTime: 1_506.666_666_666_666_5,
       },
       claimedResult: 'goal',
       now: new Date('2026-08-23T12:00:02.854Z'),
@@ -784,8 +846,8 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
       claimedShotIndex: 3,
       input: {
         ...THIRD_SHOT_INPUT,
-        tapTime: 2_117,
-        shooterTapTime: 1_250.333_333_333_333_5,
+        tapTime: 2_212,
+        shooterTapTime: 1_345.333_333_333_333_5,
       },
       claimedResult: 'goal' as const,
       now: new Date('2026-08-23T12:00:04.117Z'),
@@ -1044,8 +1106,8 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
       claimedShotIndex: 2,
       input: {
         ...GOAL_INPUT,
-        tapTime: 1_854,
-        shooterTapTime: 1_420.666_666_666_666_5,
+        tapTime: 1_940,
+        shooterTapTime: 1_506.666_666_666_666_5,
       },
       claimedResult: 'goal' as const,
       now: new Date('2026-08-23T12:00:02.854Z'),

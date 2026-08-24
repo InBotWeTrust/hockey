@@ -1,7 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { GAME_CORE_VERSION, STICK_NEUTRAL, deriveShotSeed, resolveShot } from '@hockey/game-core';
+import {
+  GAME_CORE_VERSION,
+  GOAL_OPENING,
+  PUCK_START,
+  STICK_NEUTRAL,
+  deriveShotSeed,
+  getSessionPhaseOffsets,
+  resolvePerspectiveCourtShot,
+} from '@hockey/game-core';
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -324,13 +332,34 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
       goalieAmplitude: rule.goalie_amplitude,
       goalAmplitude: rule.goal_amplitude,
     });
-    return resolveShot(
+    return resolvePerspectiveCourtShot(
       shotInput,
       goalie,
       deriveShotSeed(attempt.attempt_seed, attempt.current_period, shotIndex),
       shotIndex,
       STICK_NEUTRAL,
+      getSessionPhaseOffsets(attempt.attempt_seed),
     ).type;
+  }
+
+  function findShotClock(
+    attempt: AttemptDto,
+    shotIndex: number,
+    predicate: (result: 'goal' | 'save' | 'miss') => boolean,
+    minimumTapTime = 0,
+  ): { tapTime: number; shooterTapTime: number } {
+    const rule = attempt.rules.periods[attempt.current_period - 1]!;
+    const flightMs = (PUCK_START.y - GOAL_OPENING.y) / rule.puck_speed_per_ms;
+    for (let tapTime = minimumTapTime; tapTime <= 9_000; tapTime += 1) {
+      const shooterTapTime = tapTime - (shotIndex - 1) * flightMs;
+      if (
+        shooterTapTime >= 0 &&
+        predicate(expectedShot(attempt, tapTime, shooterTapTime, shotIndex))
+      ) {
+        return { tapTime, shooterTapTime };
+      }
+    }
+    throw new Error('could not find a matching bonus shot result');
   }
 
   async function submitTimedRouteShot(
@@ -622,13 +651,16 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
     const game = await createGame({ periods: [goalPeriod], targetGoals: 1 });
     const firstAttempt = await startAttempt(game.id);
     const firstActive = await startPeriod(firstAttempt.id);
-    const tapTime = 385;
-    expect(expectedShot(firstActive, tapTime)).toBe('goal');
+    const { tapTime, shooterTapTime } = findShotClock(
+      firstActive,
+      1,
+      (result) => result === 'goal',
+    );
     await pool.query(
       `update bonus_game_attempt
-          set period_started_at = clock_timestamp() - interval '385 milliseconds'
+          set period_started_at = clock_timestamp() - ($2::double precision * interval '1 millisecond')
         where id = $1`,
-      [firstAttempt.id],
+      [firstAttempt.id, tapTime],
     );
     const shotRequest = {
       method: 'POST' as const,
@@ -636,7 +668,7 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
       headers,
       payload: {
         claimed_shot_index: 1,
-        input: { tapTime, shooterTapTime: tapTime },
+        input: { tapTime, shooterTapTime },
         claimed_result: 'goal',
       },
     };
@@ -672,16 +704,20 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
 
     const replayAttempt = await startAttempt(game.id);
     const replayActive = await startPeriod(replayAttempt.id);
-    expect(expectedShot(replayActive, tapTime)).toBe('goal');
+    const replayClock = findShotClock(replayActive, 1, (result) => result === 'goal');
     await pool.query(
       `update bonus_game_attempt
-          set period_started_at = clock_timestamp() - interval '385 milliseconds'
+          set period_started_at = clock_timestamp() - ($2::double precision * interval '1 millisecond')
         where id = $1`,
-      [replayAttempt.id],
+      [replayAttempt.id, replayClock.tapTime],
     );
     const replay = await app.inject({
       ...shotRequest,
       url: `/bonus-games/attempts/${replayAttempt.id}/shot`,
+      payload: {
+        ...shotRequest.payload,
+        input: replayClock,
+      },
     });
     expect(replay.statusCode).toBe(200);
     expect(replay.json()).toMatchObject({
@@ -820,25 +856,25 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
     const game = await createGame({ periods: [QUOTA_PERIOD], targetGoals: 1 });
     const attempt = await startAttempt(game.id);
     const active = await startPeriod(attempt.id);
+    const firstClock = findShotClock(active, 1, (result) => result !== 'goal', 100);
     const first = await submitTimedRouteShot(active, {
       shotIndex: 1,
-      tapTime: 100,
-      shooterTapTime: 100,
-      wallElapsedMs: 100,
+      ...firstClock,
+      wallElapsedMs: firstClock.tapTime,
     });
+    const secondClock = findShotClock(active, 2, (result) => result !== 'goal', 500);
     const second = await submitTimedRouteShot(active, {
       shotIndex: 2,
-      tapTime: 500,
-      shooterTapTime: 66.666_666_666_666_69,
-      wallElapsedMs: 1_500,
+      ...secondClock,
+      wallElapsedMs: secondClock.tapTime + 1_000,
     });
     expect(first.response.json().server_result).not.toBe('goal');
     expect(second.response.json().server_result).not.toBe('goal');
+    const finalClock = findShotClock(active, 3, (result) => result === 'goal', 1_242);
     const final = await submitTimedRouteShot(active, {
       shotIndex: 3,
-      tapTime: 1_242,
-      shooterTapTime: 375.333_333_333_333_37,
-      wallElapsedMs: 3_242,
+      ...finalClock,
+      wallElapsedMs: finalClock.tapTime + 2_000,
     });
 
     expect(final.response.statusCode).toBe(200);

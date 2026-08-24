@@ -1,13 +1,32 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { RINK, STICK_NEUTRAL, type GoalieConfig } from '@hockey/game-core';
+import {
+  PERSPECTIVE_COURT_GOALIE_VISUAL_X_SCALE,
+  PERSPECTIVE_COURT_GOALIE_VISUAL_Y_OFFSET,
+  PERSPECTIVE_COURT_VISUAL_Y_SCALE,
+  RINK,
+  STICK_NEUTRAL,
+  type GoalieConfig,
+} from '@hockey/game-core';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import type { BonusGameAttempt, BonusPeriodRule } from '../api/bonusGames.js';
 import { PlayView } from '../game/PlayView.js';
 import { deriveBonusGameClockBasis } from '../game/bonusGameTiming.js';
 import type { SpeedOverrides } from '../game/loop.js';
+import type { GoalieOptions } from '../game/renderer/Goalie.js';
 import { useBonusGameStore } from '../stores/bonusGameStore.js';
 
-const BONUS_GAME_LAYER_STYLE = { inset: 0 } as const;
+const BONUS_GAME_LAYER_STYLE = { top: '24.55%', height: '74.2%', bottom: 'auto' } as const;
+
+const BONUS_GAME_GOALIE_OPTIONS: Omit<GoalieOptions, 'idleSpriteUrl' | 'saveSpriteUrl'> = {
+  visualYScale: PERSPECTIVE_COURT_VISUAL_Y_SCALE,
+  visualYOffset: PERSPECTIVE_COURT_GOALIE_VISUAL_Y_OFFSET,
+  visualXScale: PERSPECTIVE_COURT_GOALIE_VISUAL_X_SCALE,
+  sizeScale: 1.134,
+  idleSizeScale: 1.22,
+  saveSizeScale: 0.96,
+  saveVisualYOffset: 10,
+  shadow: true,
+};
 
 function formatCountdown(ms: number): string {
   const totalSeconds = Math.max(0, Math.ceil(ms / 1_000));
@@ -352,6 +371,7 @@ export function BonusGamePlayScreen(): JSX.Element {
         goalieId={null}
         goalieConfig={goalieConfig}
         goalieOptions={{
+          ...BONUS_GAME_GOALIE_OPTIONS,
           idleSpriteUrl: attempt.goalkeeper_ready_url,
           saveSpriteUrl: attempt.goalkeeper_save_url,
         }}
