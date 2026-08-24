@@ -234,8 +234,14 @@ describe('bonus games admin', () => {
     ]) {
       expect(within(editor).getByLabelText(label)).toBeInTheDocument();
     }
-    expect(within(editor).getByLabelText('Загрузить Фон площадки')).toBeInTheDocument();
-    expect(within(editor).getByLabelText('Загрузить Миниатюра площадки')).toBeInTheDocument();
+    for (const uploadLabel of [
+      'Загрузить фон площадки',
+      'Загрузить миниатюру площадки',
+      'Загрузить обычное изображение вратаря',
+      'Загрузить изображение сейва вратаря',
+    ]) {
+      expect(within(editor).getByLabelText(uploadLabel)).toBeInTheDocument();
+    }
 
     fireEvent.click(within(editor).getByRole('button', { name: 'Отмена' }));
     fireEvent.click(screen.getByRole('button', { name: 'Архивировать Пляжный хоккей' }));
@@ -574,7 +580,7 @@ describe('bonus games admin', () => {
 
     renderBonusGames();
     const editor = await openBonusEditor();
-    const picker = within(editor).getByLabelText('Загрузить Фон площадки');
+    const picker = within(editor).getByLabelText('Загрузить фон площадки');
     fireEvent.change(picker, {
       target: { files: [new File([new Uint8Array([1])], 'goalie.png', { type: 'image/png' })] },
     });
@@ -638,7 +644,7 @@ describe('bonus games admin', () => {
 
     renderBonusGamesInStrictMode();
     const editor = await openBonusEditor();
-    fireEvent.change(within(editor).getByLabelText('Загрузить Миниатюра площадки'), {
+    fireEvent.change(within(editor).getByLabelText('Загрузить миниатюру площадки'), {
       target: {
         files: [new File([new Uint8Array([1])], 'strict-ready.webp', { type: 'image/webp' })],
       },
@@ -688,7 +694,7 @@ describe('bonus games admin', () => {
 
     const rendered = renderBonusGamesInStrictMode();
     const editor = await openBonusEditor();
-    fireEvent.change(within(editor).getByLabelText('Загрузить Вратарь: готов'), {
+    fireEvent.change(within(editor).getByLabelText('Загрузить обычное изображение вратаря'), {
       target: {
         files: [new File([new Uint8Array([1])], 'unmounted.webp', { type: 'image/webp' })],
       },
@@ -731,7 +737,7 @@ describe('bonus games admin', () => {
 
     renderBonusGames();
     const editor = await openBonusEditor();
-    const picker = within(editor).getByLabelText('Загрузить Фон площадки');
+    const picker = within(editor).getByLabelText('Загрузить фон площадки');
     const file = new File([new Uint8Array([1])], 'ready.webp', { type: 'image/webp' });
     fireEvent.change(picker, { target: { files: [file] } });
     fireEvent.change(picker, { target: { files: [file] } });

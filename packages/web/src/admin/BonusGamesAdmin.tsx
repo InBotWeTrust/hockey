@@ -722,6 +722,7 @@ function BonusGameEditor({
         </Field>
         <MediaField
           label="Фон площадки"
+          uploadLabel="Загрузить фон площадки"
           value={form.arenaArtworkUrl}
           kind="arena"
           pending={uploadMutation.isPending}
@@ -730,6 +731,7 @@ function BonusGameEditor({
         />
         <MediaField
           label="Миниатюра площадки"
+          uploadLabel="Загрузить миниатюру площадки"
           value={form.arenaThumbnailUrl}
           kind="thumbnail"
           pending={uploadMutation.isPending}
@@ -758,6 +760,7 @@ function BonusGameEditor({
         </Grid>
         <MediaField
           label="Вратарь: готов"
+          uploadLabel="Загрузить обычное изображение вратаря"
           value={form.goalkeeperReadyUrl}
           kind="goalkeeper_ready"
           pending={uploadMutation.isPending}
@@ -766,6 +769,7 @@ function BonusGameEditor({
         />
         <MediaField
           label="Вратарь: сейв"
+          uploadLabel="Загрузить изображение сейва вратаря"
           value={form.goalkeeperSaveUrl}
           kind="goalkeeper_save"
           pending={uploadMutation.isPending}
@@ -905,6 +909,7 @@ function PeriodEditor({
 
 function MediaField({
   label,
+  uploadLabel,
   value,
   kind,
   pending,
@@ -912,6 +917,7 @@ function MediaField({
   onFile,
 }: {
   label: string;
+  uploadLabel: string;
   value: string;
   kind: AdminBonusMediaKind;
   pending: boolean;
@@ -924,7 +930,7 @@ function MediaField({
         <input value={value} onChange={(event) => onValue(event.target.value)} />
       </Field>
       <label style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 800 }}>
-        Загрузить {label}
+        {uploadLabel}
         <input
           type="file"
           accept="image/webp"
