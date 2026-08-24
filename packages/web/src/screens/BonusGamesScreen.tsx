@@ -8,8 +8,15 @@ import {
   startBonusAttempt,
   type BonusGameCard,
 } from '../api/bonusGames.js';
+import { ApiError } from '../api/apiFetch.js';
 import { fetchMyInventory } from '../api/inventory.js';
 import { BONUS_GAME_ASSETS } from '../game/bonusGameAssets.js';
+
+const SAFE_UI_ERROR_MESSAGE = 'Не удалось выполнить запрос. Попробуйте ещё раз.';
+
+function safeUiError(error: unknown): string {
+  return error instanceof ApiError ? error.message : SAFE_UI_ERROR_MESSAGE;
+}
 
 function numberText(value: number): string {
   return new Intl.NumberFormat('ru-RU', { useGrouping: false }).format(value);
@@ -118,7 +125,7 @@ export function BonusGamesScreen(): JSX.Element {
           </div>
         ) : catalogQuery.isError ? (
           <div className="bonus-games-catalog__notice" role="alert">
-            {catalogQuery.error.message}
+            {safeUiError(catalogQuery.error)}
           </div>
         ) : catalogQuery.data?.games.length === 0 ? (
           <div className="bonus-games-catalog__notice">Сейчас нет доступных бонусных игр.</div>
@@ -138,7 +145,7 @@ export function BonusGamesScreen(): JSX.Element {
 
         {startMutation.isError && (
           <div className="bonus-games-catalog__notice" role="alert">
-            {startMutation.error.message}
+            {safeUiError(startMutation.error)}
           </div>
         )}
       </section>
@@ -148,9 +155,9 @@ export function BonusGamesScreen(): JSX.Element {
           game={purchaseGame}
           starBalance={inventoryQuery.data?.balances.stars}
           balanceLoading={inventoryQuery.isLoading}
-          balanceError={inventoryQuery.isError ? inventoryQuery.error.message : null}
+          balanceError={inventoryQuery.isError ? safeUiError(inventoryQuery.error) : null}
           isPurchasing={purchaseMutation.isPending}
-          error={purchaseMutation.isError ? purchaseMutation.error.message : null}
+          error={purchaseMutation.isError ? safeUiError(purchaseMutation.error) : null}
           onClose={() => {
             if (purchaseMutation.isPending) return;
             purchaseMutation.reset();

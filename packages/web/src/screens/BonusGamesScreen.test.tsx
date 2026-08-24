@@ -56,13 +56,28 @@ function card(overrides: Record<string, unknown>) {
 
 function mockCatalog(
   games: unknown[],
-  options: { stars?: number; unlockResponse?: Response } = {},
+  options: {
+    stars?: number;
+    catalogFailure?: unknown;
+    balanceFailure?: unknown;
+    unlockFailure?: unknown;
+    unlockResponse?: Response;
+    startFailure?: unknown;
+  } = {},
 ): void {
-  const { stars = 3, unlockResponse } = options;
+  const {
+    stars = 3,
+    catalogFailure,
+    balanceFailure,
+    unlockFailure,
+    unlockResponse,
+    startFailure,
+  } = options;
   vi.spyOn(globalThis, 'fetch').mockImplementation(
     (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith('/api/bonus-games')) {
+        if (catalogFailure !== undefined) return Promise.reject(catalogFailure);
         return Promise.resolve(
           new Response(JSON.stringify({ games, active_attempt: null }), {
             status: 200,
@@ -71,6 +86,7 @@ function mockCatalog(
         );
       }
       if (url.endsWith('/api/inventory/me')) {
+        if (balanceFailure !== undefined) return Promise.reject(balanceFailure);
         return Promise.resolve(
           new Response(
             JSON.stringify({
@@ -83,12 +99,30 @@ function mockCatalog(
         );
       }
       if (url.includes('/api/bonus-games/') && url.endsWith('/unlock') && init?.method === 'POST') {
+        if (unlockFailure !== undefined) return Promise.reject(unlockFailure);
         return Promise.resolve(
           unlockResponse ??
             new Response(JSON.stringify({ unlocked: true, star_balance: stars - 1 }), {
               status: 200,
               headers: { 'Content-Type': 'application/json' },
             }),
+        );
+      }
+      if (
+        url.includes('/api/bonus-games/') &&
+        url.endsWith('/attempts') &&
+        init?.method === 'POST'
+      ) {
+        if (startFailure !== undefined) return Promise.reject(startFailure);
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              attempt: {
+                game_id: '00000000-0000-4000-8000-000000000601',
+              },
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
         );
       }
       return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }));
@@ -213,5 +247,60 @@ describe('BonusGamesScreen', () => {
             ) && init?.method === 'POST',
         ),
     ).toHaveLength(1);
+  });
+
+  it('does not expose a rejected catalog request error', async () => {
+    mockCatalog([], { catalogFailure: new TypeError('private network topology') });
+    renderCatalog();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Не удалось выполнить запрос. Попробуйте ещё раз.',
+    );
+    expect(screen.queryByText('private network topology')).toBeNull();
+  });
+
+  it('does not expose an unknown start error', async () => {
+    mockCatalog([card({})], { startFailure: 'private start failure' });
+    renderCatalog();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Играть' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Не удалось выполнить запрос. Попробуйте ещё раз.',
+    );
+    expect(screen.queryByText('private start failure')).toBeNull();
+  });
+
+  it('does not expose a rejected balance request error', async () => {
+    mockCatalog([card({ state: 'purchase_required', access_type: 'paid', is_unlocked: false })], {
+      balanceFailure: new Error('private balance failure'),
+    });
+    renderCatalog();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть за 0 звезду' }));
+
+    expect(screen.getByRole('dialog', { name: 'Открыть игру?' })).toHaveTextContent(
+      'Не удалось выполнить запрос. Попробуйте ещё раз.',
+    );
+    expect(screen.queryByText('private balance failure')).toBeNull();
+  });
+
+  it('does not expose a rejected purchase error', async () => {
+    mockCatalog([card({ state: 'purchase_required', access_type: 'paid', is_unlocked: false })], {
+      unlockFailure: new TypeError('private payment transport'),
+    });
+    renderCatalog();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть за 0 звезду' }));
+    fireEvent.click(
+      within(screen.getByRole('dialog', { name: 'Открыть игру?' })).getByRole('button', {
+        name: 'Открыть за 0 звезду',
+      }),
+    );
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Не удалось выполнить запрос. Попробуйте ещё раз.',
+    );
+    expect(screen.queryByText('private payment transport')).toBeNull();
   });
 });
