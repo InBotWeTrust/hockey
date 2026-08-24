@@ -1175,11 +1175,17 @@ export function uploadAdminBonusGameMedia(
   kind: AdminBonusMediaKind,
   file: File,
 ): Promise<{ media: AdminBonusMedia }> {
+  if (file.type !== 'image/webp') {
+    return Promise.reject(new Error('Можно загрузить только файл WebP.'));
+  }
+  if (file.size === 0) {
+    return Promise.reject(new Error('Файл WebP пустой.'));
+  }
   return apiFetch<{ media: AdminBonusMedia }>(`/admin/bonus-games/media/${kind}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'image/webp',
-      'X-File-Name': file.name,
+      'X-File-Name': encodeURIComponent(file.name),
     },
     body: file,
   });

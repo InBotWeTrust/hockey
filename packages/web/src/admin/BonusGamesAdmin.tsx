@@ -11,6 +11,7 @@ import {
   type AdminBonusGame,
   type AdminBonusGameAccessType,
   type AdminBonusGameInput,
+  type AdminBonusGamePatch,
   type AdminBonusGameStatus,
   type AdminBonusGoaliePattern,
   type AdminBonusMediaKind,
@@ -34,6 +35,7 @@ const defaultPeriod: AdminBonusPeriodRule = {
 
 interface BonusGameFormState {
   gameId: string | null;
+  originalStatus: AdminBonusGameStatus | null;
   slug: string;
   title: string;
   description: string;
@@ -58,9 +60,17 @@ interface BonusGameFormState {
   arenaIsSelectable: boolean;
 }
 
+interface UploadRequest {
+  kind: 'goalkeeper_ready' | 'goalkeeper_save';
+  file: File;
+  editorIdentity: string | null;
+  generation: number;
+}
+
 function createEmptyForm(sortOrder: number): BonusGameFormState {
   return {
     gameId: null,
+    originalStatus: null,
     slug: '',
     title: '',
     description: '',
@@ -89,6 +99,7 @@ function createEmptyForm(sortOrder: number): BonusGameFormState {
 function formFromGame(game: AdminBonusGame): BonusGameFormState {
   return {
     gameId: game.id,
+    originalStatus: game.status,
     slug: game.slug,
     title: game.title,
     description: game.description,
@@ -140,9 +151,6 @@ function formValidationError(form: BonusGameFormState): string | null {
     return 'Количество периодов должно быть от 1 до 9.';
   }
   if (form.periods.length !== form.totalPeriods) return 'Заполните правила каждого периода.';
-  if (form.accessType === 'paid' && form.unlockPriceStars <= 0) {
-    return 'Для платной игры укажите цену в звёздах.';
-  }
   const validPeriods = form.periods.every(
     (period, index) =>
       period.periodNumber === index + 1 &&
@@ -160,6 +168,7 @@ function formValidationError(form: BonusGameFormState): string | null {
       period.shooterFrequency <= 3 &&
       period.puckSpeedPerMs >= 0.2 &&
       period.puckSpeedPerMs <= 5 &&
+      ['linear', 'sine', 'dash'].includes(period.goaliePattern) &&
       period.goalieAmplitude >= 0 &&
       period.goalieAmplitude <= 1 &&
       period.goalAmplitude >= 0 &&
@@ -191,12 +200,15 @@ function formValidationError(form: BonusGameFormState): string | null {
   ) {
     return 'Ссылка на медиа слишком длинная.';
   }
+  if (form.status === 'active' && form.accessType === 'paid' && form.unlockPriceStars < 1) {
+    return 'Для платной игры укажите цену в звёздах.';
+  }
   if (
     form.status === 'active' &&
-    (!form.arenaArtworkUrl ||
-      !form.arenaThumbnailUrl ||
-      !form.goalkeeperReadyUrl ||
-      !form.goalkeeperSaveUrl ||
+    (!form.arenaArtworkUrl.trim() ||
+      !form.arenaThumbnailUrl.trim() ||
+      !form.goalkeeperReadyUrl.trim() ||
+      !form.goalkeeperSaveUrl.trim() ||
       form.arenaStatus !== 'active' ||
       !form.arenaIsSelectable)
   ) {
@@ -234,8 +246,17 @@ function formToInput(form: BonusGameFormState): AdminBonusGameInput {
   };
 }
 
+function formToPatch(form: BonusGameFormState): AdminBonusGamePatch {
+  const input = formToInput(form);
+  if (input.status !== 'archived') return input;
+  const patch: AdminBonusGamePatch = { ...input };
+  delete patch.status;
+  return patch;
+}
+
 export function BonusGamesAdmin(): JSX.Element {
   const queryClient = useQueryClient();
+  const archivePendingRef = useRef(false);
   const [form, setForm] = useState<BonusGameFormState | null>(null);
   const [archiveTarget, setArchiveTarget] = useState<AdminBonusGame | null>(null);
   const query = useQuery({ queryKey: bonusGamesQueryKey, queryFn: fetchAdminBonusGames });
@@ -248,6 +269,9 @@ export function BonusGamesAdmin(): JSX.Element {
     onSuccess: () => {
       setArchiveTarget(null);
       refresh();
+    },
+    onSettled: () => {
+      archivePendingRef.current = false;
     },
   });
   const reorderMutation = useMutation({
@@ -303,13 +327,19 @@ export function BonusGamesAdmin(): JSX.Element {
         <BonusGameEditor
           form={form}
           onChange={setForm}
-          onMediaUploaded={(kind, url) => {
+          onMediaUploaded={(gameId, kind, url) => {
             setForm((current) => {
-              if (current === null) return current;
+              if (current === null || current.gameId !== gameId) return current;
               return kind === 'goalkeeper_ready'
                 ? { ...current, goalkeeperReadyUrl: url }
                 : { ...current, goalkeeperSaveUrl: url };
             });
+          }}
+          onArchiveRequested={(gameId) => {
+            const game = games.find((candidate) => candidate.id === gameId);
+            if (game === undefined) return;
+            setForm(null);
+            setArchiveTarget(game);
           }}
           onCancel={() => setForm(null)}
           onSaved={() => {
@@ -323,8 +353,14 @@ export function BonusGamesAdmin(): JSX.Element {
           game={archiveTarget}
           pending={archiveMutation.isPending}
           error={archiveMutation.isError ? errorMessage(archiveMutation.error) : null}
-          onCancel={() => setArchiveTarget(null)}
-          onConfirm={() => archiveMutation.mutate(archiveTarget.id)}
+          onCancel={() => {
+            if (!archivePendingRef.current) setArchiveTarget(null);
+          }}
+          onConfirm={() => {
+            if (archivePendingRef.current) return;
+            archivePendingRef.current = true;
+            archiveMutation.mutate(archiveTarget.id);
+          }}
         />
       )}
     </section>
@@ -419,32 +455,64 @@ function BonusGameEditor({
   form,
   onChange,
   onMediaUploaded,
+  onArchiveRequested,
   onCancel,
   onSaved,
 }: {
   form: BonusGameFormState;
   onChange: (form: BonusGameFormState) => void;
-  onMediaUploaded: (kind: 'goalkeeper_ready' | 'goalkeeper_save', url: string) => void;
+  onMediaUploaded: (
+    gameId: string | null,
+    kind: 'goalkeeper_ready' | 'goalkeeper_save',
+    url: string,
+  ) => void;
+  onArchiveRequested: (gameId: string) => void;
   onCancel: () => void;
   onSaved: () => void;
 }): JSX.Element {
   const validationError = formValidationError(form);
+  const savePendingRef = useRef(false);
+  const uploadPendingRef = useRef(false);
+  const mountedRef = useRef(true);
+  const editorIdentityRef = useRef(form.gameId);
+  const uploadGenerationRef = useRef<Record<'goalkeeper_ready' | 'goalkeeper_save', number>>({
+    goalkeeper_ready: 0,
+    goalkeeper_save: 0,
+  });
+  editorIdentityRef.current = form.gameId;
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+    },
+    [],
+  );
   const mutation = useMutation({
-    mutationFn: () => {
-      const input = formToInput(form);
-      return form.gameId === null
+    mutationFn: (snapshot: BonusGameFormState) => {
+      const input = formToInput(snapshot);
+      return snapshot.gameId === null
         ? createAdminBonusGame(input)
-        : patchAdminBonusGame(form.gameId, input);
+        : patchAdminBonusGame(snapshot.gameId, formToPatch(snapshot));
     },
     onSuccess: onSaved,
+    onSettled: () => {
+      savePendingRef.current = false;
+    },
   });
   const uploadMutation = useMutation({
-    mutationFn: ({ kind, file }: { kind: AdminBonusMediaKind; file: File }) =>
-      uploadAdminBonusGameMedia(kind, file),
-    onSuccess: ({ media }) => {
-      if (media.kind === 'goalkeeper_ready' || media.kind === 'goalkeeper_save') {
-        onMediaUploaded(media.kind, media.url);
+    mutationFn: ({ kind, file }: UploadRequest) => uploadAdminBonusGameMedia(kind, file),
+    onSuccess: ({ media }, request) => {
+      if (
+        !mountedRef.current ||
+        editorIdentityRef.current !== request.editorIdentity ||
+        uploadGenerationRef.current[request.kind] !== request.generation ||
+        media.kind !== request.kind
+      ) {
+        return;
       }
+      onMediaUploaded(request.editorIdentity, request.kind, media.url);
+    },
+    onSettled: () => {
+      uploadPendingRef.current = false;
     },
   });
 
@@ -473,12 +541,55 @@ function BonusGameEditor({
     });
   }
 
+  function requestCancel(): void {
+    if (savePendingRef.current || uploadPendingRef.current) return;
+    onCancel();
+  }
+
+  function requestSave(): void {
+    if (savePendingRef.current || uploadPendingRef.current) return;
+    if (form.gameId !== null && form.originalStatus !== 'archived' && form.status === 'archived') {
+      onArchiveRequested(form.gameId);
+      return;
+    }
+    if (validationError !== null) return;
+    savePendingRef.current = true;
+    mutation.mutate(form);
+  }
+
+  function setMediaValue(kind: 'goalkeeper_ready' | 'goalkeeper_save', value: string): void {
+    uploadGenerationRef.current[kind] += 1;
+    setField(kind === 'goalkeeper_ready' ? 'goalkeeperReadyUrl' : 'goalkeeperSaveUrl', value);
+  }
+
+  function requestUpload(kind: AdminBonusMediaKind, file: File): void {
+    if (
+      savePendingRef.current ||
+      uploadPendingRef.current ||
+      (kind !== 'goalkeeper_ready' && kind !== 'goalkeeper_save')
+    ) {
+      return;
+    }
+    uploadPendingRef.current = true;
+    uploadGenerationRef.current[kind] += 1;
+    uploadMutation.mutate({
+      kind,
+      file,
+      editorIdentity: form.gameId,
+      generation: uploadGenerationRef.current[kind],
+    });
+  }
+
   const title = form.gameId === null ? 'Новая бонусная игра' : 'Редактирование бонусной игры';
+  const archiveTransition =
+    form.gameId !== null && form.originalStatus !== 'archived' && form.status === 'archived';
+  const pending = mutation.isPending || uploadMutation.isPending;
   return (
     <Modal
       title={title}
       copy="Настройки применяются к новым попыткам после сохранения."
-      onClose={onCancel}
+      onClose={requestCancel}
+      closeBlocked={pending}
       wide
     >
       <div style={{ display: 'grid', gap: 10 }}>
@@ -625,16 +736,16 @@ function BonusGameEditor({
           value={form.goalkeeperReadyUrl}
           kind="goalkeeper_ready"
           pending={uploadMutation.isPending}
-          onValue={(value) => setField('goalkeeperReadyUrl', value)}
-          onFile={(kind, file) => uploadMutation.mutate({ kind, file })}
+          onValue={(value) => setMediaValue('goalkeeper_ready', value)}
+          onFile={requestUpload}
         />
         <MediaField
           label="Вратарь: сейв"
           value={form.goalkeeperSaveUrl}
           kind="goalkeeper_save"
           pending={uploadMutation.isPending}
-          onValue={(value) => setField('goalkeeperSaveUrl', value)}
-          onFile={(kind, file) => uploadMutation.mutate({ kind, file })}
+          onValue={(value) => setMediaValue('goalkeeper_save', value)}
+          onFile={requestUpload}
         />
         {validationError !== null && (
           <div role="alert" style={{ color: 'var(--red-deep)', fontSize: 12 }}>
@@ -655,16 +766,16 @@ function BonusGameEditor({
           <button
             type="button"
             className="btn btn--ghost"
-            onClick={onCancel}
-            disabled={mutation.isPending}
+            onClick={requestCancel}
+            disabled={pending}
           >
             Отмена
           </button>
           <button
             type="button"
             className="modal-primary btn--cta"
-            onClick={() => mutation.mutate()}
-            disabled={mutation.isPending || validationError !== null}
+            onClick={requestSave}
+            disabled={pending || (!archiveTransition && validationError !== null)}
           >
             Сохранить
           </button>
@@ -821,6 +932,7 @@ function ArchiveBonusGameModal({
       title="Архивировать бонусную игру"
       copy="Новые попытки станут недоступны. Активные попытки продолжатся по сохранённым снимкам правил."
       onClose={onCancel}
+      closeBlocked={pending}
     >
       <div className="modal-actions">
         <button type="button" className="btn btn--ghost" onClick={onCancel} disabled={pending}>
@@ -848,24 +960,28 @@ function Modal({
   title,
   copy,
   onClose,
+  closeBlocked = false,
   wide = false,
   children,
 }: {
   title: string;
   copy: string;
   onClose: () => void;
+  closeBlocked?: boolean;
   wide?: boolean;
   children: ReactNode;
 }): JSX.Element {
   const cardRef = useRef<HTMLElement | null>(null);
   const onCloseRef = useRef(onClose);
+  const closeBlockedRef = useRef(closeBlocked);
   onCloseRef.current = onClose;
+  closeBlockedRef.current = closeBlocked;
   useEffect(() => {
     const card = cardRef.current;
     const first = card?.querySelector<HTMLElement>('input, select, textarea, button');
     first?.focus();
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') onCloseRef.current();
+      if (event.key === 'Escape' && !closeBlockedRef.current) onCloseRef.current();
       if (event.key !== 'Tab' || !card) return;
       const focusable = Array.from(
         card.querySelectorAll<HTMLElement>(
@@ -894,7 +1010,7 @@ function Modal({
       aria-modal="true"
       aria-label={title}
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (event.target === event.currentTarget && !closeBlocked) onClose();
       }}
     >
       <section

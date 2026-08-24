@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AdminScreen } from './AdminScreen.js';
 import { useAuthStore } from '../auth/authStore.js';
@@ -1086,6 +1086,138 @@ describe('AdminScreen', () => {
     expect(savedTemplatePatchBody.challengeTtlMs).toBe(900_000);
     expect(savedTemplatePatchBody.readyDurationMs).toBe(900_000);
     expect(savedTemplatePatchBody.matchmakingVenuePolicy).toBe('random_unselected');
+  });
+
+  it('keeps the duel editor open and prevents duplicate submit while save is pending', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'a',
+      refreshToken: 'r',
+      user: { id: 'admin', displayName: 'Egor', role: 'admin' },
+    });
+    let resolvePatch!: (response: Response) => void;
+    const patchResponse = new Promise<Response>((resolve) => {
+      resolvePatch = resolve;
+    });
+    let patchCount = 0;
+    const duelTemplate = {
+      id: 'duel-template-1',
+      title: 'Классика',
+      description: 'Три периода как ежедневная игра.',
+      duelKind: 'classic',
+      duelVariant: 'classic',
+      isActive: true,
+      startsAt: '2026-01-01T00:00:00.000Z',
+      endsAt: '2100-01-01T00:00:00.000Z',
+      totalPeriods: 3,
+      shotsPerPeriod: 30,
+      periodDurationMs: 300_000,
+      breakDurationMs: 120_000,
+      goalieId: 'rookie',
+      periodSpeedPresets: [],
+      periodRules: null,
+      stakeAmount: 0,
+      entryFeeAmount: 0,
+      requiredInventoryItemId: null,
+      inventoryChargesPerPeriod: 0,
+      rankedEnabled: true,
+      matchmakingEnabled: true,
+      matchmakingVenuePolicy: 'neutral_default',
+      challengeTtlMs: 1_800_000,
+      readyDurationMs: 900_000,
+      readyNoShowCooldownMs: 900_000,
+      matchmakingTimeoutMs: 180_000,
+      rankedDailyLimit: 100,
+      rankedSameOpponentLimit: 100,
+      powerCap: 100,
+      winPoints: 3,
+      drawPoints: 1,
+      winCurrencyReward: 0,
+      drawCurrencyReward: 0,
+      winStarReward: 0,
+      createdAt: '2026-05-03T08:00:00.000Z',
+      updatedAt: '2026-05-03T08:00:00.000Z',
+    };
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes('/admin/summary')) {
+        return new Response(JSON.stringify(makeAdminSummary()), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/admin/duels/history')) {
+        return new Response(JSON.stringify({ duels: [], total: 0, limit: 25, offset: 0 }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/admin/users')) {
+        return new Response(
+          JSON.stringify({
+            users: [],
+            total: 0,
+            limit: 20,
+            offset: 0,
+            notificationStats: makeNotificationStats(),
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.includes('/admin/feedback')) {
+        return new Response(
+          JSON.stringify({
+            feedback: [],
+            total: 0,
+            unreadCount: 0,
+            ratingStats: { count: 0, average: null },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.includes('/admin/duel-templates/duel-template-1')) {
+        patchCount += 1;
+        return patchResponse;
+      }
+      if (url.includes('/admin/duel-templates')) {
+        return new Response(JSON.stringify({ templates: [duelTemplate] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+
+    renderAdmin();
+    fireEvent.click(await screen.findByRole('button', { name: 'Дуэли' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Редактировать Классика' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Редактирование дуэли' });
+    const saveButton = within(dialog).getByRole('button', { name: 'Сохранить' });
+    saveButton.click();
+    saveButton.click();
+    await waitFor(() => expect(patchCount).toBe(1));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.mouseDown(dialog);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Отмена' }));
+    expect(screen.getByRole('dialog', { name: 'Редактирование дуэли' })).toBeInTheDocument();
+
+    await act(async () => {
+      resolvePatch(
+        new Response(
+          JSON.stringify({
+            error: { code: 'internal_database_trace', message: 'password=secret stack trace' },
+          }),
+          { status: 500, headers: { 'content-type': 'application/json' } },
+        ),
+      );
+      await patchResponse;
+    });
+    expect(
+      await within(dialog).findByText('Не удалось выполнить запрос. Попробуйте ещё раз.'),
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByText(/password=secret/)).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Сохранить' })).toBeEnabled();
+    expect(within(dialog).getByRole('button', { name: 'Отмена' })).toBeEnabled();
   });
 
   it('saves inventory gameplay with comma decimal inputs', async () => {

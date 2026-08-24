@@ -6580,8 +6580,11 @@ function DuelTemplateEditor({
   onSaved: () => void;
 }): JSX.Element {
   const editorRef = useRef<HTMLElement | null>(null);
+  const mutationPendingRef = useRef(false);
   const onCancelRef = useRef(onCancel);
-  onCancelRef.current = onCancel;
+  onCancelRef.current = () => {
+    if (!mutationPendingRef.current) onCancel();
+  };
   const defaultStartsAt = new Date().toISOString();
   const defaultEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
   const [title, setTitle] = useState(template?.title ?? 'Классическая дуэль');
@@ -6761,7 +6764,21 @@ function DuelTemplateEditor({
         : patchAdminDuelTemplate(template.id, body);
     },
     onSuccess: onSaved,
+    onSettled: () => {
+      mutationPendingRef.current = false;
+    },
   });
+
+  function requestCancel(): void {
+    if (mutationPendingRef.current) return;
+    onCancel();
+  }
+
+  function requestSave(): void {
+    if (mutationPendingRef.current || !canSave) return;
+    mutationPendingRef.current = true;
+    mutation.mutate();
+  }
 
   return createPortal(
     <div
@@ -6770,7 +6787,7 @@ function DuelTemplateEditor({
       aria-modal="true"
       aria-label={template === null ? 'Новый шаблон дуэли' : 'Редактирование дуэли'}
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onCancel();
+        if (event.target === event.currentTarget) requestCancel();
       }}
       style={{
         zIndex: 1000,
@@ -7007,7 +7024,8 @@ function DuelTemplateEditor({
           <button
             type="button"
             className="btn btn--ghost"
-            onClick={onCancel}
+            onClick={requestCancel}
+            disabled={mutation.isPending}
             style={{ padding: '10px', fontSize: 12, letterSpacing: 0 }}
           >
             Отмена
@@ -7015,7 +7033,7 @@ function DuelTemplateEditor({
           <button
             type="button"
             className="modal-primary btn--cta"
-            onClick={() => mutation.mutate()}
+            onClick={requestSave}
             disabled={mutation.isPending || !canSave}
             style={{ padding: '10px', fontSize: 12, letterSpacing: 0 }}
           >
