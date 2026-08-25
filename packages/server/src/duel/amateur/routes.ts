@@ -1,6 +1,5 @@
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import type { PoolClient } from 'pg';
-import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import {
   DEFAULT_DUEL_INVENTORY_TIMING,
@@ -28,8 +27,8 @@ import { enqueueDuelPush } from '../../push/duel.js';
 import { appendEvent } from '../eventLog.js';
 import { getGameSettings } from '../gameSettings.js';
 import { deriveAmateurDuelSeed, deriveShotSeed } from '../seed.js';
-import { resolveDuelVenue } from '../../arenas/service.js';
-import type { MatchmakingVenuePolicy } from '../../arenas/types.js';
+import { resolveDefaultArena } from '../../arenas/service.js';
+import type { ArenaSnapshot, MatchmakingVenuePolicy } from '../../arenas/types.js';
 import {
   getDuelSettlementPolicy,
   releaseRemainingDuelInventoryReserve,
@@ -349,7 +348,7 @@ interface DuelMatchRow {
   home_user_id: string | null;
   arena_theme_id: string | null;
   arena_snapshot: unknown | null;
-  venue_policy: MatchmakingVenuePolicy | 'direct_challenge' | null;
+  venue_policy: MatchmakingVenuePolicy | 'direct_challenge' | 'home_selected' | null;
   starts_at: Date;
   ends_at: Date;
   ready_expires_at: Date | null;
@@ -586,7 +585,7 @@ interface DuelMatchDTO {
   season_key: string;
   duel_kind: DuelKind;
   home_user_id: string | null;
-  venue_policy: MatchmakingVenuePolicy | 'direct_challenge';
+  venue_policy: MatchmakingVenuePolicy | 'direct_challenge' | 'home_selected';
   arena: {
     id: string;
     slug: string;
@@ -1152,11 +1151,6 @@ function parseRulesSnapshot(value: unknown): DuelRulesSnapshot {
         periodDurationMs: parsed.data.periodDurationMs,
       }),
   };
-}
-
-function deterministicUnitFromSeed(seed: string, label: string): number {
-  const prefix = createHash('sha256').update(`${seed}:${label}`).digest('hex').slice(0, 8);
-  return Number.parseInt(prefix, 16) / 0xffffffff;
 }
 
 function arenaDtoFromSnapshot(snapshot: unknown): DuelMatchDTO['arena'] {
@@ -3052,6 +3046,12 @@ async function createOpenMatch(
     source: AmateurDuelSource;
     startsAt?: Date;
     endsAt?: Date;
+    venue?: {
+      policy: 'home_selected' | 'neutral_default';
+      homeUserId: string | null;
+      arenaThemeId: string;
+      arena: ArenaSnapshot;
+    };
   },
 ): Promise<{ match: DuelMatchRow; rules: DuelRulesSnapshot }> {
   const settings = await getGameSettings(client);
@@ -3124,16 +3124,15 @@ async function createOpenMatch(
     ],
   );
   const createdMatch = rows[0]!;
-  const venue = await resolveDuelVenue(client, {
-    source: opts.source,
-    policy:
-      opts.source === 'challenge' || opts.source === 'tournament'
-        ? 'neutral_default'
-        : opts.template.matchmaking_venue_policy,
-    challengerUserId: opts.challengerUserId,
-    opponentUserId: opts.opponentUserId,
-    randomUnit: deterministicUnitFromSeed(seedBasis, 'venue'),
-  });
+  const defaultArena = opts.venue === undefined ? await resolveDefaultArena(client) : null;
+  const venue =
+    opts.venue ??
+    ({
+      policy: 'neutral_default' as const,
+      homeUserId: null,
+      arenaThemeId: defaultArena!.id,
+      arena: defaultArena!,
+    });
   const { rows: venueRows } = await client.query<DuelMatchRow>(
     `update amateur_duel_match
         set home_user_id = $2,
@@ -3168,6 +3167,12 @@ export async function createTournamentDuelMatch(
     startsAt: Date;
     endsAt: Date;
     now: Date;
+    venue: {
+      mode: 'home_selected' | 'neutral_default';
+      homeUserId: string | null;
+      arenaThemeId: string;
+      arena: ArenaSnapshot;
+    };
   },
 ): Promise<{ matchId: string }> {
   const template = await fetchTemplate(client, input.templateId);
@@ -3179,6 +3184,12 @@ export async function createTournamentDuelMatch(
     source: 'tournament',
     startsAt: input.startsAt,
     endsAt: input.endsAt,
+    venue: {
+      policy: input.venue.mode,
+      homeUserId: input.venue.homeUserId,
+      arenaThemeId: input.venue.arenaThemeId,
+      arena: input.venue.arena,
+    },
   });
   return { matchId: match.id };
 }

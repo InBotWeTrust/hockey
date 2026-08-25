@@ -39,7 +39,7 @@ export function toUserArenaDTO(arena: ArenaSnapshot, selectionId: string | null)
   };
 }
 
-async function fetchDefaultArena(db: Queryable): Promise<ArenaSnapshot> {
+export async function resolveDefaultArena(db: Queryable): Promise<ArenaSnapshot> {
   const { rows } = await db.query<ArenaRow>(
     `select id, slug, title, artwork_url, thumbnail_url, is_selectable
        from arena_theme
@@ -65,7 +65,7 @@ export async function resolveEffectiveArena(db: Queryable, userId: string): Prom
     [userId],
   );
   const selected = rows[0];
-  return selected === undefined ? fetchDefaultArena(db) : toSnapshot(selected);
+  return selected === undefined ? resolveDefaultArena(db) : toSnapshot(selected);
 }
 
 export async function listUserArenas(
@@ -119,7 +119,7 @@ export async function selectHomeArena(
   arenaThemeId: string | null,
 ): Promise<ArenaSnapshot> {
   if (arenaThemeId === null) {
-    const arena = await fetchDefaultArena(client);
+    const arena = await resolveDefaultArena(client);
     await client.query('update users set home_arena_theme_id = null where id = $1', [userId]);
     return arena;
   }
@@ -182,7 +182,7 @@ export async function resolveDuelVenue(
   }
 
   if (input.policy === 'neutral_default') {
-    const arena = await fetchDefaultArena(client);
+    const arena = await resolveDefaultArena(client);
     return resolvedVenue(input.policy, null, arena);
   }
 
@@ -207,7 +207,7 @@ export async function resolveDuelVenue(
   );
   const selected =
     rows.length === 0
-      ? await fetchDefaultArena(client)
+      ? await resolveDefaultArena(client)
       : toSnapshot(rows[Math.min(rows.length - 1, Math.floor(input.randomUnit * rows.length))]!);
   return resolvedVenue(input.policy, null, selected);
 }

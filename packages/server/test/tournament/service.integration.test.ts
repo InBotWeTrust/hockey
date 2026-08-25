@@ -109,6 +109,85 @@ async function seedUsers(pool: Pool, playerBalance: number): Promise<void> {
   }
 }
 
+async function selectHomeArena(
+  pool: Pool,
+  userId: string,
+  slug: 'beach' | 'castle',
+): Promise<{ id: string; slug: string }> {
+  const arena = await pool.query<{
+    id: string;
+    slug: string;
+    title: string;
+    artwork_url: string;
+    thumbnail_url: string;
+    game_id: string;
+  }>(
+    `select arena.id, arena.slug, arena.title, arena.artwork_url, arena.thumbnail_url,
+            game.id as game_id
+       from arena_theme arena
+       join bonus_game game on game.arena_theme_id = arena.id
+      where arena.slug = $1
+      limit 1`,
+    [slug],
+  );
+  const selected = arena.rows[0]!;
+  const snapshot = {
+    id: selected.id,
+    slug: selected.slug,
+    title: selected.title,
+    artworkUrl: selected.artwork_url,
+    thumbnailUrl: selected.thumbnail_url,
+  };
+  const attempt = await pool.query<{ id: string }>(
+    `insert into bonus_game_attempt
+       (user_id, bonus_game_id, status, state, current_period, closed_at,
+        attempt_seed, game_core_version, definition_revision, rules_snapshot,
+        reward_snapshot, arena_theme_id_snapshot, arena_snapshot,
+        goalkeeper_ready_url, goalkeeper_save_url)
+     values ($1, $2, 'completed', 'closed', 1, now(), $3, 1, 1, $4::jsonb, '{}'::jsonb,
+             $5, $6::jsonb, '/goalies/ready.webp', '/goalies/save.webp')
+     returning id`,
+    [
+      userId,
+      selected.game_id,
+      `tournament-venue-${userId}-${slug}-${Date.now()}`,
+      JSON.stringify({
+        gameId: selected.game_id,
+        slug,
+        title: selected.title,
+        revision: 1,
+        targetGoals: 1,
+        totalPeriods: 1,
+        breakDurationMs: 0,
+        periods: [],
+        goalkeeperReadyUrl: '/goalies/ready.webp',
+        goalkeeperSaveUrl: '/goalies/save.webp',
+        arena: snapshot,
+      }),
+      selected.id,
+      JSON.stringify(snapshot),
+    ],
+  );
+  const completion = await pool.query<{ id: string }>(
+    `insert into user_bonus_game_completion
+       (user_id, bonus_game_id, attempt_id, reward_snapshot)
+     values ($1, $2, $3, '{}'::jsonb)
+     returning id`,
+    [userId, selected.game_id, attempt.rows[0]!.id],
+  );
+  await pool.query(
+    `insert into user_arena_unlock
+       (user_id, arena_theme_id, source_bonus_game_id, source_completion_id)
+     values ($1, $2, $3, $4)`,
+    [userId, selected.id, selected.game_id, completion.rows[0]!.id],
+  );
+  await pool.query(`update users set home_arena_theme_id = $1 where id = $2`, [
+    selected.id,
+    userId,
+  ]);
+  return { id: selected.id, slug: selected.slug };
+}
+
 async function createPublishedTournament(
   pool: Pool,
   slug: string,
@@ -1058,6 +1137,18 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         awayUserId: PLAYER_IDS[1],
         startsAt: new Date('2030-09-01T08:00:00.000Z'),
         endsAt: new Date('2030-09-01T09:00:00.000Z'),
+        venue: {
+          mode: 'neutral_default' as const,
+          homeUserId: null,
+          arenaThemeId: '00000000-0000-4000-8000-000000000590',
+          arena: {
+            id: '00000000-0000-4000-8000-000000000590',
+            slug: 'default',
+            title: 'Стандартная арена',
+            artworkUrl: '/sprites/arena-ice-court-v2.webp',
+            thumbnailUrl: '/sprites/arena-ice-court-v2.webp',
+          },
+        },
       };
       const first = await createTournamentDuelMatch(client, {
         ...input,
@@ -1081,6 +1172,182 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     } finally {
       client.release();
     }
+  });
+
+  it('freezes the selected home arena for all tournament fixture segments and keeps neutral fixtures default', async () => {
+    await seedUsers(pool, 0);
+    const template = await pool.query<{ id: string }>(
+      `select id from amateur_duel_template
+        where is_active and deleted_at is null
+        order by created_at
+        limit 1`,
+    );
+    const venueRules = rules(0);
+    venueRules.regularDuelTemplateId = template.rows[0]!.id;
+    const homeTournament = await createPublishedTournament(
+      pool,
+      'fixture-home-venue',
+      0,
+      venueRules,
+    );
+    for (const playerId of [PLAYER_IDS[0], PLAYER_IDS[1]]) {
+      await applyToTournament(pool, homeTournament.id, playerId);
+    }
+    await generateRegularSchedule(pool, homeTournament.id, homeTournament.revision);
+    await publishRegularSchedule(pool, homeTournament.id);
+    const homeFixture = await pool.query<{
+      id: string;
+      home_participant_id: string;
+      home_user_id: string;
+      scheduled_starts_at: Date;
+      venue_mode: string;
+    }>(
+      `select fixture.id, fixture.home_participant_id, participant.user_id as home_user_id,
+              fixture.scheduled_starts_at, fixture.venue_mode
+         from tournament_fixture fixture
+         join tournament_participant participant on participant.id = fixture.home_participant_id
+        where fixture.tournament_id = $1
+        order by fixture.fixture_number
+        limit 1`,
+      [homeTournament.id],
+    );
+    const home = homeFixture.rows[0]!;
+    expect(home.venue_mode).toBe('home_selected');
+    const beach = await selectHomeArena(pool, home.home_user_id, 'beach');
+
+    const first = await openTournamentFixtureSegment(
+      pool,
+      {
+        fixtureId: home.id,
+        tournamentId: homeTournament.id,
+        userId: home.home_user_id,
+        now: home.scheduled_starts_at,
+      },
+      createTournamentDuelMatch,
+    );
+    const frozen = await pool.query<{
+      venue_owner_participant_id: string | null;
+      arena_theme_id: string | null;
+      arena_slug: string;
+      duel_home_user_id: string | null;
+      duel_arena_slug: string;
+    }>(
+      `select fixture.venue_owner_participant_id, fixture.arena_theme_id,
+              fixture.arena_snapshot->>'slug' as arena_slug,
+              duel.home_user_id as duel_home_user_id,
+              duel.arena_snapshot->>'slug' as duel_arena_slug
+         from tournament_fixture fixture
+         join tournament_fixture_segment segment on segment.fixture_id = fixture.id
+         join amateur_duel_match duel on duel.id = segment.duel_match_id
+        where fixture.id = $1 and segment.sequence_number = 1`,
+      [home.id],
+    );
+    expect(frozen.rows[0]).toEqual({
+      venue_owner_participant_id: home.home_participant_id,
+      arena_theme_id: beach.id,
+      arena_slug: 'beach',
+      duel_home_user_id: home.home_user_id,
+      duel_arena_slug: 'beach',
+    });
+
+    const settleClient = await pool.connect();
+    try {
+      await settleClient.query('begin');
+      await settleTournamentSegmentForDuel(settleClient, {
+        duelMatchId: first.duelMatchId,
+        homeScore: 0,
+        awayScore: 0,
+        settledAt: home.scheduled_starts_at,
+      });
+      await settleClient.query('commit');
+    } catch (error) {
+      await settleClient.query('rollback');
+      throw error;
+    } finally {
+      settleClient.release();
+    }
+    await selectHomeArena(pool, home.home_user_id, 'castle');
+    const second = await openTournamentFixtureSegment(
+      pool,
+      {
+        fixtureId: home.id,
+        tournamentId: homeTournament.id,
+        userId: home.home_user_id,
+        now: home.scheduled_starts_at,
+      },
+      createTournamentDuelMatch,
+    );
+    const overtimeArena = await pool.query<{ arena_slug: string; home_user_id: string | null }>(
+      `select duel.arena_snapshot->>'slug' as arena_slug, duel.home_user_id
+         from tournament_fixture_segment segment
+         join amateur_duel_match duel on duel.id = segment.duel_match_id
+        where segment.id = $1`,
+      [second.segmentId],
+    );
+    expect(overtimeArena.rows[0]).toEqual({ arena_slug: 'beach', home_user_id: home.home_user_id });
+
+    const neutralRules = rules(0);
+    neutralRules.regularDuelTemplateId = template.rows[0]!.id;
+    neutralRules.config.roundRobinCycles = 1;
+    const neutralTournament = await createPublishedTournament(
+      pool,
+      'fixture-neutral-venue',
+      0,
+      neutralRules,
+    );
+    for (const playerId of [PLAYER_IDS[2], PLAYER_IDS[3]]) {
+      await applyToTournament(pool, neutralTournament.id, playerId);
+    }
+    await generateRegularSchedule(pool, neutralTournament.id, neutralTournament.revision);
+    await publishRegularSchedule(pool, neutralTournament.id);
+    const neutralFixture = await pool.query<{
+      id: string;
+      home_user_id: string;
+      scheduled_starts_at: Date;
+      venue_mode: string;
+    }>(
+      `select fixture.id, participant.user_id as home_user_id,
+              fixture.scheduled_starts_at, fixture.venue_mode
+         from tournament_fixture fixture
+         join tournament_participant participant on participant.id = fixture.home_participant_id
+        where fixture.tournament_id = $1
+        order by fixture.fixture_number
+        limit 1`,
+      [neutralTournament.id],
+    );
+    const neutral = neutralFixture.rows[0]!;
+    expect(neutral.venue_mode).toBe('neutral_default');
+    await selectHomeArena(pool, neutral.home_user_id, 'beach');
+    await openTournamentFixtureSegment(
+      pool,
+      {
+        fixtureId: neutral.id,
+        tournamentId: neutralTournament.id,
+        userId: neutral.home_user_id,
+        now: neutral.scheduled_starts_at,
+      },
+      createTournamentDuelMatch,
+    );
+    const neutralVenue = await pool.query<{
+      venue_owner_participant_id: string | null;
+      arena_slug: string;
+      duel_home_user_id: string | null;
+      duel_arena_slug: string;
+    }>(
+      `select fixture.venue_owner_participant_id, fixture.arena_snapshot->>'slug' as arena_slug,
+              duel.home_user_id as duel_home_user_id, duel.arena_snapshot->>'slug' as duel_arena_slug
+         from tournament_fixture fixture
+         join tournament_fixture_segment segment on segment.fixture_id = fixture.id
+         join amateur_duel_match duel on duel.id = segment.duel_match_id
+        where fixture.id = $1 and segment.sequence_number = 1`,
+      [neutral.id],
+    );
+    expect(neutralVenue.rows[0]).toEqual({
+      venue_owner_participant_id: null,
+      arena_slug: 'default',
+      duel_home_user_id: null,
+      duel_arena_slug: 'default',
+    });
   });
 
   it('regenerates a round-robin schedule without duplicate persisted rows', async () => {

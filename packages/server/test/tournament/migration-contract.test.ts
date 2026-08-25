@@ -14,6 +14,10 @@ const liveProposalMigrationUrl = new URL(
   '../../db/migrations/064_tournament_live_proposal_active.sql',
   import.meta.url,
 );
+const fixtureVenueMigrationUrl = new URL(
+  '../../db/migrations/065_tournament_fixture_venue.sql',
+  import.meta.url,
+);
 
 describe('tournament migration contract', () => {
   it('creates the complete tournament orchestration schema', async () => {
@@ -67,5 +71,16 @@ describe('tournament migration contract', () => {
     const sql = await readFile(liveProposalMigrationUrl, 'utf8');
     expect(sql).toContain("state in ('pending', 'accepted')");
     expect(sql).toContain('tournament_live_one_active_idx');
+  });
+
+  it('adds nullable immutable venue fields to tournament fixtures', async () => {
+    const sql = await readFile(fixtureVenueMigrationUrl, 'utf8');
+
+    expect(sql).toContain('venue_mode');
+    expect(sql).toContain("'home_selected'");
+    expect(sql).toContain("'neutral_default'");
+    expect(sql).toContain('venue_owner_participant_id');
+    expect(sql).toContain('arena_theme_id');
+    expect(sql).toContain('arena_snapshot');
   });
 });

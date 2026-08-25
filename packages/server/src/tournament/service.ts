@@ -995,8 +995,8 @@ export async function generateRegularSchedule(
           await client.query(
             `insert into tournament_fixture
                (tournament_id, round_id, fixture_number, home_participant_id,
-                away_participant_id, scheduled_starts_at, window_ends_at, status)
-             values ($1, $2, $3, $4, $5, $6, $7, 'scheduled')`,
+                away_participant_id, scheduled_starts_at, window_ends_at, status, venue_mode)
+             values ($1, $2, $3, $4, $5, $6, $7, 'scheduled', $8)`,
             [
               tournamentId,
               insertedRound.rows[0]!.id,
@@ -1005,6 +1005,7 @@ export async function generateRegularSchedule(
               fixture.awayParticipantId,
               round.startsAt,
               round.endsAt,
+              fixture.venueMode,
             ],
           );
         }
@@ -1616,8 +1617,8 @@ async function materializeTieBreakRound(
       await client.query(
         `insert into tournament_fixture
            (tournament_id, round_id, fixture_number, home_participant_id,
-            away_participant_id, scheduled_starts_at, window_ends_at, status, result_snapshot)
-         values ($1, $2, $3, $4, $5, $6, $7, 'scheduled', $8)`,
+            away_participant_id, scheduled_starts_at, window_ends_at, status, result_snapshot, venue_mode)
+         values ($1, $2, $3, $4, $5, $6, $7, 'scheduled', $8, 'neutral_default')`,
         [
           input.tournamentId,
           round.rows[0]!.id,
@@ -1856,8 +1857,8 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
           `insert into tournament_fixture
              (tournament_id, round_id, series_id, fixture_number,
               home_participant_id, away_participant_id, scheduled_starts_at,
-              window_ends_at, status, result_snapshot)
-           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+              window_ends_at, status, result_snapshot, venue_mode)
+           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'home_selected')`,
           [
             tournamentId,
             roundIds.get(`${stage}:${item.roundNumber}`),

@@ -5,6 +5,8 @@ import { rebuildHeadToHeadStandings } from './standingsPersistence.js';
 import { advanceTournamentPlayoffSeries } from './playoffSeriesLifecycle.js';
 import { enqueueTournamentFixtureResultPush } from './fixtureNotifications.js';
 import { lockTournamentFixture } from './locks.js';
+import { resolveDefaultArena, resolveEffectiveArena } from '../arenas/service.js';
+import type { ArenaSnapshot } from '../arenas/types.js';
 
 interface FixtureContextRow {
   id: string;
@@ -16,6 +18,12 @@ interface FixtureContextRow {
   window_ends_at: Date | null;
   home_user_id: string | null;
   away_user_id: string | null;
+  home_participant_id: string | null;
+  venue_mode: 'home_selected' | 'neutral_default';
+  venue_owner_participant_id: string | null;
+  venue_owner_user_id: string | null;
+  arena_theme_id: string | null;
+  arena_snapshot: ArenaSnapshot | null;
   round_rules: Record<string, unknown>;
   tournament_rules: Record<string, unknown>;
 }
@@ -30,8 +38,48 @@ export interface TournamentDuelFactory {
       startsAt: Date;
       endsAt: Date;
       now: Date;
+      venue: {
+        mode: 'home_selected' | 'neutral_default';
+        homeUserId: string | null;
+        arenaThemeId: string;
+        arena: ArenaSnapshot;
+      };
     },
   ): Promise<{ matchId: string }>;
+}
+
+async function resolveFixtureVenue(
+  client: PoolClient,
+  fixture: FixtureContextRow,
+): Promise<NonNullable<Parameters<TournamentDuelFactory>[1]['venue']>> {
+  if (fixture.arena_theme_id !== null && fixture.arena_snapshot !== null) {
+    return {
+      mode: fixture.venue_mode,
+      homeUserId: fixture.venue_mode === 'home_selected' ? fixture.venue_owner_user_id : null,
+      arenaThemeId: fixture.arena_theme_id,
+      arena: fixture.arena_snapshot,
+    };
+  }
+  const homeSelected = fixture.venue_mode === 'home_selected';
+  const arena = homeSelected
+    ? await resolveEffectiveArena(client, fixture.home_user_id!)
+    : await resolveDefaultArena(client);
+  const ownerParticipantId = homeSelected ? fixture.home_participant_id : null;
+  await client.query(
+    `update tournament_fixture
+        set venue_owner_participant_id = $2,
+            arena_theme_id = $3,
+            arena_snapshot = $4::jsonb,
+            updated_at = now()
+      where id = $1`,
+    [fixture.id, ownerParticipantId, arena.id, JSON.stringify(arena)],
+  );
+  return {
+    mode: fixture.venue_mode,
+    homeUserId: homeSelected ? fixture.home_user_id : null,
+    arenaThemeId: arena.id,
+    arena,
+  };
 }
 
 function stringSetting(source: Record<string, unknown>, key: string): string | null {
@@ -73,6 +121,9 @@ export async function openTournamentFixtureSegment(
       `select f.id, f.tournament_id, f.status, t.status as tournament_status,
               series.status as series_status, f.scheduled_starts_at, f.window_ends_at,
               hp.user_id as home_user_id, ap.user_id as away_user_id,
+              f.home_participant_id, f.venue_mode, f.venue_owner_participant_id,
+              vp.user_id as venue_owner_user_id,
+              f.arena_theme_id, f.arena_snapshot,
               r.rules_snapshot as round_rules, tr.rules_snapshot as tournament_rules
          from tournament_fixture f
          join tournament_round r on r.id = f.round_id
@@ -81,6 +132,7 @@ export async function openTournamentFixtureSegment(
          left join tournament_playoff_series series on series.id = f.series_id
          left join tournament_participant hp on hp.id = f.home_participant_id
          left join tournament_participant ap on ap.id = f.away_participant_id
+         left join tournament_participant vp on vp.id = f.venue_owner_participant_id
         where f.id = $1 and f.tournament_id = $2
         for update of f`,
       [input.fixtureId, input.tournamentId],
@@ -155,6 +207,7 @@ export async function openTournamentFixtureSegment(
           [fixture.id, JSON.stringify({ duelTemplateId: templateId })],
         )
       ).rows[0]!;
+    const venue = await resolveFixtureVenue(client, fixture);
     const duel = await createDuel(client, {
       templateId,
       homeUserId: fixture.home_user_id,
@@ -162,6 +215,7 @@ export async function openTournamentFixtureSegment(
       startsAt: fixture.scheduled_starts_at,
       endsAt: fixture.window_ends_at,
       now: input.now,
+      venue,
     });
     await client.query(
       `update tournament_fixture_segment

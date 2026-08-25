@@ -1,6 +1,7 @@
 export interface TournamentPairing {
   homeParticipantId: string;
   awayParticipantId: string;
+  venueMode: 'home_selected' | 'neutral_default';
 }
 
 export interface TournamentRoundSchedule {
@@ -112,6 +113,7 @@ function generateSingleCycle(
       fixtures.push({
         homeParticipantId: firstIsHome ? first : second,
         awayParticipantId: firstIsHome ? second : first,
+        venueMode: 'neutral_default',
       });
     }
 
@@ -133,6 +135,10 @@ export function generateRoundRobin(
   const rounds: TournamentRoundSchedule[] = [];
   for (let cycleIndex = 0; cycleIndex < cycleCount; cycleIndex += 1) {
     const reverseHomes = cycleIndex % 2 === 1;
+    const venueMode =
+      cycleCount % 2 === 1 && cycleIndex === cycleCount - 1
+        ? 'neutral_default'
+        : 'home_selected';
     for (const baseRound of base) {
       rounds.push({
         cycleNumber: cycleIndex + 1,
@@ -142,8 +148,9 @@ export function generateRoundRobin(
             ? {
                 homeParticipantId: fixture.awayParticipantId,
                 awayParticipantId: fixture.homeParticipantId,
+                venueMode,
               }
-            : { ...fixture },
+            : { ...fixture, venueMode },
         ),
         byeParticipantId: baseRound.byeParticipantId,
       });

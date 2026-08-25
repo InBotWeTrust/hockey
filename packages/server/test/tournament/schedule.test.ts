@@ -2,6 +2,44 @@ import { describe, expect, it } from 'vitest';
 import { assignSequentialRoundWindows, generateRoundRobin } from '../../src/tournament/schedule.js';
 
 describe('generateRoundRobin', () => {
+  it.each([
+    [1, ['neutral_default']],
+    [2, ['home_selected', 'home_selected']],
+    [3, ['home_selected', 'home_selected', 'neutral_default']],
+    [4, ['home_selected', 'home_selected', 'home_selected', 'home_selected']],
+    [5, ['home_selected', 'home_selected', 'home_selected', 'home_selected', 'neutral_default']],
+  ] as const)(
+    'assigns literal venue modes across %i cycle(s)',
+    (cycles, expectedVenueModes) => {
+      const rounds = generateRoundRobin(['a', 'b'], cycles);
+
+      expect(rounds.map((round) => round.fixtures[0]!.venueMode)).toEqual(expectedVenueModes);
+    },
+  );
+
+  it('gives each participant one selected-home fixture in an even paired cycle set', () => {
+    const rounds = generateRoundRobin(['a', 'b'], 4);
+    const fixtures = rounds.map((round) => round.fixtures[0]!);
+
+    expect(fixtures).toEqual([
+      { homeParticipantId: 'a', awayParticipantId: 'b', venueMode: 'home_selected' },
+      { homeParticipantId: 'b', awayParticipantId: 'a', venueMode: 'home_selected' },
+      { homeParticipantId: 'a', awayParticipantId: 'b', venueMode: 'home_selected' },
+      { homeParticipantId: 'b', awayParticipantId: 'a', venueMode: 'home_selected' },
+    ]);
+  });
+
+  it('keeps deterministic home and away score sides in the unmatched neutral cycle', () => {
+    const rounds = generateRoundRobin(['a', 'b'], 5);
+    const neutralFixture = rounds[4]!.fixtures[0]!;
+
+    expect(neutralFixture).toEqual({
+      homeParticipantId: 'a',
+      awayParticipantId: 'b',
+      venueMode: 'neutral_default',
+    });
+  });
+
   it('creates every pair once per cycle and reverses homes in the second cycle', () => {
     const rounds = generateRoundRobin(['a', 'b', 'c', 'd'], 2);
 
@@ -10,8 +48,8 @@ describe('generateRoundRobin', () => {
       cycleNumber: 1,
       roundNumber: 1,
       fixtures: [
-        { homeParticipantId: 'a', awayParticipantId: 'd' },
-        { homeParticipantId: 'c', awayParticipantId: 'b' },
+        { homeParticipantId: 'a', awayParticipantId: 'd', venueMode: 'home_selected' },
+        { homeParticipantId: 'c', awayParticipantId: 'b', venueMode: 'home_selected' },
       ],
       byeParticipantId: null,
     });

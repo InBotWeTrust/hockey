@@ -1557,20 +1557,14 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(second.json().match.opponent.user_id).toBe(userA);
   });
 
-  it('snapshots the challenger home arena for a direct challenge', async () => {
-    const beachId = await setHomeArena(userA, 'beach');
+  it('uses the default neutral arena for every ordinary challenge despite a selected arena', async () => {
+    await setHomeArena(userA, 'beach');
     const created = await challenge(await createTemplate());
 
     expect(created.statusCode).toBe(200);
-    expect(created.json().match.home_user_id).toBe(userA);
-    expect(created.json().match.venue_policy).toBe('direct_challenge');
-    expect(created.json().match.arena).toEqual({
-      id: beachId,
-      slug: 'beach',
-      title: 'Пляж',
-      artwork_url: '/bonus-games/arenas/beach.webp',
-      thumbnail_url: '/bonus-games/arenas/beach.webp',
-    });
+    expect(created.json().match.home_user_id).toBeNull();
+    expect(created.json().match.venue_policy).toBe('neutral_default');
+    expect(created.json().match.arena.slug).toBe('default');
   });
 
   it('uses the default neutral arena for the neutral matchmaking venue policy', async () => {
@@ -1581,28 +1575,27 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(match.arena.slug).toBe('default');
   });
 
-  it('uses the selected arena of the server-chosen home participant for matchmaking', async () => {
-    const beachId = await setHomeArena(userA, 'beach');
-    const castleId = await setHomeArena(userB, 'castle');
+  it('uses the default neutral arena when matchmaking template requests a participant home', async () => {
+    await setHomeArena(userA, 'beach');
+    await setHomeArena(userB, 'castle');
     const match = await createMatchmakingPair('random_participant_home');
 
-    expect(match.venue_policy).toBe('random_participant_home');
-    expect([userA, userB]).toContain(match.home_user_id);
-    expect(match.arena.slug).toBe(match.home_user_id === userA ? 'beach' : 'castle');
-    expect(match.arena.id).toBe(match.home_user_id === userA ? beachId : castleId);
+    expect(match.venue_policy).toBe('neutral_default');
+    expect(match.home_user_id).toBeNull();
+    expect(match.arena.slug).toBe('default');
   });
 
-  it('uses an arena selected by neither participant for the unselected matchmaking venue policy', async () => {
-    const beachId = await setHomeArena(userA, 'beach');
-    const castleId = await setHomeArena(userB, 'castle');
+  it('uses the default neutral arena when matchmaking template requests an unselected arena', async () => {
+    await setHomeArena(userA, 'beach');
+    await setHomeArena(userB, 'castle');
     const match = await createMatchmakingPair('random_unselected');
 
-    expect(match.venue_policy).toBe('random_unselected');
+    expect(match.venue_policy).toBe('neutral_default');
     expect(match.home_user_id).toBeNull();
-    expect([beachId, castleId]).not.toContain(match.arena.id);
+    expect(match.arena.slug).toBe('default');
   });
 
-  it('keeps the venue snapshot after the challenger changes home arena', async () => {
+  it('keeps the default ordinary-duel snapshot after the challenger changes home arena', async () => {
     await setHomeArena(userA, 'beach');
     const created = await challenge(await createTemplate());
     const matchId = created.json().match.id;
@@ -1615,7 +1608,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     });
 
     expect(loaded.statusCode).toBe(200);
-    expect(loaded.json().match.arena.slug).toBe('beach');
+    expect(loaded.json().match.arena.slug).toBe('default');
   });
 
   it('materializes an immutable default venue snapshot for a legacy match with null venue fields', async () => {
