@@ -431,10 +431,10 @@ function BonusGameCard({
           </div>
         </div>
       </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      <div className="admin-card-actions--single-row" data-testid={`bonus-game-actions-${game.id}`}>
         <button
           type="button"
-          className="btn btn--ghost"
+          className="admin-compact-btn"
           aria-label={`Редактировать ${game.title}`}
           onClick={onEdit}
         >
@@ -444,7 +444,7 @@ function BonusGameCard({
           <>
             <button
               type="button"
-              className="btn btn--ghost"
+              className="admin-compact-btn"
               disabled={reorderPending}
               onClick={() => onMove(game.id, -1)}
             >
@@ -452,7 +452,7 @@ function BonusGameCard({
             </button>
             <button
               type="button"
-              className="btn btn--ghost"
+              className="admin-compact-btn"
               disabled={reorderPending}
               onClick={() => onMove(game.id, 1)}
             >
@@ -463,11 +463,11 @@ function BonusGameCard({
         {game.status !== 'archived' && (
           <button
             type="button"
-            className="btn btn--ghost"
+            className="admin-compact-btn"
             aria-label={`Архивировать ${game.title}`}
             onClick={onArchive}
           >
-            Архивировать
+            В архив
           </button>
         )}
       </div>

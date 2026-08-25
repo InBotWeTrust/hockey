@@ -154,6 +154,24 @@ describe('bonus games admin', () => {
     vi.restoreAllMocks();
   });
 
+  it('keeps all active game actions in one compact row', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ games: [bonusGame] }));
+    renderBonusGames();
+    await screen.findByText(bonusGame.title);
+
+    const actions = screen.getByTestId(`bonus-game-actions-${bonusGame.id}`);
+    expect(actions).toHaveClass('admin-card-actions--single-row');
+    for (const name of [
+      `Редактировать ${bonusGame.title}`,
+      'Выше',
+      'Ниже',
+      `Архивировать ${bonusGame.title}`,
+    ]) {
+      expect(within(actions).getByRole('button', { name })).toHaveClass('admin-compact-btn');
+    }
+    expect(within(actions).getByText('В архив')).toBeInTheDocument();
+  });
+
   it('fetches the bonus catalog only on its tab and exposes the complete editor and archive copy', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input);
