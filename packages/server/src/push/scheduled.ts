@@ -678,6 +678,7 @@ async function schedulePushDeliveries(
   client: PoolClient,
   options: RunScheduledPushesOptions,
   now: Date,
+  tournamentsEnabled: boolean,
 ): Promise<ScheduledPushEventResult[]> {
   const settings = await getGameSettings(client);
   const dailyAvailableHour = options.dailyAvailableLocalHour ?? DAILY_AVAILABLE_LOCAL_HOUR;
@@ -718,17 +719,15 @@ async function schedulePushDeliveries(
     trainingAvailableHour,
     settings.daily.totalPeriods,
   );
-  const tournamentLiveSoonRows = await fetchTournamentLiveSoonRows(client, now, lateWindowMs);
-  const tournamentFixtureOpenedRows = await fetchTournamentFixtureOpenedRows(
-    client,
-    now,
-    lateWindowMs,
-  );
-  const tournamentFixtureDeadlineRows = await fetchTournamentFixtureDeadlineRows(
-    client,
-    now,
-    lateWindowMs,
-  );
+  const tournamentLiveSoonRows = tournamentsEnabled
+    ? await fetchTournamentLiveSoonRows(client, now, lateWindowMs)
+    : [];
+  const tournamentFixtureOpenedRows = tournamentsEnabled
+    ? await fetchTournamentFixtureOpenedRows(client, now, lateWindowMs)
+    : [];
+  const tournamentFixtureDeadlineRows = tournamentsEnabled
+    ? await fetchTournamentFixtureDeadlineRows(client, now, lateWindowMs)
+    : [];
 
   const dailyAvailableTargets = collectTargets('daily.available', dailyAvailableRows, (row) => ({
     variables: { localDate: row.local_date },
@@ -871,9 +870,17 @@ async function schedulePushDeliveries(
     await enqueueTargets(client, 'daily.period_ending', periodEndingTargets),
     await enqueueTargets(client, 'daily.break_finished', breakFinishedTargets),
     await enqueueTargets(client, 'training.available', trainingAvailableTargets),
-    await enqueueTargets(client, 'tournament.fixture_opened', tournamentFixtureOpenedTargets),
-    await enqueueTargets(client, 'tournament.live_soon', tournamentLiveSoonTargets),
-    await enqueueTargets(client, 'tournament.fixture_deadline', tournamentFixtureDeadlineTargets),
+    ...(tournamentsEnabled
+      ? [
+          await enqueueTargets(client, 'tournament.fixture_opened', tournamentFixtureOpenedTargets),
+          await enqueueTargets(client, 'tournament.live_soon', tournamentLiveSoonTargets),
+          await enqueueTargets(
+            client,
+            'tournament.fixture_deadline',
+            tournamentFixtureDeadlineTargets,
+          ),
+        ]
+      : []),
   ];
 }
 
@@ -914,7 +921,13 @@ export async function runScheduledPushes(
     await client.query('begin');
     const locked = await tryAcquireSchedulerLock(client);
     if (locked) {
-      events.push(...(await schedulePushDeliveries(client, options, now)));
+      const { rows } = await client.query<{ enabled: boolean }>(
+        `select coalesce((value #>> '{}')::boolean, false) as enabled
+           from game_settings
+          where key = 'tournaments.enabled'`,
+      );
+      const tournamentsEnabled = rows[0]?.enabled === true;
+      events.push(...(await schedulePushDeliveries(client, options, now, tournamentsEnabled)));
     }
     await client.query('commit');
   } catch (err) {
