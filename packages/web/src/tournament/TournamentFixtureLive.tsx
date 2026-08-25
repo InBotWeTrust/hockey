@@ -47,6 +47,14 @@ function formatDate(value: string | null): string {
   return date.toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
 }
 
+function localDateTimeInputValue(value: string | null): string | undefined {
+  if (value === null) return undefined;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return undefined;
+  const part = (number: number) => String(number).padStart(2, '0');
+  return `${date.getFullYear()}-${part(date.getMonth() + 1)}-${part(date.getDate())}T${part(date.getHours())}:${part(date.getMinutes())}`;
+}
+
 function overlapTime(warning: TournamentFixtureLiveOverlapWarning): string {
   if (warning.acceptedLiveAt !== null)
     return `согласованное время: ${formatDate(warning.acceptedLiveAt)}`;
@@ -218,8 +226,8 @@ export function TournamentFixtureLive({
         <input
           type="datetime-local"
           value={proposedAt}
-          min={live.scheduledStartsAt?.slice(0, 16)}
-          max={live.windowEndsAt?.slice(0, 16)}
+          min={localDateTimeInputValue(live.scheduledStartsAt)}
+          max={localDateTimeInputValue(live.windowEndsAt)}
           onChange={(event) => setProposedAt(event.target.value)}
         />
       </label>

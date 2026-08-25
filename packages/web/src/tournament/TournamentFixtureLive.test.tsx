@@ -43,6 +43,12 @@ const fixture = {
   score: { home: 2, away: 1 },
 } as const;
 
+function localInputValue(value: string): string {
+  const date = new Date(value);
+  const part = (number: number) => String(number).padStart(2, '0');
+  return `${date.getFullYear()}-${part(date.getMonth() + 1)}-${part(date.getDate())}T${part(date.getHours())}:${part(date.getMinutes())}`;
+}
+
 function renderLive() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -101,6 +107,14 @@ describe('TournamentFixtureLive', () => {
     expect(await screen.findByText('2 : 1')).toBeInTheDocument();
     expect(screen.getByText('Соединение установлено')).toBeInTheDocument();
     expect(screen.getByText('Период 1 · 10 бросков')).toBeInTheDocument();
+    expect(screen.getByLabelText('Предложить другое время')).toHaveAttribute(
+      'min',
+      localInputValue(fixture.scheduledStartsAt),
+    );
+    expect(screen.getByLabelText('Предложить другое время')).toHaveAttribute(
+      'max',
+      localInputValue(fixture.windowEndsAt),
+    );
 
     act(() => {
       socketHarness.options?.onEvent({

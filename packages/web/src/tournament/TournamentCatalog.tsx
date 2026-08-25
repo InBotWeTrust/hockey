@@ -13,6 +13,7 @@ import {
   type TournamentSummary,
 } from '../api/tournament.js';
 import { TournamentFixtureLive } from './TournamentFixtureLive.js';
+import { useAuthStore } from '../auth/authStore.js';
 
 type TournamentTab = 'overview' | 'standings' | 'schedule' | 'playoff' | 'rules';
 
@@ -38,11 +39,36 @@ function statusLabel(status: TournamentSummary['status']): string {
   return labels[status];
 }
 
+function registrationWindow(tournament: TournamentSummary, now = new Date()): {
+  isOpen: boolean;
+  label: string;
+  actionLabel: string;
+} {
+  if (tournament.status !== 'registration') {
+    return { isOpen: false, label: statusLabel(tournament.status), actionLabel: '' };
+  }
+  const opensAt = tournament.registrationOpensAt === null ? null : new Date(tournament.registrationOpensAt);
+  const closesAt = tournament.registrationClosesAt === null ? null : new Date(tournament.registrationClosesAt);
+  if (opensAt !== null && Number.isFinite(opensAt.getTime()) && now < opensAt) {
+    return {
+      isOpen: false,
+      label: `Регистрация откроется ${opensAt.toLocaleString('ru-RU')}`,
+      actionLabel: 'Регистрация ещё не открыта',
+    };
+  }
+  if (closesAt !== null && Number.isFinite(closesAt.getTime()) && now >= closesAt) {
+    return { isOpen: false, label: 'Регистрация завершена', actionLabel: 'Регистрация завершена' };
+  }
+  return { isOpen: true, label: 'Идёт регистрация', actionLabel: '' };
+}
+
 function TournamentDetails({ tournament, onBack }: { tournament: TournamentSummary; onBack: () => void }) {
   const navigate = useNavigate();
+  const currentUserId = useAuthStore((state) => state.user?.id ?? null);
   const [tab, setTab] = useState<TournamentTab>('overview');
   const [selectedFixture, setSelectedFixture] = useState<TournamentFixture | null>(null);
   const queryClient = useQueryClient();
+  const registrationState = registrationWindow(tournament);
   const schedule = useQuery({
     queryKey: ['tournaments', tournament.id, 'schedule'],
     queryFn: () => fetchTournamentSchedule(tournament.id),
@@ -86,7 +112,7 @@ function TournamentDetails({ tournament, onBack }: { tournament: TournamentSumma
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <button type="button" className="btn btn--ghost" onClick={onBack}>К списку турниров</button>
       <section className="glass" style={{ borderRadius: 22, padding: 16 }}>
-        <div className="section-label" style={{ margin: 0 }}>{statusLabel(tournament.status)}</div>
+        <div className="section-label" style={{ margin: 0 }}>{registrationState.label}</div>
         <h2 style={{ margin: '6px 0', color: 'var(--ink)', fontSize: 23 }}>{tournament.title}</h2>
         <div style={{ color: 'var(--muted)', fontWeight: 700 }}>{tournament.description}</div>
       </section>
@@ -120,7 +146,8 @@ function TournamentDetails({ tournament, onBack }: { tournament: TournamentSumma
             schedule.data?.fixtures.length ? schedule.data.fixtures.map((fixture) => (
               <div key={fixture.id} style={{ padding: '8px 0', borderBottom: '1px solid rgba(100,116,139,.15)' }}>
                 {fixture.home?.name ?? 'Участник'} — {fixture.away?.name ?? 'Участник'}
-                {(fixture.status === 'scheduled' || fixture.status === 'open' || fixture.status === 'active') && (
+                {(fixture.home?.userId === currentUserId || fixture.away?.userId === currentUserId) &&
+                  (fixture.status === 'scheduled' || fixture.status === 'open' || fixture.status === 'active') && (
                   <button
                     type="button"
                     className="btn btn--cta"
@@ -144,8 +171,10 @@ function TournamentDetails({ tournament, onBack }: { tournament: TournamentSumma
         {tab === 'rules' && <div>Опубликованная ревизия правил: №{tournament.revision}. После старта она не изменяется.</div>}
       </section>
       {tournament.status === 'registration' && (
-        <button type="button" className="btn btn--cta" disabled={registration.isPending} onClick={() => registration.mutate()}>
-          {tournament.myParticipantState === null ? 'Подать заявку' : 'Отменить заявку'}
+        <button type="button" className="btn btn--cta" disabled={!registrationState.isOpen || registration.isPending} onClick={() => registration.mutate()}>
+          {!registrationState.isOpen
+            ? registrationState.actionLabel
+            : tournament.myParticipantState === null ? 'Подать заявку' : 'Отменить заявку'}
         </button>
       )}
     </div>
@@ -172,7 +201,7 @@ export function TournamentCatalog(): JSX.Element {
           onClick={() => setSelectedId(tournament.id)}
           style={{ borderRadius: 22, padding: 16, textAlign: 'left', border: '1px solid rgba(255,255,255,.78)' }}
         >
-          <span className="section-label" style={{ display: 'block', margin: 0 }}>{statusLabel(tournament.status)}</span>
+          <span className="section-label" style={{ display: 'block', margin: 0 }}>{registrationWindow(tournament).label}</span>
           <span style={{ display: 'block', marginTop: 6, color: 'var(--ink)', fontSize: 19, fontWeight: 900 }}>{tournament.title}</span>
           <span style={{ display: 'block', marginTop: 5, color: 'var(--muted)', fontWeight: 700 }}>{tournament.participantCount} / {tournament.rules.config.participantLimit} участников</span>
         </button>

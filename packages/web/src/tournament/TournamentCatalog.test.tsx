@@ -2,12 +2,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { useAuthStore } from '../auth/authStore.js';
 import * as api from '../api/tournament.js';
 import { TournamentCatalog } from './TournamentCatalog.js';
 
 describe('TournamentCatalog', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    useAuthStore.setState({ user: { id: 'u1', displayName: 'Первый' } });
   });
 
   it('renders published tournaments and their registration state', async () => {
@@ -77,6 +79,18 @@ describe('TournamentCatalog', () => {
           away: { userId: 'u2', name: 'Второй' },
           score: { home: 0, away: 0 },
         },
+        {
+          id: 'f2',
+          fixtureNumber: 2,
+          stage: 'regular',
+          roundNumber: 1,
+          scheduledStartsAt: '2030-09-01T07:00:00.000Z',
+          windowEndsAt: '2030-09-01T08:00:00.000Z',
+          status: 'scheduled',
+          home: { userId: 'u3', name: 'Третий' },
+          away: { userId: 'u4', name: 'Четвёртый' },
+          score: { home: 0, away: 0 },
+        },
       ],
     });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -91,6 +105,46 @@ describe('TournamentCatalog', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок льда' }));
     fireEvent.click(screen.getByRole('button', { name: 'Расписание' }));
 
-    expect(await screen.findByRole('button', { name: 'Открыть live' })).toBeInTheDocument();
+    expect(await screen.findAllByRole('button', { name: 'Открыть live' })).toHaveLength(1);
+    expect(screen.getByText('Третий — Четвёртый')).toBeInTheDocument();
+  });
+
+  it('does not offer an application before the configured registration window opens', async () => {
+    vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
+      tournaments: [
+        {
+          id: 't1',
+          slug: 'future-cup',
+          title: 'Будущий кубок',
+          description: 'Регистрация позже',
+          status: 'registration',
+          regularSource: 'head_to_head',
+          visibility: 'public',
+          revision: 1,
+          participantCount: 0,
+          myParticipantState: null,
+          registrationOpensAt: '2099-09-01T07:00:00.000Z',
+          registrationClosesAt: '2099-09-10T07:00:00.000Z',
+          startsAt: '2099-09-11T07:00:00.000Z',
+          rules: { config: { participantLimit: 8, entryFeeCoins: 0, playoffSize: 4 } },
+        },
+      ],
+    });
+    const apply = vi.spyOn(api, 'applyToTournament');
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TournamentCatalog />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Будущий кубок' }));
+
+    expect(screen.getByText(/Регистрация откроется/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Регистрация ещё не открыта' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Регистрация ещё не открыта' }));
+    expect(apply).not.toHaveBeenCalled();
   });
 });

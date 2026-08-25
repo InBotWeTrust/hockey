@@ -53,6 +53,7 @@ export function TournamentOperations({
 }): JSX.Element {
   const client = useQueryClient();
   const [tab, setTab] = useState<OperationsTab>('participants');
+  const [status, setStatus] = useState(tournament.status);
   const [reason, setReason] = useState('Решение администратора');
   const [selectedFixture, setSelectedFixture] = useState<AdminTournamentFixture | null>(null);
   const [startsAt, setStartsAt] = useState('');
@@ -110,7 +111,16 @@ export function TournamentOperations({
       if (action === 'publish_schedule') return publishAdminTournamentSchedule(tournament.id);
       return startAdminTournamentPlayoffs(tournament.id);
     },
-    onSuccess: refreshOperations,
+    onSuccess: (result) => {
+      if (
+        typeof result === 'object' &&
+        result !== null &&
+        typeof (result as { status?: unknown }).status === 'string'
+      ) {
+        setStatus((result as { status: string }).status);
+      }
+      refreshOperations();
+    },
   });
   const approve = useMutation({
     mutationFn: (participantId: string) =>
@@ -166,13 +176,13 @@ export function TournamentOperations({
     <section style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <button type="button" className="btn btn--ghost" onClick={onBack}>К списку турниров</button>
       <div className="glass" style={{ borderRadius: 22, padding: 16 }}>
-        <div className="section-label" style={{ margin: 0 }}>{tournament.status} · ревизия {tournament.revision}</div>
+        <div className="section-label" style={{ margin: 0 }}>{status} · ревизия {tournament.revision}</div>
         <h2 style={{ margin: '5px 0 0' }}>{tournament.title}</h2>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
-          {tournament.status === 'draft' && <button type="button" className="btn btn--cta" onClick={() => lifecycle.mutate('publish')}>Опубликовать набор</button>}
-          {['registration', 'registration_blocked'].includes(tournament.status) && <button type="button" className="btn btn--cta" onClick={() => lifecycle.mutate('generate')}>Сгенерировать календарь</button>}
-          {tournament.status === 'scheduling' && <button type="button" className="btn btn--cta" onClick={() => lifecycle.mutate('publish_schedule')}>Опубликовать календарь</button>}
-          {tournament.status === 'regular' && <button type="button" className="btn btn--cta" onClick={() => lifecycle.mutate('playoffs')}>Запустить плей-офф</button>}
+          {status === 'draft' && <button type="button" className="btn btn--cta" onClick={() => lifecycle.mutate('publish')}>Опубликовать набор</button>}
+          {['registration', 'registration_blocked'].includes(status) && <button type="button" className="btn btn--cta" onClick={() => lifecycle.mutate('generate')}>Сгенерировать календарь</button>}
+          {status === 'scheduling' && <button type="button" className="btn btn--cta" onClick={() => lifecycle.mutate('publish_schedule')}>Опубликовать календарь</button>}
+          {status === 'regular' && <button type="button" className="btn btn--cta" onClick={() => lifecycle.mutate('playoffs')}>Запустить плей-офф</button>}
         </div>
       </div>
       <div style={{ display: 'flex', gap: 6, overflowX: 'auto' }}>
@@ -197,6 +207,9 @@ export function TournamentOperations({
         )}
         {tab === 'schedule' && (
           <>
+            {schedule.isLoading && <div>Загрузка календаря…</div>}
+            {schedule.isError && <div role="alert">Не удалось загрузить календарь.</div>}
+            {!schedule.isLoading && !schedule.isError && schedule.data?.fixtures.length === 0 && <div>Календарь пока пуст.</div>}
             {schedule.data?.fixtures.map((fixture) => (
               <button key={fixture.id} type="button" className="glass" style={{ padding: 10, borderRadius: 14, textAlign: 'left' }} onClick={() => setSelectedFixture(fixture)}>
                 №{fixture.fixtureNumber}: {fixture.home?.name ?? 'TBD'} — {fixture.away?.name ?? 'TBD'} · {readableDate(fixture.scheduledStartsAt)} · {fixture.status}
