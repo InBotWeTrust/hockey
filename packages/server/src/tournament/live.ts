@@ -186,7 +186,7 @@ export async function proposeFixtureLiveTime(
     }
     await client.query(
       `update tournament_live_proposal set state = 'superseded'
-        where fixture_id = $1 and state = 'pending'`,
+        where fixture_id = $1 and state in ('pending', 'accepted')`,
       [input.fixtureId],
     );
     const participant = await client.query<{ id: string }>(
@@ -296,13 +296,20 @@ export async function getFixtureLiveSnapshot(
               'goals', dp.goals, 'shotsTaken', dp.shots_taken
             )) filter (where dp.user_id is not null), '[]'::jsonb) as participants
        from tournament_fixture f
-       left join tournament_live_proposal p on p.fixture_id = f.id and p.state in ('pending', 'accepted')
+       left join lateral (
+         select proposal.*
+           from tournament_live_proposal proposal
+          where proposal.fixture_id = f.id and proposal.state in ('pending', 'accepted')
+          order by proposal.created_at desc, proposal.id desc
+          limit 1
+       ) p on true
        left join tournament_participant proposer on proposer.id = p.proposed_by_participant_id
        left join tournament_fixture_segment s on s.fixture_id = f.id and s.status in ('scheduled', 'active')
        left join amateur_duel_match m on m.id = s.duel_match_id
        left join amateur_duel_participant dp on dp.match_id = m.id
       where f.id = $1
-      group by f.id, p.id, proposer.user_id, m.id`,
+      group by f.id, p.id, p.proposed_at, p.state, p.proposed_by_participant_id,
+               proposer.user_id, m.id`,
     [fixtureId],
   );
   const row = rows[0];

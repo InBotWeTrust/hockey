@@ -146,6 +146,9 @@ describe.skipIf(!hasIntegrationEnv)('daily tournament maintenance', () => {
       slug: 'daily-maintenance-no-vapid',
       startsAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
     });
+    await pool.query(
+      `update game_settings set value = 'true'::jsonb where key = 'tournaments.enabled'`,
+    );
     const app = Fastify();
     await app.register(dbPlugin, { connectionString: getTestUrls().databaseUrl });
     await app.register(pushSchedulerPlugin, {
@@ -169,6 +172,9 @@ describe.skipIf(!hasIntegrationEnv)('daily tournament maintenance', () => {
       );
     } finally {
       await app.close();
+      await pool.query(
+        `update game_settings set value = 'false'::jsonb where key = 'tournaments.enabled'`,
+      );
     }
   });
 });

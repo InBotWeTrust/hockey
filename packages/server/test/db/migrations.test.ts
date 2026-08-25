@@ -404,6 +404,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '061_tournaments.sql',
       '062_tournament_duel_concurrency.sql',
       '063_tournament_manual_push.sql',
+      '064_tournament_live_proposal_active.sql',
     ]);
   });
 
@@ -735,6 +736,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '061_tournaments.sql',
       '062_tournament_duel_concurrency.sql',
       '063_tournament_manual_push.sql',
+      '064_tournament_live_proposal_active.sql',
     ]);
 
     const activeInventory = await pool.query<{

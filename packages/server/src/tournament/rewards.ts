@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from 'pg';
 import { AppError } from '../plugins/errors.js';
+import { enqueueTournamentAudiencePush } from '../push/tournament.js';
 
 interface CompletedSeries {
   higherId: string;
@@ -11,7 +12,8 @@ export function resolvePlayoffPlacements(input: {
   final: CompletedSeries;
   bronze?: CompletedSeries;
 }): Array<{ place: number; participantId: string }> {
-  const finalLoser = input.final.higherId === input.final.winnerId ? input.final.lowerId : input.final.higherId;
+  const finalLoser =
+    input.final.higherId === input.final.winnerId ? input.final.lowerId : input.final.higherId;
   const placements = [
     { place: 1, participantId: input.final.winnerId },
     { place: 2, participantId: finalLoser },
@@ -44,7 +46,14 @@ function parseRewards(value: unknown): StageReward[] {
     if (typeof row.place !== 'number' || !Number.isInteger(row.place) || row.place < 1) return [];
     const amount = (key: string) =>
       typeof row[key] === 'number' && Number.isInteger(row[key]) && row[key] >= 0 ? row[key] : 0;
-    return [{ place: row.place, coins: amount('coins'), stars: amount('stars'), experience: amount('experience') }];
+    return [
+      {
+        place: row.place,
+        coins: amount('coins'),
+        stars: amount('stars'),
+        experience: amount('experience'),
+      },
+    ];
   });
 }
 
@@ -77,9 +86,10 @@ async function grantOne(
   );
   if (event.rowCount === 0) return false;
   await client.query('select id from users where id = $1 for update', [input.userId]);
-  await client.query(`insert into user_currency_account (user_id) values ($1) on conflict do nothing`, [
-    input.userId,
-  ]);
+  await client.query(
+    `insert into user_currency_account (user_id) values ($1) on conflict do nothing`,
+    [input.userId],
+  );
   const account = await client.query<{ balance: number; reserved_balance: number }>(
     `update user_currency_account set balance = balance + $2, updated_at = now()
       where user_id = $1 returning balance, reserved_balance`,
@@ -123,9 +133,14 @@ export async function grantTournamentStageRewards(
   const client = await pool.connect();
   try {
     await client.query('begin');
-    await client.query(`select pg_advisory_xact_lock(hashtext($1))`, [`tournament:${tournamentId}`]);
-    const tournament = await client.query<{ rules_snapshot: Record<string, unknown> }>(
-      `select r.rules_snapshot from tournament t
+    await client.query(`select pg_advisory_xact_lock(hashtext($1))`, [
+      `tournament:${tournamentId}`,
+    ]);
+    const tournament = await client.query<{
+      title: string;
+      rules_snapshot: Record<string, unknown>;
+    }>(
+      `select t.title, r.rules_snapshot from tournament t
          join tournament_revision r on r.id = t.published_revision_id
         where t.id = $1 for update of t`,
       [tournamentId],
@@ -222,6 +237,17 @@ export async function grantTournamentStageRewards(
           where id = $1 and status = 'playoff'`,
         [tournamentId],
       );
+      await enqueueTournamentAudiencePush(client, {
+        tournamentId,
+        eventType: 'tournament.completed',
+        eventKey: `${tournamentId}:completed`,
+        variables: { tournamentTitle: tournament.rows[0]!.title },
+        fallback: {
+          title: 'Турнир завершён',
+          body: `${tournament.rows[0]!.title} завершён. Проверьте итоги и награды.`,
+          url: '/?view=amateur&section=tournaments',
+        },
+      });
     }
     await client.query('commit');
     return { tournamentId, stage, granted };

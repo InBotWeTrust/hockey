@@ -4,6 +4,7 @@ import type { WebSocket } from 'ws';
 import { verifyAccessToken } from '../auth/jwt.js';
 import type { Unsubscribe } from '../plugins/realtime.js';
 import { assertFixtureParticipant, getFixtureLiveState } from './live.js';
+import { isTournamentFeatureEnabled } from './service.js';
 
 export interface TournamentWsOptions {
   accessSecret: string;
@@ -16,7 +17,14 @@ function queryValue(query: unknown, key: string): string | null {
 }
 
 const plugin: FastifyPluginAsync<TournamentWsOptions> = async (app, options) => {
-    app.get('/tournaments/fixtures/:fixtureId/ws', { websocket: true }, async (socket: WebSocket, req) => {
+  app.get(
+    '/tournaments/fixtures/:fixtureId/ws',
+    { websocket: true },
+    async (socket: WebSocket, req) => {
+      if (!(await isTournamentFeatureEnabled(app.pg))) {
+        socket.close(4403, 'feature disabled');
+        return;
+      }
       const token = queryValue(req.query, 'token');
       const fixtureId = (req.params as { fixtureId?: unknown }).fixtureId;
       if (!token || typeof fixtureId !== 'string') {
@@ -74,7 +82,8 @@ const plugin: FastifyPluginAsync<TournamentWsOptions> = async (app, options) => 
       socket.on('close', () => void cleanup());
       socket.on('error', () => void cleanup());
       socket.on('message', () => undefined);
-    });
+    },
+  );
 };
 
 export const tournamentWs = fp(plugin, {

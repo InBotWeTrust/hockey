@@ -74,4 +74,22 @@ describe('assignSequentialRoundWindows', () => {
       },
     ]);
   });
+
+  it('keeps the configured local first-round time across a DST transition', () => {
+    const windows = assignSequentialRoundWindows({
+      roundCount: 3,
+      roundsPerDay: 1,
+      firstStart: new Date('2026-03-07T15:00:00.000Z'),
+      timezone: 'America/New_York',
+      firstRoundLocalTime: '10:00',
+      fixtureWindowMs: 60 * 60_000,
+      roundBreakMs: 0,
+    });
+
+    expect(windows.map((window) => window.startsAt)).toEqual([
+      '2026-03-07T15:00:00.000Z',
+      '2026-03-08T14:00:00.000Z',
+      '2026-03-09T14:00:00.000Z',
+    ]);
+  });
 });

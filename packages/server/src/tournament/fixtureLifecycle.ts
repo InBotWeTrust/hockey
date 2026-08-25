@@ -53,12 +53,7 @@ function boundedIntegerSetting(
   max: number,
 ): number {
   for (const value of [primary, fallback]) {
-    if (
-      typeof value === 'number' &&
-      Number.isSafeInteger(value) &&
-      value >= min &&
-      value <= max
-    ) {
+    if (typeof value === 'number' && Number.isSafeInteger(value) && value >= min && value <= max) {
       return value;
     }
   }
@@ -92,8 +87,11 @@ export async function openTournamentFixtureSegment(
     );
     const fixture = contextResult.rows[0];
     if (!fixture) throw new AppError('not_found', 'fixture not found', 404);
-    if (fixture.tournament_status === 'paused' || fixture.series_status === 'paused') {
-      throw new AppError('conflict', 'tournament flow is paused', 409);
+    if (
+      !['regular', 'playoff'].includes(fixture.tournament_status) ||
+      (fixture.series_status !== null && !['scheduled', 'active'].includes(fixture.series_status))
+    ) {
+      throw new AppError('conflict', 'tournament flow is not playable', 409);
     }
     if (fixture.home_user_id !== input.userId && fixture.away_user_id !== input.userId) {
       throw new AppError('forbidden', 'fixture participant required', 403);

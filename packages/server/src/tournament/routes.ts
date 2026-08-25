@@ -37,15 +37,8 @@ import { openTournamentFixtureSegment } from './fixtureLifecycle.js';
 import { publishTournamentFixtureProgress } from './realtimeProgress.js';
 import { finalizeTournamentDailyDay } from './dailyAggregate.js';
 import { grantTournamentStageRewards } from './rewards.js';
-import {
-  getFixtureLiveState,
-  proposeFixtureLiveTime,
-  respondFixtureLiveProposal,
-} from './live.js';
-import {
-  enqueueTournamentAudiencePush,
-  enqueueTournamentPush,
-} from '../push/tournament.js';
+import { getFixtureLiveState, proposeFixtureLiveTime, respondFixtureLiveProposal } from './live.js';
+import { enqueueTournamentAudiencePush } from '../push/tournament.js';
 import {
   dispatchTournamentCommunication,
   listTournamentDispatches,
@@ -65,7 +58,8 @@ const eligibilitySchema = z
     bannedUserIds: z.array(uuid).max(10_000).default([]),
   })
   .refine(
-    (rules) => rules.minLevel === null || rules.maxLevel === null || rules.minLevel <= rules.maxLevel,
+    (rules) =>
+      rules.minLevel === null || rules.maxLevel === null || rules.minLevel <= rules.maxLevel,
     { message: 'minimum level cannot exceed maximum level' },
   );
 
@@ -84,7 +78,12 @@ const rulesSchema = z
   .passthrough();
 
 const draftSchema = z.object({
-  slug: z.string().trim().min(2).max(80).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+  slug: z
+    .string()
+    .trim()
+    .min(2)
+    .max(80)
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
   title: z.string().trim().min(1).max(160),
   description: z.string().trim().max(10_000).default(''),
   rules: rulesSchema,
@@ -122,7 +121,10 @@ interface TournamentRoutesOptions {
   systemUserId?: string;
 }
 
-export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = async (app, options) => {
+export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = async (
+  app,
+  options,
+) => {
   const authenticated = { preHandler: [app.authenticate] };
   const admin = {
     preHandler: [app.authenticate, async (req: FastifyRequest) => requireAdmin(app, req)],
@@ -262,23 +264,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
   app.post('/tournaments/:tournamentId/applications', authenticated, async (req) => {
     await requireTournamentFeature(app);
     const params = z.object({ tournamentId: uuid }).parse(req.params);
-    const result = await applyToTournament(app.pg, params.tournamentId, req.user.id);
-    if (result.state === 'approved') {
-      const tournament = await getTournament(app.pg, params.tournamentId, req.user.id);
-      await enqueueTournamentPush(app.pg, {
-        tournamentId: params.tournamentId,
-        userId: req.user.id,
-        eventType: 'tournament.application_approved',
-        eventKey: `${params.tournamentId}:application-approved:${req.user.id}`,
-        variables: { tournamentTitle: tournament.title },
-        fallback: {
-          title: 'Заявка подтверждена',
-          body: `${tournament.title}: вы участвуете.`,
-          url: '/?view=amateur&section=tournaments',
-        },
-      });
-    }
-    return result;
+    return applyToTournament(app.pg, params.tournamentId, req.user.id);
   });
 
   app.delete('/tournaments/:tournamentId/applications/me', authenticated, async (req) => {
@@ -327,7 +313,8 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
       description: body.description,
       rules: parseRules(body.rules),
       createdBy: req.user.id,
-      registrationOpensAt: body.registrationOpensAt === null ? null : new Date(body.registrationOpensAt),
+      registrationOpensAt:
+        body.registrationOpensAt === null ? null : new Date(body.registrationOpensAt),
       registrationClosesAt:
         body.registrationClosesAt === null ? null : new Date(body.registrationClosesAt),
       startsAt: body.startsAt === null ? null : new Date(body.startsAt),
@@ -364,7 +351,12 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
 
   app.post('/admin/tournaments/:tournamentId/duplicate', admin, async (req, reply) => {
     const params = z.object({ tournamentId: uuid }).parse(req.params);
-    const body = z.object({ slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/), title: z.string().trim().min(1).max(160) }).parse(req.body);
+    const body = z
+      .object({
+        slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+        title: z.string().trim().min(1).max(160),
+      })
+      .parse(req.body);
     const tournament = await duplicateTournamentDraft(app.pg, {
       tournamentId: params.tournamentId,
       slug: body.slug,
@@ -385,35 +377,13 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
     '/admin/tournaments/:tournamentId/participants/:participantId/approve',
     admin,
     async (req) => {
-      const params = z
-        .object({ tournamentId: uuid, participantId: uuid })
-        .parse(req.params);
-      const result = await approveTournamentParticipant(
+      const params = z.object({ tournamentId: uuid, participantId: uuid }).parse(req.params);
+      return approveTournamentParticipant(
         app.pg,
         params.tournamentId,
         params.participantId,
         req.user.id,
       );
-      const participant = await app.pg.query<{ user_id: string; title: string }>(
-        `select p.user_id, t.title from tournament_participant p
-           join tournament t on t.id = p.tournament_id where p.id = $1`,
-        [params.participantId],
-      );
-      if (participant.rows[0]) {
-        await enqueueTournamentPush(app.pg, {
-          tournamentId: params.tournamentId,
-          userId: participant.rows[0].user_id,
-          eventType: 'tournament.application_approved',
-          eventKey: `${params.tournamentId}:application-approved:${participant.rows[0].user_id}`,
-          variables: { tournamentTitle: participant.rows[0].title },
-          fallback: {
-            title: 'Заявка подтверждена',
-            body: `${participant.rows[0].title}: вы участвуете.`,
-            url: '/?view=amateur&section=tournaments',
-          },
-        });
-      }
-      return result;
     },
   );
 
@@ -448,40 +418,12 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
 
   app.post('/admin/tournaments/:tournamentId/schedule/publish', admin, async (req) => {
     const params = z.object({ tournamentId: uuid }).parse(req.params);
-    const result = await publishRegularSchedule(app.pg, params.tournamentId);
-    const tournament = await getTournament(app.pg, params.tournamentId);
-    await enqueueTournamentAudiencePush(app.pg, {
-      tournamentId: params.tournamentId,
-      eventType: 'tournament.schedule_published',
-      eventKey: `${params.tournamentId}:schedule-published:${tournament.revision}`,
-      variables: { tournamentTitle: tournament.title },
-      fallback: {
-        title: 'Календарь опубликован',
-        body: `Расписание турнира ${tournament.title} готово.`,
-        url: '/?view=amateur&section=tournaments',
-      },
-    });
-    return result;
+    return publishRegularSchedule(app.pg, params.tournamentId);
   });
 
   app.post('/admin/tournaments/:tournamentId/playoffs/start', admin, async (req) => {
     const params = z.object({ tournamentId: uuid }).parse(req.params);
-    const result = await startTournamentPlayoffs(app.pg, params.tournamentId);
-    if (result.status === 'playoff') {
-      const tournament = await getTournament(app.pg, params.tournamentId);
-      await enqueueTournamentAudiencePush(app.pg, {
-        tournamentId: params.tournamentId,
-        eventType: 'tournament.playoff_started',
-        eventKey: `${params.tournamentId}:playoff-started`,
-        variables: { tournamentTitle: tournament.title },
-        fallback: {
-          title: 'Начинается плей-офф',
-          body: `Сетка турнира ${tournament.title} опубликована.`,
-          url: '/?view=amateur&section=tournaments',
-        },
-      });
-    }
-    return result;
+    return startTournamentPlayoffs(app.pg, params.tournamentId);
   });
 
   app.post('/admin/tournaments/:tournamentId/daily/:tournamentDay/finalize', admin, async (req) => {
@@ -495,22 +437,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
     const params = z
       .object({ tournamentId: uuid, stage: z.enum(['regular', 'playoff']) })
       .parse(req.params);
-    const result = await grantTournamentStageRewards(app.pg, params.tournamentId, params.stage);
-    if (params.stage === 'playoff') {
-      const tournament = await getTournament(app.pg, params.tournamentId);
-      await enqueueTournamentAudiencePush(app.pg, {
-        tournamentId: params.tournamentId,
-        eventType: 'tournament.completed',
-        eventKey: `${params.tournamentId}:completed`,
-        variables: { tournamentTitle: tournament.title },
-        fallback: {
-          title: 'Турнир завершён',
-          body: `${tournament.title} завершён. Проверьте итоги и награды.`,
-          url: '/?view=amateur&section=tournaments',
-        },
-      });
-    }
-    return result;
+    return grantTournamentStageRewards(app.pg, params.tournamentId, params.stage);
   });
 
   app.patch('/admin/tournaments/:tournamentId/fixtures/:fixtureId/schedule', admin, async (req) => {
@@ -549,7 +476,10 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
   app.post('/admin/tournaments/:tournamentId/fixtures/:fixtureId/no-show', admin, async (req) => {
     const params = z.object({ tournamentId: uuid, fixtureId: uuid }).parse(req.params);
     const body = z
-      .object({ absent: z.enum(['home', 'away', 'both']), reason: z.string().trim().min(3).max(1000) })
+      .object({
+        absent: z.enum(['home', 'away', 'both']),
+        reason: z.string().trim().min(3).max(1000),
+      })
       .parse(req.body);
     return resolveTournamentNoShow(app.pg, { ...params, ...body, adminUserId: req.user.id });
   });

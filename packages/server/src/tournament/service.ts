@@ -1,7 +1,10 @@
 import type { Pool, PoolClient } from 'pg';
 import { AppError } from '../plugins/errors.js';
+import { cancelTournamentDuel } from '../duel/amateur/lifecycle.js';
+import { enqueueTournamentAudiencePush, enqueueTournamentPush } from '../push/tournament.js';
 import { decideTournamentApplication, evaluateTournamentEligibility } from './registration.js';
 import { buildHeadToHeadSchedulePlan } from './materialize.js';
+import { addZonedCalendarDays } from './schedule.js';
 import {
   buildPlayoffSeriesPlan,
   buildPlayoffFixtureWindows,
@@ -93,6 +96,40 @@ async function inTransaction<T>(pool: Pool, work: (client: PoolClient) => Promis
   } finally {
     client.release();
   }
+}
+
+async function terminalizeTournamentFixtureDuels(
+  client: PoolClient,
+  input: { tournamentId: string; fixtureIds?: string[]; reason: string },
+): Promise<number> {
+  const openDuels = await client.query<{ duel_match_id: string; segment_id: string }>(
+    `select duel.id as duel_match_id, segment.id as segment_id
+       from tournament_fixture fixture
+       join tournament_fixture_segment segment on segment.fixture_id = fixture.id
+       join amateur_duel_match duel on duel.id = segment.duel_match_id
+      where fixture.tournament_id = $1
+        and ($2::uuid[] is null or fixture.id = any($2::uuid[]))
+        and duel.source = 'tournament'
+        and duel.status in ('invited', 'ready_check', 'active')
+      order by duel.id
+      for update of duel, segment`,
+    [input.tournamentId, input.fixtureIds ?? null],
+  );
+  for (const duel of openDuels.rows) {
+    await cancelTournamentDuel(client, {
+      duelMatchId: duel.duel_match_id,
+      reason: input.reason,
+    });
+  }
+  if (openDuels.rows.length > 0) {
+    await client.query(
+      `update tournament_fixture_segment
+          set status = 'cancelled'
+        where id = any($1::uuid[]) and status in ('pending', 'scheduled', 'active')`,
+      [openDuels.rows.map((duel) => duel.segment_id)],
+    );
+  }
+  return openDuels.rows.length;
 }
 
 const tournamentSelect = `
@@ -354,11 +391,12 @@ export async function applyToTournament(pool: Pool, tournamentId: string, userId
     await lockTournament(client, tournamentId);
     const { rows } = await client.query<{
       status: TournamentStatus;
+      title: string;
       registration_opens_at: Date | null;
       registration_closes_at: Date | null;
       rules_snapshot: TournamentRulesSnapshot;
     }>(
-      `select t.status, t.registration_opens_at, t.registration_closes_at, r.rules_snapshot
+      `select t.status, t.title, t.registration_opens_at, t.registration_closes_at, r.rules_snapshot
          from tournament t join tournament_revision r on r.id = t.published_revision_id
         where t.id = $1 for update of t`,
       [tournamentId],
@@ -435,6 +473,18 @@ export async function applyToTournament(pool: Pool, tournamentId: string, userId
         participantId: participant.rows[0]!.id,
         userId,
         amount: rules.config.entryFeeCoins,
+      });
+      await enqueueTournamentPush(client, {
+        tournamentId,
+        userId,
+        eventType: 'tournament.application_approved',
+        eventKey: `${tournamentId}:application-approved:${userId}`,
+        variables: { tournamentTitle: tournament.title },
+        fallback: {
+          title: 'Заявка подтверждена',
+          body: `${tournament.title}: вы участвуете.`,
+          url: '/?view=amateur&section=tournaments',
+        },
       });
     }
     return { tournamentId, participantId: participant.rows[0]!.id, state: decision.state };
@@ -553,19 +603,42 @@ export async function inviteTournamentParticipant(
   userId: string,
   invitedBy: string,
 ) {
-  const { rows } = await pool.query<{ id: string }>(
-    `insert into tournament_participant
-       (tournament_id, user_id, state, invited_by)
-     values ($1, $2, 'invited', $3)
-     on conflict (tournament_id, user_id) do update
-       set state = case
-             when tournament_participant.state in ('rejected', 'declined', 'withdrawn')
-             then 'invited' else tournament_participant.state end,
-           invited_by = $3, updated_at = now()
-     returning id`,
-    [tournamentId, userId, invitedBy],
-  );
-  return { participantId: rows[0]!.id, state: 'invited' as const };
+  return inTransaction(pool, async (client) => {
+    await lockTournament(client, tournamentId);
+    const tournament = await client.query<{ status: TournamentStatus; entry_fee_coins: number }>(
+      `select tournament.status,
+              (revision.rules_snapshot->'config'->>'entryFeeCoins')::int as entry_fee_coins
+         from tournament
+         join tournament_revision revision on revision.id = tournament.published_revision_id
+        where tournament.id = $1
+        for update of tournament`,
+      [tournamentId],
+    );
+    if (!tournament.rows[0]) throw new AppError('not_found', 'tournament not found', 404);
+    if (tournament.rows[0].status !== 'registration') {
+      throw new AppError('registration_closed', 'registration is closed', 409);
+    }
+    const entryFeeCoins = Number(tournament.rows[0].entry_fee_coins);
+    const { rows } = await client.query<{ id: string }>(
+      `insert into tournament_participant
+         (tournament_id, user_id, state, invited_by, entry_fee_coins, entry_fee_state)
+       values ($1, $2, 'invited', $3, $4, case when $4 = 0 then 'not_required' else 'pending' end)
+       on conflict (tournament_id, user_id) do update
+         set state = case
+               when tournament_participant.state in ('rejected', 'declined', 'withdrawn')
+               then 'invited' else tournament_participant.state end,
+             entry_fee_coins = case
+               when tournament_participant.state in ('rejected', 'declined', 'withdrawn')
+               then excluded.entry_fee_coins else tournament_participant.entry_fee_coins end,
+             entry_fee_state = case
+               when tournament_participant.state in ('rejected', 'declined', 'withdrawn')
+               then excluded.entry_fee_state else tournament_participant.entry_fee_state end,
+             invited_by = $3, updated_at = now()
+       returning id`,
+      [tournamentId, userId, invitedBy, entryFeeCoins],
+    );
+    return { participantId: rows[0]!.id, state: 'invited' as const };
+  });
 }
 
 export async function approveTournamentParticipant(
@@ -578,9 +651,10 @@ export async function approveTournamentParticipant(
     await lockTournament(client, tournamentId);
     const tournamentResult = await client.query<{
       status: TournamentStatus;
+      title: string;
       rules_snapshot: TournamentRulesSnapshot;
     }>(
-      `select t.status, r.rules_snapshot from tournament t
+      `select t.status, t.title, r.rules_snapshot from tournament t
          join tournament_revision r on r.id = t.published_revision_id
         where t.id = $1 for update of t`,
       [tournamentId],
@@ -611,17 +685,33 @@ export async function approveTournamentParticipant(
     if (Number(count.rows[0]?.count ?? 0) >= tournament.rules_snapshot.config.participantLimit) {
       throw new AppError('capacity_reached', 'capacity reached', 409);
     }
+    const entryFeeCoins = tournament.rules_snapshot.config.entryFeeCoins;
     await client.query(
       `update tournament_participant
-          set state = 'approved', approved_by = $2, joined_at = now(), updated_at = now()
+          set state = 'approved', approved_by = $2, joined_at = now(),
+              entry_fee_coins = $3,
+              entry_fee_state = case when $3 = 0 then 'not_required' else 'pending' end,
+              updated_at = now()
         where id = $1`,
-      [participant.id, approvedBy],
+      [participant.id, approvedBy, entryFeeCoins],
     );
     await applyEntryFee(client, {
       tournamentId,
       participantId: participant.id,
       userId: participant.user_id,
-      amount: Number(participant.entry_fee_coins),
+      amount: entryFeeCoins,
+    });
+    await enqueueTournamentPush(client, {
+      tournamentId,
+      userId: participant.user_id,
+      eventType: 'tournament.application_approved',
+      eventKey: `${tournamentId}:application-approved:${participant.user_id}`,
+      variables: { tournamentTitle: tournament.title },
+      fallback: {
+        title: 'Заявка подтверждена',
+        body: `${tournament.title}: вы участвуете.`,
+        url: '/?view=amateur&section=tournaments',
+      },
     });
     return { participantId, state: 'approved' as const };
   });
@@ -664,6 +754,26 @@ export async function cancelTournament(
         amount: Number(participant.entry_fee_coins),
       });
     }
+    await terminalizeTournamentFixtureDuels(client, {
+      tournamentId,
+      reason: 'tournament_cancelled',
+    });
+    await client.query(
+      `update tournament_fixture
+          set status = 'cancelled', updated_at = now()
+        where tournament_id = $1
+          and status in ('conditional', 'scheduled', 'open', 'active', 'paused')`,
+      [tournamentId],
+    );
+    await client.query(
+      `update tournament_fixture_segment segment
+          set status = 'cancelled'
+         from tournament_fixture fixture
+        where fixture.id = segment.fixture_id
+          and fixture.tournament_id = $1
+          and segment.status in ('pending', 'scheduled', 'active')`,
+      [tournamentId],
+    );
     await client.query(
       `update tournament set status = 'cancelled', cancelled_at = now(),
               updated_by = $2, updated_at = now() where id = $1`,
@@ -743,7 +853,11 @@ export async function resumeTournament(
       [input.tournamentId],
     );
     const previousStatus = audit.rows[0]?.previous_status;
-    if (previousStatus === null || previousStatus === undefined || !canTransitionTournament('paused', previousStatus)) {
+    if (
+      previousStatus === null ||
+      previousStatus === undefined ||
+      !canTransitionTournament('paused', previousStatus)
+    ) {
       throw new AppError('conflict', 'previous tournament status is not recoverable', 409);
     }
     await client.query(
@@ -822,6 +936,8 @@ export async function generateRegularSchedule(
         cycles: config.roundRobinCycles,
         roundsPerDay: config.roundsPerDay,
         firstStart: tournament.starts_at,
+        timezone: config.timezone,
+        firstRoundLocalTime: config.firstRoundLocalTime,
         fixtureWindowMs: config.fixtureWindowMs,
         roundBreakMs: config.roundBreakMs,
       });
@@ -882,8 +998,8 @@ export async function generateRegularSchedule(
       }
     } else {
       for (let day = 1; day <= config.dailyDays; day += 1) {
-        const startsAt = new Date(tournament.starts_at.getTime() + (day - 1) * 86_400_000);
-        const endsAt = new Date(startsAt.getTime() + 86_400_000);
+        const startsAt = addZonedCalendarDays(tournament.starts_at, config.timezone, day - 1);
+        const endsAt = addZonedCalendarDays(tournament.starts_at, config.timezone, day);
         await client.query(
           `insert into tournament_matchday
              (tournament_id, number, local_date, starts_at, ends_at)
@@ -901,13 +1017,32 @@ export async function generateRegularSchedule(
 }
 
 export async function publishRegularSchedule(pool: Pool, tournamentId: string) {
-  const result = await pool.query(
-    `update tournament set status = 'regular', updated_at = now()
-      where id = $1 and status = 'scheduling'`,
-    [tournamentId],
-  );
-  if (result.rowCount === 0) throw new AppError('conflict', 'schedule is not ready', 409);
-  return { tournamentId, status: 'regular' as const };
+  return inTransaction(pool, async (client) => {
+    await lockTournament(client, tournamentId);
+    const tournament = await client.query<{ title: string; current_revision: number }>(
+      `select title, current_revision from tournament
+        where id = $1 and status = 'scheduling' for update`,
+      [tournamentId],
+    );
+    const current = tournament.rows[0];
+    if (!current) throw new AppError('conflict', 'schedule is not ready', 409);
+    await client.query(
+      `update tournament set status = 'regular', updated_at = now() where id = $1`,
+      [tournamentId],
+    );
+    await enqueueTournamentAudiencePush(client, {
+      tournamentId,
+      eventType: 'tournament.schedule_published',
+      eventKey: `${tournamentId}:schedule-published:${current.current_revision}`,
+      variables: { tournamentTitle: current.title },
+      fallback: {
+        title: 'Календарь опубликован',
+        body: `Расписание турнира ${current.title} готово.`,
+        url: '/?view=amateur&section=tournaments',
+      },
+    });
+    return { tournamentId, status: 'regular' as const };
+  });
 }
 
 export async function getTournamentSchedule(pool: Pool, tournamentId: string) {
@@ -1266,7 +1401,9 @@ async function applySettledDailyTieBreakOrder(
   const storedParticipantIds = latest.rules_snapshot.participantIds;
   const roundParticipantIds =
     Array.isArray(storedParticipantIds) &&
-    storedParticipantIds.every((participantId): participantId is string => typeof participantId === 'string')
+    storedParticipantIds.every(
+      (participantId): participantId is string => typeof participantId === 'string',
+    )
       ? storedParticipantIds
       : latest.number === 1
         ? participantIds
@@ -1300,7 +1437,9 @@ async function applySettledDailyTieBreakOrder(
   const expectedPairs = new Set<string>();
   for (let left = 0; left < roundParticipantIds.length; left += 1) {
     for (let right = left + 1; right < roundParticipantIds.length; right += 1) {
-      expectedPairs.add(participantPairKey(roundParticipantIds[left]!, roundParticipantIds[right]!));
+      expectedPairs.add(
+        participantPairKey(roundParticipantIds[left]!, roundParticipantIds[right]!),
+      );
     }
   }
   const actualPairs = new Set<string>();
@@ -1383,7 +1522,9 @@ async function applySettledDailyTieBreakOrder(
       [tournamentId, ordered[index]!.participantId, standing.rank],
     );
   }
-  const playoffSlots = standings.rows.filter((standing) => Number(standing.rank) <= playoffSize).length;
+  const playoffSlots = standings.rows.filter(
+    (standing) => Number(standing.rank) <= playoffSize,
+  ).length;
   let cursor = 0;
   while (cursor < ordered.length) {
     let end = cursor + 1;
@@ -1485,10 +1626,11 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
     await lockTournament(client, tournamentId);
     const tournamentResult = await client.query<{
       status: TournamentStatus;
+      title: string;
       rules_snapshot: TournamentRulesSnapshot;
       starts_at: Date | null;
     }>(
-      `select t.status, t.starts_at, r.rules_snapshot from tournament t
+      `select t.status, t.title, t.starts_at, r.rules_snapshot from tournament t
          join tournament_revision r on r.id = t.published_revision_id
         where t.id = $1 for update of t`,
       [tournamentId],
@@ -1521,6 +1663,25 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
       ) {
         throw new AppError('conflict', 'daily results are not fully finalized', 409);
       }
+    } else {
+      const coverage = await client.query<{ fixture_count: number; terminal_count: number }>(
+        `select count(fixture.id)::int as fixture_count,
+                count(fixture.id) filter (
+                  where fixture.status in ('settled', 'forfeit', 'cancelled')
+                )::int as terminal_count
+           from tournament_round round
+           left join tournament_fixture fixture on fixture.round_id = round.id
+          where round.tournament_id = $1 and round.stage = 'regular'`,
+        [tournamentId],
+      );
+      const counts = coverage.rows[0];
+      if (
+        counts === undefined ||
+        Number(counts.fixture_count) === 0 ||
+        Number(counts.terminal_count) !== Number(counts.fixture_count)
+      ) {
+        throw new AppError('conflict', 'regular fixtures are not fully settled', 409);
+      }
     }
     const rebuilt =
       tournament.rules_snapshot.config.regularSource === 'head_to_head'
@@ -1532,11 +1693,8 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
               tournament.rules_snapshot.config.playoffSize,
             ),
           };
-    let dailyTieBreakRoundToCreate: number | null = null;
-    if (
-      tournament.rules_snapshot.config.regularSource === 'daily_aggregate' &&
-      rebuilt.boundaryTieParticipantIds.length > 0
-    ) {
+    let tieBreakRoundToCreate: number | null = null;
+    if (rebuilt.boundaryTieParticipantIds.length > 0) {
       const tieBreak = await applySettledDailyTieBreakOrder(
         client,
         tournamentId,
@@ -1544,19 +1702,11 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
         tournament.rules_snapshot.config.playoffSize,
       );
       rebuilt.boundaryTieParticipantIds = tieBreak.participantIds;
-      dailyTieBreakRoundToCreate = tieBreak.createRoundNumber;
+      tieBreakRoundToCreate = tieBreak.createRoundNumber;
     }
     const baseTime = await playoffBaseTime(client, tournamentId, now, tournament.starts_at);
     if (rebuilt.boundaryTieParticipantIds.length > 0) {
-      let roundToCreate = dailyTieBreakRoundToCreate;
-      if (tournament.rules_snapshot.config.regularSource === 'head_to_head') {
-        const existing = await client.query<{ id: string }>(
-          `select id from tournament_round
-            where tournament_id = $1 and stage = 'tiebreak' limit 1`,
-          [tournamentId],
-        );
-        if (!existing.rows[0]) roundToCreate = 1;
-      }
+      const roundToCreate = tieBreakRoundToCreate;
       if (roundToCreate !== null) {
         const rules = tieBreakRules(tournament.rules_snapshot);
         if (rules.duelTemplateId === null) {
@@ -1721,6 +1871,17 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
       `update tournament set status = 'playoff', updated_at = now() where id = $1`,
       [tournamentId],
     );
+    await enqueueTournamentAudiencePush(client, {
+      tournamentId,
+      eventType: 'tournament.playoff_started',
+      eventKey: `${tournamentId}:playoff-started`,
+      variables: { tournamentTitle: tournament.title },
+      fallback: {
+        title: 'Начинается плей-офф',
+        body: `Сетка турнира ${tournament.title} опубликована.`,
+        url: '/?view=amateur&section=tournaments',
+      },
+    });
     return { tournamentId, status: 'playoff' as const, seriesCount: seriesIds.size };
   });
 }
@@ -1870,6 +2031,11 @@ export async function resolveTournamentNoShow(
         );
       }
       if (fixtureChanged) {
+        await terminalizeTournamentFixtureDuels(client, {
+          tournamentId: input.tournamentId,
+          fixtureIds: [input.fixtureId],
+          reason: 'tournament_no_show',
+        });
         if (fixture.tournament_status !== 'paused') {
           await client.query(
             `insert into tournament_adjustment
@@ -1920,6 +2086,11 @@ export async function resolveTournamentNoShow(
       );
       if ((updated.rowCount ?? 0) > 0) {
         fixtureChanged = true;
+        await terminalizeTournamentFixtureDuels(client, {
+          tournamentId: input.tournamentId,
+          fixtureIds: [input.fixtureId],
+          reason: 'tournament_no_show',
+        });
         if (fixture.series_id !== null && winner !== null) {
           if (fixture.fixture_status === 'paused') {
             await client.query(
@@ -1934,7 +2105,8 @@ export async function resolveTournamentNoShow(
             winnerParticipantId: winner,
           });
         }
-        if (fixture.stage === 'regular') await rebuildHeadToHeadStandings(client, input.tournamentId);
+        if (fixture.stage === 'regular')
+          await rebuildHeadToHeadStandings(client, input.tournamentId);
         await enqueueTournamentFixtureResultPush(client, {
           fixtureId: input.fixtureId,
           homeParticipantId: fixture.home_participant_id,
@@ -2018,6 +2190,11 @@ export async function disqualifyTournamentParticipant(
       );
       if (updated.rowCount === 0) continue;
       futureForfeits += 1;
+      await terminalizeTournamentFixtureDuels(client, {
+        tournamentId: input.tournamentId,
+        fixtureIds: [fixture.id],
+        reason: 'tournament_disqualification',
+      });
       if (fixture.series_id !== null) {
         await advanceTournamentPlayoffSeries(client, {
           seriesId: fixture.series_id,

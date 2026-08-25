@@ -111,6 +111,7 @@ import {
 import { StartPeriodModal } from '../components/StartPeriodModal.js';
 import { getLastSeenAt, setLastSeenAt } from '../stores/seenPeriods.js';
 import { TournamentCatalog } from '../tournament/TournamentCatalog.js';
+import { fetchTournaments } from '../api/tournament.js';
 import { artworkForInventoryItem, placeholderArtworkForKind } from './inventoryArtwork.js';
 import {
   formatInventoryBadgeAmount,
@@ -2850,7 +2851,10 @@ function ModeShell({
           gap: 14,
         }}
       >
-        <div className="mode-shell__header" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div
+          className="mode-shell__header"
+          style={{ display: 'flex', alignItems: 'center', gap: 10 }}
+        >
           <button
             type="button"
             className="icon-btn"
@@ -2986,10 +2990,7 @@ function TrainingPlaceholder({
 
   return (
     <ModeShell title="Тренировка" onBack={onBack}>
-      <section
-        className="mode-info-card training-info-card"
-        aria-label="Информация о тренировке"
-      >
+      <section className="mode-info-card training-info-card" aria-label="Информация о тренировке">
         <div className="training-summary-grid">
           <TotalCell label="ЛИМИТ" value={`${shotsTaken}/${shotsLimit}`} />
           <TotalCell label="ЧАСТОТА" value="24ч" />
@@ -3025,10 +3026,7 @@ function TrainingPlaceholder({
         )}
       </section>
       {!loading && canConfigureTraining && (
-        <section
-          className="mode-setup-card training-config-card"
-          aria-label="Настройка тренировки"
-        >
+        <section className="mode-setup-card training-config-card" aria-label="Настройка тренировки">
           <SegmentedTabs
             ariaLabel="Период тренировки"
             items={[
@@ -3039,10 +3037,7 @@ function TrainingPlaceholder({
             activeTab={String(selectedPeriod)}
             onChange={(id) => setSelectedPeriod(Number(id) as 1 | 2 | 3)}
           />
-          <PeriodSpeedSummary
-            periodNumber={selectedPeriod}
-            presets={data?.period_speed_presets}
-          />
+          <PeriodSpeedSummary periodNumber={selectedPeriod} presets={data?.period_speed_presets} />
           <button
             type="button"
             className="btn btn--cta"
@@ -3457,6 +3452,11 @@ function AmateurHub({
     queryKey: ['amateur-duel', 'matches'],
     queryFn: fetchAmateurMatches,
   });
+  const tournaments = useQuery({
+    queryKey: ['tournaments'],
+    queryFn: fetchTournaments,
+    retry: false,
+  });
 
   const allMatches = matches.data?.matches ?? [];
   const activeMatches = allMatches.filter(
@@ -3485,14 +3485,16 @@ function AmateurHub({
           tone="active"
           onClick={onOpenDuels}
         />
-        <LevelHubCard
-          title="Турниры"
-          description="Соревнования лучших и ценные призы"
-          meta="Раздел в разработке"
-          artwork="pro"
-          tone="muted"
-          onClick={onOpenTournaments}
-        />
+        {tournaments.isSuccess && (
+          <LevelHubCard
+            title="Турниры"
+            description="Соревнования лучших и ценные призы"
+            meta="Раздел в разработке"
+            artwork="pro"
+            tone="muted"
+            onClick={onOpenTournaments}
+          />
+        )}
       </section>
     </ModeShell>
   );

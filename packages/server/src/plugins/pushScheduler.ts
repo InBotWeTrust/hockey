@@ -4,6 +4,7 @@ import { cleanupPushDeliveryLog, processPushDeliveryQueue } from '../push/queue.
 import { runScheduledPushes } from '../push/scheduled.js';
 import type { PushVapidOptions } from '../push/service.js';
 import { finalizeDueTournamentDailyDays } from '../tournament/dailyAggregate.js';
+import { isTournamentFeatureEnabled } from '../tournament/service.js';
 
 export interface PushSchedulerPluginOptions extends PushVapidOptions {
   scheduleEnabled?: boolean;
@@ -27,7 +28,7 @@ const plugin: FastifyPluginAsync<PushSchedulerPluginOptions> = async (app, opts)
     running = true;
     try {
       const tournamentMaintenance =
-        opts.scheduleEnabled === false
+        opts.scheduleEnabled === false || !(await isTournamentFeatureEnabled(app.pg))
           ? { finalizedDays: 0, finalizedParticipants: 0 }
           : await finalizeDueTournamentDailyDays(app.pg, new Date());
       const result =

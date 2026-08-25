@@ -17,7 +17,76 @@ export interface SequentialRoundWindow {
   endsAt: string;
 }
 
-function generateSingleCycle(participantIds: string[]): Omit<TournamentRoundSchedule, 'cycleNumber'>[] {
+interface ZonedDateTimeParts {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  second: number;
+}
+
+function zonedParts(date: Date, timezone: string): ZonedDateTimeParts {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((part) => part.type === type)?.value);
+  return {
+    year: value('year'),
+    month: value('month'),
+    day: value('day'),
+    hour: value('hour'),
+    minute: value('minute'),
+    second: value('second'),
+  };
+}
+
+function localPartsAsUtc(parts: ZonedDateTimeParts): number {
+  return Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+}
+
+export function zonedDateTimeToUtc(parts: ZonedDateTimeParts, timezone: string): Date {
+  const desired = localPartsAsUtc(parts);
+  let candidate = desired;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const observed = localPartsAsUtc(zonedParts(new Date(candidate), timezone));
+    const correction = desired - observed;
+    candidate += correction;
+    if (correction === 0) break;
+  }
+  const resolved = new Date(candidate);
+  const actual = zonedParts(resolved, timezone);
+  if (localPartsAsUtc(actual) !== desired) {
+    throw new Error(`local time does not exist in timezone ${timezone}`);
+  }
+  return resolved;
+}
+
+function addLocalCalendarDays(parts: ZonedDateTimeParts, days: number): ZonedDateTimeParts {
+  const shifted = new Date(Date.UTC(parts.year, parts.month - 1, parts.day + days));
+  return {
+    ...parts,
+    year: shifted.getUTCFullYear(),
+    month: shifted.getUTCMonth() + 1,
+    day: shifted.getUTCDate(),
+  };
+}
+
+export function addZonedCalendarDays(date: Date, timezone: string, days: number): Date {
+  return zonedDateTimeToUtc(addLocalCalendarDays(zonedParts(date, timezone), days), timezone);
+}
+
+function generateSingleCycle(
+  participantIds: string[],
+): Omit<TournamentRoundSchedule, 'cycleNumber'>[] {
   if (participantIds.length < 2) throw new Error('at least two participants are required');
   if (new Set(participantIds).size !== participantIds.length) {
     throw new Error('participant ids must be unique');
@@ -87,6 +156,8 @@ export function assignSequentialRoundWindows(input: {
   roundCount: number;
   roundsPerDay: number;
   firstStart: Date;
+  timezone?: string;
+  firstRoundLocalTime?: string;
   fixtureWindowMs: number;
   roundBreakMs: number;
 }): SequentialRoundWindow[] {
@@ -95,13 +166,29 @@ export function assignSequentialRoundWindows(input: {
     Math.max(0, input.roundsPerDay - 1) * input.roundBreakMs;
   if (occupiedMs > 86_400_000) throw new Error('round windows must fit inside one day');
 
+  const timezone = input.timezone ?? 'UTC';
+  const firstLocal = zonedParts(input.firstStart, timezone);
+  const localTime =
+    input.firstRoundLocalTime ??
+    `${String(firstLocal.hour).padStart(2, '0')}:${String(firstLocal.minute).padStart(2, '0')}`;
+  const parsedTime = /^(\d{2}):(\d{2})$/.exec(localTime);
+  if (!parsedTime) throw new Error('first round local time is invalid');
+  const firstMatchday = {
+    ...firstLocal,
+    hour: Number(parsedTime[1]),
+    minute: Number(parsedTime[2]),
+    second: 0,
+  };
+
   return Array.from({ length: input.roundCount }, (_, index) => {
     const matchdayIndex = Math.floor(index / input.roundsPerDay);
     const slotIndex = index % input.roundsPerDay;
+    const matchdayStart = zonedDateTimeToUtc(
+      addLocalCalendarDays(firstMatchday, matchdayIndex),
+      timezone,
+    );
     const startsAt = new Date(
-      input.firstStart.getTime() +
-        matchdayIndex * 86_400_000 +
-        slotIndex * (input.fixtureWindowMs + input.roundBreakMs),
+      matchdayStart.getTime() + slotIndex * (input.fixtureWindowMs + input.roundBreakMs),
     );
     return {
       roundNumber: index + 1,
@@ -111,4 +198,3 @@ export function assignSequentialRoundWindows(input: {
     };
   });
 }
-

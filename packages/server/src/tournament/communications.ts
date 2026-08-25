@@ -45,144 +45,234 @@ export async function dispatchTournamentCommunication(
   if (input.kind === 'direct_message' && input.systemUserId === undefined) {
     throw new AppError('configuration_error', 'SYSTEM_USER_ID is required', 409);
   }
-  const newsChannel =
-    input.kind === 'official_news'
-      ? await ensureDefaultNewsChannel(pool, input.createdBy)
-      : null;
-  const recipients =
-    newsChannel === null
-      ? await previewTournamentAudience(pool, input.tournamentId, input.audience)
-      : { count: 1, recipients: [] };
-  const dispatch = await pool.query<{
-    id: string;
-    status: string;
-    recipient_count: number;
-    delivered_count: number;
-    failed_count: number;
-  }>(
-    `insert into tournament_dispatch
-       (tournament_id, idempotency_key, kind, event_key, audience_snapshot,
-        payload_snapshot, recipient_count, created_by)
-     values ($1, $2, $3, 'tournament.manual', $4, $5, $6, $7)
-     on conflict (idempotency_key) do update set idempotency_key = excluded.idempotency_key
-     returning id, status, recipient_count, delivered_count, failed_count`,
-    [
-      input.tournamentId,
-      input.idempotencyKey,
-      input.kind,
-      JSON.stringify(
-        newsChannel === null
-          ? { audience: input.audience, recipients: recipients.recipients.map((row) => row.user_id) }
-          : { channelId: newsChannel.id, channelSlug: newsChannel.channel_slug },
-      ),
-      JSON.stringify({ title: input.title, body: input.body }),
-      recipients.count,
-      input.createdBy,
-    ],
-  );
-  const dispatchId = dispatch.rows[0]!.id;
-  if (dispatch.rows[0]!.status === 'sent') {
-    return {
-      dispatchId,
-      status: 'sent',
-      recipients: Number(dispatch.rows[0]!.recipient_count),
-      delivered: Number(dispatch.rows[0]!.delivered_count),
-      failed: Number(dispatch.rows[0]!.failed_count),
+  const lockKey = `tournament-dispatch:${input.idempotencyKey}`;
+  const lockClient = await pool.connect();
+  try {
+    await lockClient.query(`select pg_advisory_lock(hashtext($1))`, [lockKey]);
+    type DispatchRow = {
+      id: string;
+      tournament_id: string;
+      kind: 'push' | 'direct_message' | 'official_news';
+      audience_snapshot: unknown;
+      payload_snapshot: unknown;
+      status: string;
+      recipient_count: number;
+      delivered_count: number;
+      failed_count: number;
+      created_by: string | null;
     };
-  }
-  await pool.query(`update tournament_dispatch set status = 'sending' where id = $1 and status <> 'sent'`, [
-    dispatchId,
-  ]);
-  let delivered = 0;
-  let failed = 0;
-  if (newsChannel !== null) {
-    try {
-      const existing = await pool.query<{ id: string }>(
-        `select id from messages
-          where chat_id = $1
-            and metadata->>'tournamentDispatchId' = $2
-          limit 1`,
-        [newsChannel.id, dispatchId],
-      );
-      if (existing.rows[0]) {
-        delivered = 1;
-      } else {
-        const message = await sendMessage(pool, {
-          chatId: newsChannel.id,
-          senderId: input.createdBy,
-          content: input.body,
-          metadata: {
-            type: 'tournament_announcement',
-            title: input.title,
-            tournamentId: input.tournamentId,
-            tournamentDispatchId: dispatchId,
-          },
-        });
-        await publishMessageNew(pool, publisher, newsChannel.id, 'channel', message);
-        delivered = 1;
-      }
-    } catch {
-      failed = 1;
+    let dispatch = (
+      await lockClient.query<DispatchRow>(
+        `select id, tournament_id, kind, audience_snapshot, payload_snapshot, status,
+                recipient_count, delivered_count, failed_count, created_by
+           from tournament_dispatch where idempotency_key = $1`,
+        [input.idempotencyKey],
+      )
+    ).rows[0];
+    if (dispatch && dispatch.tournament_id !== input.tournamentId) {
+      throw new AppError('conflict', 'idempotency key belongs to another tournament', 409);
     }
-  }
-  for (const recipient of recipients.recipients) {
-    try {
-      if (input.kind === 'push') {
-        const queued = await enqueueTournamentPush(pool, {
-          tournamentId: input.tournamentId,
-          userId: recipient.user_id,
-          eventType: 'tournament.manual',
-          eventKey: `${dispatchId}:${recipient.user_id}`,
-          variables: { title: input.title, body: input.body },
-          fallback: {
-            title: input.title,
-            body: input.body,
-            url: '/?view=amateur&section=tournaments',
-          },
-        });
-        if (queued) delivered += 1;
-        else failed += 1;
-      } else {
+    if (!dispatch) {
+      const newsChannel =
+        input.kind === 'official_news'
+          ? await ensureDefaultNewsChannel(pool, input.createdBy)
+          : null;
+      const audience =
+        newsChannel === null
+          ? await previewTournamentAudience(pool, input.tournamentId, input.audience)
+          : { count: 1, recipients: [] };
+      const audienceSnapshot =
+        newsChannel === null
+          ? {
+              audience: input.audience,
+              recipients: audience.recipients.map((row) => row.user_id),
+              ...(input.kind === 'direct_message' ? { systemUserId: input.systemUserId } : {}),
+            }
+          : {
+              audience: input.audience,
+              recipients: [],
+              channelId: newsChannel.id,
+              channelSlug: newsChannel.channel_slug,
+            };
+      dispatch = (
+        await lockClient.query<DispatchRow>(
+          `insert into tournament_dispatch
+             (tournament_id, idempotency_key, kind, event_key, audience_snapshot,
+              payload_snapshot, recipient_count, created_by)
+           values ($1, $2, $3, 'tournament.manual', $4, $5, $6, $7)
+           returning id, tournament_id, kind, audience_snapshot, payload_snapshot, status,
+                     recipient_count, delivered_count, failed_count, created_by`,
+          [
+            input.tournamentId,
+            input.idempotencyKey,
+            input.kind,
+            JSON.stringify(audienceSnapshot),
+            JSON.stringify({ title: input.title, body: input.body }),
+            audience.count,
+            input.createdBy,
+          ],
+        )
+      ).rows[0]!;
+    }
+    const dispatchId = dispatch.id;
+    if (dispatch.status === 'sent') {
+      return {
+        dispatchId,
+        status: 'sent',
+        recipients: Number(dispatch.recipient_count),
+        delivered: Number(dispatch.delivered_count),
+        failed: Number(dispatch.failed_count),
+      };
+    }
+    const audienceSnapshot =
+      typeof dispatch.audience_snapshot === 'object' &&
+      dispatch.audience_snapshot !== null &&
+      !Array.isArray(dispatch.audience_snapshot)
+        ? (dispatch.audience_snapshot as Record<string, unknown>)
+        : {};
+    const payloadSnapshot =
+      typeof dispatch.payload_snapshot === 'object' &&
+      dispatch.payload_snapshot !== null &&
+      !Array.isArray(dispatch.payload_snapshot)
+        ? (dispatch.payload_snapshot as Record<string, unknown>)
+        : {};
+    const title = payloadSnapshot.title;
+    const body = payloadSnapshot.body;
+    const recipientIds = audienceSnapshot.recipients;
+    if (
+      typeof title !== 'string' ||
+      typeof body !== 'string' ||
+      !Array.isArray(recipientIds) ||
+      !recipientIds.every((recipientId): recipientId is string => typeof recipientId === 'string')
+    ) {
+      throw new AppError('configuration_error', 'tournament dispatch snapshot is invalid', 409);
+    }
+    await lockClient.query(
+      `update tournament_dispatch
+          set status = 'sending', completed_at = null
+        where id = $1 and status <> 'sent'`,
+      [dispatchId],
+    );
+    let delivered = 0;
+    let failed = 0;
+    if (dispatch.kind === 'official_news') {
+      const channelId = audienceSnapshot.channelId;
+      const senderId = dispatch.created_by;
+      try {
+        if (typeof channelId !== 'string' || senderId === null)
+          throw new Error('invalid news snapshot');
         const existing = await pool.query<{ id: string }>(
           `select id from messages
-            where sender_id = $1
-              and metadata->>'tournamentDispatchId' = $2
-              and metadata->>'recipientUserId' = $3
+            where chat_id = $1 and metadata->>'tournamentDispatchId' = $2
             limit 1`,
-          [input.systemUserId, dispatchId, recipient.user_id],
+          [channelId, dispatchId],
         );
         if (existing.rows[0]) {
-          delivered += 1;
-          continue;
+          delivered = 1;
+        } else {
+          const message = await sendMessage(pool, {
+            chatId: channelId,
+            senderId,
+            content: body,
+            metadata: {
+              type: 'tournament_announcement',
+              title,
+              tournamentId: dispatch.tournament_id,
+              tournamentDispatchId: dispatchId,
+            },
+          });
+          await publishMessageNew(pool, publisher, channelId, 'channel', message);
+          delivered = 1;
         }
-        const dm = await findOrCreateDM(pool, input.systemUserId!, recipient.user_id);
-        const message = await sendMessage(pool, {
-          chatId: dm.chatId,
-          senderId: input.systemUserId!,
-          content: input.body,
-          metadata: {
-            type: 'tournament_announcement',
-            title: input.title,
-            tournamentId: input.tournamentId,
-            tournamentDispatchId: dispatchId,
-            recipientUserId: recipient.user_id,
-          },
-        });
-        await publishMessageNew(pool, publisher, dm.chatId, 'direct', message);
-        delivered += 1;
+      } catch {
+        failed = 1;
       }
-    } catch {
-      failed += 1;
+    } else {
+      for (const recipientId of recipientIds) {
+        try {
+          if (dispatch.kind === 'push') {
+            const eventKey = `${dispatchId}:${recipientId}`;
+            const queued = await enqueueTournamentPush(pool, {
+              tournamentId: dispatch.tournament_id,
+              userId: recipientId,
+              eventType: 'tournament.manual',
+              eventKey,
+              variables: { title, body },
+              fallback: {
+                title,
+                body,
+                url: '/?view=amateur&section=tournaments',
+              },
+            });
+            const existing = queued
+              ? true
+              : Boolean(
+                  (
+                    await pool.query<{ id: string }>(
+                      `select id from push_delivery_log
+                        where user_id = $1 and event_type = 'tournament.manual' and event_key = $2`,
+                      [recipientId, eventKey],
+                    )
+                  ).rows[0],
+                );
+            if (existing) delivered += 1;
+            else failed += 1;
+          } else {
+            const systemUserId = audienceSnapshot.systemUserId;
+            if (typeof systemUserId !== 'string') throw new Error('invalid DM snapshot');
+            const existing = await pool.query<{ id: string }>(
+              `select id from messages
+                where sender_id = $1
+                  and metadata->>'tournamentDispatchId' = $2
+                  and metadata->>'recipientUserId' = $3
+                limit 1`,
+              [systemUserId, dispatchId, recipientId],
+            );
+            if (existing.rows[0]) {
+              delivered += 1;
+              continue;
+            }
+            const dm = await findOrCreateDM(pool, systemUserId, recipientId);
+            const message = await sendMessage(pool, {
+              chatId: dm.chatId,
+              senderId: systemUserId,
+              content: body,
+              metadata: {
+                type: 'tournament_announcement',
+                title,
+                tournamentId: dispatch.tournament_id,
+                tournamentDispatchId: dispatchId,
+                recipientUserId: recipientId,
+              },
+            });
+            await publishMessageNew(pool, publisher, dm.chatId, 'direct', message);
+            delivered += 1;
+          }
+        } catch {
+          failed += 1;
+        }
+      }
     }
+    const status = failed === 0 ? 'sent' : delivered === 0 ? 'failed' : 'partially_failed';
+    await lockClient.query(
+      `update tournament_dispatch
+          set status = $2, delivered_count = $3, failed_count = $4, completed_at = now()
+        where id = $1`,
+      [dispatchId, status, delivered, failed],
+    );
+    return {
+      dispatchId,
+      status,
+      recipients: Number(dispatch.recipient_count),
+      delivered,
+      failed,
+    };
+  } finally {
+    await lockClient
+      .query(`select pg_advisory_unlock(hashtext($1))`, [lockKey])
+      .catch(() => undefined);
+    lockClient.release();
   }
-  const status = failed === 0 ? 'sent' : delivered === 0 ? 'failed' : 'partially_failed';
-  await pool.query(
-    `update tournament_dispatch
-        set status = $2, delivered_count = $3, failed_count = $4, completed_at = now()
-      where id = $1`,
-    [dispatchId, status, delivered, failed],
-  );
-  return { dispatchId, status, recipients: recipients.count, delivered, failed };
 }
 
 export async function listTournamentDispatches(pool: Pool, tournamentId: string) {

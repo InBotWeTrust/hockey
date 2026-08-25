@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../../src/app.js';
 import { createJwt } from '../../src/auth/jwt.js';
 import { applyMigrations } from '../../src/db/migrations.js';
@@ -246,7 +246,7 @@ async function createRegisteredTournament(
         url: '/?view=amateur&section=tournaments',
       },
     };
-    expect(await enqueueTournamentPush(pool, pushInput)).toBe(true);
+    expect(await enqueueTournamentPush(pool, pushInput)).toBe(false);
     expect(await enqueueTournamentPush(pool, pushInput)).toBe(false);
   }
   const participants = await pool.query<{
@@ -291,7 +291,7 @@ async function enqueueAudienceLifecyclePush(
       url: '/?view=amateur&section=tournaments',
     },
   };
-  expect(await enqueueTournamentAudiencePush(pool, pushInput)).toBe(4);
+  expect(await enqueueTournamentAudiencePush(pool, pushInput)).toBe(0);
   expect(await enqueueTournamentAudiencePush(pool, pushInput)).toBe(0);
 }
 
@@ -332,6 +332,9 @@ async function settleRealTournamentDuel(
       createTournamentDuelMatch,
     );
     const { databaseUrl, redisUrl } = getTestUrls();
+    await pool.query(
+      `update game_settings set value = 'true'::jsonb where key = 'tournaments.enabled'`,
+    );
     app = await buildApp({
       config: {
         NODE_ENV: 'test',
@@ -369,18 +372,25 @@ async function settleRealTournamentDuel(
       [opened.duelMatchId, winnerUserId, settlementTime],
     );
     const token = await jwt.issueAccessToken({ sub: winnerUserId });
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const settled = await app.inject({
-        method: 'POST',
-        url: `/duel/amateur/matches/${opened.duelMatchId}/settle`,
-        headers: { authorization: `Bearer ${token}` },
-      });
-      expect(settled.statusCode).toBe(200);
-      expect(settled.json().match.status).toBe('settled');
-    }
+    const settled = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${opened.duelMatchId}/settle`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(settled.statusCode).toBe(200);
+    expect(settled.json().match.status).toBe('settled');
+    const terminalRetry = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${opened.duelMatchId}/settle`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(terminalRetry.statusCode).toBe(409);
     return opened.duelMatchId;
   } finally {
     await app?.close();
+    await pool.query(
+      `update game_settings set value = 'false'::jsonb where key = 'tournaments.enabled'`,
+    );
     vi.useRealTimers();
   }
 }
@@ -682,6 +692,12 @@ describe.skipIf(!hasIntegrationEnv)('synthetic tournament seasons', () => {
   beforeEach(async () => {
     await resetDatabase(pool);
     await applyMigrations(pool, MIGRATIONS_DIR);
+  });
+
+  afterEach(async () => {
+    await pool.query(
+      `update game_settings set value = 'false'::jsonb where key = 'tournaments.enabled'`,
+    );
   });
 
   afterAll(async () => {

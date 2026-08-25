@@ -409,6 +409,58 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(duplicatePair.json().error.message).toBe('open duel already exists for this opponent');
   });
 
+  it('hides disabled tournament duels while ordinary amateur duels remain usable', async () => {
+    const templateId = await createTemplate();
+    const tournamentChallenge = await challenge(templateId);
+    const tournamentMatchId = tournamentChallenge.json().match.id as string;
+    await pool.query(`update amateur_duel_match set source = 'tournament' where id = $1`, [
+      tournamentMatchId,
+    ]);
+    const ordinaryChallenge = await challenge(templateId);
+    const ordinaryMatchId = ordinaryChallenge.json().match.id as string;
+
+    const list = await app.inject({
+      method: 'GET',
+      url: '/duel/amateur/matches',
+      headers: auth(tokenA),
+    });
+    expect(list.statusCode).toBe(200);
+    expect(list.json().matches.map((match: { id: string }) => match.id)).toEqual([ordinaryMatchId]);
+    const hidden = await app.inject({
+      method: 'GET',
+      url: `/duel/amateur/matches/${tournamentMatchId}`,
+      headers: auth(tokenA),
+    });
+    expect(hidden.statusCode).toBe(404);
+
+    await pool.query(
+      `insert into game_settings (key, value, label, description)
+       values ('tournaments.enabled', 'true'::jsonb, 'Турниры включены', 'test')
+       on conflict (key) do update set value = excluded.value`,
+    );
+    try {
+      const orphaned = await app.inject({
+        method: 'GET',
+        url: `/duel/amateur/matches/${tournamentMatchId}`,
+        headers: auth(tokenA),
+      });
+      expect(orphaned.statusCode).toBe(409);
+      expect(orphaned.json().error.message).toBe('tournament duel is not playable');
+      const ordinary = await app.inject({
+        method: 'GET',
+        url: `/duel/amateur/matches/${ordinaryMatchId}`,
+        headers: auth(tokenA),
+      });
+      expect(ordinary.statusCode).toBe(200);
+    } finally {
+      await pool.query(
+        `insert into game_settings (key, value, label, description)
+         values ('tournaments.enabled', 'false'::jsonb, 'Турниры включены', 'test')
+         on conflict (key) do update set value = excluded.value`,
+      );
+    }
+  });
+
   it('limits one player to five open duel slots', async () => {
     const templateId = await createTemplate();
     const opponentIds = await Promise.all(

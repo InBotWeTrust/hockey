@@ -61,9 +61,9 @@ describe('TournamentAdmin', () => {
     expect(titleInput.matches('.admin-screen input')).toBe(true);
 
     fireEvent.click(screen.getByRole('button', { name: '2. Доступ' }));
-    expect(screen.getByRole('combobox', { name: 'Регистрация' }).matches('.admin-screen select')).toBe(
-      true,
-    );
+    expect(
+      screen.getByRole('combobox', { name: 'Регистрация' }).matches('.admin-screen select'),
+    ).toBe(true);
   });
 
   it('configures tournament rules instead of showing placeholder wizard steps', async () => {
@@ -116,7 +116,9 @@ describe('TournamentAdmin', () => {
     });
 
     fireEvent.click(screen.getByRole('button', { name: '4. Плей-офф' }));
-    expect(screen.getByRole('spinbutton', { name: 'Раунд 1: побед для серии' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('spinbutton', { name: 'Раунд 1: побед для серии' }),
+    ).toBeInTheDocument();
     fireEvent.change(screen.getByRole('spinbutton', { name: 'Раунд 1: побед для серии' }), {
       target: { value: '4' },
     });
@@ -125,6 +127,9 @@ describe('TournamentAdmin', () => {
     });
 
     fireEvent.click(screen.getByRole('button', { name: '5. Расписание' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Часовой пояс' }), {
+      target: { value: 'America/New_York' },
+    });
     fireEvent.change(screen.getByLabelText('Старт турнира'), {
       target: { value: '2030-09-01T12:00' },
     });
@@ -139,7 +144,10 @@ describe('TournamentAdmin', () => {
       target: { value: '60,15' },
     });
     fireEvent.change(screen.getByRole('textbox', { name: 'Переопределения push-шаблонов' }), {
-      target: { value: 'tournament.live_soon|Скоро матч {{tournamentTitle}}|До начала {{minutes}} минут|/?view=amateur&section=tournaments' },
+      target: {
+        value:
+          'tournament.live_soon|Скоро матч {{tournamentTitle}}|До начала {{minutes}} минут|/?view=amateur&section=tournaments',
+      },
     });
 
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
@@ -150,7 +158,7 @@ describe('TournamentAdmin', () => {
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
         slug: 'configured-cup',
-        startsAt: '2030-09-01T09:00:00.000Z',
+        startsAt: '2030-09-01T16:00:00.000Z',
         rules: expect.objectContaining({
           config: expect.objectContaining({
             registrationMode: 'approval',
@@ -309,10 +317,14 @@ describe('TournamentAdmin', () => {
     const update = vi.spyOn(api, 'updateAdminTournament').mockResolvedValue({
       tournament: { ...tournament, title: 'Кубок CRUD обновлён', revision: 6 },
     });
-    const duplicate = vi.spyOn(api as never, 'duplicateAdminTournament' as never).mockResolvedValue({
-      tournament: { ...tournament, id: '00000000-0000-4000-8000-000000000932', revision: 1 },
-    } as never);
-    const remove = vi.spyOn(api as never, 'deleteAdminTournamentDraft' as never).mockResolvedValue(undefined as never);
+    const duplicate = vi
+      .spyOn(api as never, 'duplicateAdminTournament' as never)
+      .mockResolvedValue({
+        tournament: { ...tournament, id: '00000000-0000-4000-8000-000000000932', revision: 1 },
+      } as never);
+    const remove = vi
+      .spyOn(api as never, 'deleteAdminTournamentDraft' as never)
+      .mockResolvedValue(undefined as never);
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
@@ -328,17 +340,21 @@ describe('TournamentAdmin', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
-    await waitFor(() => expect(update).toHaveBeenCalledWith(
-      tournament.id,
-      5,
-      expect.objectContaining({ title: 'Кубок CRUD обновлён', rules: expect.any(Object) }),
-    ));
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith(
+        tournament.id,
+        5,
+        expect.objectContaining({ title: 'Кубок CRUD обновлён', rules: expect.any(Object) }),
+      ),
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'Дублировать' }));
-    await waitFor(() => expect(duplicate).toHaveBeenCalledWith(
-      tournament.id,
-      { slug: 'crud-cup-copy', title: 'Копия: Кубок CRUD обновлён' },
-    ));
+    await waitFor(() =>
+      expect(duplicate).toHaveBeenCalledWith(tournament.id, {
+        slug: 'crud-cup-copy',
+        title: 'Копия: Кубок CRUD обновлён',
+      }),
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'Удалить draft' }));
     expect(remove).not.toHaveBeenCalled();

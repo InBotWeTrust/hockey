@@ -1,4 +1,8 @@
-import { assignSequentialRoundWindows, generateRoundRobin, type TournamentPairing } from './schedule.js';
+import {
+  assignSequentialRoundWindows,
+  generateRoundRobin,
+  type TournamentPairing,
+} from './schedule.js';
 
 export interface HeadToHeadSchedulePlanRound {
   cycleNumber: number;
@@ -15,6 +19,8 @@ export function buildHeadToHeadSchedulePlan(input: {
   cycles: number;
   roundsPerDay: number;
   firstStart: Date;
+  timezone: string;
+  firstRoundLocalTime: string;
   fixtureWindowMs: number;
   roundBreakMs: number;
 }): HeadToHeadSchedulePlanRound[] {
@@ -23,6 +29,8 @@ export function buildHeadToHeadSchedulePlan(input: {
     roundCount: rounds.length,
     roundsPerDay: input.roundsPerDay,
     firstStart: input.firstStart,
+    timezone: input.timezone,
+    firstRoundLocalTime: input.firstRoundLocalTime,
     fixtureWindowMs: input.fixtureWindowMs,
     roundBreakMs: input.roundBreakMs,
   });

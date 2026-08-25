@@ -150,15 +150,18 @@ describe.skipIf(!hasIntegrationEnv)('tournament duel realtime progress', () => {
     await app.close();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.restoreAllMocks();
+    await pool.query(
+      `update game_settings set value = 'false'::jsonb where key = 'tournaments.enabled'`,
+    );
   });
 
   beforeEach(async () => {
     await pool.query('truncate users restart identity cascade');
     await pool.query(
       `insert into game_settings (key, value, label, description)
-       values ('tournaments.enabled', 'false'::jsonb, 'Турниры включены', 'Тестовый feature toggle')
+       values ('tournaments.enabled', 'true'::jsonb, 'Турниры включены', 'Тестовый feature toggle')
        on conflict (key) do update set value = excluded.value`,
     );
     const redis = createTestRedis();

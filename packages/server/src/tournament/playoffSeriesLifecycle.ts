@@ -141,6 +141,28 @@ export async function advanceTournamentPlayoffSeries(
       changed = true;
     }
     if (!changed) continue;
+    if (higher !== null && lower !== null) {
+      const seedRanks = await client.query<{ participant_id: string; rank: number }>(
+        `select participant_id, rank
+           from tournament_standing
+          where tournament_id = $1
+            and participant_id = any($2::uuid[])`,
+        [completedSeries.tournament_id, [higher, lower]],
+      );
+      const rankByParticipant = new Map(
+        seedRanks.rows.map((standing) => [standing.participant_id, Number(standing.rank)]),
+      );
+      const higherRank = rankByParticipant.get(higher);
+      const lowerRank = rankByParticipant.get(lower);
+      if (
+        higherRank === undefined ||
+        lowerRank === undefined ||
+        lowerRank < higherRank ||
+        (lowerRank === higherRank && lower.localeCompare(higher) < 0)
+      ) {
+        [higher, lower] = [lower, higher];
+      }
+    }
     await client.query(
       `update tournament_playoff_series
           set higher_seed_participant_id = $2, lower_seed_participant_id = $3,

@@ -10,6 +10,10 @@ const manualPushMigrationUrl = new URL(
   '../../db/migrations/063_tournament_manual_push.sql',
   import.meta.url,
 );
+const liveProposalMigrationUrl = new URL(
+  '../../db/migrations/064_tournament_live_proposal_active.sql',
+  import.meta.url,
+);
 
 describe('tournament migration contract', () => {
   it('creates the complete tournament orchestration schema', async () => {
@@ -57,5 +61,11 @@ describe('tournament migration contract', () => {
   it('registers the manual tournament push template', async () => {
     const sql = await readFile(manualPushMigrationUrl, 'utf8');
     expect(sql).toContain("'tournament.manual'");
+  });
+
+  it('enforces one pending or accepted live proposal per fixture', async () => {
+    const sql = await readFile(liveProposalMigrationUrl, 'utf8');
+    expect(sql).toContain("state in ('pending', 'accepted')");
+    expect(sql).toContain('tournament_live_one_active_idx');
   });
 });
