@@ -95,7 +95,35 @@ describe.skipIf(!hasIntegrationEnv)('065 tournament fixture venue backfill', () 
     await pool.end();
   });
 
-  it('preserves home-selected semantics for legacy unopened regular and playoff fixtures', async () => {
+  it('preserves legacy backfill decisions when 065 is applied again', async () => {
+    const legacy = await pool.query<{
+      tournament_id: string;
+      round_id: string;
+      home_participant_id: string;
+      away_participant_id: string;
+    }>(
+      `select fixture.tournament_id, fixture.round_id,
+              fixture.home_participant_id, fixture.away_participant_id
+         from tournament_fixture fixture
+         join tournament_round round on round.id = fixture.round_id
+        where round.stage = 'regular'
+        order by fixture.fixture_number
+        limit 1`,
+    );
+    const regular = legacy.rows[0]!;
+    await pool.query(
+      `insert into tournament_fixture
+         (tournament_id, round_id, fixture_number, home_participant_id, away_participant_id, status)
+       values ($1, $2, 4, $3, $4, 'scheduled')`,
+      [
+        regular.tournament_id,
+        regular.round_id,
+        regular.home_participant_id,
+        regular.away_participant_id,
+      ],
+    );
+    await pool.query(await readFile(path.join(MIGRATIONS_DIR, VENUE_MIGRATION), 'utf8'));
+
     const fixtures = await pool.query<{ stage: string; venue_mode: string }>(
       `select round.stage, fixture.venue_mode
          from tournament_fixture fixture
@@ -107,6 +135,7 @@ describe.skipIf(!hasIntegrationEnv)('065 tournament fixture venue backfill', () 
       { stage: 'regular', venue_mode: 'home_selected' },
       { stage: 'playoff', venue_mode: 'home_selected' },
       { stage: 'tiebreak', venue_mode: 'neutral_default' },
+      { stage: 'regular', venue_mode: 'neutral_default' },
     ]);
   });
 });

@@ -2,7 +2,7 @@
 -- snapshot lets unpublished and legacy fixtures resolve their venue lazily.
 
 alter table tournament_fixture
-  add column if not exists venue_mode text not null default 'neutral_default',
+  add column if not exists venue_mode text,
   add column if not exists venue_owner_participant_id uuid,
   add column if not exists arena_theme_id uuid,
   add column if not exists arena_snapshot jsonb;
@@ -68,8 +68,9 @@ update tournament_fixture fixture
          when round.stage in ('regular', 'playoff', 'third_place') then 'home_selected'
          else 'neutral_default'
        end
-  from tournament_round round
+ from tournament_round round
  where round.id = fixture.round_id
+   and fixture.venue_mode is null
    and not exists (
      select 1 from tournament_fixture_segment segment where segment.fixture_id = fixture.id
    );
@@ -96,6 +97,15 @@ update tournament_fixture fixture
        end,
        arena_theme_id = venue.arena_theme_id,
        arena_snapshot = venue.arena_snapshot
-  from existing_segment_venue venue
+ from existing_segment_venue venue
  where fixture.id = venue.fixture_id
+   and fixture.venue_mode is null
    and fixture.arena_snapshot is null;
+
+update tournament_fixture
+   set venue_mode = 'neutral_default'
+ where venue_mode is null;
+
+alter table tournament_fixture
+  alter column venue_mode set default 'neutral_default',
+  alter column venue_mode set not null;
