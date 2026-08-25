@@ -1,5 +1,6 @@
 import type { PoolClient } from 'pg';
 import { cancelTournamentDuel } from '../duel/amateur/lifecycle.js';
+import { enqueueTournamentSeriesNextGamePush } from './fixtureNotifications.js';
 
 interface SeriesDependencySource {
   type?: string;
@@ -47,13 +48,17 @@ export async function advanceTournamentPlayoffSeries(
     Number(series.lower_seed_wins) < Number(series.wins_required)
   ) {
     const nextGameNumber = Number(series.higher_seed_wins) + Number(series.lower_seed_wins) + 1;
-    await client.query(
+    const promoted = await client.query<{ id: string }>(
       `update tournament_fixture
           set status = 'scheduled', updated_at = now()
         where series_id = $1 and status = 'conditional'
-          and coalesce((result_snapshot->>'gameNumber')::int, 1) = $2`,
+          and coalesce((result_snapshot->>'gameNumber')::int, 1) = $2
+        returning id`,
       [series.id, nextGameNumber],
     );
+    for (const fixture of promoted.rows) {
+      await enqueueTournamentSeriesNextGamePush(client, { fixtureId: fixture.id });
+    }
     return { completed: false };
   }
 
@@ -161,6 +166,16 @@ export async function advanceTournamentPlayoffSeries(
         where series_id = $1 and status in ('conditional', 'scheduled')`,
       [dependent.id, higher, lower, dependent.wins_required],
     );
+    const firstFixture = await client.query<{ id: string }>(
+      `select id from tournament_fixture
+        where series_id = $1 and status = 'scheduled'
+          and coalesce((result_snapshot->>'gameNumber')::int, 1) = 1`,
+      [dependent.id],
+    );
+    const fixtureId = firstFixture.rows[0]?.id;
+    if (fixtureId !== undefined) {
+      await enqueueTournamentSeriesNextGamePush(client, { fixtureId });
+    }
   }
 
   return { completed: true };

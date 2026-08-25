@@ -199,6 +199,116 @@ async function prepareTournamentForPlayoffs(
   return participantIds;
 }
 
+async function subscribeTournamentParticipants(pool: Pool, participantIds: readonly string[]) {
+  await pool.query(
+    `insert into push_subscriptions (user_id, endpoint, p256dh, auth)
+     select p.user_id, 'https://push.example.test/' || p.id, 'p256dh', 'auth'
+       from tournament_participant p
+      where p.id = any($1::uuid[])`,
+    [participantIds],
+  );
+}
+
+function bestOfThreePlayoffRules(): TournamentRulesSnapshot {
+  return playoffTournamentRules(2, {
+    playoffRounds: [
+      {
+        roundNumber: 1,
+        winsRequired: 2,
+        homeSequence: ['H', 'A', 'H'],
+        duelTemplateId: '00000000-0000-4000-8000-000000000814',
+        gameWindowMs: 3_600_000,
+        gameBreakMs: 0,
+        roundBreakMs: 0,
+        firstGameStartsAt: '2030-09-01T13:00:00.000Z',
+      },
+    ],
+  });
+}
+
+async function createBestOfThreePlayoff(pool: Pool, slug: string) {
+  await seedUsers(pool, 0);
+  const tournament = await createPublishedTournament(pool, slug, 0, bestOfThreePlayoffRules());
+  await prepareTournamentForPlayoffs(pool, tournament.id, [4, 3, 2, 1]);
+  await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-01T08:00:00.000Z'));
+  const fixtures = await pool.query<{
+    id: string;
+    series_id: string;
+    home_participant_id: string;
+    away_participant_id: string;
+    home_user_id: string;
+    away_user_id: string;
+    scheduled_starts_at: Date;
+  }>(
+    `select f.id, f.series_id, f.home_participant_id, f.away_participant_id,
+            home_participant.user_id as home_user_id, away_participant.user_id as away_user_id,
+            f.scheduled_starts_at
+       from tournament_fixture f
+       join tournament_playoff_series s on s.id = f.series_id
+       join tournament_participant home_participant on home_participant.id = f.home_participant_id
+       join tournament_participant away_participant on away_participant.id = f.away_participant_id
+      where s.tournament_id = $1 and s.depends_on->>'key' = 'R1S1'
+      order by f.fixture_number`,
+    [tournament.id],
+  );
+  return { tournament, fixtures: fixtures.rows };
+}
+
+async function settlePlayedPlayoffFixture(
+  pool: Pool,
+  fixture: {
+    id: string;
+    home_user_id: string;
+    away_user_id: string;
+    scheduled_starts_at: Date;
+  },
+) {
+  const duel = await pool.query<{ id: string }>(
+    `insert into amateur_duel_match
+       (challenger_user_id, opponent_user_id, status, source, rules_snapshot,
+        match_seed, starts_at, ends_at, game_core_version)
+     values ($1, $2, 'active', 'tournament', '{}'::jsonb,
+             'series-notification', $3, $4, 1)
+     returning id`,
+    [
+      fixture.home_user_id,
+      fixture.away_user_id,
+      fixture.scheduled_starts_at,
+      new Date(fixture.scheduled_starts_at.getTime() + 3_600_000),
+    ],
+  );
+  await pool.query(
+    `insert into tournament_fixture_segment
+       (fixture_id, sequence_number, kind, duel_match_id, status, rules_snapshot)
+     values ($1, 1, 'regulation', $2, 'scheduled', '{}'::jsonb)`,
+    [fixture.id, duel.rows[0]!.id],
+  );
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    await settleTournamentSegmentForDuel(client, {
+      duelMatchId: duel.rows[0]!.id,
+      homeScore: 1,
+      awayScore: 0,
+      settledAt: fixture.scheduled_starts_at,
+    });
+    await client.query('commit');
+  } catch (error) {
+    await client.query('rollback');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function seriesNextGameDeliveries(pool: Pool) {
+  return pool.query<{ user_id: string; event_key: string; body: string }>(
+    `select user_id, event_key, payload->>'body' as body from push_delivery_log
+      where event_type = 'tournament.series_next_game'
+      order by event_key, user_id`,
+  );
+}
+
 describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
   let pool: Pool;
 
@@ -588,6 +698,288 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       lower_seed_wins: 1,
       deciding_fixture_status: 'scheduled',
     });
+  });
+
+  it('notifies both active participants when a played series game promotes the next fixture', async () => {
+    const { fixtures } = await createBestOfThreePlayoff(pool, 'played-series-next-game');
+    const [firstFixture, secondFixture, nextFixture] = fixtures;
+    await subscribeTournamentParticipants(pool, [
+      firstFixture!.home_participant_id,
+      firstFixture!.away_participant_id,
+    ]);
+
+    await settlePlayedPlayoffFixture(pool, firstFixture!);
+    await settlePlayedPlayoffFixture(pool, secondFixture!);
+
+    const startsAt = nextFixture!.scheduled_starts_at.toISOString();
+    expect((await seriesNextGameDeliveries(pool)).rows).toEqual([
+      {
+        user_id: nextFixture!.home_user_id,
+        event_key: `${nextFixture!.id}:series-next-game:${startsAt}`,
+        body: `Следующий матч откроется ${startsAt}.`,
+      },
+      {
+        user_id: nextFixture!.away_user_id,
+        event_key: `${nextFixture!.id}:series-next-game:${startsAt}`,
+        body: `Следующий матч откроется ${startsAt}.`,
+      },
+    ]);
+  });
+
+  it('notifies both active participants when a technical result promotes the next fixture', async () => {
+    const { tournament, fixtures } = await createBestOfThreePlayoff(
+      pool,
+      'technical-series-next-game',
+    );
+    const [firstFixture, secondFixture, nextFixture] = fixtures;
+    await subscribeTournamentParticipants(pool, [
+      firstFixture!.home_participant_id,
+      firstFixture!.away_participant_id,
+    ]);
+
+    await resolveTournamentNoShow(pool, {
+      tournamentId: tournament.id,
+      fixtureId: firstFixture!.id,
+      absent: 'away',
+      reason: 'integration promote the next game',
+      adminUserId: ADMIN_ID,
+    });
+    await resolveTournamentNoShow(pool, {
+      tournamentId: tournament.id,
+      fixtureId: secondFixture!.id,
+      absent: 'away',
+      reason: 'integration promote the next game',
+      adminUserId: ADMIN_ID,
+    });
+
+    const startsAt = nextFixture!.scheduled_starts_at.toISOString();
+    expect((await seriesNextGameDeliveries(pool)).rows.map((row) => row.event_key)).toEqual([
+      `${nextFixture!.id}:series-next-game:${startsAt}`,
+      `${nextFixture!.id}:series-next-game:${startsAt}`,
+    ]);
+  });
+
+  it('notifies the first scheduled final and bronze fixtures after both source series resolve', async () => {
+    await seedUsers(pool, 0);
+    const tournament = await createPublishedTournament(
+      pool,
+      'dependent-series-next-game',
+      0,
+      playoffTournamentRules(4, {
+        playoffRounds: [
+          {
+            roundNumber: 1,
+            winsRequired: 1,
+            homeSequence: ['H'],
+            duelTemplateId: '00000000-0000-4000-8000-000000000815',
+            gameWindowMs: 3_600_000,
+            gameBreakMs: 0,
+            roundBreakMs: 0,
+            firstGameStartsAt: '2030-09-01T13:00:00.000Z',
+          },
+          {
+            roundNumber: 2,
+            winsRequired: 1,
+            homeSequence: ['H'],
+            duelTemplateId: '00000000-0000-4000-8000-000000000816',
+            gameWindowMs: 3_600_000,
+            gameBreakMs: 0,
+            roundBreakMs: 0,
+            firstGameStartsAt: '2030-09-01T17:00:00.000Z',
+          },
+        ],
+      }),
+    );
+    await prepareTournamentForPlayoffs(pool, tournament.id, [4, 3, 2, 1]);
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-01T08:00:00.000Z'));
+    const semifinals = await pool.query<{
+      fixture_id: string;
+      home_participant_id: string;
+      higher_seed_participant_id: string;
+    }>(
+      `select f.id as fixture_id, f.home_participant_id, s.higher_seed_participant_id
+         from tournament_fixture f
+         join tournament_playoff_series s on s.id = f.series_id
+        where s.tournament_id = $1 and s.depends_on->>'key' in ('R1S1', 'R1S2')
+        order by s.depends_on->>'key'`,
+      [tournament.id],
+    );
+    const participantIds = await pool.query<{ id: string }>(
+      `select id from tournament_participant where tournament_id = $1 order by id`,
+      [tournament.id],
+    );
+    await subscribeTournamentParticipants(
+      pool,
+      participantIds.rows.map((participant) => participant.id),
+    );
+
+    for (const semifinal of semifinals.rows) {
+      await resolveTournamentNoShow(pool, {
+        tournamentId: tournament.id,
+        fixtureId: semifinal.fixture_id,
+        absent:
+          semifinal.home_participant_id === semifinal.higher_seed_participant_id ? 'away' : 'home',
+        reason: 'integration resolve dependent series',
+        adminUserId: ADMIN_ID,
+      });
+    }
+
+    const dependents = await pool.query<{
+      fixture_id: string;
+      scheduled_starts_at: Date;
+      home_user_id: string;
+      away_user_id: string;
+    }>(
+      `select f.id as fixture_id, f.scheduled_starts_at,
+              home_participant.user_id as home_user_id, away_participant.user_id as away_user_id
+         from tournament_fixture f
+         join tournament_playoff_series s on s.id = f.series_id
+         join tournament_participant home_participant on home_participant.id = f.home_participant_id
+         join tournament_participant away_participant on away_participant.id = f.away_participant_id
+        where s.tournament_id = $1 and s.kind in ('championship', 'third_place')
+          and s.depends_on->>'key' in ('R2S1', 'BRONZE')
+          and f.status = 'scheduled'
+        order by s.kind`,
+      [tournament.id],
+    );
+    expect(dependents.rows).toHaveLength(2);
+    const expectedDeliveries = dependents.rows
+      .flatMap((fixture) => {
+        const eventKey = `${fixture.fixture_id}:series-next-game:${fixture.scheduled_starts_at.toISOString()}`;
+        return [
+          { user_id: fixture.away_user_id, event_key: eventKey },
+          { user_id: fixture.home_user_id, event_key: eventKey },
+        ];
+      })
+      .sort((left, right) =>
+        left.event_key === right.event_key
+          ? left.user_id.localeCompare(right.user_id)
+          : left.event_key.localeCompare(right.event_key),
+      );
+    expect(
+      (await seriesNextGameDeliveries(pool)).rows.map(({ user_id, event_key }) => ({
+        user_id,
+        event_key,
+      })),
+    ).toEqual(expectedDeliveries);
+  });
+
+  it('does not duplicate a series-next-game notification when a technical fixture is resolved twice', async () => {
+    const { tournament, fixtures } = await createBestOfThreePlayoff(
+      pool,
+      'duplicate-series-next-game',
+    );
+    const [firstFixture, secondFixture, nextFixture] = fixtures;
+    await subscribeTournamentParticipants(pool, [
+      firstFixture!.home_participant_id,
+      firstFixture!.away_participant_id,
+    ]);
+    await resolveTournamentNoShow(pool, {
+      tournamentId: tournament.id,
+      fixtureId: firstFixture!.id,
+      absent: 'away' as const,
+      reason: 'integration duplicate fixture result',
+      adminUserId: ADMIN_ID,
+    });
+    const secondNoShow = {
+      tournamentId: tournament.id,
+      fixtureId: secondFixture!.id,
+      absent: 'away' as const,
+      reason: 'integration duplicate fixture result',
+      adminUserId: ADMIN_ID,
+    };
+
+    await resolveTournamentNoShow(pool, secondNoShow);
+    await resolveTournamentNoShow(pool, secondNoShow);
+
+    const startsAt = nextFixture!.scheduled_starts_at.toISOString();
+    expect((await seriesNextGameDeliveries(pool)).rows.map((row) => row.event_key)).toEqual([
+      `${nextFixture!.id}:series-next-game:${startsAt}`,
+      `${nextFixture!.id}:series-next-game:${startsAt}`,
+    ]);
+  });
+
+  it('notifies only the active participant who has tournament notifications enabled', async () => {
+    const { tournament, fixtures } = await createBestOfThreePlayoff(
+      pool,
+      'opt-out-series-next-game',
+    );
+    const [firstFixture, secondFixture, nextFixture] = fixtures;
+    await subscribeTournamentParticipants(pool, [
+      firstFixture!.home_participant_id,
+      firstFixture!.away_participant_id,
+    ]);
+    await pool.query(
+      `insert into user_push_preferences (user_id, tournament_events)
+       values ($1, false)`,
+      [firstFixture!.home_user_id],
+    );
+
+    await resolveTournamentNoShow(pool, {
+      tournamentId: tournament.id,
+      fixtureId: firstFixture!.id,
+      absent: 'away',
+      reason: 'integration respect recipient state',
+      adminUserId: ADMIN_ID,
+    });
+    await resolveTournamentNoShow(pool, {
+      tournamentId: tournament.id,
+      fixtureId: secondFixture!.id,
+      absent: 'away',
+      reason: 'integration respect recipient state',
+      adminUserId: ADMIN_ID,
+    });
+
+    const startsAt = nextFixture!.scheduled_starts_at.toISOString();
+    expect((await seriesNextGameDeliveries(pool)).rows.map((row) => row.user_id)).toEqual([
+      nextFixture!.away_user_id,
+    ]);
+    expect((await seriesNextGameDeliveries(pool)).rows.map((row) => row.event_key)).toEqual([
+      `${nextFixture!.id}:series-next-game:${startsAt}`,
+    ]);
+  });
+
+  it('uses a new timestamped series-next-game key when a promoted fixture is rescheduled', async () => {
+    const { tournament, fixtures } = await createBestOfThreePlayoff(
+      pool,
+      'rescheduled-series-next-game',
+    );
+    const [firstFixture, secondFixture, nextFixture] = fixtures;
+    await subscribeTournamentParticipants(pool, [
+      firstFixture!.home_participant_id,
+      firstFixture!.away_participant_id,
+    ]);
+    await resolveTournamentNoShow(pool, {
+      tournamentId: tournament.id,
+      fixtureId: firstFixture!.id,
+      absent: 'away',
+      reason: 'integration promote then reschedule',
+      adminUserId: ADMIN_ID,
+    });
+    await resolveTournamentNoShow(pool, {
+      tournamentId: tournament.id,
+      fixtureId: secondFixture!.id,
+      absent: 'away',
+      reason: 'integration promote then reschedule',
+      adminUserId: ADMIN_ID,
+    });
+    const originalStartsAt = nextFixture!.scheduled_starts_at.toISOString();
+    const rescheduledStartsAt = new Date('2030-09-01T16:00:00.000Z');
+    await rescheduleTournamentFixture(pool, {
+      tournamentId: tournament.id,
+      fixtureId: nextFixture!.id,
+      startsAt: rescheduledStartsAt,
+      endsAt: new Date('2030-09-01T17:00:00.000Z'),
+      reason: 'integration next game reschedule',
+      adminUserId: ADMIN_ID,
+    });
+
+    expect((await seriesNextGameDeliveries(pool)).rows.map((row) => row.event_key)).toEqual([
+      `${nextFixture!.id}:series-next-game:${originalStartsAt}`,
+      `${nextFixture!.id}:series-next-game:${originalStartsAt}`,
+      `${nextFixture!.id}:series-next-game:${rescheduledStartsAt.toISOString()}`,
+      `${nextFixture!.id}:series-next-game:${rescheduledStartsAt.toISOString()}`,
+    ]);
   });
 
   it('propagates a playoff disqualification through the newly resolved third-place series', async () => {

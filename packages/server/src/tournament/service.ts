@@ -11,7 +11,10 @@ import {
 } from './playoffs.js';
 import { rebuildHeadToHeadStandings } from './standingsPersistence.js';
 import { advanceTournamentPlayoffSeries } from './playoffSeriesLifecycle.js';
-import { enqueueTournamentFixtureResultPush } from './fixtureNotifications.js';
+import {
+  enqueueTournamentFixtureResultPush,
+  enqueueTournamentSeriesNextGamePush,
+} from './fixtureNotifications.js';
 import { lockTournament, lockTournamentFixture } from './locks.js';
 import type { TournamentConfig, TournamentStatus } from './types.js';
 
@@ -1409,6 +1412,7 @@ export async function rescheduleTournamentFixture(
         input.adminUserId,
       ],
     );
+    await enqueueTournamentSeriesNextGamePush(client, { fixtureId: input.fixtureId });
     return {
       fixtureId: input.fixtureId,
       startsAt: input.startsAt.toISOString(),
