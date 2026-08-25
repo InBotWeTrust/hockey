@@ -115,6 +115,27 @@
 
 final result: passed
 
+## Gameplay backdrop, loading contrast, and bonus break modal
+
+- Source visual truth: `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-534ce34f-ed13-4d0a-ba10-d3c7777ca2df.png`, `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-27cea9a2-034b-4e6d-a81e-dddafd477701.png`, and `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-8e637077-95bf-436b-b1fd-3a0e4f0123d7.png`.
+- Implementation screenshots: `/private/tmp/hockey-ui-qa/daily-390x844.png`, `/private/tmp/hockey-ui-qa/daily-430x932.png`, `/private/tmp/hockey-ui-qa/bonus-break-390x844.png`, and `/private/tmp/hockey-ui-qa/bonus-break-430x932-final.png`.
+- Full-view comparisons: `/private/tmp/hockey-ui-qa/daily-comparison.png` and `/private/tmp/hockey-ui-qa/bonus-break-comparison-final.png`.
+- Viewports and density: 390 × 844 and 430 × 932 CSS px at device scale factor 1. The supplied Android screenshots include system chrome and were proportionally normalized to 430 × 932 for comparison; system status bars were excluded from fidelity findings.
+- State: authenticated daily-game idle rink and a synthetic local bonus attempt in `break_active`. The synthetic attempt was removed from the local dev database immediately after capture.
+- Typography: the bonus title, explanatory copy, and tabular timer follow the standard modal hierarchy. Both route-level and daily-state loading messages now share a 14 px, weight-800 cold-white treatment rather than the low-contrast muted token.
+- Spacing and layout: the daily rink remains centered at both mobile sizes without the outer stadium image. The bonus break card stays centered, capped at 340 px, and does not overflow either viewport.
+- Colors and tokens: ordinary gameplay uses the base ice gradient only; `app-shell--arena` is absent for `/?view=daily`. Loading uses a translucent dark pill with a white border and text shadow. The break reuses the standard frosted modal backdrop and card tokens.
+- Image quality: no rink, arena, goalkeeper, or gameplay asset changed. The bonus rink remains visible at full quality beneath the modal blur.
+- Copy and content: the existing server-authoritative break copy and countdown are unchanged. No gameplay timing, simulation, inventory, or API contract changed.
+- Primary interactions tested: entering daily gameplay from the arena, loading an authoritative bonus break, automatic countdown rendering, and background interaction suppression while the modal is open.
+- Browser console errors: none at either rendered state.
+- Focused-region evidence: the full 430 px break comparison keeps all modal typography, border, spacing, and timer details readable, so a separate crop was not needed.
+- Comparison history: the first bonus capture exposed the browser's default blue focus outline on the programmatically focused non-dismissible dialog. The final implementation replaces it with a component-scoped 3 px white `:focus-visible` outline, preserving a deliberate keyboard-focus indicator that matches the glass edge. The saved comparison predates this accessibility follow-up and therefore documents the modal layout, not the final focus-ring color.
+- Loading capture note: the local API resolves too quickly to retain the loading frame for a stable browser screenshot. The rendered-state regression verifies the accessible `status` element and shared high-contrast class in both loading paths; the visible token values are deterministic CSS shared with the browser-checked app shell.
+- Findings: P0 none; P1 none; P2 none. P3: the final bonus modal intentionally reveals the stopped themed rink through blur rather than replacing it with a flat background, because the requested behavior is a modal over the current bonus game.
+
+final result: passed
+
 ## Login rink redesign and compact brand header
 
 - Source visual truth: `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-9de2a0fe-ba88-45de-995b-637d1394f628.png` (874 × 1860 px).

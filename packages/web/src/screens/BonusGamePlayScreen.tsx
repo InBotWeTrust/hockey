@@ -135,15 +135,17 @@ function BonusBreak({
   }, [attempt.break_ends_at, attempt.server_now, onElapsed, receivedAtPerformanceMs]);
 
   return (
-    <main className="screen bonus-game-mode-state">
-      <section className="bonus-game-mode-card">
-        <h1>Перерыв</h1>
-        <p>Следующий период начнётся после серверной проверки таймера.</p>
-        <strong role="timer" aria-label="До конца перерыва">
-          {formatCountdown(remainingMs)}
-        </strong>
-      </section>
-    </main>
+    <AccessibleModal
+      title="Перерыв"
+      copy="Следующий период начнётся после серверной проверки таймера."
+      closeBlocked={true}
+      onClose={() => undefined}
+      cardClassName="bonus-game-break-modal"
+    >
+      <strong className="bonus-game-break-timer" role="timer" aria-label="До конца перерыва">
+        {formatCountdown(remainingMs)}
+      </strong>
+    </AccessibleModal>
   );
 }
 
@@ -274,6 +276,7 @@ export function BonusGamePlayScreen(): JSX.Element {
   const abandonRequestRef = useRef(false);
   const loadedRouteRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
+  const isAuthoritativeBreak = attempt?.status === 'active' && attempt.state === 'break_active';
 
   useEffect(() => {
     mountedRef.current = true;
@@ -310,6 +313,11 @@ export function BonusGamePlayScreen(): JSX.Element {
     if (!needsReconcile) return;
     void reconcileAttempt();
   }, [needsReconcile, reconcileAttempt]);
+
+  useEffect(() => {
+    if (!isAuthoritativeBreak) return;
+    setConfirmAbandon(false);
+  }, [isAuthoritativeBreak]);
 
   const goToCatalog = useCallback(() => navigate('/bonus-games'), [navigate]);
   const refreshAttempt = useCallback(async (): Promise<void> => {
@@ -375,18 +383,13 @@ export function BonusGamePlayScreen(): JSX.Element {
       ? attempt.status
       : null;
   const isTerminal = terminalKind !== null;
-  if (!isTerminal && attempt.state === 'break_active') {
-    return (
-      <BonusBreak
-        attempt={attempt}
-        receivedAtPerformanceMs={receivedAtPerformanceMs}
-        onElapsed={refreshAttempt}
-      />
-    );
-  }
+  const isBreak = !isTerminal && attempt.state === 'break_active';
   const isIdle = attempt.state === 'idle';
   const isPeriodActive = attempt.state === 'period_active';
-  const periodNumber = isIdle ? attempt.current_period + 1 : attempt.current_period;
+  const periodNumber =
+    isIdle || isBreak
+      ? Math.min(attempt.current_period + 1, attempt.rules.total_periods)
+      : attempt.current_period;
   const rule = ruleForPeriod(attempt, periodNumber);
   if (rule === null || (isPeriodActive && attempt.period_started_at === null)) {
     return <ModeState role="alert" text="Не удалось прочитать правила активного периода." />;
@@ -418,8 +421,8 @@ export function BonusGamePlayScreen(): JSX.Element {
   return (
     <>
       <PlayView
-        suppressedByModal={isIdle || isTerminal}
-        showIceCar={isTerminal}
+        suppressedByModal={isIdle || isBreak || isTerminal}
+        showIceCar={isBreak || isTerminal}
         onBack={() => setConfirmAbandon(true)}
         backLabel="К бонусным играм"
         active={isPeriodActive}
@@ -445,11 +448,13 @@ export function BonusGamePlayScreen(): JSX.Element {
             ? 'ПРОВЕРЯЕМ...'
             : isTerminal
               ? 'ИГРА ЗАВЕРШЕНА'
-              : isIdle
-                ? inFlight
-                  ? 'НАЧИНАЕМ...'
-                  : 'НАЧАТЬ'
-                : undefined
+              : isBreak
+                ? 'ЛЁД ГОТОВИТСЯ'
+                : isIdle
+                  ? inFlight
+                    ? 'НАЧИНАЕМ...'
+                    : 'НАЧАТЬ'
+                  : undefined
         }
         primaryActionBlocked={needsReconcile}
         inactiveAction={isIdle ? handleStartPeriod : undefined}
@@ -506,7 +511,15 @@ export function BonusGamePlayScreen(): JSX.Element {
         <BonusResult kind={terminalKind} attempt={attempt} onCatalog={goToCatalog} />
       ) : null}
 
-      {confirmAbandon && !isTerminal ? (
+      {isBreak ? (
+        <BonusBreak
+          attempt={attempt}
+          receivedAtPerformanceMs={receivedAtPerformanceMs}
+          onElapsed={refreshAttempt}
+        />
+      ) : null}
+
+      {confirmAbandon && !isBreak && !isTerminal ? (
         <AccessibleModal
           title="Выйти из бонусной игры?"
           copy="Попытка сохранится, если продолжить позже. Завершение удалит текущий прогресс."

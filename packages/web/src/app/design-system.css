@@ -86,6 +86,20 @@
   white-space: nowrap !important;
   border: 0 !important;
 }
+.route-loading {
+  padding: 9px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  color: #ffffff;
+  background: rgba(4, 18, 35, 0.66);
+  box-shadow: 0 8px 24px rgba(2, 10, 24, 0.24);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  text-shadow: 0 1px 3px rgba(2, 10, 24, 0.72);
+}
 .login-screen {
   position: relative;
   isolation: isolate;
@@ -231,7 +245,12 @@
 .app-shell--arena-admin::after {
   opacity: 1;
   background:
-    linear-gradient(180deg, rgba(5, 16, 35, 0.24) 0%, rgba(85, 128, 168, 0.18) 18%, transparent 44%),
+    linear-gradient(
+      180deg,
+      rgba(5, 16, 35, 0.24) 0%,
+      rgba(85, 128, 168, 0.18) 18%,
+      transparent 44%
+    ),
     linear-gradient(180deg, rgba(221, 236, 248, 0.08) 0%, rgba(197, 219, 238, 0.2) 100%);
 }
 .arena-error-state {
@@ -1263,6 +1282,32 @@
   color: var(--ink);
   font-family: var(--font-mono);
   font-size: 34px;
+}
+
+.modal-card.bonus-game-break-modal {
+  width: min(100%, 340px);
+  text-align: center;
+}
+
+.modal-card.bonus-game-break-modal:focus-visible {
+  outline: 3px solid rgba(255, 255, 255, 0.92);
+  outline-offset: 4px;
+}
+
+.bonus-game-break-modal .modal-copy {
+  max-width: 280px;
+  margin-right: auto;
+  margin-left: auto;
+}
+
+.bonus-game-break-timer {
+  display: block;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 34px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
 
 .bonus-game-reconcile {
