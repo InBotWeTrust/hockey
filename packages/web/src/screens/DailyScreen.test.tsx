@@ -1838,6 +1838,33 @@ describe('DailyScreen', () => {
     expect(screen.queryByRole('button', { name: 'Профессионалы' })).not.toBeInTheDocument();
   });
 
+  it('hides the tournament hub card when the feature endpoint is unavailable', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/tournaments')) {
+        return new Response(JSON.stringify({ error: { message: 'feature disabled' } }), {
+          status: 404,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/matches')) {
+        return new Response(JSON.stringify({ matches: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify(baseState), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=amateur']);
+
+    expect(await screen.findByText('Дуэли')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('Турниры')).not.toBeInTheDocument());
+  });
+
   it('opens player profile from amateur duel rating row', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = input instanceof Request ? input.url : String(input);

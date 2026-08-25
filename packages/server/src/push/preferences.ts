@@ -5,6 +5,7 @@ export interface PushPreferences {
   dailyGame: boolean;
   trainingAvailable: boolean;
   duelEvents: boolean;
+  tournamentEvents: boolean;
   gameNews: boolean;
 }
 
@@ -19,6 +20,17 @@ export type PushEventType =
   | 'training.available'
   | 'duel.challenge_received'
   | 'duel.result_ready'
+  | 'tournament.application_approved'
+  | 'tournament.schedule_published'
+  | 'tournament.fixture_opened'
+  | 'tournament.live_soon'
+  | 'tournament.fixture_deadline'
+  | 'tournament.result_ready'
+  | 'tournament.rescheduled'
+  | 'tournament.playoff_started'
+  | 'tournament.series_next_game'
+  | 'tournament.completed'
+  | 'tournament.manual'
   | 'news.posted';
 
 export interface PushPreferencesRow {
@@ -26,6 +38,7 @@ export interface PushPreferencesRow {
   daily_game: boolean | null;
   training_available: boolean | null;
   duel_events: boolean | null;
+  tournament_events: boolean | null;
   game_news: boolean | null;
 }
 
@@ -34,6 +47,7 @@ export const DEFAULT_PUSH_PREFERENCES: PushPreferences = {
   dailyGame: true,
   trainingAvailable: true,
   duelEvents: true,
+  tournamentEvents: true,
   gameNews: true,
 };
 
@@ -45,13 +59,15 @@ export function mapPushPreferencesRow(row: PushPreferencesRow | undefined): Push
     dailyGame: row.daily_game ?? DEFAULT_PUSH_PREFERENCES.dailyGame,
     trainingAvailable: row.training_available ?? DEFAULT_PUSH_PREFERENCES.trainingAvailable,
     duelEvents: row.duel_events ?? DEFAULT_PUSH_PREFERENCES.duelEvents,
+    tournamentEvents: row.tournament_events ?? DEFAULT_PUSH_PREFERENCES.tournamentEvents,
     gameNews: row.game_news ?? DEFAULT_PUSH_PREFERENCES.gameNews,
   };
 }
 
 export async function getPushPreferences(pool: Pool, userId: string): Promise<PushPreferences> {
   const { rows } = await pool.query<PushPreferencesRow>(
-    `select chat_new_dialog_message, daily_game, training_available, duel_events, game_news
+    `select chat_new_dialog_message, daily_game, training_available, duel_events,
+            tournament_events, game_news
        from user_push_preferences
       where user_id = $1`,
     [userId],
@@ -66,7 +82,8 @@ export async function savePushPreferences(
 ): Promise<PushPreferences> {
   const { rows } = await pool.query<PushPreferencesRow>(
     `insert into user_push_preferences (
-       user_id, chat_new_dialog_message, daily_game, training_available, duel_events, game_news
+       user_id, chat_new_dialog_message, daily_game, training_available, duel_events,
+       tournament_events, game_news
      )
      values (
        $1,
@@ -74,7 +91,8 @@ export async function savePushPreferences(
        coalesce($3, true),
        coalesce($4, true),
        coalesce($5, true),
-       coalesce($6, true)
+       coalesce($6, true),
+       coalesce($7, true)
      )
      on conflict (user_id) do update
        set chat_new_dialog_message =
@@ -82,15 +100,18 @@ export async function savePushPreferences(
            daily_game = coalesce($3, user_push_preferences.daily_game),
            training_available = coalesce($4, user_push_preferences.training_available),
            duel_events = coalesce($5, user_push_preferences.duel_events),
-           game_news = coalesce($6, user_push_preferences.game_news),
+           tournament_events = coalesce($6, user_push_preferences.tournament_events),
+           game_news = coalesce($7, user_push_preferences.game_news),
            updated_at = now()
-     returning chat_new_dialog_message, daily_game, training_available, duel_events, game_news`,
+     returning chat_new_dialog_message, daily_game, training_available, duel_events,
+               tournament_events, game_news`,
     [
       userId,
       patch.chatNewDialogMessage ?? null,
       patch.dailyGame ?? null,
       patch.trainingAvailable ?? null,
       patch.duelEvents ?? null,
+      patch.tournamentEvents ?? null,
       patch.gameNews ?? null,
     ],
   );
@@ -114,6 +135,18 @@ export function isPushEventAllowed(
     case 'duel.challenge_received':
     case 'duel.result_ready':
       return preferences.duelEvents;
+    case 'tournament.application_approved':
+    case 'tournament.schedule_published':
+    case 'tournament.fixture_opened':
+    case 'tournament.live_soon':
+    case 'tournament.fixture_deadline':
+    case 'tournament.result_ready':
+    case 'tournament.rescheduled':
+    case 'tournament.playoff_started':
+    case 'tournament.series_next_game':
+    case 'tournament.completed':
+    case 'tournament.manual':
+      return preferences.tournamentEvents;
     case 'news.posted':
       return preferences.gameNews;
   }

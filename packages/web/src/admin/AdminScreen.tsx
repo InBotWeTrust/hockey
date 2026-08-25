@@ -54,6 +54,7 @@ import { useDebouncedValue } from '../lib/useDebouncedValue.js';
 import { AchievementDetailsSheet, AchievementTile } from '../screens/profileSections.js';
 import { WeeklyChallengesAdmin } from './WeeklyChallengesAdmin.js';
 import { BonusGamesAdmin } from './BonusGamesAdmin.js';
+import { TournamentAdmin } from '../tournament/TournamentAdmin.js';
 import {
   createAdminInventoryItem,
   createAdminDuelTemplate,
@@ -144,6 +145,7 @@ type AdminTab =
   | 'achievements'
   | 'bonus-games'
   | 'duels'
+  | 'tournaments'
   | 'feedback'
   | 'settings';
 type AdminAchievementsTab = 'achievements' | 'challenges';
@@ -165,6 +167,7 @@ const tabs: Array<{ id: AdminTab; label: string; icon: JSX.Element }> = [
   { id: 'achievements', label: 'Задания', icon: <Medal size={15} /> },
   { id: 'bonus-games', label: 'Бонусные игры', icon: <Gamepad2 size={15} /> },
   { id: 'duels', label: 'Дуэли', icon: <Trophy size={15} /> },
+  { id: 'tournaments', label: 'Турниры', icon: <Trophy size={15} /> },
   { id: 'feedback', label: 'Отзывы', icon: <MessageSquare size={15} /> },
   { id: 'settings', label: 'Параметры', icon: <SlidersHorizontal size={15} /> },
 ];
@@ -206,6 +209,7 @@ const pushNotificationCategoryLabels: Record<AdminPushNotificationCategory, stri
   daily: 'Ежедневная игра',
   training: 'Тренировка',
   duel: 'Дуэли',
+  tournament: 'Турниры',
   news: 'Новости',
 };
 
@@ -339,6 +343,7 @@ const pushNotificationTypeItems: Array<{
   { key: 'dailyGame', label: 'Ежедневная игра', shortLabel: 'Дневная' },
   { key: 'trainingAvailable', label: 'Тренировка доступна', shortLabel: 'Тренировка' },
   { key: 'duelEvents', label: 'Дуэли', shortLabel: 'Дуэли' },
+  { key: 'tournamentEvents', label: 'Турниры', shortLabel: 'Турниры' },
   { key: 'gameNews', label: 'Новости игры', shortLabel: 'Новости' },
 ];
 
@@ -977,6 +982,7 @@ export function AdminScreen(): JSX.Element {
           }}
         />
       )}
+      {tab === 'tournaments' && <TournamentAdmin />}
       {tab === 'feedback' && (
         <FeedbackPanel
           loading={feedback.isLoading}

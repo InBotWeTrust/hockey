@@ -64,6 +64,7 @@ const pushPreferences = {
   dailyGame: true,
   trainingAvailable: true,
   duelEvents: true,
+  tournamentEvents: true,
   gameNews: true,
 };
 

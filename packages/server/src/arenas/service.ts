@@ -169,14 +169,14 @@ function resolvedVenue(
 export async function resolveDuelVenue(
   client: PoolClient,
   input: {
-    source: 'challenge' | 'matchmaking';
+    source: 'challenge' | 'matchmaking' | 'tournament';
     policy: MatchmakingVenuePolicy;
     challengerUserId: string;
     opponentUserId: string;
     randomUnit: number;
   },
 ): Promise<ResolvedDuelVenue> {
-  if (input.source === 'challenge') {
+  if (input.source === 'challenge' || input.source === 'tournament') {
     const arena = await resolveEffectiveArena(client, input.challengerUserId);
     return resolvedVenue('direct_challenge', input.challengerUserId, arena);
   }

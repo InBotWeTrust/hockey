@@ -324,6 +324,7 @@ export function BottomNav(): JSX.Element | null {
                   aria-label={`События игры: ${gameActionCount}`}
                   style={{
                     position: 'absolute',
+                    zIndex: 2,
                     top: -4,
                     right: -6,
                     minWidth: 16,
@@ -359,6 +360,7 @@ export function BottomNav(): JSX.Element | null {
                   aria-label={`События разделов: ${sectionActionCount}`}
                   style={{
                     position: 'absolute',
+                    zIndex: 2,
                     top: -4,
                     right: -6,
                     minWidth: 16,
@@ -394,6 +396,7 @@ export function BottomNav(): JSX.Element | null {
                   aria-label={`Непрочитанные: ${totalUnread}`}
                   style={{
                     position: 'absolute',
+                    zIndex: 2,
                     top: -4,
                     right: -6,
                     minWidth: 16,

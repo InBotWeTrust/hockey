@@ -52,6 +52,11 @@ const PUSH_PREFERENCE_ITEMS: Array<{
     hint: 'Вызовы и результаты любительских матчей',
   },
   {
+    key: 'tournamentEvents',
+    label: 'Турниры',
+    hint: 'Регистрация, расписание, матчи и итоги турниров',
+  },
+  {
     key: 'gameNews',
     label: 'Новости игры',
     hint: 'Редкие системные объявления',

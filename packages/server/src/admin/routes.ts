@@ -60,6 +60,7 @@ interface AdminPushNotificationStatsRow {
   daily_game_users: string;
   training_available_users: string;
   duel_events_users: string;
+  tournament_events_users: string;
   game_news_users: string;
 }
 
@@ -253,6 +254,7 @@ interface AdminUserRow {
   push_daily_game: boolean;
   push_training_available: boolean;
   push_duel_events: boolean;
+  push_tournament_events: boolean;
   push_game_news: boolean;
   total_count?: string;
 }
@@ -725,6 +727,7 @@ function mapPushNotificationStats(row: AdminPushNotificationStatsRow) {
   const dailyGame = Number(row.daily_game_users);
   const trainingAvailable = Number(row.training_available_users);
   const duelEvents = Number(row.duel_events_users);
+  const tournamentEvents = Number(row.tournament_events_users);
   const gameNews = Number(row.game_news_users);
   return {
     totalUsers,
@@ -748,6 +751,10 @@ function mapPushNotificationStats(row: AdminPushNotificationStatsRow) {
       duelEvents: {
         count: duelEvents,
         percent: percent(duelEvents, totalUsers),
+      },
+      tournamentEvents: {
+        count: tournamentEvents,
+        percent: percent(tournamentEvents, totalUsers),
       },
       gameNews: {
         count: gameNews,
@@ -1231,6 +1238,7 @@ function mapUser(row: AdminUserRow) {
         dailyGame: row.push_daily_game,
         trainingAvailable: row.push_training_available,
         duelEvents: row.push_duel_events,
+        tournamentEvents: row.push_tournament_events,
         gameNews: row.push_game_news,
       },
     },
@@ -1440,6 +1448,8 @@ async function fetchPushNotificationStats(
               coalesce(s.subscription_count, 0) > 0
                 and coalesce(pref.duel_events, true) as duel_events,
               coalesce(s.subscription_count, 0) > 0
+                and coalesce(pref.tournament_events, true) as tournament_events,
+              coalesce(s.subscription_count, 0) > 0
                 and coalesce(pref.game_news, true) as game_news
          from users u
          left join subscribed s on s.user_id = u.id
@@ -1451,6 +1461,7 @@ async function fetchPushNotificationStats(
             count(*) filter (where daily_game)::int as daily_game_users,
             count(*) filter (where training_available)::int as training_available_users,
             count(*) filter (where duel_events)::int as duel_events_users,
+            count(*) filter (where tournament_events)::int as tournament_events_users,
             count(*) filter (where game_news)::int as game_news_users
        from prepared`,
   );
@@ -1462,6 +1473,7 @@ async function fetchPushNotificationStats(
       daily_game_users: '0',
       training_available_users: '0',
       duel_events_users: '0',
+      tournament_events_users: '0',
       game_news_users: '0',
     }
   );
@@ -1851,6 +1863,8 @@ async function fetchAdminUser(client: Pool | PoolClient, userId: string): Promis
               and coalesce(pref.training_available, true) as push_training_available,
             coalesce(push.subscription_count, 0) > 0
               and coalesce(pref.duel_events, true) as push_duel_events,
+            coalesce(push.subscription_count, 0) > 0
+              and coalesce(pref.tournament_events, true) as push_tournament_events,
             coalesce(push.subscription_count, 0) > 0
               and coalesce(pref.game_news, true) as push_game_news
        from users u
@@ -3161,6 +3175,8 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
                         and coalesce(pref.training_available, true) as push_training_available,
                       coalesce(push.subscription_count, 0) > 0
                         and coalesce(pref.duel_events, true) as push_duel_events,
+                      coalesce(push.subscription_count, 0) > 0
+                        and coalesce(pref.tournament_events, true) as push_tournament_events,
                       coalesce(push.subscription_count, 0) > 0
                         and coalesce(pref.game_news, true) as push_game_news
                  from users u

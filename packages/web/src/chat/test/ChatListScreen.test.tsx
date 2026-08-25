@@ -38,6 +38,7 @@ describe('ChatListScreen — global search dropdown', () => {
       dailyGame: true,
       trainingAvailable: true,
       duelEvents: true,
+      tournamentEvents: true,
       gameNews: true,
     });
     vi.spyOn(pushApi, 'updatePushPreferences').mockResolvedValue({
@@ -45,6 +46,7 @@ describe('ChatListScreen — global search dropdown', () => {
       dailyGame: true,
       trainingAvailable: true,
       duelEvents: true,
+      tournamentEvents: true,
       gameNews: false,
     });
   });
