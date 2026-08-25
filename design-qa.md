@@ -114,3 +114,23 @@
 - Browser check: the final mobile render has no actionable P0/P1/P2 mismatch.
 
 final result: passed
+
+## Login rink redesign and compact brand header
+
+- Source visual truth: `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-9de2a0fe-ba88-45de-995b-637d1394f628.png` (874 × 1860 px).
+- Follow-up header target: `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-cc96ff91-b217-429d-8408-9e3b795520e9.png` (890 × 526 px).
+- Implementation screenshot: `/private/tmp/login-preview-430x932-final.png` (430 × 932 px).
+- Full-view comparison: `/private/tmp/login-reference-vs-implementation-final.png`.
+- Focused header comparison: `/private/tmp/login-header-adjustment-comparison.png`; this crop keeps the logo, title, slogan, benefit pills and rink safety-net cable readable at once.
+- Viewport and density: implementation 430 × 932 CSS px at device scale factor 1. The 874 × 1860 source was normalized to 438 × 932 for the full-view comparison. A second responsive check used 390 × 844 CSS px at device scale factor 1.
+- State: unauthenticated `/login`, Telegram widget unavailable in the local environment, VK, demo and Dev actions visible.
+- Typography: the app name `Ультимейт Хоккей` is a distinct heading below the logo; the slogan and four compact benefit labels preserve the requested hierarchy and remain light over the night rink.
+- Spacing and layout: the final logo is 96 × 96 px at both checked viewports. At 430 × 932, benefit pills end at y=213.3 px, above the visible top cable of the rink safety net. At 390 × 844, they end at y=207.6 px. The auth actions and terms remain inside the viewport with no document overflow.
+- Colors and tokens: all app-owned login copy uses high-contrast white or cold-white foregrounds with restrained dark text shadows; the equal-width auth controls retain their existing product colors and 999 px pill radius.
+- Image quality: the generated 857 × 1835 WebP rink artwork remains the only full-screen raster background. No placeholder, CSS drawing or rasterized UI text was introduced.
+- Copy and content: the screen includes the app name, `Живи жизнью профессионального хоккеиста`, `тренировки`, `игры`, `соревнования`, `призы`, the three available auth actions and the terms copy. The Telegram VPN fallback remains explicitly split into two lines by component markup.
+- Primary interactions checked: all login/demo buttons are present and enabled in the local state; the existing auth handlers were not changed by the visual adjustment.
+- Browser console errors: none observed during a fresh reload.
+- Comparison history: the first implementation used a 116 px logo and placed the benefit pills at y=211–233 px, visually colliding with the safety-net cable in the user's follow-up screenshot. The logo clamp was reduced to 76–96 px; the post-fix pills end at y=213.3 px and the focused comparison shows clear separation above the cable. No actionable P0/P1/P2 finding remains.
+
+final result: passed

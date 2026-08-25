@@ -14,7 +14,6 @@
 
 - Base branch is `origin/dev`; work only in `co_dex/tournaments` and its existing isolated worktree.
 - Do not touch `main`, production, remote branches, deployment, or runtime feature flags.
-- GLM and all external model calls are disabled.
 - Preserve ordinary amateur duel behavior and the published tournament snapshots.
 - Keep `tournaments.enabled=false` after every integration or synthetic test run.
 - Every fix follows RED → GREEN with an observable regression test.

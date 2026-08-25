@@ -170,6 +170,10 @@ Before merging `dev` to `main`, run a release sanity check:
 
 Коммуникация с пользователем — на русском. Код, коммит-сообщения, комментарии, идентификаторы — на английском. UI-тексты — на русском.
 
+## Review policy
+
+GLM запрещён для этого проекта. Не запускать GLM для планирования, реализации, ревью или любых других задач; использовать локальные проверки и обычное независимое code review без GLM.
+
 ## Doc links
 
 - Спек MVP: `docs/superpowers/specs/2026-04-12-ultimate-hockey-pwa-mvp-design.md`
