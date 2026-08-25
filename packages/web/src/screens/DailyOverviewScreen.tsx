@@ -179,7 +179,12 @@ export function DailyOverviewScreen(): JSX.Element {
           >
             <ArrowLeft size={16} />
           </button>
-          <h1 style={{ margin: 0, minWidth: 0, fontSize: 24, fontWeight: 800 }}>Ежедневная игра</h1>
+          <h1
+            className="screen-title-on-arena"
+            style={{ margin: 0, minWidth: 0, fontSize: 24, fontWeight: 800 }}
+          >
+            Ежедневная игра
+          </h1>
         </div>
 
         <section aria-label="Сегодняшняя игра" style={{ display: 'grid', gap: 8 }}>

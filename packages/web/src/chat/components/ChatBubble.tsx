@@ -119,7 +119,7 @@ function ChatBubbleImpl({
   onOpenProfile,
   onOpenImage,
 }: ChatBubbleProps): JSX.Element {
-  const className = isOwn ? 'glass-dark' : 'glass';
+  const className = isOwn ? 'glass-dark chat-bubble--own' : 'glass';
   const align = isOwn ? 'flex-end' : 'flex-start';
   const radius = isOwn ? '20px 20px 4px 20px' : '20px 20px 20px 4px';
   const attachments = message.isDeleted ? [] : messageAttachments(message.metadata);

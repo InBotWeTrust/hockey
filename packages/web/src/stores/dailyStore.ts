@@ -52,15 +52,24 @@ export const useDailyStore = create<DailyStoreState>()((set, get) => ({
   },
 
   startPeriod: async () => {
+    if (get().inFlight) return null;
     set({ inFlight: true, error: null });
     try {
       const data = await startDailyPeriod();
       set({ data, inFlight: false, error: null });
       return data;
     } catch (err) {
+      const message = err instanceof Error ? err.message : 'failed to start period';
+      try {
+        const data = await fetchDailyState();
+        set({ data, inFlight: false, error: message });
+        return data.state === 'idle' ? null : data;
+      } catch {
+        // Keep the original start error; the follow-up state refresh is best effort.
+      }
       set({
         inFlight: false,
-        error: err instanceof Error ? err.message : 'failed to start period',
+        error: message,
       });
       return null;
     }
@@ -104,7 +113,10 @@ export const useDailyStore = create<DailyStoreState>()((set, get) => ({
     } catch (err) {
       try {
         const data = await fetchDailyState();
-        set({ data, error: err instanceof Error ? err.message : 'shot failed' });
+        set({
+          data,
+          error: err instanceof Error ? err.message : 'shot failed',
+        });
       } catch {
         set({ error: err instanceof Error ? err.message : 'shot failed' });
       }

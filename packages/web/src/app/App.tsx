@@ -26,6 +26,11 @@ const DailyOverviewScreen = lazy(() =>
     default: module.DailyOverviewScreen,
   })),
 );
+const WeeklyChallengeScreen = lazy(() =>
+  import('../screens/WeeklyChallengeScreen.js').then((module) => ({
+    default: module.WeeklyChallengeScreen,
+  })),
+);
 const ProfileScreen = lazy(() =>
   import('../screens/ProfileScreen.js').then((module) => ({ default: module.ProfileScreen })),
 );
@@ -36,6 +41,19 @@ const ProfileSettingsScreen = lazy(() =>
 );
 const SectionsScreen = lazy(() =>
   import('../screens/SectionsScreen.js').then((module) => ({ default: module.SectionsScreen })),
+);
+const BonusGamesScreen = lazy(() =>
+  import('../screens/BonusGamesScreen.js').then((module) => ({ default: module.BonusGamesScreen })),
+);
+const BonusGamePlayScreen = lazy(() =>
+  import('../screens/BonusGamePlayScreen.js').then((module) => ({
+    default: module.BonusGamePlayScreen,
+  })),
+);
+const AchievementsScreen = lazy(() =>
+  import('../screens/AchievementsScreen.js').then((module) => ({
+    default: module.AchievementsScreen,
+  })),
 );
 const TestCourtScreen = lazy(() =>
   import('../screens/TestCourtScreen.js').then((module) => ({ default: module.TestCourtScreen })),
@@ -86,38 +104,82 @@ function ChatRealtime(): JSX.Element {
   return <OfflineBanner status={status} />;
 }
 
-function RouteLoading(): JSX.Element {
+export function RouteLoading(): JSX.Element {
   return (
     <main className="screen" style={{ alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ color: 'var(--muted)', fontSize: 14 }}>Загрузка…</div>
+      <div className="route-loading" role="status">
+        Загрузка…
+      </div>
     </main>
   );
+}
+
+export function appBackdropClassName(pathname: string, search = ''): string {
+  if (pathname === '/login') {
+    return 'app-shell--login';
+  }
+
+  if (pathname === '/admin') {
+    return 'app-shell--arena app-shell--arena-admin';
+  }
+
+  if (
+    (pathname === '/' && new URLSearchParams(search).get('view') === 'daily') ||
+    (pathname === '/' &&
+      new URLSearchParams(search).get('view') === 'amateur' &&
+      new URLSearchParams(search).has('match') &&
+      new URLSearchParams(search).get('play') === '1') ||
+    pathname === '/test-court' ||
+    pathname === '/demo' ||
+    pathname.startsWith('/duel/') ||
+    /^\/bonus-games\/[^/]+\/play$/.test(pathname)
+  ) {
+    return '';
+  }
+
+  if (pathname.startsWith('/chat/')) {
+    return 'app-shell--arena app-shell--arena-chat';
+  }
+
+  return 'app-shell--arena';
 }
 
 function AppFrame(): JSX.Element {
   const location = useLocation();
   const user = useAuthStore((s) => s.user);
   const bottomNavVisible = isBottomNavVisible(location, user);
+  const backdropClassName = appBackdropClassName(location.pathname, location.search);
+  const hasArenaBackdrop = backdropClassName.split(' ').includes('app-shell--arena');
 
   return (
     <>
       <ChatRealtime />
       <DuelInviteToast />
       <div
-        className={`app-shell${bottomNavVisible ? ' app-shell--bottom-nav-visible' : ''}`}
+        className={`app-shell${bottomNavVisible ? ' app-shell--bottom-nav-visible' : ''}${backdropClassName ? ` ${backdropClassName}` : ''}`}
         style={{
           maxWidth: 430,
           margin: '0 auto',
           width: '100%',
-          height: '100dvh',
-          minHeight: '100dvh',
+          height: 'var(--app-viewport-height, 100dvh)',
+          minHeight: 'var(--app-viewport-height, 100dvh)',
           position: 'relative',
           transform: 'translateZ(0)',
           overflow: 'hidden',
-          background: 'linear-gradient(180deg, var(--app-bg-top) 0%, var(--app-bg-bottom) 100%)',
           boxShadow: '0 0 0 1px rgba(15,23,42,0.08), 0 8px 48px rgba(15,23,42,0.14)',
         }}
       >
+        {hasArenaBackdrop && (
+          <div
+            className="arena-ambient-lights"
+            data-testid="arena-ambient-lights"
+            aria-hidden="true"
+          >
+            {Array.from({ length: 10 }, (_, index) => (
+              <span key={index} />
+            ))}
+          </div>
+        )}
         <div className="app-content">
           <Suspense fallback={<RouteLoading />}>
             <Routes>
@@ -149,6 +211,30 @@ function AppFrame(): JSX.Element {
                 }
               />
               <Route
+                path="/bonus-games"
+                element={
+                  <PrivateRoute>
+                    <BonusGamesScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/bonus-games/:gameId/play"
+                element={
+                  <PrivateRoute>
+                    <BonusGamePlayScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/achievements"
+                element={
+                  <PrivateRoute>
+                    <AchievementsScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
                 path="/inventory"
                 element={
                   <PrivateRoute>
@@ -163,6 +249,18 @@ function AppFrame(): JSX.Element {
                     <DailyOverviewScreen />
                   </PrivateRoute>
                 }
+              />
+              <Route
+                path="/achievements/weekly-challenge"
+                element={
+                  <PrivateRoute>
+                    <WeeklyChallengeScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/weekly-challenge"
+                element={<Navigate to="/achievements/weekly-challenge" replace />}
               />
               <Route
                 path="/profile"

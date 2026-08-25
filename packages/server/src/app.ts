@@ -8,6 +8,7 @@ import { authPlugin } from './plugins/auth.js';
 import { lastSeenPlugin } from './plugins/lastSeen.js';
 import { realtimePlugin } from './plugins/realtime.js';
 import { authRoutes } from './routes/auth.js';
+import { achievementRoutes } from './achievements/routes.js';
 import { feedbackRoutes } from './routes/feedback.js';
 import { inventoryRoutes } from './routes/inventory.js';
 import { mediaRoutes } from './routes/media.js';
@@ -15,12 +16,17 @@ import { meRoutes } from './routes/me.js';
 import { dailyRoutes } from './duel/daily/routes.js';
 import { trainingRoutes } from './duel/training/routes.js';
 import { amateurDuelRoutes } from './duel/amateur/routes.js';
+import { weeklyChallengeRoutes } from './weeklyChallenge/routes.js';
 import { chatRoutes } from './chat/routes.js';
 import { chatWs } from './chat/ws.js';
 import { adminRoutes } from './admin/routes.js';
 import { pushRoutes } from './push/routes.js';
 import { pushSchedulerPlugin } from './plugins/pushScheduler.js';
 import { createObjectStorageClient } from './storage/objectStorage.js';
+import { arenaRoutes } from './arenas/routes.js';
+import { bonusGameRoutes } from './bonusGames/routes.js';
+import { tournamentRoutes } from './tournament/routes.js';
+import { tournamentWs } from './tournament/ws.js';
 
 export interface BuildAppOptions {
   config?: AppConfig;
@@ -93,8 +99,11 @@ export async function buildApp(options: BuildAppOptions = {}) {
     devLoginEnabled: config.NODE_ENV !== 'production',
     devAccessCodeLoginEnabled: config.DEV_ACCESS_CODE_LOGIN_ENABLED === true,
   });
+  await app.register(achievementRoutes);
   await app.register(feedbackRoutes);
   await app.register(meRoutes);
+  await app.register(arenaRoutes);
+  await app.register(bonusGameRoutes, { bonusSeedSecret: config.DAILY_SEED_SECRET });
   await app.register(inventoryRoutes);
   await app.register(
     mediaRoutes,
@@ -105,8 +114,14 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await app.register(dailyRoutes, { dailySeedSecret: config.DAILY_SEED_SECRET });
   await app.register(trainingRoutes, { trainingSeedSecret: config.DAILY_SEED_SECRET });
   await app.register(amateurDuelRoutes, { duelSeedSecret: config.DAILY_SEED_SECRET });
+  await app.register(
+    tournamentRoutes,
+    config.SYSTEM_USER_ID !== undefined ? { systemUserId: config.SYSTEM_USER_ID } : {},
+  );
+  await app.register(weeklyChallengeRoutes);
   await app.register(chatRoutes, { ...pushVapidOptions, mediaAccessSecret: config.JWT_SECRET });
   await app.register(chatWs, { accessSecret: config.JWT_SECRET });
+  await app.register(tournamentWs, { accessSecret: config.JWT_SECRET });
   await app.register(pushRoutes, pushVapidOptions);
   await app.register(
     adminRoutes,

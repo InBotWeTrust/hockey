@@ -3,7 +3,9 @@ import { useLocation, useNavigate, type Location } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Gamepad2, MessageCircle, Package, ShieldCheck, User } from 'lucide-react';
 import { apiFetch } from '../api/apiFetch.js';
+import { achievementKeys, fetchAchievements } from '../api/achievements.js';
 import { fetchAmateurEvents, type AmateurDuelMatch } from '../api/amateurDuel.js';
+import { fetchWeeklyChallenge } from '../api/weeklyChallenge.js';
 import { useAuthStore } from '../auth/authStore.js';
 import type { AuthUser } from '../auth/authStore.js';
 import { fetchUnreadCounts } from '../chat/api.js';
@@ -14,9 +16,13 @@ export const NAV_HEIGHT = 68;
 
 const ICON_SIZE = 22;
 const LAST_GAME_ROUTE_KEY = 'hockey.nav.lastGameRoute';
+const LAST_SECTIONS_ROUTE_KEY = 'hockey.nav.lastSectionsRoute';
 const LAST_CHAT_ROUTE_KEY = 'hockey.nav.lastChatRoute';
+const LAST_PROFILE_ROUTE_KEY = 'hockey.nav.lastProfileRoute';
 const DEFAULT_GAME_ROUTE = '/?view=arena';
+const DEFAULT_SECTIONS_ROUTE = '/sections';
 const DEFAULT_CHAT_ROUTE = '/chat';
+const DEFAULT_PROFILE_ROUTE = '/profile';
 export const ADMIN_NAV_HOME_EVENT = 'hockey:admin-nav-home';
 
 function isActionableDuelEvent(match: AmateurDuelMatch): boolean {
@@ -44,11 +50,18 @@ function isChatRoute(pathname: string): boolean {
   return pathname.startsWith('/chat');
 }
 
+function isProfileRoute(pathname: string): boolean {
+  return pathname.startsWith('/profile');
+}
+
 function isSectionContext(location: ReturnType<typeof useLocation>): boolean {
   if (
     location.pathname.startsWith('/sections') ||
+    location.pathname.startsWith('/achievements') ||
+    location.pathname.startsWith('/weekly-challenge') ||
     location.pathname.startsWith('/inventory') ||
-    location.pathname.startsWith('/daily')
+    location.pathname.startsWith('/daily') ||
+    location.pathname.startsWith('/bonus-games')
   ) {
     return true;
   }
@@ -84,6 +97,7 @@ function normalizeNavLocation(location: string | NavLocation): NavLocation {
 }
 
 function isOpenRinkRoute(location: NavLocation): boolean {
+  if (/^\/bonus-games\/[^/]+\/play$/.test(location.pathname)) return true;
   if (location.pathname !== '/') return false;
   const params = new URLSearchParams(location.search);
   const view = params.get('view');
@@ -110,7 +124,13 @@ export function BottomNav(): JSX.Element | null {
   const location = useLocation();
   const navigate = useNavigate();
   const isDemo = location.pathname === '/demo';
+  const lastSectionsRouteRef = useRef(
+    readRememberedRoute(LAST_SECTIONS_ROUTE_KEY, DEFAULT_SECTIONS_ROUTE),
+  );
   const lastChatRouteRef = useRef(readRememberedRoute(LAST_CHAT_ROUTE_KEY, DEFAULT_CHAT_ROUTE));
+  const lastProfileRouteRef = useRef(
+    readRememberedRoute(LAST_PROFILE_ROUTE_KEY, DEFAULT_PROFILE_ROUTE),
+  );
 
   const totalUnread = useChatStore((s) => s.totalUnread());
   const setUnread = useChatStore((s) => s.setUnread);
@@ -125,6 +145,18 @@ export function BottomNav(): JSX.Element | null {
     queryFn: fetchAmateurEvents,
     enabled: Boolean(user) && !isDemo,
     refetchInterval: 15_000,
+  });
+  const { data: weeklyChallenge } = useQuery({
+    queryKey: ['weekly-challenge', 'nav'],
+    queryFn: fetchWeeklyChallenge,
+    enabled: Boolean(user) && !isDemo,
+    refetchInterval: 60_000,
+  });
+  const { data: achievements } = useQuery({
+    queryKey: achievementKeys.all,
+    queryFn: fetchAchievements,
+    enabled: Boolean(user) && !isDemo,
+    refetchInterval: 30_000,
   });
   const { data: refreshedUser } = useQuery<AuthUser>({
     queryKey: ['auth', 'me-role'],
@@ -158,9 +190,17 @@ export function BottomNav(): JSX.Element | null {
     if (isDemo) return;
     const route = routeFromLocation(location);
     if (isGameRoute(location.pathname)) rememberRoute(LAST_GAME_ROUTE_KEY, DEFAULT_GAME_ROUTE);
+    if (isSectionContext(location)) {
+      lastSectionsRouteRef.current = route;
+      rememberRoute(LAST_SECTIONS_ROUTE_KEY, route);
+    }
     if (isChatRoute(location.pathname)) {
       lastChatRouteRef.current = route;
       rememberRoute(LAST_CHAT_ROUTE_KEY, route);
+    }
+    if (isProfileRoute(location.pathname)) {
+      lastProfileRouteRef.current = route;
+      rememberRoute(LAST_PROFILE_ROUTE_KEY, route);
     }
   }, [isDemo, location]);
 
@@ -171,12 +211,22 @@ export function BottomNav(): JSX.Element | null {
 
   const isSections = isSectionContext(location);
   const isGame = isDemo || (isGameRoute(location.pathname) && !isSections);
-  const isProfile = location.pathname.startsWith('/profile');
+  const isProfile = isProfileRoute(location.pathname);
   const isAdmin = location.pathname.startsWith('/admin');
   const isChat = !isDemo && isChatRoute(location.pathname);
   const showAdmin = !isDemo && user?.role === 'admin';
+  const navCount = showAdmin ? 5 : 4;
+  const activeIndex = isGame ? 0 : isSections ? 1 : isChat ? 2 : isProfile ? 3 : 4;
   const gameActionCount = (amateurEvents?.events ?? []).filter(isActionableDuelEvent).length;
-  const inactiveIconColor = isDemo ? 'rgba(71, 85, 105, 0.48)' : 'var(--muted)';
+  const currentSectionActionCount =
+    weeklyChallenge?.challenge?.canJoin === true ||
+    weeklyChallenge?.challenge?.canClaimReward === true
+      ? 1
+      : 0;
+  const sectionActionCount =
+    currentSectionActionCount +
+    (weeklyChallenge?.pendingRewards?.length ?? 0) +
+    (achievements?.unclaimedCount ?? 0);
   const openLastGameRoute = (): void => {
     rememberRoute(LAST_GAME_ROUTE_KEY, DEFAULT_GAME_ROUTE);
     navigate(DEFAULT_GAME_ROUTE);
@@ -193,10 +243,28 @@ export function BottomNav(): JSX.Element | null {
     );
   };
   const openProfileRoute = (): void => {
-    navigate('/profile');
+    if (isProfile) {
+      lastProfileRouteRef.current = DEFAULT_PROFILE_ROUTE;
+      rememberRoute(LAST_PROFILE_ROUTE_KEY, DEFAULT_PROFILE_ROUTE);
+      navigate(DEFAULT_PROFILE_ROUTE);
+      return;
+    }
+    navigate(
+      lastProfileRouteRef.current ||
+        readRememberedRoute(LAST_PROFILE_ROUTE_KEY, DEFAULT_PROFILE_ROUTE),
+    );
   };
   const openSectionsRoute = (): void => {
-    navigate('/sections');
+    if (isSections) {
+      lastSectionsRouteRef.current = DEFAULT_SECTIONS_ROUTE;
+      rememberRoute(LAST_SECTIONS_ROUTE_KEY, DEFAULT_SECTIONS_ROUTE);
+      navigate(DEFAULT_SECTIONS_ROUTE);
+      return;
+    }
+    navigate(
+      lastSectionsRouteRef.current ||
+        readRememberedRoute(LAST_SECTIONS_ROUTE_KEY, DEFAULT_SECTIONS_ROUTE),
+    );
   };
   const openAdminRoute = (): void => {
     if (isAdmin) {
@@ -219,7 +287,7 @@ export function BottomNav(): JSX.Element | null {
       }}
     >
       <nav
-        className="glass-dock-surface"
+        className="bottom-nav__dock glass-dock-surface"
         aria-label={isDemo ? 'Демо-навигация' : 'Навигация'}
         style={{
           position: 'relative',
@@ -229,29 +297,34 @@ export function BottomNav(): JSX.Element | null {
           height: 54,
           borderRadius: 999,
           display: 'grid',
-          gridTemplateColumns: `repeat(${showAdmin ? 5 : 4}, 1fr)`,
+          gridTemplateColumns: `repeat(${navCount}, 1fr)`,
           alignItems: 'center',
           padding: '0 6px',
           zIndex: 500,
           pointerEvents: isDemo ? 'none' : 'auto',
         }}
       >
+        <span
+          className="bottom-nav__active-glow"
+          aria-hidden="true"
+          style={{
+            width: `calc((100% - 12px) / ${navCount})`,
+            transform: `translateX(${activeIndex * 100}%)`,
+          }}
+        />
         <NavTab
           label="Игра"
           disabled={isDemo}
           active={isGame}
           icon={
             <span style={{ position: 'relative', display: 'inline-flex' }}>
-              <Gamepad2
-                size={ICON_SIZE}
-                color={isGame ? '#ffffff' : inactiveIconColor}
-                strokeWidth={2}
-              />
+              <Gamepad2 size={ICON_SIZE} strokeWidth={2} />
               {!isDemo && gameActionCount > 0 && (
                 <span
                   aria-label={`События игры: ${gameActionCount}`}
                   style={{
                     position: 'absolute',
+                    zIndex: 2,
                     top: -4,
                     right: -6,
                     minWidth: 16,
@@ -280,11 +353,34 @@ export function BottomNav(): JSX.Element | null {
           disabled={isDemo}
           active={isSections}
           icon={
-            <Package
-              size={ICON_SIZE}
-              color={isSections ? '#ffffff' : inactiveIconColor}
-              strokeWidth={2}
-            />
+            <span style={{ position: 'relative', display: 'inline-flex' }}>
+              <Package size={ICON_SIZE} strokeWidth={2} />
+              {!isDemo && sectionActionCount > 0 && (
+                <span
+                  aria-label={`События разделов: ${sectionActionCount}`}
+                  style={{
+                    position: 'absolute',
+                    zIndex: 2,
+                    top: -4,
+                    right: -6,
+                    minWidth: 16,
+                    height: 16,
+                    padding: '0 4px',
+                    borderRadius: 999,
+                    background: 'rgb(220, 38, 38)',
+                    color: '#ffffff',
+                    fontSize: 9,
+                    fontWeight: 800,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 0 0 2px rgba(218, 230, 246, 0.96)',
+                  }}
+                >
+                  {sectionActionCount}
+                </span>
+              )}
+            </span>
           }
           onClick={openSectionsRoute}
         />
@@ -294,16 +390,13 @@ export function BottomNav(): JSX.Element | null {
           active={isChat}
           icon={
             <span style={{ position: 'relative', display: 'inline-flex' }}>
-              <MessageCircle
-                size={ICON_SIZE}
-                color={isChat ? '#ffffff' : inactiveIconColor}
-                strokeWidth={2}
-              />
+              <MessageCircle size={ICON_SIZE} strokeWidth={2} />
               {!isDemo && totalUnread > 0 && (
                 <span
                   aria-label={`Непрочитанные: ${totalUnread}`}
                   style={{
                     position: 'absolute',
+                    zIndex: 2,
                     top: -4,
                     right: -6,
                     minWidth: 16,
@@ -331,26 +424,14 @@ export function BottomNav(): JSX.Element | null {
           label="Раздевалка"
           disabled={isDemo}
           active={isProfile}
-          icon={
-            <User
-              size={ICON_SIZE}
-              color={isProfile ? '#ffffff' : inactiveIconColor}
-              strokeWidth={2}
-            />
-          }
+          icon={<User size={ICON_SIZE} strokeWidth={2} />}
           onClick={openProfileRoute}
         />
         {showAdmin && (
           <NavTab
             label="Админ"
             active={isAdmin}
-            icon={
-              <ShieldCheck
-                size={ICON_SIZE}
-                color={isAdmin ? '#ffffff' : 'var(--muted)'}
-                strokeWidth={2}
-              />
-            }
+            icon={<ShieldCheck size={ICON_SIZE} strokeWidth={2} />}
             onClick={openAdminRoute}
           />
         )}
@@ -368,40 +449,22 @@ interface NavTabProps {
 }
 
 function NavTab({ label, active, icon, onClick, disabled = false }: NavTabProps): JSX.Element {
+  const handleClick = (): void => {
+    onClick();
+  };
+
   return (
     <button
       type="button"
-      onClick={disabled ? undefined : onClick}
+      onClick={disabled ? undefined : handleClick}
       disabled={disabled}
       aria-label={label}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'none',
-        border: 'none',
-        cursor: disabled ? 'default' : 'pointer',
-        padding: 0,
-        height: '100%',
-        touchAction: 'manipulation',
-        opacity: disabled && !active ? 0.58 : 1,
-      }}
+      aria-current={active ? 'page' : undefined}
+      className={`bottom-nav__tab${active ? ' bottom-nav__tab--active' : ''}`}
     >
-      <div
-        style={{
-          width: 40,
-          height: 40,
-          borderRadius: 12,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: active ? 'rgba(15, 23, 42, 0.92)' : 'rgba(255, 255, 255, 0.55)',
-          border: active ? 'none' : '1px solid rgba(255, 255, 255, 0.7)',
-          transition: 'background 0.15s',
-        }}
-      >
+      <span className={`bottom-nav__icon-wrap${active ? ' bottom-nav__icon-wrap--active' : ''}`}>
         {icon}
-      </div>
+      </span>
     </button>
   );
 }

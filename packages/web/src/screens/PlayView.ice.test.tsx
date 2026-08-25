@@ -1,8 +1,9 @@
-import { render, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { DAILY_PERIOD_SPEED_PRESETS } from '@hockey/game-core';
-import { PlayView } from './DailyScreen.js';
+import { PlayView } from '../game/PlayView.js';
 import type * as ReactModule from 'react';
+import { Goal } from '../game/renderer/Goal.js';
 
 type PixiAppStub = {
   stage: { children: unknown[]; addChild: (child: unknown) => void };
@@ -50,7 +51,9 @@ vi.mock('../game/RinkSvg.js', () => ({
 }));
 
 function rinkLayerChildren(): { visible: boolean }[] {
-  const layer = pixiHarness.app?.stage.children[0] as { children?: { visible: boolean }[] } | undefined;
+  const layer = pixiHarness.app?.stage.children[0] as
+    | { children?: { visible: boolean }[] }
+    | undefined;
   return layer?.children ?? [];
 }
 
@@ -122,5 +125,53 @@ describe('PlayView rink availability visuals', () => {
       expect(rinkLayerChildren()[0]?.visible).toBe(false);
       expect(rinkLayerChildren()[1]?.visible).toBe(true);
     });
+  });
+
+  it('keeps play controls above the compact dock inset by default', async () => {
+    renderPlayView({ showIceCar: false });
+
+    const root = await screen.findByRole('main');
+
+    expect(root).toHaveStyle({
+      bottom: 'calc(8px + var(--app-dock-safe-bottom))',
+    });
+  });
+
+  it('locks an inactive rink start immediately while keeping the visible goal in place', async () => {
+    const goalUpdate = vi.spyOn(Goal.prototype, 'update');
+    const inactiveAction = vi.fn(() => null);
+    render(
+      <PlayView
+        suppressedByModal={true}
+        showIceCar={false}
+        onBack={() => undefined}
+        active={false}
+        seed={null}
+        goalieId="rookie"
+        periodNumber={1}
+        periodSpeedPresets={[...DAILY_PERIOD_SPEED_PRESETS]}
+        goals={0}
+        shots={0}
+        shotsTotal={30}
+        shotButtonLabel="НАЧАТЬ"
+        inactiveAction={inactiveAction}
+        entranceBeforeInactiveAction={true}
+        optimisticAddShot={() => undefined}
+        submitShot={noopSubmit}
+        applyState={() => undefined}
+      />,
+    );
+
+    await screen.findByRole('button', { name: 'НАЧАТЬ' });
+    goalUpdate.mockClear();
+
+    const startButton = screen.getByRole('button', { name: 'НАЧАТЬ' });
+    fireEvent.click(startButton);
+
+    await waitFor(() => expect(goalUpdate).toHaveBeenCalled());
+    expect(startButton).toBeDisabled();
+    expect(inactiveAction).not.toHaveBeenCalled();
+    expect(goalUpdate).toHaveBeenCalledWith(expect.anything(), 0, 0);
+    expect(goalUpdate).not.toHaveBeenCalledWith(expect.anything(), 0, -140);
   });
 });

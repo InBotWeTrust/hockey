@@ -2,7 +2,7 @@ import type { Pool, PoolClient } from 'pg';
 import type { PushEventType } from './preferences.js';
 import type { WebPushPayload } from './service.js';
 
-export type PushNotificationCategory = 'chat' | 'daily' | 'training' | 'duel' | 'news';
+export type PushNotificationCategory = 'chat' | 'daily' | 'training' | 'duel' | 'tournament' | 'news';
 
 export interface PushNotificationTemplateRow {
   key: PushEventType;
@@ -55,6 +55,17 @@ const TEMPLATE_ORDER: PushEventType[] = [
   'training.available',
   'duel.challenge_received',
   'duel.result_ready',
+  'tournament.application_approved',
+  'tournament.schedule_published',
+  'tournament.fixture_opened',
+  'tournament.live_soon',
+  'tournament.fixture_deadline',
+  'tournament.result_ready',
+  'tournament.rescheduled',
+  'tournament.playoff_started',
+  'tournament.series_next_game',
+  'tournament.completed',
+  'tournament.manual',
   'news.posted',
 ];
 
@@ -265,6 +276,7 @@ export async function renderPushNotificationPayload(
   key: PushEventType,
   variables: PushTemplateVariables,
   fallback: PushTemplateFallback,
+  override?: PushTemplateFallback | null,
 ): Promise<WebPushPayload | null> {
   await ensurePushNotificationTemplates(client);
   const { rows } = await client.query<{
@@ -280,7 +292,7 @@ export async function renderPushNotificationPayload(
   );
   const row = rows[0];
   if (row && !row.is_enabled) return null;
-  const source = row ? { title: row.title, body: row.body, url: row.click_url } : fallback;
+  const source = override ?? (row ? { title: row.title, body: row.body, url: row.click_url } : fallback);
   return {
     title: interpolate(source.title, variables),
     body: interpolate(source.body, variables),

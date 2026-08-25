@@ -116,7 +116,11 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
     return startedAt ? Math.max(0, Date.now() - startedAt.getTime()) : 0;
   }
 
-  async function submitShot(shotIndex: number, claimedResult = 'goal') {
+  async function submitShot(
+    shotIndex: number,
+    claimedResult = 'goal',
+    inputOverrides: Record<string, number> = {},
+  ) {
     const tapTime = await trainingTapTime();
     return app.inject({
       method: 'POST',
@@ -124,7 +128,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
       headers: authHeader(),
       payload: {
         shot_index: shotIndex,
-        input: { tapTime },
+        input: { tapTime, ...inputOverrides },
         claimed_result: claimedResult,
       },
     });
@@ -275,6 +279,28 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
     );
     expect(userRows.rows[0].lifetime_shots_total).toBe(0);
     expect(userRows.rows[0].lifetime_goals_total).toBe(0);
+  });
+
+  it('uses submitted training speed overrides for shot resolution', async () => {
+    await startTraining(2);
+    const r = await submitShot(1, 'goal', {
+      puckSpeedPerMs: 1.85,
+      shooterFrequency: 1.15,
+      goalieFrequency: 1.25,
+      goalFrequency: 0.95,
+    });
+    expect(r.statusCode).toBe(200);
+
+    const { rows } = await pool.query<{ input_payload: Record<string, number> }>(
+      `select input_payload from shot_session where user_id = $1`,
+      [userId],
+    );
+    expect(rows[0]?.input_payload).toMatchObject({
+      puckSpeedPerMs: 1.85,
+      shooterFrequency: 1.15,
+      goalieFrequency: 1.25,
+      goalFrequency: 0.95,
+    });
   });
 
   it('closes after the 500th shot', async () => {

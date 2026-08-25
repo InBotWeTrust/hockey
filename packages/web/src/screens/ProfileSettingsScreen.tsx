@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Info, LogOut } from 'lucide-react';
+import { triggerHaptic } from '../feedback/haptics.js';
+import { ArrowLeft, Info, LogOut, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../api/apiFetch.js';
 import { TelegramLoginButton, type TelegramAuthPayload } from '../auth/TelegramLoginButton.js';
@@ -9,6 +10,7 @@ import { useLogout } from '../auth/useLogout.js';
 import { startVkOAuth } from '../auth/vkAuth.js';
 import { ProfileSupportSections } from './ProfileSupportSections.js';
 import type { ProfileData } from './profileTypes.js';
+import { AccessibleModal } from '../components/AccessibleModal.js';
 
 type DisplaySource = 'telegram' | 'vk' | 'custom';
 
@@ -134,6 +136,11 @@ function withLinkedProvider(
   return [provider, ...(providers ?? [])];
 }
 
+function playerIdLabel(data: ProfileData | undefined): string {
+  if (!data) return '-';
+  return data.tgId ? `id ${data.tgId}` : data.id;
+}
+
 export function ProfileSettingsScreen(): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -150,6 +157,7 @@ export function ProfileSettingsScreen(): JSX.Element {
   const [grip, setGrip] = useState<'right' | 'left'>('right');
   const [customFirstName, setCustomFirstName] = useState('');
   const [customLastName, setCustomLastName] = useState('');
+  const [customProfileModalOpen, setCustomProfileModalOpen] = useState(false);
   const [gripInfoOpen, setGripInfoOpen] = useState(false);
   const [sourceError, setSourceError] = useState<string | null>(null);
   const [vkLinkPending, setVkLinkPending] = useState(false);
@@ -186,11 +194,13 @@ export function ProfileSettingsScreen(): JSX.Element {
       updateUser({ grip: g });
     },
     onSuccess: (_res, g) => {
+      triggerHaptic('success');
       queryClient.setQueryData<ProfileData>(['profile'], (old) =>
         old ? { ...old, grip: g } : old,
       );
     },
     onError: () => {
+      triggerHaptic('error');
       if (data) {
         setGrip(data.grip);
         updateUser({ grip: data.grip });
@@ -226,6 +236,7 @@ export function ProfileSettingsScreen(): JSX.Element {
       return previous ? { previous } : {};
     },
     onSuccess: (profile) => {
+      triggerHaptic('success');
       queryClient.setQueryData<ProfileData>(['profile'], profile);
       updateUser({
         displayName: profile.displayName,
@@ -247,6 +258,7 @@ export function ProfileSettingsScreen(): JSX.Element {
       });
     },
     onError: (err, _source, context) => {
+      triggerHaptic('error');
       if (context?.previous) {
         queryClient.setQueryData<ProfileData>(['profile'], context.previous);
       }
@@ -269,6 +281,7 @@ export function ProfileSettingsScreen(): JSX.Element {
         }),
       }),
     onSuccess: (profile) => {
+      triggerHaptic('success');
       queryClient.setQueryData<ProfileData>(['profile'], profile);
       updateUser({
         displayName: profile.displayName,
@@ -286,8 +299,10 @@ export function ProfileSettingsScreen(): JSX.Element {
           : {}),
       });
       setSourceError(null);
+      setCustomProfileModalOpen(false);
     },
     onError: (err) => {
+      triggerHaptic('error');
       setSourceError(err.message);
     },
   });
@@ -312,6 +327,7 @@ export function ProfileSettingsScreen(): JSX.Element {
       );
     },
     onSuccess: (uploaded) => {
+      triggerHaptic('success');
       queryClient.setQueryData<ProfileData>(['profile'], (old) =>
         old
           ? {
@@ -330,6 +346,7 @@ export function ProfileSettingsScreen(): JSX.Element {
       setSourceError(null);
     },
     onError: (err) => {
+      triggerHaptic('error');
       setSourceError(err.message);
     },
   });
@@ -345,6 +362,7 @@ export function ProfileSettingsScreen(): JSX.Element {
         body: JSON.stringify({ ...payload, timezone: detectTimezone() }),
       }),
     onSuccess: (session) => {
+      triggerHaptic('success');
       const currentUser = useAuthStore.getState().user;
       setSession({
         accessToken: session.accessToken,
@@ -361,6 +379,7 @@ export function ProfileSettingsScreen(): JSX.Element {
       void queryClient.invalidateQueries({ queryKey: ['profile'] });
     },
     onError: (err) => {
+      triggerHaptic('error');
       setSourceError(err.message);
     },
   });
@@ -422,142 +441,20 @@ export function ProfileSettingsScreen(): JSX.Element {
       ) : (
         <>
           <div className="section-label" style={{ marginBottom: 6 }}>
-            Аккаунт
+            Аккаунт ({playerIdLabel(data)})
           </div>
           <div style={{ margin: '0 14px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div
-              className="glass"
-              style={{
-                padding: '10px 12px',
-                borderRadius: 16,
-                display: 'grid',
-                gap: 3,
-              }}
-            >
-              <div
-                style={{
-                  color: 'var(--muted)',
-                  fontSize: 11,
-                  fontWeight: 800,
-                  letterSpacing: '0.04em',
-                  textTransform: 'uppercase',
-                }}
-              >
-                ID игрока
-              </div>
-              <div
-                style={{
-                  minWidth: 0,
-                  color: 'var(--ink)',
-                  fontSize: 14,
-                  fontWeight: 750,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {data?.tgId ? `id ${data.tgId}` : data?.id ?? '-'}
-              </div>
-            </div>
             <ProfileSourceOption
               label="Кастом"
               name={providerName(data, 'custom')}
               avatarUrl={providerAvatar(data, 'custom')}
               active={displaySource === 'custom'}
-              disabled={savingDisplaySource || savingCustomProfile || uploadAvatar.isPending}
+              disabled={savingCustomProfile || uploadAvatar.isPending}
               onClick={() => {
-                if (displaySource === 'custom') return;
-                if (!canSaveCustomProfile) {
-                  setSourceError('Укажите имя и фамилию для кастомного профиля.');
-                  return;
-                }
-                saveCustomProfile({
-                  firstName: trimmedCustomFirstName,
-                  lastName: trimmedCustomLastName,
-                });
+                setSourceError(null);
+                setCustomProfileModalOpen(true);
               }}
             />
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <input
-                aria-label="Кастомное имя"
-                value={customFirstName}
-                onChange={(event) => setCustomFirstName(event.target.value)}
-                placeholder="Имя"
-                maxLength={60}
-                style={{
-                  minWidth: 0,
-                  height: 46,
-                  borderRadius: 16,
-                  border: '1px solid rgba(255,255,255,0.78)',
-                  background: 'rgba(248, 252, 255, 0.68)',
-                  padding: '0 14px',
-                  color: 'var(--ink)',
-                  font: 'inherit',
-                  fontSize: 14,
-                  fontWeight: 700,
-                  outline: 'none',
-                }}
-              />
-              <input
-                aria-label="Кастомная фамилия"
-                value={customLastName}
-                onChange={(event) => setCustomLastName(event.target.value)}
-                placeholder="Фамилия"
-                maxLength={60}
-                style={{
-                  minWidth: 0,
-                  height: 46,
-                  borderRadius: 16,
-                  border: '1px solid rgba(255,255,255,0.78)',
-                  background: 'rgba(248, 252, 255, 0.68)',
-                  padding: '0 14px',
-                  color: 'var(--ink)',
-                  font: 'inherit',
-                  fontSize: 14,
-                  fontWeight: 700,
-                  outline: 'none',
-                }}
-              />
-            </div>
-            <button
-              type="button"
-              className="btn btn--cta"
-              disabled={!canSaveCustomProfile}
-              onClick={() =>
-                saveCustomProfile({
-                  firstName: trimmedCustomFirstName,
-                  lastName: trimmedCustomLastName,
-                })
-              }
-              style={{ justifyContent: 'center', padding: '11px 0', fontSize: 13 }}
-            >
-              {savingCustomProfile ? 'Сохраняем...' : 'Сохранить кастомный профиль'}
-            </button>
-            <label
-              className="btn btn--ghost"
-              style={{
-                justifyContent: 'center',
-                padding: '11px 0',
-                fontSize: 13,
-                cursor: uploadAvatar.isPending ? 'wait' : 'pointer',
-              }}
-            >
-              {uploadAvatar.isPending ? 'Загружаем...' : 'Загрузить аватар'}
-              <input
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                hidden
-                disabled={uploadAvatar.isPending}
-                onChange={(event) => {
-                  const file = event.currentTarget.files?.[0];
-                  event.currentTarget.value = '';
-                  if (file) {
-                    setSourceError(null);
-                    uploadAvatar.mutate(file);
-                  }
-                }}
-              />
-            </label>
             <ProfileSourceOption
               label="Из Telegram"
               name={providerName(data, 'telegram')}
@@ -670,8 +567,8 @@ export function ProfileSettingsScreen(): JSX.Element {
               hint="Шайба слева"
               active={grip === 'left'}
               disabled={savingGrip}
-              sprite="/sprites/lefthand.webp"
-              side="left"
+              sprite="/sprites/ultimate-player-left.webp"
+              imageShiftX={-8}
               onClick={() => {
                 if (grip !== 'left') saveGrip('left');
               }}
@@ -681,8 +578,8 @@ export function ProfileSettingsScreen(): JSX.Element {
               hint="Шайба справа"
               active={grip === 'right'}
               disabled={savingGrip}
-              sprite="/sprites/righthand.webp"
-              side="right"
+              sprite="/sprites/ultimate-player-right.webp"
+              imageShiftX={8}
               onClick={() => {
                 if (grip !== 'right') saveGrip('right');
               }}
@@ -718,43 +615,139 @@ export function ProfileSettingsScreen(): JSX.Element {
       )}
 
       {gripInfoOpen && (
-        <div
-          onClick={() => setGripInfoOpen(false)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(15, 23, 42, 0.35)',
-            backdropFilter: 'blur(8px)',
-            WebkitBackdropFilter: 'blur(8px)',
-            zIndex: 250,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 20,
-          }}
+        <AccessibleModal
+          title="Хват клюшки"
+          onRequestClose={() => setGripInfoOpen(false)}
+          backdropStyle={{ zIndex: 250 }}
+          cardStyle={{ maxWidth: 320 }}
+          headerAction={
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Закрыть подсказку"
+              onClick={() => setGripInfoOpen(false)}
+            >
+              <X size={15} />
+            </button>
+          }
         >
-          <div
-            className="glass"
-            onClick={(e) => e.stopPropagation()}
-            style={{ borderRadius: 24, padding: '22px 22px 18px', maxWidth: 320, width: '100%' }}
-          >
-            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)', marginBottom: 10 }}>
-              Хват клюшки
-            </div>
-            <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>
-              При правом хвате можно бросить вплотную у правого борта - слева шайба не докатится.
-              При левом - наоборот.
+          <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>
+            При правом хвате можно бросить вплотную у правого борта - слева шайба не докатится. При
+            левом - наоборот.
+          </div>
+        </AccessibleModal>
+      )}
+      {customProfileModalOpen && (
+        <AccessibleModal
+          title="Кастомный профиль"
+          onRequestClose={() => setCustomProfileModalOpen(false)}
+          closeBlocked={savingCustomProfile || uploadAvatar.isPending}
+          backdropStyle={{ zIndex: 260 }}
+          cardStyle={{ width: 'min(430px, calc(100vw - 28px))' }}
+          headerAction={
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Закрыть кастомный профиль"
+              disabled={savingCustomProfile || uploadAvatar.isPending}
+              onClick={() => setCustomProfileModalOpen(false)}
+            >
+              <X size={15} />
+            </button>
+          }
+        >
+          <div style={{ display: 'grid', gap: 12 }}>
+            <div className="modal-title">Кастомный профиль</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <input
+                aria-label="Кастомное имя"
+                value={customFirstName}
+                onChange={(event) => setCustomFirstName(event.target.value)}
+                placeholder="Имя"
+                maxLength={60}
+                style={{
+                  minWidth: 0,
+                  height: 46,
+                  borderRadius: 16,
+                  border: '1px solid rgba(255,255,255,0.78)',
+                  background: 'rgba(248, 252, 255, 0.68)',
+                  padding: '0 14px',
+                  color: 'var(--ink)',
+                  font: 'inherit',
+                  fontSize: 14,
+                  fontWeight: 700,
+                  outline: 'none',
+                }}
+              />
+              <input
+                aria-label="Кастомная фамилия"
+                value={customLastName}
+                onChange={(event) => setCustomLastName(event.target.value)}
+                placeholder="Фамилия"
+                maxLength={60}
+                style={{
+                  minWidth: 0,
+                  height: 46,
+                  borderRadius: 16,
+                  border: '1px solid rgba(255,255,255,0.78)',
+                  background: 'rgba(248, 252, 255, 0.68)',
+                  padding: '0 14px',
+                  color: 'var(--ink)',
+                  font: 'inherit',
+                  fontSize: 14,
+                  fontWeight: 700,
+                  outline: 'none',
+                }}
+              />
             </div>
             <button
               type="button"
-              className="btn btn--cta"
-              onClick={() => setGripInfoOpen(false)}
-              style={{ marginTop: 18, width: '100%', padding: '12px 0', fontSize: 14 }}
+              className="btn btn--cta modal-primary"
+              disabled={!canSaveCustomProfile}
+              onClick={() =>
+                saveCustomProfile({
+                  firstName: trimmedCustomFirstName,
+                  lastName: trimmedCustomLastName,
+                })
+              }
             >
-              Понятно
+              {savingCustomProfile ? 'Сохраняем...' : 'Сохранить кастомный профиль'}
             </button>
+            <label
+              className="btn btn--ghost"
+              style={{
+                justifyContent: 'center',
+                padding: '13px 0',
+                fontSize: 13,
+                cursor: uploadAvatar.isPending ? 'wait' : 'pointer',
+              }}
+            >
+              {uploadAvatar.isPending ? 'Загружаем...' : 'Загрузить аватар'}
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                hidden
+                disabled={uploadAvatar.isPending}
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+                  event.currentTarget.value = '';
+                  if (file) {
+                    setSourceError(null);
+                    uploadAvatar.mutate(file);
+                  }
+                }}
+              />
+            </label>
+            {sourceError && (
+              <div
+                role="alert"
+                style={{ fontSize: 12, color: 'var(--red-deep)', textAlign: 'center' }}
+              >
+                {sourceError}
+              </div>
+            )}
           </div>
-        </div>
+        </AccessibleModal>
       )}
     </main>
   );
@@ -855,7 +848,7 @@ interface GripOptionProps {
   active: boolean;
   disabled: boolean;
   sprite: string;
-  side: 'left' | 'right';
+  imageShiftX: number;
   onClick: () => void;
 }
 
@@ -865,12 +858,10 @@ function GripOption({
   active,
   disabled,
   sprite,
-  side,
+  imageShiftX,
   onClick,
 }: GripOptionProps): JSX.Element {
-  const SIZE = 72;
-  const puckSize = 3;
-  const puckSide = side === 'left' ? 'right' : 'left';
+  const SIZE = 104;
   return (
     <button
       type="button"
@@ -894,8 +885,11 @@ function GripOption({
         style={{
           position: 'relative',
           width: SIZE,
-          height: SIZE,
-          transform: `rotate(${side === 'left' ? -18.3 : 18.3}deg)`,
+          height: 86,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          overflow: 'visible',
         }}
       >
         <img
@@ -904,25 +898,13 @@ function GripOption({
           aria-hidden
           style={{
             width: SIZE,
-            height: SIZE,
+            height: 86,
+            display: 'block',
             objectFit: 'contain',
+            transform: `translateX(${imageShiftX}px)`,
             filter: active
               ? 'drop-shadow(0 2px 6px rgba(0, 0, 0, 0.3))'
               : 'drop-shadow(0 1px 3px rgba(15, 23, 42, 0.15))',
-          }}
-        />
-        <div
-          aria-hidden
-          style={{
-            position: 'absolute',
-            top: 'calc(14% - 3px)',
-            [puckSide]: 'calc(37% + 10px)',
-            width: puckSize,
-            height: puckSize,
-            borderRadius: '50%',
-            background: '#0f172a',
-            boxShadow:
-              'inset 0 -1px 1px rgba(255, 255, 255, 0.2), 0 1px 2px rgba(15, 23, 42, 0.45)',
           }}
         />
       </div>
