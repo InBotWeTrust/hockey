@@ -172,7 +172,7 @@ describe('TournamentCatalog', () => {
               playoffSize: 4,
               regularSource: 'head_to_head',
               timezone: 'Europe/Moscow',
-              roundRobinCycles: 2,
+              roundRobinCycles: 1,
               roundsPerDay: 3,
               firstRoundLocalTime: '19:00',
             },
@@ -205,7 +205,7 @@ describe('TournamentCatalog', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок правил' }));
     fireEvent.click(screen.getByRole('button', { name: 'Правила и призы' }));
 
-    expect(screen.getByText('2 круга · 3 тура в день · первый тур в 19:00')).toBeInTheDocument();
+    expect(screen.getByText('1 круг · 3 тура в день · первый тур в 19:00')).toBeInTheDocument();
     expect(screen.getByText('Раунд 1: до 4 побед · H-H-A-A-H-A-H')).toBeInTheDocument();
     expect(screen.getByText('1 место — 100 опыта, 50 монет, 3 звезды')).toBeInTheDocument();
     expect(screen.getByText('1 место — 200 опыта, 100 монет, 5 звёзд')).toBeInTheDocument();

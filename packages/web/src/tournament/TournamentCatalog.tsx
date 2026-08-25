@@ -72,6 +72,15 @@ function numberValue(value: unknown, fallback = 0): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
+function pluralRu(value: number, one: string, few: string, many: string): string {
+  const lastTwo = Math.abs(value) % 100;
+  if (lastTwo >= 11 && lastTwo <= 14) return many;
+  const last = Math.abs(value) % 10;
+  if (last === 1) return one;
+  if (last >= 2 && last <= 4) return few;
+  return many;
+}
+
 function rewardLabel(value: unknown): string | null {
   const reward = objectValue(value);
   const place = numberValue(reward.place);
@@ -101,6 +110,8 @@ function TournamentRules({ tournament }: { tournament: TournamentSummary }): JSX
     ? tournament.rules.tieBreakCriteria.map(String).join(' → ')
     : 'по очкам';
   const regularSource = config.regularSource ?? tournament.regularSource;
+  const cycles = numberValue(config.roundRobinCycles, 1);
+  const roundsPerDay = numberValue(config.roundsPerDay, 1);
 
   return (
     <div style={{ display: 'grid', gap: 14 }}>
@@ -109,7 +120,7 @@ function TournamentRules({ tournament }: { tournament: TournamentSummary }): JSX
         <div style={{ marginTop: 5 }}>
           {regularSource === 'daily_aggregate'
             ? `${numberValue(config.dailyDays)} дней · метрика ${String(config.dailyMetric ?? 'goals_sum')} · лучшие ${config.bestDays === null || config.bestDays === undefined ? 'все дни' : String(config.bestDays)}`
-            : `${numberValue(config.roundRobinCycles, 1)} круга · ${numberValue(config.roundsPerDay, 1)} тура в день · первый тур в ${String(config.firstRoundLocalTime ?? 'не задан')}`}
+            : `${cycles} ${pluralRu(cycles, 'круг', 'круга', 'кругов')} · ${roundsPerDay} ${pluralRu(roundsPerDay, 'тур', 'тура', 'туров')} в день · первый тур в ${String(config.firstRoundLocalTime ?? 'не задан')}`}
         </div>
         <div style={{ marginTop: 5 }}>Критерии равенства: {tieBreakCriteria}</div>
       </div>
