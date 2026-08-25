@@ -1841,7 +1841,7 @@ describe('DailyScreen', () => {
     expect(screen.queryByRole('button', { name: 'Профессионалы' })).not.toBeInTheDocument();
   });
 
-  it('hides the tournament hub card when the feature endpoint is unavailable', async () => {
+  it('keeps tournaments discoverable and explains when the endpoint is unavailable', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = input instanceof Request ? input.url : String(input);
       if (url.includes('/tournaments')) {
@@ -1865,7 +1865,47 @@ describe('DailyScreen', () => {
     renderWith(['/?view=amateur']);
 
     expect(await screen.findByText('Дуэли')).toBeInTheDocument();
-    await waitFor(() => expect(screen.queryByText('Турниры')).not.toBeInTheDocument());
+    expect(await screen.findByText('Турниры')).toBeInTheDocument();
+    expect(await screen.findByText('Временно недоступно')).toBeInTheDocument();
+  });
+
+  it('shows the same Duels and Tournaments switch on both direct amateur routes', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/tournaments')) {
+        return new Response(JSON.stringify({ tournaments: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/')) {
+        return new Response(JSON.stringify({ matches: [], templates: [], ratings: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify(baseState), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    const tournamentRoute = renderWith(['/?view=amateur&section=tournaments']);
+    const tournamentSwitch = await screen.findByRole('tablist', { name: 'Разделы любителей' });
+    expect(within(tournamentSwitch).getByRole('tab', { name: 'Дуэли' })).toBeInTheDocument();
+    expect(within(tournamentSwitch).getByRole('tab', { name: 'Турниры' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    tournamentRoute.unmount();
+
+    renderWith(['/?view=amateur&section=duels']);
+    const duelSwitch = await screen.findByRole('tablist', { name: 'Разделы любителей' });
+    expect(within(duelSwitch).getByRole('tab', { name: 'Дуэли' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(within(duelSwitch).getByRole('tab', { name: 'Турниры' })).toBeInTheDocument();
   });
 
   it('opens player profile from amateur duel rating row', async () => {
@@ -2101,7 +2141,7 @@ describe('DailyScreen', () => {
     expect(screen.queryByText('Ответа не было')).not.toBeInTheDocument();
     expect(screen.queryByText('Вы отменили вызов')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Месяц истории дуэлей' }));
+    fireEvent.click(screen.getByRole('combobox', { name: 'Месяц истории дуэлей' }));
     fireEvent.click(await screen.findByRole('option', { name: 'апрель 2026 г.' }));
 
     expect(await screen.findByText('April Opponent')).toBeInTheDocument();

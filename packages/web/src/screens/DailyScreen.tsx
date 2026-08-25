@@ -545,6 +545,15 @@ export function DailyScreen(): JSX.Element {
                 replace: true,
               });
             }}
+            onOpenTournaments={() => {
+              setAmateurView('tournaments');
+              navigate(
+                fromSections
+                  ? '/?view=amateur&section=tournaments&from=sections'
+                  : '/?view=amateur&section=tournaments',
+                { replace: true },
+              );
+            }}
           />
         );
       }
@@ -556,6 +565,15 @@ export function DailyScreen(): JSX.Element {
               navigate(fromSections ? '/?view=amateur&from=sections' : '/?view=amateur', {
                 replace: true,
               });
+            }}
+            onOpenDuels={() => {
+              setAmateurView('duels');
+              navigate(
+                fromSections
+                  ? '/?view=amateur&section=duels&from=sections'
+                  : '/?view=amateur&section=duels',
+                { replace: true },
+              );
             }}
           />
         );
@@ -3469,6 +3487,7 @@ function AmateurHub({
     (match) =>
       match.status === 'invited' || match.status === 'ready_check' || match.status === 'active',
   );
+  const availableTournaments = tournaments.data?.tournaments.length ?? 0;
 
   return (
     <ModeShell title="Любители" onBack={onBack}>
@@ -3491,24 +3510,71 @@ function AmateurHub({
           tone="active"
           onClick={onOpenDuels}
         />
-        {tournaments.isSuccess && (
-          <LevelHubCard
-            title="Турниры"
-            description="Соревнования лучших и ценные призы"
-            meta="Раздел в разработке"
-            artwork="pro"
-            tone="muted"
-            onClick={onOpenTournaments}
-          />
-        )}
+        <LevelHubCard
+          title="Турниры"
+          description="Регулярные чемпионаты, плей-офф и призы"
+          meta={
+            tournaments.isLoading
+              ? 'Загружаем турниры…'
+              : tournaments.isError
+                ? 'Временно недоступно'
+                : availableTournaments > 0
+                  ? formatRuCount(
+                      availableTournaments,
+                      'доступный турнир',
+                      'доступных турнира',
+                      'доступных турниров',
+                    )
+                  : 'Сейчас нет открытых турниров'
+          }
+          artwork="pro"
+          tone={tournaments.isError ? 'muted' : 'active'}
+          onClick={onOpenTournaments}
+        />
       </section>
     </ModeShell>
   );
 }
 
-function AmateurTournamentsPage({ onBack }: { onBack: () => void }): JSX.Element {
+function AmateurSectionSwitch({
+  active,
+  onOpenDuels,
+  onOpenTournaments,
+}: {
+  active: 'duels' | 'tournaments';
+  onOpenDuels: () => void;
+  onOpenTournaments: () => void;
+}): JSX.Element {
+  return (
+    <SegmentedTabs
+      ariaLabel="Разделы любителей"
+      activeTab={active}
+      items={[
+        { id: 'duels', label: 'Дуэли' },
+        { id: 'tournaments', label: 'Турниры' },
+      ]}
+      onChange={(next) => {
+        if (next === 'duels') onOpenDuels();
+        else onOpenTournaments();
+      }}
+    />
+  );
+}
+
+function AmateurTournamentsPage({
+  onBack,
+  onOpenDuels,
+}: {
+  onBack: () => void;
+  onOpenDuels: () => void;
+}): JSX.Element {
   return (
     <ModeShell title="Турниры" onBack={onBack}>
+      <AmateurSectionSwitch
+        active="tournaments"
+        onOpenDuels={onOpenDuels}
+        onOpenTournaments={() => undefined}
+      />
       <TournamentCatalog />
     </ModeShell>
   );
@@ -3678,9 +3744,11 @@ function MatchmakingRulesContent(): JSX.Element {
 function AmateurDuelsPage({
   onBack,
   onOpenMatch,
+  onOpenTournaments,
 }: {
   onBack: () => void;
   onOpenMatch: (matchId: string) => void;
+  onOpenTournaments: () => void;
 }): JSX.Element {
   const navigate = useNavigate();
   const currentUserId = useAuthStore((s) => s.user?.id ?? null);
@@ -3852,6 +3920,11 @@ function AmateurDuelsPage({
 
   return (
     <ModeShell title="Дуэли" onBack={onBack}>
+      <AmateurSectionSwitch
+        active="duels"
+        onOpenDuels={() => undefined}
+        onOpenTournaments={onOpenTournaments}
+      />
       <SegmentedTabs
         ariaLabel="Разделы дуэлей"
         activeTab={duelTab}

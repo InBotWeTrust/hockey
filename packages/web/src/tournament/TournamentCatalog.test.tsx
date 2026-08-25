@@ -105,12 +105,17 @@ describe('TournamentCatalog', () => {
     );
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок льда' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Расписание' }));
+    expect(screen.getByText('Вы участвуете')).toBeInTheDocument();
+    const sections = screen.getByRole('tablist', { name: 'Разделы турнира' });
+    expect(screen.getAllByRole('tab')).toHaveLength(5);
+    fireEvent.click(screen.getByRole('tab', { name: 'Расписание' }));
 
     expect(await screen.findAllByRole('button', { name: 'Открыть live' })).toHaveLength(1);
     expect(screen.getByText('Третий — Четвёртый')).toBeInTheDocument();
+    expect(screen.getAllByText('Запланирована')).toHaveLength(2);
     expect(screen.getByLabelText('Площадка: Дома')).toBeInTheDocument();
     expect(screen.getByLabelText('Площадка: Нейтрально')).toBeInTheDocument();
+    expect(sections).toBeInTheDocument();
   });
 
   it('shows an away venue badge for the authenticated away participant', async () => {
@@ -161,7 +166,7 @@ describe('TournamentCatalog', () => {
     );
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Выездной кубок' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Расписание' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Расписание' }));
 
     expect(await screen.findByLabelText('Площадка: В гостях')).toBeInTheDocument();
   });
@@ -260,10 +265,12 @@ describe('TournamentCatalog', () => {
     );
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок правил' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Правила и призы' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Правила и призы' }));
 
     expect(screen.getByText('1 круг · 3 тура в день · первый тур в 19:00')).toBeInTheDocument();
-    expect(screen.getByText('Раунд 1: до 4 побед · H-H-A-A-H-A-H')).toBeInTheDocument();
+    expect(
+      screen.getByText('Раунд 1: до 4 побед · Дом · Дом · Гости · Гости · Дом · Гости · Дом'),
+    ).toBeInTheDocument();
     expect(screen.getByText('1 место — 100 опыта, 50 монет, 3 звезды')).toBeInTheDocument();
     expect(screen.getByText('1 место — 200 опыта, 100 монет, 5 звёзд')).toBeInTheDocument();
   });
