@@ -16,10 +16,12 @@ import {
   generateAdminTournamentSchedule,
   grantAdminTournamentRewards,
   inviteAdminTournamentParticipant,
+  pauseAdminTournament,
   previewAdminTournamentAudience,
   publishAdminTournament,
   publishAdminTournamentSchedule,
   resolveAdminTournamentNoShow,
+  resumeAdminTournament,
   rescheduleAdminTournamentFixture,
   startAdminTournamentPlayoffs,
   type AdminTournament,
@@ -69,7 +71,7 @@ export function TournamentOperations({
   const [endsAt, setEndsAt] = useState('');
   const [absent, setAbsent] = useState<'home' | 'away' | 'both'>('home');
   const [audience, setAudience] = useState<'approved' | 'all_participants'>('approved');
-  const [dispatchKind, setDispatchKind] = useState<'push' | 'direct_message'>('push');
+  const [dispatchKind, setDispatchKind] = useState<'push' | 'direct_message' | 'official_news'>('push');
   const [dispatchTitle, setDispatchTitle] = useState('');
   const [dispatchBody, setDispatchBody] = useState('');
   const [inviteUserId, setInviteUserId] = useState('');
@@ -220,6 +222,20 @@ export function TournamentOperations({
       void client.invalidateQueries({ queryKey: participantsKey });
     },
   });
+  const pause = useMutation({
+    mutationFn: () => pauseAdminTournament(tournament.id, reason),
+    onSuccess: () => {
+      setStatus('paused');
+      refreshOperations();
+    },
+  });
+  const resume = useMutation({
+    mutationFn: () => resumeAdminTournament(tournament.id, reason),
+    onSuccess: (result) => {
+      setStatus(result.status);
+      refreshOperations();
+    },
+  });
 
   return (
     <section style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -234,6 +250,8 @@ export function TournamentOperations({
           {['registration', 'registration_blocked'].includes(status) && <button type="button" className="btn btn--cta" onClick={() => lifecycle.mutate('generate')}>Сгенерировать календарь</button>}
           {status === 'scheduling' && <button type="button" className="btn btn--cta" onClick={() => lifecycle.mutate('publish_schedule')}>Опубликовать календарь</button>}
           {status === 'regular' && <button type="button" className="btn btn--cta" onClick={() => lifecycle.mutate('playoffs')}>Запустить плей-офф</button>}
+          {!['draft', 'paused', 'completed', 'cancelled', 'archived'].includes(status) && <button type="button" className="btn btn--ghost" disabled={reason.length < 3 || pause.isPending} onClick={() => pause.mutate()}>Приостановить</button>}
+          {status === 'paused' && <button type="button" className="btn btn--cta" disabled={reason.length < 3 || resume.isPending} onClick={() => resume.mutate()}>Возобновить</button>}
           {!['draft', 'cancelled', 'completed', 'archived'].includes(status) && <button type="button" className="btn btn--ghost" disabled={cancel.isPending} onClick={() => cancel.mutate()}>Отменить турнир</button>}
           {['cancelled', 'completed'].includes(status) && <button type="button" className="btn btn--ghost" disabled={archive.isPending} onClick={() => archive.mutate()}>Архивировать</button>}
           {status === 'draft' && tournament.participantCount === 0 && !confirmDelete && <button type="button" className="btn btn--ghost" onClick={() => setConfirmDelete(true)}>Удалить draft</button>}
@@ -296,7 +314,7 @@ export function TournamentOperations({
           <>
             <label>Аудитория<select value={audience} onChange={(event) => setAudience(event.target.value as typeof audience)}><option value="approved">Подтверждённые участники</option><option value="all_participants">Все заявки и участники</option></select></label>
             <div>Получателей: {audiencePreview.data?.count ?? '…'}</div>
-            <label>Канал<select value={dispatchKind} onChange={(event) => setDispatchKind(event.target.value as typeof dispatchKind)}><option value="push">Push</option><option value="direct_message">Личные сообщения</option></select></label>
+            <label>Канал<select value={dispatchKind} onChange={(event) => setDispatchKind(event.target.value as typeof dispatchKind)}><option value="push">Push</option><option value="direct_message">Личные сообщения</option><option value="official_news">Официальный канал новостей</option></select></label>
             <input placeholder="Заголовок" value={dispatchTitle} onChange={(event) => setDispatchTitle(event.target.value)} />
             <textarea placeholder="Текст сообщения" value={dispatchBody} onChange={(event) => setDispatchBody(event.target.value)} />
             <button type="button" className="btn btn--cta" disabled={!dispatchTitle || !dispatchBody || dispatch.isPending} onClick={() => dispatch.mutate()}>Отправить рассылку</button>

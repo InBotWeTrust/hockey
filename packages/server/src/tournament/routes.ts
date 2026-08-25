@@ -22,8 +22,10 @@ import {
   listAdminTournaments,
   listTournamentParticipants,
   listPlayerTournaments,
+  pauseTournament,
   publishTournament,
   publishRegularSchedule,
+  resumeTournament,
   startTournamentPlayoffs,
   rescheduleTournamentFixture,
   resolveTournamentNoShow,
@@ -195,7 +197,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
     const body = z
       .object({
         idempotencyKey: z.string().trim().min(8).max(200),
-        kind: z.enum(['push', 'direct_message']),
+        kind: z.enum(['push', 'direct_message', 'official_news']),
         audience: z.enum(['approved', 'all_participants']),
         title: z.string().trim().min(1).max(120),
         body: z.string().trim().min(1).max(4000),
@@ -422,6 +424,18 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
   app.post('/admin/tournaments/:tournamentId/archive', admin, async (req) => {
     const params = z.object({ tournamentId: uuid }).parse(req.params);
     return archiveTournament(app.pg, params.tournamentId, req.user.id);
+  });
+
+  app.post('/admin/tournaments/:tournamentId/pause', admin, async (req) => {
+    const params = z.object({ tournamentId: uuid }).parse(req.params);
+    const body = z.object({ reason: z.string().trim().min(3).max(1000) }).parse(req.body);
+    return pauseTournament(app.pg, { ...params, reason: body.reason, adminUserId: req.user.id });
+  });
+
+  app.post('/admin/tournaments/:tournamentId/resume', admin, async (req) => {
+    const params = z.object({ tournamentId: uuid }).parse(req.params);
+    const body = z.object({ reason: z.string().trim().min(3).max(1000) }).parse(req.body);
+    return resumeTournament(app.pg, { ...params, reason: body.reason, adminUserId: req.user.id });
   });
 
   app.post('/admin/tournaments/:tournamentId/schedule/generate', admin, async (req) => {

@@ -1,5 +1,5 @@
 import type { Pool } from 'pg';
-import { findOrCreateDM, sendMessage } from '../chat/service.js';
+import { ensureDefaultNewsChannel, findOrCreateDM, sendMessage } from '../chat/service.js';
 import { publishMessageNew, type EventPublisher } from '../chat/events.js';
 import { AppError } from '../plugins/errors.js';
 import { enqueueTournamentPush } from '../push/tournament.js';
@@ -34,7 +34,7 @@ export async function dispatchTournamentCommunication(
   input: {
     tournamentId: string;
     idempotencyKey: string;
-    kind: 'push' | 'direct_message';
+    kind: 'push' | 'direct_message' | 'official_news';
     audience: TournamentAudience;
     title: string;
     body: string;
@@ -45,7 +45,14 @@ export async function dispatchTournamentCommunication(
   if (input.kind === 'direct_message' && input.systemUserId === undefined) {
     throw new AppError('configuration_error', 'SYSTEM_USER_ID is required', 409);
   }
-  const recipients = await previewTournamentAudience(pool, input.tournamentId, input.audience);
+  const newsChannel =
+    input.kind === 'official_news'
+      ? await ensureDefaultNewsChannel(pool, input.createdBy)
+      : null;
+  const recipients =
+    newsChannel === null
+      ? await previewTournamentAudience(pool, input.tournamentId, input.audience)
+      : { count: 1, recipients: [] };
   const dispatch = await pool.query<{
     id: string;
     status: string;
@@ -63,7 +70,11 @@ export async function dispatchTournamentCommunication(
       input.tournamentId,
       input.idempotencyKey,
       input.kind,
-      JSON.stringify({ audience: input.audience, recipients: recipients.recipients.map((row) => row.user_id) }),
+      JSON.stringify(
+        newsChannel === null
+          ? { audience: input.audience, recipients: recipients.recipients.map((row) => row.user_id) }
+          : { channelId: newsChannel.id, channelSlug: newsChannel.channel_slug },
+      ),
       JSON.stringify({ title: input.title, body: input.body }),
       recipients.count,
       input.createdBy,
@@ -84,6 +95,36 @@ export async function dispatchTournamentCommunication(
   ]);
   let delivered = 0;
   let failed = 0;
+  if (newsChannel !== null) {
+    try {
+      const existing = await pool.query<{ id: string }>(
+        `select id from messages
+          where chat_id = $1
+            and metadata->>'tournamentDispatchId' = $2
+          limit 1`,
+        [newsChannel.id, dispatchId],
+      );
+      if (existing.rows[0]) {
+        delivered = 1;
+      } else {
+        const message = await sendMessage(pool, {
+          chatId: newsChannel.id,
+          senderId: input.createdBy,
+          content: input.body,
+          metadata: {
+            type: 'tournament_announcement',
+            title: input.title,
+            tournamentId: input.tournamentId,
+            tournamentDispatchId: dispatchId,
+          },
+        });
+        await publishMessageNew(pool, publisher, newsChannel.id, 'channel', message);
+        delivered = 1;
+      }
+    } catch {
+      failed = 1;
+    }
+  }
   for (const recipient of recipients.recipients) {
     try {
       if (input.kind === 'push') {

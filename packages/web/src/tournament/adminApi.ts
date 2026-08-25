@@ -86,6 +86,20 @@ export function archiveAdminTournament(tournamentId: string) {
   return apiFetch(`/admin/tournaments/${tournamentId}/archive`, { method: 'POST' });
 }
 
+export function pauseAdminTournament(tournamentId: string, reason: string) {
+  return apiFetch<{ tournamentId: string; status: 'paused'; previousStatus: string }>(
+    `/admin/tournaments/${tournamentId}/pause`,
+    { method: 'POST', body: JSON.stringify({ reason }) },
+  );
+}
+
+export function resumeAdminTournament(tournamentId: string, reason: string) {
+  return apiFetch<{ tournamentId: string; status: string }>(
+    `/admin/tournaments/${tournamentId}/resume`,
+    { method: 'POST', body: JSON.stringify({ reason }) },
+  );
+}
+
 export function inviteAdminTournamentParticipant(tournamentId: string, userId: string) {
   return apiFetch(`/admin/tournaments/${tournamentId}/invitations`, {
     method: 'POST',
@@ -201,7 +215,7 @@ export function dispatchAdminTournamentCommunication(
   tournamentId: string,
   input: {
     idempotencyKey: string;
-    kind: 'push' | 'direct_message';
+    kind: 'push' | 'direct_message' | 'official_news';
     audience: 'approved' | 'all_participants';
     title: string;
     body: string;

@@ -16,6 +16,7 @@ import {
   enqueueTournamentSeriesNextGamePush,
 } from './fixtureNotifications.js';
 import { lockTournament, lockTournamentFixture } from './locks.js';
+import { canTransitionTournament } from './lifecycle.js';
 import type { TournamentConfig, TournamentStatus } from './types.js';
 
 export interface TournamentRulesSnapshot {
@@ -680,6 +681,90 @@ export async function archiveTournament(pool: Pool, tournamentId: string, userId
   );
   if (result.rowCount === 0) throw new AppError('conflict', 'tournament cannot be archived', 409);
   return { tournamentId, status: 'archived' as const };
+}
+
+export async function pauseTournament(
+  pool: Pool,
+  input: { tournamentId: string; reason: string; adminUserId: string },
+) {
+  return inTransaction(pool, async (client) => {
+    await lockTournament(client, input.tournamentId);
+    const tournament = await client.query<{ status: TournamentStatus }>(
+      `select status from tournament where id = $1 for update`,
+      [input.tournamentId],
+    );
+    const previousStatus = tournament.rows[0]?.status;
+    if (previousStatus === undefined) throw new AppError('not_found', 'tournament not found', 404);
+    if (!canTransitionTournament(previousStatus, 'paused')) {
+      throw new AppError('conflict', 'tournament cannot be paused', 409);
+    }
+    await client.query(
+      `update tournament
+          set status = 'paused', updated_by = $2, updated_at = now()
+        where id = $1`,
+      [input.tournamentId, input.adminUserId],
+    );
+    await client.query(
+      `insert into tournament_adjustment
+         (tournament_id, kind, payload, reason, created_by)
+       values ($1, 'incident_resolution', $2, $3, $4)`,
+      [
+        input.tournamentId,
+        JSON.stringify({ action: 'pause', previousStatus }),
+        input.reason,
+        input.adminUserId,
+      ],
+    );
+    return { tournamentId: input.tournamentId, status: 'paused' as const, previousStatus };
+  });
+}
+
+export async function resumeTournament(
+  pool: Pool,
+  input: { tournamentId: string; reason: string; adminUserId: string },
+) {
+  return inTransaction(pool, async (client) => {
+    await lockTournament(client, input.tournamentId);
+    const tournament = await client.query<{ status: TournamentStatus }>(
+      `select status from tournament where id = $1 for update`,
+      [input.tournamentId],
+    );
+    const status = tournament.rows[0]?.status;
+    if (status === undefined) throw new AppError('not_found', 'tournament not found', 404);
+    if (status !== 'paused') throw new AppError('conflict', 'tournament is not paused', 409);
+    const audit = await client.query<{ previous_status: TournamentStatus | null }>(
+      `select payload->>'previousStatus' as previous_status
+         from tournament_adjustment
+        where tournament_id = $1
+          and kind = 'incident_resolution'
+          and payload->>'action' = 'pause'
+        order by created_at desc, id desc
+        limit 1`,
+      [input.tournamentId],
+    );
+    const previousStatus = audit.rows[0]?.previous_status;
+    if (previousStatus === null || previousStatus === undefined || !canTransitionTournament('paused', previousStatus)) {
+      throw new AppError('conflict', 'previous tournament status is not recoverable', 409);
+    }
+    await client.query(
+      `update tournament
+          set status = $2, updated_by = $3, updated_at = now()
+        where id = $1`,
+      [input.tournamentId, previousStatus, input.adminUserId],
+    );
+    await client.query(
+      `insert into tournament_adjustment
+         (tournament_id, kind, payload, reason, created_by)
+       values ($1, 'incident_resolution', $2, $3, $4)`,
+      [
+        input.tournamentId,
+        JSON.stringify({ action: 'resume', previousStatus }),
+        input.reason,
+        input.adminUserId,
+      ],
+    );
+    return { tournamentId: input.tournamentId, status: previousStatus };
+  });
 }
 
 export async function generateRegularSchedule(
@@ -1751,9 +1836,14 @@ export async function resolveTournamentNoShow(
       away_participant_id: string | null;
       series_id: string | null;
       stage: string;
+      fixture_status: string;
+      tournament_status: TournamentStatus;
     }>(
-      `select f.home_participant_id, f.away_participant_id, f.series_id, r.stage
-         from tournament_fixture f join tournament_round r on r.id = f.round_id
+      `select f.home_participant_id, f.away_participant_id, f.series_id, r.stage,
+              f.status as fixture_status, t.status as tournament_status
+         from tournament_fixture f
+         join tournament_round r on r.id = f.round_id
+         join tournament t on t.id = f.tournament_id
         where f.id = $1 and f.tournament_id = $2 for update of f`,
       [input.fixtureId, input.tournamentId],
     );
@@ -1780,6 +1870,20 @@ export async function resolveTournamentNoShow(
         );
       }
       if (fixtureChanged) {
+        if (fixture.tournament_status !== 'paused') {
+          await client.query(
+            `insert into tournament_adjustment
+               (tournament_id, fixture_id, kind, payload, reason, created_by)
+             values ($1, $2, 'incident_resolution', $3, $4, $5)`,
+            [
+              input.tournamentId,
+              input.fixtureId,
+              JSON.stringify({ action: 'pause', previousStatus: fixture.tournament_status }),
+              input.reason,
+              input.adminUserId,
+            ],
+          );
+        }
         await client.query(
           `update tournament set status = 'paused', updated_at = now()
             where id = $1 and status <> 'paused'`,
@@ -1805,7 +1909,7 @@ export async function resolveTournamentNoShow(
                 home_score = case when $3 = 'home_win' then 1 else 0 end,
                 away_score = case when $3 = 'away_win' then 1 else 0 end,
                 result_snapshot = $4, settled_at = now(), updated_at = now()
-          where id = $1 and status in ('conditional', 'scheduled', 'open', 'active')
+          where id = $1 and status in ('conditional', 'scheduled', 'open', 'active', 'paused')
           returning id`,
         [
           input.fixtureId,
@@ -1817,6 +1921,14 @@ export async function resolveTournamentNoShow(
       if ((updated.rowCount ?? 0) > 0) {
         fixtureChanged = true;
         if (fixture.series_id !== null && winner !== null) {
+          if (fixture.fixture_status === 'paused') {
+            await client.query(
+              `update tournament_playoff_series
+                  set status = 'scheduled', updated_at = now()
+                where id = $1 and status = 'paused'`,
+              [fixture.series_id],
+            );
+          }
           await advanceTournamentPlayoffSeries(client, {
             seriesId: fixture.series_id,
             winnerParticipantId: winner,

@@ -26,10 +26,12 @@ import {
   startTournamentPlayoffs,
   type TournamentRulesSnapshot,
 } from '../../src/tournament/service.js';
+import * as tournamentService from '../../src/tournament/service.js';
 import {
   openTournamentFixtureSegment,
   settleTournamentSegmentForDuel,
 } from '../../src/tournament/fixtureLifecycle.js';
+import { dispatchTournamentCommunication } from '../../src/tournament/communications.js';
 import {
   createTestPool,
   getTestUrls,
@@ -1539,6 +1541,36 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       [fixture.rows[0]!.fixture_id],
     );
     expect(adjustments.rows[0]?.count).toBe('1');
+
+    await resolveTournamentNoShow(pool, {
+      ...input,
+      absent: 'home',
+      reason: 'integration admin selects the away winner',
+    });
+    await tournamentService.resumeTournament(pool, {
+      tournamentId: tournament.id,
+      reason: 'integration incident resolved',
+      adminUserId: ADMIN_ID,
+    });
+    const resumed = await pool.query<{
+      fixture_status: string;
+      series_status: string;
+      tournament_status: string;
+    }>(
+      `select fixture.status as fixture_status,
+              series.status as series_status,
+              tournament.status as tournament_status
+         from tournament_fixture fixture
+         join tournament_playoff_series series on series.id = fixture.series_id
+         join tournament on tournament.id = fixture.tournament_id
+        where fixture.id = $1`,
+      [fixture.rows[0]!.fixture_id],
+    );
+    expect(resumed.rows[0]).toEqual({
+      fixture_status: 'forfeit',
+      series_status: 'active',
+      tournament_status: 'playoff',
+    });
   });
 
   it('blocks opening another playoff fixture while a double no-show has paused the tournament flow', async () => {
@@ -1723,6 +1755,96 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     expect(nextSegments.rows).toEqual([
       { round_number: 1, kind: 'shootout_initial', shots_per_participant: 5 },
       { round_number: 2, kind: 'overtime', shots_per_participant: null },
+    ]);
+  });
+
+  it('publishes an idempotent tournament news post in the official channel', async () => {
+    await seedUsers(pool, 0);
+    const tournament = await createPublishedTournament(pool, 'official-news-dispatch', 0);
+    const published: Array<{ channel: string; type: string }> = [];
+    const publisher = {
+      publish: async (channel: string, event: { type: string }) => {
+        published.push({ channel, type: event.type });
+      },
+    };
+    const input = {
+      tournamentId: tournament.id,
+      idempotencyKey: `${tournament.id}:official-news:1`,
+      kind: 'official_news',
+      audience: 'approved',
+      title: 'Турнирная новость',
+      body: 'Календарь турнира опубликован.',
+      createdBy: ADMIN_ID,
+    } as const;
+
+    const first = await dispatchTournamentCommunication(pool, publisher, input as never);
+    const second = await dispatchTournamentCommunication(pool, publisher, input as never);
+
+    expect(first).toMatchObject({ status: 'sent', recipients: 1, delivered: 1, failed: 0 });
+    expect(second).toEqual(first);
+    const posts = await pool.query<{
+      content: string;
+      tournament_dispatch_id: string;
+      channel_slug: string;
+    }>(
+      `select message.content,
+              message.metadata->>'tournamentDispatchId' as tournament_dispatch_id,
+              chat.channel_slug
+         from messages message
+         join chats chat on chat.id = message.chat_id
+        where message.metadata->>'tournamentId' = $1`,
+      [tournament.id],
+    );
+    expect(posts.rows).toEqual([
+      {
+        content: 'Календарь турнира опубликован.',
+        tournament_dispatch_id: first.dispatchId,
+        channel_slug: 'news',
+      },
+    ]);
+    expect(published).toHaveLength(1);
+    expect(published[0]).toMatchObject({ type: 'message:new' });
+  });
+
+  it('pauses and resumes a tournament with an auditable previous lifecycle state', async () => {
+    await seedUsers(pool, 0);
+    const tournament = await createPublishedTournament(pool, 'admin-pause-resume', 0);
+    const pauseTournament = (tournamentService as Record<string, unknown>).pauseTournament as (
+      pool: Pool,
+      input: Record<string, unknown>,
+    ) => Promise<{ status: string }>;
+    const resumeTournament = (tournamentService as Record<string, unknown>).resumeTournament as (
+      pool: Pool,
+      input: Record<string, unknown>,
+    ) => Promise<{ status: string }>;
+
+    await expect(
+      pauseTournament(pool, {
+        tournamentId: tournament.id,
+        reason: 'Проверка инцидента',
+        adminUserId: ADMIN_ID,
+      }),
+    ).resolves.toMatchObject({ status: 'paused', previousStatus: 'registration' });
+    await expect(
+      resumeTournament(pool, {
+        tournamentId: tournament.id,
+        reason: 'Инцидент устранён',
+        adminUserId: ADMIN_ID,
+      }),
+    ).resolves.toMatchObject({ status: 'registration' });
+
+    const audit = await pool.query<{ action: string; previous_status: string; reason: string }>(
+      `select payload->>'action' as action,
+              payload->>'previousStatus' as previous_status,
+              reason
+         from tournament_adjustment
+        where tournament_id = $1 and kind = 'incident_resolution'
+        order by created_at`,
+      [tournament.id],
+    );
+    expect(audit.rows).toEqual([
+      { action: 'pause', previous_status: 'registration', reason: 'Проверка инцидента' },
+      { action: 'resume', previous_status: 'registration', reason: 'Инцидент устранён' },
     ]);
   });
 
