@@ -1943,19 +1943,35 @@ async function fetchMatchForUpdate(client: PoolClient, matchId: string): Promise
   return match;
 }
 
-async function fetchPlayableMatchForUpdate(
+async function assertTournamentDuelVisible(
+  client: PoolClient,
+  match: DuelMatchRow,
+): Promise<void> {
+  if (match.source !== 'tournament') return;
+  const feature = await client.query<{ enabled: boolean }>(
+    `select coalesce((value #>> '{}')::boolean, false) as enabled
+       from game_settings where key = 'tournaments.enabled'`,
+  );
+  if (feature.rows[0]?.enabled !== true) {
+    throw new AppError('not_found', 'duel match not found', 404);
+  }
+}
+
+async function fetchVisibleMatchForUpdate(
   client: PoolClient,
   matchId: string,
 ): Promise<DuelMatchRow> {
   const match = await fetchMatchForUpdate(client, matchId);
+  await assertTournamentDuelVisible(client, match);
+  return match;
+}
+
+async function fetchPlayableMatchForUpdate(
+  client: PoolClient,
+  matchId: string,
+): Promise<DuelMatchRow> {
+  const match = await fetchVisibleMatchForUpdate(client, matchId);
   if (match.source === 'tournament') {
-    const feature = await client.query<{ enabled: boolean }>(
-      `select coalesce((value #>> '{}')::boolean, false) as enabled
-         from game_settings where key = 'tournaments.enabled'`,
-    );
-    if (feature.rows[0]?.enabled !== true) {
-      throw new AppError('not_found', 'duel match not found', 404);
-    }
     const playable = await client.query<{ playable: boolean }>(
       `select exists(
          select 1
@@ -3442,11 +3458,14 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
       const matches: DuelMatchDTO[] = [];
       const changedMatchIds = new Set<string>();
       for (const row of rows) {
-        const reconciled = await reconcileMatch(
-          client,
-          await fetchPlayableMatchForUpdate(client, row.id),
-          now,
-        );
+        const reconciled =
+          row.status === 'settled'
+            ? { match: await fetchVisibleMatchForUpdate(client, row.id), changed: false }
+            : await reconcileMatch(
+                client,
+                await fetchPlayableMatchForUpdate(client, row.id),
+                now,
+              );
         if (reconciled.changed) changedMatchIds.add(reconciled.match.id);
         const match = reconciled.match;
         if (
@@ -4070,7 +4089,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
       const now = new Date();
       const reconciled = await reconcileMatch(
         client,
-        await fetchPlayableMatchForUpdate(client, params.matchId),
+        await fetchVisibleMatchForUpdate(client, params.matchId),
         now,
       );
       const match = reconciled.match;
@@ -4425,10 +4444,13 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
       const params = z.object({ matchId: uuid }).parse(req.params);
       const response = await withTransaction(app, async (client) => {
         const now = new Date();
+        const visibleMatch = await fetchVisibleMatchForUpdate(client, params.matchId);
         const match = (
           await reconcileMatch(
             client,
-            await fetchPlayableMatchForUpdate(client, params.matchId),
+            visibleMatch.status === 'settled'
+              ? visibleMatch
+              : await fetchPlayableMatchForUpdate(client, params.matchId),
             now,
           )
         ).match;

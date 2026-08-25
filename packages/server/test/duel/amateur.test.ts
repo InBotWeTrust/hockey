@@ -409,6 +409,117 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(duplicatePair.json().error.message).toBe('open duel already exists for this opponent');
   });
 
+  it('returns a settled tournament duel alongside ordinary matches and keeps settlement readback idempotent', async () => {
+    const templateId = await createTemplate();
+    await pool.query(
+      `insert into game_settings (key, value, label, description)
+       values ('tournaments.enabled', 'true'::jsonb, 'Турниры включены', 'test')
+       on conflict (key) do update set value = excluded.value`,
+    );
+    const tournamentChallenge = await challenge(templateId);
+    expect(tournamentChallenge.statusCode).toBe(200);
+    const tournamentMatchId = tournamentChallenge.json().match.id as string;
+    await pool.query(
+      `update amateur_duel_match
+          set source = 'tournament', status = 'settled', winner_user_id = $2,
+              outcome = 'challenger_win', settled_reason = 'completed', settled_at = now()
+        where id = $1`,
+      [tournamentMatchId, userA],
+    );
+    await pool.query(
+      `update amateur_duel_participant
+          set state = 'completed', completed_at = now(),
+              result_points = case when user_id = $2 then 3 else 0 end
+        where match_id = $1`,
+      [tournamentMatchId, userA],
+    );
+    const tournament = await pool.query<{ id: string }>(
+      `insert into tournament (slug, title, status, regular_source, created_by)
+       values ('settled-duel-readback', 'Settled duel readback', 'completed', 'head_to_head', $1)
+       returning id`,
+      [userA],
+    );
+    const fixture = await pool.query<{ id: string }>(
+      `insert into tournament_fixture
+         (tournament_id, fixture_number, status, outcome, home_score, away_score, settled_at)
+       values ($1, 1, 'settled', 'home_win', 1, 0, now())
+       returning id`,
+      [tournament.rows[0]!.id],
+    );
+    await pool.query(
+      `insert into tournament_fixture_segment
+         (fixture_id, sequence_number, kind, duel_match_id, status,
+          home_score, away_score, rules_snapshot, settled_at)
+       values ($1, 1, 'regulation', $2, 'settled', 1, 0, '{}'::jsonb, now())`,
+      [fixture.rows[0]!.id, tournamentMatchId],
+    );
+    const ordinaryChallenge = await challenge(templateId);
+    expect(ordinaryChallenge.statusCode).toBe(200);
+    const ordinaryMatchId = ordinaryChallenge.json().match.id as string;
+
+    const list = await app.inject({
+      method: 'GET',
+      url: '/duel/amateur/matches',
+      headers: auth(tokenA),
+    });
+    expect(list.statusCode).toBe(200);
+    expect(list.json().matches.map((match: { id: string }) => match.id)).toEqual([
+      ordinaryMatchId,
+      tournamentMatchId,
+    ]);
+
+    const detail = await app.inject({
+      method: 'GET',
+      url: `/duel/amateur/matches/${tournamentMatchId}`,
+      headers: auth(tokenA),
+    });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json().match).toMatchObject({
+      id: tournamentMatchId,
+      source: 'tournament',
+      status: 'settled',
+      winner_user_id: userA,
+    });
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const settlementReadback = await app.inject({
+        method: 'POST',
+        url: `/duel/amateur/matches/${tournamentMatchId}/settle`,
+        headers: auth(tokenA),
+      });
+      expect(settlementReadback.statusCode).toBe(200);
+      expect(settlementReadback.json().match).toMatchObject({
+        id: tournamentMatchId,
+        source: 'tournament',
+        status: 'settled',
+        winner_user_id: userA,
+      });
+    }
+
+    await pool.query(`update game_settings set value = 'false'::jsonb where key = 'tournaments.enabled'`);
+    const hiddenList = await app.inject({
+      method: 'GET',
+      url: '/duel/amateur/matches',
+      headers: auth(tokenA),
+    });
+    expect(hiddenList.statusCode).toBe(200);
+    expect(hiddenList.json().matches.map((match: { id: string }) => match.id)).toEqual([
+      ordinaryMatchId,
+    ]);
+    const hiddenDetail = await app.inject({
+      method: 'GET',
+      url: `/duel/amateur/matches/${tournamentMatchId}`,
+      headers: auth(tokenA),
+    });
+    expect(hiddenDetail.statusCode).toBe(404);
+    const hiddenSettlementReadback = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${tournamentMatchId}/settle`,
+      headers: auth(tokenA),
+    });
+    expect(hiddenSettlementReadback.statusCode).toBe(404);
+  });
+
   it('hides disabled tournament duels while ordinary amateur duels remain usable', async () => {
     const templateId = await createTemplate();
     const tournamentChallenge = await challenge(templateId);
@@ -439,13 +550,20 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
        on conflict (key) do update set value = excluded.value`,
     );
     try {
-      const orphaned = await app.inject({
+      const visible = await app.inject({
         method: 'GET',
         url: `/duel/amateur/matches/${tournamentMatchId}`,
         headers: auth(tokenA),
       });
-      expect(orphaned.statusCode).toBe(409);
-      expect(orphaned.json().error.message).toBe('tournament duel is not playable');
+      expect(visible.statusCode).toBe(200);
+      const orphanedMutation = await app.inject({
+        method: 'POST',
+        url: `/duel/amateur/matches/${tournamentMatchId}/ready`,
+        headers: auth(tokenA),
+        payload: { loadout: {} },
+      });
+      expect(orphanedMutation.statusCode).toBe(409);
+      expect(orphanedMutation.json().error.message).toBe('tournament duel is not playable');
       const ordinary = await app.inject({
         method: 'GET',
         url: `/duel/amateur/matches/${ordinaryMatchId}`,
