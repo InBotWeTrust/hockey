@@ -5,6 +5,7 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { BottomNav, ADMIN_NAV_HOME_EVENT } from './BottomNav.js';
 import { useAuthStore } from '../auth/authStore.js';
+import { useChatStore } from '../chat/chatStore.js';
 
 function LocationProbe(): JSX.Element {
   const location = useLocation();
@@ -57,6 +58,7 @@ describe('BottomNav remembered navigation', () => {
       }),
     );
     useAuthStore.getState().clearSession();
+    useChatStore.getState().setUnread({});
     useAuthStore.getState().setSession({
       accessToken: 'a',
       refreshToken: 'r',
@@ -206,6 +208,62 @@ describe('BottomNav remembered navigation', () => {
     renderBottomNav('/profile');
 
     expect(await screen.findByLabelText('События игры: 1')).toHaveTextContent('1');
+  });
+
+  it('renders every notification badge above its navigation icon', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/duel/amateur/events')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              events: [
+                {
+                  id: 'incoming',
+                  status: 'invited',
+                  starts_at: '2026-05-29T10:00:00.000Z',
+                  ends_at: '2026-05-29T11:00:00.000Z',
+                  server_now: '2026-05-29T10:00:00.000Z',
+                  me: { side: 'opponent', state: 'invited' },
+                  opponent: { state: 'invited' },
+                },
+              ],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      if (url.endsWith('/api/weekly-challenge/current')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              challenge: { id: 'challenge-1', title: 'Новый челлендж', canJoin: true },
+              pendingRewards: [],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+    useChatStore.getState().setUnread({ 'chat-1': 3 });
+
+    renderBottomNav('/profile');
+
+    const badges = await Promise.all([
+      screen.findByLabelText('События игры: 1'),
+      screen.findByLabelText('События разделов: 1'),
+      screen.findByLabelText('Непрочитанные: 1'),
+    ]);
+    for (const badge of badges) {
+      expect(badge.parentElement?.querySelector('svg')).not.toBeNull();
+      expect(Number.parseInt(badge.style.zIndex, 10)).toBeGreaterThan(1);
+    }
   });
 
   it('shows a sections badge when a weekly challenge needs joining', async () => {
