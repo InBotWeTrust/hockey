@@ -3163,20 +3163,24 @@ async function activateReadyMatch(
   for (const participant of participants) {
     const loadout = loadoutFromUnknown(participant.loadout_snapshot, rules.powerCap);
     const totalReserved = loadout.items.reduce((sum, item) => sum + item.chargesReserved, 0);
-    await applyCurrencyDelta(client, {
-      userId: participant.user_id,
-      availableDelta: -rules.entryFeeAmount,
-      reservedDelta: 0,
-      reason: 'duel_entry_fee',
-      matchId: match.id,
-    });
-    await applyCurrencyDelta(client, {
-      userId: participant.user_id,
-      availableDelta: -rules.stakeAmount,
-      reservedDelta: rules.stakeAmount,
-      reason: 'duel_stake_hold',
-      matchId: match.id,
-    });
+    if (rules.entryFeeAmount > 0) {
+      await applyCurrencyDelta(client, {
+        userId: participant.user_id,
+        availableDelta: -rules.entryFeeAmount,
+        reservedDelta: 0,
+        reason: 'duel_entry_fee',
+        matchId: match.id,
+      });
+    }
+    if (rules.stakeAmount > 0) {
+      await applyCurrencyDelta(client, {
+        userId: participant.user_id,
+        availableDelta: -rules.stakeAmount,
+        reservedDelta: rules.stakeAmount,
+        reason: 'duel_stake_hold',
+        matchId: match.id,
+      });
+    }
     await reserveLoadoutInventory(client, participant.user_id, match.id, loadout);
     await client.query(
       `update amateur_duel_participant

@@ -1106,7 +1106,10 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
     if (!tournament || tournament.status !== 'regular') {
       throw new AppError('conflict', 'regular season is not active', 409);
     }
-    const rebuilt = await rebuildHeadToHeadStandings(client, tournamentId);
+    const rebuilt =
+      tournament.rules_snapshot.config.regularSource === 'head_to_head'
+        ? await rebuildHeadToHeadStandings(client, tournamentId)
+        : { boundaryTieParticipantIds: [] };
     const baseTime = await playoffBaseTime(client, tournamentId, now, tournament.starts_at);
     if (rebuilt.boundaryTieParticipantIds.length > 0) {
       const existing = await client.query<{ id: string }>(
