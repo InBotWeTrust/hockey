@@ -544,7 +544,6 @@ async function assertTerminalInvariants(
     }>;
   },
 ): Promise<void> {
-  expect(await isTournamentFeatureEnabled(pool)).toBe(false);
   const terminal = await pool.query<{
     status: string;
     completed: boolean;

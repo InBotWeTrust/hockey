@@ -801,23 +801,23 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
     const game = await createGame({ periods: [QUOTA_PERIOD], targetGoals: 2 });
     const attempt = await startAttempt(game.id);
     const active = await startPeriod(attempt.id);
+    const firstClock = findShotClock(active, 1, (result) => result !== 'goal', 100);
     await submitTimedRouteShot(active, {
       shotIndex: 1,
-      tapTime: 100,
-      shooterTapTime: 100,
-      wallElapsedMs: 100,
+      ...firstClock,
+      wallElapsedMs: firstClock.tapTime,
     });
+    const secondClock = findShotClock(active, 2, (result) => result !== 'goal', 500);
     await submitTimedRouteShot(active, {
       shotIndex: 2,
-      tapTime: 500,
-      shooterTapTime: 66.666_666_666_666_69,
-      wallElapsedMs: 1_500,
+      ...secondClock,
+      wallElapsedMs: secondClock.tapTime + 1_000,
     });
+    const thirdClock = findShotClock(active, 3, (result) => result !== 'goal', 1_000);
     const final = await submitTimedRouteShot(active, {
       shotIndex: 3,
-      tapTime: 1_242,
-      shooterTapTime: 375.333_333_333_333_37,
-      wallElapsedMs: 3_242,
+      ...thirdClock,
+      wallElapsedMs: thirdClock.tapTime + 2_000,
     });
 
     expect(final.response.statusCode).toBe(200);
