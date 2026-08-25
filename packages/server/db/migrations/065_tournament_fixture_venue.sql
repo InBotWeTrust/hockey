@@ -63,6 +63,17 @@ begin
   end if;
 end $$;
 
+update tournament_fixture fixture
+   set venue_mode = case
+         when round.stage in ('regular', 'playoff', 'third_place') then 'home_selected'
+         else 'neutral_default'
+       end
+  from tournament_round round
+ where round.id = fixture.round_id
+   and not exists (
+     select 1 from tournament_fixture_segment segment where segment.fixture_id = fixture.id
+   );
+
 with existing_segment_venue as (
   select distinct on (segment.fixture_id)
          segment.fixture_id,
