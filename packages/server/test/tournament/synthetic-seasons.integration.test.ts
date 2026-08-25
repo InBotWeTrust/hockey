@@ -387,7 +387,6 @@ async function settleRealTournamentDuel(
 
 function desiredRegularWinner(homeUserId: string, awayUserId: string): string {
   const pair = new Set([homeUserId, awayUserId]);
-  if (pair.has(PLAYER_IDS[0]) && pair.has(PLAYER_IDS[3])) return PLAYER_IDS[3];
   if (pair.has(PLAYER_IDS[0])) return PLAYER_IDS[0];
   if (pair.has(PLAYER_IDS[1])) return PLAYER_IDS[1];
   return PLAYER_IDS[2];
@@ -417,7 +416,7 @@ async function startAndCompletePlayoffs(
     tournamentId: string;
     tournamentTitle: string;
     startsAt: Date;
-    expectedStandingUserIds: string[];
+    expectedFinalUserIds: readonly [string, string, string, string];
   },
 ): Promise<void> {
   const started = await startTournamentPlayoffs(pool, input.tournamentId, input.startsAt);
@@ -428,11 +427,11 @@ async function startAndCompletePlayoffs(
     eventKey: `${input.tournamentId}:playoff-started`,
     tournamentTitle: input.tournamentTitle,
   });
-  for (const [seriesKey, winnerSide] of [
-    ['R1S1', 'higher'],
-    ['R1S2', 'higher'],
-    ['R2S1', 'higher'],
-    ['BRONZE', 'lower'],
+  for (const [seriesKey, winnerUserId] of [
+    ['R1S1', input.expectedFinalUserIds[1]],
+    ['R1S2', input.expectedFinalUserIds[0]],
+    ['R2S1', input.expectedFinalUserIds[0]],
+    ['BRONZE', input.expectedFinalUserIds[2]],
   ] as const) {
     const fixture = await pool.query<
       FixtureRow & {
@@ -454,14 +453,11 @@ async function startAndCompletePlayoffs(
       [input.tournamentId, seriesKey],
     );
     const game = fixture.rows[0]!;
-    const winnerParticipantId =
-      winnerSide === 'higher' ? game.higher_seed_participant_id : game.lower_seed_participant_id;
-    const winnerUserId =
-      game.home_participant_id === winnerParticipantId ? game.home_user_id : game.away_user_id;
+    expect([game.home_user_id, game.away_user_id]).toContain(winnerUserId);
     await settleFixtureTechnically(pool, input.tournamentId, game, winnerUserId);
   }
   const placements = await finalPlacementUserIds(pool, input.tournamentId);
-  expect(placements).toEqual(input.expectedStandingUserIds);
+  expect(placements).toEqual(input.expectedFinalUserIds);
 }
 
 async function finalPlacementUserIds(pool: Pool, tournamentId: string): Promise<string[]> {
@@ -499,6 +495,20 @@ async function assertTerminalInvariants(
     tournamentId: string;
     expectedStandingUserIds: string[];
     expectedResultPushes: number;
+    expectedStageRewards: Array<{
+      user_id: string;
+      stage: string;
+      place: number;
+      coins: number;
+      stars: number;
+      experience: number;
+    }>;
+    expectedBalances: Array<{
+      user_id: string;
+      balance: number;
+      stars: number;
+      experience: number;
+    }>;
   },
 ): Promise<void> {
   expect(await isTournamentFeatureEnabled(pool)).toBe(false);
@@ -542,6 +552,25 @@ async function assertTerminalInvariants(
     { kind: 'stage_reward', stage: 'playoff', count: '4', distinct_keys: '4' },
     { kind: 'stage_reward', stage: 'regular', count: '4', distinct_keys: '4' },
   ]);
+  const stageRewards = await pool.query<{
+    user_id: string;
+    stage: string;
+    place: number;
+    coins: number;
+    stars: number;
+    experience: number;
+  }>(
+    `select participant.user_id, event.metadata->>'stage' as stage,
+            (event.metadata->>'place')::int as place,
+            event.coins, event.stars, event.experience
+       from tournament_economy_event event
+       join tournament_participant participant on participant.id = event.participant_id
+      where event.tournament_id = $1 and event.kind = 'stage_reward'
+        and event.status = 'applied'
+      order by event.metadata->>'stage', (event.metadata->>'place')::int`,
+    [input.tournamentId],
+  );
+  expect(stageRewards.rows).toEqual(input.expectedStageRewards);
   const standings = await pool.query<{ user_id: string; rank: number }>(
     `select participant.user_id, standing.rank
        from tournament_standing standing
@@ -555,25 +584,16 @@ async function assertTerminalInvariants(
     balance: number;
     stars: number;
     experience: number;
-    rank: number;
   }>(
-    `select participant.user_id, account.balance, users.stars, users.experience, standing.rank
+    `select participant.user_id, account.balance, users.stars, users.experience
        from tournament_standing standing
        join tournament_participant participant on participant.id = standing.participant_id
        join users on users.id = participant.user_id
        join user_currency_account account on account.user_id = participant.user_id
-      where standing.tournament_id = $1 order by standing.rank`,
+      where standing.tournament_id = $1 order by participant.user_id`,
     [input.tournamentId],
   );
-  expect(balances.rows).toEqual(
-    input.expectedStandingUserIds.map((userId, index) => ({
-      user_id: userId,
-      balance: 100 - ENTRY_FEE + REGULAR_REWARDS[index]!.coins + PLAYOFF_REWARDS[index]!.coins,
-      stars: REGULAR_REWARDS[index]!.stars + PLAYOFF_REWARDS[index]!.stars,
-      experience: 1000 + REGULAR_REWARDS[index]!.experience + PLAYOFF_REWARDS[index]!.experience,
-      rank: index + 1,
-    })),
-  );
+  expect(balances.rows).toEqual(input.expectedBalances);
   const pushes = await pool.query<{
     event_type: string;
     count: string;
@@ -731,10 +751,16 @@ describe.skipIf(!hasIntegrationEnv)('synthetic tournament seasons', () => {
       [tournament.id],
     );
     expect(standings.rows.slice(0, 2)).toEqual([
-      { user_id: PLAYER_IDS[0], rank: 1, points: 6, wins: 2, goal_difference: 2 },
+      { user_id: PLAYER_IDS[0], rank: 1, points: 9, wins: 3, goal_difference: 4 },
       { user_id: PLAYER_IDS[1], rank: 2, points: 6, wins: 2, goal_difference: 0 },
     ]);
     const expectedStandingUserIds = standings.rows.map((row) => row.user_id);
+    expect(expectedStandingUserIds).toEqual([
+      PLAYER_IDS[0],
+      PLAYER_IDS[1],
+      PLAYER_IDS[2],
+      PLAYER_IDS[3],
+    ]);
 
     const tournamentDuel = await pool.query<{
       source: string;
@@ -793,7 +819,7 @@ describe.skipIf(!hasIntegrationEnv)('synthetic tournament seasons', () => {
       tournamentId: tournament.id,
       tournamentTitle: title,
       startsAt: new Date('2032-05-02T11:00:00.000Z'),
-      expectedStandingUserIds,
+      expectedFinalUserIds: [PLAYER_IDS[2], PLAYER_IDS[3], PLAYER_IDS[1], PLAYER_IDS[0]],
     });
     expect(await grantTournamentStageRewards(pool, tournament.id, 'playoff')).toMatchObject({
       granted: 4,
@@ -811,6 +837,78 @@ describe.skipIf(!hasIntegrationEnv)('synthetic tournament seasons', () => {
       tournamentId: tournament.id,
       expectedStandingUserIds,
       expectedResultPushes: 20,
+      expectedStageRewards: [
+        {
+          user_id: PLAYER_IDS[2],
+          stage: 'playoff',
+          place: 1,
+          coins: 100,
+          stars: 10,
+          experience: 1_000,
+        },
+        {
+          user_id: PLAYER_IDS[3],
+          stage: 'playoff',
+          place: 2,
+          coins: 70,
+          stars: 7,
+          experience: 700,
+        },
+        {
+          user_id: PLAYER_IDS[1],
+          stage: 'playoff',
+          place: 3,
+          coins: 40,
+          stars: 4,
+          experience: 400,
+        },
+        {
+          user_id: PLAYER_IDS[0],
+          stage: 'playoff',
+          place: 4,
+          coins: 20,
+          stars: 2,
+          experience: 200,
+        },
+        {
+          user_id: PLAYER_IDS[0],
+          stage: 'regular',
+          place: 1,
+          coins: 40,
+          stars: 4,
+          experience: 400,
+        },
+        {
+          user_id: PLAYER_IDS[1],
+          stage: 'regular',
+          place: 2,
+          coins: 30,
+          stars: 3,
+          experience: 300,
+        },
+        {
+          user_id: PLAYER_IDS[2],
+          stage: 'regular',
+          place: 3,
+          coins: 20,
+          stars: 2,
+          experience: 200,
+        },
+        {
+          user_id: PLAYER_IDS[3],
+          stage: 'regular',
+          place: 4,
+          coins: 10,
+          stars: 1,
+          experience: 100,
+        },
+      ],
+      expectedBalances: [
+        { user_id: PLAYER_IDS[0], balance: 155, stars: 6, experience: 1_600 },
+        { user_id: PLAYER_IDS[1], balance: 165, stars: 7, experience: 1_700 },
+        { user_id: PLAYER_IDS[2], balance: 215, stars: 12, experience: 2_200 },
+        { user_id: PLAYER_IDS[3], balance: 175, stars: 8, experience: 1_800 },
+      ],
     });
   });
 
@@ -838,6 +936,14 @@ describe.skipIf(!hasIntegrationEnv)('synthetic tournament seasons', () => {
     expect(
       await finalizeDueTournamentDailyDays(pool, new Date('2032-06-02T07:00:00.000Z')),
     ).toEqual({ finalizedDays: 0, finalizedParticipants: 0 });
+    await expect(
+      startTournamentPlayoffs(pool, tournament.id, new Date('2032-06-02T08:00:00.000Z')),
+    ).rejects.toMatchObject({ code: 'conflict', statusCode: 409 });
+    const afterIncompleteDailyCoverage = await pool.query<{ status: string }>(
+      `select status from tournament where id = $1`,
+      [tournament.id],
+    );
+    expect(afterIncompleteDailyCoverage.rows[0]?.status).toBe('regular');
     expect(
       await finalizeDueTournamentDailyDays(pool, new Date('2032-06-03T07:00:00.000Z')),
     ).toEqual({ finalizedDays: 1, finalizedParticipants: 4 });
@@ -925,7 +1031,7 @@ describe.skipIf(!hasIntegrationEnv)('synthetic tournament seasons', () => {
       tournamentId: tournament.id,
       tournamentTitle: title,
       startsAt: new Date('2032-06-04T08:00:00.000Z'),
-      expectedStandingUserIds,
+      expectedFinalUserIds: [PLAYER_IDS[2], PLAYER_IDS[3], PLAYER_IDS[0], PLAYER_IDS[1]],
     });
     const standingsAfterPlayoffs = await pool.query<{
       user_id: string;
@@ -958,6 +1064,78 @@ describe.skipIf(!hasIntegrationEnv)('synthetic tournament seasons', () => {
       tournamentId: tournament.id,
       expectedStandingUserIds,
       expectedResultPushes: 8,
+      expectedStageRewards: [
+        {
+          user_id: PLAYER_IDS[2],
+          stage: 'playoff',
+          place: 1,
+          coins: 100,
+          stars: 10,
+          experience: 1_000,
+        },
+        {
+          user_id: PLAYER_IDS[3],
+          stage: 'playoff',
+          place: 2,
+          coins: 70,
+          stars: 7,
+          experience: 700,
+        },
+        {
+          user_id: PLAYER_IDS[0],
+          stage: 'playoff',
+          place: 3,
+          coins: 40,
+          stars: 4,
+          experience: 400,
+        },
+        {
+          user_id: PLAYER_IDS[1],
+          stage: 'playoff',
+          place: 4,
+          coins: 20,
+          stars: 2,
+          experience: 200,
+        },
+        {
+          user_id: PLAYER_IDS[1],
+          stage: 'regular',
+          place: 1,
+          coins: 40,
+          stars: 4,
+          experience: 400,
+        },
+        {
+          user_id: PLAYER_IDS[0],
+          stage: 'regular',
+          place: 2,
+          coins: 30,
+          stars: 3,
+          experience: 300,
+        },
+        {
+          user_id: PLAYER_IDS[2],
+          stage: 'regular',
+          place: 3,
+          coins: 20,
+          stars: 2,
+          experience: 200,
+        },
+        {
+          user_id: PLAYER_IDS[3],
+          stage: 'regular',
+          place: 4,
+          coins: 10,
+          stars: 1,
+          experience: 100,
+        },
+      ],
+      expectedBalances: [
+        { user_id: PLAYER_IDS[0], balance: 165, stars: 7, experience: 1_700 },
+        { user_id: PLAYER_IDS[1], balance: 155, stars: 6, experience: 1_600 },
+        { user_id: PLAYER_IDS[2], balance: 215, stars: 12, experience: 2_200 },
+        { user_id: PLAYER_IDS[3], balance: 175, stars: 8, experience: 1_800 },
+      ],
     });
   });
 });

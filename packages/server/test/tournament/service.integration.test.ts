@@ -168,6 +168,32 @@ function playoffTournamentRules(
   };
 }
 
+function dailyPlayoffTournamentRules(): TournamentRulesSnapshot {
+  return {
+    ...rules(0),
+    config: parseTournamentConfig({
+      regularSource: 'daily_aggregate',
+      participantLimit: 4,
+      playoffSize: 2,
+      timezone: 'Europe/Moscow',
+      registrationMode: 'open',
+      visibility: 'public',
+      entryFeeCoins: 0,
+      roundRobinCycles: null,
+      roundsPerDay: null,
+      firstRoundLocalTime: null,
+      fixtureWindowMs: null,
+      roundBreakMs: null,
+      dailyDays: 1,
+      dailyMetric: 'accuracy_average',
+      bestDays: 1,
+    }),
+    tieBreakDuelTemplateId: '00000000-0000-4000-8000-000000000803',
+    tieBreakGameWindowMs: 1_800_000,
+    tieBreakGameBreakMs: 0,
+  };
+}
+
 async function prepareTournamentForPlayoffs(
   pool: Pool,
   tournamentId: string,
@@ -215,6 +241,56 @@ async function prepareTournamentForPlayoffs(
   }
   await pool.query(`update tournament set status = 'regular' where id = $1`, [tournamentId]);
   return participantIds;
+}
+
+async function prepareDailyTournamentForPlayoffs(
+  pool: Pool,
+  tournamentId: string,
+): Promise<string[]> {
+  for (const playerId of PLAYER_IDS) {
+    await pool.query(
+      `insert into tournament_participant (tournament_id, user_id, state)
+       values ($1, $2, 'approved')`,
+      [tournamentId, playerId],
+    );
+  }
+  const participants = await pool.query<{ id: string; user_id: string }>(
+    `select id, user_id from tournament_participant where tournament_id = $1 order by user_id`,
+    [tournamentId],
+  );
+  const points = [0.9, 0.5, 0.5, 0.1] as const;
+  for (const [index, participant] of participants.rows.entries()) {
+    await pool.query(
+      `insert into tournament_daily_result
+         (tournament_id, participant_id, tournament_day, player_local_date,
+          goals, shots, accuracy, place, place_points, completed, source_snapshot, finalized_at)
+       values ($1, $2, 1, '2030-09-01', $3, 10, $4, $5, 0, true, $6, $7)`,
+      [
+        tournamentId,
+        participant.id,
+        Math.round(points[index]! * 10),
+        points[index],
+        index + 1,
+        JSON.stringify({ userId: participant.user_id, periodCount: 3 }),
+        new Date('2030-09-02T00:00:00.000Z'),
+      ],
+    );
+    await pool.query(
+      `insert into tournament_standing
+         (tournament_id, participant_id, rank, points, metrics, tie_key, source_version)
+       values ($1, $2, $3, $4, $5, $6, 4)`,
+      [
+        tournamentId,
+        participant.id,
+        index + 1,
+        points[index],
+        JSON.stringify({ metric: 'accuracy_average', countedDays: [1] }),
+        JSON.stringify([points[index]]),
+      ],
+    );
+  }
+  await pool.query(`update tournament set status = 'regular' where id = $1`, [tournamentId]);
+  return participants.rows.map((participant) => participant.id);
 }
 
 async function subscribeTournamentParticipants(pool: Pool, participantIds: readonly string[]) {
@@ -2165,6 +2241,148 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         endsAt: '2030-09-01T13:50:00.000Z',
         status: 'scheduled',
         duelTemplateId: '00000000-0000-4000-8000-000000000803',
+      },
+    ]);
+  });
+
+  it('materializes a playable tie-break for a persisted daily cutoff tie before playoffs', async () => {
+    await seedUsers(pool, 0);
+    const tournament = await createPublishedTournament(
+      pool,
+      'daily-playoff-cutoff-tie',
+      0,
+      dailyPlayoffTournamentRules(),
+    );
+    const participantIds = await prepareDailyTournamentForPlayoffs(pool, tournament.id);
+
+    await expect(
+      startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-02T08:00:00.000Z')),
+    ).resolves.toEqual({
+      tournamentId: tournament.id,
+      status: 'tiebreak_required',
+      participantIds: [participantIds[1], participantIds[2]],
+    });
+
+    const rounds = await pool.query<{ stage: string; status: string }>(
+      `select stage, status from tournament_round where tournament_id = $1 order by stage`,
+      [tournament.id],
+    );
+    expect(rounds.rows).toEqual([{ stage: 'tiebreak', status: 'scheduled' }]);
+    const fixtures = await pool.query<{
+      home_participant_id: string;
+      away_participant_id: string;
+      scheduled_starts_at: Date;
+      window_ends_at: Date;
+      status: string;
+      result_snapshot: { duelTemplateId: string };
+    }>(
+      `select home_participant_id, away_participant_id, scheduled_starts_at,
+              window_ends_at, status, result_snapshot
+         from tournament_fixture where tournament_id = $1`,
+      [tournament.id],
+    );
+    expect(fixtures.rows).toEqual([
+      {
+        home_participant_id: participantIds[1],
+        away_participant_id: participantIds[2],
+        scheduled_starts_at: new Date('2030-09-02T08:00:00.000Z'),
+        window_ends_at: new Date('2030-09-02T08:30:00.000Z'),
+        status: 'scheduled',
+        result_snapshot: { gameNumber: 1, duelTemplateId: '00000000-0000-4000-8000-000000000803' },
+      },
+    ]);
+  });
+
+  it('seeds playoffs from a settled daily cutoff tie-break without changing daily metrics', async () => {
+    await seedUsers(pool, 0);
+    const tournament = await createPublishedTournament(
+      pool,
+      'daily-playoff-resolved-cutoff-tie',
+      0,
+      dailyPlayoffTournamentRules(),
+    );
+    const participantIds = await prepareDailyTournamentForPlayoffs(pool, tournament.id);
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-02T08:00:00.000Z'));
+    const tieBreakFixture = await pool.query<{
+      id: string;
+      home_participant_id: string;
+      away_participant_id: string;
+    }>(
+      `select fixture.id, fixture.home_participant_id, fixture.away_participant_id
+         from tournament_fixture fixture
+         join tournament_round round on round.id = fixture.round_id and round.stage = 'tiebreak'
+        where fixture.tournament_id = $1`,
+      [tournament.id],
+    );
+    const fixture = tieBreakFixture.rows[0]!;
+    await resolveTournamentNoShow(pool, {
+      tournamentId: tournament.id,
+      fixtureId: fixture.id,
+      absent: fixture.home_participant_id === participantIds[2] ? 'away' : 'home',
+      reason: 'settle daily cutoff tie-break',
+      adminUserId: ADMIN_ID,
+    });
+
+    await expect(
+      startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-02T09:00:00.000Z')),
+    ).resolves.toMatchObject({ tournamentId: tournament.id, status: 'playoff', seriesCount: 1 });
+
+    const playoffSeed = await pool.query<{
+      higher_user_id: string;
+      lower_user_id: string;
+    }>(
+      `select higher.user_id as higher_user_id, lower.user_id as lower_user_id
+         from tournament_playoff_series series
+         join tournament_participant higher on higher.id = series.higher_seed_participant_id
+         join tournament_participant lower on lower.id = series.lower_seed_participant_id
+        where series.tournament_id = $1 and series.depends_on->>'key' = 'R1S1'`,
+      [tournament.id],
+    );
+    expect(playoffSeed.rows).toEqual([
+      { higher_user_id: PLAYER_IDS[0], lower_user_id: PLAYER_IDS[2] },
+    ]);
+    const standings = await pool.query<{
+      user_id: string;
+      rank: number;
+      points: number;
+      metrics: { metric: string; countedDays: number[] };
+      tie_key: number[];
+    }>(
+      `select participant.user_id, standing.rank, standing.points::float8 as points,
+              standing.metrics, standing.tie_key
+         from tournament_standing standing
+         join tournament_participant participant on participant.id = standing.participant_id
+        where standing.tournament_id = $1 order by standing.rank`,
+      [tournament.id],
+    );
+    expect(standings.rows).toEqual([
+      {
+        user_id: PLAYER_IDS[0],
+        rank: 1,
+        points: 0.9,
+        metrics: { metric: 'accuracy_average', countedDays: [1] },
+        tie_key: [0.9],
+      },
+      {
+        user_id: PLAYER_IDS[2],
+        rank: 2,
+        points: 0.5,
+        metrics: { metric: 'accuracy_average', countedDays: [1] },
+        tie_key: [0.5],
+      },
+      {
+        user_id: PLAYER_IDS[1],
+        rank: 3,
+        points: 0.5,
+        metrics: { metric: 'accuracy_average', countedDays: [1] },
+        tie_key: [0.5],
+      },
+      {
+        user_id: PLAYER_IDS[3],
+        rank: 4,
+        points: 0.1,
+        metrics: { metric: 'accuracy_average', countedDays: [1] },
+        tie_key: [0.1],
       },
     ]);
   });

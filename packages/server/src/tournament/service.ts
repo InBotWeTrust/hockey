@@ -1089,6 +1089,115 @@ async function playoffBaseTime(
   return maxDate(...candidates);
 }
 
+async function dailyBoundaryTieParticipantIds(
+  client: PoolClient,
+  tournamentId: string,
+  playoffSize: number,
+): Promise<string[]> {
+  const tied = await client.query<{ participant_id: string }>(
+    `with boundary as (
+       select tie_key from tournament_standing
+        where tournament_id = $1 and rank = $2
+     ), crossing as (
+       select 1 from tournament_standing standing
+       join boundary on boundary.tie_key = standing.tie_key
+        where standing.tournament_id = $1 and standing.rank = $2 + 1
+     )
+     select standing.participant_id
+       from tournament_standing standing
+       join boundary on boundary.tie_key = standing.tie_key
+      where standing.tournament_id = $1 and exists (select 1 from crossing)
+      order by standing.rank, standing.participant_id`,
+    [tournamentId, playoffSize],
+  );
+  return tied.rows.map((row) => row.participant_id);
+}
+
+async function applySettledDailyTieBreakOrder(
+  client: PoolClient,
+  tournamentId: string,
+  participantIds: string[],
+): Promise<boolean> {
+  const fixtures = await client.query<{
+    home_participant_id: string | null;
+    away_participant_id: string | null;
+    winner_participant_id: string | null;
+    home_score: number;
+    away_score: number;
+    status: string;
+  }>(
+    `select fixture.home_participant_id, fixture.away_participant_id,
+            fixture.winner_participant_id, fixture.home_score, fixture.away_score,
+            fixture.status
+       from tournament_fixture fixture
+       join tournament_round round on round.id = fixture.round_id and round.stage = 'tiebreak'
+      where fixture.tournament_id = $1
+      order by fixture.fixture_number`,
+    [tournamentId],
+  );
+  const expectedFixtureCount = (participantIds.length * (participantIds.length - 1)) / 2;
+  const participantSet = new Set(participantIds);
+  if (
+    fixtures.rows.length !== expectedFixtureCount ||
+    fixtures.rows.some(
+      (fixture) =>
+        !['settled', 'forfeit'].includes(fixture.status) ||
+        fixture.home_participant_id === null ||
+        fixture.away_participant_id === null ||
+        fixture.winner_participant_id === null ||
+        !participantSet.has(fixture.home_participant_id) ||
+        !participantSet.has(fixture.away_participant_id) ||
+        !participantSet.has(fixture.winner_participant_id),
+    )
+  ) {
+    return false;
+  }
+  const standings = await client.query<{ participant_id: string; rank: number }>(
+    `select participant_id, rank from tournament_standing
+      where tournament_id = $1 and participant_id = any($2::uuid[])
+      order by rank`,
+    [tournamentId, participantIds],
+  );
+  if (standings.rows.length !== participantIds.length) return false;
+  const stats = new Map(
+    participantIds.map((participantId) => [
+      participantId,
+      { participantId, wins: 0, goalsFor: 0, goalsAgainst: 0 },
+    ]),
+  );
+  for (const fixture of fixtures.rows) {
+    const home = stats.get(fixture.home_participant_id!);
+    const away = stats.get(fixture.away_participant_id!);
+    if (!home || !away) return false;
+    home.goalsFor += Number(fixture.home_score);
+    home.goalsAgainst += Number(fixture.away_score);
+    away.goalsFor += Number(fixture.away_score);
+    away.goalsAgainst += Number(fixture.home_score);
+    stats.get(fixture.winner_participant_id!)!.wins += 1;
+  }
+  const compareCompetitively = (
+    left: { wins: number; goalsFor: number; goalsAgainst: number },
+    right: { wins: number; goalsFor: number; goalsAgainst: number },
+  ) =>
+    right.wins - left.wins ||
+    right.goalsFor - right.goalsAgainst - (left.goalsFor - left.goalsAgainst) ||
+    right.goalsFor - left.goalsFor;
+  const ordered = [...stats.values()].sort(compareCompetitively);
+  if (
+    ordered.some((row, index) => index > 0 && compareCompetitively(ordered[index - 1]!, row) === 0)
+  ) {
+    return false;
+  }
+  for (const [index, standing] of standings.rows.entries()) {
+    await client.query(
+      `update tournament_standing set rank = $3, recalculated_at = now()
+        where tournament_id = $1 and participant_id = $2`,
+      [tournamentId, ordered[index]!.participantId, standing.rank],
+    );
+  }
+  return true;
+}
+
 export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, now = new Date()) {
   return inTransaction(pool, async (client) => {
     await lockTournament(client, tournamentId);
@@ -1106,10 +1215,52 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
     if (!tournament || tournament.status !== 'regular') {
       throw new AppError('conflict', 'regular season is not active', 409);
     }
+    if (tournament.rules_snapshot.config.regularSource === 'daily_aggregate') {
+      const coverage = await client.query<{
+        participant_count: number;
+        result_count: number;
+      }>(
+        `select count(distinct participant.id)::int as participant_count,
+                count(result.id)::int as result_count
+           from tournament_participant participant
+           left join tournament_daily_result result
+             on result.tournament_id = participant.tournament_id
+            and result.participant_id = participant.id
+            and result.tournament_day between 1 and $2
+          where participant.tournament_id = $1
+            and participant.state in ('approved', 'withdrawn', 'removed', 'disqualified')`,
+        [tournamentId, tournament.rules_snapshot.config.dailyDays],
+      );
+      const counts = coverage.rows[0];
+      if (
+        counts === undefined ||
+        Number(counts.result_count) !==
+          Number(counts.participant_count) * tournament.rules_snapshot.config.dailyDays
+      ) {
+        throw new AppError('conflict', 'daily results are not fully finalized', 409);
+      }
+    }
     const rebuilt =
       tournament.rules_snapshot.config.regularSource === 'head_to_head'
         ? await rebuildHeadToHeadStandings(client, tournamentId)
-        : { boundaryTieParticipantIds: [] };
+        : {
+            boundaryTieParticipantIds: await dailyBoundaryTieParticipantIds(
+              client,
+              tournamentId,
+              tournament.rules_snapshot.config.playoffSize,
+            ),
+          };
+    if (
+      tournament.rules_snapshot.config.regularSource === 'daily_aggregate' &&
+      rebuilt.boundaryTieParticipantIds.length > 0 &&
+      (await applySettledDailyTieBreakOrder(
+        client,
+        tournamentId,
+        rebuilt.boundaryTieParticipantIds,
+      ))
+    ) {
+      rebuilt.boundaryTieParticipantIds = [];
+    }
     const baseTime = await playoffBaseTime(client, tournamentId, now, tournament.starts_at);
     if (rebuilt.boundaryTieParticipantIds.length > 0) {
       const existing = await client.query<{ id: string }>(

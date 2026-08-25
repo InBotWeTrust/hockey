@@ -101,3 +101,48 @@ The controller owns the full repository suite, so no full-suite run was started 
 
 - Focused integration runs emit the pre-existing Node `MaxListenersExceededWarning` from repeated in-process Fastify/WebSocket app construction. All assertions pass; this task did not change listener ownership.
 - This is local PostgreSQL acceptance only. No deployed/runtime SHA is claimed, and dev rendered/runtime acceptance remains a later release gate.
+
+## Review round 1 addendum
+
+This addendum supersedes the earlier statements that playoff placements matched regular ranks, that players 911/912 shared the head-to-head lead, and that the sequential integration total was 49 tests. Fix-round work started from local base HEAD `468edb750e523ae8af3350b53ea7aeb79941a98b`; the runtime SHA diagnostic remains local-only and does not claim a deployed SHA.
+
+### Implemented review fixes
+
+- Daily playoff start now requires one finalized `tournament_daily_result` for every eligible participant and every configured day. Incomplete coverage returns `409 conflict` under the tournament lock and leaves the tournament `regular`.
+- Daily cutoff equality is detected from persisted competitive `tie_key` values at ranks `playoffSize` and `playoffSize + 1`. The service creates the existing real tie-break round/fixture lifecycle instead of falling back to participant UUID order.
+- After every expected tie-break fixture settles with a winner, daily tied ranks are reordered from tie-break wins, goal difference, and goals scored. Only `rank` and `recalculated_at` change; original daily `points`, `metrics`, and `tie_key` remain intact. A competitively unresolved tie does not fall back to UUID order.
+- Both complete synthetic seasons now contain explicit semifinal upsets. Head-to-head finishes `[913, 914, 912, 911]`; daily aggregate finishes `[913, 914, 911, 912]`, both different from their regular order.
+- The synthetic head-to-head regular order is competitively deterministic at `9, 6, 3, 0` points for players `911, 912, 913, 914`; no expected rank depends on generated participant UUIDs.
+- Reward acceptance now compares eight literal `user_id + stage + place + coins + stars + experience` rows per season and four literal final account rows. Expected values are not calculated from standings, playoff series, or reward configuration returned by the system under test.
+
+### RED/GREEN evidence
+
+1. Incomplete daily coverage:
+   - RED: synthetic daily start after day 1 resolved to `{status: 'playoff'}` instead of rejecting.
+   - GREEN: the synthetic file passed `2/2`; playoff start rejected with `409` after day 1 and succeeded only after day 3 finalized at the last participant-local midnight.
+2. Daily cutoff tie materialization:
+   - RED: the focused service test received `{status: 'playoff'}` for equal persisted `[0.5]` cutoff keys.
+   - GREEN: the focused test passed `1/1` with one scheduled 30-minute tie-break fixture, a configured duel template, and no playoff round.
+3. Daily tie-break retry:
+   - RED: after technical settlement through `resolveTournamentNoShow()`, retry still returned `tiebreak_required`.
+   - GREEN: the focused test passed `1/1`; the original rank-3 winner became rank 2, entered `R1S1`, and all daily metric fields retained their literal values.
+4. Independent playoff rewards:
+   - RED: both synthetic seasons failed because the old assertion assigned playoff rewards by regular rank; the upset winners' actual balances differed.
+   - GREEN: the synthetic file passed `2/2` with literal reward-event and final-account expectations.
+5. Deterministic synthetic regular order:
+   - RED: the first final-gate run passed `50/51`; players 913/914 had identical competitive rows and swapped by generated participant UUID.
+   - GREEN: the regular fixture outcomes now produce literal `9, 6, 3, 0` points, the synthetic file passed `2/2`, and the sequential tournament integration run passed `51/51`.
+
+### Final verification
+
+| Command | Result |
+| --- | --- |
+| `pnpm --filter @hockey/game-core build` | PASS |
+| `pnpm --filter @hockey/server typecheck` | PASS |
+| Scoped ESLint for the three changed TypeScript files | PASS |
+| `pnpm lint` | PASS |
+| Synthetic PostgreSQL file only | PASS — 1 file, 2 tests |
+| All tournament PostgreSQL integration files with `--no-file-parallelism` | PASS — 4 files, 51 tests |
+| `git diff --check` | PASS |
+
+The sequential integration run still emits the pre-existing `MaxListenersExceededWarning` from repeated in-process WebSocket server construction. No assertion failed, and listener ownership is outside this fix round. Multi-player tie-break results that remain competitively equal intentionally stay unresolved rather than using UUID order; a future product rule may define an additional tie-break round for that edge case.
