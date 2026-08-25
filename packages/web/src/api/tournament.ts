@@ -43,6 +43,7 @@ export interface TournamentFixture {
   scheduledStartsAt: string | null;
   windowEndsAt: string | null;
   status: string;
+  venueMode: 'home_selected' | 'neutral_default';
   home: { userId: string; name: string | null } | null;
   away: { userId: string; name: string | null } | null;
   score: { home: number; away: number };

@@ -223,5 +223,6 @@ describe('app backdrop variants', () => {
   it('keeps the arena hub background but removes it from ordinary gameplay', () => {
     expect(appBackdropClassName('/', '')).toBe('app-shell--arena');
     expect(appBackdropClassName('/', '?view=daily')).toBe('');
+    expect(appBackdropClassName('/', '?view=amateur&match=m1&play=1')).toBe('');
   });
 });

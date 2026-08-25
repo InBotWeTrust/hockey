@@ -218,11 +218,12 @@ export interface AmateurDuelMatch {
   id: string;
   template_id: string | null;
   status: AmateurDuelMatchStatus;
-  source: 'challenge' | 'matchmaking';
+  source: 'challenge' | 'matchmaking' | 'tournament';
   ranked: boolean;
   season_key: string;
   duel_kind: AmateurDuelKind;
   home_user_id: string | null;
+  venue_role: 'home' | 'away' | 'neutral';
   venue_policy: AmateurDuelVenuePolicy;
   arena: AmateurDuelArena;
   starts_at: string;

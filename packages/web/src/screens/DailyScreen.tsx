@@ -111,6 +111,7 @@ import {
 import { StartPeriodModal } from '../components/StartPeriodModal.js';
 import { getLastSeenAt, setLastSeenAt } from '../stores/seenPeriods.js';
 import { TournamentCatalog } from '../tournament/TournamentCatalog.js';
+import { VenueBadge, type VenueRole } from '../components/VenueBadge.js';
 import { fetchTournaments } from '../api/tournament.js';
 import { artworkForInventoryItem, placeholderArtworkForKind } from './inventoryArtwork.js';
 import {
@@ -143,6 +144,7 @@ interface ArenaEntry {
   opponentName?: string;
   opponentAvatarUrl?: string | null;
   typeLabel?: string;
+  venueRole?: VenueRole;
   secondaryActions?: ReactNode;
   onEnter: () => void;
 }
@@ -962,6 +964,7 @@ function GameHub({
       opponentName: event.opponent.display_name,
       opponentAvatarUrl: event.opponent.avatar_url,
       typeLabel: duelKindText(event.rules.duelKind),
+      venueRole: event.venue_role,
       secondaryActions: isIncomingInvite ? (
         <div
           style={{
@@ -1428,6 +1431,7 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
                   {entry.typeLabel}
                 </div>
               )}
+              {entry.venueRole && <VenueBadge role={entry.venueRole} tone="dark" />}
             </div>
           </div>
         ) : (
@@ -5170,15 +5174,19 @@ function DuelListCard({
           style={{
             color: 'var(--muted)',
             fontSize: 12,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
+            display: 'flex',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 6,
           }}
         >
-          {duelKindText(match.rules.duelKind)}
-          {opensOnCardClick
-            ? ` · ${formatShortDateTime(historyDate)}`
-            : ` · ${match.me.goals}:${match.opponent.goals}`}
+          <span>
+            {duelKindText(match.rules.duelKind)}
+            {opensOnCardClick
+              ? ` · ${formatShortDateTime(historyDate)}`
+              : ` · ${match.me.goals}:${match.opponent.goals}`}
+          </span>
+          <VenueBadge role={match.venue_role} />
         </div>
       </div>
       <DuelStatusBadge match={match} />
@@ -5466,7 +5474,7 @@ function AmateurDuelPlayView({
           submitShot={submitShot}
           applyState={applyState}
           duelCondition={duelCondition}
-          longCourtBackground={match.arena.artwork_url}
+          longCourtBackground={match.source === 'tournament' ? match.arena.artwork_url : undefined}
           hudAddon={
             <DuelRinkLoadoutHud
               match={match}
@@ -5586,7 +5594,7 @@ function AmateurDuelPlayView({
           submitShot={submitShot}
           applyState={applyState}
           duelCondition={duelCondition}
-          longCourtBackground={match.arena.artwork_url}
+          longCourtBackground={match.source === 'tournament' ? match.arena.artwork_url : undefined}
           hudAddon={
             <DuelInventoryMiniHud
               match={match}

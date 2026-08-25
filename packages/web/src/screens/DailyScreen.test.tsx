@@ -88,6 +88,7 @@ const settledDuelMatch: AmateurDuelMatchState = {
   template_id: 'template-1',
   status: 'settled',
   source: 'challenge',
+  venue_role: 'neutral',
   ranked: true,
   season_key: '2026-05',
   duel_kind: 'express',
@@ -745,6 +746,7 @@ describe('DailyScreen', () => {
     renderWith(['/?view=arena']);
 
     await screen.findByRole('article', { name: 'Активная дуэль: Duel Opponent' });
+    expect(screen.getByLabelText('Площадка: Нейтрально')).toBeInTheDocument();
     expect(screen.getByLabelText('Выбрать Активная дуэль')).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(screen.getByLabelText('Выбрать Ежедневная игра'));
     expect(
@@ -904,7 +906,8 @@ describe('DailyScreen', () => {
     expect(screen.getByText('До поражения соперника')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Дуэль' })).not.toBeInTheDocument();
     expect(screen.queryByText(/Эта дуэль сейчас не на площадке/)).not.toBeInTheDocument();
-    expect(document.querySelector('img[src="/bonus-games/arenas/beach.webp"]')).toBeTruthy();
+    expect(document.querySelector('img[src="/sprites/training-court.webp"]')).toBeTruthy();
+    expect(document.querySelector('img[src="/bonus-games/arenas/beach.webp"]')).toBeFalsy();
   });
 
   it('opens an idle daily rink without starting the period from the arena', async () => {
@@ -2088,6 +2091,7 @@ describe('DailyScreen', () => {
     fireEvent.click(await screen.findByRole('tab', { name: 'История' }));
 
     expect(await screen.findByText('Duel Opponent')).toBeInTheDocument();
+    expect(screen.getByLabelText('Площадка: Нейтрально')).toBeInTheDocument();
     expect(screen.getByLabelText('ДУЭЛИ: 1')).toBeInTheDocument();
     expect(screen.getByLabelText('ПОБЕДЫ: 1')).toBeInTheDocument();
     expect(screen.getByLabelText('ОЧКИ: 3')).toBeInTheDocument();
@@ -2800,7 +2804,8 @@ describe('DailyScreen', () => {
 
     const startButton = await screen.findByRole('button', { name: 'НАЧАТЬ' });
     expect(startButton).toBeEnabled();
-    expect(document.querySelector('img[src="/bonus-games/arenas/beach.webp"]')).toBeTruthy();
+    expect(document.querySelector('img[src="/sprites/training-court.webp"]')).toBeTruthy();
+    expect(document.querySelector('img[src="/bonus-games/arenas/beach.webp"]')).toBeFalsy();
     expect(screen.getByLabelText('Игровое табло')).toBeInTheDocument();
     expect(document.querySelector('img[src="/sprites/duel-tableau.webp"]')).toBeFalsy();
     fireEvent.click(startButton);
@@ -2812,6 +2817,56 @@ describe('DailyScreen', () => {
         ),
       ).toBe(true);
     });
+  });
+
+  it('uses the frozen home arena artwork for a tournament duel', async () => {
+    const tournamentMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      status: 'active',
+      source: 'tournament',
+      venue_role: 'home',
+      outcome: null,
+      winner_user_id: null,
+      settled_at: null,
+      settled_reason: null,
+      starts_at: new Date(Date.now() - 60_000).toISOString(),
+      ends_at: new Date(Date.now() + 60 * 60_000).toISOString(),
+      server_now: new Date().toISOString(),
+      me: {
+        ...settledDuelMatch.me,
+        state: 'accepted',
+        current_period: 0,
+      },
+      opponent: {
+        ...settledDuelMatch.opponent,
+        state: 'accepted',
+        current_period: 0,
+      },
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/matches/match-1')) {
+        return new Response(JSON.stringify({ match: tournamentMatch }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=amateur&match=match-1&play=1']);
+
+    expect(await screen.findByRole('button', { name: 'НАЧАТЬ' })).toBeEnabled();
+    expect(document.querySelector('img[src="/bonus-games/arenas/beach.webp"]')).toBeTruthy();
   });
 
   it('builds live opponent progress for the amateur duel scoreboard', () => {

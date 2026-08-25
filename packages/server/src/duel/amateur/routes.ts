@@ -585,6 +585,7 @@ interface DuelMatchDTO {
   season_key: string;
   duel_kind: DuelKind;
   home_user_id: string | null;
+  venue_role: 'home' | 'away' | 'neutral';
   venue_policy: MatchmakingVenuePolicy | 'direct_challenge' | 'home_selected';
   arena: {
     id: string;
@@ -614,6 +615,24 @@ interface DuelMatchDTO {
   rules: DuelRulesSnapshot;
   me: DuelParticipantDTO;
   opponent: DuelParticipantDTO;
+}
+
+export function duelVenueRole(
+  match: {
+    source: AmateurDuelSource;
+    venuePolicy: MatchmakingVenuePolicy | 'direct_challenge' | 'home_selected' | null;
+    homeUserId: string | null;
+  },
+  currentUserId: string,
+): 'home' | 'away' | 'neutral' {
+  if (
+    match.source !== 'tournament' ||
+    match.venuePolicy === 'neutral_default' ||
+    match.homeUserId === null
+  ) {
+    return 'neutral';
+  }
+  return match.homeUserId === currentUserId ? 'home' : 'away';
 }
 
 interface DuelMatchStateDTO extends DuelMatchDTO {
@@ -2775,6 +2794,14 @@ async function buildMatchDto(
     season_key: match.season_key,
     duel_kind: match.duel_kind,
     home_user_id: match.home_user_id,
+    venue_role: duelVenueRole(
+      {
+        source: match.source,
+        venuePolicy: match.venue_policy,
+        homeUserId: match.home_user_id,
+      },
+      currentUserId,
+    ),
     venue_policy: match.venue_policy ?? 'neutral_default',
     arena: arenaDtoFromSnapshot(match.arena_snapshot),
     starts_at: match.starts_at.toISOString(),

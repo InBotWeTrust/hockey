@@ -20,6 +20,7 @@ import {
   createTournamentDraft,
   disqualifyTournamentParticipant,
   generateRegularSchedule,
+  getTournamentSchedule,
   inviteTournamentParticipant,
   publishRegularSchedule,
   publishTournament,
@@ -1213,6 +1214,11 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     );
     const home = homeFixture.rows[0]!;
     expect(home.venue_mode).toBe('home_selected');
+    expect(await getTournamentSchedule(pool, homeTournament.id)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: home.id, venueMode: 'home_selected' }),
+      ]),
+    );
     const beach = await selectHomeArena(pool, home.home_user_id, 'beach');
 
     const first = await openTournamentFixtureSegment(

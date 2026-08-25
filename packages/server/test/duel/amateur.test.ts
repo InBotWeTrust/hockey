@@ -1564,6 +1564,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(created.statusCode).toBe(200);
     expect(created.json().match.home_user_id).toBeNull();
     expect(created.json().match.venue_policy).toBe('neutral_default');
+    expect(created.json().match.venue_role).toBe('neutral');
     expect(created.json().match.arena.slug).toBe('default');
   });
 

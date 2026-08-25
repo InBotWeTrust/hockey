@@ -75,6 +75,7 @@ describe('TournamentCatalog', () => {
           scheduledStartsAt: '2030-09-01T07:00:00.000Z',
           windowEndsAt: '2030-09-01T08:00:00.000Z',
           status: 'scheduled',
+          venueMode: 'home_selected',
           home: { userId: 'u1', name: 'Первый' },
           away: { userId: 'u2', name: 'Второй' },
           score: { home: 0, away: 0 },
@@ -87,6 +88,7 @@ describe('TournamentCatalog', () => {
           scheduledStartsAt: '2030-09-01T07:00:00.000Z',
           windowEndsAt: '2030-09-01T08:00:00.000Z',
           status: 'scheduled',
+          venueMode: 'neutral_default',
           home: { userId: 'u3', name: 'Третий' },
           away: { userId: 'u4', name: 'Четвёртый' },
           score: { home: 0, away: 0 },
@@ -107,6 +109,61 @@ describe('TournamentCatalog', () => {
 
     expect(await screen.findAllByRole('button', { name: 'Открыть live' })).toHaveLength(1);
     expect(screen.getByText('Третий — Четвёртый')).toBeInTheDocument();
+    expect(screen.getByLabelText('Площадка: Дома')).toBeInTheDocument();
+    expect(screen.getByLabelText('Площадка: Нейтрально')).toBeInTheDocument();
+  });
+
+  it('shows an away venue badge for the authenticated away participant', async () => {
+    vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
+      tournaments: [
+        {
+          id: 't1',
+          slug: 'away-cup',
+          title: 'Выездной кубок',
+          description: 'Проверка площадки',
+          status: 'regular',
+          regularSource: 'head_to_head',
+          visibility: 'public',
+          revision: 1,
+          participantCount: 2,
+          myParticipantState: 'approved',
+          registrationOpensAt: null,
+          registrationClosesAt: null,
+          startsAt: '2030-09-01T07:00:00.000Z',
+          rules: { config: { participantLimit: 2, entryFeeCoins: 0, playoffSize: 2 } },
+        },
+      ],
+    });
+    vi.spyOn(api, 'fetchTournamentSchedule').mockResolvedValue({
+      fixtures: [
+        {
+          id: 'f-away',
+          fixtureNumber: 1,
+          stage: 'regular',
+          roundNumber: 1,
+          scheduledStartsAt: '2030-09-01T07:00:00.000Z',
+          windowEndsAt: '2030-09-01T08:00:00.000Z',
+          status: 'scheduled',
+          venueMode: 'home_selected',
+          home: { userId: 'u2', name: 'Второй' },
+          away: { userId: 'u1', name: 'Первый' },
+          score: { home: 0, away: 0 },
+        },
+      ],
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TournamentCatalog />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Выездной кубок' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Расписание' }));
+
+    expect(await screen.findByLabelText('Площадка: В гостях')).toBeInTheDocument();
   });
 
   it('does not offer an application before the configured registration window opens', async () => {

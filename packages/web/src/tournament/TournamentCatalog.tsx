@@ -14,6 +14,7 @@ import {
 } from '../api/tournament.js';
 import { TournamentFixtureLive } from './TournamentFixtureLive.js';
 import { useAuthStore } from '../auth/authStore.js';
+import { VenueBadge, type VenueRole } from '../components/VenueBadge.js';
 
 type TournamentTab = 'overview' | 'standings' | 'schedule' | 'playoff' | 'rules';
 
@@ -24,6 +25,11 @@ const tabs: Array<{ key: TournamentTab; label: string }> = [
   { key: 'playoff', label: 'Плей-офф' },
   { key: 'rules', label: 'Правила и призы' },
 ];
+
+function fixtureVenueRole(fixture: TournamentFixture, currentUserId: string | null): VenueRole {
+  if (fixture.venueMode === 'neutral_default') return 'neutral';
+  return fixture.away?.userId === currentUserId ? 'away' : 'home';
+}
 
 function statusLabel(status: TournamentSummary['status']): string {
   const labels: Record<TournamentSummary['status'], string> = {
@@ -242,7 +248,10 @@ function TournamentDetails({ tournament, onBack }: { tournament: TournamentSumma
           schedule.isLoading ? <div>Загрузка расписания…</div> :
             schedule.data?.fixtures.length ? schedule.data.fixtures.map((fixture) => (
               <div key={fixture.id} style={{ padding: '8px 0', borderBottom: '1px solid rgba(100,116,139,.15)' }}>
-                {fixture.home?.name ?? 'Участник'} — {fixture.away?.name ?? 'Участник'}
+                <div className="tournament-fixture-summary">
+                  <span>{fixture.home?.name ?? 'Участник'} — {fixture.away?.name ?? 'Участник'}</span>
+                  <VenueBadge role={fixtureVenueRole(fixture, currentUserId)} />
+                </div>
                 {(fixture.home?.userId === currentUserId || fixture.away?.userId === currentUserId) &&
                   (fixture.status === 'scheduled' || fixture.status === 'open' || fixture.status === 'active') && (
                   <button

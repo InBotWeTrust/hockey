@@ -1068,6 +1068,7 @@ export async function getTournamentSchedule(pool: Pool, tournamentId: string) {
     scheduled_starts_at: Date | null;
     window_ends_at: Date | null;
     status: string;
+    venue_mode: 'home_selected' | 'neutral_default';
     home_user_id: string | null;
     home_name: string | null;
     away_user_id: string | null;
@@ -1076,7 +1077,7 @@ export async function getTournamentSchedule(pool: Pool, tournamentId: string) {
     away_score: number;
   }>(
     `select f.id, f.fixture_number, r.stage, r.number as round_number,
-            f.scheduled_starts_at, f.window_ends_at, f.status,
+            f.scheduled_starts_at, f.window_ends_at, f.status, f.venue_mode,
             hp.user_id as home_user_id, hu.display_name as home_name,
             ap.user_id as away_user_id, au.display_name as away_name,
             f.home_score, f.away_score
@@ -1098,6 +1099,7 @@ export async function getTournamentSchedule(pool: Pool, tournamentId: string) {
     scheduledStartsAt: row.scheduled_starts_at?.toISOString() ?? null,
     windowEndsAt: row.window_ends_at?.toISOString() ?? null,
     status: row.status,
+    venueMode: row.venue_mode,
     home: row.home_user_id === null ? null : { userId: row.home_user_id, name: row.home_name },
     away: row.away_user_id === null ? null : { userId: row.away_user_id, name: row.away_name },
     score: { home: Number(row.home_score), away: Number(row.away_score) },

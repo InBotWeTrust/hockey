@@ -38,6 +38,7 @@ const fixture = {
   scheduledStartsAt: '2030-09-01T07:00:00.000Z',
   windowEndsAt: '2030-09-01T08:00:00.000Z',
   status: 'active',
+  venueMode: 'home_selected',
   home: { userId: 'home-user', name: 'Первый' },
   away: { userId: 'away-user', name: 'Второй' },
   score: { home: 2, away: 1 },
