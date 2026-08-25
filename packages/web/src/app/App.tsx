@@ -104,15 +104,17 @@ function ChatRealtime(): JSX.Element {
   return <OfflineBanner status={status} />;
 }
 
-function RouteLoading(): JSX.Element {
+export function RouteLoading(): JSX.Element {
   return (
     <main className="screen" style={{ alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ color: 'var(--muted)', fontSize: 14 }}>Загрузка…</div>
+      <div className="route-loading" role="status">
+        Загрузка…
+      </div>
     </main>
   );
 }
 
-export function appBackdropClassName(pathname: string): string {
+export function appBackdropClassName(pathname: string, search = ''): string {
   if (pathname === '/login') {
     return 'app-shell--login';
   }
@@ -122,6 +124,7 @@ export function appBackdropClassName(pathname: string): string {
   }
 
   if (
+    (pathname === '/' && new URLSearchParams(search).get('view') === 'daily') ||
     pathname === '/test-court' ||
     pathname === '/demo' ||
     pathname.startsWith('/duel/') ||
@@ -141,7 +144,7 @@ function AppFrame(): JSX.Element {
   const location = useLocation();
   const user = useAuthStore((s) => s.user);
   const bottomNavVisible = isBottomNavVisible(location, user);
-  const backdropClassName = appBackdropClassName(location.pathname);
+  const backdropClassName = appBackdropClassName(location.pathname, location.search);
   const hasArenaBackdrop = backdropClassName.split(' ').includes('app-shell--arena');
 
   return (
@@ -163,7 +166,11 @@ function AppFrame(): JSX.Element {
         }}
       >
         {hasArenaBackdrop && (
-          <div className="arena-ambient-lights" data-testid="arena-ambient-lights" aria-hidden="true">
+          <div
+            className="arena-ambient-lights"
+            data-testid="arena-ambient-lights"
+            aria-hidden="true"
+          >
             {Array.from({ length: 10 }, (_, index) => (
               <span key={index} />
             ))}

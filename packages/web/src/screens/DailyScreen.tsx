@@ -428,7 +428,9 @@ export function DailyScreen(): JSX.Element {
             </div>
           </div>
         ) : (
-          <div style={{ color: 'var(--muted)' }}>Загрузка…</div>
+          <div className="route-loading" role="status">
+            Загрузка…
+          </div>
         )}
       </main>
     );

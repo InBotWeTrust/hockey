@@ -442,7 +442,14 @@ describe('BonusGamePlayScreen', () => {
 
     renderScreen();
 
+    expect(screen.getByTestId('bonus-play-view')).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Перерыв' })).toBeInTheDocument();
     expect(screen.getByRole('timer')).toHaveTextContent('00:02');
+    expect(playViewProbe.mock.calls.at(-1)?.[0]).toMatchObject({
+      active: false,
+      suppressedByModal: true,
+      showIceCar: true,
+    });
   });
 
   it('blocks play and requests authoritative detail during reconciliation', () => {
@@ -505,6 +512,31 @@ describe('BonusGamePlayScreen', () => {
 
     expect(loadAttempt).toHaveBeenCalledTimes(1);
     expect(loadAttempt).toHaveBeenCalledWith('attempt-1');
+  });
+
+  it('replaces an open exit prompt with the mandatory break modal', async () => {
+    renderScreen();
+    fireEvent.click(screen.getByRole('button', { name: 'К бонусным играм' }));
+    expect(screen.getByRole('dialog', { name: 'Выйти из бонусной игры?' })).toBeInTheDocument();
+
+    act(() => {
+      useBonusGameStore.setState({
+        attempt: attempt({
+          state: 'break_active',
+          period_started_at: null,
+          period_ends_at: null,
+          break_started_at: '2026-08-24T10:00:00.000Z',
+          break_ends_at: '2026-08-24T10:00:30.000Z',
+          server_now: '2026-08-24T10:00:00.000Z',
+        }),
+      });
+    });
+
+    expect(screen.getByRole('dialog', { name: 'Перерыв' })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('dialog', { name: 'Выйти из бонусной игры?', hidden: true }),
+    ).toBeNull();
+    expect(screen.getByLabelText('location')).toHaveTextContent('/bonus-games/game-1/play');
   });
 
   it.each([

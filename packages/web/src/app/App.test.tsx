@@ -6,7 +6,7 @@ import { LoginScreen } from '../screens/LoginScreen.js';
 import { PrivateRoute } from '../auth/PrivateRoute.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { useBonusGameStore } from '../stores/bonusGameStore.js';
-import { App, appBackdropClassName } from './App.js';
+import { App, RouteLoading, appBackdropClassName } from './App.js';
 
 vi.mock('../game/PlayView.js', () => ({
   PlayView: () => <div data-testid="play-view" />,
@@ -192,6 +192,12 @@ describe('App routing + auth', () => {
 });
 
 describe('app backdrop variants', () => {
+  it('renders lazy route loading text with a high-contrast arena treatment', () => {
+    render(<RouteLoading />);
+
+    expect(screen.getByRole('status')).toHaveClass('route-loading');
+  });
+
   it('uses the dedicated login rink background on the sign-in screen', () => {
     expect(appBackdropClassName('/login')).toBe('app-shell--login');
   });
@@ -212,5 +218,10 @@ describe('app backdrop variants', () => {
     expect(appBackdropClassName('/sections')).toBe('app-shell--arena');
     expect(appBackdropClassName('/profile')).toBe('app-shell--arena');
     expect(appBackdropClassName('/inventory')).toBe('app-shell--arena');
+  });
+
+  it('keeps the arena hub background but removes it from ordinary gameplay', () => {
+    expect(appBackdropClassName('/', '')).toBe('app-shell--arena');
+    expect(appBackdropClassName('/', '?view=daily')).toBe('');
   });
 });

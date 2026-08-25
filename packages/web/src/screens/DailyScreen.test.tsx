@@ -577,7 +577,7 @@ describe('DailyScreen', () => {
 
   it('shows loader while fetching state', () => {
     renderWith();
-    expect(screen.getByText(/Загрузка/)).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveClass('route-loading');
   });
 
   it('renders a high-contrast arena error state when the daily request fails', async () => {
