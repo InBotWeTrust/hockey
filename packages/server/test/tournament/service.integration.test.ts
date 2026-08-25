@@ -246,6 +246,7 @@ async function prepareTournamentForPlayoffs(
 async function prepareDailyTournamentForPlayoffs(
   pool: Pool,
   tournamentId: string,
+  points: readonly [number, number, number, number] = [0.9, 0.5, 0.5, 0.1],
 ): Promise<string[]> {
   for (const playerId of PLAYER_IDS) {
     await pool.query(
@@ -258,7 +259,6 @@ async function prepareDailyTournamentForPlayoffs(
     `select id, user_id from tournament_participant where tournament_id = $1 order by user_id`,
     [tournamentId],
   );
-  const points = [0.9, 0.5, 0.5, 0.1] as const;
   for (const [index, participant] of participants.rows.entries()) {
     await pool.query(
       `insert into tournament_daily_result
@@ -291,6 +291,112 @@ async function prepareDailyTournamentForPlayoffs(
   }
   await pool.query(`update tournament set status = 'regular' where id = $1`, [tournamentId]);
   return participants.rows.map((participant) => participant.id);
+}
+
+function unorderedParticipantPair(left: string, right: string): string {
+  return [left, right].sort().join(':');
+}
+
+async function settleExpectedTieBreakRound(
+  pool: Pool,
+  input: {
+    tournamentId: string;
+    roundNumber: number;
+    outcomes: Array<{ pair: readonly [string, string]; winnerParticipantId: string }>;
+  },
+): Promise<void> {
+  const fixtures = await pool.query<{
+    id: string;
+    home_participant_id: string;
+    away_participant_id: string;
+    status: string;
+    scheduled_starts_at: Date | null;
+    window_ends_at: Date | null;
+    result_snapshot: { duelTemplateId: string };
+  }>(
+    `select fixture.id, fixture.home_participant_id, fixture.away_participant_id, fixture.status,
+            fixture.scheduled_starts_at, fixture.window_ends_at, fixture.result_snapshot
+       from tournament_fixture fixture
+       join tournament_round round on round.id = fixture.round_id and round.stage = 'tiebreak'
+      where fixture.tournament_id = $1 and round.number = $2
+      order by fixture.fixture_number`,
+    [input.tournamentId, input.roundNumber],
+  );
+  expect(
+    fixtures.rows
+      .map((fixture) =>
+        unorderedParticipantPair(fixture.home_participant_id, fixture.away_participant_id),
+      )
+      .sort(),
+  ).toEqual(
+    input.outcomes
+      .map((outcome) => unorderedParticipantPair(outcome.pair[0], outcome.pair[1]))
+      .sort(),
+  );
+  for (const fixture of fixtures.rows) {
+    expect(fixture.status).toBe('scheduled');
+    expect(fixture.scheduled_starts_at).toBeInstanceOf(Date);
+    expect(fixture.window_ends_at).toBeInstanceOf(Date);
+    expect(fixture.window_ends_at!.getTime()).toBeGreaterThan(
+      fixture.scheduled_starts_at!.getTime(),
+    );
+    expect(fixture.result_snapshot.duelTemplateId).toBe(
+      '00000000-0000-4000-8000-000000000803',
+    );
+  }
+  for (const fixture of fixtures.rows) {
+    const pair = unorderedParticipantPair(
+      fixture.home_participant_id,
+      fixture.away_participant_id,
+    );
+    const expected = input.outcomes.find(
+      (outcome) => unorderedParticipantPair(outcome.pair[0], outcome.pair[1]) === pair,
+    )!;
+    expect([fixture.home_participant_id, fixture.away_participant_id]).toContain(
+      expected.winnerParticipantId,
+    );
+    await resolveTournamentNoShow(pool, {
+      tournamentId: input.tournamentId,
+      fixtureId: fixture.id,
+      absent: fixture.home_participant_id === expected.winnerParticipantId ? 'away' : 'home',
+      reason: `settle daily tie-break round ${input.roundNumber}`,
+      adminUserId: ADMIN_ID,
+    });
+  }
+  const settled = await pool.query<{
+    home_participant_id: string;
+    away_participant_id: string;
+    winner_participant_id: string;
+    status: string;
+  }>(
+    `select fixture.home_participant_id, fixture.away_participant_id,
+            fixture.winner_participant_id, fixture.status
+       from tournament_fixture fixture
+       join tournament_round round on round.id = fixture.round_id and round.stage = 'tiebreak'
+      where fixture.tournament_id = $1 and round.number = $2
+      order by fixture.fixture_number`,
+    [input.tournamentId, input.roundNumber],
+  );
+  expect(
+    settled.rows
+      .map((fixture) => ({
+        pair: unorderedParticipantPair(
+          fixture.home_participant_id,
+          fixture.away_participant_id,
+        ),
+        winnerParticipantId: fixture.winner_participant_id,
+        status: fixture.status,
+      }))
+      .sort((left, right) => left.pair.localeCompare(right.pair)),
+  ).toEqual(
+    input.outcomes
+      .map((outcome) => ({
+        pair: unorderedParticipantPair(outcome.pair[0], outcome.pair[1]),
+        winnerParticipantId: outcome.winnerParticipantId,
+        status: 'forfeit',
+      }))
+      .sort((left, right) => left.pair.localeCompare(right.pair)),
+  );
 }
 
 async function subscribeTournamentParticipants(pool: Pool, participantIds: readonly string[]) {
@@ -2383,6 +2489,178 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         points: 0.1,
         metrics: { metric: 'accuracy_average', countedDays: [1] },
         tie_key: [0.1],
+      },
+    ]);
+  });
+
+  it('iterates playable daily tie-break rounds until a cyclic cutoff subset resolves', async () => {
+    await seedUsers(pool, 0);
+    const tournament = await createPublishedTournament(
+      pool,
+      'daily-playoff-cyclic-cutoff-tie',
+      0,
+      dailyPlayoffTournamentRules(),
+    );
+    const participantIds = await prepareDailyTournamentForPlayoffs(
+      pool,
+      tournament.id,
+      [0.9, 0.5, 0.5, 0.5],
+    );
+    const firstTied = participantIds[1]!;
+    const secondTied = participantIds[2]!;
+    const thirdTied = participantIds[3]!;
+    const cyclicOutcomes = [
+      { pair: [firstTied, secondTied] as const, winnerParticipantId: firstTied },
+      { pair: [firstTied, thirdTied] as const, winnerParticipantId: thirdTied },
+      { pair: [secondTied, thirdTied] as const, winnerParticipantId: secondTied },
+    ];
+
+    await expect(
+      startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-02T08:00:00.000Z')),
+    ).resolves.toEqual({
+      tournamentId: tournament.id,
+      status: 'tiebreak_required',
+      participantIds: [firstTied, secondTied, thirdTied],
+    });
+    await settleExpectedTieBreakRound(pool, {
+      tournamentId: tournament.id,
+      roundNumber: 1,
+      outcomes: cyclicOutcomes,
+    });
+
+    await expect(
+      startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-02T10:00:00.000Z')),
+    ).resolves.toEqual({
+      tournamentId: tournament.id,
+      status: 'tiebreak_required',
+      participantIds: [firstTied, secondTied, thirdTied],
+    });
+    const afterFirstCycle = await pool.query<{
+      number: number;
+      participant_ids: string[];
+      fixture_count: string;
+    }>(
+      `select round.number, round.rules_snapshot->'participantIds' as participant_ids,
+              count(fixture.id)::text as fixture_count
+         from tournament_round round
+         left join tournament_fixture fixture on fixture.round_id = round.id
+        where round.tournament_id = $1 and round.stage = 'tiebreak'
+        group by round.id order by round.number`,
+      [tournament.id],
+    );
+    expect(afterFirstCycle.rows).toEqual([
+      { number: 1, participant_ids: [firstTied, secondTied, thirdTied], fixture_count: '3' },
+      { number: 2, participant_ids: [firstTied, secondTied, thirdTied], fixture_count: '3' },
+    ]);
+
+    await expect(
+      startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-02T10:01:00.000Z')),
+    ).resolves.toMatchObject({ status: 'tiebreak_required' });
+    const idempotentSecondRound = await pool.query<{ rounds: string; fixtures: string }>(
+      `select
+         (select count(*) from tournament_round
+           where tournament_id = $1 and stage = 'tiebreak')::text as rounds,
+         (select count(*) from tournament_fixture fixture
+           join tournament_round round on round.id = fixture.round_id
+          where fixture.tournament_id = $1 and round.stage = 'tiebreak')::text as fixtures`,
+      [tournament.id],
+    );
+    expect(idempotentSecondRound.rows[0]).toEqual({ rounds: '2', fixtures: '6' });
+    await settleExpectedTieBreakRound(pool, {
+      tournamentId: tournament.id,
+      roundNumber: 2,
+      outcomes: cyclicOutcomes,
+    });
+
+    await expect(
+      startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-02T12:00:00.000Z')),
+    ).resolves.toEqual({
+      tournamentId: tournament.id,
+      status: 'tiebreak_required',
+      participantIds: [firstTied, secondTied, thirdTied],
+    });
+    const thirdRound = await pool.query<{ number: number; fixture_count: string }>(
+      `select round.number, count(fixture.id)::text as fixture_count
+         from tournament_round round
+         left join tournament_fixture fixture on fixture.round_id = round.id
+        where round.tournament_id = $1 and round.stage = 'tiebreak'
+        group by round.id order by round.number`,
+      [tournament.id],
+    );
+    expect(thirdRound.rows).toEqual([
+      { number: 1, fixture_count: '3' },
+      { number: 2, fixture_count: '3' },
+      { number: 3, fixture_count: '3' },
+    ]);
+    await settleExpectedTieBreakRound(pool, {
+      tournamentId: tournament.id,
+      roundNumber: 3,
+      outcomes: [
+        { pair: [firstTied, secondTied], winnerParticipantId: secondTied },
+        { pair: [firstTied, thirdTied], winnerParticipantId: thirdTied },
+        { pair: [secondTied, thirdTied], winnerParticipantId: thirdTied },
+      ],
+    });
+
+    await expect(
+      startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-02T14:00:00.000Z')),
+    ).resolves.toMatchObject({ tournamentId: tournament.id, status: 'playoff', seriesCount: 1 });
+    const playoffSeed = await pool.query<{
+      higher_user_id: string;
+      lower_user_id: string;
+    }>(
+      `select higher.user_id as higher_user_id, lower.user_id as lower_user_id
+         from tournament_playoff_series series
+         join tournament_participant higher on higher.id = series.higher_seed_participant_id
+         join tournament_participant lower on lower.id = series.lower_seed_participant_id
+        where series.tournament_id = $1 and series.depends_on->>'key' = 'R1S1'`,
+      [tournament.id],
+    );
+    expect(playoffSeed.rows).toEqual([
+      { higher_user_id: PLAYER_IDS[0], lower_user_id: PLAYER_IDS[3] },
+    ]);
+    const standings = await pool.query<{
+      user_id: string;
+      rank: number;
+      points: number;
+      metrics: { metric: string; countedDays: number[] };
+      tie_key: number[];
+    }>(
+      `select participant.user_id, standing.rank, standing.points::float8 as points,
+              standing.metrics, standing.tie_key
+         from tournament_standing standing
+         join tournament_participant participant on participant.id = standing.participant_id
+        where standing.tournament_id = $1 order by standing.rank`,
+      [tournament.id],
+    );
+    expect(standings.rows).toEqual([
+      {
+        user_id: PLAYER_IDS[0],
+        rank: 1,
+        points: 0.9,
+        metrics: { metric: 'accuracy_average', countedDays: [1] },
+        tie_key: [0.9],
+      },
+      {
+        user_id: PLAYER_IDS[3],
+        rank: 2,
+        points: 0.5,
+        metrics: { metric: 'accuracy_average', countedDays: [1] },
+        tie_key: [0.5],
+      },
+      {
+        user_id: PLAYER_IDS[2],
+        rank: 3,
+        points: 0.5,
+        metrics: { metric: 'accuracy_average', countedDays: [1] },
+        tie_key: [0.5],
+      },
+      {
+        user_id: PLAYER_IDS[1],
+        rank: 4,
+        points: 0.5,
+        metrics: { metric: 'accuracy_average', countedDays: [1] },
+        tie_key: [0.5],
       },
     ]);
   });

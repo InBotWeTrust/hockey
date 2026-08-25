@@ -146,3 +146,47 @@ This addendum supersedes the earlier statements that playoff placements matched 
 | `git diff --check` | PASS |
 
 The sequential integration run still emits the pre-existing `MaxListenersExceededWarning` from repeated in-process WebSocket server construction. No assertion failed, and listener ownership is outside this fix round. Multi-player tie-break results that remain competitively equal intentionally stay unresolved rather than using UUID order; a future product rule may define an additional tie-break round for that edge case.
+
+## Review round 2 addendum
+
+This addendum replaces the round-1 statement that a competitively equal multi-player cutoff should remain unresolved indefinitely. Fix-round work started from local base HEAD `c99a561fe131a0b192325cf6356f19a99d4aafc4`; no deployed/runtime SHA is claimed.
+
+### Implemented review fix
+
+- Daily cutoff processing now reads only the latest numbered tie-break round and uses its persisted `participantIds` subset. Legacy round 1 rows without that snapshot fall back to the original boundary participants.
+- A terminal round is accepted only when it contains every expected unordered participant pair exactly once and each terminal winner belongs to that fixture. Pending fixtures keep the current round in the idempotent waiting state.
+- The settled mini-table orders participants by wins, goal difference, and goals scored. Prior rank is only a stable order inside competitively equal groups; it never selects a participant across the playoff cutoff.
+- If a competitive group still crosses the number of available playoff slots, the service materializes round `N+1` for only that unresolved subset. Tournament locking plus numbered-round lookup prevents retry duplicates, while another terminal cycle can create round `N+2`.
+- Every new round persists its participant subset and creates each unordered pair once with sequential tie-break fixture numbers and the configured playable windows/duel template.
+- Final rank updates continue to change only `rank` and `recalculated_at`; daily `points`, `metrics`, and `tie_key` remain unchanged.
+
+### TDD evidence
+
+The new integration regression models four daily participants with a three-player `0.5` tie for one remaining playoff slot.
+
+1. RED:
+   - After the first terminal cycle `A > B`, `B > C`, `C > A`, retry still exposed only round 1 instead of materializing round 2.
+   - The original round snapshot also had no persisted `participantIds` subset.
+2. GREEN:
+   - The focused cyclic regression passed `1/1`.
+   - Round 1 and round 2 each contained exactly the three expected unordered fixtures; a retry before round-2 settlement left exactly two rounds and six fixtures.
+   - A second cycle created round 3. Its competitive settlement promoted the original rank-4 participant into the second playoff seed without UUID comparison.
+   - The complete service integration file passed `35/35`, including the existing two-player daily tie-break coverage.
+
+### Final verification
+
+| Command | Result |
+| --- | --- |
+| `pnpm --filter @hockey/server typecheck` | PASS |
+| Scoped ESLint for `service.ts` and `service.integration.test.ts` | PASS |
+| `pnpm lint` | PASS |
+| All four tournament PostgreSQL integration files with `--no-file-parallelism` | PASS — 4 files, 52 tests |
+| `git diff --check` | PASS |
+
+The sequential gate includes `daily-maintenance.integration.test.ts`, `realtime-progress.integration.test.ts`, `service.integration.test.ts`, and `synthetic-seasons.integration.test.ts`. Both synthetic seasons passed unchanged.
+
+### Concerns
+
+- The cyclic regression asserts generated pair completeness and checks every resolved winner against its real fixture through `resolveTournamentNoShow()`. The defensive rejection branches for deliberately corrupted pair/winner rows are not exercised by separate database-corruption tests.
+- The pre-existing `MaxListenersExceededWarning` still appears during sequential in-process WebSocket test construction; all 52 assertions pass.
+- Verification is local PostgreSQL/Redis evidence only. No dev/prod deploy, feature-flag change, `main` update, or production action was performed.

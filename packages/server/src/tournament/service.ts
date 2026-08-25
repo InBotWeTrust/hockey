@@ -1117,7 +1117,42 @@ async function applySettledDailyTieBreakOrder(
   client: PoolClient,
   tournamentId: string,
   participantIds: string[],
-): Promise<boolean> {
+  playoffSize: number,
+): Promise<{
+  resolved: boolean;
+  participantIds: string[];
+  createRoundNumber: number | null;
+}> {
+  const latestRound = await client.query<{
+    id: string;
+    number: number;
+    rules_snapshot: Record<string, unknown>;
+  }>(
+    `select id, number, rules_snapshot from tournament_round
+      where tournament_id = $1 and stage = 'tiebreak'
+      order by number desc limit 1`,
+    [tournamentId],
+  );
+  const latest = latestRound.rows[0];
+  if (!latest) {
+    return { resolved: false, participantIds, createRoundNumber: 1 };
+  }
+  const storedParticipantIds = latest.rules_snapshot.participantIds;
+  const roundParticipantIds =
+    Array.isArray(storedParticipantIds) &&
+    storedParticipantIds.every((participantId): participantId is string => typeof participantId === 'string')
+      ? storedParticipantIds
+      : latest.number === 1
+        ? participantIds
+        : [];
+  const boundaryParticipantSet = new Set(participantIds);
+  if (
+    roundParticipantIds.length < 2 ||
+    new Set(roundParticipantIds).size !== roundParticipantIds.length ||
+    roundParticipantIds.some((participantId) => !boundaryParticipantSet.has(participantId))
+  ) {
+    throw new AppError('conflict', 'tie-break participant subset is invalid', 409);
+  }
   const fixtures = await client.query<{
     home_participant_id: string | null;
     away_participant_id: string | null;
@@ -1130,37 +1165,60 @@ async function applySettledDailyTieBreakOrder(
             fixture.winner_participant_id, fixture.home_score, fixture.away_score,
             fixture.status
        from tournament_fixture fixture
-       join tournament_round round on round.id = fixture.round_id and round.stage = 'tiebreak'
-      where fixture.tournament_id = $1
+      where fixture.tournament_id = $1 and fixture.round_id = $2
       order by fixture.fixture_number`,
-    [tournamentId],
+    [tournamentId, latest.id],
   );
-  const expectedFixtureCount = (participantIds.length * (participantIds.length - 1)) / 2;
-  const participantSet = new Set(participantIds);
-  if (
-    fixtures.rows.length !== expectedFixtureCount ||
-    fixtures.rows.some(
-      (fixture) =>
-        !['settled', 'forfeit'].includes(fixture.status) ||
-        fixture.home_participant_id === null ||
-        fixture.away_participant_id === null ||
-        fixture.winner_participant_id === null ||
-        !participantSet.has(fixture.home_participant_id) ||
-        !participantSet.has(fixture.away_participant_id) ||
-        !participantSet.has(fixture.winner_participant_id),
-    )
-  ) {
-    return false;
+  const participantPairKey = (left: string, right: string) =>
+    left < right ? `${left}:${right}` : `${right}:${left}`;
+  const expectedPairs = new Set<string>();
+  for (let left = 0; left < roundParticipantIds.length; left += 1) {
+    for (let right = left + 1; right < roundParticipantIds.length; right += 1) {
+      expectedPairs.add(participantPairKey(roundParticipantIds[left]!, roundParticipantIds[right]!));
+    }
+  }
+  const actualPairs = new Set<string>();
+  for (const fixture of fixtures.rows) {
+    if (
+      fixture.home_participant_id === null ||
+      fixture.away_participant_id === null ||
+      !roundParticipantIds.includes(fixture.home_participant_id) ||
+      !roundParticipantIds.includes(fixture.away_participant_id)
+    ) {
+      throw new AppError('conflict', 'tie-break fixture participants are invalid', 409);
+    }
+    const pair = participantPairKey(fixture.home_participant_id, fixture.away_participant_id);
+    if (actualPairs.has(pair) || !expectedPairs.has(pair)) {
+      throw new AppError('conflict', 'tie-break fixture pairs are invalid', 409);
+    }
+    actualPairs.add(pair);
+  }
+  if (actualPairs.size !== expectedPairs.size) {
+    throw new AppError('conflict', 'tie-break fixture pairs are incomplete', 409);
+  }
+  if (fixtures.rows.some((fixture) => !['settled', 'forfeit'].includes(fixture.status))) {
+    return { resolved: false, participantIds: roundParticipantIds, createRoundNumber: null };
+  }
+  for (const fixture of fixtures.rows) {
+    if (
+      fixture.winner_participant_id === null ||
+      (fixture.winner_participant_id !== fixture.home_participant_id &&
+        fixture.winner_participant_id !== fixture.away_participant_id)
+    ) {
+      throw new AppError('conflict', 'tie-break fixture winner is invalid', 409);
+    }
   }
   const standings = await client.query<{ participant_id: string; rank: number }>(
     `select participant_id, rank from tournament_standing
       where tournament_id = $1 and participant_id = any($2::uuid[])
       order by rank`,
-    [tournamentId, participantIds],
+    [tournamentId, roundParticipantIds],
   );
-  if (standings.rows.length !== participantIds.length) return false;
+  if (standings.rows.length !== roundParticipantIds.length) {
+    throw new AppError('conflict', 'tie-break standings are incomplete', 409);
+  }
   const stats = new Map(
-    participantIds.map((participantId) => [
+    roundParticipantIds.map((participantId) => [
       participantId,
       { participantId, wins: 0, goalsFor: 0, goalsAgainst: 0 },
     ]),
@@ -1168,7 +1226,9 @@ async function applySettledDailyTieBreakOrder(
   for (const fixture of fixtures.rows) {
     const home = stats.get(fixture.home_participant_id!);
     const away = stats.get(fixture.away_participant_id!);
-    if (!home || !away) return false;
+    if (!home || !away) {
+      throw new AppError('conflict', 'tie-break fixture participants are invalid', 409);
+    }
     home.goalsFor += Number(fixture.home_score);
     home.goalsAgainst += Number(fixture.away_score);
     away.goalsFor += Number(fixture.away_score);
@@ -1182,12 +1242,14 @@ async function applySettledDailyTieBreakOrder(
     right.wins - left.wins ||
     right.goalsFor - right.goalsAgainst - (left.goalsFor - left.goalsAgainst) ||
     right.goalsFor - left.goalsFor;
-  const ordered = [...stats.values()].sort(compareCompetitively);
-  if (
-    ordered.some((row, index) => index > 0 && compareCompetitively(ordered[index - 1]!, row) === 0)
-  ) {
-    return false;
-  }
+  const rankByParticipant = new Map(
+    standings.rows.map((standing) => [standing.participant_id, Number(standing.rank)]),
+  );
+  const ordered = [...stats.values()].sort(
+    (left, right) =>
+      compareCompetitively(left, right) ||
+      rankByParticipant.get(left.participantId)! - rankByParticipant.get(right.participantId)!,
+  );
   for (const [index, standing] of standings.rows.entries()) {
     await client.query(
       `update tournament_standing set rank = $3, recalculated_at = now()
@@ -1195,7 +1257,101 @@ async function applySettledDailyTieBreakOrder(
       [tournamentId, ordered[index]!.participantId, standing.rank],
     );
   }
-  return true;
+  const playoffSlots = standings.rows.filter((standing) => Number(standing.rank) <= playoffSize).length;
+  let cursor = 0;
+  while (cursor < ordered.length) {
+    let end = cursor + 1;
+    while (end < ordered.length && compareCompetitively(ordered[cursor]!, ordered[end]!) === 0) {
+      end += 1;
+    }
+    if (cursor < playoffSlots && end > playoffSlots) {
+      return {
+        resolved: false,
+        participantIds: ordered.slice(cursor, end).map((row) => row.participantId),
+        createRoundNumber: Number(latest.number) + 1,
+      };
+    }
+    cursor = end;
+  }
+  return { resolved: true, participantIds: [], createRoundNumber: null };
+}
+
+async function materializeTieBreakRound(
+  client: PoolClient,
+  input: {
+    tournamentId: string;
+    roundNumber: number;
+    participantIds: string[];
+    baseTime: Date;
+    rules: PlayoffRoundRules;
+  },
+): Promise<void> {
+  const existing = await client.query<{ id: string }>(
+    `select id from tournament_round
+      where tournament_id = $1 and stage = 'tiebreak' and number = $2`,
+    [input.tournamentId, input.roundNumber],
+  );
+  if (existing.rows[0]) return;
+  const firstStart = maxDate(input.baseTime, input.rules.firstGameStartsAt ?? input.baseTime);
+  const gameCount = (input.participantIds.length * (input.participantIds.length - 1)) / 2;
+  const windows = buildPlayoffFixtureWindows({
+    gameCount,
+    firstStart,
+    gameWindowMs: input.rules.gameWindowMs,
+    gameBreakMs: input.rules.gameBreakMs,
+  });
+  const round = await client.query<{ id: string }>(
+    `insert into tournament_round
+       (tournament_id, stage, number, name, starts_at, ends_at, status, rules_snapshot)
+     values ($1, 'tiebreak', $2, 'Тай-брейк за выход в плей-офф', $3, $4, 'scheduled', $5)
+     returning id`,
+    [
+      input.tournamentId,
+      input.roundNumber,
+      firstStart,
+      new Date(windows[windows.length - 1]!.endsAt),
+      JSON.stringify({
+        reason: 'playoff_boundary_tie',
+        participantIds: input.participantIds,
+        duelTemplateId: input.rules.duelTemplateId,
+        gameWindowMs: input.rules.gameWindowMs,
+        gameBreakMs: input.rules.gameBreakMs,
+        roundBreakMs: input.rules.roundBreakMs,
+        firstGameStartsAt: firstStart.toISOString(),
+      }),
+    ],
+  );
+  const latestFixtureNumber = await client.query<{ fixture_number: number }>(
+    `select coalesce(max(fixture.fixture_number), 100000)::int as fixture_number
+       from tournament_fixture fixture
+       join tournament_round round on round.id = fixture.round_id and round.stage = 'tiebreak'
+      where fixture.tournament_id = $1`,
+    [input.tournamentId],
+  );
+  const fixtureNumberBase = Number(latestFixtureNumber.rows[0]!.fixture_number);
+  let number = 1;
+  for (let left = 0; left < input.participantIds.length; left += 1) {
+    for (let right = left + 1; right < input.participantIds.length; right += 1) {
+      const window = windows[number - 1]!;
+      await client.query(
+        `insert into tournament_fixture
+           (tournament_id, round_id, fixture_number, home_participant_id,
+            away_participant_id, scheduled_starts_at, window_ends_at, status, result_snapshot)
+         values ($1, $2, $3, $4, $5, $6, $7, 'scheduled', $8)`,
+        [
+          input.tournamentId,
+          round.rows[0]!.id,
+          fixtureNumberBase + number,
+          input.participantIds[left],
+          input.participantIds[right],
+          window.startsAt,
+          window.endsAt,
+          JSON.stringify({ gameNumber: number, duelTemplateId: input.rules.duelTemplateId }),
+        ],
+      );
+      number += 1;
+    }
+  }
 }
 
 export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, now = new Date()) {
@@ -1250,24 +1406,32 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
               tournament.rules_snapshot.config.playoffSize,
             ),
           };
+    let dailyTieBreakRoundToCreate: number | null = null;
     if (
       tournament.rules_snapshot.config.regularSource === 'daily_aggregate' &&
-      rebuilt.boundaryTieParticipantIds.length > 0 &&
-      (await applySettledDailyTieBreakOrder(
+      rebuilt.boundaryTieParticipantIds.length > 0
+    ) {
+      const tieBreak = await applySettledDailyTieBreakOrder(
         client,
         tournamentId,
         rebuilt.boundaryTieParticipantIds,
-      ))
-    ) {
-      rebuilt.boundaryTieParticipantIds = [];
+        tournament.rules_snapshot.config.playoffSize,
+      );
+      rebuilt.boundaryTieParticipantIds = tieBreak.participantIds;
+      dailyTieBreakRoundToCreate = tieBreak.createRoundNumber;
     }
     const baseTime = await playoffBaseTime(client, tournamentId, now, tournament.starts_at);
     if (rebuilt.boundaryTieParticipantIds.length > 0) {
-      const existing = await client.query<{ id: string }>(
-        `select id from tournament_round where tournament_id = $1 and stage = 'tiebreak' limit 1`,
-        [tournamentId],
-      );
-      if (!existing.rows[0]) {
+      let roundToCreate = dailyTieBreakRoundToCreate;
+      if (tournament.rules_snapshot.config.regularSource === 'head_to_head') {
+        const existing = await client.query<{ id: string }>(
+          `select id from tournament_round
+            where tournament_id = $1 and stage = 'tiebreak' limit 1`,
+          [tournamentId],
+        );
+        if (!existing.rows[0]) roundToCreate = 1;
+      }
+      if (roundToCreate !== null) {
         const rules = tieBreakRules(tournament.rules_snapshot);
         if (rules.duelTemplateId === null) {
           throw new AppError(
@@ -1276,59 +1440,13 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
             409,
           );
         }
-        const firstStart = maxDate(baseTime, rules.firstGameStartsAt ?? baseTime);
-        const gameCount =
-          (rebuilt.boundaryTieParticipantIds.length *
-            (rebuilt.boundaryTieParticipantIds.length - 1)) /
-          2;
-        const windows = buildPlayoffFixtureWindows({
-          gameCount,
-          firstStart,
-          gameWindowMs: rules.gameWindowMs,
-          gameBreakMs: rules.gameBreakMs,
+        await materializeTieBreakRound(client, {
+          tournamentId,
+          roundNumber: roundToCreate,
+          participantIds: rebuilt.boundaryTieParticipantIds,
+          baseTime,
+          rules,
         });
-        const round = await client.query<{ id: string }>(
-          `insert into tournament_round
-             (tournament_id, stage, number, name, starts_at, ends_at, status, rules_snapshot)
-           values ($1, 'tiebreak', 1, 'Тай-брейк за выход в плей-офф', $2, $3, 'scheduled', $4)
-           returning id`,
-          [
-            tournamentId,
-            firstStart,
-            new Date(windows[windows.length - 1]!.endsAt),
-            JSON.stringify({
-              reason: 'playoff_boundary_tie',
-              duelTemplateId: rules.duelTemplateId,
-              gameWindowMs: rules.gameWindowMs,
-              gameBreakMs: rules.gameBreakMs,
-              roundBreakMs: rules.roundBreakMs,
-              firstGameStartsAt: firstStart.toISOString(),
-            }),
-          ],
-        );
-        let number = 1;
-        for (let left = 0; left < rebuilt.boundaryTieParticipantIds.length; left += 1) {
-          for (let right = left + 1; right < rebuilt.boundaryTieParticipantIds.length; right += 1) {
-            const window = windows[number - 1]!;
-            await client.query(
-              `insert into tournament_fixture
-                 (tournament_id, round_id, fixture_number, home_participant_id,
-                  away_participant_id, scheduled_starts_at, window_ends_at, status, result_snapshot)
-               values ($1, $2, 100000 + $3, $4, $5, $6, $7, 'scheduled', $8)`,
-              [
-                tournamentId,
-                round.rows[0]!.id,
-                number,
-                rebuilt.boundaryTieParticipantIds[left],
-                rebuilt.boundaryTieParticipantIds[right],
-                window.startsAt,
-                window.endsAt,
-                JSON.stringify({ gameNumber: number, duelTemplateId: rules.duelTemplateId }),
-              ],
-            );
-            number += 1;
-          }
-        }
       }
       return {
         tournamentId,
