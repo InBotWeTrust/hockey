@@ -113,6 +113,10 @@ function RouteLoading(): JSX.Element {
 }
 
 export function appBackdropClassName(pathname: string): string {
+  if (pathname === '/login') {
+    return 'app-shell--login';
+  }
+
   if (pathname === '/admin') {
     return 'app-shell--arena app-shell--arena-admin';
   }

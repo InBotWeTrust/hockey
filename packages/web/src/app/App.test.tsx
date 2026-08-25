@@ -192,6 +192,10 @@ describe('App routing + auth', () => {
 });
 
 describe('app backdrop variants', () => {
+  it('uses the dedicated login rink background on the sign-in screen', () => {
+    expect(appBackdropClassName('/login')).toBe('app-shell--login');
+  });
+
   it('keeps the chat list on the standard arena and lightens only nested chat routes', () => {
     expect(appBackdropClassName('/chat')).toBe('app-shell--arena');
     expect(appBackdropClassName('/chat/conversation-1')).toBe(
