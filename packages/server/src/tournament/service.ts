@@ -20,6 +20,7 @@ import {
 } from './fixtureNotifications.js';
 import { lockTournament, lockTournamentFixture } from './locks.js';
 import { canTransitionTournament } from './lifecycle.js';
+import { tournamentSlugBase } from './slug.js';
 import type { TournamentConfig, TournamentStatus } from './types.js';
 
 export interface TournamentRulesSnapshot {
@@ -151,7 +152,7 @@ export async function isTournamentFeatureEnabled(pool: Pool): Promise<boolean> {
 export async function createTournamentDraft(
   pool: Pool,
   input: {
-    slug: string;
+    slug?: string;
     title: string;
     description: string;
     rules: TournamentRulesSnapshot;
@@ -162,6 +163,7 @@ export async function createTournamentDraft(
   },
 ) {
   return inTransaction(pool, async (client) => {
+    const slug = input.slug ?? (await createUniqueTournamentSlug(client, input.title));
     const { rows } = await client.query<TournamentRow>(
       `insert into tournament
          (slug, title, description, regular_source, visibility, current_revision,
@@ -169,7 +171,7 @@ export async function createTournamentDraft(
        values ($1, $2, $3, $4, $5, 1, $6, $7, $8, $9, $9)
        returning *, 0::int as participant_count, $10::jsonb as rules_snapshot`,
       [
-        input.slug,
+        slug,
         input.title,
         input.description,
         input.rules.config.regularSource,
@@ -190,6 +192,17 @@ export async function createTournamentDraft(
     );
     return mapTournament(tournament);
   });
+}
+
+async function createUniqueTournamentSlug(client: PoolClient, title: string): Promise<string> {
+  await client.query(`select pg_advisory_xact_lock(hashtext('tournament-slug-generation'))`);
+  const base = tournamentSlugBase(title);
+  for (let suffix = 1; ; suffix += 1) {
+    const ending = suffix === 1 ? '' : `-${suffix}`;
+    const candidate = `${base.slice(0, 80 - ending.length).replace(/-+$/g, '')}${ending}`;
+    const exists = await client.query(`select 1 from tournament where slug = $1`, [candidate]);
+    if (exists.rowCount === 0) return candidate;
+  }
 }
 
 export async function listAdminTournaments(pool: Pool) {
@@ -1908,11 +1921,11 @@ export async function getTournamentBracket(pool: Pool, tournamentId: string) {
 
 export async function duplicateTournamentDraft(
   pool: Pool,
-  input: { tournamentId: string; slug: string; title: string; createdBy: string },
+  input: { tournamentId: string; slug?: string; title: string; createdBy: string },
 ) {
   const source = await getTournament(pool, input.tournamentId);
   return createTournamentDraft(pool, {
-    slug: input.slug,
+    ...(input.slug !== undefined ? { slug: input.slug } : {}),
     title: input.title,
     description: source.description,
     rules: source.rules,

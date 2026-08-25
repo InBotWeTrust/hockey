@@ -608,6 +608,26 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     await pool.end();
   });
 
+  it('generates unique slugs for concurrent drafts when the admin omits them', async () => {
+    await seedUsers(pool, 0);
+    const input = {
+      title: 'Кубок Севера',
+      description: '',
+      rules: rules(0),
+      createdBy: ADMIN_ID,
+      registrationOpensAt: null,
+      registrationClosesAt: null,
+      startsAt: null,
+    };
+
+    const drafts = await Promise.all([
+      createTournamentDraft(pool, input),
+      createTournamentDraft(pool, input),
+    ]);
+
+    expect(drafts.map((draft) => draft.slug).sort()).toEqual(['kubok-severa', 'kubok-severa-2']);
+  });
+
   it('charges and refunds an entry fee exactly once under concurrent requests', async () => {
     await seedUsers(pool, 100);
     const tournament = await createPublishedTournament(pool, 'concurrent-entry-fee', 25);

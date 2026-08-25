@@ -83,7 +83,8 @@ const draftSchema = z.object({
     .trim()
     .min(2)
     .max(80)
-    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+    .optional(),
   title: z.string().trim().min(1).max(160),
   description: z.string().trim().max(10_000).default(''),
   rules: rulesSchema,
@@ -308,7 +309,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
   app.post('/admin/tournaments', admin, async (req, reply) => {
     const body = draftSchema.parse(req.body);
     const tournament = await createTournamentDraft(app.pg, {
-      slug: body.slug,
+      ...(body.slug !== undefined ? { slug: body.slug } : {}),
       title: body.title,
       description: body.description,
       rules: parseRules(body.rules),
@@ -353,13 +354,16 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
     const params = z.object({ tournamentId: uuid }).parse(req.params);
     const body = z
       .object({
-        slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+        slug: z
+          .string()
+          .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+          .optional(),
         title: z.string().trim().min(1).max(160),
       })
       .parse(req.body);
     const tournament = await duplicateTournamentDraft(app.pg, {
       tournamentId: params.tournamentId,
-      slug: body.slug,
+      ...(body.slug !== undefined ? { slug: body.slug } : {}),
       title: body.title,
       createdBy: req.user.id,
     });
