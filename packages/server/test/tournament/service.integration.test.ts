@@ -123,6 +123,24 @@ async function createPublishedTournament(
   return tournament;
 }
 
+async function createLiveFixture(
+  pool: Pool,
+  input: { slug: string; title: string; playerIds: readonly string[] },
+) {
+  const tournament = await createPublishedTournament(pool, input.slug, 0);
+  await pool.query(`update tournament set title = $2 where id = $1`, [tournament.id, input.title]);
+  for (const playerId of input.playerIds) {
+    await applyToTournament(pool, tournament.id, playerId);
+  }
+  await generateRegularSchedule(pool, tournament.id, tournament.revision);
+  await publishRegularSchedule(pool, tournament.id);
+  const fixture = await pool.query<{ id: string }>(
+    `select id from tournament_fixture where tournament_id = $1 order by fixture_number limit 1`,
+    [tournament.id],
+  );
+  return { fixtureId: fixture.rows[0]!.id, tournamentId: tournament.id, title: input.title };
+}
+
 function playoffTournamentRules(
   playoffSize: 2 | 4,
   extra: Record<string, unknown> = {},
@@ -457,6 +475,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       scheduledStartsAt: '2030-09-01T07:00:00.000Z',
       windowEndsAt: '2030-09-01T08:00:00.000Z',
       proposal: null,
+      overlapWarnings: [],
       duelMatchId: null,
       participants: [],
     });
@@ -482,6 +501,168 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         proposedByUserId: PLAYER_IDS[0],
         state: 'accepted',
       },
+    });
+  });
+
+  it('returns no live-overlap warning when neither participant has another fixture at the proposed time', async () => {
+    await seedUsers(pool, 0);
+    const current = await createLiveFixture(pool, {
+      slug: 'live-overlap-none',
+      title: 'Текущий кубок',
+      playerIds: [PLAYER_IDS[0], PLAYER_IDS[1]],
+    });
+
+    await expect(
+      proposeFixtureLiveTime(pool, {
+        fixtureId: current.fixtureId,
+        userId: PLAYER_IDS[0],
+        proposedAt: new Date('2030-09-01T07:30:00.000Z'),
+      }),
+    ).resolves.toMatchObject({ overlapWarnings: [] });
+  });
+
+  it('warns when the proposing player has a scheduled fixture in another tournament', async () => {
+    await seedUsers(pool, 0);
+    const current = await createLiveFixture(pool, {
+      slug: 'live-overlap-same-player-current',
+      title: 'Текущий кубок',
+      playerIds: [PLAYER_IDS[0], PLAYER_IDS[1]],
+    });
+    const conflict = await createLiveFixture(pool, {
+      slug: 'live-overlap-same-player-conflict',
+      title: 'Другой кубок',
+      playerIds: [PLAYER_IDS[0], PLAYER_IDS[2]],
+    });
+
+    await expect(
+      proposeFixtureLiveTime(pool, {
+        fixtureId: current.fixtureId,
+        userId: PLAYER_IDS[0],
+        proposedAt: new Date('2030-09-01T07:30:00.000Z'),
+      }),
+    ).resolves.toMatchObject({
+      overlapWarnings: [
+        {
+          fixtureId: conflict.fixtureId,
+          tournamentId: conflict.tournamentId,
+          tournamentTitle: 'Другой кубок',
+          scheduledStartsAt: '2030-09-01T07:00:00.000Z',
+          windowEndsAt: '2030-09-01T08:00:00.000Z',
+          acceptedLiveAt: null,
+        },
+      ],
+    });
+  });
+
+  it('warns when the opponent has a scheduled fixture in another tournament', async () => {
+    await seedUsers(pool, 0);
+    const current = await createLiveFixture(pool, {
+      slug: 'live-overlap-opponent-current',
+      title: 'Текущий кубок',
+      playerIds: [PLAYER_IDS[0], PLAYER_IDS[1]],
+    });
+    const conflict = await createLiveFixture(pool, {
+      slug: 'live-overlap-opponent-conflict',
+      title: 'Кубок соперника',
+      playerIds: [PLAYER_IDS[1], PLAYER_IDS[2]],
+    });
+
+    await expect(
+      proposeFixtureLiveTime(pool, {
+        fixtureId: current.fixtureId,
+        userId: PLAYER_IDS[0],
+        proposedAt: new Date('2030-09-01T07:30:00.000Z'),
+      }),
+    ).resolves.toMatchObject({ overlapWarnings: [{ fixtureId: conflict.fixtureId }] });
+  });
+
+  it.each(['settled', 'forfeit', 'cancelled'] as const)(
+    'ignores a %s conflicting fixture',
+    async (terminalStatus) => {
+      await seedUsers(pool, 0);
+      const current = await createLiveFixture(pool, {
+        slug: `live-overlap-terminal-current-${terminalStatus}`,
+        title: 'Текущий кубок',
+        playerIds: [PLAYER_IDS[0], PLAYER_IDS[1]],
+      });
+      const conflict = await createLiveFixture(pool, {
+        slug: `live-overlap-terminal-conflict-${terminalStatus}`,
+        title: 'Закрытый кубок',
+        playerIds: [PLAYER_IDS[0], PLAYER_IDS[2]],
+      });
+      await pool.query(`update tournament_fixture set status = $2 where id = $1`, [
+        conflict.fixtureId,
+        terminalStatus,
+      ]);
+
+      await expect(
+        proposeFixtureLiveTime(pool, {
+          fixtureId: current.fixtureId,
+          userId: PLAYER_IDS[0],
+          proposedAt: new Date('2030-09-01T07:30:00.000Z'),
+        }),
+      ).resolves.toMatchObject({ overlapWarnings: [] });
+    },
+  );
+
+  it('returns the same warning for the opponent counter-proposal', async () => {
+    await seedUsers(pool, 0);
+    const current = await createLiveFixture(pool, {
+      slug: 'live-overlap-counter-current',
+      title: 'Текущий кубок',
+      playerIds: [PLAYER_IDS[0], PLAYER_IDS[1]],
+    });
+    const conflict = await createLiveFixture(pool, {
+      slug: 'live-overlap-counter-conflict',
+      title: 'Кубок соперника',
+      playerIds: [PLAYER_IDS[1], PLAYER_IDS[2]],
+    });
+    await proposeFixtureLiveTime(pool, {
+      fixtureId: current.fixtureId,
+      userId: PLAYER_IDS[0],
+      proposedAt: new Date('2030-09-01T07:20:00.000Z'),
+    });
+
+    await expect(
+      proposeFixtureLiveTime(pool, {
+        fixtureId: current.fixtureId,
+        userId: PLAYER_IDS[1],
+        proposedAt: new Date('2030-09-01T07:30:00.000Z'),
+      }),
+    ).resolves.toMatchObject({
+      state: 'pending',
+      overlapWarnings: [{ fixtureId: conflict.fixtureId }],
+    });
+  });
+
+  it('recomputes the warning when a conflict appears after proposal and before acceptance', async () => {
+    await seedUsers(pool, 0);
+    const current = await createLiveFixture(pool, {
+      slug: 'live-overlap-accept-current',
+      title: 'Текущий кубок',
+      playerIds: [PLAYER_IDS[0], PLAYER_IDS[1]],
+    });
+    const proposal = await proposeFixtureLiveTime(pool, {
+      fixtureId: current.fixtureId,
+      userId: PLAYER_IDS[0],
+      proposedAt: new Date('2030-09-01T07:30:00.000Z'),
+    });
+    const conflict = await createLiveFixture(pool, {
+      slug: 'live-overlap-accept-conflict',
+      title: 'Поздний кубок',
+      playerIds: [PLAYER_IDS[0], PLAYER_IDS[2]],
+    });
+
+    await expect(
+      respondFixtureLiveProposal(pool, {
+        fixtureId: current.fixtureId,
+        proposalId: proposal.id,
+        userId: PLAYER_IDS[1],
+        accept: true,
+      }),
+    ).resolves.toMatchObject({
+      state: 'accepted',
+      overlapWarnings: [{ fixtureId: conflict.fixtureId }],
     });
   });
 

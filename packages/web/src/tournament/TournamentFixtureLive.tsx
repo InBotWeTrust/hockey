@@ -5,6 +5,7 @@ import {
   proposeFixtureLiveTime,
   respondFixtureLiveProposal,
   type TournamentFixture,
+  type TournamentFixtureLiveOverlapWarning,
   type TournamentLiveState,
 } from '../api/tournament.js';
 import { refreshAccessToken } from '../api/apiFetch.js';
@@ -44,6 +45,12 @@ function formatDate(value: string | null): string {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return 'Время не согласовано';
   return date.toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function overlapTime(warning: TournamentFixtureLiveOverlapWarning): string {
+  if (warning.acceptedLiveAt !== null)
+    return `согласованное время: ${formatDate(warning.acceptedLiveAt)}`;
+  return `окно: ${formatDate(warning.scheduledStartsAt)} — ${formatDate(warning.windowEndsAt)}`;
 }
 
 export function TournamentFixtureLive({
@@ -144,6 +151,29 @@ export function TournamentFixtureLive({
           {live.score.home} : {live.score.away}
         </div>
       </div>
+      {live.overlapWarnings.length > 0 && (
+        <div
+          role="alert"
+          style={{
+            padding: 12,
+            borderRadius: 16,
+            background: 'rgba(196, 122, 30, .14)',
+            color: 'var(--ink)',
+          }}
+        >
+          <div style={{ fontWeight: 850 }}>Время пересекается с другой игрой</div>
+          <div style={{ marginTop: 4, color: 'var(--muted)', fontWeight: 700 }}>
+            Это предупреждение: вы всё равно можете договориться о времени.
+          </div>
+          <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
+            {live.overlapWarnings.map((warning) => (
+              <li key={warning.fixtureId}>
+                {warning.tournamentTitle}: {overlapTime(warning)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div style={{ display: 'grid', gap: 8 }}>
         {live.participants.map((participant) => (
           <div key={participant.userId} style={{ padding: 10, borderRadius: 14, background: 'rgba(255,255,255,.55)' }}>

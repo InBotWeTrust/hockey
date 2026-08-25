@@ -79,6 +79,7 @@ describe('TournamentFixtureLive', () => {
           proposedByUserId: 'home-user',
           state: 'pending',
         },
+        overlapWarnings: [],
         duelMatchId: '00000000-0000-4000-8000-000000000803',
         participants: [
           { userId: 'home-user', state: 'ready', currentPeriod: 1, goals: 2, shotsTaken: 10 },
@@ -90,6 +91,7 @@ describe('TournamentFixtureLive', () => {
       fixtureId: fixture.id,
       proposalId: '00000000-0000-4000-8000-000000000802',
       state: 'accepted',
+      overlapWarnings: [],
     });
   });
 
@@ -129,5 +131,42 @@ describe('TournamentFixtureLive', () => {
 
     expect(screen.getByText('Восстанавливаем live-соединение…')).toBeInTheDocument();
     expect(onPlay).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a Russian non-blocking warning for another tournament fixture at the proposed time', async () => {
+    vi.spyOn(api, 'fetchFixtureLiveState').mockResolvedValue({
+      live: {
+        fixtureId: fixture.id,
+        status: 'active',
+        score: { home: 2, away: 1 },
+        scheduledStartsAt: fixture.scheduledStartsAt,
+        windowEndsAt: fixture.windowEndsAt,
+        proposal: {
+          id: '00000000-0000-4000-8000-000000000802',
+          proposedAt: '2030-09-01T07:30:00.000Z',
+          proposedByUserId: 'home-user',
+          state: 'pending',
+        },
+        overlapWarnings: [
+          {
+            fixtureId: '00000000-0000-4000-8000-000000000804',
+            tournamentId: '00000000-0000-4000-8000-000000000805',
+            tournamentTitle: 'Кубок соперника',
+            scheduledStartsAt: '2030-09-01T07:00:00.000Z',
+            windowEndsAt: '2030-09-01T08:00:00.000Z',
+            acceptedLiveAt: null,
+          },
+        ],
+        duelMatchId: null,
+        participants: [],
+      },
+    });
+
+    renderLive();
+
+    const warning = await screen.findByRole('alert');
+    expect(warning).toHaveTextContent('Время пересекается с другой игрой');
+    expect(warning).toHaveTextContent('Кубок соперника');
+    expect(screen.getByRole('button', { name: 'Подтвердить время' })).not.toBeDisabled();
   });
 });

@@ -56,6 +56,15 @@ export interface TournamentLiveParticipant {
   shotsTaken: number;
 }
 
+export interface TournamentFixtureLiveOverlapWarning {
+  fixtureId: string;
+  tournamentId: string;
+  tournamentTitle: string;
+  scheduledStartsAt: string | null;
+  windowEndsAt: string | null;
+  acceptedLiveAt: string | null;
+}
+
 export interface TournamentLiveState {
   fixtureId: string;
   status: string;
@@ -68,6 +77,7 @@ export interface TournamentLiveState {
     proposedByUserId: string | null;
     state: string | null;
   } | null;
+  overlapWarnings: TournamentFixtureLiveOverlapWarning[];
   duelMatchId: string | null;
   participants: TournamentLiveParticipant[];
 }
@@ -123,7 +133,13 @@ export function fetchFixtureLiveState(fixtureId: string) {
 }
 
 export function proposeFixtureLiveTime(fixtureId: string, proposedAt: string) {
-  return apiFetch<{ id: string; fixtureId: string; proposedAt: string; state: 'pending' }>(
+  return apiFetch<{
+    id: string;
+    fixtureId: string;
+    proposedAt: string;
+    state: 'pending';
+    overlapWarnings: TournamentFixtureLiveOverlapWarning[];
+  }>(
     `/tournaments/fixtures/${fixtureId}/live/proposals`,
     { method: 'POST', body: JSON.stringify({ proposedAt }) },
   );
@@ -138,6 +154,7 @@ export function respondFixtureLiveProposal(
     fixtureId: string;
     proposalId: string;
     state: 'accepted' | 'declined';
+    overlapWarnings: TournamentFixtureLiveOverlapWarning[];
   }>(`/tournaments/fixtures/${fixtureId}/live/proposals/${proposalId}/respond`, {
     method: 'POST',
     body: JSON.stringify({ accept }),
