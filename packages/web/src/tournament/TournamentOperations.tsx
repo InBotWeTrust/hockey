@@ -28,7 +28,13 @@ import {
   type AdminTournamentFixture,
 } from './adminApi.js';
 
-type OperationsTab = 'participants' | 'schedule' | 'standings' | 'bracket' | 'rewards' | 'dispatches';
+type OperationsTab =
+  | 'participants'
+  | 'schedule'
+  | 'standings'
+  | 'bracket'
+  | 'rewards'
+  | 'dispatches';
 
 const tabs: Array<{ key: OperationsTab; label: string }> = [
   { key: 'participants', label: 'Заявки и оплаты' },
@@ -71,7 +77,9 @@ export function TournamentOperations({
   const [endsAt, setEndsAt] = useState('');
   const [absent, setAbsent] = useState<'home' | 'away' | 'both'>('home');
   const [audience, setAudience] = useState<'approved' | 'all_participants'>('approved');
-  const [dispatchKind, setDispatchKind] = useState<'push' | 'direct_message' | 'official_news'>('push');
+  const [dispatchKind, setDispatchKind] = useState<'push' | 'direct_message' | 'official_news'>(
+    'push',
+  );
   const [dispatchTitle, setDispatchTitle] = useState('');
   const [dispatchBody, setDispatchBody] = useState('');
   const [inviteUserId, setInviteUserId] = useState('');
@@ -120,7 +128,8 @@ export function TournamentOperations({
   const lifecycle = useMutation({
     mutationFn: (action: 'publish' | 'generate' | 'publish_schedule' | 'playoffs') => {
       if (action === 'publish') return publishAdminTournament(tournament.id, tournament.revision);
-      if (action === 'generate') return generateAdminTournamentSchedule(tournament.id, tournament.revision);
+      if (action === 'generate')
+        return generateAdminTournamentSchedule(tournament.id, tournament.revision);
       if (action === 'publish_schedule') return publishAdminTournamentSchedule(tournament.id);
       return startAdminTournamentPlayoffs(tournament.id);
     },
@@ -187,7 +196,6 @@ export function TournamentOperations({
   const duplicate = useMutation({
     mutationFn: () =>
       duplicateAdminTournament(tournament.id, {
-        slug: `${tournament.slug}-copy`,
         title: `Копия: ${tournament.title}`,
       }),
     onSuccess: refreshOperations,
@@ -239,45 +247,188 @@ export function TournamentOperations({
 
   return (
     <section style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <button type="button" className="btn btn--ghost" onClick={onBack}>К списку турниров</button>
+      <button type="button" className="btn btn--ghost" onClick={onBack}>
+        К списку турниров
+      </button>
       <div className="glass" style={{ borderRadius: 22, padding: 16 }}>
-        <div className="section-label" style={{ margin: 0 }}>{status} · ревизия {tournament.revision}</div>
+        <div className="section-label" style={{ margin: 0 }}>
+          {status} · ревизия {tournament.revision}
+        </div>
         <h2 style={{ margin: '5px 0 0' }}>{tournament.title}</h2>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
-          {status === 'draft' && <button type="button" className="btn btn--ghost" onClick={onEdit}>Редактировать draft</button>}
-          <button type="button" className="btn btn--ghost" disabled={duplicate.isPending} onClick={() => duplicate.mutate()}>Дублировать</button>
-          {status === 'draft' && <button type="button" className="btn btn--cta" onClick={() => lifecycle.mutate('publish')}>Опубликовать набор</button>}
-          {['registration', 'registration_blocked'].includes(status) && <button type="button" className="btn btn--cta" onClick={() => lifecycle.mutate('generate')}>Сгенерировать календарь</button>}
-          {status === 'scheduling' && <button type="button" className="btn btn--cta" onClick={() => lifecycle.mutate('publish_schedule')}>Опубликовать календарь</button>}
-          {status === 'regular' && <button type="button" className="btn btn--cta" onClick={() => lifecycle.mutate('playoffs')}>Запустить плей-офф</button>}
-          {!['draft', 'paused', 'completed', 'cancelled', 'archived'].includes(status) && <button type="button" className="btn btn--ghost" disabled={reason.length < 3 || pause.isPending} onClick={() => pause.mutate()}>Приостановить</button>}
-          {status === 'paused' && <button type="button" className="btn btn--cta" disabled={reason.length < 3 || resume.isPending} onClick={() => resume.mutate()}>Возобновить</button>}
-          {!['draft', 'cancelled', 'completed', 'archived'].includes(status) && <button type="button" className="btn btn--ghost" disabled={cancel.isPending} onClick={() => cancel.mutate()}>Отменить турнир</button>}
-          {['cancelled', 'completed'].includes(status) && <button type="button" className="btn btn--ghost" disabled={archive.isPending} onClick={() => archive.mutate()}>Архивировать</button>}
-          {status === 'draft' && tournament.participantCount === 0 && !confirmDelete && <button type="button" className="btn btn--ghost" onClick={() => setConfirmDelete(true)}>Удалить draft</button>}
-          {status === 'draft' && tournament.participantCount === 0 && confirmDelete && <button type="button" className="btn btn--cta" disabled={removeDraft.isPending} onClick={() => removeDraft.mutate()}>Подтвердить удаление</button>}
+          {status === 'draft' && (
+            <button type="button" className="btn btn--ghost" onClick={onEdit}>
+              Редактировать draft
+            </button>
+          )}
+          <button
+            type="button"
+            className="btn btn--ghost"
+            disabled={duplicate.isPending}
+            onClick={() => duplicate.mutate()}
+          >
+            Дублировать
+          </button>
+          {status === 'draft' && (
+            <button
+              type="button"
+              className="btn btn--cta"
+              onClick={() => lifecycle.mutate('publish')}
+            >
+              Опубликовать набор
+            </button>
+          )}
+          {['registration', 'registration_blocked'].includes(status) && (
+            <button
+              type="button"
+              className="btn btn--cta"
+              onClick={() => lifecycle.mutate('generate')}
+            >
+              Сгенерировать календарь
+            </button>
+          )}
+          {status === 'scheduling' && (
+            <button
+              type="button"
+              className="btn btn--cta"
+              onClick={() => lifecycle.mutate('publish_schedule')}
+            >
+              Опубликовать календарь
+            </button>
+          )}
+          {status === 'regular' && (
+            <button
+              type="button"
+              className="btn btn--cta"
+              onClick={() => lifecycle.mutate('playoffs')}
+            >
+              Запустить плей-офф
+            </button>
+          )}
+          {!['draft', 'paused', 'completed', 'cancelled', 'archived'].includes(status) && (
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={reason.length < 3 || pause.isPending}
+              onClick={() => pause.mutate()}
+            >
+              Приостановить
+            </button>
+          )}
+          {status === 'paused' && (
+            <button
+              type="button"
+              className="btn btn--cta"
+              disabled={reason.length < 3 || resume.isPending}
+              onClick={() => resume.mutate()}
+            >
+              Возобновить
+            </button>
+          )}
+          {!['draft', 'cancelled', 'completed', 'archived'].includes(status) && (
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={cancel.isPending}
+              onClick={() => cancel.mutate()}
+            >
+              Отменить турнир
+            </button>
+          )}
+          {['cancelled', 'completed'].includes(status) && (
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={archive.isPending}
+              onClick={() => archive.mutate()}
+            >
+              Архивировать
+            </button>
+          )}
+          {status === 'draft' && tournament.participantCount === 0 && !confirmDelete && (
+            <button type="button" className="btn btn--ghost" onClick={() => setConfirmDelete(true)}>
+              Удалить draft
+            </button>
+          )}
+          {status === 'draft' && tournament.participantCount === 0 && confirmDelete && (
+            <button
+              type="button"
+              className="btn btn--cta"
+              disabled={removeDraft.isPending}
+              onClick={() => removeDraft.mutate()}
+            >
+              Подтвердить удаление
+            </button>
+          )}
         </div>
       </div>
       <div style={{ display: 'flex', gap: 6, overflowX: 'auto' }}>
-        {tabs.map((item) => <button key={item.key} type="button" className={tab === item.key ? 'btn btn--cta' : 'btn btn--ghost'} style={{ minWidth: 'max-content' }} onClick={() => setTab(item.key)}>{item.label}</button>)}
+        {tabs.map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            className={tab === item.key ? 'btn btn--cta' : 'btn btn--ghost'}
+            style={{ minWidth: 'max-content' }}
+            onClick={() => setTab(item.key)}
+          >
+            {item.label}
+          </button>
+        ))}
       </div>
       <div className="glass" style={{ borderRadius: 22, padding: 16, display: 'grid', gap: 10 }}>
         {tab === 'participants' && (
           <>
-            <label>Причина административного решения<input value={reason} onChange={(event) => setReason(event.target.value)} /></label>
+            <label>
+              Причина административного решения
+              <input value={reason} onChange={(event) => setReason(event.target.value)} />
+            </label>
             {['draft', 'registration', 'registration_blocked'].includes(status) && (
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <input aria-label="User ID для приглашения" placeholder="UUID игрока" value={inviteUserId} onChange={(event) => setInviteUserId(event.target.value)} />
-                <button type="button" className="btn btn--ghost" disabled={!inviteUserId || invite.isPending} onClick={() => invite.mutate()}>Пригласить игрока</button>
+                <input
+                  aria-label="User ID для приглашения"
+                  placeholder="UUID игрока"
+                  value={inviteUserId}
+                  onChange={(event) => setInviteUserId(event.target.value)}
+                />
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  disabled={!inviteUserId || invite.isPending}
+                  onClick={() => invite.mutate()}
+                >
+                  Пригласить игрока
+                </button>
               </div>
             )}
             {participants.data?.participants.map((participant) => (
-              <div key={participant.id} style={{ padding: 10, borderRadius: 14, background: 'rgba(255,255,255,.55)' }}>
+              <div
+                key={participant.id}
+                style={{ padding: 10, borderRadius: 14, background: 'rgba(255,255,255,.55)' }}
+              >
                 <div style={{ fontWeight: 850 }}>{participant.display_name}</div>
-                <div style={{ color: 'var(--muted)' }}>{participant.state} · взнос {participant.entry_fee_coins} · {participant.entry_fee_state}</div>
+                <div style={{ color: 'var(--muted)' }}>
+                  {participant.state} · взнос {participant.entry_fee_coins} ·{' '}
+                  {participant.entry_fee_state}
+                </div>
                 <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                  {['applied', 'invited'].includes(participant.state) && <button type="button" className="btn btn--cta" onClick={() => approve.mutate(participant.id)}>Одобрить заявку</button>}
-                  {participant.state === 'approved' && <button type="button" className="btn btn--ghost" onClick={() => disqualify.mutate(participant.id)}>Дисквалифицировать</button>}
+                  {['applied', 'invited'].includes(participant.state) && (
+                    <button
+                      type="button"
+                      className="btn btn--cta"
+                      onClick={() => approve.mutate(participant.id)}
+                    >
+                      Одобрить заявку
+                    </button>
+                  )}
+                  {participant.state === 'approved' && (
+                    <button
+                      type="button"
+                      className="btn btn--ghost"
+                      onClick={() => disqualify.mutate(participant.id)}
+                    >
+                      Дисквалифицировать
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -288,37 +439,146 @@ export function TournamentOperations({
           <>
             {schedule.isLoading && <div>Загрузка календаря…</div>}
             {schedule.isError && <div role="alert">Не удалось загрузить календарь.</div>}
-            {!schedule.isLoading && !schedule.isError && schedule.data?.fixtures.length === 0 && <div>Календарь пока пуст.</div>}
+            {!schedule.isLoading && !schedule.isError && schedule.data?.fixtures.length === 0 && (
+              <div>Календарь пока пуст.</div>
+            )}
             {schedule.data?.fixtures.map((fixture) => (
-              <button key={fixture.id} type="button" className="glass" style={{ padding: 10, borderRadius: 14, textAlign: 'left' }} onClick={() => setSelectedFixture(fixture)}>
-                №{fixture.fixtureNumber}: {fixture.home?.name ?? 'TBD'} — {fixture.away?.name ?? 'TBD'} · {readableDate(fixture.scheduledStartsAt)} · {fixture.status}
+              <button
+                key={fixture.id}
+                type="button"
+                className="glass"
+                style={{ padding: 10, borderRadius: 14, textAlign: 'left' }}
+                onClick={() => setSelectedFixture(fixture)}
+              >
+                №{fixture.fixtureNumber}: {fixture.home?.name ?? 'TBD'} —{' '}
+                {fixture.away?.name ?? 'TBD'} · {readableDate(fixture.scheduledStartsAt)} ·{' '}
+                {fixture.status}
               </button>
             ))}
             {selectedFixture !== null && (
               <div style={{ display: 'grid', gap: 8 }}>
                 <strong>Операции матча №{selectedFixture.fixtureNumber}</strong>
-                <input type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} />
-                <input type="datetime-local" value={endsAt} onChange={(event) => setEndsAt(event.target.value)} />
+                <input
+                  type="datetime-local"
+                  value={startsAt}
+                  onChange={(event) => setStartsAt(event.target.value)}
+                />
+                <input
+                  type="datetime-local"
+                  value={endsAt}
+                  onChange={(event) => setEndsAt(event.target.value)}
+                />
                 <input value={reason} onChange={(event) => setReason(event.target.value)} />
-                <button type="button" className="btn btn--cta" disabled={!startsAt || !endsAt || reason.length < 3} onClick={() => reschedule.mutate()}>Перенести матч</button>
-                <select value={absent} onChange={(event) => setAbsent(event.target.value as typeof absent)}><option value="home">Неявка хозяина</option><option value="away">Неявка гостя</option><option value="both">Двойная неявка</option></select>
-                <button type="button" className="btn btn--ghost" disabled={reason.length < 3} onClick={() => noShow.mutate()}>Зафиксировать неявку</button>
+                <button
+                  type="button"
+                  className="btn btn--cta"
+                  disabled={!startsAt || !endsAt || reason.length < 3}
+                  onClick={() => reschedule.mutate()}
+                >
+                  Перенести матч
+                </button>
+                <select
+                  value={absent}
+                  onChange={(event) => setAbsent(event.target.value as typeof absent)}
+                >
+                  <option value="home">Неявка хозяина</option>
+                  <option value="away">Неявка гостя</option>
+                  <option value="both">Двойная неявка</option>
+                </select>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  disabled={reason.length < 3}
+                  onClick={() => noShow.mutate()}
+                >
+                  Зафиксировать неявку
+                </button>
               </div>
             )}
           </>
         )}
-        {tab === 'standings' && (standings.data?.standings.length ? standings.data.standings.map((row, index) => <div key={String(row.user_id ?? index)}>{index + 1}. {rowLabel(row, index)} · {String(row.points ?? 0)} очков</div>) : <div>Таблица пуста.</div>)}
-        {tab === 'bracket' && (bracket.data?.series.length ? bracket.data.series.map((row, index) => <div key={String(row.id ?? index)}>{rowLabel(row, index)} · {String(row.status ?? 'pending')}</div>) : <div>Сетка ещё не создана.</div>)}
-        {tab === 'rewards' && <><button type="button" className="btn btn--cta" onClick={() => reward.mutate('regular')}>Выдать награды регулярки</button><button type="button" className="btn btn--cta" onClick={() => reward.mutate('playoff')}>Выдать награды плей-офф</button><div>Повторный запуск безопасен: сервер использует idempotency key для каждого места и участника.</div></>}
+        {tab === 'standings' &&
+          (standings.data?.standings.length ? (
+            standings.data.standings.map((row, index) => (
+              <div key={String(row.user_id ?? index)}>
+                {index + 1}. {rowLabel(row, index)} · {String(row.points ?? 0)} очков
+              </div>
+            ))
+          ) : (
+            <div>Таблица пуста.</div>
+          ))}
+        {tab === 'bracket' &&
+          (bracket.data?.series.length ? (
+            bracket.data.series.map((row, index) => (
+              <div key={String(row.id ?? index)}>
+                {rowLabel(row, index)} · {String(row.status ?? 'pending')}
+              </div>
+            ))
+          ) : (
+            <div>Сетка ещё не создана.</div>
+          ))}
+        {tab === 'rewards' && (
+          <>
+            <button type="button" className="btn btn--cta" onClick={() => reward.mutate('regular')}>
+              Выдать награды регулярки
+            </button>
+            <button type="button" className="btn btn--cta" onClick={() => reward.mutate('playoff')}>
+              Выдать награды плей-офф
+            </button>
+            <div>
+              Повторный запуск безопасен: сервер использует idempotency key для каждого места и
+              участника.
+            </div>
+          </>
+        )}
         {tab === 'dispatches' && (
           <>
-            <label>Аудитория<select value={audience} onChange={(event) => setAudience(event.target.value as typeof audience)}><option value="approved">Подтверждённые участники</option><option value="all_participants">Все заявки и участники</option></select></label>
+            <label>
+              Аудитория
+              <select
+                value={audience}
+                onChange={(event) => setAudience(event.target.value as typeof audience)}
+              >
+                <option value="approved">Подтверждённые участники</option>
+                <option value="all_participants">Все заявки и участники</option>
+              </select>
+            </label>
             <div>Получателей: {audiencePreview.data?.count ?? '…'}</div>
-            <label>Канал<select value={dispatchKind} onChange={(event) => setDispatchKind(event.target.value as typeof dispatchKind)}><option value="push">Push</option><option value="direct_message">Личные сообщения</option><option value="official_news">Официальный канал новостей</option></select></label>
-            <input placeholder="Заголовок" value={dispatchTitle} onChange={(event) => setDispatchTitle(event.target.value)} />
-            <textarea placeholder="Текст сообщения" value={dispatchBody} onChange={(event) => setDispatchBody(event.target.value)} />
-            <button type="button" className="btn btn--cta" disabled={!dispatchTitle || !dispatchBody || dispatch.isPending} onClick={() => dispatch.mutate()}>Отправить рассылку</button>
-            {dispatches.data?.dispatches.map((item, index) => <div key={String(item.id ?? index)}>{String(item.kind ?? 'dispatch')} · {String(item.status ?? 'pending')} · доставлено {String(item.delivered_count ?? 0)} / {String(item.recipient_count ?? 0)}</div>)}
+            <label>
+              Канал
+              <select
+                value={dispatchKind}
+                onChange={(event) => setDispatchKind(event.target.value as typeof dispatchKind)}
+              >
+                <option value="push">Push</option>
+                <option value="direct_message">Личные сообщения</option>
+                <option value="official_news">Официальный канал новостей</option>
+              </select>
+            </label>
+            <input
+              placeholder="Заголовок"
+              value={dispatchTitle}
+              onChange={(event) => setDispatchTitle(event.target.value)}
+            />
+            <textarea
+              placeholder="Текст сообщения"
+              value={dispatchBody}
+              onChange={(event) => setDispatchBody(event.target.value)}
+            />
+            <button
+              type="button"
+              className="btn btn--cta"
+              disabled={!dispatchTitle || !dispatchBody || dispatch.isPending}
+              onClick={() => dispatch.mutate()}
+            >
+              Отправить рассылку
+            </button>
+            {dispatches.data?.dispatches.map((item, index) => (
+              <div key={String(item.id ?? index)}>
+                {String(item.kind ?? 'dispatch')} · {String(item.status ?? 'pending')} · доставлено{' '}
+                {String(item.delivered_count ?? 0)} / {String(item.recipient_count ?? 0)}
+              </div>
+            ))}
           </>
         )}
       </div>

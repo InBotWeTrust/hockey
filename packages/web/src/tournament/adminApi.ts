@@ -39,8 +39,39 @@ export interface AdminTournamentFixture {
   score: { home: number; away: number };
 }
 
+export interface AdminTournamentDuelTemplate {
+  id: string;
+  title: string;
+  isActive: boolean;
+  duelKind: string;
+  totalPeriods: number;
+  shotsPerPeriod: number;
+}
+
+export interface AdminTournamentUserOption {
+  id: string;
+  displayName: string;
+  avatarUrl: string | null;
+  level: number;
+  isBlocked: boolean;
+  identities: Array<{ username: string | null }>;
+}
+
 export function fetchAdminTournaments(): Promise<{ tournaments: AdminTournament[] }> {
   return apiFetch('/admin/tournaments');
+}
+
+export function fetchAdminTournamentDuelTemplates(): Promise<{
+  templates: AdminTournamentDuelTemplate[];
+}> {
+  return apiFetch('/admin/duel-templates');
+}
+
+export function fetchAdminTournamentUsers(query: string): Promise<{
+  users: AdminTournamentUserOption[];
+}> {
+  const params = new URLSearchParams({ limit: '20', offset: '0', q: query.trim() });
+  return apiFetch(`/admin/users?${params.toString()}`);
 }
 
 export function createAdminTournament(body: Record<string, unknown>) {
@@ -61,14 +92,11 @@ export function updateAdminTournament(
   });
 }
 
-export function duplicateAdminTournament(
-  tournamentId: string,
-  input: { slug: string; title: string },
-) {
-  return apiFetch<{ tournament: AdminTournament }>(
-    `/admin/tournaments/${tournamentId}/duplicate`,
-    { method: 'POST', body: JSON.stringify(input) },
-  );
+export function duplicateAdminTournament(tournamentId: string, input: { title: string }) {
+  return apiFetch<{ tournament: AdminTournament }>(`/admin/tournaments/${tournamentId}/duplicate`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
 }
 
 export function deleteAdminTournamentDraft(tournamentId: string): Promise<void> {

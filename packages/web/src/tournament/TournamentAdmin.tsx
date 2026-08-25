@@ -1,12 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import {
   createAdminTournament,
+  fetchAdminTournamentDuelTemplates,
+  fetchAdminTournamentUsers,
   fetchAdminTournaments,
   updateAdminTournament,
   type AdminTournament,
+  type AdminTournamentUserOption,
 } from './adminApi.js';
 import { TournamentOperations } from './TournamentOperations.js';
 
@@ -452,7 +455,7 @@ function serializeDraft(draft: TournamentDraft): Record<string, unknown> {
     .map((round, index) => ({
       roundNumber: index + 1,
       winsRequired: round.winsRequired,
-      homeSequence: splitList(round.homeSequence, '-').map((side) => side.toUpperCase()),
+      homeSequence: normalizedHomeSequence(round.homeSequence, round.winsRequired),
       duelTemplateId: round.duelTemplateId || null,
       gameWindowMs: round.gameWindowMinutes * 60_000,
       gameBreakMs: round.gameBreakMinutes * 60_000,
@@ -460,7 +463,6 @@ function serializeDraft(draft: TournamentDraft): Record<string, unknown> {
       overtime: { count: round.overtimeCount, shootoutInitialShots: round.shootoutInitialShots },
     }));
   return {
-    slug: draft.slug,
     title: draft.title,
     description: draft.description,
     startsAt: dateOrNull(
@@ -550,42 +552,580 @@ function serializeDraft(draft: TournamentDraft): Record<string, unknown> {
   };
 }
 
+const tieBreakLabels: Record<string, string> = {
+  points: 'Очки',
+  wins: 'Победы',
+  goal_difference: 'Разница голов',
+  goals_for: 'Забитые голы',
+};
+
+function TieBreakEditor({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const criteria = splitList(value).filter((criterion) => tieBreakLabels[criterion]);
+  const move = (index: number, offset: -1 | 1) => {
+    const target = index + offset;
+    if (target < 0 || target >= criteria.length) return;
+    const next = [...criteria];
+    [next[index], next[target]] = [next[target]!, next[index]!];
+    onChange(next.join(','));
+  };
+  return (
+    <fieldset className="tournament-ordered-list">
+      <legend>Критерии равенства</legend>
+      <div className="tournament-ordered-list__hint">Применяются сверху вниз</div>
+      {criteria.map((criterion, index) => (
+        <div key={criterion} className="tournament-ordered-list__row">
+          <strong>
+            {index + 1}. {tieBreakLabels[criterion]}
+          </strong>
+          <div>
+            <button
+              type="button"
+              className="admin-compact-btn"
+              aria-label={`Поднять ${tieBreakLabels[criterion]}`}
+              disabled={index === 0}
+              onClick={() => move(index, -1)}
+            >
+              Выше
+            </button>
+            <button
+              type="button"
+              className="admin-compact-btn"
+              aria-label={`Опустить ${tieBreakLabels[criterion]}`}
+              disabled={index === criteria.length - 1}
+              onClick={() => move(index, 1)}
+            >
+              Ниже
+            </button>
+          </div>
+        </div>
+      ))}
+    </fieldset>
+  );
+}
+
+function normalizedHomeSequence(value: string, winsRequired: number): Array<'H' | 'A'> {
+  const desired = Math.max(1, winsRequired * 2 - 1);
+  const configured = splitList(value, '-').map((side) => (side === 'A' ? 'A' : 'H'));
+  return Array.from(
+    { length: desired },
+    (_, index) => configured[index] ?? (index % 2 ? 'A' : 'H'),
+  );
+}
+
+function HomeSequenceEditor({
+  roundNumber,
+  winsRequired,
+  value,
+  onChange,
+}: {
+  roundNumber: number;
+  winsRequired: number;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const sequence = normalizedHomeSequence(value, winsRequired);
+  return (
+    <fieldset className="tournament-home-sequence">
+      <legend>{`Раунд ${roundNumber}: порядок площадок`}</legend>
+      <div>
+        {sequence.map((side, index) => (
+          <button
+            key={index}
+            type="button"
+            className={side === 'H' ? 'chip chip--active' : 'chip'}
+            aria-label={`Раунд ${roundNumber}, игра ${index + 1}: ${side === 'H' ? 'Дома' : 'В гостях'}`}
+            onClick={() => {
+              const next = [...sequence];
+              next[index] = side === 'H' ? 'A' : 'H';
+              onChange(next.join('-'));
+            }}
+          >
+            {index + 1}. {side === 'H' ? 'Дом' : 'Гости'}
+          </button>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+function DailyPlacePointsEditor({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const points = splitList(value).map(Number).filter(Number.isFinite);
+  return (
+    <fieldset className="tournament-structured-editor">
+      <legend>Очки за места дня</legend>
+      {points.map((pointsValue, index) => (
+        <div className="tournament-table-row" key={index}>
+          <span>{index + 1} место</span>
+          <input
+            aria-label={`Очки за ${index + 1} место`}
+            type="number"
+            min="0"
+            value={pointsValue}
+            onChange={(event) => {
+              const next = [...points];
+              next[index] = Number(event.target.value);
+              onChange(next.join(','));
+            }}
+          />
+          <button
+            type="button"
+            className="admin-compact-btn"
+            aria-label={`Удалить ${index + 1} место`}
+            onClick={() => onChange(points.filter((_, itemIndex) => itemIndex !== index).join(','))}
+          >
+            Удалить
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        className="admin-compact-btn"
+        onClick={() => onChange([...points, 0].join(','))}
+      >
+        Добавить место
+      </button>
+    </fieldset>
+  );
+}
+
+function RewardsEditor({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const rewards = parseRewards(value);
+  const update = (
+    index: number,
+    field: 'place' | 'experience' | 'coins' | 'stars',
+    fieldValue: number,
+  ) => {
+    const next = rewards.map((reward, rewardIndex) =>
+      rewardIndex === index ? { ...reward, [field]: fieldValue } : reward,
+    );
+    onChange(
+      next
+        .map((reward) => `${reward.place},${reward.experience},${reward.coins},${reward.stars}`)
+        .join('\n'),
+    );
+  };
+  return (
+    <fieldset className="tournament-structured-editor">
+      <legend>Награды {label}</legend>
+      <div className="tournament-table-head">
+        <span>Место</span>
+        <span>Опыт</span>
+        <span>Монеты</span>
+        <span>Звёзды</span>
+        <span />
+      </div>
+      {rewards.map((reward, index) => (
+        <div className="tournament-table-row tournament-table-row--rewards" key={index}>
+          {(['place', 'experience', 'coins', 'stars'] as const).map((field) => (
+            <input
+              key={field}
+              type="number"
+              min={field === 'place' ? 1 : 0}
+              value={reward[field]}
+              aria-label={`${field === 'place' ? 'Место' : field === 'experience' ? 'Опыт' : field === 'coins' ? 'Монеты' : 'Звёзды'} награды ${label} ${index + 1}`}
+              onChange={(event) => update(index, field, Number(event.target.value))}
+            />
+          ))}
+          <button
+            type="button"
+            className="admin-compact-btn"
+            aria-label={`Удалить награду ${label} ${index + 1}`}
+            onClick={() =>
+              onChange(
+                rewards
+                  .filter((_, rewardIndex) => rewardIndex !== index)
+                  .map((item) => `${item.place},${item.experience},${item.coins},${item.stars}`)
+                  .join('\n'),
+              )
+            }
+          >
+            Удалить
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        className="admin-compact-btn"
+        onClick={() =>
+          onChange(
+            [...rewards, { place: rewards.length + 1, experience: 0, coins: 0, stars: 0 }]
+              .map((item) => `${item.place},${item.experience},${item.coins},${item.stars}`)
+              .join('\n'),
+          )
+        }
+      >
+        Добавить награду {label}
+      </button>
+    </fieldset>
+  );
+}
+
+const notificationEvents = [
+  ['tournament.application_approved', 'Заявка подтверждена'],
+  ['tournament.schedule_published', 'Календарь опубликован'],
+  ['tournament.fixture_opened', 'Окно игры открыто'],
+  ['tournament.live_soon', 'Live-старт приближается'],
+  ['tournament.deadline', 'Дедлайн'],
+  ['tournament.result_ready', 'Результат'],
+  ['tournament.rescheduled', 'Перенос'],
+  ['tournament.playoff_started', 'Плей-офф'],
+  ['tournament.next_series_game', 'Следующая игра серии'],
+  ['tournament.completed', 'Итог турнира'],
+] as const;
+
+function NotificationEditor({
+  reminders,
+  overrides,
+  onRemindersChange,
+  onOverridesChange,
+}: {
+  reminders: string;
+  overrides: string;
+  onRemindersChange: (value: string) => void;
+  onOverridesChange: (value: string) => void;
+}) {
+  const reminderValues = splitList(reminders).map(Number).filter(Number.isFinite);
+  const parsed = parseNotificationOverrides(overrides);
+  const selected = Object.keys(parsed);
+  const serialize = (next: Record<string, { title: string; body: string; url: string }>) =>
+    Object.entries(next)
+      .map(([key, item]) => `${key}|${item.title}|${item.body}|${item.url}`)
+      .join('\n');
+  return (
+    <>
+      <fieldset className="tournament-structured-editor">
+        <legend>Напоминания до старта</legend>
+        {reminderValues.map((minutes, index) => (
+          <div className="tournament-table-row" key={index}>
+            <input
+              type="number"
+              min="0"
+              max="1440"
+              aria-label={`Напоминание ${index + 1}, минуты`}
+              value={minutes}
+              onChange={(event) => {
+                const next = [...reminderValues];
+                next[index] = Number(event.target.value);
+                onRemindersChange(next.join(','));
+              }}
+            />
+            <span>минут</span>
+            <button
+              type="button"
+              className="admin-compact-btn"
+              onClick={() =>
+                onRemindersChange(
+                  reminderValues.filter((_, itemIndex) => itemIndex !== index).join(','),
+                )
+              }
+            >
+              Удалить
+            </button>
+          </div>
+        ))}
+        <button
+          type="button"
+          className="admin-compact-btn"
+          onClick={() => onRemindersChange([...reminderValues, 15].join(','))}
+        >
+          Добавить напоминание
+        </button>
+      </fieldset>
+      <fieldset className="tournament-structured-editor">
+        <legend>Уведомления</legend>
+        {selected.map((key) => {
+          const item = parsed[key]!;
+          return (
+            <div className="tournament-notification-card" key={key}>
+              <strong>{notificationEvents.find(([event]) => event === key)?.[1] ?? key}</strong>
+              <label>
+                Заголовок
+                <input
+                  value={item.title}
+                  onChange={(event) =>
+                    onOverridesChange(
+                      serialize({ ...parsed, [key]: { ...item, title: event.target.value } }),
+                    )
+                  }
+                />
+              </label>
+              <label>
+                Текст
+                <textarea
+                  value={item.body}
+                  onChange={(event) =>
+                    onOverridesChange(
+                      serialize({ ...parsed, [key]: { ...item, body: event.target.value } }),
+                    )
+                  }
+                />
+              </label>
+              <label>
+                Ссылка
+                <input
+                  value={item.url}
+                  onChange={(event) =>
+                    onOverridesChange(
+                      serialize({ ...parsed, [key]: { ...item, url: event.target.value } }),
+                    )
+                  }
+                />
+              </label>
+              <button
+                type="button"
+                className="admin-compact-btn"
+                onClick={() => {
+                  const next = { ...parsed };
+                  delete next[key];
+                  onOverridesChange(serialize(next));
+                }}
+              >
+                Удалить настройку
+              </button>
+            </div>
+          );
+        })}
+        <label>
+          Событие
+          <select aria-label="Событие уведомления" defaultValue="">
+            {' '}
+            <option value="" disabled>
+              Выберите событие
+            </option>
+            {notificationEvents
+              .filter(([key]) => !selected.includes(key))
+              .map(([key, label]) => (
+                <option key={key} value={key}>
+                  {label}
+                </option>
+              ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          className="admin-compact-btn"
+          onClick={(event) => {
+            const select = event.currentTarget.previousElementSibling?.querySelector('select');
+            const key = select?.value;
+            if (key)
+              onOverridesChange(
+                serialize({
+                  ...parsed,
+                  [key]: {
+                    title: 'Турнир',
+                    body: 'Новое событие турнира',
+                    url: '/?view=amateur&section=tournaments',
+                  },
+                }),
+              );
+          }}
+        >
+          Настроить событие
+        </button>
+      </fieldset>
+    </>
+  );
+}
+
+function TournamentPlayerPicker({
+  kind,
+  value,
+  excludedValue,
+  onChange,
+}: {
+  kind: 'invited' | 'banned';
+  value: string;
+  excludedValue: string;
+  onChange: (value: string) => void;
+}): JSX.Element {
+  const [search, setSearch] = useState('');
+  const selectedIds = splitList(value);
+  const excludedIds = new Set(splitList(excludedValue));
+  const users = useQuery({
+    queryKey: ['admin', 'tournament-user-picker', search],
+    queryFn: () => fetchAdminTournamentUsers(search),
+    enabled: search.trim().length >= 2,
+  });
+  const selectedUsers = useQuery({
+    queryKey: ['admin', 'tournament-selected-users', selectedIds],
+    queryFn: async () => {
+      const results = await Promise.all(
+        selectedIds.map((userId) => fetchAdminTournamentUsers(userId)),
+      );
+      return results
+        .flatMap((result) => result.users)
+        .filter(
+          (user, index, all) =>
+            selectedIds.includes(user.id) &&
+            all.findIndex((candidate) => candidate.id === user.id) === index,
+        );
+    },
+    enabled: selectedIds.length > 0,
+  });
+  const resultById = new Map(
+    [...(selectedUsers.data ?? []), ...(users.data?.users ?? [])].map(
+      (user) => [user.id, user] as const,
+    ),
+  );
+  const label = kind === 'invited' ? 'Приглашённые игроки' : 'Запрещённые игроки';
+  const searchLabel =
+    kind === 'invited' ? 'Найти приглашённого игрока' : 'Найти запрещённого игрока';
+
+  const userLabel = (user: AdminTournamentUserOption): string => {
+    const username = user.identities.find((identity) => identity.username)?.username;
+    return username ? `${user.displayName} · @${username}` : user.displayName;
+  };
+
+  return (
+    <fieldset className="tournament-picker">
+      <legend>{label}</legend>
+      <input
+        type="search"
+        aria-label={searchLabel}
+        placeholder="Имя или username"
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
+      />
+      {selectedIds.length > 0 && (
+        <div className="tournament-picker__selected">
+          {selectedIds.map((userId) => (
+            <button
+              key={userId}
+              type="button"
+              className="chip"
+              aria-label={`Убрать ${resultById.get(userId)?.displayName ?? 'выбранного игрока'}`}
+              onClick={() => onChange(selectedIds.filter((id) => id !== userId).join(','))}
+            >
+              {resultById.get(userId)?.avatarUrl && (
+                <img src={resultById.get(userId)!.avatarUrl!} alt="" />
+              )}
+              {resultById.get(userId)?.displayName ?? 'Загрузка игрока…'} ×
+            </button>
+          ))}
+        </div>
+      )}
+      {search.trim().length >= 2 && (
+        <div className="tournament-picker__results">
+          {(users.data?.users ?? []).map((user) => {
+            const unavailable =
+              selectedIds.includes(user.id) ||
+              excludedIds.has(user.id) ||
+              (kind === 'invited' && user.isBlocked);
+            return (
+              <button
+                key={user.id}
+                type="button"
+                className="tournament-picker__result"
+                aria-label={`Добавить ${user.displayName}`}
+                disabled={unavailable}
+                onClick={() => onChange([...selectedIds, user.id].join(','))}
+              >
+                {user.avatarUrl && <img src={user.avatarUrl} alt="" />}
+                <span>{userLabel(user)}</span>
+                <small>Уровень {user.level}</small>
+              </button>
+            );
+          })}
+          {users.isSuccess && users.data.users.length === 0 && <span>Никого не нашли</span>}
+        </div>
+      )}
+    </fieldset>
+  );
+}
+
 export function TournamentAdmin(): JSX.Element {
   const client = useQueryClient();
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [confirmClose, setConfirmClose] = useState(false);
   const tournaments = useQuery({
     queryKey: ['admin', 'tournaments'],
     queryFn: fetchAdminTournaments,
   });
-  const [wizardOpen, setWizardOpen] = useState(false);
+  const duelTemplates = useQuery({
+    queryKey: ['admin', 'duel-templates', 'tournament-picker'],
+    queryFn: fetchAdminTournamentDuelTemplates,
+    enabled: wizardOpen,
+  });
   const [stage, setStage] = useState(0);
+  const [maxStage, setMaxStage] = useState(0);
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [draft, setDraft] = useState(freshDraft);
   const [editingTournament, setEditingTournament] = useState<AdminTournament | null>(null);
   const [selectedTournament, setSelectedTournament] = useState<AdminTournament | null>(null);
+  const lastSavedSnapshot = useRef('');
   const create = useMutation({
     mutationFn: () => createAdminTournament(serializeDraft(draft)),
-    onSuccess: () => {
-      setWizardOpen(false);
-      setStage(0);
-      setDraft(freshDraft());
+    onMutate: () => setSaveState('saving'),
+    onSuccess: ({ tournament }) => {
+      lastSavedSnapshot.current = JSON.stringify(serializeDraft(draft));
+      setEditingTournament(tournament);
+      setStage(1);
+      setMaxStage(1);
+      setSaveState('saved');
       void client.invalidateQueries({ queryKey: ['admin', 'tournaments'] });
     },
+    onError: () => setSaveState('error'),
   });
   const update = useMutation({
-    mutationFn: () => {
-      const body = Object.fromEntries(
-        Object.entries(serializeDraft(draft)).filter(([key]) => key !== 'slug'),
-      );
-      return updateAdminTournament(editingTournament!.id, editingTournament!.revision, body);
-    },
-    onSuccess: ({ tournament }) => {
-      setWizardOpen(false);
-      setStage(0);
-      setEditingTournament(null);
-      setSelectedTournament(tournament);
-      setDraft(freshDraft());
+    mutationFn: ({
+      body,
+      expectedRevision,
+    }: {
+      body: Record<string, unknown>;
+      snapshot: string;
+      expectedRevision: number;
+    }) => updateAdminTournament(editingTournament!.id, expectedRevision, body),
+    onMutate: () => setSaveState('saving'),
+    onSuccess: ({ tournament }, variables) => {
+      lastSavedSnapshot.current = variables.snapshot;
+      setEditingTournament(tournament);
+      setSaveState('saved');
       void client.invalidateQueries({ queryKey: ['admin', 'tournaments'] });
     },
+    onError: () => setSaveState('error'),
   });
+  const saveCurrentDraft = () => {
+    if (editingTournament === null) return;
+    const body = serializeDraft(draft);
+    update.mutate({
+      body,
+      snapshot: JSON.stringify(body),
+      expectedRevision: editingTournament.revision,
+    });
+  };
+  useEffect(() => {
+    if (!wizardOpen || editingTournament === null || create.isPending || update.isPending) return;
+    let snapshot: string;
+    try {
+      snapshot = JSON.stringify(serializeDraft(draft));
+    } catch {
+      setSaveState('error');
+      return;
+    }
+    if (snapshot === lastSavedSnapshot.current) return;
+    setSaveState('saving');
+    const body = serializeDraft(draft);
+    const expectedRevision = editingTournament.revision;
+    const timeout = window.setTimeout(
+      () => update.mutate({ body, snapshot, expectedRevision }),
+      600,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [draft, editingTournament, wizardOpen, create.isPending, update.isPending]);
   const updatePlayoffRound = (index: number, patch: Partial<PlayoffRoundDraft>) => {
     setDraft((current) => ({
       ...current,
@@ -593,6 +1133,29 @@ export function TournamentAdmin(): JSX.Element {
         roundIndex === index ? { ...round, ...patch } : round,
       ),
     }));
+  };
+  const closeWizard = () => {
+    setWizardOpen(false);
+    setConfirmClose(false);
+    if (editingTournament !== null) setSelectedTournament(editingTournament);
+    setEditingTournament(null);
+  };
+  const requestClose = () => {
+    let currentSnapshot = '';
+    try {
+      currentSnapshot = JSON.stringify(serializeDraft(draft));
+    } catch {
+      /* invalid input is unsaved */
+    }
+    if (
+      saveState === 'saving' ||
+      saveState === 'error' ||
+      currentSnapshot !== lastSavedSnapshot.current
+    ) {
+      setConfirmClose(true);
+      return;
+    }
+    closeWizard();
   };
 
   if (selectedTournament !== null) {
@@ -602,8 +1165,12 @@ export function TournamentAdmin(): JSX.Element {
         onBack={() => setSelectedTournament(null)}
         onEdit={() => {
           setEditingTournament(selectedTournament);
-          setDraft(draftFromTournament(selectedTournament));
+          const nextDraft = draftFromTournament(selectedTournament);
+          setDraft(nextDraft);
+          lastSavedSnapshot.current = JSON.stringify(serializeDraft(nextDraft));
           setStage(0);
+          setMaxStage(7);
+          setSaveState('saved');
           setWizardOpen(true);
           setSelectedTournament(null);
         }}
@@ -624,14 +1191,20 @@ export function TournamentAdmin(): JSX.Element {
         </div>
         <button
           type="button"
-          className="btn btn--cta"
+          className="chip chip--active"
+          aria-label="Создать"
           onClick={() => {
             setEditingTournament(null);
-            setDraft(freshDraft());
+            const nextDraft = freshDraft();
+            setDraft(nextDraft);
+            lastSavedSnapshot.current = JSON.stringify(serializeDraft(nextDraft));
+            setStage(0);
+            setMaxStage(0);
+            setSaveState('idle');
             setWizardOpen(true);
           }}
         >
-          Создать турнир
+          + Создать
         </button>
       </div>
       {tournaments.data?.tournaments.length === 0 && (
@@ -668,7 +1241,7 @@ export function TournamentAdmin(): JSX.Element {
         createPortal(
           <div className="modal-backdrop admin-screen" role="presentation">
             <section
-              className="modal-card"
+              className="modal-card tournament-wizard"
               role="dialog"
               aria-modal="true"
               aria-label="Создание турнира"
@@ -689,11 +1262,7 @@ export function TournamentAdmin(): JSX.Element {
                   type="button"
                   className="icon-btn"
                   aria-label="Закрыть"
-                  onClick={() => {
-                    setWizardOpen(false);
-                    if (editingTournament !== null) setSelectedTournament(editingTournament);
-                    setEditingTournament(null);
-                  }}
+                  onClick={requestClose}
                 >
                   <X size={16} />
                 </button>
@@ -704,6 +1273,7 @@ export function TournamentAdmin(): JSX.Element {
                     key={label}
                     type="button"
                     className={stage === index ? 'chip chip--active' : 'chip'}
+                    disabled={index > maxStage}
                     onClick={() => setStage(index)}
                   >
                     {index + 1}. {label}
@@ -718,14 +1288,6 @@ export function TournamentAdmin(): JSX.Element {
                       <input
                         value={draft.title}
                         onChange={(event) => setDraft({ ...draft, title: event.target.value })}
-                      />
-                    </label>
-                    <label>
-                      Slug
-                      <input
-                        disabled={editingTournament !== null}
-                        value={draft.slug}
-                        onChange={(event) => setDraft({ ...draft, slug: event.target.value })}
                       />
                     </label>
                     <label>
@@ -820,24 +1382,18 @@ export function TournamentAdmin(): JSX.Element {
                         }
                       />
                     </label>
-                    <label>
-                      Приглашённые user ID, через запятую
-                      <textarea
-                        value={draft.invitedUserIds}
-                        onChange={(event) =>
-                          setDraft({ ...draft, invitedUserIds: event.target.value })
-                        }
-                      />
-                    </label>
-                    <label>
-                      Запрещённые user ID, через запятую
-                      <textarea
-                        value={draft.bannedUserIds}
-                        onChange={(event) =>
-                          setDraft({ ...draft, bannedUserIds: event.target.value })
-                        }
-                      />
-                    </label>
+                    <TournamentPlayerPicker
+                      kind="invited"
+                      value={draft.invitedUserIds}
+                      excludedValue={draft.bannedUserIds}
+                      onChange={(invitedUserIds) => setDraft({ ...draft, invitedUserIds })}
+                    />
+                    <TournamentPlayerPicker
+                      kind="banned"
+                      value={draft.bannedUserIds}
+                      excludedValue={draft.invitedUserIds}
+                      onChange={(bannedUserIds) => setDraft({ ...draft, bannedUserIds })}
+                    />
                   </>
                 )}
                 {stage === 2 && (
@@ -929,13 +1485,27 @@ export function TournamentAdmin(): JSX.Element {
                         </label>
                         <label>
                           Шаблон дуэли регулярки
-                          <input
+                          <select
+                            aria-label="Шаблон дуэли регулярки"
                             value={draft.regularDuelTemplateId}
                             onChange={(event) =>
                               setDraft({ ...draft, regularDuelTemplateId: event.target.value })
                             }
-                            placeholder="UUID активного шаблона"
-                          />
+                          >
+                            <option value="">Выберите шаблон</option>
+                            {(duelTemplates.data?.templates ?? [])
+                              .filter(
+                                (template) =>
+                                  template.isActive || template.id === draft.regularDuelTemplateId,
+                              )
+                              .map((template) => (
+                                <option key={template.id} value={template.id}>
+                                  {template.title} · {template.totalPeriods} пер. ·{' '}
+                                  {template.shotsPerPeriod} бросков
+                                  {!template.isActive ? ' · архивный' : ''}
+                                </option>
+                              ))}
+                          </select>
                         </label>
                         <label>
                           Очки: победа в основное время
@@ -997,15 +1567,10 @@ export function TournamentAdmin(): JSX.Element {
                             }
                           />
                         </label>
-                        <label>
-                          Критерии равенства, по порядку
-                          <input
-                            value={draft.tieBreakCriteria}
-                            onChange={(event) =>
-                              setDraft({ ...draft, tieBreakCriteria: event.target.value })
-                            }
-                          />
-                        </label>
+                        <TieBreakEditor
+                          value={draft.tieBreakCriteria}
+                          onChange={(tieBreakCriteria) => setDraft({ ...draft, tieBreakCriteria })}
+                        />
                       </>
                     ) : (
                       <>
@@ -1046,16 +1611,10 @@ export function TournamentAdmin(): JSX.Element {
                             placeholder="Пусто — все дни"
                           />
                         </label>
-                        <label>
-                          Очки за места дня, через запятую
-                          <input
-                            value={draft.dailyPlacePoints}
-                            onChange={(event) =>
-                              setDraft({ ...draft, dailyPlacePoints: event.target.value })
-                            }
-                            placeholder="10,8,6,5"
-                          />
-                        </label>
+                        <DailyPlacePointsEditor
+                          value={draft.dailyPlacePoints}
+                          onChange={(dailyPlacePoints) => setDraft({ ...draft, dailyPlacePoints })}
+                        />
                       </>
                     )}
                   </>
@@ -1110,23 +1669,32 @@ export function TournamentAdmin(): JSX.Element {
                           </label>
                           <label>
                             {`Раунд ${index + 1}: шаблон дуэли`}
-                            <input
+                            <select
                               value={round.duelTemplateId}
                               onChange={(event) =>
                                 updatePlayoffRound(index, { duelTemplateId: event.target.value })
                               }
-                              placeholder="UUID активного шаблона"
-                            />
+                            >
+                              <option value="">Выберите шаблон</option>
+                              {(duelTemplates.data?.templates ?? [])
+                                .filter(
+                                  (template) =>
+                                    template.isActive || template.id === round.duelTemplateId,
+                                )
+                                .map((template) => (
+                                  <option key={template.id} value={template.id}>
+                                    {template.title}
+                                    {!template.isActive ? ' · архивный' : ''}
+                                  </option>
+                                ))}
+                            </select>
                           </label>
-                          <label>
-                            {`Раунд ${index + 1}: порядок площадок`}
-                            <input
-                              value={round.homeSequence}
-                              onChange={(event) =>
-                                updatePlayoffRound(index, { homeSequence: event.target.value })
-                              }
-                            />
-                          </label>
+                          <HomeSequenceEditor
+                            roundNumber={index + 1}
+                            winsRequired={round.winsRequired}
+                            value={round.homeSequence}
+                            onChange={(homeSequence) => updatePlayoffRound(index, { homeSequence })}
+                          />
                           <label>
                             {`Раунд ${index + 1}: окно игры, минуты`}
                             <input
@@ -1200,10 +1768,29 @@ export function TournamentAdmin(): JSX.Element {
                   <>
                     <label>
                       Часовой пояс
-                      <input
+                      <select
                         value={draft.timezone}
                         onChange={(event) => setDraft({ ...draft, timezone: event.target.value })}
-                      />
+                      >
+                        {[
+                          'Europe/Moscow',
+                          'Europe/Kaliningrad',
+                          'Europe/Samara',
+                          'Asia/Yekaterinburg',
+                          'Asia/Omsk',
+                          'Asia/Krasnoyarsk',
+                          'Asia/Irkutsk',
+                          'Asia/Yakutsk',
+                          'Asia/Vladivostok',
+                          'Asia/Magadan',
+                          'Asia/Kamchatka',
+                          'America/New_York',
+                        ].map((timezone) => (
+                          <option key={timezone} value={timezone}>
+                            {timezone}
+                          </option>
+                        ))}
+                      </select>
                     </label>
                     <label>
                       Открытие регистрации
@@ -1237,40 +1824,30 @@ export function TournamentAdmin(): JSX.Element {
                 )}
                 {stage === 5 && (
                   <>
-                    <div>Одна строка на место: место, опыт, монеты, звёзды.</div>
-                    <label>
-                      Награды регулярки
-                      <textarea
-                        value={draft.regularRewards}
-                        onChange={(event) =>
-                          setDraft({ ...draft, regularRewards: event.target.value })
-                        }
-                        placeholder={'1,100,50,3\n2,70,30,2'}
-                      />
-                    </label>
-                    <label>
-                      Награды плей-офф
-                      <textarea
-                        value={draft.playoffRewards}
-                        onChange={(event) =>
-                          setDraft({ ...draft, playoffRewards: event.target.value })
-                        }
-                        placeholder={'1,200,100,5\n2,120,60,3'}
-                      />
-                    </label>
+                    <RewardsEditor
+                      label="регулярки"
+                      value={draft.regularRewards}
+                      onChange={(regularRewards) => setDraft({ ...draft, regularRewards })}
+                    />
+                    <RewardsEditor
+                      label="плей-офф"
+                      value={draft.playoffRewards}
+                      onChange={(playoffRewards) => setDraft({ ...draft, playoffRewards })}
+                    />
                   </>
                 )}
                 {stage === 6 && (
                   <>
-                    <label>
-                      Напоминания до старта, минуты
-                      <input
-                        value={draft.reminderMinutes}
-                        onChange={(event) =>
-                          setDraft({ ...draft, reminderMinutes: event.target.value })
-                        }
-                      />
-                    </label>
+                    <NotificationEditor
+                      reminders={draft.reminderMinutes}
+                      overrides={draft.notificationOverrides}
+                      onRemindersChange={(reminderMinutes) =>
+                        setDraft({ ...draft, reminderMinutes })
+                      }
+                      onOverridesChange={(notificationOverrides) =>
+                        setDraft({ ...draft, notificationOverrides })
+                      }
+                    />
                     <label>
                       Напоминание о дедлайне, минуты
                       <input
@@ -1281,16 +1858,6 @@ export function TournamentAdmin(): JSX.Element {
                         onChange={(event) =>
                           setDraft({ ...draft, deadlineLeadMinutes: Number(event.target.value) })
                         }
-                      />
-                    </label>
-                    <label>
-                      Переопределения push-шаблонов
-                      <textarea
-                        value={draft.notificationOverrides}
-                        onChange={(event) =>
-                          setDraft({ ...draft, notificationOverrides: event.target.value })
-                        }
-                        placeholder="event|заголовок|текст|url — по одной строке"
                       />
                     </label>
                     <div>
@@ -1320,6 +1887,12 @@ export function TournamentAdmin(): JSX.Element {
                 )}
               </div>
               <div className="modal-actions">
+                <span className="tournament-wizard__save-state" aria-live="polite">
+                  {saveState === 'saving' && 'Сохраняем…'}
+                  {saveState === 'saved' && 'Сохранено'}
+                  {saveState === 'error' &&
+                    'Не удалось сохранить. Возможно, черновик изменён в другой вкладке — обновите данные.'}
+                </span>
                 {stage > 0 && (
                   <button
                     type="button"
@@ -1333,7 +1906,16 @@ export function TournamentAdmin(): JSX.Element {
                   <button
                     type="button"
                     className="modal-primary btn btn--cta"
-                    onClick={() => setStage(stage + 1)}
+                    disabled={stage === 0 && draft.title.trim() === ''}
+                    onClick={() => {
+                      if (stage === 0 && editingTournament === null) {
+                        create.mutate();
+                        return;
+                      }
+                      const next = stage + 1;
+                      setStage(next);
+                      setMaxStage((current) => Math.max(current, next));
+                    }}
                   >
                     Далее
                   </button>
@@ -1341,14 +1923,51 @@ export function TournamentAdmin(): JSX.Element {
                   <button
                     type="button"
                     className="modal-primary btn btn--cta"
-                    disabled={!draft.title || !draft.slug || create.isPending || update.isPending}
-                    onClick={() => (editingTournament === null ? create.mutate() : update.mutate())}
+                    disabled={
+                      !draft.title ||
+                      create.isPending ||
+                      update.isPending ||
+                      saveState === 'saving' ||
+                      saveState === 'error'
+                    }
+                    onClick={() =>
+                      editingTournament === null ? create.mutate() : saveCurrentDraft()
+                    }
                   >
                     {editingTournament === null ? 'Сохранить draft' : 'Сохранить изменения'}
                   </button>
                 )}
               </div>
             </section>
+            {confirmClose && (
+              <div className="modal-backdrop modal-backdrop--nested" role="presentation">
+                <section
+                  className="modal-card"
+                  role="alertdialog"
+                  aria-modal="true"
+                  aria-label="Закрыть без сохранения?"
+                >
+                  <h3 className="modal-title">Закрыть без сохранения?</h3>
+                  <p className="modal-copy">Последние изменения могут быть потеряны.</p>
+                  <div className="modal-actions">
+                    <button
+                      type="button"
+                      className="btn btn--ghost"
+                      onClick={() => setConfirmClose(false)}
+                    >
+                      Продолжить редактирование
+                    </button>
+                    <button
+                      type="button"
+                      className="modal-primary btn btn--cta"
+                      onClick={closeWizard}
+                    >
+                      Закрыть без сохранения
+                    </button>
+                  </div>
+                </section>
+              </div>
+            )}
           </div>,
           document.body,
         )}
