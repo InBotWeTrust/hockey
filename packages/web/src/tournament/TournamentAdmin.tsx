@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import {
   createAdminTournament,
@@ -446,7 +447,7 @@ export function TournamentAdmin(): JSX.Element {
           <div style={{ color: 'var(--muted)', marginTop: 4 }}>{tournament.participantCount} участников</div>
         </button>
       ))}
-      {wizardOpen && (
+      {wizardOpen && createPortal(
         <div className="modal-backdrop" role="presentation">
           <section className="modal-card" role="dialog" aria-modal="true" aria-label="Создание турнира" style={{ maxHeight: '90dvh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
@@ -539,7 +540,8 @@ export function TournamentAdmin(): JSX.Element {
               {stage < stages.length - 1 ? <button type="button" className="modal-primary btn btn--cta" onClick={() => setStage(stage + 1)}>Далее</button> : <button type="button" className="modal-primary btn btn--cta" disabled={!draft.title || !draft.slug || create.isPending || update.isPending} onClick={() => editingTournament === null ? create.mutate() : update.mutate()}>{editingTournament === null ? 'Сохранить draft' : 'Сохранить изменения'}</button>}
             </div>
           </section>
-        </div>
+        </div>,
+        document.body,
       )}
     </section>
   );

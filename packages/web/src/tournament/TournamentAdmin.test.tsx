@@ -21,6 +21,27 @@ describe('TournamentAdmin', () => {
     expect(screen.getByRole('button', { name: 'Создать турнир' })).toBeInTheDocument();
   });
 
+  it('renders the wizard backdrop outside the app content stacking context', async () => {
+    vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [] });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <div className="app-content" data-testid="app-content">
+        <QueryClientProvider client={client}>
+          <TournamentAdmin />
+        </QueryClientProvider>
+      </div>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Создать турнир' }));
+
+    const appContent = screen.getByTestId('app-content');
+    const dialog = screen.getByRole('dialog', { name: 'Создание турнира' });
+    const backdrop = dialog.closest<HTMLElement>('.modal-backdrop');
+    expect(backdrop).toBeInstanceOf(HTMLElement);
+    expect(appContent).not.toContainElement(backdrop);
+    expect(backdrop?.parentElement).toBe(document.body);
+  });
+
   it('configures tournament rules instead of showing placeholder wizard steps', async () => {
     vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [] });
     const create = vi.spyOn(api, 'createAdminTournament').mockResolvedValue({
