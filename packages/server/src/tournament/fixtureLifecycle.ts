@@ -45,6 +45,26 @@ function objectSetting(source: Record<string, unknown>, key: string): Record<str
     : {};
 }
 
+function boundedIntegerSetting(
+  primary: unknown,
+  fallback: unknown,
+  defaultValue: number,
+  min: number,
+  max: number,
+): number {
+  for (const value of [primary, fallback]) {
+    if (
+      typeof value === 'number' &&
+      Number.isSafeInteger(value) &&
+      value >= min &&
+      value <= max
+    ) {
+      return value;
+    }
+  }
+  return defaultValue;
+}
+
 export async function openTournamentFixtureSegment(
   pool: Pool,
   input: { fixtureId: string; tournamentId: string; userId: string; now: Date },
@@ -188,12 +208,14 @@ export async function settleTournamentSegmentForDuel(
     round_stage: string;
     home_participant_id: string | null;
     away_participant_id: string | null;
+    round_rules: Record<string, unknown>;
     tournament_rules: Record<string, unknown>;
   }>(
     `select s.id, s.fixture_id, s.sequence_number, s.kind, s.pair_number, s.status,
             f.status as fixture_status,
             f.series_id, f.tournament_id, r.stage as round_stage,
             f.home_participant_id, f.away_participant_id,
+            r.rules_snapshot as round_rules,
             tr.rules_snapshot as tournament_rules
        from tournament_fixture_segment s
        join tournament_fixture f on f.id = s.fixture_id
@@ -230,7 +252,8 @@ export async function settleTournamentSegmentForDuel(
       where id = $1`,
     [segment.fixture_id, input.homeScore, input.awayScore],
   );
-  const overtimeRules = objectSetting(segment.tournament_rules, 'overtime');
+  const tournamentOvertimeRules = objectSetting(segment.tournament_rules, 'overtime');
+  const roundOvertimeRules = objectSetting(segment.round_rules, 'overtime');
   const decision = decideNextFixtureSegment(
     {
       kind: segment.kind,
@@ -240,15 +263,20 @@ export async function settleTournamentSegmentForDuel(
     input.homeScore,
     input.awayScore,
     {
-    overtimeCount:
-      typeof overtimeRules.count === 'number' && Number.isInteger(overtimeRules.count)
-        ? Math.max(0, overtimeRules.count)
-        : 1,
-    shootoutInitialShots:
-      typeof overtimeRules.shootoutInitialShots === 'number' &&
-      Number.isInteger(overtimeRules.shootoutInitialShots)
-        ? Math.max(1, overtimeRules.shootoutInitialShots)
-        : 3,
+      overtimeCount: boundedIntegerSetting(
+        roundOvertimeRules.count,
+        tournamentOvertimeRules.count,
+        1,
+        0,
+        20,
+      ),
+      shootoutInitialShots: boundedIntegerSetting(
+        roundOvertimeRules.shootoutInitialShots,
+        tournamentOvertimeRules.shootoutInitialShots,
+        3,
+        1,
+        100,
+      ),
     },
   );
   if (!decision.completed) {

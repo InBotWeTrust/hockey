@@ -1593,6 +1593,139 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     ).rejects.toMatchObject({ code: 'conflict' });
   });
 
+  it('settles tied playoff fixtures using the overtime rules snapshot of their own round', async () => {
+    await seedUsers(pool, 0);
+    const tournament = await createPublishedTournament(
+      pool,
+      'playoff-round-overtime-snapshots',
+      0,
+      playoffTournamentRules(4, {
+        overtime: { count: 1, shootoutInitialShots: 3 },
+        playoffRounds: [
+          {
+            roundNumber: 1,
+            winsRequired: 1,
+            homeSequence: ['H'],
+            duelTemplateId: '00000000-0000-4000-8000-000000000821',
+            gameWindowMs: 3_600_000,
+            gameBreakMs: 0,
+            roundBreakMs: 0,
+            overtime: { count: 0, shootoutInitialShots: 5 },
+          },
+          {
+            roundNumber: 2,
+            winsRequired: 1,
+            homeSequence: ['H'],
+            duelTemplateId: '00000000-0000-4000-8000-000000000822',
+            gameWindowMs: 3_600_000,
+            gameBreakMs: 0,
+            roundBreakMs: 0,
+            overtime: { count: 2, shootoutInitialShots: 7 },
+          },
+        ],
+      }),
+    );
+    const participantIds = await prepareTournamentForPlayoffs(
+      pool,
+      tournament.id,
+      [4, 3, 2, 1],
+    );
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-01T08:00:00.000Z'));
+
+    const fixtures = await pool.query<{
+      fixture_id: string;
+      round_number: number;
+      home_user_id: string | null;
+      away_user_id: string | null;
+    }>(
+      `select distinct on (round.number)
+              fixture.id as fixture_id, round.number as round_number,
+              home_participant.user_id as home_user_id,
+              away_participant.user_id as away_user_id
+         from tournament_fixture fixture
+         join tournament_round round on round.id = fixture.round_id
+         left join tournament_participant home_participant
+           on home_participant.id = fixture.home_participant_id
+         left join tournament_participant away_participant
+           on away_participant.id = fixture.away_participant_id
+        where fixture.tournament_id = $1 and round.stage = 'playoff'
+        order by round.number, fixture.fixture_number`,
+      [tournament.id],
+    );
+    expect(fixtures.rows.map((fixture) => fixture.round_number)).toEqual([1, 2]);
+
+    const finalFixture = fixtures.rows.find((fixture) => fixture.round_number === 2)!;
+    await pool.query(
+      `update tournament_fixture
+          set home_participant_id = $2, away_participant_id = $3, status = 'scheduled'
+        where id = $1`,
+      [finalFixture.fixture_id, participantIds[0], participantIds[1]],
+    );
+
+    for (const fixture of fixtures.rows) {
+      const users =
+        fixture.round_number === 1
+          ? { home: fixture.home_user_id!, away: fixture.away_user_id! }
+          : { home: PLAYER_IDS[0], away: PLAYER_IDS[1] };
+      const duel = await pool.query<{ id: string }>(
+        `insert into amateur_duel_match
+           (challenger_user_id, opponent_user_id, status, source, rules_snapshot,
+            match_seed, starts_at, ends_at, game_core_version)
+         values ($1, $2, 'active', 'tournament', '{}'::jsonb,
+                 $3, $4, $5, 1)
+         returning id`,
+        [
+          users.home,
+          users.away,
+          `round-overtime-${fixture.round_number}`,
+          new Date('2030-09-01T13:00:00.000Z'),
+          new Date('2030-09-01T14:00:00.000Z'),
+        ],
+      );
+      await pool.query(
+        `insert into tournament_fixture_segment
+           (fixture_id, sequence_number, kind, duel_match_id, status, rules_snapshot)
+         values ($1, 1, 'regulation', $2, 'scheduled', '{}'::jsonb)`,
+        [fixture.fixture_id, duel.rows[0]!.id],
+      );
+      const client = await pool.connect();
+      try {
+        await client.query('begin');
+        await settleTournamentSegmentForDuel(client, {
+          duelMatchId: duel.rows[0]!.id,
+          homeScore: 1,
+          awayScore: 1,
+          settledAt: new Date('2030-09-01T13:30:00.000Z'),
+        });
+        await client.query('commit');
+      } catch (error) {
+        await client.query('rollback');
+        throw error;
+      } finally {
+        client.release();
+      }
+    }
+
+    const nextSegments = await pool.query<{
+      round_number: number;
+      kind: string;
+      shots_per_participant: number | null;
+    }>(
+      `select round.number as round_number, segment.kind,
+              (segment.rules_snapshot->>'shotsPerParticipant')::int as shots_per_participant
+         from tournament_fixture_segment segment
+         join tournament_fixture fixture on fixture.id = segment.fixture_id
+         join tournament_round round on round.id = fixture.round_id
+        where fixture.tournament_id = $1 and segment.sequence_number = 2
+        order by round.number`,
+      [tournament.id],
+    );
+    expect(nextSegments.rows).toEqual([
+      { round_number: 1, kind: 'shootout_initial', shots_per_participant: 5 },
+      { round_number: 2, kind: 'overtime', shots_per_participant: null },
+    ]);
+  });
+
   it('serializes a double no-show behind an in-flight opening at tournament scope', async () => {
     await seedUsers(pool, 0);
     const tournament = await createPublishedTournament(

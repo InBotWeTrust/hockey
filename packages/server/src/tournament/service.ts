@@ -908,6 +908,43 @@ interface PlayoffRoundRules {
   gameBreakMs: number;
   roundBreakMs: number;
   firstGameStartsAt: Date | null;
+  overtime: {
+    count: number;
+    shootoutInitialShots: number;
+  };
+}
+
+const DEFAULT_OVERTIME_RULES = { count: 1, shootoutInitialShots: 3 } as const;
+const MAX_OVERTIME_SEGMENTS = 20;
+const MAX_SHOOTOUT_INITIAL_SHOTS = 100;
+
+function objectRecord(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function overtimeRules(
+  value: unknown,
+  fallback: { count: number; shootoutInitialShots: number } = DEFAULT_OVERTIME_RULES,
+): { count: number; shootoutInitialShots: number } {
+  const record = objectRecord(value);
+  return {
+    count:
+      typeof record.count === 'number' &&
+      Number.isSafeInteger(record.count) &&
+      record.count >= 0 &&
+      record.count <= MAX_OVERTIME_SEGMENTS
+        ? record.count
+        : fallback.count,
+    shootoutInitialShots:
+      typeof record.shootoutInitialShots === 'number' &&
+      Number.isSafeInteger(record.shootoutInitialShots) &&
+      record.shootoutInitialShots >= 1 &&
+      record.shootoutInitialShots <= MAX_SHOOTOUT_INITIAL_SHOTS
+        ? record.shootoutInitialShots
+        : fallback.shootoutInitialShots,
+  };
 }
 
 function validIsoDate(value: unknown): Date | null {
@@ -983,6 +1020,7 @@ function playoffRoundRules(rules: TournamentRulesSnapshot, roundNumber: number):
       : typeof rules.regularDuelTemplateId === 'string'
         ? rules.regularDuelTemplateId
         : null;
+  const defaultOvertime = overtimeRules(rules.overtime);
   return {
     winsRequired,
     homeSequence,
@@ -991,6 +1029,7 @@ function playoffRoundRules(rules: TournamentRulesSnapshot, roundNumber: number):
     gameBreakMs: nonNegativeDuration(record.gameBreakMs, 0),
     roundBreakMs: nonNegativeDuration(record.roundBreakMs, 0, MAX_PLAYOFF_ROUND_BREAK_MS),
     firstGameStartsAt: validIsoDate(record.firstGameStartsAt),
+    overtime: overtimeRules(record.overtime, defaultOvertime),
   };
 }
 
@@ -1015,6 +1054,7 @@ function tieBreakRules(rules: TournamentRulesSnapshot): PlayoffRoundRules {
   const regularWindow =
     config.regularSource === 'head_to_head' ? config.fixtureWindowMs : ONE_DAY_MS;
   const regularBreak = config.regularSource === 'head_to_head' ? config.roundBreakMs : 0;
+  const defaultOvertime = overtimeRules(rules.overtime);
   return {
     winsRequired: 1,
     homeSequence: ['H'],
@@ -1039,6 +1079,7 @@ function tieBreakRules(rules: TournamentRulesSnapshot): PlayoffRoundRules {
         rules.tiebreakFirstGameStartsAt,
       ),
     ),
+    overtime: overtimeRules(configured.overtime, defaultOvertime),
   };
 }
 
