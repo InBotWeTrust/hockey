@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
-import type { Pool } from 'pg';
+import { Pool as PgPool, type Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../../src/app.js';
 import { createJwt } from '../../src/auth/jwt.js';
@@ -2426,6 +2426,87 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     expect(published).toHaveLength(1);
     expect(published[0]).toMatchObject({ type: 'message:new' });
   });
+
+  it('does not exhaust the pool when concurrent manual dispatch retries share an idempotency key', async () => {
+    await seedUsers(pool, 0);
+    const tournament = await createPublishedTournament(pool, 'pool-safe-manual-dispatch', 0);
+    const { databaseUrl } = getTestUrls();
+    const constrainedPool = new PgPool({
+      connectionString: databaseUrl,
+      max: 2,
+      statement_timeout: 1_000,
+    });
+    const published: Array<{ channel: string; type: string }> = [];
+    const publisher = {
+      publish: async (channel: string, event: { type: string }) => {
+        published.push({ channel, type: event.type });
+      },
+    };
+    const input = {
+      tournamentId: tournament.id,
+      idempotencyKey: `${tournament.id}:pool-safe-official-news`,
+      kind: 'official_news',
+      audience: 'approved',
+      title: 'Безопасная отправка',
+      body: 'Одна новость при конкурентных повторах.',
+      createdBy: ADMIN_ID,
+    } as const;
+
+    try {
+      const results = await Promise.all([
+        dispatchTournamentCommunication(constrainedPool, publisher, input),
+        dispatchTournamentCommunication(constrainedPool, publisher, input),
+        dispatchTournamentCommunication(constrainedPool, publisher, input),
+      ]);
+
+      expect(new Set(results.map((result) => result.dispatchId))).toEqual(
+        new Set([results[0]!.dispatchId]),
+      );
+      expect(results).toEqual([
+        {
+          dispatchId: results[0]!.dispatchId,
+          status: 'sent',
+          recipients: 1,
+          delivered: 1,
+          failed: 0,
+        },
+        {
+          dispatchId: results[0]!.dispatchId,
+          status: 'sent',
+          recipients: 1,
+          delivered: 1,
+          failed: 0,
+        },
+        {
+          dispatchId: results[0]!.dispatchId,
+          status: 'sent',
+          recipients: 1,
+          delivered: 1,
+          failed: 0,
+        },
+      ]);
+      const dispatches = await constrainedPool.query<{
+        id: string;
+        status: string;
+        delivered_count: number;
+      }>(
+        `select id, status, delivered_count
+             from tournament_dispatch where idempotency_key = $1`,
+        [input.idempotencyKey],
+      );
+      expect(dispatches.rows).toEqual([
+        { id: results[0]!.dispatchId, status: 'sent', delivered_count: 1 },
+      ]);
+      const messages = await constrainedPool.query<{ id: string }>(
+        `select id from messages where metadata->>'tournamentDispatchId' = $1`,
+        [results[0]!.dispatchId],
+      );
+      expect(messages.rows).toHaveLength(1);
+      expect(published).toHaveLength(1);
+    } finally {
+      await constrainedPool.end();
+    }
+  }, 7_000);
 
   it('serializes concurrent manual dispatch retries and keeps the original snapshot', async () => {
     await seedUsers(pool, 0);

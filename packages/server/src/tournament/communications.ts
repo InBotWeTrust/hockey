@@ -1,10 +1,34 @@
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import { ensureDefaultNewsChannel, findOrCreateDM, sendMessage } from '../chat/service.js';
 import { publishMessageNew, type EventPublisher } from '../chat/events.js';
 import { AppError } from '../plugins/errors.js';
 import { enqueueTournamentPush } from '../push/tournament.js';
 
 export type TournamentAudience = 'approved' | 'all_participants';
+
+const DISPATCH_LOCK_RETRY_DELAY_MS = 10;
+
+async function acquireDispatchLock(pool: Pool, lockKey: string): Promise<PoolClient> {
+  let acquiredClient: PoolClient | null = null;
+  while (acquiredClient === null) {
+    const client = await pool.connect();
+    try {
+      const lock = await client.query<{ acquired: boolean }>(
+        `select pg_try_advisory_lock(hashtext($1)) as acquired`,
+        [lockKey],
+      );
+      if (lock.rows[0]?.acquired === true) acquiredClient = client;
+      else client.release();
+    } catch (error) {
+      client.release();
+      throw error;
+    }
+    if (acquiredClient === null) {
+      await new Promise<void>((resolve) => setTimeout(resolve, DISPATCH_LOCK_RETRY_DELAY_MS));
+    }
+  }
+  return acquiredClient;
+}
 
 function audienceStates(audience: TournamentAudience): string[] {
   return audience === 'approved'
@@ -46,9 +70,8 @@ export async function dispatchTournamentCommunication(
     throw new AppError('configuration_error', 'SYSTEM_USER_ID is required', 409);
   }
   const lockKey = `tournament-dispatch:${input.idempotencyKey}`;
-  const lockClient = await pool.connect();
+  const lockClient = await acquireDispatchLock(pool, lockKey);
   try {
-    await lockClient.query(`select pg_advisory_lock(hashtext($1))`, [lockKey]);
     type DispatchRow = {
       id: string;
       tournament_id: string;
