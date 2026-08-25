@@ -2508,6 +2508,68 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     }
   }, 7_000);
 
+  it('bounds dispatch lock acquisition while another session keeps ownership', async () => {
+    await seedUsers(pool, 0);
+    const tournament = await createPublishedTournament(pool, 'bounded-manual-dispatch-lock', 0);
+    const idempotencyKey = `${tournament.id}:bounded-official-news`;
+    const lockKey = `tournament-dispatch:${idempotencyKey}`;
+    const lockHolder = await pool.connect();
+    let lockHeld = false;
+    let boundTimer: ReturnType<typeof setTimeout> | undefined;
+    let dispatchOutcome:
+      | Promise<{ kind: 'resolved' } | { kind: 'rejected'; error: unknown; elapsedMs: number }>
+      | undefined;
+
+    try {
+      await lockHolder.query(`select pg_advisory_lock(hashtext($1))`, [lockKey]);
+      lockHeld = true;
+      const startedAt = Date.now();
+      dispatchOutcome = dispatchTournamentCommunication(
+        pool,
+        { publish: async () => undefined },
+        {
+          tournamentId: tournament.id,
+          idempotencyKey,
+          kind: 'official_news',
+          audience: 'approved',
+          title: 'Занятая отправка',
+          body: 'Повторите отправку позже.',
+          createdBy: ADMIN_ID,
+        },
+      ).then(
+        () => ({ kind: 'resolved' as const }),
+        (error: unknown) => ({
+          kind: 'rejected' as const,
+          error,
+          elapsedMs: Date.now() - startedAt,
+        }),
+      );
+      const outcome = await Promise.race([
+        dispatchOutcome,
+        new Promise<{ kind: 'exceeded' }>((resolve) => {
+          boundTimer = setTimeout(() => resolve({ kind: 'exceeded' }), 1_500);
+        }),
+      ]);
+
+      expect(outcome).toMatchObject({
+        kind: 'rejected',
+        error: {
+          code: 'service_unavailable',
+          statusCode: 503,
+          message: 'tournament dispatch lock acquisition timed out',
+        },
+      });
+      if (outcome.kind === 'rejected') expect(outcome.elapsedMs).toBeLessThan(1_500);
+    } finally {
+      if (boundTimer !== undefined) clearTimeout(boundTimer);
+      if (lockHeld) {
+        await lockHolder.query(`select pg_advisory_unlock(hashtext($1))`, [lockKey]);
+      }
+      lockHolder.release();
+      await dispatchOutcome;
+    }
+  }, 5_000);
+
   it('serializes concurrent manual dispatch retries and keeps the original snapshot', async () => {
     await seedUsers(pool, 0);
     const tournament = await createPublishedTournament(pool, 'concurrent-manual-dispatch', 0);

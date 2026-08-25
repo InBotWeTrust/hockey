@@ -7,9 +7,11 @@ import { enqueueTournamentPush } from '../push/tournament.js';
 export type TournamentAudience = 'approved' | 'all_participants';
 
 const DISPATCH_LOCK_RETRY_DELAY_MS = 10;
+const DISPATCH_LOCK_MAX_ATTEMPTS = 100;
 
 async function acquireDispatchLock(pool: Pool, lockKey: string): Promise<PoolClient> {
   let acquiredClient: PoolClient | null = null;
+  let attempts = 0;
   while (acquiredClient === null) {
     const client = await pool.connect();
     try {
@@ -24,6 +26,14 @@ async function acquireDispatchLock(pool: Pool, lockKey: string): Promise<PoolCli
       throw error;
     }
     if (acquiredClient === null) {
+      attempts += 1;
+      if (attempts >= DISPATCH_LOCK_MAX_ATTEMPTS) {
+        throw new AppError(
+          'service_unavailable',
+          'tournament dispatch lock acquisition timed out',
+          503,
+        );
+      }
       await new Promise<void>((resolve) => setTimeout(resolve, DISPATCH_LOCK_RETRY_DELAY_MS));
     }
   }
