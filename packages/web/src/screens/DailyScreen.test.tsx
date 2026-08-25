@@ -289,6 +289,12 @@ describe('DailyScreen', () => {
     expect(duelBackLabel('matchmaking', false)).toBe('К дуэлям');
     expect(tournamentDuelBackPath(false)).toBe('/?view=amateur&section=tournaments');
     expect(tournamentDuelBackPath(true)).toBe('/?view=amateur&section=tournaments&from=sections');
+    expect(tournamentDuelBackPath(false, 't1')).toBe(
+      '/?view=amateur&section=tournaments&tournament=t1&tab=schedule',
+    );
+    expect(tournamentDuelBackPath(true, 'tournament with spaces')).toBe(
+      '/?view=amateur&section=tournaments&tournament=tournament+with+spaces&tab=schedule&from=sections',
+    );
   });
 
   it('formats duel inventory badges without showing exhausted zero', () => {

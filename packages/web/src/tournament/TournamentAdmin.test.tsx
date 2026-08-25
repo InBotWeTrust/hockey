@@ -306,6 +306,46 @@ describe('TournamentAdmin', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('retries the visible saved snapshot after a failed autosave is reverted', async () => {
+    const tournament: api.AdminTournament = {
+      id: 'failed-save-cup',
+      slug: 'failed-save-cup',
+      title: 'Кубок сетевой ошибки',
+      description: 'Исходное описание',
+      status: 'draft',
+      regularSource: 'head_to_head',
+      revision: 4,
+      participantCount: 0,
+      rules: { config: { regularSource: 'head_to_head' } },
+    };
+    vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [tournament] });
+    vi.spyOn(api, 'fetchAdminTournamentParticipants').mockResolvedValue({ participants: [] });
+    const update = vi
+      .spyOn(api, 'updateAdminTournament')
+      .mockRejectedValueOnce(new Error('network failed'))
+      .mockResolvedValueOnce({ tournament: { ...tournament, revision: 5 } });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentAdmin />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок сетевой ошибки' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать draft' }));
+    const description = screen.getByRole('textbox', { name: 'Описание' });
+    fireEvent.change(description, { target: { value: 'Несохранённое описание' } });
+    expect(await screen.findByText('Не удалось сохранить изменения.')).toBeInTheDocument();
+
+    fireEvent.change(description, { target: { value: 'Исходное описание' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить сохранение' }));
+
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(2));
+    expect(update.mock.calls[1]?.[2]).toEqual(
+      expect.objectContaining({ description: 'Исходное описание' }),
+    );
+  });
+
   it('keeps an incomplete notification card dirty instead of deleting it', async () => {
     const tournament: api.AdminTournament = {
       id: 'notify-cup',
@@ -348,6 +388,67 @@ describe('TournamentAdmin', () => {
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
     expect(screen.getByRole('button', { name: 'Готово' })).toBeDisabled();
     expect(update).not.toHaveBeenCalled();
+  });
+
+  it('preserves pipes and line breaks in notification text', async () => {
+    const tournament: api.AdminTournament = {
+      id: 'notification-text-cup',
+      slug: 'notification-text-cup',
+      title: 'Кубок текста',
+      description: '',
+      status: 'draft',
+      regularSource: 'head_to_head',
+      revision: 5,
+      participantCount: 0,
+      rules: {
+        config: { regularSource: 'head_to_head' },
+        notificationOverrides: {
+          'tournament.live_soon': {
+            title: 'Скоро матч',
+            body: 'До старта 15 минут',
+            url: '/?view=amateur&section=tournaments',
+          },
+        },
+      },
+    };
+    vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [tournament] });
+    vi.spyOn(api, 'fetchAdminTournamentParticipants').mockResolvedValue({ participants: [] });
+    const update = vi.spyOn(api, 'updateAdminTournament').mockResolvedValue({
+      tournament: { ...tournament, revision: 6 },
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentAdmin />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок текста' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать draft' }));
+    fireEvent.click(screen.getByRole('button', { name: '7. Уведомления' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Live-старт приближается: текст' }), {
+      target: { value: 'До старта | 15 минут\nОткройте расписание' },
+    });
+
+    await waitFor(
+      () =>
+        expect(update).toHaveBeenCalledWith(
+          tournament.id,
+          5,
+          expect.objectContaining({
+            rules: expect.objectContaining({
+              notificationOverrides: {
+                'tournament.live_soon': {
+                  title: 'Скоро матч',
+                  body: 'До старта | 15 минут\nОткройте расписание',
+                  url: '/?view=amateur&section=tournaments',
+                },
+              },
+            }),
+          }),
+        ),
+      { timeout: 2_000 },
+    );
   });
 
   it('uses active duel templates by title instead of asking for UUID values', async () => {

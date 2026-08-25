@@ -339,10 +339,17 @@ export function duelBackLabel(
   return directPlayOnly ? 'К арене' : 'К дуэлям';
 }
 
-export function tournamentDuelBackPath(fromSections: boolean): string {
-  return fromSections
-    ? '/?view=amateur&section=tournaments&from=sections'
-    : '/?view=amateur&section=tournaments';
+export function tournamentDuelBackPath(
+  fromSections: boolean,
+  tournamentId: string | null = null,
+): string {
+  const params = new URLSearchParams({ view: 'amateur', section: 'tournaments' });
+  if (tournamentId) {
+    params.set('tournament', tournamentId);
+    params.set('tab', 'schedule');
+  }
+  if (fromSections) params.set('from', 'sections');
+  return `/?${params.toString()}`;
 }
 
 export function DailyScreen(): JSX.Element {
@@ -355,6 +362,7 @@ export function DailyScreen(): JSX.Element {
   const routeParams = new URLSearchParams(location.search);
   const fromSections = routeParams.get('from') === 'sections';
   const tournamentOrigin = routeParams.get('section') === 'tournaments';
+  const tournamentId = routeParams.get('tournament');
   const [selectedLevel, setSelectedLevel] = useState<GameLevel>('beginner');
   const [activeAmateurMatchId, setActiveAmateurMatchId] = useState<string | null>(null);
   const [amateurView, setAmateurView] = useState<AmateurView>('home');
@@ -535,7 +543,7 @@ export function DailyScreen(): JSX.Element {
               if (directDuelPlay) {
                 if (tournamentOrigin) {
                   setAmateurView('tournaments');
-                  navigate(tournamentDuelBackPath(fromSections), { replace: true });
+                  navigate(tournamentDuelBackPath(fromSections, tournamentId), { replace: true });
                   return;
                 }
                 setSelectedLevel('beginner');

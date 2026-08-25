@@ -3,6 +3,49 @@ import { describe, expect, it, vi } from 'vitest';
 import { GlassSelect } from './GlassSelect.js';
 
 describe('GlassSelect', () => {
+  it('keeps the keyboard-active option visible in a long menu', () => {
+    const previousScrollIntoView = Element.prototype.scrollIntoView;
+    Object.defineProperty(Element.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: vi.fn(),
+    });
+    try {
+      render(
+        <GlassSelect
+          ariaLabel="Длинный список"
+          value="option-1"
+          options={Array.from({ length: 20 }, (_, index) => ({
+            value: `option-${index + 1}`,
+            label: `Вариант ${index + 1}`,
+          }))}
+          onChange={vi.fn()}
+        />,
+      );
+
+      const combobox = screen.getByRole('combobox', { name: 'Длинный список' });
+      fireEvent.keyDown(combobox, { key: 'ArrowDown' });
+      const lastOption = screen.getByRole('option', { name: 'Вариант 20' });
+      const scrollIntoView = vi.fn();
+      Object.defineProperty(lastOption, 'scrollIntoView', {
+        configurable: true,
+        value: scrollIntoView,
+      });
+
+      fireEvent.keyDown(combobox, { key: 'End' });
+
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+    } finally {
+      if (previousScrollIntoView === undefined) {
+        Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+      } else {
+        Object.defineProperty(Element.prototype, 'scrollIntoView', {
+          configurable: true,
+          value: previousScrollIntoView,
+        });
+      }
+    }
+  });
+
   it('supports listbox keyboard navigation without moving focus into the portal', () => {
     const onChange = vi.fn();
     render(

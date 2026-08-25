@@ -217,6 +217,12 @@ function GlassSelectMenu<T extends string>({
   onActiveIndexChange: (index: number) => void;
   onSelect: (value: T) => void;
 }): JSX.Element {
+  const activeOptionRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    activeOptionRef.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [activeIndex]);
+
   return (
     <div
       id={id}
@@ -246,6 +252,7 @@ function GlassSelectMenu<T extends string>({
         return (
           <button
             key={option.value}
+            ref={active ? activeOptionRef : undefined}
             id={`${id}-option-${index}`}
             type="button"
             role="option"

@@ -296,28 +296,54 @@ function parseRewards(
   }));
 }
 
-function parseNotificationOverrides(
-  value: string,
-): Record<string, { title: string; body: string; url: string }> {
-  const rows = value
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const [key = '', title = '', body = '', url = ''] = line
-        .split('|')
-        .map((part) => part.trim());
-      return { key, title, body, url };
-    });
-  for (const row of rows) {
-    if (!row.key.startsWith('tournament.')) throw new Error('Выберите событие уведомления.');
-    if (!row.title) throw new Error('Заполните заголовок уведомления.');
-    if (!row.body) throw new Error('Заполните текст уведомления.');
+type NotificationOverrideDraft = Record<string, { title: string; body: string; url: string }>;
+
+function decodeNotificationOverrides(value: string): NotificationOverrideDraft {
+  if (value.trim() === '') return {};
+  if (value.trimStart().startsWith('{')) {
+    const parsed = JSON.parse(value) as unknown;
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      throw new Error('Проверьте уведомления.');
+    }
+    return Object.fromEntries(
+      Object.entries(parsed).map(([key, raw]) => {
+        const item = objectValue(raw);
+        return [
+          key,
+          {
+            title: typeof item.title === 'string' ? item.title : '',
+            body: typeof item.body === 'string' ? item.body : '',
+            url: typeof item.url === 'string' ? item.url : '',
+          },
+        ];
+      }),
+    );
   }
   return Object.fromEntries(
-    rows.map(({ key, title, body, url }) => [
+    value
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const [key = '', title = '', body = '', url = ''] = line
+          .split('|')
+          .map((part) => part.trim());
+        return [key, { title, body, url }];
+      }),
+  );
+}
+
+function parseNotificationOverrides(value: string): NotificationOverrideDraft {
+  const overrides = decodeNotificationOverrides(value);
+  for (const [key, item] of Object.entries(overrides)) {
+    if (!key.startsWith('tournament.')) throw new Error('Выберите событие уведомления.');
+    if (!item.title) throw new Error('Заполните заголовок уведомления.');
+    if (!item.body) throw new Error('Заполните текст уведомления.');
+  }
+  return Object.fromEntries(
+    Object.entries(overrides).map(([key, item]) => [
       key,
-      { title, body, url: url || '/?view=amateur&section=tournaments' },
+      { ...item, url: item.url || '/?view=amateur&section=tournaments' },
     ]),
   );
 }
@@ -333,12 +359,21 @@ function draftValidationError(draft: TournamentDraft): string | null {
 
 function notificationOverridesDraft(value: unknown): string {
   const overrides = objectValue(value);
-  return Object.entries(overrides)
-    .map(([key, setting]) => {
-      const override = objectValue(setting);
-      return [key, override.title, override.body, override.url].map(String).join('|');
-    })
-    .join('\n');
+  return JSON.stringify(
+    Object.fromEntries(
+      Object.entries(overrides).map(([key, setting]) => {
+        const override = objectValue(setting);
+        return [
+          key,
+          {
+            title: String(override.title ?? ''),
+            body: String(override.body ?? ''),
+            url: String(override.url ?? ''),
+          },
+        ];
+      }),
+    ),
+  );
 }
 
 function playoffRoundCount(size: PlayoffSize): number {
@@ -853,29 +888,16 @@ function NotificationEditor({
 }) {
   const [eventToAdd, setEventToAdd] = useState('');
   const reminderValues = splitList(reminders).map(Number).filter(Number.isFinite);
-  const parsed = Object.fromEntries(
-    overrides
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        const [key = '', title = '', body = '', url = ''] = line
-          .split('|')
-          .map((part) => part.trim());
-        return [key, { title, body, url }] as const;
-      }),
-  );
-  const selected = Object.keys(parsed);
+  let parsed: NotificationOverrideDraft = {};
   let validationError: string | null = null;
   try {
+    parsed = decodeNotificationOverrides(overrides);
     parseNotificationOverrides(overrides);
   } catch (error) {
     validationError = error instanceof Error ? error.message : 'Проверьте уведомления.';
   }
-  const serialize = (next: Record<string, { title: string; body: string; url: string }>) =>
-    Object.entries(next)
-      .map(([key, item]) => `${key}|${item.title}|${item.body}|${item.url}`)
-      .join('\n');
+  const selected = Object.keys(parsed);
+  const serialize = (next: NotificationOverrideDraft) => JSON.stringify(next);
   return (
     <>
       <fieldset className="tournament-structured-editor">
@@ -1230,9 +1252,9 @@ export function TournamentAdmin(): JSX.Element {
     }
     if (snapshot === lastSavedSnapshot.current) {
       const queueStatus = saveQueue.current?.status;
-      if (queueStatus === 'saving') {
+      if (queueStatus === 'saving' || queueStatus === 'error') {
         saveQueue.current?.enqueue(body, snapshot);
-      } else if (queueStatus !== 'error') {
+      } else {
         setSaveState('saved');
       }
       return;

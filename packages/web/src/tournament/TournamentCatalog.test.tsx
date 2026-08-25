@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthStore } from '../auth/authStore.js';
@@ -35,9 +35,11 @@ describe('TournamentCatalog', () => {
     });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
-      <QueryClientProvider client={client}>
-        <TournamentCatalog />
-      </QueryClientProvider>,
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TournamentCatalog />
+        </QueryClientProvider>
+      </MemoryRouter>,
     );
     expect(await screen.findByText('Кубок льда')).toBeInTheDocument();
     expect(screen.getByText('12 / 16 участников')).toBeInTheDocument();
@@ -116,6 +118,118 @@ describe('TournamentCatalog', () => {
     expect(screen.getByLabelText('Площадка: Дома')).toBeInTheDocument();
     expect(screen.getByLabelText('Площадка: Нейтрально')).toBeInTheDocument();
     expect(sections).toBeInTheDocument();
+  });
+
+  it('shows a settled zero-zero fixture score', async () => {
+    vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
+      tournaments: [
+        {
+          id: 't1',
+          slug: 'score-cup',
+          title: 'Кубок счёта',
+          description: '',
+          status: 'regular',
+          regularSource: 'head_to_head',
+          visibility: 'public',
+          revision: 1,
+          participantCount: 2,
+          myParticipantState: 'approved',
+          registrationOpensAt: null,
+          registrationClosesAt: null,
+          startsAt: null,
+          rules: { config: { participantLimit: 2, entryFeeCoins: 0, playoffSize: 2 } },
+        },
+      ],
+    });
+    vi.spyOn(api, 'fetchTournamentSchedule').mockResolvedValue({
+      fixtures: [
+        {
+          id: 'f1',
+          fixtureNumber: 1,
+          stage: 'regular',
+          roundNumber: 1,
+          scheduledStartsAt: null,
+          windowEndsAt: null,
+          status: 'settled',
+          venueMode: 'neutral_default',
+          home: { userId: 'u1', name: 'Первый' },
+          away: { userId: 'u2', name: 'Второй' },
+          score: { home: 0, away: 0 },
+        },
+      ],
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TournamentCatalog />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок счёта' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Расписание' }));
+
+    expect(await screen.findByText('Счёт 0:0')).toBeInTheDocument();
+  });
+
+  it('restores a tournament schedule from the duel return URL', async () => {
+    vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
+      tournaments: [
+        {
+          id: 't1',
+          slug: 'return-cup',
+          title: 'Кубок возврата',
+          description: '',
+          status: 'regular',
+          regularSource: 'head_to_head',
+          visibility: 'public',
+          revision: 1,
+          participantCount: 2,
+          myParticipantState: 'approved',
+          registrationOpensAt: null,
+          registrationClosesAt: null,
+          startsAt: null,
+          rules: { config: { participantLimit: 2, entryFeeCoins: 0, playoffSize: 2 } },
+        },
+      ],
+    });
+    vi.spyOn(api, 'fetchTournamentSchedule').mockResolvedValue({
+      fixtures: [
+        {
+          id: 'f1',
+          fixtureNumber: 1,
+          stage: 'regular',
+          roundNumber: 1,
+          scheduledStartsAt: null,
+          windowEndsAt: null,
+          status: 'scheduled',
+          venueMode: 'home_selected',
+          home: { userId: 'u1', name: 'Первый' },
+          away: { userId: 'u2', name: 'Второй' },
+          score: { home: 0, away: 0 },
+        },
+      ],
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MemoryRouter
+        initialEntries={[
+          '/?view=amateur&section=tournaments&tournament=t1&tab=schedule&from=sections',
+        ]}
+      >
+        <QueryClientProvider client={client}>
+          <TournamentCatalog />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Кубок возврата')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Расписание' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(await screen.findByText('Первый — Второй')).toBeInTheDocument();
   });
 
   it('shows an away venue badge for the authenticated away participant', async () => {
@@ -407,9 +521,188 @@ describe('TournamentCatalog', () => {
 
     await waitFor(() =>
       expect(screen.getByLabelText('Текущий адрес')).toHaveTextContent(
-        '?view=amateur&section=tournaments&match=duel-1&play=1',
+        '?view=amateur&section=tournaments&tournament=t1&tab=schedule&match=duel-1&play=1',
       ),
     );
+  });
+
+  it('ignores a late fixture opening response after returning to the schedule', async () => {
+    vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
+      tournaments: [
+        {
+          id: 't1',
+          slug: 'late-cup',
+          title: 'Кубок позднего ответа',
+          description: '',
+          status: 'regular',
+          regularSource: 'head_to_head',
+          visibility: 'public',
+          revision: 1,
+          participantCount: 2,
+          myParticipantState: 'approved',
+          registrationOpensAt: null,
+          registrationClosesAt: null,
+          startsAt: null,
+          rules: { config: { participantLimit: 2, entryFeeCoins: 0, playoffSize: 2 } },
+        },
+      ],
+    });
+    vi.spyOn(api, 'fetchTournamentSchedule').mockResolvedValue({
+      fixtures: [
+        {
+          id: 'f1',
+          fixtureNumber: 1,
+          stage: 'regular',
+          roundNumber: 1,
+          scheduledStartsAt: null,
+          windowEndsAt: null,
+          status: 'open',
+          venueMode: 'home_selected',
+          home: { userId: 'u1', name: 'Первый' },
+          away: { userId: 'u2', name: 'Второй' },
+          score: { home: 0, away: 0 },
+        },
+      ],
+    });
+    vi.spyOn(api, 'fetchFixtureLiveState').mockResolvedValue({
+      live: {
+        fixtureId: 'f1',
+        status: 'open',
+        score: { home: 0, away: 0 },
+        scheduledStartsAt: null,
+        windowEndsAt: null,
+        proposal: null,
+        overlapWarnings: [],
+        duelMatchId: null,
+        participants: [],
+      },
+    });
+    let resolveOpen!: (value: Awaited<ReturnType<typeof api.openTournamentFixtureSegment>>) => void;
+    vi.spyOn(api, 'openTournamentFixtureSegment').mockReturnValue(
+      new Promise((resolve) => {
+        resolveOpen = resolve;
+      }),
+    );
+    function LocationProbe() {
+      return <output aria-label="Текущий адрес">{useLocation().search}</output>;
+    }
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <MemoryRouter initialEntries={['/?view=amateur&section=tournaments']}>
+        <QueryClientProvider client={client}>
+          <TournamentCatalog />
+          <LocationProbe />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок позднего ответа' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Расписание' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть live' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Начать игру' }));
+    fireEvent.click(screen.getByRole('button', { name: 'К расписанию' }));
+
+    await act(async () => {
+      resolveOpen({
+        fixtureId: 'f1',
+        segmentId: 'segment-1',
+        duelMatchId: 'late-duel',
+        kind: 'regulation',
+        sequenceNumber: 1,
+      });
+      await Promise.resolve();
+    });
+
+    expect(screen.getByRole('tab', { name: 'Расписание' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(screen.getByLabelText('Текущий адрес')).not.toHaveTextContent('match=late-duel');
+  });
+
+  it('ignores a late fixture opening error after returning to the schedule', async () => {
+    vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
+      tournaments: [
+        {
+          id: 't1',
+          slug: 'late-error-cup',
+          title: 'Кубок поздней ошибки',
+          description: '',
+          status: 'regular',
+          regularSource: 'head_to_head',
+          visibility: 'public',
+          revision: 1,
+          participantCount: 2,
+          myParticipantState: 'approved',
+          registrationOpensAt: null,
+          registrationClosesAt: null,
+          startsAt: null,
+          rules: { config: { participantLimit: 2, entryFeeCoins: 0, playoffSize: 2 } },
+        },
+      ],
+    });
+    vi.spyOn(api, 'fetchTournamentSchedule').mockResolvedValue({
+      fixtures: [
+        {
+          id: 'f1',
+          fixtureNumber: 1,
+          stage: 'regular',
+          roundNumber: 1,
+          scheduledStartsAt: null,
+          windowEndsAt: null,
+          status: 'open',
+          venueMode: 'home_selected',
+          home: { userId: 'u1', name: 'Первый' },
+          away: { userId: 'u2', name: 'Второй' },
+          score: { home: 0, away: 0 },
+        },
+      ],
+    });
+    vi.spyOn(api, 'fetchFixtureLiveState').mockResolvedValue({
+      live: {
+        fixtureId: 'f1',
+        status: 'open',
+        score: { home: 0, away: 0 },
+        scheduledStartsAt: null,
+        windowEndsAt: null,
+        proposal: null,
+        overlapWarnings: [],
+        duelMatchId: null,
+        participants: [],
+      },
+    });
+    let rejectOpen!: (reason?: unknown) => void;
+    vi.spyOn(api, 'openTournamentFixtureSegment').mockReturnValue(
+      new Promise((_resolve, reject) => {
+        rejectOpen = reject;
+      }),
+    );
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <MemoryRouter initialEntries={['/?view=amateur&section=tournaments']}>
+        <QueryClientProvider client={client}>
+          <TournamentCatalog />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок поздней ошибки' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Расписание' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть live' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Начать игру' }));
+    fireEvent.click(screen.getByRole('button', { name: 'К расписанию' }));
+
+    await act(async () => {
+      rejectOpen(new Error('late network failure'));
+      await Promise.resolve();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть live' }));
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('shows a fixture opening error and allows a retry', async () => {

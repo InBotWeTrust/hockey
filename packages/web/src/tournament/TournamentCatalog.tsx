@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   applyToTournament,
@@ -26,6 +26,11 @@ const tabs: Array<{ key: TournamentTab; label: string }> = [
   { key: 'playoff', label: 'Плей-офф' },
   { key: 'rules', label: 'Правила и призы' },
 ];
+
+function tournamentTabFromSearch(search: string): TournamentTab {
+  const requested = new URLSearchParams(search).get('tab');
+  return tabs.some((tab) => tab.key === requested) ? (requested as TournamentTab) : 'overview';
+}
 
 function fixtureVenueRole(fixture: TournamentFixture, currentUserId: string | null): VenueRole {
   if (fixture.venueMode === 'neutral_default') return 'neutral';
@@ -265,8 +270,10 @@ function TournamentDetails({
   const navigate = useNavigate();
   const location = useLocation();
   const currentUserId = useAuthStore((state) => state.user?.id ?? null);
-  const [tab, setTab] = useState<TournamentTab>('overview');
+  const [tab, setTab] = useState<TournamentTab>(() => tournamentTabFromSearch(location.search));
   const [selectedFixture, setSelectedFixture] = useState<TournamentFixture | null>(null);
+  const activeFixtureId = useRef<string | null>(null);
+  const openFixtureGeneration = useRef(0);
   const queryClient = useQueryClient();
   const registrationState = registrationWindow(tournament);
   const schedule = useQuery({
@@ -295,11 +302,27 @@ function TournamentDetails({
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tournaments'] }),
   });
   const openFixture = useMutation({
-    mutationFn: (fixtureId: string) => openTournamentFixtureSegment(tournament.id, fixtureId),
-    onSuccess: (segment) => {
-      navigate(
-        `/?view=amateur&section=tournaments${new URLSearchParams(location.search).get('from') === 'sections' ? '&from=sections' : ''}&match=${encodeURIComponent(segment.duelMatchId)}&play=1`,
-      );
+    mutationFn: async ({ fixtureId, generation }: { fixtureId: string; generation: number }) => ({
+      fixtureId,
+      generation,
+      segment: await openTournamentFixtureSegment(tournament.id, fixtureId),
+    }),
+    onSuccess: ({ fixtureId, generation, segment }) => {
+      if (generation !== openFixtureGeneration.current || fixtureId !== activeFixtureId.current) {
+        return;
+      }
+      const params = new URLSearchParams({
+        view: 'amateur',
+        section: 'tournaments',
+        tournament: tournament.id,
+        tab: 'schedule',
+      });
+      if (new URLSearchParams(location.search).get('from') === 'sections') {
+        params.set('from', 'sections');
+      }
+      params.set('match', segment.duelMatchId);
+      params.set('play', '1');
+      navigate(`/?${params.toString()}`);
     },
   });
 
@@ -307,8 +330,18 @@ function TournamentDetails({
     return (
       <TournamentFixtureLive
         fixture={selectedFixture}
-        onBack={() => setSelectedFixture(null)}
-        onPlay={() => openFixture.mutate(selectedFixture.id)}
+        onBack={() => {
+          openFixtureGeneration.current += 1;
+          activeFixtureId.current = null;
+          openFixture.reset();
+          setSelectedFixture(null);
+        }}
+        onPlay={() => {
+          const generation = openFixtureGeneration.current + 1;
+          openFixtureGeneration.current = generation;
+          activeFixtureId.current = selectedFixture.id;
+          openFixture.mutate({ fixtureId: selectedFixture.id, generation });
+        }}
         playPending={openFixture.isPending}
         playError={openFixture.isError}
       />
@@ -403,7 +436,7 @@ function TournamentDetails({
                       </span>
                       <VenueBadge role={fixtureVenueRole(fixture, currentUserId)} />
                     </div>
-                    {(fixture.status === 'completed' ||
+                    {(['settled', 'forfeit'].includes(fixture.status) ||
                       fixture.score.home + fixture.score.away > 0) && (
                       <div className="tournament-fixture-card__score">
                         Счёт {fixture.score.home}:{fixture.score.away}
@@ -413,7 +446,12 @@ function TournamentDetails({
                       <button
                         type="button"
                         className="admin-compact-btn tournament-fixture-card__action"
-                        onClick={() => setSelectedFixture(fixture)}
+                        onClick={() => {
+                          openFixtureGeneration.current += 1;
+                          activeFixtureId.current = fixture.id;
+                          openFixture.reset();
+                          setSelectedFixture(fixture);
+                        }}
                       >
                         Открыть live
                       </button>
@@ -470,7 +508,10 @@ function TournamentDetails({
 }
 
 export function TournamentCatalog(): JSX.Element {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const location = useLocation();
+  const [selectedId, setSelectedId] = useState<string | null>(() =>
+    new URLSearchParams(location.search).get('tournament'),
+  );
   const catalog = useQuery({ queryKey: ['tournaments'], queryFn: fetchTournaments });
   const tournaments = catalog.data?.tournaments ?? [];
   const selected = tournaments.find((tournament) => tournament.id === selectedId);
