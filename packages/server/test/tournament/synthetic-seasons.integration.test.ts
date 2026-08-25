@@ -738,7 +738,7 @@ describe.skipIf(!hasIntegrationEnv)('synthetic tournament seasons', () => {
       regularSource: 'head_to_head',
       duelTemplateId,
     });
-    expect(await isTournamentFeatureEnabled(pool)).toBe(false);
+    expect(await isTournamentFeatureEnabled(pool)).toBe(true);
     await publishSyntheticSchedule(pool, tournament, title);
 
     const fixtures = await pool.query<FixtureRow>(
@@ -962,7 +962,7 @@ describe.skipIf(!hasIntegrationEnv)('synthetic tournament seasons', () => {
       regularSource: 'daily_aggregate',
       duelTemplateId,
     });
-    expect(await isTournamentFeatureEnabled(pool)).toBe(false);
+    expect(await isTournamentFeatureEnabled(pool)).toBe(true);
     await publishSyntheticSchedule(pool, tournament, title);
     await seedDailySourceRows(pool);
 
