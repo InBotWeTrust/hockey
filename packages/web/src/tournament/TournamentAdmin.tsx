@@ -1353,11 +1353,13 @@ export function TournamentAdmin(): JSX.Element {
           <div className="section-label" style={{ margin: 0 }}>
             Турниры
           </div>
-          <h2 style={{ margin: '4px 0 0' }}>Управление сезонами</h2>
+          <h2 className="screen-title-on-arena" style={{ margin: '4px 0 0' }}>
+            Управление сезонами
+          </h2>
         </div>
         <button
           type="button"
-          className="chip chip--active"
+          className="icon-btn icon-btn--dark"
           aria-label="Создать"
           onClick={() => {
             saveQueueGeneration.current += 1;
@@ -1373,7 +1375,7 @@ export function TournamentAdmin(): JSX.Element {
             setWizardOpen(true);
           }}
         >
-          + Создать
+          +
         </button>
       </div>
       {tournaments.data?.tournaments.length === 0 && (

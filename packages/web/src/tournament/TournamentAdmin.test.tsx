@@ -726,7 +726,12 @@ describe('TournamentAdmin', () => {
       </QueryClientProvider>,
     );
     expect(await screen.findByText('Турниров пока нет')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Создать' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Управление сезонами' })).toHaveClass(
+      'screen-title-on-arena',
+    );
+    const createButton = screen.getByRole('button', { name: 'Создать' });
+    expect(createButton).toHaveTextContent(/^\+$/);
+    expect(createButton).toHaveClass('icon-btn', 'icon-btn--dark');
   });
 
   it('renders the wizard backdrop outside the app content stacking context', async () => {
