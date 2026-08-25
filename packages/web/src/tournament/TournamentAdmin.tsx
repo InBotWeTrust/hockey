@@ -448,7 +448,7 @@ export function TournamentAdmin(): JSX.Element {
         </button>
       ))}
       {wizardOpen && createPortal(
-        <div className="modal-backdrop" role="presentation">
+        <div className="modal-backdrop admin-screen" role="presentation">
           <section className="modal-card" role="dialog" aria-modal="true" aria-label="Создание турнира" style={{ maxHeight: '90dvh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
               <h2 className="modal-title" style={{ margin: 0 }}>{editingTournament === null ? 'Новый турнир' : 'Редактирование турнира'}</h2>

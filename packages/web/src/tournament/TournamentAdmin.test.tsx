@@ -42,6 +42,30 @@ describe('TournamentAdmin', () => {
     expect(backdrop?.parentElement).toBe(document.body);
   });
 
+  it('preserves the admin form styling scope inside the portaled wizard', async () => {
+    vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [] });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <div className="admin-screen">
+        <QueryClientProvider client={client}>
+          <TournamentAdmin />
+        </QueryClientProvider>
+      </div>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Создать турнир' }));
+
+    const titleInput = screen.getByRole('textbox', { name: 'Название' });
+    const backdrop = titleInput.closest<HTMLElement>('.modal-backdrop');
+    expect(backdrop).toHaveClass('modal-backdrop', 'admin-screen');
+    expect(titleInput.matches('.admin-screen input')).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: '2. Доступ' }));
+    expect(screen.getByRole('combobox', { name: 'Регистрация' }).matches('.admin-screen select')).toBe(
+      true,
+    );
+  });
+
   it('configures tournament rules instead of showing placeholder wizard steps', async () => {
     vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [] });
     const create = vi.spyOn(api, 'createAdminTournament').mockResolvedValue({
