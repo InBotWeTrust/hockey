@@ -1,8 +1,13 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as api from './adminApi.js';
 import { TournamentAdmin } from './TournamentAdmin.js';
+
+async function chooseGlassOption(label: string, option: string | RegExp): Promise<void> {
+  fireEvent.click(screen.getByRole('combobox', { name: label }));
+  fireEvent.click(await screen.findByRole('option', { name: option }));
+}
 
 function dstOverlapTournament(): api.AdminTournament {
   return {
@@ -29,6 +34,112 @@ function dstOverlapTournament(): api.AdminTournament {
 describe('TournamentAdmin', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('uses compact described fields, custom selects and collapsed advanced settings', async () => {
+    vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [] });
+    vi.spyOn(api, 'fetchAdminTournamentDuelTemplates').mockResolvedValue({ templates: [] });
+    vi.spyOn(api, 'createAdminTournament').mockResolvedValue({
+      tournament: {
+        id: '00000000-0000-4000-8000-000000000949',
+        slug: 'compact-cup',
+        title: 'Компактный кубок',
+        description: 'Короткое описание',
+        status: 'draft',
+        regularSource: 'head_to_head',
+        revision: 1,
+        participantCount: 0,
+      },
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentAdmin />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Создать' }));
+    const dialog = screen.getByRole('dialog', { name: 'Создание турнира' });
+    expect(dialog.style.height).toContain('--app-viewport-height');
+    expect(screen.getByRole('textbox', { name: 'Описание' })).toHaveClass(
+      'tournament-admin-textarea',
+    );
+    const fields = Array.from(dialog.querySelectorAll<HTMLElement>('[data-tournament-field]'));
+    expect(fields.length).toBeGreaterThanOrEqual(2);
+    for (const field of fields) {
+      expect(field.querySelector('.tournament-admin-field__help')?.textContent?.trim()).not.toBe(
+        '',
+      );
+    }
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Название' }), {
+      target: { value: 'Компактный кубок' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+
+    const registration = await screen.findByRole('combobox', { name: 'Регистрация' });
+    expect(registration.tagName).toBe('BUTTON');
+    expect(dialog.querySelector('select')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    const advanced = screen.getByText('Тонкие настройки очков').closest('details');
+    expect(advanced).not.toHaveAttribute('open');
+  });
+
+  it('waits for the latest save before Done closes the wizard and opens operations', async () => {
+    const tournament: api.AdminTournament = {
+      id: '00000000-0000-4000-8000-000000000948',
+      slug: 'flush-cup',
+      title: 'Кубок очереди',
+      description: '',
+      status: 'draft',
+      regularSource: 'head_to_head',
+      revision: 4,
+      participantCount: 0,
+      rules: { config: { regularSource: 'head_to_head' } },
+    };
+    vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [tournament] });
+    vi.spyOn(api, 'fetchAdminTournamentParticipants').mockResolvedValue({ participants: [] });
+    let resolveUpdate!: (value: { tournament: api.AdminTournament }) => void;
+    const update = vi.spyOn(api, 'updateAdminTournament').mockReturnValue(
+      new Promise((resolve) => {
+        resolveUpdate = resolve;
+      }),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentAdmin />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок очереди' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать draft' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Описание' }), {
+      target: { value: 'Последняя версия' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
+
+    expect(update).toHaveBeenCalledWith(
+      tournament.id,
+      4,
+      expect.objectContaining({ description: 'Последняя версия' }),
+    );
+    expect(screen.getByRole('dialog', { name: 'Создание турнира' })).toBeInTheDocument();
+
+    await act(async () => {
+      resolveUpdate({
+        tournament: { ...tournament, description: 'Последняя версия', revision: 5 },
+      });
+    });
+
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Создание турнира' })).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole('button', { name: 'Заявки и оплаты' })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('alertdialog', { name: 'Закрыть без сохранения?' }),
+    ).not.toBeInTheDocument();
   });
 
   it('opens a wide sequential wizard without exposing slug and creates the draft after step one', async () => {
@@ -121,11 +232,10 @@ describe('TournamentAdmin', () => {
     await screen.findByRole('combobox', { name: 'Регистрация' });
     fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
 
-    const template = await screen.findByRole('combobox', { name: 'Шаблон дуэли регулярки' });
-    expect(within(template).getByRole('option', { name: /Классика/ })).toBeInTheDocument();
-    expect(
-      within(template).queryByRole('option', { name: /Старый шаблон/ }),
-    ).not.toBeInTheDocument();
+    await screen.findByRole('combobox', { name: 'Шаблон дуэли регулярки' });
+    fireEvent.click(screen.getByRole('combobox', { name: 'Шаблон дуэли регулярки' }));
+    expect(await screen.findByRole('option', { name: /Классика/ })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Старый шаблон/ })).not.toBeInTheDocument();
     expect(screen.queryByPlaceholderText(/UUID/)).not.toBeInTheDocument();
   });
 
@@ -205,8 +315,8 @@ describe('TournamentAdmin', () => {
       target: { value: tournament.title },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
-    const registration = await screen.findByRole('combobox', { name: 'Регистрация' });
-    fireEvent.change(registration, { target: { value: 'approval' } });
+    await screen.findByRole('combobox', { name: 'Регистрация' });
+    await chooseGlassOption('Регистрация', 'С одобрением');
 
     await waitFor(
       () =>
@@ -262,9 +372,7 @@ describe('TournamentAdmin', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
 
     expect(screen.getByRole('button', { name: 'Опустить Очки' })).toBeInTheDocument();
-    fireEvent.change(screen.getByRole('combobox', { name: 'Шаблон дуэли регулярки' }), {
-      target: { value: '00000000-0000-4000-8000-000000000980' },
-    });
+    await chooseGlassOption('Шаблон дуэли регулярки', /Классика/);
     fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
 
     expect(screen.getByRole('button', { name: 'Раунд 1, игра 1: Дома' })).toBeInTheDocument();
@@ -300,9 +408,7 @@ describe('TournamentAdmin', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
     await screen.findByRole('combobox', { name: 'Регистрация' });
     fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
-    fireEvent.change(screen.getByRole('combobox', { name: 'Формат' }), {
-      target: { value: 'daily_aggregate' },
-    });
+    await chooseGlassOption('Формат', 'Результаты ежедневных игр');
     expect(screen.getByRole('button', { name: 'Добавить место' })).toBeInTheDocument();
     expect(screen.queryByPlaceholderText('10,8,6,5')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Добавить место' }));
@@ -410,7 +516,9 @@ describe('TournamentAdmin', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
     await screen.findByRole('combobox', { name: 'Регистрация' });
     expect(
-      screen.getByRole('combobox', { name: 'Регистрация' }).matches('.admin-screen select'),
+      screen
+        .getByRole('combobox', { name: 'Регистрация' })
+        .matches('.admin-screen button[role="combobox"]'),
     ).toBe(true);
   });
 
@@ -469,9 +577,7 @@ describe('TournamentAdmin', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
     await screen.findByRole('combobox', { name: 'Регистрация' });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Регистрация' }), {
-      target: { value: 'approval' },
-    });
+    await chooseGlassOption('Регистрация', 'С одобрением');
     fireEvent.change(screen.getByRole('spinbutton', { name: 'Минимум голов' }), {
       target: { value: '1000' },
     });
@@ -481,9 +587,7 @@ describe('TournamentAdmin', () => {
     fireEvent.change(screen.getByRole('spinbutton', { name: 'Туров в день' }), {
       target: { value: '2' },
     });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Шаблон дуэли регулярки' }), {
-      target: { value: '00000000-0000-4000-8000-000000000912' },
-    });
+    await chooseGlassOption('Шаблон дуэли регулярки', /Турнирная классика/);
 
     fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
     expect(
@@ -493,9 +597,7 @@ describe('TournamentAdmin', () => {
       target: { value: '4' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
-    fireEvent.change(screen.getByRole('combobox', { name: 'Часовой пояс' }), {
-      target: { value: 'America/New_York' },
-    });
+    await chooseGlassOption('Часовой пояс', 'America/New_York');
     fireEvent.change(screen.getByLabelText('Старт турнира'), {
       target: { value: '2030-09-01T12:00' },
     });
@@ -512,18 +614,16 @@ describe('TournamentAdmin', () => {
       target: { value: '3' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
-    fireEvent.change(screen.getByRole('combobox', { name: 'Событие уведомления' }), {
-      target: { value: 'tournament.live_soon' },
-    });
+    await chooseGlassOption('Событие уведомления', 'Live-старт приближается');
     fireEvent.click(screen.getByRole('button', { name: 'Настроить событие' }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Заголовок' }), {
+    fireEvent.change(screen.getByRole('textbox', { name: 'Live-старт приближается: заголовок' }), {
       target: { value: 'Скоро матч {{tournamentTitle}}' },
     });
-    fireEvent.change(screen.getByRole('textbox', { name: 'Текст' }), {
+    fireEvent.change(screen.getByRole('textbox', { name: 'Live-старт приближается: текст' }), {
       target: { value: 'До начала {{minutes}} минут' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
-    expect(screen.getByText('approval · public')).toBeInTheDocument();
+    expect(screen.getByText(/Заявки с одобрением · виден в каталоге/)).toBeInTheDocument();
     await waitFor(() => expect(update).toHaveBeenCalled());
     expect(update.mock.calls.at(-1)?.[2]).toEqual(
       expect.objectContaining({
@@ -663,7 +763,7 @@ describe('TournamentAdmin', () => {
       target: { value: 'Описание обновлено' },
     });
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
 
     await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
     const body = update.mock.calls[0]?.[2];
@@ -705,7 +805,7 @@ describe('TournamentAdmin', () => {
       target: { value: '2026-11-01T01:45' },
     });
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
 
     await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
     expect(update.mock.calls[0]?.[2]).toEqual(
@@ -734,11 +834,9 @@ describe('TournamentAdmin', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок DST' }));
     fireEvent.click(screen.getByRole('button', { name: 'Редактировать draft' }));
     fireEvent.click(screen.getByRole('button', { name: '5. Расписание' }));
-    fireEvent.change(screen.getByRole('combobox', { name: 'Часовой пояс' }), {
-      target: { value: 'Europe/Moscow' },
-    });
+    await chooseGlassOption('Часовой пояс', 'Europe/Moscow');
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
 
     await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
     expect(update.mock.calls[0]?.[2]).toEqual(
@@ -772,7 +870,7 @@ describe('TournamentAdmin', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
     });
 
     expect(update).not.toHaveBeenCalled();
@@ -843,7 +941,7 @@ describe('TournamentAdmin', () => {
       target: { value: 'Кубок CRUD обновлён' },
     });
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
     await waitFor(() =>
       expect(update).toHaveBeenCalledWith(
         tournament.id,
@@ -851,8 +949,7 @@ describe('TournamentAdmin', () => {
         expect.objectContaining({ title: 'Кубок CRUD обновлён', rules: expect.any(Object) }),
       ),
     );
-    await screen.findByText('Сохранено');
-    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+    await screen.findByRole('button', { name: 'Заявки и оплаты' });
 
     fireEvent.click(screen.getByRole('button', { name: 'Дублировать' }));
     await waitFor(() =>

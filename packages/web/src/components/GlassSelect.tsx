@@ -75,6 +75,7 @@ export function GlassSelect<T extends string>({
       <button
         ref={buttonRef}
         type="button"
+        role="combobox"
         aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -156,7 +157,7 @@ function GlassSelectMenu<T extends string>({
         top: rect.top,
         left: rect.left,
         width: rect.width,
-        maxHeight: 'min(280px, calc(100dvh - 24px))',
+        maxHeight: 'min(280px, calc(var(--app-viewport-height, 100dvh) - 24px))',
         overflowY: 'auto',
         borderRadius: 18,
         padding: 6,

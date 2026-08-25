@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
+import { GlassSelect } from '../components/GlassSelect.js';
 import {
   createAdminTournament,
   fetchAdminTournamentDuelTemplates,
@@ -12,6 +13,11 @@ import {
   type AdminTournamentUserOption,
 } from './adminApi.js';
 import { TournamentOperations } from './TournamentOperations.js';
+import { TournamentAdminField, TournamentAdminGroupHelp } from './TournamentAdminField.js';
+import {
+  TournamentDraftSaveQueue,
+  type TournamentDraftSaveStatus,
+} from './tournamentDraftSaveQueue.js';
 
 const stages = [
   'Основное',
@@ -627,6 +633,10 @@ function HomeSequenceEditor({
   return (
     <fieldset className="tournament-home-sequence">
       <legend>{`Раунд ${roundNumber}: порядок площадок`}</legend>
+      <TournamentAdminGroupHelp>
+        Нажмите на игру, чтобы переключить площадку. «Дом» использует арену игрока с более высоким
+        посевом.
+      </TournamentAdminGroupHelp>
       <div>
         {sequence.map((side, index) => (
           <button
@@ -659,6 +669,9 @@ function DailyPlacePointsEditor({
   return (
     <fieldset className="tournament-structured-editor">
       <legend>Очки за места дня</legend>
+      <TournamentAdminGroupHelp>
+        Применяется только для метрики «Очки за место». Ничья делит среднее очков занятых позиций.
+      </TournamentAdminGroupHelp>
       {points.map((pointsValue, index) => (
         <div className="tournament-table-row" key={index}>
           <span>{index + 1} место</span>
@@ -721,6 +734,10 @@ function RewardsEditor({
   return (
     <fieldset className="tournament-structured-editor">
       <legend>Награды {label}</legend>
+      <TournamentAdminGroupHelp>
+        Укажите итоговое место и точное количество опыта, монет и звёзд. Пустая таблица означает
+        отсутствие наград.
+      </TournamentAdminGroupHelp>
       <div className="tournament-table-head">
         <span>Место</span>
         <span>Опыт</span>
@@ -798,6 +815,7 @@ function NotificationEditor({
   onRemindersChange: (value: string) => void;
   onOverridesChange: (value: string) => void;
 }) {
+  const [eventToAdd, setEventToAdd] = useState('');
   const reminderValues = splitList(reminders).map(Number).filter(Number.isFinite);
   const parsed = parseNotificationOverrides(overrides);
   const selected = Object.keys(parsed);
@@ -809,6 +827,9 @@ function NotificationEditor({
     <>
       <fieldset className="tournament-structured-editor">
         <legend>Напоминания до старта</legend>
+        <TournamentAdminGroupHelp>
+          Несколько отдельных push-напоминаний, отсчитанных назад от начала игры.
+        </TournamentAdminGroupHelp>
         {reminderValues.map((minutes, index) => (
           <div className="tournament-table-row" key={index}>
             <input
@@ -847,14 +868,20 @@ function NotificationEditor({
       </fieldset>
       <fieldset className="tournament-structured-editor">
         <legend>Уведомления</legend>
+        <TournamentAdminGroupHelp>
+          Настройте собственный текст только для событий, где глобального шаблона недостаточно.
+        </TournamentAdminGroupHelp>
         {selected.map((key) => {
           const item = parsed[key]!;
           return (
             <div className="tournament-notification-card" key={key}>
               <strong>{notificationEvents.find(([event]) => event === key)?.[1] ?? key}</strong>
-              <label>
-                Заголовок
+              <TournamentAdminField
+                label="Заголовок"
+                help="Короткая строка, которую игрок увидит первой."
+              >
                 <input
+                  aria-label={`${notificationEvents.find(([event]) => event === key)?.[1] ?? key}: заголовок`}
                   value={item.title}
                   onChange={(event) =>
                     onOverridesChange(
@@ -862,10 +889,14 @@ function NotificationEditor({
                     )
                   }
                 />
-              </label>
-              <label>
-                Текст
+              </TournamentAdminField>
+              <TournamentAdminField
+                label="Текст"
+                help="Основное сообщение; можно использовать переменные турнира."
+              >
                 <textarea
+                  aria-label={`${notificationEvents.find(([event]) => event === key)?.[1] ?? key}: текст`}
+                  className="tournament-admin-textarea tournament-admin-textarea--compact"
                   value={item.body}
                   onChange={(event) =>
                     onOverridesChange(
@@ -873,10 +904,13 @@ function NotificationEditor({
                     )
                   }
                 />
-              </label>
-              <label>
-                Ссылка
+              </TournamentAdminField>
+              <TournamentAdminField
+                label="Ссылка"
+                help="Экран, который откроется после нажатия на уведомление."
+              >
                 <input
+                  aria-label={`${notificationEvents.find(([event]) => event === key)?.[1] ?? key}: ссылка`}
                   value={item.url}
                   onChange={(event) =>
                     onOverridesChange(
@@ -884,7 +918,7 @@ function NotificationEditor({
                     )
                   }
                 />
-              </label>
+              </TournamentAdminField>
               <button
                 type="button"
                 className="admin-compact-btn"
@@ -899,28 +933,28 @@ function NotificationEditor({
             </div>
           );
         })}
-        <label>
-          Событие
-          <select aria-label="Событие уведомления" defaultValue="">
-            {' '}
-            <option value="" disabled>
-              Выберите событие
-            </option>
-            {notificationEvents
-              .filter(([key]) => !selected.includes(key))
-              .map(([key, label]) => (
-                <option key={key} value={key}>
-                  {label}
-                </option>
-              ))}
-          </select>
-        </label>
+        <TournamentAdminField
+          label="Событие"
+          help="Выберите событие, для которого нужен отдельный текст уведомления."
+        >
+          <GlassSelect
+            ariaLabel="Событие уведомления"
+            value={eventToAdd}
+            options={[
+              { value: '', label: 'Выберите событие' },
+              ...notificationEvents
+                .filter(([key]) => !selected.includes(key))
+                .map(([value, label]) => ({ value, label })),
+            ]}
+            onChange={setEventToAdd}
+          />
+        </TournamentAdminField>
         <button
           type="button"
           className="admin-compact-btn"
-          onClick={(event) => {
-            const select = event.currentTarget.previousElementSibling?.querySelector('select');
-            const key = select?.value;
+          disabled={!eventToAdd}
+          onClick={() => {
+            const key = eventToAdd;
             if (key)
               onOverridesChange(
                 serialize({
@@ -932,6 +966,7 @@ function NotificationEditor({
                   },
                 }),
               );
+            setEventToAdd('');
           }}
         >
           Настроить событие
@@ -993,6 +1028,11 @@ function TournamentPlayerPicker({
   return (
     <fieldset className="tournament-picker">
       <legend>{label}</legend>
+      <TournamentAdminGroupHelp>
+        {kind === 'invited'
+          ? 'Найдите игроков по имени или username. ID используются только внутри системы.'
+          : 'Эти игроки не смогут подать заявку или принять приглашение.'}
+      </TournamentAdminGroupHelp>
       <input
         type="search"
         aria-label={searchLabel}
@@ -1062,16 +1102,47 @@ export function TournamentAdmin(): JSX.Element {
   });
   const [stage, setStage] = useState(0);
   const [maxStage, setMaxStage] = useState(0);
-  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [saveState, setSaveState] = useState<TournamentDraftSaveStatus>('idle');
+  const [finishing, setFinishing] = useState(false);
   const [draft, setDraft] = useState(freshDraft);
   const [editingTournament, setEditingTournament] = useState<AdminTournament | null>(null);
   const [selectedTournament, setSelectedTournament] = useState<AdminTournament | null>(null);
   const lastSavedSnapshot = useRef('');
+  const saveQueue =
+    useRef<
+      TournamentDraftSaveQueue<ReturnType<typeof serializeDraft>, { tournament: AdminTournament }>
+    >();
+  const saveDebounce = useRef<number>();
+  const saveQueueGeneration = useRef(0);
+
+  const initializeSaveQueue = (tournament: AdminTournament, snapshot: string) => {
+    const generation = saveQueueGeneration.current + 1;
+    saveQueueGeneration.current = generation;
+    saveQueue.current = new TournamentDraftSaveQueue({
+      initialRevision: tournament.revision,
+      initialSnapshotKey: snapshot,
+      save: (body, expectedRevision) =>
+        updateAdminTournament(tournament.id, expectedRevision, body),
+      revisionOf: (result) => result.tournament.revision,
+      onStatusChange: (status) => {
+        if (saveQueueGeneration.current === generation) setSaveState(status);
+      },
+      onSaved: (result, savedSnapshot) => {
+        if (saveQueueGeneration.current !== generation) return;
+        lastSavedSnapshot.current = savedSnapshot;
+        setEditingTournament(result.tournament);
+        void client.invalidateQueries({ queryKey: ['admin', 'tournaments'] });
+      },
+    });
+  };
+
   const create = useMutation({
-    mutationFn: () => createAdminTournament(serializeDraft(draft)),
+    mutationFn: ({ body }: { body: ReturnType<typeof serializeDraft>; snapshot: string }) =>
+      createAdminTournament(body),
     onMutate: () => setSaveState('saving'),
-    onSuccess: ({ tournament }) => {
-      lastSavedSnapshot.current = JSON.stringify(serializeDraft(draft));
+    onSuccess: ({ tournament }, variables) => {
+      lastSavedSnapshot.current = variables.snapshot;
+      initializeSaveQueue(tournament, variables.snapshot);
       setEditingTournament(tournament);
       setStage(1);
       setMaxStage(1);
@@ -1080,52 +1151,31 @@ export function TournamentAdmin(): JSX.Element {
     },
     onError: () => setSaveState('error'),
   });
-  const update = useMutation({
-    mutationFn: ({
-      body,
-      expectedRevision,
-    }: {
-      body: Record<string, unknown>;
-      snapshot: string;
-      expectedRevision: number;
-    }) => updateAdminTournament(editingTournament!.id, expectedRevision, body),
-    onMutate: () => setSaveState('saving'),
-    onSuccess: ({ tournament }, variables) => {
-      lastSavedSnapshot.current = variables.snapshot;
-      setEditingTournament(tournament);
-      setSaveState('saved');
-      void client.invalidateQueries({ queryKey: ['admin', 'tournaments'] });
-    },
-    onError: () => setSaveState('error'),
-  });
-  const saveCurrentDraft = () => {
-    if (editingTournament === null) return;
+
+  const enqueueCurrentDraft = () => {
+    if (editingTournament === null || saveQueue.current === undefined) return;
     const body = serializeDraft(draft);
-    update.mutate({
-      body,
-      snapshot: JSON.stringify(body),
-      expectedRevision: editingTournament.revision,
-    });
+    saveQueue.current.enqueue(body, JSON.stringify(body));
   };
+
   useEffect(() => {
-    if (!wizardOpen || editingTournament === null || create.isPending || update.isPending) return;
+    if (!wizardOpen || editingTournament === null || create.isPending) return;
     let snapshot: string;
+    let body: ReturnType<typeof serializeDraft>;
     try {
-      snapshot = JSON.stringify(serializeDraft(draft));
+      body = serializeDraft(draft);
+      snapshot = JSON.stringify(body);
     } catch {
       setSaveState('error');
       return;
     }
     if (snapshot === lastSavedSnapshot.current) return;
     setSaveState('saving');
-    const body = serializeDraft(draft);
-    const expectedRevision = editingTournament.revision;
-    const timeout = window.setTimeout(
-      () => update.mutate({ body, snapshot, expectedRevision }),
-      600,
-    );
-    return () => window.clearTimeout(timeout);
-  }, [draft, editingTournament, wizardOpen, create.isPending, update.isPending]);
+    saveDebounce.current = window.setTimeout(() => {
+      saveQueue.current?.enqueue(body, snapshot);
+    }, 600);
+    return () => window.clearTimeout(saveDebounce.current);
+  }, [draft, editingTournament?.id, wizardOpen, create.isPending]);
   const updatePlayoffRound = (index: number, patch: Partial<PlayoffRoundDraft>) => {
     setDraft((current) => ({
       ...current,
@@ -1134,10 +1184,14 @@ export function TournamentAdmin(): JSX.Element {
       ),
     }));
   };
-  const closeWizard = () => {
+  const closeWizard = (tournament: AdminTournament | null = editingTournament) => {
+    if (saveDebounce.current !== undefined) window.clearTimeout(saveDebounce.current);
+    saveQueueGeneration.current += 1;
+    saveQueue.current = undefined;
     setWizardOpen(false);
     setConfirmClose(false);
-    if (editingTournament !== null) setSelectedTournament(editingTournament);
+    setFinishing(false);
+    if (tournament !== null) setSelectedTournament(tournament);
     setEditingTournament(null);
   };
   const requestClose = () => {
@@ -1150,12 +1204,31 @@ export function TournamentAdmin(): JSX.Element {
     if (
       saveState === 'saving' ||
       saveState === 'error' ||
-      currentSnapshot !== lastSavedSnapshot.current
+      currentSnapshot !== (saveQueue.current?.snapshotKey ?? lastSavedSnapshot.current)
     ) {
       setConfirmClose(true);
       return;
     }
     closeWizard();
+  };
+
+  const finishWizard = async () => {
+    if (!draft.title.trim() || finishing) return;
+    setFinishing(true);
+    if (saveDebounce.current !== undefined) window.clearTimeout(saveDebounce.current);
+    try {
+      if (editingTournament === null) {
+        const body = serializeDraft(draft);
+        const result = await create.mutateAsync({ body, snapshot: JSON.stringify(body) });
+        closeWizard(result.tournament);
+        return;
+      }
+      enqueueCurrentDraft();
+      const result = await saveQueue.current?.flush();
+      closeWizard(result?.tournament ?? editingTournament);
+    } catch {
+      setFinishing(false);
+    }
   };
 
   if (selectedTournament !== null) {
@@ -1167,7 +1240,9 @@ export function TournamentAdmin(): JSX.Element {
           setEditingTournament(selectedTournament);
           const nextDraft = draftFromTournament(selectedTournament);
           setDraft(nextDraft);
-          lastSavedSnapshot.current = JSON.stringify(serializeDraft(nextDraft));
+          const snapshot = JSON.stringify(serializeDraft(nextDraft));
+          lastSavedSnapshot.current = snapshot;
+          initializeSaveQueue(selectedTournament, snapshot);
           setStage(0);
           setMaxStage(7);
           setSaveState('saved');
@@ -1194,6 +1269,8 @@ export function TournamentAdmin(): JSX.Element {
           className="chip chip--active"
           aria-label="Создать"
           onClick={() => {
+            saveQueueGeneration.current += 1;
+            saveQueue.current = undefined;
             setEditingTournament(null);
             const nextDraft = freshDraft();
             setDraft(nextDraft);
@@ -1201,6 +1278,7 @@ export function TournamentAdmin(): JSX.Element {
             setStage(0);
             setMaxStage(0);
             setSaveState('idle');
+            setFinishing(false);
             setWizardOpen(true);
           }}
         >
@@ -1245,16 +1323,9 @@ export function TournamentAdmin(): JSX.Element {
               role="dialog"
               aria-modal="true"
               aria-label="Создание турнира"
-              style={{ maxHeight: '90dvh', overflowY: 'auto' }}
+              style={{ height: 'min(var(--app-viewport-height, 100dvh), 860px)' }}
             >
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  gap: 12,
-                }}
-              >
+              <div className="modal-header tournament-wizard__header">
                 <h2 className="modal-title" style={{ margin: 0 }}>
                   {editingTournament === null ? 'Новый турнир' : 'Редактирование турнира'}
                 </h2>
@@ -1267,7 +1338,7 @@ export function TournamentAdmin(): JSX.Element {
                   <X size={16} />
                 </button>
               </div>
-              <div style={{ display: 'flex', gap: 6, overflowX: 'auto' }}>
+              <div className="tournament-wizard__steps" aria-label="Этапы создания турнира">
                 {stages.map((label, index) => (
                   <button
                     key={label}
@@ -1280,60 +1351,73 @@ export function TournamentAdmin(): JSX.Element {
                   </button>
                 ))}
               </div>
-              <div className="modal-copy" style={{ display: 'grid', gap: 10 }}>
+              <div className="modal-copy tournament-wizard__body">
                 {stage === 0 && (
-                  <>
-                    <label>
-                      Название
+                  <div className="tournament-admin-grid tournament-admin-grid--single">
+                    <TournamentAdminField
+                      label="Название"
+                      help="Так турнир будет называться в каталоге, календаре и уведомлениях."
+                    >
                       <input
+                        aria-label="Название"
                         value={draft.title}
                         onChange={(event) => setDraft({ ...draft, title: event.target.value })}
                       />
-                    </label>
-                    <label>
-                      Описание
+                    </TournamentAdminField>
+                    <TournamentAdminField
+                      label="Описание"
+                      help="Коротко объясните формат и главную идею турнира для участников."
+                    >
                       <textarea
+                        aria-label="Описание"
+                        className="tournament-admin-textarea"
                         value={draft.description}
                         onChange={(event) =>
                           setDraft({ ...draft, description: event.target.value })
                         }
                       />
-                    </label>
-                  </>
+                    </TournamentAdminField>
+                  </div>
                 )}
                 {stage === 1 && (
-                  <>
-                    <label>
-                      Регистрация
-                      <select
+                  <div className="tournament-admin-grid">
+                    <TournamentAdminField
+                      label="Регистрация"
+                      help="Открытая принимает всех, одобрение требует решения администратора, приглашения закрывают свободную подачу."
+                    >
+                      <GlassSelect
+                        ariaLabel="Регистрация"
                         value={draft.registrationMode}
-                        onChange={(event) =>
-                          setDraft({
-                            ...draft,
-                            registrationMode: event.target.value as RegistrationMode,
-                          })
+                        options={[
+                          { value: 'open', label: 'Открытая' },
+                          { value: 'approval', label: 'С одобрением' },
+                          { value: 'invite_only', label: 'Только по приглашению' },
+                        ]}
+                        onChange={(registrationMode: RegistrationMode) =>
+                          setDraft({ ...draft, registrationMode })
                         }
-                      >
-                        <option value="open">Открытая</option>
-                        <option value="approval">С одобрением</option>
-                        <option value="invite_only">Только по приглашению</option>
-                      </select>
-                    </label>
-                    <label>
-                      Видимость
-                      <select
+                      />
+                    </TournamentAdminField>
+                    <TournamentAdminField
+                      label="Видимость"
+                      help="Публичный турнир виден в каталоге; скрытый доступен только по прямому приглашению."
+                    >
+                      <GlassSelect
+                        ariaLabel="Видимость"
                         value={draft.visibility}
-                        onChange={(event) =>
-                          setDraft({ ...draft, visibility: event.target.value as Visibility })
-                        }
-                      >
-                        <option value="public">Публичный</option>
-                        <option value="hidden">Скрытый</option>
-                      </select>
-                    </label>
-                    <label>
-                      Вступительный взнос, монеты
+                        options={[
+                          { value: 'public', label: 'Публичный' },
+                          { value: 'hidden', label: 'Скрытый' },
+                        ]}
+                        onChange={(visibility: Visibility) => setDraft({ ...draft, visibility })}
+                      />
+                    </TournamentAdminField>
+                    <TournamentAdminField
+                      label="Вступительный взнос, монеты"
+                      help="Фиксированная сумма списывается при подтверждении участия; 0 означает бесплатно."
+                    >
                       <input
+                        aria-label="Вступительный взнос, монеты"
                         type="number"
                         min="0"
                         value={draft.entryFeeCoins}
@@ -1341,28 +1425,37 @@ export function TournamentAdmin(): JSX.Element {
                           setDraft({ ...draft, entryFeeCoins: Number(event.target.value) })
                         }
                       />
-                    </label>
-                    <label>
-                      Минимальный уровень
+                    </TournamentAdminField>
+                    <TournamentAdminField
+                      label="Минимальный уровень"
+                      help="Игроки ниже этого уровня не смогут участвовать; пусто — без ограничения."
+                    >
                       <input
+                        aria-label="Минимальный уровень"
                         type="number"
                         min="1"
                         value={draft.minLevel}
                         onChange={(event) => setDraft({ ...draft, minLevel: event.target.value })}
                       />
-                    </label>
-                    <label>
-                      Максимальный уровень
+                    </TournamentAdminField>
+                    <TournamentAdminField
+                      label="Максимальный уровень"
+                      help="Игроки выше этого уровня не смогут участвовать; пусто — без ограничения."
+                    >
                       <input
+                        aria-label="Максимальный уровень"
                         type="number"
                         min="1"
                         value={draft.maxLevel}
                         onChange={(event) => setDraft({ ...draft, maxLevel: event.target.value })}
                       />
-                    </label>
-                    <label>
-                      Минимум голов
+                    </TournamentAdminField>
+                    <TournamentAdminField
+                      label="Минимум голов"
+                      help="Минимальное число голов за всё время, необходимое для допуска."
+                    >
                       <input
+                        aria-label="Минимум голов"
                         type="number"
                         min="0"
                         value={draft.minGoals}
@@ -1370,10 +1463,13 @@ export function TournamentAdmin(): JSX.Element {
                           setDraft({ ...draft, minGoals: Number(event.target.value) })
                         }
                       />
-                    </label>
-                    <label>
-                      Минимум опыта
+                    </TournamentAdminField>
+                    <TournamentAdminField
+                      label="Минимум опыта"
+                      help="Минимальный накопленный опыт игрока для подачи заявки."
+                    >
                       <input
+                        aria-label="Минимум опыта"
                         type="number"
                         min="0"
                         value={draft.minExperience}
@@ -1381,38 +1477,47 @@ export function TournamentAdmin(): JSX.Element {
                           setDraft({ ...draft, minExperience: Number(event.target.value) })
                         }
                       />
-                    </label>
-                    <TournamentPlayerPicker
-                      kind="invited"
-                      value={draft.invitedUserIds}
-                      excludedValue={draft.bannedUserIds}
-                      onChange={(invitedUserIds) => setDraft({ ...draft, invitedUserIds })}
-                    />
-                    <TournamentPlayerPicker
-                      kind="banned"
-                      value={draft.bannedUserIds}
-                      excludedValue={draft.invitedUserIds}
-                      onChange={(bannedUserIds) => setDraft({ ...draft, bannedUserIds })}
-                    />
-                  </>
+                    </TournamentAdminField>
+                    <div className="tournament-admin-grid__wide">
+                      <TournamentPlayerPicker
+                        kind="invited"
+                        value={draft.invitedUserIds}
+                        excludedValue={draft.bannedUserIds}
+                        onChange={(invitedUserIds) => setDraft({ ...draft, invitedUserIds })}
+                      />
+                      <TournamentPlayerPicker
+                        kind="banned"
+                        value={draft.bannedUserIds}
+                        excludedValue={draft.invitedUserIds}
+                        onChange={(bannedUserIds) => setDraft({ ...draft, bannedUserIds })}
+                      />
+                    </div>
+                  </div>
                 )}
                 {stage === 2 && (
-                  <>
-                    <label>
-                      Формат
-                      <select
+                  <div className="tournament-admin-grid">
+                    <TournamentAdminField
+                      label="Формат"
+                      help="«Каждый с каждым» создаёт личные дуэли; дневной зачёт сравнивает результаты обычной daily-игры."
+                    >
+                      <GlassSelect
+                        ariaLabel="Формат"
                         value={draft.regularSource}
-                        onChange={(event) =>
-                          setDraft({ ...draft, regularSource: event.target.value as RegularSource })
+                        options={[
+                          { value: 'head_to_head', label: 'Каждый с каждым' },
+                          { value: 'daily_aggregate', label: 'Результаты ежедневных игр' },
+                        ]}
+                        onChange={(regularSource: RegularSource) =>
+                          setDraft({ ...draft, regularSource })
                         }
-                      >
-                        <option value="head_to_head">Каждый с каждым</option>
-                        <option value="daily_aggregate">Daily aggregate</option>
-                      </select>
-                    </label>
-                    <label>
-                      Участников
+                      />
+                    </TournamentAdminField>
+                    <TournamentAdminField
+                      label="Участников"
+                      help="Максимум подтверждённых участников: до 64 для дуэлей и до 10 000 для дневного зачёта."
+                    >
                       <input
+                        aria-label="Участников"
                         type="number"
                         min="2"
                         max={draft.regularSource === 'head_to_head' ? 64 : 10_000}
@@ -1421,12 +1526,15 @@ export function TournamentAdmin(): JSX.Element {
                           setDraft({ ...draft, participantLimit: Number(event.target.value) })
                         }
                       />
-                    </label>
+                    </TournamentAdminField>
                     {draft.regularSource === 'head_to_head' ? (
                       <>
-                        <label>
-                          Кругов
+                        <TournamentAdminField
+                          label="Кругов"
+                          help="Сколько раз каждый сыграет с каждым. Чётные круги делятся поровну дома и в гостях; лишний нечётный — нейтральный."
+                        >
                           <input
+                            aria-label="Кругов"
                             type="number"
                             min="1"
                             max="20"
@@ -1435,10 +1543,13 @@ export function TournamentAdmin(): JSX.Element {
                               setDraft({ ...draft, roundRobinCycles: Number(event.target.value) })
                             }
                           />
-                        </label>
-                        <label>
-                          Туров в день
+                        </TournamentAdminField>
+                        <TournamentAdminField
+                          label="Туров в день"
+                          help="Сколько последовательных туров календарь поставит в одни календарные сутки."
+                        >
                           <input
+                            aria-label="Туров в день"
                             type="number"
                             min="1"
                             max="24"
@@ -1447,20 +1558,26 @@ export function TournamentAdmin(): JSX.Element {
                               setDraft({ ...draft, roundsPerDay: Number(event.target.value) })
                             }
                           />
-                        </label>
-                        <label>
-                          Первый тур дня
+                        </TournamentAdminField>
+                        <TournamentAdminField
+                          label="Первый тур дня"
+                          help="Локальное время открытия первого игрового окна каждого дня."
+                        >
                           <input
+                            aria-label="Первый тур дня"
                             type="time"
                             value={draft.firstRoundLocalTime}
                             onChange={(event) =>
                               setDraft({ ...draft, firstRoundLocalTime: event.target.value })
                             }
                           />
-                        </label>
-                        <label>
-                          Окно игры, минуты
+                        </TournamentAdminField>
+                        <TournamentAdminField
+                          label="Окно игры, минуты"
+                          help="Сколько времени игрокам даётся на завершение одной турнирной дуэли."
+                        >
                           <input
+                            aria-label="Окно игры, минуты"
                             type="number"
                             min="1"
                             value={draft.fixtureWindowMinutes}
@@ -1471,10 +1588,13 @@ export function TournamentAdmin(): JSX.Element {
                               })
                             }
                           />
-                        </label>
-                        <label>
-                          Пауза между турами, минуты
+                        </TournamentAdminField>
+                        <TournamentAdminField
+                          label="Пауза между турами, минуты"
+                          help="Перерыв после закрытия окна тура до открытия следующего."
+                        >
                           <input
+                            aria-label="Пауза между турами, минуты"
                             type="number"
                             min="0"
                             value={draft.roundBreakMinutes}
@@ -1482,101 +1602,103 @@ export function TournamentAdmin(): JSX.Element {
                               setDraft({ ...draft, roundBreakMinutes: Number(event.target.value) })
                             }
                           />
-                        </label>
-                        <label>
-                          Шаблон дуэли регулярки
-                          <select
-                            aria-label="Шаблон дуэли регулярки"
+                        </TournamentAdminField>
+                        <TournamentAdminField
+                          label="Шаблон дуэли регулярки"
+                          help="Определяет периоды и число бросков. В списке только активные шаблоны; ранее выбранный архивный сохраняется."
+                        >
+                          <GlassSelect
+                            ariaLabel="Шаблон дуэли регулярки"
                             value={draft.regularDuelTemplateId}
-                            onChange={(event) =>
-                              setDraft({ ...draft, regularDuelTemplateId: event.target.value })
-                            }
-                          >
-                            <option value="">Выберите шаблон</option>
-                            {(duelTemplates.data?.templates ?? [])
-                              .filter(
-                                (template) =>
-                                  template.isActive || template.id === draft.regularDuelTemplateId,
-                              )
-                              .map((template) => (
-                                <option key={template.id} value={template.id}>
-                                  {template.title} · {template.totalPeriods} пер. ·{' '}
-                                  {template.shotsPerPeriod} бросков
-                                  {!template.isActive ? ' · архивный' : ''}
-                                </option>
-                              ))}
-                          </select>
-                        </label>
-                        <label>
-                          Очки: победа в основное время
-                          <input
-                            type="number"
-                            value={draft.regulationWin}
-                            onChange={(event) =>
-                              setDraft({ ...draft, regulationWin: Number(event.target.value) })
+                            options={[
+                              { value: '', label: 'Выберите шаблон' },
+                              ...(duelTemplates.data?.templates ?? [])
+                                .filter(
+                                  (template) =>
+                                    template.isActive ||
+                                    template.id === draft.regularDuelTemplateId,
+                                )
+                                .map((template) => ({
+                                  value: template.id,
+                                  label: `${template.title} · ${template.totalPeriods} пер. · ${template.shotsPerPeriod} бросков${!template.isActive ? ' · архивный' : ''}`,
+                                })),
+                            ]}
+                            onChange={(regularDuelTemplateId) =>
+                              setDraft({ ...draft, regularDuelTemplateId })
                             }
                           />
-                        </label>
-                        <label>
-                          Очки: победа в овертайме
-                          <input
-                            type="number"
-                            value={draft.overtimeWin}
-                            onChange={(event) =>
-                              setDraft({ ...draft, overtimeWin: Number(event.target.value) })
-                            }
-                          />
-                        </label>
-                        <label>
-                          Очки: поражение в овертайме
-                          <input
-                            type="number"
-                            value={draft.overtimeLoss}
-                            onChange={(event) =>
-                              setDraft({ ...draft, overtimeLoss: Number(event.target.value) })
-                            }
-                          />
-                        </label>
-                        <label>
-                          Очки: ничья
-                          <input
-                            type="number"
-                            value={draft.draw}
-                            onChange={(event) =>
-                              setDraft({ ...draft, draw: Number(event.target.value) })
-                            }
-                          />
-                        </label>
-                        <label>
-                          Очки: поражение
-                          <input
-                            type="number"
-                            value={draft.loss}
-                            onChange={(event) =>
-                              setDraft({ ...draft, loss: Number(event.target.value) })
-                            }
-                          />
-                        </label>
-                        <label>
-                          Очки: техническое поражение
-                          <input
-                            type="number"
-                            value={draft.technicalLoss}
-                            onChange={(event) =>
-                              setDraft({ ...draft, technicalLoss: Number(event.target.value) })
-                            }
-                          />
-                        </label>
-                        <TieBreakEditor
-                          value={draft.tieBreakCriteria}
-                          onChange={(tieBreakCriteria) => setDraft({ ...draft, tieBreakCriteria })}
-                        />
+                        </TournamentAdminField>
+                        <details className="tournament-admin-details tournament-admin-grid__wide">
+                          <summary>Тонкие настройки очков</summary>
+                          <TournamentAdminGroupHelp>
+                            Эти значения определяют таблицу регулярки. Если схема стандартная,
+                            оставьте значения по умолчанию.
+                          </TournamentAdminGroupHelp>
+                          <div className="tournament-admin-grid">
+                            {(
+                              [
+                                [
+                                  'regulationWin',
+                                  'Победа в основное время',
+                                  'Полные очки за победу без овертайма.',
+                                ],
+                                [
+                                  'overtimeWin',
+                                  'Победа в овертайме',
+                                  'Очки победителю после овертайма или буллитов.',
+                                ],
+                                [
+                                  'overtimeLoss',
+                                  'Поражение в овертайме',
+                                  'Компенсационные очки проигравшему в овертайме.',
+                                ],
+                                [
+                                  'draw',
+                                  'Ничья',
+                                  'Очки каждому, если формат допускает ничейный итог.',
+                                ],
+                                [
+                                  'loss',
+                                  'Обычное поражение',
+                                  'Очки за поражение в основное время.',
+                                ],
+                                [
+                                  'technicalLoss',
+                                  'Техническое поражение',
+                                  'Очки неявившемуся или снятому участнику.',
+                                ],
+                              ] as const
+                            ).map(([field, label, help]) => (
+                              <TournamentAdminField key={field} label={label} help={help}>
+                                <input
+                                  aria-label={`Очки: ${label.toLowerCase()}`}
+                                  type="number"
+                                  value={draft[field]}
+                                  onChange={(event) =>
+                                    setDraft({ ...draft, [field]: Number(event.target.value) })
+                                  }
+                                />
+                              </TournamentAdminField>
+                            ))}
+                            <div className="tournament-admin-grid__wide">
+                              <TieBreakEditor
+                                value={draft.tieBreakCriteria}
+                                onChange={(tieBreakCriteria) =>
+                                  setDraft({ ...draft, tieBreakCriteria })
+                                }
+                              />
+                            </div>
+                          </div>
+                        </details>
                       </>
                     ) : (
                       <>
-                        <label>
-                          Дней регулярки
+                        <TournamentAdminField
+                          label="Дней регулярки"
+                          help="Сколько календарных дней учитывается до формирования итоговой таблицы."
+                        >
                           <input
+                            aria-label="Дней регулярки"
                             type="number"
                             min="1"
                             max="366"
@@ -1585,23 +1707,30 @@ export function TournamentAdmin(): JSX.Element {
                               setDraft({ ...draft, dailyDays: Number(event.target.value) })
                             }
                           />
-                        </label>
-                        <label>
-                          Метрика дня
-                          <select
+                        </TournamentAdminField>
+                        <TournamentAdminField
+                          label="Метрика дня"
+                          help="Что именно сравнивать: голы, точность или заранее заданные очки за занятое место."
+                        >
+                          <GlassSelect
+                            ariaLabel="Метрика дня"
                             value={draft.dailyMetric}
-                            onChange={(event) =>
-                              setDraft({ ...draft, dailyMetric: event.target.value as DailyMetric })
+                            options={[
+                              { value: 'goals_sum', label: 'Сумма голов' },
+                              { value: 'accuracy_average', label: 'Средняя точность' },
+                              { value: 'daily_place_points', label: 'Очки за место' },
+                            ]}
+                            onChange={(dailyMetric: DailyMetric) =>
+                              setDraft({ ...draft, dailyMetric })
                             }
-                          >
-                            <option value="goals_sum">Сумма голов</option>
-                            <option value="accuracy_average">Средняя точность</option>
-                            <option value="daily_place_points">Очки за место</option>
-                          </select>
-                        </label>
-                        <label>
-                          Учитывать лучшие N дней
+                          />
+                        </TournamentAdminField>
+                        <TournamentAdminField
+                          label="Учитывать лучшие N дней"
+                          help="Оставьте пустым, чтобы считать все дни; число исключит худшие результаты."
+                        >
                           <input
+                            aria-label="Учитывать лучшие N дней"
                             type="number"
                             min="1"
                             value={draft.bestDays}
@@ -1610,52 +1739,51 @@ export function TournamentAdmin(): JSX.Element {
                             }
                             placeholder="Пусто — все дни"
                           />
-                        </label>
-                        <DailyPlacePointsEditor
-                          value={draft.dailyPlacePoints}
-                          onChange={(dailyPlacePoints) => setDraft({ ...draft, dailyPlacePoints })}
-                        />
+                        </TournamentAdminField>
+                        <div className="tournament-admin-grid__wide">
+                          <DailyPlacePointsEditor
+                            value={draft.dailyPlacePoints}
+                            onChange={(dailyPlacePoints) =>
+                              setDraft({ ...draft, dailyPlacePoints })
+                            }
+                          />
+                        </div>
                       </>
                     )}
-                  </>
+                  </div>
                 )}
                 {stage === 3 && (
-                  <>
-                    <label>
-                      Размер плей-офф
-                      <select
-                        value={draft.playoffSize}
-                        onChange={(event) =>
-                          setDraft({
-                            ...draft,
-                            playoffSize: Number(event.target.value) as PlayoffSize,
-                          })
+                  <div className="tournament-admin-grid tournament-admin-grid--single">
+                    <TournamentAdminField
+                      label="Размер плей-офф"
+                      help="Сколько лучших игроков попадут в фиксированную сетку: 2, 4, 8 или 16."
+                    >
+                      <GlassSelect
+                        ariaLabel="Размер плей-офф"
+                        value={String(draft.playoffSize)}
+                        options={[2, 4, 8, 16].map((size) => ({
+                          value: String(size),
+                          label: `${size} участников`,
+                        }))}
+                        onChange={(value) =>
+                          setDraft({ ...draft, playoffSize: Number(value) as PlayoffSize })
                         }
-                      >
-                        {[2, 4, 8, 16].map((size) => (
-                          <option key={size} value={size}>
-                            {size}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                      />
+                    </TournamentAdminField>
                     {draft.playoffRounds
                       .slice(0, playoffRoundCount(draft.playoffSize))
                       .map((round, index) => (
-                        <fieldset
-                          key={index}
-                          style={{
-                            display: 'grid',
-                            gap: 8,
-                            border: '1px solid rgba(79, 101, 130, .2)',
-                            borderRadius: 16,
-                            padding: 12,
-                          }}
-                        >
+                        <fieldset key={index} className="tournament-playoff-round">
                           <legend>Раунд {index + 1}</legend>
-                          <label>
-                            {`Раунд ${index + 1}: побед для серии`}
+                          <TournamentAdminGroupHelp>
+                            Основные правила серии. Более редкие тайминги и овертайм скрыты ниже.
+                          </TournamentAdminGroupHelp>
+                          <TournamentAdminField
+                            label="Побед для серии"
+                            help="Серия завершится, когда один игрок первым наберёт это число побед."
+                          >
                             <input
+                              aria-label={`Раунд ${index + 1}: побед для серии`}
                               type="number"
                               min="1"
                               max="20"
@@ -1666,113 +1794,104 @@ export function TournamentAdmin(): JSX.Element {
                                 })
                               }
                             />
-                          </label>
-                          <label>
-                            {`Раунд ${index + 1}: шаблон дуэли`}
-                            <select
+                          </TournamentAdminField>
+                          <TournamentAdminField
+                            label="Шаблон дуэли"
+                            help="Периоды и броски для каждой игры этого раунда."
+                          >
+                            <GlassSelect
+                              ariaLabel={`Раунд ${index + 1}: шаблон дуэли`}
                               value={round.duelTemplateId}
-                              onChange={(event) =>
-                                updatePlayoffRound(index, { duelTemplateId: event.target.value })
+                              options={[
+                                { value: '', label: 'Выберите шаблон' },
+                                ...(duelTemplates.data?.templates ?? [])
+                                  .filter(
+                                    (template) =>
+                                      template.isActive || template.id === round.duelTemplateId,
+                                  )
+                                  .map((template) => ({
+                                    value: template.id,
+                                    label: `${template.title}${!template.isActive ? ' · архивный' : ''}`,
+                                  })),
+                              ]}
+                              onChange={(duelTemplateId) =>
+                                updatePlayoffRound(index, { duelTemplateId })
                               }
-                            >
-                              <option value="">Выберите шаблон</option>
-                              {(duelTemplates.data?.templates ?? [])
-                                .filter(
-                                  (template) =>
-                                    template.isActive || template.id === round.duelTemplateId,
-                                )
-                                .map((template) => (
-                                  <option key={template.id} value={template.id}>
-                                    {template.title}
-                                    {!template.isActive ? ' · архивный' : ''}
-                                  </option>
-                                ))}
-                            </select>
-                          </label>
+                            />
+                          </TournamentAdminField>
                           <HomeSequenceEditor
                             roundNumber={index + 1}
                             winsRequired={round.winsRequired}
                             value={round.homeSequence}
                             onChange={(homeSequence) => updatePlayoffRound(index, { homeSequence })}
                           />
-                          <label>
-                            {`Раунд ${index + 1}: окно игры, минуты`}
-                            <input
-                              type="number"
-                              min="1"
-                              value={round.gameWindowMinutes}
-                              onChange={(event) =>
-                                updatePlayoffRound(index, {
-                                  gameWindowMinutes: Number(event.target.value),
-                                })
-                              }
-                            />
-                          </label>
-                          <label>
-                            {`Раунд ${index + 1}: пауза игр, минуты`}
-                            <input
-                              type="number"
-                              min="0"
-                              value={round.gameBreakMinutes}
-                              onChange={(event) =>
-                                updatePlayoffRound(index, {
-                                  gameBreakMinutes: Number(event.target.value),
-                                })
-                              }
-                            />
-                          </label>
-                          <label>
-                            {`Раунд ${index + 1}: пауза раундов, минуты`}
-                            <input
-                              type="number"
-                              min="0"
-                              value={round.roundBreakMinutes}
-                              onChange={(event) =>
-                                updatePlayoffRound(index, {
-                                  roundBreakMinutes: Number(event.target.value),
-                                })
-                              }
-                            />
-                          </label>
-                          <label>
-                            {`Раунд ${index + 1}: овертаймов`}
-                            <input
-                              type="number"
-                              min="0"
-                              value={round.overtimeCount}
-                              onChange={(event) =>
-                                updatePlayoffRound(index, {
-                                  overtimeCount: Number(event.target.value),
-                                })
-                              }
-                            />
-                          </label>
-                          <label>
-                            {`Раунд ${index + 1}: бросков в буллитах`}
-                            <input
-                              type="number"
-                              min="1"
-                              value={round.shootoutInitialShots}
-                              onChange={(event) =>
-                                updatePlayoffRound(index, {
-                                  shootoutInitialShots: Number(event.target.value),
-                                })
-                              }
-                            />
-                          </label>
+                          <details className="tournament-admin-details">
+                            <summary>Тайминги, овертайм и буллиты</summary>
+                            <div className="tournament-admin-grid">
+                              {(
+                                [
+                                  [
+                                    'gameWindowMinutes',
+                                    'Окно игры, минуты',
+                                    1,
+                                    'Время на завершение одной игры серии.',
+                                  ],
+                                  [
+                                    'gameBreakMinutes',
+                                    'Пауза между играми, минуты',
+                                    0,
+                                    'Перерыв до следующей условной игры серии.',
+                                  ],
+                                  [
+                                    'roundBreakMinutes',
+                                    'Пауза после раунда, минуты',
+                                    0,
+                                    'Перерыв перед открытием следующего раунда сетки.',
+                                  ],
+                                  [
+                                    'overtimeCount',
+                                    'Овертаймов',
+                                    0,
+                                    'Сколько дополнительных сегментов сыграть до буллитов.',
+                                  ],
+                                  [
+                                    'shootoutInitialShots',
+                                    'Бросков в буллитах',
+                                    1,
+                                    'Начальная равная серия бросков каждому игроку.',
+                                  ],
+                                ] as const
+                              ).map(([field, label, min, help]) => (
+                                <TournamentAdminField key={field} label={label} help={help}>
+                                  <input
+                                    aria-label={`Раунд ${index + 1}: ${label.toLowerCase()}`}
+                                    type="number"
+                                    min={min}
+                                    value={round[field]}
+                                    onChange={(event) =>
+                                      updatePlayoffRound(index, {
+                                        [field]: Number(event.target.value),
+                                      })
+                                    }
+                                  />
+                                </TournamentAdminField>
+                              ))}
+                            </div>
+                          </details>
                         </fieldset>
                       ))}
-                  </>
+                  </div>
                 )}
                 {stage === 4 && (
-                  <>
-                    <label>
-                      Часовой пояс
-                      <select
+                  <div className="tournament-admin-grid">
+                    <TournamentAdminField
+                      label="Часовой пояс"
+                      help="Все даты мастера вводятся в этом локальном времени и сохраняются на сервере без двусмысленности."
+                    >
+                      <GlassSelect
+                        ariaLabel="Часовой пояс"
                         value={draft.timezone}
-                        onChange={(event) => setDraft({ ...draft, timezone: event.target.value })}
-                      >
-                        {[
+                        options={[
                           'Europe/Moscow',
                           'Europe/Kaliningrad',
                           'Europe/Samara',
@@ -1785,42 +1904,48 @@ export function TournamentAdmin(): JSX.Element {
                           'Asia/Magadan',
                           'Asia/Kamchatka',
                           'America/New_York',
-                        ].map((timezone) => (
-                          <option key={timezone} value={timezone}>
-                            {timezone}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      Открытие регистрации
+                        ].map((timezone) => ({ value: timezone, label: timezone }))}
+                        onChange={(timezone) => setDraft({ ...draft, timezone })}
+                      />
+                    </TournamentAdminField>
+                    <TournamentAdminField
+                      label="Открытие регистрации"
+                      help="С этого момента игроки увидят доступное действие подачи заявки."
+                    >
                       <input
+                        aria-label="Открытие регистрации"
                         type="datetime-local"
                         value={draft.registrationOpensAt}
                         onChange={(event) =>
                           setDraft({ ...draft, registrationOpensAt: event.target.value })
                         }
                       />
-                    </label>
-                    <label>
-                      Закрытие регистрации
+                    </TournamentAdminField>
+                    <TournamentAdminField
+                      label="Закрытие регистрации"
+                      help="После этого момента новые заявки и отмена участия недоступны."
+                    >
                       <input
+                        aria-label="Закрытие регистрации"
                         type="datetime-local"
                         value={draft.registrationClosesAt}
                         onChange={(event) =>
                           setDraft({ ...draft, registrationClosesAt: event.target.value })
                         }
                       />
-                    </label>
-                    <label>
-                      Старт турнира
+                    </TournamentAdminField>
+                    <TournamentAdminField
+                      label="Старт турнира"
+                      help="Дата первого турнирного дня; календарь строится относительно неё."
+                    >
                       <input
+                        aria-label="Старт турнира"
                         type="datetime-local"
                         value={draft.startsAt}
                         onChange={(event) => setDraft({ ...draft, startsAt: event.target.value })}
                       />
-                    </label>
-                  </>
+                    </TournamentAdminField>
+                  </div>
                 )}
                 {stage === 5 && (
                   <>
@@ -1837,7 +1962,7 @@ export function TournamentAdmin(): JSX.Element {
                   </>
                 )}
                 {stage === 6 && (
-                  <>
+                  <div className="tournament-admin-grid tournament-admin-grid--single">
                     <NotificationEditor
                       reminders={draft.reminderMinutes}
                       overrides={draft.notificationOverrides}
@@ -1848,9 +1973,12 @@ export function TournamentAdmin(): JSX.Element {
                         setDraft({ ...draft, notificationOverrides })
                       }
                     />
-                    <label>
-                      Напоминание о дедлайне, минуты
+                    <TournamentAdminField
+                      label="Напоминание о дедлайне, минуты"
+                      help="За сколько минут до закрытия игрового окна отправить последнее предупреждение."
+                    >
                       <input
+                        aria-label="Напоминание о дедлайне, минуты"
                         type="number"
                         min="0"
                         max="1440"
@@ -1859,22 +1987,29 @@ export function TournamentAdmin(): JSX.Element {
                           setDraft({ ...draft, deadlineLeadMinutes: Number(event.target.value) })
                         }
                       />
-                    </label>
-                    <div>
+                    </TournamentAdminField>
+                    <div className="tournament-admin-note">
                       Если переопределение не задано, используется глобальный push-шаблон.
                       Поддерживаются переменные вида {'{{tournamentTitle}}'}.
                     </div>
-                  </>
+                  </div>
                 )}
                 {stage === 7 && (
-                  <div style={{ display: 'grid', gap: 6 }}>
+                  <div className="tournament-review-card">
                     <strong>{draft.title || 'Без названия'}</strong>
                     <span>
-                      {draft.registrationMode} · {draft.visibility}
+                      {
+                        {
+                          open: 'Открытая регистрация',
+                          approval: 'Заявки с одобрением',
+                          invite_only: 'По приглашениям',
+                        }[draft.registrationMode]
+                      }{' '}
+                      · {draft.visibility === 'public' ? 'виден в каталоге' : 'скрытый'}
                     </span>
                     <span>
-                      {draft.regularSource} · {draft.participantLimit} участников · плей-офф{' '}
-                      {draft.playoffSize}
+                      {draft.regularSource === 'head_to_head' ? 'Каждый с каждым' : 'Дневной зачёт'}{' '}
+                      · {draft.participantLimit} участников · плей-офф {draft.playoffSize}
                     </span>
                     <span>
                       {draft.timezone} · {draft.startsAt || 'старт не задан'}
@@ -1887,12 +2022,24 @@ export function TournamentAdmin(): JSX.Element {
                 )}
               </div>
               <div className="modal-actions">
-                <span className="tournament-wizard__save-state" aria-live="polite">
+                <div className="tournament-wizard__save-state" aria-live="polite">
                   {saveState === 'saving' && 'Сохраняем…'}
                   {saveState === 'saved' && 'Сохранено'}
-                  {saveState === 'error' &&
-                    'Не удалось сохранить. Возможно, черновик изменён в другой вкладке — обновите данные.'}
-                </span>
+                  {saveState === 'error' && (
+                    <>
+                      <span>Не удалось сохранить изменения.</span>
+                      {saveQueue.current !== undefined && (
+                        <button
+                          type="button"
+                          className="admin-compact-btn"
+                          onClick={() => saveQueue.current?.retry()}
+                        >
+                          Повторить сохранение
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
                 {stage > 0 && (
                   <button
                     type="button"
@@ -1909,7 +2056,8 @@ export function TournamentAdmin(): JSX.Element {
                     disabled={stage === 0 && draft.title.trim() === ''}
                     onClick={() => {
                       if (stage === 0 && editingTournament === null) {
-                        create.mutate();
+                        const body = serializeDraft(draft);
+                        create.mutate({ body, snapshot: JSON.stringify(body) });
                         return;
                       }
                       const next = stage + 1;
@@ -1924,17 +2072,11 @@ export function TournamentAdmin(): JSX.Element {
                     type="button"
                     className="modal-primary btn btn--cta"
                     disabled={
-                      !draft.title ||
-                      create.isPending ||
-                      update.isPending ||
-                      saveState === 'saving' ||
-                      saveState === 'error'
+                      !draft.title.trim() || create.isPending || finishing || saveState === 'error'
                     }
-                    onClick={() =>
-                      editingTournament === null ? create.mutate() : saveCurrentDraft()
-                    }
+                    onClick={() => void finishWizard()}
                   >
-                    {editingTournament === null ? 'Сохранить draft' : 'Сохранить изменения'}
+                    {finishing ? 'Завершаем…' : 'Готово'}
                   </button>
                 )}
               </div>
@@ -1960,7 +2102,7 @@ export function TournamentAdmin(): JSX.Element {
                     <button
                       type="button"
                       className="modal-primary btn btn--cta"
-                      onClick={closeWizard}
+                      onClick={() => closeWizard()}
                     >
                       Закрыть без сохранения
                     </button>
