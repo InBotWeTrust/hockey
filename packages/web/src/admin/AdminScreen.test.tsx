@@ -806,7 +806,7 @@ describe('AdminScreen', () => {
     expect((await screen.findAllByText('Дашборд')).length).toBeGreaterThan(0);
     expect(await screen.findByText('Ультимейт Хоккей')).toBeInTheDocument();
     expect(await screen.findByText('Активные пользователи')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Период дашборда' }));
+    fireEvent.click(screen.getByRole('combobox', { name: 'Период дашборда' }));
     fireEvent.click(await screen.findByRole('option', { name: '90 дней' }));
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith('/api/admin/summary?period=90d', expect.any(Object)),

@@ -29,6 +29,7 @@ export type AmateurDuelPeriodMode = 'quota' | 'time_attack';
 export type AmateurDuelVenuePolicy =
   | 'direct_challenge'
   | 'neutral_default'
+  | 'home_selected'
   | 'random_participant_home'
   | 'random_unselected';
 

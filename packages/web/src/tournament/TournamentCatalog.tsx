@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   applyToTournament,
   fetchTournamentSchedule,
@@ -68,9 +68,12 @@ function fixtureStatusLabel(status: string): string {
     open: 'Окно открыто',
     active: 'Идёт игра',
     completed: 'Завершена',
+    settled: 'Завершена',
     cancelled: 'Отменена',
     technical: 'Технический результат',
+    forfeit: 'Технический результат',
     blocked: 'Ожидает решения',
+    paused: 'Ожидает решения',
   };
   return labels[status] ?? status;
 }
@@ -260,6 +263,7 @@ function TournamentDetails({
   onBack: () => void;
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const currentUserId = useAuthStore((state) => state.user?.id ?? null);
   const [tab, setTab] = useState<TournamentTab>('overview');
   const [selectedFixture, setSelectedFixture] = useState<TournamentFixture | null>(null);
@@ -282,15 +286,20 @@ function TournamentDetails({
   });
   const registration = useMutation({
     mutationFn: async () => {
-      if (tournament.myParticipantState === null) await applyToTournament(tournament.id);
-      else await withdrawFromTournament(tournament.id);
+      if (tournament.myParticipantState === null || tournament.myParticipantState === 'invited') {
+        await applyToTournament(tournament.id);
+      } else {
+        await withdrawFromTournament(tournament.id);
+      }
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tournaments'] }),
   });
   const openFixture = useMutation({
     mutationFn: (fixtureId: string) => openTournamentFixtureSegment(tournament.id, fixtureId),
     onSuccess: (segment) => {
-      navigate(`/?view=amateur&match=${encodeURIComponent(segment.duelMatchId)}&play=1`);
+      navigate(
+        `/?view=amateur&section=tournaments${new URLSearchParams(location.search).get('from') === 'sections' ? '&from=sections' : ''}&match=${encodeURIComponent(segment.duelMatchId)}&play=1`,
+      );
     },
   });
 
@@ -300,6 +309,8 @@ function TournamentDetails({
         fixture={selectedFixture}
         onBack={() => setSelectedFixture(null)}
         onPlay={() => openFixture.mutate(selectedFixture.id)}
+        playPending={openFixture.isPending}
+        playError={openFixture.isError}
       />
     );
   }
@@ -444,9 +455,16 @@ function TournamentDetails({
               ? registrationState.actionLabel
               : tournament.myParticipantState === null
                 ? 'Подать заявку'
-                : 'Отменить заявку'}
+                : tournament.myParticipantState === 'invited'
+                  ? 'Принять приглашение'
+                  : 'Отменить заявку'}
           </button>
         )}
+      {registration.isError && (
+        <div role="alert" className="tournament-details__registration-error">
+          Не удалось изменить участие. Проверьте соединение и попробуйте ещё раз.
+        </div>
+      )}
     </div>
   );
 }

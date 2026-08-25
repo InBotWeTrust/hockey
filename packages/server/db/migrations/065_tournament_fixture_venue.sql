@@ -37,6 +37,14 @@ begin
       add constraint tournament_fixture_arena_snapshot_check
       check (arena_snapshot is null or jsonb_typeof(arena_snapshot) = 'object');
   end if;
+  if exists (
+    select 1
+      from pg_constraint
+     where conname = 'amateur_duel_match_venue_policy_check'
+       and position('home_selected' in pg_get_constraintdef(oid)) = 0
+  ) then
+    alter table amateur_duel_match drop constraint amateur_duel_match_venue_policy_check;
+  end if;
   if not exists (
     select 1 from pg_constraint where conname = 'amateur_duel_match_venue_policy_check'
   ) then
@@ -48,20 +56,12 @@ begin
           'direct_challenge', 'neutral_default', 'random_participant_home',
           'random_unselected', 'home_selected'
         )
-      );
-  else
-    alter table amateur_duel_match drop constraint amateur_duel_match_venue_policy_check;
-    alter table amateur_duel_match
-      add constraint amateur_duel_match_venue_policy_check
-      check (
-        venue_policy is null
-        or venue_policy in (
-          'direct_challenge', 'neutral_default', 'random_participant_home',
-          'random_unselected', 'home_selected'
-        )
-      );
+      ) not valid;
   end if;
 end $$;
+
+alter table amateur_duel_match
+  validate constraint amateur_duel_match_venue_policy_check;
 
 update tournament_fixture fixture
    set venue_mode = case

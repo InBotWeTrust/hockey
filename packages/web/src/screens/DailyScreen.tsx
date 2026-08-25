@@ -331,6 +331,20 @@ type PlayOpenOptions = {
 
 type PendingPlayMarker = 'daily' | 'training' | `duel:${string}` | null;
 
+export function duelBackLabel(
+  source: 'challenge' | 'matchmaking' | 'tournament',
+  directPlayOnly: boolean,
+): string {
+  if (source === 'tournament') return 'К турниру';
+  return directPlayOnly ? 'К арене' : 'К дуэлям';
+}
+
+export function tournamentDuelBackPath(fromSections: boolean): string {
+  return fromSections
+    ? '/?view=amateur&section=tournaments&from=sections'
+    : '/?view=amateur&section=tournaments';
+}
+
 export function DailyScreen(): JSX.Element {
   const location = useLocation();
   const navigate = useNavigate();
@@ -340,6 +354,7 @@ export function DailyScreen(): JSX.Element {
   const refresh = useDailyStore((s) => s.refresh);
   const routeParams = new URLSearchParams(location.search);
   const fromSections = routeParams.get('from') === 'sections';
+  const tournamentOrigin = routeParams.get('section') === 'tournaments';
   const [selectedLevel, setSelectedLevel] = useState<GameLevel>('beginner');
   const [activeAmateurMatchId, setActiveAmateurMatchId] = useState<string | null>(null);
   const [amateurView, setAmateurView] = useState<AmateurView>('home');
@@ -518,6 +533,11 @@ export function DailyScreen(): JSX.Element {
               setPendingPlayRouteTransition(null);
               setActiveAmateurMatchId(null);
               if (directDuelPlay) {
+                if (tournamentOrigin) {
+                  setAmateurView('tournaments');
+                  navigate(tournamentDuelBackPath(fromSections), { replace: true });
+                  return;
+                }
                 setSelectedLevel('beginner');
                 setBeginnerMode('daily');
                 setDailyView('arena');
@@ -5542,7 +5562,7 @@ function AmateurDuelPlayView({
             playerEntranceKey: playerReadyEntranceKey,
             goalieEntranceKey: goalieReadyEntranceKey,
           }}
-          backLabel="К арене"
+          backLabel={duelBackLabel(match.source, true)}
           optimisticAddShot={optimisticAddShot}
           submitShot={submitShot}
           applyState={applyState}
@@ -5662,7 +5682,7 @@ function AmateurDuelPlayView({
           }
           periodEndsAt={periodEndsAt}
           onTimerExpired={refresh}
-          backLabel="К дуэлям"
+          backLabel={duelBackLabel(match.source, false)}
           optimisticAddShot={optimisticAddShot}
           submitShot={submitShot}
           applyState={applyState}

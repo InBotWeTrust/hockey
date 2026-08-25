@@ -9,6 +9,7 @@ import {
 } from '@hockey/game-core';
 import {
   DailyScreen,
+  duelBackLabel,
   duelEquipmentEffectLabel,
   duelEventTiming,
   duelInventoryBadgeLabel,
@@ -17,6 +18,7 @@ import {
   duelRinkReadyPresenceForMatch,
   isDuelInventoryLow,
   isDuelReadyPresenceState,
+  tournamentDuelBackPath,
 } from './DailyScreen.js';
 import { PlayView, duelFatigueNoticeLabel, duelPrimaryButtonLabel } from '../game/PlayView.js';
 import { useAuthStore } from '../auth/authStore.js';
@@ -281,6 +283,14 @@ afterEach(() => {
 });
 
 describe('DailyScreen', () => {
+  it('keeps tournament duel navigation tied to the tournament section', () => {
+    expect(duelBackLabel('tournament', true)).toBe('К турниру');
+    expect(duelBackLabel('challenge', true)).toBe('К арене');
+    expect(duelBackLabel('matchmaking', false)).toBe('К дуэлям');
+    expect(tournamentDuelBackPath(false)).toBe('/?view=amateur&section=tournaments');
+    expect(tournamentDuelBackPath(true)).toBe('/?view=amateur&section=tournaments&from=sections');
+  });
+
   it('formats duel inventory badges without showing exhausted zero', () => {
     expect(duelInventoryBadgeLabel('stick', 0, 'shot')).toBeNull();
     expect(duelInventoryBadgeLabel('stick', 1300, 'shot')?.replace(/\s/g, ' ')).toBe('1 300');

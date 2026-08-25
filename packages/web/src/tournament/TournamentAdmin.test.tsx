@@ -183,6 +183,130 @@ describe('TournamentAdmin', () => {
     expect(screen.getByRole('combobox', { name: 'Регистрация' })).toBeInTheDocument();
   });
 
+  it('prevents a double tap from creating duplicate tournament drafts', async () => {
+    vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [] });
+    let resolveCreate!: (value: { tournament: api.AdminTournament }) => void;
+    const create = vi.spyOn(api, 'createAdminTournament').mockReturnValue(
+      new Promise((resolve) => {
+        resolveCreate = resolve;
+      }),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentAdmin />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Создать' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Название' }), {
+      target: { value: 'Один черновик' },
+    });
+    const next = screen.getByRole('button', { name: 'Далее' });
+    fireEvent.click(next);
+    fireEvent.click(next);
+
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole('button', { name: 'Далее' })).toBeDisabled();
+
+    resolveCreate({
+      tournament: {
+        id: 'draft-1',
+        slug: 'odin-chernovik',
+        title: 'Один черновик',
+        description: '',
+        status: 'draft',
+        regularSource: 'head_to_head',
+        revision: 1,
+        participantCount: 0,
+      },
+    });
+    expect(await screen.findByRole('combobox', { name: 'Регистрация' })).toBeInTheDocument();
+  });
+
+  it('keeps an invalid reward row dirty instead of autosaving its deletion', async () => {
+    const tournament: api.AdminTournament = {
+      id: 'reward-cup',
+      slug: 'reward-cup',
+      title: 'Кубок наград',
+      description: '',
+      status: 'draft',
+      regularSource: 'head_to_head',
+      revision: 3,
+      participantCount: 0,
+      rules: {
+        config: { regularSource: 'head_to_head' },
+        stageRewards: { regular: [{ place: 1, experience: 100, coins: 50, stars: 3 }] },
+      },
+    };
+    vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [tournament] });
+    vi.spyOn(api, 'fetchAdminTournamentParticipants').mockResolvedValue({ participants: [] });
+    const update = vi.spyOn(api, 'updateAdminTournament');
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentAdmin />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок наград' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать draft' }));
+    fireEvent.click(screen.getByRole('button', { name: '6. Награды' }));
+    const place = screen.getByRole('spinbutton', { name: 'Место награды регулярки 1' });
+    fireEvent.change(place, { target: { value: '' } });
+
+    expect(place).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Заполните место награды');
+    fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
+    expect(update).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: 'Создание турнира' })).toBeInTheDocument();
+  });
+
+  it('keeps an incomplete notification card dirty instead of deleting it', async () => {
+    const tournament: api.AdminTournament = {
+      id: 'notify-cup',
+      slug: 'notify-cup',
+      title: 'Кубок уведомлений',
+      description: '',
+      status: 'draft',
+      regularSource: 'head_to_head',
+      revision: 2,
+      participantCount: 0,
+      rules: {
+        config: { regularSource: 'head_to_head' },
+        notificationOverrides: {
+          'tournament.live_soon': {
+            title: 'Скоро матч',
+            body: 'До старта 15 минут',
+            url: '/?view=amateur&section=tournaments',
+          },
+        },
+      },
+    };
+    vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [tournament] });
+    vi.spyOn(api, 'fetchAdminTournamentParticipants').mockResolvedValue({ participants: [] });
+    const update = vi.spyOn(api, 'updateAdminTournament');
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentAdmin />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок уведомлений' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать draft' }));
+    fireEvent.click(screen.getByRole('button', { name: '7. Уведомления' }));
+    const body = screen.getByRole('textbox', { name: 'Live-старт приближается: текст' });
+    fireEvent.change(body, { target: { value: '' } });
+
+    expect(body).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Заполните текст уведомления');
+    fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
+    expect(screen.getByRole('button', { name: 'Готово' })).toBeDisabled();
+    expect(update).not.toHaveBeenCalled();
+  });
+
   it('uses active duel templates by title instead of asking for UUID values', async () => {
     vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [] });
     vi.spyOn(api, 'fetchAdminTournamentDuelTemplates').mockResolvedValue({

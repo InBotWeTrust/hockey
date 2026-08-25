@@ -10,15 +10,14 @@ import {
 } from '../api/tournament.js';
 import { refreshAccessToken } from '../api/apiFetch.js';
 import { useAuthStore } from '../auth/authStore.js';
-import {
-  TournamentSocket,
-  type TournamentSocketStatus,
-} from './TournamentSocket.js';
+import { TournamentSocket, type TournamentSocketStatus } from './TournamentSocket.js';
 
 interface TournamentFixtureLiveProps {
   fixture: TournamentFixture;
   onBack: () => void;
   onPlay: () => void;
+  playPending?: boolean;
+  playError?: boolean;
 }
 
 function connectionLabel(status: TournamentSocketStatus): string {
@@ -65,6 +64,8 @@ export function TournamentFixtureLive({
   fixture,
   onBack,
   onPlay,
+  playPending = false,
+  playError = false,
 }: TournamentFixtureLiveProps): JSX.Element {
   const queryClient = useQueryClient();
   const accessToken = useAuthStore((state) => state.accessToken);
@@ -72,7 +73,10 @@ export function TournamentFixtureLive({
   const [socketStatus, setSocketStatus] = useState<TournamentSocketStatus>('closed');
   const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(() => new Set());
   const [proposedAt, setProposedAt] = useState('');
-  const queryKey = useMemo(() => ['tournaments', 'fixtures', fixture.id, 'live'] as const, [fixture.id]);
+  const queryKey = useMemo(
+    () => ['tournaments', 'fixtures', fixture.id, 'live'] as const,
+    [fixture.id],
+  );
   const liveQuery = useQuery({
     queryKey,
     queryFn: () => fetchFixtureLiveState(fixture.id),
@@ -135,14 +139,15 @@ export function TournamentFixtureLive({
   if (liveQuery.isError || live === null) {
     return (
       <div style={{ display: 'grid', gap: 10 }}>
-        <button type="button" className="btn btn--ghost" onClick={onBack}>К расписанию</button>
+        <button type="button" className="btn btn--ghost" onClick={onBack}>
+          К расписанию
+        </button>
         <div role="status">Live-данные игры пока недоступны.</div>
       </div>
     );
   }
 
-  const canRespond =
-    live.proposal?.state === 'pending' && live.proposal.proposedByUserId !== meId;
+  const canRespond = live.proposal?.state === 'pending' && live.proposal.proposedByUserId !== meId;
   const submitProposal = () => {
     const date = new Date(proposedAt);
     if (!Number.isFinite(date.getTime())) return;
@@ -151,8 +156,12 @@ export function TournamentFixtureLive({
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
-      <button type="button" className="btn btn--ghost" onClick={onBack}>К расписанию</button>
-      <div className="section-label" style={{ margin: 0 }}>{connectionLabel(socketStatus)}</div>
+      <button type="button" className="btn btn--ghost" onClick={onBack}>
+        К расписанию
+      </button>
+      <div className="section-label" style={{ margin: 0 }}>
+        {connectionLabel(socketStatus)}
+      </div>
       <div style={{ textAlign: 'center', color: 'var(--ink)' }}>
         <div style={{ fontSize: 14, fontWeight: 750 }}>{formatDate(live.scheduledStartsAt)}</div>
         <div style={{ fontSize: 34, fontWeight: 950, marginTop: 4 }}>
@@ -184,9 +193,13 @@ export function TournamentFixtureLive({
       )}
       <div style={{ display: 'grid', gap: 8 }}>
         {live.participants.map((participant) => (
-          <div key={participant.userId} style={{ padding: 10, borderRadius: 14, background: 'rgba(255,255,255,.55)' }}>
+          <div
+            key={participant.userId}
+            style={{ padding: 10, borderRadius: 14, background: 'rgba(255,255,255,.55)' }}
+          >
             <div style={{ color: 'var(--ink)', fontWeight: 850 }}>
-              {participantName(fixture, participant.userId)}{onlineUserIds.has(participant.userId) ? ' в сети' : ''}
+              {participantName(fixture, participant.userId)}
+              {onlineUserIds.has(participant.userId) ? ' в сети' : ''}
             </div>
             <div style={{ color: 'var(--muted)', fontWeight: 700 }}>
               Период {participant.currentPeriod} · {participant.shotsTaken} бросков
@@ -239,9 +252,12 @@ export function TournamentFixtureLive({
       >
         Отправить предложение
       </button>
-      {live.duelMatchId !== null && (
-        <button type="button" className="btn btn--cta" onClick={onPlay}>Перейти к игре</button>
+      {playError && (
+        <div role="alert">Не удалось открыть игру. Проверьте соединение и попробуйте ещё раз.</div>
       )}
+      <button type="button" className="btn btn--cta" disabled={playPending} onClick={onPlay}>
+        {playPending ? 'Открываем…' : live.duelMatchId === null ? 'Начать игру' : 'Перейти к игре'}
+      </button>
     </div>
   );
 }

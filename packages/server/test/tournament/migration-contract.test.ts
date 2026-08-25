@@ -83,4 +83,14 @@ describe('tournament migration contract', () => {
     expect(sql).toContain('arena_theme_id');
     expect(sql).toContain('arena_snapshot');
   });
+
+  it('does not drop and rescan the duel venue constraint on an idempotent rerun', async () => {
+    const sql = await readFile(fixtureVenueMigrationUrl, 'utf8');
+
+    expect(sql).toContain("position('home_selected' in pg_get_constraintdef(oid)) = 0");
+    expect(sql).toContain('not valid');
+    expect(sql).toMatch(
+      /alter table amateur_duel_match\s+validate constraint amateur_duel_match_venue_policy_check/,
+    );
+  });
 });

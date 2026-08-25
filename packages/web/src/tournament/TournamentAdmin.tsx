@@ -245,50 +245,90 @@ function dateOrNull(
   return wallClockToIso(value, timezone);
 }
 
-function parseRewards(
-  value: string,
-): Array<{ place: number; experience: number; coins: number; stars: number }> {
+type RewardDraftRow = Record<'place' | 'experience' | 'coins' | 'stars', string>;
+
+function rewardDraftRows(value: string): RewardDraftRow[] {
   return value
     .split(/\n|;/)
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
-      const [place = '0', experience = '0', coins = '0', stars = '0'] = splitList(line);
-      return {
-        place: Number(place),
-        experience: Number(experience),
-        coins: Number(coins),
-        stars: Number(stars),
-      };
-    })
-    .filter(
-      (reward) =>
-        [reward.place, reward.experience, reward.coins, reward.stars].every(Number.isInteger) &&
-        reward.place > 0 &&
-        reward.experience >= 0 &&
-        reward.coins >= 0 &&
-        reward.stars >= 0,
-    );
+      const [place = '', experience = '', coins = '', stars = ''] = line
+        .split(',')
+        .map((part) => part.trim());
+      return { place, experience, coins, stars };
+    });
+}
+
+function serializeRewardRows(rows: RewardDraftRow[]): string {
+  return rows.map((row) => [row.place, row.experience, row.coins, row.stars].join(',')).join('\n');
+}
+
+function rewardValidationError(value: string, label = ''): string | null {
+  const suffix = label ? ` ${label}` : '';
+  for (const row of rewardDraftRows(value)) {
+    if (row.place.trim() === '') return `Заполните место награды${suffix}.`;
+    if ([row.experience, row.coins, row.stars].some((item) => item.trim() === '')) {
+      return `Заполните все значения награды${suffix}.`;
+    }
+    const numbers = [row.place, row.experience, row.coins, row.stars].map(Number);
+    if (
+      !numbers.every(Number.isInteger) ||
+      numbers[0]! <= 0 ||
+      numbers.slice(1).some((item) => item < 0)
+    ) {
+      return `Награда${suffix} должна содержать целые неотрицательные значения и место от 1.`;
+    }
+  }
+  return null;
+}
+
+function parseRewards(
+  value: string,
+): Array<{ place: number; experience: number; coins: number; stars: number }> {
+  const error = rewardValidationError(value);
+  if (error !== null) throw new Error(error);
+  return rewardDraftRows(value).map((row) => ({
+    place: Number(row.place),
+    experience: Number(row.experience),
+    coins: Number(row.coins),
+    stars: Number(row.stars),
+  }));
 }
 
 function parseNotificationOverrides(
   value: string,
 ): Record<string, { title: string; body: string; url: string }> {
+  const rows = value
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [key = '', title = '', body = '', url = ''] = line
+        .split('|')
+        .map((part) => part.trim());
+      return { key, title, body, url };
+    });
+  for (const row of rows) {
+    if (!row.key.startsWith('tournament.')) throw new Error('Выберите событие уведомления.');
+    if (!row.title) throw new Error('Заполните заголовок уведомления.');
+    if (!row.body) throw new Error('Заполните текст уведомления.');
+  }
   return Object.fromEntries(
-    value
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => line.split('|').map((part) => part.trim()))
-      .filter(
-        ([key, title, body]) =>
-          key?.startsWith('tournament.') === true && Boolean(title) && Boolean(body),
-      )
-      .map(([key, title, body, url]) => [
-        key!,
-        { title: title!, body: body!, url: url || '/?view=amateur&section=tournaments' },
-      ]),
+    rows.map(({ key, title, body, url }) => [
+      key,
+      { title, body, url: url || '/?view=amateur&section=tournaments' },
+    ]),
   );
+}
+
+function draftValidationError(draft: TournamentDraft): string | null {
+  try {
+    serializeDraft(draft);
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : 'Проверьте заполненные поля.';
+  }
 }
 
 function notificationOverridesDraft(value: unknown): string {
@@ -716,21 +756,18 @@ function RewardsEditor({
   value: string;
   onChange: (value: string) => void;
 }) {
-  const rewards = parseRewards(value);
+  const rewards = rewardDraftRows(value);
   const update = (
     index: number,
     field: 'place' | 'experience' | 'coins' | 'stars',
-    fieldValue: number,
+    fieldValue: string,
   ) => {
     const next = rewards.map((reward, rewardIndex) =>
       rewardIndex === index ? { ...reward, [field]: fieldValue } : reward,
     );
-    onChange(
-      next
-        .map((reward) => `${reward.place},${reward.experience},${reward.coins},${reward.stars}`)
-        .join('\n'),
-    );
+    onChange(serializeRewardRows(next));
   };
+  const validationError = rewardValidationError(value, label);
   return (
     <fieldset className="tournament-structured-editor">
       <legend>Награды {label}</legend>
@@ -754,7 +791,7 @@ function RewardsEditor({
               min={field === 'place' ? 1 : 0}
               value={reward[field]}
               aria-label={`${field === 'place' ? 'Место' : field === 'experience' ? 'Опыт' : field === 'coins' ? 'Монеты' : 'Звёзды'} награды ${label} ${index + 1}`}
-              onChange={(event) => update(index, field, Number(event.target.value))}
+              onChange={(event) => update(index, field, event.target.value)}
             />
           ))}
           <button
@@ -763,10 +800,7 @@ function RewardsEditor({
             aria-label={`Удалить награду ${label} ${index + 1}`}
             onClick={() =>
               onChange(
-                rewards
-                  .filter((_, rewardIndex) => rewardIndex !== index)
-                  .map((item) => `${item.place},${item.experience},${item.coins},${item.stars}`)
-                  .join('\n'),
+                serializeRewardRows(rewards.filter((_, rewardIndex) => rewardIndex !== index)),
               )
             }
           >
@@ -774,14 +808,16 @@ function RewardsEditor({
           </button>
         </div>
       ))}
+      {validationError !== null && <div role="alert">{validationError}</div>}
       <button
         type="button"
         className="admin-compact-btn"
         onClick={() =>
           onChange(
-            [...rewards, { place: rewards.length + 1, experience: 0, coins: 0, stars: 0 }]
-              .map((item) => `${item.place},${item.experience},${item.coins},${item.stars}`)
-              .join('\n'),
+            serializeRewardRows([
+              ...rewards,
+              { place: String(rewards.length + 1), experience: '0', coins: '0', stars: '0' },
+            ]),
           )
         }
       >
@@ -817,8 +853,25 @@ function NotificationEditor({
 }) {
   const [eventToAdd, setEventToAdd] = useState('');
   const reminderValues = splitList(reminders).map(Number).filter(Number.isFinite);
-  const parsed = parseNotificationOverrides(overrides);
+  const parsed = Object.fromEntries(
+    overrides
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const [key = '', title = '', body = '', url = ''] = line
+          .split('|')
+          .map((part) => part.trim());
+        return [key, { title, body, url }] as const;
+      }),
+  );
   const selected = Object.keys(parsed);
+  let validationError: string | null = null;
+  try {
+    parseNotificationOverrides(overrides);
+  } catch (error) {
+    validationError = error instanceof Error ? error.message : 'Проверьте уведомления.';
+  }
   const serialize = (next: Record<string, { title: string; body: string; url: string }>) =>
     Object.entries(next)
       .map(([key, item]) => `${key}|${item.title}|${item.body}|${item.url}`)
@@ -933,6 +986,7 @@ function NotificationEditor({
             </div>
           );
         })}
+        {validationError !== null && <div role="alert">{validationError}</div>}
         <TournamentAdminField
           label="Событие"
           help="Выберите событие, для которого нужен отдельный текст уведомления."
@@ -1114,6 +1168,8 @@ export function TournamentAdmin(): JSX.Element {
     >();
   const saveDebounce = useRef<number>();
   const saveQueueGeneration = useRef(0);
+  const createInFlight = useRef(false);
+  const validationError = draftValidationError(draft);
 
   const initializeSaveQueue = (tournament: AdminTournament, snapshot: string) => {
     const generation = saveQueueGeneration.current + 1;
@@ -1150,6 +1206,9 @@ export function TournamentAdmin(): JSX.Element {
       void client.invalidateQueries({ queryKey: ['admin', 'tournaments'] });
     },
     onError: () => setSaveState('error'),
+    onSettled: () => {
+      createInFlight.current = false;
+    },
   });
 
   const enqueueCurrentDraft = () => {
@@ -1213,11 +1272,13 @@ export function TournamentAdmin(): JSX.Element {
   };
 
   const finishWizard = async () => {
-    if (!draft.title.trim() || finishing) return;
+    if (!draft.title.trim() || finishing || validationError !== null) return;
     setFinishing(true);
     if (saveDebounce.current !== undefined) window.clearTimeout(saveDebounce.current);
     try {
       if (editingTournament === null) {
+        if (createInFlight.current) return;
+        createInFlight.current = true;
         const body = serializeDraft(draft);
         const result = await create.mutateAsync({ body, snapshot: JSON.stringify(body) });
         closeWizard(result.tournament);
@@ -2027,8 +2088,8 @@ export function TournamentAdmin(): JSX.Element {
                   {saveState === 'saved' && 'Сохранено'}
                   {saveState === 'error' && (
                     <>
-                      <span>Не удалось сохранить изменения.</span>
-                      {saveQueue.current !== undefined && (
+                      <span>{validationError ?? 'Не удалось сохранить изменения.'}</span>
+                      {validationError === null && saveQueue.current !== undefined && (
                         <button
                           type="button"
                           className="admin-compact-btn"
@@ -2053,10 +2114,12 @@ export function TournamentAdmin(): JSX.Element {
                   <button
                     type="button"
                     className="modal-primary btn btn--cta"
-                    disabled={stage === 0 && draft.title.trim() === ''}
+                    disabled={stage === 0 && (draft.title.trim() === '' || create.isPending)}
                     onClick={() => {
                       if (stage === 0 && editingTournament === null) {
+                        if (createInFlight.current) return;
                         const body = serializeDraft(draft);
+                        createInFlight.current = true;
                         create.mutate({ body, snapshot: JSON.stringify(body) });
                         return;
                       }
@@ -2072,7 +2135,11 @@ export function TournamentAdmin(): JSX.Element {
                     type="button"
                     className="modal-primary btn btn--cta"
                     disabled={
-                      !draft.title.trim() || create.isPending || finishing || saveState === 'error'
+                      !draft.title.trim() ||
+                      create.isPending ||
+                      finishing ||
+                      saveState === 'error' ||
+                      validationError !== null
                     }
                     onClick={() => void finishWizard()}
                   >

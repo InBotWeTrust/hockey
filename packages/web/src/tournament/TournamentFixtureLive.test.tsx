@@ -90,7 +90,13 @@ describe('TournamentFixtureLive', () => {
         duelMatchId: '00000000-0000-4000-8000-000000000803',
         participants: [
           { userId: 'home-user', state: 'ready', currentPeriod: 1, goals: 2, shotsTaken: 10 },
-          { userId: 'away-user', state: 'period_active', currentPeriod: 1, goals: 1, shotsTaken: 8 },
+          {
+            userId: 'away-user',
+            state: 'period_active',
+            currentPeriod: 1,
+            goals: 1,
+            shotsTaken: 8,
+          },
         ],
       },
     });
@@ -145,6 +151,27 @@ describe('TournamentFixtureLive', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Перейти к игре' }));
 
     expect(screen.getByText('Восстанавливаем live-соединение…')).toBeInTheDocument();
+    expect(onPlay).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers to create the first duel segment when the fixture has no match yet', async () => {
+    vi.spyOn(api, 'fetchFixtureLiveState').mockResolvedValue({
+      live: {
+        fixtureId: fixture.id,
+        status: 'open',
+        score: { home: 0, away: 0 },
+        scheduledStartsAt: fixture.scheduledStartsAt,
+        windowEndsAt: fixture.windowEndsAt,
+        proposal: null,
+        overlapWarnings: [],
+        duelMatchId: null,
+        participants: [],
+      },
+    });
+    const { onPlay } = renderLive();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Начать игру' }));
+
     expect(onPlay).toHaveBeenCalledTimes(1);
   });
 
