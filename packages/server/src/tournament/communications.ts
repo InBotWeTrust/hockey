@@ -1,4 +1,4 @@
-import type { Pool, PoolClient } from 'pg';
+import type { Pool, PoolClient, QueryResult } from 'pg';
 import { ensureDefaultNewsChannel, findOrCreateDM, sendMessage } from '../chat/service.js';
 import { publishMessageNew, type EventPublisher } from '../chat/events.js';
 import { AppError } from '../plugins/errors.js';
@@ -7,35 +7,143 @@ import { enqueueTournamentPush } from '../push/tournament.js';
 export type TournamentAudience = 'approved' | 'all_participants';
 
 const DISPATCH_LOCK_RETRY_DELAY_MS = 10;
-const DISPATCH_LOCK_MAX_ATTEMPTS = 100;
+const DISPATCH_LOCK_ACQUIRE_TIMEOUT_MS = 1_000;
+
+function dispatchLockTimeoutError(): AppError {
+  return new AppError('service_unavailable', 'tournament dispatch lock acquisition timed out', 503);
+}
+
+function dispatchLockDeadlineExpired(deadlineAt: number): boolean {
+  return performance.now() >= deadlineAt;
+}
+
+function safelyReleaseDispatchLockClient(client: PoolClient, destroy = false): void {
+  try {
+    client.release(destroy);
+  } catch {
+    // The deadline error remains authoritative even if the pool rejects a late release.
+  }
+}
+
+function connectBeforeDispatchLockDeadline(pool: Pool, deadlineAt: number): Promise<PoolClient> {
+  const remainingMs = deadlineAt - performance.now();
+  if (remainingMs <= 0) return Promise.reject(dispatchLockTimeoutError());
+
+  const connection = pool.connect();
+  return new Promise<PoolClient>((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(dispatchLockTimeoutError());
+    }, remainingMs);
+
+    void connection
+      .then(
+        (client) => {
+          if (settled) {
+            safelyReleaseDispatchLockClient(client);
+            return;
+          }
+          if (dispatchLockDeadlineExpired(deadlineAt)) {
+            settled = true;
+            clearTimeout(timer);
+            safelyReleaseDispatchLockClient(client);
+            reject(dispatchLockTimeoutError());
+            return;
+          }
+          settled = true;
+          clearTimeout(timer);
+          resolve(client);
+        },
+        (error: unknown) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          reject(dispatchLockDeadlineExpired(deadlineAt) ? dispatchLockTimeoutError() : error);
+        },
+      )
+      .catch(() => undefined);
+  });
+}
+
+function tryDispatchLockBeforeDeadline(
+  client: PoolClient,
+  lockKey: string,
+  deadlineAt: number,
+): Promise<boolean> {
+  const remainingMs = deadlineAt - performance.now();
+  if (remainingMs <= 0) {
+    safelyReleaseDispatchLockClient(client, true);
+    return Promise.reject(dispatchLockTimeoutError());
+  }
+
+  let query: Promise<QueryResult<{ acquired: boolean }>>;
+  try {
+    query = client.query<{ acquired: boolean }>(
+      `select pg_try_advisory_lock(hashtext($1)) as acquired`,
+      [lockKey],
+    );
+  } catch (error) {
+    safelyReleaseDispatchLockClient(client, true);
+    return Promise.reject(error);
+  }
+  return new Promise<boolean>((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      safelyReleaseDispatchLockClient(client, true);
+      reject(dispatchLockTimeoutError());
+    }, remainingMs);
+
+    void query
+      .then(
+        (result) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          if (dispatchLockDeadlineExpired(deadlineAt)) {
+            safelyReleaseDispatchLockClient(client, true);
+            reject(dispatchLockTimeoutError());
+            return;
+          }
+          if (result.rows[0]?.acquired === true) {
+            resolve(true);
+            return;
+          }
+          try {
+            client.release();
+            resolve(false);
+          } catch (error) {
+            reject(error);
+          }
+        },
+        (error: unknown) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          safelyReleaseDispatchLockClient(client, true);
+          reject(dispatchLockDeadlineExpired(deadlineAt) ? dispatchLockTimeoutError() : error);
+        },
+      )
+      .catch(() => undefined);
+  });
+}
 
 async function acquireDispatchLock(pool: Pool, lockKey: string): Promise<PoolClient> {
+  const deadlineAt = performance.now() + DISPATCH_LOCK_ACQUIRE_TIMEOUT_MS;
   let acquiredClient: PoolClient | null = null;
-  let attempts = 0;
   while (acquiredClient === null) {
-    const client = await pool.connect();
-    try {
-      const lock = await client.query<{ acquired: boolean }>(
-        `select pg_try_advisory_lock(hashtext($1)) as acquired`,
-        [lockKey],
-      );
-      if (lock.rows[0]?.acquired === true) acquiredClient = client;
-      else client.release();
-    } catch (error) {
-      client.release();
-      throw error;
-    }
-    if (acquiredClient === null) {
-      attempts += 1;
-      if (attempts >= DISPATCH_LOCK_MAX_ATTEMPTS) {
-        throw new AppError(
-          'service_unavailable',
-          'tournament dispatch lock acquisition timed out',
-          503,
-        );
-      }
-      await new Promise<void>((resolve) => setTimeout(resolve, DISPATCH_LOCK_RETRY_DELAY_MS));
-    }
+    const client = await connectBeforeDispatchLockDeadline(pool, deadlineAt);
+    if (await tryDispatchLockBeforeDeadline(client, lockKey, deadlineAt)) acquiredClient = client;
+    if (acquiredClient !== null) continue;
+
+    const remainingMs = deadlineAt - performance.now();
+    if (remainingMs <= 0) throw dispatchLockTimeoutError();
+    await new Promise<void>((resolve) =>
+      setTimeout(resolve, Math.min(DISPATCH_LOCK_RETRY_DELAY_MS, remainingMs)),
+    );
   }
   return acquiredClient;
 }
