@@ -312,6 +312,60 @@ describe.skipIf(!hasIntegrationEnv)('scheduled push delivery', () => {
     expect(deliveries.rows).toEqual([{ event_type: 'daily.available' }]);
   });
 
+  it('treats a malformed tournament flag as disabled without blocking daily scheduling', async () => {
+    const adminId = await createUser(pool, 'Malformed scheduler admin');
+    const playerId = await createUser(pool, 'Malformed scheduler player');
+    await pool.query(
+      `insert into user_push_preferences
+         (user_id, daily_game, training_available, tournament_events)
+       values ($1, true, false, true)`,
+      [playerId],
+    );
+    await addSubscription(pool, playerId, 'https://push.example.test/send/malformed-tournaments');
+    await pool.query(
+      `update game_settings
+          set value = '{}'::jsonb
+        where key = 'tournaments.enabled'`,
+    );
+    await createScheduledTournamentFixture(pool, {
+      adminId,
+      slug: 'malformed-live-soon-cup',
+      rulesSnapshot: { notificationReminderOffsetsMs: [3_600_000] },
+      participants: [{ userId: playerId, state: 'approved' }],
+      scheduledStartsAt: new Date('2026-05-04T07:00:00.000Z'),
+      windowEndsAt: new Date('2026-05-04T08:00:00.000Z'),
+    });
+    await createScheduledTournamentFixture(pool, {
+      adminId,
+      slug: 'malformed-window-cup',
+      rulesSnapshot: { notificationReminderOffsetsMs: [] },
+      participants: [{ userId: playerId, state: 'approved' }],
+      scheduledStartsAt: new Date('2026-05-04T06:00:00.000Z'),
+      windowEndsAt: new Date('2026-05-04T06:30:00.000Z'),
+    });
+
+    const result = await runScheduledPushes(pool, {
+      ...vapid,
+      now: new Date('2026-05-04T06:00:00.000Z'),
+      processQueue: false,
+    });
+
+    expect(result.events.find((event) => event.eventType === 'daily.available')).toMatchObject({
+      targets: 1,
+      claimed: 1,
+    });
+    expect(result.events.filter((event) => event.eventType.startsWith('tournament.'))).toEqual([]);
+
+    const deliveries = await pool.query<{ event_type: string }>(
+      `select event_type
+         from push_delivery_log
+        where user_id = $1
+        order by event_type`,
+      [playerId],
+    );
+    expect(deliveries.rows).toEqual([{ event_type: 'daily.available' }]);
+  });
+
   it('renders the minutes template variable for a tournament live reminder', async () => {
     const adminId = await createUser(pool, 'Minutes template admin');
     const playerId = await createUser(pool, 'Minutes template player');

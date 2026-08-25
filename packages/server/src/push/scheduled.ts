@@ -922,7 +922,10 @@ export async function runScheduledPushes(
     const locked = await tryAcquireSchedulerLock(client);
     if (locked) {
       const { rows } = await client.query<{ enabled: boolean }>(
-        `select coalesce((value #>> '{}')::boolean, false) as enabled
+        `select case
+                  when jsonb_typeof(value) = 'boolean' then value = 'true'::jsonb
+                  else false
+                end as enabled
            from game_settings
           where key = 'tournaments.enabled'`,
       );
