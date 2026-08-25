@@ -203,12 +203,14 @@ describe('bonus games admin', () => {
 
     renderAdmin();
 
-    expect(screen.getByRole('button', { name: 'Бонусные игры' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть меню администратора' }));
+    const adminMenu = screen.getByRole('dialog', { name: 'Меню администратора' });
+    expect(within(adminMenu).getByRole('button', { name: 'Бонусные игры' })).toBeInTheDocument();
     expect(
       fetchMock.mock.calls.some(([input]) => String(input).includes('/admin/bonus-games')),
     ).toBe(false);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Бонусные игры' }));
+    fireEvent.click(within(adminMenu).getByRole('button', { name: 'Бонусные игры' }));
 
     expect(await screen.findByText('Пляжный хоккей')).toBeInTheDocument();
     await waitFor(() => {

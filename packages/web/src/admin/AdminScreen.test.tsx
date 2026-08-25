@@ -15,6 +15,16 @@ function renderAdmin(): void {
   );
 }
 
+function openAdminMenu(): HTMLElement {
+  fireEvent.click(screen.getByRole('button', { name: 'Открыть меню администратора' }));
+  return screen.getByRole('dialog', { name: 'Меню администратора' });
+}
+
+function selectAdminSection(name: string | RegExp): void {
+  const menu = openAdminMenu();
+  fireEvent.click(within(menu).getByRole('button', { name }));
+}
+
 function makeAdminUser() {
   return {
     id: 'u1',
@@ -811,13 +821,42 @@ describe('AdminScreen', () => {
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith('/api/admin/summary?period=90d', expect.any(Object)),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Игроки' }));
+    expect(screen.queryByRole('dialog', { name: 'Меню администратора' })).not.toBeInTheDocument();
+    const adminMenu = openAdminMenu();
+    const adminNavigation = within(adminMenu).getByRole('navigation', {
+      name: 'Разделы администратора',
+    });
+    expect(within(adminNavigation).getAllByRole('button')).toHaveLength(13);
+    expect(within(adminNavigation).getByRole('button', { name: 'Дашборд' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    fireEvent.click(within(adminNavigation).getByRole('button', { name: 'Игроки' }));
+    expect(screen.queryByRole('dialog', { name: 'Меню администратора' })).not.toBeInTheDocument();
     expect(await screen.findByText('Игроки (1)')).toBeInTheDocument();
     expect(screen.queryByText('1 из 2 пользователей')).not.toBeInTheDocument();
-    expect(await screen.findByRole('button', { name: 'Отзывы (2)' })).toBeInTheDocument();
     expect(await screen.findByText('Regular Player')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Канал' }));
+    const menuWithUnreadCount = openAdminMenu();
+    expect(
+      within(menuWithUnreadCount).getByRole('button', { name: 'Отзывы (2)' }),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      within(menuWithUnreadCount).getByRole('button', {
+        name: 'Закрыть меню администратора',
+      }),
+    );
+    expect(screen.queryByRole('dialog', { name: 'Меню администратора' })).not.toBeInTheDocument();
+
+    openAdminMenu();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Меню администратора' })).not.toBeInTheDocument();
+
+    const menuClosedByBackdrop = openAdminMenu();
+    fireEvent.mouseDown(menuClosedByBackdrop.parentElement as HTMLElement);
+    expect(screen.queryByRole('dialog', { name: 'Меню администратора' })).not.toBeInTheDocument();
+
+    selectAdminSection('Канал');
     expect(await screen.findByText('Новостной канал')).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: /Вовлеченность/ })).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: /Посты/ })).toBeInTheDocument();
@@ -849,14 +888,14 @@ describe('AdminScreen', () => {
       ),
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Античит' }));
+    selectAdminSection('Античит');
     expect(await screen.findByText('Логи (1)')).toBeInTheDocument();
     expect(await screen.findByText('Regular Player')).toBeInTheDocument();
     expect(screen.getByText('Ежедневная игра')).toBeInTheDocument();
     expect(screen.getByText('Бросок')).toBeInTheDocument();
     expect(screen.getByText('Сейв')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Дуэли' }));
+    selectAdminSection('Дуэли');
     expect(await screen.findByText('Шаблоны дуэлей (1)')).toBeInTheDocument();
     expect(await screen.findByText('Экспресс+')).toBeInTheDocument();
     const duelStatus = screen.getByText('Активен');
@@ -872,7 +911,7 @@ describe('AdminScreen', () => {
     expect(within(duelDialog).queryByText(/periodNumber/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Отмена' }));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Уведомления' }));
+    selectAdminSection('Уведомления');
     expect(await screen.findByText('Уведомления (2)')).toBeInTheDocument();
     expect(await screen.findByText('Мониторинг доставок')).toBeInTheDocument();
     expect(screen.getByText('CTR 50%')).toBeInTheDocument();
@@ -908,7 +947,7 @@ describe('AdminScreen', () => {
       ),
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Отзывы (2)' }));
+    selectAdminSection('Отзывы (2)');
     expect(await screen.findByText('Обратная связь (1)')).toBeInTheDocument();
     expect(screen.getAllByText('Непрочитанные').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Оценки')).toBeInTheDocument();
@@ -926,14 +965,14 @@ describe('AdminScreen', () => {
         }),
       ),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Игроки' }));
+    selectAdminSection('Игроки');
 
     fireEvent.click(screen.getByText('Regular Player'));
     expect(await screen.findByText('В игре с 01.05.2026')).toBeInTheDocument();
     expect(await screen.findByText('Первое сообщение в личке')).toBeInTheDocument();
     expect(screen.getByText('Истории покупок пока нет.')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /параметры/i }));
+    selectAdminSection(/параметры/i);
     expect(await screen.findByText('Ежедневная игра')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Ежедневная игра'));
     expect(await screen.findByText('Скорости 1-го периода')).toBeInTheDocument();
@@ -1060,7 +1099,7 @@ describe('AdminScreen', () => {
 
     renderAdmin();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Дуэли' }));
+    selectAdminSection('Дуэли');
     expect(await screen.findByText('Ответ 30 мин')).toBeInTheDocument();
     expect(screen.getByText('Ожидание 15 мин')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Редактировать Классика' }));
@@ -1189,7 +1228,7 @@ describe('AdminScreen', () => {
     });
 
     renderAdmin();
-    fireEvent.click(await screen.findByRole('button', { name: 'Дуэли' }));
+    selectAdminSection('Дуэли');
     fireEvent.click(await screen.findByRole('button', { name: 'Редактировать Классика' }));
     const dialog = await screen.findByRole('dialog', { name: 'Редактирование дуэли' });
     const saveButton = within(dialog).getByRole('button', { name: 'Сохранить' });
@@ -1306,7 +1345,7 @@ describe('AdminScreen', () => {
 
     renderAdmin();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Инвентарь' }));
+    selectAdminSection('Инвентарь');
     expect(await screen.findByText('Ультимейт Ван 1')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Редактировать' }));
 
@@ -1412,7 +1451,7 @@ describe('AdminScreen', () => {
 
     renderAdmin();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Инвентарь' }));
+    selectAdminSection('Инвентарь');
     expect(await screen.findByText('Разгон')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Редактировать' }));
 
@@ -1636,9 +1675,8 @@ describe('AdminScreen', () => {
 
     renderAdmin();
 
-    expect(await screen.findByRole('button', { name: 'Задания' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Челленджи' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Задания' }));
+    selectAdminSection('Задания');
 
     expect(await screen.findByText('Первая шайба')).toBeInTheDocument();
     expect(screen.getByText('Выполнили игроков')).toBeInTheDocument();

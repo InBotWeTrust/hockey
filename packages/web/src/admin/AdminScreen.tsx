@@ -23,6 +23,7 @@ import {
   Heart,
   Megaphone,
   Medal,
+  Menu,
   MessageSquare,
   Package,
   Pencil,
@@ -650,6 +651,9 @@ export function AdminScreen(): JSX.Element {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const [tab, setTab] = useState<AdminTab>('dashboard');
+  const [adminMenuOpen, setAdminMenuOpen] = useState(false);
+  const adminMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const adminDrawerRef = useRef<HTMLElement>(null);
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search, 250);
   const [roleFilter, setRoleFilter] = useState<'all' | AdminRole>('all');
@@ -673,10 +677,25 @@ export function AdminScreen(): JSX.Element {
   useEffect(() => {
     const resetToDashboard = (): void => {
       setTab('dashboard');
+      setAdminMenuOpen(false);
     };
     window.addEventListener(ADMIN_NAV_HOME_EVENT, resetToDashboard);
     return () => window.removeEventListener(ADMIN_NAV_HOME_EVENT, resetToDashboard);
   }, []);
+
+  useEffect(() => {
+    if (!adminMenuOpen) return;
+    const firstControl = adminDrawerRef.current?.querySelector<HTMLButtonElement>('button');
+    firstControl?.focus();
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setAdminMenuOpen(false);
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('keydown', closeOnEscape);
+      adminMenuButtonRef.current?.focus();
+    };
+  }, [adminMenuOpen]);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const filtersChanged =
     search !== '' ||
@@ -836,36 +855,80 @@ export function AdminScreen(): JSX.Element {
         gap: 12,
       }}
     >
-      <nav
-        className="glass no-scrollbar"
-        style={{
-          borderRadius: 999,
-          padding: 4,
-          display: 'flex',
-          alignItems: 'center',
-          minHeight: 52,
-          flex: '0 0 auto',
-          overflowX: 'auto',
-          overscrollBehaviorX: 'contain',
-          gap: 4,
-        }}
-      >
-        {tabs.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => setTab(item.id)}
-            className={tab === item.id ? 'chip chip--active' : 'chip'}
-            style={{
-              flex: '0 0 auto',
-              minWidth: 112,
-              height: 42,
+      <header className="admin-screen__toolbar">
+        <div className="section-label admin-screen__current-section">
+          Админ · {tabs.find((item) => item.id === tab)?.label ?? 'Дашборд'}
+        </div>
+        <button
+          ref={adminMenuButtonRef}
+          type="button"
+          className="icon-btn icon-btn--dark admin-screen__menu-button"
+          aria-label="Открыть меню администратора"
+          aria-expanded={adminMenuOpen}
+          aria-controls="admin-navigation-drawer"
+          onClick={() => setAdminMenuOpen(true)}
+        >
+          <Menu size={19} />
+        </button>
+      </header>
+
+      {adminMenuOpen &&
+        createPortal(
+          <div
+            className="admin-drawer-backdrop"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) setAdminMenuOpen(false);
             }}
           >
-            {item.id === 'feedback' ? `${item.label} (${feedbackUnreadCount})` : item.label}
-          </button>
-        ))}
-      </nav>
+            <aside
+              ref={adminDrawerRef}
+              id="admin-navigation-drawer"
+              className="admin-drawer"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Меню администратора"
+            >
+              <div className="admin-drawer__header">
+                <h2>Разделы</h2>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  aria-label="Закрыть меню администратора"
+                  onClick={() => setAdminMenuOpen(false)}
+                >
+                  <X size={17} />
+                </button>
+              </div>
+              <nav className="admin-drawer__navigation" aria-label="Разделы администратора">
+                {tabs.map((item) => {
+                  const label =
+                    item.id === 'feedback'
+                      ? `${item.label} (${feedbackUnreadCount})`
+                      : item.label;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={
+                        tab === item.id
+                          ? 'admin-drawer__item admin-drawer__item--active'
+                          : 'admin-drawer__item'
+                      }
+                      aria-current={tab === item.id ? 'page' : undefined}
+                      onClick={() => {
+                        setTab(item.id);
+                        setAdminMenuOpen(false);
+                      }}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </nav>
+            </aside>
+          </div>,
+          document.body,
+        )}
 
       {tab === 'dashboard' && (
         <DashboardPanel
