@@ -1,8 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as api from './adminApi.js';
 import { TournamentAdmin } from './TournamentAdmin.js';
+
+const designSystemCss = readFileSync(resolve(process.cwd(), 'src/app/design-system.css'), 'utf8');
 
 async function chooseGlassOption(label: string, option: string | RegExp): Promise<void> {
   fireEvent.click(screen.getByRole('combobox', { name: label }));
@@ -61,6 +65,16 @@ describe('TournamentAdmin', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Создать' }));
     const dialog = screen.getByRole('dialog', { name: 'Создание турнира' });
     expect(dialog.style.height).toContain('--app-viewport-height');
+    const style = document.createElement('style');
+    style.textContent = designSystemCss;
+    document.head.append(style);
+    try {
+      const formGrid = dialog.querySelector<HTMLElement>('.tournament-admin-grid');
+      expect(formGrid).not.toBeNull();
+      expect(getComputedStyle(formGrid!).alignContent).toBe('start');
+    } finally {
+      style.remove();
+    }
     expect(screen.getByRole('textbox', { name: 'Описание' })).toHaveClass(
       'tournament-admin-textarea',
     );
