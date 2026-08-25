@@ -9,6 +9,10 @@ export interface AdminTournament {
   regularSource: 'head_to_head' | 'daily_aggregate';
   revision: number;
   participantCount: number;
+  registrationOpensAt?: string | null;
+  registrationClosesAt?: string | null;
+  startsAt?: string | null;
+  rules?: Record<string, unknown> & { config?: Record<string, unknown> };
 }
 
 export interface AdminTournamentParticipant {
@@ -43,6 +47,49 @@ export function createAdminTournament(body: Record<string, unknown>) {
   return apiFetch<{ tournament: AdminTournament }>('/admin/tournaments', {
     method: 'POST',
     body: JSON.stringify(body),
+  });
+}
+
+export function updateAdminTournament(
+  tournamentId: string,
+  expectedRevision: number,
+  body: Record<string, unknown>,
+) {
+  return apiFetch<{ tournament: AdminTournament }>(`/admin/tournaments/${tournamentId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ ...body, expectedRevision }),
+  });
+}
+
+export function duplicateAdminTournament(
+  tournamentId: string,
+  input: { slug: string; title: string },
+) {
+  return apiFetch<{ tournament: AdminTournament }>(
+    `/admin/tournaments/${tournamentId}/duplicate`,
+    { method: 'POST', body: JSON.stringify(input) },
+  );
+}
+
+export function deleteAdminTournamentDraft(tournamentId: string): Promise<void> {
+  return apiFetch(`/admin/tournaments/${tournamentId}`, { method: 'DELETE' });
+}
+
+export function cancelAdminTournament(tournamentId: string, expectedRevision: number) {
+  return apiFetch(`/admin/tournaments/${tournamentId}/cancel`, {
+    method: 'POST',
+    body: JSON.stringify({ expectedRevision }),
+  });
+}
+
+export function archiveAdminTournament(tournamentId: string) {
+  return apiFetch(`/admin/tournaments/${tournamentId}/archive`, { method: 'POST' });
+}
+
+export function inviteAdminTournamentParticipant(tournamentId: string, userId: string) {
+  return apiFetch(`/admin/tournaments/${tournamentId}/invitations`, {
+    method: 'POST',
+    body: JSON.stringify({ userId }),
   });
 }
 

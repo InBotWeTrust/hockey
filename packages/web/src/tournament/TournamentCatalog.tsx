@@ -62,6 +62,92 @@ function registrationWindow(tournament: TournamentSummary, now = new Date()): {
   return { isOpen: true, label: 'Идёт регистрация', actionLabel: '' };
 }
 
+function objectValue(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function numberValue(value: unknown, fallback = 0): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function rewardLabel(value: unknown): string | null {
+  const reward = objectValue(value);
+  const place = numberValue(reward.place);
+  if (place < 1) return null;
+  const stars = numberValue(reward.stars);
+  const lastTwo = stars % 100;
+  const starWord =
+    lastTwo >= 11 && lastTwo <= 14
+      ? 'звёзд'
+      : stars % 10 === 1
+        ? 'звезда'
+        : stars % 10 >= 2 && stars % 10 <= 4
+          ? 'звезды'
+          : 'звёзд';
+  return `${place} место — ${numberValue(reward.experience)} опыта, ${numberValue(reward.coins)} монет, ${stars} ${starWord}`;
+}
+
+function TournamentRules({ tournament }: { tournament: TournamentSummary }): JSX.Element {
+  const config = objectValue(tournament.rules.config);
+  const playoffRounds = Array.isArray(tournament.rules.playoffRounds)
+    ? tournament.rules.playoffRounds
+    : [];
+  const stageRewards = objectValue(tournament.rules.stageRewards);
+  const regularRewards = Array.isArray(stageRewards.regular) ? stageRewards.regular : [];
+  const playoffRewards = Array.isArray(stageRewards.playoff) ? stageRewards.playoff : [];
+  const tieBreakCriteria = Array.isArray(tournament.rules.tieBreakCriteria)
+    ? tournament.rules.tieBreakCriteria.map(String).join(' → ')
+    : 'по очкам';
+  const regularSource = config.regularSource ?? tournament.regularSource;
+
+  return (
+    <div style={{ display: 'grid', gap: 14 }}>
+      <div>
+        <div className="section-label" style={{ margin: 0 }}>Регулярный чемпионат</div>
+        <div style={{ marginTop: 5 }}>
+          {regularSource === 'daily_aggregate'
+            ? `${numberValue(config.dailyDays)} дней · метрика ${String(config.dailyMetric ?? 'goals_sum')} · лучшие ${config.bestDays === null || config.bestDays === undefined ? 'все дни' : String(config.bestDays)}`
+            : `${numberValue(config.roundRobinCycles, 1)} круга · ${numberValue(config.roundsPerDay, 1)} тура в день · первый тур в ${String(config.firstRoundLocalTime ?? 'не задан')}`}
+        </div>
+        <div style={{ marginTop: 5 }}>Критерии равенства: {tieBreakCriteria}</div>
+      </div>
+      <div>
+        <div className="section-label" style={{ margin: 0 }}>Плей-офф</div>
+        <div style={{ display: 'grid', gap: 5, marginTop: 5 }}>
+          {playoffRounds.map((value, index) => {
+            const round = objectValue(value);
+            const homeSequence = Array.isArray(round.homeSequence)
+              ? round.homeSequence.map(String).join('-')
+              : 'не задан';
+            const overtime = objectValue(round.overtime);
+            return (
+              <div key={String(round.roundNumber ?? index)}>
+                <div>Раунд {numberValue(round.roundNumber, index + 1)}: до {numberValue(round.winsRequired, 1)} побед · {homeSequence}</div>
+                <div style={{ color: 'var(--muted)' }}>
+                  Овертаймов: {numberValue(overtime.count, 1)} · стартовых буллитов: {numberValue(overtime.shootoutInitialShots, 3)}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div>
+        <div className="section-label" style={{ margin: 0 }}>Призы регулярки</div>
+        {regularRewards.map(rewardLabel).filter((label): label is string => label !== null).map((label) => <div key={label}>{label}</div>)}
+        {regularRewards.length === 0 && <div>Награды не назначены.</div>}
+      </div>
+      <div>
+        <div className="section-label" style={{ margin: 0 }}>Призы плей-офф</div>
+        {playoffRewards.map(rewardLabel).filter((label): label is string => label !== null).map((label) => <div key={label}>{label}</div>)}
+        {playoffRewards.length === 0 && <div>Награды не назначены.</div>}
+      </div>
+      <div style={{ color: 'var(--muted)' }}>Опубликованная ревизия №{tournament.revision} неизменяема после старта.</div>
+    </div>
+  );
+}
+
 function TournamentDetails({ tournament, onBack }: { tournament: TournamentSummary; onBack: () => void }) {
   const navigate = useNavigate();
   const currentUserId = useAuthStore((state) => state.user?.id ?? null);
@@ -168,7 +254,7 @@ function TournamentDetails({ tournament, onBack }: { tournament: TournamentSumma
               </div>
             )) : <div>Сетка появится после завершения регулярного чемпионата.</div>
         )}
-        {tab === 'rules' && <div>Опубликованная ревизия правил: №{tournament.revision}. После старта она не изменяется.</div>}
+        {tab === 'rules' && <TournamentRules tournament={tournament} />}
       </section>
       {tournament.status === 'registration' && (
         <button type="button" className="btn btn--cta" disabled={!registrationState.isOpen || registration.isPending} onClick={() => registration.mutate()}>

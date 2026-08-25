@@ -210,4 +210,84 @@ describe('TournamentAdmin', () => {
     expect(screen.queryByRole('button', { name: 'Опубликовать набор' })).not.toBeInTheDocument();
     expect(publish).toHaveBeenCalledWith('00000000-0000-4000-8000-000000000921', 3);
   });
+
+  it('exposes edit, duplicate and guarded hard-delete actions for an empty draft', async () => {
+    const tournament = {
+      id: '00000000-0000-4000-8000-000000000931',
+      slug: 'crud-cup',
+      title: 'Кубок CRUD',
+      description: 'Черновик для управления',
+      status: 'draft',
+      regularSource: 'head_to_head' as const,
+      revision: 5,
+      participantCount: 0,
+      registrationOpensAt: null,
+      registrationClosesAt: null,
+      startsAt: null,
+      rules: {
+        config: {
+          regularSource: 'head_to_head',
+          participantLimit: 8,
+          playoffSize: 4,
+          timezone: 'Europe/Moscow',
+          registrationMode: 'open',
+          visibility: 'public',
+          entryFeeCoins: 0,
+          roundRobinCycles: 1,
+          roundsPerDay: 1,
+          firstRoundLocalTime: '19:00',
+          fixtureWindowMs: 3_600_000,
+          roundBreakMs: 900_000,
+        },
+        eligibility: {
+          minLevel: null,
+          maxLevel: null,
+          minGoals: 0,
+          minExperience: 0,
+          invitedUserIds: [],
+          bannedUserIds: [],
+        },
+      },
+    };
+    vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [tournament] });
+    vi.spyOn(api, 'fetchAdminTournamentParticipants').mockResolvedValue({ participants: [] });
+    const update = vi.spyOn(api, 'updateAdminTournament').mockResolvedValue({
+      tournament: { ...tournament, title: 'Кубок CRUD обновлён', revision: 6 },
+    });
+    const duplicate = vi.spyOn(api as never, 'duplicateAdminTournament' as never).mockResolvedValue({
+      tournament: { ...tournament, id: '00000000-0000-4000-8000-000000000932', revision: 1 },
+    } as never);
+    const remove = vi.spyOn(api as never, 'deleteAdminTournamentDraft' as never).mockResolvedValue(undefined as never);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentAdmin />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок CRUD' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать draft' }));
+    expect(screen.getByRole('textbox', { name: 'Название' })).toHaveValue('Кубок CRUD');
+    fireEvent.change(screen.getByRole('textbox', { name: 'Название' }), {
+      target: { value: 'Кубок CRUD обновлён' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
+    await waitFor(() => expect(update).toHaveBeenCalledWith(
+      tournament.id,
+      5,
+      expect.objectContaining({ title: 'Кубок CRUD обновлён', rules: expect.any(Object) }),
+    ));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Дублировать' }));
+    await waitFor(() => expect(duplicate).toHaveBeenCalledWith(
+      tournament.id,
+      { slug: 'crud-cup-copy', title: 'Копия: Кубок CRUD обновлён' },
+    ));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Удалить draft' }));
+    expect(remove).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Подтвердить удаление' }));
+    await waitFor(() => expect(remove).toHaveBeenCalledWith(tournament.id));
+  });
 });

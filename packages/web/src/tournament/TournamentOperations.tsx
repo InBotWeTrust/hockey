@@ -1,9 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import {
+  archiveAdminTournament,
   approveAdminTournamentParticipant,
+  cancelAdminTournament,
+  deleteAdminTournamentDraft,
   dispatchAdminTournamentCommunication,
   disqualifyAdminTournamentParticipant,
+  duplicateAdminTournament,
   fetchAdminTournamentBracket,
   fetchAdminTournamentDispatches,
   fetchAdminTournamentParticipants,
@@ -11,6 +15,7 @@ import {
   fetchAdminTournamentStandings,
   generateAdminTournamentSchedule,
   grantAdminTournamentRewards,
+  inviteAdminTournamentParticipant,
   previewAdminTournamentAudience,
   publishAdminTournament,
   publishAdminTournamentSchedule,
@@ -47,9 +52,13 @@ function rowLabel(row: Record<string, unknown>, index: number): string {
 export function TournamentOperations({
   tournament,
   onBack,
+  onEdit,
+  onRemoved,
 }: {
   tournament: AdminTournament;
   onBack: () => void;
+  onEdit: () => void;
+  onRemoved: () => void;
 }): JSX.Element {
   const client = useQueryClient();
   const [tab, setTab] = useState<OperationsTab>('participants');
@@ -63,6 +72,8 @@ export function TournamentOperations({
   const [dispatchKind, setDispatchKind] = useState<'push' | 'direct_message'>('push');
   const [dispatchTitle, setDispatchTitle] = useState('');
   const [dispatchBody, setDispatchBody] = useState('');
+  const [inviteUserId, setInviteUserId] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const participantsKey = ['admin', 'tournaments', tournament.id, 'participants'] as const;
   const scheduleKey = ['admin', 'tournaments', tournament.id, 'schedule'] as const;
   const standingsKey = ['admin', 'tournaments', tournament.id, 'standings'] as const;
@@ -171,6 +182,44 @@ export function TournamentOperations({
       void client.invalidateQueries({ queryKey: dispatchesKey });
     },
   });
+  const duplicate = useMutation({
+    mutationFn: () =>
+      duplicateAdminTournament(tournament.id, {
+        slug: `${tournament.slug}-copy`,
+        title: `Копия: ${tournament.title}`,
+      }),
+    onSuccess: refreshOperations,
+  });
+  const removeDraft = useMutation({
+    mutationFn: () => deleteAdminTournamentDraft(tournament.id),
+    onSuccess: () => {
+      refreshOperations();
+      onRemoved();
+    },
+  });
+  const cancel = useMutation({
+    mutationFn: () => cancelAdminTournament(tournament.id, tournament.revision),
+    onSuccess: (result) => {
+      if (typeof result === 'object' && result !== null && 'status' in result) {
+        setStatus(String(result.status));
+      }
+      refreshOperations();
+    },
+  });
+  const archive = useMutation({
+    mutationFn: () => archiveAdminTournament(tournament.id),
+    onSuccess: () => {
+      setStatus('archived');
+      refreshOperations();
+    },
+  });
+  const invite = useMutation({
+    mutationFn: () => inviteAdminTournamentParticipant(tournament.id, inviteUserId),
+    onSuccess: () => {
+      setInviteUserId('');
+      void client.invalidateQueries({ queryKey: participantsKey });
+    },
+  });
 
   return (
     <section style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -179,10 +228,16 @@ export function TournamentOperations({
         <div className="section-label" style={{ margin: 0 }}>{status} · ревизия {tournament.revision}</div>
         <h2 style={{ margin: '5px 0 0' }}>{tournament.title}</h2>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+          {status === 'draft' && <button type="button" className="btn btn--ghost" onClick={onEdit}>Редактировать draft</button>}
+          <button type="button" className="btn btn--ghost" disabled={duplicate.isPending} onClick={() => duplicate.mutate()}>Дублировать</button>
           {status === 'draft' && <button type="button" className="btn btn--cta" onClick={() => lifecycle.mutate('publish')}>Опубликовать набор</button>}
           {['registration', 'registration_blocked'].includes(status) && <button type="button" className="btn btn--cta" onClick={() => lifecycle.mutate('generate')}>Сгенерировать календарь</button>}
           {status === 'scheduling' && <button type="button" className="btn btn--cta" onClick={() => lifecycle.mutate('publish_schedule')}>Опубликовать календарь</button>}
           {status === 'regular' && <button type="button" className="btn btn--cta" onClick={() => lifecycle.mutate('playoffs')}>Запустить плей-офф</button>}
+          {!['draft', 'cancelled', 'completed', 'archived'].includes(status) && <button type="button" className="btn btn--ghost" disabled={cancel.isPending} onClick={() => cancel.mutate()}>Отменить турнир</button>}
+          {['cancelled', 'completed'].includes(status) && <button type="button" className="btn btn--ghost" disabled={archive.isPending} onClick={() => archive.mutate()}>Архивировать</button>}
+          {status === 'draft' && tournament.participantCount === 0 && !confirmDelete && <button type="button" className="btn btn--ghost" onClick={() => setConfirmDelete(true)}>Удалить draft</button>}
+          {status === 'draft' && tournament.participantCount === 0 && confirmDelete && <button type="button" className="btn btn--cta" disabled={removeDraft.isPending} onClick={() => removeDraft.mutate()}>Подтвердить удаление</button>}
         </div>
       </div>
       <div style={{ display: 'flex', gap: 6, overflowX: 'auto' }}>
@@ -192,6 +247,12 @@ export function TournamentOperations({
         {tab === 'participants' && (
           <>
             <label>Причина административного решения<input value={reason} onChange={(event) => setReason(event.target.value)} /></label>
+            {['draft', 'registration', 'registration_blocked'].includes(status) && (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <input aria-label="User ID для приглашения" placeholder="UUID игрока" value={inviteUserId} onChange={(event) => setInviteUserId(event.target.value)} />
+                <button type="button" className="btn btn--ghost" disabled={!inviteUserId || invite.isPending} onClick={() => invite.mutate()}>Пригласить игрока</button>
+              </div>
+            )}
             {participants.data?.participants.map((participant) => (
               <div key={participant.id} style={{ padding: 10, borderRadius: 14, background: 'rgba(255,255,255,.55)' }}>
                 <div style={{ fontWeight: 850 }}>{participant.display_name}</div>

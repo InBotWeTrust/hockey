@@ -147,4 +147,67 @@ describe('TournamentCatalog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Регистрация ещё не открыта' }));
     expect(apply).not.toHaveBeenCalled();
   });
+
+  it('shows the published format, playoff rounds and stage rewards to players', async () => {
+    vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
+      tournaments: [
+        {
+          id: 't1',
+          slug: 'rules-cup',
+          title: 'Кубок правил',
+          description: 'Проверяем опубликованный snapshot',
+          status: 'registration',
+          regularSource: 'head_to_head',
+          visibility: 'public',
+          revision: 4,
+          participantCount: 4,
+          myParticipantState: null,
+          registrationOpensAt: null,
+          registrationClosesAt: null,
+          startsAt: '2030-09-01T07:00:00.000Z',
+          rules: {
+            config: {
+              participantLimit: 8,
+              entryFeeCoins: 25,
+              playoffSize: 4,
+              regularSource: 'head_to_head',
+              timezone: 'Europe/Moscow',
+              roundRobinCycles: 2,
+              roundsPerDay: 3,
+              firstRoundLocalTime: '19:00',
+            },
+            tieBreakCriteria: ['points', 'wins', 'goal_difference'],
+            playoffRounds: [
+              {
+                roundNumber: 1,
+                winsRequired: 4,
+                homeSequence: ['H', 'H', 'A', 'A', 'H', 'A', 'H'],
+                overtime: { count: 2, shootoutInitialShots: 3 },
+              },
+            ],
+            stageRewards: {
+              regular: [{ place: 1, experience: 100, coins: 50, stars: 3 }],
+              playoff: [{ place: 1, experience: 200, coins: 100, stars: 5 }],
+            },
+          },
+        },
+      ],
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TournamentCatalog />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок правил' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Правила и призы' }));
+
+    expect(screen.getByText('2 круга · 3 тура в день · первый тур в 19:00')).toBeInTheDocument();
+    expect(screen.getByText('Раунд 1: до 4 побед · H-H-A-A-H-A-H')).toBeInTheDocument();
+    expect(screen.getByText('1 место — 100 опыта, 50 монет, 3 звезды')).toBeInTheDocument();
+    expect(screen.getByText('1 место — 200 опыта, 100 монет, 5 звёзд')).toBeInTheDocument();
+  });
 });

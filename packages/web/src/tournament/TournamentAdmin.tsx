@@ -4,6 +4,7 @@ import { X } from 'lucide-react';
 import {
   createAdminTournament,
   fetchAdminTournaments,
+  updateAdminTournament,
   type AdminTournament,
 } from './adminApi.js';
 import { TournamentOperations } from './TournamentOperations.js';
@@ -171,96 +172,195 @@ function playoffRoundCount(size: PlayoffSize): number {
   return Math.log2(size);
 }
 
+function freshDraft(): TournamentDraft {
+  return {
+    ...defaultDraft,
+    playoffRounds: defaultDraft.playoffRounds.map((round) => ({ ...round })),
+  };
+}
+
+function objectValue(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function numberValue(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function stringValue(value: unknown, fallback = ''): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function localDateTimeValue(value: string | null | undefined): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '';
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
+
+function rewardsDraft(value: unknown): string {
+  return Array.isArray(value)
+    ? value
+        .map((entry) => {
+          const reward = objectValue(entry);
+          return [reward.place, reward.experience, reward.coins, reward.stars]
+            .map((item) => numberValue(item, 0))
+            .join(',');
+        })
+        .join('\n')
+    : '';
+}
+
+function draftFromTournament(tournament: AdminTournament): TournamentDraft {
+  const next = freshDraft();
+  const rules = objectValue(tournament.rules);
+  const config = objectValue(rules.config);
+  const eligibility = objectValue(rules.eligibility);
+  const scoring = objectValue(rules.regularScoring);
+  const rewards = objectValue(rules.stageRewards);
+  const configuredRounds = Array.isArray(rules.playoffRounds) ? rules.playoffRounds : [];
+  const playoffSizeValue = numberValue(config.playoffSize, next.playoffSize);
+  const playoffSize = ([2, 4, 8, 16] as number[]).includes(playoffSizeValue)
+    ? (playoffSizeValue as PlayoffSize)
+    : next.playoffSize;
+  return {
+    ...next,
+    slug: tournament.slug,
+    title: tournament.title,
+    description: tournament.description,
+    regularSource: config.regularSource === 'daily_aggregate' ? 'daily_aggregate' : 'head_to_head',
+    registrationMode:
+      config.registrationMode === 'approval' || config.registrationMode === 'invite_only'
+        ? config.registrationMode
+        : 'open',
+    visibility: config.visibility === 'hidden' ? 'hidden' : 'public',
+    participantLimit: numberValue(config.participantLimit, next.participantLimit),
+    playoffSize,
+    entryFeeCoins: numberValue(config.entryFeeCoins, 0),
+    minLevel: eligibility.minLevel === null ? '' : String(eligibility.minLevel ?? ''),
+    maxLevel: eligibility.maxLevel === null ? '' : String(eligibility.maxLevel ?? ''),
+    minGoals: numberValue(eligibility.minGoals, 0),
+    minExperience: numberValue(eligibility.minExperience, 0),
+    invitedUserIds: Array.isArray(eligibility.invitedUserIds) ? eligibility.invitedUserIds.map(String).join(',') : '',
+    bannedUserIds: Array.isArray(eligibility.bannedUserIds) ? eligibility.bannedUserIds.map(String).join(',') : '',
+    timezone: stringValue(config.timezone, next.timezone),
+    registrationOpensAt: localDateTimeValue(tournament.registrationOpensAt),
+    registrationClosesAt: localDateTimeValue(tournament.registrationClosesAt),
+    startsAt: localDateTimeValue(tournament.startsAt),
+    roundRobinCycles: numberValue(config.roundRobinCycles, next.roundRobinCycles),
+    roundsPerDay: numberValue(config.roundsPerDay, next.roundsPerDay),
+    firstRoundLocalTime: stringValue(config.firstRoundLocalTime, next.firstRoundLocalTime),
+    fixtureWindowMinutes: numberValue(config.fixtureWindowMs, next.fixtureWindowMinutes * 60_000) / 60_000,
+    roundBreakMinutes: numberValue(config.roundBreakMs, next.roundBreakMinutes * 60_000) / 60_000,
+    dailyDays: numberValue(config.dailyDays, next.dailyDays),
+    dailyMetric:
+      config.dailyMetric === 'accuracy_average' || config.dailyMetric === 'daily_place_points'
+        ? config.dailyMetric
+        : 'goals_sum',
+    bestDays: config.bestDays === null || config.bestDays === undefined ? '' : String(config.bestDays),
+    regularDuelTemplateId: stringValue(rules.regularDuelTemplateId),
+    regulationWin: numberValue(scoring.regulationWin, next.regulationWin),
+    overtimeWin: numberValue(scoring.overtimeWin, next.overtimeWin),
+    overtimeLoss: numberValue(scoring.overtimeLoss, next.overtimeLoss),
+    draw: numberValue(scoring.draw, next.draw),
+    loss: numberValue(scoring.loss, next.loss),
+    technicalLoss: numberValue(scoring.technicalLoss, next.technicalLoss),
+    tieBreakCriteria: Array.isArray(rules.tieBreakCriteria) ? rules.tieBreakCriteria.map(String).join(',') : next.tieBreakCriteria,
+    dailyPlacePoints: Array.isArray(rules.dailyPlacePoints) ? rules.dailyPlacePoints.map(String).join(',') : '',
+    playoffRounds: next.playoffRounds.map((fallback, index) => {
+      const configured = objectValue(configuredRounds.find((entry) => objectValue(entry).roundNumber === index + 1));
+      const overtime = objectValue(configured.overtime);
+      return {
+        winsRequired: numberValue(configured.winsRequired, fallback.winsRequired),
+        duelTemplateId: stringValue(configured.duelTemplateId),
+        homeSequence: Array.isArray(configured.homeSequence) ? configured.homeSequence.map(String).join('-') : fallback.homeSequence,
+        gameWindowMinutes: numberValue(configured.gameWindowMs, fallback.gameWindowMinutes * 60_000) / 60_000,
+        gameBreakMinutes: numberValue(configured.gameBreakMs, fallback.gameBreakMinutes * 60_000) / 60_000,
+        roundBreakMinutes: numberValue(configured.roundBreakMs, fallback.roundBreakMinutes * 60_000) / 60_000,
+        overtimeCount: numberValue(overtime.count, fallback.overtimeCount),
+        shootoutInitialShots: numberValue(overtime.shootoutInitialShots, fallback.shootoutInitialShots),
+      };
+    }),
+    regularRewards: rewardsDraft(rewards.regular),
+    playoffRewards: rewardsDraft(rewards.playoff),
+    reminderMinutes: Array.isArray(rules.notificationReminderOffsetsMs)
+      ? rules.notificationReminderOffsetsMs.map((value) => numberValue(value, 0) / 60_000).join(',')
+      : next.reminderMinutes,
+    deadlineLeadMinutes: numberValue(rules.notificationDeadlineLeadMs, next.deadlineLeadMinutes * 60_000) / 60_000,
+  };
+}
+
+function serializeDraft(draft: TournamentDraft): Record<string, unknown> {
+  const configuredPlayoffRounds = draft.playoffRounds
+    .slice(0, playoffRoundCount(draft.playoffSize))
+    .map((round, index) => ({
+      roundNumber: index + 1,
+      winsRequired: round.winsRequired,
+      homeSequence: splitList(round.homeSequence, '-').map((side) => side.toUpperCase()),
+      duelTemplateId: round.duelTemplateId || null,
+      gameWindowMs: round.gameWindowMinutes * 60_000,
+      gameBreakMs: round.gameBreakMinutes * 60_000,
+      roundBreakMs: round.roundBreakMinutes * 60_000,
+      overtime: { count: round.overtimeCount, shootoutInitialShots: round.shootoutInitialShots },
+    }));
+  return {
+    slug: draft.slug,
+    title: draft.title,
+    description: draft.description,
+    startsAt: dateOrNull(draft.startsAt),
+    registrationOpensAt: dateOrNull(draft.registrationOpensAt),
+    registrationClosesAt: dateOrNull(draft.registrationClosesAt),
+    rules: {
+      config: draft.regularSource === 'head_to_head'
+        ? { regularSource: 'head_to_head', participantLimit: draft.participantLimit, playoffSize: draft.playoffSize, timezone: draft.timezone, registrationMode: draft.registrationMode, visibility: draft.visibility, entryFeeCoins: draft.entryFeeCoins, roundRobinCycles: draft.roundRobinCycles, roundsPerDay: draft.roundsPerDay, firstRoundLocalTime: draft.firstRoundLocalTime, fixtureWindowMs: draft.fixtureWindowMinutes * 60_000, roundBreakMs: draft.roundBreakMinutes * 60_000, dailyDays: null, dailyMetric: null, bestDays: null }
+        : { regularSource: 'daily_aggregate', participantLimit: draft.participantLimit, playoffSize: draft.playoffSize, timezone: draft.timezone, registrationMode: draft.registrationMode, visibility: draft.visibility, entryFeeCoins: draft.entryFeeCoins, roundRobinCycles: null, roundsPerDay: null, firstRoundLocalTime: null, fixtureWindowMs: null, roundBreakMs: null, dailyDays: draft.dailyDays, dailyMetric: draft.dailyMetric, bestDays: optionalNumber(draft.bestDays) },
+      eligibility: { minLevel: optionalNumber(draft.minLevel), maxLevel: optionalNumber(draft.maxLevel), minGoals: draft.minGoals, minExperience: draft.minExperience, invitedUserIds: splitList(draft.invitedUserIds), bannedUserIds: splitList(draft.bannedUserIds) },
+      regularDuelTemplateId: draft.regularDuelTemplateId || null,
+      regularScoring: { regulationWin: draft.regulationWin, overtimeWin: draft.overtimeWin, overtimeLoss: draft.overtimeLoss, draw: draft.draw, loss: draft.loss, technicalLoss: draft.technicalLoss },
+      tieBreakCriteria: splitList(draft.tieBreakCriteria),
+      dailyPlacePoints: splitList(draft.dailyPlacePoints).map(Number).filter(Number.isFinite),
+      playoffRounds: configuredPlayoffRounds,
+      overtime: configuredPlayoffRounds[0]?.overtime ?? { count: 1, shootoutInitialShots: 3 },
+      stageRewards: { regular: parseRewards(draft.regularRewards), playoff: parseRewards(draft.playoffRewards) },
+      notificationReminderOffsetsMs: splitList(draft.reminderMinutes).map(Number).filter((minutes) => Number.isInteger(minutes) && minutes >= 0 && minutes <= 1_440).map((minutes) => minutes * 60_000),
+      notificationDeadlineLeadMs: draft.deadlineLeadMinutes * 60_000,
+    },
+  };
+}
+
 export function TournamentAdmin(): JSX.Element {
   const client = useQueryClient();
   const tournaments = useQuery({ queryKey: ['admin', 'tournaments'], queryFn: fetchAdminTournaments });
   const [wizardOpen, setWizardOpen] = useState(false);
   const [stage, setStage] = useState(0);
-  const [draft, setDraft] = useState(defaultDraft);
+  const [draft, setDraft] = useState(freshDraft);
+  const [editingTournament, setEditingTournament] = useState<AdminTournament | null>(null);
   const [selectedTournament, setSelectedTournament] = useState<AdminTournament | null>(null);
   const create = useMutation({
-    mutationFn: () => {
-      const configuredPlayoffRounds = draft.playoffRounds
-        .slice(0, playoffRoundCount(draft.playoffSize))
-        .map((round, index) => ({
-          roundNumber: index + 1,
-          winsRequired: round.winsRequired,
-          homeSequence: splitList(round.homeSequence, '-').map((side) => side.toUpperCase()),
-          duelTemplateId: round.duelTemplateId || null,
-          gameWindowMs: round.gameWindowMinutes * 60_000,
-          gameBreakMs: round.gameBreakMinutes * 60_000,
-          roundBreakMs: round.roundBreakMinutes * 60_000,
-          overtime: {
-            count: round.overtimeCount,
-            shootoutInitialShots: round.shootoutInitialShots,
-          },
-        }));
-      return createAdminTournament({
-        slug: draft.slug,
-        title: draft.title,
-        description: draft.description,
-        startsAt: dateOrNull(draft.startsAt),
-        registrationOpensAt: dateOrNull(draft.registrationOpensAt),
-        registrationClosesAt: dateOrNull(draft.registrationClosesAt),
-        rules: {
-          config:
-            draft.regularSource === 'head_to_head'
-              ? {
-                  regularSource: 'head_to_head', participantLimit: draft.participantLimit,
-                  playoffSize: draft.playoffSize, timezone: draft.timezone,
-                  registrationMode: draft.registrationMode, visibility: draft.visibility,
-                  entryFeeCoins: draft.entryFeeCoins, roundRobinCycles: draft.roundRobinCycles,
-                  roundsPerDay: draft.roundsPerDay, firstRoundLocalTime: draft.firstRoundLocalTime,
-                  fixtureWindowMs: draft.fixtureWindowMinutes * 60_000,
-                  roundBreakMs: draft.roundBreakMinutes * 60_000,
-                  dailyDays: null, dailyMetric: null, bestDays: null,
-                }
-              : {
-                  regularSource: 'daily_aggregate', participantLimit: draft.participantLimit,
-                  playoffSize: draft.playoffSize, timezone: draft.timezone,
-                  registrationMode: draft.registrationMode, visibility: draft.visibility,
-                  entryFeeCoins: draft.entryFeeCoins, roundRobinCycles: null,
-                  roundsPerDay: null, firstRoundLocalTime: null, fixtureWindowMs: null,
-                  roundBreakMs: null, dailyDays: draft.dailyDays, dailyMetric: draft.dailyMetric,
-                  bestDays: optionalNumber(draft.bestDays),
-                },
-          eligibility: {
-            minLevel: optionalNumber(draft.minLevel),
-            maxLevel: optionalNumber(draft.maxLevel),
-            minGoals: draft.minGoals,
-            minExperience: draft.minExperience,
-            invitedUserIds: splitList(draft.invitedUserIds),
-            bannedUserIds: splitList(draft.bannedUserIds),
-          },
-          regularDuelTemplateId: draft.regularDuelTemplateId || null,
-          regularScoring: {
-            regulationWin: draft.regulationWin,
-            overtimeWin: draft.overtimeWin,
-            overtimeLoss: draft.overtimeLoss,
-            draw: draft.draw,
-            loss: draft.loss,
-            technicalLoss: draft.technicalLoss,
-          },
-          tieBreakCriteria: splitList(draft.tieBreakCriteria),
-          dailyPlacePoints: splitList(draft.dailyPlacePoints).map(Number).filter(Number.isFinite),
-          playoffRounds: configuredPlayoffRounds,
-          overtime: configuredPlayoffRounds[0]?.overtime ?? { count: 1, shootoutInitialShots: 3 },
-          stageRewards: {
-            regular: parseRewards(draft.regularRewards),
-            playoff: parseRewards(draft.playoffRewards),
-          },
-          notificationReminderOffsetsMs: splitList(draft.reminderMinutes)
-            .map(Number)
-            .filter((minutes) => Number.isInteger(minutes) && minutes >= 0 && minutes <= 1_440)
-            .map((minutes) => minutes * 60_000),
-          notificationDeadlineLeadMs: draft.deadlineLeadMinutes * 60_000,
-        },
-      });
-    },
+    mutationFn: () => createAdminTournament(serializeDraft(draft)),
     onSuccess: () => {
       setWizardOpen(false);
       setStage(0);
-      setDraft(defaultDraft);
+      setDraft(freshDraft());
+      void client.invalidateQueries({ queryKey: ['admin', 'tournaments'] });
+    },
+  });
+  const update = useMutation({
+    mutationFn: () => {
+      const body = Object.fromEntries(
+        Object.entries(serializeDraft(draft)).filter(([key]) => key !== 'slug'),
+      );
+      return updateAdminTournament(editingTournament!.id, editingTournament!.revision, body);
+    },
+    onSuccess: ({ tournament }) => {
+      setWizardOpen(false);
+      setStage(0);
+      setEditingTournament(null);
+      setSelectedTournament(tournament);
+      setDraft(freshDraft());
       void client.invalidateQueries({ queryKey: ['admin', 'tournaments'] });
     },
   });
@@ -275,14 +375,25 @@ export function TournamentAdmin(): JSX.Element {
 
   if (selectedTournament !== null) {
     return (
-      <TournamentOperations tournament={selectedTournament} onBack={() => setSelectedTournament(null)} />
+      <TournamentOperations
+        tournament={selectedTournament}
+        onBack={() => setSelectedTournament(null)}
+        onEdit={() => {
+          setEditingTournament(selectedTournament);
+          setDraft(draftFromTournament(selectedTournament));
+          setStage(0);
+          setWizardOpen(true);
+          setSelectedTournament(null);
+        }}
+        onRemoved={() => setSelectedTournament(null)}
+      />
     );
   }
   return (
     <section style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
         <div><div className="section-label" style={{ margin: 0 }}>Турниры</div><h2 style={{ margin: '4px 0 0' }}>Управление сезонами</h2></div>
-        <button type="button" className="btn btn--cta" onClick={() => setWizardOpen(true)}>Создать турнир</button>
+        <button type="button" className="btn btn--cta" onClick={() => { setEditingTournament(null); setDraft(freshDraft()); setWizardOpen(true); }}>Создать турнир</button>
       </div>
       {tournaments.data?.tournaments.length === 0 && <div className="glass" style={{ borderRadius: 22, padding: 18 }}>Турниров пока нет</div>}
       {tournaments.data?.tournaments.map((tournament) => (
@@ -305,12 +416,16 @@ export function TournamentAdmin(): JSX.Element {
         <div className="modal-backdrop" role="presentation">
           <section className="modal-card" role="dialog" aria-modal="true" aria-label="Создание турнира" style={{ maxHeight: '90dvh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-              <h2 className="modal-title" style={{ margin: 0 }}>Новый турнир</h2>
-              <button type="button" className="icon-btn" aria-label="Закрыть" onClick={() => setWizardOpen(false)}><X size={16} /></button>
+              <h2 className="modal-title" style={{ margin: 0 }}>{editingTournament === null ? 'Новый турнир' : 'Редактирование турнира'}</h2>
+              <button type="button" className="icon-btn" aria-label="Закрыть" onClick={() => {
+                setWizardOpen(false);
+                if (editingTournament !== null) setSelectedTournament(editingTournament);
+                setEditingTournament(null);
+              }}><X size={16} /></button>
             </div>
             <div style={{ display: 'flex', gap: 6, overflowX: 'auto' }}>{stages.map((label, index) => <button key={label} type="button" className={stage === index ? 'chip chip--active' : 'chip'} onClick={() => setStage(index)}>{index + 1}. {label}</button>)}</div>
             <div className="modal-copy" style={{ display: 'grid', gap: 10 }}>
-              {stage === 0 && <><label>Название<input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label><label>Slug<input value={draft.slug} onChange={(event) => setDraft({ ...draft, slug: event.target.value })} /></label><label>Описание<textarea value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /></label></>}
+              {stage === 0 && <><label>Название<input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label><label>Slug<input disabled={editingTournament !== null} value={draft.slug} onChange={(event) => setDraft({ ...draft, slug: event.target.value })} /></label><label>Описание<textarea value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /></label></>}
               {stage === 1 && <>
                 <label>Регистрация<select value={draft.registrationMode} onChange={(event) => setDraft({ ...draft, registrationMode: event.target.value as RegistrationMode })}><option value="open">Открытая</option><option value="approval">С одобрением</option><option value="invite_only">Только по приглашению</option></select></label>
                 <label>Видимость<select value={draft.visibility} onChange={(event) => setDraft({ ...draft, visibility: event.target.value as Visibility })}><option value="public">Публичный</option><option value="hidden">Скрытый</option></select></label>
@@ -386,7 +501,7 @@ export function TournamentAdmin(): JSX.Element {
             </div>
             <div className="modal-actions">
               {stage > 0 && <button type="button" className="btn btn--ghost" onClick={() => setStage(stage - 1)}>Назад</button>}
-              {stage < stages.length - 1 ? <button type="button" className="modal-primary btn btn--cta" onClick={() => setStage(stage + 1)}>Далее</button> : <button type="button" className="modal-primary btn btn--cta" disabled={!draft.title || !draft.slug || create.isPending} onClick={() => create.mutate()}>Сохранить draft</button>}
+              {stage < stages.length - 1 ? <button type="button" className="modal-primary btn btn--cta" onClick={() => setStage(stage + 1)}>Далее</button> : <button type="button" className="modal-primary btn btn--cta" disabled={!draft.title || !draft.slug || create.isPending || update.isPending} onClick={() => editingTournament === null ? create.mutate() : update.mutate()}>{editingTournament === null ? 'Сохранить draft' : 'Сохранить изменения'}</button>}
             </div>
           </section>
         </div>
