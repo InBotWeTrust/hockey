@@ -31,7 +31,7 @@ function renderSections(): void {
 
 function LocationProbe(): JSX.Element {
   const location = useLocation();
-  return <output data-testid="location">{location.pathname}</output>;
+  return <output data-testid="location">{location.pathname + location.search}</output>;
 }
 
 function mockSectionsApi({
@@ -166,6 +166,7 @@ describe('SectionsScreen', () => {
     expect(within(modes).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual([
       'Любители',
       'Бонусные игры',
+      'Турниры',
       'Профессионалы',
     ]);
     within(quickAccess)
@@ -185,7 +186,7 @@ describe('SectionsScreen', () => {
     expect(screen.queryByText('Разделы')).toBeNull();
   });
 
-  it('places bonus games immediately between amateur and professional sections', async () => {
+  it('orders amateur duels, bonus games, tournaments and professional sections', async () => {
     mockSectionsApi();
     renderSections();
 
@@ -193,10 +194,44 @@ describe('SectionsScreen', () => {
     const labels = screen.getAllByRole('button').map((button) => button.textContent ?? '');
     const amateurIndex = labels.findIndex((label) => label.includes('Любители'));
     const bonusIndex = labels.findIndex((label) => label.includes('Бонусные игры'));
+    const tournamentIndex = labels.findIndex((label) => label.includes('Турниры'));
     const proIndex = labels.findIndex((label) => label.includes('Профессионалы'));
 
     expect(bonusIndex).toBe(amateurIndex + 1);
-    expect(proIndex).toBe(bonusIndex + 1);
+    expect(tournamentIndex).toBe(bonusIndex + 1);
+    expect(proIndex).toBe(tournamentIndex + 1);
+  });
+
+  it('opens amateur duels directly for an unlocked player', async () => {
+    mockSectionsApi({ profileCompetitionLevel: 'amateur' });
+    renderSections();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Любители' }));
+
+    expect(screen.getByTestId('location')).toHaveTextContent(
+      '/?view=amateur&section=duels&from=sections',
+    );
+  });
+
+  it('opens the tournament catalog directly for an unlocked player', async () => {
+    mockSectionsApi({ profileCompetitionLevel: 'amateur' });
+    renderSections();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Турниры' }));
+
+    expect(screen.getByTestId('location')).toHaveTextContent(
+      '/?view=amateur&section=tournaments&from=sections',
+    );
+  });
+
+  it('keeps tournaments locked until the amateur level is available', async () => {
+    mockSectionsApi({ dailyLifetimeTotalGoals: 0, profileCompetitionLevel: 'beginner' });
+    renderSections();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Турниры' }));
+
+    expect(screen.getByTestId('location')).toHaveTextContent('/sections');
+    expect(screen.getByRole('dialog', { name: 'Нужен любительский уровень' })).toBeInTheDocument();
   });
 
   it('opens bonus games for a server-authorized amateur below the daily goal threshold', async () => {

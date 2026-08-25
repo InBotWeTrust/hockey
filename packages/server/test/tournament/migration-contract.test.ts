@@ -18,6 +18,10 @@ const fixtureVenueMigrationUrl = new URL(
   '../../db/migrations/065_tournament_fixture_venue.sql',
   import.meta.url,
 );
+const enableTournamentsMigrationUrl = new URL(
+  '../../db/migrations/066_enable_tournaments.sql',
+  import.meta.url,
+);
 
 describe('tournament migration contract', () => {
   it('creates the complete tournament orchestration schema', async () => {
@@ -92,5 +96,13 @@ describe('tournament migration contract', () => {
     expect(sql).toMatch(
       /alter table amateur_duel_match\s+validate constraint amateur_duel_match_venue_policy_check/,
     );
+  });
+
+  it('enables the public tournament API through an idempotent setting migration', async () => {
+    const sql = await readFile(enableTournamentsMigrationUrl, 'utf8');
+
+    expect(sql).toContain("'tournaments.enabled'");
+    expect(sql).toContain("'true'::jsonb");
+    expect(sql).toContain('on conflict (key) do update');
   });
 });

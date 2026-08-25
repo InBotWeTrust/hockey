@@ -1857,7 +1857,7 @@ describe('DailyScreen', () => {
     expect(screen.queryByRole('button', { name: 'Профессионалы' })).not.toBeInTheDocument();
   });
 
-  it('keeps tournaments discoverable and explains when the endpoint is unavailable', async () => {
+  it('opens amateur routes directly in duels without rendering the old combined hub', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = input instanceof Request ? input.url : String(input);
       if (url.includes('/tournaments')) {
@@ -1880,12 +1880,12 @@ describe('DailyScreen', () => {
 
     renderWith(['/?view=amateur']);
 
-    expect(await screen.findByText('Дуэли')).toBeInTheDocument();
-    expect(await screen.findByText('Турниры')).toBeInTheDocument();
-    expect(await screen.findByText('Временно недоступно')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Дуэли' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Турниры' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Временно недоступно')).not.toBeInTheDocument();
   });
 
-  it('shows the same Duels and Tournaments switch on both direct amateur routes', async () => {
+  it('does not cross-link duels and tournaments from their direct routes', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = input instanceof Request ? input.url : String(input);
       if (url.includes('/tournaments')) {
@@ -1907,21 +1907,15 @@ describe('DailyScreen', () => {
     });
 
     const tournamentRoute = renderWith(['/?view=amateur&section=tournaments']);
-    const tournamentSwitch = await screen.findByRole('tablist', { name: 'Разделы любителей' });
-    expect(within(tournamentSwitch).getByRole('tab', { name: 'Дуэли' })).toBeInTheDocument();
-    expect(within(tournamentSwitch).getByRole('tab', { name: 'Турниры' })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    expect(await screen.findByRole('heading', { name: 'Турниры' })).toBeInTheDocument();
+    expect(screen.queryByRole('tablist', { name: 'Разделы любителей' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Дуэли' })).not.toBeInTheDocument();
     tournamentRoute.unmount();
 
     renderWith(['/?view=amateur&section=duels']);
-    const duelSwitch = await screen.findByRole('tablist', { name: 'Разделы любителей' });
-    expect(within(duelSwitch).getByRole('tab', { name: 'Дуэли' })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
-    expect(within(duelSwitch).getByRole('tab', { name: 'Турниры' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Дуэли' })).toBeInTheDocument();
+    expect(screen.queryByRole('tablist', { name: 'Разделы любителей' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Турниры' })).not.toBeInTheDocument();
   });
 
   it('opens player profile from amateur duel rating row', async () => {

@@ -112,7 +112,6 @@ import { StartPeriodModal } from '../components/StartPeriodModal.js';
 import { getLastSeenAt, setLastSeenAt } from '../stores/seenPeriods.js';
 import { TournamentCatalog } from '../tournament/TournamentCatalog.js';
 import { VenueBadge, type VenueRole } from '../components/VenueBadge.js';
-import { fetchTournaments } from '../api/tournament.js';
 import { artworkForInventoryItem, placeholderArtworkForKind } from './inventoryArtwork.js';
 import {
   formatInventoryBadgeAmount,
@@ -120,15 +119,13 @@ import {
   formatInventoryStockLabel,
 } from './inventoryResourceLabels.js';
 const HUB_PERIOD_DURATION_MS = 20 * 60 * 1000;
-const MODE_ARTWORK_SIZE = 104;
 
 type GameLevel = 'beginner' | 'amateur' | 'pro';
 type BeginnerMode = 'daily' | 'training';
 type DailyView = 'arena' | 'play';
-type AmateurView = 'home' | 'duels' | 'tournaments';
+type AmateurView = 'duels' | 'tournaments';
 type AmateurDuelTab = 'game' | 'locker' | 'rating' | 'history';
 type DuelHistoryFilter = 'current' | 'all' | string;
-type LevelArtwork = 'beginner' | 'amateur' | 'pro';
 type ModeInfoModalContent = { title: string; text: string };
 type ArenaEntryKind = 'daily' | 'training' | 'duel';
 interface ArenaEntry {
@@ -149,11 +146,6 @@ interface ArenaEntry {
   onEnter: () => void;
 }
 
-const MODE_ARTWORK_IMAGES: Record<LevelArtwork, string | null> = {
-  beginner: '/modes/beginner.webp',
-  amateur: '/modes/amateur.webp',
-  pro: '/modes/pro.webp',
-};
 const DUEL_KIND_ARTWORK_IMAGES: Record<AmateurDuelKind, string> = {
   express: '/modes/amateur-duel-steal-clean.webp',
   express_plus: '/modes/amateur-duel-card.webp',
@@ -365,7 +357,7 @@ export function DailyScreen(): JSX.Element {
   const tournamentId = routeParams.get('tournament');
   const [selectedLevel, setSelectedLevel] = useState<GameLevel>('beginner');
   const [activeAmateurMatchId, setActiveAmateurMatchId] = useState<string | null>(null);
-  const [amateurView, setAmateurView] = useState<AmateurView>('home');
+  const [amateurView, setAmateurView] = useState<AmateurView>('duels');
   const [beginnerMode, setBeginnerMode] = useState<BeginnerMode>(() => {
     const view = new URLSearchParams(location.search).get('view');
     return view === 'training' ? 'training' : 'daily';
@@ -411,7 +403,7 @@ export function DailyScreen(): JSX.Element {
         setActiveAmateurMatchId(matchId);
       } else {
         setActiveAmateurMatchId(null);
-        setAmateurView(section === 'duels' || section === 'tournaments' ? section : 'home');
+        setAmateurView(section === 'tournaments' ? 'tournaments' : 'duels');
       }
     }
     if (view === 'pro') {
@@ -477,7 +469,7 @@ export function DailyScreen(): JSX.Element {
     setSelectedLevel('beginner');
     setBeginnerMode('daily');
     setActiveAmateurMatchId(null);
-    setAmateurView('home');
+    setAmateurView('duels');
     navigate('/sections', { replace: true });
   };
 
@@ -561,24 +553,11 @@ export function DailyScreen(): JSX.Element {
       if (amateurView === 'duels') {
         return (
           <AmateurDuelsPage
-            onBack={() => {
-              setAmateurView('home');
-              navigate(fromSections ? '/?view=amateur&from=sections' : '/?view=amateur', {
-                replace: true,
-              });
-            }}
+            onBack={fromSections ? openSections : openHub}
             onOpenMatch={(matchId) => {
               setActiveAmateurMatchId(matchId);
-              navigate(`/?view=amateur&match=${encodeURIComponent(matchId)}&play=1`, {
-                replace: true,
-              });
-            }}
-            onOpenTournaments={() => {
-              setAmateurView('tournaments');
               navigate(
-                fromSections
-                  ? '/?view=amateur&section=tournaments&from=sections'
-                  : '/?view=amateur&section=tournaments',
+                `/?view=amateur&match=${encodeURIComponent(matchId)}&play=1${fromSections ? '&from=sections' : ''}`,
                 { replace: true },
               );
             }}
@@ -588,56 +567,10 @@ export function DailyScreen(): JSX.Element {
       if (amateurView === 'tournaments') {
         return (
           <AmateurTournamentsPage
-            onBack={() => {
-              setAmateurView('home');
-              navigate(fromSections ? '/?view=amateur&from=sections' : '/?view=amateur', {
-                replace: true,
-              });
-            }}
-            onOpenDuels={() => {
-              setAmateurView('duels');
-              navigate(
-                fromSections
-                  ? '/?view=amateur&section=duels&from=sections'
-                  : '/?view=amateur&section=duels',
-                { replace: true },
-              );
-            }}
+            onBack={fromSections ? openSections : openHub}
           />
         );
       }
-      return (
-        <AmateurHub
-          onBack={() => {
-            if (fromSections) {
-              openSections();
-              return;
-            }
-            setSelectedLevel('beginner');
-            setBeginnerMode('daily');
-            setAmateurView('home');
-            navigate('/?view=arena', { replace: true });
-          }}
-          onOpenDuels={() => {
-            setAmateurView('duels');
-            navigate(
-              fromSections
-                ? '/?view=amateur&section=duels&from=sections'
-                : '/?view=amateur&section=duels',
-              { replace: true },
-            );
-          }}
-          onOpenTournaments={() => {
-            setAmateurView('tournaments');
-            navigate(
-              fromSections
-                ? '/?view=amateur&section=tournaments&from=sections'
-                : '/?view=amateur&section=tournaments',
-              { replace: true },
-            );
-          }}
-        />
-      );
     }
     return (
       <LevelPlaceholder
@@ -2024,127 +1957,6 @@ function DailyEventScoreboardLabel({ children }: { children: React.ReactNode }):
   );
 }
 
-function LevelHubCard({
-  title,
-  description,
-  meta,
-  artwork,
-  tone = 'default',
-  progress,
-  onClick,
-}: {
-  title: string;
-  description: string;
-  meta: string;
-  artwork: LevelArtwork;
-  tone?: 'active' | 'default' | 'muted';
-  progress?: number;
-  onClick: () => void;
-}): JSX.Element {
-  const isLocked = tone === 'muted';
-  return (
-    <button
-      type="button"
-      className={`section-card-surface section-card-surface--${tone}`}
-      aria-label={title}
-      onClick={onClick}
-      style={{
-        position: 'relative',
-        overflow: 'hidden',
-        borderRadius: 22,
-        padding: 12,
-        display: 'grid',
-        gridTemplateColumns: `${MODE_ARTWORK_SIZE}px minmax(0, 1fr) 18px`,
-        gap: 12,
-        alignItems: 'center',
-        border: '1px solid rgba(255,255,255,0.66)',
-        boxShadow: '0 8px 22px rgba(15,23,42,0.1), inset 0 1px 0 rgba(255,255,255,0.78)',
-        width: '100%',
-        textAlign: 'left',
-        color: 'inherit',
-        appearance: 'none',
-        WebkitAppearance: 'none',
-        cursor: 'pointer',
-      }}
-    >
-      {progress !== undefined && (
-        <div
-          aria-label={`Прогресс до любителей ${progress}%`}
-          style={{
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            bottom: 0,
-            height: 3,
-            background: 'rgba(15,23,42,0.08)',
-          }}
-        >
-          <div
-            style={{
-              width: `${progress}%`,
-              height: '100%',
-              background: 'linear-gradient(90deg, rgba(34, 158, 217, 0.72), var(--blue-accent))',
-            }}
-          />
-        </div>
-      )}
-      <ModeArtwork label={title} tone={artwork} muted={isLocked} />
-      <div
-        style={{
-          minWidth: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'center',
-          gap: 8,
-        }}
-      >
-        <h2
-          style={{
-            margin: 0,
-            minWidth: 0,
-            fontSize: 18,
-            lineHeight: 1.05,
-            fontWeight: 900,
-            color: 'var(--ink)',
-          }}
-        >
-          {title}
-        </h2>
-        <div
-          style={{
-            color: 'rgba(15, 23, 42, 0.64)',
-            fontSize: 12,
-            fontWeight: 700,
-            lineHeight: 1.25,
-          }}
-        >
-          {description}
-        </div>
-        <div
-          style={{
-            color: 'rgba(15, 23, 42, 0.54)',
-            fontSize: 12,
-            fontWeight: 800,
-            lineHeight: 1.2,
-            fontVariantNumeric: 'tabular-nums',
-          }}
-        >
-          {meta}
-        </div>
-      </div>
-      <ChevronRight
-        aria-hidden="true"
-        size={19}
-        strokeWidth={2.7}
-        style={{
-          justifySelf: 'end',
-          color: 'rgba(15, 23, 42, 0.56)',
-        }}
-      />
-    </button>
-  );
-}
-
 function ModeInfoModal({
   title,
   text,
@@ -2776,106 +2588,6 @@ function DailyStatsPeriodRow({
   );
 }
 
-function ModeArtwork({
-  label,
-  tone,
-  muted,
-}: {
-  label: string;
-  tone: LevelArtwork;
-  muted: boolean;
-}): JSX.Element {
-  const imageSrc = MODE_ARTWORK_IMAGES[tone];
-  const palette =
-    tone === 'beginner'
-      ? {
-          bg: 'linear-gradient(145deg, #dbeafe 0%, #f8fafc 48%, #bfdbfe 100%)',
-          line: 'rgba(220, 38, 38, 0.34)',
-        }
-      : tone === 'amateur'
-        ? {
-            bg: 'linear-gradient(145deg, #d1fae5 0%, #fefce8 52%, #bbf7d0 100%)',
-            line: 'rgba(217, 119, 6, 0.36)',
-          }
-        : {
-            bg: 'linear-gradient(145deg, #e2e8f0 0%, #f8fafc 52%, #cbd5e1 100%)',
-            line: 'rgba(71, 85, 105, 0.32)',
-          };
-
-  return (
-    <div
-      aria-label={`Изображение режима ${label}`}
-      style={{
-        position: 'relative',
-        width: MODE_ARTWORK_SIZE,
-        height: MODE_ARTWORK_SIZE,
-        aspectRatio: '1 / 1',
-        alignSelf: 'center',
-        justifySelf: 'center',
-        borderRadius: 22,
-        overflow: 'hidden',
-        background: palette.bg,
-        border: '1px solid rgba(255,255,255,0.82)',
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9), 0 8px 18px rgba(15,23,42,0.12)',
-        opacity: 1,
-      }}
-    >
-      {imageSrc && (
-        <img
-          src={imageSrc}
-          alt=""
-          style={{
-            position: 'absolute',
-            inset: 0,
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover',
-            filter: muted ? 'grayscale(1) saturate(0.1)' : 'none',
-            opacity: muted ? 0.58 : 1,
-          }}
-        />
-      )}
-      <div
-        aria-hidden="true"
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background:
-            'linear-gradient(90deg, transparent 0 46%, rgba(255,255,255,0.55) 46% 54%, transparent 54% 100%)',
-          opacity: imageSrc ? 0 : 1,
-        }}
-      />
-      <div
-        aria-hidden="true"
-        style={{
-          position: 'absolute',
-          left: '50%',
-          top: '50%',
-          width: 68,
-          height: 68,
-          borderRadius: '50%',
-          border: `7px solid ${palette.line}`,
-          transform: 'translate(-50%, -50%)',
-          opacity: imageSrc ? 0 : 1,
-        }}
-      />
-      <div
-        aria-hidden="true"
-        style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          top: '50%',
-          height: 4,
-          transform: 'translateY(-50%)',
-          background: palette.line,
-          opacity: imageSrc ? 0 : 1,
-        }}
-      />
-    </div>
-  );
-}
-
 function ModeShell({
   title,
   onBack,
@@ -3491,118 +3203,9 @@ function DuelStatusBadge({ match }: { match: AmateurDuelMatch }): JSX.Element {
   );
 }
 
-function AmateurHub({
-  onBack,
-  onOpenDuels,
-  onOpenTournaments,
-}: {
-  onBack: () => void;
-  onOpenDuels: () => void;
-  onOpenTournaments: () => void;
-}): JSX.Element {
-  const matches = useQuery({
-    queryKey: ['amateur-duel', 'matches'],
-    queryFn: fetchAmateurMatches,
-  });
-  const tournaments = useQuery({
-    queryKey: ['tournaments'],
-    queryFn: fetchTournaments,
-    retry: false,
-  });
-
-  const allMatches = matches.data?.matches ?? [];
-  const activeMatches = allMatches.filter(
-    (match) =>
-      match.status === 'invited' || match.status === 'ready_check' || match.status === 'active',
-  );
-  const availableTournaments = tournaments.data?.tournaments.length ?? 0;
-
-  return (
-    <ModeShell title="Любители" onBack={onBack}>
-      <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div className="section-label section-label--page">Разделы</div>
-        <LevelHubCard
-          title="Дуэли"
-          description="Игры 1 на 1 и отбор к турнирам"
-          meta={
-            activeMatches.length > 0
-              ? formatRuCount(
-                  activeMatches.length,
-                  'текущая дуэль',
-                  'текущие дуэли',
-                  'текущих дуэлей',
-                )
-              : 'Лёгкая, средняя и сложная дуэль'
-          }
-          artwork="amateur"
-          tone="active"
-          onClick={onOpenDuels}
-        />
-        <LevelHubCard
-          title="Турниры"
-          description="Регулярные чемпионаты, плей-офф и призы"
-          meta={
-            tournaments.isLoading
-              ? 'Загружаем турниры…'
-              : tournaments.isError
-                ? 'Временно недоступно'
-                : availableTournaments > 0
-                  ? formatRuCount(
-                      availableTournaments,
-                      'доступный турнир',
-                      'доступных турнира',
-                      'доступных турниров',
-                    )
-                  : 'Сейчас нет открытых турниров'
-          }
-          artwork="pro"
-          tone={tournaments.isError ? 'muted' : 'active'}
-          onClick={onOpenTournaments}
-        />
-      </section>
-    </ModeShell>
-  );
-}
-
-function AmateurSectionSwitch({
-  active,
-  onOpenDuels,
-  onOpenTournaments,
-}: {
-  active: 'duels' | 'tournaments';
-  onOpenDuels: () => void;
-  onOpenTournaments: () => void;
-}): JSX.Element {
-  return (
-    <SegmentedTabs
-      ariaLabel="Разделы любителей"
-      activeTab={active}
-      items={[
-        { id: 'duels', label: 'Дуэли' },
-        { id: 'tournaments', label: 'Турниры' },
-      ]}
-      onChange={(next) => {
-        if (next === 'duels') onOpenDuels();
-        else onOpenTournaments();
-      }}
-    />
-  );
-}
-
-function AmateurTournamentsPage({
-  onBack,
-  onOpenDuels,
-}: {
-  onBack: () => void;
-  onOpenDuels: () => void;
-}): JSX.Element {
+function AmateurTournamentsPage({ onBack }: { onBack: () => void }): JSX.Element {
   return (
     <ModeShell title="Турниры" onBack={onBack}>
-      <AmateurSectionSwitch
-        active="tournaments"
-        onOpenDuels={onOpenDuels}
-        onOpenTournaments={() => undefined}
-      />
       <TournamentCatalog />
     </ModeShell>
   );
@@ -3772,11 +3375,9 @@ function MatchmakingRulesContent(): JSX.Element {
 function AmateurDuelsPage({
   onBack,
   onOpenMatch,
-  onOpenTournaments,
 }: {
   onBack: () => void;
   onOpenMatch: (matchId: string) => void;
-  onOpenTournaments: () => void;
 }): JSX.Element {
   const navigate = useNavigate();
   const currentUserId = useAuthStore((s) => s.user?.id ?? null);
@@ -3948,11 +3549,6 @@ function AmateurDuelsPage({
 
   return (
     <ModeShell title="Дуэли" onBack={onBack}>
-      <AmateurSectionSwitch
-        active="duels"
-        onOpenDuels={() => undefined}
-        onOpenTournaments={onOpenTournaments}
-      />
       <SegmentedTabs
         ariaLabel="Разделы дуэлей"
         activeTab={duelTab}

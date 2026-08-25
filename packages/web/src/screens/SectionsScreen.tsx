@@ -19,6 +19,7 @@ const SECTION_ARTWORK = {
   daily: '/daily-game/start.webp',
   training: '/modes/beginner.webp',
   amateur: '/modes/amateur.webp',
+  tournaments: '/sprites/tournament-tableau.webp',
   pro: '/modes/pro.webp',
   shop: '/modes/shop.webp',
 } as const;
@@ -110,7 +111,18 @@ export function SectionsScreen(): JSX.Element {
       });
       return;
     }
-    navigate('/?view=amateur&from=sections');
+    navigate('/?view=amateur&section=duels&from=sections');
+  };
+
+  const openTournaments = (): void => {
+    if (!isAmateurUnlocked) {
+      setLockedInfo({
+        title: 'Нужен любительский уровень',
+        text: 'Турниры доступны после открытия любительского уровня.',
+      });
+      return;
+    }
+    navigate('/?view=amateur&section=tournaments&from=sections');
   };
 
   const openBonusGames = (): void => {
@@ -186,7 +198,7 @@ export function SectionsScreen(): JSX.Element {
           <div className="sections-mode-list">
             <SectionCard
               title="Любители"
-              description="Дуэли, турниры и соревновательные форматы"
+              description="Дуэли один на один и соревновательный рейтинг"
               meta={
                 isAmateurUnlocked
                   ? 'Раздел открыт'
@@ -214,6 +226,14 @@ export function SectionsScreen(): JSX.Element {
               tone={isAmateurUnlocked ? 'default' : 'muted'}
               artworkSrc={BONUS_GAME_SECTION_ARTWORK}
               onClick={openBonusGames}
+            />
+            <SectionCard
+              title="Турниры"
+              description="Регулярные чемпионаты, плей-офф, календарь и призы"
+              meta={isAmateurUnlocked ? 'Каталог и мои заявки' : 'Нужен любительский уровень'}
+              tone={isAmateurUnlocked ? 'default' : 'muted'}
+              artworkSrc={SECTION_ARTWORK.tournaments}
+              onClick={openTournaments}
             />
             <SectionCard
               title="Профессионалы"
