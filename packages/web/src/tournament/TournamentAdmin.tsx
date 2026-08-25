@@ -38,6 +38,13 @@ interface PlayoffRoundDraft {
   shootoutInitialShots: number;
 }
 
+interface TournamentDraftOrigin {
+  timezone: string;
+  registrationOpensAt: string | null;
+  registrationClosesAt: string | null;
+  startsAt: string | null;
+}
+
 interface TournamentDraft {
   slug: string;
   title: string;
@@ -81,6 +88,7 @@ interface TournamentDraft {
   reminderMinutes: string;
   deadlineLeadMinutes: number;
   notificationOverrides: string;
+  origin?: TournamentDraftOrigin;
 }
 
 const defaultPlayoffRound = (): PlayoffRoundDraft => ({
@@ -212,8 +220,20 @@ function wallClockToIso(value: string, timezone: string): string {
   return resolved.toISOString();
 }
 
-function dateOrNull(value: string, timezone: string): string | null {
-  return value === '' ? null : wallClockToIso(value, timezone);
+function dateOrNull(
+  value: string,
+  timezone: string,
+  original?: { iso: string | null; timezone: string },
+): string | null {
+  if (value === '') return null;
+  if (
+    original?.iso &&
+    original.timezone === timezone &&
+    localDateTimeValue(original.iso, timezone) === value
+  ) {
+    return original.iso;
+  }
+  return wallClockToIso(value, timezone);
 }
 
 function parseRewards(
@@ -359,6 +379,12 @@ function draftFromTournament(tournament: AdminTournament): TournamentDraft {
     registrationOpensAt: localDateTimeValue(tournament.registrationOpensAt, timezone),
     registrationClosesAt: localDateTimeValue(tournament.registrationClosesAt, timezone),
     startsAt: localDateTimeValue(tournament.startsAt, timezone),
+    origin: {
+      timezone,
+      registrationOpensAt: tournament.registrationOpensAt ?? null,
+      registrationClosesAt: tournament.registrationClosesAt ?? null,
+      startsAt: tournament.startsAt ?? null,
+    },
     roundRobinCycles: numberValue(config.roundRobinCycles, next.roundRobinCycles),
     roundsPerDay: numberValue(config.roundsPerDay, next.roundsPerDay),
     firstRoundLocalTime: stringValue(config.firstRoundLocalTime, next.firstRoundLocalTime),
@@ -437,9 +463,21 @@ function serializeDraft(draft: TournamentDraft): Record<string, unknown> {
     slug: draft.slug,
     title: draft.title,
     description: draft.description,
-    startsAt: dateOrNull(draft.startsAt, draft.timezone),
-    registrationOpensAt: dateOrNull(draft.registrationOpensAt, draft.timezone),
-    registrationClosesAt: dateOrNull(draft.registrationClosesAt, draft.timezone),
+    startsAt: dateOrNull(
+      draft.startsAt,
+      draft.timezone,
+      draft.origin && { iso: draft.origin.startsAt, timezone: draft.origin.timezone },
+    ),
+    registrationOpensAt: dateOrNull(
+      draft.registrationOpensAt,
+      draft.timezone,
+      draft.origin && { iso: draft.origin.registrationOpensAt, timezone: draft.origin.timezone },
+    ),
+    registrationClosesAt: dateOrNull(
+      draft.registrationClosesAt,
+      draft.timezone,
+      draft.origin && { iso: draft.origin.registrationClosesAt, timezone: draft.origin.timezone },
+    ),
     rules: {
       config:
         draft.regularSource === 'head_to_head'

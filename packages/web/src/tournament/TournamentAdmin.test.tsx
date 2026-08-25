@@ -1,8 +1,30 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as api from './adminApi.js';
 import { TournamentAdmin } from './TournamentAdmin.js';
+
+function dstOverlapTournament(): api.AdminTournament {
+  return {
+    id: '00000000-0000-4000-8000-000000000941',
+    slug: 'dst-overlap-cup',
+    title: 'Кубок DST',
+    description: 'Позднее вхождение локального времени',
+    status: 'draft',
+    regularSource: 'head_to_head',
+    revision: 7,
+    participantCount: 0,
+    registrationOpensAt: '2026-11-01T06:10:00.000Z',
+    registrationClosesAt: '2026-11-01T06:20:00.000Z',
+    startsAt: '2026-11-01T06:30:00.000Z',
+    rules: {
+      config: {
+        regularSource: 'head_to_head',
+        timezone: 'America/New_York',
+      },
+    },
+  };
+}
 
 describe('TournamentAdmin', () => {
   beforeEach(() => {
@@ -272,6 +294,141 @@ describe('TournamentAdmin', () => {
     expect(screen.getByRole('button', { name: 'Сгенерировать календарь' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Опубликовать набор' })).not.toBeInTheDocument();
     expect(publish).toHaveBeenCalledWith('00000000-0000-4000-8000-000000000921', 3);
+  });
+
+  it('preserves the later DST occurrence when unrelated fields change', async () => {
+    const tournament = dstOverlapTournament();
+    vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [tournament] });
+    vi.spyOn(api, 'fetchAdminTournamentParticipants').mockResolvedValue({ participants: [] });
+    const update = vi.spyOn(api, 'updateAdminTournament').mockResolvedValue({
+      tournament: { ...tournament, description: 'Описание обновлено', revision: 8 },
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentAdmin />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок DST' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать draft' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Описание' }), {
+      target: { value: 'Описание обновлено' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
+
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+    const body = update.mock.calls[0]?.[2];
+    expect(body).toEqual(
+      expect.objectContaining({
+        registrationOpensAt: '2026-11-01T06:10:00.000Z',
+        registrationClosesAt: '2026-11-01T06:20:00.000Z',
+        startsAt: '2026-11-01T06:30:00.000Z',
+      }),
+    );
+    expect(Object.keys(body ?? {}).sort()).toEqual([
+      'description',
+      'registrationClosesAt',
+      'registrationOpensAt',
+      'rules',
+      'startsAt',
+      'title',
+    ]);
+  });
+
+  it('uses the deterministic earlier DST occurrence after the wall time changes', async () => {
+    const tournament = dstOverlapTournament();
+    vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [tournament] });
+    vi.spyOn(api, 'fetchAdminTournamentParticipants').mockResolvedValue({ participants: [] });
+    const update = vi.spyOn(api, 'updateAdminTournament').mockResolvedValue({
+      tournament: { ...tournament, startsAt: '2026-11-01T05:45:00.000Z', revision: 8 },
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentAdmin />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок DST' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать draft' }));
+    fireEvent.click(screen.getByRole('button', { name: '5. Расписание' }));
+    fireEvent.change(screen.getByLabelText('Старт турнира'), {
+      target: { value: '2026-11-01T01:45' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
+
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+    expect(update.mock.calls[0]?.[2]).toEqual(
+      expect.objectContaining({
+        registrationOpensAt: '2026-11-01T06:10:00.000Z',
+        registrationClosesAt: '2026-11-01T06:20:00.000Z',
+        startsAt: '2026-11-01T05:45:00.000Z',
+      }),
+    );
+  });
+
+  it('recomputes existing wall times after the tournament timezone changes', async () => {
+    const tournament = dstOverlapTournament();
+    vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [tournament] });
+    vi.spyOn(api, 'fetchAdminTournamentParticipants').mockResolvedValue({ participants: [] });
+    const update = vi.spyOn(api, 'updateAdminTournament').mockResolvedValue({
+      tournament: { ...tournament, revision: 8 },
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentAdmin />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок DST' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать draft' }));
+    fireEvent.click(screen.getByRole('button', { name: '5. Расписание' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Часовой пояс' }), {
+      target: { value: 'Europe/Moscow' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
+
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+    expect(update.mock.calls[0]?.[2]).toEqual(
+      expect.objectContaining({
+        registrationOpensAt: '2026-10-31T22:10:00.000Z',
+        registrationClosesAt: '2026-10-31T22:20:00.000Z',
+        startsAt: '2026-10-31T22:30:00.000Z',
+      }),
+    );
+  });
+
+  it('continues to reject nonexistent spring-forward wall times', async () => {
+    const tournament = dstOverlapTournament();
+    vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [tournament] });
+    vi.spyOn(api, 'fetchAdminTournamentParticipants').mockResolvedValue({ participants: [] });
+    const update = vi.spyOn(api, 'updateAdminTournament').mockResolvedValue({
+      tournament: { ...tournament, revision: 8 },
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentAdmin />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок DST' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать draft' }));
+    fireEvent.click(screen.getByRole('button', { name: '5. Расписание' }));
+    fireEvent.change(screen.getByLabelText('Старт турнира'), {
+      target: { value: '2026-03-08T02:30' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
+    });
+
+    expect(update).not.toHaveBeenCalled();
   });
 
   it('exposes edit, duplicate and guarded hard-delete actions for an empty draft', async () => {
