@@ -114,6 +114,11 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
        on conflict (user_id) do update set balance = excluded.balance, reserved_balance = 0`,
       [userA, userB],
     );
+    await pool.query(
+      `insert into game_settings (key, value, label, description)
+       values ('tournaments.enabled', 'false'::jsonb, 'Турниры включены', 'test reset')
+       on conflict (key) do update set value = excluded.value`,
+    );
     const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
     tokenA = await jwt.issueAccessToken({ sub: userA });
     tokenB = await jwt.issueAccessToken({ sub: userB });
@@ -204,6 +209,37 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       payload: { template_id: templateId, opponent_user_id: opponentUserId },
     });
     return res;
+  }
+
+  async function attachTournamentHierarchy(
+    matchId: string,
+    opts: {
+      slug: string;
+      tournamentStatus: 'regular' | 'completed';
+      fixtureStatus: 'active' | 'settled' | 'cancelled';
+      segmentStatus: 'active' | 'settled' | 'cancelled';
+    },
+  ): Promise<{ tournamentId: string; fixtureId: string }> {
+    const tournament = await pool.query<{ id: string }>(
+      `insert into tournament (slug, title, status, regular_source, created_by)
+       values ($1, 'Tournament duel hierarchy', $2, 'head_to_head', $3)
+       returning id`,
+      [opts.slug, opts.tournamentStatus, userA],
+    );
+    const fixture = await pool.query<{ id: string }>(
+      `insert into tournament_fixture
+         (tournament_id, fixture_number, status, home_score, away_score)
+       values ($1, 1, $2, 0, 0)
+       returning id`,
+      [tournament.rows[0]!.id, opts.fixtureStatus],
+    );
+    await pool.query(
+      `insert into tournament_fixture_segment
+         (fixture_id, sequence_number, kind, duel_match_id, status, rules_snapshot)
+       values ($1, 1, 'regulation', $2, $3, '{}'::jsonb)`,
+      [fixture.rows[0]!.id, matchId, opts.segmentStatus],
+    );
+    return { tournamentId: tournament.rows[0]!.id, fixtureId: fixture.rows[0]!.id };
   }
 
   async function setHomeArena(userId: string, slug: string): Promise<string> {
@@ -496,7 +532,9 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       });
     }
 
-    await pool.query(`update game_settings set value = 'false'::jsonb where key = 'tournaments.enabled'`);
+    await pool.query(
+      `update game_settings set value = 'false'::jsonb where key = 'tournaments.enabled'`,
+    );
     const hiddenList = await app.inject({
       method: 'GET',
       url: '/duel/amateur/matches',
@@ -518,6 +556,125 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       headers: auth(tokenA),
     });
     expect(hiddenSettlementReadback.statusCode).toBe(404);
+  });
+
+  it('keeps cancelled and expired tournament duel settlement readback idempotent', async () => {
+    const templateId = await createTemplate();
+    await pool.query(
+      `update game_settings set value = 'true'::jsonb where key = 'tournaments.enabled'`,
+    );
+
+    for (const terminalStatus of ['cancelled', 'expired'] as const) {
+      const created = await challenge(templateId);
+      expect(created.statusCode).toBe(200);
+      const matchId = created.json().match.id as string;
+      await pool.query(
+        `update amateur_duel_match
+            set source = 'tournament', status = $2, settled_reason = $2, settled_at = now()
+          where id = $1`,
+        [matchId, terminalStatus],
+      );
+      await attachTournamentHierarchy(matchId, {
+        slug: `terminal-duel-${terminalStatus}`,
+        tournamentStatus: 'completed',
+        fixtureStatus: 'cancelled',
+        segmentStatus: 'cancelled',
+      });
+
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const settlementReadback = await app.inject({
+          method: 'POST',
+          url: `/duel/amateur/matches/${matchId}/settle`,
+          headers: auth(tokenA),
+        });
+        expect(settlementReadback.statusCode).toBe(200);
+        expect(settlementReadback.json().match).toMatchObject({
+          id: matchId,
+          source: 'tournament',
+          status: terminalStatus,
+        });
+      }
+    }
+  });
+
+  it('uses the freshly locked status when a tournament duel settles during mixed list readback', async () => {
+    const templateId = await createTemplate();
+    await pool.query(
+      `update game_settings set value = 'true'::jsonb where key = 'tournaments.enabled'`,
+    );
+    const created = await challenge(templateId);
+    expect(created.statusCode).toBe(200);
+    const matchId = created.json().match.id as string;
+    await pool.query(
+      `update amateur_duel_match set source = 'tournament', status = 'active' where id = $1`,
+      [matchId],
+    );
+    const hierarchy = await attachTournamentHierarchy(matchId, {
+      slug: 'concurrent-settled-list-readback',
+      tournamentStatus: 'regular',
+      fixtureStatus: 'active',
+      segmentStatus: 'active',
+    });
+    const blocker = await pool.connect();
+    let list;
+    let blocked;
+    try {
+      await blocker.query('begin');
+      const blockerBackend = await blocker.query<{ pid: number }>('select pg_backend_pid() as pid');
+      await blocker.query(`select pg_advisory_xact_lock(hashtext($1))`, [
+        `tournament:${hierarchy.tournamentId}`,
+      ]);
+      const listPromise = app.inject({
+        method: 'GET',
+        url: '/duel/amateur/matches',
+        headers: auth(tokenA),
+      });
+      blocked = await waitForBlockedWriter(
+        pool,
+        blockerBackend.rows[0]!.pid,
+        /pg_advisory_xact_lock/i,
+      );
+      await pool.query(
+        `update amateur_duel_match
+            set status = 'settled', winner_user_id = $2, outcome = 'challenger_win',
+                settled_reason = 'completed', settled_at = now()
+          where id = $1`,
+        [matchId, userA],
+      );
+      await pool.query(
+        `update amateur_duel_participant
+            set state = 'completed', completed_at = now(),
+                result_points = case when user_id = $2 then 3 else 0 end
+          where match_id = $1`,
+        [matchId, userA],
+      );
+      await pool.query(
+        `update tournament_fixture_segment set status = 'settled', settled_at = now()
+          where fixture_id = $1`,
+        [hierarchy.fixtureId],
+      );
+      await pool.query(
+        `update tournament_fixture
+            set status = 'settled', outcome = 'home_win', home_score = 1, settled_at = now()
+          where id = $1`,
+        [hierarchy.fixtureId],
+      );
+      await pool.query(
+        `update tournament set status = 'completed', completed_at = now() where id = $1`,
+        [hierarchy.tournamentId],
+      );
+      await blocker.query('commit');
+      list = await listPromise;
+    } finally {
+      await blocker.query('rollback').catch(() => undefined);
+      blocker.release();
+    }
+
+    expect(blocked.query).toMatch(/pg_advisory_xact_lock/i);
+    expect(list.statusCode).toBe(200);
+    expect(list.json().matches).toContainEqual(
+      expect.objectContaining({ id: matchId, source: 'tournament', status: 'settled' }),
+    );
   });
 
   it('hides disabled tournament duels while ordinary amateur duels remain usable', async () => {

@@ -1943,10 +1943,7 @@ async function fetchMatchForUpdate(client: PoolClient, matchId: string): Promise
   return match;
 }
 
-async function assertTournamentDuelVisible(
-  client: PoolClient,
-  match: DuelMatchRow,
-): Promise<void> {
+async function assertTournamentDuelVisible(client: PoolClient, match: DuelMatchRow): Promise<void> {
   if (match.source !== 'tournament') return;
   const feature = await client.query<{ enabled: boolean }>(
     `select coalesce((value #>> '{}')::boolean, false) as enabled
@@ -1966,11 +1963,10 @@ async function fetchVisibleMatchForUpdate(
   return match;
 }
 
-async function fetchPlayableMatchForUpdate(
+async function assertTournamentDuelPlayable(
   client: PoolClient,
-  matchId: string,
-): Promise<DuelMatchRow> {
-  const match = await fetchVisibleMatchForUpdate(client, matchId);
+  match: DuelMatchRow,
+): Promise<void> {
   if (match.source === 'tournament') {
     const playable = await client.query<{ playable: boolean }>(
       `select exists(
@@ -1991,7 +1987,19 @@ async function fetchPlayableMatchForUpdate(
       throw new AppError('conflict', 'tournament duel is not playable', 409);
     }
   }
+}
+
+async function fetchPlayableMatchForUpdate(
+  client: PoolClient,
+  matchId: string,
+): Promise<DuelMatchRow> {
+  const match = await fetchVisibleMatchForUpdate(client, matchId);
+  await assertTournamentDuelPlayable(client, match);
   return match;
+}
+
+function isTerminalMatchStatus(status: MatchStatus): boolean {
+  return status === 'settled' || status === 'cancelled' || status === 'expired';
 }
 
 async function fetchParticipants(
@@ -2548,8 +2556,7 @@ async function reconcileMatch(
   match: DuelMatchRow,
   now: Date,
 ): Promise<ReconciledMatch> {
-  if (match.status === 'settled' || match.status === 'expired' || match.status === 'cancelled')
-    return { match, changed: false };
+  if (isTerminalMatchStatus(match.status)) return { match, changed: false };
   if (match.status === 'invited' || match.status === 'ready_check') {
     return settleMatchIfReady(client, match, now);
   }
@@ -3458,14 +3465,14 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
       const matches: DuelMatchDTO[] = [];
       const changedMatchIds = new Set<string>();
       for (const row of rows) {
-        const reconciled =
-          row.status === 'settled'
-            ? { match: await fetchVisibleMatchForUpdate(client, row.id), changed: false }
-            : await reconcileMatch(
-                client,
-                await fetchPlayableMatchForUpdate(client, row.id),
-                now,
-              );
+        const visibleMatch = await fetchVisibleMatchForUpdate(client, row.id);
+        let reconciled: ReconciledMatch;
+        if (isTerminalMatchStatus(visibleMatch.status)) {
+          reconciled = { match: visibleMatch, changed: false };
+        } else {
+          await assertTournamentDuelPlayable(client, visibleMatch);
+          reconciled = await reconcileMatch(client, visibleMatch, now);
+        }
         if (reconciled.changed) changedMatchIds.add(reconciled.match.id);
         const match = reconciled.match;
         if (
@@ -4445,15 +4452,10 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
       const response = await withTransaction(app, async (client) => {
         const now = new Date();
         const visibleMatch = await fetchVisibleMatchForUpdate(client, params.matchId);
-        const match = (
-          await reconcileMatch(
-            client,
-            visibleMatch.status === 'settled'
-              ? visibleMatch
-              : await fetchPlayableMatchForUpdate(client, params.matchId),
-            now,
-          )
-        ).match;
+        if (!isTerminalMatchStatus(visibleMatch.status)) {
+          await assertTournamentDuelPlayable(client, visibleMatch);
+        }
+        const match = (await reconcileMatch(client, visibleMatch, now)).match;
         if (match.challenger_user_id !== req.user.id && match.opponent_user_id !== req.user.id) {
           throw new AppError('forbidden', 'duel match access denied', 403);
         }
