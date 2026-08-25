@@ -30,3 +30,14 @@
 - RED/GREEN integration coverage was added for lazy `/matches`, lazy `/events`, no-op match reads, pending next-segment opening, and safe publisher-failure logging.
 - Sequential `hockey_test` run: 71/71 — `duel/amateur.test.ts` (43), `tournament/service.integration.test.ts` (18), `tournament/realtime-progress.integration.test.ts` (10).
 - `@hockey/game-core` build, server/web typechecks, root lint, and focused web tournament socket tests (7/7) passed.
+
+## Review 2 fixes
+
+- `PATCH /duel/amateur/matches/:matchId/loadout` now retains the lazy reconciliation `changed` signal, commits both reconciliation and loadout changes, then publishes a canonical fixture snapshot only when reconciliation changed live state.
+- A mixed-state integration scenario confirms that a caller can update their active-period loadout while an opponent's expired break transitions to `accepted`; the canonical post-commit event exposes that transition.
+- A no-op loadout reconciliation produces zero fixture events. Its conditional branch was mutation-checked by temporarily making publication unconditional; the focused regression failed with the unexpected event and passed again after restoring the condition.
+
+## Review 2 verification
+
+- Focused sequential `hockey_test`: `tournament/realtime-progress.integration.test.ts` 12/12 passed.
+- Server typecheck, root lint, and `git diff --check` passed.

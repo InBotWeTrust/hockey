@@ -4034,11 +4034,14 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
       const params = z.object({ matchId: uuid }).parse(req.params);
       const parsed = activeLoadoutBodySchema.safeParse(req.body);
       if (!parsed.success) throw new AppError('bad_request', 'invalid duel loadout payload', 400);
-      return withTransaction(app, async (client) => {
+      const response = await withTransaction(app, async (client) => {
         const now = new Date();
-        let match = (
-          await reconcileMatch(client, await fetchMatchForUpdate(client, params.matchId), now)
-        ).match;
+        const reconciled = await reconcileMatch(
+          client,
+          await fetchMatchForUpdate(client, params.matchId),
+          now,
+        );
+        let match = reconciled.match;
         if (match.challenger_user_id !== req.user.id && match.opponent_user_id !== req.user.id) {
           throw new AppError('forbidden', 'duel match access denied', 403);
         }
@@ -4076,8 +4079,13 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
           [match.id, req.user.id, JSON.stringify(nextLoadout)],
         );
         match = await fetchMatchForUpdate(client, match.id);
-        return { match: await buildMatchStateDto(client, match, req.user.id, now) };
+        return {
+          match: await buildMatchStateDto(client, match, req.user.id, now),
+          changed: reconciled.changed,
+        };
       });
+      if (response.changed) await publishDuelFixtureProgress(app, response.match.id);
+      return { match: response.match };
     },
   );
 

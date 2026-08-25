@@ -500,6 +500,64 @@ describe.skipIf(!hasIntegrationEnv)('tournament duel realtime progress', () => {
     expect(events).toEqual([]);
   });
 
+  it('publishes a canonical snapshot when a loadout update lazily completes an opponent break', async () => {
+    const duel = await createFixtureDuel();
+    const events = recordPublisher();
+    await readyBoth(duel);
+    const started = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${duel.duelMatchId}/period/start`,
+      headers: auth(tokenFor(duel.homeUserId)),
+    });
+    expect(started.statusCode).toBe(200);
+    events.length = 0;
+    await pool.query(
+      `update amateur_duel_participant
+          set state = 'break_active',
+              current_period = 1,
+              period_started_at = null,
+              break_started_at = now() - interval '2 hours',
+              ready_at = null
+        where match_id = $1 and user_id = $2`,
+      [duel.duelMatchId, duel.awayUserId],
+    );
+
+    const updated = await app.inject({
+      method: 'PATCH',
+      url: `/duel/amateur/matches/${duel.duelMatchId}/loadout`,
+      headers: auth(tokenFor(duel.homeUserId)),
+      payload: { loadout: { stick: null } },
+    });
+
+    expect(updated.statusCode).toBe(200);
+    expect(liveFrom(latestFixtureUpdate(events, duel.fixtureId)).participants).toContainEqual(
+      expect.objectContaining({ userId: duel.awayUserId, state: 'accepted', currentPeriod: 1 }),
+    );
+  });
+
+  it('does not publish when a loadout update reconciliation does not change state', async () => {
+    const duel = await createFixtureDuel();
+    const events = recordPublisher();
+    await readyBoth(duel);
+    const started = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${duel.duelMatchId}/period/start`,
+      headers: auth(tokenFor(duel.homeUserId)),
+    });
+    expect(started.statusCode).toBe(200);
+    events.length = 0;
+
+    const updated = await app.inject({
+      method: 'PATCH',
+      url: `/duel/amateur/matches/${duel.duelMatchId}/loadout`,
+      headers: auth(tokenFor(duel.homeUserId)),
+      payload: { loadout: { stick: null } },
+    });
+
+    expect(updated.statusCode).toBe(200);
+    expect(events).toEqual([]);
+  });
+
   it('publishes a canonical snapshot after opening a pending next fixture segment', async () => {
     const duel = await createFixtureDuel();
     const tournament = await pool.query<{ tournament_id: string }>(
