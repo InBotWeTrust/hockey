@@ -378,13 +378,36 @@ async function settleRealTournamentDuel(
       headers: { authorization: `Bearer ${token}` },
     });
     expect(settled.statusCode).toBe(200);
-    expect(settled.json().match.status).toBe('settled');
+    const settledMatch = settled.json().match as {
+      id: string;
+      source: string;
+      status: string;
+      winner_user_id: string | null;
+      outcome: string | null;
+      settled_at: string | null;
+    };
+    expect(settledMatch).toMatchObject({
+      id: opened.duelMatchId,
+      source: 'tournament',
+      status: 'settled',
+      winner_user_id: winnerUserId,
+    });
+    expect(settledMatch.outcome).toMatch(/^(challenger|opponent)_win$/);
+    expect(settledMatch.settled_at).toBe(settlementTime.toISOString());
     const terminalRetry = await app.inject({
       method: 'POST',
       url: `/duel/amateur/matches/${opened.duelMatchId}/settle`,
       headers: { authorization: `Bearer ${token}` },
     });
-    expect(terminalRetry.statusCode).toBe(409);
+    expect(terminalRetry.statusCode).toBe(200);
+    expect(terminalRetry.json().match).toMatchObject({
+      id: opened.duelMatchId,
+      source: 'tournament',
+      status: 'settled',
+      winner_user_id: winnerUserId,
+      outcome: settledMatch.outcome,
+      settled_at: settledMatch.settled_at,
+    });
     return opened.duelMatchId;
   } finally {
     await app?.close();
