@@ -31,11 +31,28 @@ Regular points are configurable per outcome. A deterministic ordered tie-break c
 
 The playoff bracket is fixed: highest seed versus lowest seed. Every round configures its duel template, wins required, game windows, breaks, tie-break rules, and a home sequence such as `H-H-A-A-H-A-H`. The higher original seed owns `H`. Home advantage changes only venue and ordering. Playoffs with four or more seeds always include a third-place series.
 
+### Venue ownership and player-facing labels
+
+Ordinary amateur duels are always played on the existing standard arena and are presented as neutral. Tournament fixtures keep score-side ownership (`home` and `away`) separate from venue ownership:
+
+- paired round-robin cycles mirror home and away assignments;
+- when the configured cycle count is odd, the final unmatched cycle is neutral;
+- `1` cycle is neutral, `2` cycles are one home and one away, `3` cycles add one neutral fixture, and the same pattern repeats for higher counts;
+- playoff fixtures use the published `H/A` sequence;
+- a home fixture uses the current selected arena of the home participant, falling back to the default arena;
+- a neutral fixture uses the default arena.
+
+The fixture stores `home_selected` or `neutral_default` independently from its score sides. On first segment creation it freezes the venue owner and arena snapshot; regulation, overtime, and shootout segments reuse that snapshot even if the player later changes their selected home arena.
+
+Every player-facing duel surface derives a user-relative venue label from the same fixture state: `Дома`, `В гостях`, or `Нейтрально`. The label is rendered as a compact text badge with a subtle semantic color on the arena cube, current-duel cards, duel history, and tournament schedule. Text remains the primary signal; color is supplementary.
+
 ## User and Admin Experience
 
 The amateur area gains `Duels | Tournaments`. The tournament hub groups personal, registering, active, and completed tournaments. Tournament details expose Overview, Standings, Schedule, Playoffs, and Rules & Prizes.
 
 Admins use a draft-saving wizard: basics, access, regular season, playoffs, schedule, rewards, notifications, and review. Before publishing they can regenerate schedules. After publishing they can only reschedule individual rounds/fixtures, pause/resume, resolve incidents, withdraw/disqualify participants, cancel, or archive, always with an audit reason.
+
+The wizard follows the compact density of the existing duel and inventory editors. Every field includes short helper copy, native selects are replaced with the shared custom glass select, advanced numeric settings are collapsible, and the mobile layout uses the app visual-viewport height so the footer stays reachable above the software keyboard. All draft writes run through one serialized latest-value save queue. `Готово` flushes that queue, closes the wizard without a false unsaved warning, and opens the tournament operations screen.
 
 Players may propose and confirm a live time inside a fixture window. Confirmed live games expose presence and aggregate progress over a match WebSocket, while the underlying HTTP game remains playable if realtime disconnects.
 
@@ -44,4 +61,3 @@ Tournament push notifications have global templates plus per-tournament override
 ## Verification
 
 All clocks are injectable. Tests cover schedule generation, local-date aggregation, scoring and tie-breaks, bracket sizes, home sequences, segment progression, no-shows, withdrawals, concurrency, idempotent economy and notifications, access control, WebSocket reconnect, and user/admin UI. Dev acceptance runs complete synthetic seasons for both formats before enabling the feature flag.
-
