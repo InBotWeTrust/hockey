@@ -10,14 +10,15 @@ export async function enqueueTournamentFixtureResultPush(
     winnerParticipantId: string | null;
   },
 ): Promise<void> {
-  const recipients = await client.query<{ participant_id: string; user_id: string }>(
-    `select p.id as participant_id, p.user_id from tournament_participant p
+  const recipients = await client.query<{ participant_id: string; user_id: string; tournament_id: string }>(
+    `select p.id as participant_id, p.user_id, p.tournament_id from tournament_participant p
       where p.id = any($1::uuid[])`,
     [[input.homeParticipantId, input.awayParticipantId].filter(Boolean)],
   );
   for (const recipient of recipients.rows) {
     const won = recipient.participant_id === input.winnerParticipantId;
     await enqueueTournamentPush(client, {
+      tournamentId: recipient.tournament_id,
       userId: recipient.user_id,
       eventType: 'tournament.result_ready',
       eventKey: `${input.fixtureId}:result:${recipient.user_id}`,
@@ -39,8 +40,9 @@ export async function enqueueTournamentSeriesNextGamePush(
     fixture_id: string;
     scheduled_starts_at: Date;
     user_id: string;
+    tournament_id: string;
   }>(
-    `select f.id as fixture_id, f.scheduled_starts_at, participant.user_id
+    `select f.id as fixture_id, f.scheduled_starts_at, participant.user_id, f.tournament_id
        from tournament_fixture f
        join tournament_playoff_series series on series.id = f.series_id
        join tournament t on t.id = f.tournament_id
@@ -63,6 +65,7 @@ export async function enqueueTournamentSeriesNextGamePush(
   const eventKey = `${fixture.fixture_id}:series-next-game:${startsAt}`;
   for (const recipient of recipients.rows) {
     await enqueueTournamentPush(client, {
+      tournamentId: recipient.tournament_id,
       userId: recipient.user_id,
       eventType: 'tournament.series_next_game',
       eventKey,

@@ -79,6 +79,7 @@ interface TournamentDraft {
   playoffRewards: string;
   reminderMinutes: string;
   deadlineLeadMinutes: number;
+  notificationOverrides: string;
 }
 
 const defaultPlayoffRound = (): PlayoffRoundDraft => ({
@@ -134,6 +135,7 @@ const defaultDraft: TournamentDraft = {
   playoffRewards: '',
   reminderMinutes: '60,15',
   deadlineLeadMinutes: 30,
+  notificationOverrides: '',
 };
 
 function splitList(value: string, separator = ','): string[] {
@@ -166,6 +168,36 @@ function parseRewards(value: string): Array<{ place: number; experience: number;
       [reward.place, reward.experience, reward.coins, reward.stars].every(Number.isInteger) &&
       reward.place > 0 && reward.experience >= 0 && reward.coins >= 0 && reward.stars >= 0,
     );
+}
+
+function parseNotificationOverrides(
+  value: string,
+): Record<string, { title: string; body: string; url: string }> {
+  return Object.fromEntries(
+    value
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => line.split('|').map((part) => part.trim()))
+      .filter(
+        ([key, title, body]) =>
+          key?.startsWith('tournament.') === true && Boolean(title) && Boolean(body),
+      )
+      .map(([key, title, body, url]) => [
+        key!,
+        { title: title!, body: body!, url: url || '/?view=amateur&section=tournaments' },
+      ]),
+  );
+}
+
+function notificationOverridesDraft(value: unknown): string {
+  const overrides = objectValue(value);
+  return Object.entries(overrides)
+    .map(([key, setting]) => {
+      const override = objectValue(setting);
+      return [key, override.title, override.body, override.url].map(String).join('|');
+    })
+    .join('\n');
 }
 
 function playoffRoundCount(size: PlayoffSize): number {
@@ -290,6 +322,7 @@ function draftFromTournament(tournament: AdminTournament): TournamentDraft {
       ? rules.notificationReminderOffsetsMs.map((value) => numberValue(value, 0) / 60_000).join(',')
       : next.reminderMinutes,
     deadlineLeadMinutes: numberValue(rules.notificationDeadlineLeadMs, next.deadlineLeadMinutes * 60_000) / 60_000,
+    notificationOverrides: notificationOverridesDraft(rules.notificationOverrides),
   };
 }
 
@@ -327,6 +360,7 @@ function serializeDraft(draft: TournamentDraft): Record<string, unknown> {
       stageRewards: { regular: parseRewards(draft.regularRewards), playoff: parseRewards(draft.playoffRewards) },
       notificationReminderOffsetsMs: splitList(draft.reminderMinutes).map(Number).filter((minutes) => Number.isInteger(minutes) && minutes >= 0 && minutes <= 1_440).map((minutes) => minutes * 60_000),
       notificationDeadlineLeadMs: draft.deadlineLeadMinutes * 60_000,
+      notificationOverrides: parseNotificationOverrides(draft.notificationOverrides),
     },
   };
 }
@@ -489,7 +523,8 @@ export function TournamentAdmin(): JSX.Element {
               {stage === 6 && <>
                 <label>Напоминания до старта, минуты<input value={draft.reminderMinutes} onChange={(event) => setDraft({ ...draft, reminderMinutes: event.target.value })} /></label>
                 <label>Напоминание о дедлайне, минуты<input type="number" min="0" max="1440" value={draft.deadlineLeadMinutes} onChange={(event) => setDraft({ ...draft, deadlineLeadMinutes: Number(event.target.value) })} /></label>
-                <div>Тексты берутся из глобальных push-шаблонов. После создания доступна ручная push- и персональная рассылка участникам.</div>
+                <label>Переопределения push-шаблонов<textarea value={draft.notificationOverrides} onChange={(event) => setDraft({ ...draft, notificationOverrides: event.target.value })} placeholder="event|заголовок|текст|url — по одной строке" /></label>
+                <div>Если переопределение не задано, используется глобальный push-шаблон. Поддерживаются переменные вида {'{{tournamentTitle}}'}.</div>
               </>}
               {stage === 7 && <div style={{ display: 'grid', gap: 6 }}>
                 <strong>{draft.title || 'Без названия'}</strong>

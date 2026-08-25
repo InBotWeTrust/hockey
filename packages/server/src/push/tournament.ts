@@ -6,7 +6,7 @@ import {
   type PushEventType,
   type PushPreferencesRow,
 } from './preferences.js';
-import { renderPushNotificationPayload } from './templates.js';
+import { renderPushNotificationPayload, type PushTemplateFallback } from './templates.js';
 
 type Queryable = Pool | PoolClient;
 type TournamentPushEvent = Extract<PushEventType, `tournament.${string}`>;
@@ -16,10 +16,21 @@ interface RecipientRow extends PushPreferencesRow {
   has_subscription: boolean;
 }
 
+function pushOverride(value: unknown): PushTemplateFallback | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const override = value as Record<string, unknown>;
+  return typeof override.title === 'string' &&
+    typeof override.body === 'string' &&
+    typeof override.url === 'string'
+    ? { title: override.title, body: override.body, url: override.url }
+    : null;
+}
+
 export async function enqueueTournamentPush(
   client: Queryable,
   input: {
     userId: string;
+    tournamentId?: string;
     eventType: TournamentPushEvent;
     eventKey: string;
     variables: Record<string, string | number | null | undefined>;
@@ -38,11 +49,23 @@ export async function enqueueTournamentPush(
   const recipient = rows[0];
   if (!recipient?.has_subscription) return false;
   if (!isPushEventAllowed(mapPushPreferencesRow(recipient), input.eventType)) return false;
+  let override: PushTemplateFallback | null = null;
+  if (input.tournamentId !== undefined) {
+    const result = await client.query<{ notification_override: unknown }>(
+      `select revision.rules_snapshot->'notificationOverrides'->$2 as notification_override
+         from tournament
+         join tournament_revision revision on revision.id = tournament.published_revision_id
+        where tournament.id = $1`,
+      [input.tournamentId, input.eventType],
+    );
+    override = pushOverride(result.rows[0]?.notification_override);
+  }
   const payload = await renderPushNotificationPayload(
     client,
     input.eventType,
     input.variables,
     input.fallback,
+    override,
   );
   if (!payload) return false;
   return enqueuePushDelivery(client, {

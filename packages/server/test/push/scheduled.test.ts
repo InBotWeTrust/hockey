@@ -846,7 +846,20 @@ describe.skipIf(!hasIntegrationEnv)('scheduled push delivery', () => {
       `insert into tournament_revision
          (tournament_id, revision, rules_snapshot, is_published, created_by, published_at)
        values ($1, 1, $2, true, $3, now()) returning id`,
-      [tournamentId, JSON.stringify({ notificationReminderOffsetsMs: [3_600_000] }), adminId],
+      [
+        tournamentId,
+        JSON.stringify({
+          notificationReminderOffsetsMs: [3_600_000],
+          notificationOverrides: {
+            'tournament.live_soon': {
+              title: 'Override {{tournamentTitle}}',
+              body: 'Осталось {{minutes}} минут',
+              url: '/?view=amateur&section=tournaments',
+            },
+          },
+        }),
+        adminId,
+      ],
     );
     await pool.query(`update tournament set published_revision_id = $2 where id = $1`, [
       tournamentId,
@@ -900,6 +913,18 @@ describe.skipIf(!hasIntegrationEnv)('scheduled push delivery', () => {
       },
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    const delivery = await pool.query<{ title: string; body: string; url: string }>(
+      `select payload->>'title' as title, payload->>'body' as body, payload->>'url' as url
+         from push_delivery_log
+        where event_type = 'tournament.live_soon'`,
+    );
+    expect(delivery.rows).toEqual([
+      {
+        title: 'Override Scheduler Cup',
+        body: 'Осталось 60 минут',
+        url: '/?view=amateur&section=tournaments',
+      },
+    ]);
   });
 
   it('sends fixture-opened and deadline pushes once at their configured times', async () => {

@@ -93,6 +93,9 @@ describe('TournamentAdmin', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Напоминания до старта, минуты' }), {
       target: { value: '60,15' },
     });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Переопределения push-шаблонов' }), {
+      target: { value: 'tournament.live_soon|Скоро матч {{tournamentTitle}}|До начала {{minutes}} минут|/?view=amateur&section=tournaments' },
+    });
 
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
     expect(screen.getByText('approval · public')).toBeInTheDocument();
@@ -118,6 +121,13 @@ describe('TournamentAdmin', () => {
             }),
           ]),
           notificationReminderOffsetsMs: [3_600_000, 900_000],
+          notificationOverrides: {
+            'tournament.live_soon': {
+              title: 'Скоро матч {{tournamentTitle}}',
+              body: 'До начала {{minutes}} минут',
+              url: '/?view=amateur&section=tournaments',
+            },
+          },
           stageRewards: expect.objectContaining({
             regular: [{ place: 1, experience: 100, coins: 50, stars: 3 }],
           }),

@@ -37,6 +37,7 @@ interface ScheduledPushSubscriptionRow {
   fixture_id?: string | null;
   reminder_offset_ms?: number | null;
   window_ends_at?: Date | null;
+  notification_override?: unknown;
 }
 
 interface ScheduledPushTarget {
@@ -47,6 +48,17 @@ interface ScheduledPushTarget {
   variables: PushTemplateVariables;
   fallback: PushTemplateFallback;
   tag: string;
+  templateOverride?: PushTemplateFallback;
+}
+
+function scheduledTemplateOverride(value: unknown): PushTemplateFallback | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const override = value as Record<string, unknown>;
+  return typeof override.title === 'string' &&
+    typeof override.body === 'string' &&
+    typeof override.url === 'string'
+    ? { title: override.title, body: override.body, url: override.url }
+    : null;
 }
 
 export interface ScheduledPushEventResult {
@@ -114,6 +126,7 @@ async function enqueueTarget(
     target.eventType,
     target.variables,
     target.fallback,
+    target.templateOverride,
   );
   if (rendered === null) return { queued: false, skipped: true };
 
@@ -462,6 +475,8 @@ async function fetchTournamentLiveSoonRows(
   const { rows } = await pool.query<ScheduledPushSubscriptionRow>(
     `with reminder_rules as (
        select t.id as tournament_id, t.title as tournament_title,
+              r.rules_snapshot->'notificationOverrides'->'tournament.live_soon'
+                as notification_override,
               case
                 when jsonb_typeof(r.rules_snapshot->'notificationReminderOffsetsMs') = 'array'
                   then r.rules_snapshot->'notificationReminderOffsetsMs'
@@ -471,7 +486,7 @@ async function fetchTournamentLiveSoonRows(
          join tournament_revision r on r.id = t.published_revision_id
         where t.status in ('regular', 'playoff')
      ), reminder_offsets as (
-       select rr.tournament_id, rr.tournament_title,
+       select rr.tournament_id, rr.tournament_title, rr.notification_override,
               case
                 when jsonb_typeof(reminder_rule.value) = 'number'
                   and reminder_rule.value #>> '{}' ~ '^(0|[1-9][0-9]{0,7})$'
@@ -480,12 +495,13 @@ async function fetchTournamentLiveSoonRows(
          from reminder_rules rr
          cross join lateral jsonb_array_elements(rr.reminder_offsets) as reminder_rule(value)
      ), valid_reminder_offsets as (
-       select tournament_id, tournament_title, reminder_offset_ms
+       select tournament_id, tournament_title, notification_override, reminder_offset_ms
          from reminder_offsets
         where reminder_offset_ms between 0 and $3::bigint
      ),
      candidates as (
        select f.id as fixture_id, f.scheduled_starts_at, ro.tournament_title,
+              ro.notification_override,
               ro.reminder_offset_ms,
               participant.user_id
          from tournament_fixture f
@@ -509,7 +525,8 @@ async function fetchTournamentLiveSoonRows(
               c.reminder_offset_ms::text as event_key,
             ''::text as local_date, null::uuid as day_pool_id, null::int as period_number,
             null::timestamptz as event_due_at, null::uuid as training_shot_id,
-            c.tournament_title, c.fixture_id, c.reminder_offset_ms
+            c.tournament_title, c.fixture_id, c.reminder_offset_ms,
+            c.notification_override
        from candidates c
        join push_subscriptions ps on ps.user_id = c.user_id
       where not exists (
@@ -534,9 +551,12 @@ async function fetchTournamentFixtureOpenedRows(
   const { rows } = await pool.query<ScheduledPushSubscriptionRow>(
     `with candidates as (
        select f.id as fixture_id, f.scheduled_starts_at, t.title as tournament_title,
+              revision.rules_snapshot->'notificationOverrides'->'tournament.fixture_opened'
+                as notification_override,
               participant.user_id
          from tournament_fixture f
          join tournament t on t.id = f.tournament_id
+         join tournament_revision revision on revision.id = t.published_revision_id
          cross join lateral (
            values (f.home_participant_id), (f.away_participant_id)
          ) as side(participant_id)
@@ -555,7 +575,7 @@ async function fetchTournamentFixtureOpenedRows(
               ((extract(epoch from c.scheduled_starts_at) * 1000)::bigint)::text as event_key,
             ''::text as local_date, null::uuid as day_pool_id, null::int as period_number,
             null::timestamptz as event_due_at, null::uuid as training_shot_id,
-            c.tournament_title, c.fixture_id
+            c.tournament_title, c.fixture_id, c.notification_override
        from candidates c
        join push_subscriptions ps on ps.user_id = c.user_id
       where not exists (
@@ -579,6 +599,8 @@ async function fetchTournamentFixtureDeadlineRows(
   const { rows } = await pool.query<ScheduledPushSubscriptionRow>(
     `with deadline_rule_candidates as (
        select f.id as fixture_id, t.title as tournament_title, f.window_ends_at,
+              r.rules_snapshot->'notificationOverrides'->'tournament.fixture_deadline'
+                as notification_override,
               participant.user_id,
               case
                 when jsonb_typeof(r.rules_snapshot->'notificationDeadlineLeadMs') = 'number'
@@ -602,6 +624,7 @@ async function fetchTournamentFixtureDeadlineRows(
           and f.window_ends_at > $1::timestamptz
      ), candidates as (
        select fixture_id, tournament_title, window_ends_at, user_id,
+              notification_override,
               coalesce(
                 case
                   when deadline_lead_ms between 0 and $4::bigint then deadline_lead_ms
@@ -619,7 +642,7 @@ async function fetchTournamentFixtureDeadlineRows(
               d.deadline_lead_ms::text as event_key,
             ''::text as local_date, null::uuid as day_pool_id, null::int as period_number,
             d.event_due_at, null::uuid as training_shot_id,
-            d.tournament_title, d.fixture_id, d.window_ends_at
+            d.tournament_title, d.fixture_id, d.window_ends_at, d.notification_override
        from due d
        join push_subscriptions ps on ps.user_id = d.user_id
       where d.event_due_at <= $1::timestamptz
@@ -779,51 +802,63 @@ async function schedulePushDeliveries(
   const tournamentLiveSoonTargets = collectTargets(
     'tournament.live_soon',
     tournamentLiveSoonRows,
-    (row) => ({
-      variables: {
-        tournamentTitle: row.tournament_title,
-        fixtureId: row.fixture_id,
-        minutes: Math.round(Number(row.reminder_offset_ms ?? 0) / 60_000),
-      },
-      fallback: {
-        title: 'Скоро турнирный матч',
-        body: `${row.tournament_title ?? 'Турнир'}: согласованное время игры приближается.`,
-        url: '/?view=amateur&section=tournaments',
-      },
-      tag: `ultimate-hockey-tournament-live-${row.fixture_id}-${row.reminder_offset_ms}`,
-    }),
+    (row) => {
+      const templateOverride = scheduledTemplateOverride(row.notification_override);
+      return {
+        variables: {
+          tournamentTitle: row.tournament_title,
+          fixtureId: row.fixture_id,
+          minutes: Math.round(Number(row.reminder_offset_ms ?? 0) / 60_000),
+        },
+        fallback: {
+          title: 'Скоро турнирный матч',
+          body: `${row.tournament_title ?? 'Турнир'}: согласованное время игры приближается.`,
+          url: '/?view=amateur&section=tournaments',
+        },
+        tag: `ultimate-hockey-tournament-live-${row.fixture_id}-${row.reminder_offset_ms}`,
+        ...(templateOverride === null ? {} : { templateOverride }),
+      };
+    },
   );
 
   const tournamentFixtureOpenedTargets = collectTargets(
     'tournament.fixture_opened',
     tournamentFixtureOpenedRows,
-    (row) => ({
-      variables: { tournamentTitle: row.tournament_title, fixtureId: row.fixture_id },
-      fallback: {
-        title: 'Матч открыт',
-        body: `Можно начинать игру в турнире ${row.tournament_title ?? ''}.`.trim(),
-        url: '/?view=amateur&section=tournaments',
-      },
-      tag: `ultimate-hockey-tournament-opened-${row.fixture_id}`,
-    }),
+    (row) => {
+      const templateOverride = scheduledTemplateOverride(row.notification_override);
+      return {
+        variables: { tournamentTitle: row.tournament_title, fixtureId: row.fixture_id },
+        fallback: {
+          title: 'Матч открыт',
+          body: `Можно начинать игру в турнире ${row.tournament_title ?? ''}.`.trim(),
+          url: '/?view=amateur&section=tournaments',
+        },
+        tag: `ultimate-hockey-tournament-opened-${row.fixture_id}`,
+        ...(templateOverride === null ? {} : { templateOverride }),
+      };
+    },
   );
 
   const tournamentFixtureDeadlineTargets = collectTargets(
     'tournament.fixture_deadline',
     tournamentFixtureDeadlineRows,
-    (row) => ({
-      variables: {
-        tournamentTitle: row.tournament_title,
-        fixtureId: row.fixture_id,
-        deadline: row.window_ends_at?.toISOString() ?? '',
-      },
-      fallback: {
-        title: 'Матч скоро закроется',
-        body: `Завершите игру до ${row.window_ends_at?.toISOString() ?? 'конца окна'}.`,
-        url: '/?view=amateur&section=tournaments',
-      },
-      tag: `ultimate-hockey-tournament-deadline-${row.fixture_id}`,
-    }),
+    (row) => {
+      const templateOverride = scheduledTemplateOverride(row.notification_override);
+      return {
+        variables: {
+          tournamentTitle: row.tournament_title,
+          fixtureId: row.fixture_id,
+          deadline: row.window_ends_at?.toISOString() ?? '',
+        },
+        fallback: {
+          title: 'Матч скоро закроется',
+          body: `Завершите игру до ${row.window_ends_at?.toISOString() ?? 'конца окна'}.`,
+          url: '/?view=amateur&section=tournaments',
+        },
+        tag: `ultimate-hockey-tournament-deadline-${row.fixture_id}`,
+        ...(templateOverride === null ? {} : { templateOverride }),
+      };
+    },
   );
 
   return [

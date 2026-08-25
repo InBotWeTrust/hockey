@@ -32,6 +32,7 @@ import {
   settleTournamentSegmentForDuel,
 } from '../../src/tournament/fixtureLifecycle.js';
 import { dispatchTournamentCommunication } from '../../src/tournament/communications.js';
+import { enqueueTournamentPush } from '../../src/push/tournament.js';
 import {
   createTestPool,
   getTestUrls,
@@ -1845,6 +1846,52 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     expect(audit.rows).toEqual([
       { action: 'pause', previous_status: 'registration', reason: 'Проверка инцидента' },
       { action: 'resume', previous_status: 'registration', reason: 'Инцидент устранён' },
+    ]);
+  });
+
+  it('renders a tournament-specific push override ahead of the global template', async () => {
+    await seedUsers(pool, 0);
+    const tournament = await createPublishedTournament(
+      pool,
+      'push-template-override',
+      0,
+      playoffTournamentRules(2, {
+        notificationOverrides: {
+          'tournament.application_approved': {
+            title: 'Вы в {{tournamentTitle}}',
+            body: 'Персональный текст турнира',
+            url: '/?view=amateur&section=tournaments',
+          },
+        },
+      }),
+    );
+    await pool.query(
+      `insert into push_subscriptions (user_id, endpoint, p256dh, auth)
+       values ($1, 'https://push.example.test/override', 'p256dh', 'auth')`,
+      [PLAYER_IDS[0]],
+    );
+
+    await enqueueTournamentPush(pool, {
+      tournamentId: tournament.id,
+      userId: PLAYER_IDS[0],
+      eventType: 'tournament.application_approved',
+      eventKey: `${tournament.id}:override`,
+      variables: { tournamentTitle: 'Кубок override' },
+      fallback: { title: 'Fallback', body: 'Fallback', url: '/' },
+    } as never);
+
+    const delivery = await pool.query<{ title: string; body: string; url: string }>(
+      `select payload->>'title' as title, payload->>'body' as body, payload->>'url' as url
+         from push_delivery_log
+        where event_key = $1`,
+      [`${tournament.id}:override`],
+    );
+    expect(delivery.rows).toEqual([
+      {
+        title: 'Вы в Кубок override',
+        body: 'Персональный текст турнира',
+        url: '/?view=amateur&section=tournaments',
+      },
     ]);
   });
 

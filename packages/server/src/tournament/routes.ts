@@ -266,6 +266,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
     if (result.state === 'approved') {
       const tournament = await getTournament(app.pg, params.tournamentId, req.user.id);
       await enqueueTournamentPush(app.pg, {
+        tournamentId: params.tournamentId,
         userId: req.user.id,
         eventType: 'tournament.application_approved',
         eventKey: `${params.tournamentId}:application-approved:${req.user.id}`,
@@ -400,6 +401,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
       );
       if (participant.rows[0]) {
         await enqueueTournamentPush(app.pg, {
+          tournamentId: params.tournamentId,
           userId: participant.rows[0].user_id,
           eventType: 'tournament.application_approved',
           eventKey: `${params.tournamentId}:application-approved:${participant.rows[0].user_id}`,

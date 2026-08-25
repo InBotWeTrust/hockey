@@ -276,6 +276,7 @@ export async function renderPushNotificationPayload(
   key: PushEventType,
   variables: PushTemplateVariables,
   fallback: PushTemplateFallback,
+  override?: PushTemplateFallback | null,
 ): Promise<WebPushPayload | null> {
   await ensurePushNotificationTemplates(client);
   const { rows } = await client.query<{
@@ -291,7 +292,7 @@ export async function renderPushNotificationPayload(
   );
   const row = rows[0];
   if (row && !row.is_enabled) return null;
-  const source = row ? { title: row.title, body: row.body, url: row.click_url } : fallback;
+  const source = override ?? (row ? { title: row.title, body: row.body, url: row.click_url } : fallback);
   return {
     title: interpolate(source.title, variables),
     body: interpolate(source.body, variables),

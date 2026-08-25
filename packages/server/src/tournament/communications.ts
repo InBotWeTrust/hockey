@@ -129,6 +129,7 @@ export async function dispatchTournamentCommunication(
     try {
       if (input.kind === 'push') {
         const queued = await enqueueTournamentPush(pool, {
+          tournamentId: input.tournamentId,
           userId: recipient.user_id,
           eventType: 'tournament.manual',
           eventKey: `${dispatchId}:${recipient.user_id}`,
