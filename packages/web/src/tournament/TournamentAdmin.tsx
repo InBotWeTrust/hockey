@@ -1228,7 +1228,15 @@ export function TournamentAdmin(): JSX.Element {
       setSaveState('error');
       return;
     }
-    if (snapshot === lastSavedSnapshot.current) return;
+    if (snapshot === lastSavedSnapshot.current) {
+      const queueStatus = saveQueue.current?.status;
+      if (queueStatus === 'saving') {
+        saveQueue.current?.enqueue(body, snapshot);
+      } else if (queueStatus !== 'error') {
+        setSaveState('saved');
+      }
+      return;
+    }
     setSaveState('saving');
     saveDebounce.current = window.setTimeout(() => {
       saveQueue.current?.enqueue(body, snapshot);

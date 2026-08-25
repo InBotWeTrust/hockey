@@ -263,6 +263,49 @@ describe('TournamentAdmin', () => {
     expect(screen.getByRole('dialog', { name: 'Создание турнира' })).toBeInTheDocument();
   });
 
+  it('returns to saved state when invalid input is restored to the saved snapshot', async () => {
+    const tournament: api.AdminTournament = {
+      id: 'restored-reward-cup',
+      slug: 'restored-reward-cup',
+      title: 'Кубок восстановления',
+      description: '',
+      status: 'draft',
+      regularSource: 'head_to_head',
+      revision: 3,
+      participantCount: 0,
+      rules: {
+        config: { regularSource: 'head_to_head' },
+        stageRewards: { regular: [{ place: 1, experience: 100, coins: 50, stars: 3 }] },
+      },
+    };
+    vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [tournament] });
+    vi.spyOn(api, 'fetchAdminTournamentParticipants').mockResolvedValue({ participants: [] });
+    const update = vi.spyOn(api, 'updateAdminTournament');
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentAdmin />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок восстановления' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать draft' }));
+    fireEvent.click(screen.getByRole('button', { name: '6. Награды' }));
+    const place = screen.getByRole('spinbutton', { name: 'Место награды регулярки 1' });
+
+    fireEvent.change(place, { target: { value: '' } });
+    expect(screen.getByRole('alert')).toHaveTextContent('Заполните место награды');
+
+    fireEvent.change(place, { target: { value: '1' } });
+
+    expect(await screen.findByText('Сохранено')).toBeInTheDocument();
+    expect(update).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+    expect(
+      screen.queryByRole('alertdialog', { name: 'Закрыть без сохранения?' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('keeps an incomplete notification card dirty instead of deleting it', async () => {
     const tournament: api.AdminTournament = {
       id: 'notify-cup',
