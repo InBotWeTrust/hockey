@@ -165,8 +165,19 @@ describe.skipIf(!hasIntegrationEnv)('scheduled push delivery', () => {
   });
 
   afterEach(async () => {
-    vi.unstubAllGlobals();
-    await pool.end();
+    try {
+      await pool.query(
+        `insert into game_settings (key, value, label, description)
+         values ('tournaments.enabled', 'false'::jsonb, 'Турниры включены', 'test cleanup')
+         on conflict (key) do update set value = excluded.value`,
+      );
+    } finally {
+      try {
+        vi.unstubAllGlobals();
+      } finally {
+        await pool.end();
+      }
+    }
   });
 
   it('enqueues each valid reminder offset only for active opted-in participants', async () => {

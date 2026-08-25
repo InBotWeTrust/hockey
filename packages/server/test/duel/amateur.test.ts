@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
@@ -122,6 +122,14 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
     tokenA = await jwt.issueAccessToken({ sub: userA });
     tokenB = await jwt.issueAccessToken({ sub: userB });
+  });
+
+  afterEach(async () => {
+    await pool.query(
+      `insert into game_settings (key, value, label, description)
+       values ('tournaments.enabled', 'false'::jsonb, 'Турниры включены', 'test cleanup')
+       on conflict (key) do update set value = excluded.value`,
+    );
   });
 
   function auth(token: string) {
