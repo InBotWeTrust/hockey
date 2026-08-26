@@ -17,7 +17,6 @@
 
 :root {
   color-scheme: only light;
-  --app-viewport-height: 100dvh;
   --app-bg-top: #c9dcf0;
   --app-bg-bottom: #9cbfdf;
   --app-safe-top-raw: env(safe-area-inset-top, 0px);
@@ -36,9 +35,6 @@
   --green: #22c55e;
   --green-deep: #15803d;
   --blue-accent: #229ed9;
-  --reward-coin: #15803d;
-  --reward-star: #b77900;
-  --reward-experience: #2563eb;
 
   --glass-bg: rgba(255, 255, 255, 0.5);
   --glass-border: rgba(255, 255, 255, 0.7);
@@ -60,11 +56,6 @@
   --shadow-elev: 0 12px 40px rgba(15, 23, 42, 0.28);
   --shadow-cta: 0 8px 22px rgba(15, 23, 42, 0.3);
 
-  --motion-press-duration: 100ms;
-  --motion-fade-duration: 180ms;
-  --motion-press-scale: 0.97;
-  --motion-icon-press-scale: 0.94;
-
   --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro', 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
 }
@@ -84,14 +75,14 @@
   --app-safe-top: var(--app-safe-top-raw);
   --app-safe-bottom: clamp(12px, var(--app-safe-bottom-raw), 26px);
   --app-dock-safe-bottom: clamp(8px, calc(var(--app-safe-bottom-raw) - 18px), 14px);
-  --bottom-nav-bottom-gap: var(--app-dock-safe-bottom);
+  --bottom-nav-bottom-gap: 5px;
 }
 
 :root.app-ios-standalone {
   --app-safe-top: var(--app-safe-top-raw);
   --app-safe-bottom: max(24px, var(--app-safe-bottom-raw));
   --app-dock-safe-bottom: clamp(8px, calc(var(--app-safe-bottom-raw) - 22px), 12px);
-  --bottom-nav-bottom-gap: var(--app-dock-safe-bottom);
+  --bottom-nav-bottom-gap: 4px;
 }
 
 @media (hover: hover) and (pointer: fine) {

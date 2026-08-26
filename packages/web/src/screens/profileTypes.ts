@@ -14,18 +14,8 @@ export interface ProfileAchievement {
   title: string;
   description: string;
   requirement: string;
-  category?: string;
-  availability?: 'active' | 'future' | 'hidden';
-  futureTag?: string | null;
-  rewardCurrency?: number;
-  rewardStars?: number;
-  rewardExperience?: number;
-  status?: 'locked' | 'completed_unclaimed' | 'claimed';
   isUnlocked: boolean;
-  isClaimable?: boolean;
   unlockedAt?: string;
-  completedAt?: string;
-  claimedAt?: string;
 }
 
 export interface ProfileData {
@@ -37,7 +27,6 @@ export interface ProfileData {
   competitionLevel: CompetitionLevel;
   stats: ProfileStats;
   achievements: ProfileAchievement[];
-  unclaimedAchievementsCount?: number;
   currencyBalance?: number;
   starBalance?: number;
   experienceBalance?: number;

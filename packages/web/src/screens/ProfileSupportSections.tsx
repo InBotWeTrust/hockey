@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type MouseEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, ChevronDown, MessageSquare, X } from 'lucide-react';
 import { createFeedback, type FeedbackKind } from '../api/feedback.js';
@@ -13,7 +13,6 @@ import {
   type PushSubscriptionPayload,
 } from '../api/push.js';
 import { getTelegramMiniApp } from '../auth/telegramMiniApp.js';
-import { AccessibleModal } from '../components/AccessibleModal.js';
 
 type PushStatus =
   | 'idle'
@@ -50,11 +49,6 @@ const PUSH_PREFERENCE_ITEMS: Array<{
     key: 'duelEvents',
     label: 'Дуэли',
     hint: 'Вызовы и результаты любительских матчей',
-  },
-  {
-    key: 'tournamentEvents',
-    label: 'Турниры',
-    hint: 'Регистрация, расписание, матчи и итоги турниров',
   },
   {
     key: 'gameNews',
@@ -241,32 +235,39 @@ function FeedbackModal({ onClose }: { onClose: () => void }): JSX.Element {
     setKind(nextKind);
   }
 
-  function handleClose(): void {
+  function handleClose(event?: MouseEvent): void {
+    event?.stopPropagation();
     onClose();
   }
 
   return (
-    <AccessibleModal
-      title="Обратная связь"
-      copy={feedback.isSuccess ? 'Спасибо, сообщение сохранено' : 'Выберите тип сообщения'}
-      onRequestClose={handleClose}
-      closeBlocked={feedback.isPending}
-      backdropStyle={{ zIndex: 1000 }}
-      cardStyle={{ width: 'min(420px, calc(100vw - 28px))' }}
-      headerAction={
-        <button
-          type="button"
-          className="icon-btn"
-          data-no-drag-scroll="true"
-          disabled={feedback.isPending}
-          onClick={handleClose}
-          aria-label="Закрыть"
-        >
-          <X size={16} />
-        </button>
-      }
-    >
-      <div style={{ display: 'grid', gap: 14 }}>
+    <div className="modal-backdrop" onClick={() => handleClose()} style={{ zIndex: 1000 }}>
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-label="Обратная связь"
+        className="modal-card"
+        onClick={(event) => event.stopPropagation()}
+        style={{ width: 'min(420px, calc(100vw - 28px))', display: 'grid', gap: 14 }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="modal-title">Обратная связь</div>
+            <div className="modal-copy">
+              {feedback.isSuccess ? 'Спасибо, сообщение сохранено' : 'Выберите тип сообщения'}
+            </div>
+          </div>
+          <button
+            type="button"
+            className="icon-btn"
+            data-no-drag-scroll="true"
+            onClick={handleClose}
+            aria-label="Закрыть"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
         {feedback.isSuccess ? (
           <button
             type="button"
@@ -429,8 +430,8 @@ function FeedbackModal({ onClose }: { onClose: () => void }): JSX.Element {
             </button>
           </>
         )}
-      </div>
-    </AccessibleModal>
+      </section>
+    </div>
   );
 }
 

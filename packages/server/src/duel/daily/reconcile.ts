@@ -1,8 +1,4 @@
 import type { PoolClient } from 'pg';
-import {
-  evaluateDailyClosedAchievements,
-  evaluateDailyPeriodClosedAchievements,
-} from '../../achievements/engine.js';
 import { AppError } from '../../plugins/errors.js';
 import { appendEvent } from '../eventLog.js';
 
@@ -100,11 +96,6 @@ async function insertPeriodLog(
         where id = $3`,
       [agg.shots_taken, agg.goals, pool.user_id],
     );
-    await evaluateDailyPeriodClosedAchievements(client, {
-      userId: pool.user_id,
-      dayPoolId: pool.id,
-      periodNumber: pool.current_period,
-    });
   }
   await appendEvent(client, pool.user_id, 'period_closed', {
     day_pool_id: pool.id,
@@ -230,13 +221,6 @@ export async function reconcileDayPool(
           day_pool_id: pool.id,
           reason: 'completed',
         });
-        await evaluateDailyClosedAchievements(client, {
-          userId: pool.user_id,
-          dayPoolId: pool.id,
-          dayDate: pool.day_date,
-          totalPeriods: rules.totalPeriods,
-          shotsPerPeriod: rules.shotsPerPeriod,
-        });
         return { pool, timezone, localToday: today };
       }
     }
@@ -266,13 +250,6 @@ export async function reconcileDayPool(
         await appendEvent(client, pool.user_id, 'day_pool_closed', {
           day_pool_id: pool.id,
           reason: 'completed',
-        });
-        await evaluateDailyClosedAchievements(client, {
-          userId: pool.user_id,
-          dayPoolId: pool.id,
-          dayDate: pool.day_date,
-          totalPeriods: rules.totalPeriods,
-          shotsPerPeriod: rules.shotsPerPeriod,
         });
         return { pool, timezone, localToday: today };
       }
@@ -304,13 +281,6 @@ export async function reconcileDayPool(
     await appendEvent(client, pool.user_id, 'day_pool_closed', {
       day_pool_id: pool.id,
       reason: 'completed',
-    });
-    await evaluateDailyClosedAchievements(client, {
-      userId: pool.user_id,
-      dayPoolId: pool.id,
-      dayDate: pool.day_date,
-      totalPeriods: rules.totalPeriods,
-      shotsPerPeriod: rules.shotsPerPeriod,
     });
     return { pool, timezone, localToday: today };
   }

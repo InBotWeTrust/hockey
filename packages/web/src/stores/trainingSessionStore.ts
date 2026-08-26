@@ -43,7 +43,6 @@ export const useTrainingSessionStore = create<TrainingSessionStoreState>()((set,
   },
 
   start: async (periodNumber) => {
-    if (get().inFlight) return null;
     set({ inFlight: true, error: null });
     try {
       const data = await startTraining({ period_number: periodNumber });

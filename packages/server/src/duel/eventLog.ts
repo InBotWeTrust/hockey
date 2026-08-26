@@ -2,7 +2,6 @@ import type { PoolClient, Pool } from 'pg';
 
 export type EventType =
   | 'shot_mismatch'
-  | 'daily_shot_rejected'
   | 'day_pool_created'
   | 'day_pool_closed'
   | 'period_closed'
@@ -15,10 +14,7 @@ export type EventType =
   | 'amateur_duel_inventory_reserved'
   | 'amateur_duel_settled'
   | 'amateur_duel_star_reward'
-  | 'weekly_challenge_joined'
-  | 'weekly_challenge_reward_claimed'
   | 'admin_user_updated'
-  | 'admin_achievement_updated'
   | 'admin_game_setting_updated'
   | 'admin_duel_template_created'
   | 'admin_duel_template_updated'
@@ -40,11 +36,10 @@ export async function appendEvent(
   userId: string,
   type: EventType,
   payload: Record<string, unknown>,
-  createdAt?: Date,
 ): Promise<void> {
-  await conn.query(
-    `insert into event_log (user_id, type, payload, created_at)
-     values ($1, $2, $3, coalesce($4::timestamptz, now()))`,
-    [userId, type, JSON.stringify(payload), createdAt ?? null],
-  );
+  await conn.query('insert into event_log (user_id, type, payload) values ($1, $2, $3)', [
+    userId,
+    type,
+    JSON.stringify(payload),
+  ]);
 }

@@ -81,7 +81,7 @@ export function LoginScreen(): JSX.Element {
 
   return (
     <main
-      className="screen login-screen"
+      className="screen"
       style={{
         textAlign: 'center',
         height: '100dvh',
@@ -91,26 +91,61 @@ export function LoginScreen(): JSX.Element {
         paddingBottom: 'max(12px, var(--app-safe-bottom))',
       }}
     >
-      <div className="login-screen__brand">
+      <div style={{ padding: 'clamp(24px, 5dvh, 40px) 20px 8px' }}>
         <img
           src="/icons/app-logo.webp"
           alt="Ультимейт Хоккей"
-          className="login-screen__logo"
+          style={{
+            width: 'clamp(94px, 22dvh, 128px)',
+            height: 'clamp(94px, 22dvh, 128px)',
+            borderRadius: 28,
+            objectFit: 'cover',
+            display: 'inline-block',
+            marginBottom: 12,
+            boxShadow: '0 18px 44px rgba(15, 23, 42, 0.24), 0 0 0 1px rgba(255,255,255,0.72)',
+          }}
         />
-        <h1 className="login-screen__title">Ультимейт Хоккей</h1>
-        <div className="login-screen__tagline">Живи жизнью профессионального хоккеиста</div>
-        <div className="login-screen__benefits" aria-label="Возможности игры">
-          {['тренировки', 'игры', 'соревнования', 'призы'].map((benefit) => (
-            <span key={benefit} className="login-screen__benefit">
-              {benefit}
-            </span>
-          ))}
+        <h1 style={{ fontSize: 29, fontWeight: 800, letterSpacing: 0, margin: '0 0 8px' }}>
+          Ультимейт Хоккей
+        </h1>
+        <div style={{ fontSize: 14, color: 'var(--muted)', lineHeight: 1.42 }}>
+          Живи жизнью профессионального хоккеиста
         </div>
+      </div>
+
+      <div
+        style={{
+          padding: 'clamp(10px, 2.5dvh, 16px) 20px',
+          display: 'flex',
+          justifyContent: 'center',
+          gap: 6,
+          flexWrap: 'wrap',
+        }}
+      >
+        <span className="pill" style={{ fontSize: 11, padding: '5px 12px' }}>
+          тренировки
+        </span>
+        <span className="pill" style={{ fontSize: 11, padding: '5px 12px' }}>
+          игры
+        </span>
+        <span className="pill" style={{ fontSize: 11, padding: '5px 12px' }}>
+          соревнования
+        </span>
+        <span className="pill" style={{ fontSize: 11, padding: '5px 12px' }}>
+          призы
+        </span>
       </div>
 
       <div style={{ flex: 1, minHeight: 8 }} />
 
-      <div className="login-screen__actions">
+      <div
+        style={{
+          padding: 'clamp(12px, 3dvh, 22px) 20px 0',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 9,
+        }}
+      >
         {devCodeLoginEnabled ? (
           <form
             onSubmit={(event) => {
@@ -153,7 +188,7 @@ export function LoginScreen(): JSX.Element {
             />
             <button
               type="submit"
-              className="btn btn--cta login-screen__auth-button"
+              className="btn btn--cta"
               disabled={devCodePending}
               style={{ justifyContent: 'center' }}
             >
@@ -169,7 +204,7 @@ export function LoginScreen(): JSX.Element {
 
             <button
               type="button"
-              className="btn login-screen__auth-button"
+              className="btn"
               disabled={vkPending}
               onClick={async () => {
                 setVkError(null);
@@ -183,7 +218,10 @@ export function LoginScreen(): JSX.Element {
               }}
               style={{
                 alignSelf: 'center',
+                width: 242,
+                height: 40,
                 padding: '0 14px',
+                borderRadius: 12,
                 background: '#0077ff',
                 color: '#ffffff',
                 justifyContent: 'center',
@@ -201,11 +239,14 @@ export function LoginScreen(): JSX.Element {
 
         <button
           type="button"
-          className="btn btn--ghost login-screen__auth-button"
+          className="btn btn--ghost"
           onClick={() => navigate('/demo')}
           style={{
             alignSelf: 'center',
+            width: 242,
+            height: 40,
             padding: '0 14px',
+            borderRadius: 12,
             justifyContent: 'center',
             fontSize: 15,
             fontWeight: 800,
@@ -239,7 +280,7 @@ export function LoginScreen(): JSX.Element {
           <>
             <button
               type="button"
-              className="btn btn--ghost login-screen__auth-button"
+              className="btn btn--ghost"
               disabled={devPending}
               onClick={async () => {
                 setDevError(null);
@@ -281,9 +322,12 @@ export function LoginScreen(): JSX.Element {
         )}
 
         <div
-          className="login-screen__terms"
           style={{
-            paddingBottom: 'max(2px, var(--app-safe-bottom))',
+            textAlign: 'center',
+            fontSize: 11,
+            color: 'var(--muted)',
+            marginTop: 4,
+            lineHeight: 1.5,
           }}
         >
           Нажимая «Войти», вы соглашаетесь

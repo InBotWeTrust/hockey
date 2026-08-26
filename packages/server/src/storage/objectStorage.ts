@@ -34,7 +34,6 @@ export interface ObjectStorageClient {
   maxUploadBytes: number;
   uploadObject(input: ObjectStorageUploadInput): Promise<ObjectStorageUploadResult>;
   getObject(input: { key: string }): Promise<ObjectStorageGetResult>;
-  deleteObject(input: { key: string }): Promise<void>;
   publicUrlForKey(key: string): string;
 }
 
@@ -249,28 +248,6 @@ export function createObjectStorageClient(
           res.headers.get('content-type')?.split(';')[0]?.trim() || 'application/octet-stream',
         size: Number(res.headers.get('content-length') ?? body.byteLength),
       };
-    },
-    async deleteObject(input: { key: string }): Promise<void> {
-      const url = objectUrl(config, input.key);
-      const payloadHash = sha256Hex('');
-      const signature = authorizationHeader({
-        config,
-        method: 'DELETE',
-        url,
-        payloadHash,
-        date: now(),
-      });
-      const res = await fetchImpl(url, {
-        method: 'DELETE',
-        headers: {
-          Authorization: signature.authorization,
-          'x-amz-content-sha256': payloadHash,
-          'x-amz-date': signature.amzDate,
-        },
-      });
-      if (!res.ok && res.status !== 404) {
-        throw new Error(`object storage delete failed: ${res.status}`);
-      }
     },
   };
 }

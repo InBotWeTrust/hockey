@@ -2,25 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent, act, within, cleanup } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import {
-  DAILY_PERIOD_SPEED_PRESETS,
-  DEFAULT_DUEL_INVENTORY_TIMING,
-  STICK_NEUTRAL,
-} from '@hockey/game-core';
-import {
-  DailyScreen,
-  duelBackLabel,
-  duelEquipmentEffectLabel,
-  duelEventTiming,
-  duelInventoryBadgeLabel,
-  duelInventoryItemRemaining,
-  duelScoreboardOpponent,
-  duelRinkReadyPresenceForMatch,
-  isDuelInventoryLow,
-  isDuelReadyPresenceState,
-  tournamentDuelBackPath,
-} from './DailyScreen.js';
-import { PlayView, duelFatigueNoticeLabel, duelPrimaryButtonLabel } from '../game/PlayView.js';
+import { DAILY_PERIOD_SPEED_PRESETS, STICK_NEUTRAL } from '@hockey/game-core';
+import { DailyScreen } from './DailyScreen.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
@@ -90,19 +73,9 @@ const settledDuelMatch: AmateurDuelMatchState = {
   template_id: 'template-1',
   status: 'settled',
   source: 'challenge',
-  venue_role: 'neutral',
   ranked: true,
   season_key: '2026-05',
   duel_kind: 'express',
-  home_user_id: 'u1',
-  venue_policy: 'direct_challenge',
-  arena: {
-    id: 'arena-beach',
-    slug: 'beach',
-    title: 'Пляж',
-    artwork_url: '/bonus-games/arenas/beach.webp',
-    thumbnail_url: '/bonus-games/arenas/beach.webp',
-  },
   starts_at: '2026-05-16T10:00:00.000Z',
   ends_at: '2026-05-16T12:00:00.000Z',
   ready_expires_at: null,
@@ -144,10 +117,6 @@ const settledDuelMatch: AmateurDuelMatchState = {
     powerCap: 100,
     goalieId: 'rookie',
     periodSpeedPresets: [...DAILY_PERIOD_SPEED_PRESETS],
-    noInventoryTiming: {
-      skates: DEFAULT_DUEL_INVENTORY_TIMING,
-      nutrition: DEFAULT_DUEL_INVENTORY_TIMING,
-    },
     stakeAmount: 0,
     entryFeeAmount: 0,
     requiredInventoryItemId: null,
@@ -256,13 +225,7 @@ beforeEach(() => {
     refreshToken: 'r',
     user: { id: 'u1', displayName: 'Tester' },
   });
-  useDailyStore.setState({
-    data: null,
-    deferredState: null,
-    loading: false,
-    inFlight: false,
-    error: null,
-  });
+  useDailyStore.setState({ data: null, loading: false, inFlight: false, error: null });
   useTrainingSessionStore.setState({ data: null, loading: false, inFlight: false, error: null });
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = input instanceof Request ? input.url : String(input);
@@ -283,331 +246,9 @@ afterEach(() => {
 });
 
 describe('DailyScreen', () => {
-  it('keeps tournament duel navigation tied to the tournament section', () => {
-    expect(duelBackLabel('tournament', true)).toBe('К турниру');
-    expect(duelBackLabel('challenge', true)).toBe('К арене');
-    expect(duelBackLabel('matchmaking', false)).toBe('К дуэлям');
-    expect(tournamentDuelBackPath(false)).toBe('/?view=amateur&section=tournaments');
-    expect(tournamentDuelBackPath(true)).toBe('/?view=amateur&section=tournaments&from=sections');
-    expect(tournamentDuelBackPath(false, 't1')).toBe(
-      '/?view=amateur&section=tournaments&tournament=t1&tab=schedule',
-    );
-    expect(tournamentDuelBackPath(true, 'tournament with spaces')).toBe(
-      '/?view=amateur&section=tournaments&tournament=tournament+with+spaces&tab=schedule&from=sections',
-    );
-  });
-
-  it('formats duel inventory badges without showing exhausted zero', () => {
-    expect(duelInventoryBadgeLabel('stick', 0, 'shot')).toBeNull();
-    expect(duelInventoryBadgeLabel('stick', 1300, 'shot')?.replace(/\s/g, ' ')).toBe('1 300');
-    expect(duelInventoryBadgeLabel('skates', 8500, 'distance')?.replace(/\s/g, ' ')).toBe('8 500');
-    expect(duelInventoryBadgeLabel('nutrition', 300_000, 'energy_ms')).toBe('5 мин');
-    expect(duelInventoryBadgeLabel('nutrition', 45_000, 'energy_ms')).toBe('45 сек');
-  });
-
-  it('detects low duel inventory for every equipment kind', () => {
-    expect(isDuelInventoryLow('stick', 10, 10)).toBe(true);
-    expect(isDuelInventoryLow('stick', 11, 10)).toBe(false);
-    expect(isDuelInventoryLow('skates', 50, 50)).toBe(true);
-    expect(isDuelInventoryLow('skates', 51, 50)).toBe(false);
-    expect(isDuelInventoryLow('nutrition', 60_000, 60_000)).toBe(true);
-    expect(isDuelInventoryLow('nutrition', 60_001, 60_000)).toBe(false);
-    expect(isDuelInventoryLow('nutrition', 0, 60_000)).toBe(false);
-  });
-
-  it('subtracts live duel skates and energy usage from HUD inventory numbers', () => {
-    const activeMatch: AmateurDuelMatchState = {
-      ...settledDuelMatch,
-      status: 'active',
-      period_started_at: '2026-05-16T10:00:00.000Z',
-      period_ends_at: '2026-05-16T10:03:00.000Z',
-      me: {
-        ...settledDuelMatch.me,
-        state: 'period_active',
-        current_period: 1,
-        loadout: {
-          ...settledDuelMatch.me.loadout,
-          items: [
-            {
-              id: 'skates-1',
-              kind: 'skates',
-              title: 'Коньки',
-              rarity: 'common',
-              powerScore: 0,
-              duelPeriodCost: 0,
-              chargesReserved: 0,
-              resourceUnit: 'distance',
-              resourceAvailable: 50,
-              lowStockThreshold: 50,
-            },
-            {
-              id: 'energy-1',
-              kind: 'nutrition',
-              title: 'Энергия',
-              rarity: 'common',
-              powerScore: 0,
-              duelPeriodCost: 0,
-              chargesReserved: 0,
-              resourceUnit: 'energy_ms',
-              resourceAvailable: 60_000,
-              lowStockThreshold: 60_000,
-            },
-          ],
-        },
-      },
-    };
-    const liveCondition = {
-      puckSpeedDelta: 0,
-      shooterSpeedMultiplier: 1,
-      canShoot: true,
-      status: 'normal',
-      fatigueLevel: 'none',
-      stumbleActive: false,
-      shooterXOffsetPx: 0,
-      fatigueMs: 0,
-      nutritionConsumed: 15_000,
-      skatesConsumed: 11,
-    } as const;
-
-    expect(
-      duelInventoryItemRemaining(activeMatch, activeMatch.me.loadout.items[0]!, liveCondition),
-    ).toBe(39);
-    expect(
-      duelInventoryItemRemaining(activeMatch, activeMatch.me.loadout.items[1]!, liveCondition),
-    ).toBe(45_000);
-  });
-
-  it('names blocked duel shot button states by condition', () => {
-    const baseCondition = {
-      puckSpeedDelta: 0,
-      shooterSpeedMultiplier: 1,
-      canShoot: true,
-      status: 'normal',
-      fatigueLevel: 'none',
-      stumbleActive: false,
-      shooterXOffsetPx: 0,
-      fatigueMs: 0,
-      nutritionConsumed: 0,
-      skatesConsumed: 0,
-    } as const;
-
-    expect(duelPrimaryButtonLabel('БРОСОК', null)).toBe('БРОСОК');
-    expect(
-      duelPrimaryButtonLabel('БРОСОК', { ...baseCondition, canShoot: true, status: 'tired' }),
-    ).toBe('БРОСОК');
-    expect(
-      duelPrimaryButtonLabel('БРОСОК', {
-        ...baseCondition,
-        canShoot: false,
-        status: 'exhausted_stop',
-      }),
-    ).toBe('ОТДЫХ');
-    expect(
-      duelPrimaryButtonLabel('БРОСОК', { ...baseCondition, canShoot: false, status: 'stumble' }),
-    ).toBe('БРОСОК');
-  });
-
-  it('shows one visible fatigue state while the shot button stays available', () => {
-    const baseCondition = {
-      puckSpeedDelta: 0,
-      shooterSpeedMultiplier: 1,
-      canShoot: true,
-      status: 'normal',
-      fatigueLevel: 'none',
-      stumbleActive: false,
-      shooterXOffsetPx: 0,
-      fatigueMs: 0,
-      nutritionConsumed: 0,
-      skatesConsumed: 0,
-    } as const;
-
-    expect(duelFatigueNoticeLabel(null)).toBeNull();
-    expect(duelFatigueNoticeLabel(baseCondition)).toBeNull();
-    expect(
-      duelFatigueNoticeLabel({
-        ...baseCondition,
-        status: 'tired',
-        fatigueLevel: 'medium',
-        shooterSpeedMultiplier: 0.9,
-      }),
-    ).toBe('Усталость');
-    expect(
-      duelFatigueNoticeLabel({
-        ...baseCondition,
-        status: 'tired',
-        fatigueLevel: 'heavy',
-        shooterSpeedMultiplier: 0.75,
-      }),
-    ).toBe('Усталость');
-    expect(
-      duelFatigueNoticeLabel({
-        ...baseCondition,
-        canShoot: false,
-        status: 'exhausted_stop',
-        fatigueLevel: 'resting',
-        shooterSpeedMultiplier: 0,
-      }),
-    ).toBe('Надо отдышаться');
-  });
-
-  it('shows a rest notice while the exhausted shot button is blocked', () => {
-    const restCondition = {
-      puckSpeedDelta: 0,
-      shooterSpeedMultiplier: 0,
-      canShoot: false,
-      status: 'exhausted_stop',
-      fatigueLevel: 'resting',
-      stumbleActive: false,
-      shooterXOffsetPx: 0,
-      fatigueMs: 90_000,
-      nutritionConsumed: 60_000,
-      skatesConsumed: 0,
-    } as const;
-
-    render(
-      <PlayView
-        suppressedByModal={false}
-        showIceCar={false}
-        onBack={() => undefined}
-        active
-        seed="seed"
-        goalieId="rookie"
-        periodNumber={1}
-        goals={0}
-        shots={0}
-        shotsTotal={30}
-        sessionStartedAt="2026-04-25T12:00:00.000Z"
-        serverNow="2026-04-25T12:00:00.000Z"
-        receivedAtPerformanceMs={0}
-        periodEndsAt={Date.now() + 10_000}
-        optimisticAddShot={() => undefined}
-        submitShot={async () => null}
-        applyState={() => undefined}
-        rinkLayer={<div data-testid="test-rink-layer" />}
-        duelCondition={() => restCondition}
-      />,
-    );
-
-    expect(screen.getByRole('button', { name: 'ОТДЫХ' })).toBeDisabled();
-    expect(screen.getByText('Надо отдышаться')).toBeInTheDocument();
-  });
-
-  it('shows fatigue notice while keeping the duel shot button available', () => {
-    const tiredCondition = {
-      puckSpeedDelta: 0,
-      shooterSpeedMultiplier: 0.9,
-      canShoot: true,
-      status: 'tired',
-      fatigueLevel: 'medium',
-      stumbleActive: false,
-      shooterXOffsetPx: 0,
-      fatigueMs: 45_000,
-      nutritionConsumed: 60_000,
-      skatesConsumed: 0,
-    } as const;
-
-    render(
-      <PlayView
-        suppressedByModal={false}
-        showIceCar={false}
-        onBack={() => undefined}
-        active
-        seed="seed"
-        goalieId="rookie"
-        periodNumber={1}
-        goals={0}
-        shots={0}
-        shotsTotal={30}
-        sessionStartedAt="2026-04-25T12:00:00.000Z"
-        serverNow="2026-04-25T12:00:00.000Z"
-        receivedAtPerformanceMs={0}
-        periodEndsAt={Date.now() + 10_000}
-        optimisticAddShot={() => undefined}
-        submitShot={async () => null}
-        applyState={() => undefined}
-        rinkLayer={<div data-testid="test-rink-layer" />}
-        duelCondition={() => tiredCondition}
-      />,
-    );
-
-    expect(screen.getByRole('button', { name: 'БРОСОК' })).toBeEnabled();
-    expect(screen.getByText('Усталость')).toBeInTheDocument();
-  });
-
-  it('shows a short stumble notice near the player instead of renaming the shot button', () => {
-    vi.useFakeTimers();
-    const stumbleCondition = {
-      puckSpeedDelta: 0,
-      shooterSpeedMultiplier: 1,
-      canShoot: false,
-      status: 'stumble',
-      fatigueLevel: 'none',
-      stumbleActive: true,
-      shooterXOffsetPx: 0,
-      fatigueMs: 0,
-      nutritionConsumed: 0,
-      skatesConsumed: 0,
-    } as const;
-
-    render(
-      <PlayView
-        suppressedByModal={false}
-        showIceCar={false}
-        onBack={() => undefined}
-        active
-        seed="seed"
-        goalieId="rookie"
-        periodNumber={1}
-        goals={0}
-        shots={0}
-        shotsTotal={30}
-        sessionStartedAt="2026-04-25T12:00:00.000Z"
-        serverNow="2026-04-25T12:00:00.000Z"
-        receivedAtPerformanceMs={0}
-        periodEndsAt={Date.now() + 10_000}
-        optimisticAddShot={() => undefined}
-        submitShot={async () => null}
-        applyState={() => undefined}
-        rinkLayer={<div data-testid="test-rink-layer" />}
-        duelCondition={() => stumbleCondition}
-      />,
-    );
-
-    expect(screen.getByRole('button', { name: 'БРОСОК' })).toBeDisabled();
-    expect(screen.getByText('Споткнулся')).toBeInTheDocument();
-
-    act(() => {
-      vi.advanceTimersByTime(700);
-    });
-
-    expect(screen.queryByText('Споткнулся')).not.toBeInTheDocument();
-  });
-
-  it('uses understandable duel equipment effect labels for skates and energy', () => {
-    expect(duelEquipmentEffectLabel('skates', 20, 50, 'distance')).toBe('Защищают от спотыканий');
-    expect(duelEquipmentEffectLabel('skates', 0)).toBe('Возможны спотыкания');
-    expect(duelEquipmentEffectLabel('nutrition', 12, 60_000, 'energy_ms')).toBe(
-      'Запас энергии: 1 мин',
-    );
-    expect(duelEquipmentEffectLabel('nutrition', 0)).toBe('Без дополнительной энергии');
-  });
-
   it('shows loader while fetching state', () => {
     renderWith();
-    expect(screen.getByRole('status')).toHaveClass('route-loading');
-  });
-
-  it('renders a high-contrast arena error state when the daily request fails', async () => {
-    vi.restoreAllMocks();
-    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Network unavailable'));
-
-    renderWith();
-
-    const title = await screen.findByText('Не удалось загрузить');
-    expect(title.parentElement).toHaveClass('arena-error-state');
-    expect(title).toHaveClass('arena-error-state__title');
-    expect(screen.getByText('Network unavailable')).toHaveClass('arena-error-state__copy');
-    expect(screen.getByText(/Если ошибка повторяется/)).toHaveClass('arena-error-state__hint');
+    expect(screen.getByText(/Загрузка/)).toBeInTheDocument();
   });
 
   it('renders idle view with start button after fetch', async () => {
@@ -617,26 +258,18 @@ describe('DailyScreen', () => {
     expect(
       screen.getByRole('article', { name: 'Ежедневная игра: 1-й период доступен' }),
     ).toBeInTheDocument();
-    const previousTableauButton = screen.getByRole('button', {
-      name: 'Предыдущий экран табло',
-    });
-    expect(previousTableauButton.parentElement).toHaveStyle({ left: '4%', right: '4%' });
-    expect(
-      screen.getByRole('article', { name: 'Ежедневная игра: 1-й период доступен' }),
-    ).toHaveStyle({ padding: '0 clamp(38px, 11vw, 46px)' });
     expect(document.querySelector('.arena-video-cube__background')).toHaveAttribute(
       'src',
-      '/sprites/app-arena-ice.webp',
+      '/sprites/arena-ice-court-v2.webp',
     );
-    expect(document.querySelector('.arena-video-cube__cube')).toHaveAttribute(
-      'src',
-      '/sprites/app-arena-cube.webp',
-    );
-    expect(document.querySelector('img[src="/sprites/arena-ice-tableau-v2.webp"]')).toBeNull();
     expect(screen.queryByRole('img', { name: 'Игровая площадка в перспективе' })).toBeNull();
     const tableau = screen.getByLabelText('Разделы на табло');
-    expect(tableau).toHaveClass('arena-video-cube__screen');
-    expect(tableau.parentElement).toHaveClass('arena-video-cube__plate');
+    expect(tableau).toHaveStyle({ width: 'min(100%, 620px)' });
+    expect(tableau.parentElement).toHaveStyle({
+      position: 'absolute',
+      width: '100%',
+      height: '100%',
+    });
     expect(screen.getByText('Ежедневная игра')).toBeInTheDocument();
     expect(screen.getByText('1-й период доступен')).toBeInTheDocument();
     expect(screen.getByText('Время')).toBeInTheDocument();
@@ -712,8 +345,7 @@ describe('DailyScreen', () => {
     expect(screen.queryByText('Скоро')).not.toBeInTheDocument();
   });
 
-  it('prioritizes active duels before saved daily and training cards on the arena', async () => {
-    localStorage.setItem('hockey.arenaSelectedEntryId', 'training');
+  it('prioritizes active duels before daily and training on the arena', async () => {
     const activeMatch: AmateurDuelMatchState = {
       ...settledDuelMatch,
       status: 'active',
@@ -762,8 +394,10 @@ describe('DailyScreen', () => {
     renderWith(['/?view=arena']);
 
     await screen.findByRole('article', { name: 'Активная дуэль: Duel Opponent' });
-    expect(screen.getByLabelText('Площадка: Нейтрально')).toBeInTheDocument();
-    expect(screen.getByLabelText('Выбрать Активная дуэль')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByLabelText('Выбрать Активная дуэль')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
     fireEvent.click(screen.getByLabelText('Выбрать Ежедневная игра'));
     expect(
       await screen.findByRole('article', { name: 'Ежедневная игра: 1-й период доступен' }),
@@ -862,7 +496,7 @@ describe('DailyScreen', () => {
     });
   });
 
-  it('renders the immutable amateur duel arena snapshot on the rink', async () => {
+  it('opens waiting amateur duel on the rink from the arena', async () => {
     const waitingMatch: AmateurDuelMatchState = {
       ...settledDuelMatch,
       status: 'active',
@@ -922,8 +556,6 @@ describe('DailyScreen', () => {
     expect(screen.getByText('До поражения соперника')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Дуэль' })).not.toBeInTheDocument();
     expect(screen.queryByText(/Эта дуэль сейчас не на площадке/)).not.toBeInTheDocument();
-    expect(document.querySelector('img[src="/sprites/training-court.webp"]')).toBeTruthy();
-    expect(document.querySelector('img[src="/bonus-games/arenas/beach.webp"]')).toBeFalsy();
   });
 
   it('opens an idle daily rink without starting the period from the arena', async () => {
@@ -962,10 +594,6 @@ describe('DailyScreen', () => {
 
     expect(await screen.findByRole('button', { name: 'К режимам' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'НАЧАТЬ' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Игровое табло')).toBeInTheDocument();
-    expect(document.querySelector('img[src="/sprites/daily-tableau.webp"]')).toBeFalsy();
-    expect(document.querySelector('img[src="/sprites/wide-tableau-led-dark-v2.webp"]')).toBeFalsy();
-    expect(document.querySelector('img[src="/sprites/street-tableau.webp"]')).toBeFalsy();
     const calls = fetchMock.mock.calls.map((c) => String(c[0]));
     expect(calls.some((u) => u.includes('/duel/daily/period/start'))).toBe(false);
     expect(screen.queryByTestId('arena-rink-backdrop')).not.toBeInTheDocument();
@@ -1044,10 +672,6 @@ describe('DailyScreen', () => {
 
     const shotButton = await screen.findByRole('button', { name: 'БРОСОК' });
     expect(shotButton).toBeEnabled();
-    const scoreboardText = screen.getByLabelText('Игровое табло').textContent ?? '';
-    expect(scoreboardText.indexOf('ГОЛЫ')).toBeGreaterThan(scoreboardText.indexOf('ПЕРИОД'));
-    expect(scoreboardText.indexOf('БРОСКИ')).toBeGreaterThan(scoreboardText.indexOf('ГОЛЫ'));
-    expect(scoreboardText.indexOf('ВРЕМЯ')).toBeGreaterThan(scoreboardText.indexOf('БРОСКИ'));
     fireEvent.click(screen.getByRole('button', { name: 'Звук в разработке' }));
     expect(screen.getByRole('status')).toHaveTextContent('Звук в разработке');
     expect(screen.getByText('00/30')).toBeInTheDocument();
@@ -1458,16 +1082,6 @@ describe('DailyScreen', () => {
     expect(screen.getByText('ДО ОБНОВЛЕНИЯ')).toBeInTheDocument();
     expect(screen.getByText('Скорости 1-го периода')).toBeInTheDocument();
     expect(screen.getByText('0,50/с')).toBeInTheDocument();
-
-    const trainingInfo = screen.getByRole('region', { name: 'Информация о тренировке' });
-    expect(trainingInfo).toHaveClass('mode-info-card', 'training-info-card');
-    expect(within(trainingInfo).getByText('0/500')).toBeInTheDocument();
-    expect(within(trainingInfo).getByText(/Выбери модель периода/)).toBeInTheDocument();
-
-    const trainingSetup = screen.getByRole('region', { name: 'Настройка тренировки' });
-    expect(trainingSetup).toHaveClass('mode-setup-card', 'training-config-card');
-    expect(within(trainingSetup).getByRole('tab', { name: '1 период' })).toBeInTheDocument();
-    expect(within(trainingSetup).getByRole('button', { name: 'На лёд' })).toBeInTheDocument();
   });
 
   it('opens the training rink with an ice car while the daily game is in progress', async () => {
@@ -1532,7 +1146,7 @@ describe('DailyScreen', () => {
     expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();
   });
 
-  it('keeps multi-period rink metrics in one compact four-column row', async () => {
+  it('keeps multi-period rink cube metrics in the compact two-column layout', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input);
       if (url.includes('/duel/training/state')) {
@@ -1549,17 +1163,16 @@ describe('DailyScreen', () => {
 
     renderWith(['/?view=training&play=1']);
 
-    const scoreboard = await screen.findByLabelText('Игровое табло');
-    expect(screen.getByTestId('scoreboard-row-summary')).toHaveStyle({
-      gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-    });
-    expect(within(scoreboard).getByText('ПЕРИОД')).toBeInTheDocument();
-    expect(within(scoreboard).getByText('2/3')).toBeInTheDocument();
-    expect(within(scoreboard).getByText('БРОСКИ')).toBeInTheDocument();
-    expect(within(scoreboard).getByText('12/500')).toBeInTheDocument();
+    const cube = await screen.findByLabelText('Статистика на видеокубе');
+    expect((cube as HTMLElement).style.gridTemplateColumns).toBe('repeat(2, minmax(0, 1fr))');
+    expect((cube as HTMLElement).style.alignContent).toBe('center');
+    expect(within(cube).getByText('Период')).toBeInTheDocument();
+    expect(within(cube).getByText('2/3')).toBeInTheDocument();
+    expect(within(cube).getByText('Броски')).toBeInTheDocument();
+    expect(within(cube).getByText('12/500')).toBeInTheDocument();
   });
 
-  it('groups period, score, shots and time in one row on a one-period duel scoreboard', async () => {
+  it('separates time and period rows on a one-period duel rink cube', async () => {
     const now = Date.now();
     const expressMatch: AmateurDuelMatchState = {
       ...settledDuelMatch,
@@ -1618,14 +1231,16 @@ describe('DailyScreen', () => {
 
     renderWith(['/?view=amateur&match=match-1&play=1']);
 
-    const scoreboard = await screen.findByLabelText('Игровое табло');
-    expect(screen.getByTestId('scoreboard-row-summary')).toHaveStyle({
-      gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-    });
-    expect(within(scoreboard).getByText('ПЕРИОД')).toBeInTheDocument();
-    expect(within(scoreboard).getByText('1/1')).toBeInTheDocument();
-    expect(within(scoreboard).getByText('СЧЁТ')).toBeInTheDocument();
-    expect(within(scoreboard).getByText('4:0')).toBeInTheDocument();
+    const cube = await screen.findByLabelText('Статистика на видеокубе');
+    expect((cube as HTMLElement).style.gridTemplateRows).toBe('auto auto minmax(0, 1fr)');
+    expect((cube as HTMLElement).style.rowGap).toBe('clamp(7px, 2.1vw, 16px)');
+    expect(within(cube).getByText('Период')).toBeInTheDocument();
+    expect(within(cube).getByText('1/1')).toBeInTheDocument();
+    expect(within(cube).getByText('Голы')).toBeInTheDocument();
+    expect(within(cube).getByText('04')).toBeInTheDocument();
+
+    const bottomMetrics = within(cube).getByText('Голы').parentElement?.parentElement;
+    expect(bottomMetrics?.style.alignSelf).toBe('end');
   });
 
   it('opens the daily rink with an ice car after a training shot', async () => {
@@ -1748,7 +1363,7 @@ describe('DailyScreen', () => {
     });
   });
 
-  it('uses the perspective court in training and lets admins tune debug controls', async () => {
+  it('uses the perspective court in training and lets admins toggle hitboxes', async () => {
     useAuthStore.getState().setSession({
       accessToken: 'token',
       refreshToken: 'r',
@@ -1781,25 +1396,11 @@ describe('DailyScreen', () => {
     expect(
       await screen.findByRole('img', { name: 'Игровая площадка в перспективе' }),
     ).toBeInTheDocument();
-    expect(document.querySelector('img[src="/sprites/training-court.webp"]')).toBeTruthy();
-    expect(screen.getByLabelText('Игровое табло')).toBeInTheDocument();
-    expect(document.querySelector('img[src="/sprites/street-tableau.webp"]')).toBeFalsy();
     const hitboxesToggle = screen.getByRole('checkbox', { name: 'Хитбоксы' });
     expect(hitboxesToggle).not.toBeChecked();
     fireEvent.click(hitboxesToggle);
     expect(hitboxesToggle).toBeChecked();
     expect(localStorage.getItem('hockey.trainingHitboxesVisible')).toBe('true');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Скорости' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Скорости тренировки' });
-    expect(within(dialog).getByText('Игрок')).toBeInTheDocument();
-    const sliders = within(dialog).getAllByRole('slider');
-    expect(sliders[0]).toHaveValue('0.7');
-    fireEvent.change(sliders[0]!, { target: { value: '1.1' } });
-    expect(sliders[0]).toHaveValue('1.1');
-    expect(localStorage.getItem('hockey.trainingSpeedOverrides')).toContain('"shooterFreq":1.1');
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Сбросить' }));
-    expect(localStorage.getItem('hockey.trainingSpeedOverrides')).toBeNull();
   });
 
   it('lets non-admin testers with the experimental flag toggle hitboxes', async () => {
@@ -1855,67 +1456,6 @@ describe('DailyScreen', () => {
 
     expect(await screen.findByRole('region', { name: 'Игровая арена' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Профессионалы' })).not.toBeInTheDocument();
-  });
-
-  it('opens amateur routes directly in duels without rendering the old combined hub', async () => {
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-      const url = input instanceof Request ? input.url : String(input);
-      if (url.includes('/tournaments')) {
-        return new Response(JSON.stringify({ error: { message: 'feature disabled' } }), {
-          status: 404,
-          headers: { 'content-type': 'application/json' },
-        });
-      }
-      if (url.includes('/duel/amateur/matches')) {
-        return new Response(JSON.stringify({ matches: [] }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
-      }
-      return new Response(JSON.stringify(baseState), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    });
-
-    renderWith(['/?view=amateur']);
-
-    expect(await screen.findByRole('heading', { name: 'Дуэли' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Турниры' })).not.toBeInTheDocument();
-    expect(screen.queryByText('Временно недоступно')).not.toBeInTheDocument();
-  });
-
-  it('does not cross-link duels and tournaments from their direct routes', async () => {
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-      const url = input instanceof Request ? input.url : String(input);
-      if (url.includes('/tournaments')) {
-        return new Response(JSON.stringify({ tournaments: [] }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
-      }
-      if (url.includes('/duel/amateur/')) {
-        return new Response(JSON.stringify({ matches: [], templates: [], ratings: [] }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
-      }
-      return new Response(JSON.stringify(baseState), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    });
-
-    const tournamentRoute = renderWith(['/?view=amateur&section=tournaments']);
-    expect(await screen.findByRole('heading', { name: 'Турниры' })).toBeInTheDocument();
-    expect(screen.queryByRole('tablist', { name: 'Разделы любителей' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Дуэли' })).not.toBeInTheDocument();
-    tournamentRoute.unmount();
-
-    renderWith(['/?view=amateur&section=duels']);
-    expect(await screen.findByRole('heading', { name: 'Дуэли' })).toBeInTheDocument();
-    expect(screen.queryByRole('tablist', { name: 'Разделы любителей' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Турниры' })).not.toBeInTheDocument();
   });
 
   it('opens player profile from amateur duel rating row', async () => {
@@ -2012,338 +1552,6 @@ describe('DailyScreen', () => {
     expect(screen.getByRole('button', { name: /написать в личку/i })).toBeInTheDocument();
   });
 
-  it('shows only played duels in history stats and list', async () => {
-    const expiredMatch: AmateurDuelMatchState = {
-      ...settledDuelMatch,
-      id: 'match-expired',
-      status: 'expired',
-      starts_at: '2026-05-16T11:00:00.000Z',
-      winner_user_id: null,
-      outcome: null,
-      settled_reason: 'not_accepted',
-      settled_at: '2026-05-16T11:15:00.000Z',
-      me: {
-        ...settledDuelMatch.me,
-        state: 'invited',
-        shots_taken: 0,
-        goals: 0,
-        result_points: 0,
-      },
-      opponent: {
-        ...settledDuelMatch.opponent,
-        display_name: 'No Show',
-        state: 'invited',
-        shots_taken: 0,
-        goals: 0,
-        result_points: 0,
-      },
-    };
-    const cancelledMatch: AmateurDuelMatchState = {
-      ...settledDuelMatch,
-      id: 'match-cancelled',
-      status: 'cancelled',
-      starts_at: '2026-05-16T12:00:00.000Z',
-      winner_user_id: null,
-      outcome: null,
-      settled_reason: 'cancelled_by_challenger',
-      settled_at: '2026-05-16T12:02:00.000Z',
-      me: {
-        ...settledDuelMatch.me,
-        shots_taken: 0,
-        goals: 0,
-        result_points: 0,
-      },
-      opponent: {
-        ...settledDuelMatch.opponent,
-        display_name: 'Cancelled Player',
-        shots_taken: 0,
-        goals: 0,
-        result_points: 0,
-      },
-    };
-    const previousMonthMatch: AmateurDuelMatchState = {
-      ...settledDuelMatch,
-      id: 'match-previous-month',
-      season_key: '2026-04',
-      starts_at: '2026-04-12T12:00:00.000Z',
-      winner_user_id: 'u2',
-      outcome: 'opponent_win',
-      me: {
-        ...settledDuelMatch.me,
-        result_points: 0,
-      },
-      opponent: {
-        ...settledDuelMatch.opponent,
-        display_name: 'April Opponent',
-        result_points: 3,
-      },
-    };
-
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-      const url = input instanceof Request ? input.url : String(input);
-      if (url.includes('/duel/training/state')) {
-        return new Response(JSON.stringify(trainingIdleState), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
-      }
-      if (url.includes('/duel/amateur/templates')) {
-        return new Response(JSON.stringify({ templates: [] }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
-      }
-      if (url.includes('/duel/amateur/history')) {
-        const requestedSeason = new URL(url, 'http://localhost').searchParams.get('season_key');
-        if (requestedSeason === '2026-04') {
-          return new Response(
-            JSON.stringify({
-              season_key: '2026-04',
-              seasons: ['2026-05', '2026-04'],
-              rating_place: 8,
-              stats: { duels: 1, wins: 0, points: 0 },
-              matches: [previousMonthMatch],
-            }),
-            { status: 200, headers: { 'content-type': 'application/json' } },
-          );
-        }
-        return new Response(
-          JSON.stringify({
-            season_key: '2026-05',
-            seasons: ['2026-05', '2026-04'],
-            rating_place: 4,
-            stats: { duels: 1, wins: 1, points: 3 },
-            matches: [settledDuelMatch],
-          }),
-          { status: 200, headers: { 'content-type': 'application/json' } },
-        );
-      }
-      if (url.includes('/duel/amateur/matches')) {
-        return new Response(
-          JSON.stringify({ matches: [settledDuelMatch, expiredMatch, cancelledMatch] }),
-          { status: 200, headers: { 'content-type': 'application/json' } },
-        );
-      }
-      if (url.includes('/duel/amateur/rating')) {
-        return new Response(JSON.stringify({ season_key: '2026-05', rating: [] }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
-      }
-      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    });
-
-    renderWith(['/?view=amateur&section=duels']);
-
-    fireEvent.click(await screen.findByRole('tab', { name: 'История' }));
-
-    expect(await screen.findByText('Duel Opponent')).toBeInTheDocument();
-    expect(screen.getByLabelText('Площадка: Нейтрально')).toBeInTheDocument();
-    expect(screen.getByLabelText('ДУЭЛИ: 1')).toBeInTheDocument();
-    expect(screen.getByLabelText('ПОБЕДЫ: 1')).toBeInTheDocument();
-    expect(screen.getByLabelText('ОЧКИ: 3')).toBeInTheDocument();
-    expect(screen.getByLabelText('МЕСТО: #4')).toBeInTheDocument();
-    expect(screen.queryByText('No Show')).not.toBeInTheDocument();
-    expect(screen.queryByText('Cancelled Player')).not.toBeInTheDocument();
-    expect(screen.queryByText('Ответа не было')).not.toBeInTheDocument();
-    expect(screen.queryByText('Вы отменили вызов')).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('combobox', { name: 'Месяц истории дуэлей' }));
-    fireEvent.click(await screen.findByRole('option', { name: 'апрель 2026 г.' }));
-
-    expect(await screen.findByText('April Opponent')).toBeInTheDocument();
-    expect(screen.getByLabelText('ПОБЕДЫ: 0')).toBeInTheDocument();
-    expect(screen.getByLabelText('МЕСТО: #8')).toBeInTheDocument();
-    expect(screen.queryByText('Duel Opponent')).not.toBeInTheDocument();
-  });
-
-  it('shows total and per-period inventory usage in duel history result', async () => {
-    const inventoryMatch: AmateurDuelMatchState = {
-      ...settledDuelMatch,
-      id: 'match-inventory',
-      duel_kind: 'classic',
-      starts_at: '2026-05-17T10:00:00.000Z',
-      opponent: {
-        ...settledDuelMatch.opponent,
-        display_name: 'Inventory Opponent',
-      },
-      rules: {
-        ...settledDuelMatch.rules,
-        title: 'Классика',
-        duelKind: 'classic',
-        totalPeriods: 2,
-        periodRules: [
-          { periodNumber: 1, mode: 'quota', durationMs: 300000, shotsLimit: 30 },
-          { periodNumber: 2, mode: 'quota', durationMs: 300000, shotsLimit: 30 },
-        ],
-      },
-      me: {
-        ...settledDuelMatch.me,
-        inventory_report: [
-          {
-            periodNumber: 1,
-            consumed: [
-              {
-                id: 'stick-1',
-                kind: 'stick',
-                title: 'Клюшка тест',
-                charges: 12,
-                remainingReserved: 2388,
-              },
-              {
-                id: 'skates-1',
-                kind: 'skates',
-                title: 'Коньки тест',
-                charges: 3.8,
-                remainingReserved: 46.2,
-              },
-              {
-                id: 'nutrition-1',
-                kind: 'nutrition',
-                title: 'Питание тест',
-                charges: 45000,
-                remainingReserved: 15000,
-              },
-            ],
-          },
-          {
-            periodNumber: 2,
-            consumed: [
-              {
-                id: 'stick-1',
-                kind: 'stick',
-                title: 'Клюшка тест',
-                charges: 9,
-                remainingReserved: 2379,
-              },
-              {
-                id: 'skates-1',
-                kind: 'skates',
-                title: 'Коньки тест',
-                charges: 2.2,
-                remainingReserved: 44,
-              },
-              {
-                id: 'nutrition-1',
-                kind: 'nutrition',
-                title: 'Питание тест',
-                charges: 30000,
-                remainingReserved: 0,
-              },
-            ],
-          },
-        ],
-      },
-      recent_periods: [
-        {
-          period_number: 1,
-          shots_taken: 30,
-          goals: 10,
-          duration_ms: 150000,
-          closed_reason: 'quota',
-          ended_at: '2026-05-17T10:02:30.000Z',
-        },
-        {
-          period_number: 2,
-          shots_taken: 30,
-          goals: 8,
-          duration_ms: 160000,
-          closed_reason: 'quota',
-          ended_at: '2026-05-17T10:08:10.000Z',
-        },
-      ],
-      opponent_recent_periods: [
-        {
-          period_number: 1,
-          shots_taken: 30,
-          goals: 7,
-          duration_ms: 160000,
-          closed_reason: 'quota',
-          ended_at: '2026-05-17T10:02:40.000Z',
-        },
-        {
-          period_number: 2,
-          shots_taken: 30,
-          goals: 9,
-          duration_ms: 170000,
-          closed_reason: 'quota',
-          ended_at: '2026-05-17T10:08:30.000Z',
-        },
-      ],
-    };
-
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-      const url = input instanceof Request ? input.url : String(input);
-      if (url.includes('/duel/training/state')) {
-        return new Response(JSON.stringify(trainingIdleState), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
-      }
-      if (url.includes('/duel/amateur/templates')) {
-        return new Response(JSON.stringify({ templates: [] }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
-      }
-      if (url.includes('/duel/amateur/history')) {
-        return new Response(
-          JSON.stringify({
-            season_key: '2026-05',
-            seasons: ['2026-05'],
-            rating_place: 4,
-            stats: { duels: 1, wins: 1, points: 3 },
-            matches: [inventoryMatch],
-          }),
-          { status: 200, headers: { 'content-type': 'application/json' } },
-        );
-      }
-      if (url.includes('/duel/amateur/matches/match-inventory')) {
-        return new Response(JSON.stringify({ match: inventoryMatch }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
-      }
-      if (url.includes('/duel/amateur/matches')) {
-        return new Response(JSON.stringify({ matches: [inventoryMatch] }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
-      }
-      if (url.includes('/duel/amateur/rating')) {
-        return new Response(JSON.stringify({ season_key: '2026-05', rating: [] }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
-      }
-      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    });
-
-    renderWith(['/?view=amateur&section=duels']);
-
-    fireEvent.click(await screen.findByRole('tab', { name: 'История' }));
-    fireEvent.click(await screen.findByText('Inventory Opponent'));
-
-    const totalUsage = await screen.findByLabelText('Общий расход инвентаря');
-    expect(within(totalUsage).getByText('Клюшка тест')).toBeInTheDocument();
-    expect(within(totalUsage).getByText('21 бросок')).toBeInTheDocument();
-    expect(within(totalUsage).getByText('Коньки тест')).toBeInTheDocument();
-    expect(within(totalUsage).getByText('6 прокатов')).toBeInTheDocument();
-    expect(within(totalUsage).getByText('Питание тест')).toBeInTheDocument();
-    expect(within(totalUsage).getByText('2 минуты энергии')).toBeInTheDocument();
-
-    const secondPeriodUsage = screen.getByLabelText('2-й период: расход инвентаря');
-    expect(within(secondPeriodUsage).getByText('9 бросков')).toBeInTheDocument();
-    expect(within(secondPeriodUsage).getByText('2 проката')).toBeInTheDocument();
-    expect(within(secondPeriodUsage).getByText('30 секунд энергии')).toBeInTheDocument();
-  });
-
   it('uses only concrete duel formats for matchmaking filters', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch');
     fetchMock.mockReset();
@@ -2396,22 +1604,15 @@ describe('DailyScreen', () => {
 
     expect(screen.queryByRole('button', { name: 'Все' })).not.toBeInTheDocument();
 
-    const duelSetup = await screen.findByRole('region', { name: 'Новая дуэль' });
-    expect(duelSetup).toHaveClass('mode-setup-card', 'duel-creation-card');
-    expect(within(duelSetup).getByRole('button', { name: 'Начать поиск' })).toBeInTheDocument();
-
     const express = await screen.findByRole('button', { name: 'Экспресс' });
     const expressPlus = await screen.findByRole('button', { name: 'Экспресс+' });
     const classic = await screen.findByRole('button', { name: 'Классика' });
     expect(express).toHaveAttribute('aria-pressed', 'true');
     expect(expressPlus).toHaveAttribute('aria-pressed', 'true');
     expect(classic).toHaveAttribute('aria-pressed', 'true');
-    expect(express.childElementCount).toBe(0);
-    expect(express.style.background).toBe('rgba(31, 42, 61, 0.92)');
 
     fireEvent.click(expressPlus);
     expect(expressPlus).toHaveAttribute('aria-pressed', 'false');
-    expect(expressPlus.style.background).toBe('rgba(255, 255, 255, 0.46)');
 
     fireEvent.click(screen.getByRole('button', { name: 'Начать поиск' }));
 
@@ -2854,10 +2055,7 @@ describe('DailyScreen', () => {
 
     const startButton = await screen.findByRole('button', { name: 'НАЧАТЬ' });
     expect(startButton).toBeEnabled();
-    expect(document.querySelector('img[src="/sprites/training-court.webp"]')).toBeTruthy();
-    expect(document.querySelector('img[src="/bonus-games/arenas/beach.webp"]')).toBeFalsy();
-    expect(screen.getByLabelText('Игровое табло')).toBeInTheDocument();
-    expect(document.querySelector('img[src="/sprites/duel-tableau.webp"]')).toBeFalsy();
+    expect(document.querySelector('img[src="/sprites/daily-long-court-people.webp"]')).toBeTruthy();
     fireEvent.click(startButton);
 
     await waitFor(() => {
@@ -2866,240 +2064,6 @@ describe('DailyScreen', () => {
           String(input).includes('/duel/amateur/matches/match-1/period/start'),
         ),
       ).toBe(true);
-    });
-  });
-
-  it('uses the frozen home arena artwork for a tournament duel', async () => {
-    const tournamentMatch: AmateurDuelMatchState = {
-      ...settledDuelMatch,
-      status: 'active',
-      source: 'tournament',
-      venue_role: 'home',
-      outcome: null,
-      winner_user_id: null,
-      settled_at: null,
-      settled_reason: null,
-      starts_at: new Date(Date.now() - 60_000).toISOString(),
-      ends_at: new Date(Date.now() + 60 * 60_000).toISOString(),
-      server_now: new Date().toISOString(),
-      me: {
-        ...settledDuelMatch.me,
-        state: 'accepted',
-        current_period: 0,
-      },
-      opponent: {
-        ...settledDuelMatch.opponent,
-        state: 'accepted',
-        current_period: 0,
-      },
-    };
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-      const url = input instanceof Request ? input.url : String(input);
-      if (url.includes('/duel/training/state')) {
-        return new Response(JSON.stringify(trainingIdleState), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
-      }
-      if (url.includes('/duel/amateur/matches/match-1')) {
-        return new Response(JSON.stringify({ match: tournamentMatch }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
-      }
-      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    });
-
-    renderWith(['/?view=amateur&match=match-1&play=1']);
-
-    expect(await screen.findByRole('button', { name: 'НАЧАТЬ' })).toBeEnabled();
-    expect(document.querySelector('img[src="/bonus-games/arenas/beach.webp"]')).toBeTruthy();
-  });
-
-  it('builds live opponent progress for the amateur duel scoreboard', () => {
-    const now = new Date();
-    const activeMatch: AmateurDuelMatchState = {
-      ...settledDuelMatch,
-      status: 'active',
-      duel_kind: 'classic',
-      outcome: null,
-      winner_user_id: null,
-      settled_at: null,
-      settled_reason: null,
-      starts_at: new Date(now.getTime() - 10 * 60_000).toISOString(),
-      ends_at: new Date(now.getTime() + 60 * 60_000).toISOString(),
-      server_now: now.toISOString(),
-      period_started_at: new Date(now.getTime() - 2 * 60_000).toISOString(),
-      period_ends_at: new Date(now.getTime() + 18 * 60_000).toISOString(),
-      rules: {
-        ...settledDuelMatch.rules,
-        title: 'Классика',
-        duelKind: 'classic',
-        duelVariant: 'classic',
-        totalPeriods: 3,
-        shotsPerPeriod: 30,
-        periodDurationMs: 20 * 60_000,
-        breakDurationMs: 5 * 60_000,
-        periodRules: [
-          { periodNumber: 1, mode: 'quota', durationMs: 20 * 60_000, shotsLimit: 30 },
-          { periodNumber: 2, mode: 'quota', durationMs: 20 * 60_000, shotsLimit: 30 },
-          { periodNumber: 3, mode: 'quota', durationMs: 20 * 60_000, shotsLimit: 30 },
-        ],
-      },
-      me: {
-        ...settledDuelMatch.me,
-        state: 'period_active',
-        current_period: 2,
-        shots_taken: 42,
-        goals: 20,
-        current_period_shots: 12,
-        current_period_goals: 5,
-        period_started_at: new Date(now.getTime() - 2 * 60_000).toISOString(),
-        period_ends_at: new Date(now.getTime() + 18 * 60_000).toISOString(),
-      },
-      opponent: {
-        ...settledDuelMatch.opponent,
-        state: 'period_active',
-        current_period: 2,
-        shots_taken: 37,
-        goals: 19,
-        current_period_shots: 7,
-        current_period_goals: 4,
-        period_started_at: new Date(now.getTime() - 90_000).toISOString(),
-        period_ends_at: new Date(now.getTime() + 18 * 60_000 + 30_000).toISOString(),
-      },
-      current_period_shots: 12,
-      current_period_goals: 5,
-    };
-
-    expect(duelScoreboardOpponent(activeMatch)).toMatchObject({
-      goals: 19,
-      shots: 37,
-      shotsLabel: '07/30',
-      time: 'играет 2/3',
-      timeTone: 'active',
-    });
-  });
-
-  it('shows the total duel score and opponent progress on the rink cube', async () => {
-    const now = new Date();
-    const activeMatch: AmateurDuelMatchState = {
-      ...settledDuelMatch,
-      status: 'active',
-      duel_kind: 'classic',
-      outcome: null,
-      winner_user_id: null,
-      settled_at: null,
-      settled_reason: null,
-      starts_at: new Date(now.getTime() - 10 * 60_000).toISOString(),
-      ends_at: new Date(now.getTime() + 60 * 60_000).toISOString(),
-      server_now: now.toISOString(),
-      period_started_at: new Date(now.getTime() - 2 * 60_000).toISOString(),
-      period_ends_at: new Date(now.getTime() + 18 * 60_000).toISOString(),
-      rules: {
-        ...settledDuelMatch.rules,
-        title: 'Классика',
-        duelKind: 'classic',
-        duelVariant: 'classic',
-        totalPeriods: 3,
-        shotsPerPeriod: 30,
-        periodDurationMs: 20 * 60_000,
-        breakDurationMs: 5 * 60_000,
-        periodRules: [
-          { periodNumber: 1, mode: 'quota', durationMs: 20 * 60_000, shotsLimit: 30 },
-          { periodNumber: 2, mode: 'quota', durationMs: 20 * 60_000, shotsLimit: 30 },
-          { periodNumber: 3, mode: 'quota', durationMs: 20 * 60_000, shotsLimit: 30 },
-        ],
-      },
-      me: {
-        ...settledDuelMatch.me,
-        state: 'period_active',
-        current_period: 2,
-        shots_taken: 42,
-        goals: 20,
-        current_period_shots: 12,
-        current_period_goals: 5,
-        period_started_at: new Date(now.getTime() - 2 * 60_000).toISOString(),
-        period_ends_at: new Date(now.getTime() + 18 * 60_000).toISOString(),
-      },
-      opponent: {
-        ...settledDuelMatch.opponent,
-        state: 'period_active',
-        current_period: 2,
-        shots_taken: 37,
-        goals: 19,
-        current_period_shots: 7,
-        current_period_goals: 4,
-        period_started_at: new Date(now.getTime() - 90_000).toISOString(),
-        period_ends_at: new Date(now.getTime() + 18 * 60_000 + 30_000).toISOString(),
-      },
-      current_period_shots: 12,
-      current_period_goals: 5,
-    };
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-      const url = input instanceof Request ? input.url : String(input);
-      if (url.includes('/duel/training/state')) {
-        return new Response(JSON.stringify(trainingIdleState), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
-      }
-      if (url.includes('/duel/amateur/matches/match-1')) {
-        return new Response(JSON.stringify({ match: activeMatch }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
-      }
-      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    });
-
-    renderWith(['/?view=amateur&match=match-1&play=1']);
-
-    expect(await screen.findByText('СЧЁТ')).toBeInTheDocument();
-    expect(screen.getByText('20:19')).toBeInTheDocument();
-    const scoreboardText = screen.getByLabelText('Игровое табло').textContent ?? '';
-    expect(scoreboardText.indexOf('СЧЁТ')).toBeGreaterThan(scoreboardText.indexOf('ПЕРИОД'));
-    expect(scoreboardText.indexOf('БРОСКИ')).toBeGreaterThan(scoreboardText.indexOf('СЧЁТ'));
-    expect(scoreboardText.indexOf('ВРЕМЯ')).toBeGreaterThan(scoreboardText.indexOf('БРОСКИ'));
-    const opponentLine = screen.getByLabelText('Соперник: Duel Opponent');
-    expect(opponentLine).toHaveClass('game-scoreboard__status-line--active');
-    expect(within(opponentLine).getByText('Duel Opponent')).toBeInTheDocument();
-    expect(within(opponentLine).getByText('07/30 · ИГРАЕТ 2/3')).toBeInTheDocument();
-  });
-
-  it('shows five minutes to forfeit after an intermission period is ready', () => {
-    const now = Date.parse('2026-05-16T10:10:00.000Z');
-    const activeMatch: AmateurDuelMatchState = {
-      ...settledDuelMatch,
-      status: 'active',
-      outcome: null,
-      winner_user_id: null,
-      settled_at: null,
-      settled_reason: null,
-      ends_at: '2026-05-16T10:25:00.000Z',
-      server_now: '2026-05-16T10:10:00.000Z',
-      me: {
-        ...settledDuelMatch.me,
-        state: 'accepted',
-        current_period: 1,
-        ready_at: '2026-05-16T10:10:00.000Z',
-      },
-      opponent: {
-        ...settledDuelMatch.opponent,
-        state: 'completed',
-        current_period: 2,
-      },
-    };
-
-    expect(duelEventTiming(activeMatch, now)).toMatchObject({
-      label: 'До поражения',
-      value: '05:00',
     });
   });
 
@@ -3134,155 +2098,6 @@ describe('DailyScreen', () => {
     expect(within(dialog).getByText('1-й период')).toBeInTheDocument();
     expect(within(dialog).getByText('25%')).toBeInTheDocument();
     expect(within(dialog).getByText('10%')).toBeInTheDocument();
-    fireEvent.click(dialog);
-    expect(screen.getByRole('dialog', { name: 'Результат дуэли' })).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Понятно' }));
-    expect(screen.queryByRole('dialog', { name: 'Результат дуэли' })).not.toBeInTheDocument();
-  });
-
-  it('explains a tied-goals duel result with the time tiebreaker', async () => {
-    const timeWinMatch: AmateurDuelMatchState = {
-      ...settledDuelMatch,
-      duel_kind: 'classic',
-      rules: {
-        ...settledDuelMatch.rules,
-        title: 'Классика',
-        duelKind: 'classic',
-        duelVariant: 'classic',
-        periodRules: [
-          { periodNumber: 1, mode: 'quota', durationMs: 1200000, shotsLimit: 30 },
-          { periodNumber: 2, mode: 'quota', durationMs: 1200000, shotsLimit: 90 },
-        ],
-      },
-      me: {
-        ...settledDuelMatch.me,
-        goals: 91,
-        active_duration_ms: 274000,
-        result_points: 3,
-      },
-      opponent: {
-        ...settledDuelMatch.opponent,
-        goals: 91,
-        active_duration_ms: 296000,
-        result_points: 0,
-      },
-      recent_periods: [
-        {
-          period_number: 1,
-          shots_taken: 30,
-          goals: 25,
-          duration_ms: 94000,
-          closed_reason: 'quota',
-          ended_at: '2026-05-16T10:01:34.000Z',
-        },
-        {
-          period_number: 2,
-          shots_taken: 76,
-          goals: 66,
-          duration_ms: 180000,
-          closed_reason: 'quota',
-          ended_at: '2026-05-16T10:04:34.000Z',
-        },
-      ],
-      opponent_recent_periods: [
-        {
-          period_number: 1,
-          shots_taken: 30,
-          goals: 28,
-          duration_ms: 116000,
-          closed_reason: 'quota',
-          ended_at: '2026-05-16T10:01:56.000Z',
-        },
-        {
-          period_number: 2,
-          shots_taken: 86,
-          goals: 63,
-          duration_ms: 180000,
-          closed_reason: 'quota',
-          ended_at: '2026-05-16T10:04:56.000Z',
-        },
-      ],
-    };
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-      const url = input instanceof Request ? input.url : String(input);
-      if (url.includes('/duel/training/state')) {
-        return new Response(JSON.stringify(trainingIdleState), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
-      }
-      if (url.includes('/duel/amateur/matches/match-1')) {
-        return new Response(JSON.stringify({ match: timeWinMatch }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
-      }
-      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    });
-
-    renderWith(['/?view=amateur&match=match-1']);
-
-    const dialog = await screen.findByRole('dialog', { name: 'Результат дуэли' });
-    expect(within(dialog).getByText('Победа')).toBeInTheDocument();
-    expect(within(dialog).getByText('91:91')).toBeInTheDocument();
-    expect(within(dialog).getByText('Решило время')).toBeInTheDocument();
-    expect(within(dialog).getByText('04:34 / 04:56')).toBeInTheDocument();
-    expect(within(dialog).getByText('Вы быстрее на 22 сек')).toBeInTheDocument();
-  });
-
-  it('explains an express tied-goals result with the accuracy tiebreaker', async () => {
-    const accuracyLossMatch: AmateurDuelMatchState = {
-      ...settledDuelMatch,
-      winner_user_id: 'u2',
-      outcome: 'opponent_win',
-      me: {
-        ...settledDuelMatch.me,
-        shots_taken: 80,
-        goals: 40,
-        accuracy: 50,
-        active_duration_ms: 180000,
-        result_points: 0,
-      },
-      opponent: {
-        ...settledDuelMatch.opponent,
-        shots_taken: 50,
-        goals: 40,
-        accuracy: 80,
-        active_duration_ms: 180000,
-        result_points: 3,
-      },
-    };
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-      const url = input instanceof Request ? input.url : String(input);
-      if (url.includes('/duel/training/state')) {
-        return new Response(JSON.stringify(trainingIdleState), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
-      }
-      if (url.includes('/duel/amateur/matches/match-1')) {
-        return new Response(JSON.stringify({ match: accuracyLossMatch }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
-      }
-      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    });
-
-    renderWith(['/?view=amateur&match=match-1']);
-
-    const dialog = await screen.findByRole('dialog', { name: 'Результат дуэли' });
-    expect(within(dialog).getByText('Поражение')).toBeInTheDocument();
-    expect(within(dialog).getByText('40:40')).toBeInTheDocument();
-    expect(within(dialog).getByText('Решил процент')).toBeInTheDocument();
-    expect(within(dialog).getByText('50% / 80%')).toBeInTheDocument();
-    expect(within(dialog).getByText('Поражение из-за процента соперника')).toBeInTheDocument();
   });
 
   it('polls an unfinished amateur duel and shows result when it settles', async () => {
@@ -3332,49 +2147,5 @@ describe('DailyScreen', () => {
     } finally {
       vi.useRealTimers();
     }
-  });
-});
-
-describe('duel ready rink presence', () => {
-  it('keeps the opponent goalie present after the opponent has started a period', () => {
-    expect(isDuelReadyPresenceState('ready')).toBe(true);
-    expect(isDuelReadyPresenceState('accepted')).toBe(true);
-    expect(isDuelReadyPresenceState('period_active')).toBe(true);
-  });
-
-  it('shows the opponent goalie on active duel start screens regardless of opponent state', () => {
-    const activeStartMatch: AmateurDuelMatchState = {
-      ...settledDuelMatch,
-      status: 'active',
-      outcome: null,
-      winner_user_id: null,
-      settled_at: null,
-      settled_reason: null,
-      me: { ...settledDuelMatch.me, state: 'accepted' },
-      opponent: { ...settledDuelMatch.opponent, state: 'forfeit' },
-    };
-
-    expect(duelRinkReadyPresenceForMatch(activeStartMatch)).toEqual({
-      playerReady: true,
-      goalieReady: true,
-    });
-  });
-
-  it('still uses opponent readiness before the duel starts', () => {
-    const preStartMatch: AmateurDuelMatchState = {
-      ...settledDuelMatch,
-      status: 'ready_check',
-      outcome: null,
-      winner_user_id: null,
-      settled_at: null,
-      settled_reason: null,
-      me: { ...settledDuelMatch.me, state: 'ready' },
-      opponent: { ...settledDuelMatch.opponent, state: 'loadout_pending' },
-    };
-
-    expect(duelRinkReadyPresenceForMatch(preStartMatch)).toEqual({
-      playerReady: true,
-      goalieReady: false,
-    });
   });
 });

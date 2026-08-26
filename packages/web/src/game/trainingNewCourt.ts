@@ -27,7 +27,7 @@ import {
 export type TrainingCourtDesign = 'standard' | 'long';
 
 export const TRAINING_NEW_COURT_BACKGROUND = '/sprites/new-light-court.webp';
-export const TRAINING_LONG_COURT_BACKGROUND = '/sprites/training-court.webp';
+export const TRAINING_LONG_COURT_BACKGROUND = '/sprites/new-long-court.webp';
 export const TRAINING_VIDEO_CUBE_IMAGE = '/sprites/video-cube.webp';
 export const TRAINING_NEW_COURT_BG_CROP_BOTTOM = '7%';
 export const TRAINING_NEW_COURT_VISUAL_Y_SCALE = PERSPECTIVE_COURT_VISUAL_Y_SCALE;

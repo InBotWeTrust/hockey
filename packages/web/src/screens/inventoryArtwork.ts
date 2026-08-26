@@ -5,28 +5,21 @@ type InventoryArtworkItem = Pick<InventoryItem, 'kind' | 'rarity'> & {
   imageUrl?: string | null;
 };
 
-const INVENTORY_ARTWORK_VERSION = '20260602-nutrition-cans-v1';
-
-function versionInventoryArtwork(url: string): string {
-  if (!url.startsWith('/inventory/') || url.includes('?')) return url;
-  return `${url}?v=${INVENTORY_ARTWORK_VERSION}`;
-}
-
 const FALLBACK_ARTWORK: Record<InventoryEquipmentKind, Record<InventoryTier, string>> = {
   stick: {
-    bronze: versionInventoryArtwork('/inventory/stick-bronze.webp'),
-    silver: versionInventoryArtwork('/inventory/stick-silver.webp'),
-    gold: versionInventoryArtwork('/inventory/stick-gold.webp'),
+    bronze: '/inventory/stick-bronze.webp',
+    silver: '/inventory/stick-silver.webp',
+    gold: '/inventory/stick-gold.webp',
   },
   skates: {
-    bronze: versionInventoryArtwork('/inventory/skates-bronze.webp'),
-    silver: versionInventoryArtwork('/inventory/skates-silver.webp'),
-    gold: versionInventoryArtwork('/inventory/skates-gold.webp'),
+    bronze: '/inventory/skates-bronze.webp',
+    silver: '/inventory/skates-silver.webp',
+    gold: '/inventory/skates-gold.webp',
   },
   nutrition: {
-    bronze: versionInventoryArtwork('/inventory/nutrition-bronze.webp'),
-    silver: versionInventoryArtwork('/inventory/nutrition-silver.webp'),
-    gold: versionInventoryArtwork('/inventory/nutrition-gold.webp'),
+    bronze: '/inventory/nutrition-bronze.webp',
+    silver: '/inventory/nutrition-silver.webp',
+    gold: '/inventory/nutrition-gold.webp',
   },
 };
 
@@ -47,8 +40,6 @@ export function placeholderArtworkForKind(kind: InventoryEquipmentKind): string 
 }
 
 export function artworkForInventoryItem(item: InventoryArtworkItem): string {
-  if (item.imageUrl && !LEGACY_GROUP_ARTWORK.has(item.imageUrl)) {
-    return versionInventoryArtwork(item.imageUrl);
-  }
+  if (item.imageUrl && !LEGACY_GROUP_ARTWORK.has(item.imageUrl)) return item.imageUrl;
   return FALLBACK_ARTWORK[item.kind][tierFor(item)];
 }

@@ -61,14 +61,8 @@ export async function publishMessageNew(
   chatId: string,
   chatType: ChatType,
   message: ChatMessageDTO,
-  opts: { silent?: boolean } = {},
 ): Promise<void> {
-  await fanOut(pool, publisher, chatId, chatType, {
-    type: 'message:new',
-    chatId,
-    message,
-    ...(opts.silent === true ? { silent: true } : {}),
-  });
+  await fanOut(pool, publisher, chatId, chatType, { type: 'message:new', chatId, message });
 }
 
 export async function publishMessageDeleted(

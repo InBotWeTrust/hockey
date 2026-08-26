@@ -1,14 +1,12 @@
 import fp from 'fastify-plugin';
 import type { FastifyPluginAsync } from 'fastify';
 import type { ChatEvent } from '../chat/types.js';
-import type { TournamentRealtimeEvent } from '../tournament/live.js';
 
-export type RealtimeEvent = ChatEvent | TournamentRealtimeEvent;
-export type RealtimeHandler = (event: RealtimeEvent) => void;
+export type RealtimeHandler = (event: ChatEvent) => void;
 export type Unsubscribe = () => Promise<void>;
 
 export interface Realtime {
-  publish(channel: string, event: RealtimeEvent): Promise<void>;
+  publish(channel: string, event: ChatEvent): Promise<void>;
   subscribe(channel: string, handler: RealtimeHandler): Promise<Unsubscribe>;
 }
 
@@ -32,9 +30,9 @@ const plugin: FastifyPluginAsync = async (app) => {
   subClient.on('message', (channel, payload) => {
     const set = handlers.get(channel);
     if (!set || set.size === 0) return;
-    let parsed: RealtimeEvent;
+    let parsed: ChatEvent;
     try {
-      parsed = JSON.parse(payload) as RealtimeEvent;
+      parsed = JSON.parse(payload) as ChatEvent;
     } catch (err) {
       app.log.warn({ err, channel }, 'realtime: malformed payload');
       return;

@@ -1,9 +1,5 @@
 import type { Pool, PoolClient } from 'pg';
-import {
-  fetchAchievementCatalogueForUser,
-  grantStatAchievements,
-  type ProfileAchievementDTO,
-} from '../achievements/service.js';
+import { fetchProfileAchievements, type ProfileAchievementDTO } from '../achievements/service.js';
 import { getGameSettings } from '../duel/gameSettings.js';
 
 type Queryable = Pool | PoolClient;
@@ -22,7 +18,6 @@ export interface ProfileProgressDTO {
   competitionLevel: CompetitionLevel;
   stats: ProfileStatsDTO;
   achievements: ProfileAchievementDTO[];
-  unclaimedAchievementsCount: number;
 }
 
 export interface ProfileProgressRow {
@@ -40,7 +35,7 @@ function toNumber(value: number | string): number {
 export function resolveCompetitionLevel(
   level: number,
   lifetimeGoals: number,
-  amateurUnlockGoalsRequired = 300,
+  amateurUnlockGoalsRequired = 1000,
 ): CompetitionLevel {
   if (level >= 3) return 'professional';
   if (level >= 2 || lifetimeGoals >= amateurUnlockGoalsRequired) return 'amateur';
@@ -119,17 +114,14 @@ export async function buildProfileProgress(
   const shots = toNumber(row.lifetime_shots_total);
   const goals = toNumber(row.lifetime_goals_total);
   const accuracy = shots > 0 ? Math.round((goals / shots) * 100) : 0;
-  await grantStatAchievements(db, row.id, {
-    lifetimeShots: shots,
-    lifetimeGoals: goals,
-    level,
-  });
-
-  const [settings, playStreakStats, achievements, unclaimedAchievementsCount] = await Promise.all([
+  const [settings, playStreakStats, achievements] = await Promise.all([
     getGameSettings(db),
     fetchPlayStreakStats(db, row.id, row.timezone),
-    fetchAchievementCatalogueForUser(db, row.id, { claimedOnly: true }),
-    fetchUnclaimedAchievementCount(db, row.id),
+    fetchProfileAchievements(db, row.id, {
+      lifetimeShots: shots,
+      lifetimeGoals: goals,
+      level,
+    }),
   ]);
 
   return {
@@ -142,19 +134,5 @@ export async function buildProfileProgress(
       bestPlayStreakDays: playStreakStats.bestDays,
     },
     achievements,
-    unclaimedAchievementsCount,
   };
-}
-
-export async function fetchUnclaimedAchievementCount(
-  db: Queryable,
-  userId: string,
-): Promise<number> {
-  const { rows } = await db.query<{ count: number | string }>(
-    `select count(*)::int as count
-       from user_achievements
-      where user_id = $1 and claimed_at is null`,
-    [userId],
-  );
-  return Number(rows[0]?.count ?? 0);
 }

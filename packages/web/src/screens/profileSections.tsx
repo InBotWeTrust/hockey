@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
-import { AccessibleModal } from '../components/AccessibleModal.js';
 import type { CompetitionLevel, ProfileAchievement, ProfileStats } from './profileTypes.js';
 
 const LEVEL_LABELS: Record<CompetitionLevel, string> = {
@@ -240,9 +240,9 @@ export function ProfileAchievementsSection({
           ...labelStyle,
         }}
       >
-        <span style={{ minWidth: 0, whiteSpace: 'nowrap' }}>
-          Выполненные задания
-          {unlockedAchievements > 0 ? ` (${unlockedAchievements})` : ''}
+        <span style={{ minWidth: 0 }}>
+          Задания
+          {achievements.length > 0 ? ` (${unlockedAchievements}/${achievements.length})` : ''}
         </span>
         {labelAccessory}
       </div>
@@ -291,36 +291,56 @@ export function AchievementDetailsSheet({
 }): JSX.Element {
   const status = achievement.isUnlocked ? 'Выполнено' : 'Не выполнено';
 
-  return (
-    <AccessibleModal
-      open
-      title={achievement.title}
-      onRequestClose={() => onClose()}
-      headerAction={
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={achievement.title}
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 1000,
+        background: 'rgba(15, 23, 42, 0.35)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      <div
+        className="glass"
+        onClick={(event) => event.stopPropagation()}
+        style={{
+          width: '100%',
+          maxWidth: 320,
+          maxHeight: 'calc(100dvh - 40px - var(--app-safe-top) - var(--app-safe-bottom))',
+          overflowY: 'auto',
+          borderRadius: 24,
+          padding: '22px 22px 18px',
+          color: 'var(--ink)',
+          position: 'relative',
+        }}
+      >
         <button
           type="button"
           className="icon-btn"
           data-no-drag-scroll="true"
           aria-label="Закрыть"
           onClick={onClose}
+          style={{
+            position: 'absolute',
+            top: 14,
+            right: 14,
+            width: 34,
+            height: 34,
+            background: 'rgba(255,255,255,0.62)',
+          }}
         >
           <X size={16} />
         </button>
-      }
-      cardStyle={{
-        width: 'min(320px, calc(100vw - 40px))',
-        maxHeight: 'calc(100dvh - 40px - var(--app-safe-top) - var(--app-safe-bottom))',
-        overflowY: 'auto',
-        position: 'relative',
-      }}
-    >
-      <div
-        style={{
-          width: '100%',
-          color: 'var(--ink)',
-          position: 'relative',
-        }}
-      >
         <div style={{ display: 'grid', gridTemplateColumns: '72px minmax(0, 1fr)', gap: 14 }}>
           <div
             style={{
@@ -366,6 +386,17 @@ export function AchievementDetailsSheet({
             >
               {status}
             </span>
+            <h3
+              style={{
+                margin: 0,
+                fontSize: 19,
+                lineHeight: 1.15,
+                fontWeight: 900,
+                overflowWrap: 'anywhere',
+              }}
+            >
+              {achievement.title}
+            </h3>
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
@@ -384,6 +415,7 @@ export function AchievementDetailsSheet({
           </div>
         </div>
       </div>
-    </AccessibleModal>
+    </div>,
+    document.body,
   );
 }

@@ -28,7 +28,6 @@ import { UserAvatar } from '../components/UserAvatar.js';
 import { SearchResultsDropdown } from '../components/SearchResultsDropdown.js';
 import { useDebouncedValue } from '../../lib/useDebouncedValue.js';
 import { NAV_HEIGHT } from '../../components/BottomNav.js';
-import { AccessibleModal } from '../../components/AccessibleModal.js';
 
 const PUSH_PREFERENCES_QUERY_KEY = ['push', 'preferences'] as const;
 
@@ -221,7 +220,7 @@ export function ChatListScreen(): JSX.Element {
         style={{ paddingTop: 'calc(10px + var(--app-safe-top))' }}
       >
         <div
-          className="chat-dock-header chat-dock-header--bare"
+          className="chat-dock-header glass-dock-surface"
           style={{
             gap: 8,
           }}
@@ -235,7 +234,6 @@ export function ChatListScreen(): JSX.Element {
             <Search size={14} color="var(--muted)" aria-hidden />
             <input
               type="search"
-              className="chat-list-search-input"
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               placeholder="Поиск чатов"
@@ -283,8 +281,10 @@ export function ChatListScreen(): JSX.Element {
       )}
 
       {!dropdownOpen && isError && (
-        <div className="chat-list-error" role="alert">
-          <div className="chat-list-error__copy">Не удалось загрузить чаты</div>
+        <div style={{ padding: 24, textAlign: 'center' }}>
+          <div style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 8 }}>
+            Не удалось загрузить чаты
+          </div>
           <button type="button" className="btn btn--ghost" onClick={() => void refetch()}>
             Повторить
           </button>
@@ -448,26 +448,26 @@ function GroupChatCreateModal({
   }
 
   return (
-    <AccessibleModal
-      title="Групповой чат"
-      copy="Создать чат и добавить игроков."
-      onRequestClose={onClose}
-      closeBlocked={createMut.isPending}
-      backdropStyle={{ alignItems: 'flex-start', paddingTop: 'calc(48px + var(--app-safe-top))' }}
-      cardStyle={{ width: 'min(420px, calc(100vw - 28px))' }}
-      headerAction={
-        <button
-          type="button"
-          className="icon-btn"
-          aria-label="Закрыть"
-          disabled={createMut.isPending}
-          onClick={onClose}
-        >
-          <X size={15} />
-        </button>
-      }
+    <div
+      className="modal-backdrop"
+      onClick={onClose}
+      style={{ alignItems: 'flex-start', paddingTop: 'calc(48px + var(--app-safe-top))' }}
     >
-      <div style={{ display: 'grid', gap: 16 }}>
+      <div
+        className="modal-card"
+        onClick={(event) => event.stopPropagation()}
+        style={{ width: 'min(420px, calc(100vw - 28px))', display: 'grid', gap: 16 }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ flex: 1 }}>
+            <div className="modal-title">Групповой чат</div>
+            <div className="modal-copy">Создать чат и добавить игроков.</div>
+          </div>
+          <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
+            <X size={15} />
+          </button>
+        </div>
+
         <input
           className="chat-create-field"
           value={name}
@@ -555,6 +555,6 @@ function GroupChatCreateModal({
           Создать чат
         </button>
       </div>
-    </AccessibleModal>
+    </div>
   );
 }

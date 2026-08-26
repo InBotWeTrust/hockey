@@ -1,10 +1,4 @@
-import {
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type KeyboardEvent as ReactKeyboardEvent,
-} from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, ChevronDown } from 'lucide-react';
 
@@ -25,62 +19,12 @@ export function GlassSelect<T extends string>({
   ariaLabel: string;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(0);
   const [menuRect, setMenuRect] = useState<{ top: number; left: number; width: number } | null>(
     null,
   );
   const ref = useRef<HTMLDivElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
-  const listboxId = useId();
   const selected = options.find((option) => option.value === value) ?? options[0];
-  const selectedIndex = Math.max(
-    0,
-    options.findIndex((option) => option.value === selected?.value),
-  );
-
-  function openMenu(index = selectedIndex): void {
-    setActiveIndex(Math.min(Math.max(index, 0), Math.max(options.length - 1, 0)));
-    setOpen(true);
-  }
-
-  function selectActiveOption(): void {
-    const option = options[activeIndex];
-    if (option === undefined) return;
-    onChange(option.value);
-    setOpen(false);
-    buttonRef.current?.focus();
-  }
-
-  function handleKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>): void {
-    if (event.key === 'Escape') {
-      if (open) event.preventDefault();
-      setOpen(false);
-      return;
-    }
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      event.preventDefault();
-      if (!open) {
-        openMenu(selectedIndex);
-        return;
-      }
-      const offset = event.key === 'ArrowDown' ? 1 : -1;
-      setActiveIndex((current) =>
-        options.length === 0 ? 0 : (current + offset + options.length) % options.length,
-      );
-      return;
-    }
-    if (event.key === 'Home' || event.key === 'End') {
-      event.preventDefault();
-      const nextIndex = event.key === 'Home' ? 0 : Math.max(options.length - 1, 0);
-      if (!open) openMenu(nextIndex);
-      else setActiveIndex(nextIndex);
-      return;
-    }
-    if (open && (event.key === 'Enter' || event.key === ' ')) {
-      event.preventDefault();
-      selectActiveOption();
-    }
-  }
 
   function updateMenuRect(): void {
     const rect = buttonRef.current?.getBoundingClientRect();
@@ -131,17 +75,10 @@ export function GlassSelect<T extends string>({
       <button
         ref={buttonRef}
         type="button"
-        role="combobox"
         aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-controls={listboxId}
-        aria-activedescendant={open ? `${listboxId}-option-${activeIndex}` : undefined}
-        onKeyDown={handleKeyDown}
-        onClick={() => {
-          if (open) setOpen(false);
-          else openMenu();
-        }}
+        onClick={() => setOpen((value) => !value)}
         style={{
           width: '100%',
           minWidth: 0,
@@ -181,12 +118,9 @@ export function GlassSelect<T extends string>({
         createPortal(
           <GlassSelectMenu
             ariaLabel={ariaLabel}
-            id={listboxId}
             rect={menuRect}
             options={options}
             value={value}
-            activeIndex={activeIndex}
-            onActiveIndexChange={setActiveIndex}
             onSelect={(nextValue) => {
               onChange(nextValue);
               setOpen(false);
@@ -200,32 +134,19 @@ export function GlassSelect<T extends string>({
 
 function GlassSelectMenu<T extends string>({
   ariaLabel,
-  id,
   rect,
   options,
   value,
-  activeIndex,
-  onActiveIndexChange,
   onSelect,
 }: {
   ariaLabel: string;
-  id: string;
   rect: { top: number; left: number; width: number };
   options: Array<GlassSelectOption<T>>;
   value: T;
-  activeIndex: number;
-  onActiveIndexChange: (index: number) => void;
   onSelect: (value: T) => void;
 }): JSX.Element {
-  const activeOptionRef = useRef<HTMLButtonElement | null>(null);
-
-  useEffect(() => {
-    activeOptionRef.current?.scrollIntoView?.({ block: 'nearest' });
-  }, [activeIndex]);
-
   return (
     <div
-      id={id}
       role="listbox"
       aria-label={ariaLabel}
       data-glass-select-menu="true"
@@ -235,7 +156,7 @@ function GlassSelectMenu<T extends string>({
         top: rect.top,
         left: rect.left,
         width: rect.width,
-        maxHeight: 'min(280px, calc(var(--app-viewport-height, 100dvh) - 24px))',
+        maxHeight: 'min(280px, calc(100dvh - 24px))',
         overflowY: 'auto',
         borderRadius: 18,
         padding: 6,
@@ -246,20 +167,14 @@ function GlassSelectMenu<T extends string>({
         WebkitBackdropFilter: 'blur(18px)',
       }}
     >
-      {options.map((option, index) => {
-        const selected = option.value === value;
-        const active = index === activeIndex;
+      {options.map((option) => {
+        const active = option.value === value;
         return (
           <button
             key={option.value}
-            ref={active ? activeOptionRef : undefined}
-            id={`${id}-option-${index}`}
             type="button"
             role="option"
-            tabIndex={-1}
-            aria-selected={selected}
-            data-active={active ? 'true' : 'false'}
-            onMouseMove={() => onActiveIndexChange(index)}
+            aria-selected={active}
             onClick={() => onSelect(option.value)}
             style={{
               width: '100%',
@@ -281,7 +196,7 @@ function GlassSelectMenu<T extends string>({
               cursor: 'pointer',
             }}
           >
-            {selected ? <Check size={16} /> : <span />}
+            {active ? <Check size={16} /> : <span />}
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {option.label}
             </span>
