@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
+import sharp, { type Metadata } from 'sharp';
 import { z } from 'zod';
 import { AppError } from '../plugins/errors.js';
 import { createTournamentDuelMatch } from '../duel/amateur/routes.js';
@@ -21,6 +22,7 @@ import {
   inviteTournamentParticipant,
   listAdminTournaments,
   listTournamentParticipants,
+  listPlayerTournamentParticipants,
   listPlayerTournaments,
   pauseTournament,
   publishTournament,
@@ -44,9 +46,17 @@ import {
   listTournamentDispatches,
   previewTournamentAudience,
 } from './communications.js';
+import { createMediaProxyUrl } from '../storage/mediaAccess.js';
+import {
+  createMediaObjectKey,
+  type ObjectStorageClient,
+  type ObjectStorageUploadResult,
+} from '../storage/objectStorage.js';
 
 const uuid = z.string().uuid();
 const nullableDate = z.string().datetime({ offset: true }).nullable().default(null);
+const nullableImageUrl = z.string().trim().max(2048).nullable().optional();
+const TOURNAMENT_ARTWORK_MAX_PIXELS = 2048 * 2048;
 
 const eligibilitySchema = z
   .object({
@@ -87,6 +97,7 @@ const draftSchema = z.object({
     .optional(),
   title: z.string().trim().min(1).max(160),
   description: z.string().trim().max(10_000).default(''),
+  imageUrl: nullableImageUrl,
   rules: rulesSchema,
   registrationOpensAt: nullableDate,
   registrationClosesAt: nullableDate,
@@ -120,12 +131,22 @@ async function requireTournamentFeature(app: Parameters<FastifyPluginAsync>[0]) 
 
 interface TournamentRoutesOptions {
   systemUserId?: string;
+  objectStorage?: ObjectStorageClient;
+  mediaAccessSecret: string;
 }
 
 export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = async (
   app,
   options,
 ) => {
+  app.addContentTypeParser(
+    'image/webp',
+    {
+      parseAs: 'buffer',
+      bodyLimit: options.objectStorage?.maxUploadBytes ?? 5 * 1024 * 1024,
+    },
+    (_request, body, done) => done(null, body),
+  );
   const authenticated = { preHandler: [app.authenticate] };
   const admin = {
     preHandler: [app.authenticate, async (req: FastifyRequest) => requireAdmin(app, req)],
@@ -140,6 +161,15 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
     await requireTournamentFeature(app);
     const params = z.object({ tournamentId: uuid }).parse(req.params);
     return { tournament: await getTournament(app.pg, params.tournamentId, req.user.id) };
+  });
+
+  app.get('/tournaments/:tournamentId/participants', authenticated, async (req) => {
+    await requireTournamentFeature(app);
+    const params = z.object({ tournamentId: uuid }).parse(req.params);
+    await getTournament(app.pg, params.tournamentId, req.user.id);
+    return {
+      participants: await listPlayerTournamentParticipants(app.pg, params.tournamentId),
+    };
   });
 
   app.get('/tournaments/:tournamentId/schedule', authenticated, async (req) => {
@@ -306,12 +336,91 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
     return { series: await getTournamentBracket(app.pg, params.tournamentId) };
   });
 
+  app.post('/admin/tournaments/media/artwork', admin, async (req, reply) => {
+    if (options.objectStorage === undefined) {
+      throw new AppError('storage_not_configured', 'object storage is not configured', 503);
+    }
+    const body = req.body;
+    if (!(body instanceof Buffer) || body.byteLength === 0) {
+      throw new AppError('bad_request', 'empty tournament artwork', 400);
+    }
+    if (body.byteLength > options.objectStorage.maxUploadBytes) {
+      throw new AppError('payload_too_large', 'tournament artwork is too large', 413);
+    }
+    let metadata: Metadata;
+    try {
+      metadata = await sharp(body, {
+        failOn: 'warning',
+        limitInputPixels: TOURNAMENT_ARTWORK_MAX_PIXELS,
+      }).metadata();
+    } catch {
+      throw new AppError('invalid_webp', 'invalid tournament artwork', 415);
+    }
+    if (metadata.format !== 'webp') {
+      throw new AppError('unsupported_media_type', 'tournament artwork must be WebP', 415);
+    }
+    if (
+      metadata.width === undefined ||
+      metadata.height === undefined ||
+      metadata.width !== metadata.height ||
+      metadata.width * metadata.height > TOURNAMENT_ARTWORK_MAX_PIXELS
+    ) {
+      throw new AppError('invalid_dimensions', 'tournament artwork must be square', 400);
+    }
+    const key = createMediaObjectKey({
+      prefix: 'tournaments/artwork',
+      contentType: 'image/webp',
+    });
+    let uploaded: ObjectStorageUploadResult;
+    try {
+      uploaded = await options.objectStorage.uploadObject({
+        key,
+        body,
+        contentType: 'image/webp',
+      });
+    } catch (error) {
+      app.log.error({ err: error, key }, 'tournament artwork upload failed');
+      throw new AppError('storage_upload_failed', 'Не удалось загрузить изображение', 502);
+    }
+    try {
+      const rawName = Array.isArray(req.headers['x-file-name'])
+        ? req.headers['x-file-name'][0]
+        : req.headers['x-file-name'];
+      const originalName = (rawName ?? 'tournament.webp').slice(0, 160);
+      const saved = await app.pg.query<{ id: string; object_key: string }>(
+        `insert into media_objects
+           (owner_user_id, purpose, object_key, url, content_type, size_bytes, original_name)
+         values ($1, 'tournament_artwork', $2, $3, 'image/webp', $4, $5)
+         returning id, object_key`,
+        [req.user.id, uploaded.key, uploaded.url, body.byteLength, originalName],
+      );
+      const media = saved.rows[0];
+      if (media === undefined) throw new Error('tournament artwork row was not returned');
+      reply.code(201);
+      return {
+        url: createMediaProxyUrl(options.mediaAccessSecret, media.id),
+        objectKey: media.object_key,
+      };
+    } catch (error) {
+      try {
+        await options.objectStorage.deleteObject({ key: uploaded.key });
+      } catch (cleanupError) {
+        app.log.error(
+          { err: cleanupError, key: uploaded.key },
+          'tournament artwork cleanup failed',
+        );
+      }
+      throw error;
+    }
+  });
+
   app.post('/admin/tournaments', admin, async (req, reply) => {
     const body = draftSchema.parse(req.body);
     const tournament = await createTournamentDraft(app.pg, {
       ...(body.slug !== undefined ? { slug: body.slug } : {}),
       title: body.title,
       description: body.description,
+      ...(body.imageUrl !== undefined ? { imageUrl: body.imageUrl } : {}),
       rules: parseRules(body.rules),
       createdBy: req.user.id,
       registrationOpensAt:
@@ -333,6 +442,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
         expectedRevision: body.expectedRevision,
         title: body.title,
         description: body.description,
+        ...(body.imageUrl !== undefined ? { imageUrl: body.imageUrl } : {}),
         rules: parseRules(body.rules),
         updatedBy: req.user.id,
         registrationOpensAt:

@@ -22,6 +22,10 @@ const enableTournamentsMigrationUrl = new URL(
   '../../db/migrations/066_enable_tournaments.sql',
   import.meta.url,
 );
+const tournamentArtworkMigrationUrl = new URL(
+  '../../db/migrations/067_tournament_artwork.sql',
+  import.meta.url,
+);
 
 describe('tournament migration contract', () => {
   it('creates the complete tournament orchestration schema', async () => {
@@ -104,5 +108,12 @@ describe('tournament migration contract', () => {
     expect(sql).toContain("'tournaments.enabled'");
     expect(sql).toContain("'true'::jsonb");
     expect(sql).toContain('on conflict (key) do update');
+  });
+
+  it('adds optional tournament artwork without rewriting existing rows', async () => {
+    const sql = await readFile(tournamentArtworkMigrationUrl, 'utf8');
+
+    expect(sql).toMatch(/alter table tournament\s+add column if not exists image_url text/i);
+    expect(sql).not.toMatch(/drop\s+(column|table)/i);
   });
 });

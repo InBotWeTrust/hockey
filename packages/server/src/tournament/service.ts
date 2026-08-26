@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from 'pg';
 import { AppError } from '../plugins/errors.js';
+import { resolvePlayoffPlacements } from './rewards.js';
 import { cancelTournamentDuel } from '../duel/amateur/lifecycle.js';
 import { enqueueTournamentAudiencePush, enqueueTournamentPush } from '../push/tournament.js';
 import { decideTournamentApplication, evaluateTournamentEligibility } from './registration.js';
@@ -41,6 +42,7 @@ interface TournamentRow {
   slug: string;
   title: string;
   description: string;
+  image_url: string | null;
   status: TournamentStatus;
   regular_source: TournamentConfig['regularSource'];
   visibility: 'public' | 'hidden';
@@ -56,6 +58,8 @@ interface TournamentRow {
   rules_snapshot: TournamentRulesSnapshot;
   participant_count: number;
   my_participant_state?: string | null;
+  my_participant_id?: string | null;
+  my_final_place?: number | null;
 }
 
 function mapTournament(row: TournamentRow) {
@@ -64,6 +68,7 @@ function mapTournament(row: TournamentRow) {
     slug: row.slug,
     title: row.title,
     description: row.description,
+    imageUrl: row.image_url,
     status: row.status,
     regularSource: row.regular_source,
     visibility: row.visibility,
@@ -79,6 +84,7 @@ function mapTournament(row: TournamentRow) {
     ...(row.my_participant_state !== undefined
       ? { myParticipantState: row.my_participant_state }
       : {}),
+    ...(row.my_final_place !== undefined ? { myFinalPlace: row.my_final_place } : {}),
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
@@ -155,6 +161,7 @@ export async function createTournamentDraft(
     slug?: string;
     title: string;
     description: string;
+    imageUrl?: string | null;
     rules: TournamentRulesSnapshot;
     createdBy: string;
     registrationOpensAt: Date | null;
@@ -166,14 +173,15 @@ export async function createTournamentDraft(
     const slug = input.slug ?? (await createUniqueTournamentSlug(client, input.title));
     const { rows } = await client.query<TournamentRow>(
       `insert into tournament
-         (slug, title, description, regular_source, visibility, current_revision,
+         (slug, title, description, image_url, regular_source, visibility, current_revision,
           registration_opens_at, registration_closes_at, starts_at, created_by, updated_by)
-       values ($1, $2, $3, $4, $5, 1, $6, $7, $8, $9, $9)
-       returning *, 0::int as participant_count, $10::jsonb as rules_snapshot`,
+       values ($1, $2, $3, $4, $5, $6, 1, $7, $8, $9, $10, $10)
+       returning *, 0::int as participant_count, $11::jsonb as rules_snapshot`,
       [
         slug,
         input.title,
         input.description,
+        input.imageUrl ?? null,
         input.rules.config.regularSource,
         input.rules.config.visibility,
         input.registrationOpensAt,
@@ -213,8 +221,10 @@ export async function listAdminTournaments(pool: Pool) {
 }
 
 export async function listPlayerTournaments(pool: Pool, userId: string) {
-  const { rows } = await pool.query<TournamentRow & { my_participant_state: string | null }>(
-    `select listed.*, mine.state as my_participant_state
+  const { rows } = await pool.query<
+    TournamentRow & { my_participant_state: string | null; my_participant_id: string | null }
+  >(
+    `select listed.*, mine.id as my_participant_id, mine.state as my_participant_state
        from (${tournamentSelect}) listed
        left join tournament_participant mine
          on mine.tournament_id = listed.id and mine.user_id = $1
@@ -223,6 +233,62 @@ export async function listPlayerTournaments(pool: Pool, userId: string) {
       order by listed.starts_at nulls last, listed.created_at desc`,
     [userId],
   );
+  const completedIds = rows
+    .filter((row) => row.status === 'completed' && row.my_participant_id !== null)
+    .map((row) => row.id);
+  const finalPlaceByParticipant = new Map<string, number>();
+  if (completedIds.length > 0) {
+    const series = await pool.query<{
+      tournament_id: string;
+      kind: 'championship' | 'third_place';
+      higher_seed_participant_id: string;
+      lower_seed_participant_id: string;
+      winner_participant_id: string;
+    }>(
+      `select tournament_id, kind, higher_seed_participant_id,
+              lower_seed_participant_id, winner_participant_id
+         from tournament_playoff_series
+        where tournament_id = any($1::uuid[]) and status = 'completed'
+          and kind in ('championship', 'third_place')`,
+      [completedIds],
+    );
+    const seriesByTournament = new Map<string, typeof series.rows>();
+    for (const row of series.rows) {
+      const tournamentSeries = seriesByTournament.get(row.tournament_id) ?? [];
+      tournamentSeries.push(row);
+      seriesByTournament.set(row.tournament_id, tournamentSeries);
+    }
+    for (const tournamentId of completedIds) {
+      const tournamentSeries = seriesByTournament.get(tournamentId) ?? [];
+      const final = tournamentSeries.find((row) => row.kind === 'championship');
+      if (final === undefined) continue;
+      const bronze = tournamentSeries.find((row) => row.kind === 'third_place');
+      for (const placement of resolvePlayoffPlacements({
+        final: {
+          higherId: final.higher_seed_participant_id,
+          lowerId: final.lower_seed_participant_id,
+          winnerId: final.winner_participant_id,
+        },
+        ...(bronze !== undefined
+          ? {
+              bronze: {
+                higherId: bronze.higher_seed_participant_id,
+                lowerId: bronze.lower_seed_participant_id,
+                winnerId: bronze.winner_participant_id,
+              },
+            }
+          : {}),
+      })) {
+        finalPlaceByParticipant.set(placement.participantId, placement.place);
+      }
+    }
+  }
+  for (const row of rows) {
+    row.my_final_place =
+      row.my_participant_id === null
+        ? null
+        : (finalPlaceByParticipant.get(row.my_participant_id) ?? null);
+  }
   return rows.map(mapTournament);
 }
 
@@ -253,6 +319,7 @@ export async function updateTournamentDraft(
     expectedRevision: number;
     title: string;
     description: string;
+    imageUrl?: string | null;
     rules: TournamentRulesSnapshot;
     updatedBy: string;
     registrationOpensAt: Date | null;
@@ -281,17 +348,22 @@ export async function updateTournamentDraft(
        values ($1, $2, $3, $4)`,
       [input.tournamentId, revision, JSON.stringify(input.rules), input.updatedBy],
     );
+    const updatesImage = Object.prototype.hasOwnProperty.call(input, 'imageUrl');
     await client.query(
       `update tournament
-          set title = $2, description = $3, regular_source = $4, visibility = $5,
-              current_revision = $6, registration_opens_at = $7,
-              registration_closes_at = $8, starts_at = $9, updated_by = $10,
+          set title = $2, description = $3,
+              image_url = case when $4::boolean then $5 else image_url end,
+              regular_source = $6, visibility = $7,
+              current_revision = $8, registration_opens_at = $9,
+              registration_closes_at = $10, starts_at = $11, updated_by = $12,
               updated_at = now()
         where id = $1`,
       [
         input.tournamentId,
         input.title,
         input.description,
+        updatesImage,
+        input.imageUrl ?? null,
         input.rules.config.regularSource,
         input.rules.config.visibility,
         revision,
@@ -1931,6 +2003,7 @@ export async function duplicateTournamentDraft(
     ...(input.slug !== undefined ? { slug: input.slug } : {}),
     title: input.title,
     description: source.description,
+    imageUrl: source.imageUrl,
     rules: source.rules,
     createdBy: input.createdBy,
     registrationOpensAt: null,
@@ -1949,6 +2022,28 @@ export async function listTournamentParticipants(pool: Pool, tournamentId: strin
     [tournamentId],
   );
   return rows;
+}
+
+export async function listPlayerTournamentParticipants(pool: Pool, tournamentId: string) {
+  const { rows } = await pool.query<{
+    user_id: string;
+    display_name: string;
+    avatar_url: string | null;
+    seed: number | null;
+  }>(
+    `select p.user_id, u.display_name, u.avatar_url, p.seed
+       from tournament_participant p
+       join users u on u.id = p.user_id
+      where p.tournament_id = $1 and p.state = 'approved'
+      order by p.seed nulls last, p.joined_at, p.id`,
+    [tournamentId],
+  );
+  return rows.map((row) => ({
+    userId: row.user_id,
+    displayName: row.display_name,
+    avatarUrl: row.avatar_url,
+    seed: row.seed,
+  }));
 }
 
 export async function rescheduleTournamentFixture(
