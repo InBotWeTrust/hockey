@@ -1,8 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TournamentOperations } from './TournamentOperations.js';
 import type { AdminTournament } from './adminApi.js';
+
+const designSystemCss = readFileSync(resolve(process.cwd(), 'src/app/design-system.css'), 'utf8');
 
 function tournament(): AdminTournament {
   return {
@@ -73,16 +77,40 @@ describe('TournamentOperations', () => {
       </QueryClientProvider>,
     );
 
-    expect(screen.getByRole('button', { name: 'Редактировать' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Редактировать' })).not.toBeInTheDocument();
+    const actionsButton = screen.getByRole('button', { name: 'Действия турнира' });
+    expect(actionsButton).toHaveClass('icon-btn');
+    expect(actionsButton).toHaveTextContent('');
+    fireEvent.click(actionsButton);
+    expect(screen.getByRole('button', { name: 'Редактировать турнир' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть действия турнира' }));
+
     fireEvent.click(screen.getByRole('tab', { name: 'Календарь' }));
     expect(await screen.findByText('Плановое окончание')).toBeInTheDocument();
+    expect(await screen.findByText('Календарь пока пуст.')).toBeInTheDocument();
+    const style = document.createElement('style');
+    style.textContent = designSystemCss;
+    document.head.append(style);
+    try {
+      expect(getComputedStyle(screen.getByText('Открытие регистрации')).color).toBe(
+        'rgba(241, 245, 249, 0.82)',
+      );
+      expect(getComputedStyle(screen.getByText(/^1 августа 2030/)).color).toBe(
+        'rgb(255, 255, 255)',
+      );
+    } finally {
+      style.remove();
+    }
     fireEvent.click(screen.getByRole('button', { name: 'Изменить сроки' }));
     expect(onEdit).toHaveBeenCalledWith(4);
 
     fireEvent.click(screen.getByRole('tab', { name: 'Награды' }));
     expect(screen.getByText('Регулярный чемпионат')).toBeInTheDocument();
     expect(screen.getByText('Выплачены')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Изменить награды' }));
+    const editRewards = screen.getByRole('button', { name: 'Изменить награды' });
+    expect(editRewards).toHaveClass('icon-btn');
+    expect(editRewards).toHaveTextContent('');
+    fireEvent.click(editRewards);
     expect(
       screen.queryByRole('spinbutton', { name: 'Регулярный чемпионат: coins 1' }),
     ).not.toBeInTheDocument();

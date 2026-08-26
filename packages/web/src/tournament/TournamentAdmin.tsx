@@ -1199,6 +1199,7 @@ export function TournamentAdmin(): JSX.Element {
   const [maxStage, setMaxStage] = useState(0);
   const [saveState, setSaveState] = useState<TournamentDraftSaveStatus>('idle');
   const [finishing, setFinishing] = useState(false);
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [draft, setDraft] = useState(freshDraft);
   const [editingTournament, setEditingTournament] = useState<AdminTournament | null>(null);
   const [selectedTournament, setSelectedTournament] = useState<AdminTournament | null>(null);
@@ -1342,11 +1343,13 @@ export function TournamentAdmin(): JSX.Element {
         createInFlight.current = true;
         const body = serializeDraft(draft);
         const result = await create.mutateAsync({ body, snapshot: JSON.stringify(body) });
+        setSaveNotice('Изменения сохранены.');
         closeWizard(result.tournament);
         return;
       }
       enqueueCurrentDraft();
       const result = await saveQueue.current?.flush();
+      setSaveNotice('Изменения сохранены.');
       closeWizard(result?.tournament ?? editingTournament);
     } catch {
       setFinishing(false);
@@ -1357,8 +1360,13 @@ export function TournamentAdmin(): JSX.Element {
     return (
       <TournamentOperations
         tournament={selectedTournament}
-        onBack={() => setSelectedTournament(null)}
+        onBack={() => {
+          setSaveNotice(null);
+          setSelectedTournament(null);
+        }}
+        notice={saveNotice}
         onEdit={(initialStage = 0) => {
+          setSaveNotice(null);
           artworkUploadGeneration.current += 1;
           artworkUpload.reset();
           setEditingTournament(selectedTournament);
@@ -1395,6 +1403,7 @@ export function TournamentAdmin(): JSX.Element {
           className="icon-btn icon-btn--dark"
           aria-label="Создать"
           onClick={() => {
+            setSaveNotice(null);
             artworkUploadGeneration.current += 1;
             artworkUpload.reset();
             saveQueueGeneration.current += 1;
@@ -1423,6 +1432,7 @@ export function TournamentAdmin(): JSX.Element {
           aria-label={`Открыть ${tournament.title}`}
           className="glass tournament-admin-card"
           onClick={() => {
+            setSaveNotice(null);
             setSelectedTournament(tournament);
           }}
         >
@@ -2204,10 +2214,11 @@ export function TournamentAdmin(): JSX.Element {
                 )}
               </div>
               <div className="modal-actions">
-                <div className="tournament-wizard__save-state" aria-live="polite">
-                  {saveState === 'saving' && 'Сохраняем…'}
-                  {saveState === 'saved' && 'Сохранено'}
-                  {saveState === 'error' && (
+                <div className="tournament-wizard__save-state" role="status" aria-live="polite">
+                  {finishing && 'Сохраняем изменения и закрываем…'}
+                  {!finishing && saveState === 'saving' && 'Сохраняем…'}
+                  {!finishing && saveState === 'saved' && 'Сохранено'}
+                  {!finishing && saveState === 'error' && (
                     <>
                       <span>{validationError ?? 'Не удалось сохранить изменения.'}</span>
                       {validationError === null && saveQueue.current !== undefined && (
@@ -2268,7 +2279,7 @@ export function TournamentAdmin(): JSX.Element {
                     }
                     onClick={() => void finishWizard()}
                   >
-                    {finishing ? 'Завершаем…' : 'Готово'}
+                    {finishing ? 'Сохраняем и закрываем…' : 'Готово'}
                   </button>
                 )}
               </div>

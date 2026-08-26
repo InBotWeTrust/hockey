@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { ArrowLeft, X } from 'lucide-react';
+import { ArrowLeft, Ellipsis, Pencil, X } from 'lucide-react';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import { GlassSelect } from '../components/GlassSelect.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
@@ -234,11 +234,13 @@ export function TournamentOperations({
   onBack,
   onEdit,
   onRemoved,
+  notice,
 }: {
   tournament: AdminTournament;
   onBack: () => void;
   onEdit: (stage?: number) => void;
   onRemoved: () => void;
+  notice?: string | null;
 }): JSX.Element {
   const client = useQueryClient();
   const [tab, setTab] = useState<OperationsTab>('participants');
@@ -494,20 +496,22 @@ export function TournamentOperations({
           <h2>{tournament.title}</h2>
         </div>
         <div className="tournament-operations__actions">
-          {canEditRules && (
-            <button type="button" className="admin-compact-btn" onClick={() => onEdit(0)}>
-              Редактировать
-            </button>
-          )}
           <button
             type="button"
-            className="admin-compact-btn tournament-operations__actions-trigger"
+            className="icon-btn tournament-operations__actions-trigger"
+            aria-label="Действия турнира"
+            title="Действия турнира"
             onClick={() => setActionsOpen(true)}
           >
-            Действия
+            <Ellipsis size={18} />
           </button>
         </div>
       </div>
+      {notice && (
+        <div className="tournament-operations__notice" role="status">
+          {notice}
+        </div>
+      )}
       <SegmentedTabs
         ariaLabel="Управление турниром"
         activeTab={tab}
@@ -722,13 +726,15 @@ export function TournamentOperations({
               </div>
               <button
                 type="button"
-                className="admin-compact-btn"
+                className="icon-btn"
+                aria-label="Изменить награды"
+                title="Изменить награды"
                 onClick={() => {
                   if (status === 'draft') onEdit(5);
                   else setEditingRewards((value) => !value);
                 }}
               >
-                Изменить награды
+                <Pencil size={15} />
               </button>
             </div>
             <RewardStageTable

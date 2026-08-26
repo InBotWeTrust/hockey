@@ -4540,10 +4540,8 @@
 
 .tournament-operations__actions {
   display: flex;
-  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 5px;
-  max-width: 112px;
 }
 
 .tournament-operations__actions .icon-btn {
@@ -4551,6 +4549,15 @@
   min-width: 32px;
   height: 32px;
   min-height: 32px;
+}
+
+.tournament-operations__notice {
+  padding: 0 4px;
+  color: rgba(244, 250, 255, 0.94);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.35;
+  text-shadow: 0 2px 9px rgba(3, 12, 24, 0.72);
 }
 
 .tournament-icon-btn--danger {
@@ -5118,6 +5125,14 @@
   color: var(--ink);
   font-size: 10px;
   font-weight: 650;
+}
+
+.tournament-operations__empty-panel .tournament-operation-dates dt {
+  color: rgba(241, 245, 249, 0.82);
+}
+
+.tournament-operations__empty-panel .tournament-operation-dates dd {
+  color: rgb(255, 255, 255);
 }
 
 .tournament-operations__quick-edit {

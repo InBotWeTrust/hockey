@@ -128,12 +128,16 @@ describe('TournamentAdmin', () => {
     );
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок очереди' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Редактировать' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать турнир' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Описание' }), {
       target: { value: 'Последняя версия' },
     });
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
     fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
+
+    expect(screen.getByRole('button', { name: 'Сохраняем и закрываем…' })).toBeDisabled();
+    expect(screen.getByRole('status')).toHaveTextContent('Сохраняем изменения и закрываем…');
 
     expect(update).toHaveBeenCalledWith(
       tournament.id,
@@ -151,6 +155,7 @@ describe('TournamentAdmin', () => {
     await waitFor(() =>
       expect(screen.queryByRole('dialog', { name: 'Создание турнира' })).not.toBeInTheDocument(),
     );
+    expect(screen.getByRole('status')).toHaveTextContent('Изменения сохранены.');
     expect(screen.getByRole('tab', { name: 'Заявки и оплаты' })).toBeInTheDocument();
     expect(
       screen.queryByRole('alertdialog', { name: 'Закрыть без сохранения?' }),
@@ -360,7 +365,8 @@ describe('TournamentAdmin', () => {
     );
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок наград' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Редактировать' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать турнир' }));
     fireEvent.click(screen.getByRole('button', { name: '6. Награды' }));
     const place = screen.getByRole('spinbutton', { name: 'Место награды регулярки 1' });
     fireEvent.change(place, { target: { value: '' } });
@@ -399,7 +405,8 @@ describe('TournamentAdmin', () => {
     );
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок восстановления' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Редактировать' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать турнир' }));
     fireEvent.click(screen.getByRole('button', { name: '6. Награды' }));
     const place = screen.getByRole('spinbutton', { name: 'Место награды регулярки 1' });
 
@@ -442,7 +449,8 @@ describe('TournamentAdmin', () => {
     );
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок сетевой ошибки' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Редактировать' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать турнир' }));
     const description = screen.getByRole('textbox', { name: 'Описание' });
     fireEvent.change(description, { target: { value: 'Несохранённое описание' } });
     expect(await screen.findByText('Не удалось сохранить изменения.')).toBeInTheDocument();
@@ -488,7 +496,8 @@ describe('TournamentAdmin', () => {
     );
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок уведомлений' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Редактировать' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать турнир' }));
     fireEvent.click(screen.getByRole('button', { name: '7. Уведомления' }));
     const body = screen.getByRole('textbox', { name: 'Live-старт приближается: текст' });
     fireEvent.change(body, { target: { value: '' } });
@@ -534,7 +543,8 @@ describe('TournamentAdmin', () => {
     );
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок текста' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Редактировать' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать турнир' }));
     fireEvent.click(screen.getByRole('button', { name: '7. Уведомления' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Live-старт приближается: текст' }), {
       target: { value: 'До старта | 15 минут\nОткройте расписание' },
@@ -1125,7 +1135,7 @@ describe('TournamentAdmin', () => {
     fireEvent.click(adminCard);
 
     expect(screen.getByRole('button', { name: 'Назад к турнирам' })).toHaveClass('icon-btn');
-    expect(screen.getByRole('button', { name: 'Редактировать' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Редактировать' })).not.toBeInTheDocument();
     expect(screen.queryByText('К списку турниров')).not.toBeInTheDocument();
     expect(screen.getByText('Идёт регистрация')).toBeInTheDocument();
     expect(screen.queryByText(/ревизия/i)).not.toBeInTheDocument();
@@ -1138,8 +1148,8 @@ describe('TournamentAdmin', () => {
     ).toBeInTheDocument();
     expect(screen.queryByText(/applied|pending|not_required|approved/)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Дисквалифицировать' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Действия' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Действия' }));
+    expect(screen.getByRole('button', { name: 'Действия турнира' })).toHaveClass('icon-btn');
+    fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
     expect(screen.getByRole('dialog', { name: 'Действия турнира' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Дублировать турнир' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Создать календарь' })).toBeInTheDocument();
@@ -1226,12 +1236,12 @@ describe('TournamentAdmin', () => {
     );
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок переходов' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Действия' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
     fireEvent.click(screen.getByRole('button', { name: 'Открыть регистрацию' }));
 
     expect(await screen.findByText('Идёт регистрация')).toBeInTheDocument();
     expect(screen.queryByText(/ревизия/i)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Действия' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
     expect(screen.getByRole('button', { name: 'Создать календарь' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Открыть регистрацию' })).not.toBeInTheDocument();
     expect(publish).toHaveBeenCalledWith('00000000-0000-4000-8000-000000000921', 3);
@@ -1252,7 +1262,8 @@ describe('TournamentAdmin', () => {
     );
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок DST' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Редактировать' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать турнир' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Описание' }), {
       target: { value: 'Описание обновлено' },
     });
@@ -1294,7 +1305,8 @@ describe('TournamentAdmin', () => {
     );
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок DST' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Редактировать' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать турнир' }));
     fireEvent.click(screen.getByRole('button', { name: '3. Регулярка' }));
     fireEvent.change(screen.getByLabelText('Первый тур дня'), {
       target: { value: '01:45' },
@@ -1327,7 +1339,8 @@ describe('TournamentAdmin', () => {
     );
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок DST' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Редактировать' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать турнир' }));
     fireEvent.click(screen.getByRole('button', { name: '5. Сроки' }));
     await chooseGlassOption('Часовой пояс', 'Europe/Moscow');
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
@@ -1358,7 +1371,8 @@ describe('TournamentAdmin', () => {
     );
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок DST' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Редактировать' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать турнир' }));
     fireEvent.click(screen.getByRole('button', { name: '3. Регулярка' }));
     fireEvent.change(screen.getByLabelText('Первый тур дня'), {
       target: { value: '02:30' },
@@ -1434,7 +1448,7 @@ describe('TournamentAdmin', () => {
     );
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок CRUD' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Действия' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
     fireEvent.click(screen.getByRole('button', { name: 'Редактировать турнир' }));
     expect(screen.getByRole('textbox', { name: 'Название' })).toHaveValue('Кубок CRUD');
     fireEvent.change(screen.getByRole('textbox', { name: 'Название' }), {
@@ -1451,7 +1465,7 @@ describe('TournamentAdmin', () => {
     );
     await screen.findByRole('tab', { name: 'Заявки и оплаты' });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Действия' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
     fireEvent.click(screen.getByRole('button', { name: 'Дублировать турнир' }));
     await waitFor(() =>
       expect(duplicate).toHaveBeenCalledWith(tournament.id, {
@@ -1459,7 +1473,7 @@ describe('TournamentAdmin', () => {
       }),
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Действия' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
     fireEvent.click(screen.getByRole('button', { name: 'Удалить черновик' }));
     expect(remove).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Подтвердить удаление черновика' }));
