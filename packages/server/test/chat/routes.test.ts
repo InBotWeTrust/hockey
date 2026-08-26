@@ -740,9 +740,16 @@ describe.skipIf(!hasIntegrationEnv)('chat routes', () => {
       },
     });
     const body = res.json() as {
-      achievements: Array<{ id: string; status: string; completedAt?: string }>;
+      achievements: Array<{ id: string; isUnlocked: boolean; unlockedAt?: string }>;
     };
-    expect(body.achievements).toEqual([]);
+    expect(
+      body.achievements
+        .filter((achievement) => achievement.isUnlocked)
+        .map((achievement) => achievement.id),
+    ).toEqual(['first-goal']);
+    expect(
+      body.achievements.find((achievement) => achievement.id === 'first-goal')?.unlockedAt,
+    ).toEqual(expect.any(String));
   });
 
   it('GET /chat/unread returns map and uses cache on second call', async () => {

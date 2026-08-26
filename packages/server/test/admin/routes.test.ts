@@ -675,9 +675,7 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
               active: true,
             }),
           ]),
-          xp: 0,
-          experience: 0,
-          wallet: { coins: 0 },
+          wallet: { pucks: 0 },
           pushNotifications: {
             subscribed: true,
             subscriptionCount: 1,
@@ -708,9 +706,7 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
       headers: auth(adminToken),
       payload: {
         role: 'admin',
-        xp: 5,
-        experience: 17,
-        wallet: { coins: 250 },
+        wallet: { pucks: 250, goldPucks: 5 },
       },
     });
     expect(patch.statusCode).toBe(200);
@@ -718,19 +714,9 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
       user: {
         id: playerId,
         role: 'admin',
-        xp: 5,
-        experience: 17,
-        wallet: { coins: 250 },
+        wallet: { pucks: 250, goldPucks: 5 },
       },
     });
-    const balance = await pool.query<{ balance: number; xp: number; experience: number }>(
-      `select coalesce(uca.balance, 0) as balance, u.xp, u.experience
-         from users u
-         left join user_currency_account uca on uca.user_id = u.id
-        where u.id = $1`,
-      [playerId],
-    );
-    expect(balance.rows[0]).toEqual({ balance: 250, xp: 5, experience: 17 });
 
     const block = await app.inject({
       method: 'PATCH',
@@ -844,36 +830,6 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
       item: { id: itemId, title: 'Про-клюшка', priceRub: 249 },
     });
 
-    const gameplay = await app.inject({
-      method: 'PATCH',
-      url: `/admin/inventory/${itemId}/gameplay`,
-      headers: auth(adminToken),
-      payload: {
-        itemKind: 'stick',
-        currencyPrice: 1490,
-        chargesPerPurchase: 1300,
-        lowStockThreshold: 12,
-        duelPeriodCost: 0,
-        powerScore: 25,
-        resourceUnit: 'shot',
-        effectPuckSpeedPoints: 25,
-        effectPuckSpeedDelta: 0.25,
-      },
-    });
-    expect(gameplay.statusCode).toBe(200);
-
-    const inventoryAfterGameplay = await app.inject({
-      method: 'GET',
-      url: '/admin/inventory',
-      headers: auth(adminToken),
-    });
-    expect(inventoryAfterGameplay.statusCode).toBe(200);
-    expect(inventoryAfterGameplay.json().items).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ id: itemId, lowStockThreshold: 12 }),
-      ]),
-    );
-
     await pool.query(
       `insert into payments
          (user_id, inventory_item_id, title, amount_rub, status, provider, provider_payment_id, paid_at)
@@ -918,14 +874,6 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
         {
           id: itemId,
           title: 'Про-клюшка',
-          itemKind: 'stick',
-          currencyPrice: 1490,
-          chargesPerPurchase: 1300,
-          duelPeriodCost: 0,
-          powerScore: 25,
-          resourceUnit: 'shot',
-          effectPuckSpeedPoints: 25,
-          effectPuckSpeedDelta: '0.2500',
           paymentsCount: 2,
           paidRevenueRub: 249,
         },

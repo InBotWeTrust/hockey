@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ListChecks, Trash2, X } from 'lucide-react';
-import { Sheet } from '../../components/Sheet.js';
 
 interface ChannelPollComposerSheetProps {
   open: boolean;
@@ -27,48 +27,55 @@ export function ChannelPollComposerSheet({
 }: ChannelPollComposerSheetProps): JSX.Element | null {
   const [question, setQuestion] = useState('');
   const [options, setOptions] = useState<string[]>(['', '']);
-  const [confirmDiscard, setConfirmDiscard] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setQuestion('');
     setOptions(['', '']);
-    setConfirmDiscard(false);
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
 
   if (!open) return null;
 
   const trimmedQuestion = question.trim();
   const submittedOptions = filledOptions(options);
   const canSubmit = trimmedQuestion.length > 0 && submittedOptions.length >= 1 && !disabled;
-  const dirty = question.length > 0 || options.some((option) => option.length > 0);
-  const requestClose = (): void => {
-    if (dirty) setConfirmDiscard(true);
-    else onClose();
-  };
 
-  return (
-    <Sheet
-      open
-      title="Создание опроса"
-      dirty={dirty}
-      dismissible={!disabled}
-      onRequestClose={requestClose}
-      headerAction={
-        <button
-          type="button"
-          className="icon-btn"
-          aria-label="Закрыть"
-          disabled={disabled}
-          onClick={requestClose}
-        >
-          <X size={16} />
-        </button>
-      }
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Создание опроса"
+      onPointerDown={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 950,
+        background: 'rgba(15, 23, 42, 0.35)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+        display: 'flex',
+        alignItems: 'flex-end',
+        padding: '16px 14px max(16px, var(--app-safe-bottom))',
+      }}
     >
       <div
+        className="glass"
+        onPointerDown={(event) => event.stopPropagation()}
         style={{
           width: '100%',
+          maxWidth: 520,
+          margin: '0 auto',
+          borderRadius: 22,
+          padding: 14,
           color: 'var(--ink)',
           display: 'flex',
           flexDirection: 'column',
@@ -93,6 +100,24 @@ export function ChannelPollComposerSheet({
           </div>
           <div style={{ fontSize: 16, fontWeight: 950 }}>Опрос</div>
           <div style={{ flex: 1 }} />
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="Закрыть"
+            disabled={disabled}
+            onClick={onClose}
+            style={{
+              width: 34,
+              height: 34,
+              minWidth: 34,
+              minHeight: 34,
+              borderRadius: 10,
+              background: 'rgba(255,255,255,0.72)',
+              color: 'var(--ink)',
+            }}
+          >
+            <X size={16} />
+          </button>
         </div>
 
         <textarea
@@ -190,31 +215,12 @@ export function ChannelPollComposerSheet({
           </button>
         )}
 
-        {confirmDiscard && (
-          <div className="glass" role="alertdialog" aria-label="Несохранённые изменения">
-            <div className="modal-title">Закрыть без сохранения?</div>
-            <div className="modal-copy">Черновик опроса будет потерян.</div>
-            <div className="modal-actions" style={{ gridTemplateColumns: '1fr 1fr' }}>
-              <button
-                type="button"
-                className="btn btn--ghost"
-                onClick={() => setConfirmDiscard(false)}
-              >
-                Продолжить
-              </button>
-              <button type="button" className="btn btn--cta" onClick={onClose}>
-                Закрыть
-              </button>
-            </div>
-          </div>
-        )}
-
         <div style={{ display: 'flex', gap: 8 }}>
           <button
             type="button"
             className="btn btn--ghost"
             disabled={disabled}
-            onClick={requestClose}
+            onClick={onClose}
             style={{ flex: 1, minHeight: 44, letterSpacing: 0 }}
           >
             Отмена
@@ -233,6 +239,7 @@ export function ChannelPollComposerSheet({
           </button>
         </div>
       </div>
-    </Sheet>
+    </div>,
+    document.body,
   );
 }

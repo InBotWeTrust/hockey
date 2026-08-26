@@ -14,7 +14,6 @@ function buildMediaApp(body = Buffer.from('0123456789')) {
     maxUploadBytes: 25 * 1024 * 1024,
     publicUrlForKey: (key) => `https://cdn.example.test/${key}`,
     uploadObject: vi.fn(),
-    deleteObject: vi.fn(),
     getObject: vi.fn(async () => ({
       body,
       contentType: 'audio/webm',

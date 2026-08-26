@@ -9,7 +9,6 @@ import {
   type AmateurDuelTemplate,
 } from '../../api/amateurDuel.js';
 import { ApiError } from '../../api/apiFetch.js';
-import { AccessibleModal } from '../../components/AccessibleModal.js';
 
 interface DuelChallengeModalProps {
   opponentUserId: string;
@@ -134,31 +133,32 @@ export function DuelChallengeModal({
   });
 
   return (
-    <AccessibleModal
-      title="Тип дуэли"
-      ariaLabel="Выбор типа дуэли"
-      copy={<>Выберите формат вызова для {opponentName}.</>}
-      onRequestClose={onClose}
-      closeBlocked={challengeMutation.isPending}
-      backdropStyle={{
+    <div
+      className="modal-backdrop"
+      onClick={onClose}
+      style={{
         zIndex: 340,
         alignItems: 'flex-start',
         paddingTop: 'calc(48px + var(--app-safe-top))',
       }}
-      cardStyle={{ width: 'min(420px, calc(100vw - 28px))' }}
-      headerAction={
-        <button
-          type="button"
-          className="icon-btn"
-          aria-label="Закрыть"
-          disabled={challengeMutation.isPending}
-          onClick={onClose}
-        >
-          <X size={15} />
-        </button>
-      }
     >
-      <div style={{ display: 'grid', gap: 16 }}>
+      <div
+        role="dialog"
+        aria-label="Выбор типа дуэли"
+        className="modal-card"
+        onClick={(event) => event.stopPropagation()}
+        style={{ width: 'min(420px, calc(100vw - 28px))', display: 'grid', gap: 16 }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ flex: 1 }}>
+            <div className="modal-title">Тип дуэли</div>
+            <div className="modal-copy">Выберите формат вызова для {opponentName}.</div>
+          </div>
+          <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
+            <X size={15} />
+          </button>
+        </div>
+
         <div style={{ display: 'grid', gap: 8 }}>
           {templatesQuery.isLoading && (
             <div className="glass" style={{ borderRadius: 18, padding: 14, color: 'var(--muted)' }}>
@@ -235,6 +235,6 @@ export function DuelChallengeModal({
           {challengeMutation.isPending ? 'Отправляем...' : 'Вызвать'}
         </button>
       </div>
-    </AccessibleModal>
+    </div>
   );
 }

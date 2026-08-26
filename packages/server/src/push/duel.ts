@@ -46,7 +46,6 @@ export async function enqueueDuelPush(
             pref.daily_game,
             pref.training_available,
             pref.duel_events,
-            pref.tournament_events,
             pref.game_news
        from users u
        left join user_push_preferences pref on pref.user_id = u.id

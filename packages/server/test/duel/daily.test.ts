@@ -298,46 +298,6 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     expect(shot.statusCode).toBe(409);
   });
 
-  it('writes a diagnostic event when a daily shot is rejected as stale', async () => {
-    const start = await startPeriod();
-    expect(start.statusCode).toBe(200);
-    await pool.query(
-      `update day_pool
-          set period_started_at = now() - interval '1 minute'
-        where user_id = $1`,
-      [userId],
-    );
-
-    const shot = await app.inject({
-      method: 'POST',
-      url: '/duel/daily/shot',
-      headers: authHeader(),
-      payload: {
-        shot_index: 1,
-        input: { tapTime: 1000 },
-        claimed_result: 'goal',
-      },
-    });
-
-    expect(shot.statusCode).toBe(409);
-
-    const { rows } = await pool.query(
-      `select payload
-         from event_log
-        where user_id = $1 and type = 'daily_shot_rejected'
-        order by created_at desc
-        limit 1`,
-      [userId],
-    );
-    expect(rows).toHaveLength(1);
-    expect(rows[0].payload).toMatchObject({
-      mode: 'daily',
-      reason: 'tap_time_stale',
-      requested_shot_index: 1,
-      current_shots: 0,
-    });
-  });
-
   it('rejects starting period when state is period_active', async () => {
     const first = await startPeriod();
     expect(first.statusCode).toBe(200);

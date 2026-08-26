@@ -23,7 +23,6 @@ import {
   Heart,
   Megaphone,
   Medal,
-  Menu,
   MessageSquare,
   Package,
   Pencil,
@@ -43,19 +42,14 @@ import {
   X,
 } from 'lucide-react';
 import { ApiError } from '../api/apiFetch.js';
-import { rewardColor } from '../app/rewardColors.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { ChannelPostEditorSheet } from '../chat/components/ChannelPostEditorSheet.js';
 import { RichText } from '../chat/richText.js';
 import { GlassSelect, type GlassSelectOption } from '../components/GlassSelect.js';
 import { ADMIN_NAV_HOME_EVENT } from '../components/BottomNav.js';
-import { SegmentedTabs } from '../components/SegmentedTabs.js';
 import { convertChatAvatarToWebp } from '../lib/chatAvatarImage.js';
 import { useDebouncedValue } from '../lib/useDebouncedValue.js';
 import { AchievementDetailsSheet, AchievementTile } from '../screens/profileSections.js';
-import { WeeklyChallengesAdmin } from './WeeklyChallengesAdmin.js';
-import { BonusGamesAdmin } from './BonusGamesAdmin.js';
-import { TournamentAdmin } from '../tournament/TournamentAdmin.js';
 import {
   createAdminInventoryItem,
   createAdminDuelTemplate,
@@ -67,7 +61,6 @@ import {
   fetchAdminDuelTemplates,
   fetchAdminFeedback,
   fetchAdminGameSettings,
-  fetchAdminAchievements,
   fetchAdminInventory,
   fetchAdminMismatches,
   fetchAdminNotifications,
@@ -83,7 +76,6 @@ import {
   patchAdminDuelTemplate,
   patchAdminInventoryGameplay,
   patchAdminInventoryItem,
-  patchAdminAchievement,
   patchAdminGameSetting,
   patchAdminNotification,
   patchAdminUser,
@@ -91,11 +83,6 @@ import {
   type AdminDashboard,
   type AdminDashboardPeriod,
   type AdminDashboardSeriesPoint,
-  type AdminAchievement,
-  type AdminAchievementAvailability,
-  type AdminAchievementCategory,
-  type AdminAchievementFutureTag,
-  type AdminAchievementPatch,
   type AdminDuelHistoryItem,
   type AdminDuelHistoryResponse,
   type AdminDuelPeriodSpeedPreset,
@@ -112,10 +99,8 @@ import {
   type AdminInventoryGameplayPatch,
   type AdminInventoryItemKind,
   type AdminInventoryItemPatch,
-  type AdminInventoryResourceUnit,
   type AdminMismatchLog,
   type AdminMismatchPeriod,
-  type AdminMatchmakingVenuePolicy,
   type AdminMismatchesResponse,
   type AdminNotificationStats,
   type AdminPushNotification,
@@ -143,17 +128,13 @@ type AdminTab =
   | 'anticheat'
   | 'payments'
   | 'inventory'
-  | 'achievements'
-  | 'bonus-games'
   | 'duels'
-  | 'tournaments'
   | 'feedback'
   | 'settings';
-type AdminAchievementsTab = 'achievements' | 'challenges';
 type SortField = 'name' | 'goals' | 'accuracy';
 type SortDirection = 'asc' | 'desc';
 type AdminIdentity = AdminUser['identities'][number];
-type AdminUserAchievement = AdminUserDetail['achievements'][number];
+type AdminAchievement = AdminUserDetail['achievements'][number];
 type SettingsSectionId = 'daily' | 'training' | 'amateur' | 'pro';
 type AdminFeedbackStatus = AdminFeedbackQuery['status'];
 
@@ -165,10 +146,7 @@ const tabs: Array<{ id: AdminTab; label: string; icon: JSX.Element }> = [
   { id: 'anticheat', label: 'Античит', icon: <ShieldAlert size={15} /> },
   { id: 'payments', label: 'Платежи', icon: <CreditCard size={15} /> },
   { id: 'inventory', label: 'Инвентарь', icon: <Package size={15} /> },
-  { id: 'achievements', label: 'Задания', icon: <Medal size={15} /> },
-  { id: 'bonus-games', label: 'Бонусные игры', icon: <Gamepad2 size={15} /> },
   { id: 'duels', label: 'Дуэли', icon: <Trophy size={15} /> },
-  { id: 'tournaments', label: 'Турниры', icon: <Trophy size={15} /> },
   { id: 'feedback', label: 'Отзывы', icon: <MessageSquare size={15} /> },
   { id: 'settings', label: 'Параметры', icon: <SlidersHorizontal size={15} /> },
 ];
@@ -186,20 +164,6 @@ const dashboardPeriodOptions: Array<GlassSelectOption<AdminDashboardPeriod>> = [
   { value: '365d', label: '1 год' },
 ];
 
-const venueOptions = [
-  { value: 'neutral_default', label: 'Нейтральная стандартная' },
-  { value: 'random_participant_home', label: 'Случайный хозяин' },
-  { value: 'random_unselected', label: 'Случайная нейтральная' },
-] as const satisfies ReadonlyArray<GlassSelectOption<AdminMatchmakingVenuePolicy>>;
-const venueSelectOptions: Array<GlassSelectOption<AdminMatchmakingVenuePolicy>> = venueOptions.map(
-  (option) => ({ ...option }),
-);
-
-const adminAchievementsTabs: Array<{ id: AdminAchievementsTab; label: string }> = [
-  { id: 'achievements', label: 'Задания' },
-  { id: 'challenges', label: 'Челленджи' },
-];
-
 const pushNotificationStatusOptions: Array<GlassSelectOption<'enabled' | 'disabled'>> = [
   { value: 'enabled', label: 'Включено' },
   { value: 'disabled', label: 'Отключено' },
@@ -210,7 +174,6 @@ const pushNotificationCategoryLabels: Record<AdminPushNotificationCategory, stri
   daily: 'Ежедневная игра',
   training: 'Тренировка',
   duel: 'Дуэли',
-  tournament: 'Турниры',
   news: 'Новости',
 };
 
@@ -276,29 +239,6 @@ const inventoryItemKindOptions: Array<GlassSelectOption<AdminInventoryItemKind>>
   { value: 'consumable', label: 'Расходник' },
 ];
 
-const achievementCategoryOptions: Array<GlassSelectOption<AdminAchievementCategory>> = [
-  { value: 'daily', label: 'Ежедневная' },
-  { value: 'training', label: 'Тренировка' },
-  { value: 'duel', label: 'Дуэли' },
-  { value: 'tournament', label: 'Турниры' },
-  { value: 'shop', label: 'Магазин' },
-  { value: 'rating', label: 'Рейтинг' },
-  { value: 'level', label: 'Уровни' },
-];
-
-const achievementAvailabilityOptions: Array<GlassSelectOption<AdminAchievementAvailability>> = [
-  { value: 'active', label: 'Активно' },
-  { value: 'future', label: 'Будущее' },
-  { value: 'hidden', label: 'Скрыто' },
-];
-
-const achievementFutureTagOptions: Array<GlassSelectOption<AdminAchievementFutureTag | 'none'>> = [
-  { value: 'none', label: 'Без метки' },
-  { value: 'future/pro', label: 'future/pro' },
-  { value: 'future/tournament', label: 'future/tournament' },
-  { value: 'future/monthly_rating', label: 'future/monthly_rating' },
-];
-
 const roleOptions: Array<GlassSelectOption<AdminRole>> = [
   { value: 'player', label: 'player' },
   { value: 'admin', label: 'admin' },
@@ -344,7 +284,6 @@ const pushNotificationTypeItems: Array<{
   { key: 'dailyGame', label: 'Ежедневная игра', shortLabel: 'Дневная' },
   { key: 'trainingAvailable', label: 'Тренировка доступна', shortLabel: 'Тренировка' },
   { key: 'duelEvents', label: 'Дуэли', shortLabel: 'Дуэли' },
-  { key: 'tournamentEvents', label: 'Турниры', shortLabel: 'Турниры' },
   { key: 'gameNews', label: 'Новости игры', shortLabel: 'Новости' },
 ];
 
@@ -433,11 +372,6 @@ function parseAdminNumberInput(value: string | number): number {
   return Number(value.trim().replace(',', '.'));
 }
 
-function parseAdminIntegerInput(value: string | number): number {
-  const numeric = parseAdminNumberInput(value);
-  return Number.isInteger(numeric) ? numeric : Number.NaN;
-}
-
 function gameModeLabel(mode: string | null | undefined): string {
   if (mode === 'daily') return 'Ежедневная игра';
   if (mode === 'training') return 'Тренировка';
@@ -522,60 +456,6 @@ function fieldNumber(value: number | undefined): string {
   return value === undefined ? '' : String(value);
 }
 
-function inventoryChargeFieldValue(item: AdminInventoryItem | null): string {
-  if (!item) return '1';
-  if (item.itemKind === 'nutrition') return String(Math.ceil(item.chargesPerPurchase / 60_000));
-  return fieldNumber(item.chargesPerPurchase);
-}
-
-function inventoryChargeValueForSave(kind: AdminInventoryItemKind, value: number): number {
-  return kind === 'nutrition' ? Math.max(0, Math.round(value * 60_000)) : Math.round(value);
-}
-
-function inventoryLowStockDefault(kind: AdminInventoryItemKind): number {
-  if (kind === 'stick') return 10;
-  if (kind === 'skates') return 50;
-  if (kind === 'nutrition') return 60_000;
-  return 0;
-}
-
-function puckSpeedDeltaToPoints(value: number | undefined): string {
-  if (value === undefined || !Number.isFinite(value)) return '';
-  return String(Math.round(value * 100));
-}
-
-function puckSpeedPointsFieldValue(item: AdminInventoryItem | null): string {
-  if (!item) return '0';
-  if (Number.isFinite(item.effectPuckSpeedPoints) && item.effectPuckSpeedPoints !== 0) {
-    return fieldNumber(item.effectPuckSpeedPoints);
-  }
-  return puckSpeedDeltaToPoints(item.effectPuckSpeedDelta ?? 0);
-}
-
-function puckSpeedPointsToDelta(value: string): number {
-  return parseAdminNumberInput(value) / 100;
-}
-
-function inventoryResourceUnitForKind(kind: AdminInventoryItemKind): AdminInventoryResourceUnit {
-  if (kind === 'stick') return 'shot';
-  if (kind === 'skates') return 'distance';
-  if (kind === 'nutrition') return 'energy_ms';
-  return 'period';
-}
-
-const adminInventoryHintStyle: CSSProperties = {
-  color: 'rgba(71, 85, 105, 0.78)',
-  fontSize: 9.5,
-  fontWeight: 500,
-  lineHeight: 1.18,
-};
-
-const adminInventoryFieldBodyStyle: CSSProperties = {
-  display: 'grid',
-  alignContent: 'start',
-  gap: 6,
-};
-
 function isHiddenGameSetting(setting: AdminGameSetting): boolean {
   return setting.key.endsWith('.goalie_id');
 }
@@ -605,17 +485,6 @@ function AdminPlainState({
       }}
     >
       {children}
-    </div>
-  );
-}
-
-function AdminMetric({ label, value }: { label: string; value: number }): JSX.Element {
-  return (
-    <div className="glass" style={{ borderRadius: 16, padding: 10, boxShadow: 'none' }}>
-      <div style={{ color: 'var(--muted)', fontSize: 10, fontWeight: 850 }}>{label}</div>
-      <div style={{ marginTop: 3, color: 'var(--ink)', fontSize: 17, fontWeight: 950 }}>
-        {numberText(value)}
-      </div>
     </div>
   );
 }
@@ -651,9 +520,6 @@ export function AdminScreen(): JSX.Element {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const [tab, setTab] = useState<AdminTab>('dashboard');
-  const [adminMenuOpen, setAdminMenuOpen] = useState(false);
-  const adminMenuButtonRef = useRef<HTMLButtonElement>(null);
-  const adminDrawerRef = useRef<HTMLElement>(null);
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search, 250);
   const [roleFilter, setRoleFilter] = useState<'all' | AdminRole>('all');
@@ -677,25 +543,10 @@ export function AdminScreen(): JSX.Element {
   useEffect(() => {
     const resetToDashboard = (): void => {
       setTab('dashboard');
-      setAdminMenuOpen(false);
     };
     window.addEventListener(ADMIN_NAV_HOME_EVENT, resetToDashboard);
     return () => window.removeEventListener(ADMIN_NAV_HOME_EVENT, resetToDashboard);
   }, []);
-
-  useEffect(() => {
-    if (!adminMenuOpen) return;
-    const firstControl = adminDrawerRef.current?.querySelector<HTMLButtonElement>('button');
-    firstControl?.focus();
-    const closeOnEscape = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') setAdminMenuOpen(false);
-    };
-    document.addEventListener('keydown', closeOnEscape);
-    return () => {
-      document.removeEventListener('keydown', closeOnEscape);
-      adminMenuButtonRef.current?.focus();
-    };
-  }, [adminMenuOpen]);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const filtersChanged =
     search !== '' ||
@@ -753,11 +604,6 @@ export function AdminScreen(): JSX.Element {
     queryKey: ['admin', 'game-settings'],
     queryFn: fetchAdminGameSettings,
     enabled: canTryAdmin && tab === 'settings',
-  });
-  const achievements = useQuery({
-    queryKey: ['admin', 'achievements'],
-    queryFn: fetchAdminAchievements,
-    enabled: canTryAdmin && tab === 'achievements',
   });
   const paymentsQuery = {
     q: debouncedPaymentSearch,
@@ -818,7 +664,6 @@ export function AdminScreen(): JSX.Element {
       users.error,
       summary.error,
       settings.error,
-      achievements.error,
       payments.error,
       inventory.error,
       duelTemplates.error,
@@ -855,80 +700,56 @@ export function AdminScreen(): JSX.Element {
         gap: 12,
       }}
     >
-      <header className="admin-screen__toolbar">
-        <div className="section-label admin-screen__current-section">
-          Админ · {tabs.find((item) => item.id === tab)?.label ?? 'Дашборд'}
-        </div>
-        <button
-          ref={adminMenuButtonRef}
-          type="button"
-          className="icon-btn icon-btn--dark admin-screen__menu-button"
-          aria-label="Открыть меню администратора"
-          aria-expanded={adminMenuOpen}
-          aria-controls="admin-navigation-drawer"
-          onClick={() => setAdminMenuOpen(true)}
-        >
-          <Menu size={19} />
-        </button>
-      </header>
-
-      {adminMenuOpen &&
-        createPortal(
-          <div
-            className="admin-drawer-backdrop"
-            onMouseDown={(event) => {
-              if (event.target === event.currentTarget) setAdminMenuOpen(false);
+      <nav
+        className="glass no-scrollbar"
+        style={{
+          borderRadius: 20,
+          padding: 5,
+          display: 'flex',
+          alignItems: 'center',
+          minHeight: 54,
+          flex: '0 0 auto',
+          overflowX: 'auto',
+          overscrollBehaviorX: 'contain',
+          gap: 5,
+        }}
+      >
+        {tabs.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => setTab(item.id)}
+            className={tab === item.id ? 'chip chip--active' : 'chip'}
+            style={{
+              flex: '0 0 auto',
+              minWidth: 146,
+              height: 42,
+              borderRadius: 16,
+              padding: '9px 14px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
             }}
           >
-            <aside
-              ref={adminDrawerRef}
-              id="admin-navigation-drawer"
-              className="admin-drawer"
-              role="dialog"
-              aria-modal="true"
-              aria-label="Меню администратора"
+            <span
+              aria-hidden="true"
+              style={{
+                width: 18,
+                height: 18,
+                flex: '0 0 18px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transform: 'translateX(1px)',
+              }}
             >
-              <div className="admin-drawer__header">
-                <h2>Разделы</h2>
-                <button
-                  type="button"
-                  className="icon-btn"
-                  aria-label="Закрыть меню администратора"
-                  onClick={() => setAdminMenuOpen(false)}
-                >
-                  <X size={17} />
-                </button>
-              </div>
-              <nav className="admin-drawer__navigation" aria-label="Разделы администратора">
-                {tabs.map((item) => {
-                  const label =
-                    item.id === 'feedback'
-                      ? `${item.label} (${feedbackUnreadCount})`
-                      : item.label;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className={
-                        tab === item.id
-                          ? 'admin-drawer__item admin-drawer__item--active'
-                          : 'admin-drawer__item'
-                      }
-                      aria-current={tab === item.id ? 'page' : undefined}
-                      onClick={() => {
-                        setTab(item.id);
-                        setAdminMenuOpen(false);
-                      }}
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
-              </nav>
-            </aside>
-          </div>,
-          document.body,
-        )}
+              {item.icon}
+            </span>
+            {item.id === 'feedback' ? `${item.label} (${feedbackUnreadCount})` : item.label}
+          </button>
+        ))}
+      </nav>
 
       {tab === 'dashboard' && (
         <DashboardPanel
@@ -1025,17 +846,6 @@ export function AdminScreen(): JSX.Element {
           }}
         />
       )}
-      {tab === 'achievements' && (
-        <AchievementsAdminPanel
-          loading={achievements.isLoading}
-          achievements={achievements.data?.achievements ?? []}
-          onChanged={() => {
-            void queryClient.invalidateQueries({ queryKey: ['admin', 'achievements'] });
-            void queryClient.invalidateQueries({ queryKey: ['achievements'] });
-          }}
-        />
-      )}
-      {tab === 'bonus-games' && <BonusGamesAdmin />}
       {tab === 'duels' && (
         <DuelTemplatesPanel
           loading={duelTemplates.isLoading}
@@ -1045,7 +855,6 @@ export function AdminScreen(): JSX.Element {
           }}
         />
       )}
-      {tab === 'tournaments' && <TournamentAdmin />}
       {tab === 'feedback' && (
         <FeedbackPanel
           loading={feedback.isLoading}
@@ -1129,21 +938,21 @@ function DashboardPanel({
         subtitle={periodLabel}
         series={dashboard.series}
         valueKey="activeUsers"
-        color="#2f7dd3"
+        color="#1d4ed8"
       />
       <DashboardChartCard
         title="Новые пользователи"
         subtitle={periodLabel}
         series={dashboard.series}
         valueKey="newUsers"
-        color="#149aa4"
+        color="#0f766e"
       />
       <DashboardChartCard
         title="Выручка"
         subtitle={periodLabel}
         series={dashboard.series}
         valueKey="revenueRub"
-        color="#d78332"
+        color="#7c2d12"
         formatValue={moneyText}
         formatAxisValue={compactMoneyText}
       />
@@ -1152,14 +961,14 @@ function DashboardPanel({
         subtitle={periodLabel}
         series={dashboard.series}
         valueKey="shots"
-        color="#4057c9"
+        color="#4338ca"
       />
       <DashboardChartCard
         title="Сообщения"
         subtitle={periodLabel}
         series={dashboard.series}
         valueKey="messages"
-        color="#197c70"
+        color="#047857"
       />
     </>
   );
@@ -2109,17 +1918,17 @@ function UserDetailsModal({
   const user = detail.data?.user ?? fallback;
   const [editMode, setEditMode] = useState(false);
   const [showPurchases, setShowPurchases] = useState(false);
-  const [selectedAchievement, setSelectedAchievement] = useState<AdminUserAchievement | null>(null);
+  const [selectedAchievement, setSelectedAchievement] = useState<AdminAchievement | null>(null);
   const [confirmAction, setConfirmAction] = useState<'save' | 'block' | null>(null);
   const [role, setRole] = useState<AdminRole>(user.role);
   const [displayName, setDisplayName] = useState(user.displayName);
   const [grip, setGrip] = useState(user.grip);
   const [level, setLevel] = useState(fieldNumber(user.level));
-  const [stars, setStars] = useState(fieldNumber(user.xp));
-  const [experience, setExperience] = useState(fieldNumber(user.experience));
+  const [xp, setXp] = useState(fieldNumber(user.xp));
   const [lifetimeShots, setLifetimeShots] = useState(fieldNumber(user.lifetimeShotsTotal));
   const [lifetimeGoals, setLifetimeGoals] = useState(fieldNumber(user.lifetimeGoalsTotal));
-  const [coins, setCoins] = useState(fieldNumber(user.wallet.coins));
+  const [pucks, setPucks] = useState(fieldNumber(user.wallet.pucks));
+  const [goldPucks, setGoldPucks] = useState(fieldNumber(user.wallet.goldPucks));
   const [shotsCurrent, setShotsCurrent] = useState(fieldNumber(user.wallet.shotsCurrent));
   const [shotsMax, setShotsMax] = useState(fieldNumber(user.wallet.shotsMax));
 
@@ -2128,11 +1937,11 @@ function UserDetailsModal({
     setDisplayName(user.displayName);
     setGrip(user.grip);
     setLevel(fieldNumber(user.level));
-    setStars(fieldNumber(user.xp));
-    setExperience(fieldNumber(user.experience));
+    setXp(fieldNumber(user.xp));
     setLifetimeShots(fieldNumber(user.lifetimeShotsTotal));
     setLifetimeGoals(fieldNumber(user.lifetimeGoalsTotal));
-    setCoins(fieldNumber(user.wallet.coins));
+    setPucks(fieldNumber(user.wallet.pucks));
+    setGoldPucks(fieldNumber(user.wallet.goldPucks));
     setShotsCurrent(fieldNumber(user.wallet.shotsCurrent));
     setShotsMax(fieldNumber(user.wallet.shotsMax));
   }, [user]);
@@ -2167,12 +1976,12 @@ function UserDetailsModal({
       displayName,
       grip,
       level: Number(level),
-      xp: Number(stars),
-      experience: Number(experience),
+      xp: Number(xp),
       lifetimeShotsTotal: Number(lifetimeShots),
       lifetimeGoalsTotal: Number(lifetimeGoals),
       wallet: {
-        coins: Number(coins),
+        pucks: Number(pucks),
+        goldPucks: Number(goldPucks),
         shotsCurrent: Number(shotsCurrent),
         shotsMax: Number(shotsMax),
       },
@@ -2313,11 +2122,11 @@ function UserDetailsModal({
               </AdminField>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
-              <AdminField label="Уровень">
+              <AdminField label="Level">
                 <input value={level} onChange={(event) => setLevel(event.target.value)} />
               </AdminField>
-              <AdminField label="Звёзды">
-                <input value={stars} onChange={(event) => setStars(event.target.value)} />
+              <AdminField label="XP">
+                <input value={xp} onChange={(event) => setXp(event.target.value)} />
               </AdminField>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
@@ -2335,11 +2144,11 @@ function UserDetailsModal({
               </AdminField>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
-              <AdminField label="Монеты">
-                <input value={coins} onChange={(event) => setCoins(event.target.value)} />
+              <AdminField label="Шайбы">
+                <input value={pucks} onChange={(event) => setPucks(event.target.value)} />
               </AdminField>
-              <AdminField label="Опыт">
-                <input value={experience} onChange={(event) => setExperience(event.target.value)} />
+              <AdminField label="Золото">
+                <input value={goldPucks} onChange={(event) => setGoldPucks(event.target.value)} />
               </AdminField>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
@@ -2439,7 +2248,7 @@ function UserStatsRow({ user }: { user: AdminUser }): JSX.Element {
     { label: 'Броски', value: numberText(user.lifetimeShotsTotal) },
     { label: 'Голы', value: numberText(user.lifetimeGoalsTotal) },
     { label: 'Точность', value: `${user.accuracy}%` },
-    { label: 'Монеты', value: numberText(user.wallet.coins) },
+    { label: 'Шайбы', value: numberText(user.wallet.pucks) },
   ];
   return (
     <section
@@ -2492,8 +2301,8 @@ function AdminAchievementsRow({
   achievements,
   onOpenAchievement,
 }: {
-  achievements: AdminUserAchievement[];
-  onOpenAchievement: (achievement: AdminUserAchievement) => void;
+  achievements: AdminAchievement[];
+  onOpenAchievement: (achievement: AdminAchievement) => void;
 }): JSX.Element {
   const unlocked = achievements.filter((achievement) => achievement.isUnlocked).length;
 
@@ -5129,15 +4938,12 @@ function InventoryEditor({
   const [priceRub, setPriceRub] = useState(item ? String(item.priceRub) : '');
   const [itemKind, setItemKind] = useState<AdminInventoryItemKind>(item?.itemKind ?? 'consumable');
   const [currencyPrice, setCurrencyPrice] = useState(fieldNumber(item?.currencyPrice ?? 0));
-  const [chargesPerPurchase, setChargesPerPurchase] = useState(inventoryChargeFieldValue(item));
-  const [lowStockThreshold, setLowStockThreshold] = useState(
-    fieldNumber(
-      item?.lowStockThreshold ?? inventoryLowStockDefault(item?.itemKind ?? 'consumable'),
-    ),
+  const [chargesPerPurchase, setChargesPerPurchase] = useState(
+    fieldNumber(item?.chargesPerPurchase ?? 1),
   );
   const [duelPeriodCost, setDuelPeriodCost] = useState(fieldNumber(item?.duelPeriodCost ?? 0));
-  const [effectPuckSpeedPoints, setEffectPuckSpeedPoints] = useState(
-    puckSpeedPointsFieldValue(item),
+  const [effectPuckSpeedDelta, setEffectPuckSpeedDelta] = useState(
+    fieldNumber(item?.effectPuckSpeedDelta ?? 0),
   );
   const [effectShooterFrequencyDelta, setEffectShooterFrequencyDelta] = useState(
     fieldNumber(item?.effectShooterFrequencyDelta ?? 0),
@@ -5151,134 +4957,24 @@ function InventoryEditor({
   const [effectShotZoneMultiplier, setEffectShotZoneMultiplier] = useState(
     fieldNumber(item?.effectShotZoneMultiplier ?? 1),
   );
-  const [effectStumbleIntervalMinRolls, setEffectStumbleIntervalMinRolls] = useState(
-    fieldNumber(item?.effectStumbleIntervalMinRolls ?? 90),
-  );
-  const [effectStumbleIntervalMaxRolls, setEffectStumbleIntervalMaxRolls] = useState(
-    fieldNumber(item?.effectStumbleIntervalMaxRolls ?? 130),
-  );
-  const [effectStumbleDurationMinMs, setEffectStumbleDurationMinMs] = useState(
-    fieldNumber(item?.effectStumbleDurationMinMs ?? 500),
-  );
-  const [effectStumbleDurationMaxMs, setEffectStumbleDurationMaxMs] = useState(
-    fieldNumber(item?.effectStumbleDurationMaxMs ?? 700),
-  );
-  const [effectStumbleOffsetMinPx, setEffectStumbleOffsetMinPx] = useState(
-    fieldNumber(item?.effectStumbleOffsetMinPx ?? 20),
-  );
-  const [effectStumbleOffsetMaxPx, setEffectStumbleOffsetMaxPx] = useState(
-    fieldNumber(item?.effectStumbleOffsetMaxPx ?? 45),
-  );
-  const [effectStumbleRecoveryMinMs, setEffectStumbleRecoveryMinMs] = useState(
-    fieldNumber(item?.effectStumbleRecoveryMinMs ?? 200),
-  );
-  const [effectStumbleRecoveryMaxMs, setEffectStumbleRecoveryMaxMs] = useState(
-    fieldNumber(item?.effectStumbleRecoveryMaxMs ?? 300),
-  );
-  const [effectEnergyBaselineSpeed, setEffectEnergyBaselineSpeed] = useState(
-    fieldNumber(item?.effectEnergyBaselineSpeed ?? 0.75),
-  );
-  const [effectFatigueGraceMs, setEffectFatigueGraceMs] = useState(
-    fieldNumber(item?.effectFatigueGraceMs ?? 30_000),
-  );
-  const [effectFatigueSlowdownStartMs, setEffectFatigueSlowdownStartMs] = useState(
-    fieldNumber(item?.effectFatigueSlowdownStartMs ?? 30_000),
-  );
-  const [effectFatigueHeavySlowdownStartMs, setEffectFatigueHeavySlowdownStartMs] = useState(
-    fieldNumber(item?.effectFatigueHeavySlowdownStartMs ?? 75_000),
-  );
-  const [effectFatigueStopStartMs, setEffectFatigueStopStartMs] = useState(
-    fieldNumber(item?.effectFatigueStopStartMs ?? 90_000),
-  );
-  const [effectFatigueStopDurationMs, setEffectFatigueStopDurationMs] = useState(
-    fieldNumber(item?.effectFatigueStopDurationMs ?? 5_000),
-  );
-  const [effectFatigueAfterRestMs, setEffectFatigueAfterRestMs] = useState(
-    fieldNumber(item?.effectFatigueAfterRestMs ?? 45_000),
-  );
-  const [effectFatigueSlowMultiplier, setEffectFatigueSlowMultiplier] = useState(
-    fieldNumber(item?.effectFatigueSlowMultiplier ?? 0.9),
-  );
-  const [effectFatigueHeavyMultiplier, setEffectFatigueHeavyMultiplier] = useState(
-    fieldNumber(item?.effectFatigueHeavyMultiplier ?? 0.75),
-  );
-  const parsedPriceRub = parseAdminIntegerInput(priceRub);
-  const parsedCurrencyPrice = parseAdminIntegerInput(currencyPrice);
-  const parsedChargesPerPurchase = parseAdminNumberInput(chargesPerPurchase);
-  const parsedLowStockThreshold = parseAdminIntegerInput(lowStockThreshold);
-  const parsedDuelPeriodCost = parseAdminIntegerInput(duelPeriodCost);
-  const parsedEffectPuckSpeedPoints = parseAdminNumberInput(effectPuckSpeedPoints);
-  const parsedEffectShooterFrequencyDelta = parseAdminNumberInput(effectShooterFrequencyDelta);
-  const parsedEffectGoalieFrequencyDelta = parseAdminNumberInput(effectGoalieFrequencyDelta);
-  const parsedEffectGoalFrequencyDelta = parseAdminNumberInput(effectGoalFrequencyDelta);
-  const parsedEffectShotZoneMultiplier = parseAdminNumberInput(effectShotZoneMultiplier);
-  const parsedEffectStumbleIntervalMinRolls = parseAdminNumberInput(effectStumbleIntervalMinRolls);
-  const parsedEffectStumbleIntervalMaxRolls = parseAdminNumberInput(effectStumbleIntervalMaxRolls);
-  const parsedEffectStumbleDurationMinMs = parseAdminIntegerInput(effectStumbleDurationMinMs);
-  const parsedEffectStumbleDurationMaxMs = parseAdminIntegerInput(effectStumbleDurationMaxMs);
-  const parsedEffectStumbleOffsetMinPx = parseAdminIntegerInput(effectStumbleOffsetMinPx);
-  const parsedEffectStumbleOffsetMaxPx = parseAdminIntegerInput(effectStumbleOffsetMaxPx);
-  const parsedEffectStumbleRecoveryMinMs = parseAdminIntegerInput(effectStumbleRecoveryMinMs);
-  const parsedEffectStumbleRecoveryMaxMs = parseAdminIntegerInput(effectStumbleRecoveryMaxMs);
-  const parsedEffectEnergyBaselineSpeed = parseAdminNumberInput(effectEnergyBaselineSpeed);
-  const parsedEffectFatigueGraceMs = parseAdminIntegerInput(effectFatigueGraceMs);
-  const parsedEffectFatigueSlowdownStartMs = parseAdminIntegerInput(effectFatigueSlowdownStartMs);
-  const parsedEffectFatigueHeavySlowdownStartMs = parseAdminIntegerInput(
-    effectFatigueHeavySlowdownStartMs,
-  );
-  const parsedEffectFatigueStopStartMs = parseAdminIntegerInput(effectFatigueStopStartMs);
-  const parsedEffectFatigueStopDurationMs = parseAdminIntegerInput(effectFatigueStopDurationMs);
-  const parsedEffectFatigueAfterRestMs = parseAdminIntegerInput(effectFatigueAfterRestMs);
-  const parsedEffectFatigueSlowMultiplier = parseAdminNumberInput(effectFatigueSlowMultiplier);
-  const parsedEffectFatigueHeavyMultiplier = parseAdminNumberInput(effectFatigueHeavyMultiplier);
   const mutation = useMutation({
     mutationFn: async () => {
       const body: Required<AdminInventoryItemPatch> = {
         photoUrl,
         title,
         description,
-        priceRub: parsedPriceRub,
+        priceRub: Number(priceRub),
       };
       const gameplay: Required<AdminInventoryGameplayPatch> = {
         itemKind,
-        currencyPrice: parsedCurrencyPrice,
-        chargesPerPurchase: inventoryChargeValueForSave(itemKind, parsedChargesPerPurchase),
-        lowStockThreshold: parsedLowStockThreshold,
-        duelPeriodCost: parsedDuelPeriodCost,
-        powerScore:
-          itemKind === 'stick'
-            ? Math.max(0, Math.round(parsedEffectPuckSpeedPoints))
-            : (item?.powerScore ?? 0),
-        resourceUnit: inventoryResourceUnitForKind(itemKind),
-        effectPuckSpeedPoints: Math.round(parsedEffectPuckSpeedPoints),
-        effectPuckSpeedDelta: puckSpeedPointsToDelta(effectPuckSpeedPoints),
-        effectShooterFrequencyDelta: parsedEffectShooterFrequencyDelta,
-        effectGoalieFrequencyDelta: parsedEffectGoalieFrequencyDelta,
-        effectGoalFrequencyDelta: parsedEffectGoalFrequencyDelta,
-        effectShotZoneMultiplier: parsedEffectShotZoneMultiplier,
-        effectStumbleIntervalMinRolls: parsedEffectStumbleIntervalMinRolls,
-        effectStumbleIntervalMaxRolls: parsedEffectStumbleIntervalMaxRolls,
-        effectStumbleIntervalMinMs: item?.effectStumbleIntervalMinMs ?? 25_000,
-        effectStumbleIntervalMaxMs: item?.effectStumbleIntervalMaxMs ?? 45_000,
-        effectStumbleDurationMinMs: parsedEffectStumbleDurationMinMs,
-        effectStumbleDurationMaxMs: parsedEffectStumbleDurationMaxMs,
-        effectStumbleOffsetMinPx: parsedEffectStumbleOffsetMinPx,
-        effectStumbleOffsetMaxPx: parsedEffectStumbleOffsetMaxPx,
-        effectStumbleRecoveryMinMs: parsedEffectStumbleRecoveryMinMs,
-        effectStumbleRecoveryMaxMs: parsedEffectStumbleRecoveryMaxMs,
-        effectEnergyBaselineSpeed: parsedEffectEnergyBaselineSpeed,
-        effectNutritionSlowdownMs: item?.effectNutritionSlowdownMs ?? 0,
-        effectNutritionStopMs: item?.effectNutritionStopMs ?? 0,
-        effectFatigueDelayMs: item?.effectFatigueDelayMs ?? 90_000,
-        effectFatigueSpeedMultiplier: item?.effectFatigueSpeedMultiplier ?? 1,
-        effectFatigueGraceMs: parsedEffectFatigueGraceMs,
-        effectFatigueSlowdownStartMs: parsedEffectFatigueSlowdownStartMs,
-        effectFatigueHeavySlowdownStartMs: parsedEffectFatigueHeavySlowdownStartMs,
-        effectFatigueStopStartMs: parsedEffectFatigueStopStartMs,
-        effectFatigueStopDurationMs: parsedEffectFatigueStopDurationMs,
-        effectFatigueAfterRestMs: parsedEffectFatigueAfterRestMs,
-        effectFatigueSlowMultiplier: parsedEffectFatigueSlowMultiplier,
-        effectFatigueHeavyMultiplier: parsedEffectFatigueHeavyMultiplier,
+        currencyPrice: Number(currencyPrice),
+        chargesPerPurchase: Number(chargesPerPurchase),
+        duelPeriodCost: Number(duelPeriodCost),
+        effectPuckSpeedDelta: Number(effectPuckSpeedDelta),
+        effectShooterFrequencyDelta: Number(effectShooterFrequencyDelta),
+        effectGoalieFrequencyDelta: Number(effectGoalieFrequencyDelta),
+        effectGoalFrequencyDelta: Number(effectGoalFrequencyDelta),
+        effectShotZoneMultiplier: Number(effectShotZoneMultiplier),
       };
       const saved =
         item === null
@@ -5289,915 +4985,148 @@ function InventoryEditor({
     },
     onSuccess: onSaved,
   });
-  const handleItemKindChange = (nextKind: AdminInventoryItemKind) => {
-    setLowStockThreshold((current) =>
-      current === fieldNumber(inventoryLowStockDefault(itemKind))
-        ? fieldNumber(inventoryLowStockDefault(nextKind))
-        : current,
-    );
-    setItemKind(nextKind);
-  };
   const numericValues = [
-    parsedPriceRub,
-    parsedCurrencyPrice,
-    parsedChargesPerPurchase,
-    parsedLowStockThreshold,
-    parsedDuelPeriodCost,
-    parsedEffectPuckSpeedPoints,
-    parsedEffectShooterFrequencyDelta,
-    parsedEffectGoalieFrequencyDelta,
-    parsedEffectGoalFrequencyDelta,
-    parsedEffectShotZoneMultiplier,
-    parsedEffectStumbleIntervalMinRolls,
-    parsedEffectStumbleIntervalMaxRolls,
-    parsedEffectStumbleDurationMinMs,
-    parsedEffectStumbleDurationMaxMs,
-    parsedEffectStumbleOffsetMinPx,
-    parsedEffectStumbleOffsetMaxPx,
-    parsedEffectStumbleRecoveryMinMs,
-    parsedEffectStumbleRecoveryMaxMs,
-    parsedEffectEnergyBaselineSpeed,
-    parsedEffectFatigueGraceMs,
-    parsedEffectFatigueSlowdownStartMs,
-    parsedEffectFatigueHeavySlowdownStartMs,
-    parsedEffectFatigueStopStartMs,
-    parsedEffectFatigueStopDurationMs,
-    parsedEffectFatigueAfterRestMs,
-    parsedEffectFatigueSlowMultiplier,
-    parsedEffectFatigueHeavyMultiplier,
-  ];
+    priceRub,
+    currencyPrice,
+    chargesPerPurchase,
+    duelPeriodCost,
+    effectPuckSpeedDelta,
+    effectShooterFrequencyDelta,
+    effectGoalieFrequencyDelta,
+    effectGoalFrequencyDelta,
+    effectShotZoneMultiplier,
+  ].map(Number);
   const canSave =
     title.trim() !== '' &&
     numericValues.every(Number.isFinite) &&
-    parsedPriceRub >= 0 &&
-    parsedCurrencyPrice >= 0 &&
-    parsedChargesPerPurchase >= 0 &&
-    parsedLowStockThreshold >= 0 &&
-    parsedDuelPeriodCost >= 0 &&
-    parsedEffectShotZoneMultiplier >= 1 &&
-    parsedEffectPuckSpeedPoints >= -500 &&
-    parsedEffectPuckSpeedPoints <= 500 &&
-    parsedEffectStumbleIntervalMaxRolls >= parsedEffectStumbleIntervalMinRolls &&
-    parsedEffectStumbleDurationMaxMs >= parsedEffectStumbleDurationMinMs &&
-    parsedEffectStumbleOffsetMaxPx >= parsedEffectStumbleOffsetMinPx &&
-    parsedEffectStumbleRecoveryMaxMs >= parsedEffectStumbleRecoveryMinMs &&
-    parsedEffectEnergyBaselineSpeed > 0 &&
-    parsedEffectFatigueStopStartMs >= parsedEffectFatigueSlowdownStartMs &&
-    parsedEffectFatigueAfterRestMs >= 0 &&
-    parsedEffectFatigueSlowMultiplier >= 0 &&
-    parsedEffectFatigueSlowMultiplier <= 1 &&
-    parsedEffectFatigueHeavyMultiplier >= 0 &&
-    parsedEffectFatigueHeavyMultiplier <= 1;
-  const isStickItem = itemKind === 'stick';
-  const isSkatesItem = itemKind === 'skates';
-  const isNutritionItem = itemKind === 'nutrition';
-  const editorIntro = isStickItem
-    ? 'Скорость шайбы: 10 пунктов = +0.10.'
-    : isSkatesItem
-      ? 'Коньки расходуются в прокатах и управляют спотыканием без рабочего инвентаря.'
-      : isNutritionItem
-        ? 'Энергия задаётся в минутах, расход зависит от скорости игрока.'
-        : 'Базовые параметры расходуемого предмета.';
+    Number(priceRub) >= 0 &&
+    Number(currencyPrice) >= 0 &&
+    Number(chargesPerPurchase) >= 0 &&
+    Number(duelPeriodCost) >= 0 &&
+    Number(effectShotZoneMultiplier) >= 1;
 
-  return createPortal(
-    <div
-      className="modal-backdrop"
-      role="dialog"
-      aria-modal="true"
-      aria-label={item === null ? 'Новый предмет' : 'Редактирование предмета'}
-      style={{
-        zIndex: 1000,
-        padding: 'calc(12px + var(--app-safe-top)) 12px calc(12px + var(--app-safe-bottom))',
-      }}
-    >
-      <section
-        className="modal-card"
-        style={{
-          width: 'min(520px, calc(100vw - 24px))',
-          maxHeight: '100%',
-          overflowY: 'auto',
-          display: 'grid',
-          gap: 10,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="modal-title">
-              {item === null ? 'Новый предмет' : 'Редактирование предмета'}
-            </div>
-            <div
-              className="modal-copy"
-              style={{ marginTop: 4, fontSize: 11, fontWeight: 520, lineHeight: 1.22 }}
-            >
-              {editorIntro}
-            </div>
-          </div>
-          <button
-            type="button"
-            className="icon-btn"
-            aria-label="Закрыть"
-            onClick={onCancel}
-            style={{ flex: '0 0 34px' }}
-          >
-            <X size={15} />
-          </button>
-        </div>
-        <AdminField label="Фото URL">
-          <input value={photoUrl} onChange={(event) => setPhotoUrl(event.target.value)} />
-        </AdminField>
-        <AdminField label="Название">
-          <input value={title} onChange={(event) => setTitle(event.target.value)} />
-        </AdminField>
-        <AdminField label="Описание">
-          <input value={description} onChange={(event) => setDescription(event.target.value)} />
-        </AdminField>
-        <AdminField label="Цена">
-          <input
-            type="text"
-            inputMode="numeric"
-            value={priceRub}
-            onChange={(event) => setPriceRub(event.target.value)}
+  return (
+    <section className="glass" style={{ borderRadius: 20, padding: 14, display: 'grid', gap: 10 }}>
+      <div style={{ color: 'var(--ink)', fontSize: 15, fontWeight: 950 }}>
+        {item === null ? 'Новый предмет' : 'Редактирование предмета'}
+      </div>
+      <AdminField label="Фото URL">
+        <input value={photoUrl} onChange={(event) => setPhotoUrl(event.target.value)} />
+      </AdminField>
+      <AdminField label="Название">
+        <input value={title} onChange={(event) => setTitle(event.target.value)} />
+      </AdminField>
+      <AdminField label="Описание">
+        <input value={description} onChange={(event) => setDescription(event.target.value)} />
+      </AdminField>
+      <AdminField label="Цена">
+        <input
+          type="number"
+          value={priceRub}
+          onChange={(event) => setPriceRub(event.target.value)}
+        />
+      </AdminField>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+        <AdminField label="Тип">
+          <GlassSelect
+            value={itemKind}
+            options={inventoryItemKindOptions}
+            onChange={setItemKind}
+            ariaLabel="Тип предмета"
           />
         </AdminField>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
-          <AdminField label="Тип">
-            <GlassSelect
-              value={itemKind}
-              options={inventoryItemKindOptions}
-              onChange={handleItemKindChange}
-              ariaLabel="Тип предмета"
-            />
-          </AdminField>
-          <AdminField label="Цена в валюте">
-            <input
-              type="text"
-              inputMode="numeric"
-              value={currencyPrice}
-              onChange={(event) => setCurrencyPrice(event.target.value)}
-            />
-          </AdminField>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
-          <AdminField
-            label={
-              isStickItem
-                ? 'Бросков при покупке'
-                : isNutritionItem
-                  ? 'Минут энергии при покупке'
-                  : isSkatesItem
-                    ? 'Прокатов при покупке'
-                    : 'Зарядов при покупке'
-            }
-          >
-            <div style={adminInventoryFieldBodyStyle}>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={chargesPerPurchase}
-                onChange={(event) => setChargesPerPurchase(event.target.value)}
-              />
-              <span style={adminInventoryHintStyle}>
-                {isNutritionItem
-                  ? 'Редактируется в минутах, в базе хранится в миллисекундах.'
-                  : isSkatesItem
-                    ? 'Один прокат — движение игрока от одного борта до другого.'
-                    : 'Сколько ресурса игрок получает после покупки предмета.'}
-              </span>
-            </div>
-          </AdminField>
-          <AdminField label="Расход за период">
-            <div style={adminInventoryFieldBodyStyle}>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={duelPeriodCost}
-                onChange={(event) => setDuelPeriodCost(event.target.value)}
-              />
-              <span style={adminInventoryHintStyle}>
-                {isStickItem ? 'Клюшка: 0, списание 1/бросок.' : ' '}
-              </span>
-            </div>
-          </AdminField>
-          <AdminField label="Порог пульсации">
-            <div style={adminInventoryFieldBodyStyle}>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={lowStockThreshold}
-                onChange={(event) => setLowStockThreshold(event.target.value)}
-              />
-              <span style={adminInventoryHintStyle}>
-                Когда остаток станет не больше этого числа, иконка начнёт пульсировать.
-              </span>
-            </div>
-          </AdminField>
-        </div>
-        {isStickItem && (
-          <>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                gap: 12,
-              }}
-            >
-              <AdminField label="Шайба +пункты">
-                <div style={adminInventoryFieldBodyStyle}>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={effectPuckSpeedPoints}
-                    onChange={(event) => setEffectPuckSpeedPoints(event.target.value)}
-                  />
-                  <span style={adminInventoryHintStyle}>
-                    Для клюшки это скорость шайбы: 25 = +0.25 к скорости.
-                  </span>
-                </div>
-              </AdminField>
-              <AdminField label="Игрок Δ">
-                <div style={adminInventoryFieldBodyStyle}>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={effectShooterFrequencyDelta}
-                    onChange={(event) => setEffectShooterFrequencyDelta(event.target.value)}
-                  />
-                  <span style={adminInventoryHintStyle} aria-hidden="true">
-                    {' '}
-                  </span>
-                </div>
-              </AdminField>
-              <AdminField label="Вратарь Δ">
-                <div style={adminInventoryFieldBodyStyle}>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={effectGoalieFrequencyDelta}
-                    onChange={(event) => setEffectGoalieFrequencyDelta(event.target.value)}
-                  />
-                  <span style={adminInventoryHintStyle} aria-hidden="true">
-                    {' '}
-                  </span>
-                </div>
-              </AdminField>
-              <AdminField label="Ворота Δ">
-                <div style={adminInventoryFieldBodyStyle}>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={effectGoalFrequencyDelta}
-                    onChange={(event) => setEffectGoalFrequencyDelta(event.target.value)}
-                  />
-                  <span style={adminInventoryHintStyle} aria-hidden="true">
-                    {' '}
-                  </span>
-                </div>
-              </AdminField>
-            </div>
-            <AdminField label="Множитель зоны броска">
-              <input
-                type="text"
-                inputMode="decimal"
-                value={effectShotZoneMultiplier}
-                onChange={(event) => setEffectShotZoneMultiplier(event.target.value)}
-              />
-            </AdminField>
-          </>
-        )}
-        {isSkatesItem && (
-          <section style={{ display: 'grid', gap: 10 }}>
-            <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--ink)' }}>
-              Коньки и спотыкание
-            </div>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                columnGap: 12,
-                rowGap: 14,
-              }}
-            >
-              <AdminField label="Мин. интервал спотыкания">
-                <div style={adminInventoryFieldBodyStyle}>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={effectStumbleIntervalMinRolls}
-                    onChange={(event) => setEffectStumbleIntervalMinRolls(event.target.value)}
-                  />
-                  <span style={adminInventoryHintStyle}>
-                    Минимум прокатов до следующего спотыкания без рабочих коньков.
-                  </span>
-                </div>
-              </AdminField>
-              <AdminField label="Макс. интервал спотыкания">
-                <div style={adminInventoryFieldBodyStyle}>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={effectStumbleIntervalMaxRolls}
-                    onChange={(event) => setEffectStumbleIntervalMaxRolls(event.target.value)}
-                  />
-                  <span style={adminInventoryHintStyle}>
-                    Максимум прокатов до спотыкания. Больше — спотыкается реже.
-                  </span>
-                </div>
-              </AdminField>
-              <AdminField label="Мин. длительность, мс">
-                <div style={adminInventoryFieldBodyStyle}>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={effectStumbleDurationMinMs}
-                    onChange={(event) => setEffectStumbleDurationMinMs(event.target.value)}
-                  />
-                  <span style={adminInventoryHintStyle}>
-                    Минимальное время потери равновесия. В это время бросок заблокирован.
-                  </span>
-                </div>
-              </AdminField>
-              <AdminField label="Макс. длительность, мс">
-                <div style={adminInventoryFieldBodyStyle}>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={effectStumbleDurationMaxMs}
-                    onChange={(event) => setEffectStumbleDurationMaxMs(event.target.value)}
-                  />
-                  <span style={adminInventoryHintStyle}>Максимальное время потери равновесия.</span>
-                </div>
-              </AdminField>
-              <AdminField label="Мин. снос позиции, px">
-                <div style={adminInventoryFieldBodyStyle}>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={effectStumbleOffsetMinPx}
-                    onChange={(event) => setEffectStumbleOffsetMinPx(event.target.value)}
-                  />
-                  <span style={adminInventoryHintStyle}>
-                    Сейчас боковой рывок отключён: спотыкание сбивает тайминг короткой заминкой.
-                  </span>
-                </div>
-              </AdminField>
-              <AdminField label="Макс. снос позиции, px">
-                <div style={adminInventoryFieldBodyStyle}>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={effectStumbleOffsetMaxPx}
-                    onChange={(event) => setEffectStumbleOffsetMaxPx(event.target.value)}
-                  />
-                  <span style={adminInventoryHintStyle}>
-                    Поле сохранено для совместимости; текущая механика не двигает игрока рывком.
-                  </span>
-                </div>
-              </AdminField>
-              <AdminField label="Мин. восстановление, мс">
-                <div style={adminInventoryFieldBodyStyle}>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={effectStumbleRecoveryMinMs}
-                    onChange={(event) => setEffectStumbleRecoveryMinMs(event.target.value)}
-                  />
-                  <span style={adminInventoryHintStyle}>
-                    Минимальное дополнительное время заминки после основной потери равновесия.
-                  </span>
-                </div>
-              </AdminField>
-              <AdminField label="Макс. восстановление, мс">
-                <div style={adminInventoryFieldBodyStyle}>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={effectStumbleRecoveryMaxMs}
-                    onChange={(event) => setEffectStumbleRecoveryMaxMs(event.target.value)}
-                  />
-                  <span style={adminInventoryHintStyle}>
-                    Максимальное дополнительное время, пока бросок ещё заблокирован.
-                  </span>
-                </div>
-              </AdminField>
-            </div>
-          </section>
-        )}
-        {isNutritionItem && (
-          <section style={{ display: 'grid', gap: 10 }}>
-            <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--ink)' }}>
-              Энергия и усталость
-            </div>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                columnGap: 12,
-                rowGap: 14,
-              }}
-            >
-              <AdminField label="Базовая скорость энергии">
-                <div style={adminInventoryFieldBodyStyle}>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={effectEnergyBaselineSpeed}
-                    onChange={(event) => setEffectEnergyBaselineSpeed(event.target.value)}
-                  />
-                  <span style={adminInventoryHintStyle}>
-                    Скорость, при которой энергия тратится 1 к 1. Выше — расход быстрее.
-                  </span>
-                </div>
-              </AdminField>
-              <AdminField label="Отсрочка усталости, мс">
-                <div style={adminInventoryFieldBodyStyle}>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={effectFatigueGraceMs}
-                    onChange={(event) => setEffectFatigueGraceMs(event.target.value)}
-                  />
-                  <span style={adminInventoryHintStyle}>
-                    Сколько можно играть без энергии до первых штрафов.
-                  </span>
-                </div>
-              </AdminField>
-              <AdminField label="Начало усталости, мс">
-                <div style={adminInventoryFieldBodyStyle}>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={effectFatigueSlowdownStartMs}
-                    onChange={(event) => setEffectFatigueSlowdownStartMs(event.target.value)}
-                  />
-                  <span style={adminInventoryHintStyle}>
-                    После этого времени без энергии игрок замедляется один раз.
-                  </span>
-                </div>
-              </AdminField>
-              <AdminField label="Сильная усталость, мс">
-                <div style={adminInventoryFieldBodyStyle}>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={effectFatigueHeavySlowdownStartMs}
-                    onChange={(event) => setEffectFatigueHeavySlowdownStartMs(event.target.value)}
-                  />
-                  <span style={adminInventoryHintStyle}>
-                    Поле совместимости. Сейчас в дуэлях не влияет на скорость.
-                  </span>
-                </div>
-              </AdminField>
-              <AdminField label="Остановка на отдых, мс">
-                <div style={adminInventoryFieldBodyStyle}>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={effectFatigueStopStartMs}
-                    onChange={(event) => setEffectFatigueStopStartMs(event.target.value)}
-                  />
-                  <span style={adminInventoryHintStyle}>
-                    Когда игрок полностью останавливается и не может бросать.
-                  </span>
-                </div>
-              </AdminField>
-              <AdminField label="Длительность отдыха, мс">
-                <div style={adminInventoryFieldBodyStyle}>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={effectFatigueStopDurationMs}
-                    onChange={(event) => setEffectFatigueStopDurationMs(event.target.value)}
-                  />
-                  <span style={adminInventoryHintStyle}>
-                    Сколько длится принудительный отдых без броска.
-                  </span>
-                </div>
-              </AdminField>
-              <AdminField label="Нормальное окно после отдыха, мс">
-                <div style={adminInventoryFieldBodyStyle}>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={effectFatigueAfterRestMs}
-                    onChange={(event) => setEffectFatigueAfterRestMs(event.target.value)}
-                  />
-                  <span style={adminInventoryHintStyle}>
-                    Сколько после отдыха игрок едет нормально, если энергия всё ещё закончилась.
-                  </span>
-                </div>
-              </AdminField>
-              <AdminField label="Скорость при усталости">
-                <div style={adminInventoryFieldBodyStyle}>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={effectFatigueSlowMultiplier}
-                    onChange={(event) => setEffectFatigueSlowMultiplier(event.target.value)}
-                  />
-                  <span style={adminInventoryHintStyle}>
-                    Множитель скорости. 0.9 значит 90% обычной скорости.
-                  </span>
-                </div>
-              </AdminField>
-              <AdminField label="Скорость при сильной усталости">
-                <div style={adminInventoryFieldBodyStyle}>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={effectFatigueHeavyMultiplier}
-                    onChange={(event) => setEffectFatigueHeavyMultiplier(event.target.value)}
-                  />
-                  <span style={adminInventoryHintStyle}>
-                    Поле совместимости. Сейчас в дуэлях не применяется.
-                  </span>
-                </div>
-              </AdminField>
-            </div>
-          </section>
-        )}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-          <button
-            type="button"
-            className="btn btn--ghost"
-            onClick={onCancel}
-            style={{ padding: '10px', fontSize: 12, letterSpacing: 0 }}
-          >
-            Отмена
-          </button>
-          <button
-            type="button"
-            className="btn btn--cta"
-            onClick={() => mutation.mutate()}
-            disabled={mutation.isPending || !canSave}
-            style={{ padding: '10px', fontSize: 12, letterSpacing: 0 }}
-          >
-            Сохранить
-          </button>
-        </div>
-        {mutation.isError && (
-          <div role="alert" style={{ color: 'var(--red-deep)', fontSize: 12 }}>
-            {mutation.error instanceof Error ? mutation.error.message : 'Ошибка сохранения'}
-          </div>
-        )}
-      </section>
-    </div>,
-    document.body,
-  );
-}
-
-function AchievementsAdminPanel({
-  loading,
-  achievements,
-  onChanged,
-}: {
-  loading: boolean;
-  achievements: AdminAchievement[];
-  onChanged: () => void;
-}): JSX.Element {
-  const [sectionTab, setSectionTab] = useState<AdminAchievementsTab>('achievements');
-  const [category, setCategory] = useState<AdminAchievementCategory | 'all'>('all');
-  const [availability, setAvailability] = useState<AdminAchievementAvailability | 'all'>('all');
-  const [query, setQuery] = useState('');
-  const normalizedQuery = query.trim().toLowerCase();
-  const filtered = achievements.filter((achievement) => {
-    if (category !== 'all' && achievement.category !== category) return false;
-    if (availability !== 'all' && achievement.availability !== availability) return false;
-    if (normalizedQuery.length === 0) return true;
-    return (
-      achievement.title.toLowerCase().includes(normalizedQuery) ||
-      achievement.id.toLowerCase().includes(normalizedQuery) ||
-      achievement.requirement.toLowerCase().includes(normalizedQuery)
-    );
-  });
-  const futureCount = achievements.filter(
-    (achievement) => achievement.availability === 'future',
-  ).length;
-  const activeCount = achievements.filter(
-    (achievement) => achievement.availability === 'active',
-  ).length;
-
-  return (
-    <>
-      <div style={{ marginBottom: 10 }}>
-        <SegmentedTabs
-          items={adminAchievementsTabs}
-          activeTab={sectionTab}
-          ariaLabel="Раздел заданий"
-          onChange={setSectionTab}
-        />
+        <AdminField label="Цена в валюте">
+          <input
+            type="number"
+            value={currencyPrice}
+            onChange={(event) => setCurrencyPrice(event.target.value)}
+          />
+        </AdminField>
       </div>
-      {sectionTab === 'challenges' && <WeeklyChallengesAdmin />}
-      {sectionTab === 'achievements' && (
-        <>
-          <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
-            Задания
-          </div>
-          <section className="glass" style={{ borderRadius: 20, padding: 14 }}>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-                gap: 8,
-              }}
-            >
-              <AdminMetric label="Всего" value={achievements.length} />
-              <AdminMetric label="Активных" value={activeCount} />
-              <AdminMetric label="Future" value={futureCount} />
-            </div>
-            <div
-              style={{
-                marginTop: 12,
-                display: 'grid',
-                gridTemplateColumns: 'minmax(0, 1.1fr) minmax(0, 0.8fr) minmax(0, 0.8fr)',
-                gap: 8,
-              }}
-            >
-              <input
-                type="search"
-                placeholder="Поиск по заданию"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-              />
-              <GlassSelect
-                value={category}
-                options={[{ value: 'all', label: 'Все категории' }, ...achievementCategoryOptions]}
-                onChange={(value) => setCategory(value as AdminAchievementCategory | 'all')}
-                ariaLabel="Категория заданий"
-              />
-              <GlassSelect
-                value={availability}
-                options={[
-                  { value: 'all', label: 'Все статусы' },
-                  ...achievementAvailabilityOptions,
-                ]}
-                onChange={(value) => setAvailability(value as AdminAchievementAvailability | 'all')}
-                ariaLabel="Статус заданий"
-              />
-            </div>
-          </section>
-          {loading && <AdminPlainState>Загрузка...</AdminPlainState>}
-          {!loading && filtered.length === 0 && (
-            <AdminPlainState>Под такие фильтры заданий не нашлось.</AdminPlainState>
-          )}
-          <section style={{ display: 'grid', gap: 10 }}>
-            {filtered.map((achievement) => (
-              <AchievementAdminCard
-                key={achievement.id}
-                achievement={achievement}
-                onChanged={onChanged}
-              />
-            ))}
-          </section>
-        </>
-      )}
-    </>
-  );
-}
-
-function AchievementAdminCard({
-  achievement,
-  onChanged,
-}: {
-  achievement: AdminAchievement;
-  onChanged: () => void;
-}): JSX.Element {
-  const [draft, setDraft] = useState({
-    title: achievement.title,
-    description: achievement.description,
-    requirement: achievement.requirement,
-    photoUrl: achievement.photoUrl,
-    category: achievement.category,
-    availability: achievement.availability,
-    futureTag: achievement.futureTag ?? 'none',
-    rewardCurrency: String(achievement.rewardCurrency),
-    rewardStars: String(achievement.rewardStars),
-    rewardExperience: String(achievement.rewardExperience),
-    sortOrder: String(achievement.sortOrder),
-  });
-
-  useEffect(() => {
-    setDraft({
-      title: achievement.title,
-      description: achievement.description,
-      requirement: achievement.requirement,
-      photoUrl: achievement.photoUrl,
-      category: achievement.category,
-      availability: achievement.availability,
-      futureTag: achievement.futureTag ?? 'none',
-      rewardCurrency: String(achievement.rewardCurrency),
-      rewardStars: String(achievement.rewardStars),
-      rewardExperience: String(achievement.rewardExperience),
-      sortOrder: String(achievement.sortOrder),
-    });
-  }, [achievement]);
-
-  const rewardCurrency = Number(draft.rewardCurrency);
-  const rewardStars = Number(draft.rewardStars);
-  const rewardExperience = Number(draft.rewardExperience);
-  const sortOrder = Number(draft.sortOrder);
-  const validNumbers = [rewardCurrency, rewardStars, rewardExperience, sortOrder].every(
-    (value) => Number.isFinite(value) && value >= 0,
-  );
-  const patch = useMemo<AdminAchievementPatch>(() => {
-    const body: AdminAchievementPatch = {};
-    if (draft.title !== achievement.title) body.title = draft.title;
-    if (draft.description !== achievement.description) body.description = draft.description;
-    if (draft.requirement !== achievement.requirement) body.requirement = draft.requirement;
-    if (draft.photoUrl !== achievement.photoUrl) body.photoUrl = draft.photoUrl;
-    if (draft.category !== achievement.category) body.category = draft.category;
-    if (draft.availability !== achievement.availability) body.availability = draft.availability;
-    const futureTag = draft.futureTag === 'none' ? null : draft.futureTag;
-    if (futureTag !== achievement.futureTag) {
-      body.futureTag = futureTag as AdminAchievementFutureTag | null;
-    }
-    if (rewardCurrency !== achievement.rewardCurrency)
-      body.rewardCurrency = Math.trunc(rewardCurrency);
-    if (rewardStars !== achievement.rewardStars) body.rewardStars = Math.trunc(rewardStars);
-    if (rewardExperience !== achievement.rewardExperience) {
-      body.rewardExperience = Math.trunc(rewardExperience);
-    }
-    if (sortOrder !== achievement.sortOrder) body.sortOrder = Math.trunc(sortOrder);
-    return body;
-  }, [achievement, draft, rewardCurrency, rewardExperience, rewardStars, sortOrder]);
-  const dirty = Object.keys(patch).length > 0;
-  const unclaimedCount = Math.max(0, achievement.completedCount - achievement.claimedCount);
-  const mutation = useMutation({
-    mutationFn: () => patchAdminAchievement(achievement.id, patch),
-    onSuccess: onChanged,
-  });
-
-  return (
-    <article className="glass" style={{ borderRadius: 20, padding: 14 }}>
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '58px minmax(0, 1fr) auto',
-          gap: 12,
-          alignItems: 'center',
-        }}
-      >
-        <img
-          src={achievement.photoUrl}
-          alt=""
-          width={58}
-          height={58}
-          style={{ borderRadius: 8, objectFit: 'cover', background: 'rgba(255,255,255,0.5)' }}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+        <AdminField label="Зарядов при покупке">
+          <input
+            type="number"
+            value={chargesPerPurchase}
+            onChange={(event) => setChargesPerPurchase(event.target.value)}
+          />
+        </AdminField>
+        <AdminField label="Расход за период">
+          <input
+            type="number"
+            value={duelPeriodCost}
+            onChange={(event) => setDuelPeriodCost(event.target.value)}
+          />
+        </AdminField>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+        <AdminField label="Шайба Δ">
+          <input
+            type="number"
+            step="0.01"
+            value={effectPuckSpeedDelta}
+            onChange={(event) => setEffectPuckSpeedDelta(event.target.value)}
+          />
+        </AdminField>
+        <AdminField label="Игрок Δ">
+          <input
+            type="number"
+            step="0.01"
+            value={effectShooterFrequencyDelta}
+            onChange={(event) => setEffectShooterFrequencyDelta(event.target.value)}
+          />
+        </AdminField>
+        <AdminField label="Вратарь Δ">
+          <input
+            type="number"
+            step="0.01"
+            value={effectGoalieFrequencyDelta}
+            onChange={(event) => setEffectGoalieFrequencyDelta(event.target.value)}
+          />
+        </AdminField>
+        <AdminField label="Ворота Δ">
+          <input
+            type="number"
+            step="0.01"
+            value={effectGoalFrequencyDelta}
+            onChange={(event) => setEffectGoalFrequencyDelta(event.target.value)}
+          />
+        </AdminField>
+      </div>
+      <AdminField label="Множитель зоны броска">
+        <input
+          type="number"
+          step="0.01"
+          min="1"
+          value={effectShotZoneMultiplier}
+          onChange={(event) => setEffectShotZoneMultiplier(event.target.value)}
         />
-        <div style={{ minWidth: 0 }}>
-          <div style={{ color: 'var(--ink)', fontSize: 15, fontWeight: 950 }}>
-            {achievement.title}
-          </div>
-          <div style={{ marginTop: 4, color: 'var(--muted)', fontSize: 11, fontWeight: 800 }}>
-            {achievement.id} · выполнено {numberText(achievement.completedCount)} · получено{' '}
-            {numberText(achievement.claimedCount)}
-          </div>
-        </div>
+      </AdminField>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         <button
           type="button"
-          className="icon-btn icon-btn--dark"
-          onClick={() => mutation.mutate()}
-          disabled={!dirty || !validNumbers || mutation.isPending}
-          title="Сохранить"
-          aria-label={`Сохранить ${achievement.title}`}
-          style={{
-            width: 42,
-            height: 42,
-            opacity: dirty && validNumbers ? 1 : 0.52,
-            cursor: dirty && validNumbers ? 'pointer' : 'not-allowed',
-          }}
+          className="btn btn--ghost"
+          onClick={onCancel}
+          style={{ padding: '10px', fontSize: 12, letterSpacing: 0 }}
         >
-          <Save size={17} />
+          Отмена
+        </button>
+        <button
+          type="button"
+          className="btn btn--cta"
+          onClick={() => mutation.mutate()}
+          disabled={mutation.isPending || !canSave}
+          style={{ padding: '10px', fontSize: 12, letterSpacing: 0 }}
+        >
+          Сохранить
         </button>
       </div>
-      <div
-        style={{
-          marginTop: 12,
-          display: 'grid',
-          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-          gap: 8,
-        }}
-      >
-        <AdminMetric label="Выполнили игроков" value={achievement.completedCount} />
-        <AdminMetric label="Получили награду" value={achievement.claimedCount} />
-        <AdminMetric label="Ждут награду" value={unclaimedCount} />
-      </div>
-      <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        <AdminField label="Название">
-          <input
-            value={draft.title}
-            onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))}
-          />
-        </AdminField>
-        <AdminField label="Картинка">
-          <input
-            value={draft.photoUrl}
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, photoUrl: event.target.value }))
-            }
-          />
-        </AdminField>
-        <AdminField label="Описание">
-          <input
-            value={draft.description}
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, description: event.target.value }))
-            }
-          />
-        </AdminField>
-        <AdminField label="Условие">
-          <input
-            value={draft.requirement}
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, requirement: event.target.value }))
-            }
-          />
-        </AdminField>
-        <AdminField label="Категория">
-          <GlassSelect
-            value={draft.category}
-            options={achievementCategoryOptions}
-            onChange={(value) =>
-              setDraft((current) => ({
-                ...current,
-                category: value as AdminAchievementCategory,
-              }))
-            }
-            ariaLabel={`Категория ${achievement.title}`}
-          />
-        </AdminField>
-        <AdminField label="Доступность">
-          <GlassSelect
-            value={draft.availability}
-            options={achievementAvailabilityOptions}
-            onChange={(value) =>
-              setDraft((current) => ({
-                ...current,
-                availability: value as AdminAchievementAvailability,
-              }))
-            }
-            ariaLabel={`Доступность ${achievement.title}`}
-          />
-        </AdminField>
-        <AdminField label="Future tag">
-          <GlassSelect
-            value={draft.futureTag}
-            options={achievementFutureTagOptions}
-            onChange={(value) =>
-              setDraft((current) => ({
-                ...current,
-                futureTag: value as AdminAchievementFutureTag | 'none',
-              }))
-            }
-            ariaLabel={`Future tag ${achievement.title}`}
-          />
-        </AdminField>
-        <AdminField label="Порядок">
-          <input
-            type="number"
-            min={0}
-            value={draft.sortOrder}
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, sortOrder: event.target.value }))
-            }
-          />
-        </AdminField>
-        <AdminField label="Монеты">
-          <input
-            type="number"
-            min={0}
-            value={draft.rewardCurrency}
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, rewardCurrency: event.target.value }))
-            }
-          />
-        </AdminField>
-        <AdminField label="Звезды">
-          <input
-            type="number"
-            min={0}
-            value={draft.rewardStars}
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, rewardStars: event.target.value }))
-            }
-          />
-        </AdminField>
-        <AdminField label="Опыт">
-          <input
-            type="number"
-            min={0}
-            value={draft.rewardExperience}
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, rewardExperience: event.target.value }))
-            }
-          />
-        </AdminField>
-      </div>
       {mutation.isError && (
-        <div role="alert" style={{ marginTop: 8, color: 'var(--red-deep)', fontSize: 12 }}>
+        <div role="alert" style={{ color: 'var(--red-deep)', fontSize: 12 }}>
           {mutation.error instanceof Error ? mutation.error.message : 'Ошибка сохранения'}
         </div>
       )}
-    </article>
+    </section>
   );
 }
 
@@ -6272,15 +5201,22 @@ function DuelTemplatesPanel({
 
   return (
     <>
-      <SegmentedTabs
-        items={[
-          { id: 'templates', label: 'Шаблоны' },
-          { id: 'history', label: 'История' },
-        ]}
-        activeTab={duelView}
-        ariaLabel="Раздел дуэлей"
-        onChange={setDuelView}
-      />
+      <div className="segmented" style={{ gridTemplateColumns: '1fr 1fr' }}>
+        <button
+          type="button"
+          className={duelView === 'templates' ? 'active' : ''}
+          onClick={() => setDuelView('templates')}
+        >
+          Шаблоны
+        </button>
+        <button
+          type="button"
+          className={duelView === 'history' ? 'active' : ''}
+          onClick={() => setDuelView('history')}
+        >
+          История
+        </button>
+      </div>
       <div
         style={{
           display: 'flex',
@@ -6392,27 +5328,20 @@ function DuelTemplateCard({
           Перерыв {minutesText(msToMinutes(template.breakDurationMs))}
         </span>
         <span className="pill" style={{ fontSize: 10 }}>
-          Ответ {minutesText(msToMinutes(template.challengeTtlMs))}
-        </span>
-        <span className="pill" style={{ fontSize: 10 }}>
           Ожидание {minutesText(msToMinutes(template.readyDurationMs))}
         </span>
         <span className="pill" style={{ fontSize: 10 }}>
-          Победа {numberText(template.winPoints)} очк. ·{' '}
-          <span style={{ color: rewardColor('coin') }}>
-            {numberText(template.winCurrencyReward)} шайб
-          </span>
+          Победа {numberText(template.winPoints)} очк. · {numberText(template.winCurrencyReward)}{' '}
+          шайб
         </span>
         {template.winStarReward > 0 && (
-          <span className="pill" style={{ fontSize: 10, color: rewardColor('star') }}>
+          <span className="pill" style={{ fontSize: 10 }}>
             Победа {numberText(template.winStarReward)} звёзд
           </span>
         )}
         <span className="pill" style={{ fontSize: 10 }}>
-          Ничья {numberText(template.drawPoints)} очк. ·{' '}
-          <span style={{ color: rewardColor('coin') }}>
-            {numberText(template.drawCurrencyReward)} шайб
-          </span>
+          Ничья {numberText(template.drawPoints)} очк. · {numberText(template.drawCurrencyReward)}{' '}
+          шайб
         </span>
       </div>
       <div style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 800 }}>
@@ -6648,20 +5577,11 @@ function DuelTemplateEditor({
   onCancel: () => void;
   onSaved: () => void;
 }): JSX.Element {
-  const editorRef = useRef<HTMLElement | null>(null);
-  const mutationPendingRef = useRef(false);
-  const onCancelRef = useRef(onCancel);
-  onCancelRef.current = () => {
-    if (!mutationPendingRef.current) onCancel();
-  };
   const defaultStartsAt = new Date().toISOString();
   const defaultEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
   const [title, setTitle] = useState(template?.title ?? 'Классическая дуэль');
   const [description, setDescription] = useState(template?.description ?? '');
   const [isActive, setIsActive] = useState(template?.isActive ?? true);
-  const [matchmakingVenuePolicy, setMatchmakingVenuePolicy] = useState<AdminMatchmakingVenuePolicy>(
-    template?.matchmakingVenuePolicy ?? 'neutral_default',
-  );
   const [duelKind] = useState(template?.duelKind ?? 'classic');
   const [duelVariant] = useState(template?.duelVariant ?? 'classic');
   const [startsAt, setStartsAt] = useState(
@@ -6675,9 +5595,6 @@ function DuelTemplateEditor({
   );
   const [breakMinutes, setBreakMinutes] = useState(
     fieldNumber(template ? msToMinutes(template.breakDurationMs) : 15),
-  );
-  const [challengeMinutes, setChallengeMinutes] = useState(
-    fieldNumber(template ? msToMinutes(template.challengeTtlMs) : 15),
   );
   const [readyMinutes, setReadyMinutes] = useState(
     fieldNumber(template ? msToMinutes(template.readyDurationMs) : 15),
@@ -6702,7 +5619,6 @@ function DuelTemplateEditor({
     shotsPerPeriod,
     periodMinutes,
     breakMinutes,
-    challengeMinutes,
     readyMinutes,
     winPoints,
     drawPoints,
@@ -6737,7 +5653,6 @@ function DuelTemplateEditor({
     parseAdminNumberInput(shotsPerPeriod) >= 1 &&
     parseAdminNumberInput(periodMinutes) > 0 &&
     parseAdminNumberInput(breakMinutes) >= 0 &&
-    parseAdminNumberInput(challengeMinutes) > 0 &&
     parseAdminNumberInput(readyMinutes) > 0 &&
     parseAdminNumberInput(winPoints) >= 0 &&
     parseAdminNumberInput(drawPoints) >= 0 &&
@@ -6750,33 +5665,6 @@ function DuelTemplateEditor({
     if (totalPeriodsCount <= 0) return;
     setPeriodSpeedPresets((current) => normalizeDuelPresets(current, totalPeriodsCount));
   }, [totalPeriodsCount]);
-
-  useEffect(() => {
-    const editor = editorRef.current;
-    editor?.querySelector<HTMLElement>('input, select, textarea, button')?.focus();
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') onCancelRef.current();
-      if (event.key !== 'Tab' || !editor) return;
-      const focusable = Array.from(
-        editor.querySelectorAll<HTMLElement>(
-          'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled)',
-        ),
-      );
-      const first = focusable[0];
-      const last = focusable.at(-1);
-      if (!first || !last) return;
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      }
-      if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, []);
 
   function updateSpeedPreset(
     periodNumber: number,
@@ -6801,14 +5689,13 @@ function DuelTemplateEditor({
         duelVariant,
         rankedEnabled: template?.rankedEnabled ?? true,
         matchmakingEnabled: template?.matchmakingEnabled ?? true,
-        matchmakingVenuePolicy,
         startsAt: startsIso,
         endsAt: endsIso,
         totalPeriods: parseAdminNumberInput(totalPeriods),
         shotsPerPeriod: parseAdminNumberInput(shotsPerPeriod),
         periodDurationMs: minutesToMs(periodMinutes),
         breakDurationMs: minutesToMs(breakMinutes),
-        challengeTtlMs: minutesToMs(challengeMinutes),
+        challengeTtlMs: template?.challengeTtlMs ?? 1_800_000,
         readyDurationMs: minutesToMs(readyMinutes),
         readyNoShowCooldownMs: template?.readyNoShowCooldownMs ?? 900_000,
         matchmakingTimeoutMs: template?.matchmakingTimeoutMs ?? 180_000,
@@ -6833,39 +5720,30 @@ function DuelTemplateEditor({
         : patchAdminDuelTemplate(template.id, body);
     },
     onSuccess: onSaved,
-    onSettled: () => {
-      mutationPendingRef.current = false;
-    },
   });
-
-  function requestCancel(): void {
-    if (mutationPendingRef.current) return;
-    onCancel();
-  }
-
-  function requestSave(): void {
-    if (mutationPendingRef.current || !canSave) return;
-    mutationPendingRef.current = true;
-    mutation.mutate();
-  }
 
   return createPortal(
     <div
-      className="modal-backdrop"
       role="dialog"
       aria-modal="true"
       aria-label={template === null ? 'Новый шаблон дуэли' : 'Редактирование дуэли'}
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) requestCancel();
-      }}
+      onClick={onCancel}
       style={{
+        position: 'fixed',
+        inset: 0,
         zIndex: 1000,
+        background: 'rgba(15, 23, 42, 0.35)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
         padding: 'calc(16px + var(--app-safe-top)) 14px calc(16px + var(--app-safe-bottom))',
       }}
     >
       <section
-        ref={editorRef}
-        className="modal-card"
+        className="glass"
+        onClick={(event) => event.stopPropagation()}
         style={{
           width: '100%',
           maxWidth: 430,
@@ -6877,12 +5755,9 @@ function DuelTemplateEditor({
           gap: 10,
         }}
       >
-        <h2 className="modal-title">
+        <div style={{ color: 'var(--ink)', fontSize: 15, fontWeight: 950 }}>
           {template === null ? 'Новый шаблон дуэли' : 'Редактирование дуэли'}
-        </h2>
-        <p className="modal-copy" style={{ marginTop: 0 }}>
-          Площадка и правила сохраняются для новых матчей после подтверждения.
-        </p>
+        </div>
         <AdminField label="Название">
           <input value={title} onChange={(event) => setTitle(event.target.value)} />
         </AdminField>
@@ -6913,14 +5788,6 @@ function DuelTemplateEditor({
             style={{ width: 18, height: 18 }}
           />
         </label>
-        <AdminField label="Площадка при автоматическом подборе">
-          <GlassSelect
-            ariaLabel="Площадка при автоматическом подборе"
-            value={matchmakingVenuePolicy}
-            options={venueSelectOptions}
-            onChange={setMatchmakingVenuePolicy}
-          />
-        </AdminField>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
           <AdminField label="Старт">
             <input
@@ -6970,14 +5837,6 @@ function DuelTemplateEditor({
               min="0"
               value={breakMinutes}
               onChange={(event) => setBreakMinutes(event.target.value)}
-            />
-          </AdminField>
-          <AdminField label="Минут на ответ">
-            <input
-              type="number"
-              min="1"
-              value={challengeMinutes}
-              onChange={(event) => setChallengeMinutes(event.target.value)}
             />
           </AdminField>
           <AdminField label="Минут ожидание">
@@ -7089,20 +5948,19 @@ function DuelTemplateEditor({
             Скорости заполнены некорректно
           </div>
         )}
-        <div className="modal-actions" style={{ gridTemplateColumns: '1fr 1fr' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           <button
             type="button"
             className="btn btn--ghost"
-            onClick={requestCancel}
-            disabled={mutation.isPending}
+            onClick={onCancel}
             style={{ padding: '10px', fontSize: 12, letterSpacing: 0 }}
           >
             Отмена
           </button>
           <button
             type="button"
-            className="modal-primary btn--cta"
-            onClick={requestSave}
+            className="btn btn--cta"
+            onClick={() => mutation.mutate()}
             disabled={mutation.isPending || !canSave}
             style={{ padding: '10px', fontSize: 12, letterSpacing: 0 }}
           >
@@ -7485,9 +6343,9 @@ function SettingEditor({
 
 function AdminField({ label, children }: { label: string; children: JSX.Element }): JSX.Element {
   return (
-    <label style={{ display: 'grid', gap: 5, minWidth: 0 }}>
+    <div style={{ display: 'grid', gap: 5, minWidth: 0 }}>
       <span style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 800 }}>{label}</span>
       {children}
-    </label>
+    </div>
   );
 }

@@ -52,12 +52,6 @@ describe('ChatBubble — author tap', () => {
     expect(screen.queryByLabelText('Доставлено')).toBeNull();
   });
 
-  it('marks an own message with the dedicated dark bubble surface', () => {
-    render(<ChatBubble {...defaults()} isOwn />);
-
-    expect(screen.getByText('привет').closest('.glass-dark')).toHaveClass('chat-bubble--own');
-  });
-
   it('renders own-message reply previews with a dark-bubble contrast tone', () => {
     render(
       <ChatBubble

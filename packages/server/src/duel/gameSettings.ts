@@ -1,11 +1,9 @@
 import type { Pool, PoolClient } from 'pg';
 import {
   DAILY_PERIOD_SPEED_PRESETS,
-  DEFAULT_DUEL_INVENTORY_TIMING,
   GOALIES,
   getDailyPeriodSpeedPreset,
   type DailyPeriodSpeedPreset,
-  type DuelInventoryTiming,
 } from '@hockey/game-core';
 import {
   BREAK_DURATION_MS,
@@ -51,10 +49,6 @@ export interface GameSettings {
   };
   amateur: {
     unlockGoalsRequired: number;
-    noInventoryTiming: {
-      skates: DuelInventoryTiming;
-      nutrition: DuelInventoryTiming;
-    };
   };
 }
 
@@ -128,211 +122,6 @@ const dailyPeriodSpeedDefinitions: GameSettingDefinition[] = DAILY_PERIOD_SPEED_
     })),
 );
 
-type TimingField = keyof DuelInventoryTiming;
-
-const noInventorySkatesFields: Array<{
-  field: TimingField;
-  key: string;
-  label: string;
-  description: string;
-  min: number;
-  max: number;
-  step?: number;
-}> = [
-  {
-    field: 'stumbleIntervalMinRolls',
-    key: 'stumble_interval_min_rolls',
-    label: 'Спотыкание: минимум прокатов',
-    description:
-      'Минимальное число прокатов от борта до борта до следующего спотыкания, если игрок вышел без коньков.',
-    min: 1,
-    max: 1000,
-  },
-  {
-    field: 'stumbleIntervalMaxRolls',
-    key: 'stumble_interval_max_rolls',
-    label: 'Спотыкание: максимум прокатов',
-    description:
-      'Максимальное число прокатов от борта до борта до следующего спотыкания, если игрок вышел без коньков.',
-    min: 1,
-    max: 1000,
-  },
-  {
-    field: 'stumbleIntervalMinMs',
-    key: 'stumble_interval_min_ms',
-    label: 'Спотыкание: минимум мс',
-    description:
-      'Минимальный интервал до спотыкания в миллисекундах. Используется, если интервалы в прокатах выставлены в 0.',
-    min: 0,
-    max: 600_000,
-  },
-  {
-    field: 'stumbleIntervalMaxMs',
-    key: 'stumble_interval_max_ms',
-    label: 'Спотыкание: максимум мс',
-    description:
-      'Максимальный интервал до спотыкания в миллисекундах. Используется, если интервалы в прокатах выставлены в 0.',
-    min: 0,
-    max: 600_000,
-  },
-  {
-    field: 'stumbleDurationMinMs',
-    key: 'stumble_duration_min_ms',
-    label: 'Спотыкание: минимум длительности',
-    description:
-      'Минимальная длительность состояния «споткнулся» в миллисекундах, когда игрок вышел без коньков.',
-    min: 0,
-    max: 30_000,
-  },
-  {
-    field: 'stumbleDurationMaxMs',
-    key: 'stumble_duration_max_ms',
-    label: 'Спотыкание: максимум длительности',
-    description:
-      'Максимальная длительность состояния «споткнулся» в миллисекундах, когда игрок вышел без коньков.',
-    min: 0,
-    max: 30_000,
-  },
-  {
-    field: 'stumbleRecoveryMinMs',
-    key: 'stumble_recovery_min_ms',
-    label: 'Спотыкание: минимум возврата',
-    description:
-      'Минимальное время возврата после спотыкания в миллисекундах. В это время бросок еще заблокирован.',
-    min: 0,
-    max: 30_000,
-  },
-  {
-    field: 'stumbleRecoveryMaxMs',
-    key: 'stumble_recovery_max_ms',
-    label: 'Спотыкание: максимум возврата',
-    description:
-      'Максимальное время возврата после спотыкания в миллисекундах. В это время бросок еще заблокирован.',
-    min: 0,
-    max: 30_000,
-  },
-  {
-    field: 'stumbleOffsetMinPx',
-    key: 'stumble_offset_min_px',
-    label: 'Спотыкание: минимальный сдвиг',
-    description:
-      'Минимальный сдвиг позиции игрока в пикселях для механики спотыкания без коньков.',
-    min: 0,
-    max: 300,
-  },
-  {
-    field: 'stumbleOffsetMaxPx',
-    key: 'stumble_offset_max_px',
-    label: 'Спотыкание: максимальный сдвиг',
-    description:
-      'Максимальный сдвиг позиции игрока в пикселях для механики спотыкания без коньков.',
-    min: 0,
-    max: 300,
-  },
-];
-
-const noInventoryNutritionFields: Array<{
-  field: TimingField;
-  key: string;
-  label: string;
-  description: string;
-  min: number;
-  max: number;
-  step?: number;
-}> = [
-  {
-    field: 'energyBaselineSpeed',
-    key: 'energy_baseline_speed',
-    label: 'Энергия: базовая скорость',
-    description:
-      'Скорость игрока, при которой энергия без питания тратится в реальном времени. Более высокая скорость ускоряет усталость.',
-    min: 0.1,
-    max: 3,
-    step: 0.01,
-  },
-  {
-    field: 'fatigueGraceMs',
-    key: 'fatigue_grace_ms',
-    label: 'Усталость: безопасное время',
-    description:
-      'Сколько миллисекунд игрок без питания может кататься без штрафа до начала усталости.',
-    min: 0,
-    max: 600_000,
-  },
-  {
-    field: 'fatigueSlowdownStartMs',
-    key: 'fatigue_slowdown_start_ms',
-    label: 'Усталость: начало замедления',
-    description:
-      'Через сколько миллисекунд накопленной усталости игрок без питания начинает замедляться.',
-    min: 0,
-    max: 600_000,
-  },
-  {
-    field: 'fatigueStopStartMs',
-    key: 'fatigue_stop_start_ms',
-    label: 'Усталость: начало отдыха',
-    description:
-      'Через сколько миллисекунд накопленной усталости игрок без питания останавливается на отдых.',
-    min: 0,
-    max: 600_000,
-  },
-  {
-    field: 'fatigueStopDurationMs',
-    key: 'fatigue_stop_duration_ms',
-    label: 'Отдых: длительность',
-    description:
-      'Сколько миллисекунд игрок без питания стоит и не может бросать во время отдыха.',
-    min: 0,
-    max: 120_000,
-  },
-  {
-    field: 'fatigueAfterRestMs',
-    key: 'fatigue_after_rest_ms',
-    label: 'Отдых: восстановление',
-    description:
-      'Сколько миллисекунд после отдыха игрок без питания снова едет нормально до новой усталости.',
-    min: 0,
-    max: 600_000,
-  },
-  {
-    field: 'fatigueSlowMultiplier',
-    key: 'fatigue_slow_multiplier',
-    label: 'Усталость: множитель скорости',
-    description:
-      'Во сколько раз уменьшается скорость игрока без питания во время усталости. 1 — без замедления, 0.5 — вдвое медленнее.',
-    min: 0,
-    max: 1,
-    step: 0.01,
-  },
-];
-
-const noInventorySkatesDefinitions: GameSettingDefinition[] = noInventorySkatesFields.map(
-  (field) => ({
-    key: `amateur.no_inventory.skates.${field.key}`,
-    label: field.label,
-    description: field.description,
-    type: 'number' as const,
-    defaultValue: DEFAULT_DUEL_INVENTORY_TIMING[field.field],
-    min: field.min,
-    max: field.max,
-    ...(field.step === undefined ? {} : { step: field.step }),
-  }),
-);
-
-const noInventoryNutritionDefinitions: GameSettingDefinition[] = noInventoryNutritionFields.map(
-  (field) => ({
-    key: `amateur.no_inventory.nutrition.${field.key}`,
-    label: field.label,
-    description: field.description,
-    type: 'number' as const,
-    defaultValue: DEFAULT_DUEL_INVENTORY_TIMING[field.field],
-    min: field.min,
-    max: field.max,
-    ...(field.step === undefined ? {} : { step: field.step }),
-  }),
-);
-
 export const GAME_SETTING_DEFINITIONS: readonly GameSettingDefinition[] = [
   {
     key: 'daily.shots_per_period',
@@ -401,12 +190,10 @@ export const GAME_SETTING_DEFINITIONS: readonly GameSettingDefinition[] = [
     label: 'Голов для любителей',
     description: 'Сколько шайб нужно забить, чтобы открыть любительскую лигу.',
     type: 'number',
-    defaultValue: 300,
+    defaultValue: 1000,
     min: 0,
     max: 1_000_000,
   },
-  ...noInventorySkatesDefinitions,
-  ...noInventoryNutritionDefinitions,
 ];
 
 const definitionsByKey = new Map(
@@ -491,26 +278,6 @@ export async function getGameSettings(pool: Queryable): Promise<GameSettings> {
   const trainingShotsLimit = Number(values.get('training.shots_limit'));
   const trainingDailyCooldownMinutes = Number(values.get('training.daily_cooldown_minutes'));
   const amateurUnlockGoalsRequired = Number(values.get('amateur.unlock_goals_required'));
-  const noInventorySkatesTiming = noInventorySkatesFields.reduce<DuelInventoryTiming>(
-    (timing, field) => ({
-      ...timing,
-      [field.field]: Number(
-        values.get(`amateur.no_inventory.skates.${field.key}`) ??
-          DEFAULT_DUEL_INVENTORY_TIMING[field.field],
-      ),
-    }),
-    { ...DEFAULT_DUEL_INVENTORY_TIMING },
-  );
-  const noInventoryNutritionTiming = noInventoryNutritionFields.reduce<DuelInventoryTiming>(
-    (timing, field) => ({
-      ...timing,
-      [field.field]: Number(
-        values.get(`amateur.no_inventory.nutrition.${field.key}`) ??
-          DEFAULT_DUEL_INVENTORY_TIMING[field.field],
-      ),
-    }),
-    { ...DEFAULT_DUEL_INVENTORY_TIMING },
-  );
   const periodSpeedPresets = DAILY_PERIOD_SPEED_PRESETS.map((preset) => ({
     periodNumber: preset.periodNumber,
     goalFrequency: Number(
@@ -558,11 +325,7 @@ export async function getGameSettings(pool: Queryable): Promise<GameSettings> {
     amateur: {
       unlockGoalsRequired: Number.isFinite(amateurUnlockGoalsRequired)
         ? Math.max(0, Math.trunc(amateurUnlockGoalsRequired))
-        : 300,
-      noInventoryTiming: {
-        skates: noInventorySkatesTiming,
-        nutrition: noInventoryNutritionTiming,
-      },
+        : 1000,
     },
   };
 }

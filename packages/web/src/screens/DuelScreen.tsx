@@ -330,15 +330,16 @@ export function DuelScreen(): JSX.Element {
 
     loop.beginShooterPause();
     player?.playShot();
-    const puckShotPath = puck.shotPath(sx, GOAL_OPENING.y);
-    puck.playShot(puckShotPath.start, puckShotPath.end, loop.getRenderNow(), flightDurationMs);
+    puck.playShot(
+      puck.bladePoint(sx),
+      { x: sx, y: GOAL_OPENING.y },
+      loop.getRenderNow(),
+      flightDurationMs,
+    );
 
     window.setTimeout(() => {
       loop.beginScenePause();
-      puck.holdAt({
-        x: puckShotPath.end.x,
-        y: result.type === 'save' ? GOAL_OPENING.y + 20 : GOAL_OPENING.y,
-      });
+      puck.holdAt({ x: sx, y: result.type === 'save' ? GOAL_OPENING.y + 20 : GOAL_OPENING.y });
       if (result.type === 'save') goalie.setSavePose(true);
       useTrainingStore.getState().applyResult(result);
       setResultSubText(subText);

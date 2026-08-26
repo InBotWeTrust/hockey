@@ -52,7 +52,6 @@ import { ChannelPollComposerSheet } from '../components/ChannelPollComposerSheet
 import { formatLastSeen } from '../lastSeen.js';
 import { switchMyReactionTo, removeMyReaction } from '../reactionsState.js';
 import { chatAvatarUrl } from '../chatAvatar.js';
-import { AccessibleModal } from '../../components/AccessibleModal.js';
 
 const PAGE_SIZE = 50;
 const VOICE_MAX_DURATION_MS = 120_000;
@@ -862,6 +861,15 @@ export function ChatRoomScreen(): JSX.Element {
       stopVoiceTracks();
     };
   }, [stopVoiceTracks]);
+
+  useEffect(() => {
+    if (imageViewer === null) return undefined;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setImageViewer(null);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [imageViewer]);
 
   const replacePostInCaches = useCallback(
     (post: ChatMessageDTO): void => {
@@ -1673,50 +1681,84 @@ export function ChatRoomScreen(): JSX.Element {
       )}
 
       {imageViewer && (
-        <AccessibleModal
-          title="Изображение"
-          ariaLabel={imageViewer.originalName || 'Изображение'}
-          onRequestClose={() => setImageViewer(null)}
-          backdropStyle={{
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label={imageViewer.originalName || 'Изображение'}
+          onClick={(event) => {
+            if (event.currentTarget === event.target) setImageViewer(null);
+          }}
+          style={{
             zIndex: 320,
             padding:
               'calc(14px + var(--app-safe-top)) 14px calc(14px + var(--app-dock-safe-bottom))',
           }}
-          cardStyle={{
-            position: 'relative',
-            width: 'min(100%, 860px)',
-            maxHeight: 'calc(100dvh - var(--app-safe-top) - var(--app-dock-safe-bottom) - 28px)',
-            padding: 10,
-            overflow: 'hidden',
-          }}
-          headerAction={
-            <button
-              type="button"
-              className="icon-btn"
-              aria-label="Закрыть просмотр изображения"
-              title="Закрыть"
-              onClick={() => setImageViewer(null)}
-            >
-              <X size={16} />
-            </button>
-          }
         >
-          <img
-            src={imageViewer.url}
-            alt={imageViewer.originalName || 'Изображение'}
+          <div
+            className="modal-card"
             style={{
-              display: 'block',
-              width: 'auto',
-              height: 'auto',
-              maxWidth: '100%',
-              maxHeight: 'calc(100dvh - var(--app-safe-top) - var(--app-dock-safe-bottom) - 104px)',
-              margin: '0 auto',
-              objectFit: 'contain',
-              borderRadius: 18,
-              background: 'rgba(15, 23, 42, 0.08)',
+              position: 'relative',
+              width: 'min(100%, 860px)',
+              maxHeight: 'calc(100dvh - var(--app-safe-top) - var(--app-dock-safe-bottom) - 28px)',
+              padding: 10,
+              display: 'grid',
+              gap: 8,
+              overflow: 'hidden',
             }}
-          />
-        </AccessibleModal>
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 8,
+                minWidth: 0,
+              }}
+            >
+              <div
+                className="modal-title"
+                style={{
+                  flex: '1 1 auto',
+                  minWidth: 0,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  fontSize: 12,
+                  color: 'var(--muted)',
+                }}
+                title={imageViewer.originalName || 'Изображение'}
+              >
+                Изображение
+              </div>
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Закрыть просмотр изображения"
+                title="Закрыть"
+                onClick={() => setImageViewer(null)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <img
+              src={imageViewer.url}
+              alt={imageViewer.originalName || 'Изображение'}
+              style={{
+                display: 'block',
+                width: 'auto',
+                height: 'auto',
+                maxWidth: '100%',
+                maxHeight:
+                  'calc(100dvh - var(--app-safe-top) - var(--app-dock-safe-bottom) - 104px)',
+                margin: '0 auto',
+                objectFit: 'contain',
+                borderRadius: 18,
+                background: 'rgba(15, 23, 42, 0.08)',
+              }}
+            />
+          </div>
+        </div>
       )}
 
       <MessageActionsMenu

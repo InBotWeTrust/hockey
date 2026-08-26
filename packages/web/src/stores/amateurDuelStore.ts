@@ -4,7 +4,6 @@ import {
   readyAmateurDuel,
   startAmateurDuelPeriod,
   submitAmateurDuelShot,
-  updateAmateurDuelLoadout,
   type AmateurDuelLoadoutSelection,
   type AmateurDuelMatchState,
 } from '../api/amateurDuel.js';
@@ -18,10 +17,7 @@ interface AmateurDuelStoreState {
   load: (matchId: string) => Promise<AmateurDuelMatchState | null>;
   refresh: () => Promise<void>;
   ready: (loadout?: AmateurDuelLoadoutSelection) => Promise<AmateurDuelMatchState | null>;
-  startPeriod: (loadout?: AmateurDuelLoadoutSelection) => Promise<AmateurDuelMatchState | null>;
-  updateLoadout: (
-    loadout: Pick<AmateurDuelLoadoutSelection, 'stick'>,
-  ) => Promise<AmateurDuelMatchState | null>;
+  startPeriod: () => Promise<AmateurDuelMatchState | null>;
   applyState: (next: AmateurDuelMatchState) => void;
   optimisticAddShot: (claimed: ShotResultType) => void;
   submitShot: (args: {
@@ -61,7 +57,6 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
   ready: async (loadout = {}) => {
     const current = get().match;
     if (!current) return null;
-    if (get().inFlight) return null;
     set({ inFlight: true, error: null });
     try {
       const { match } = await readyAmateurDuel(current.id, loadout);
@@ -76,37 +71,18 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
     }
   },
 
-  startPeriod: async (loadout) => {
+  startPeriod: async () => {
     const current = get().match;
     if (!current) return null;
-    if (get().inFlight) return null;
     set({ inFlight: true, error: null });
     try {
-      const { match } = await startAmateurDuelPeriod(current.id, loadout);
+      const { match } = await startAmateurDuelPeriod(current.id);
       set({ match, inFlight: false, error: null });
       return match;
     } catch (err) {
       set({
         inFlight: false,
         error: err instanceof Error ? err.message : 'failed to start duel period',
-      });
-      return null;
-    }
-  },
-
-  updateLoadout: async (loadout) => {
-    const current = get().match;
-    if (!current) return null;
-    if (get().inFlight) return null;
-    set({ inFlight: true, error: null });
-    try {
-      const { match } = await updateAmateurDuelLoadout(current.id, loadout);
-      set({ match, inFlight: false, error: null });
-      return match;
-    } catch (err) {
-      set({
-        inFlight: false,
-        error: err instanceof Error ? err.message : 'failed to update duel loadout',
       });
       return null;
     }

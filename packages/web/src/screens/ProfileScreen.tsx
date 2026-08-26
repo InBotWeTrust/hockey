@@ -3,18 +3,13 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type MouseEvent,
   type PointerEvent,
   type ReactNode,
 } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CircleDollarSign, Settings, Star, TrendingUp, X } from 'lucide-react';
+import { CircleDollarSign, Info, Settings, Star, TrendingUp, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../api/apiFetch.js';
-import { fetchHomeArenas, type HomeArena, type HomeArenasResponse } from '../api/arenas.js';
-import { rewardColor, type RewardTone } from '../app/rewardColors.js';
-import { HomeArenaModal } from '../components/HomeArenaModal.js';
-import { AccessibleModal } from '../components/AccessibleModal.js';
 import {
   fetchMyInventory,
   patchEquipment,
@@ -25,60 +20,45 @@ import {
 import { useAuthStore } from '../auth/authStore.js';
 import type { ProfileAchievement, ProfileData } from './profileTypes.js';
 import {
-  AchievementTile,
   AchievementDetailsSheet,
   EMPTY_PROFILE_STATS,
   formatProfileNumber,
   getLevelLabel,
+  ProfileAchievementsSection,
   ProfileStatsGrid,
 } from './profileSections.js';
 import { artworkForInventoryItem, placeholderArtworkForKind } from './inventoryArtwork.js';
-import {
-  formatInventoryBadgeAmount,
-  formatInventoryResourceAmount,
-  formatInventoryStockLabel,
-} from './inventoryResourceLabels.js';
-
-const LOCKER_IMAGE_WIDTH = 853;
-const LOCKER_IMAGE_HEIGHT = 1844;
-
-const LOCKER_HOTSPOTS = {
-  stick: { x: 92, y: 385 },
-  skates: { x: 675, y: 1392 },
-  puck: { x: 96, y: 1508 },
-  achievements: { x: 748, y: 560 },
-  nutrition: { x: 748, y: 1040 },
-} satisfies Record<string, { x: number; y: number }>;
-
-const LOCKER_PROPS = {
-  jersey: { x: 232, y: 430, width: 388 },
-  stick: { x: 112, y: 565, width: 420 },
-  skates: { x: 560, y: 1302, width: 270 },
-  achievementMedals: { x: 676, y: 472, width: 154 },
-  rinkPhoto: { x: 686, y: 825, width: 150 },
-  nutritionCans: { x: 705, y: 1010, width: 115 },
-} satisfies Record<string, { x: number; y: number; width: number }>;
-
-function lockerHotspotStyle(position: { x: number; y: number }): CSSProperties {
-  return {
-    '--hotspot-x': `${(position.x / LOCKER_IMAGE_WIDTH) * 100}%`,
-    '--hotspot-y': `${(position.y / LOCKER_IMAGE_HEIGHT) * 100}%`,
-  } as CSSProperties;
-}
-
-function lockerPropStyle(position: { x: number; y: number; width: number }): CSSProperties {
-  return {
-    left: `${(position.x / LOCKER_IMAGE_WIDTH) * 100}%`,
-    top: `${(position.y / LOCKER_IMAGE_HEIGHT) * 100}%`,
-    width: `${(position.width / LOCKER_IMAGE_WIDTH) * 100}%`,
-  };
-}
 
 function canStartMouseDragScroll(target: EventTarget | null): boolean {
   return (
     !(target instanceof Element) ||
     target.closest('[data-no-drag-scroll], button, a, input, textarea, select') === null
   );
+}
+
+function formatProfileCompactNumber(value: number): string {
+  const sign = value < 0 ? '-' : '';
+  const absolute = Math.abs(value);
+
+  if (absolute >= 1_000_000_000_000) {
+    return `${sign}${formatCompactUnit(absolute / 1_000_000_000_000)}трлн`;
+  }
+  if (absolute >= 1_000_000_000) {
+    return `${sign}${formatCompactUnit(absolute / 1_000_000_000)}млрд`;
+  }
+  if (absolute >= 1_000_000) {
+    return `${sign}${formatCompactUnit(absolute / 1_000_000)}млн`;
+  }
+  if (absolute >= 10_000) {
+    return `${sign}${Math.round(absolute / 1_000)}тыс`;
+  }
+
+  return formatProfileNumber(value);
+}
+
+function formatCompactUnit(value: number): string {
+  const rounded = value >= 10 ? Math.round(value) : Math.round(value * 10) / 10;
+  return String(rounded).replace('.', ',').replace(/,0$/, '');
 }
 
 function ProfileResourceChip({
@@ -90,31 +70,27 @@ function ProfileResourceChip({
   label: string;
   value: number;
   icon: ReactNode;
-  tone: RewardTone;
+  tone: 'coin' | 'star' | 'experience';
 }): JSX.Element {
-  const displayValue = formatProfileNumber(value);
-  const visualLength = displayValue.replace(/\s/g, '').length;
-  const fontSize =
-    visualLength >= 12
-      ? 6
-      : visualLength >= 9
-        ? 7
-        : visualLength >= 7
-          ? 8
-          : visualLength >= 5
-            ? 10
-            : 11;
-  const iconSize =
-    visualLength >= 12
-      ? 7
-      : visualLength >= 9
-        ? 8
-        : visualLength >= 7
-          ? 9
-          : visualLength >= 5
-            ? 12
-            : 14;
-  const gap = visualLength >= 5 ? 2 : 4;
+  const compactValue = formatProfileCompactNumber(value);
+  const visualLength = compactValue.replace(/\s/g, '').length;
+  const isLargeValue = Math.abs(value) >= 1_000_000;
+  const fontSize = visualLength >= 7 ? 8 : visualLength >= 5 || isLargeValue ? 10 : 11;
+  const iconSize = visualLength >= 7 ? 9 : visualLength >= 5 || isLargeValue ? 12 : 14;
+  const gap = visualLength >= 5 || isLargeValue ? 2 : 4;
+  const colors =
+    tone === 'coin'
+      ? {
+          color: '#9A6700',
+        }
+      : tone === 'star'
+        ? {
+            color: '#B77900',
+          }
+        : {
+            color: '#158A86',
+          };
+
   return (
     <span
       aria-label={`${label}: ${value}`}
@@ -125,6 +101,7 @@ function ProfileResourceChip({
         display: 'inline-flex',
         alignItems: 'center',
         gap,
+        color: colors.color,
         fontSize,
         fontWeight: 900,
         lineHeight: 1,
@@ -142,13 +119,82 @@ function ProfileResourceChip({
           flex: `0 0 ${iconSize}px`,
           alignItems: 'center',
           justifyContent: 'center',
-          color: rewardColor(tone),
         }}
       >
-        <span style={{ display: 'inline-flex', transform: `scale(${iconSize / 14})` }}>{icon}</span>
+        <span style={{ display: 'inline-flex', transform: `scale(${iconSize / 14})` }}>
+          {icon}
+        </span>
       </span>
-      <span style={{ color: 'var(--ink)' }}>{displayValue}</span>
+      <span>{compactValue}</span>
     </span>
+  );
+}
+
+function ProfileAvatar({
+  avatarUrl,
+  initial,
+}: {
+  avatarUrl?: string | undefined;
+  initial: string;
+}): JSX.Element {
+  return (
+    <div
+      style={{
+        width: 76,
+        height: 76,
+        gridArea: 'avatar',
+        position: 'relative',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <div
+        style={{
+          width: 72,
+          height: 72,
+          borderRadius: 999,
+          padding: 3,
+          background: 'rgba(226, 238, 249, 0.78)',
+          boxShadow: '0 9px 22px rgba(15, 23, 42, 0.18)',
+        }}
+      >
+        {avatarUrl ? (
+          <img
+            src={avatarUrl}
+            alt="avatar"
+            style={{
+              width: '100%',
+              height: '100%',
+              borderRadius: 999,
+              objectFit: 'cover',
+              border: '2px solid rgba(239, 247, 255, 0.92)',
+              boxSizing: 'border-box',
+              display: 'block',
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              width: '100%',
+              height: '100%',
+              borderRadius: 999,
+              background: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)',
+              color: '#ffffff',
+              fontSize: 25,
+              fontWeight: 800,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              border: '2px solid rgba(239, 247, 255, 0.92)',
+              boxSizing: 'border-box',
+            }}
+          >
+            {initial}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -159,6 +205,29 @@ const EQUIPMENT_META: Record<
   stick: { title: 'Клюшка', empty: 'Без клюшки', patchKey: 'stickItemId' },
   skates: { title: 'Коньки', empty: 'Без коньков', patchKey: 'skatesItemId' },
   nutrition: { title: 'Питание', empty: 'Без питания', patchKey: 'nutritionItemId' },
+};
+
+const EQUIPMENT_KINDS: InventoryEquipmentKind[] = ['stick', 'skates', 'nutrition'];
+
+type ProfileInfoSection = 'currency' | 'stats' | 'equipment' | 'achievements';
+
+const PROFILE_SECTION_INFO: Record<ProfileInfoSection, { title: string; copy: string }> = {
+  currency: {
+    title: 'Валюта',
+    copy: 'Монеты нужны для покупок в магазине, звёзды показывают особый прогресс, а опыт отражает общий рост профиля.',
+  },
+  stats: {
+    title: 'Статистика',
+    copy: 'Здесь собраны броски, голы, точность и серия игровых дней. Эти числа обновляются по сыгранным режимам.',
+  },
+  equipment: {
+    title: 'Экипировка',
+    copy: 'В раздевалке выбирается уже купленный инвентарь: одна клюшка, одна пара коньков и одно питание. В дуэлях расход считается по периодам.',
+  },
+  achievements: {
+    title: 'Задания',
+    copy: 'Задания показывают важные игровые цели. Выполненные задания подсвечены, невыполненные остаются приглушёнными до выполнения условия.',
+  },
 };
 
 function equipmentIdFor(
@@ -189,24 +258,77 @@ function baseEquipmentTitle(kind: InventoryEquipmentKind): string {
   return 'Без питания';
 }
 
+function baseEquipmentDescription(kind: InventoryEquipmentKind): string {
+  if (kind === 'stick') return 'Базовая клюшка доступна всегда и не расходуется в дуэлях.';
+  if (kind === 'skates') return 'Базовые коньки доступны всегда и не расходуются в дуэлях.';
+  return 'Можно выйти на матч без спортивного питания.';
+}
+
+function ProfileSectionInfoButton({
+  infoSection,
+  onOpenInfo,
+}: {
+  infoSection: ProfileInfoSection;
+  onOpenInfo: (section: ProfileInfoSection) => void;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      className="section-info-btn"
+      data-no-drag-scroll="true"
+      aria-label={`О разделе: ${PROFILE_SECTION_INFO[infoSection].title}`}
+      onClick={() => onOpenInfo(infoSection)}
+    >
+      <Info size={12} color="var(--muted)" />
+    </button>
+  );
+}
+
+function ProfileSectionLabel({
+  children,
+  infoSection,
+  style,
+  onOpenInfo,
+}: {
+  children: ReactNode;
+  infoSection: ProfileInfoSection;
+  style?: CSSProperties;
+  onOpenInfo: (section: ProfileInfoSection) => void;
+}): JSX.Element {
+  return (
+    <div
+      className="section-label"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 10,
+        ...style,
+      }}
+    >
+      <span style={{ minWidth: 0 }}>{children}</span>
+      <ProfileSectionInfoButton infoSection={infoSection} onOpenInfo={onOpenInfo} />
+    </div>
+  );
+}
+
 function isAvailableLockerItem(item: InventoryItem): boolean {
   return item.chargesAvailable + item.chargesReserved > 0;
 }
 
-function hasOwnedNutrition(inventory: InventoryState | undefined): boolean {
-  return (inventory?.items.nutrition ?? []).some(isAvailableLockerItem);
-}
+function formatProfileUsageCountLabel(count: number): string {
+  const normalized = Math.max(0, Math.trunc(count));
+  if (normalized === 0) return 'Нет запаса';
 
-function hasOwnedUltimateStick(inventory: InventoryState | undefined): boolean {
-  return (inventory?.items.stick ?? []).some(
-    (item) => item.chargesAvailable > 0 && /^Ультимейт Ван(?:\s|$)/i.test(item.title.trim()),
-  );
-}
-
-function profileStickArtworkSrc(inventory: InventoryState | undefined): string {
-  return hasOwnedUltimateStick(inventory)
-    ? '/inventory/profile-stick-carbon-red.webp'
-    : '/inventory/profile-hockey-stick.webp';
+  const mod10 = normalized % 10;
+  const mod100 = normalized % 100;
+  const noun =
+    mod10 === 1 && mod100 !== 11
+      ? 'период'
+      : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)
+        ? 'периода'
+        : 'периодов';
+  return `На ${normalized} ${noun}`;
 }
 
 function formatReservedLabel(count: number): string | null {
@@ -224,97 +346,10 @@ function formatReservedLabel(count: number): string | null {
   return `${normalized} ${noun}`;
 }
 
-function formatLockerCount(value: number): string {
-  return new Intl.NumberFormat('ru-RU').format(Math.max(0, Math.trunc(value)));
-}
-
-function equipmentModalCopy(kind: InventoryEquipmentKind): string {
-  if (kind === 'stick') {
-    return 'Выберите клюшку, с которой будете начинать матчи. Перед стартом игры выбор можно изменить';
-  }
-  return 'Выберите купленный предмет для активного слота.';
-}
-
-function equipmentStockLineStyle(selected: boolean): CSSProperties {
-  return {
-    display: 'inline-block',
-    marginTop: 3,
-    color: selected ? 'rgba(255,255,255,0.92)' : '#334155',
-    fontSize: 12,
-    fontWeight: 920,
-    lineHeight: 1.15,
-  };
-}
-
-function totalEquipmentResourceAmount(
-  inventory: InventoryState | undefined,
-  kind: InventoryEquipmentKind,
-): number {
-  return (inventory?.items[kind] ?? []).reduce(
-    (sum, item) => sum + Math.max(0, Math.trunc(item.chargesAvailable)),
-    0,
-  );
-}
-
-function totalEquipmentResourceUnit(
-  inventory: InventoryState | undefined,
-  kind: InventoryEquipmentKind,
-): InventoryItem['resourceUnit'] | undefined {
-  return inventory?.items[kind].find((item) => item.resourceUnit)?.resourceUnit;
-}
-
-function totalEquipmentBadgeLabel(
-  inventory: InventoryState | undefined,
-  kind: InventoryEquipmentKind,
-): string | undefined {
-  const total = totalEquipmentResourceAmount(inventory, kind);
-  if (total <= 0) return kind === 'stick' ? formatLockerCount(0) : undefined;
-  return formatInventoryBadgeAmount(kind, total, totalEquipmentResourceUnit(inventory, kind));
-}
-
-function totalEquipmentStockText(
-  inventory: InventoryState | undefined,
-  kind: InventoryEquipmentKind,
-): string | null {
-  const total = totalEquipmentResourceAmount(inventory, kind);
-  if (total <= 0) return null;
-  return `Всего ${formatInventoryResourceAmount(kind, total, totalEquipmentResourceUnit(inventory, kind))}`;
-}
-
-function equipmentPointLabel(value: number): string {
-  const normalized = Math.max(0, Math.trunc(value));
-  const mod10 = normalized % 10;
-  const mod100 = normalized % 100;
-  const noun =
-    mod10 === 1 && mod100 !== 11
-      ? 'пункт'
-      : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)
-        ? 'пункта'
-        : 'пунктов';
-  return `${normalized} ${noun}`;
-}
-
-function equipmentEffectLabel(
-  kind: InventoryEquipmentKind,
-  powerScore: number,
-  resourceAmount?: number,
-  resourceUnit?: InventoryItem['resourceUnit'],
-): string {
-  if (kind === 'skates') {
-    return resourceAmount !== undefined && resourceAmount > 0
-      ? 'Защищают от спотыканий'
-      : 'Возможны спотыкания';
-  }
-  if (kind === 'nutrition') {
-    return resourceAmount !== undefined && resourceAmount > 0
-      ? `Запас энергии: ${formatInventoryBadgeAmount(kind, resourceAmount, resourceUnit)}`
-      : 'Без дополнительной энергии';
-  }
-  if (powerScore <= 0) {
-    return 'Базовая скорость полёта шайбы';
-  }
-  if (kind === 'stick') return `Ускоряет полёт шайбы на ${equipmentPointLabel(powerScore)}`;
-  return 'Базовая скорость полёта шайбы';
+function equipmentEffectLabel(kind: InventoryEquipmentKind, powerScore: number): string {
+  if (kind === 'stick') return `Бросок +${powerScore}`;
+  if (kind === 'skates') return `Скорость +${powerScore}`;
+  return `Энергия +${powerScore}`;
 }
 
 function equipmentDisplayTitle(item: InventoryItem): string {
@@ -340,17 +375,22 @@ function equipmentDisplayTitle(item: InventoryItem): string {
   return 'Бронзовое питание';
 }
 
-function equipmentHotspotLabel(
-  kind: InventoryEquipmentKind,
-  inventory: InventoryState | undefined,
-): string {
+function EquipmentSlotButton({
+  kind,
+  inventory,
+  onOpen,
+}: {
+  kind: InventoryEquipmentKind;
+  inventory: InventoryState | undefined;
+  onOpen: () => void;
+}): JSX.Element {
   const meta = EQUIPMENT_META[kind];
   const items = (inventory?.items[kind] ?? []).filter(isAvailableLockerItem);
   const activeItem = equippedItem(inventory, kind);
   const hasOwnedItems = items.length > 0;
   const hasBaseEquipment = isRequiredEquipment(kind);
   const status = activeItem
-    ? formatInventoryStockLabel(activeItem)
+    ? formatProfileUsageCountLabel(activeItem.chargesAvailable)
     : hasBaseEquipment
       ? 'Базовая'
       : hasOwnedItems
@@ -361,212 +401,117 @@ function equipmentHotspotLabel(
     : hasBaseEquipment
       ? baseEquipmentTitle(kind)
       : meta.empty;
-  const total = totalEquipmentStockText(inventory, kind);
-  return `${meta.title}: ${title}. ${status}${total ? `. ${total}` : ''}`;
-}
+  const artworkSrc = activeItem
+    ? artworkForInventoryItem(activeItem)
+    : placeholderArtworkForKind(kind);
+  const hasVisibleEquipment = activeItem !== null || hasBaseEquipment;
 
-function ProfileLockerIcon({ src }: { src: string }): JSX.Element {
-  return <img className="profile-locker-hotspot-icon" src={src} alt="" aria-hidden="true" />;
-}
-
-function EquipmentSelectionRadio({ selected }: { selected: boolean }): JSX.Element {
-  return (
-    <span
-      aria-hidden="true"
-      style={{
-        width: 18,
-        height: 18,
-        borderRadius: 999,
-        border: selected ? '5px solid rgba(255,255,255,0.92)' : '2px solid rgba(15,23,42,0.34)',
-        background: selected ? '#1f2a3d' : 'rgba(255,255,255,0.36)',
-        boxShadow: selected
-          ? '0 0 0 1px rgba(15,23,42,0.2)'
-          : 'inset 0 1px 0 rgba(255,255,255,0.62)',
-        justifySelf: 'end',
-      }}
-    />
-  );
-}
-
-function ProfileLockerHotspotButton({
-  className,
-  label,
-  badge,
-  countLabel,
-  style,
-  onClick,
-  children,
-}: {
-  className: string;
-  label: string;
-  badge?: number;
-  countLabel?: string | undefined;
-  style?: CSSProperties;
-  onClick: () => void;
-  children: ReactNode;
-}): JSX.Element {
   return (
     <button
       type="button"
-      className={`profile-locker-hotspot ${className}`}
       data-no-drag-scroll="true"
-      aria-label={label}
-      style={style}
-      onClick={onClick}
+      onClick={onOpen}
+      aria-label={`${meta.title}: ${title}. ${status}`}
+      style={{
+        minWidth: 0,
+        minHeight: 154,
+        padding: '13px 11px 11px',
+        border: hasVisibleEquipment
+          ? '1px solid rgba(15, 23, 42, 0.28)'
+          : '1px solid rgba(255,255,255,0.76)',
+        borderRadius: 22,
+        background: hasVisibleEquipment
+          ? 'linear-gradient(180deg, rgba(255,255,255,0.42), rgba(255,255,255,0.18))'
+          : 'rgba(255,255,255,0.18)',
+        boxShadow: hasVisibleEquipment
+          ? '0 10px 22px rgba(15,23,42,0.16), inset 0 1px 0 rgba(255,255,255,0.86)'
+          : '0 8px 18px rgba(15,23,42,0.1), inset 0 1px 0 rgba(255,255,255,0.74)',
+        color: 'var(--ink)',
+        display: 'grid',
+        gridTemplateRows: 'auto auto minmax(0, 1fr)',
+        gap: 8,
+        textAlign: 'left',
+        cursor: 'pointer',
+        WebkitTapHighlightColor: 'transparent',
+      }}
     >
-      {children}
-      {badge !== undefined && badge > 0 && (
-        <span className="profile-locker-hotspot__badge" aria-hidden="true">
-          {badge}
-        </span>
-      )}
-      {countLabel !== undefined && (
-        <span className="profile-locker-hotspot__count" aria-hidden="true">
-          {countLabel}
-        </span>
-      )}
-    </button>
-  );
-}
-
-function ProfileLockerIdentityCard({
-  data,
-  initial,
-  tokenBalance,
-  starBalance,
-  experienceBalance,
-  onSettingsClick,
-}: {
-  data: ProfileData | undefined;
-  initial: string;
-  tokenBalance: number;
-  starBalance: number;
-  experienceBalance: number;
-  onSettingsClick: () => void;
-}): JSX.Element {
-  return (
-    <div className="profile-locker-id-card">
-      <div className="profile-locker-id-avatar">
-        {data?.avatarUrl ? (
-          <img src={data.avatarUrl} alt="avatar" />
-        ) : (
-          <div className="profile-locker-id-initial">{initial}</div>
-        )}
-      </div>
-      <div className="profile-locker-id-main">
-        <div className="profile-locker-resources">
-          <ProfileResourceChip
-            label="Монеты"
-            value={tokenBalance}
-            icon={<CircleDollarSign size={14} strokeWidth={2.55} />}
-            tone="coin"
-          />
-          <ProfileResourceChip
-            label="Звёзды"
-            value={starBalance}
-            icon={<Star size={14} strokeWidth={2.55} fill="currentColor" />}
-            tone="star"
-          />
-          <ProfileResourceChip
-            label="Опыт"
-            value={experienceBalance}
-            icon={<TrendingUp size={14} strokeWidth={2.55} />}
-            tone="experience"
-          />
-        </div>
-        <div className="profile-locker-name">{data?.displayName ?? '-'}</div>
-        <div className="profile-locker-status">
-          Уровень: {getLevelLabel(data?.competitionLevel)}
-        </div>
-      </div>
-      <button
-        type="button"
-        className="icon-btn profile-locker-settings-button"
-        data-no-drag-scroll="true"
-        aria-label="Настройки профиля"
-        onClick={onSettingsClick}
+      <span
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 6,
+          minWidth: 0,
+        }}
       >
-        <Settings size={24} strokeWidth={2.05} />
-      </button>
-    </div>
-  );
-}
-
-function ProfileStatsModal({
-  stats,
-  onClose,
-}: {
-  stats: ProfileData['stats'];
-  onClose: () => void;
-}): JSX.Element {
-  return (
-    <AccessibleModal
-      title="Статистика"
-      copy="Основные показатели игрока."
-      onRequestClose={onClose}
-      cardClassName="profile-locker-modal-card"
-      backdropStyle={{ zIndex: 420 }}
-      headerAction={
-        <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
-          <X size={15} />
-        </button>
-      }
-    >
-      <ProfileStatsGrid stats={stats} columns={2} style={{ margin: 0 }} />
-    </AccessibleModal>
-  );
-}
-
-function ProfileAchievementsModal({
-  achievements,
-  unclaimedCount,
-  onOpenAchievement,
-  onOpenAchievementsPage,
-  onClose,
-}: {
-  achievements: ProfileAchievement[];
-  unclaimedCount: number;
-  onOpenAchievement: (achievement: ProfileAchievement) => void;
-  onOpenAchievementsPage: () => void;
-  onClose: () => void;
-}): JSX.Element {
-  return (
-    <AccessibleModal
-      title={`Достижения (${achievements.length})`}
-      ariaLabel="Достижения"
-      onRequestClose={onClose}
-      cardClassName="profile-locker-modal-card"
-      backdropStyle={{ zIndex: 420 }}
-      headerAction={
-        <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
-          <X size={15} />
-        </button>
-      }
-    >
-      {achievements.length > 0 ? (
-        <div className="profile-locker-achievement-grid">
-          {achievements.map((achievement) => (
-            <AchievementTile
-              key={achievement.id}
-              achievement={achievement}
-              onOpen={() => onOpenAchievement(achievement)}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="profile-locker-empty-copy">Достижений пока нет.</div>
-      )}
-      {unclaimedCount > 0 && (
-        <button
-          type="button"
-          className="btn btn--cta modal-primary"
-          data-no-drag-scroll="true"
-          onClick={onOpenAchievementsPage}
+        <span
+          style={{
+            minWidth: 0,
+            color: 'var(--muted)',
+            fontSize: 10,
+            fontWeight: 900,
+            lineHeight: 1.05,
+            textTransform: 'uppercase',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
         >
-          Награды ждут получения: {unclaimedCount}
-        </button>
-      )}
-    </AccessibleModal>
+          {meta.title}
+        </span>
+      </span>
+
+      <span
+        aria-hidden="true"
+        style={{
+          width: '100%',
+          aspectRatio: '1 / 1',
+          justifySelf: 'stretch',
+          borderRadius: 18,
+          overflow: 'hidden',
+          border: '1px solid rgba(255,255,255,0.74)',
+          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.72), 0 8px 16px rgba(15,23,42,0.1)',
+          background: 'rgba(255,255,255,0.26)',
+          opacity: hasVisibleEquipment ? 1 : 0.5,
+        }}
+      >
+        <img
+          src={artworkSrc}
+          alt=""
+          style={{
+            width: '100%',
+            height: '100%',
+            display: 'block',
+            objectFit: 'cover',
+          }}
+        />
+      </span>
+
+      <span style={{ display: 'grid', alignContent: 'center', gap: 6, minWidth: 0 }}>
+        <span
+          style={{
+            minWidth: 0,
+            color: 'var(--ink)',
+            fontSize: 13,
+            fontWeight: 950,
+            lineHeight: 1.08,
+            overflowWrap: 'anywhere',
+          }}
+        >
+          {title}
+        </span>
+        <span
+          style={{
+            color: hasVisibleEquipment ? 'rgba(15, 23, 42, 0.7)' : 'var(--muted)',
+            fontSize: 11,
+            fontWeight: 800,
+            lineHeight: 1.2,
+          }}
+        >
+          {status}
+        </span>
+      </span>
+    </button>
   );
 }
 
@@ -590,113 +535,78 @@ function EquipmentDetailsModal({
   const meta = EQUIPMENT_META[kind];
   const items = (inventory?.items[kind] ?? []).filter(isAvailableLockerItem);
   const activeId = equipmentIdFor(inventory, kind);
-  const baseSelected = activeId === null;
 
   return (
-    <AccessibleModal
-      title={meta.title}
-      copy={equipmentModalCopy(kind)}
-      onRequestClose={onClose}
-      closeBlocked={isSaving}
-      backdropStyle={{ zIndex: 420 }}
-      cardStyle={{
-        width: 'min(430px, calc(100vw - 28px))',
-        maxHeight: 'calc(100dvh - 112px - var(--app-safe-top) - var(--app-safe-bottom))',
-        overflow: 'hidden',
-      }}
-      headerAction={
+    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 420 }}>
+      <section
+        role="dialog"
+        aria-label={meta.title}
+        className="modal-card"
+        onClick={(event) => event.stopPropagation()}
+        style={{
+          width: 'min(430px, calc(100vw - 28px))',
+          display: 'grid',
+          gap: 14,
+          position: 'relative',
+        }}
+      >
         <button
           type="button"
           className="icon-btn"
           aria-label="Закрыть"
-          disabled={isSaving}
           onClick={onClose}
+          style={{ position: 'absolute', top: 14, right: 14 }}
         >
           <X size={15} />
         </button>
-      }
-    >
-      <div style={{ minHeight: 0, display: 'grid', gap: 10 }}>
-        <div
-          className="no-scrollbar"
-          style={{
-            minHeight: 0,
-            maxHeight: 'min(54dvh, 430px)',
-            overflowY: 'auto',
-            display: 'grid',
-            gap: 8,
-            paddingRight: 2,
-          }}
-        >
+        <div style={{ minWidth: 0, paddingRight: 42 }}>
+          <div className="modal-title">{meta.title}</div>
+          <div className="modal-copy">Купленные расходники для активного слота.</div>
+        </div>
+
+        <div style={{ display: 'grid', gap: 8 }}>
           <button
             type="button"
             data-no-drag-scroll="true"
             disabled={isSaving}
             onClick={() => onSelect(null)}
-            className={baseSelected ? 'glass-dark' : 'glass'}
-            aria-pressed={baseSelected}
+            className="glass"
+            aria-pressed={activeId === null}
             style={{
-              minHeight: 74,
-              borderRadius: 16,
-              padding: 10,
-              color: baseSelected ? '#ffffff' : 'var(--ink)',
-              border: baseSelected
-                ? '1px solid rgba(15, 23, 42, 0.22)'
-                : '1px solid rgba(255,255,255,0.76)',
-              background: baseSelected ? 'rgba(15, 23, 42, 0.74)' : 'rgba(255,255,255,0.22)',
-              display: 'grid',
-              gridTemplateColumns: '54px minmax(0, 1fr) 22px',
+              borderRadius: 18,
+              padding: 12,
+              color: 'var(--ink)',
+              border:
+                activeId === null
+                  ? '1px solid rgba(15, 23, 42, 0.28)'
+                  : '1px solid rgba(255,255,255,0.76)',
+              background:
+                activeId === null
+                  ? 'linear-gradient(180deg, rgba(255,255,255,0.58), rgba(226, 239, 249, 0.24))'
+                  : 'rgba(255,255,255,0.22)',
+              display: 'block',
               alignItems: 'center',
-              gap: 10,
               textAlign: 'left',
               cursor: isSaving ? 'wait' : 'pointer',
-              boxShadow: baseSelected
-                ? '0 14px 26px rgba(15,23,42,0.2), inset 0 1px 0 rgba(255,255,255,0.2)'
-                : '0 8px 18px rgba(15,23,42,0.1), inset 0 1px 0 rgba(255,255,255,0.74)',
+              boxShadow:
+                activeId === null
+                  ? '0 10px 22px rgba(15,23,42,0.14), inset 0 1px 0 rgba(255,255,255,0.86)'
+                  : '0 8px 18px rgba(15,23,42,0.1), inset 0 1px 0 rgba(255,255,255,0.74)',
             }}
           >
-            <span
-              aria-hidden="true"
-              style={{
-                width: 54,
-                height: 54,
-                borderRadius: 14,
-                overflow: 'hidden',
-                border: baseSelected
-                  ? '1px solid rgba(255,255,255,0.32)'
-                  : '1px solid rgba(255,255,255,0.78)',
-                background: 'rgba(255,255,255,0.28)',
-              }}
-            >
-              <img
-                src={placeholderArtworkForKind(kind)}
-                alt=""
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  display: 'block',
-                  objectFit: 'cover',
-                  filter: 'grayscale(0.45)',
-                  opacity: 0.72,
-                }}
-              />
-            </span>
-            <span style={{ minWidth: 0, display: 'grid', gap: 5 }}>
-              <span style={{ minWidth: 0, fontSize: 15, fontWeight: 950, lineHeight: 1.12 }}>
-                {baseEquipmentTitle(kind)}
-              </span>
+            <span style={{ display: 'grid', gap: 4 }}>
+              <span style={{ fontSize: 15, fontWeight: 900 }}>{baseEquipmentTitle(kind)}</span>
               <span
                 style={{
-                  color: baseSelected ? 'rgba(255,255,255,0.72)' : 'rgba(15, 23, 42, 0.62)',
+                  color: 'rgba(15, 23, 42, 0.62)',
                   fontSize: 12,
                   fontWeight: 760,
                   lineHeight: 1.28,
                 }}
               >
-                {equipmentEffectLabel(kind, 0)}
+                {baseEquipmentDescription(kind)}
               </span>
             </span>
-            <EquipmentSelectionRadio selected={baseSelected} />
           </button>
 
           {items.map((item) => {
@@ -711,34 +621,35 @@ function EquipmentDetailsModal({
                 disabled={isSaving || item.chargesAvailable <= 0}
                 onClick={() => onSelect(item.id)}
                 aria-pressed={selected}
-                className={selected ? 'glass-dark' : 'glass'}
+                className="glass"
                 style={{
-                  minHeight: 94,
-                  borderRadius: 18,
-                  padding: 10,
-                  color: selected ? '#ffffff' : 'var(--ink)',
+                  borderRadius: 24,
+                  padding: 14,
+                  color: 'var(--ink)',
                   border: selected
-                    ? '1px solid rgba(15, 23, 42, 0.22)'
+                    ? '1px solid rgba(15, 23, 42, 0.28)'
                     : '1px solid rgba(255,255,255,0.76)',
-                  background: selected ? 'rgba(15, 23, 42, 0.74)' : 'rgba(255,255,255,0.22)',
+                  background: selected
+                    ? 'linear-gradient(180deg, rgba(255,255,255,0.58), rgba(226, 239, 249, 0.24))'
+                    : 'rgba(255,255,255,0.22)',
                   display: 'grid',
-                  gridTemplateColumns: '64px minmax(0, 1fr) 22px',
-                  alignItems: 'center',
-                  gap: 10,
+                  gridTemplateColumns: '96px minmax(0, 1fr)',
+                  alignItems: 'start',
+                  gap: 12,
                   textAlign: 'left',
                   cursor: isSaving ? 'wait' : 'pointer',
                   opacity: item.chargesAvailable > 0 ? 1 : 0.55,
                   boxShadow: selected
-                    ? '0 14px 26px rgba(15,23,42,0.2), inset 0 1px 0 rgba(255,255,255,0.2)'
+                    ? '0 12px 24px rgba(15,23,42,0.14), inset 0 1px 0 rgba(255,255,255,0.86)'
                     : '0 8px 18px rgba(15,23,42,0.1), inset 0 1px 0 rgba(255,255,255,0.74)',
                 }}
               >
                 <span
                   aria-hidden="true"
                   style={{
-                    width: 64,
-                    height: 64,
-                    borderRadius: 16,
+                    width: '100%',
+                    aspectRatio: '1 / 1',
+                    borderRadius: 22,
                     overflow: 'hidden',
                     border: '1px solid rgba(255,255,255,0.8)',
                     background: 'rgba(255,255,255,0.28)',
@@ -752,44 +663,75 @@ function EquipmentDetailsModal({
                     style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }}
                   />
                 </span>
-                <span style={{ minWidth: 0, display: 'grid', gap: 5 }}>
+                <span style={{ minWidth: 0 }}>
                   <span
                     style={{
+                      display: 'block',
                       minWidth: 0,
-                      color: selected ? '#ffffff' : 'var(--ink)',
-                      fontSize: 15,
-                      fontWeight: 950,
-                      lineHeight: 1.12,
-                      overflowWrap: 'break-word',
                     }}
                   >
-                    {displayTitle}
+                    <span
+                      style={{
+                        minWidth: 0,
+                        color: 'var(--ink)',
+                        fontSize: 18,
+                        fontWeight: 950,
+                        lineHeight: 1.08,
+                        overflowWrap: 'break-word',
+                      }}
+                    >
+                      {displayTitle}
+                    </span>
                   </span>
                   <span
                     style={{
-                      display: 'grid',
-                      gap: 2,
-                      color: selected ? 'rgba(255,255,255,0.74)' : 'rgba(15, 23, 42, 0.62)',
+                      display: 'block',
+                      marginTop: 7,
                       fontSize: 12,
                       fontWeight: 760,
-                      lineHeight: 1.25,
+                      lineHeight: 1.28,
+                      color: 'rgba(15, 23, 42, 0.62)',
                     }}
                   >
-                    <span>
-                      {equipmentEffectLabel(
-                        kind,
-                        item.powerScore,
-                        item.chargesAvailable,
-                        item.resourceUnit,
-                      )}
+                    {item.description}
+                  </span>
+                  <span
+                    style={{
+                      display: 'flex',
+                      gap: 6,
+                      flexWrap: 'wrap',
+                      marginTop: 12,
+                    }}
+                  >
+                    <span
+                      className="pill"
+                      style={{ height: 26, justifyContent: 'center', fontSize: 11 }}
+                    >
+                      {formatProfileUsageCountLabel(item.chargesAvailable)}
                     </span>
-                    <span style={equipmentStockLineStyle(selected)}>
-                      {formatInventoryStockLabel(item)}
+                    <span
+                      className="pill"
+                      style={{ height: 26, justifyContent: 'center', fontSize: 11 }}
+                    >
+                      {equipmentEffectLabel(kind, item.powerScore)}
                     </span>
+                  </span>
+                  <span
+                    style={{
+                      display: 'flex',
+                      gap: 8,
+                      flexWrap: 'wrap',
+                      marginTop: 10,
+                      fontSize: 11,
+                      fontWeight: 850,
+                      color: 'rgba(15, 23, 42, 0.66)',
+                    }}
+                  >
+                    <span>Расход: {item.duelPeriodCost}/период</span>
+                    <span>Цена: {item.currencyPrice}</span>
                     {reservedLabel !== null && <span>{reservedLabel}</span>}
                   </span>
                 </span>
-                <EquipmentSelectionRadio selected={selected} />
               </button>
             );
           })}
@@ -804,10 +746,19 @@ function EquipmentDetailsModal({
               </div>
               <button
                 type="button"
-                className="btn btn--cta modal-primary"
+                className="btn btn--ghost"
                 onClick={onOpenShop}
                 style={{
+                  width: '100%',
+                  minHeight: 46,
                   marginTop: 6,
+                  padding: '11px 0',
+                  fontSize: 13,
+                  fontWeight: 850,
+                  letterSpacing: '0.04em',
+                  background: 'rgba(255,255,255,0.54)',
+                  border: '1px solid rgba(15, 23, 42, 0.13)',
+                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.7), 0 8px 18px rgba(15,23,42,0.08)',
                 }}
               >
                 В магазин
@@ -821,8 +772,65 @@ function EquipmentDetailsModal({
             {error}
           </div>
         )}
+      </section>
+    </div>
+  );
+}
+
+function ProfileSectionInfoModal({
+  section,
+  onClose,
+}: {
+  section: ProfileInfoSection;
+  onClose: () => void;
+}): JSX.Element {
+  const info = PROFILE_SECTION_INFO[section];
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={info.title}
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(15, 23, 42, 0.35)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+        zIndex: 430,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      <div
+        className="glass"
+        onClick={(event) => event.stopPropagation()}
+        style={{ borderRadius: 24, padding: '22px 22px 18px', maxWidth: 320, width: '100%' }}
+      >
+        <div
+          style={{
+            fontSize: 15,
+            fontWeight: 700,
+            color: 'var(--ink)',
+            marginBottom: 10,
+          }}
+        >
+          {info.title}
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>{info.copy}</div>
+        <button
+          type="button"
+          className="btn btn--cta"
+          onClick={onClose}
+          style={{ marginTop: 18, width: '100%', padding: '12px 0', fontSize: 14 }}
+        >
+          Понятно
+        </button>
       </div>
-    </AccessibleModal>
+    </div>
   );
 }
 
@@ -830,20 +838,13 @@ export function ProfileScreen(): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const updateUser = useAuthStore((s) => s.updateUser);
-  const lockerSceneRef = useRef<HTMLElement | null>(null);
-  const rinkPhotoRef = useRef<HTMLButtonElement | null>(null);
-  const restoreArenaFocusRef = useRef(false);
   const dragScrollRef = useRef<{ startY: number; scrollTop: number } | null>(null);
   const suppressClickRef = useRef(false);
-  const [lockerHotspotLayerStyle, setLockerHotspotLayerStyle] = useState<CSSProperties>({});
   const [selectedAchievement, setSelectedAchievement] = useState<ProfileAchievement | null>(null);
-  const [selectedLockerModal, setSelectedLockerModal] = useState<'stats' | 'achievements' | null>(
-    null,
-  );
+  const [selectedInfoSection, setSelectedInfoSection] = useState<ProfileInfoSection | null>(null);
   const [selectedEquipmentKind, setSelectedEquipmentKind] = useState<InventoryEquipmentKind | null>(
     null,
   );
-  const [arenaModalOpen, setArenaModalOpen] = useState(false);
 
   const { data, isLoading } = useQuery<ProfileData>({
     queryKey: ['profile'],
@@ -852,11 +853,6 @@ export function ProfileScreen(): JSX.Element {
   const inventoryQuery = useQuery<InventoryState>({
     queryKey: ['inventory', 'me'],
     queryFn: fetchMyInventory,
-    enabled: data !== undefined,
-  });
-  const homeArenasQuery = useQuery<HomeArenasResponse>({
-    queryKey: ['home-arenas'],
-    queryFn: fetchHomeArenas,
     enabled: data !== undefined,
   });
   const equipmentMut = useMutation<
@@ -883,49 +879,6 @@ export function ProfileScreen(): JSX.Element {
     }
   }, [data, updateUser]);
 
-  useEffect(() => {
-    const scene = lockerSceneRef.current;
-    if (scene === null) return undefined;
-
-    const updateLayer = (): void => {
-      const { width, height } = scene.getBoundingClientRect();
-      if (width <= 0 || height <= 0) return;
-
-      const scale = Math.max(width / LOCKER_IMAGE_WIDTH, height / LOCKER_IMAGE_HEIGHT);
-      const renderedWidth = LOCKER_IMAGE_WIDTH * scale;
-      const renderedHeight = LOCKER_IMAGE_HEIGHT * scale;
-
-      setLockerHotspotLayerStyle({
-        width: renderedWidth,
-        height: renderedHeight,
-        left: (width - renderedWidth) / 2,
-        top: (height - renderedHeight) / 2,
-      });
-    };
-
-    updateLayer();
-    window.addEventListener('resize', updateLayer);
-
-    let resizeObserver: ResizeObserver | null = null;
-    if (typeof ResizeObserver !== 'undefined') {
-      resizeObserver = new ResizeObserver(updateLayer);
-      resizeObserver.observe(scene);
-    }
-
-    return () => {
-      window.removeEventListener('resize', updateLayer);
-      resizeObserver?.disconnect();
-    };
-  }, [isLoading]);
-
-  useEffect(() => {
-    if (arenaModalOpen || !restoreArenaFocusRef.current) return;
-
-    restoreArenaFocusRef.current = false;
-    const rinkPhoto = rinkPhotoRef.current;
-    if (rinkPhoto?.isConnected) rinkPhoto.focus();
-  }, [arenaModalOpen]);
-
   if (isLoading) {
     return (
       <main className="screen" style={{ alignItems: 'center', justifyContent: 'center' }}>
@@ -937,40 +890,10 @@ export function ProfileScreen(): JSX.Element {
   const initial = (data?.displayName ?? '?').charAt(0).toUpperCase();
   const stats = data?.stats ?? EMPTY_PROFILE_STATS;
   const achievements = data?.achievements ?? [];
-  const unlockedAchievementsCount = achievements.filter(
-    (achievement) => achievement.isUnlocked,
-  ).length;
-  const stickStockBadge = totalEquipmentBadgeLabel(inventoryQuery.data, 'stick');
-  const skatesStockBadge = totalEquipmentBadgeLabel(inventoryQuery.data, 'skates');
-  const nutritionStockBadge = totalEquipmentBadgeLabel(inventoryQuery.data, 'nutrition');
-  const unclaimedAchievementsCount = data?.unclaimedAchievementsCount ?? 0;
   const tokenBalance = inventoryQuery.data?.balances.tokens ?? data?.currencyBalance ?? 0;
   const starBalance = inventoryQuery.data?.balances.stars ?? data?.starBalance ?? 0;
   const experienceBalance =
     inventoryQuery.data?.balances.experience ?? data?.experienceBalance ?? 0;
-  const showNutritionCans = hasOwnedNutrition(inventoryQuery.data);
-  const stickArtworkSrc = profileStickArtworkSrc(inventoryQuery.data);
-  const jerseyArtworkSrc =
-    data?.competitionLevel === 'beginner'
-      ? '/inventory/profile-hoodie-training.webp'
-      : '/inventory/profile-jersey-hanger.webp';
-  const selectedHomeArena = homeArenasQuery.data?.selected_arena;
-
-  function handleArenaSaved(arena: HomeArena): void {
-    queryClient.setQueryData<HomeArenasResponse>(['home-arenas'], (current) =>
-      current === undefined ? current : { ...current, selected_arena: arena },
-    );
-  }
-
-  function openArenaModal(event: MouseEvent<HTMLButtonElement>): void {
-    rinkPhotoRef.current = event.currentTarget;
-    setArenaModalOpen(true);
-  }
-
-  function closeArenaModal(): void {
-    restoreArenaFocusRef.current = true;
-    setArenaModalOpen(false);
-  }
 
   function handlePointerDown(event: PointerEvent<HTMLElement>): void {
     if (
@@ -1013,124 +936,184 @@ export function ProfileScreen(): JSX.Element {
 
   return (
     <main
-      className="screen profile-locker-screen"
+      className="screen"
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerEnd}
       onPointerCancel={handlePointerEnd}
+      style={{
+        height: '100%',
+        minHeight: 0,
+        paddingBottom: 16,
+        overflowY: 'auto',
+        overscrollBehaviorY: 'contain',
+        touchAction: 'pan-y',
+        WebkitOverflowScrolling: 'touch',
+      }}
     >
-      <section ref={lockerSceneRef} className="profile-locker-scene" aria-label="Раздевалка игрока">
-        <img className="profile-locker-bg" src="/inventory/profile-locker-empty.webp" alt="" />
-        <div className="profile-locker-vignette" />
-        <ProfileLockerIdentityCard
-          data={data}
+      <div
+        className="glass"
+        style={{
+          margin: 'calc(16px + var(--app-safe-top)) 14px 14px',
+          padding: '14px 14px 13px',
+          borderRadius: 24,
+          display: 'grid',
+          gridTemplateColumns: '76px minmax(0, 1fr) 40px',
+          gridTemplateAreas: '"avatar info settings"',
+          alignItems: 'center',
+          gap: 10,
+          position: 'relative',
+        }}
+      >
+        <button
+          type="button"
+          className="icon-btn"
+          data-no-drag-scroll="true"
+          aria-label="Настройки"
+          onClick={() => navigate('/profile/settings')}
+          style={{
+            width: 40,
+            height: 40,
+            gridArea: 'settings',
+            justifySelf: 'end',
+            alignSelf: 'start',
+            marginTop: 2,
+          }}
+        >
+          <Settings size={18} />
+        </button>
+        <ProfileAvatar
+          avatarUrl={data?.avatarUrl ?? undefined}
           initial={initial}
-          tokenBalance={tokenBalance}
-          starBalance={starBalance}
-          experienceBalance={experienceBalance}
-          onSettingsClick={() => navigate('/profile/settings')}
         />
-        <div className="profile-locker-hotspot-layer" style={lockerHotspotLayerStyle}>
-          <img
-            className="profile-locker-prop profile-locker-prop--jersey"
-            src={jerseyArtworkSrc}
-            alt=""
-            style={lockerPropStyle(LOCKER_PROPS.jersey)}
-          />
-          <img
-            className="profile-locker-prop profile-locker-prop--stick"
-            src={stickArtworkSrc}
-            alt=""
-            style={lockerPropStyle(LOCKER_PROPS.stick)}
-          />
-          <img
-            className="profile-locker-prop profile-locker-prop--skates"
-            src="/inventory/profile-black-skates.webp"
-            alt=""
-            style={lockerPropStyle(LOCKER_PROPS.skates)}
-          />
-          {unlockedAchievementsCount > 0 && (
-            <img
-              className="profile-locker-prop profile-locker-prop--achievement-medals"
-              src="/inventory/profile-achievement-medals.webp"
-              alt=""
-              style={lockerPropStyle(LOCKER_PROPS.achievementMedals)}
+        <div
+          style={{
+            minWidth: 0,
+            minHeight: 68,
+            gridArea: 'info',
+            display: 'grid',
+            gridTemplateRows: 'auto minmax(0, 1fr) auto',
+            alignItems: 'center',
+            gap: 2,
+          }}
+        >
+          <div
+            style={{
+              minWidth: 0,
+              maxWidth: '100%',
+              display: 'flex',
+              flexWrap: 'nowrap',
+              alignItems: 'center',
+              justifyContent: 'flex-start',
+              gap: 'clamp(6px, 2.8vw, 14px)',
+              justifySelf: 'stretch',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <ProfileResourceChip
+              label="Монеты"
+              value={tokenBalance}
+              icon={<CircleDollarSign size={14} strokeWidth={2.55} />}
+              tone="coin"
             />
-          )}
-          <button
-            ref={rinkPhotoRef}
-            type="button"
-            className="profile-locker-rink-hotspot"
-            data-no-drag-scroll="true"
-            style={lockerPropStyle(LOCKER_PROPS.rinkPhoto)}
-            aria-label="Выбрать домашнюю площадку"
-            onClick={openArenaModal}
-          >
-            {selectedHomeArena !== undefined && (
-              <img src={selectedHomeArena.thumbnail_url} alt="" />
-            )}
-          </button>
-          <img
-            className="profile-locker-prop profile-locker-prop--rink-photo"
-            src="/inventory/profile-rink-photo-frame.webp"
-            alt=""
-            style={lockerPropStyle(LOCKER_PROPS.rinkPhoto)}
-          />
-          {showNutritionCans && (
-            <img
-              className="profile-locker-prop profile-locker-prop--nutrition-cans"
-              src="/inventory/profile-nutrition-cans.webp"
-              alt=""
-              style={lockerPropStyle(LOCKER_PROPS.nutritionCans)}
+            <ProfileResourceChip
+              label="Звёзды"
+              value={starBalance}
+              icon={<Star size={14} strokeWidth={2.55} fill="currentColor" />}
+              tone="star"
             />
-          )}
-          <ProfileLockerHotspotButton
-            className="profile-locker-hotspot--stick"
-            label={equipmentHotspotLabel('stick', inventoryQuery.data)}
-            countLabel={stickStockBadge}
-            style={lockerHotspotStyle(LOCKER_HOTSPOTS.stick)}
-            onClick={() => setSelectedEquipmentKind('stick')}
+            <ProfileResourceChip
+              label="Опыт"
+              value={experienceBalance}
+              icon={<TrendingUp size={14} strokeWidth={2.55} />}
+              tone="experience"
+            />
+          </div>
+          <span
+            style={{
+              minWidth: 0,
+              maxWidth: '100%',
+              alignSelf: 'center',
+              color: 'var(--ink)',
+              fontSize: 20,
+              fontWeight: 850,
+              lineHeight: 1.08,
+              overflow: 'hidden',
+              textAlign: 'left',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
           >
-            <ProfileLockerIcon src="/inventory/profile-icon-stick.webp" />
-          </ProfileLockerHotspotButton>
-          <ProfileLockerHotspotButton
-            className="profile-locker-hotspot--skates"
-            label={equipmentHotspotLabel('skates', inventoryQuery.data)}
-            countLabel={skatesStockBadge}
-            style={lockerHotspotStyle(LOCKER_HOTSPOTS.skates)}
-            onClick={() => setSelectedEquipmentKind('skates')}
+            {data?.displayName ?? '-'}
+          </span>
+          <div
+            style={{
+              justifySelf: 'start',
+              maxWidth: '100%',
+              minWidth: 0,
+              height: 16,
+              display: 'inline-flex',
+              alignItems: 'center',
+              color: 'rgba(71, 85, 105, 0.88)',
+              fontSize: 11,
+              fontWeight: 800,
+              lineHeight: 1,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
           >
-            <ProfileLockerIcon src="/inventory/profile-icon-skates.webp" />
-          </ProfileLockerHotspotButton>
-          <ProfileLockerHotspotButton
-            className="profile-locker-hotspot--nutrition"
-            label={equipmentHotspotLabel('nutrition', inventoryQuery.data)}
-            countLabel={nutritionStockBadge}
-            style={lockerHotspotStyle(LOCKER_HOTSPOTS.nutrition)}
-            onClick={() => setSelectedEquipmentKind('nutrition')}
-          >
-            <ProfileLockerIcon src="/inventory/profile-icon-nutrition.webp" />
-          </ProfileLockerHotspotButton>
-          <ProfileLockerHotspotButton
-            className="profile-locker-hotspot--achievements"
-            label={`Достижения: ${unlockedAchievementsCount} получено`}
-            badge={unclaimedAchievementsCount}
-            countLabel={formatLockerCount(unlockedAchievementsCount)}
-            style={lockerHotspotStyle(LOCKER_HOTSPOTS.achievements)}
-            onClick={() => setSelectedLockerModal('achievements')}
-          >
-            <ProfileLockerIcon src="/inventory/profile-icon-medal.webp" />
-          </ProfileLockerHotspotButton>
-          <ProfileLockerHotspotButton
-            className="profile-locker-hotspot--puck"
-            label="Шайба: статистика"
-            style={lockerHotspotStyle(LOCKER_HOTSPOTS.puck)}
-            onClick={() => setSelectedLockerModal('stats')}
-          >
-            <ProfileLockerIcon src="/inventory/profile-icon-puck.webp" />
-          </ProfileLockerHotspotButton>
+            Уровень: {getLevelLabel(data?.competitionLevel)}
+          </div>
         </div>
-      </section>
+      </div>
+
+      <ProfileSectionLabel
+        infoSection="stats"
+        onOpenInfo={setSelectedInfoSection}
+        style={{ marginBottom: 6 }}
+      >
+        Статистика
+      </ProfileSectionLabel>
+      <ProfileStatsGrid stats={stats} style={{ margin: '0 14px 14px' }} />
+
+      <ProfileSectionLabel
+        infoSection="equipment"
+        onOpenInfo={setSelectedInfoSection}
+        style={{ marginBottom: 8 }}
+      >
+        Экипировка
+      </ProfileSectionLabel>
+      <div
+        style={{
+          margin: '0 14px 14px',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+          gap: 8,
+        }}
+      >
+        {EQUIPMENT_KINDS.map((kind) => (
+          <EquipmentSlotButton
+            key={kind}
+            kind={kind}
+            inventory={inventoryQuery.data}
+            onOpen={() => setSelectedEquipmentKind(kind)}
+          />
+        ))}
+      </div>
+
+      <ProfileAchievementsSection
+        achievements={achievements}
+        labelAccessory={
+          <ProfileSectionInfoButton
+            infoSection="achievements"
+            onOpenInfo={setSelectedInfoSection}
+          />
+        }
+        onOpenAchievement={(achievement) => {
+          if (!suppressClickRef.current) setSelectedAchievement(achievement);
+        }}
+      />
 
       {selectedAchievement !== null && (
         <AchievementDetailsSheet
@@ -1138,19 +1121,10 @@ export function ProfileScreen(): JSX.Element {
           onClose={() => setSelectedAchievement(null)}
         />
       )}
-      {selectedLockerModal === 'stats' && (
-        <ProfileStatsModal stats={stats} onClose={() => setSelectedLockerModal(null)} />
-      )}
-      {selectedLockerModal === 'achievements' && (
-        <ProfileAchievementsModal
-          achievements={achievements}
-          unclaimedCount={unclaimedAchievementsCount}
-          onOpenAchievement={setSelectedAchievement}
-          onOpenAchievementsPage={() => {
-            setSelectedLockerModal(null);
-            navigate('/achievements');
-          }}
-          onClose={() => setSelectedLockerModal(null)}
+      {selectedInfoSection !== null && (
+        <ProfileSectionInfoModal
+          section={selectedInfoSection}
+          onClose={() => setSelectedInfoSection(null)}
         />
       )}
       {selectedEquipmentKind !== null && (
@@ -1177,14 +1151,6 @@ export function ProfileScreen(): JSX.Element {
               },
             );
           }}
-        />
-      )}
-      {arenaModalOpen && homeArenasQuery.data !== undefined && (
-        <HomeArenaModal
-          arenas={homeArenasQuery.data.arenas}
-          selectedArena={homeArenasQuery.data.selected_arena}
-          onSaved={handleArenaSaved}
-          onClose={closeArenaModal}
         />
       )}
     </main>

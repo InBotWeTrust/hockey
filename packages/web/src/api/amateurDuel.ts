@@ -1,9 +1,4 @@
-import type {
-  DailyPeriodSpeedPreset,
-  DuelInventoryResourceUnit,
-  DuelInventoryTiming,
-  StickEffects,
-} from '@hockey/game-core';
+import type { DailyPeriodSpeedPreset, StickEffects } from '@hockey/game-core';
 import { apiFetch } from './apiFetch.js';
 import type { ShotInputPayload, ShotResultType } from './duel.js';
 
@@ -26,20 +21,6 @@ export type AmateurDuelParticipantState =
 export type AmateurDuelOutcome = 'challenger_win' | 'opponent_win' | 'draw' | 'double_loss';
 export type AmateurDuelKind = 'express' | 'express_plus' | 'classic';
 export type AmateurDuelPeriodMode = 'quota' | 'time_attack';
-export type AmateurDuelVenuePolicy =
-  | 'direct_challenge'
-  | 'neutral_default'
-  | 'home_selected'
-  | 'random_participant_home'
-  | 'random_unselected';
-
-export interface AmateurDuelArena {
-  id: string;
-  slug: string;
-  title: string;
-  artwork_url: string;
-  thumbnail_url: string;
-}
 
 export interface AmateurDuelMatchmakingTicket {
   id: string;
@@ -114,10 +95,6 @@ export interface AmateurDuelRules {
   powerCap: number;
   goalieId: string;
   periodSpeedPresets: DailyPeriodSpeedPreset[];
-  noInventoryTiming: {
-    skates: DuelInventoryTiming;
-    nutrition: DuelInventoryTiming;
-  };
   stakeAmount: number;
   entryFeeAmount: number;
   requiredInventoryItemId: string | null;
@@ -155,19 +132,12 @@ export interface AmateurDuelParticipant {
 
 export interface AmateurDuelLoadoutItem {
   id: string;
-  itemId?: string;
-  instanceId?: string | null;
   kind: 'stick' | 'skates' | 'nutrition';
   title: string;
   rarity: 'common' | 'rare' | 'epic' | 'legendary';
   powerScore: number;
   duelPeriodCost: number;
   chargesReserved: number;
-  resourceUnit?: DuelInventoryResourceUnit;
-  resourceAvailable?: number;
-  lowStockThreshold?: number;
-  effectPuckSpeedPoints?: number;
-  timing?: DuelInventoryTiming;
 }
 
 export interface AmateurDuelLoadout {
@@ -178,17 +148,9 @@ export interface AmateurDuelLoadout {
 
 export interface AmateurDuelInventoryAvailabilityItem {
   id: string;
-  itemId?: string;
-  instanceId?: string | null;
   kind: 'stick' | 'skates' | 'nutrition';
   title: string;
-  description: string;
-  imageUrl: string | null;
   rarity: 'common' | 'rare' | 'epic' | 'legendary';
-  powerScore: number;
-  duelPeriodCost: number;
-  resourceUnit?: DuelInventoryResourceUnit;
-  lowStockThreshold?: number;
   chargesAvailable: number;
   chargesReserved: number;
 }
@@ -197,8 +159,6 @@ export interface AmateurDuelInventoryPeriodReport {
   periodNumber: number;
   consumed: Array<{
     id: string;
-    itemId?: string;
-    instanceId?: string | null;
     kind: 'stick' | 'skates' | 'nutrition';
     title: string;
     charges: number;
@@ -219,14 +179,10 @@ export interface AmateurDuelMatch {
   id: string;
   template_id: string | null;
   status: AmateurDuelMatchStatus;
-  source: 'challenge' | 'matchmaking' | 'tournament';
+  source: 'challenge' | 'matchmaking';
   ranked: boolean;
   season_key: string;
   duel_kind: AmateurDuelKind;
-  home_user_id: string | null;
-  venue_role: 'home' | 'away' | 'neutral';
-  venue_policy: AmateurDuelVenuePolicy;
-  arena: AmateurDuelArena;
   starts_at: string;
   ends_at: string;
   ready_expires_at: string | null;
@@ -282,26 +238,6 @@ export interface AmateurRatingRow {
   active_duration_seconds: number;
 }
 
-export interface AmateurDuelHistoryStats {
-  duels: number;
-  wins: number;
-  points: number;
-}
-
-export interface AmateurDuelHistoryResponse {
-  season_key: string | null;
-  seasons: string[];
-  rating_place: number | null;
-  stats: AmateurDuelHistoryStats;
-  matches: AmateurDuelMatch[];
-}
-
-export interface AmateurDuelRatingResponse {
-  season_key: string;
-  rating: AmateurRatingRow[];
-  me_rank: number | null;
-}
-
 export interface SubmitAmateurDuelShotRequest {
   shot_index: number;
   input: ShotInputPayload;
@@ -339,15 +275,6 @@ export function fetchAmateurMatches(): Promise<{ matches: AmateurDuelMatch[] }> 
   return apiFetch<{ matches: AmateurDuelMatch[] }>('/duel/amateur/matches').then((res) => ({
     matches: res.matches.map(stampMatch),
   }));
-}
-
-export function fetchAmateurHistory(seasonKey?: string): Promise<AmateurDuelHistoryResponse> {
-  const params = new URLSearchParams();
-  if (seasonKey) params.set('season_key', seasonKey);
-  const query = params.toString();
-  return apiFetch<AmateurDuelHistoryResponse>(
-    `/duel/amateur/history${query ? `?${query}` : ''}`,
-  ).then((res) => ({ ...res, matches: res.matches.map(stampMatch) }));
 }
 
 export function fetchAmateurEvents(): Promise<{ events: AmateurDuelMatch[] }> {
@@ -419,27 +346,11 @@ export function leaveAmateurMatchmaking(templateId?: string): Promise<{ ok: true
   });
 }
 
-export function startAmateurDuelPeriod(
-  matchId: string,
-  loadout?: AmateurDuelLoadoutSelection,
-): Promise<{ match: AmateurDuelMatchState }> {
+export function startAmateurDuelPeriod(matchId: string): Promise<{ match: AmateurDuelMatchState }> {
   return apiFetch<{ match: AmateurDuelMatchState }>(
     `/duel/amateur/matches/${matchId}/period/start`,
-    {
-      method: 'POST',
-      ...(loadout ? { body: JSON.stringify({ loadout }) } : {}),
-    },
+    { method: 'POST' },
   ).then((res) => ({ match: stampMatch(res.match) }));
-}
-
-export function updateAmateurDuelLoadout(
-  matchId: string,
-  loadout: Pick<AmateurDuelLoadoutSelection, 'stick'>,
-): Promise<{ match: AmateurDuelMatchState }> {
-  return apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}/loadout`, {
-    method: 'PATCH',
-    body: JSON.stringify({ loadout }),
-  }).then((res) => ({ match: stampMatch(res.match) }));
 }
 
 export function submitAmateurDuelShot(
@@ -458,9 +369,6 @@ export function settleAmateurDuel(matchId: string): Promise<{ match: AmateurDuel
   }).then((res) => ({ match: stampMatch(res.match) }));
 }
 
-export function fetchAmateurRating(seasonKey?: string): Promise<AmateurDuelRatingResponse> {
-  const params = new URLSearchParams();
-  if (seasonKey) params.set('season_key', seasonKey);
-  const query = params.toString();
-  return apiFetch<AmateurDuelRatingResponse>(`/duel/amateur/rating${query ? `?${query}` : ''}`);
+export function fetchAmateurRating(): Promise<{ season_key: string; rating: AmateurRatingRow[] }> {
+  return apiFetch<{ season_key: string; rating: AmateurRatingRow[] }>('/duel/amateur/rating');
 }

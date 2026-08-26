@@ -4,7 +4,6 @@ import { Search, X } from 'lucide-react';
 import { findOrCreateDM, searchUsers, type UserPickerItem } from '../api.js';
 import { chatKeys } from '../../lib/queryKeys.js';
 import { UserAvatar } from './UserAvatar.js';
-import { AccessibleModal } from '../../components/AccessibleModal.js';
 
 interface UserPickerModalProps {
   open: boolean;
@@ -49,29 +48,37 @@ export function UserPickerModal({
   if (!open) return null;
 
   return (
-    <AccessibleModal
-      open
-      title="Новый чат"
-      copy="Найдите игрока, чтобы начать личный диалог."
-      onRequestClose={() => onClose()}
-      headerAction={
-        <button type="button" className="icon-btn" onClick={onClose} aria-label="Закрыть">
-          <X size={14} />
-        </button>
-      }
-      cardStyle={{ width: 'min(400px, calc(100vw - 28px))', maxHeight: 'calc(100dvh - 40px)' }}
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(15,23,42,0.35)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+        zIndex: 250,
+        display: 'flex',
+        alignItems: 'flex-start',
+        justifyContent: 'center',
+        padding: '60px 16px 16px',
+      }}
     >
       <div
+        className="glass-dark"
+        onClick={(e) => e.stopPropagation()}
         style={{
           width: '100%',
+          maxWidth: 400,
+          padding: 16,
+          borderRadius: 20,
           display: 'flex',
           flexDirection: 'column',
           gap: 12,
-          minHeight: 0,
+          maxHeight: 'calc(100dvh - 80px)',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Search size={16} color="var(--muted)" />
+          <Search size={16} color="rgba(255,255,255,0.7)" />
           <input
             type="text"
             value={raw}
@@ -85,21 +92,34 @@ export function UserPickerModal({
               borderRadius: 12,
               border: 'none',
               outline: 'none',
-              background: 'rgba(255,255,255,0.72)',
-              color: 'var(--ink)',
+              background: 'rgba(255,255,255,0.18)',
+              color: '#ffffff',
               fontSize: 14,
             }}
           />
+          <button
+            type="button"
+            className="icon-btn icon-btn--dark"
+            onClick={onClose}
+            aria-label="Закрыть"
+          >
+            <X size={14} />
+          </button>
         </div>
 
         <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {query.length === 0 && (
+            <div style={{ padding: 12, fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>
+              Введите имя для поиска
+            </div>
+          )}
           {query.length > 0 && isFetching && (
-            <div style={{ padding: 12, fontSize: 12, color: 'var(--muted)' }}>
+            <div style={{ padding: 12, fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>
               Поиск...
             </div>
           )}
           {query.length > 0 && !isFetching && (data?.length ?? 0) === 0 && (
-            <div style={{ padding: 12, fontSize: 12, color: 'var(--muted)' }}>
+            <div style={{ padding: 12, fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>
               Никого не нашли
             </div>
           )}
@@ -127,6 +147,6 @@ export function UserPickerModal({
           ))}
         </div>
       </div>
-    </AccessibleModal>
+    </div>
   );
 }

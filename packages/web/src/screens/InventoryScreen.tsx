@@ -1,12 +1,8 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { triggerHaptic } from '../feedback/haptics.js';
 import type { UseMutationResult } from '@tanstack/react-query';
-import { ArrowLeft, CircleDollarSign, RussianRuble, Sparkles, Star, X } from 'lucide-react';
+import { ArrowLeft, CircleDollarSign, Star, Trophy, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { rewardColor, type RewardTone } from '../app/rewardColors.js';
-import { SegmentedTabs } from '../components/SegmentedTabs.js';
-import { AccessibleModal } from '../components/AccessibleModal.js';
 import {
   fetchMyInventory,
   purchaseInventoryItem,
@@ -15,27 +11,16 @@ import {
   type InventoryItem,
   type InventoryPurchase,
   type InventoryState,
-  type InventoryTransaction,
-  type InventoryTransactionAmount,
-  type InventoryTransactionCurrency,
 } from '../api/inventory.js';
 import { artworkForInventoryItem } from './inventoryArtwork.js';
-import { formatInventoryResourceAmount } from './inventoryResourceLabels.js';
 
 type ShopTab = 'goods' | 'bank' | 'history';
-type HistoryFilter = 'all' | 'credit' | 'debit' | 'ruble';
 
 const INVENTORY_KINDS: InventoryEquipmentKind[] = ['stick', 'skates', 'nutrition'];
 const SHOP_TABS: Array<{ id: ShopTab; label: string }> = [
   { id: 'goods', label: 'Товары' },
   { id: 'bank', label: 'Банк' },
   { id: 'history', label: 'История' },
-];
-const HISTORY_FILTERS: Array<{ id: HistoryFilter; label: string }> = [
-  { id: 'all', label: 'Все' },
-  { id: 'credit', label: 'Начисления' },
-  { id: 'debit', label: 'Списания' },
-  { id: 'ruble', label: 'Рубли' },
 ];
 
 const BANK_PACKAGES = [
@@ -80,15 +65,19 @@ function rubText(value: number): string {
   }).format(value);
 }
 
-function purchaseBundleLabel(item: InventoryItem): string {
-  const count = item.chargesPerPurchase || item.chargesAvailable || 5;
-  return formatInventoryResourceAmount(item.kind, count, item.resourceUnit);
+function periodWord(value: number): string {
+  const abs = Math.abs(value);
+  const lastTwo = abs % 100;
+  const last = abs % 10;
+  if (lastTwo >= 11 && lastTwo <= 14) return 'периодов';
+  if (last === 1) return 'период';
+  if (last >= 2 && last <= 4) return 'периода';
+  return 'периодов';
 }
 
-function addedInventoryTitle(item: InventoryItem): string {
-  if (item.kind === 'skates') return `${item.title} добавлены`;
-  if (item.kind === 'nutrition') return `${item.title} добавлено`;
-  return `${item.title} добавлена`;
+function purchaseBundleLabel(item: InventoryItem): string {
+  const count = item.chargesPerPurchase || item.chargesAvailable || 5;
+  return `${numberText(count)} ${periodWord(count)}`;
 }
 
 function uniqueShopItems(items: InventoryItem[]): InventoryItem[] {
@@ -122,76 +111,22 @@ function bankStatusText(status: BankPurchase['status']): string {
   return 'Отменено';
 }
 
-function transactionFlowFromAmounts(
-  amounts: InventoryTransactionAmount[],
-): InventoryTransaction['flow'] {
-  if (amounts.some((amount) => amount.value > 0)) return 'credit';
-  if (amounts.some((amount) => amount.value < 0)) return 'debit';
-  return 'neutral';
-}
-
-function legacyTransactionHistory(
-  inventoryHistory: InventoryPurchase[],
-  bankHistory: BankPurchase[],
-): InventoryTransaction[] {
-  return [
-    ...inventoryHistory.map((purchase) => ({
-      id: `inventory-${purchase.id}`,
-      createdAt: purchase.createdAt,
-      title: purchase.title,
-      subtitle: `${formatPurchaseDate(purchase.createdAt)} · товар · ${formatInventoryResourceAmount(purchase.kind, purchase.chargesAdded)}`,
-      category: 'inventory' as const,
-      flow: 'debit' as const,
-      amounts: [{ currency: 'coin' as const, value: -Math.abs(purchase.tokensSpent) }],
-    })),
-    ...bankHistory.map((purchase) => {
-      const value =
-        purchase.status === 'refunded'
-          ? purchase.amountRub
-          : purchase.status === 'paid'
-            ? -purchase.amountRub
-            : purchase.amountRub;
-      const amounts = [{ currency: 'ruble' as const, value }];
-      return {
-        id: `bank-${purchase.id}`,
-        createdAt: purchase.createdAt,
-        title: purchase.title,
-        subtitle: `${formatPurchaseDate(purchase.createdAt)} · банк · ${bankStatusText(purchase.status)}`,
-        category: 'bank' as const,
-        flow: transactionFlowFromAmounts(amounts),
-        amounts,
-      };
-    }),
-  ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-}
-
 export function InventoryScreen(): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<ShopTab>('goods');
   const [detailsItem, setDetailsItem] = useState<InventoryItem | null>(null);
   const [purchaseItem, setPurchaseItem] = useState<InventoryItem | null>(null);
-  const [purchaseNotice, setPurchaseNotice] = useState<{
-    title: string;
-    amount: string;
-  } | null>(null);
   const inventoryQuery = useQuery<InventoryState>({
     queryKey: ['inventory', 'me'],
     queryFn: fetchMyInventory,
   });
   const purchaseMutation = useMutation<InventoryState, Error, InventoryItem>({
-    mutationFn: (item) => purchaseInventoryItem(item.itemId ?? item.id),
-    onSuccess: (inventory, item) => {
-      triggerHaptic('success');
+    mutationFn: (item) => purchaseInventoryItem(item.id),
+    onSuccess: (inventory) => {
       queryClient.setQueryData(['inventory', 'me'], inventory);
       setPurchaseItem(null);
-      setPurchaseNotice({
-        title: addedInventoryTitle(item),
-        amount: `+${purchaseBundleLabel(item)} в инвентарь`,
-      });
-      window.setTimeout(() => setPurchaseNotice(null), 2800);
     },
-    onError: () => triggerHaptic('error'),
   });
 
   const inventory = inventoryQuery.data;
@@ -200,8 +135,6 @@ export function InventoryScreen(): JSX.Element {
   const tokens = inventory?.balances.tokens ?? 0;
   const history = inventory?.purchaseHistory ?? [];
   const bankHistory = inventory?.bankHistory ?? [];
-  const transactionHistory =
-    inventory?.transactionHistory ?? legacyTransactionHistory(history, bankHistory);
 
   const openPurchase = (item: InventoryItem): void => {
     purchaseMutation.reset();
@@ -228,14 +161,7 @@ export function InventoryScreen(): JSX.Element {
           gap: 14,
         }}
       >
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '40px minmax(0, 1fr) auto',
-            gap: 10,
-            alignItems: 'center',
-          }}
-        >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button
             type="button"
             className="icon-btn"
@@ -257,13 +183,34 @@ export function InventoryScreen(): JSX.Element {
           >
             <ArrowLeft size={16} />
           </button>
-          <h1
-            className="screen-title-on-arena"
-            style={{ margin: 0, minWidth: 0, fontSize: 24, fontWeight: 800 }}
-          >
-            Магазин
-          </h1>
-          <ShopBalanceBar tokens={tokens} stars={inventory?.balances.stars ?? 0} />
+          <h1 style={{ margin: 0, minWidth: 0, fontSize: 24, fontWeight: 800 }}>Магазин</h1>
+        </div>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+            gap: 8,
+          }}
+        >
+          <BalanceCard
+            label="Монеты"
+            value={tokens}
+            icon={<CircleDollarSign size={16} strokeWidth={2.45} />}
+            iconColor="#C48A1D"
+          />
+          <BalanceCard
+            label="Звёзды"
+            value={inventory?.balances.stars ?? 0}
+            icon={<Star size={16} strokeWidth={2.45} fill="currentColor" />}
+            iconColor="#D9A21B"
+          />
+          <BalanceCard
+            label="Опыт"
+            value={inventory?.balances.experience ?? 0}
+            icon={<Trophy size={16} strokeWidth={2.45} />}
+            iconColor="#21A19A"
+          />
         </div>
 
         <ShopTabs activeTab={activeTab} onChange={setActiveTab} />
@@ -285,7 +232,7 @@ export function InventoryScreen(): JSX.Element {
         ) : activeTab === 'bank' ? (
           <BankTab />
         ) : (
-          <TransactionHistorySection transactions={transactionHistory} />
+          <PurchaseHistorySection inventoryHistory={history} bankHistory={bankHistory} />
         )}
       </section>
 
@@ -314,53 +261,6 @@ export function InventoryScreen(): JSX.Element {
           }}
           onConfirm={() => purchaseMutation.mutate(purchaseItem)}
         />
-      )}
-
-      {purchaseNotice && (
-        <div
-          aria-live="polite"
-          style={{
-            position: 'fixed',
-            left: 18,
-            right: 18,
-            bottom: 'calc(88px + var(--app-safe-bottom))',
-            zIndex: 280,
-            display: 'flex',
-            justifyContent: 'center',
-            pointerEvents: 'none',
-          }}
-        >
-          <div
-            className="glass"
-            style={{
-              width: 'min(100%, 330px)',
-              borderRadius: 18,
-              padding: '14px 16px',
-              display: 'grid',
-              gridTemplateColumns: '34px minmax(0, 1fr)',
-              gap: 10,
-              alignItems: 'center',
-              animation: 'reward-pop 2.6s ease both',
-            }}
-          >
-            <Sparkles size={24} color="#0f766e" />
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 950, color: 'var(--ink)' }}>
-                {purchaseNotice.title}
-              </div>
-              <div
-                style={{
-                  marginTop: 3,
-                  color: '#0f766e',
-                  fontSize: 12,
-                  fontWeight: 900,
-                }}
-              >
-                {purchaseNotice.amount}
-              </div>
-            </div>
-          </div>
-        </div>
       )}
     </main>
   );
@@ -429,12 +329,46 @@ function ShopTabs({
   onChange: (tab: ShopTab) => void;
 }): JSX.Element {
   return (
-    <SegmentedTabs
-      items={SHOP_TABS}
-      activeTab={activeTab}
-      ariaLabel="Разделы магазина"
-      onChange={onChange}
-    />
+    <div
+      role="tablist"
+      aria-label="Разделы магазина"
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+        gap: 4,
+        padding: 4,
+        borderRadius: 999,
+        background: 'rgba(255,255,255,0.38)',
+        border: '1px solid rgba(255,255,255,0.62)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.74)',
+      }}
+    >
+      {SHOP_TABS.map((tab) => {
+        const active = tab.id === activeTab;
+        return (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => onChange(tab.id)}
+            style={{
+              minWidth: 0,
+              minHeight: 36,
+              borderRadius: 999,
+              border: active ? '1px solid rgba(15,23,42,0.92)' : '1px solid transparent',
+              background: active ? 'rgba(15,23,42,0.92)' : 'transparent',
+              color: active ? '#ffffff' : 'rgba(15,23,42,0.72)',
+              fontSize: 12,
+              fontWeight: 900,
+              cursor: 'pointer',
+            }}
+          >
+            {tab.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -484,7 +418,7 @@ function BankPackageCard({ pack }: { pack: (typeof BANK_PACKAGES)[number] }): JS
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: rewardColor('coin'),
+            color: '#C48A1D',
             background: 'rgba(255,255,255,0.52)',
             border: '1px solid rgba(255,255,255,0.72)',
           }}
@@ -502,7 +436,7 @@ function BankPackageCard({ pack }: { pack: (typeof BANK_PACKAGES)[number] }): JS
         >
           {pack.title}
         </h2>
-        <div style={{ color: rewardColor('coin'), fontSize: 19, fontWeight: 950, lineHeight: 1 }}>
+        <div style={{ color: 'var(--ink)', fontSize: 19, fontWeight: 950, lineHeight: 1 }}>
           {numberText(pack.tokens)}
         </div>
         <div style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 800, lineHeight: 1.2 }}>
@@ -533,66 +467,42 @@ function BankPackageCard({ pack }: { pack: (typeof BANK_PACKAGES)[number] }): JS
   );
 }
 
-function ShopBalanceBar({ tokens, stars }: { tokens: number; stars: number }): JSX.Element {
-  return (
-    <div
-      className="glass"
-      style={{
-        width: 'fit-content',
-        maxWidth: '100%',
-        borderRadius: 999,
-        padding: '9px 12px',
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 14,
-        justifySelf: 'end',
-      }}
-    >
-      <BalanceChip
-        label="Монеты"
-        value={tokens}
-        icon={<CircleDollarSign size={15} strokeWidth={2.45} />}
-        tone="coin"
-      />
-      <BalanceChip
-        label="Звёзды"
-        value={stars}
-        icon={<Star size={15} strokeWidth={2.45} fill="currentColor" />}
-        tone="star"
-      />
-    </div>
-  );
-}
-
-function BalanceChip({
+function BalanceCard({
   label,
   value,
   icon,
-  tone,
+  iconColor,
 }: {
   label: string;
   value: number;
   icon: JSX.Element;
-  tone: RewardTone;
+  iconColor: string;
 }): JSX.Element {
   return (
-    <span
+    <div
+      className="glass"
       aria-label={`${label}: ${numberText(value)}`}
       style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 5,
-        color: rewardColor(tone),
-        fontSize: 13,
-        fontWeight: 950,
-        lineHeight: 1,
-        fontVariantNumeric: 'tabular-nums',
-        whiteSpace: 'nowrap',
+        minWidth: 0,
+        minHeight: 74,
+        borderRadius: 18,
+        padding: '12px 11px',
+        position: 'relative',
+        display: 'grid',
+        gridTemplateRows: 'auto 1fr',
+        gap: 8,
+        overflow: 'hidden',
       }}
     >
       <span
         aria-hidden="true"
         style={{
+          position: 'absolute',
+          top: 10,
+          right: 12,
+          width: 18,
+          height: 18,
+          color: iconColor,
           display: 'inline-flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -600,8 +510,35 @@ function BalanceChip({
       >
         {icon}
       </span>
-      <span>{numberText(value)}</span>
-    </span>
+      <span
+        style={{
+          minWidth: 0,
+          maxWidth: 'calc(100% - 30px)',
+          color: 'var(--muted)',
+          fontSize: 10,
+          fontWeight: 700,
+          lineHeight: 1.05,
+          textTransform: 'uppercase',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}
+      >
+        {label}
+      </span>
+      <span
+        style={{
+          alignSelf: 'end',
+          color: 'var(--ink)',
+          fontSize: 22,
+          fontWeight: 800,
+          lineHeight: 1,
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        {numberText(value)}
+      </span>
+    </div>
   );
 }
 
@@ -688,32 +625,11 @@ function InventoryProductCard({
         >
           {item.title}
         </h2>
-        <div
-          style={{
-            minHeight: '2.4em',
-            color: 'var(--muted)',
-            fontSize: 11,
-            fontWeight: 800,
-            lineHeight: 1.2,
-          }}
-        >
+        <div style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 800, lineHeight: 1.2 }}>
           {purchaseBundleLabel(item)}
         </div>
-        <div
-          aria-label={`${numberText(item.currencyPrice)} монет`}
-          style={{
-            color: rewardColor('coin'),
-            fontSize: 13,
-            fontWeight: 950,
-            lineHeight: 1.1,
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 5,
-            fontVariantNumeric: 'tabular-nums',
-          }}
-        >
-          <CircleDollarSign size={14} strokeWidth={2.55} aria-hidden="true" />
-          <span>{numberText(item.currencyPrice)}</span>
+        <div style={{ color: 'var(--ink)', fontSize: 13, fontWeight: 950, lineHeight: 1.1 }}>
+          {numberText(item.currencyPrice)} монет
         </div>
       </button>
       <button
@@ -786,35 +702,33 @@ function InventoryItemModal({
   onBuy: () => void;
 }): JSX.Element {
   return (
-    <AccessibleModal
-      title={item.title}
-      onRequestClose={onClose}
-      closeBlocked={isBuying}
-      cardClassName="inventory-item-modal-card"
-      backdropStyle={{ zIndex: 420 }}
-      cardStyle={{
-        width: 'min(430px, calc(100vw - 28px))',
-        maxHeight: 'calc(100dvh - 48px - var(--app-safe-top) - var(--app-safe-bottom))',
-        overflowY: 'auto',
-        WebkitOverflowScrolling: 'touch',
-      }}
-      headerAction={
-        <button
-          type="button"
-          className="icon-btn"
-          aria-label="Закрыть"
-          disabled={isBuying}
-          onClick={onClose}
-        >
-          <X size={15} />
-        </button>
-      }
-    >
-      <div style={{ display: 'grid', gap: 14 }}>
+    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 420 }}>
+      <section
+        role="dialog"
+        aria-label={item.title}
+        className="modal-card"
+        onClick={(event) => event.stopPropagation()}
+        style={{
+          width: 'min(430px, calc(100vw - 28px))',
+          maxHeight: 'calc(100dvh - 48px - var(--app-safe-top) - var(--app-safe-bottom))',
+          display: 'grid',
+          gap: 14,
+          overflowY: 'auto',
+          WebkitOverflowScrolling: 'touch',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="modal-title">{item.title}</div>
+          </div>
+          <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
+            <X size={15} />
+          </button>
+        </div>
+
         <div
           style={{
             width: '100%',
-            height: 'var(--inventory-item-art-height, auto)',
             aspectRatio: '1 / 1',
             borderRadius: 22,
             overflow: 'hidden',
@@ -830,8 +744,7 @@ function InventoryItemModal({
         </div>
 
         <div className="glass" style={{ borderRadius: 18, padding: 14, display: 'grid', gap: 9 }}>
-          <DetailRow label="Цена" value={`${numberText(item.currencyPrice)} монет`} tone="coin" />
-          <DetailRow label="Ресурс" value={purchaseBundleLabel(item)} />
+          <DetailRow label="Цена" value={`${numberText(item.currencyPrice)} монет`} />
         </div>
 
         <p
@@ -860,8 +773,8 @@ function InventoryItemModal({
         >
           {isBuying ? 'Покупка...' : canBuy ? 'Купить' : 'Не хватает монет'}
         </button>
-      </div>
-    </AccessibleModal>
+      </section>
+    </div>
   );
 }
 
@@ -879,20 +792,19 @@ function PurchaseConfirmModal({
   onConfirm: () => void;
 }): JSX.Element {
   return (
-    <AccessibleModal
-      title={`Купить ${item.title}?`}
-      copy={
-        <>
+    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 430 }}>
+      <section
+        role="dialog"
+        aria-label={`Купить ${item.title}?`}
+        className="modal-card"
+        onClick={(event) => event.stopPropagation()}
+        style={{ width: 'min(390px, calc(100vw - 28px))', display: 'grid', gap: 14 }}
+      >
+        <div className="modal-title">Купить {item.title}?</div>
+        <p className="modal-copy" style={{ margin: 0 }}>
           Будет списано {numberText(item.currencyPrice)} монет. В инвентарь добавится{' '}
           {purchaseBundleLabel(item)}.
-        </>
-      }
-      onRequestClose={onClose}
-      closeBlocked={isSaving}
-      backdropStyle={{ zIndex: 430 }}
-      cardStyle={{ width: 'min(390px, calc(100vw - 28px))' }}
-    >
-      <div style={{ display: 'grid', gap: 14 }}>
+        </p>
         {error !== null && (
           <div role="alert" style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 800 }}>
             {error}
@@ -911,72 +823,49 @@ function PurchaseConfirmModal({
             {isSaving ? 'Покупка...' : 'Купить'}
           </button>
         </div>
-      </div>
-    </AccessibleModal>
+      </section>
+    </div>
   );
 }
 
-function TransactionHistorySection({
-  transactions,
+function PurchaseHistorySection({
+  inventoryHistory,
+  bankHistory,
 }: {
-  transactions: InventoryTransaction[];
+  inventoryHistory: InventoryPurchase[];
+  bankHistory: BankPurchase[];
 }): JSX.Element {
-  const [filter, setFilter] = useState<HistoryFilter>('all');
-  const filteredEntries = transactions.filter((entry) => {
-    if (filter === 'credit') return entry.flow === 'credit';
-    if (filter === 'debit') return entry.flow === 'debit' && entry.category !== 'bank';
-    if (filter === 'ruble') return entry.amounts.some((amount) => amount.currency === 'ruble');
-    return true;
-  });
+  const entries = [
+    ...inventoryHistory.map((purchase) => ({
+      id: `inventory-${purchase.id}`,
+      createdAt: purchase.createdAt,
+      title: purchase.title,
+      subtitle: `${formatPurchaseDate(purchase.createdAt)} · товар · ${numberText(purchase.chargesAdded)} ${periodWord(purchase.chargesAdded)}`,
+      value: `-${numberText(purchase.tokensSpent)}`,
+      tone: 'negative' as const,
+    })),
+    ...bankHistory.map((purchase) => ({
+      id: `bank-${purchase.id}`,
+      createdAt: purchase.createdAt,
+      title: purchase.title,
+      subtitle: `${formatPurchaseDate(purchase.createdAt)} · банк · ${bankStatusText(purchase.status)}`,
+      value: rubText(purchase.amountRub),
+      tone: purchase.status === 'paid' ? ('positive' as const) : ('default' as const),
+    })),
+  ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   return (
-    <section aria-label="История транзакций" style={{ display: 'grid', gap: 8 }}>
+    <section aria-label="История покупок" style={{ display: 'grid', gap: 8 }}>
       <div className="section-label" style={{ margin: '0 0 0 -14px' }}>
         История
       </div>
-      <div
-        aria-label="Фильтр истории"
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-          gap: 6,
-        }}
-      >
-        {HISTORY_FILTERS.map((item) => {
-          const active = item.id === filter;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              aria-pressed={active}
-              onClick={() => setFilter(item.id)}
-              style={{
-                minWidth: 0,
-                minHeight: 30,
-                borderRadius: 999,
-                border: active
-                  ? '1px solid rgba(15,23,42,0.32)'
-                  : '1px solid rgba(255,255,255,0.7)',
-                background: active ? 'rgba(31,42,61,0.92)' : 'rgba(255,255,255,0.46)',
-                color: active ? '#fff' : 'var(--ink)',
-                fontSize: 10,
-                fontWeight: 900,
-                lineHeight: 1,
-                cursor: 'pointer',
-              }}
-            >
-              {item.label}
-            </button>
-          );
-        })}
-      </div>
       <div className="glass" style={{ borderRadius: 22, padding: 14, display: 'grid', gap: 10 }}>
-        {filteredEntries.length === 0 ? (
+        {entries.length === 0 ? (
           <div style={{ color: 'var(--muted)', fontSize: 13, fontWeight: 750 }}>
-            Операций пока нет.
+            Покупок пока нет.
           </div>
         ) : (
-          filteredEntries.map((entry) => (
+          entries.map((entry) => (
             <div
               key={entry.id}
               style={{
@@ -1000,19 +889,18 @@ function TransactionHistorySection({
                   {entry.title}
                 </div>
                 <div style={{ marginTop: 3, color: 'var(--muted)', fontSize: 11, fontWeight: 750 }}>
-                  {transactionSubtitleText(entry)}
+                  {entry.subtitle}
                 </div>
               </div>
               <div
                 style={{
-                  display: 'grid',
-                  justifyItems: 'end',
-                  gap: 4,
+                  color: entry.tone === 'positive' ? '#0f766e' : 'var(--ink)',
+                  fontSize: 12,
+                  fontWeight: 950,
+                  textAlign: 'right',
                 }}
               >
-                {entry.amounts.map((amount) => (
-                  <TransactionAmountBadge key={`${entry.id}-${amount.currency}`} amount={amount} />
-                ))}
+                {entry.value}
               </div>
             </div>
           ))
@@ -1022,92 +910,11 @@ function TransactionHistorySection({
   );
 }
 
-function transactionSubtitleText(entry: InventoryTransaction): string {
-  const parts = entry.subtitle.split(' · ').filter(Boolean);
-  if (parts[0] && Date.parse(parts[0])) {
-    return [formatPurchaseDate(entry.createdAt), ...parts.slice(1)].join(' · ');
-  }
-  return entry.subtitle;
-}
-
-function transactionAmountColor(amount: InventoryTransactionAmount): string {
-  if (amount.value > 0) return '#0f766e';
-  if (amount.currency === 'coin') return rewardColor('coin');
-  if (amount.currency === 'star') return rewardColor('star');
-  if (amount.currency === 'experience') return rewardColor('experience');
-  return 'var(--ink)';
-}
-
-function transactionAmountIcon(currency: InventoryTransactionCurrency): JSX.Element {
-  if (currency === 'coin') return <CircleDollarSign size={13} strokeWidth={2.55} />;
-  if (currency === 'star') return <Star size={13} strokeWidth={2.55} fill="currentColor" />;
-  if (currency === 'experience') return <Sparkles size={13} strokeWidth={2.35} />;
-  return <RussianRuble size={13} strokeWidth={2.55} />;
-}
-
-function transactionAmountLabel(amount: InventoryTransactionAmount): string {
-  const action = amount.value > 0 ? 'Начисление' : amount.value < 0 ? 'Списание' : 'Операция';
-  const abs = Math.abs(amount.value);
-  if (amount.currency === 'coin') return `${action} монет: ${numberText(abs)}`;
-  if (amount.currency === 'star') return `${action} звёзд: ${numberText(abs)}`;
-  if (amount.currency === 'experience') return `${action} опыта: ${numberText(abs)}`;
-  return `${action} рублей: ${numberText(abs)} ₽`;
-}
-
-function transactionAmountText(amount: InventoryTransactionAmount): string {
-  const prefix = amount.value > 0 ? '+' : amount.value < 0 ? '-' : '';
-  const abs = Math.abs(amount.value);
-  if (amount.currency === 'ruble') return `${prefix}${numberText(abs)} ₽`;
-  return `${prefix}${numberText(abs)}`;
-}
-
-function TransactionAmountBadge({ amount }: { amount: InventoryTransactionAmount }): JSX.Element {
-  const color = transactionAmountColor(amount);
-  return (
-    <span
-      aria-label={transactionAmountLabel(amount)}
-      style={{
-        minHeight: 18,
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'flex-end',
-        gap: 4,
-        color,
-        fontSize: 12,
-        fontWeight: 950,
-        lineHeight: 1,
-        fontVariantNumeric: 'tabular-nums',
-        whiteSpace: 'nowrap',
-      }}
-    >
-      <span aria-hidden="true" style={{ display: 'inline-flex', color }}>
-        {transactionAmountIcon(amount.currency)}
-      </span>
-      <span>{transactionAmountText(amount)}</span>
-    </span>
-  );
-}
-
-function DetailRow({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone?: RewardTone;
-}): JSX.Element {
+function DetailRow({ label, value }: { label: string; value: string }): JSX.Element {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
       <span style={{ color: 'var(--muted)', fontSize: 12, fontWeight: 800 }}>{label}</span>
-      <span
-        style={{
-          color: tone ? rewardColor(tone) : 'var(--ink)',
-          fontSize: 12,
-          fontWeight: 900,
-          textAlign: 'right',
-        }}
-      >
+      <span style={{ color: 'var(--ink)', fontSize: 12, fontWeight: 900, textAlign: 'right' }}>
         {value}
       </span>
     </div>

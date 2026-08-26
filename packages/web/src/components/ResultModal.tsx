@@ -37,7 +37,7 @@ const THEMES: Record<ResultModalKind, Theme> = {
     title: 'ШТАНГА',
     glow: 'rgba(239, 68, 68, 0.62)',
     glowSoft: 'rgba(239, 68, 68, 0.22)',
-    titleSize: 'clamp(34px, 5.2vmin, 52px)',
+    titleSize: 'clamp(34px, 8.5vw, 60px)',
     letterSpacing: '0.04em',
   },
 };
@@ -67,7 +67,7 @@ export function ResultModal({ result, durationMs, displayKind }: ResultModalProp
           left: '50%',
           zIndex: 300,
           boxSizing: 'border-box',
-          padding: 'clamp(14px, 2vmin, 18px) clamp(24px, 5vmin, 36px)',
+          padding: 'clamp(14px, 3.4vw, 20px) clamp(24px, 7vw, 42px)',
           borderRadius: 24,
           background: 'rgba(172, 184, 198, 0.74)',
           border: '1.5px solid rgba(255, 255, 255, 0.86)',
@@ -75,7 +75,7 @@ export function ResultModal({ result, durationMs, displayKind }: ResultModalProp
           WebkitBackdropFilter: 'blur(18px) saturate(115%)',
           textAlign: 'center',
           pointerEvents: 'none',
-          maxWidth: 'min(420px, calc(100vw - 40px))',
+          maxWidth: 'calc(100vw - 40px)',
           boxShadow: [
             `0 0 0 2px ${theme.glowSoft}`,
             `0 0 34px ${theme.glow}`,
@@ -90,7 +90,7 @@ export function ResultModal({ result, durationMs, displayKind }: ResultModalProp
           style={{
             fontFamily: 'var(--font-sans)',
             fontWeight: 900,
-            fontSize: theme.titleSize ?? 'clamp(38px, 6vmin, 58px)',
+            fontSize: theme.titleSize ?? 'clamp(38px, 9.5vw, 72px)',
             lineHeight: 1,
             letterSpacing: theme.letterSpacing ?? '0.06em',
             color: '#111827',

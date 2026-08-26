@@ -1,38 +1,3 @@
-export type GameScoreboardMetricTone = 'default' | 'timer' | 'muted' | 'danger';
-export type GameScoreboardMetricEmphasis = 'default' | 'large' | 'small';
-
-export interface GameScoreboardMetric {
-  id: string;
-  label: string;
-  value: string;
-  tone?: GameScoreboardMetricTone;
-  emphasis?: GameScoreboardMetricEmphasis;
-}
-
-export interface GameScoreboardRow {
-  id: string;
-  metrics: readonly GameScoreboardMetric[];
-  variant?: 'primary' | 'secondary';
-}
-
-export interface GameScoreboardStatusLine {
-  id: string;
-  label: string;
-  value: string;
-  avatarUrl?: string | null;
-  tone?: 'active' | 'muted' | 'danger';
-}
-
-export interface GameScoreboardModel {
-  rows: readonly GameScoreboardRow[];
-  statusLine?: GameScoreboardStatusLine;
-  notice?: string;
-}
-
-export interface GameScoreboardProps extends GameScoreboardModel {
-  ariaLabel?: string;
-}
-
 export interface ScoreBoardProps {
   period: number;
   periodsTotal?: number;
@@ -41,7 +6,6 @@ export interface ScoreBoardProps {
   goals: number;
   shots: number;
   shotsTotal?: number | undefined;
-  notice?: string | undefined;
   opponent?: ScoreBoardOpponent | undefined;
 }
 
@@ -50,20 +14,17 @@ export interface ScoreBoardOpponent {
   avatarUrl: string | null;
   goals: number;
   shots: number;
-  shotsLabel?: string | undefined;
   time: string;
   timeTone?: 'active' | 'muted' | 'danger';
 }
 
-interface BuildGameScoreboardModelArgs extends ScoreBoardProps {
-  scoreLabel?: string;
-}
+const LABEL_COLOR = 'rgba(148, 163, 184, 0.85)';
+const DIM = 'rgba(148, 163, 184, 0.35)';
+const BORDER = 'rgba(255, 255, 255, 0.08)';
+const SCOREBOARD_COLUMNS =
+  'minmax(66px, 1.12fr) minmax(42px, 0.72fr) minmax(66px, 1.12fr) minmax(70px, 1.18fr)';
 
-function padded(value: number): string {
-  return String(value).padStart(2, '0');
-}
-
-export function buildGameScoreboardModel({
+export function ScoreBoard({
   period,
   periodsTotal = 3,
   timer,
@@ -71,119 +32,254 @@ export function buildGameScoreboardModel({
   goals,
   shots,
   shotsTotal,
-  notice,
   opponent,
-  scoreLabel = 'ГОЛЫ',
-}: BuildGameScoreboardModelArgs): GameScoreboardModel {
-  const periodMetric: GameScoreboardMetric = {
-    id: 'period',
-    label: 'ПЕРИОД',
-    value: `${period}/${periodsTotal}`,
-  };
-  const timerMetric: GameScoreboardMetric = {
-    id: 'timer',
-    label: timerLabel,
-    value: timer,
-    tone: 'timer',
-  };
-  const shotsMetric: GameScoreboardMetric = {
-    id: 'shots',
-    label: 'БРОСКИ',
-    value:
-      typeof shotsTotal === 'number' ? `${padded(shots)}/${padded(shotsTotal)}` : padded(shots),
-  };
-  const scoreMetric: GameScoreboardMetric = {
-    id: opponent ? 'score' : 'goals',
-    label: opponent ? 'СЧЁТ' : scoreLabel,
-    value: opponent ? `${goals}:${opponent.goals}` : padded(goals),
-  };
-  const statusLine: GameScoreboardStatusLine | undefined = opponent
-    ? {
-        id: 'opponent',
-        label: opponent.name,
-        value: `${opponent.shotsLabel ?? String(opponent.shots)} · ${opponent.time.toUpperCase()}`,
-        avatarUrl: opponent.avatarUrl,
-        tone: opponent.timeTone ?? 'muted',
-      }
-    : undefined;
+}: ScoreBoardProps): JSX.Element {
+  const periodNums = Array.from({ length: periodsTotal }, (_, i) => i + 1);
+  const goalsStr = String(goals).padStart(2, '0');
+  const shotsStr =
+    typeof shotsTotal === 'number'
+      ? `${String(shots).padStart(2, '0')}/${String(shotsTotal).padStart(2, '0')}`
+      : String(shots).padStart(2, '0');
 
-  const rows: GameScoreboardRow[] = [
-    {
-      id: 'summary',
-      metrics: [periodMetric, scoreMetric, shotsMetric, timerMetric],
-    },
-  ];
-
-  return {
-    rows,
-    ...(statusLine !== undefined ? { statusLine } : {}),
-    ...(notice !== undefined ? { notice } : {}),
-  };
-}
-
-export function GameScoreboard({
-  rows,
-  statusLine,
-  notice,
-  ariaLabel = 'Игровое табло',
-}: GameScoreboardProps): JSX.Element {
   return (
-    <section className="game-scoreboard" aria-label={ariaLabel}>
-      <div className="game-scoreboard__rows">
-        {rows.map((row) => (
-          <div
-            key={row.id}
-            className={`game-scoreboard__row${
-              row.variant === 'secondary' ? ' game-scoreboard__row--secondary' : ''
-            }${row.metrics.length >= 4 ? ' game-scoreboard__row--dense' : ''}`}
-            data-testid={`scoreboard-row-${row.id}`}
-            style={{ gridTemplateColumns: `repeat(${row.metrics.length}, minmax(0, 1fr))` }}
-          >
-            {row.metrics.map((metric) => {
-              const tone = metric.tone ?? 'default';
-              const emphasis = metric.emphasis ?? 'default';
-              return (
-                <div
-                  key={metric.id}
-                  className={`game-scoreboard__metric game-scoreboard__metric--${tone} game-scoreboard__metric--${emphasis}`}
-                >
-                  <span className="game-scoreboard__label">{metric.label}</span>
-                  <span className="game-scoreboard__value">{metric.value}</span>
-                </div>
-              );
-            })}
+    <div
+      style={{
+        padding: '10px 14px 12px',
+        borderRadius: 18,
+        background: 'rgba(15, 23, 42, 0.82)',
+        backdropFilter: 'blur(14px) saturate(140%)',
+        WebkitBackdropFilter: 'blur(14px) saturate(140%)',
+        border: `1px solid ${BORDER}`,
+        boxShadow: '0 10px 28px rgba(15, 23, 42, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: opponent ? 9 : 0,
+      }}
+    >
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: SCOREBOARD_COLUMNS,
+          alignItems: 'center',
+          gap: 8,
+        }}
+      >
+        <Column label="ПЕРИОД">
+          <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+            {periodNums.map((n) => (
+              <span
+                key={n}
+                style={{
+                  display: 'inline-flex',
+                  width: 20,
+                  height: 20,
+                  borderRadius: 5,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  background: n === period ? 'var(--red)' : 'transparent',
+                  border: n === period ? 'none' : `1px solid ${DIM}`,
+                  color: n === period ? '#ffffff' : DIM,
+                  boxShadow: n === period ? '0 0 10px rgba(225, 29, 72, 0.55)' : 'none',
+                  transition: 'background 0.2s',
+                }}
+              >
+                {n}
+              </span>
+            ))}
           </div>
-        ))}
+        </Column>
+
+        <Column label="ШАЙБЫ">
+          <LedNumber value={goalsStr} color="#f1f5f9" />
+        </Column>
+
+        <Column label="БРОСКИ">
+          <LedNumber value={shotsStr} color="#f1f5f9" />
+        </Column>
+
+        <Column label={timerLabel}>
+          <LedNumber value={timer} color="#f43f5e" />
+        </Column>
       </div>
-      {statusLine && (
-        <div
-          className={`game-scoreboard__status-line game-scoreboard__status-line--${statusLine.tone ?? 'muted'}`}
-          aria-label={`${statusLine.id === 'opponent' ? 'Соперник' : 'Статус'}: ${statusLine.label}`}
-        >
-          {statusLine.avatarUrl ? (
-            <img className="game-scoreboard__status-avatar" src={statusLine.avatarUrl} alt="" />
-          ) : (
-            <span className="game-scoreboard__status-avatar-fallback" aria-hidden="true">
-              {statusLine.label.trim().charAt(0).toUpperCase() || '?'}
-            </span>
-          )}
-          <span className="game-scoreboard__status-label">{statusLine.label}</span>
-          <span className="game-scoreboard__status-value">{statusLine.value}</span>
-        </div>
-      )}
-      {notice && <div className="game-scoreboard__notice">{notice}</div>}
-    </section>
+
+      {opponent && <OpponentRow opponent={opponent} />}
+    </div>
   );
 }
 
-/**
- * Compatibility adapter for the legacy direct rink. Shared PlayView uses the
- * same model builder and presentational component.
- */
-export function ScoreBoard(props: ScoreBoardProps): JSX.Element {
-  const model = buildGameScoreboardModel({
-    ...props,
-    scoreLabel: props.opponent ? 'СЧЁТ' : 'ШАЙБЫ',
-  });
-  return <GameScoreboard {...model} />;
+function OpponentRow({ opponent }: { opponent: ScoreBoardOpponent }): JSX.Element {
+  const initial = opponent.name.trim().charAt(0).toUpperCase() || '?';
+  const timeColor =
+    opponent.timeTone === 'danger'
+      ? '#fb7185'
+      : opponent.timeTone === 'active'
+        ? '#f1f5f9'
+        : 'rgba(226, 232, 240, 0.72)';
+
+  return (
+    <div
+      aria-label={`Соперник: ${opponent.name}`}
+      style={{
+        paddingTop: 8,
+        borderTop: `1px solid ${BORDER}`,
+        display: 'grid',
+        gridTemplateColumns: SCOREBOARD_COLUMNS,
+        alignItems: 'center',
+        gap: 8,
+        minWidth: 0,
+      }}
+    >
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '22px minmax(0, 1fr)',
+          alignItems: 'center',
+          gap: 6,
+          minWidth: 0,
+        }}
+      >
+        {opponent.avatarUrl ? (
+          <img
+            src={opponent.avatarUrl}
+            alt=""
+            style={{
+              width: 22,
+              height: 22,
+              borderRadius: '50%',
+              objectFit: 'cover',
+              border: '1px solid rgba(255,255,255,0.28)',
+            }}
+          />
+        ) : (
+          <span
+            aria-hidden="true"
+            style={{
+              width: 22,
+              height: 22,
+              borderRadius: '50%',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'rgba(255,255,255,0.12)',
+              border: '1px solid rgba(255,255,255,0.18)',
+              color: 'rgba(226, 232, 240, 0.82)',
+              fontSize: 10,
+              fontWeight: 900,
+            }}
+          >
+            {initial}
+          </span>
+        )}
+        <span
+          style={{
+            minWidth: 0,
+            color: 'rgba(226, 232, 240, 0.82)',
+            fontSize: 10,
+            fontWeight: 800,
+            lineHeight: 1.1,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {opponent.name}
+        </span>
+      </div>
+      <OpponentMetric value={String(opponent.goals)} />
+      <OpponentMetric value={String(opponent.shots)} />
+      <span
+        style={{
+          justifySelf: 'center',
+          color: timeColor,
+          fontSize: 11,
+          fontWeight: 900,
+          lineHeight: 1,
+          fontVariantNumeric: 'tabular-nums',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          maxWidth: '100%',
+        }}
+      >
+        {opponent.time}
+      </span>
+    </div>
+  );
+}
+
+function OpponentMetric({ value }: { value: string }): JSX.Element {
+  return (
+    <span
+      style={{
+        justifySelf: 'center',
+        color: 'rgba(226, 232, 240, 0.82)',
+        fontFamily: 'var(--font-mono)',
+        fontSize: 13,
+        fontWeight: 800,
+        lineHeight: 1,
+        fontVariantNumeric: 'tabular-nums',
+      }}
+    >
+      {value}
+    </span>
+  );
+}
+
+function Column({ label, children }: { label: string; children: React.ReactNode }): JSX.Element {
+  const compactLabel = label.length > 8;
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 5,
+        lineHeight: 1,
+        minWidth: 0,
+      }}
+    >
+      <span
+        style={{
+          maxWidth: '100%',
+          overflow: 'hidden',
+          whiteSpace: 'nowrap',
+          fontSize: compactLabel ? 7 : 9,
+          fontWeight: 700,
+          letterSpacing: compactLabel ? '0.12em' : '0.22em',
+          color: LABEL_COLOR,
+          textTransform: 'uppercase',
+        }}
+      >
+        {label}
+      </span>
+      {children}
+    </div>
+  );
+}
+
+function LedNumber({ value, color }: { value: string; color: string }): JSX.Element {
+  const compactValue = value.length >= 6;
+
+  return (
+    <span
+      style={{
+        fontFamily: 'var(--font-mono)',
+        maxWidth: '100%',
+        overflow: 'hidden',
+        whiteSpace: 'nowrap',
+        fontSize: compactValue ? 'clamp(13px, 3.9vw, 18px)' : 20,
+        fontWeight: 700,
+        letterSpacing: compactValue ? 0 : '0.04em',
+        fontVariantNumeric: 'tabular-nums',
+        color,
+        textShadow: `0 0 10px ${color}80, 0 0 2px ${color}`,
+      }}
+    >
+      {value}
+    </span>
+  );
 }
