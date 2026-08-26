@@ -464,6 +464,7 @@ export function ChatRoomScreen(): JSX.Element {
   const chatMeta = chatListQuery.data?.find((c) => c.id === chatId);
   const isChannel = chatMeta?.type === 'channel';
   const dmCounterpart = chatMeta?.type === 'direct' ? chatMeta.dmCounterpart : null;
+  const isOfficialDialog = dmCounterpart?.accountKind === 'official';
   const chatTitle =
     chatMeta?.type === 'direct'
       ? (dmCounterpart?.displayName ?? 'Диалог')
@@ -476,7 +477,9 @@ export function ChatRoomScreen(): JSX.Element {
   const headerAvatarUrl = dmCounterpart?.avatarUrl ?? (chatMeta ? chatAvatarUrl(chatMeta) : null);
   const chatSubtitle =
     chatMeta?.type === 'direct'
-      ? formatLastSeen(dmCounterpart?.lastSeenAt ?? null)
+      ? isOfficialDialog
+        ? 'Официальный аккаунт'
+        : formatLastSeen(dmCounterpart?.lastSeenAt ?? null)
       : chatMeta
         ? chatMeta.type === 'channel'
           ? `Канал · ${formatSubscriberCount(chatMeta.memberCount)}`
@@ -1320,7 +1323,7 @@ export function ChatRoomScreen(): JSX.Element {
           {...(chatSubtitle !== undefined ? { subtitle: chatSubtitle } : {})}
           avatarUrl={headerAvatarUrl}
           onBack={() => navigate('/chat')}
-          {...(dmCounterpart
+          {...(dmCounterpart && !isOfficialDialog
             ? {
                 onTitleClick: () => setPreviewSender(dmCounterpart),
                 onTitleClickLabel: 'Открыть профиль игрока',

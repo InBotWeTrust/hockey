@@ -27,6 +27,7 @@ import { arenaRoutes } from './arenas/routes.js';
 import { bonusGameRoutes } from './bonusGames/routes.js';
 import { tournamentRoutes } from './tournament/routes.js';
 import { tournamentWs } from './tournament/ws.js';
+import { validateOfficialAccount } from './chat/officialAccount.js';
 
 export interface BuildAppOptions {
   config?: AppConfig;
@@ -77,6 +78,9 @@ export async function buildApp(options: BuildAppOptions = {}) {
 
   await app.register(errorsPlugin);
   await app.register(dbPlugin, { connectionString: config.DATABASE_URL });
+  if (config.SYSTEM_USER_ID !== undefined) {
+    await validateOfficialAccount(app.pg, config.SYSTEM_USER_ID);
+  }
   await app.register(redisPlugin, { url: config.REDIS_URL });
   await app.register(realtimePlugin);
   await app.register(authPlugin, { accessSecret: config.JWT_SECRET });
@@ -108,8 +112,15 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await app.register(
     mediaRoutes,
     objectStorage !== undefined
-      ? { objectStorage, mediaAccessSecret: config.JWT_SECRET }
-      : { mediaAccessSecret: config.JWT_SECRET },
+      ? {
+          objectStorage,
+          mediaAccessSecret: config.JWT_SECRET,
+          ...(config.SYSTEM_USER_ID !== undefined ? { systemUserId: config.SYSTEM_USER_ID } : {}),
+        }
+      : {
+          mediaAccessSecret: config.JWT_SECRET,
+          ...(config.SYSTEM_USER_ID !== undefined ? { systemUserId: config.SYSTEM_USER_ID } : {}),
+        },
   );
   await app.register(dailyRoutes, { dailySeedSecret: config.DAILY_SEED_SECRET });
   await app.register(trainingRoutes, { trainingSeedSecret: config.DAILY_SEED_SECRET });
@@ -127,8 +138,15 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await app.register(
     adminRoutes,
     objectStorage !== undefined
-      ? { objectStorage, mediaAccessSecret: config.JWT_SECRET }
-      : { mediaAccessSecret: config.JWT_SECRET },
+      ? {
+          objectStorage,
+          mediaAccessSecret: config.JWT_SECRET,
+          ...(config.SYSTEM_USER_ID !== undefined ? { systemUserId: config.SYSTEM_USER_ID } : {}),
+        }
+      : {
+          mediaAccessSecret: config.JWT_SECRET,
+          ...(config.SYSTEM_USER_ID !== undefined ? { systemUserId: config.SYSTEM_USER_ID } : {}),
+        },
   );
   await app.register(pushSchedulerPlugin, {
     ...pushVapidOptions,

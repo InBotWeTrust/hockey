@@ -27,6 +27,8 @@ interface DmCounterpartRow {
   avatar_url: string | null;
   last_seen_at: Date | null;
   last_read_at: Date | null;
+  account_kind: 'player' | 'official';
+  has_official_message: boolean;
 }
 
 interface MyChatsRow {
@@ -179,9 +181,18 @@ export async function getMyChats(pool: Pool, userId: string): Promise<ChatDTO[]>
 
   const dmChatIds = r.rows.filter((row) => row.type === 'direct').map((row) => row.id);
   const counterparts = new Map<string, ChatDTO['dmCounterpart']>();
+  const officialStartedChatIds = new Set<string>();
   if (dmChatIds.length > 0) {
     const cpSql = `
       select cm.chat_id, u.id as user_id, u.display_name, u.avatar_url, u.last_seen_at,
+             u.account_kind,
+             exists (
+               select 1 from messages message
+               join users sender on sender.id = message.sender_id
+                where message.chat_id = cm.chat_id
+                  and message.is_deleted = false
+                  and sender.account_kind = 'official'
+             ) as has_official_message,
              cm.last_read_at
       from chat_members cm
       join users u on u.id = cm.user_id
@@ -195,50 +206,59 @@ export async function getMyChats(pool: Pool, userId: string): Promise<ChatDTO[]>
         avatarUrl: row.avatar_url,
         lastSeenAt: row.last_seen_at !== null ? row.last_seen_at.toISOString() : null,
         lastReadAt: row.last_read_at !== null ? row.last_read_at.toISOString() : null,
+        accountKind: row.account_kind,
       });
+      if (row.account_kind === 'official' && row.has_official_message) {
+        officialStartedChatIds.add(row.chat_id);
+      }
     }
   }
 
-  return r.rows.map((row) => {
-    const chat: ChatRow = {
-      id: row.id,
-      type: row.type,
-      name: row.name,
-      description: row.description,
-      created_by: row.created_by,
-      entity_type: row.entity_type,
-      entity_id: row.entity_id,
-      channel_slug: row.channel_slug,
-      avatar_url: row.avatar_url,
-      last_message_at: row.last_message_at,
-      is_active: row.is_active,
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-    };
-    const lastMessage: MessageRow | null = row.last_message_id
-      ? {
-          id: row.last_message_id,
-          chat_id: row.id,
-          sender_id: row.last_message_sender_id!,
-          content: row.last_message_content!,
-          metadata: row.last_message_metadata ?? {},
-          reply_to_id: row.last_message_reply_to_id,
-          is_deleted: row.last_message_is_deleted!,
-          created_at: row.last_message_created_at!,
-          updated_at: row.last_message_updated_at!,
-        }
-      : null;
-    const agg: ChatListAggregate = {
-      chat,
-      lastMessage,
-      lastMessageSenderName: row.last_message_sender_name,
-      unreadCount: Number(row.unread_count),
-      dmCounterpart: row.type === 'direct' ? (counterparts.get(row.id) ?? null) : null,
-      memberCount: Number(row.member_count),
-      pinnedAt: row.pinned_at,
-    };
-    return toChatDTO(agg);
-  });
+  return r.rows
+    .map((row) => {
+      const chat: ChatRow = {
+        id: row.id,
+        type: row.type,
+        name: row.name,
+        description: row.description,
+        created_by: row.created_by,
+        entity_type: row.entity_type,
+        entity_id: row.entity_id,
+        channel_slug: row.channel_slug,
+        avatar_url: row.avatar_url,
+        last_message_at: row.last_message_at,
+        is_active: row.is_active,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+      };
+      const lastMessage: MessageRow | null = row.last_message_id
+        ? {
+            id: row.last_message_id,
+            chat_id: row.id,
+            sender_id: row.last_message_sender_id!,
+            content: row.last_message_content!,
+            metadata: row.last_message_metadata ?? {},
+            reply_to_id: row.last_message_reply_to_id,
+            is_deleted: row.last_message_is_deleted!,
+            created_at: row.last_message_created_at!,
+            updated_at: row.last_message_updated_at!,
+          }
+        : null;
+      const agg: ChatListAggregate = {
+        chat,
+        lastMessage,
+        lastMessageSenderName: row.last_message_sender_name,
+        unreadCount: Number(row.unread_count),
+        dmCounterpart: row.type === 'direct' ? (counterparts.get(row.id) ?? null) : null,
+        memberCount: Number(row.member_count),
+        pinnedAt: row.pinned_at,
+      };
+      return toChatDTO(agg);
+    })
+    .filter(
+      (chat) =>
+        chat.dmCounterpart?.accountKind !== 'official' || officialStartedChatIds.has(chat.id),
+    );
 }
 
 export async function pinChat(pool: Pool, userId: string, chatId: string): Promise<void> {
@@ -394,7 +414,8 @@ export async function getUserPublicProfile(
             lifetime_shots_total, lifetime_goals_total,
             created_at, last_seen_at
        from users
-      where id = $1`,
+      where id = $1
+        and account_kind = 'player'`,
     [userId],
   );
   if (r.rowCount === 0) return null;
@@ -867,7 +888,9 @@ export async function searchUsers(
   const limit = Math.min(Math.max(opts.limit, 1), 50);
   const r = await pool.query<{ id: string; display_name: string; avatar_url: string | null }>(
     `select id, display_name, avatar_url from users
-     where id != $1 and display_name ilike '%' || $2 || '%'
+     where id != $1
+       and account_kind = 'player'
+       and display_name ilike '%' || $2 || '%'
      order by similarity(display_name, $2) desc
      limit $3`,
     [currentUserId, q, limit],

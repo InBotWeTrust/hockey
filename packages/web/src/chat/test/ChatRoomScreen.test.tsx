@@ -259,6 +259,37 @@ describe('ChatRoomScreen', () => {
     expect(screen.getByRole('button', { name: /написать в личку/i })).toBeInTheDocument();
   });
 
+  it('labels the official account and does not open a player profile from its header', async () => {
+    vi.mocked(api.fetchChatList).mockResolvedValue([
+      {
+        id: 'c1',
+        type: 'direct',
+        name: null,
+        entityType: null,
+        entityId: null,
+        lastMessageAt: null,
+        unreadCount: 0,
+        lastMessage: null,
+        lastMessageSenderName: null,
+        dmCounterpart: {
+          userId: OTHER_ID,
+          displayName: 'Ультимейт Хоккей',
+          avatarUrl: '/icons/official-account.webp',
+          lastSeenAt: null,
+          lastReadAt: null,
+          accountKind: 'official',
+        },
+        memberCount: 2,
+        pinnedAt: null,
+      },
+    ]);
+
+    renderRoom('c1');
+
+    expect(await screen.findByText('Официальный аккаунт')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Открыть профиль игрока' })).toBeNull();
+  });
+
   it('shows delivered/read ticks only on own messages in direct chats', async () => {
     vi.mocked(api.fetchChatList).mockResolvedValue([
       {

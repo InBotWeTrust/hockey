@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { Pool } from 'pg';
 import { hasIntegrationEnv, createTestPool, resetDatabase } from '../helpers/testDb.js';
 import { applyMigrations } from '../../src/db/migrations.js';
-import { getMyChats } from '../../src/chat/service.js';
+import { getMyChats, searchUsers } from '../../src/chat/service.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -34,6 +34,9 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
     await pool.query(`delete from chat_members`);
     await pool.query(`delete from messages`);
     await pool.query(`delete from chats`);
+    await pool.query(`update users set account_kind = 'player' where id = any($1::uuid[])`, [
+      [userA, userB, userC],
+    ]);
   });
 
   describe('getMyChats', () => {
@@ -65,9 +68,38 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
       expect(dmChat.type).toBe('direct');
       expect(dmChat.dmCounterpart?.userId).toBe(userB);
       expect(dmChat.dmCounterpart?.displayName).toBe('Bob');
+      expect(dmChat.dmCounterpart?.accountKind).toBe('player');
       expect(dmChat.dmCounterpart?.lastReadAt).toEqual(expect.any(String));
       expect(dmChat.unreadCount).toBe(0);
       expect(dmChat.lastMessage).toBeNull();
+    });
+
+    it('hides an empty official dialog until the first message', async () => {
+      await pool.query(`update users set account_kind = 'official' where id = $1`, [userB]);
+      const dm = await pool.query(
+        `insert into chats (type, created_by) values ('direct', $1) returning id`,
+        [userB],
+      );
+      await pool.query(`insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`, [
+        dm.rows[0].id,
+        userA,
+        userB,
+      ]);
+
+      expect((await getMyChats(pool, userA)).some((chat) => chat.id === dm.rows[0].id)).toBe(false);
+      await pool.query(
+        `insert into messages (chat_id, sender_id, content) values ($1, $2, 'Сообщение игрока')`,
+        [dm.rows[0].id, userA],
+      );
+      expect((await getMyChats(pool, userA)).some((chat) => chat.id === dm.rows[0].id)).toBe(false);
+      await pool.query(
+        `insert into messages (chat_id, sender_id, content) values ($1, $2, 'Официальное сообщение')`,
+        [dm.rows[0].id, userB],
+      );
+      const officialChat = (await getMyChats(pool, userA)).find(
+        (chat) => chat.id === dm.rows[0].id,
+      );
+      expect(officialChat?.dmCounterpart?.accountKind).toBe('official');
     });
 
     it('counts unread messages from others past last_read_at', async () => {
@@ -207,6 +239,12 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
       const list = await getMyChats(pool, userA);
       expect(list.filter((chat) => chat.type !== 'channel')).toHaveLength(0);
     });
+  });
+
+  it('excludes official accounts from player search', async () => {
+    await pool.query(`update users set account_kind = 'official' where id = $1`, [userB]);
+    expect(await searchUsers(pool, userA, { q: 'Bob', limit: 20 })).toEqual([]);
+    await pool.query(`update users set account_kind = 'player' where id = $1`, [userB]);
   });
 
   describe('pinned chats', () => {
