@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { STICK_NEUTRAL } from '@hockey/game-core';
@@ -20,6 +21,8 @@ vi.mock('../game/PlayView.js', () => ({
     overlayControls?: JSX.Element;
     inactiveAction?: () => unknown | Promise<unknown>;
     entranceBeforeInactiveAction?: boolean;
+    goalsOnlyWhileInactive?: boolean;
+    continuousClockDuringResult?: boolean;
     onBack: () => void;
     backLabel?: string;
     optimisticAddShot: (result: 'goal' | 'save' | 'miss') => void;
@@ -166,16 +169,35 @@ function LocationProbe(): JSX.Element {
   return <div aria-label="location">{`${location.pathname}${location.search}`}</div>;
 }
 
-function renderScreen(path = '/bonus-games/game-1/play?attempt=attempt-1') {
-  return render(
-    <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route path="/bonus-games/:gameId/play" element={<BonusGamePlayScreen />} />
-        <Route path="/bonus-games" element={<main>Каталог бонусных игр</main>} />
-      </Routes>
-      <LocationProbe />
-    </MemoryRouter>,
-  );
+function CatalogProbe({ loadCatalog }: { loadCatalog: () => Promise<string> }): JSX.Element {
+  const catalog = useQuery({ queryKey: ['bonus-games'], queryFn: loadCatalog });
+  return <main>{catalog.data ?? 'Загружаем каталог'}</main>;
+}
+
+function renderScreen(
+  path = '/bonus-games/game-1/play?attempt=attempt-1',
+  options: { queryClient?: QueryClient; loadCatalog?: () => Promise<string> } = {},
+) {
+  const queryClient =
+    options.queryClient ??
+    new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+  const loadCatalog = options.loadCatalog ?? vi.fn(async () => 'Каталог бонусных игр');
+  return {
+    queryClient,
+    ...render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={[path]}>
+          <Routes>
+            <Route path="/bonus-games/:gameId/play" element={<BonusGamePlayScreen />} />
+            <Route path="/bonus-games" element={<CatalogProbe loadCatalog={loadCatalog} />} />
+          </Routes>
+          <LocationProbe />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    ),
+  };
 }
 
 function setStore(overrides: Partial<ReturnType<typeof useBonusGameStore.getState>> = {}): void {
@@ -285,6 +307,8 @@ describe('BonusGamePlayScreen', () => {
       timer: '04:00',
       shotButtonLabel: 'НАЧАТЬ',
       entranceBeforeInactiveAction: true,
+      goalsOnlyWhileInactive: true,
+      continuousClockDuringResult: true,
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'НАЧАТЬ' }));
@@ -688,6 +712,31 @@ describe('BonusGamePlayScreen', () => {
     await waitFor(() => {
       expect(screen.getByLabelText('location')).toHaveTextContent('/bonus-games');
     });
+  });
+
+  it('refreshes the catalog after abandoning so another game can start immediately', async () => {
+    const abandoned = attempt({
+      status: 'abandoned',
+      state: 'closed',
+      period_started_at: null,
+      period_ends_at: null,
+    });
+    const loadCatalog = vi.fn(async () => 'Можно начать другую игру');
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
+    });
+    queryClient.setQueryData(['bonus-games'], 'Активная попытка блокирует другие игры');
+    setStore({ abandon: vi.fn(async () => abandoned) });
+    renderScreen('/bonus-games/game-1/play?attempt=attempt-1', { queryClient, loadCatalog });
+
+    fireEvent.click(screen.getByRole('button', { name: 'К бонусным играм' }));
+    fireEvent.click(
+      within(screen.getByRole('dialog', { name: 'Выйти из бонусной игры?' })).getByRole('button', {
+        name: 'Завершить попытку',
+      }),
+    );
+
+    expect(await screen.findByText('Можно начать другую игру')).toBeInTheDocument();
   });
 
   it('returns to the catalog without abandoning when continuing later', () => {

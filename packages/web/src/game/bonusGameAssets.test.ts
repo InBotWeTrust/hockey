@@ -94,6 +94,85 @@ describe('bonus game runtime assets', () => {
     }
   });
 
+  it('keeps every themed ice treatment visibly distinct from the daily court at the rink edges', async () => {
+    const master = await sharp(path.resolve('public/sprites/amateur-daily-court.webp'))
+      .removeAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+
+    for (const entry of Object.values(BONUS_GAME_ASSETS)) {
+      const arena = await sharp(path.resolve('public', entry.arena.slice(1)))
+        .removeAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      let totalDifference = 0;
+      let samples = 0;
+
+      for (let y = 840; y < 1900; y += 4) {
+        for (const [startX, endX] of [
+          [0, 260],
+          [952, 1212],
+        ] as const) {
+          for (let x = startX; x < endX; x += 4) {
+            for (let channel = 0; channel < 3; channel += 1) {
+              const offset = (y * arena.info.width + x) * arena.info.channels + channel;
+              totalDifference += Math.abs(arena.data[offset]! - master.data[offset]!);
+              samples += 1;
+            }
+          }
+        }
+      }
+
+      const minimumDifference = entry.arena.endsWith('/beach.webp') ? 15 : 3.5;
+      expect(totalDifference / samples, entry.arena).toBeGreaterThanOrEqual(minimumDifference);
+    }
+  });
+
+  it('keeps every themed ice treatment visibly distinct from the other bonus arenas', async () => {
+    const arenas = await Promise.all(
+      Object.values(BONUS_GAME_ASSETS).map(async (entry) => ({
+        path: entry.arena,
+        image: await sharp(path.resolve('public', entry.arena.slice(1)))
+          .removeAlpha()
+          .raw()
+          .toBuffer({ resolveWithObject: true }),
+      })),
+    );
+
+    for (let leftIndex = 0; leftIndex < arenas.length; leftIndex += 1) {
+      for (let rightIndex = leftIndex + 1; rightIndex < arenas.length; rightIndex += 1) {
+        const left = arenas[leftIndex]!;
+        const right = arenas[rightIndex]!;
+        let totalDifference = 0;
+        let samples = 0;
+
+        for (let y = 840; y < 1900; y += 8) {
+          for (const [startX, endX] of [
+            [0, 260],
+            [952, 1212],
+          ] as const) {
+            for (let x = startX; x < endX; x += 8) {
+              for (let channel = 0; channel < 3; channel += 1) {
+                const leftOffset =
+                  (y * left.image.info.width + x) * left.image.info.channels + channel;
+                const rightOffset =
+                  (y * right.image.info.width + x) * right.image.info.channels + channel;
+                totalDifference += Math.abs(
+                  left.image.data[leftOffset]! - right.image.data[rightOffset]!,
+                );
+                samples += 1;
+              }
+            }
+          }
+        }
+
+        expect(totalDifference / samples, `${left.path} vs ${right.path}`).toBeGreaterThanOrEqual(
+          5,
+        );
+      }
+    }
+  });
+
   it('ships one 1200x800 preview for every bonus location', () => {
     for (const slug of Object.keys(BONUS_GAME_ASSETS)) {
       const previewPath = path.resolve('public/bonus-games/previews', `${slug}.webp`);

@@ -26,15 +26,29 @@ const slugs = [
   'space',
 ];
 
+const textureConfig = {
+  beach: { blend: 'over', gain: 1 },
+  'ski-resort': { blend: 'screen', gain: 3 },
+  'cyberpunk-yard': { blend: 'screen', gain: 4 },
+  'abandoned-waterpark': { blend: 'screen', gain: 3.5 },
+  'pirate-bay': { blend: 'screen', gain: 6 },
+  'north-pole': { blend: 'screen', gain: 5 },
+  desert: { blend: 'screen', gain: 6 },
+  'volcanic-ice': { blend: 'screen', gain: 8 },
+  castle: { blend: 'screen', gain: 3 },
+  space: { blend: 'screen', gain: 11 },
+};
+
 const ARENA_WIDTH = 1212;
 const ARENA_HEIGHT = 2000;
 const LOCATION_HEIGHT = 740;
 const LOCATION_FADE_START = 620;
-const TEXTURE_TOP = 820;
+const TEXTURE_TOP = 760;
 const PREVIEW_WIDTH = 1200;
 const PREVIEW_HEIGHT = 800;
 
 async function buildArena(slug) {
+  const config = textureConfig[slug];
   const arenaPath = path.join(arenaDir, `${slug}.webp`);
   const tempPath = path.join(arenaDir, `.${slug}.tmp.webp`);
   const locationMask = Buffer.from(`
@@ -56,23 +70,22 @@ async function buildArena(slug) {
     .composite([{ input: locationMask, blend: 'dest-in' }])
     .png()
     .toBuffer();
-  const texture = await sharp(path.join(textureDir, `${slug}.png`))
+  let texturePipeline = sharp(path.join(textureDir, `${slug}.png`))
     .resize(ARENA_WIDTH, ARENA_HEIGHT, { fit: 'fill' })
     .extract({
       left: 0,
       top: TEXTURE_TOP,
       width: ARENA_WIDTH,
       height: ARENA_HEIGHT - TEXTURE_TOP,
-    })
-    .linear(0.42)
-    .png()
-    .toBuffer();
+    });
+  if (config.gain !== 1) texturePipeline = texturePipeline.linear(config.gain);
+  const texture = await texturePipeline.png().toBuffer();
 
   await sharp(masterCourtPath)
     .resize(ARENA_WIDTH, ARENA_HEIGHT, { fit: 'fill' })
     .composite([
       { input: location, left: 0, top: 0 },
-      { input: texture, left: 0, top: TEXTURE_TOP, blend: 'screen' },
+      { input: texture, left: 0, top: TEXTURE_TOP, blend: config.blend },
     ])
     .webp({ quality: 92 })
     .toFile(tempPath);

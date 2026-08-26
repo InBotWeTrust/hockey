@@ -7,7 +7,7 @@ import {
   type GoalieConfig,
 } from '@hockey/game-core';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   BonusGameAttempt,
   BonusPeriodLoadoutSelection,
@@ -431,6 +431,7 @@ function BonusInventoryPicker({
 
 export function BonusGamePlayScreen(): JSX.Element {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { gameId } = useParams<{ gameId: string }>();
   const [searchParams] = useSearchParams();
   const routeAttemptId = searchParams.get('attempt');
@@ -522,12 +523,13 @@ export function BonusGamePlayScreen(): JSX.Element {
     setIsConfirmingAbandon(true);
     const result = await abandon();
     if (result?.status === 'abandoned') {
+      await queryClient.invalidateQueries({ queryKey: ['bonus-games'] });
       navigate('/bonus-games');
       return;
     }
     abandonRequestRef.current = false;
     setIsConfirmingAbandon(false);
-  }, [abandon, navigate]);
+  }, [abandon, navigate, queryClient]);
 
   if (needsReconcile && attempt === null) {
     return (
@@ -667,6 +669,8 @@ export function BonusGamePlayScreen(): JSX.Element {
           isIdle && !isBetweenPeriods && !previewRequired ? requestStartPeriod : undefined
         }
         entranceBeforeInactiveAction={true}
+        goalsOnlyWhileInactive={true}
+        continuousClockDuringResult={true}
         sessionStartedAt={attempt.period_started_at}
         serverNow={attempt.server_now}
         receivedAtPerformanceMs={receivedAtPerformanceMs ?? undefined}

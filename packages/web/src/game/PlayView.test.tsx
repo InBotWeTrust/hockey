@@ -1,8 +1,12 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type GoalieConfig } from '@hockey/game-core';
 import { PlayView, type PlayShotResolver } from './PlayView.js';
 import type * as ReactModule from 'react';
+
+const tickerCallbacks = vi.hoisted(() => [] as Array<() => void>);
+const playerContainers = vi.hoisted(() => [] as Array<{ visible: boolean }>);
+const goalieContainers = vi.hoisted(() => [] as Array<{ visible: boolean }>);
 
 vi.mock('pixi.js', () => ({
   Container: class Container {
@@ -24,6 +28,9 @@ vi.mock('./renderer/Goal.js', () => ({
 vi.mock('./renderer/Goalie.js', () => ({
   Goalie: class Goalie {
     container = { visible: true };
+    constructor() {
+      goalieContainers.push(this.container);
+    }
     update(): void {}
     setSavePose(): void {}
     destroy(): void {}
@@ -51,6 +58,9 @@ vi.mock('./renderer/IceCar.js', () => ({
 vi.mock('./renderer/Player.js', () => ({
   Player: class Player {
     container = { visible: true };
+    constructor() {
+      playerContainers.push(this.container);
+    }
     update(): void {}
     playShot(): void {}
     destroy(): void {}
@@ -86,7 +96,10 @@ vi.mock('./PixiStage.js', async () => {
         onReady(
           {
             stage: { addChild: vi.fn() },
-            ticker: { add: vi.fn(), remove: vi.fn() },
+            ticker: {
+              add: vi.fn((callback: () => void) => tickerCallbacks.push(callback)),
+              remove: vi.fn(),
+            },
           } as never,
           { factor: 1, offsetX: 0, offsetY: 0 } as never,
         );
@@ -111,6 +124,12 @@ const beachGoalie: GoalieConfig = {
 };
 
 describe('PlayView', () => {
+  beforeEach(() => {
+    tickerCallbacks.length = 0;
+    playerContainers.length = 0;
+    goalieContainers.length = 0;
+  });
+
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
@@ -340,6 +359,147 @@ describe('PlayView', () => {
     );
 
     expect(screen.getByRole('button', { name: 'ПРОВЕРЯЕМ...' })).toBeDisabled();
+  });
+
+  it('keeps an inactive rink at goals-only when a blocking preview closes', async () => {
+    const commonProps = {
+      showIceCar: false,
+      onBack: () => undefined,
+      active: false,
+      seed: 'bonus-seed',
+      goalieId: null,
+      goalieConfig: beachGoalie,
+      periodNumber: 1,
+      goals: 0,
+      shots: 0,
+      shotsTotal: 30,
+      shotButtonLabel: 'НАЧАТЬ',
+      inactiveAction: async () => null,
+      entranceBeforeInactiveAction: true,
+      goalsOnlyWhileInactive: true,
+      optimisticAddShot: () => undefined,
+      submitShot: async () => null,
+      applyState: () => undefined,
+    } as const;
+    const view = render(<PlayView {...commonProps} suppressedByModal />);
+    await act(async () => Promise.resolve());
+
+    expect(playerContainers.at(-1)?.visible).toBe(false);
+    expect(goalieContainers.at(-1)?.visible).toBe(false);
+
+    view.rerender(<PlayView {...commonProps} suppressedByModal={false} />);
+
+    expect(playerContainers.at(-1)?.visible).toBe(false);
+    expect(goalieContainers.at(-1)?.visible).toBe(false);
+    expect(screen.getByRole('button', { name: 'НАЧАТЬ' })).toBeEnabled();
+  });
+
+  it('does not hide an inactive rink just because its action plays an entrance first', async () => {
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active={false}
+        seed="daily-seed"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        shotsTotal={30}
+        shotButtonLabel="НАЧАТЬ"
+        inactiveAction={async () => null}
+        entranceBeforeInactiveAction
+        optimisticAddShot={() => undefined}
+        submitShot={async () => null}
+        applyState={() => undefined}
+      />,
+    );
+    await act(async () => Promise.resolve());
+
+    expect(playerContainers.at(-1)?.visible).toBe(true);
+    expect(goalieContainers.at(-1)?.visible).toBe(true);
+  });
+
+  it('keeps authoritative clocks continuous through the shot result pause', async () => {
+    vi.useFakeTimers();
+    let now = 1_000;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    const shotResolver: PlayShotResolver = vi.fn(() => ({ type: 'miss', reason: 'wide' }));
+    const resolvedSnapshot = {
+      initialSceneElapsedMs: 434,
+      initialShooterElapsedMs: 0,
+      receivedAtPerformanceMs: 1_434,
+      clockRebaseKey: 'period-1',
+    };
+    const submitShot = vi.fn(async () => ({
+      serverResult: 'miss' as const,
+      state: resolvedSnapshot,
+    }));
+    const commonProps = {
+      suppressedByModal: false,
+      showIceCar: false,
+      onBack: () => undefined,
+      active: true,
+      seed: 'bonus-seed',
+      goalieId: null,
+      goalieConfig: beachGoalie,
+      periodNumber: 1,
+      goals: 0,
+      shotsTotal: 30,
+      initialSceneElapsedMs: 0,
+      initialShooterElapsedMs: 0,
+      receivedAtPerformanceMs: 1_000,
+      clockRebaseKey: 'period-1',
+      speedOverrides: { goalFreq: 0.45, goalieFreq: 0.5, shooterFreq: 0.65, puckSpeed: 1.2 },
+      continuousClockDuringResult: true,
+      shotResolver,
+      optimisticAddShot: () => undefined,
+      submitShot,
+      applyState: () => undefined,
+    } as const;
+    function applyResolvedState(snapshot: typeof resolvedSnapshot): void {
+      view.rerender(
+        <PlayView
+          {...commonProps}
+          {...snapshot}
+          shots={1}
+          applyResolvedState={applyResolvedState}
+        />,
+      );
+    }
+    const view = render(
+      <PlayView
+        {...commonProps}
+        shots={0}
+        applyResolvedState={applyResolvedState}
+      />,
+    );
+    await act(async () => Promise.resolve());
+
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+    await act(async () => Promise.resolve());
+
+    now = 1_434;
+    act(() => tickerCallbacks.at(-1)?.());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(434);
+    });
+    now = 2_434;
+    act(() => tickerCallbacks.at(-1)?.());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+    await act(async () => Promise.resolve());
+
+    expect(shotResolver).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        input: expect.objectContaining({ tapTime: 1_434, shooterTapTime: 1_000 }),
+      }),
+    );
   });
 
   it('applies a fast authoritative result only after the flight and result pause', async () => {

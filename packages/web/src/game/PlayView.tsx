@@ -259,6 +259,8 @@ export interface PlayViewProps<TState> {
   primaryActionBlocked?: boolean | undefined;
   inactiveAction?: (() => unknown | Promise<unknown>) | undefined;
   entranceBeforeInactiveAction?: boolean | undefined;
+  goalsOnlyWhileInactive?: boolean | undefined;
+  continuousClockDuringResult?: boolean | undefined;
   backLabel?: string | undefined;
   bottomInset?: string | undefined;
   sessionStartedAt?: string | null | undefined;
@@ -530,6 +532,8 @@ export function PlayView<TState>({
   primaryActionBlocked = false,
   inactiveAction,
   entranceBeforeInactiveAction = false,
+  goalsOnlyWhileInactive = false,
+  continuousClockDuringResult = false,
   backLabel = 'К режимам',
   bottomInset = 'calc(8px + var(--app-dock-safe-bottom))',
   sessionStartedAt,
@@ -657,6 +661,8 @@ export function PlayView<TState>({
   showIceCarRef.current = showIceCar;
   const playEntranceOnMountRef = useRef(playEntranceOnMount);
   playEntranceOnMountRef.current = playEntranceOnMount;
+  const goalsOnlyWhileInactiveRef = useRef(goalsOnlyWhileInactive);
+  goalsOnlyWhileInactiveRef.current = goalsOnlyWhileInactive;
   const onEntranceConsumedRef = useRef(onEntranceConsumed);
   onEntranceConsumedRef.current = onEntranceConsumed;
   const onRouteTransitionConsumedRef = useRef(onRouteTransitionConsumed);
@@ -1241,6 +1247,16 @@ export function PlayView<TState>({
           setPixiReady(true);
           return;
         }
+        if (!sessionRef.current.active && goalsOnlyWhileInactiveRef.current) {
+          loop.detach();
+          goal.container.visible = true;
+          player.container.visible = false;
+          goalie.container.visible = false;
+          puck.container.visible = false;
+          goal.update(initialScale, 0);
+          setPixiReady(true);
+          return;
+        }
         if (playEntranceOnMountRef.current && sessionRef.current.active) {
           onEntranceConsumedRef.current?.();
           void startEntranceAnimation(loop, app.ticker);
@@ -1306,6 +1322,15 @@ export function PlayView<TState>({
       drawReadyPresence(readyPresence);
       return;
     }
+    if (!active && goalsOnlyWhileInactive) {
+      loop.detach();
+      goal.container.visible = true;
+      player.container.visible = false;
+      goalie.container.visible = false;
+      puck.container.visible = false;
+      goal.update(scaleRef.current, 0);
+      return;
+    }
     if (active && wasReadyPresenceModeRef.current) {
       wasReadyPresenceModeRef.current = false;
       goal.container.visible = true;
@@ -1341,6 +1366,7 @@ export function PlayView<TState>({
   }, [
     active,
     drawReadyPresence,
+    goalsOnlyWhileInactive,
     pixiReady,
     readyPresence,
     showIceCar,
@@ -1513,7 +1539,8 @@ export function PlayView<TState>({
     };
 
     scheduleShotTimeout(() => {
-      loop.beginScenePause();
+      if (continuousClockDuringResult) loop.endShooterPause();
+      else loop.beginScenePause();
       puck.holdAt({
         x: puckShotPath.end.x,
         y: result.type === 'save' ? GOAL_OPENING.y + 20 : GOAL_OPENING.y,
@@ -1526,8 +1553,10 @@ export function PlayView<TState>({
     }, flightMs);
 
     scheduleShotTimeout(() => {
-      loop.endScenePause();
-      loop.endShooterPause();
+      if (!continuousClockDuringResult) {
+        loop.endScenePause();
+        loop.endShooterPause();
+      }
       if (pendingClockRebaseRef.current) {
         pendingClockRebaseRef.current = false;
         loop.rebaseTime(computeInitialPlayClocks(sessionTimingRef.current));
@@ -1561,7 +1590,7 @@ export function PlayView<TState>({
       }
       applyNextState();
     });
-  }, [optimisticAddShot, submitShot, applyState, applyResolvedState]);
+  }, [continuousClockDuringResult, optimisticAddShot, submitShot, applyState, applyResolvedState]);
 
   const handleInactiveAction = useCallback(async (): Promise<void> => {
     if (!inactiveAction || isInactiveActionPending) return;
