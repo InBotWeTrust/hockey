@@ -30,6 +30,7 @@ import {
   qualificationDescription,
   qualificationProgress,
 } from '../game/bonusGameQualification.js';
+import { versionBonusGameArtwork } from '../game/bonusGameArtwork.js';
 
 const BONUS_GAME_GOALIE_OPTIONS: Omit<GoalieOptions, 'idleSpriteUrl' | 'saveSpriteUrl'> = {
   visualYScale: PERSPECTIVE_COURT_VISUAL_Y_SCALE,
@@ -183,7 +184,7 @@ function BonusPreview({
     >
       <img
         className="bonus-game-preview-modal__artwork"
-        src={attempt.rules.preview_artwork_url}
+        src={versionBonusGameArtwork(attempt.rules.preview_artwork_url)}
         alt={`Локация «${attempt.arena.title}» и её вратарь`}
       />
       <p className="modal-copy bonus-game-preview-modal__story">{attempt.rules.preview_story}</p>
@@ -611,8 +612,9 @@ export function BonusGamePlayScreen(): JSX.Element {
   const goalieConfig = goalieConfigFor(attempt, rule);
   const speedOverrides = speedOverridesFor(rule, attempt.current_loadout);
   const stickItem = attempt.current_loadout?.items.find((item) => item.kind === 'stick');
+  const arenaArtworkUrl = versionBonusGameArtwork(attempt.arena.artwork_url);
   const preloadAssets = [
-    attempt.arena.artwork_url,
+    arenaArtworkUrl,
     attempt.goalkeeper_ready_url,
     attempt.goalkeeper_save_url,
   ];
@@ -678,6 +680,7 @@ export function BonusGamePlayScreen(): JSX.Element {
         entranceBeforeInactiveAction={true}
         goalsOnlyWhileInactive={true}
         continuousClockDuringResult={true}
+        freezeRenderingDuringResult={true}
         sessionStartedAt={attempt.period_started_at}
         serverNow={attempt.server_now}
         receivedAtPerformanceMs={receivedAtPerformanceMs ?? undefined}
@@ -723,7 +726,7 @@ export function BonusGamePlayScreen(): JSX.Element {
             <BonusReconcileOverlay loading={loading} onRetry={() => void reconcileAttempt()} />
           ) : undefined
         }
-        longCourtBackground={attempt.arena.artwork_url}
+        longCourtBackground={arenaArtworkUrl}
         rinkBorderRadius={28}
       />
 
@@ -760,7 +763,7 @@ export function BonusGamePlayScreen(): JSX.Element {
       {confirmAbandon && !isBreak && !isTerminal ? (
         <AccessibleModal
           title="Выйти из бонусной игры?"
-          copy="Попытка сохранится, если продолжить позже. Завершение удалит текущий прогресс."
+          copy="При выходе текущая попытка завершится, а прогресс потеряется."
           closeBlocked={isConfirmingAbandon}
           onClose={() => setConfirmAbandon(false)}
         >
@@ -774,9 +777,9 @@ export function BonusGamePlayScreen(): JSX.Element {
               type="button"
               className="btn btn--ghost"
               disabled={isConfirmingAbandon}
-              onClick={goToCatalog}
+              onClick={() => setConfirmAbandon(false)}
             >
-              Продолжить позже
+              Остаться
             </button>
             <button
               type="button"
@@ -784,7 +787,7 @@ export function BonusGamePlayScreen(): JSX.Element {
               disabled={isConfirmingAbandon}
               onClick={() => void confirmAndAbandon()}
             >
-              {isConfirmingAbandon ? 'Завершаем…' : 'Завершить попытку'}
+              {isConfirmingAbandon ? 'Выходим…' : 'Выйти'}
             </button>
           </div>
         </AccessibleModal>

@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Check, CircleDollarSign, Info, Star, TrendingUp } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { rewardColor, type RewardTone } from '../app/rewardColors.js';
 import {
   fetchBonusGames,
+  abandonBonusAttempt,
   purchaseBonusGame,
   startBonusAttempt,
   type BonusGameCard,
@@ -16,6 +17,7 @@ import { AccessibleModal } from '../components/AccessibleModal.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
 import { formatRussianCount } from '../lib/russianPlural.js';
 import { qualificationDescription } from '../game/bonusGameQualification.js';
+import { versionBonusGameArtwork } from '../game/bonusGameArtwork.js';
 
 const SAFE_UI_ERROR_MESSAGE = 'Не удалось выполнить запрос. Попробуйте ещё раз.';
 const LAST_SKILL_STORAGE_KEY = 'bonus-games:last-skill';
@@ -52,6 +54,8 @@ export function BonusGamesScreen(): JSX.Element {
   const queryClient = useQueryClient();
   const [purchaseGame, setPurchaseGame] = useState<BonusGameCard | null>(null);
   const [purchaseNotice, setPurchaseNotice] = useState<string | null>(null);
+  const [switchGame, setSwitchGame] = useState<BonusGameCard | null>(null);
+  const switchAttemptRequestRef = useRef(false);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [selectedSkill, setSelectedSkill] = useState<BonusSkillCode>(() =>
     localStorage.getItem(LAST_SKILL_STORAGE_KEY) === 'accuracy' ? 'accuracy' : 'speed',
@@ -85,14 +89,17 @@ export function BonusGamesScreen(): JSX.Element {
     },
   });
 
-  const openGame = (game: BonusGameCard): void => {
-    if (
-      catalogQuery.data?.active_attempt !== null &&
-      catalogQuery.data?.active_attempt !== undefined &&
-      game.active_attempt === null
-    ) {
-      return;
-    }
+  const activeAttempt = catalogQuery.data?.active_attempt ?? null;
+  const allGames = catalogQuery.data?.games ?? [];
+  const activeGame = allGames.find((game) => game.active_attempt?.id === activeAttempt?.id);
+  const continueActiveAttempt = (): void => {
+    if (activeAttempt === null || activeGame === undefined) return;
+    navigate(
+      `/bonus-games/${activeGame.id}/play?attempt=${encodeURIComponent(activeAttempt.id)}`,
+    );
+  };
+
+  const performGameAction = (game: BonusGameCard): void => {
     if (game.state === 'purchase_required') {
       purchaseMutation.reset();
       setPurchaseGame(game);
@@ -106,13 +113,35 @@ export function BonusGamesScreen(): JSX.Element {
     }
     if (isPlayable(game)) startMutation.mutate(game.id);
   };
-  const allGames = catalogQuery.data?.games ?? [];
+
+  const switchAttemptMutation = useMutation({
+    mutationFn: async ({ attemptId }: { attemptId: string; game: BonusGameCard }) =>
+      await abandonBonusAttempt(attemptId),
+    onSuccess: async (_response, variables) => {
+      await queryClient.invalidateQueries({ queryKey: ['bonus-games'] });
+      setSwitchGame(null);
+      performGameAction(variables.game);
+    },
+    onSettled: () => {
+      switchAttemptRequestRef.current = false;
+    },
+  });
+
+  const abandonAndOpenGame = (): void => {
+    if (switchAttemptRequestRef.current || activeAttempt === null || switchGame === null) return;
+    switchAttemptRequestRef.current = true;
+    switchAttemptMutation.mutate({ attemptId: activeAttempt.id, game: switchGame });
+  };
+
+  const openGame = (game: BonusGameCard): void => {
+    if (activeAttempt !== null && game.active_attempt === null) {
+      switchAttemptMutation.reset();
+      setSwitchGame(game);
+      return;
+    }
+    performGameAction(game);
+  };
   const games = allGames.filter((game) => game.skill_code === selectedSkill);
-  const activeGame = allGames.find(
-    (game) => game.active_attempt?.id === catalogQuery.data?.active_attempt?.id,
-  );
-  const activeAttemptInOtherSkill =
-    activeGame !== undefined && activeGame.skill_code !== selectedSkill ? activeGame : null;
   const selectSkill = (skill: BonusSkillCode): void => {
     setSelectedSkill(skill);
     localStorage.setItem(LAST_SKILL_STORAGE_KEY, skill);
@@ -206,7 +235,6 @@ export function BonusGamesScreen(): JSX.Element {
                 actionLabel={actionLabel(focusGame)}
                 isStarting={startMutation.isPending && startMutation.variables === focusGame.id}
                 onAction={() => openGame(focusGame)}
-                blockedByOtherAttempt={activeAttemptInOtherSkill !== null}
                 featured={true}
               />
             </section>
@@ -229,7 +257,6 @@ export function BonusGamesScreen(): JSX.Element {
                       actionLabel={actionLabel(game)}
                       isStarting={startMutation.isPending && startMutation.variables === game.id}
                       onAction={() => openGame(game)}
-                      blockedByOtherAttempt={activeAttemptInOtherSkill !== null}
                       compact={true}
                     />
                   ))}
@@ -249,7 +276,6 @@ export function BonusGamesScreen(): JSX.Element {
                       actionLabel={actionLabel(game)}
                       isStarting={false}
                       onAction={() => openGame(game)}
-                      blockedByOtherAttempt={activeAttemptInOtherSkill !== null}
                       compact={true}
                     />
                   ))}
@@ -293,6 +319,43 @@ export function BonusGamesScreen(): JSX.Element {
         />
       )}
       {rulesOpen && <BonusGamesRulesModal onClose={() => setRulesOpen(false)} />}
+      {switchGame !== null && activeAttempt !== null && activeGame !== undefined ? (
+        <AccessibleModal
+          title="Уже идёт другая игра"
+          copy={`${skillLabels[activeGame.skill_code]} · ${activeGame.title}. Можно продолжить её или завершить попытку и начать выбранную игру.`}
+          closeBlocked={switchAttemptMutation.isPending}
+          onClose={() => {
+            if (switchAttemptMutation.isPending) return;
+            switchAttemptRequestRef.current = false;
+            switchAttemptMutation.reset();
+            setSwitchGame(null);
+          }}
+        >
+          {switchAttemptMutation.isError ? (
+            <p role="alert" className="bonus-game-abandon-error">
+              {safeUiError(switchAttemptMutation.error)}
+            </p>
+          ) : null}
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={switchAttemptMutation.isPending}
+              onClick={continueActiveAttempt}
+            >
+              Продолжить текущую
+            </button>
+            <button
+              type="button"
+              className="modal-primary btn btn--cta"
+              disabled={switchAttemptMutation.isPending}
+              onClick={abandonAndOpenGame}
+            >
+              {switchAttemptMutation.isPending ? 'Завершаем…' : 'Завершить и начать эту'}
+            </button>
+          </div>
+        </AccessibleModal>
+      ) : null}
     </main>
   );
 }
@@ -323,7 +386,6 @@ function BonusGameCard({
   onAction,
   featured = false,
   compact = false,
-  blockedByOtherAttempt = false,
 }: {
   game: BonusGameCard;
   actionLabel: string;
@@ -331,11 +393,9 @@ function BonusGameCard({
   onAction: () => void;
   featured?: boolean;
   compact?: boolean;
-  blockedByOtherAttempt?: boolean;
 }): JSX.Element {
   const canAct =
-    !blockedByOtherAttempt &&
-    (game.state === 'purchase_required' || game.active_attempt !== null || isPlayable(game));
+    game.state === 'purchase_required' || game.active_attempt !== null || isPlayable(game);
   const firstClearRewards = [
     {
       label: 'Монеты',
@@ -373,7 +433,7 @@ function BonusGameCard({
       <div className="bonus-game-card__artwork-frame">
         <img
           className={`bonus-game-card__artwork${game.state === 'completed' ? ' bonus-game-card__artwork--completed' : ''}${artworkIsLocked ? ' bonus-game-card__artwork--locked' : ''}`}
-          src={game.arena.thumbnail_url}
+          src={versionBonusGameArtwork(game.arena.thumbnail_url)}
           alt={`Площадка «${game.arena.title}»`}
           style={{ objectPosition: 'center top' }}
         />

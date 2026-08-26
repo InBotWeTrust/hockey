@@ -5,6 +5,7 @@ import { PlayView, type PlayShotResolver } from './PlayView.js';
 import type * as ReactModule from 'react';
 
 const tickerCallbacks = vi.hoisted(() => [] as Array<() => void>);
+const tickerEvents = vi.hoisted(() => [] as Array<'add' | 'remove'>);
 const playerContainers = vi.hoisted(() => [] as Array<{ visible: boolean }>);
 const goalieContainers = vi.hoisted(() => [] as Array<{ visible: boolean }>);
 
@@ -97,8 +98,11 @@ vi.mock('./PixiStage.js', async () => {
           {
             stage: { addChild: vi.fn() },
             ticker: {
-              add: vi.fn((callback: () => void) => tickerCallbacks.push(callback)),
-              remove: vi.fn(),
+              add: vi.fn((callback: () => void) => {
+                tickerCallbacks.push(callback);
+                tickerEvents.push('add');
+              }),
+              remove: vi.fn(() => tickerEvents.push('remove')),
             },
           } as never,
           { factor: 1, offsetX: 0, offsetY: 0 } as never,
@@ -126,6 +130,7 @@ const beachGoalie: GoalieConfig = {
 describe('PlayView', () => {
   beforeEach(() => {
     tickerCallbacks.length = 0;
+    tickerEvents.length = 0;
     playerContainers.length = 0;
     goalieContainers.length = 0;
   });
@@ -454,6 +459,7 @@ describe('PlayView', () => {
       clockRebaseKey: 'period-1',
       speedOverrides: { goalFreq: 0.45, goalieFreq: 0.5, shooterFreq: 0.65, puckSpeed: 1.2 },
       continuousClockDuringResult: true,
+      freezeRenderingDuringResult: true,
       shotResolver,
       optimisticAddShot: () => undefined,
       submitShot,
@@ -486,11 +492,13 @@ describe('PlayView', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(434);
     });
+    expect(tickerEvents.at(-1)).toBe('remove');
     now = 2_434;
-    act(() => tickerCallbacks.at(-1)?.());
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1_000);
     });
+    expect(tickerEvents.at(-1)).toBe('add');
+    act(() => tickerCallbacks.at(-1)?.());
 
     fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
     await act(async () => Promise.resolve());

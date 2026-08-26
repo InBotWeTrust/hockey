@@ -74,6 +74,7 @@ function mockCatalog(
     unlockFailure?: unknown;
     unlockResponse?: Response;
     startFailure?: unknown;
+    abandonFailure?: unknown;
   } = {},
 ): void {
   const {
@@ -83,6 +84,7 @@ function mockCatalog(
     unlockFailure,
     unlockResponse,
     startFailure,
+    abandonFailure,
   } = options;
   vi.spyOn(globalThis, 'fetch').mockImplementation(
     (input: RequestInfo | URL, init?: RequestInit) => {
@@ -129,17 +131,50 @@ function mockCatalog(
         );
       }
       if (
+        url.includes('/api/bonus-games/attempts/') &&
+        url.endsWith('/abandon') &&
+        init?.method === 'POST'
+      ) {
+        if (abandonFailure !== undefined) return Promise.reject(abandonFailure);
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              attempt: {
+                id: 'attempt-speed',
+                game_id: 'speed-beach',
+                game_title: 'Скоростной пляж',
+                status: 'abandoned',
+                rules: {
+                  target_goals: 18,
+                  periods: [],
+                  skill_code: 'speed',
+                  qualification_rules: {
+                    type: 'goals_in_time',
+                    targetGoals: 18,
+                  },
+                },
+                arena: {
+                  artwork_url: '/bonus-games/arenas/beach.webp',
+                },
+              },
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      if (
         url.includes('/api/bonus-games/') &&
         url.endsWith('/attempts') &&
         init?.method === 'POST'
       ) {
         if (startFailure !== undefined) return Promise.reject(startFailure);
+        const gameId = url.match(/\/api\/bonus-games\/([^/]+)\/attempts$/)?.[1] ?? 'unknown';
         return Promise.resolve(
           new Response(
             JSON.stringify({
               attempt: {
                 id: 'attempt-new',
-                game_id: '00000000-0000-4000-8000-000000000601',
+                game_id: gameId,
               },
             }),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -195,7 +230,7 @@ describe('BonusGamesScreen', () => {
     expect(localStorage.getItem('bonus-games:last-skill')).toBe('accuracy');
   });
 
-  it('blocks starting a game in the other skill without showing a separate continue notice', async () => {
+  it('offers to continue the active attempt when starting a game in another skill', async () => {
     mockCatalog([
       card({
         id: 'speed-beach',
@@ -217,13 +252,61 @@ describe('BonusGamesScreen', () => {
     localStorage.setItem('bonus-games:last-skill', 'accuracy');
     renderCatalog();
 
-    await screen.findByRole('button', { name: 'Играть' });
-    expect(screen.queryByText(/Сейчас идёт/)).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Вернуться в игру' })).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: 'Продолжить: Скорость · Скоростной пляж' }),
-    ).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Играть' })).toBeDisabled();
+    const play = await screen.findByRole('button', { name: 'Играть' });
+    expect(play).toBeEnabled();
+    fireEvent.click(play);
+
+    const dialog = screen.getByRole('dialog', { name: 'Уже идёт другая игра' });
+    expect(dialog).toHaveTextContent('Скорость · Скоростной пляж');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Продолжить текущую' }));
+
+    expect(screen.getByLabelText('location')).toHaveTextContent(
+      '/bonus-games/speed-beach/play?attempt=attempt-speed',
+    );
+  });
+
+  it('abandons the active attempt before starting the selected game', async () => {
+    mockCatalog([
+      card({
+        id: 'speed-beach',
+        title: 'Скоростной пляж',
+        state: 'in_progress',
+        active_attempt: {
+          id: 'attempt-speed',
+          game_id: 'speed-beach',
+          state: 'period_active',
+          current_period: 1,
+          period_started_at: '2026-08-26T12:00:00.000Z',
+          break_started_at: null,
+          shots_taken: 4,
+          goals: 2,
+        },
+      }),
+      card({ id: 'accuracy-beach', title: 'Точный пляж', skill_code: 'accuracy' }),
+    ]);
+    localStorage.setItem('bonus-games:last-skill', 'accuracy');
+    renderCatalog();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Играть' }));
+    const switchButton = within(
+      screen.getByRole('dialog', { name: 'Уже идёт другая игра' }),
+    ).getByRole('button', { name: 'Завершить и начать эту' });
+    fireEvent.click(switchButton);
+    fireEvent.click(switchButton);
+
+    await waitFor(() =>
+      expect(screen.getByLabelText('location')).toHaveTextContent(
+        '/bonus-games/accuracy-beach/play?attempt=attempt-new',
+      ),
+    );
+    const postUrls = vi
+      .mocked(globalThis.fetch)
+      .mock.calls.filter(([, init]) => init?.method === 'POST')
+      .map(([input]) => String(input));
+    expect(postUrls).toEqual([
+      '/api/bonus-games/attempts/attempt-speed/abandon',
+      '/api/bonus-games/accuracy-beach/attempts',
+    ]);
   });
 
   it('shows the subsection title without repeating the parent sections label', async () => {
@@ -326,7 +409,7 @@ describe('BonusGamesScreen', () => {
     expect(within(completedCard!).queryByLabelText('Монеты: 100')).not.toBeInTheDocument();
   });
 
-  it('keeps a blocked repeat action visibly dark', async () => {
+  it('keeps a conflicting repeat action clickable and visibly dark', async () => {
     mockCatalog([
       card({ id: 'speed-beach', state: 'completed', is_completed: true }),
       card({
@@ -348,7 +431,9 @@ describe('BonusGamesScreen', () => {
     renderCatalog();
 
     const repeatButton = await screen.findByRole('button', { name: 'Повторить' });
-    expect(repeatButton).toBeDisabled();
+    expect(repeatButton).toBeEnabled();
+    fireEvent.click(repeatButton);
+    expect(screen.getByRole('dialog', { name: 'Уже идёт другая игра' })).toBeInTheDocument();
     const style = document.createElement('style');
     style.textContent = designSystemCss;
     document.head.append(style);
@@ -365,7 +450,10 @@ describe('BonusGamesScreen', () => {
     renderCatalog();
 
     const artwork = await screen.findByAltText('Площадка «Пляж»');
-    expect(artwork).toHaveAttribute('src', '/bonus-games/arenas/beach.webp');
+    expect(artwork).toHaveAttribute(
+      'src',
+      '/bonus-games/arenas/beach.webp?v=20260826-themed-ice-v2',
+    );
     expect(artwork).toHaveStyle({ objectPosition: 'center top' });
     expect(artwork.parentElement).toHaveClass('bonus-game-card__artwork-frame');
   });
@@ -474,6 +562,16 @@ describe('BonusGamesScreen', () => {
     expect(await screen.findByAltText('Площадка «Пляж»')).toHaveAttribute(
       'src',
       'https://media.example.test/beach-thumb.webp?generation=8',
+    );
+  });
+
+  it('cache-busts bundled arena artwork so newly deployed ice textures are visible', async () => {
+    mockCatalog([card({})]);
+    renderCatalog();
+
+    expect(await screen.findByAltText('Площадка «Пляж»')).toHaveAttribute(
+      'src',
+      '/bonus-games/arenas/beach.webp?v=20260826-themed-ice-v2',
     );
   });
 

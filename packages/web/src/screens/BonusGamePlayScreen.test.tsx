@@ -276,7 +276,7 @@ describe('BonusGamePlayScreen', () => {
     expect(screen.getByRole('heading', { name: 'Первая квалификация' })).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'Локация «Пляж» и её вратарь' })).toHaveAttribute(
       'src',
-      '/bonus-games/location-cards/beach.webp',
+      '/bonus-games/location-cards/beach.webp?v=20260826-themed-ice-v2',
     );
     const qualification = screen.getByText('20 голов из 50 бросков');
     expect(qualification).toBeInTheDocument();
@@ -320,6 +320,7 @@ describe('BonusGamePlayScreen', () => {
       entranceBeforeInactiveAction: true,
       goalsOnlyWhileInactive: true,
       continuousClockDuringResult: true,
+      freezeRenderingDuringResult: true,
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'НАЧАТЬ' }));
@@ -332,7 +333,7 @@ describe('BonusGamePlayScreen', () => {
 
     expect(screen.getByTestId('bonus-rink-background')).toHaveAttribute(
       'src',
-      '/bonus-games/arenas/beach.webp',
+      '/bonus-games/arenas/beach.webp?v=20260826-themed-ice-v2',
     );
     const props = playViewProbe.mock.calls.at(-1)?.[0] as Record<string, unknown>;
     expect(props).toMatchObject({
@@ -342,7 +343,7 @@ describe('BonusGamePlayScreen', () => {
       goals: 18,
       shotsTotal: 25,
       stickEffects: STICK_NEUTRAL,
-      longCourtBackground: '/bonus-games/arenas/beach.webp',
+      longCourtBackground: '/bonus-games/arenas/beach.webp?v=20260826-themed-ice-v2',
       initialSceneElapsedMs: 9_000,
       initialShooterElapsedMs: 7_800,
       goalieOptions: {
@@ -366,7 +367,7 @@ describe('BonusGamePlayScreen', () => {
         goalFrequency: 0.5,
       },
       preloadAssets: [
-        '/bonus-games/arenas/beach.webp',
+        '/bonus-games/arenas/beach.webp?v=20260826-themed-ice-v2',
         '/bonus-games/goalkeepers/beach-ready.webp',
         '/bonus-games/goalkeepers/beach-save.webp',
       ],
@@ -703,9 +704,7 @@ describe('BonusGamePlayScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'К бонусным играм' }));
     expect(abandon).not.toHaveBeenCalled();
     const dialog = screen.getByRole('dialog', { name: 'Выйти из бонусной игры?' });
-    expect(dialog).toHaveTextContent(
-      'Попытка сохранится, если продолжить позже. Завершение удалит текущий прогресс.',
-    );
+    expect(dialog).toHaveTextContent('При выходе текущая попытка завершится, а прогресс потеряется.');
     fireEvent.keyDown(dialog, { key: 'Escape' });
     expect(abandon).not.toHaveBeenCalled();
     expect(screen.queryByRole('dialog', { name: 'Выйти из бонусной игры?' })).toBeNull();
@@ -713,7 +712,7 @@ describe('BonusGamePlayScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'К бонусным играм' }));
     const confirm = within(
       screen.getByRole('dialog', { name: 'Выйти из бонусной игры?' }),
-    ).getByRole('button', { name: 'Завершить попытку' });
+    ).getByRole('button', { name: 'Выйти' });
     fireEvent.click(confirm);
     fireEvent.click(confirm);
     expect(abandon).toHaveBeenCalledTimes(1);
@@ -743,14 +742,14 @@ describe('BonusGamePlayScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'К бонусным играм' }));
     fireEvent.click(
       within(screen.getByRole('dialog', { name: 'Выйти из бонусной игры?' })).getByRole('button', {
-        name: 'Завершить попытку',
+        name: 'Выйти',
       }),
     );
 
     expect(await screen.findByText('Можно начать другую игру')).toBeInTheDocument();
   });
 
-  it('returns to the catalog without abandoning when continuing later', () => {
+  it('stays in the game without abandoning when exit is cancelled', () => {
     const abandon = vi.fn(async () => null);
     setStore({ abandon });
     renderScreen();
@@ -758,12 +757,13 @@ describe('BonusGamePlayScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'К бонусным играм' }));
     fireEvent.click(
       within(screen.getByRole('dialog', { name: 'Выйти из бонусной игры?' })).getByRole('button', {
-        name: 'Продолжить позже',
+        name: 'Остаться',
       }),
     );
 
     expect(abandon).not.toHaveBeenCalled();
-    expect(screen.getByLabelText('location')).toHaveTextContent('/bonus-games');
+    expect(screen.getByLabelText('location')).toHaveTextContent('/bonus-games/game-1/play');
+    expect(screen.queryByRole('dialog', { name: 'Выйти из бонусной игры?' })).toBeNull();
   });
 
   it('keeps the active rink simulation running while the exit prompt is open', () => {
@@ -785,8 +785,8 @@ describe('BonusGamePlayScreen', () => {
     fireEvent.click(trigger);
 
     const dialog = screen.getByRole('dialog', { name: 'Выйти из бонусной игры?' });
-    const cancel = within(dialog).getByRole('button', { name: 'Продолжить позже' });
-    const confirm = within(dialog).getByRole('button', { name: 'Завершить попытку' });
+    const cancel = within(dialog).getByRole('button', { name: 'Остаться' });
+    const confirm = within(dialog).getByRole('button', { name: 'Выйти' });
     await waitFor(() => expect(cancel).toHaveFocus());
     confirm.focus();
     fireEvent.keyDown(dialog, { key: 'Tab' });
@@ -807,7 +807,7 @@ describe('BonusGamePlayScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'К бонусным играм' }));
     fireEvent.click(
       within(screen.getByRole('dialog', { name: 'Выйти из бонусной игры?' })).getByRole('button', {
-        name: 'Завершить попытку',
+        name: 'Выйти',
       }),
     );
 

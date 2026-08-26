@@ -261,6 +261,7 @@ export interface PlayViewProps<TState> {
   entranceBeforeInactiveAction?: boolean | undefined;
   goalsOnlyWhileInactive?: boolean | undefined;
   continuousClockDuringResult?: boolean | undefined;
+  freezeRenderingDuringResult?: boolean | undefined;
   backLabel?: string | undefined;
   bottomInset?: string | undefined;
   sessionStartedAt?: string | null | undefined;
@@ -534,6 +535,7 @@ export function PlayView<TState>({
   entranceBeforeInactiveAction = false,
   goalsOnlyWhileInactive = false,
   continuousClockDuringResult = false,
+  freezeRenderingDuringResult = false,
   backLabel = 'К режимам',
   bottomInset = 'calc(8px + var(--app-dock-safe-bottom))',
   sessionStartedAt,
@@ -1541,6 +1543,7 @@ export function PlayView<TState>({
     scheduleShotTimeout(() => {
       if (continuousClockDuringResult) loop.endShooterPause(flightMs);
       else loop.beginScenePause();
+      if (freezeRenderingDuringResult) loop.detach();
       puck.holdAt({
         x: puckShotPath.end.x,
         y: result.type === 'save' ? GOAL_OPENING.y + 20 : GOAL_OPENING.y,
@@ -1563,6 +1566,7 @@ export function PlayView<TState>({
       }
       puck.release();
       if (result.type === 'save') goalie.setSavePose(false);
+      if (freezeRenderingDuringResult && tickerRef.current) loop.attach(tickerRef.current);
       setIsShowingResult(false);
       setResultDisplayKind(null);
       shotAnimationInProgressRef.current = false;
@@ -1590,7 +1594,14 @@ export function PlayView<TState>({
       }
       applyNextState();
     });
-  }, [continuousClockDuringResult, optimisticAddShot, submitShot, applyState, applyResolvedState]);
+  }, [
+    continuousClockDuringResult,
+    freezeRenderingDuringResult,
+    optimisticAddShot,
+    submitShot,
+    applyState,
+    applyResolvedState,
+  ]);
 
   const handleInactiveAction = useCallback(async (): Promise<void> => {
     if (!inactiveAction || isInactiveActionPending) return;
