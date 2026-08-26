@@ -222,6 +222,11 @@ describe('TournamentCatalog', () => {
     );
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок выхода' }));
+    expect(screen.getByText('Заявка принята')).toBeInTheDocument();
+    expect(screen.queryByText('Вы участвуете')).not.toBeInTheDocument();
+    expect(screen.getByText('Идёт регистрация').parentElement).toHaveClass(
+      'tournament-details__status-row',
+    );
     expect(screen.getByRole('button', { name: 'Отменить заявку' })).toHaveClass(
       'tournament-registration-btn--danger',
     );

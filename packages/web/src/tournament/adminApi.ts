@@ -55,7 +55,12 @@ export interface AdminTournamentUserOption {
   avatarUrl: string | null;
   level: number;
   isBlocked: boolean;
-  identities: Array<{ username: string | null }>;
+  identities: Array<{
+    source?: 'custom' | 'telegram' | 'vk';
+    label?: string;
+    id?: string | null;
+    username: string | null;
+  }>;
 }
 
 export function fetchAdminTournaments(): Promise<{ tournaments: AdminTournament[] }> {

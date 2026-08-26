@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import {
   applyToTournament,
   fetchTournamentSchedule,
@@ -19,6 +19,7 @@ import { useAuthStore } from '../auth/authStore.js';
 import { VenueBadge, type VenueRole } from '../components/VenueBadge.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
+import { tournamentStatusLabel } from './labels.js';
 
 type TournamentTab = 'overview' | 'standings' | 'schedule' | 'playoff' | 'rules';
 
@@ -41,17 +42,7 @@ function fixtureVenueRole(fixture: TournamentFixture, currentUserId: string | nu
 }
 
 function statusLabel(status: TournamentSummary['status']): string {
-  const labels: Record<TournamentSummary['status'], string> = {
-    registration: 'Идёт регистрация',
-    registration_blocked: 'Набор продлён',
-    scheduling: 'Готовится расписание',
-    regular: 'Регулярный чемпионат',
-    playoff: 'Плей-офф',
-    paused: 'Приостановлен',
-    completed: 'Завершён',
-    cancelled: 'Отменён',
-  };
-  return labels[status];
+  return tournamentStatusLabel(status);
 }
 
 function participantStateLabel(state: string | null): string {
@@ -74,6 +65,9 @@ function participationLabel(tournament: TournamentSummary): string {
     return tournament.myFinalPlace == null
       ? 'Турнир завершён'
       : `Ваше место: ${tournament.myFinalPlace}`;
+  }
+  if (tournament.status === 'registration' && tournament.myParticipantState === 'approved') {
+    return 'Заявка принята';
   }
   return participantStateLabel(tournament.myParticipantState);
 }
@@ -274,10 +268,8 @@ function TournamentRules({ tournament }: { tournament: TournamentSummary }): JSX
 
 function TournamentDetails({
   tournament,
-  onBack,
 }: {
   tournament: TournamentSummary;
-  onBack: () => void;
 }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -369,14 +361,6 @@ function TournamentDetails({
   return (
     <div className="tournament-details">
       <section className="glass tournament-details__hero">
-        <button
-          type="button"
-          className="icon-btn tournament-details__back"
-          aria-label="Назад к турнирам"
-          onClick={onBack}
-        >
-          <ArrowLeft size={16} />
-        </button>
         <div className="tournament-details__status-row">
           <span className="section-label">{registrationState.label}</span>
           <span className="tournament-participation-badge">{participationLabel(tournament)}</span>
@@ -586,8 +570,7 @@ export function TournamentCatalog(): JSX.Element {
   const catalog = useQuery({ queryKey: ['tournaments'], queryFn: fetchTournaments });
   const tournaments = catalog.data?.tournaments ?? [];
   const selected = tournaments.find((tournament) => tournament.id === selectedId);
-  if (selected)
-    return <TournamentDetails tournament={selected} onBack={() => setSelectedId(null)} />;
+  if (selected) return <TournamentDetails tournament={selected} />;
   if (catalog.isLoading) return <div role="status">Загрузка турниров…</div>;
   if (catalog.isError) return <div role="status">Турниры пока недоступны.</div>;
   if (tournaments.length === 0) return <div role="status">Сейчас нет открытых турниров.</div>;

@@ -14,6 +14,7 @@ import {
   type AdminTournamentUserOption,
 } from './adminApi.js';
 import { TournamentOperations } from './TournamentOperations.js';
+import { participantsCountLabel, tournamentStatusLabel } from './labels.js';
 import { TournamentAdminField, TournamentAdminGroupHelp } from './TournamentAdminField.js';
 import {
   TournamentDraftSaveQueue,
@@ -1400,32 +1401,24 @@ export function TournamentAdmin(): JSX.Element {
         </button>
       </div>
       {tournaments.data?.tournaments.length === 0 && (
-        <div className="glass" style={{ borderRadius: 22, padding: 18 }}>
-          Турниров пока нет
-        </div>
+        <div className="tournament-admin-empty">Турниров пока нет</div>
       )}
       {tournaments.data?.tournaments.map((tournament) => (
         <button
           key={tournament.id}
           type="button"
           aria-label={`Открыть ${tournament.title}`}
-          className="glass"
-          style={{
-            borderRadius: 22,
-            padding: 16,
-            textAlign: 'left',
-            border: '1px solid rgba(255,255,255,.78)',
-          }}
+          className="glass tournament-admin-card"
           onClick={() => {
             setSelectedTournament(tournament);
           }}
         >
-          <div className="section-label" style={{ margin: 0 }}>
-            {tournament.status} · ревизия {tournament.revision}
+          <div className="tournament-admin-card__status">
+            {tournamentStatusLabel(tournament.status)}
           </div>
-          <div style={{ fontSize: 18, fontWeight: 900, marginTop: 5 }}>{tournament.title}</div>
-          <div style={{ color: 'var(--muted)', marginTop: 4 }}>
-            {tournament.participantCount} участников
+          <div className="tournament-admin-card__title">{tournament.title}</div>
+          <div className="tournament-admin-card__meta">
+            {participantsCountLabel(tournament.participantCount)}
           </div>
         </button>
       ))}

@@ -1,6 +1,27 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import {
+  Award,
+  Archive,
+  ArrowLeft,
+  Ban,
+  CalendarClock,
+  CalendarPlus,
+  Check,
+  Copy,
+  Megaphone,
+  Pause,
+  Pencil,
+  Play,
+  Trash2,
+  Trophy,
+  UserPlus,
+  UserX,
+  X,
+} from 'lucide-react';
+import { GlassSelect } from '../components/GlassSelect.js';
+import { SegmentedTabs } from '../components/SegmentedTabs.js';
+import {
   archiveAdminTournament,
   approveAdminTournamentParticipant,
   cancelAdminTournament,
@@ -13,6 +34,7 @@ import {
   fetchAdminTournamentParticipants,
   fetchAdminTournamentSchedule,
   fetchAdminTournamentStandings,
+  fetchAdminTournamentUsers,
   generateAdminTournamentSchedule,
   grantAdminTournamentRewards,
   inviteAdminTournamentParticipant,
@@ -27,6 +49,7 @@ import {
   type AdminTournament,
   type AdminTournamentFixture,
 } from './adminApi.js';
+import { participantStateLabel, paymentStateLabel, tournamentStatusLabel } from './labels.js';
 
 type OperationsTab =
   | 'participants'
@@ -52,9 +75,48 @@ function readableDate(value: string | null): string {
 }
 
 function rowLabel(row: Record<string, unknown>, index: number): string {
-  return String(
-    row.display_name ?? row.higher_name ?? row.user_id ?? row.id ?? `Строка ${index + 1}`,
-  );
+  return String(row.display_name ?? row.higher_name ?? `Участник ${index + 1}`);
+}
+
+function fixtureStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    conditional: 'Условная игра',
+    scheduled: 'Запланирована',
+    open: 'Окно открыто',
+    active: 'Идёт игра',
+    completed: 'Завершена',
+    settled: 'Завершена',
+    cancelled: 'Отменена',
+    forfeit: 'Технический результат',
+    blocked: 'Ожидает решения',
+    paused: 'Приостановлена',
+  };
+  return labels[status] ?? 'Статус уточняется';
+}
+
+function dispatchKindLabel(kind: unknown): string {
+  const labels: Record<string, string> = {
+    push: 'Push',
+    direct_message: 'Личные сообщения',
+    official_news: 'Официальные новости',
+  };
+  return labels[String(kind)] ?? 'Рассылка';
+}
+
+function dispatchStatusLabel(status: unknown): string {
+  const labels: Record<string, string> = {
+    pending: 'Готовится',
+    processing: 'Отправляется',
+    sent: 'Отправлена',
+    partial: 'Отправлена частично',
+    failed: 'Ошибка отправки',
+  };
+  return labels[String(status)] ?? 'Статус уточняется';
+}
+
+function participantPaymentLabel(state: string, coins: number): string {
+  if (coins === 0 || state === 'not_required') return 'Без взноса';
+  return `Взнос: ${coins} монет · ${paymentStateLabel(state, coins)}`;
 }
 
 export function TournamentOperations({
@@ -80,9 +142,8 @@ export function TournamentOperations({
   const [dispatchKind, setDispatchKind] = useState<'push' | 'direct_message' | 'official_news'>(
     'push',
   );
-  const [dispatchTitle, setDispatchTitle] = useState('');
   const [dispatchBody, setDispatchBody] = useState('');
-  const [inviteUserId, setInviteUserId] = useState('');
+  const [inviteSearch, setInviteSearch] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const participantsKey = ['admin', 'tournaments', tournament.id, 'participants'] as const;
   const scheduleKey = ['admin', 'tournaments', tournament.id, 'schedule'] as const;
@@ -119,6 +180,14 @@ export function TournamentOperations({
     queryKey: dispatchesKey,
     queryFn: () => fetchAdminTournamentDispatches(tournament.id),
     enabled: tab === 'dispatches',
+  });
+  const invitedUsers = useQuery({
+    queryKey: ['admin', 'tournament-invite-search', inviteSearch],
+    queryFn: () => fetchAdminTournamentUsers(inviteSearch),
+    enabled:
+      tab === 'participants' &&
+      ['draft', 'registration', 'registration_blocked'].includes(status) &&
+      inviteSearch.trim().length >= 2,
   });
 
   const refreshOperations = () => {
@@ -184,11 +253,10 @@ export function TournamentOperations({
         idempotencyKey: `${tournament.id}:${Date.now()}`,
         kind: dispatchKind,
         audience,
-        title: dispatchTitle,
+        title: `Турнир: ${tournament.title}`,
         body: dispatchBody,
       }),
     onSuccess: () => {
-      setDispatchTitle('');
       setDispatchBody('');
       void client.invalidateQueries({ queryKey: dispatchesKey });
     },
@@ -224,9 +292,9 @@ export function TournamentOperations({
     },
   });
   const invite = useMutation({
-    mutationFn: () => inviteAdminTournamentParticipant(tournament.id, inviteUserId),
+    mutationFn: (userId: string) => inviteAdminTournamentParticipant(tournament.id, userId),
     onSuccess: () => {
-      setInviteUserId('');
+      setInviteSearch('');
       void client.invalidateQueries({ queryKey: participantsKey });
     },
   });
@@ -246,193 +314,255 @@ export function TournamentOperations({
   });
 
   return (
-    <section style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <button type="button" className="btn btn--ghost" onClick={onBack}>
-        К списку турниров
-      </button>
-      <div className="glass" style={{ borderRadius: 22, padding: 16 }}>
-        <div className="section-label" style={{ margin: 0 }}>
-          {status} · ревизия {tournament.revision}
+    <section className="tournament-operations">
+      <div className="tournament-operations__header">
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label="Назад к турнирам"
+          title="Назад к турнирам"
+          onClick={onBack}
+        >
+          <ArrowLeft size={17} />
+        </button>
+        <div className="tournament-operations__heading">
+          <span>{tournamentStatusLabel(status)}</span>
+          <h2>{tournament.title}</h2>
         </div>
-        <h2 style={{ margin: '5px 0 0' }}>{tournament.title}</h2>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+        <div className="tournament-operations__actions">
           {status === 'draft' && (
-            <button type="button" className="btn btn--ghost" onClick={onEdit}>
-              Редактировать draft
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Редактировать"
+              title="Редактировать"
+              onClick={onEdit}
+            >
+              <Pencil size={16} />
             </button>
           )}
           <button
             type="button"
-            className="btn btn--ghost"
+            className="icon-btn"
+            aria-label="Дублировать"
+            title="Дублировать"
             disabled={duplicate.isPending}
             onClick={() => duplicate.mutate()}
           >
-            Дублировать
+            <Copy size={16} />
           </button>
           {status === 'draft' && (
             <button
               type="button"
-              className="btn btn--cta"
+              className="icon-btn icon-btn--dark"
+              aria-label="Опубликовать набор"
+              title="Опубликовать набор"
               onClick={() => lifecycle.mutate('publish')}
             >
-              Опубликовать набор
+              <Megaphone size={16} />
             </button>
           )}
           {['registration', 'registration_blocked'].includes(status) && (
             <button
               type="button"
-              className="btn btn--cta"
+              className="icon-btn icon-btn--dark"
+              aria-label="Сгенерировать календарь"
+              title="Сгенерировать календарь"
               onClick={() => lifecycle.mutate('generate')}
             >
-              Сгенерировать календарь
+              <CalendarPlus size={16} />
             </button>
           )}
           {status === 'scheduling' && (
             <button
               type="button"
-              className="btn btn--cta"
+              className="icon-btn icon-btn--dark"
+              aria-label="Опубликовать календарь"
+              title="Опубликовать календарь"
               onClick={() => lifecycle.mutate('publish_schedule')}
             >
-              Опубликовать календарь
+              <CalendarPlus size={16} />
             </button>
           )}
           {status === 'regular' && (
             <button
               type="button"
-              className="btn btn--cta"
+              className="icon-btn icon-btn--dark"
+              aria-label="Запустить плей-офф"
+              title="Запустить плей-офф"
               onClick={() => lifecycle.mutate('playoffs')}
             >
-              Запустить плей-офф
+              <Trophy size={16} />
             </button>
           )}
           {!['draft', 'paused', 'completed', 'cancelled', 'archived'].includes(status) && (
             <button
               type="button"
-              className="btn btn--ghost"
+              className="icon-btn"
+              aria-label="Приостановить"
+              title="Приостановить"
               disabled={reason.length < 3 || pause.isPending}
               onClick={() => pause.mutate()}
             >
-              Приостановить
+              <Pause size={16} />
             </button>
           )}
           {status === 'paused' && (
             <button
               type="button"
-              className="btn btn--cta"
+              className="icon-btn icon-btn--dark"
+              aria-label="Возобновить"
+              title="Возобновить"
               disabled={reason.length < 3 || resume.isPending}
               onClick={() => resume.mutate()}
             >
-              Возобновить
+              <Play size={16} />
             </button>
           )}
           {!['draft', 'cancelled', 'completed', 'archived'].includes(status) && (
             <button
               type="button"
-              className="btn btn--ghost"
+              className="icon-btn tournament-icon-btn--danger"
+              aria-label="Отменить турнир"
+              title="Отменить турнир"
               disabled={cancel.isPending}
               onClick={() => cancel.mutate()}
             >
-              Отменить турнир
+              <X size={16} />
             </button>
           )}
           {['cancelled', 'completed'].includes(status) && (
             <button
               type="button"
-              className="btn btn--ghost"
+              className="icon-btn"
+              aria-label="Архивировать"
+              title="Архивировать"
               disabled={archive.isPending}
               onClick={() => archive.mutate()}
             >
-              Архивировать
+              <Archive size={16} />
             </button>
           )}
           {status === 'draft' && tournament.participantCount === 0 && !confirmDelete && (
-            <button type="button" className="btn btn--ghost" onClick={() => setConfirmDelete(true)}>
-              Удалить draft
+            <button
+              type="button"
+              className="icon-btn tournament-icon-btn--danger"
+              aria-label="Удалить черновик"
+              title="Удалить черновик"
+              onClick={() => setConfirmDelete(true)}
+            >
+              <Trash2 size={16} />
             </button>
           )}
           {status === 'draft' && tournament.participantCount === 0 && confirmDelete && (
             <button
               type="button"
-              className="btn btn--cta"
+              className="icon-btn tournament-icon-btn--danger"
+              aria-label="Подтвердить удаление"
+              title="Подтвердить удаление"
               disabled={removeDraft.isPending}
               onClick={() => removeDraft.mutate()}
             >
-              Подтвердить удаление
+              <Check size={16} />
             </button>
           )}
         </div>
       </div>
-      <div style={{ display: 'flex', gap: 6, overflowX: 'auto' }}>
-        {tabs.map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            className={tab === item.key ? 'btn btn--cta' : 'btn btn--ghost'}
-            style={{ minWidth: 'max-content' }}
-            onClick={() => setTab(item.key)}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
-      <div className="glass" style={{ borderRadius: 22, padding: 16, display: 'grid', gap: 10 }}>
+      <SegmentedTabs
+        ariaLabel="Управление турниром"
+        activeTab={tab}
+        items={tabs.map((item) => ({ id: item.key, label: item.label }))}
+        onChange={setTab}
+        scrollable
+      />
+      <div className="glass tournament-operations__panel">
         {tab === 'participants' && (
           <>
-            <label>
-              Причина административного решения
-              <input value={reason} onChange={(event) => setReason(event.target.value)} />
+            <label className="tournament-operations__field">
+              <span>Причина решения</span>
+              <input
+                aria-label="Причина решения"
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+              />
             </label>
             {['draft', 'registration', 'registration_blocked'].includes(status) && (
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <div className="tournament-player-search">
                 <input
-                  aria-label="User ID для приглашения"
-                  placeholder="UUID игрока"
-                  value={inviteUserId}
-                  onChange={(event) => setInviteUserId(event.target.value)}
+                  type="search"
+                  aria-label="Найти игрока"
+                  placeholder="Имя, Telegram ID или VK ID"
+                  value={inviteSearch}
+                  onChange={(event) => setInviteSearch(event.target.value)}
                 />
-                <button
-                  type="button"
-                  className="btn btn--ghost"
-                  disabled={!inviteUserId || invite.isPending}
-                  onClick={() => invite.mutate()}
-                >
-                  Пригласить игрока
-                </button>
+                {inviteSearch.trim().length >= 2 && (
+                  <div className="tournament-player-search__results">
+                    {invitedUsers.isLoading && <span>Ищем игроков…</span>}
+                    {invitedUsers.data?.users.map((user) => (
+                      <button
+                        key={user.id}
+                        type="button"
+                        aria-label={`Пригласить ${user.displayName}`}
+                        disabled={user.isBlocked || invite.isPending}
+                        onClick={() => invite.mutate(user.id)}
+                      >
+                        {user.avatarUrl ? (
+                          <img src={user.avatarUrl} alt="" />
+                        ) : (
+                          <span aria-hidden="true">{user.displayName.slice(0, 1)}</span>
+                        )}
+                        <strong>{user.displayName}</strong>
+                        <UserPlus size={15} />
+                      </button>
+                    ))}
+                    {invitedUsers.isSuccess && invitedUsers.data.users.length === 0 && (
+                      <span>Игроки не найдены.</span>
+                    )}
+                  </div>
+                )}
               </div>
             )}
             {participants.data?.participants.map((participant) => (
-              <div
-                key={participant.id}
-                style={{ padding: 10, borderRadius: 14, background: 'rgba(255,255,255,.55)' }}
-              >
-                <div style={{ fontWeight: 850 }}>{participant.display_name}</div>
-                <div style={{ color: 'var(--muted)' }}>
-                  {participant.state} · взнос {participant.entry_fee_coins} ·{' '}
-                  {participant.entry_fee_state}
+              <div key={participant.id} className="tournament-participant-admin-row">
+                <div className="tournament-participant-admin-row__identity">
+                  <strong>{participant.display_name}</strong>
+                  <span>
+                    {participantStateLabel(participant.state)} ·{' '}
+                    {participantPaymentLabel(
+                      participant.entry_fee_state,
+                      participant.entry_fee_coins,
+                    )}
+                  </span>
                 </div>
-                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <div className="tournament-participant-admin-row__actions">
                   {['applied', 'invited'].includes(participant.state) && (
                     <button
                       type="button"
-                      className="btn btn--cta"
+                      className="icon-btn icon-btn--dark"
+                      aria-label="Одобрить заявку"
+                      title="Одобрить заявку"
                       onClick={() => approve.mutate(participant.id)}
                     >
-                      Одобрить заявку
+                      <Check size={16} />
                     </button>
                   )}
                   {participant.state === 'approved' && (
                     <button
                       type="button"
-                      className="btn btn--ghost"
+                      className="icon-btn tournament-icon-btn--danger"
+                      aria-label="Дисквалифицировать"
+                      title="Дисквалифицировать"
                       onClick={() => disqualify.mutate(participant.id)}
                     >
-                      Дисквалифицировать
+                      <Ban size={16} />
                     </button>
                   )}
                 </div>
               </div>
             ))}
-            {participants.data?.participants.length === 0 && <div>Заявок пока нет.</div>}
+            {participants.data?.participants.length === 0 && (
+              <div className="tournament-admin-empty">Заявок пока нет.</div>
+            )}
           </>
         )}
         {tab === 'schedule' && (
@@ -440,23 +570,23 @@ export function TournamentOperations({
             {schedule.isLoading && <div>Загрузка календаря…</div>}
             {schedule.isError && <div role="alert">Не удалось загрузить календарь.</div>}
             {!schedule.isLoading && !schedule.isError && schedule.data?.fixtures.length === 0 && (
-              <div>Календарь пока пуст.</div>
+              <div className="tournament-admin-empty">Календарь пока пуст.</div>
             )}
             {schedule.data?.fixtures.map((fixture) => (
               <button
                 key={fixture.id}
                 type="button"
-                className="glass"
-                style={{ padding: 10, borderRadius: 14, textAlign: 'left' }}
+                className="tournament-operation-list-row"
                 onClick={() => setSelectedFixture(fixture)}
               >
-                №{fixture.fixtureNumber}: {fixture.home?.name ?? 'TBD'} —{' '}
-                {fixture.away?.name ?? 'TBD'} · {readableDate(fixture.scheduledStartsAt)} ·{' '}
-                {fixture.status}
+                №{fixture.fixtureNumber}: {fixture.home?.name ?? 'Соперник не определён'} —{' '}
+                {fixture.away?.name ?? 'Соперник не определён'} ·{' '}
+                {readableDate(fixture.scheduledStartsAt)} ·{' '}
+                {fixtureStatusLabel(fixture.status)}
               </button>
             ))}
             {selectedFixture !== null && (
-              <div style={{ display: 'grid', gap: 8 }}>
+              <div className="tournament-operation-editor">
                 <strong>Операции матча №{selectedFixture.fixtureNumber}</strong>
                 <input
                   type="datetime-local"
@@ -471,27 +601,33 @@ export function TournamentOperations({
                 <input value={reason} onChange={(event) => setReason(event.target.value)} />
                 <button
                   type="button"
-                  className="btn btn--cta"
-                  disabled={!startsAt || !endsAt || reason.length < 3}
+                  className="icon-btn icon-btn--dark"
+                  aria-label="Перенести матч"
+                  title="Перенести матч"
+                  disabled={!startsAt || !endsAt || reason.length < 3 || reschedule.isPending}
                   onClick={() => reschedule.mutate()}
                 >
-                  Перенести матч
+                  <CalendarClock size={16} />
                 </button>
-                <select
+                <GlassSelect
+                  ariaLabel="Неявка"
                   value={absent}
-                  onChange={(event) => setAbsent(event.target.value as typeof absent)}
-                >
-                  <option value="home">Неявка хозяина</option>
-                  <option value="away">Неявка гостя</option>
-                  <option value="both">Двойная неявка</option>
-                </select>
+                  options={[
+                    { value: 'home', label: 'Неявка хозяина' },
+                    { value: 'away', label: 'Неявка гостя' },
+                    { value: 'both', label: 'Двойная неявка' },
+                  ]}
+                  onChange={setAbsent}
+                />
                 <button
                   type="button"
-                  className="btn btn--ghost"
-                  disabled={reason.length < 3}
+                  className="icon-btn tournament-icon-btn--danger"
+                  aria-label="Зафиксировать неявку"
+                  title="Зафиксировать неявку"
+                  disabled={reason.length < 3 || noShow.isPending}
                   onClick={() => noShow.mutate()}
                 >
-                  Зафиксировать неявку
+                  <UserX size={16} />
                 </button>
               </div>
             )}
@@ -505,77 +641,98 @@ export function TournamentOperations({
               </div>
             ))
           ) : (
-            <div>Таблица пуста.</div>
+            <div className="tournament-admin-empty">Таблица пуста.</div>
           ))}
         {tab === 'bracket' &&
           (bracket.data?.series.length ? (
             bracket.data.series.map((row, index) => (
               <div key={String(row.id ?? index)}>
-                {rowLabel(row, index)} · {String(row.status ?? 'pending')}
+                {rowLabel(row, index)} · {fixtureStatusLabel(String(row.status ?? 'conditional'))}
               </div>
             ))
           ) : (
-            <div>Сетка ещё не создана.</div>
+            <div className="tournament-admin-empty">Сетка ещё не создана.</div>
           ))}
         {tab === 'rewards' && (
           <>
-            <button type="button" className="btn btn--cta" onClick={() => reward.mutate('regular')}>
-              Выдать награды регулярки
-            </button>
-            <button type="button" className="btn btn--cta" onClick={() => reward.mutate('playoff')}>
-              Выдать награды плей-офф
-            </button>
-            <div>
-              Повторный запуск безопасен: сервер использует idempotency key для каждого места и
-              участника.
+            <div className="tournament-reward-actions">
+              <button
+                type="button"
+                className="icon-btn icon-btn--dark"
+                aria-label="Выдать награды регулярки"
+                title="Выдать награды регулярки"
+                disabled={reward.isPending}
+                onClick={() => reward.mutate('regular')}
+              >
+                <Award size={16} />
+              </button>
+              <button
+                type="button"
+                className="icon-btn icon-btn--dark"
+                aria-label="Выдать награды плей-офф"
+                title="Выдать награды плей-офф"
+                disabled={reward.isPending}
+                onClick={() => reward.mutate('playoff')}
+              >
+                <Trophy size={16} />
+              </button>
+            </div>
+            <div className="tournament-operations__hint">
+              Можно запускать повторно: уже выданные награды не продублируются.
             </div>
           </>
         )}
         {tab === 'dispatches' && (
           <>
-            <label>
-              Аудитория
-              <select
+            <label className="tournament-operations__field">
+              <span>Аудитория</span>
+              <GlassSelect
+                ariaLabel="Аудитория"
                 value={audience}
-                onChange={(event) => setAudience(event.target.value as typeof audience)}
-              >
-                <option value="approved">Подтверждённые участники</option>
-                <option value="all_participants">Все заявки и участники</option>
-              </select>
+                options={[
+                  { value: 'approved', label: 'Подтверждённые участники' },
+                  { value: 'all_participants', label: 'Все заявки и участники' },
+                ]}
+                onChange={setAudience}
+              />
             </label>
-            <div>Получателей: {audiencePreview.data?.count ?? '…'}</div>
-            <label>
-              Канал
-              <select
+            <div className="tournament-dispatch-recipient-count">
+              Получателей: {audiencePreview.data?.count ?? '…'}
+            </div>
+            <label className="tournament-operations__field">
+              <span>Канал</span>
+              <GlassSelect
+                ariaLabel="Канал"
                 value={dispatchKind}
-                onChange={(event) => setDispatchKind(event.target.value as typeof dispatchKind)}
-              >
-                <option value="push">Push</option>
-                <option value="direct_message">Личные сообщения</option>
-                <option value="official_news">Официальный канал новостей</option>
-              </select>
+                options={[
+                  { value: 'push', label: 'Push' },
+                  { value: 'direct_message', label: 'Личные сообщения' },
+                  { value: 'official_news', label: 'Официальный канал новостей' },
+                ]}
+                onChange={setDispatchKind}
+              />
             </label>
-            <input
-              placeholder="Заголовок"
-              value={dispatchTitle}
-              onChange={(event) => setDispatchTitle(event.target.value)}
-            />
-            <textarea
-              placeholder="Текст сообщения"
-              value={dispatchBody}
-              onChange={(event) => setDispatchBody(event.target.value)}
-            />
+            <label className="tournament-operations__field">
+              <span>Сообщение</span>
+              <textarea
+                aria-label="Сообщение"
+                className="tournament-dispatch-message"
+                placeholder="Напишите сообщение участникам"
+                value={dispatchBody}
+                onChange={(event) => setDispatchBody(event.target.value)}
+              />
+            </label>
             <button
               type="button"
-              className="btn btn--cta"
-              disabled={!dispatchTitle || !dispatchBody || dispatch.isPending}
+              className="admin-compact-btn tournament-dispatch-submit"
+              disabled={!dispatchBody.trim() || dispatch.isPending}
               onClick={() => dispatch.mutate()}
             >
               Отправить рассылку
             </button>
             {dispatches.data?.dispatches.map((item, index) => (
-              <div key={String(item.id ?? index)}>
-                {String(item.kind ?? 'dispatch')} · {String(item.status ?? 'pending')} · доставлено{' '}
+              <div className="tournament-dispatch-history-row" key={String(item.id ?? index)}>
+                {dispatchKindLabel(item.kind)} · {dispatchStatusLabel(item.status)} · доставлено{' '}
                 {String(item.delivered_count ?? 0)} / {String(item.recipient_count ?? 0)}
               </div>
             ))}
