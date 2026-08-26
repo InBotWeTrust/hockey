@@ -1535,6 +1535,7 @@
 
 .tournament-wizard__body {
   display: grid;
+  align-content: start;
   gap: 10px;
 }
 
@@ -3642,12 +3643,17 @@
 
 .tournament-structured-editor {
   display: grid;
+  align-content: start;
   gap: 8px;
   min-width: 0;
   margin: 0;
   padding: 12px;
   border: 1px solid rgba(79, 101, 130, 0.2);
   border-radius: 16px;
+}
+
+.tournament-structured-editor > .admin-compact-btn {
+  justify-self: start;
 }
 
 .tournament-table-head,
@@ -3835,6 +3841,14 @@
   font-weight: 620;
 }
 
+.tournament-catalog-card__date {
+  display: block;
+  margin-top: 3px;
+  color: #244d73;
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .tournament-participation-badge {
   min-height: 22px;
   padding: 0 8px;
@@ -3903,6 +3917,46 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+}
+
+.tournament-overview-layout {
+  display: grid;
+  gap: 12px;
+}
+
+.tournament-overview-dates {
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(100, 116, 139, 0.15);
+}
+
+.tournament-overview-dates h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.tournament-overview-dates dl {
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.tournament-overview-dates dl > div {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.35fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.tournament-overview-dates dt {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.tournament-overview-dates dd {
+  margin: 0;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 650;
 }
 
 .tournament-overview-grid > div,
@@ -4339,10 +4393,12 @@
 }
 
 .tournament-admin-empty {
-  padding: 4px 2px;
-  color: var(--muted);
+  padding: 8px 2px;
+  color: rgba(244, 250, 255, 0.92);
   font-size: 12px;
-  font-weight: 720;
+  font-weight: 600;
+  line-height: 1.45;
+  text-shadow: 0 2px 9px rgba(3, 12, 24, 0.78);
 }
 
 .tournament-operation-list-row {
@@ -4369,7 +4425,270 @@
 }
 
 .tournament-operations__empty-panel {
-  padding: 4px 2px;
+  padding: 8px 2px;
+  color: rgba(244, 250, 255, 0.92);
+  font-weight: 600;
+  line-height: 1.45;
+  text-shadow: 0 2px 9px rgba(3, 12, 24, 0.78);
+}
+
+.admin-section-label {
+  margin: 2px 0 -2px;
+}
+
+.admin-communications-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 160px;
+  gap: 10px;
+  align-items: end;
+}
+
+.admin-official-dialog-list {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-official-dialog-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border-radius: 16px;
+  color: inherit;
+  text-align: left;
+}
+
+.admin-official-dialog-row__body,
+.admin-official-dialog-row__title,
+.admin-official-dialog-row__preview {
+  min-width: 0;
+  display: block;
+}
+
+.admin-official-dialog-row__title {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-official-dialog-row__preview {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 550;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-official-dialog-row > time {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.admin-official-dialog-row__new {
+  margin-left: 7px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--red);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.admin-official-dialog {
+  width: min(720px, calc(100vw - 24px));
+  height: min(760px, calc(100dvh - 32px));
+  max-width: 720px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  gap: 12px;
+  padding: 16px;
+}
+
+.admin-official-dialog__header,
+.admin-official-dialog__person {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-official-dialog__header {
+  justify-content: space-between;
+}
+
+.admin-official-dialog__identity {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 550;
+}
+
+.admin-official-dialog__messages {
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 2px;
+}
+
+.admin-official-dialog__message {
+  align-self: flex-start;
+  max-width: min(82%, 520px);
+  padding: 8px 10px;
+  border-radius: 14px 14px 14px 5px;
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.admin-official-dialog__message--official {
+  align-self: flex-end;
+  border-radius: 14px 14px 5px 14px;
+  background: rgba(15, 23, 42, 0.9);
+  color: #fff;
+}
+
+.admin-official-dialog__message time {
+  display: block;
+  margin-top: 4px;
+  color: inherit;
+  opacity: 0.62;
+  font-size: 9px;
+}
+
+.admin-official-dialog__message audio {
+  display: block;
+  width: min(280px, 100%);
+  margin-top: 5px;
+}
+
+.admin-official-dialog__message a {
+  color: inherit;
+  font-weight: 750;
+  text-decoration: underline;
+}
+
+.admin-official-dialog__composer {
+  min-width: 0;
+}
+
+.admin-official-dialog__composer > .chat-dock-composer {
+  width: 100%;
+  margin: 0;
+}
+
+.admin-official-dialog__attachment {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  padding: 7px 9px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.admin-official-dialog__attachment span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-official-dialog__attachment .icon-btn {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+}
+
+.admin-official-dialog__composer .btn,
+.admin-official-dialog > .btn,
+.admin-official-dialog > .admin-danger-text-btn,
+.admin-official-account-card .btn {
+  min-height: 36px;
+  padding: 8px 14px;
+  font-size: 11px;
+  letter-spacing: 0;
+}
+
+.admin-official-dialog > .admin-danger-text-btn {
+  appearance: none;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--red-deep);
+  font-family: inherit;
+  font-weight: 800;
+  line-height: 1.2;
+  cursor: pointer;
+  justify-self: start;
+}
+
+.admin-official-dialog > .admin-danger-text-btn:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.admin-official-dialog__error {
+  color: var(--red-deep);
+  font-size: 11px;
+}
+
+.admin-official-account-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 14px;
+  border-radius: 20px;
+}
+
+.admin-official-account-card__title {
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 850;
+}
+
+.admin-official-account-card__copy {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 550;
+  line-height: 1.45;
+}
+
+@media (max-width: 560px) {
+  .admin-communications-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-official-dialog {
+    width: 100vw;
+    height: 100dvh;
+    max-width: none;
+    border-radius: 0;
+    padding: calc(12px + var(--app-safe-top)) 12px calc(12px + var(--app-safe-bottom));
+  }
+
+  .admin-official-account-card {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .admin-official-account-card .btn {
+    grid-column: 1 / -1;
+  }
 }
 
 .tournament-action-list,
@@ -4401,6 +4720,125 @@
   font-size: 11px;
   font-weight: 560;
   line-height: 1.45;
+}
+
+.tournament-reward-status__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.tournament-reward-status__header > div {
+  display: grid;
+  gap: 3px;
+}
+
+.tournament-operation-rewards {
+  display: grid;
+  gap: 7px;
+  padding-top: 9px;
+  border-top: 1px solid rgba(100, 116, 139, 0.14);
+}
+
+.tournament-operation-rewards__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tournament-operation-rewards__heading > span {
+  font-size: 9px;
+}
+
+.tournament-operation-rewards__table {
+  display: grid;
+  gap: 4px;
+}
+
+.tournament-operation-rewards__labels,
+.tournament-operation-rewards__row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(44px, 1fr)) 30px;
+  gap: 5px;
+  align-items: center;
+}
+
+.tournament-operation-rewards__labels span {
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.tournament-operation-rewards__row > span {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  padding: 0 7px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.38);
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.tournament-operation-rewards__row input {
+  min-width: 0;
+  min-height: 32px;
+  padding: 6px;
+  font-size: 11px;
+}
+
+.tournament-operation-rewards .tournament-admin-empty {
+  color: var(--muted);
+  text-shadow: none;
+}
+
+.tournament-reward-status__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.admin-compact-btn--primary {
+  border-color: rgba(15, 23, 42, 0.28);
+  background: rgba(15, 23, 42, 0.92);
+  color: #fff;
+}
+
+.tournament-operation-hint {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 560;
+  line-height: 1.45;
+}
+
+.tournament-operation-dates {
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.tournament-operation-dates > div {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.38fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.tournament-operation-dates dt {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.tournament-operation-dates dd {
+  margin: 0;
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.tournament-operations__quick-edit {
+  justify-self: start;
 }
 
 .tournament-operations__hint {
@@ -4500,14 +4938,15 @@
 
   .tournament-operations__actions {
     grid-column: auto;
-    max-width: 90px;
+    max-width: 148px;
     padding-left: 0;
     justify-content: flex-end;
     flex-wrap: nowrap;
   }
 
-  .tournament-operations__actions
-    > .admin-compact-btn:not(.tournament-operations__actions-trigger) {
-    display: none;
+  .tournament-operations__actions > .admin-compact-btn {
+    min-height: 30px;
+    padding: 6px 8px;
+    font-size: 9px;
   }
 }

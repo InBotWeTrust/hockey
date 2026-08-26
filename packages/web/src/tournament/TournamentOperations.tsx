@@ -28,6 +28,7 @@ import {
   resumeAdminTournament,
   rescheduleAdminTournamentFixture,
   startAdminTournamentPlayoffs,
+  updateAdminTournamentRewards,
   type AdminTournament,
   type AdminTournamentFixture,
   type AdminTournamentParticipant,
@@ -55,6 +56,24 @@ function readableDate(value: string | null): string {
   if (value === null) return 'время не задано';
   const date = new Date(value);
   return Number.isFinite(date.getTime()) ? date.toLocaleString('ru-RU') : 'время не задано';
+}
+
+function tournamentDate(value: string | null | undefined, timezone: string): string {
+  if (!value) return 'Не задано';
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return 'Не задано';
+  try {
+    return `${new Intl.DateTimeFormat('ru-RU', {
+      timeZone: timezone,
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(date)} (${timezone})`;
+  } catch {
+    return date.toLocaleString('ru-RU');
+  }
 }
 
 function rowLabel(row: Record<string, unknown>, index: number): string {
@@ -102,6 +121,114 @@ function participantPaymentLabel(state: string, coins: number): string {
   return `Взнос: ${coins} монет · ${paymentStateLabel(state, coins)}`;
 }
 
+type RewardStage = 'regular' | 'playoff';
+type RewardRow = { place: number; experience: number; coins: number; stars: number };
+
+function tournamentRewardRows(tournament: AdminTournament, stage: RewardStage): RewardRow[] {
+  const stageRewards =
+    typeof tournament.rules?.stageRewards === 'object' &&
+    tournament.rules.stageRewards !== null &&
+    !Array.isArray(tournament.rules.stageRewards)
+      ? (tournament.rules.stageRewards as Record<string, unknown>)
+      : {};
+  const rows = Array.isArray(stageRewards[stage]) ? stageRewards[stage] : [];
+  return rows.flatMap((value) => {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return [];
+    const row = value as Record<string, unknown>;
+    const place = Number(row.place);
+    if (!Number.isInteger(place) || place < 1) return [];
+    return [
+      {
+        place,
+        experience: Math.max(0, Number(row.experience) || 0),
+        coins: Math.max(0, Number(row.coins) || 0),
+        stars: Math.max(0, Number(row.stars) || 0),
+      },
+    ];
+  });
+}
+
+function RewardStageTable({
+  title,
+  rows,
+  editing,
+  paid,
+  onChange,
+}: {
+  title: string;
+  rows: RewardRow[];
+  editing: boolean;
+  paid: boolean;
+  onChange: (rows: RewardRow[]) => void;
+}): JSX.Element {
+  const change = (index: number, field: keyof RewardRow, value: number) => {
+    onChange(rows.map((row, rowIndex) => (rowIndex === index ? { ...row, [field]: value } : row)));
+  };
+  return (
+    <section className="tournament-operation-rewards">
+      <div className="tournament-operation-rewards__heading">
+        <strong>{title}</strong>
+        <span>{paid ? 'Выплачены' : 'Ещё не выплачены'}</span>
+      </div>
+      {rows.length === 0 && !editing && (
+        <div className="tournament-admin-empty">Призы пока не назначены.</div>
+      )}
+      {rows.length > 0 && (
+        <div className="tournament-operation-rewards__table">
+          <div className="tournament-operation-rewards__labels">
+            <span>Место</span>
+            <span>Опыт</span>
+            <span>Монеты</span>
+            <span>Звёзды</span>
+            <span />
+          </div>
+          {rows.map((row, index) => (
+            <div key={`${row.place}:${index}`} className="tournament-operation-rewards__row">
+              {(['place', 'experience', 'coins', 'stars'] as const).map((field) =>
+                editing && !paid ? (
+                  <input
+                    key={field}
+                    type="number"
+                    min={field === 'place' ? 1 : 0}
+                    aria-label={`${title}: ${field} ${index + 1}`}
+                    value={row[field]}
+                    onChange={(event) => change(index, field, Number(event.target.value))}
+                  />
+                ) : (
+                  <span key={field}>{row[field]}</span>
+                ),
+              )}
+              {editing && !paid ? (
+                <button
+                  type="button"
+                  className="icon-btn"
+                  aria-label={`Удалить награду: ${title}, место ${row.place}`}
+                  onClick={() => onChange(rows.filter((_, rowIndex) => rowIndex !== index))}
+                >
+                  <X size={13} />
+                </button>
+              ) : (
+                <span />
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {editing && !paid && (
+        <button
+          type="button"
+          className="admin-compact-btn"
+          onClick={() =>
+            onChange([...rows, { place: rows.length + 1, experience: 0, coins: 0, stars: 0 }])
+          }
+        >
+          Добавить место
+        </button>
+      )}
+    </section>
+  );
+}
+
 export function TournamentOperations({
   tournament,
   onBack,
@@ -110,7 +237,7 @@ export function TournamentOperations({
 }: {
   tournament: AdminTournament;
   onBack: () => void;
-  onEdit: () => void;
+  onEdit: (stage?: number) => void;
   onRemoved: () => void;
 }): JSX.Element {
   const client = useQueryClient();
@@ -131,6 +258,14 @@ export function TournamentOperations({
   const [actionsOpen, setActionsOpen] = useState(false);
   const [selectedParticipant, setSelectedParticipant] = useState<AdminTournamentParticipant | null>(
     null,
+  );
+  const [editingRewards, setEditingRewards] = useState(false);
+  const [rewardRevision, setRewardRevision] = useState(tournament.revision);
+  const [regularRewards, setRegularRewards] = useState(() =>
+    tournamentRewardRows(tournament, 'regular'),
+  );
+  const [playoffRewards, setPlayoffRewards] = useState(() =>
+    tournamentRewardRows(tournament, 'playoff'),
   );
   const participantsKey = ['admin', 'tournaments', tournament.id, 'participants'] as const;
   const scheduleKey = ['admin', 'tournaments', tournament.id, 'schedule'] as const;
@@ -301,6 +436,20 @@ export function TournamentOperations({
       refreshOperations();
     },
   });
+  const rewards = useMutation({
+    mutationFn: () =>
+      updateAdminTournamentRewards(tournament.id, rewardRevision, {
+        ...(tournament.rewardEditability?.regular !== 'paid' ? { regular: regularRewards } : {}),
+        ...(tournament.rewardEditability?.playoff !== 'paid' ? { playoff: playoffRewards } : {}),
+      }),
+    onSuccess: ({ tournament: updated }) => {
+      setRewardRevision(updated.revision);
+      setRegularRewards(tournamentRewardRows(updated, 'regular'));
+      setPlayoffRewards(tournamentRewardRows(updated, 'playoff'));
+      setEditingRewards(false);
+      refreshOperations();
+    },
+  });
 
   const panelIsEmpty =
     (tab === 'schedule' &&
@@ -310,6 +459,23 @@ export function TournamentOperations({
     (tab === 'standings' && standings.data?.standings.length === 0) ||
     (tab === 'bracket' && bracket.data?.series.length === 0);
   const canEditRules = ['draft', 'registration', 'registration_blocked'].includes(status);
+  const tournamentTimezone = String(tournament.rules?.config?.timezone ?? 'Europe/Moscow');
+  const registrationOpensAt = tournament.registrationOpensAt
+    ? new Date(tournament.registrationOpensAt)
+    : null;
+  const registrationClosesAt = tournament.registrationClosesAt
+    ? new Date(tournament.registrationClosesAt)
+    : null;
+  const tournamentStartsAt = tournament.startsAt ? new Date(tournament.startsAt) : null;
+  const datesReady =
+    registrationOpensAt !== null &&
+    registrationClosesAt !== null &&
+    tournamentStartsAt !== null &&
+    Number.isFinite(registrationOpensAt.getTime()) &&
+    Number.isFinite(registrationClosesAt.getTime()) &&
+    Number.isFinite(tournamentStartsAt.getTime()) &&
+    registrationOpensAt < registrationClosesAt &&
+    registrationClosesAt < tournamentStartsAt;
 
   return (
     <section className="tournament-operations">
@@ -329,7 +495,7 @@ export function TournamentOperations({
         </div>
         <div className="tournament-operations__actions">
           {canEditRules && (
-            <button type="button" className="admin-compact-btn" onClick={onEdit}>
+            <button type="button" className="admin-compact-btn" onClick={() => onEdit(0)}>
               Редактировать
             </button>
           )}
@@ -428,6 +594,44 @@ export function TournamentOperations({
         )}
         {tab === 'schedule' && (
           <>
+            <dl className="tournament-operation-dates">
+              <div>
+                <dt>Открытие регистрации</dt>
+                <dd>{tournamentDate(tournament.registrationOpensAt, tournamentTimezone)}</dd>
+              </div>
+              <div>
+                <dt>Закрытие регистрации</dt>
+                <dd>{tournamentDate(tournament.registrationClosesAt, tournamentTimezone)}</dd>
+              </div>
+              <div>
+                <dt>Первый турнирный день</dt>
+                <dd>{tournamentDate(tournament.startsAt, tournamentTimezone)}</dd>
+              </div>
+              <div>
+                <dt>{tournament.completedAt ? 'Завершён' : 'Плановое окончание'}</dt>
+                <dd>
+                  {tournamentDate(
+                    tournament.completedAt ?? tournament.projectedEndsAt,
+                    tournamentTimezone,
+                  )}
+                </dd>
+              </div>
+            </dl>
+            {canEditRules && (
+              <button
+                type="button"
+                className="admin-compact-btn tournament-operations__quick-edit"
+                onClick={() => onEdit(4)}
+              >
+                Изменить сроки
+              </button>
+            )}
+            {!canEditRules && (
+              <div className="tournament-operation-hint">
+                Календарь уже опубликован. Чтобы изменить время, выберите конкретную игру и укажите
+                причину переноса — участники получат уведомление.
+              </div>
+            )}
             {schedule.isLoading && <div>Загрузка календаря…</div>}
             {schedule.isError && <div role="alert">Не удалось загрузить календарь.</div>}
             {!schedule.isLoading && !schedule.isError && schedule.data?.fixtures.length === 0 && (
@@ -511,14 +715,59 @@ export function TournamentOperations({
           ))}
         {tab === 'rewards' && (
           <div className="tournament-reward-status">
-            <strong>Награды выдаются автоматически.</strong>
-            <span>За регулярный чемпионат — при переходе в плей-офф.</span>
-            <span>За плей-офф — после финала и серии за третье место.</span>
-            <span>
-              {status === 'completed'
-                ? 'Турнир завершён, награды обработаны.'
-                : 'Сейчас система ждёт завершения соответствующего этапа.'}
-            </span>
+            <div className="tournament-reward-status__header">
+              <div>
+                <strong>Награды выдаются автоматически.</strong>
+                <span>Регулярка — при переходе в плей-офф, плей-офф — после финала.</span>
+              </div>
+              <button
+                type="button"
+                className="admin-compact-btn"
+                onClick={() => {
+                  if (status === 'draft') onEdit(5);
+                  else setEditingRewards((value) => !value);
+                }}
+              >
+                Изменить награды
+              </button>
+            </div>
+            <RewardStageTable
+              title="Регулярный чемпионат"
+              rows={regularRewards}
+              editing={editingRewards}
+              paid={tournament.rewardEditability?.regular === 'paid'}
+              onChange={setRegularRewards}
+            />
+            <RewardStageTable
+              title="Плей-офф"
+              rows={playoffRewards}
+              editing={editingRewards}
+              paid={tournament.rewardEditability?.playoff === 'paid'}
+              onChange={setPlayoffRewards}
+            />
+            {editingRewards && status !== 'draft' && (
+              <div className="tournament-reward-status__actions">
+                <button
+                  type="button"
+                  className="admin-compact-btn"
+                  onClick={() => setEditingRewards(false)}
+                  disabled={rewards.isPending}
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  className="admin-compact-btn admin-compact-btn--primary"
+                  onClick={() => rewards.mutate()}
+                  disabled={rewards.isPending}
+                >
+                  Сохранить награды
+                </button>
+              </div>
+            )}
+            {rewards.isError && (
+              <div role="alert">Не удалось сохранить награды. Обновите страницу и повторите.</div>
+            )}
           </div>
         )}
         {tab === 'dispatches' && (
@@ -637,16 +886,25 @@ export function TournamentOperations({
               Дублировать турнир
             </button>
             {status === 'draft' && (
-              <button
-                type="button"
-                className="admin-compact-btn"
-                onClick={() => {
-                  setActionsOpen(false);
-                  lifecycle.mutate('publish');
-                }}
-              >
-                Открыть регистрацию
-              </button>
+              <>
+                <button
+                  type="button"
+                  className="admin-compact-btn"
+                  disabled={!datesReady || lifecycle.isPending}
+                  onClick={() => {
+                    setActionsOpen(false);
+                    lifecycle.mutate('publish');
+                  }}
+                >
+                  Открыть регистрацию
+                </button>
+                {!datesReady && (
+                  <div className="tournament-operation-hint">
+                    Сначала укажите открытие и закрытие регистрации и первый турнирный день.
+                    Порядок: открытие → закрытие → старт.
+                  </div>
+                )}
+              </>
             )}
             {['registration', 'registration_blocked'].includes(status) && (
               <button
