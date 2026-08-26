@@ -66,6 +66,9 @@ function committedMedia(slug: ApprovedStaticSlug) {
     },
     goalkeeperReadyUrl: `/bonus-games/goalkeepers/${slug}-ready.webp`,
     goalkeeperSaveUrl: `/bonus-games/goalkeepers/${slug}-save.webp`,
+    previewTitle: `${slug} preview`,
+    previewStory: `${slug} preview story`,
+    previewArtworkUrl: `/bonus-games/previews/${slug}.webp`,
   };
 }
 
@@ -213,6 +216,7 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
     return {
       slug,
       title: `Игра ${sequence}`,
+      skillCode: 'accuracy',
       description: `Описание ${sequence}`,
       sortOrder: sequence,
       status: 'draft',
@@ -282,7 +286,11 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
       { method: 'POST', url: '/admin/bonus-games', payload: {} },
       { method: 'PATCH', url: `/admin/bonus-games/${id}`, payload: {} },
       { method: 'DELETE', url: `/admin/bonus-games/${id}` },
-      { method: 'POST', url: '/admin/bonus-games/reorder', payload: { gameIds: [] } },
+      {
+        method: 'POST',
+        url: '/admin/bonus-games/reorder',
+        payload: { skillCode: 'accuracy', gameIds: [] },
+      },
       {
         method: 'POST',
         url: '/admin/bonus-games/media/arena',
@@ -512,6 +520,9 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
       },
       goalkeeperReadyUrl: uploaded.url,
       goalkeeperSaveUrl: uploaded.url,
+      previewTitle: safeMedia.previewTitle,
+      previewStory: safeMedia.previewStory,
+      previewArtworkUrl: uploaded.url,
     });
     const signedActivation = await patchGame(signed.id, { status: 'active' });
     expect(signedActivation.status).toBe('active');
@@ -664,7 +675,7 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
     expect(switched.arena.id).toBe(other.arena.id);
   });
 
-  it('rejects incomplete price, target, and arena activation states', async () => {
+  it('rejects incomplete price, target, and archived arena states but allows bonus-only arenas', async () => {
     const cases = [
       { accessType: 'free', unlockPriceStars: 1, ...committedMedia('beach') },
       { accessType: 'paid', unlockPriceStars: 0, ...committedMedia('ski-resort') },
@@ -718,7 +729,7 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
       headers: adminHeaders,
       payload: { status: 'active' },
     });
-    expect(unselectableResponse.statusCode).toBe(409);
+    expect(unselectableResponse.statusCode).toBe(200);
   });
 
   it('reorders the exact active set atomically and compacts order on archive', async () => {
@@ -730,7 +741,7 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
       method: 'POST',
       url: '/admin/bonus-games/reorder',
       headers: adminHeaders,
-      payload: { gameIds: [three.id, one.id] },
+      payload: { skillCode: 'accuracy', gameIds: [three.id, one.id] },
     });
     expect(invalid.statusCode).toBe(409);
     expect(invalid.json().error.code).toBe('bonus_game_order_invalid');
@@ -748,7 +759,7 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
       method: 'POST',
       url: '/admin/bonus-games/reorder',
       headers: adminHeaders,
-      payload: { gameIds: [three.id, one.id, two.id] },
+      payload: { skillCode: 'accuracy', gameIds: [three.id, one.id, two.id] },
     });
     expect(reordered.statusCode, reordered.body).toBe(200);
     expect(

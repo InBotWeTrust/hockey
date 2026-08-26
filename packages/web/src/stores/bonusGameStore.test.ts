@@ -7,6 +7,7 @@ import type {
 } from '../api/bonusGames.js';
 import {
   abandonBonusAttempt,
+  acknowledgeBonusPreview,
   fetchBonusAttempt,
   fetchCurrentBonusAttempt,
   startBonusPeriod,
@@ -17,6 +18,7 @@ import { useBonusGameStore } from './bonusGameStore.js';
 
 vi.mock('../api/bonusGames.js', () => ({
   abandonBonusAttempt: vi.fn(),
+  acknowledgeBonusPreview: vi.fn(),
   fetchBonusAttempt: vi.fn(),
   fetchCurrentBonusAttempt: vi.fn(),
   startBonusPeriod: vi.fn(),
@@ -39,6 +41,10 @@ const initialAttempt: BonusGameAttempt = {
   shots_taken: 2,
   current_period_shots_taken: 2,
   goals: 1,
+  current_goal_streak: 1,
+  best_goal_streak: 1,
+  preview_required: false,
+  current_loadout: null,
   reward_granted: false,
   attempt_seed: 'bonus:attempt-1',
   game_core_version: 1,
@@ -48,10 +54,17 @@ const initialAttempt: BonusGameAttempt = {
     game_id: 'game-1',
     slug: 'beach',
     title: 'Пляжный бросок',
+    skill_code: 'accuracy',
     revision: 3,
     target_goals: 3,
+    qualification_rules: { type: 'goals_from_shots', targetGoals: 3, shotsLimit: 3 },
     total_periods: 1,
     break_duration_ms: 30_000,
+    use_inventory: false,
+    preview_title: 'Первая квалификация',
+    preview_story: 'История',
+    preview_artwork_url: '/bonus-games/previews/beach.webp',
+    preview_revision: 1,
     periods: [
       {
         period_number: 1,
@@ -127,6 +140,18 @@ describe('bonusGameStore', () => {
 
     expect(useBonusGameStore.getState().receivedAtPerformanceMs).toBe(4_321);
     nowSpy.mockRestore();
+  });
+
+  it('acknowledges the preview and installs the returned attempt', async () => {
+    const previewAttempt = { ...initialAttempt, preview_required: true };
+    const acknowledged = { ...previewAttempt, preview_required: false };
+    vi.mocked(acknowledgeBonusPreview).mockResolvedValueOnce(response(acknowledged));
+    useBonusGameStore.getState().applyState(previewAttempt);
+
+    await useBonusGameStore.getState().acknowledgePreview(true);
+
+    expect(acknowledgeBonusPreview).toHaveBeenCalledWith(previewAttempt.id, true);
+    expect(useBonusGameStore.getState().attempt).toEqual(acknowledged);
   });
 
   it('loads a terminal attempt by id so timer reconciliation cannot discard the result', async () => {

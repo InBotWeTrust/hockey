@@ -89,43 +89,51 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         'user_bonus_game_completion',
         'user_arena_unlock',
         'bonus_game_economy_event',
+        'user_bonus_game_preview_preference',
+        'bonus_game_period_loadout',
       ]),
     );
     expect(names).toContain('_migrations');
 
     const seededBonusGames = await pool.query<{
       slug: string;
+      skill_code: 'speed' | 'accuracy';
       sort_order: number;
       unlock_price_stars: number;
       reward_stars: number;
+      qualification_rules: { type: string; shotsLimit?: number; activeTimeMs?: number };
     }>(
-      `select slug, sort_order, unlock_price_stars, reward_stars
+      `select slug, skill_code, sort_order, unlock_price_stars, reward_stars,
+              qualification_rules
          from bonus_game
         where status = 'active'
-        order by sort_order`,
+        order by skill_code, sort_order`,
     );
-    expect(seededBonusGames.rows).toEqual([
-      { slug: 'beach', sort_order: 1, unlock_price_stars: 0, reward_stars: 1 },
-      { slug: 'ski-resort', sort_order: 2, unlock_price_stars: 1, reward_stars: 1 },
-      { slug: 'cyberpunk-yard', sort_order: 3, unlock_price_stars: 0, reward_stars: 1 },
-      {
-        slug: 'abandoned-waterpark',
-        sort_order: 4,
-        unlock_price_stars: 2,
-        reward_stars: 2,
-      },
-      { slug: 'pirate-bay', sort_order: 5, unlock_price_stars: 0, reward_stars: 2 },
-      { slug: 'north-pole', sort_order: 6, unlock_price_stars: 3, reward_stars: 3 },
-      { slug: 'desert', sort_order: 7, unlock_price_stars: 0, reward_stars: 3 },
-      { slug: 'volcanic-ice', sort_order: 8, unlock_price_stars: 5, reward_stars: 4 },
-      { slug: 'castle', sort_order: 9, unlock_price_stars: 0, reward_stars: 5 },
-      { slug: 'space', sort_order: 10, unlock_price_stars: 8, reward_stars: 8 },
-    ]);
+    expect(seededBonusGames.rows).toHaveLength(20);
+    for (const skillCode of ['speed', 'accuracy'] as const) {
+      const track = seededBonusGames.rows.filter((game) => game.skill_code === skillCode);
+      expect(track).toHaveLength(10);
+      expect(track.map((game) => game.sort_order)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+      expect(track.map((game) => game.slug)).toEqual([
+        `${skillCode}-beach`,
+        `${skillCode}-ski-resort`,
+        `${skillCode}-cyberpunk-yard`,
+        `${skillCode}-abandoned-waterpark`,
+        `${skillCode}-pirate-bay`,
+        `${skillCode}-north-pole`,
+        `${skillCode}-desert`,
+        `${skillCode}-volcanic-ice`,
+        `${skillCode}-castle`,
+        `${skillCode}-space`,
+      ]);
+      expect(track.every((game) => game.qualification_rules.type ===
+        (skillCode === 'speed' ? 'goals_in_time' : 'goals_from_shots'))).toBe(true);
+    }
 
     expect(seededBonusGames.rows.reduce((total, game) => total + game.unlock_price_stars, 0)).toBe(
-      19,
+      38,
     );
-    expect(seededBonusGames.rows.reduce((total, game) => total + game.reward_stars, 0)).toBe(30);
+    expect(seededBonusGames.rows.reduce((total, game) => total + game.reward_stars, 0)).toBe(60);
 
     const nonLinearBonusPeriods = await pool.query<{ count: string }>(
       `select count(*)::text as count
@@ -147,6 +155,9 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         'game_core_version',
         'period_started_at',
         'break_started_at',
+        'current_goal_streak',
+        'best_goal_streak',
+        'preview_acknowledged_at',
       ]),
     );
 
@@ -407,6 +418,9 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '064_tournament_live_proposal_active.sql',
       '065_tournament_fixture_venue.sql',
       '066_enable_tournaments.sql',
+      '067_tournament_artwork.sql',
+      '068_tournament_revision_history.sql',
+      '069_bonus_game_qualifications.sql',
     ]);
   });
 
@@ -470,13 +484,15 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     );
     await pool.query(
       `insert into bonus_game
-         (id, slug, title, sort_order, target_goals, total_periods, break_duration_ms,
-          period_rules, arena_theme_id, goalkeeper_ready_url, goalkeeper_save_url)
-       values ($1, $2, $3, 1, 18, 1, 30000, $4::jsonb, $5, $6, $7)`,
+         (id, slug, title, skill_code, sort_order, target_goals, qualification_rules,
+          total_periods, break_duration_ms, period_rules, arena_theme_id,
+          goalkeeper_ready_url, goalkeeper_save_url)
+       values ($1, $2, $3, 'accuracy', 1, 18, $4::jsonb, 1, 30000, $5::jsonb, $6, $7, $8)`,
       [
         bonusGameId,
         rulesSnapshot.slug,
         rulesSnapshot.title,
+        JSON.stringify({ type: 'goals_from_shots', targetGoals: 18, shotsLimit: 30 }),
         JSON.stringify([periodRule]),
         arenaThemeId,
         rulesSnapshot.goalkeeperReadyUrl,
@@ -741,6 +757,9 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '064_tournament_live_proposal_active.sql',
       '065_tournament_fixture_venue.sql',
       '066_enable_tournaments.sql',
+      '067_tournament_artwork.sql',
+      '068_tournament_revision_history.sql',
+      '069_bonus_game_qualifications.sql',
     ]);
 
     const activeInventory = await pool.query<{

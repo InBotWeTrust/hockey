@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { BonusGameAttempt } from '../api/bonusGames.js';
-import { deriveBonusGameClockBasis } from './bonusGameTiming.js';
+import {
+  deriveBonusGameClockBasis,
+  deriveBonusGameClockEpoch,
+  futureBonusPeriodDurationMs,
+} from './bonusGameTiming.js';
 
 function activeAttempt(overrides: Partial<BonusGameAttempt> = {}): BonusGameAttempt {
   return {
@@ -19,6 +23,10 @@ function activeAttempt(overrides: Partial<BonusGameAttempt> = {}): BonusGameAtte
     shots_taken: 0,
     current_period_shots_taken: 0,
     goals: 0,
+    current_goal_streak: 0,
+    best_goal_streak: 0,
+    preview_required: false,
+    current_loadout: null,
     reward_granted: false,
     attempt_seed: 'seed',
     game_core_version: 1,
@@ -28,10 +36,17 @@ function activeAttempt(overrides: Partial<BonusGameAttempt> = {}): BonusGameAtte
       game_id: 'game-1',
       slug: 'beach',
       title: 'Пляж',
+      skill_code: 'accuracy',
       revision: 1,
       target_goals: 18,
+      qualification_rules: { type: 'goals_from_shots', targetGoals: 18, shotsLimit: 50 },
       total_periods: 2,
       break_duration_ms: 30_000,
+      use_inventory: false,
+      preview_title: 'Первая квалификация',
+      preview_story: 'История',
+      preview_artwork_url: '/bonus-games/previews/beach.webp',
+      preview_revision: 1,
       periods: [
         {
           period_number: 1,
@@ -90,8 +105,8 @@ describe('deriveBonusGameClockBasis', () => {
       }),
     );
 
-    expect(clocks.sceneElapsedMs).toBe(6_000);
-    expect(clocks.shooterElapsedMs).toBeCloseTo(4_700, 8);
+    expect(clocks.sceneElapsedMs).toBe(9_000);
+    expect(clocks.shooterElapsedMs).toBeCloseTo(7_700, 8);
   });
 
   it('ignores shots archived in prior partial periods', () => {
@@ -105,8 +120,8 @@ describe('deriveBonusGameClockBasis', () => {
       }),
     );
 
-    expect(clocks.sceneElapsedMs).toBe(6_000);
-    expect(clocks.shooterElapsedMs).toBeCloseTo(4_800, 8);
+    expect(clocks.sceneElapsedMs).toBe(9_000);
+    expect(clocks.shooterElapsedMs).toBeCloseTo(7_800, 8);
   });
 
   it('rebases a reconciled snapshot from its new server time and accepted count', () => {
@@ -118,8 +133,8 @@ describe('deriveBonusGameClockBasis', () => {
       }),
     );
 
-    expect(clocks.sceneElapsedMs).toBe(7_000);
-    expect(clocks.shooterElapsedMs).toBeCloseTo(5_700, 8);
+    expect(clocks.sceneElapsedMs).toBe(10_000);
+    expect(clocks.shooterElapsedMs).toBeCloseTo(8_700, 8);
   });
 
   it('starts a new period from its own start and zero current-period shots', () => {
@@ -134,5 +149,45 @@ describe('deriveBonusGameClockBasis', () => {
     );
 
     expect(clocks).toEqual({ sceneElapsedMs: 2_000, shooterElapsedMs: 2_000 });
+  });
+});
+
+describe('futureBonusPeriodDurationMs', () => {
+  it('adds only future active periods for speed without counting breaks', () => {
+    const attempt = activeAttempt({ current_period: 1 });
+    attempt.rules.skill_code = 'speed';
+    attempt.rules.periods[0]!.duration_ms = 60_000;
+    attempt.rules.periods[1]!.duration_ms = 90_000;
+
+    expect(futureBonusPeriodDurationMs(attempt)).toBe(90_000);
+  });
+
+  it('does not extend the accuracy timer beyond the current period', () => {
+    expect(futureBonusPeriodDurationMs(activeAttempt())).toBe(0);
+  });
+});
+
+describe('deriveBonusGameClockEpoch', () => {
+  it('does not change after an accepted shot in the same period', () => {
+    const before = activeAttempt();
+    const after = activeAttempt({
+      server_now: '2026-08-24T10:00:02.000Z',
+      shots_taken: 1,
+      current_period_shots_taken: 1,
+      goals: 1,
+    });
+
+    expect(deriveBonusGameClockEpoch(after)).toBe(deriveBonusGameClockEpoch(before));
+  });
+
+  it('changes when a new period starts', () => {
+    expect(
+      deriveBonusGameClockEpoch(
+        activeAttempt({
+          current_period: 2,
+          period_started_at: '2026-08-24T10:20:00.000Z',
+        }),
+      ),
+    ).not.toBe(deriveBonusGameClockEpoch(activeAttempt()));
   });
 });

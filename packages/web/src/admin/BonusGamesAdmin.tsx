@@ -13,7 +13,9 @@ import {
   type AdminBonusGameInput,
   type AdminBonusGamePatch,
   type AdminBonusGameStatus,
+  type AdminBonusSkillCode,
   type AdminBonusGoaliePattern,
+  type AdminBonusQualificationRules,
   type AdminBonusMediaKind,
   type AdminBonusPeriodRule,
 } from './api.js';
@@ -36,6 +38,7 @@ const defaultPeriod: AdminBonusPeriodRule = {
 interface BonusGameFormState {
   gameId: string | null;
   originalStatus: AdminBonusGameStatus | null;
+  skillCode: AdminBonusSkillCode;
   slug: string;
   title: string;
   description: string;
@@ -44,8 +47,14 @@ interface BonusGameFormState {
   accessType: AdminBonusGameAccessType;
   unlockPriceStars: number;
   targetGoals: number;
+  qualificationRules: AdminBonusQualificationRules;
   totalPeriods: number;
   breakDurationMs: number;
+  useInventory: boolean;
+  previewTitle: string;
+  previewStory: string;
+  previewArtworkUrl: string;
+  previewRevision: number;
   periods: AdminBonusPeriodRule[];
   rewardCoins: number;
   rewardStars: number;
@@ -67,10 +76,12 @@ interface UploadRequest {
   generation: number;
 }
 
-function createEmptyForm(sortOrder: number): BonusGameFormState {
+function createEmptyForm(sortOrder: number, skillCode: AdminBonusSkillCode): BonusGameFormState {
+  const speed = skillCode === 'speed';
   return {
     gameId: null,
     originalStatus: null,
+    skillCode,
     slug: '',
     title: '',
     description: '',
@@ -79,9 +90,17 @@ function createEmptyForm(sortOrder: number): BonusGameFormState {
     accessType: 'free',
     unlockPriceStars: 0,
     targetGoals: 18,
+    qualificationRules: speed
+      ? { type: 'goals_in_time', targetGoals: 18, activeTimeMs: 240_000 }
+      : { type: 'goals_from_shots', targetGoals: 18, shotsLimit: 30 },
     totalPeriods: 1,
     breakDurationMs: 0,
-    periods: [{ ...defaultPeriod }],
+    useInventory: false,
+    previewTitle: '',
+    previewStory: '',
+    previewArtworkUrl: '',
+    previewRevision: 1,
+    periods: [{ ...defaultPeriod, shotsLimit: speed ? null : 30 }],
     rewardCoins: 0,
     rewardStars: 0,
     rewardExperience: 0,
@@ -92,7 +111,7 @@ function createEmptyForm(sortOrder: number): BonusGameFormState {
     arenaArtworkUrl: '',
     arenaThumbnailUrl: '',
     arenaStatus: 'active',
-    arenaIsSelectable: true,
+    arenaIsSelectable: false,
   };
 }
 
@@ -100,6 +119,7 @@ function formFromGame(game: AdminBonusGame): BonusGameFormState {
   return {
     gameId: game.id,
     originalStatus: game.status,
+    skillCode: game.skillCode,
     slug: game.slug,
     title: game.title,
     description: game.description,
@@ -108,8 +128,14 @@ function formFromGame(game: AdminBonusGame): BonusGameFormState {
     accessType: game.accessType,
     unlockPriceStars: game.unlockPriceStars,
     targetGoals: game.targetGoals,
+    qualificationRules: game.qualificationRules,
     totalPeriods: game.totalPeriods,
     breakDurationMs: game.breakDurationMs,
+    useInventory: game.useInventory,
+    previewTitle: game.previewTitle,
+    previewStory: game.previewStory,
+    previewArtworkUrl: game.previewArtworkUrl,
+    previewRevision: game.previewRevision,
     periods: game.periods.map((period) => ({ ...period })),
     rewardCoins: game.rewardCoins,
     rewardStars: game.rewardStars,
@@ -147,6 +173,28 @@ function formValidationError(form: BonusGameFormState): string | null {
   if (!Number.isInteger(form.targetGoals) || form.targetGoals < 1 || form.targetGoals > 1_000_000) {
     return 'Цель по голам должна быть положительным целым числом.';
   }
+  const qualification = form.qualificationRules;
+  if (
+    (form.skillCode === 'accuracy' &&
+      qualification.type === 'goals_from_shots' &&
+      (!Number.isInteger(qualification.targetGoals) ||
+        qualification.targetGoals < 1 ||
+        !Number.isInteger(qualification.shotsLimit) ||
+        qualification.shotsLimit < qualification.targetGoals)) ||
+    (form.skillCode === 'speed' &&
+      qualification.type === 'goals_in_time' &&
+      (!Number.isInteger(qualification.targetGoals) ||
+        qualification.targetGoals < 1 ||
+        !Number.isInteger(qualification.activeTimeMs) ||
+        qualification.activeTimeMs < 1_000)) ||
+    (form.skillCode === 'speed' && qualification.type !== 'goals_in_time') ||
+    (form.skillCode === 'accuracy' && qualification.type !== 'goals_from_shots') ||
+    (qualification.requiredGoalStreak !== undefined &&
+      (!Number.isInteger(qualification.requiredGoalStreak) ||
+        qualification.requiredGoalStreak < 1))
+  ) {
+    return 'Проверьте условие квалификации.';
+  }
   if (!Number.isInteger(form.totalPeriods) || form.totalPeriods < 1 || form.totalPeriods > 9) {
     return 'Количество периодов должно быть от 1 до 9.';
   }
@@ -157,9 +205,12 @@ function formValidationError(form: BonusGameFormState): string | null {
       Number.isInteger(period.durationMs) &&
       period.durationMs >= 1_000 &&
       period.durationMs <= 10_800_000 &&
-      Number.isInteger(period.shotsLimit) &&
-      period.shotsLimit >= 1 &&
-      period.shotsLimit <= 100 &&
+      (form.skillCode === 'speed'
+        ? period.shotsLimit === null
+        : Number.isInteger(period.shotsLimit) &&
+          period.shotsLimit !== null &&
+          period.shotsLimit >= 1 &&
+          period.shotsLimit <= 100) &&
       period.goalFrequency >= 0.1 &&
       period.goalFrequency <= 3 &&
       period.goalieFrequency >= 0.1 &&
@@ -175,8 +226,23 @@ function formValidationError(form: BonusGameFormState): string | null {
       period.goalAmplitude <= 220,
   );
   if (!validPeriods) return 'Проверьте параметры периодов.';
-  if (form.targetGoals > form.periods.reduce((sum, period) => sum + period.shotsLimit, 0)) {
+  const totalShots = form.periods.reduce((sum, period) => sum + (period.shotsLimit ?? 0), 0);
+  if (form.skillCode === 'accuracy' && form.targetGoals > totalShots) {
     return 'Цель по голам не может превышать число бросков.';
+  }
+  if (
+    form.skillCode === 'accuracy' &&
+    qualification.type === 'goals_from_shots' &&
+    qualification.shotsLimit !== totalShots
+  ) {
+    return 'Общий лимит должен совпадать с суммой бросков по периодам.';
+  }
+  if (
+    form.skillCode === 'speed' &&
+    qualification.type === 'goals_in_time' &&
+    qualification.activeTimeMs !== form.periods.reduce((sum, period) => sum + period.durationMs, 0)
+  ) {
+    return 'Активное время должно совпадать с суммой длительностей периодов.';
   }
   if (
     [
@@ -196,6 +262,7 @@ function formValidationError(form: BonusGameFormState): string | null {
       form.arenaThumbnailUrl,
       form.goalkeeperReadyUrl,
       form.goalkeeperSaveUrl,
+      form.previewArtworkUrl,
     ].some((value) => value.trim().length > 2_048)
   ) {
     return 'Ссылка на медиа слишком длинная.';
@@ -209,8 +276,10 @@ function formValidationError(form: BonusGameFormState): string | null {
       !form.arenaThumbnailUrl.trim() ||
       !form.goalkeeperReadyUrl.trim() ||
       !form.goalkeeperSaveUrl.trim() ||
-      form.arenaStatus !== 'active' ||
-      !form.arenaIsSelectable)
+      !form.previewTitle.trim() ||
+      !form.previewStory.trim() ||
+      !form.previewArtworkUrl.trim() ||
+      form.arenaStatus !== 'active')
   ) {
     return 'Для активной игры загрузите все медиа и активируйте площадку.';
   }
@@ -219,6 +288,7 @@ function formValidationError(form: BonusGameFormState): string | null {
 
 function formToInput(form: BonusGameFormState): AdminBonusGameInput {
   return {
+    skillCode: form.skillCode,
     slug: form.slug.trim(),
     title: form.title.trim(),
     description: form.description.trim(),
@@ -226,9 +296,15 @@ function formToInput(form: BonusGameFormState): AdminBonusGameInput {
     status: form.status,
     accessType: form.accessType,
     unlockPriceStars: form.accessType === 'free' ? 0 : form.unlockPriceStars,
-    targetGoals: form.targetGoals,
+    targetGoals: form.qualificationRules.targetGoals,
+    qualificationRules: form.qualificationRules,
     totalPeriods: form.totalPeriods,
     breakDurationMs: form.breakDurationMs,
+    useInventory: form.useInventory,
+    previewTitle: form.previewTitle.trim(),
+    previewStory: form.previewStory.trim(),
+    previewArtworkUrl: form.previewArtworkUrl.trim(),
+    previewRevision: form.previewRevision,
     periods: form.periods,
     rewardCoins: form.rewardCoins,
     rewardStars: form.rewardStars,
@@ -248,8 +324,12 @@ function formToInput(form: BonusGameFormState): AdminBonusGameInput {
 
 function formToPatch(form: BonusGameFormState): AdminBonusGamePatch {
   const input = formToInput(form);
-  if (input.status !== 'archived') return input;
-  const patch: AdminBonusGamePatch = { ...input };
+  const mutableInput = { ...input } as AdminBonusGamePatch & {
+    skillCode?: AdminBonusSkillCode;
+  };
+  delete mutableInput.skillCode;
+  if (mutableInput.status !== 'archived') return mutableInput;
+  const patch: AdminBonusGamePatch = { ...mutableInput };
   delete patch.status;
   return patch;
 }
@@ -261,8 +341,10 @@ export function BonusGamesAdmin(): JSX.Element {
   const [form, setForm] = useState<BonusGameFormState | null>(null);
   const [archiveTarget, setArchiveTarget] = useState<AdminBonusGame | null>(null);
   const [reorderTarget, setReorderTarget] = useState<string[] | null>(null);
+  const [selectedSkill, setSelectedSkill] = useState<AdminBonusSkillCode>('speed');
   const query = useQuery({ queryKey: bonusGamesQueryKey, queryFn: fetchAdminBonusGames });
-  const games = query.data?.games ?? [];
+  const allGames = query.data?.games ?? [];
+  const games = allGames.filter((game) => game.skillCode === selectedSkill);
   const refresh = (): void => {
     void queryClient.invalidateQueries({ queryKey: bonusGamesQueryKey });
   };
@@ -277,7 +359,7 @@ export function BonusGamesAdmin(): JSX.Element {
     },
   });
   const reorderMutation = useMutation({
-    mutationFn: (gameIds: string[]) => reorderAdminBonusGames({ gameIds }),
+    mutationFn: (gameIds: string[]) => reorderAdminBonusGames({ skillCode: selectedSkill, gameIds }),
     onSuccess: (data) => {
       queryClient.setQueryData(bonusGamesQueryKey, data);
       setReorderTarget(null);
@@ -309,10 +391,24 @@ export function BonusGamesAdmin(): JSX.Element {
         <button
           type="button"
           className="chip chip--active"
-          onClick={() => setForm(createEmptyForm(Math.max(1, games.length + 1)))}
+          onClick={() => setForm(createEmptyForm(Math.max(1, games.length + 1), selectedSkill))}
         >
           Создать
         </button>
+      </div>
+      <div className="bonus-games-skill-tabs" role="tablist" aria-label="Навык бонусных игр">
+        {(['speed', 'accuracy'] as const).map((skill) => (
+          <button
+            key={skill}
+            type="button"
+            role="tab"
+            aria-selected={selectedSkill === skill}
+            className={`chip${selectedSkill === skill ? ' chip--active' : ''}`}
+            onClick={() => setSelectedSkill(skill)}
+          >
+            {skill === 'speed' ? 'Скорость' : 'Точность'}
+          </button>
+        ))}
       </div>
       {query.isLoading && <AdminState>Загрузка бонусных игр...</AdminState>}
       {query.isError && <AdminState error>{errorMessage(query.error)}</AdminState>}
@@ -342,7 +438,8 @@ export function BonusGamesAdmin(): JSX.Element {
               if (kind === 'arena') return { ...current, arenaArtworkUrl: url };
               if (kind === 'thumbnail') return { ...current, arenaThumbnailUrl: url };
               if (kind === 'goalkeeper_ready') return { ...current, goalkeeperReadyUrl: url };
-              return { ...current, goalkeeperSaveUrl: url };
+              if (kind === 'goalkeeper_save') return { ...current, goalkeeperSaveUrl: url };
+              return { ...current, previewArtworkUrl: url };
             });
           }}
           onArchiveRequested={(gameId) => {
@@ -500,6 +597,7 @@ function BonusGameEditor({
     thumbnail: 0,
     goalkeeper_ready: 0,
     goalkeeper_save: 0,
+    preview: 0,
   });
   editorIdentityRef.current = form.gameId;
   useEffect(() => {
@@ -548,7 +646,10 @@ function BonusGameEditor({
   function setTotalPeriods(value: number): void {
     const count = Math.max(0, Math.min(9, value));
     const periods = Array.from({ length: count }, (_, index) => ({
-      ...(form.periods[index] ?? defaultPeriod),
+      ...(form.periods[index] ?? {
+        ...defaultPeriod,
+        shotsLimit: form.skillCode === 'speed' ? null : defaultPeriod.shotsLimit,
+      }),
       periodNumber: index + 1,
     }));
     onChange({ ...form, totalPeriods: value, periods });
@@ -561,6 +662,15 @@ function BonusGameEditor({
         periodIndex === index ? { ...period, ...patch } : period,
       ),
     });
+  }
+
+  function setRequiredGoalStreak(value: number): void {
+    const rules: AdminBonusQualificationRules = { ...form.qualificationRules };
+    delete rules.requiredGoalStreak;
+    setField(
+      'qualificationRules',
+      value > 0 ? { ...rules, requiredGoalStreak: value } : rules,
+    );
   }
 
   function requestCancel(): void {
@@ -584,7 +694,8 @@ function BonusGameEditor({
     if (kind === 'arena') setField('arenaArtworkUrl', value);
     else if (kind === 'thumbnail') setField('arenaThumbnailUrl', value);
     else if (kind === 'goalkeeper_ready') setField('goalkeeperReadyUrl', value);
-    else setField('goalkeeperSaveUrl', value);
+    else if (kind === 'goalkeeper_save') setField('goalkeeperSaveUrl', value);
+    else setField('previewArtworkUrl', value);
   }
 
   function requestUpload(kind: AdminBonusMediaKind, file: File): void {
@@ -614,6 +725,7 @@ function BonusGameEditor({
       wide
     >
       <div style={{ display: 'grid', gap: 10 }}>
+        <h3 className="admin-form-section-title">Основное</h3>
         <Field label="Код игры">
           <input value={form.slug} onChange={(event) => setField('slug', event.target.value)} />
         </Field>
@@ -661,12 +773,57 @@ function BonusGameEditor({
             min={0}
             onChange={(value) => setField('unlockPriceStars', value)}
           />
+        </Grid>
+        <h3 className="admin-form-section-title">Квалификация</h3>
+        <Grid>
+          <Field label="Навык">
+            <input value={form.skillCode === 'speed' ? 'Скорость' : 'Точность'} readOnly />
+          </Field>
           <NumberField
-            label="Цель по голам"
-            value={form.targetGoals}
+            label="Нужно голов"
+            value={form.qualificationRules.targetGoals}
             min={1}
-            onChange={(value) => setField('targetGoals', value)}
+            onChange={(value) =>
+              setField('qualificationRules', {
+                ...form.qualificationRules,
+                targetGoals: value,
+              } as AdminBonusQualificationRules)
+            }
           />
+          {form.qualificationRules.type === 'goals_in_time' ? (
+            <NumberField
+              label="Активное время, мс"
+              value={form.qualificationRules.activeTimeMs}
+              min={1_000}
+              onChange={(value) =>
+                setField('qualificationRules', {
+                  ...form.qualificationRules,
+                  activeTimeMs: value,
+                } as AdminBonusQualificationRules)
+              }
+            />
+          ) : (
+            <NumberField
+              label="Бросков в квалификации"
+              value={form.qualificationRules.shotsLimit}
+              min={1}
+              onChange={(value) =>
+                setField('qualificationRules', {
+                  ...form.qualificationRules,
+                  shotsLimit: value,
+                } as AdminBonusQualificationRules)
+              }
+            />
+          )}
+          <NumberField
+            label="Обязательная серия (0 — нет)"
+            value={form.qualificationRules.requiredGoalStreak ?? 0}
+            min={0}
+            onChange={setRequiredGoalStreak}
+          />
+        </Grid>
+        <h3 className="admin-form-section-title">Периоды</h3>
+        <Grid>
           <NumberField
             label="Периодов"
             value={form.totalPeriods}
@@ -685,9 +842,50 @@ function BonusGameEditor({
           <PeriodEditor
             key={period.periodNumber}
             period={period}
+            showShotsLimit={form.skillCode === 'accuracy'}
             onChange={(patch) => setPeriod(index, patch)}
           />
         ))}
+        <h3 className="admin-form-section-title">Превью</h3>
+        <Field label="Заголовок превью">
+          <input
+            value={form.previewTitle}
+            onChange={(event) => setField('previewTitle', event.target.value)}
+          />
+        </Field>
+        <Field label="История">
+          <textarea
+            rows={4}
+            value={form.previewStory}
+            onChange={(event) => setField('previewStory', event.target.value)}
+          />
+        </Field>
+        <Grid>
+          <NumberField
+            label="Ревизия превью"
+            value={form.previewRevision}
+            min={1}
+            onChange={(value) => setField('previewRevision', value)}
+          />
+        </Grid>
+        <MediaField
+          label="Иллюстрация превью 1200×800"
+          uploadLabel="Загрузить иллюстрацию превью"
+          value={form.previewArtworkUrl}
+          kind="preview"
+          pending={uploadMutation.isPending}
+          onValue={(value) => setMediaValue('preview', value)}
+          onFile={requestUpload}
+        />
+        <h3 className="admin-form-section-title">Инвентарь</h3>
+        <Field label="Использовать инвентарь">
+          <input
+            type="checkbox"
+            checked={form.useInventory}
+            onChange={(event) => setField('useInventory', event.target.checked)}
+          />
+        </Field>
+        <h3 className="admin-form-section-title">Награды и доступ</h3>
         <Grid>
           <NumberField
             label="Награда: монеты"
@@ -816,9 +1014,11 @@ function BonusGameEditor({
 
 function PeriodEditor({
   period,
+  showShotsLimit,
   onChange,
 }: {
   period: AdminBonusPeriodRule;
+  showShotsLimit: boolean;
   onChange: (patch: Partial<AdminBonusPeriodRule>) => void;
 }): JSX.Element {
   return (
@@ -835,13 +1035,15 @@ function PeriodEditor({
           min={1000}
           onChange={(value) => onChange({ durationMs: value })}
         />
-        <NumberField
-          label="Лимит бросков"
-          value={period.shotsLimit}
-          min={1}
-          max={100}
-          onChange={(value) => onChange({ shotsLimit: value })}
-        />
+        {showShotsLimit ? (
+          <NumberField
+            label="Лимит бросков"
+            value={period.shotsLimit ?? 1}
+            min={1}
+            max={100}
+            onChange={(value) => onChange({ shotsLimit: value })}
+          />
+        ) : null}
         <NumberField
           label="Частота ворот"
           value={period.goalFrequency}

@@ -422,12 +422,26 @@ export interface AdminDuelPeriodSpeedPreset {
 
 export type AdminBonusGameStatus = 'draft' | 'active' | 'archived';
 export type AdminBonusGameAccessType = 'free' | 'paid';
+export type AdminBonusSkillCode = 'speed' | 'accuracy';
 export type AdminBonusGoaliePattern = 'linear' | 'sine' | 'dash';
+export type AdminBonusQualificationRules =
+  | {
+      type: 'goals_from_shots';
+      targetGoals: number;
+      shotsLimit: number;
+      requiredGoalStreak?: number;
+    }
+  | {
+      type: 'goals_in_time';
+      targetGoals: number;
+      activeTimeMs: number;
+      requiredGoalStreak?: number;
+    };
 
 export interface AdminBonusPeriodRule {
   periodNumber: number;
   durationMs: number;
-  shotsLimit: number;
+  shotsLimit: number | null;
   goalFrequency: number;
   goalieFrequency: number;
   shooterFrequency: number;
@@ -451,14 +465,21 @@ export interface AdminBonusGame {
   id: string;
   slug: string;
   title: string;
+  skillCode: AdminBonusSkillCode;
   description: string;
   sortOrder: number;
   status: AdminBonusGameStatus;
   accessType: AdminBonusGameAccessType;
   unlockPriceStars: number;
   targetGoals: number;
+  qualificationRules: AdminBonusQualificationRules;
   totalPeriods: number;
   breakDurationMs: number;
+  useInventory: boolean;
+  previewTitle: string;
+  previewStory: string;
+  previewArtworkUrl: string;
+  previewRevision: number;
   periods: AdminBonusPeriodRule[];
   rewardCoins: number;
   rewardStars: number;
@@ -483,6 +504,7 @@ export interface AdminBonusArenaInput {
 }
 
 export interface AdminBonusGameDefinitionInput {
+  skillCode: AdminBonusSkillCode;
   slug: string;
   title: string;
   description: string;
@@ -491,8 +513,14 @@ export interface AdminBonusGameDefinitionInput {
   accessType: AdminBonusGameAccessType;
   unlockPriceStars: number;
   targetGoals: number;
+  qualificationRules: AdminBonusQualificationRules;
   totalPeriods: number;
   breakDurationMs: number;
+  useInventory: boolean;
+  previewTitle: string;
+  previewStory: string;
+  previewArtworkUrl: string;
+  previewRevision: number;
   periods: AdminBonusPeriodRule[];
   rewardCoins: number;
   rewardStars: number;
@@ -504,13 +532,18 @@ export interface AdminBonusGameDefinitionInput {
 export type AdminBonusGameInput = AdminBonusGameDefinitionInput &
   ({ arena: AdminBonusArenaInput; arenaThemeId?: never } | { arenaThemeId: string; arena?: never });
 
-export type AdminBonusGamePatch = Partial<AdminBonusGameDefinitionInput> &
+export type AdminBonusGamePatch = Partial<Omit<AdminBonusGameDefinitionInput, 'skillCode'>> &
   (
     | { arena?: Partial<AdminBonusArenaInput>; arenaThemeId?: never }
     | { arenaThemeId: string; arena?: never }
   );
 
-export type AdminBonusMediaKind = 'arena' | 'thumbnail' | 'goalkeeper_ready' | 'goalkeeper_save';
+export type AdminBonusMediaKind =
+  | 'arena'
+  | 'thumbnail'
+  | 'goalkeeper_ready'
+  | 'goalkeeper_save'
+  | 'preview';
 
 export interface AdminBonusMedia {
   id: string;
@@ -524,6 +557,7 @@ export interface AdminBonusMedia {
 }
 
 export interface AdminBonusGameReorderRequest {
+  skillCode: AdminBonusSkillCode;
   gameIds: string[];
 }
 

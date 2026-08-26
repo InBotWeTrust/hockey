@@ -15,7 +15,6 @@ export interface FirstClearRewardInput {
   gameId: string;
   attemptId: string;
   reward: BonusRewardSnapshot;
-  arenaThemeId: string;
   now: Date;
 }
 
@@ -125,6 +124,7 @@ async function fetchPurchasableGame(
          select previous.id
            from bonus_game previous
           where previous.status = 'active'
+            and previous.skill_code = game.skill_code
             and previous.sort_order < game.sort_order
           order by previous.sort_order desc, previous.id desc
           limit 1
@@ -343,14 +343,6 @@ export async function grantFirstClearReward(
       }),
       input.now,
     ],
-  );
-  await client.query(
-    `insert into user_arena_unlock
-       (user_id, arena_theme_id, source_type, source_bonus_game_id,
-        source_completion_id, unlocked_at)
-     values ($1, $2, 'bonus_game', $3, $4, $5)
-     on conflict (user_id, arena_theme_id) do nothing`,
-    [input.userId, input.arenaThemeId, input.gameId, completionId, input.now],
   );
   await client.query(
     `insert into bonus_game_economy_event

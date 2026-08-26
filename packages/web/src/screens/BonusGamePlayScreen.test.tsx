@@ -96,6 +96,10 @@ function attempt(overrides: Partial<BonusGameAttempt> = {}): BonusGameAttempt {
     shots_taken: 28,
     current_period_shots_taken: 3,
     goals: 18,
+    current_goal_streak: 2,
+    best_goal_streak: 4,
+    preview_required: false,
+    current_loadout: null,
     reward_granted: false,
     attempt_seed: 'bonus-seed',
     game_core_version: 1,
@@ -105,10 +109,17 @@ function attempt(overrides: Partial<BonusGameAttempt> = {}): BonusGameAttempt {
       game_id: 'game-1',
       slug: 'beach',
       title: 'Пляж',
+      skill_code: 'accuracy',
       revision: 4,
       target_goals: 20,
+      qualification_rules: { type: 'goals_from_shots', targetGoals: 20, shotsLimit: 50 },
       total_periods: 2,
       break_duration_ms: 30_000,
+      use_inventory: false,
+      preview_title: 'Первая квалификация',
+      preview_story: 'История',
+      preview_artwork_url: '/bonus-games/previews/beach.webp',
+      preview_revision: 1,
       periods: [
         {
           period_number: 1,
@@ -184,6 +195,7 @@ function setStore(overrides: Partial<ReturnType<typeof useBonusGameStore.getStat
     applyPendingShot: vi.fn(() => null),
     optimisticAddShot: vi.fn(),
     startPeriod: vi.fn(async () => null),
+    acknowledgePreview: vi.fn(async () => null),
     submitShot: vi.fn(async () => null),
     abandon: vi.fn(async () => null),
     refresh: vi.fn(async () => null),
@@ -218,12 +230,41 @@ describe('BonusGamePlayScreen', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Загружаем бонусную игру…');
   });
 
+  it('shows the qualification preview over the mounted ice and acknowledges dismissal', async () => {
+    const acknowledgePreview = vi.fn(async () => attempt({ preview_required: false }));
+    setStore({
+      attempt: attempt({
+        state: 'idle',
+        current_period: 0,
+        period_started_at: null,
+        period_ends_at: null,
+        shots_taken: 0,
+        current_period_shots_taken: 0,
+        goals: 0,
+        current_goal_streak: 0,
+        best_goal_streak: 0,
+        preview_required: true,
+      }),
+      acknowledgePreview,
+    });
+
+    renderScreen();
+
+    expect(screen.getByTestId('bonus-play-view')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Первая квалификация' })).toBeInTheDocument();
+    expect(screen.getByText('20 голов из 50 бросков')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Больше не показывать' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Понятно' }));
+
+    await waitFor(() => expect(acknowledgePreview).toHaveBeenCalledWith(true));
+  });
+
   it('shows the idle period on the rink and starts it through the primary button', () => {
     const startPeriod = vi.fn(async () => attempt());
     setStore({
       attempt: attempt({
         state: 'idle',
-        current_period: 1,
+        current_period: 0,
         period_started_at: null,
         period_ends_at: null,
         current_period_shots_taken: 0,
@@ -238,9 +279,9 @@ describe('BonusGamePlayScreen', () => {
     const props = playViewProbe.mock.calls.at(-1)?.[0] as Record<string, unknown>;
     expect(props).toMatchObject({
       active: false,
-      suppressedByModal: true,
+      suppressedByModal: false,
       showIceCar: false,
-      periodNumber: 2,
+      periodNumber: 1,
       timer: '04:00',
       shotButtonLabel: 'НАЧАТЬ',
       entranceBeforeInactiveAction: true,
@@ -267,8 +308,8 @@ describe('BonusGamePlayScreen', () => {
       shotsTotal: 25,
       stickEffects: STICK_NEUTRAL,
       longCourtBackground: '/bonus-games/arenas/beach.webp',
-      initialSceneElapsedMs: 6_000,
-      initialShooterElapsedMs: 4_800,
+      initialSceneElapsedMs: 9_000,
+      initialShooterElapsedMs: 7_800,
       goalieOptions: {
         idleSpriteUrl: '/bonus-games/goalkeepers/beach-ready.webp',
         saveSpriteUrl: '/bonus-games/goalkeepers/beach-save.webp',

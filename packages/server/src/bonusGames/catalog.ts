@@ -1,8 +1,10 @@
 import type { Pool, PoolClient } from 'pg';
 import { getGameSettings } from '../duel/gameSettings.js';
 import { resolveCompetitionLevel } from '../profile/summary.js';
+import { normalizeBonusQualificationRules, type BonusQualificationRules } from './qualification.js';
 import type {
   BonusGameAccessType,
+  BonusSkillCode,
   BonusGameAttemptState,
   BonusPeriodRule,
   BonusRewardSnapshot,
@@ -34,13 +36,20 @@ export interface BonusGameCardDto {
   id: string;
   slug: string;
   title: string;
+  skill_code: BonusSkillCode;
   description: string;
   sort_order: number;
   access_type: BonusGameAccessType;
   unlock_price_stars: number;
   target_goals: number;
+  qualification_rules: BonusQualificationRules;
   total_periods: number;
   break_duration_ms: number;
+  use_inventory: boolean;
+  preview_title: string;
+  preview_story: string;
+  preview_artwork_url: string;
+  preview_revision: number;
   period_rules: BonusPeriodRule[];
   reward: BonusRewardSnapshot;
   goalkeeper_ready_url: string;
@@ -68,14 +77,21 @@ interface CatalogRow {
   id: string;
   slug: string;
   title: string;
+  skill_code: BonusSkillCode;
   description: string;
   sort_order: number;
   status: 'active' | 'archived';
   access_type: BonusGameAccessType;
   unlock_price_stars: number;
   target_goals: number;
+  qualification_rules: unknown | null;
   total_periods: number;
   break_duration_ms: number;
+  use_inventory: boolean;
+  preview_title: string;
+  preview_story: string;
+  preview_artwork_url: string;
+  preview_revision: number;
   period_rules: BonusPeriodRule[];
   reward_coins: number;
   reward_stars: number;
@@ -166,6 +182,7 @@ export async function listBonusGameCards(
                 select previous.id
                   from bonus_game previous
                  where previous.status = 'active'
+                   and previous.skill_code = bg.skill_code
                    and previous.sort_order < bg.sort_order
                  order by previous.sort_order desc, previous.id desc
                  limit 1
@@ -174,6 +191,7 @@ export async function listBonusGameCards(
                 select previous.title
                   from bonus_game previous
                  where previous.status = 'active'
+                   and previous.skill_code = bg.skill_code
                    and previous.sort_order < bg.sort_order
                  order by previous.sort_order desc, previous.id desc
                  limit 1
@@ -191,9 +209,12 @@ export async function listBonusGameCards(
              )
            )
      )
-     select game.id, game.slug, game.title, game.description, game.sort_order, game.status,
-            game.access_type, game.unlock_price_stars, game.target_goals, game.total_periods,
-            game.break_duration_ms, game.period_rules,
+     select game.id, game.slug, game.title, game.skill_code, game.description, game.sort_order, game.status,
+            game.access_type, game.unlock_price_stars, game.target_goals,
+            game.qualification_rules, game.total_periods,
+            game.break_duration_ms, game.use_inventory, game.preview_title,
+            game.preview_story, game.preview_artwork_url, game.preview_revision,
+            game.period_rules,
             game.reward_coins, game.reward_stars, game.reward_experience,
             game.goalkeeper_ready_url, game.goalkeeper_save_url,
             arena.id as arena_id, arena.slug as arena_slug, arena.title as arena_title,
@@ -224,23 +245,34 @@ export async function listBonusGameCards(
          on attempt.user_id = $1
         and attempt.bonus_game_id = game.id
         and attempt.status = 'active'
-      order by game.sort_order, game.id`,
+      order by game.skill_code, game.sort_order, game.id`,
     [userId],
   );
 
   return rows.map((row) => {
     const state = deriveCardState(row, hasAmateurAccess);
+    const qualificationRules = normalizeBonusQualificationRules(row.qualification_rules, {
+      targetGoals: Number(row.target_goals),
+      shotsLimit: row.period_rules.reduce((sum, period) => sum + (period.shotsLimit ?? 0), 0),
+    });
     return {
       id: row.id,
       slug: row.slug,
       title: row.title,
+      skill_code: row.skill_code,
       description: row.description,
       sort_order: Number(row.sort_order),
       access_type: row.access_type,
       unlock_price_stars: Number(row.unlock_price_stars),
       target_goals: Number(row.target_goals),
+      qualification_rules: qualificationRules,
       total_periods: Number(row.total_periods),
       break_duration_ms: Number(row.break_duration_ms),
+      use_inventory: row.use_inventory,
+      preview_title: row.preview_title,
+      preview_story: row.preview_story,
+      preview_artwork_url: row.preview_artwork_url,
+      preview_revision: Number(row.preview_revision),
       period_rules: row.period_rules,
       reward: {
         coins: Number(row.reward_coins),

@@ -134,7 +134,7 @@ export async function reconcileBonusAttempt(
       throw new AppError('internal_error', 'active bonus period is outside its snapshot', 500);
     }
     const aggregate = await aggregatePeriod(client, current.id, current.current_period);
-    if (aggregate.shotsTaken >= periodRule.shotsLimit) {
+    if (periodRule.shotsLimit !== null && aggregate.shotsTaken >= periodRule.shotsLimit) {
       await closeBonusPeriod(client, current, now, 'quota');
       current = await finishPeriod(client, current, now);
     } else {

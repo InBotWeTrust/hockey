@@ -12,6 +12,7 @@ import type { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { findOrCreateTelegramUser } from '../../src/auth/users.js';
 import {
+  acknowledgeBonusPreview,
   startBonusPeriod,
   startOrResumeBonusAttempt,
   submitBonusShot,
@@ -167,27 +168,35 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
   async function createGame({
     targetGoals,
     periods = PERIODS,
+    requiredGoalStreak = 0,
   }: {
     targetGoals: number;
     periods?: BonusPeriodRule[];
+    requiredGoalStreak?: number;
   }): Promise<TestGame> {
     gameSequence += 1;
     const slug = `shot-game-${gameSequence}`;
     const game = await pool.query<{ id: string }>(
       `insert into bonus_game
-         (slug, title, description, sort_order, status, access_type, unlock_price_stars,
-          target_goals, total_periods, break_duration_ms, period_rules,
+         (slug, title, skill_code, description, sort_order, status, access_type, unlock_price_stars,
+          target_goals, qualification_rules, total_periods, break_duration_ms, period_rules,
           reward_coins, reward_stars, reward_experience, arena_theme_id,
           goalkeeper_ready_url, goalkeeper_save_url, revision)
-       values ($1, $2, '', $3, 'active', 'free', 0,
-               $4, $5, 30000, $6::jsonb,
-               100, 1, 50, $7, $8, $9, 3)
+       values ($1, $2, 'accuracy', '', $3, 'active', 'free', 0,
+               $4, $5::jsonb, $6, 30000, $7::jsonb,
+               100, 1, 50, $8, $9, $10, 3)
        returning id`,
       [
         slug,
         `Игра ${gameSequence}`,
         gameSequence,
         targetGoals,
+        JSON.stringify({
+          type: 'goals_from_shots',
+          targetGoals,
+          shotsLimit: periods.reduce((sum, period) => sum + (period.shotsLimit ?? 0), 0),
+          ...(requiredGoalStreak > 0 ? { requiredGoalStreak } : {}),
+        }),
         periods.length,
         JSON.stringify(periods),
         defaultArenaId,
@@ -216,6 +225,12 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
         where id = $1`,
       [created.attempt.id, attemptSeed],
     );
+    await acknowledgeBonusPreview(pool, {
+      userId,
+      attemptId: created.attempt.id,
+      dismissFuture: false,
+      now: startedAt,
+    });
     await startBonusPeriod(pool, { userId, attemptId: created.attempt.id, now: startedAt });
     return created.attempt.id;
   }
@@ -756,6 +771,42 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
     expect(await mutationSnapshot(userId, attemptId)).toEqual(beforeDuplicate);
   });
 
+  it('keeps the current and best goal streak when the next period starts', async () => {
+    const userId = await createUser();
+    const periods: BonusPeriodRule[] = [
+      { ...PERIODS[0]!, shotsLimit: 1 },
+      { ...PERIODS[0]!, periodNumber: 2, shotsLimit: 1 },
+    ];
+    const game = await createGame({ targetGoals: 2, periods, requiredGoalStreak: 2 });
+    const attemptId = await createActiveAttempt(userId, game.id);
+
+    const firstPeriod = await submitBonusShot(pool, {
+      userId,
+      attemptId,
+      claimedShotIndex: 1,
+      input: GOAL_INPUT,
+      claimedResult: 'goal',
+      now: SHOT_AT,
+    });
+    expect(firstPeriod.attempt).toMatchObject({
+      state: 'break_active',
+      currentGoalStreak: 1,
+      bestGoalStreak: 1,
+    });
+
+    const secondPeriod = await startBonusPeriod(pool, {
+      userId,
+      attemptId,
+      now: new Date('2026-08-23T12:00:32.000Z'),
+    });
+    expect(secondPeriod).toMatchObject({
+      state: 'period_active',
+      currentPeriod: 2,
+      currentGoalStreak: 1,
+      bestGoalStreak: 1,
+    });
+  });
+
   it('fails the attempt at final-period quota in the accepted-shot transaction and keeps duplicate retry idempotent', async () => {
     const userId = await createUser();
     const game = await createGame({ targetGoals: 2 });
@@ -950,7 +1001,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
     expect(audit.rows[0]?.created_at).toEqual(SHOT_AT);
   });
 
-  it('completes immediately at the target and grants every first-clear value atomically', async () => {
+  it('grants first-clear currencies atomically without unlocking a home arena', async () => {
     const userId = await createUser();
     const game = await createGame({ targetGoals: 1 });
     const attemptId = await createActiveAttempt(userId, game.id);
@@ -987,7 +1038,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
         userId,
         game.arenaId,
       ]),
-    ).toBe(1);
+    ).toBe(0);
     expect(
       await countRows('currency_ledger', "user_id = $1 and reason = 'bonus_game_reward'", [userId]),
     ).toBe(1);

@@ -1,18 +1,24 @@
 import type { GoalieConfig, GoaliePatternId } from '@hockey/game-core';
 import { z } from 'zod';
+import type { BonusQualificationRules } from './qualification.js';
+import type { PeriodLoadoutSnapshot } from '../inventory/periodLoadout.js';
 
 export type BonusGameStatus = 'draft' | 'active' | 'archived';
+export type BonusSkillCode = 'speed' | 'accuracy';
 export type BonusGameAccessType = 'free' | 'paid';
 export type BonusGameAttemptStatus = 'active' | 'completed' | 'failed' | 'abandoned';
 export type BonusGameAttemptState = 'idle' | 'period_active' | 'break_active' | 'closed';
 export type BonusPeriodClosedReason = 'quota' | 'timeout' | 'target_reached' | 'attempt_abandoned';
-export type BonusGameEconomyEventKind = 'unlock_purchase' | 'first_clear_reward';
+export type BonusGameEconomyEventKind =
+  | 'unlock_purchase'
+  | 'unlock_refund'
+  | 'first_clear_reward';
 export type BonusGoaliePattern = Extract<GoaliePatternId, 'linear' | 'sine' | 'dash'>;
 
 export interface BonusPeriodRule {
   periodNumber: number;
   durationMs: number;
-  shotsLimit: number;
+  shotsLimit: number | null;
   goalFrequency: number;
   goalieFrequency: number;
   shooterFrequency: number;
@@ -40,10 +46,17 @@ export interface BonusRulesSnapshot {
   gameId: string;
   slug: string;
   title: string;
+  skillCode: BonusSkillCode;
   revision: number;
   targetGoals: number;
+  qualificationRules: BonusQualificationRules;
   totalPeriods: number;
   breakDurationMs: number;
+  useInventory: boolean;
+  previewTitle: string;
+  previewStory: string;
+  previewArtworkUrl: string;
+  previewRevision: number;
   periods: BonusPeriodRule[];
   goalkeeperReadyUrl: string;
   goalkeeperSaveUrl: string;
@@ -67,14 +80,21 @@ export interface BonusGameRow {
   id: string;
   slug: string;
   title: string;
+  skill_code: BonusSkillCode;
   description: string;
   sort_order: number;
   status: BonusGameStatus;
   access_type: BonusGameAccessType;
   unlock_price_stars: number;
   target_goals: number;
+  qualification_rules: BonusQualificationRules | null;
   total_periods: number;
   break_duration_ms: number;
+  use_inventory: boolean;
+  preview_title: string;
+  preview_story: string;
+  preview_artwork_url: string;
+  preview_revision: number;
   period_rules: BonusPeriodRule[];
   reward_coins: number;
   reward_stars: number;
@@ -101,6 +121,9 @@ export interface BonusGameAttemptRow {
   closed_at: Date | null;
   shots_taken: number;
   goals: number;
+  current_goal_streak: number;
+  best_goal_streak: number;
+  preview_acknowledged_at: Date | null;
   attempt_seed: string;
   game_core_version: number;
   definition_revision: number;
@@ -177,12 +200,19 @@ export interface BonusGameDTO {
   id: string;
   slug: string;
   title: string;
+  skillCode: BonusSkillCode;
   description: string;
   accessType: BonusGameAccessType;
   unlockPriceStars: number;
   targetGoals: number;
+  qualificationRules: BonusQualificationRules;
   totalPeriods: number;
   breakDurationMs: number;
+  useInventory: boolean;
+  previewTitle: string;
+  previewStory: string;
+  previewArtworkUrl: string;
+  previewRevision: number;
   periods: BonusPeriodRule[];
   reward: BonusRewardSnapshot;
   goalkeeperReadyUrl: string;
@@ -204,6 +234,10 @@ export interface BonusGameAttemptDTO {
   shotsTaken: number;
   currentPeriodShotsTaken: number;
   goals: number;
+  currentGoalStreak: number;
+  bestGoalStreak: number;
+  previewRequired: boolean;
+  currentLoadout: PeriodLoadoutSnapshot | null;
   rewardGranted: boolean;
   attemptSeed: string;
   gameCoreVersion: number;
@@ -215,7 +249,7 @@ const bonusPeriodRuleSchema = z
   .object({
     periodNumber: z.number().int().min(1).max(9),
     durationMs: z.number().int().min(1_000).max(10_800_000),
-    shotsLimit: z.number().int().min(1).max(100),
+    shotsLimit: z.number().int().min(1).max(100).nullable(),
     goalFrequency: z.number().min(0.1).max(3),
     goalieFrequency: z.number().min(0.1).max(3),
     shooterFrequency: z.number().min(0.1).max(3),
@@ -264,8 +298,8 @@ export function parseBonusPeriodRules(
       throw new Error('target goals must be a positive integer');
     }
 
-    const totalShotsLimit = parsed.data.reduce((sum, rule) => sum + rule.shotsLimit, 0);
-    if (targetGoals > totalShotsLimit) {
+    const totalShotsLimit = parsed.data.reduce((sum, rule) => sum + (rule.shotsLimit ?? 0), 0);
+    if (totalShotsLimit > 0 && targetGoals > totalShotsLimit) {
       throw new Error('target goals cannot exceed total shots limit');
     }
   }

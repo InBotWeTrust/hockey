@@ -203,7 +203,7 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
     accessType = 'free',
     price = accessType === 'paid' ? 1 : 0,
     periods = PERIODS,
-    targetGoals = periods.reduce((sum, period) => sum + period.shotsLimit, 0),
+    targetGoals = periods.reduce((sum, period) => sum + (period.shotsLimit ?? 0), 0),
     breakDurationMs = 30_000,
   }: {
     sortOrder?: number;
@@ -230,13 +230,13 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
     );
     const game = await pool.query<{ id: string }>(
       `insert into bonus_game
-         (slug, title, description, sort_order, status, access_type, unlock_price_stars,
-          target_goals, total_periods, break_duration_ms, period_rules,
+         (slug, title, skill_code, description, sort_order, status, access_type, unlock_price_stars,
+          target_goals, qualification_rules, total_periods, break_duration_ms, period_rules,
           reward_coins, reward_stars, reward_experience, arena_theme_id,
           goalkeeper_ready_url, goalkeeper_save_url, revision)
-       values ($1, $2, $3, $4, $5, $6, $7,
-               $8, $9, $10, $11::jsonb,
-               100, 2, 50, $12, $13, $14, 7)
+       values ($1, $2, 'accuracy', $3, $4, $5, $6, $7,
+               $8, $9::jsonb, $10, $11, $12::jsonb,
+               100, 2, 50, $13, $14, $15, 7)
        returning id`,
       [
         slug,
@@ -247,6 +247,11 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
         accessType,
         price,
         targetGoals,
+        JSON.stringify({
+          type: 'goals_from_shots',
+          targetGoals,
+          shotsLimit: periods.reduce((sum, period) => sum + (period.shotsLimit ?? 0), 0),
+        }),
         periods.length,
         breakDurationMs,
         JSON.stringify(periods),
@@ -269,6 +274,13 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
   }
 
   async function startPeriod(attemptId: string): Promise<AttemptDto> {
+    const preview = await app.inject({
+      method: 'POST',
+      url: `/bonus-games/attempts/${attemptId}/preview/acknowledge`,
+      headers,
+      payload: { dismiss_future: false },
+    });
+    expect(preview.statusCode).toBe(200);
     const response = await app.inject({
       method: 'POST',
       url: `/bonus-games/attempts/${attemptId}/period/start`,
@@ -391,7 +403,7 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
     return { response, payload };
   }
 
-  it('requires authentication on exactly all eight player endpoints', async () => {
+  it('requires authentication on exactly all nine player endpoints', async () => {
     const id = randomUUID();
     const requests = [
       { method: 'GET', url: '/bonus-games' },
@@ -399,6 +411,7 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
       { method: 'POST', url: `/bonus-games/${id}/unlock` },
       { method: 'POST', url: `/bonus-games/${id}/attempts` },
       { method: 'GET', url: `/bonus-games/attempts/${id}` },
+      { method: 'POST', url: `/bonus-games/attempts/${id}/preview/acknowledge` },
       { method: 'POST', url: `/bonus-games/attempts/${id}/period/start` },
       { method: 'POST', url: `/bonus-games/attempts/${id}/shot` },
       { method: 'POST', url: `/bonus-games/attempts/${id}/abandon` },

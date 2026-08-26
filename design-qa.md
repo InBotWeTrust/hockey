@@ -115,6 +115,26 @@
 
 final result: passed
 
+## Bonus qualification catalog refinement
+
+- Source visual truth: `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-0e9237be-31b1-490d-8269-2eb423cce70a.png`, `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-a6ee122d-f782-4539-a2e5-a6d6faabb5f7.png`, and `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-19511d10-04e4-4f57-94af-a24f3e90812f.png`.
+- Implementation screenshots: `/private/tmp/bonus-compact-cards-320.png`, `/private/tmp/bonus-compact-cards-390.png`, and `/private/tmp/bonus-compact-cards-430.png`.
+- Full-view comparison evidence: `/private/tmp/bonus-design-comparison.png`; focused compact-card comparison: `/private/tmp/bonus-compact-comparison.png`.
+- Viewports and density: 320 × 760, 390 × 844, and 430 × 900 CSS px at device scale factor 1. The 892 × 1278 source was normalized to 390 × 559 for the comparison; the implementation was cropped to the same 390 × 559 visible region.
+- State: authenticated bonus-game catalog, `Скорость` selected, a `Точность` attempt active, and the first qualification card visible.
+- Typography: the featured card keeps its original hierarchy. Compact cards use a 15 px title, 10.5 px rules and a 12 px action so long location names fit beside the artwork. `Дальше` and `Пройденные` now reuse the same 10 px, weight-600 uppercase `section-label` as the main Sections hub.
+- Spacing and layout: the featured artwork is restored to its original full-width 154 px crop. Compact future cards use 124 × 124 px square artwork with a 10 px inset inside a 144 px-tall card, so the artwork determines the card height. The layout does not overflow at 320, 390, or 430 px.
+- Colors and tokens: skill switching now reuses the exact `SegmentedTabs` component and active/inactive materials from the shop instead of a bonus-specific chip treatment.
+- Image quality: cards use the authoritative arena thumbnail rather than the preview illustration. The featured card retains the wide upper-location crop; compact cards square-crop the clean arena at the top, with no goalkeeper in the image. No placeholder or CSS-drawn imagery was introduced.
+- Copy and content: the separate active-attempt notice and `Вернуться в игру` action are removed. Qualification rules and reward values remain unchanged.
+- Primary interactions tested: switching between `Скорость` and `Точность`, persistence of the selected skill, focus of an active attempt inside its own skill, and disabled start actions while another attempt exists.
+- Browser console errors: none (`tab.dev.logs`, error level, returned an empty list after the responsive and tab-switch checks).
+- Focused-region evidence: `/private/tmp/bonus-compact-comparison.png` compares the supplied oversized-goalkeeper card directly with the final 390 px compact card. The final artwork is larger relative to the card, clean of the goalkeeper, and aligned to equal 10 px top/bottom/left insets.
+- Comparison history: the first square-card pass used the preview illustration, left the artwork much shorter than the card and introduced an oversized goalkeeper. The final pass restores the wide featured crop, uses clean arena artwork for list cards, reduces compact typography and action height, and re-captures all three widths. No actionable P0/P1/P2 mismatch remains.
+- Findings: P0 none; P1 none; P2 none. P3: at 320 px the longest qualification copy wraps to three compact lines, but the title, condition and action remain readable without overflow.
+
+final result: passed
+
 ## Gameplay backdrop, loading contrast, and bonus break modal
 
 - Source visual truth: `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-534ce34f-ed13-4d0a-ba10-d3c7777ca2df.png`, `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-27cea9a2-034b-4e6d-a81e-dddafd477701.png`, and `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-8e637077-95bf-436b-b1fd-3a0e4f0123d7.png`.

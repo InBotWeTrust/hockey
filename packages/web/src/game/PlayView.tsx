@@ -268,6 +268,7 @@ export interface PlayViewProps<TState> {
   initialShooterElapsedMs?: number | undefined;
   clockRebaseKey?: string | number | undefined;
   periodEndsAt?: number | undefined;
+  scoreboardEndsAt?: number | undefined;
   onTimerExpired?: (() => void | Promise<void>) | undefined;
   optimisticAddShot: (claimed: ShotResult['type']) => void;
   submitShot: (args: {
@@ -538,6 +539,7 @@ export function PlayView<TState>({
   initialShooterElapsedMs,
   clockRebaseKey,
   periodEndsAt,
+  scoreboardEndsAt,
   onTimerExpired,
   optimisticAddShot,
   submitShot,
@@ -811,11 +813,14 @@ export function PlayView<TState>({
   }, []);
 
   useEffect(() => {
-    if (!periodEndsAt) return undefined;
+    if (!periodEndsAt && !scoreboardEndsAt) return undefined;
     const id = window.setInterval(() => setNow(Date.now()), 500);
     return () => window.clearInterval(id);
-  }, [periodEndsAt]);
+  }, [periodEndsAt, scoreboardEndsAt]);
   const remaining = periodEndsAt ? Math.max(0, periodEndsAt - now) : 0;
+  const scoreboardRemaining = scoreboardEndsAt
+    ? Math.max(0, scoreboardEndsAt - now)
+    : remaining;
 
   useLayoutEffect(() => {
     const root = playRootRef.current;
@@ -1597,7 +1602,7 @@ export function PlayView<TState>({
     handleShotTap();
   }, [handleInactiveAction, handleShotTap, inactiveAction, primaryActionBlocked]);
 
-  const timerValue = timer ?? formatMs(remaining);
+  const timerValue = timer ?? formatMs(scoreboardRemaining);
   const isDuelShotBlocked = active && currentDuelCondition?.canShoot === false;
   const isDuelRestBlocked = isDuelShotBlocked && currentDuelCondition?.status === 'exhausted_stop';
   const effectiveShotButtonLabel = duelPrimaryButtonLabel(shotButtonLabel, currentDuelCondition);

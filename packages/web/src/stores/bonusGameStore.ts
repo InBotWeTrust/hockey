@@ -1,11 +1,13 @@
 import { create } from 'zustand';
 import {
   abandonBonusAttempt,
+  acknowledgeBonusPreview,
   fetchBonusAttempt,
   fetchCurrentBonusAttempt,
   startBonusPeriod,
   submitBonusShot,
   type BonusGameAttempt,
+  type BonusPeriodLoadoutSelection,
   type BonusShotRequest,
 } from '../api/bonusGames.js';
 import { ApiError } from '../api/apiFetch.js';
@@ -31,7 +33,8 @@ interface BonusGameStoreState {
   applyState: (next: BonusGameAttempt | null) => void;
   applyPendingShot: () => BonusGameAttempt | null;
   optimisticAddShot: (claimed: ShotResultType) => void;
-  startPeriod: () => Promise<BonusGameAttempt | null>;
+  startPeriod: (loadout?: BonusPeriodLoadoutSelection) => Promise<BonusGameAttempt | null>;
+  acknowledgePreview: (dismissFuture: boolean) => Promise<BonusGameAttempt | null>;
   submitShot: (
     body: BonusShotRequest,
     options?: { deferApply?: boolean },
@@ -188,16 +191,38 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
         shots_taken: attempt.shots_taken + 1,
         current_period_shots_taken: attempt.current_period_shots_taken + 1,
         goals: attempt.goals + (claimed === 'goal' ? 1 : 0),
+        current_goal_streak:
+          claimed === 'goal' ? attempt.current_goal_streak + 1 : 0,
+        best_goal_streak:
+          claimed === 'goal'
+            ? Math.max(attempt.best_goal_streak, attempt.current_goal_streak + 1)
+            : attempt.best_goal_streak,
       },
     });
   },
 
-  startPeriod: async () => {
+  acknowledgePreview: async (dismissFuture) => {
     const attempt = get().attempt;
     if (!attempt || get().inFlight || get().needsReconcile) return null;
     beginMutation(set, get);
     try {
-      const response = await startBonusPeriod(attempt.id);
+      const response = await acknowledgeBonusPreview(attempt.id, dismissFuture);
+      applyServerAttempt(set, get, response.attempt);
+      set({ inFlight: false });
+      return response.attempt;
+    } catch (error) {
+      const details = errorDetails(error, 'Не удалось сохранить просмотр превью.');
+      recordMutationFailure(set, get, details);
+      return null;
+    }
+  },
+
+  startPeriod: async (loadout) => {
+    const attempt = get().attempt;
+    if (!attempt || get().inFlight || get().needsReconcile) return null;
+    beginMutation(set, get);
+    try {
+      const response = await startBonusPeriod(attempt.id, loadout);
       applyServerAttempt(set, get, response.attempt);
       set({ inFlight: false });
       return response.attempt;

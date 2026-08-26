@@ -11,19 +11,26 @@ const bonusGame: AdminBonusGame = {
   id: '11111111-1111-4111-8111-111111111111',
   slug: 'beach',
   title: 'Пляжный хоккей',
+  skillCode: 'speed',
   description: 'Забейте 18 голов на пляже.',
   sortOrder: 1,
   status: 'active',
   accessType: 'paid',
   unlockPriceStars: 5,
   targetGoals: 18,
+  qualificationRules: { type: 'goals_in_time', targetGoals: 18, activeTimeMs: 240_000 },
   totalPeriods: 1,
   breakDurationMs: 30_000,
+  useInventory: false,
+  previewTitle: 'Первая квалификация',
+  previewStory: 'История',
+  previewArtworkUrl: '/bonus-games/previews/beach.webp',
+  previewRevision: 1,
   periods: [
     {
       periodNumber: 1,
       durationMs: 240_000,
-      shotsLimit: 30,
+      shotsLimit: null,
       goalFrequency: 0.45,
       goalieFrequency: 0.5,
       shooterFrequency: 0.65,
@@ -232,7 +239,10 @@ describe('bonus games admin', () => {
       'Статус',
       'Доступ',
       'Цена в звёздах',
-      'Цель по голам',
+      'Нужно голов',
+      'Навык',
+      'Активное время, мс',
+      'Обязательная серия (0 — нет)',
       'Периодов',
       'Перерыв, мс',
       'Частота ворот',
@@ -251,6 +261,11 @@ describe('bonus games admin', () => {
       'Миниатюра площадки',
       'Вратарь: готов',
       'Вратарь: сейв',
+      'Заголовок превью',
+      'История',
+      'Иллюстрация превью 1200×800',
+      'Ревизия превью',
+      'Использовать инвентарь',
     ]) {
       expect(within(editor).getByLabelText(label)).toBeInTheDocument();
     }
@@ -352,13 +367,20 @@ describe('bonus games admin', () => {
         accessType: 'paid',
         unlockPriceStars: 0,
         targetGoals: 18,
+        skillCode: 'speed',
+        qualificationRules: { type: 'goals_in_time', targetGoals: 18, activeTimeMs: 240_000 },
         totalPeriods: 1,
         breakDurationMs: 0,
+        useInventory: false,
+        previewTitle: '',
+        previewStory: '',
+        previewArtworkUrl: '',
+        previewRevision: 1,
         periods: [
           {
             periodNumber: 1,
             durationMs: 240_000,
-            shotsLimit: 30,
+            shotsLimit: null,
             goalFrequency: 0.45,
             goalieFrequency: 0.5,
             shooterFrequency: 0.65,
@@ -379,7 +401,7 @@ describe('bonus games admin', () => {
           artworkUrl: '',
           thumbnailUrl: '',
           status: 'active',
-          isSelectable: true,
+          isSelectable: false,
         },
       },
     });
@@ -403,8 +425,14 @@ describe('bonus games admin', () => {
         accessType: 'paid',
         unlockPriceStars: 0,
         targetGoals: 18,
+        qualificationRules: { type: 'goals_in_time', targetGoals: 18, activeTimeMs: 240_000 },
         totalPeriods: 1,
         breakDurationMs: 30_000,
+        useInventory: false,
+        previewTitle: 'Первая квалификация',
+        previewStory: 'История',
+        previewArtworkUrl: '/bonus-games/previews/beach.webp',
+        previewRevision: 1,
         periods: bonusGame.periods,
         rewardCoins: 100,
         rewardStars: 1,
@@ -465,6 +493,15 @@ describe('bonus games admin', () => {
     });
     fireEvent.change(within(dialog).getByLabelText('Вратарь: сейв'), {
       target: { value: '  /bonus-games/goalkeepers/beach-save.webp  ' },
+    });
+    fireEvent.change(within(dialog).getByLabelText('Заголовок превью'), {
+      target: { value: '  Первая квалификация  ' },
+    });
+    fireEvent.change(within(dialog).getByLabelText('История'), {
+      target: { value: '  Первый шаг к большому хоккею.  ' },
+    });
+    fireEvent.change(within(dialog).getByLabelText('Иллюстрация превью 1200×800'), {
+      target: { value: '  /bonus-games/previews/beach.webp  ' },
     });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
 
@@ -581,6 +618,7 @@ describe('bonus games admin', () => {
     fireEvent.click(within(confirmation).getByRole('button', { name: 'Изменить порядок' }));
     await waitFor(() =>
       expect(reorderBody).toEqual({
+        skillCode: 'speed',
         gameIds: ['44444444-4444-4444-8444-444444444444', '11111111-1111-4111-8111-111111111111'],
       }),
     );

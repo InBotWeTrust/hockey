@@ -7,14 +7,28 @@ import {
   type GoalieConfig,
 } from '@hockey/game-core';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import type { BonusGameAttempt, BonusPeriodRule } from '../api/bonusGames.js';
+import { useQuery } from '@tanstack/react-query';
+import type {
+  BonusGameAttempt,
+  BonusPeriodLoadoutSelection,
+  BonusPeriodRule,
+} from '../api/bonusGames.js';
+import { fetchMyInventory, type InventoryEquipmentKind } from '../api/inventory.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import { PlayView } from '../game/PlayView.js';
-import { deriveBonusGameClockBasis } from '../game/bonusGameTiming.js';
+import {
+  deriveBonusGameClockBasis,
+  deriveBonusGameClockEpoch,
+  futureBonusPeriodDurationMs,
+} from '../game/bonusGameTiming.js';
 import type { SpeedOverrides } from '../game/loop.js';
 import type { GoalieOptions } from '../game/renderer/Goalie.js';
 import { useBonusGameStore } from '../stores/bonusGameStore.js';
 import { formatRussianCount } from '../lib/russianPlural.js';
+import {
+  qualificationDescription,
+  qualificationProgress,
+} from '../game/bonusGameQualification.js';
 
 const BONUS_GAME_GOALIE_OPTIONS: Omit<GoalieOptions, 'idleSpriteUrl' | 'saveSpriteUrl'> = {
   visualYScale: PERSPECTIVE_COURT_VISUAL_Y_SCALE,
@@ -149,6 +163,94 @@ function BonusBreak({
   );
 }
 
+function BonusPreview({
+  attempt,
+  busy,
+  onAcknowledge,
+}: {
+  attempt: BonusGameAttempt;
+  busy: boolean;
+  onAcknowledge: (dismissFuture: boolean) => void | Promise<unknown>;
+}): JSX.Element {
+  const [dismissFuture, setDismissFuture] = useState(false);
+  return (
+    <AccessibleModal
+      title={attempt.rules.preview_title}
+      closeBlocked={true}
+      onClose={() => undefined}
+      cardClassName="bonus-game-preview-modal"
+    >
+      <img
+        className="bonus-game-preview-modal__artwork"
+        src={attempt.rules.preview_artwork_url}
+        alt={`Локация «${attempt.arena.title}» и её вратарь`}
+      />
+      <p className="modal-copy bonus-game-preview-modal__story">{attempt.rules.preview_story}</p>
+      <p className="bonus-game-preview-modal__condition">
+        {qualificationDescription(attempt.rules.qualification_rules)}
+      </p>
+      <label className="bonus-game-preview-modal__checkbox">
+        <input
+          type="checkbox"
+          checked={dismissFuture}
+          disabled={busy}
+          onChange={(event) => setDismissFuture(event.target.checked)}
+        />
+        <span>Больше не показывать</span>
+      </label>
+      <div className="modal-actions">
+        <button
+          type="button"
+          className="modal-primary btn btn--cta"
+          disabled={busy}
+          onClick={() => void onAcknowledge(dismissFuture)}
+        >
+          {busy ? 'Сохраняем…' : 'Понятно'}
+        </button>
+      </div>
+    </AccessibleModal>
+  );
+}
+
+function BonusBreakReady({
+  attempt,
+  busy,
+  onStart,
+}: {
+  attempt: BonusGameAttempt;
+  busy: boolean;
+  onStart: () => void | Promise<unknown>;
+}): JSX.Element {
+  return (
+    <AccessibleModal
+      title="Перерыв окончен"
+      copy={`Период ${attempt.current_period} завершён. Можно начинать период ${attempt.current_period + 1}.`}
+      closeBlocked={true}
+      onClose={() => undefined}
+      cardClassName="bonus-game-break-modal"
+    >
+      <p className="bonus-game-break-progress">
+        {qualificationProgress(attempt.rules.qualification_rules, {
+          goals: attempt.goals,
+          shots: attempt.shots_taken,
+          currentStreak: attempt.current_goal_streak,
+          bestStreak: attempt.best_goal_streak,
+        })}
+      </p>
+      <div className="modal-actions">
+        <button
+          type="button"
+          className="modal-primary btn btn--cta"
+          disabled={busy}
+          onClick={() => void onStart()}
+        >
+          {busy ? 'Начинаем…' : 'Начать следующий период'}
+        </button>
+      </div>
+    </AccessibleModal>
+  );
+}
+
 function BonusResult({
   kind,
   attempt,
@@ -244,13 +346,88 @@ function goalieConfigFor(attempt: BonusGameAttempt, rule: BonusPeriodRule): Goal
   };
 }
 
-function speedOverridesFor(rule: BonusPeriodRule): SpeedOverrides {
+function speedOverridesFor(
+  rule: BonusPeriodRule,
+  loadout: BonusGameAttempt['current_loadout'],
+): SpeedOverrides {
+  const effects = loadout?.items.map((item) => item.effects) ?? [];
+  const sum = (key: keyof (typeof effects)[number]): number =>
+    effects.reduce((total, effect) => total + effect[key], 0);
   return {
-    goalFreq: rule.goal_frequency,
-    goalieFreq: rule.goalie_frequency,
-    shooterFreq: rule.shooter_frequency,
-    puckSpeed: rule.puck_speed_per_ms,
+    goalFreq: Math.max(0.1, rule.goal_frequency + sum('goalFrequencyDelta')),
+    goalieFreq: Math.max(0.1, rule.goalie_frequency + sum('goalieFrequencyDelta')),
+    shooterFreq: Math.max(0.1, rule.shooter_frequency + sum('shooterFrequencyDelta')),
+    puckSpeed: Math.max(0.2, rule.puck_speed_per_ms + sum('puckSpeedDelta')),
   };
+}
+
+function BonusInventoryPicker({
+  selection,
+  onChange,
+  onCancel,
+  onStart,
+  busy,
+}: {
+  selection: BonusPeriodLoadoutSelection;
+  onChange: (selection: BonusPeriodLoadoutSelection) => void;
+  onCancel: () => void;
+  onStart: () => void | Promise<unknown>;
+  busy: boolean;
+}): JSX.Element {
+  const inventory = useQuery({ queryKey: ['inventory', 'me'], queryFn: fetchMyInventory });
+  const kinds: Array<{ kind: InventoryEquipmentKind; label: string }> = [
+    { kind: 'stick', label: 'Клюшка' },
+    { kind: 'skates', label: 'Коньки' },
+    { kind: 'nutrition', label: 'Питание' },
+  ];
+  return (
+    <AccessibleModal
+      title="Инвентарь на период"
+      copy="Выбор необязателен. Пустой слот использует базовые параметры."
+      closeBlocked={busy}
+      onClose={onCancel}
+      cardClassName="bonus-game-inventory-modal"
+    >
+      {inventory.isLoading ? <p className="modal-copy">Загружаем инвентарь…</p> : null}
+      {inventory.isError ? <p className="modal-copy" role="alert">Не удалось загрузить инвентарь.</p> : null}
+      <div className="bonus-game-inventory-fields">
+        {kinds.map(({ kind, label }) => (
+          <label key={kind}>
+            <span>{label}</span>
+            <select
+              value={selection[kind] ?? ''}
+              disabled={busy || inventory.isLoading}
+              onChange={(event) =>
+                onChange({ ...selection, [kind]: event.target.value || null })
+              }
+            >
+              <option value="">Без предмета</option>
+              {(inventory.data?.items[kind] ?? [])
+                .filter((item) => item.chargesAvailable > 0)
+                .map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.title} · {item.chargesAvailable}
+                  </option>
+                ))}
+            </select>
+          </label>
+        ))}
+      </div>
+      <div className="modal-actions">
+        <button type="button" className="btn btn--ghost" disabled={busy} onClick={onCancel}>
+          Назад
+        </button>
+        <button
+          type="button"
+          className="modal-primary btn btn--cta"
+          disabled={busy || inventory.isLoading || inventory.isError}
+          onClick={() => void onStart()}
+        >
+          {busy ? 'Начинаем…' : 'Начать период'}
+        </button>
+      </div>
+    </AccessibleModal>
+  );
 }
 
 export function BonusGamePlayScreen(): JSX.Element {
@@ -268,10 +445,13 @@ export function BonusGamePlayScreen(): JSX.Element {
   const loadAttempt = useBonusGameStore((state) => state.loadAttempt);
   const applyPendingShot = useBonusGameStore((state) => state.applyPendingShot);
   const startPeriod = useBonusGameStore((state) => state.startPeriod);
+  const acknowledgePreview = useBonusGameStore((state) => state.acknowledgePreview);
   const optimisticAddShot = useBonusGameStore((state) => state.optimisticAddShot);
   const submitShot = useBonusGameStore((state) => state.submitShot);
   const abandon = useBonusGameStore((state) => state.abandon);
   const [confirmAbandon, setConfirmAbandon] = useState(false);
+  const [inventoryOpen, setInventoryOpen] = useState(false);
+  const [inventorySelection, setInventorySelection] = useState<BonusPeriodLoadoutSelection>({});
   const [isConfirmingAbandon, setIsConfirmingAbandon] = useState(false);
   const abandonRequestRef = useRef(false);
   const loadedRouteRef = useRef<string | null>(null);
@@ -325,8 +505,17 @@ export function BonusGamePlayScreen(): JSX.Element {
   }, [attempt, loadAttempt]);
   const handleStartPeriod = useCallback(async (): Promise<BonusGameAttempt | null> => {
     if (inFlight) return null;
-    return startPeriod();
-  }, [inFlight, startPeriod]);
+    const result = await startPeriod(attempt?.rules.use_inventory ? inventorySelection : undefined);
+    if (result !== null) setInventoryOpen(false);
+    return result;
+  }, [attempt?.rules.use_inventory, inFlight, inventorySelection, startPeriod]);
+  const requestStartPeriod = useCallback(async (): Promise<BonusGameAttempt | null> => {
+    if (attempt?.rules.use_inventory) {
+      setInventoryOpen(true);
+      return null;
+    }
+    return await handleStartPeriod();
+  }, [attempt?.rules.use_inventory, handleStartPeriod]);
 
   const confirmAndAbandon = useCallback(async (): Promise<void> => {
     if (abandonRequestRef.current) return;
@@ -386,6 +575,8 @@ export function BonusGamePlayScreen(): JSX.Element {
   const isBreak = !isTerminal && attempt.state === 'break_active';
   const isIdle = attempt.state === 'idle';
   const isPeriodActive = attempt.state === 'period_active';
+  const isBetweenPeriods = isIdle && attempt.current_period > 0;
+  const previewRequired = !isTerminal && attempt.preview_required;
   const periodNumber =
     isIdle || isBreak
       ? Math.min(attempt.current_period + 1, attempt.rules.total_periods)
@@ -401,27 +592,34 @@ export function BonusGamePlayScreen(): JSX.Element {
     ? Date.now() +
       authoritativeRemainingMs(attempt.period_ends_at, attempt.server_now, receivedAtPerformanceMs)
     : undefined;
+  const scoreboardEndsAt =
+    localPeriodEndsAt === undefined
+      ? undefined
+      : localPeriodEndsAt + futureBonusPeriodDurationMs(attempt);
+  const idleTimerMs =
+    attempt.rules.skill_code === 'speed'
+      ? futureBonusPeriodDurationMs(attempt)
+      : rule.duration_ms;
   const goalieConfig = goalieConfigFor(attempt, rule);
-  const speedOverrides = speedOverridesFor(rule);
+  const speedOverrides = speedOverridesFor(rule, attempt.current_loadout);
+  const stickItem = attempt.current_loadout?.items.find((item) => item.kind === 'stick');
   const preloadAssets = [
     attempt.arena.artwork_url,
     attempt.goalkeeper_ready_url,
     attempt.goalkeeper_save_url,
   ];
-  const clockRebaseKey = isPeriodActive
-    ? `${attempt.period_started_at}:${attempt.server_now}:${receivedAtPerformanceMs ?? ''}`
-    : isTerminal
-      ? `terminal:${attempt.id}:${attempt.closed_at ?? attempt.status}`
-      : `idle:${periodNumber}`;
+  const clockRebaseKey = deriveBonusGameClockEpoch(attempt);
   const terminalShotsTotal = attempt.rules.periods.reduce(
-    (total, period) => total + period.shots_limit,
+    (total, period) => total + (period.shots_limit ?? 0),
     0,
   );
 
   return (
     <>
       <PlayView
-        suppressedByModal={isIdle || isBreak || isTerminal}
+        suppressedByModal={
+          inventoryOpen || previewRequired || isBetweenPeriods || isBreak || isTerminal
+        }
         showIceCar={isBreak || isTerminal}
         onBack={() => setConfirmAbandon(true)}
         backLabel="К бонусным играм"
@@ -438,11 +636,20 @@ export function BonusGamePlayScreen(): JSX.Element {
         periodNumber={periodNumber}
         periodsTotal={attempt.rules.total_periods}
         speedOverrides={speedOverrides}
-        stickEffects={STICK_NEUTRAL}
+        stickEffects={{
+          ...STICK_NEUTRAL,
+          shotZoneMultiplier: stickItem?.effects.shotZoneMultiplier ?? 1,
+        }}
         goals={attempt.goals}
         shots={isTerminal ? attempt.shots_taken : attempt.current_period_shots_taken}
-        shotsTotal={isTerminal ? terminalShotsTotal : rule.shots_limit}
-        timer={isTerminal ? '00:00' : isIdle ? formatCountdown(rule.duration_ms) : undefined}
+        shotsTotal={isTerminal ? terminalShotsTotal : (rule.shots_limit ?? undefined)}
+        scoreboardNotice={qualificationProgress(attempt.rules.qualification_rules, {
+          goals: attempt.goals,
+          shots: attempt.shots_taken,
+          currentStreak: attempt.current_goal_streak,
+          bestStreak: attempt.best_goal_streak,
+        })}
+        timer={isTerminal ? '00:00' : isIdle ? formatCountdown(idleTimerMs) : undefined}
         shotButtonLabel={
           needsReconcile
             ? 'ПРОВЕРЯЕМ...'
@@ -457,7 +664,9 @@ export function BonusGamePlayScreen(): JSX.Element {
                   : undefined
         }
         primaryActionBlocked={needsReconcile}
-        inactiveAction={isIdle ? handleStartPeriod : undefined}
+        inactiveAction={
+          isIdle && !isBetweenPeriods && !previewRequired ? requestStartPeriod : undefined
+        }
         entranceBeforeInactiveAction={true}
         sessionStartedAt={attempt.period_started_at}
         serverNow={attempt.server_now}
@@ -466,6 +675,7 @@ export function BonusGamePlayScreen(): JSX.Element {
         initialShooterElapsedMs={clockBasis.shooterElapsedMs}
         clockRebaseKey={clockRebaseKey}
         periodEndsAt={localPeriodEndsAt}
+        scoreboardEndsAt={scoreboardEndsAt}
         onTimerExpired={isPeriodActive ? refreshAttempt : undefined}
         optimisticAddShot={optimisticAddShot}
         submitShot={async ({ shotIndex, input, claimedResult }) => {
@@ -511,11 +721,29 @@ export function BonusGamePlayScreen(): JSX.Element {
         <BonusResult kind={terminalKind} attempt={attempt} onCatalog={goToCatalog} />
       ) : null}
 
+      {previewRequired ? (
+        <BonusPreview attempt={attempt} busy={inFlight} onAcknowledge={acknowledgePreview} />
+      ) : null}
+
       {isBreak ? (
         <BonusBreak
           attempt={attempt}
           receivedAtPerformanceMs={receivedAtPerformanceMs}
           onElapsed={refreshAttempt}
+        />
+      ) : null}
+
+      {isBetweenPeriods && !previewRequired ? (
+        <BonusBreakReady attempt={attempt} busy={inFlight} onStart={requestStartPeriod} />
+      ) : null}
+
+      {inventoryOpen && !previewRequired && !isBreak && !isTerminal ? (
+        <BonusInventoryPicker
+          selection={inventorySelection}
+          onChange={setInventorySelection}
+          onCancel={() => setInventoryOpen(false)}
+          onStart={handleStartPeriod}
+          busy={inFlight}
         />
       ) : null}
 

@@ -266,12 +266,14 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     const theme = arena.rows[0]!;
     const game = await pool.query<{ id: string }>(
       `insert into bonus_game
-         (slug, title, description, sort_order, status, access_type, unlock_price_stars,
-          target_goals, total_periods, break_duration_ms, period_rules,
+         (slug, title, skill_code, description, sort_order, status, access_type, unlock_price_stars,
+          target_goals, qualification_rules, total_periods, break_duration_ms, period_rules,
           reward_coins, reward_stars, reward_experience, arena_theme_id,
           goalkeeper_ready_url, goalkeeper_save_url)
-       values ($1, $2, '', 1, 'draft', 'free', 0, 1, 1, 0, '[]'::jsonb,
-               0, 0, 0, $3, '/goalies/ready.webp', '/goalies/save.webp')
+       values ($1, $2, 'accuracy', '', 1, 'draft', 'free', 0, 1,
+               '{"type":"goals_from_shots","targetGoals":1,"shotsLimit":1}'::jsonb,
+               1, 0, '[]'::jsonb, 0, 0, 0, $3,
+               '/goalies/ready.webp', '/goalies/save.webp')
        returning id`,
       [`duel-${userId}-${slug}`, `Duel ${slug}`, theme.id],
     );

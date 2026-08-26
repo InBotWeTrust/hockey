@@ -92,33 +92,42 @@ describe.skipIf(!hasIntegrationEnv)('bonus game catalog and paid unlocks', () =>
     accessType = 'free',
     price = accessType === 'paid' ? 1 : 0,
     status = 'active',
+    skillCode = 'accuracy',
   }: {
     sortOrder: number;
     accessType?: 'free' | 'paid';
     price?: number;
     status?: 'draft' | 'active' | 'archived';
+    skillCode?: 'speed' | 'accuracy';
   }): Promise<TestGame> {
     gameSequence += 1;
     const slug = `bonus-${gameSequence}`;
+    const periodRule = skillCode === 'speed' ? { ...PERIOD_RULE, shotsLimit: null } : PERIOD_RULE;
+    const qualificationRules =
+      skillCode === 'speed'
+        ? { type: 'goals_in_time', targetGoals: 18, activeTimeMs: PERIOD_RULE.durationMs }
+        : { type: 'goals_from_shots', targetGoals: 18, shotsLimit: 30 };
     const game = await pool.query<{ id: string }>(
       `insert into bonus_game
-         (slug, title, description, sort_order, status, access_type, unlock_price_stars,
-          target_goals, total_periods, break_duration_ms, period_rules,
+         (slug, title, skill_code, description, sort_order, status, access_type, unlock_price_stars,
+          target_goals, qualification_rules, total_periods, break_duration_ms, period_rules,
           reward_coins, reward_stars, reward_experience, arena_theme_id,
           goalkeeper_ready_url, goalkeeper_save_url)
-       values ($1, $2, $3, $4, $5, $6, $7,
-               18, 1, 0, $8::jsonb,
-               100, 1, 50, $9, $10, $11)
+       values ($1, $2, $3, $4, $5, $6, $7, $8,
+               18, $9::jsonb, 1, 0, $10::jsonb,
+               100, 1, 50, $11, $12, $13)
        returning id`,
       [
         slug,
         `Игра ${gameSequence}`,
+        skillCode,
         `Описание ${gameSequence}`,
         sortOrder,
         status,
         accessType,
         price,
-        JSON.stringify([PERIOD_RULE]),
+        JSON.stringify(qualificationRules),
+        JSON.stringify([periodRule]),
         arenaId,
         `/goalies/${slug}-ready.webp`,
         `/goalies/${slug}-save.webp`,
@@ -221,6 +230,48 @@ describe.skipIf(!hasIntegrationEnv)('bonus game catalog and paid unlocks', () =>
       [userId],
     );
     expect(events.rows[0]?.count).toBe(0);
+  });
+
+  it('opens and sells the speed and accuracy chains independently', async () => {
+    const userId = await createUser({ stars: 10 });
+    const accuracyFirst = await createGame({ sortOrder: 1, skillCode: 'accuracy' });
+    const accuracyPaid = await createGame({
+      sortOrder: 2,
+      skillCode: 'accuracy',
+      accessType: 'paid',
+      price: 2,
+    });
+    const speedFirst = await createGame({ sortOrder: 1, skillCode: 'speed' });
+    const speedPaid = await createGame({
+      sortOrder: 2,
+      skillCode: 'speed',
+      accessType: 'paid',
+      price: 3,
+    });
+    await completeGame(userId, speedFirst);
+
+    let cards = await listBonusGameCards(pool, userId);
+    expect(Object.fromEntries(cards.map((card) => [card.id, card.state]))).toEqual({
+      [accuracyFirst.id]: 'available',
+      [accuracyPaid.id]: 'sequence_locked',
+      [speedFirst.id]: 'completed',
+      [speedPaid.id]: 'purchase_required',
+    });
+
+    await purchaseBonusGame(pool, {
+      userId,
+      gameId: speedPaid.id,
+      expectedPriceStars: 3,
+      now: NOW,
+    });
+    await completeGame(userId, accuracyFirst);
+    cards = await listBonusGameCards(pool, userId);
+    expect(Object.fromEntries(cards.map((card) => [card.id, card.state]))).toEqual({
+      [accuracyFirst.id]: 'completed',
+      [accuracyPaid.id]: 'purchase_required',
+      [speedFirst.id]: 'completed',
+      [speedPaid.id]: 'available',
+    });
   });
 
   it('derives paid, available, active, and completed states on the server', async () => {
