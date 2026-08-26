@@ -96,8 +96,20 @@ describe('player tournament catalog', () => {
     };
     const client = {
       query: async (sql: string, values?: unknown[]) => {
-        if (sql.includes('select status, current_revision')) {
-          return { rows: [{ status: 'draft', current_revision: 1 }] };
+        if (sql.includes('select t.status, t.current_revision')) {
+          return {
+            rows: [
+              {
+                status: 'draft',
+                current_revision: 1,
+                rules_snapshot: tournamentRow.rules_snapshot,
+                participant_count: 0,
+              },
+            ],
+          };
+        }
+        if (sql.includes('insert into tournament_revision')) {
+          return { rows: [{ id: 'revision-2' }], rowCount: 1 };
         }
         if (sql.includes('update tournament')) {
           updateSql = sql;
@@ -163,5 +175,8 @@ describe('player tournament catalog', () => {
       { userId: 'user-1', displayName: 'Первый', avatarUrl: '/first.webp', seed: 1 },
     ]);
     expect(executedSql).toContain("p.state = 'approved'");
+    expect(executedSql).toContain("when u.display_source = 'vk' then u.vk_avatar_url");
+    expect(executedSql).toContain("when u.display_source = 'telegram' then u.tg_avatar_url");
+    expect(executedSql).toContain('u.custom_avatar_url');
   });
 });

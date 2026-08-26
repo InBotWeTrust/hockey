@@ -1,6 +1,6 @@
 import type { Pool, PoolClient } from 'pg';
 import { AppError } from '../plugins/errors.js';
-import { resolvePlayoffPlacements } from './rewards.js';
+import { grantTournamentStageRewardsWithClient, resolvePlayoffPlacements } from './rewards.js';
 import { cancelTournamentDuel } from '../duel/amateur/lifecycle.js';
 import { enqueueTournamentAudiencePush, enqueueTournamentPush } from '../push/tournament.js';
 import { decideTournamentApplication, evaluateTournamentEligibility } from './registration.js';
@@ -329,24 +329,58 @@ export async function updateTournamentDraft(
 ) {
   return inTransaction(pool, async (client) => {
     await lockTournament(client, input.tournamentId);
-    const current = await client.query<{ status: TournamentStatus; current_revision: number }>(
-      `select status, current_revision from tournament where id = $1 for update`,
+    const current = await client.query<{
+      status: TournamentStatus;
+      current_revision: number;
+      rules_snapshot: TournamentRulesSnapshot;
+      participant_count: number;
+    }>(
+      `select t.status, t.current_revision, revision.rules_snapshot,
+              (select count(*)::int from tournament_participant participant
+                where participant.tournament_id = t.id
+                  and participant.state in ('invited', 'applied', 'approved')) as participant_count
+         from tournament t
+         join tournament_revision revision
+           on revision.tournament_id = t.id and revision.revision = t.current_revision
+        where t.id = $1 for update of t`,
       [input.tournamentId],
     );
     const tournament = current.rows[0];
     if (!tournament) throw new AppError('not_found', 'tournament not found', 404);
-    if (tournament.status !== 'draft') {
-      throw new AppError('conflict', 'published tournament rules are immutable', 409);
+    const updatesPublishedRules = ['registration', 'registration_blocked'].includes(
+      tournament.status,
+    );
+    if (tournament.status !== 'draft' && !updatesPublishedRules) {
+      throw new AppError('conflict', 'tournament format can no longer be edited', 409);
     }
     if (Number(tournament.current_revision) !== input.expectedRevision) {
       throw new AppError('revision_conflict', 'tournament was changed in another tab', 409);
     }
+    if (Number(tournament.participant_count) > 0) {
+      const currentConfig = tournament.rules_snapshot.config;
+      if (input.rules.config.entryFeeCoins !== currentConfig.entryFeeCoins) {
+        throw new AppError('conflict', 'registration price cannot change after applications', 409);
+      }
+      if (input.rules.config.registrationMode !== currentConfig.registrationMode) {
+        throw new AppError('conflict', 'registration mode cannot change after applications', 409);
+      }
+      if (input.rules.config.participantLimit < Number(tournament.participant_count)) {
+        throw new AppError('conflict', 'participant limit is below current applications', 409);
+      }
+    }
     const revision = input.expectedRevision + 1;
-    await client.query(
+    const insertedRevision = await client.query<{ id: string }>(
       `insert into tournament_revision
-         (tournament_id, revision, rules_snapshot, created_by)
-       values ($1, $2, $3, $4)`,
-      [input.tournamentId, revision, JSON.stringify(input.rules), input.updatedBy],
+         (tournament_id, revision, rules_snapshot, is_published, published_at, created_by)
+       values ($1, $2, $3, $4, case when $4 then now() else null end, $5)
+       returning id`,
+      [
+        input.tournamentId,
+        revision,
+        JSON.stringify(input.rules),
+        updatesPublishedRules,
+        input.updatedBy,
+      ],
     );
     const updatesImage = Object.prototype.hasOwnProperty.call(input, 'imageUrl');
     await client.query(
@@ -356,6 +390,7 @@ export async function updateTournamentDraft(
               regular_source = $6, visibility = $7,
               current_revision = $8, registration_opens_at = $9,
               registration_closes_at = $10, starts_at = $11, updated_by = $12,
+              published_revision_id = case when $13::boolean then $14 else published_revision_id end,
               updated_at = now()
         where id = $1`,
       [
@@ -371,6 +406,8 @@ export async function updateTournamentDraft(
         input.registrationClosesAt,
         input.startsAt,
         input.updatedBy,
+        updatesPublishedRules,
+        insertedRevision.rows[0]!.id,
       ],
     );
     const updated = await client.query<TournamentRow>(`${tournamentSelect} where t.id = $1`, [
@@ -1955,6 +1992,7 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
         fixtureNumber += 1;
       }
     }
+    await grantTournamentStageRewardsWithClient(client, tournamentId, 'regular');
     await client.query(
       `update tournament set status = 'playoff', updated_at = now() where id = $1`,
       [tournamentId],
@@ -2014,7 +2052,17 @@ export async function duplicateTournamentDraft(
 
 export async function listTournamentParticipants(pool: Pool, tournamentId: string) {
   const { rows } = await pool.query(
-    `select p.id, p.user_id, u.display_name, u.avatar_url, p.state, p.seed,
+    `select p.id, p.user_id, u.display_name,
+            coalesce(
+              case
+                when u.display_source = 'custom' then u.custom_avatar_url
+                when u.display_source = 'vk' then u.vk_avatar_url
+                when u.display_source = 'telegram' then u.tg_avatar_url
+                else u.avatar_url
+              end,
+              u.avatar_url
+            ) as avatar_url,
+            p.state, p.seed,
             p.entry_fee_coins, p.entry_fee_state, p.joined_at, p.withdrawn_at,
             p.created_at, p.updated_at
        from tournament_participant p join users u on u.id = p.user_id
@@ -2031,7 +2079,17 @@ export async function listPlayerTournamentParticipants(pool: Pool, tournamentId:
     avatar_url: string | null;
     seed: number | null;
   }>(
-    `select p.user_id, u.display_name, u.avatar_url, p.seed
+    `select p.user_id, u.display_name,
+            coalesce(
+              case
+                when u.display_source = 'custom' then u.custom_avatar_url
+                when u.display_source = 'vk' then u.vk_avatar_url
+                when u.display_source = 'telegram' then u.tg_avatar_url
+                else u.avatar_url
+              end,
+              u.avatar_url
+            ) as avatar_url,
+            p.seed
        from tournament_participant p
        join users u on u.id = p.user_id
       where p.tournament_id = $1 and p.state = 'approved'

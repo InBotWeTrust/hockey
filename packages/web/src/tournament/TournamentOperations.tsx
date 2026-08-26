@@ -1,24 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import {
-  Award,
-  Archive,
-  ArrowLeft,
-  Ban,
-  CalendarClock,
-  CalendarPlus,
-  Check,
-  Copy,
-  Megaphone,
-  Pause,
-  Pencil,
-  Play,
-  Trash2,
-  Trophy,
-  UserPlus,
-  UserX,
-  X,
-} from 'lucide-react';
+import { ArrowLeft, X } from 'lucide-react';
+import { AccessibleModal } from '../components/AccessibleModal.js';
 import { GlassSelect } from '../components/GlassSelect.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
 import {
@@ -36,7 +19,6 @@ import {
   fetchAdminTournamentStandings,
   fetchAdminTournamentUsers,
   generateAdminTournamentSchedule,
-  grantAdminTournamentRewards,
   inviteAdminTournamentParticipant,
   pauseAdminTournament,
   previewAdminTournamentAudience,
@@ -48,6 +30,7 @@ import {
   startAdminTournamentPlayoffs,
   type AdminTournament,
   type AdminTournamentFixture,
+  type AdminTournamentParticipant,
 } from './adminApi.js';
 import { participantStateLabel, paymentStateLabel, tournamentStatusLabel } from './labels.js';
 
@@ -145,6 +128,10 @@ export function TournamentOperations({
   const [dispatchBody, setDispatchBody] = useState('');
   const [inviteSearch, setInviteSearch] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const [selectedParticipant, setSelectedParticipant] = useState<AdminTournamentParticipant | null>(
+    null,
+  );
   const participantsKey = ['admin', 'tournaments', tournament.id, 'participants'] as const;
   const scheduleKey = ['admin', 'tournaments', tournament.id, 'schedule'] as const;
   const standingsKey = ['admin', 'tournaments', tournament.id, 'standings'] as const;
@@ -216,16 +203,18 @@ export function TournamentOperations({
   const approve = useMutation({
     mutationFn: (participantId: string) =>
       approveAdminTournamentParticipant(tournament.id, participantId),
-    onSuccess: () => client.invalidateQueries({ queryKey: participantsKey }),
+    onSuccess: () => {
+      setSelectedParticipant(null);
+      return client.invalidateQueries({ queryKey: participantsKey });
+    },
   });
   const disqualify = useMutation({
     mutationFn: (participantId: string) =>
       disqualifyAdminTournamentParticipant(tournament.id, participantId, reason),
-    onSuccess: () => client.invalidateQueries({ queryKey: participantsKey }),
-  });
-  const reward = useMutation({
-    mutationFn: (stage: 'regular' | 'playoff') => grantAdminTournamentRewards(tournament.id, stage),
-    onSuccess: refreshOperations,
+    onSuccess: () => {
+      setSelectedParticipant(null);
+      return client.invalidateQueries({ queryKey: participantsKey });
+    },
   });
   const reschedule = useMutation({
     mutationFn: () =>
@@ -313,6 +302,15 @@ export function TournamentOperations({
     },
   });
 
+  const panelIsEmpty =
+    (tab === 'schedule' &&
+      !schedule.isLoading &&
+      !schedule.isError &&
+      schedule.data?.fixtures.length === 0) ||
+    (tab === 'standings' && standings.data?.standings.length === 0) ||
+    (tab === 'bracket' && bracket.data?.series.length === 0);
+  const canEditRules = ['draft', 'registration', 'registration_blocked'].includes(status);
+
   return (
     <section className="tournament-operations">
       <div className="tournament-operations__header">
@@ -330,142 +328,18 @@ export function TournamentOperations({
           <h2>{tournament.title}</h2>
         </div>
         <div className="tournament-operations__actions">
-          {status === 'draft' && (
-            <button
-              type="button"
-              className="icon-btn"
-              aria-label="Редактировать"
-              title="Редактировать"
-              onClick={onEdit}
-            >
-              <Pencil size={16} />
+          {canEditRules && (
+            <button type="button" className="admin-compact-btn" onClick={onEdit}>
+              Редактировать
             </button>
           )}
           <button
             type="button"
-            className="icon-btn"
-            aria-label="Дублировать"
-            title="Дублировать"
-            disabled={duplicate.isPending}
-            onClick={() => duplicate.mutate()}
+            className="admin-compact-btn tournament-operations__actions-trigger"
+            onClick={() => setActionsOpen(true)}
           >
-            <Copy size={16} />
+            Действия
           </button>
-          {status === 'draft' && (
-            <button
-              type="button"
-              className="icon-btn icon-btn--dark"
-              aria-label="Опубликовать набор"
-              title="Опубликовать набор"
-              onClick={() => lifecycle.mutate('publish')}
-            >
-              <Megaphone size={16} />
-            </button>
-          )}
-          {['registration', 'registration_blocked'].includes(status) && (
-            <button
-              type="button"
-              className="icon-btn icon-btn--dark"
-              aria-label="Сгенерировать календарь"
-              title="Сгенерировать календарь"
-              onClick={() => lifecycle.mutate('generate')}
-            >
-              <CalendarPlus size={16} />
-            </button>
-          )}
-          {status === 'scheduling' && (
-            <button
-              type="button"
-              className="icon-btn icon-btn--dark"
-              aria-label="Опубликовать календарь"
-              title="Опубликовать календарь"
-              onClick={() => lifecycle.mutate('publish_schedule')}
-            >
-              <CalendarPlus size={16} />
-            </button>
-          )}
-          {status === 'regular' && (
-            <button
-              type="button"
-              className="icon-btn icon-btn--dark"
-              aria-label="Запустить плей-офф"
-              title="Запустить плей-офф"
-              onClick={() => lifecycle.mutate('playoffs')}
-            >
-              <Trophy size={16} />
-            </button>
-          )}
-          {!['draft', 'paused', 'completed', 'cancelled', 'archived'].includes(status) && (
-            <button
-              type="button"
-              className="icon-btn"
-              aria-label="Приостановить"
-              title="Приостановить"
-              disabled={reason.length < 3 || pause.isPending}
-              onClick={() => pause.mutate()}
-            >
-              <Pause size={16} />
-            </button>
-          )}
-          {status === 'paused' && (
-            <button
-              type="button"
-              className="icon-btn icon-btn--dark"
-              aria-label="Возобновить"
-              title="Возобновить"
-              disabled={reason.length < 3 || resume.isPending}
-              onClick={() => resume.mutate()}
-            >
-              <Play size={16} />
-            </button>
-          )}
-          {!['draft', 'cancelled', 'completed', 'archived'].includes(status) && (
-            <button
-              type="button"
-              className="icon-btn tournament-icon-btn--danger"
-              aria-label="Отменить турнир"
-              title="Отменить турнир"
-              disabled={cancel.isPending}
-              onClick={() => cancel.mutate()}
-            >
-              <X size={16} />
-            </button>
-          )}
-          {['cancelled', 'completed'].includes(status) && (
-            <button
-              type="button"
-              className="icon-btn"
-              aria-label="Архивировать"
-              title="Архивировать"
-              disabled={archive.isPending}
-              onClick={() => archive.mutate()}
-            >
-              <Archive size={16} />
-            </button>
-          )}
-          {status === 'draft' && tournament.participantCount === 0 && !confirmDelete && (
-            <button
-              type="button"
-              className="icon-btn tournament-icon-btn--danger"
-              aria-label="Удалить черновик"
-              title="Удалить черновик"
-              onClick={() => setConfirmDelete(true)}
-            >
-              <Trash2 size={16} />
-            </button>
-          )}
-          {status === 'draft' && tournament.participantCount === 0 && confirmDelete && (
-            <button
-              type="button"
-              className="icon-btn tournament-icon-btn--danger"
-              aria-label="Подтвердить удаление"
-              title="Подтвердить удаление"
-              disabled={removeDraft.isPending}
-              onClick={() => removeDraft.mutate()}
-            >
-              <Check size={16} />
-            </button>
-          )}
         </div>
       </div>
       <SegmentedTabs
@@ -475,7 +349,11 @@ export function TournamentOperations({
         onChange={setTab}
         scrollable
       />
-      <div className="glass tournament-operations__panel">
+      <div
+        className={
+          panelIsEmpty ? 'tournament-operations__empty-panel' : 'glass tournament-operations__panel'
+        }
+      >
         {tab === 'participants' && (
           <>
             <label className="tournament-operations__field">
@@ -512,7 +390,7 @@ export function TournamentOperations({
                           <span aria-hidden="true">{user.displayName.slice(0, 1)}</span>
                         )}
                         <strong>{user.displayName}</strong>
-                        <UserPlus size={15} />
+                        <span>Пригласить</span>
                       </button>
                     ))}
                     {invitedUsers.isSuccess && invitedUsers.data.users.length === 0 && (
@@ -523,7 +401,13 @@ export function TournamentOperations({
               </div>
             )}
             {participants.data?.participants.map((participant) => (
-              <div key={participant.id} className="tournament-participant-admin-row">
+              <button
+                key={participant.id}
+                type="button"
+                className="tournament-participant-admin-row"
+                aria-label={`Управление: ${participant.display_name}`}
+                onClick={() => setSelectedParticipant(participant)}
+              >
                 <div className="tournament-participant-admin-row__identity">
                   <strong>{participant.display_name}</strong>
                   <span>
@@ -534,31 +418,8 @@ export function TournamentOperations({
                     )}
                   </span>
                 </div>
-                <div className="tournament-participant-admin-row__actions">
-                  {['applied', 'invited'].includes(participant.state) && (
-                    <button
-                      type="button"
-                      className="icon-btn icon-btn--dark"
-                      aria-label="Одобрить заявку"
-                      title="Одобрить заявку"
-                      onClick={() => approve.mutate(participant.id)}
-                    >
-                      <Check size={16} />
-                    </button>
-                  )}
-                  {participant.state === 'approved' && (
-                    <button
-                      type="button"
-                      className="icon-btn tournament-icon-btn--danger"
-                      aria-label="Дисквалифицировать"
-                      title="Дисквалифицировать"
-                      onClick={() => disqualify.mutate(participant.id)}
-                    >
-                      <Ban size={16} />
-                    </button>
-                  )}
-                </div>
-              </div>
+                <span className="tournament-participant-admin-row__manage">Управление</span>
+              </button>
             ))}
             {participants.data?.participants.length === 0 && (
               <div className="tournament-admin-empty">Заявок пока нет.</div>
@@ -581,8 +442,7 @@ export function TournamentOperations({
               >
                 №{fixture.fixtureNumber}: {fixture.home?.name ?? 'Соперник не определён'} —{' '}
                 {fixture.away?.name ?? 'Соперник не определён'} ·{' '}
-                {readableDate(fixture.scheduledStartsAt)} ·{' '}
-                {fixtureStatusLabel(fixture.status)}
+                {readableDate(fixture.scheduledStartsAt)} · {fixtureStatusLabel(fixture.status)}
               </button>
             ))}
             {selectedFixture !== null && (
@@ -601,13 +461,11 @@ export function TournamentOperations({
                 <input value={reason} onChange={(event) => setReason(event.target.value)} />
                 <button
                   type="button"
-                  className="icon-btn icon-btn--dark"
-                  aria-label="Перенести матч"
-                  title="Перенести матч"
+                  className="admin-compact-btn"
                   disabled={!startsAt || !endsAt || reason.length < 3 || reschedule.isPending}
                   onClick={() => reschedule.mutate()}
                 >
-                  <CalendarClock size={16} />
+                  Перенести матч
                 </button>
                 <GlassSelect
                   ariaLabel="Неявка"
@@ -621,13 +479,11 @@ export function TournamentOperations({
                 />
                 <button
                   type="button"
-                  className="icon-btn tournament-icon-btn--danger"
-                  aria-label="Зафиксировать неявку"
-                  title="Зафиксировать неявку"
+                  className="admin-compact-btn admin-compact-btn--danger"
                   disabled={reason.length < 3 || noShow.isPending}
                   onClick={() => noShow.mutate()}
                 >
-                  <UserX size={16} />
+                  Зафиксировать неявку
                 </button>
               </div>
             )}
@@ -654,33 +510,16 @@ export function TournamentOperations({
             <div className="tournament-admin-empty">Сетка ещё не создана.</div>
           ))}
         {tab === 'rewards' && (
-          <>
-            <div className="tournament-reward-actions">
-              <button
-                type="button"
-                className="icon-btn icon-btn--dark"
-                aria-label="Выдать награды регулярки"
-                title="Выдать награды регулярки"
-                disabled={reward.isPending}
-                onClick={() => reward.mutate('regular')}
-              >
-                <Award size={16} />
-              </button>
-              <button
-                type="button"
-                className="icon-btn icon-btn--dark"
-                aria-label="Выдать награды плей-офф"
-                title="Выдать награды плей-офф"
-                disabled={reward.isPending}
-                onClick={() => reward.mutate('playoff')}
-              >
-                <Trophy size={16} />
-              </button>
-            </div>
-            <div className="tournament-operations__hint">
-              Можно запускать повторно: уже выданные награды не продублируются.
-            </div>
-          </>
+          <div className="tournament-reward-status">
+            <strong>Награды выдаются автоматически.</strong>
+            <span>За регулярный чемпионат — при переходе в плей-офф.</span>
+            <span>За плей-офф — после финала и серии за третье место.</span>
+            <span>
+              {status === 'completed'
+                ? 'Турнир завершён, награды обработаны.'
+                : 'Сейчас система ждёт завершения соответствующего этапа.'}
+            </span>
+          </div>
         )}
         {tab === 'dispatches' && (
           <>
@@ -719,7 +558,10 @@ export function TournamentOperations({
                 className="tournament-dispatch-message"
                 placeholder="Напишите сообщение участникам"
                 value={dispatchBody}
-                onChange={(event) => setDispatchBody(event.target.value)}
+                onChange={(event) => {
+                  dispatch.reset();
+                  setDispatchBody(event.target.value);
+                }}
               />
             </label>
             <button
@@ -730,6 +572,21 @@ export function TournamentOperations({
             >
               Отправить рассылку
             </button>
+            {dispatch.isError && (
+              <div
+                className="tournament-dispatch-feedback tournament-dispatch-feedback--error"
+                role="alert"
+              >
+                Не удалось отправить рассылку. Попробуйте ещё раз.
+              </div>
+            )}
+            {dispatch.isSuccess && (
+              <div className="tournament-dispatch-feedback" role="status">
+                {dispatch.data.failed === 0
+                  ? `Рассылка отправлена: ${dispatch.data.delivered} из ${dispatch.data.recipients}.`
+                  : `Доставлено ${dispatch.data.delivered} из ${dispatch.data.recipients}. Не удалось отправить: ${dispatch.data.failed}.`}
+              </div>
+            )}
             {dispatches.data?.dispatches.map((item, index) => (
               <div className="tournament-dispatch-history-row" key={String(item.id ?? index)}>
                 {dispatchKindLabel(item.kind)} · {dispatchStatusLabel(item.status)} · доставлено{' '}
@@ -739,6 +596,213 @@ export function TournamentOperations({
           </>
         )}
       </div>
+      {actionsOpen && (
+        <AccessibleModal
+          title="Действия турнира"
+          ariaLabel="Действия турнира"
+          onClose={() => setActionsOpen(false)}
+          headerAction={
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Закрыть действия турнира"
+              onClick={() => setActionsOpen(false)}
+            >
+              <X size={16} />
+            </button>
+          }
+        >
+          <div className="tournament-action-list">
+            {canEditRules && (
+              <button
+                type="button"
+                className="admin-compact-btn"
+                onClick={() => {
+                  setActionsOpen(false);
+                  onEdit();
+                }}
+              >
+                Редактировать турнир
+              </button>
+            )}
+            <button
+              type="button"
+              className="admin-compact-btn"
+              disabled={duplicate.isPending}
+              onClick={() => {
+                setActionsOpen(false);
+                duplicate.mutate();
+              }}
+            >
+              Дублировать турнир
+            </button>
+            {status === 'draft' && (
+              <button
+                type="button"
+                className="admin-compact-btn"
+                onClick={() => {
+                  setActionsOpen(false);
+                  lifecycle.mutate('publish');
+                }}
+              >
+                Открыть регистрацию
+              </button>
+            )}
+            {['registration', 'registration_blocked'].includes(status) && (
+              <button
+                type="button"
+                className="admin-compact-btn"
+                onClick={() => {
+                  setActionsOpen(false);
+                  lifecycle.mutate('generate');
+                }}
+              >
+                Создать календарь
+              </button>
+            )}
+            {status === 'scheduling' && (
+              <button
+                type="button"
+                className="admin-compact-btn"
+                onClick={() => {
+                  setActionsOpen(false);
+                  lifecycle.mutate('publish_schedule');
+                }}
+              >
+                Опубликовать календарь
+              </button>
+            )}
+            {status === 'regular' && (
+              <button
+                type="button"
+                className="admin-compact-btn"
+                onClick={() => {
+                  setActionsOpen(false);
+                  lifecycle.mutate('playoffs');
+                }}
+              >
+                Запустить плей-офф
+              </button>
+            )}
+            {!['draft', 'paused', 'completed', 'cancelled', 'archived'].includes(status) && (
+              <button
+                type="button"
+                className="admin-compact-btn"
+                disabled={reason.length < 3 || pause.isPending}
+                onClick={() => {
+                  setActionsOpen(false);
+                  pause.mutate();
+                }}
+              >
+                Приостановить турнир
+              </button>
+            )}
+            {status === 'paused' && (
+              <button
+                type="button"
+                className="admin-compact-btn"
+                disabled={reason.length < 3 || resume.isPending}
+                onClick={() => {
+                  setActionsOpen(false);
+                  resume.mutate();
+                }}
+              >
+                Возобновить турнир
+              </button>
+            )}
+            {!['draft', 'cancelled', 'completed', 'archived'].includes(status) && (
+              <button
+                type="button"
+                className="admin-compact-btn admin-compact-btn--danger"
+                disabled={cancel.isPending}
+                onClick={() => {
+                  setActionsOpen(false);
+                  cancel.mutate();
+                }}
+              >
+                Отменить турнир
+              </button>
+            )}
+            {['cancelled', 'completed'].includes(status) && (
+              <button
+                type="button"
+                className="admin-compact-btn"
+                disabled={archive.isPending}
+                onClick={() => {
+                  setActionsOpen(false);
+                  archive.mutate();
+                }}
+              >
+                Архивировать турнир
+              </button>
+            )}
+            {status === 'draft' && tournament.participantCount === 0 && (
+              <button
+                type="button"
+                className="admin-compact-btn admin-compact-btn--danger"
+                disabled={removeDraft.isPending}
+                onClick={() => {
+                  if (!confirmDelete) {
+                    setConfirmDelete(true);
+                    return;
+                  }
+                  setActionsOpen(false);
+                  removeDraft.mutate();
+                }}
+              >
+                {confirmDelete ? 'Подтвердить удаление черновика' : 'Удалить черновик'}
+              </button>
+            )}
+          </div>
+        </AccessibleModal>
+      )}
+      {selectedParticipant !== null && (
+        <AccessibleModal
+          title={selectedParticipant.display_name}
+          ariaLabel={selectedParticipant.display_name}
+          onClose={() => setSelectedParticipant(null)}
+          headerAction={
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Закрыть управление участником"
+              onClick={() => setSelectedParticipant(null)}
+            >
+              <X size={16} />
+            </button>
+          }
+        >
+          <div className="tournament-participant-actions">
+            <p>
+              {participantStateLabel(selectedParticipant.state)} ·{' '}
+              {participantPaymentLabel(
+                selectedParticipant.entry_fee_state,
+                selectedParticipant.entry_fee_coins,
+              )}
+            </p>
+            {['applied', 'invited'].includes(selectedParticipant.state) && (
+              <button
+                type="button"
+                className="admin-compact-btn"
+                disabled={approve.isPending}
+                onClick={() => approve.mutate(selectedParticipant.id)}
+              >
+                Одобрить заявку
+              </button>
+            )}
+            {selectedParticipant.state === 'approved' && (
+              <button
+                type="button"
+                className="admin-compact-btn admin-compact-btn--danger"
+                disabled={reason.length < 3 || disqualify.isPending}
+                onClick={() => disqualify.mutate(selectedParticipant.id)}
+              >
+                Дисквалифицировать участника
+              </button>
+            )}
+          </div>
+        </AccessibleModal>
+      )}
     </section>
   );
 }

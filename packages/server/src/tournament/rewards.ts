@@ -125,6 +125,164 @@ async function grantOne(
   return true;
 }
 
+export async function grantTournamentStageRewardsWithClient(
+  client: PoolClient,
+  tournamentId: string,
+  stage: 'regular' | 'playoff',
+) {
+  const tournament = await client.query<{
+    title: string;
+    rules_snapshot: Record<string, unknown>;
+  }>(
+    `select t.title, r.rules_snapshot from tournament t
+         join tournament_revision r on r.id = t.published_revision_id
+        where t.id = $1 for update of t`,
+    [tournamentId],
+  );
+  if (!tournament.rows[0]) throw new AppError('not_found', 'tournament not found', 404);
+  const rewardConfig = tournament.rows[0].rules_snapshot.stageRewards;
+  const rewardRecord =
+    typeof rewardConfig === 'object' && rewardConfig !== null
+      ? (rewardConfig as Record<string, unknown>)
+      : {};
+  const rewards = parseRewards(rewardRecord[stage]);
+  let placements: Array<{ place: number; participant_id: string; user_id: string }>;
+  if (stage === 'regular') {
+    const result = await client.query<{ place: number; participant_id: string; user_id: string }>(
+      `select s.rank as place, s.participant_id, p.user_id
+           from tournament_standing s join tournament_participant p on p.id = s.participant_id
+          where s.tournament_id = $1 and s.rank is not null`,
+      [tournamentId],
+    );
+    placements = result.rows;
+  } else {
+    const series = await client.query<{
+      kind: 'championship' | 'third_place';
+      higher_seed_participant_id: string;
+      lower_seed_participant_id: string;
+      winner_participant_id: string;
+      round_number: number;
+    }>(
+      `select s.kind, s.higher_seed_participant_id, s.lower_seed_participant_id,
+                s.winner_participant_id, r.number as round_number
+           from tournament_playoff_series s join tournament_round r on r.id = s.round_id
+          where s.tournament_id = $1 and s.status = 'completed'
+          order by r.number desc`,
+      [tournamentId],
+    );
+    const final = series.rows.find((row) => row.kind === 'championship');
+    if (!final) throw new AppError('conflict', 'playoff final is not complete', 409);
+    const bronze = series.rows.find((row) => row.kind === 'third_place');
+    const config = tournament.rows[0].rules_snapshot.config;
+    const playoffSize =
+      typeof config === 'object' && config !== null
+        ? Number((config as Record<string, unknown>).playoffSize ?? 0)
+        : 0;
+    if (playoffSize >= 4 && !bronze) {
+      throw new AppError('conflict', 'third-place series is not complete', 409);
+    }
+    const resolved = resolvePlayoffPlacements({
+      final: {
+        higherId: final.higher_seed_participant_id,
+        lowerId: final.lower_seed_participant_id,
+        winnerId: final.winner_participant_id,
+      },
+      ...(bronze
+        ? {
+            bronze: {
+              higherId: bronze.higher_seed_participant_id,
+              lowerId: bronze.lower_seed_participant_id,
+              winnerId: bronze.winner_participant_id,
+            },
+          }
+        : {}),
+    });
+    const users = await client.query<{ id: string; user_id: string }>(
+      `select id, user_id from tournament_participant where tournament_id = $1`,
+      [tournamentId],
+    );
+    const userByParticipant = new Map(users.rows.map((row) => [row.id, row.user_id]));
+    placements = resolved.map((row) => ({
+      place: row.place,
+      participant_id: row.participantId,
+      user_id: userByParticipant.get(row.participantId)!,
+    }));
+  }
+  let granted = 0;
+  for (const reward of rewards) {
+    const placement = placements.find((row) => Number(row.place) === reward.place);
+    if (!placement) continue;
+    if (
+      await grantOne(client, {
+        tournamentId,
+        participantId: placement.participant_id,
+        userId: placement.user_id,
+        stage,
+        place: reward.place,
+        reward,
+      })
+    ) {
+      granted += 1;
+    }
+  }
+  if (stage === 'playoff') {
+    await client.query(
+      `update tournament set status = 'completed', completed_at = now(), updated_at = now()
+          where id = $1 and status = 'playoff'`,
+      [tournamentId],
+    );
+    await enqueueTournamentAudiencePush(client, {
+      tournamentId,
+      eventType: 'tournament.completed',
+      eventKey: `${tournamentId}:completed`,
+      variables: { tournamentTitle: tournament.rows[0]!.title },
+      fallback: {
+        title: 'Турнир завершён',
+        body: `${tournament.rows[0]!.title} завершён. Проверьте итоги и награды.`,
+        url: '/?view=amateur&section=tournaments',
+      },
+    });
+  }
+  return { tournamentId, stage, granted };
+}
+
+export async function grantPlayoffRewardsIfComplete(
+  client: PoolClient,
+  tournamentId: string,
+): Promise<{ completed: boolean; granted: number }> {
+  const readiness = await client.query<{
+    playoff_size: number;
+    final_complete: boolean;
+    bronze_complete: boolean;
+  }>(
+    `select coalesce((revision.rules_snapshot->'config'->>'playoffSize')::int, 0) as playoff_size,
+            exists (
+              select 1 from tournament_playoff_series series
+               where series.tournament_id = tournament.id
+                 and series.kind = 'championship' and series.status = 'completed'
+            ) as final_complete,
+            exists (
+              select 1 from tournament_playoff_series series
+               where series.tournament_id = tournament.id
+                 and series.kind = 'third_place' and series.status = 'completed'
+            ) as bronze_complete
+       from tournament
+       join tournament_revision revision on revision.id = tournament.published_revision_id
+      where tournament.id = $1`,
+    [tournamentId],
+  );
+  const state = readiness.rows[0];
+  if (
+    state === undefined ||
+    !state.final_complete ||
+    (Number(state.playoff_size) >= 4 && !state.bronze_complete)
+  ) {
+    return { completed: false, granted: 0 };
+  }
+  const result = await grantTournamentStageRewardsWithClient(client, tournamentId, 'playoff');
+  return { completed: true, granted: result.granted };
+}
+
 export async function grantTournamentStageRewards(
   pool: Pool,
   tournamentId: string,
@@ -136,121 +294,9 @@ export async function grantTournamentStageRewards(
     await client.query(`select pg_advisory_xact_lock(hashtext($1))`, [
       `tournament:${tournamentId}`,
     ]);
-    const tournament = await client.query<{
-      title: string;
-      rules_snapshot: Record<string, unknown>;
-    }>(
-      `select t.title, r.rules_snapshot from tournament t
-         join tournament_revision r on r.id = t.published_revision_id
-        where t.id = $1 for update of t`,
-      [tournamentId],
-    );
-    if (!tournament.rows[0]) throw new AppError('not_found', 'tournament not found', 404);
-    const rewardConfig = tournament.rows[0].rules_snapshot.stageRewards;
-    const rewardRecord =
-      typeof rewardConfig === 'object' && rewardConfig !== null
-        ? (rewardConfig as Record<string, unknown>)
-        : {};
-    const rewards = parseRewards(rewardRecord[stage]);
-    let placements: Array<{ place: number; participant_id: string; user_id: string }>;
-    if (stage === 'regular') {
-      const result = await client.query<{ place: number; participant_id: string; user_id: string }>(
-        `select s.rank as place, s.participant_id, p.user_id
-           from tournament_standing s join tournament_participant p on p.id = s.participant_id
-          where s.tournament_id = $1 and s.rank is not null`,
-        [tournamentId],
-      );
-      placements = result.rows;
-    } else {
-      const series = await client.query<{
-        kind: 'championship' | 'third_place';
-        higher_seed_participant_id: string;
-        lower_seed_participant_id: string;
-        winner_participant_id: string;
-        round_number: number;
-      }>(
-        `select s.kind, s.higher_seed_participant_id, s.lower_seed_participant_id,
-                s.winner_participant_id, r.number as round_number
-           from tournament_playoff_series s join tournament_round r on r.id = s.round_id
-          where s.tournament_id = $1 and s.status = 'completed'
-          order by r.number desc`,
-        [tournamentId],
-      );
-      const final = series.rows.find((row) => row.kind === 'championship');
-      if (!final) throw new AppError('conflict', 'playoff final is not complete', 409);
-      const bronze = series.rows.find((row) => row.kind === 'third_place');
-      const config = tournament.rows[0].rules_snapshot.config;
-      const playoffSize =
-        typeof config === 'object' && config !== null
-          ? Number((config as Record<string, unknown>).playoffSize ?? 0)
-          : 0;
-      if (playoffSize >= 4 && !bronze) {
-        throw new AppError('conflict', 'third-place series is not complete', 409);
-      }
-      const resolved = resolvePlayoffPlacements({
-        final: {
-          higherId: final.higher_seed_participant_id,
-          lowerId: final.lower_seed_participant_id,
-          winnerId: final.winner_participant_id,
-        },
-        ...(bronze
-          ? {
-              bronze: {
-                higherId: bronze.higher_seed_participant_id,
-                lowerId: bronze.lower_seed_participant_id,
-                winnerId: bronze.winner_participant_id,
-              },
-            }
-          : {}),
-      });
-      const users = await client.query<{ id: string; user_id: string }>(
-        `select id, user_id from tournament_participant where tournament_id = $1`,
-        [tournamentId],
-      );
-      const userByParticipant = new Map(users.rows.map((row) => [row.id, row.user_id]));
-      placements = resolved.map((row) => ({
-        place: row.place,
-        participant_id: row.participantId,
-        user_id: userByParticipant.get(row.participantId)!,
-      }));
-    }
-    let granted = 0;
-    for (const reward of rewards) {
-      const placement = placements.find((row) => Number(row.place) === reward.place);
-      if (!placement) continue;
-      if (
-        await grantOne(client, {
-          tournamentId,
-          participantId: placement.participant_id,
-          userId: placement.user_id,
-          stage,
-          place: reward.place,
-          reward,
-        })
-      ) {
-        granted += 1;
-      }
-    }
-    if (stage === 'playoff') {
-      await client.query(
-        `update tournament set status = 'completed', completed_at = now(), updated_at = now()
-          where id = $1 and status = 'playoff'`,
-        [tournamentId],
-      );
-      await enqueueTournamentAudiencePush(client, {
-        tournamentId,
-        eventType: 'tournament.completed',
-        eventKey: `${tournamentId}:completed`,
-        variables: { tournamentTitle: tournament.rows[0]!.title },
-        fallback: {
-          title: 'Турнир завершён',
-          body: `${tournament.rows[0]!.title} завершён. Проверьте итоги и награды.`,
-          url: '/?view=amateur&section=tournaments',
-        },
-      });
-    }
+    const result = await grantTournamentStageRewardsWithClient(client, tournamentId, stage);
     await client.query('commit');
-    return { tournamentId, stage, granted };
+    return result;
   } catch (error) {
     await client.query('rollback').catch(() => undefined);
     throw error;

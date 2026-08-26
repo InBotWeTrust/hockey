@@ -19,6 +19,7 @@ import { useAuthStore } from '../auth/authStore.js';
 import { VenueBadge, type VenueRole } from '../components/VenueBadge.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
+import { UserAvatar } from '../chat/components/UserAvatar.js';
 import { tournamentStatusLabel } from './labels.js';
 
 type TournamentTab = 'overview' | 'standings' | 'schedule' | 'playoff' | 'rules';
@@ -165,6 +166,58 @@ function rewardLabel(value: unknown): string | null {
   return `${place} место — ${numberValue(reward.experience)} опыта, ${numberValue(reward.coins)} монет, ${stars} ${starWord}`;
 }
 
+function humanList(values: string[]): string {
+  if (values.length <= 1) return values[0] ?? '';
+  return `${values.slice(0, -1).join(', ')} и ${values.at(-1)}`;
+}
+
+function tieBreakSentence(criteria: unknown): string {
+  const labels: Record<string, string> = {
+    points: 'очкам',
+    wins: 'количеству побед',
+    goal_difference: 'разнице шайб',
+    goals_for: 'количеству забитых шайб',
+  };
+  const values = Array.isArray(criteria)
+    ? criteria.map(String).map((criterion) => labels[criterion] ?? criterion)
+    : ['очкам'];
+  if (values.length <= 1) {
+    return `Если несколько игроков окажутся вровень, места определятся по ${values[0] ?? 'очкам'}.`;
+  }
+  return `Если несколько игроков окажутся вровень, места определятся сначала по ${values[0]}, затем по ${humanList(values.slice(1))}.`;
+}
+
+function homeSequenceSentence(value: unknown): string {
+  const sequence = Array.isArray(value) ? value.map(String) : [];
+  if (
+    sequence.length >= 4 &&
+    sequence[0] === 'H' &&
+    sequence[1] === 'H' &&
+    sequence[2] === 'A' &&
+    sequence[3] === 'A'
+  ) {
+    const tail = sequence.slice(4).map((side) => (side === 'H' ? 'дома' : 'в гостях'));
+    return tail.length > 0
+      ? `Первые две игры — дома, следующие две — в гостях. Затем площадки чередуются: ${tail.join(', ')}.`
+      : 'Первые две игры — дома, следующие две — в гостях.';
+  }
+  const readable = sequence.map((side) => (side === 'H' ? 'дома' : 'в гостях'));
+  return readable.length > 0
+    ? `Игры проходят на площадках по очереди: ${humanList(readable)}.`
+    : 'Порядок домашних и гостевых игр объявят вместе с расписанием.';
+}
+
+function playoffRoundTitle(roundNumber: number): string {
+  return (
+    {
+      1: 'Первый раунд',
+      2: 'Второй раунд',
+      3: 'Третий раунд',
+      4: 'Финальный раунд',
+    }[roundNumber] ?? `Раунд ${roundNumber}`
+  );
+}
+
 function TournamentRules({ tournament }: { tournament: TournamentSummary }): JSX.Element {
   const config = objectValue(tournament.rules.config);
   const playoffRounds = Array.isArray(tournament.rules.playoffRounds)
@@ -173,104 +226,79 @@ function TournamentRules({ tournament }: { tournament: TournamentSummary }): JSX
   const stageRewards = objectValue(tournament.rules.stageRewards);
   const regularRewards = Array.isArray(stageRewards.regular) ? stageRewards.regular : [];
   const playoffRewards = Array.isArray(stageRewards.playoff) ? stageRewards.playoff : [];
-  const tieBreakLabels: Record<string, string> = {
-    points: 'очки',
-    wins: 'победы',
-    goal_difference: 'разница голов',
-    goals_for: 'забитые голы',
-  };
-  const tieBreakCriteria = Array.isArray(tournament.rules.tieBreakCriteria)
-    ? tournament.rules.tieBreakCriteria
-        .map(String)
-        .map((criterion) => tieBreakLabels[criterion] ?? criterion)
-        .join(' → ')
-    : 'по очкам';
   const regularSource = config.regularSource ?? tournament.regularSource;
   const cycles = numberValue(config.roundRobinCycles, 1);
   const roundsPerDay = numberValue(config.roundsPerDay, 1);
   const dailyMetricLabels: Record<string, string> = {
-    goals_sum: 'сумма голов',
-    accuracy_average: 'средняя точность',
-    daily_place_points: 'очки за место',
+    goals_sum: 'по количеству голов',
+    accuracy_average: 'по средней точности',
+    daily_place_points: 'по очкам за место',
   };
+  const regularDescription =
+    regularSource === 'daily_aggregate'
+      ? `Турнир продлится ${numberValue(config.dailyDays)} ${pluralRu(numberValue(config.dailyDays), 'день', 'дня', 'дней')}. Результат каждого дня определяется ${dailyMetricLabels[String(config.dailyMetric ?? 'goals_sum')] ?? 'по количеству голов'}. ${config.bestDays === null || config.bestDays === undefined ? 'В итог войдут результаты всех дней.' : `В итог войдут лучшие ${String(config.bestDays)} ${pluralRu(numberValue(config.bestDays), 'день', 'дня', 'дней')}.`}`
+      : `Каждый сыграет с каждым ${cycles === 1 ? 'один раз' : `${cycles} ${pluralRu(cycles, 'раз', 'раза', 'раз')}`}. Каждый день ${roundsPerDay === 1 ? 'проходит один тур' : `проходит ${roundsPerDay} ${pluralRu(roundsPerDay, 'тур', 'тура', 'туров')}`}. Первый тур начнётся в ${String(config.firstRoundLocalTime ?? 'указанное в расписании время')}.`;
 
   return (
-    <div style={{ display: 'grid', gap: 14 }}>
-      <div>
-        <div className="section-label" style={{ margin: 0 }}>
-          Регулярный чемпионат
-        </div>
-        <div style={{ marginTop: 5 }}>
-          {regularSource === 'daily_aggregate'
-            ? `${numberValue(config.dailyDays)} дней · ${dailyMetricLabels[String(config.dailyMetric ?? 'goals_sum')] ?? String(config.dailyMetric)} · ${config.bestDays === null || config.bestDays === undefined ? 'учитываются все дни' : `лучшие ${String(config.bestDays)} дней`}`
-            : `${cycles} ${pluralRu(cycles, 'круг', 'круга', 'кругов')} · ${roundsPerDay} ${pluralRu(roundsPerDay, 'тур', 'тура', 'туров')} в день · первый тур в ${String(config.firstRoundLocalTime ?? 'не задан')}`}
-        </div>
-        <div style={{ marginTop: 5 }}>Критерии равенства: {tieBreakCriteria}</div>
-      </div>
-      <div>
-        <div className="section-label" style={{ margin: 0 }}>
-          Плей-офф
-        </div>
-        <div style={{ display: 'grid', gap: 5, marginTop: 5 }}>
+    <div className="tournament-rules">
+      <section className="tournament-rules__section">
+        <h3>Регулярный чемпионат</h3>
+        <p>{regularDescription}</p>
+        <p>{tieBreakSentence(tournament.rules.tieBreakCriteria)}</p>
+      </section>
+      <section className="tournament-rules__section">
+        <h3>Плей-офф</h3>
+        <div className="tournament-rules__rounds">
           {playoffRounds.map((value, index) => {
             const round = objectValue(value);
-            const homeSequence = Array.isArray(round.homeSequence)
-              ? round.homeSequence
-                  .map((side) => (String(side) === 'H' ? 'Дом' : 'Гости'))
-                  .join(' · ')
-              : 'не задан';
             const overtime = objectValue(round.overtime);
+            const roundNumber = numberValue(round.roundNumber, index + 1);
+            const winsRequired = numberValue(round.winsRequired, 1);
+            const overtimeCount = numberValue(overtime.count, 1);
+            const shootoutShots = numberValue(overtime.shootoutInitialShots, 3);
             return (
-              <div key={String(round.roundNumber ?? index)}>
-                <div>
-                  Раунд {numberValue(round.roundNumber, index + 1)}: до{' '}
-                  {numberValue(round.winsRequired, 1)} побед · {homeSequence}
-                </div>
-                <div style={{ color: 'var(--muted)' }}>
-                  Овертаймов: {numberValue(overtime.count, 1)} · стартовых буллитов:{' '}
-                  {numberValue(overtime.shootoutInitialShots, 3)}
-                </div>
-              </div>
+              <article className="tournament-rules__round" key={String(round.roundNumber ?? index)}>
+                <h4>{playoffRoundTitle(roundNumber)}</h4>
+                <p>
+                  Серия идёт до {winsRequired} {pluralRu(winsRequired, 'победы', 'побед', 'побед')}.
+                </p>
+                <p>{homeSequenceSentence(round.homeSequence)}</p>
+                <p className="tournament-rules__muted">
+                  Если основное время закончится вничью, будет {overtimeCount}{' '}
+                  {pluralRu(overtimeCount, 'овертайм', 'овертайма', 'овертаймов')}. Затем — буллиты:
+                  по {shootoutShots} {pluralRu(shootoutShots, 'броску', 'броска', 'бросков')}{' '}
+                  каждому, после этого по одному до победы.
+                </p>
+              </article>
             );
           })}
         </div>
-      </div>
-      <div>
-        <div className="section-label" style={{ margin: 0 }}>
-          Призы регулярки
-        </div>
+      </section>
+      <section className="tournament-rules__section">
+        <h3>Призы за регулярный чемпионат</h3>
         {regularRewards
           .map(rewardLabel)
           .filter((label): label is string => label !== null)
           .map((label) => (
-            <div key={label}>{label}</div>
+            <p key={label}>{label}</p>
           ))}
-        {regularRewards.length === 0 && <div>Награды не назначены.</div>}
-      </div>
-      <div>
-        <div className="section-label" style={{ margin: 0 }}>
-          Призы плей-офф
-        </div>
+        {regularRewards.length === 0 && <p>Призы пока не назначены.</p>}
+      </section>
+      <section className="tournament-rules__section">
+        <h3>Призы за плей-офф</h3>
         {playoffRewards
           .map(rewardLabel)
           .filter((label): label is string => label !== null)
           .map((label) => (
-            <div key={label}>{label}</div>
+            <p key={label}>{label}</p>
           ))}
-        {playoffRewards.length === 0 && <div>Награды не назначены.</div>}
-      </div>
-      <div style={{ color: 'var(--muted)' }}>
-        Опубликованная ревизия №{tournament.revision} неизменяема после старта.
-      </div>
+        {playoffRewards.length === 0 && <p>Призы пока не назначены.</p>}
+      </section>
     </div>
   );
 }
 
-function TournamentDetails({
-  tournament,
-}: {
-  tournament: TournamentSummary;
-}) {
+function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
   const navigate = useNavigate();
   const location = useLocation();
   const currentUserId = useAuthStore((state) => state.user?.id ?? null);
@@ -537,15 +565,19 @@ function TournamentDetails({
           <div className="tournament-participants-list tournament-participants-list--scrollable">
             {participants.isLoading && <div role="status">Загрузка участников…</div>}
             {participants.isError && <div role="status">Не удалось загрузить участников.</div>}
-            {participants.data?.participants.map((participant) => (
+            {participants.data?.participants.map((participant, index) => (
               <div key={participant.userId} className="tournament-participants-list__row">
-                {participant.avatarUrl ? (
-                  <img src={participant.avatarUrl} alt={participant.displayName} />
-                ) : (
-                  <span className="tournament-participants-list__avatar" aria-hidden="true">
-                    {participant.displayName.slice(0, 1).toUpperCase()}
-                  </span>
-                )}
+                <span className="tournament-participants-list__position">{index + 1}</span>
+                <span className="tournament-participants-list__avatar">
+                  <UserAvatar
+                    avatarUrl={participant.avatarUrl}
+                    name={participant.displayName}
+                    size={38}
+                    fontSize={14}
+                    alt={participant.displayName}
+                    style={{ background: 'rgba(30, 91, 151, 0.13)', color: '#244d73' }}
+                  />
+                </span>
                 <strong>{participant.displayName}</strong>
                 <span>
                   {participant.seed === null ? 'Без посева' : `Посев ${participant.seed}`}

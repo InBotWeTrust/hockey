@@ -1,6 +1,7 @@
 import type { PoolClient } from 'pg';
 import { cancelTournamentDuel } from '../duel/amateur/lifecycle.js';
 import { enqueueTournamentSeriesNextGamePush } from './fixtureNotifications.js';
+import { grantPlayoffRewardsIfComplete } from './rewards.js';
 
 interface SeriesDependencySource {
   type?: string;
@@ -113,6 +114,7 @@ export async function advanceTournamentPlayoffSeries(
     completedSeries.higher_seed_participant_id === input.winnerParticipantId
       ? completedSeries.lower_seed_participant_id
       : completedSeries.higher_seed_participant_id;
+  await grantPlayoffRewardsIfComplete(client, completedSeries.tournament_id);
   if (completedKey === undefined || loserParticipantId === null) return { completed: true };
 
   const dependents = await client.query<{

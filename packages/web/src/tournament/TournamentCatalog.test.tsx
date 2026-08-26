@@ -185,8 +185,16 @@ describe('TournamentCatalog', () => {
       'tournament-participants-list--scrollable',
     );
     expect(await screen.findByText('Первый')).toBeInTheDocument();
+    expect(
+      Array.from(dialog.querySelectorAll('.tournament-participants-list__position')).map(
+        (node) => node.textContent,
+      ),
+    ).toEqual(['1', '2']);
     expect(screen.getByText('Посев 1')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'Первый' })).toHaveAttribute('src', '/first.webp');
+    fireEvent.error(screen.getByRole('img', { name: 'Первый' }));
+    expect(screen.queryByRole('img', { name: 'Первый' })).not.toBeInTheDocument();
+    expect(dialog.querySelector('.tournament-participants-list__avatar')).toHaveTextContent('П');
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть список участников' }));
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Участники' })).toBeNull());
   });
@@ -567,12 +575,33 @@ describe('TournamentCatalog', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок правил' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Правила и призы' }));
 
-    expect(screen.getByText('1 круг · 3 тура в день · первый тур в 19:00')).toBeInTheDocument();
     expect(
-      screen.getByText('Раунд 1: до 4 побед · Дом · Дом · Гости · Гости · Дом · Гости · Дом'),
+      screen.getByText(
+        'Каждый сыграет с каждым один раз. Каждый день проходит 3 тура. Первый тур начнётся в 19:00.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Если несколько игроков окажутся вровень, места определятся сначала по очкам, затем по количеству побед и разнице шайб.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Первый раунд' })).toBeInTheDocument();
+    expect(screen.getByText('Серия идёт до 4 побед.')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Первые две игры — дома, следующие две — в гостях. Затем площадки чередуются: дома, в гостях, дома.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Если основное время закончится вничью, будет 2 овертайма. Затем — буллиты: по 3 броска каждому, после этого по одному до победы.',
+      ),
     ).toBeInTheDocument();
     expect(screen.getByText('1 место — 100 опыта, 50 монет, 3 звезды')).toBeInTheDocument();
     expect(screen.getByText('1 место — 200 опыта, 100 монет, 5 звёзд')).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Критерии равенства|стартовых буллитов|ревизия/i),
+    ).not.toBeInTheDocument();
   });
 
   it('accepts an invite-only invitation instead of withdrawing it', async () => {

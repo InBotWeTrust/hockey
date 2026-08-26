@@ -264,6 +264,14 @@ export function fetchAdminTournamentDispatches(tournamentId: string) {
   );
 }
 
+export interface AdminTournamentDispatchResult {
+  dispatchId: string;
+  status: 'sent' | 'partially_failed' | 'failed';
+  recipients: number;
+  delivered: number;
+  failed: number;
+}
+
 export function dispatchAdminTournamentCommunication(
   tournamentId: string,
   input: {
@@ -274,7 +282,7 @@ export function dispatchAdminTournamentCommunication(
     body: string;
   },
 ) {
-  return apiFetch(`/admin/tournaments/${tournamentId}/dispatches`, {
+  return apiFetch<AdminTournamentDispatchResult>(`/admin/tournaments/${tournamentId}/dispatches`, {
     method: 'POST',
     body: JSON.stringify(input),
   });

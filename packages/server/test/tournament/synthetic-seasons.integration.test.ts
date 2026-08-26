@@ -847,20 +847,14 @@ describe.skipIf(!hasIntegrationEnv)('synthetic tournament seasons', () => {
       template_star_events: '0',
     });
 
-    expect(await grantTournamentStageRewards(pool, tournament.id, 'regular')).toMatchObject({
-      granted: 4,
-    });
-    expect(await grantTournamentStageRewards(pool, tournament.id, 'regular')).toMatchObject({
-      granted: 0,
-    });
     await startAndCompletePlayoffs(pool, {
       tournamentId: tournament.id,
       tournamentTitle: title,
       startsAt: new Date('2032-05-02T11:00:00.000Z'),
       expectedFinalUserIds: [PLAYER_IDS[2], PLAYER_IDS[3], PLAYER_IDS[1], PLAYER_IDS[0]],
     });
-    expect(await grantTournamentStageRewards(pool, tournament.id, 'playoff')).toMatchObject({
-      granted: 4,
+    expect(await grantTournamentStageRewards(pool, tournament.id, 'regular')).toMatchObject({
+      granted: 0,
     });
     expect(await grantTournamentStageRewards(pool, tournament.id, 'playoff')).toMatchObject({
       granted: 0,
@@ -1059,12 +1053,6 @@ describe.skipIf(!hasIntegrationEnv)('synthetic tournament seasons', () => {
     const standingsBeforePlayoffs = JSON.stringify(dailyStandings.rows);
     const expectedStandingUserIds = dailyStandings.rows.map((row) => row.user_id);
 
-    expect(await grantTournamentStageRewards(pool, tournament.id, 'regular')).toMatchObject({
-      granted: 4,
-    });
-    expect(await grantTournamentStageRewards(pool, tournament.id, 'regular')).toMatchObject({
-      granted: 0,
-    });
     await startAndCompletePlayoffs(pool, {
       tournamentId: tournament.id,
       tournamentTitle: title,
@@ -1086,8 +1074,8 @@ describe.skipIf(!hasIntegrationEnv)('synthetic tournament seasons', () => {
     );
     expect(JSON.stringify(standingsAfterPlayoffs.rows)).toBe(standingsBeforePlayoffs);
 
-    expect(await grantTournamentStageRewards(pool, tournament.id, 'playoff')).toMatchObject({
-      granted: 4,
+    expect(await grantTournamentStageRewards(pool, tournament.id, 'regular')).toMatchObject({
+      granted: 0,
     });
     expect(await grantTournamentStageRewards(pool, tournament.id, 'playoff')).toMatchObject({
       granted: 0,

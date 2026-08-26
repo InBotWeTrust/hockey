@@ -209,6 +209,15 @@ jobs:
           docker compose -f docker-compose.yml -f docker-compose.staging.yml \
             run --rm -T server-dev node packages/server/dist/db/migrate-cli.js < /dev/null
 
+          # Dev has its own database, so the production SYSTEM_USER_ID cannot be reused here.
+          # Keep a dedicated non-login sender for tournament participant DMs.
+          STAGING_SYSTEM_USER_ID="00000000-0000-4000-8000-000000000099"
+          export STAGING_SYSTEM_USER_ID
+          docker compose -f docker-compose.yml -f docker-compose.staging.yml \
+            exec -T postgres-dev psql -v ON_ERROR_STOP=1 \
+              -U "$STAGING_POSTGRES_USER" -d "$STAGING_POSTGRES_DB" \
+              -c "insert into users (id, display_name, timezone) values ('$STAGING_SYSTEM_USER_ID', 'Ультимейт Хоккей', 'Europe/Moscow') on conflict (id) do update set display_name = excluded.display_name" < /dev/null
+
           if [ "$RESET_STAGING_ACHIEVEMENTS" = "true" ]; then
             docker compose -f docker-compose.yml -f docker-compose.staging.yml \
               run --rm -T server-dev node packages/server/dist/achievements/reset-dev-achievements-cli.js < /dev/null

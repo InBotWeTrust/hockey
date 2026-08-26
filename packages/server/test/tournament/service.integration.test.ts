@@ -27,6 +27,7 @@ import {
   rescheduleTournamentFixture,
   resolveTournamentNoShow,
   startTournamentPlayoffs,
+  updateTournamentDraft,
   type TournamentRulesSnapshot,
 } from '../../src/tournament/service.js';
 import * as tournamentService from '../../src/tournament/service.js';
@@ -49,6 +50,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
 
 const ADMIN_ID = '00000000-0000-4000-8000-000000000701';
+const SYSTEM_SENDER_ID = '00000000-0000-4000-8000-000000000702';
 const JWT_SECRET = 'access-secret-at-least-16-chars';
 const REFRESH_SECRET = 'refresh-secret-at-least-16-chars';
 const DAILY_SEED_SECRET = 'daily-seed-secret-at-least-16!!';
@@ -684,6 +686,83 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     await applyMigrations(pool, MIGRATIONS_DIR);
   });
 
+  it('publishes a new immutable rules revision when a registering tournament is edited', async () => {
+    await seedUsers(pool, 100);
+    const tournament = await createPublishedTournament(pool, 'published-edit', 0);
+    const original = await pool.query<{ id: string; rules_snapshot: TournamentRulesSnapshot }>(
+      `select id, rules_snapshot from tournament_revision
+        where tournament_id = $1 and revision = $2`,
+      [tournament.id, tournament.revision],
+    );
+    const updatedRules = {
+      ...rules(0),
+      notifications: { remindersMinutes: [60, 15] },
+      stageRewards: { regular: [{ place: 1, coins: 50, stars: 1, experience: 100 }] },
+    };
+
+    const updated = await updateTournamentDraft(pool, {
+      tournamentId: tournament.id,
+      expectedRevision: tournament.revision,
+      title: 'Обновлённый турнир',
+      description: 'Понятные правила для игроков',
+      rules: updatedRules,
+      updatedBy: ADMIN_ID,
+      registrationOpensAt: null,
+      registrationClosesAt: new Date('2030-08-31T18:00:00.000Z'),
+      startsAt: new Date('2030-09-01T08:00:00.000Z'),
+    });
+
+    expect(updated).toMatchObject({
+      status: 'registration',
+      revision: tournament.revision + 1,
+      title: 'Обновлённый турнир',
+      description: 'Понятные правила для игроков',
+    });
+    const revisions = await pool.query<{
+      id: string;
+      revision: number;
+      is_published: boolean;
+      rules_snapshot: TournamentRulesSnapshot;
+    }>(
+      `select id, revision, is_published, rules_snapshot
+         from tournament_revision where tournament_id = $1 order by revision`,
+      [tournament.id],
+    );
+    expect(revisions.rows).toHaveLength(2);
+    expect(revisions.rows.map((row) => row.is_published)).toEqual([true, true]);
+    expect(revisions.rows[0]).toMatchObject({
+      id: original.rows[0]!.id,
+      revision: tournament.revision,
+      rules_snapshot: original.rows[0]!.rules_snapshot,
+    });
+    expect(updated.publishedRevisionId).toBe(revisions.rows[1]!.id);
+  });
+
+  it('does not change the registration price after a player has joined', async () => {
+    await seedUsers(pool, 100);
+    const tournament = await createPublishedTournament(pool, 'protected-published-edit', 0);
+    await applyToTournament(pool, tournament.id, PLAYER_IDS[0]);
+
+    await expect(
+      updateTournamentDraft(pool, {
+        tournamentId: tournament.id,
+        expectedRevision: tournament.revision,
+        title: tournament.title,
+        description: tournament.description,
+        rules: rules(25),
+        updatedBy: ADMIN_ID,
+        registrationOpensAt: null,
+        registrationClosesAt: null,
+        startsAt: new Date('2030-09-01T07:00:00.000Z'),
+      }),
+    ).rejects.toMatchObject({ code: 'conflict' });
+    const revisions = await pool.query<{ count: string }>(
+      `select count(*)::text as count from tournament_revision where tournament_id = $1`,
+      [tournament.id],
+    );
+    expect(revisions.rows[0]!.count).toBe('1');
+  });
+
   afterAll(async () => {
     await pool.end();
   });
@@ -1083,18 +1162,17 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         order by fixture.fixture_number limit 1`,
       [tournament.id],
     );
-    await resolveTournamentNoShow(pool, {
-      tournamentId: tournament.id,
-      fixtureId: finalFixture.rows[0]!.id,
-      absent: 'away',
-      reason: 'complete final for transactional notification regression',
-      adminUserId: ADMIN_ID,
-    });
     await installFailingPushTrigger(pool, 'tournament.completed');
 
-    await expect(grantTournamentStageRewards(pool, tournament.id, 'playoff')).rejects.toThrow(
-      'forced tournament push failure',
-    );
+    await expect(
+      resolveTournamentNoShow(pool, {
+        tournamentId: tournament.id,
+        fixtureId: finalFixture.rows[0]!.id,
+        absent: 'away',
+        reason: 'complete final for transactional notification regression',
+        adminUserId: ADMIN_ID,
+      }),
+    ).rejects.toThrow('forced tournament push failure');
     expect(
       (
         await pool.query<{ status: string }>(`select status from tournament where id = $1`, [
@@ -1105,9 +1183,19 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
 
     await removeFailingPushTrigger(pool);
     await expect(
+      resolveTournamentNoShow(pool, {
+        tournamentId: tournament.id,
+        fixtureId: finalFixture.rows[0]!.id,
+        absent: 'away',
+        reason: 'complete final after notification recovery',
+        adminUserId: ADMIN_ID,
+      }),
+    ).resolves.toBeDefined();
+    await expect(
       grantTournamentStageRewards(pool, tournament.id, 'playoff'),
     ).resolves.toMatchObject({
       stage: 'playoff',
+      granted: 0,
     });
     const completed = await pool.query<{ status: string; delivery_count: string }>(
       `select tournament.status,
@@ -2718,6 +2806,79 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     ]);
     expect(published).toHaveLength(1);
     expect(published[0]).toMatchObject({ type: 'message:new' });
+  });
+
+  it('delivers participant communication as direct messages without publishing to news', async () => {
+    await seedUsers(pool, 0);
+    await pool.query(
+      `insert into users (id, display_name, timezone)
+       values ($1, 'Ультимейт Хоккей', 'Europe/Moscow')`,
+      [SYSTEM_SENDER_ID],
+    );
+    const tournament = await createPublishedTournament(pool, 'participant-direct-dispatch', 0);
+    await applyToTournament(pool, tournament.id, PLAYER_IDS[0]);
+    await applyToTournament(pool, tournament.id, PLAYER_IDS[1]);
+    const published: Array<{ channel: string; type: string }> = [];
+    const publisher = {
+      publish: async (channel: string, event: { type: string }) => {
+        published.push({ channel, type: event.type });
+      },
+    };
+
+    const result = await dispatchTournamentCommunication(pool, publisher, {
+      tournamentId: tournament.id,
+      idempotencyKey: `${tournament.id}:participant-direct-message:1`,
+      kind: 'direct_message',
+      audience: 'approved',
+      title: 'Сообщение участникам',
+      body: 'Матчи начнутся через час.',
+      createdBy: ADMIN_ID,
+      systemUserId: SYSTEM_SENDER_ID,
+    });
+
+    expect(result).toMatchObject({ status: 'sent', recipients: 2, delivered: 2, failed: 0 });
+    const messages = await pool.query<{
+      content: string;
+      recipient_user_id: string;
+      sender_id: string;
+      chat_type: string;
+      channel_slug: string | null;
+    }>(
+      `select message.content,
+              message.metadata->>'recipientUserId' as recipient_user_id,
+              message.sender_id,
+              chat.type as chat_type,
+              chat.channel_slug
+         from messages message
+         join chats chat on chat.id = message.chat_id
+        where message.metadata->>'tournamentDispatchId' = $1
+        order by message.metadata->>'recipientUserId'`,
+      [result.dispatchId],
+    );
+    expect(messages.rows).toEqual(
+      [PLAYER_IDS[0], PLAYER_IDS[1]].map((recipient_user_id) => ({
+        content: 'Матчи начнутся через час.',
+        recipient_user_id,
+        sender_id: SYSTEM_SENDER_ID,
+        chat_type: 'direct',
+        channel_slug: null,
+      })),
+    );
+    expect(published).toHaveLength(4);
+    expect(
+      published.every(
+        (event) => event.type === 'message:new' && event.channel.startsWith('chat:user:'),
+      ),
+    ).toBe(true);
+    const newsPosts = await pool.query<{ count: string }>(
+      `select count(*)::text as count
+         from messages message
+         join chats chat on chat.id = message.chat_id
+        where chat.channel_slug = 'news'
+          and message.metadata->>'tournamentId' = $1`,
+      [tournament.id],
+    );
+    expect(newsPosts.rows[0]?.count).toBe('0');
   });
 
   it('does not exhaust the pool when concurrent manual dispatch retries share an idempotency key', async () => {
