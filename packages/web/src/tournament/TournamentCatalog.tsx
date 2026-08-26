@@ -1,12 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { ArrowLeft, X } from 'lucide-react';
 import {
   applyToTournament,
   fetchTournamentSchedule,
   fetchTournamentStandings,
   fetchTournamentBracket,
   fetchTournaments,
+  fetchTournamentParticipants,
   openTournamentFixtureSegment,
   withdrawFromTournament,
   type TournamentFixture,
@@ -16,6 +18,7 @@ import { TournamentFixtureLive } from './TournamentFixtureLive.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { VenueBadge, type VenueRole } from '../components/VenueBadge.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
+import { AccessibleModal } from '../components/AccessibleModal.js';
 
 type TournamentTab = 'overview' | 'standings' | 'schedule' | 'playoff' | 'rules';
 
@@ -55,7 +58,7 @@ function participantStateLabel(state: string | null): string {
   if (state === null) return 'Вы ещё не заявлены';
   const labels: Record<string, string> = {
     invited: 'Вас пригласили',
-    applied: 'Заявка на рассмотрении',
+    applied: 'Заявка подана',
     approved: 'Вы участвуете',
     rejected: 'Заявка отклонена',
     declined: 'Приглашение отклонено',
@@ -64,6 +67,15 @@ function participantStateLabel(state: string | null): string {
     disqualified: 'Дисквалификация',
   };
   return labels[state] ?? 'Статус участия уточняется';
+}
+
+function participationLabel(tournament: TournamentSummary): string {
+  if (tournament.status === 'completed') {
+    return tournament.myFinalPlace == null
+      ? 'Турнир завершён'
+      : `Ваше место: ${tournament.myFinalPlace}`;
+  }
+  return participantStateLabel(tournament.myParticipantState);
 }
 
 function fixtureStatusLabel(status: string): string {
@@ -272,6 +284,7 @@ function TournamentDetails({
   const currentUserId = useAuthStore((state) => state.user?.id ?? null);
   const [tab, setTab] = useState<TournamentTab>(() => tournamentTabFromSearch(location.search));
   const [selectedFixture, setSelectedFixture] = useState<TournamentFixture | null>(null);
+  const [participantsOpen, setParticipantsOpen] = useState(false);
   const activeFixtureId = useRef<string | null>(null);
   const openFixtureGeneration = useRef(0);
   const queryClient = useQueryClient();
@@ -290,6 +303,11 @@ function TournamentDetails({
     queryKey: ['tournaments', tournament.id, 'bracket'],
     queryFn: () => fetchTournamentBracket(tournament.id),
     enabled: tab === 'playoff',
+  });
+  const participants = useQuery({
+    queryKey: ['tournaments', tournament.id, 'participants'],
+    queryFn: () => fetchTournamentParticipants(tournament.id),
+    enabled: participantsOpen,
   });
   const registration = useMutation({
     mutationFn: async () => {
@@ -350,15 +368,18 @@ function TournamentDetails({
 
   return (
     <div className="tournament-details">
-      <button type="button" className="tournament-back-btn" onClick={onBack}>
-        К списку турниров
-      </button>
       <section className="glass tournament-details__hero">
+        <button
+          type="button"
+          className="icon-btn tournament-details__back"
+          aria-label="Назад к турнирам"
+          onClick={onBack}
+        >
+          <ArrowLeft size={16} />
+        </button>
         <div className="tournament-details__status-row">
           <span className="section-label">{registrationState.label}</span>
-          <span className="tournament-participation-badge">
-            {participantStateLabel(tournament.myParticipantState)}
-          </span>
+          <span className="tournament-participation-badge">{participationLabel(tournament)}</span>
         </div>
         <h2>{tournament.title}</h2>
         <div className="tournament-details__description">{tournament.description}</div>
@@ -368,16 +389,21 @@ function TournamentDetails({
         activeTab={tab}
         items={tabs.map((item) => ({ id: item.key, label: item.label }))}
         onChange={setTab}
+        scrollable
       />
       <section className="glass tournament-details__content">
         {tab === 'overview' && (
           <div className="tournament-overview-grid">
-            <div>
+            <button
+              type="button"
+              className="tournament-overview-grid__participants"
+              onClick={() => setParticipantsOpen(true)}
+            >
               <span>Участники</span>
               <strong>
                 {tournament.participantCount} / {tournament.rules.config.participantLimit}
               </strong>
-            </div>
+            </button>
             <div>
               <span>Плей-офф</span>
               <strong>{tournament.rules.config.playoffSize} игроков</strong>
@@ -485,7 +511,12 @@ function TournamentDetails({
           ['invited', 'applied', 'approved'].includes(tournament.myParticipantState)) && (
           <button
             type="button"
-            className="btn btn--cta tournament-details__registration"
+            className={`btn btn--cta tournament-details__registration${
+              tournament.myParticipantState === 'applied' ||
+              tournament.myParticipantState === 'approved'
+                ? ' tournament-registration-btn--danger'
+                : ''
+            }`}
             disabled={!registrationState.isOpen || registration.isPending}
             onClick={() => registration.mutate()}
           >
@@ -502,6 +533,46 @@ function TournamentDetails({
         <div role="alert" className="tournament-details__registration-error">
           Не удалось изменить участие. Проверьте соединение и попробуйте ещё раз.
         </div>
+      )}
+      {participantsOpen && (
+        <AccessibleModal
+          title="Участники"
+          ariaLabel="Участники"
+          onClose={() => setParticipantsOpen(false)}
+          headerAction={
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Закрыть список участников"
+              onClick={() => setParticipantsOpen(false)}
+            >
+              <X size={16} />
+            </button>
+          }
+        >
+          <div className="tournament-participants-list tournament-participants-list--scrollable">
+            {participants.isLoading && <div role="status">Загрузка участников…</div>}
+            {participants.isError && <div role="status">Не удалось загрузить участников.</div>}
+            {participants.data?.participants.map((participant) => (
+              <div key={participant.userId} className="tournament-participants-list__row">
+                {participant.avatarUrl ? (
+                  <img src={participant.avatarUrl} alt={participant.displayName} />
+                ) : (
+                  <span className="tournament-participants-list__avatar" aria-hidden="true">
+                    {participant.displayName.slice(0, 1).toUpperCase()}
+                  </span>
+                )}
+                <strong>{participant.displayName}</strong>
+                <span>
+                  {participant.seed === null ? 'Без посева' : `Посев ${participant.seed}`}
+                </span>
+              </div>
+            ))}
+            {participants.isSuccess && participants.data.participants.length === 0 && (
+              <div>Подтверждённых участников пока нет.</div>
+            )}
+          </div>
+        </AccessibleModal>
       )}
     </div>
   );
@@ -520,29 +591,70 @@ export function TournamentCatalog(): JSX.Element {
   if (catalog.isLoading) return <div role="status">Загрузка турниров…</div>;
   if (catalog.isError) return <div role="status">Турниры пока недоступны.</div>;
   if (tournaments.length === 0) return <div role="status">Сейчас нет открытых турниров.</div>;
+  const sections = [
+    {
+      title: 'Активные турниры',
+      tournaments: tournaments.filter((tournament) =>
+        ['regular', 'playoff', 'paused'].includes(tournament.status),
+      ),
+    },
+    {
+      title: 'Предстоящие',
+      tournaments: tournaments.filter((tournament) =>
+        ['registration', 'registration_blocked', 'scheduling'].includes(tournament.status),
+      ),
+    },
+    {
+      title: 'Завершённые',
+      tournaments: tournaments.filter((tournament) =>
+        ['completed', 'cancelled'].includes(tournament.status),
+      ),
+    },
+  ].filter((section) => section.tournaments.length > 0);
   return (
     <div className="tournament-catalog">
-      {tournaments.map((tournament) => (
-        <button
-          key={tournament.id}
-          type="button"
-          aria-label={`Открыть ${tournament.title}`}
-          className="glass tournament-catalog-card"
-          onClick={() => setSelectedId(tournament.id)}
-        >
-          <span className="tournament-catalog-card__topline">
-            <span className="section-label">{registrationWindow(tournament).label}</span>
-            {tournament.myParticipantState !== null && (
-              <span className="tournament-participation-badge">
-                {participantStateLabel(tournament.myParticipantState)}
-              </span>
-            )}
-          </span>
-          <span className="tournament-catalog-card__title">{tournament.title}</span>
-          <span className="tournament-catalog-card__meta">
-            {tournament.participantCount} / {tournament.rules.config.participantLimit} участников
-          </span>
-        </button>
+      {sections.map((section) => (
+        <section key={section.title} className="tournament-catalog__section">
+          <h2 className="tournament-catalog__heading">{section.title}</h2>
+          <div className="tournament-catalog__cards">
+            {section.tournaments.map((tournament) => (
+              <button
+                key={tournament.id}
+                type="button"
+                aria-label={`Открыть ${tournament.title}`}
+                className="glass tournament-catalog-card"
+                onClick={() => setSelectedId(tournament.id)}
+              >
+                <img
+                  className="tournament-catalog-card__image"
+                  src={tournament.imageUrl ?? '/modes/tournaments.webp'}
+                  alt={tournament.title}
+                  onError={(event) => {
+                    if (!event.currentTarget.src.endsWith('/modes/tournaments.webp')) {
+                      event.currentTarget.src = '/modes/tournaments.webp';
+                    }
+                  }}
+                />
+                <span className="tournament-catalog-card__content">
+                  <span className="tournament-catalog-card__topline">
+                    <span className="section-label">{registrationWindow(tournament).label}</span>
+                    {(tournament.myParticipantState !== null ||
+                      tournament.status === 'completed') && (
+                      <span className="tournament-participation-badge">
+                        {participationLabel(tournament)}
+                      </span>
+                    )}
+                  </span>
+                  <span className="tournament-catalog-card__title">{tournament.title}</span>
+                  <span className="tournament-catalog-card__meta">
+                    {tournament.participantCount} / {tournament.rules.config.participantLimit}{' '}
+                    участников
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
       ))}
     </div>
   );

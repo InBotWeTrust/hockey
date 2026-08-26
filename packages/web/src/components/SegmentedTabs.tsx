@@ -9,11 +9,13 @@ export function SegmentedTabs<T extends string>({
   activeTab,
   ariaLabel,
   onChange,
+  scrollable = false,
 }: {
   items: Array<SegmentedTabItem<T>>;
   activeTab: T;
   ariaLabel: string;
   onChange: (tab: T) => void;
+  scrollable?: boolean;
 }): JSX.Element {
   const isCompact = items.length >= 4;
   const columns = isCompact
@@ -24,8 +26,8 @@ export function SegmentedTabs<T extends string>({
     <div
       role="tablist"
       aria-label={ariaLabel}
-      className={`segmented-tabs${isCompact ? ' segmented-tabs--compact' : ''}`}
-      style={{ gridTemplateColumns: columns }}
+      className={`segmented-tabs${isCompact ? ' segmented-tabs--compact' : ''}${scrollable ? ' segmented-tabs--scrollable' : ''}`}
+      style={scrollable ? undefined : { gridTemplateColumns: columns }}
     >
       {items.map((tab) => {
         const active = tab.id === activeTab;
@@ -39,14 +41,13 @@ export function SegmentedTabs<T extends string>({
               if (active) return;
               onChange(tab.id);
             }}
-            className={active ? 'segmented-tabs__item segmented-tabs__item--active' : 'segmented-tabs__item'}
+            className={
+              active ? 'segmented-tabs__item segmented-tabs__item--active' : 'segmented-tabs__item'
+            }
           >
             {tab.label}
             {tab.attention && (
-              <span
-                aria-label="Требуется действие"
-                className="segmented-tabs__attention"
-              />
+              <span aria-label="Требуется действие" className="segmented-tabs__attention" />
             )}
           </button>
         );

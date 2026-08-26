@@ -8,6 +8,7 @@ import {
   fetchAdminTournamentDuelTemplates,
   fetchAdminTournamentUsers,
   fetchAdminTournaments,
+  uploadAdminTournamentArtwork,
   updateAdminTournament,
   type AdminTournament,
   type AdminTournamentUserOption,
@@ -58,6 +59,7 @@ interface TournamentDraft {
   slug: string;
   title: string;
   description: string;
+  imageUrl: string | null;
   regularSource: RegularSource;
   registrationMode: RegistrationMode;
   visibility: Visibility;
@@ -115,6 +117,7 @@ const defaultDraft: TournamentDraft = {
   slug: '',
   title: '',
   description: '',
+  imageUrl: null,
   regularSource: 'head_to_head',
   registrationMode: 'open',
   visibility: 'public',
@@ -440,6 +443,7 @@ function draftFromTournament(tournament: AdminTournament): TournamentDraft {
     slug: tournament.slug,
     title: tournament.title,
     description: tournament.description,
+    imageUrl: tournament.imageUrl ?? null,
     regularSource: config.regularSource === 'daily_aggregate' ? 'daily_aggregate' : 'head_to_head',
     registrationMode:
       config.registrationMode === 'approval' || config.registrationMode === 'invite_only'
@@ -546,6 +550,7 @@ function serializeDraft(draft: TournamentDraft): Record<string, unknown> {
   return {
     title: draft.title,
     description: draft.description,
+    imageUrl: draft.imageUrl,
     startsAt: dateOrNull(
       draft.startsAt,
       draft.timezone,
@@ -1191,7 +1196,16 @@ export function TournamentAdmin(): JSX.Element {
   const saveDebounce = useRef<number>();
   const saveQueueGeneration = useRef(0);
   const createInFlight = useRef(false);
+  const artworkUploadGeneration = useRef(0);
   const validationError = draftValidationError(draft);
+  const artworkUpload = useMutation({
+    mutationFn: ({ file }: { file: File; generation: number }) =>
+      uploadAdminTournamentArtwork(file),
+    onSuccess: ({ url }, { generation }) => {
+      if (artworkUploadGeneration.current !== generation) return;
+      setDraft((current) => ({ ...current, imageUrl: url }));
+    },
+  });
 
   const initializeSaveQueue = (tournament: AdminTournament, snapshot: string) => {
     const generation = saveQueueGeneration.current + 1;
@@ -1277,6 +1291,8 @@ export function TournamentAdmin(): JSX.Element {
     if (saveDebounce.current !== undefined) window.clearTimeout(saveDebounce.current);
     saveQueueGeneration.current += 1;
     saveQueue.current = undefined;
+    artworkUploadGeneration.current += 1;
+    artworkUpload.reset();
     setWizardOpen(false);
     setConfirmClose(false);
     setFinishing(false);
@@ -1302,7 +1318,8 @@ export function TournamentAdmin(): JSX.Element {
   };
 
   const finishWizard = async () => {
-    if (!draft.title.trim() || finishing || validationError !== null) return;
+    if (!draft.title.trim() || finishing || artworkUpload.isPending || validationError !== null)
+      return;
     setFinishing(true);
     if (saveDebounce.current !== undefined) window.clearTimeout(saveDebounce.current);
     try {
@@ -1328,6 +1345,8 @@ export function TournamentAdmin(): JSX.Element {
         tournament={selectedTournament}
         onBack={() => setSelectedTournament(null)}
         onEdit={() => {
+          artworkUploadGeneration.current += 1;
+          artworkUpload.reset();
           setEditingTournament(selectedTournament);
           const nextDraft = draftFromTournament(selectedTournament);
           setDraft(nextDraft);
@@ -1362,6 +1381,8 @@ export function TournamentAdmin(): JSX.Element {
           className="icon-btn icon-btn--dark"
           aria-label="Создать"
           onClick={() => {
+            artworkUploadGeneration.current += 1;
+            artworkUpload.reset();
             saveQueueGeneration.current += 1;
             saveQueue.current = undefined;
             setEditingTournament(null);
@@ -1456,6 +1477,53 @@ export function TournamentAdmin(): JSX.Element {
                         value={draft.title}
                         onChange={(event) => setDraft({ ...draft, title: event.target.value })}
                       />
+                    </TournamentAdminField>
+                    <TournamentAdminField
+                      label="Изображение турнира"
+                      help="Необязательная квадратная картинка WebP для каталога. Рекомендуемый размер — 1024 × 1024 пикселя."
+                    >
+                      <div className="tournament-artwork-field">
+                        <img
+                          className="tournament-artwork-field__preview"
+                          src={draft.imageUrl ?? '/modes/tournaments.webp'}
+                          alt="Изображение турнира"
+                        />
+                        <label className="admin-compact-btn tournament-artwork-field__upload">
+                          {artworkUpload.isPending ? 'Загрузка…' : 'Выбрать WebP'}
+                          <input
+                            aria-label="Изображение турнира"
+                            type="file"
+                            accept="image/webp,.webp"
+                            disabled={artworkUpload.isPending}
+                            onChange={(event) => {
+                              const file = event.target.files?.[0];
+                              if (file !== undefined) {
+                                artworkUpload.mutate({
+                                  file,
+                                  generation: artworkUploadGeneration.current,
+                                });
+                              }
+                              event.currentTarget.value = '';
+                            }}
+                          />
+                        </label>
+                        {draft.imageUrl !== null && (
+                          <button
+                            type="button"
+                            className="admin-compact-btn"
+                            onClick={() => setDraft((current) => ({ ...current, imageUrl: null }))}
+                          >
+                            Убрать
+                          </button>
+                        )}
+                        {artworkUpload.isError && (
+                          <span role="alert" className="tournament-artwork-field__error">
+                            {artworkUpload.error instanceof Error
+                              ? artworkUpload.error.message
+                              : 'Не удалось загрузить изображение.'}
+                          </span>
+                        )}
+                      </div>
                     </TournamentAdminField>
                     <TournamentAdminField
                       label="Описание"
@@ -2146,7 +2214,10 @@ export function TournamentAdmin(): JSX.Element {
                   <button
                     type="button"
                     className="modal-primary btn btn--cta"
-                    disabled={stage === 0 && (draft.title.trim() === '' || create.isPending)}
+                    disabled={
+                      artworkUpload.isPending ||
+                      (stage === 0 && (draft.title.trim() === '' || create.isPending))
+                    }
                     onClick={() => {
                       if (stage === 0 && editingTournament === null) {
                         if (createInFlight.current) return;
@@ -2169,6 +2240,7 @@ export function TournamentAdmin(): JSX.Element {
                     disabled={
                       !draft.title.trim() ||
                       create.isPending ||
+                      artworkUpload.isPending ||
                       finishing ||
                       saveState === 'error' ||
                       validationError !== null

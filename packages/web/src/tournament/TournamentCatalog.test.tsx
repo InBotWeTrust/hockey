@@ -46,6 +46,187 @@ describe('TournamentCatalog', () => {
     expect(screen.getByRole('button', { name: 'Открыть Кубок льда' })).toBeInTheDocument();
   });
 
+  it('groups tournaments by lifecycle and shows artwork with player-specific statuses', async () => {
+    vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
+      tournaments: [
+        {
+          id: 'active',
+          slug: 'active-cup',
+          title: 'Активный кубок',
+          description: '',
+          imageUrl: '/media/active.webp',
+          status: 'regular',
+          regularSource: 'head_to_head',
+          visibility: 'public',
+          revision: 1,
+          participantCount: 8,
+          myParticipantState: 'approved',
+          myFinalPlace: null,
+          registrationOpensAt: null,
+          registrationClosesAt: null,
+          startsAt: null,
+          rules: { config: { participantLimit: 8, entryFeeCoins: 0, playoffSize: 4 } },
+        },
+        {
+          id: 'upcoming',
+          slug: 'upcoming-cup',
+          title: 'Будущий кубок',
+          description: '',
+          imageUrl: null,
+          status: 'registration',
+          regularSource: 'head_to_head',
+          visibility: 'public',
+          revision: 1,
+          participantCount: 3,
+          myParticipantState: 'applied',
+          myFinalPlace: null,
+          registrationOpensAt: null,
+          registrationClosesAt: null,
+          startsAt: null,
+          rules: { config: { participantLimit: 8, entryFeeCoins: 0, playoffSize: 4 } },
+        },
+        {
+          id: 'completed',
+          slug: 'completed-cup',
+          title: 'Прошедший кубок',
+          description: '',
+          imageUrl: null,
+          status: 'completed',
+          regularSource: 'head_to_head',
+          visibility: 'public',
+          revision: 1,
+          participantCount: 8,
+          myParticipantState: 'approved',
+          myFinalPlace: 2,
+          registrationOpensAt: null,
+          registrationClosesAt: null,
+          startsAt: null,
+          rules: { config: { participantLimit: 8, entryFeeCoins: 0, playoffSize: 4 } },
+        },
+      ],
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TournamentCatalog />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole('heading', { name: 'Активные турниры' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Предстоящие' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Завершённые' })).toBeInTheDocument();
+    expect(screen.getByText('Вы участвуете')).toBeInTheDocument();
+    expect(screen.getByText('Заявка подана')).toBeInTheDocument();
+    expect(screen.getByText('Ваше место: 2')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Активный кубок' })).toHaveAttribute(
+      'src',
+      '/media/active.webp',
+    );
+    expect(screen.getByRole('img', { name: 'Будущий кубок' })).toHaveAttribute(
+      'src',
+      '/modes/tournaments.webp',
+    );
+    fireEvent.error(screen.getByRole('img', { name: 'Активный кубок' }));
+    expect(screen.getByRole('img', { name: 'Активный кубок' })).toHaveAttribute(
+      'src',
+      '/modes/tournaments.webp',
+    );
+  });
+
+  it('opens a scrollable approved-participant dialog and uses compact scrollable tabs', async () => {
+    vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
+      tournaments: [
+        {
+          id: 't1',
+          slug: 'participants-cup',
+          title: 'Кубок участников',
+          description: '',
+          imageUrl: null,
+          status: 'registration',
+          regularSource: 'head_to_head',
+          visibility: 'public',
+          revision: 1,
+          participantCount: 2,
+          myParticipantState: 'approved',
+          myFinalPlace: null,
+          registrationOpensAt: null,
+          registrationClosesAt: null,
+          startsAt: null,
+          rules: { config: { participantLimit: 8, entryFeeCoins: 0, playoffSize: 4 } },
+        },
+      ],
+    });
+    vi.spyOn(api, 'fetchTournamentParticipants').mockResolvedValue({
+      participants: [
+        { userId: 'u1', displayName: 'Первый', avatarUrl: '/first.webp', seed: 1 },
+        { userId: 'u2', displayName: 'Второй', avatarUrl: null, seed: 2 },
+      ],
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TournamentCatalog />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок участников' }));
+    expect(screen.queryByText('К списку турниров')).not.toBeInTheDocument();
+    expect(screen.getByRole('tablist', { name: 'Разделы турнира' })).toHaveClass(
+      'segmented-tabs--scrollable',
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Участники/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Участники' });
+    expect(dialog.querySelector('.tournament-participants-list')).toHaveClass(
+      'tournament-participants-list--scrollable',
+    );
+    expect(await screen.findByText('Первый')).toBeInTheDocument();
+    expect(screen.getByText('Посев 1')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Первый' })).toHaveAttribute('src', '/first.webp');
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть список участников' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Участники' })).toBeNull());
+  });
+
+  it('marks withdrawing from a tournament as a destructive action', async () => {
+    vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
+      tournaments: [
+        {
+          id: 't1',
+          slug: 'withdraw-cup',
+          title: 'Кубок выхода',
+          description: '',
+          status: 'registration',
+          regularSource: 'head_to_head',
+          visibility: 'public',
+          revision: 1,
+          participantCount: 1,
+          myParticipantState: 'approved',
+          registrationOpensAt: null,
+          registrationClosesAt: null,
+          startsAt: null,
+          rules: { config: { participantLimit: 8, entryFeeCoins: 0, playoffSize: 4 } },
+        },
+      ],
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TournamentCatalog />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок выхода' }));
+    expect(screen.getByRole('button', { name: 'Отменить заявку' })).toHaveClass(
+      'tournament-registration-btn--danger',
+    );
+  });
+
   it('opens the fixture live screen from the published schedule', async () => {
     vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
       tournaments: [

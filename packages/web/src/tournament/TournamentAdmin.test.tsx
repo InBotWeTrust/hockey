@@ -197,6 +197,101 @@ describe('TournamentAdmin', () => {
     expect(screen.getByRole('combobox', { name: 'Регистрация' })).toBeInTheDocument();
   });
 
+  it('uploads optional square WebP artwork and includes its URL in the draft payload', async () => {
+    vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [] });
+    vi.spyOn(api, 'fetchAdminTournamentDuelTemplates').mockResolvedValue({ templates: [] });
+    vi.spyOn(api, 'uploadAdminTournamentArtwork').mockResolvedValue({
+      url: '/api/media/proxy/tournaments/artwork/cup.webp?token=signed',
+      objectKey: 'tournaments/artwork/cup.webp',
+    });
+    const create = vi.spyOn(api, 'createAdminTournament').mockResolvedValue({
+      tournament: {
+        id: 'artwork-cup',
+        slug: 'artwork-cup',
+        title: 'Кубок с картинкой',
+        description: '',
+        imageUrl: '/api/media/proxy/tournaments/artwork/cup.webp?token=signed',
+        status: 'draft',
+        regularSource: 'head_to_head',
+        revision: 1,
+        participantCount: 0,
+      },
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentAdmin />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Создать' }));
+    const artwork = screen.getByLabelText('Изображение турнира');
+    expect(artwork).toHaveAttribute('accept', 'image/webp,.webp');
+    fireEvent.change(artwork, {
+      target: { files: [new File(['webp'], 'cup.webp', { type: 'image/webp' })] },
+    });
+
+    expect(await screen.findByRole('img', { name: 'Изображение турнира' })).toHaveAttribute(
+      'src',
+      '/api/media/proxy/tournaments/artwork/cup.webp?token=signed',
+    );
+    fireEvent.change(screen.getByRole('textbox', { name: 'Название' }), {
+      target: { value: 'Кубок с картинкой' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          imageUrl: '/api/media/proxy/tournaments/artwork/cup.webp?token=signed',
+        }),
+      ),
+    );
+  });
+
+  it('blocks progression during artwork upload and ignores a result from a closed wizard', async () => {
+    vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [] });
+    vi.spyOn(api, 'fetchAdminTournamentDuelTemplates').mockResolvedValue({ templates: [] });
+    let resolveUpload!: (value: { url: string; objectKey: string }) => void;
+    vi.spyOn(api, 'uploadAdminTournamentArtwork').mockReturnValue(
+      new Promise((resolve) => {
+        resolveUpload = resolve;
+      }),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentAdmin />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Создать' }));
+    fireEvent.change(screen.getByLabelText('Изображение турнира'), {
+      target: { files: [new File(['webp'], 'old.webp', { type: 'image/webp' })] },
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Название' }), {
+      target: { value: 'Старая форма' },
+    });
+    expect(await screen.findByRole('button', { name: 'Далее' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть без сохранения' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Создать' }));
+    expect(screen.getByRole('img', { name: 'Изображение турнира' })).toHaveAttribute(
+      'src',
+      '/modes/tournaments.webp',
+    );
+
+    await act(async () => {
+      resolveUpload({ url: '/api/media/old.webp', objectKey: 'old.webp' });
+      await Promise.resolve();
+    });
+    expect(screen.getByRole('img', { name: 'Изображение турнира' })).toHaveAttribute(
+      'src',
+      '/modes/tournaments.webp',
+    );
+  });
+
   it('prevents a double tap from creating duplicate tournament drafts', async () => {
     vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [] });
     let resolveCreate!: (value: { tournament: api.AdminTournament }) => void;
@@ -1063,6 +1158,7 @@ describe('TournamentAdmin', () => {
     );
     expect(Object.keys(body ?? {}).sort()).toEqual([
       'description',
+      'imageUrl',
       'registrationClosesAt',
       'registrationOpensAt',
       'rules',

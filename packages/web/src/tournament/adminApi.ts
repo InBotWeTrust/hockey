@@ -5,6 +5,7 @@ export interface AdminTournament {
   slug: string;
   title: string;
   description: string;
+  imageUrl?: string | null;
   status: string;
   regularSource: 'head_to_head' | 'daily_aggregate';
   revision: number;
@@ -72,6 +73,25 @@ export function fetchAdminTournamentUsers(query: string): Promise<{
 }> {
   const params = new URLSearchParams({ limit: '20', offset: '0', q: query.trim() });
   return apiFetch(`/admin/users?${params.toString()}`);
+}
+
+export function uploadAdminTournamentArtwork(
+  file: File,
+): Promise<{ url: string; objectKey: string }> {
+  if (file.type !== 'image/webp') {
+    return Promise.reject(new Error('Можно загрузить только файл WebP.'));
+  }
+  if (file.size === 0) {
+    return Promise.reject(new Error('Файл WebP пустой.'));
+  }
+  return apiFetch('/admin/tournaments/media/artwork', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'image/webp',
+      'X-File-Name': encodeURIComponent(file.name),
+    },
+    body: file,
+  });
 }
 
 export function createAdminTournament(body: Record<string, unknown>) {

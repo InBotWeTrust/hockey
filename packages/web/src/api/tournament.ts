@@ -15,12 +15,14 @@ export interface TournamentSummary {
   slug: string;
   title: string;
   description: string;
+  imageUrl?: string | null;
   status: TournamentStatus;
   regularSource: 'head_to_head' | 'daily_aggregate';
   visibility: 'public' | 'hidden';
   revision: number;
   participantCount: number;
   myParticipantState: string | null;
+  myFinalPlace?: number | null;
   registrationOpensAt: string | null;
   registrationClosesAt: string | null;
   startsAt: string | null;
@@ -33,6 +35,13 @@ export interface TournamentSummary {
     };
     [key: string]: unknown;
   };
+}
+
+export interface TournamentParticipant {
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  seed: number | null;
 }
 
 export interface TournamentFixture {
@@ -105,6 +114,12 @@ export function fetchTournamentSchedule(tournamentId: string) {
   return apiFetch<{ fixtures: TournamentFixture[] }>(`/tournaments/${tournamentId}/schedule`);
 }
 
+export function fetchTournamentParticipants(tournamentId: string) {
+  return apiFetch<{ participants: TournamentParticipant[] }>(
+    `/tournaments/${tournamentId}/participants`,
+  );
+}
+
 export function fetchTournamentStandings(tournamentId: string) {
   return apiFetch<{ standings: Array<Record<string, unknown>> }>(
     `/tournaments/${tournamentId}/standings`,
@@ -128,9 +143,7 @@ export function fetchTournamentBracket(tournamentId: string) {
 }
 
 export function fetchFixtureLiveState(fixtureId: string) {
-  return apiFetch<{ live: TournamentLiveState | null }>(
-    `/tournaments/fixtures/${fixtureId}/live`,
-  );
+  return apiFetch<{ live: TournamentLiveState | null }>(`/tournaments/fixtures/${fixtureId}/live`);
 }
 
 export function proposeFixtureLiveTime(fixtureId: string, proposedAt: string) {
@@ -140,17 +153,13 @@ export function proposeFixtureLiveTime(fixtureId: string, proposedAt: string) {
     proposedAt: string;
     state: 'pending';
     overlapWarnings: TournamentFixtureLiveOverlapWarning[];
-  }>(
-    `/tournaments/fixtures/${fixtureId}/live/proposals`,
-    { method: 'POST', body: JSON.stringify({ proposedAt }) },
-  );
+  }>(`/tournaments/fixtures/${fixtureId}/live/proposals`, {
+    method: 'POST',
+    body: JSON.stringify({ proposedAt }),
+  });
 }
 
-export function respondFixtureLiveProposal(
-  fixtureId: string,
-  proposalId: string,
-  accept: boolean,
-) {
+export function respondFixtureLiveProposal(fixtureId: string, proposalId: string, accept: boolean) {
   return apiFetch<{
     fixtureId: string;
     proposalId: string;

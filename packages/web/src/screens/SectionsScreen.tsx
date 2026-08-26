@@ -19,7 +19,7 @@ const SECTION_ARTWORK = {
   daily: '/daily-game/start.webp',
   training: '/modes/beginner.webp',
   amateur: '/modes/amateur.webp',
-  tournaments: '/sprites/tournament-tableau.webp',
+  tournaments: '/modes/tournaments.webp',
   pro: '/modes/pro.webp',
   shop: '/modes/shop.webp',
 } as const;
