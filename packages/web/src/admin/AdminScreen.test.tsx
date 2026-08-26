@@ -377,6 +377,45 @@ describe('AdminScreen', () => {
           { status: 200, headers: { 'content-type': 'application/json' } },
         );
       }
+      if (url.includes('/admin/communications/dialogs')) {
+        return new Response(
+          JSON.stringify({
+            unreadCount: 1,
+            nextOffset: null,
+            dialogs: [
+              {
+                chatId: '11111111-1111-4111-8111-111111111111',
+                status: 'open',
+                isNew: true,
+                player: {
+                  userId: 'u1',
+                  displayName: 'Regular Player',
+                  avatarUrl: null,
+                  telegramId: '42',
+                  vkId: null,
+                },
+                lastMessage: {
+                  id: 'm1',
+                  content: 'Нужна помощь',
+                  createdAt: '2026-05-03T08:00:00.000Z',
+                  fromOfficial: false,
+                },
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.includes('/admin/communications/official-account')) {
+        return new Response(
+          JSON.stringify({
+            id: 'official',
+            displayName: 'Ультимейт Хоккей',
+            avatarUrl: '/icons/official-account.webp',
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
       if (url.includes('/admin/channel/news')) {
         return new Response(
           JSON.stringify({
@@ -856,7 +895,14 @@ describe('AdminScreen', () => {
     fireEvent.mouseDown(menuClosedByBackdrop.parentElement as HTMLElement);
     expect(screen.queryByRole('dialog', { name: 'Меню администратора' })).not.toBeInTheDocument();
 
-    selectAdminSection('Канал');
+    selectAdminSection('Коммуникации');
+    expect(screen.getByRole('tab', { name: 'Новости' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Диалоги' }));
+    expect(await screen.findByText('Диалоги · новых 1')).toBeInTheDocument();
+    expect(await screen.findByText('Нужна помощь')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Официальный аккаунт' }));
+    expect(await screen.findByText(/Все администраторы отвечают/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Новости' }));
     expect(await screen.findByText('Новостной канал')).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: /Вовлеченность/ })).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: /Посты/ })).toBeInTheDocument();

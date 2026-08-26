@@ -1,4 +1,5 @@
 import { apiFetch } from '../api/apiFetch.js';
+import type { ChatAttachmentDTO } from '../chat/api.js';
 
 export type AdminRole = 'player' | 'admin';
 export type AdminIdentitySource = 'custom' | 'telegram' | 'vk';
@@ -831,6 +832,55 @@ export interface AdminChannelResponse {
   posts: AdminChannelPost[];
 }
 
+export type AdminOfficialDialogFilter = 'new' | 'open' | 'closed';
+
+export interface AdminOfficialDialog {
+  chatId: string;
+  status: 'open' | 'closed';
+  isNew: boolean;
+  player: {
+    userId: string;
+    displayName: string;
+    avatarUrl: string | null;
+    telegramId: string | null;
+    vkId: string | null;
+  };
+  lastMessage: {
+    id: string;
+    content: string;
+    createdAt: string;
+    fromOfficial: boolean;
+  };
+}
+
+export interface AdminOfficialDialogMessage {
+  id: string;
+  chatId: string;
+  senderId: string;
+  senderDisplayName: string | null;
+  senderAvatarUrl: string | null;
+  content: string;
+  replyToId: string | null;
+  isDeleted: boolean;
+  createdAt: string;
+  updatedAt: string;
+  isEdited: boolean;
+  reactions: Array<{ emoji: string; count: number; reactedByMe: boolean }>;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AdminOfficialDialogsResponse {
+  unreadCount: number;
+  dialogs: AdminOfficialDialog[];
+  nextOffset: number | null;
+}
+
+export interface AdminOfficialAccount {
+  id: string;
+  displayName: string;
+  avatarUrl: string | null;
+}
+
 export interface AdminInventoryItemPatch {
   photoUrl?: string;
   title?: string;
@@ -1037,6 +1087,71 @@ export function patchAdminNotification(
 export function fetchAdminChannelNews(period: AdminChannelPeriod): Promise<AdminChannelResponse> {
   const params = new URLSearchParams({ period });
   return apiFetch<AdminChannelResponse>(`/admin/channel/news?${params.toString()}`);
+}
+
+export function fetchAdminOfficialDialogs(
+  status: AdminOfficialDialogFilter,
+  q = '',
+): Promise<AdminOfficialDialogsResponse> {
+  const params = new URLSearchParams({ status, q });
+  return apiFetch<AdminOfficialDialogsResponse>(
+    `/admin/communications/dialogs?${params.toString()}`,
+  );
+}
+
+export function fetchAdminOfficialDialogMessages(
+  chatId: string,
+): Promise<AdminOfficialDialogMessage[]> {
+  return apiFetch<AdminOfficialDialogMessage[]>(
+    `/admin/communications/dialogs/${encodeURIComponent(chatId)}/messages`,
+  );
+}
+
+export function sendAdminOfficialDialogMessage(
+  chatId: string,
+  content: string,
+  attachmentIds: string[] = [],
+): Promise<AdminOfficialDialogMessage> {
+  return apiFetch<AdminOfficialDialogMessage>(
+    `/admin/communications/dialogs/${encodeURIComponent(chatId)}/messages`,
+    { method: 'POST', body: JSON.stringify({ content, attachmentIds }) },
+  );
+}
+
+export function uploadAdminOfficialDialogAttachment(
+  chatId: string,
+  file: File,
+): Promise<{ media: ChatAttachmentDTO }> {
+  return apiFetch(`/admin/communications/dialogs/${encodeURIComponent(chatId)}/uploads`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': file.type || 'application/octet-stream',
+      'X-File-Name': file.name,
+    },
+    body: file,
+  });
+}
+
+export function patchAdminOfficialDialog(
+  chatId: string,
+  body: { status?: 'open' | 'closed'; markRead?: boolean },
+): Promise<{ status: 'open' | 'closed'; lastAdminReadAt: string | null }> {
+  return apiFetch(`/admin/communications/dialogs/${encodeURIComponent(chatId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+}
+
+export function fetchAdminOfficialAccount(): Promise<AdminOfficialAccount> {
+  return apiFetch<AdminOfficialAccount>('/admin/communications/official-account');
+}
+
+export function uploadAdminOfficialAccountAvatar(file: File): Promise<{ avatarUrl: string }> {
+  return apiFetch('/admin/communications/official-account/avatar', {
+    method: 'POST',
+    headers: { 'Content-Type': 'image/webp', 'X-File-Name': file.name },
+    body: file,
+  });
 }
 
 export function patchAdminChatProfile(
