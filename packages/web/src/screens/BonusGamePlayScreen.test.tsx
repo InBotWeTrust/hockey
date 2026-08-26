@@ -649,7 +649,7 @@ describe('BonusGamePlayScreen', () => {
 
     const dialog = screen.getByRole('dialog', { name: 'Игра пройдена' });
     expect(within(dialog).getByText('21 монета · 25 очков опыта · 22 звезды')).toBeInTheDocument();
-    expect(within(dialog).getByText('Площадка «Пляж» открыта')).toBeInTheDocument();
+    expect(within(dialog).queryByText('Площадка «Пляж» открыта')).not.toBeInTheDocument();
   });
 
   it('keeps the attempt active until the exit prompt is explicitly confirmed', async () => {

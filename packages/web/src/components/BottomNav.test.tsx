@@ -165,6 +165,13 @@ describe('BottomNav remembered navigation', () => {
     expect(screen.queryByRole('button', { name: 'Игра' })).toBeNull();
   });
 
+  it('hides the dock on the demo rink', () => {
+    renderBottomNav('/demo');
+
+    expect(screen.queryByRole('navigation', { name: 'Демо-навигация' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Игра' })).toBeNull();
+  });
+
   it('shows a game badge only for actionable duel events', async () => {
     vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
       const url = String(input);

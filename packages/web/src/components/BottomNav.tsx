@@ -108,13 +108,13 @@ function isOpenRinkRoute(location: NavLocation): boolean {
 
 export function isBottomNavVisible(location: string | NavLocation, user: AuthUser | null): boolean {
   const { pathname } = normalizeNavLocation(location);
-  const isDemo = pathname === '/demo';
   const isInChatRoom = /^\/chat\/[^/]+(?:\/posts\/[^/]+\/comments)?$/.test(pathname);
   return (
     pathname !== '/login' &&
+    pathname !== '/demo' &&
     !isInChatRoom &&
     !isOpenRinkRoute(normalizeNavLocation(location)) &&
-    (Boolean(user) || isDemo)
+    Boolean(user)
   );
 }
 

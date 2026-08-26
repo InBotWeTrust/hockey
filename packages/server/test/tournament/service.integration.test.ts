@@ -124,17 +124,37 @@ async function selectHomeArena(
     title: string;
     artwork_url: string;
     thumbnail_url: string;
-    game_id: string;
   }>(
-    `select arena.id, arena.slug, arena.title, arena.artwork_url, arena.thumbnail_url,
-            game.id as game_id
-       from arena_theme arena
-       join bonus_game game on game.arena_theme_id = arena.id
-      where arena.slug = $1
-      limit 1`,
-    [slug],
+    `insert into arena_theme
+       (slug, title, artwork_url, thumbnail_url, status, is_selectable)
+     values ($1, $2, $3, $4, 'active', true)
+     on conflict (slug) do update
+       set is_selectable = true,
+           status = 'active'
+     returning id, slug, title, artwork_url, thumbnail_url`,
+    [slug, `Tournament ${slug}`, `/arenas/${slug}.webp`, `/arenas/${slug}-thumb.webp`],
   );
   const selected = arena.rows[0]!;
+  const game = await pool.query<{ id: string }>(
+    `insert into bonus_game
+       (slug, title, skill_code, description, sort_order, status, access_type, unlock_price_stars,
+        target_goals, qualification_rules, total_periods, break_duration_ms, period_rules,
+        reward_coins, reward_stars, reward_experience, arena_theme_id,
+        goalkeeper_ready_url, goalkeeper_save_url)
+     values ($1, $2, 'accuracy', '', $3, 'draft', 'free', 0, 1,
+             '{"type":"goals_from_shots","targetGoals":1,"shotsLimit":1}'::jsonb,
+             1, 0, '[]'::jsonb, 0, 0, 0, $4,
+             '/goalies/ready.webp', '/goalies/save.webp')
+     on conflict (slug) do update set title = excluded.title
+     returning id`,
+    [
+      `tournament-home-${slug}`,
+      `Tournament home ${slug}`,
+      slug === 'beach' ? 20_001 : 20_002,
+      selected.id,
+    ],
+  );
+  const gameId = game.rows[0]!.id;
   const snapshot = {
     id: selected.id,
     slug: selected.slug,
@@ -153,10 +173,10 @@ async function selectHomeArena(
      returning id`,
     [
       userId,
-      selected.game_id,
+      gameId,
       `tournament-venue-${userId}-${slug}-${Date.now()}`,
       JSON.stringify({
-        gameId: selected.game_id,
+        gameId,
         slug,
         title: selected.title,
         revision: 1,
@@ -177,13 +197,13 @@ async function selectHomeArena(
        (user_id, bonus_game_id, attempt_id, reward_snapshot)
      values ($1, $2, $3, '{}'::jsonb)
      returning id`,
-    [userId, selected.game_id, attempt.rows[0]!.id],
+    [userId, gameId, attempt.rows[0]!.id],
   );
   await pool.query(
     `insert into user_arena_unlock
        (user_id, arena_theme_id, source_bonus_game_id, source_completion_id)
      values ($1, $2, $3, $4)`,
-    [userId, selected.id, selected.game_id, completion.rows[0]!.id],
+    [userId, selected.id, gameId, completion.rows[0]!.id],
   );
   await pool.query(`update users set home_arena_theme_id = $1 where id = $2`, [
     selected.id,

@@ -51,6 +51,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
   let userB: string;
   let tokenA: string;
   let tokenB: string;
+  let homeArenaGameOrder = 10_000;
 
   beforeAll(async () => {
     const initPool = createTestPool();
@@ -258,24 +259,29 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       artwork_url: string;
       thumbnail_url: string;
     }>(
-      `select id, slug, title, artwork_url, thumbnail_url
-         from arena_theme
-        where slug = $1`,
-      [slug],
+      `insert into arena_theme
+         (slug, title, artwork_url, thumbnail_url, status, is_selectable)
+       values ($1, $2, $3, $4, 'active', true)
+       on conflict (slug) do update
+         set is_selectable = true,
+             status = 'active'
+       returning id, slug, title, artwork_url, thumbnail_url`,
+      [slug, `Arena ${slug}`, `/arenas/${slug}.webp`, `/arenas/${slug}-thumb.webp`],
     );
     const theme = arena.rows[0]!;
+    homeArenaGameOrder += 1;
     const game = await pool.query<{ id: string }>(
       `insert into bonus_game
          (slug, title, skill_code, description, sort_order, status, access_type, unlock_price_stars,
           target_goals, qualification_rules, total_periods, break_duration_ms, period_rules,
           reward_coins, reward_stars, reward_experience, arena_theme_id,
           goalkeeper_ready_url, goalkeeper_save_url)
-       values ($1, $2, 'accuracy', '', 1, 'draft', 'free', 0, 1,
+       values ($1, $2, 'accuracy', '', $4, 'draft', 'free', 0, 1,
                '{"type":"goals_from_shots","targetGoals":1,"shotsLimit":1}'::jsonb,
                1, 0, '[]'::jsonb, 0, 0, 0, $3,
                '/goalies/ready.webp', '/goalies/save.webp')
        returning id`,
-      [`duel-${userId}-${slug}`, `Duel ${slug}`, theme.id],
+      [`duel-${userId}-${slug}`, `Duel ${slug}`, theme.id, homeArenaGameOrder],
     );
     const snapshot = {
       id: theme.id,

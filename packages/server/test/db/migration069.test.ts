@@ -159,8 +159,98 @@ describe.skipIf(!hasIntegrationEnv)('069 bonus skill catalogue reset', () => {
       [userId, firstGame.id, attemptId],
     );
 
+    const extraArenaId = '00000000-0000-4000-8000-000000000681';
+    const extraGameId = '00000000-0000-4000-8000-000000000671';
+    const archivedExtraArenaId = '00000000-0000-4000-8000-000000000682';
+    const archivedExtraGameId = '00000000-0000-4000-8000-000000000672';
+    await pool.query(
+      `insert into arena_theme
+         (id, slug, title, artwork_url, thumbnail_url, status, is_selectable)
+       values ($1, 'extra-draft-arena', 'Extra draft arena',
+               '/bonus-games/arenas/extra.webp', '/bonus-games/arenas/extra.webp', 'active', true)`,
+      [extraArenaId],
+    );
+    await pool.query(
+      `insert into bonus_game
+         (id, slug, title, description, sort_order, status, access_type,
+          unlock_price_stars, target_goals, total_periods, break_duration_ms,
+          period_rules, reward_coins, reward_stars, reward_experience,
+          arena_theme_id, goalkeeper_ready_url, goalkeeper_save_url, revision)
+       values ($1, 'extra-draft', 'Extra draft game', '', 1, 'draft', 'free',
+               0, 1, 1, 0,
+               '[{"periodNumber":1,"durationMs":240000,"shotsLimit":30,"goalFrequency":0.45,"goalieFrequency":0.5,"shooterFrequency":0.65,"puckSpeedPerMs":1.2,"goaliePattern":"linear","goalieAmplitude":1,"goalAmplitude":220}]'::jsonb,
+               0, 0, 0, $2, '/ready.webp', '/save.webp', 1)`,
+      [extraGameId, extraArenaId],
+    );
+    await pool.query(
+      `insert into arena_theme
+         (id, slug, title, artwork_url, thumbnail_url, status, is_selectable)
+       values ($1, 'extra-archived-arena', 'Extra archived arena',
+               '/bonus-games/arenas/extra-archived.webp',
+               '/bonus-games/arenas/extra-archived.webp', 'archived', false)`,
+      [archivedExtraArenaId],
+    );
+    await pool.query(
+      `insert into bonus_game
+         (id, slug, title, description, sort_order, status, access_type,
+          unlock_price_stars, target_goals, total_periods, break_duration_ms,
+          period_rules, reward_coins, reward_stars, reward_experience,
+          arena_theme_id, goalkeeper_ready_url, goalkeeper_save_url, revision, archived_at)
+       values ($1, 'extra-archived', 'Extra archived game', '', 20, 'archived', 'free',
+               0, 2, 1, 0,
+               '[{"periodNumber":1,"durationMs":240000,"shotsLimit":30,"goalFrequency":0.45,"goalieFrequency":0.5,"shooterFrequency":0.65,"puckSpeedPerMs":1.2,"goaliePattern":"linear","goalieAmplitude":1,"goalAmplitude":220}]'::jsonb,
+               0, 0, 0, $2, '/ready.webp', '/save.webp', 1, now())`,
+      [archivedExtraGameId, archivedExtraArenaId],
+    );
+
     const applied = await applyMigrations(pool, MIGRATIONS_DIR);
     expect(applied.applied).toEqual(['069_bonus_game_qualifications.sql']);
+
+    const accuracy = await pool.query<{
+      count: number;
+      extra_duplicated: boolean;
+    }>(
+      `select count(*) filter (where skill_code = 'accuracy')::int as count,
+              bool_or(skill_code = 'accuracy'
+                and slug in ('accuracy-extra-draft', 'accuracy-extra-archived')) as extra_duplicated
+         from bonus_game`,
+    );
+    expect(accuracy.rows[0]).toEqual({ count: 10, extra_duplicated: false });
+
+    const preservedExtras = await pool.query<{
+      id: string;
+      status: string;
+      skill_code: string;
+      qualification_rules: unknown;
+    }>(
+      `select id, status, skill_code, qualification_rules
+         from bonus_game
+        where id = any($1::uuid[])
+        order by id`,
+      [[extraGameId, archivedExtraGameId]],
+    );
+    expect(preservedExtras.rows).toEqual([
+      {
+        id: extraGameId,
+        status: 'draft',
+        skill_code: 'speed',
+        qualification_rules: {
+          type: 'goals_from_shots',
+          targetGoals: 1,
+          shotsLimit: 30,
+        },
+      },
+      {
+        id: archivedExtraGameId,
+        status: 'archived',
+        skill_code: 'speed',
+        qualification_rules: {
+          type: 'goals_from_shots',
+          targetGoals: 2,
+          shotsLimit: 30,
+        },
+      },
+    ]);
 
     const user = await pool.query<{
       xp: number;

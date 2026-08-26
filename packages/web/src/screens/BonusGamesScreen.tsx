@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, CircleDollarSign, Info, Star, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Check, CircleDollarSign, Info, Star, TrendingUp } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { rewardColor, type RewardTone } from '../app/rewardColors.js';
 import {
@@ -156,10 +156,7 @@ export function BonusGamesScreen(): JSX.Element {
             <ArrowLeft size={16} aria-hidden="true" />
           </button>
           <div className="bonus-games-catalog__heading">
-            <h1
-              id="bonus-games-title"
-              className="bonus-games-catalog__title screen-title-on-arena"
-            >
+            <h1 id="bonus-games-title" className="bonus-games-catalog__title screen-title-on-arena">
               Бонусные игры
             </h1>
             <button
@@ -200,7 +197,10 @@ export function BonusGamesScreen(): JSX.Element {
           <div className="bonus-games-catalog__notice">Сейчас нет доступных бонусных игр.</div>
         ) : focusGame !== null ? (
           <div className="bonus-games-catalog__groups">
-            <section className="bonus-games-focus" aria-label="Текущая квалификация">
+            <section className="bonus-games-focus" aria-labelledby="bonus-games-current-title">
+              <h2 id="bonus-games-current-title" className="section-label sections-group__title">
+                Текущая игра
+              </h2>
               <BonusGameCard
                 game={focusGame}
                 actionLabel={actionLabel(focusGame)}
@@ -211,10 +211,16 @@ export function BonusGamesScreen(): JSX.Element {
               />
             </section>
             {completedGames.length > 0 ? (
-              <details className="bonus-games-group" open>
-                <summary className="section-label sections-group__title">
+              <section
+                className="bonus-games-group"
+                aria-labelledby="bonus-games-completed-title"
+              >
+                <h2
+                  id="bonus-games-completed-title"
+                  className="section-label sections-group__title"
+                >
                   Пройденные · {completedGames.length}
-                </summary>
+                </h2>
                 <div className="bonus-games-catalog__grid">
                   {completedGames.map((game) => (
                     <BonusGameCard
@@ -224,17 +230,15 @@ export function BonusGamesScreen(): JSX.Element {
                       isStarting={startMutation.isPending && startMutation.variables === game.id}
                       onAction={() => openGame(game)}
                       blockedByOtherAttempt={activeAttemptInOtherSkill !== null}
+                      compact={true}
                     />
                   ))}
                 </div>
-              </details>
+              </section>
             ) : null}
             {futureGames.length > 0 ? (
               <section className="bonus-games-group" aria-labelledby="bonus-games-next-title">
-                <h2
-                  id="bonus-games-next-title"
-                  className="section-label sections-group__title"
-                >
+                <h2 id="bonus-games-next-title" className="section-label sections-group__title">
                   Дальше
                 </h2>
                 <div className="bonus-games-catalog__grid bonus-games-catalog__grid--compact">
@@ -356,19 +360,29 @@ function BonusGameCard({
     (total, period) => total + (period.shots_limit ?? 0),
     0,
   );
+  const artworkIsLocked =
+    compact &&
+    (game.state === 'level_locked' ||
+      game.state === 'sequence_locked' ||
+      game.state === 'archived');
 
   return (
     <article
-      className={`bonus-game-card${featured ? ' bonus-game-card--featured' : ''}${compact ? ' bonus-game-card--compact' : ''}`}
+      className={`bonus-game-card${featured ? ' bonus-game-card--featured' : ''}${compact ? ' bonus-game-card--compact' : ''}${game.state === 'completed' ? ' bonus-game-card--completed' : ''}`}
     >
       <div className="bonus-game-card__artwork-frame">
         <img
-          className="bonus-game-card__artwork"
+          className={`bonus-game-card__artwork${game.state === 'completed' ? ' bonus-game-card__artwork--completed' : ''}${artworkIsLocked ? ' bonus-game-card__artwork--locked' : ''}`}
           src={game.arena.thumbnail_url}
           alt={`Площадка «${game.arena.title}»`}
           style={{ objectPosition: 'center top' }}
         />
       </div>
+      {compact && game.state === 'completed' && (
+        <span className="bonus-game-card__completed-pill" aria-label="Игра пройдена">
+          <Check size={13} strokeWidth={3} aria-hidden="true" />
+        </span>
+      )}
       <div className="bonus-game-card__content">
         <div className="bonus-game-card__eyebrow">Игра {numberText(game.sort_order)}</div>
         <h2 className="bonus-game-card__title">{game.title}</h2>
@@ -381,10 +395,14 @@ function BonusGameCard({
             : 'без лимита бросков'}
         </p>
         {game.state === 'completed' ? (
-          <p className="bonus-game-card__reward-note">Повторная игра без награды</p>
+          !compact ? (
+            <p className="bonus-game-card__reward-note">Повторная игра без награды</p>
+          ) : null
         ) : firstClearRewards.length > 0 ? (
           <div className="bonus-game-card__reward">
-            <span className="bonus-game-card__reward-title">За первое прохождение</span>
+            {!compact && (
+              <span className="bonus-game-card__reward-title">За первое прохождение</span>
+            )}
             <div className="bonus-game-card__reward-list">
               {firstClearRewards.map((reward) => (
                 <BonusGameReward
@@ -400,7 +418,7 @@ function BonusGameCard({
         ) : null}
         <button
           type="button"
-          className="btn btn--cta bonus-game-card__action"
+          className={`btn btn--cta bonus-game-card__action${game.state === 'completed' ? ' bonus-game-card__action--repeat' : ''}`}
           disabled={!canAct || isStarting}
           onClick={onAction}
         >

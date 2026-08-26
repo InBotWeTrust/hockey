@@ -303,7 +303,6 @@ function BonusResult({
             )}{' '}
             · {formatRussianCount(attempt.reward.stars, 'звезда', 'звезды', 'звёзд')}
           </p>
-          <p>Площадка «{attempt.arena.title}» открыта</p>
         </div>
       ) : null}
       <div className="modal-actions bonus-game-result-actions">

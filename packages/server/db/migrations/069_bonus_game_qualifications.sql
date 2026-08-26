@@ -194,6 +194,23 @@ update arena_theme arena
  where arena.id between '00000000-0000-4000-8000-000000000591'
                     and '00000000-0000-4000-8000-000000000600';
 
+update bonus_game game
+   set qualification_rules = jsonb_build_object(
+         'type', 'goals_from_shots',
+         'targetGoals', game.target_goals,
+         'shotsLimit', greatest(
+           game.target_goals,
+           coalesce(
+             (
+               select sum((period.value->>'shotsLimit')::int)
+                 from jsonb_array_elements(game.period_rules) period(value)
+             ),
+             game.target_goals
+           )
+         )
+       )
+ where game.qualification_rules is null;
+
 insert into arena_theme
   (id, slug, title, artwork_url, thumbnail_url, status, is_selectable)
 select ('00000000-0000-4000-8000-' || lpad((620 + game.sort_order)::text, 12, '0'))::uuid,
@@ -205,7 +222,8 @@ select ('00000000-0000-4000-8000-' || lpad((620 + game.sort_order)::text, 12, '0
        false
   from arena_theme source
   join bonus_game game on game.arena_theme_id = source.id
- where game.skill_code = 'speed';
+ where game.id between '00000000-0000-4000-8000-000000000601'
+                   and '00000000-0000-4000-8000-000000000610';
 
 insert into bonus_game
   (id, slug, title, skill_code, description, sort_order, status, access_type,
@@ -295,7 +313,8 @@ select ('00000000-0000-4000-8000-' || lpad((610 + speed.sort_order)::text, 12, '
        speed.revision,
        speed.created_by
   from bonus_game speed
- where speed.skill_code = 'speed';
+ where speed.id between '00000000-0000-4000-8000-000000000601'
+                    and '00000000-0000-4000-8000-000000000610';
 
 alter table bonus_game
   alter column qualification_rules set not null;

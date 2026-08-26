@@ -115,20 +115,32 @@
 
 final result: passed
 
+## Bonus catalog repeat action and demo gameplay navigation
+
+- Source visual truth for the repeat action: `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-a25ddbcc-33d5-4781-a3cf-06c3ffb008c7.png`.
+- Source visual truth for the demo gameplay shell: `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-1036ea92-3c64-4f6a-bf13-62ac7d411543.png`.
+- Final demo screenshot: `/private/tmp/bonus-demo-no-bottom-nav.png`.
+- Repeat action: the completed-game modifier is applied after the generic disabled CTA rule and keeps a solid `#0f172a` background with opacity `1`, including when another skill owns the active attempt. The focused regression reproduced the former computed `rgba(15, 23, 42, 0.35)` and now asserts `rgb(15, 23, 42)`.
+- Demo gameplay: `/demo` is treated as an open rink route for global navigation visibility. The final DOM contains only the rink scoreboard and scene controls; the four-tab bottom dock is absent. The home, shot and sound controls inside the rink remain unchanged.
+- Findings: P0 none; P1 none; P2 none.
+
+final result: passed
+
 ## Bonus qualification catalog refinement
 
-- Source visual truth: `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-0e9237be-31b1-490d-8269-2eb423cce70a.png`, `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-a6ee122d-f782-4539-a2e5-a6d6faabb5f7.png`, and `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-19511d10-04e4-4f57-94af-a24f3e90812f.png`.
-- Implementation screenshots: `/private/tmp/bonus-compact-cards-320.png`, `/private/tmp/bonus-compact-cards-390.png`, and `/private/tmp/bonus-compact-cards-430.png`.
+- Source visual truth: `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-0e9237be-31b1-490d-8269-2eb423cce70a.png`, `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-a6ee122d-f782-4539-a2e5-a6d6faabb5f7.png`, `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-19511d10-04e4-4f57-94af-a24f3e90812f.png`, `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-0d21e137-749f-4115-9626-4d1e33252daf.png`, and `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-39bff7f0-fc6e-41b0-936c-e5693025fa53.png`.
+- Implementation screenshots for `Скорость`: `/private/tmp/bonus-speed-cards-320-fresh.png`, `/private/tmp/bonus-speed-cards-390-fresh.png`, and `/private/tmp/bonus-speed-cards-430-fresh.png`.
+- Implementation screenshots for `Точность`: `/private/tmp/bonus-accuracy-cards-320-viewport.png`, `/private/tmp/bonus-accuracy-cards-390.png`, and `/private/tmp/bonus-accuracy-cards-430.png`.
 - Full-view comparison evidence: `/private/tmp/bonus-design-comparison.png`; focused compact-card comparison: `/private/tmp/bonus-compact-comparison.png`.
 - Viewports and density: 320 × 760, 390 × 844, and 430 × 900 CSS px at device scale factor 1. The 892 × 1278 source was normalized to 390 × 559 for the comparison; the implementation was cropped to the same 390 × 559 visible region.
-- State: authenticated bonus-game catalog, `Скорость` selected, a `Точность` attempt active, and the first qualification card visible.
-- Typography: the featured card keeps its original hierarchy. Compact cards use a 15 px title, 10.5 px rules and a 12 px action so long location names fit beside the artwork. `Дальше` and `Пройденные` now reuse the same 10 px, weight-600 uppercase `section-label` as the main Sections hub.
-- Spacing and layout: the featured artwork is restored to its original full-width 154 px crop. Compact future cards use 124 × 124 px square artwork with a 10 px inset inside a 144 px-tall card, so the artwork determines the card height. The layout does not overflow at 320, 390, or 430 px.
+- State: authenticated bonus-game catalog with a `Точность` attempt active; both `Скорость` and `Точность` were selected and captured independently with the first qualification card visible.
+- Typography: the featured card keeps its original hierarchy. Compact cards use a 13 px two-line title, 9.5 px three-line rules and an 11 px action so long location names and conditions fit beside the artwork. `Дальше` and `Пройденные · N` reuse the same 10 px, weight-600 uppercase `section-label` as the main Sections hub.
+- Spacing and layout: the featured artwork is restored to its original full-width 154 px crop. Compact cards use 124 × 124 px square artwork with a 10 px inset inside a 144 px-tall card. Completed games are always visible rather than wrapped in a disclosure. Every compact card uses the same five rows for number, title, rules, rewards and action; the hidden completed-game reward keeps its row, so the remaining content does not move. Browser measurements at 320, 390 and 430 px matched for the completed and locked cards: artwork/eyebrow `11 px`, title `24 px`, rules `55 px`, action `107 px` from the card top. The document had no horizontal overflow at any checked width.
 - Colors and tokens: skill switching now reuses the exact `SegmentedTabs` component and active/inactive materials from the shop instead of a bonus-specific chip treatment.
 - Image quality: cards use the authoritative arena thumbnail rather than the preview illustration. The featured card retains the wide upper-location crop; compact cards square-crop the clean arena at the top, with no goalkeeper in the image. No placeholder or CSS-drawn imagery was introduced.
-- Copy and content: the separate active-attempt notice and `Вернуться в игру` action are removed. Qualification rules and reward values remain unchanged.
-- Primary interactions tested: switching between `Скорость` and `Точность`, persistence of the selected skill, focus of an active attempt inside its own skill, and disabled start actions while another attempt exists.
-- Browser console errors: none (`tab.dev.logs`, error level, returned an empty list after the responsive and tab-switch checks).
+- Copy and content: the separate active-attempt notice and `Вернуться в игру` action are removed. Completed cards use one subtle 20 × 20 px glass check in the top-right corner of the whole card, with the accessible label `Игра пройдена` and no visible status text. `Повторить` keeps the dark CTA material even when the global single-attempt rule temporarily blocks it; the disabled state remains semantic and server-enforced. Qualification rules and reward values remain unchanged.
+- Primary interactions tested: switching between `Скорость` and `Точность`, persistence of the selected skill, focus of an active attempt inside its own skill, and disabled start actions while another attempt exists. At every viewport `document.documentElement.scrollWidth` matched `window.innerWidth`, so neither skill introduced horizontal overflow.
+- Browser console errors: none (`tab.dev.logs`, error level, returned an empty list after the fresh six-capture responsive and tab-switch matrix).
 - Focused-region evidence: `/private/tmp/bonus-compact-comparison.png` compares the supplied oversized-goalkeeper card directly with the final 390 px compact card. The final artwork is larger relative to the card, clean of the goalkeeper, and aligned to equal 10 px top/bottom/left insets.
 - Comparison history: the first square-card pass used the preview illustration, left the artwork much shorter than the card and introduced an oversized goalkeeper. The final pass restores the wide featured crop, uses clean arena artwork for list cards, reduces compact typography and action height, and re-captures all three widths. No actionable P0/P1/P2 mismatch remains.
 - Findings: P0 none; P1 none; P2 none. P3: at 320 px the longest qualification copy wraps to three compact lines, but the title, condition and action remain readable without overflow.

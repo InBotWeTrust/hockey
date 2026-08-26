@@ -581,7 +581,10 @@ function applyPatch(
     activation,
   );
   const qualificationRules = normalizeBonusQualificationRules(
-    input.qualificationRules ?? current.qualificationRules,
+    input.qualificationRules ??
+      (input.targetGoals === undefined
+        ? current.qualificationRules
+        : { ...current.qualificationRules, targetGoals }),
     {
       targetGoals,
       shotsLimit: periods.reduce((sum, period) => sum + (period.shotsLimit ?? 0), 0),
@@ -923,7 +926,7 @@ async function patchGame(
     add('unlock_price_stars', nextDefinition.unlockPriceStars);
   }
   if (input.targetGoals !== undefined) add('target_goals', nextDefinition.targetGoals);
-  if (input.qualificationRules !== undefined) {
+  if (input.qualificationRules !== undefined || input.targetGoals !== undefined) {
     add('qualification_rules', JSON.stringify(nextDefinition.qualificationRules));
   }
   if (input.totalPeriods !== undefined) add('total_periods', nextDefinition.totalPeriods);

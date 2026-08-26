@@ -115,6 +115,14 @@ interface AdminGameDto {
   slug: string;
   sortOrder: number;
   status: 'draft' | 'active' | 'archived';
+  targetGoals: number;
+  qualificationRules: {
+    type: 'goals_from_shots' | 'goals_in_time';
+    targetGoals: number;
+    shotsLimit?: number;
+    activeTimeMs?: number;
+    requiredGoalStreak?: number;
+  };
   rewardStars: number;
   revision: number;
   arena: {
@@ -630,6 +638,68 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
     expect(attempt.rows[0]).toMatchObject({
       definition_revision: 1,
       reward_snapshot: { stars: 1 },
+    });
+  });
+
+  it('synchronizes returned and persisted qualification targets when only target goals change', async () => {
+    const game = await createGame({
+      qualificationRules: {
+        type: 'goals_from_shots',
+        targetGoals: 18,
+        shotsLimit: 30,
+        requiredGoalStreak: 3,
+      },
+    });
+
+    const updated = await patchGame(game.id, { targetGoals: 17 });
+    expect(updated.qualificationRules).toEqual({
+      type: 'goals_from_shots',
+      targetGoals: 17,
+      shotsLimit: 30,
+      requiredGoalStreak: 3,
+    });
+
+    const stored = await pool.query<{ qualification_rules: AdminGameDto['qualificationRules'] }>(
+      'select qualification_rules from bonus_game where id = $1',
+      [game.id],
+    );
+    expect(stored.rows[0]?.qualification_rules).toEqual({
+      type: 'goals_from_shots',
+      targetGoals: 17,
+      shotsLimit: 30,
+      requiredGoalStreak: 3,
+    });
+  });
+
+  it('synchronizes time qualification targets without changing their time or streak rules', async () => {
+    const game = await createGame({
+      skillCode: 'speed',
+      periods: [{ ...PERIODS[0]!, shotsLimit: null }],
+      qualificationRules: {
+        type: 'goals_in_time',
+        targetGoals: 18,
+        activeTimeMs: 240_000,
+        requiredGoalStreak: 3,
+      },
+    });
+
+    const updated = await patchGame(game.id, { targetGoals: 17 });
+    expect(updated.qualificationRules).toEqual({
+      type: 'goals_in_time',
+      targetGoals: 17,
+      activeTimeMs: 240_000,
+      requiredGoalStreak: 3,
+    });
+
+    const stored = await pool.query<{ qualification_rules: AdminGameDto['qualificationRules'] }>(
+      'select qualification_rules from bonus_game where id = $1',
+      [game.id],
+    );
+    expect(stored.rows[0]?.qualification_rules).toEqual({
+      type: 'goals_in_time',
+      targetGoals: 17,
+      activeTimeMs: 240_000,
+      requiredGoalStreak: 3,
     });
   });
 

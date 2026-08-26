@@ -1,8 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BonusGamesScreen } from './BonusGamesScreen.js';
+
+const designSystemCss = readFileSync(resolve(process.cwd(), 'src/app/design-system.css'), 'utf8');
 
 function LocationProbe(): JSX.Element {
   const location = useLocation();
@@ -93,10 +97,12 @@ function mockCatalog(
                 games
                   .map((game) => (game as { active_attempt?: unknown }).active_attempt)
                   .find((attempt) => attempt != null) ?? null,
-            }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
+            }),
+            {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            },
+          ),
         );
       }
       if (url.endsWith('/api/inventory/me')) {
@@ -287,9 +293,71 @@ describe('BonusGamesScreen', () => {
       'section-label',
       'sections-group__title',
     );
-    expect(screen.getByText('Повторная игра без награды')).toBeInTheDocument();
+    expect(screen.getByLabelText('Игра пройдена')).toBeInTheDocument();
     expect(screen.queryByText('Нужно пройти: Пляж')).not.toBeInTheDocument();
     expect(screen.queryByText('Готова к игре')).not.toBeInTheDocument();
+  });
+
+  it('renders completed games as compact cards with a completion marker', async () => {
+    mockCatalog([
+      card({
+        id: 'beach',
+        title: 'Пляж',
+        state: 'completed',
+        is_completed: true,
+      }),
+      card({ id: 'resort', title: 'Курорт', sort_order: 2, state: 'available' }),
+    ]);
+    renderCatalog();
+
+    const completedCard = (await screen.findByRole('heading', { name: 'Пляж' })).closest('article');
+    expect(screen.getByRole('heading', { name: 'Пройденные · 1' })).toBeInTheDocument();
+    expect(document.querySelector('details.bonus-games-group')).toBeNull();
+    expect(completedCard).not.toBeNull();
+    expect(completedCard).toHaveClass('bonus-game-card--compact', 'bonus-game-card--completed');
+    const completionMarker = within(completedCard!).getByLabelText('Игра пройдена');
+    expect(completionMarker).toHaveClass('bonus-game-card__completed-pill');
+    expect(completionMarker.parentElement).toBe(completedCard);
+    expect(completionMarker).not.toHaveTextContent('Пройдено');
+    expect(completedCard!.querySelector('.bonus-game-card__completion')).toBeNull();
+    expect(within(completedCard!).getByRole('button', { name: 'Повторить' })).toHaveClass(
+      'bonus-game-card__action--repeat',
+    );
+    expect(within(completedCard!).queryByLabelText('Монеты: 100')).not.toBeInTheDocument();
+  });
+
+  it('keeps a blocked repeat action visibly dark', async () => {
+    mockCatalog([
+      card({ id: 'speed-beach', state: 'completed', is_completed: true }),
+      card({
+        id: 'accuracy-beach',
+        skill_code: 'accuracy',
+        state: 'in_progress',
+        active_attempt: {
+          id: 'attempt-accuracy',
+          game_id: 'accuracy-beach',
+          state: 'period_active',
+          current_period: 1,
+          period_started_at: '2026-08-26T12:00:00.000Z',
+          break_started_at: null,
+          shots_taken: 4,
+          goals: 2,
+        },
+      }),
+    ]);
+    renderCatalog();
+
+    const repeatButton = await screen.findByRole('button', { name: 'Повторить' });
+    expect(repeatButton).toBeDisabled();
+    const style = document.createElement('style');
+    style.textContent = designSystemCss;
+    document.head.append(style);
+    try {
+      expect(getComputedStyle(repeatButton).backgroundColor).toBe('rgb(15, 23, 42)');
+      expect(getComputedStyle(repeatButton).opacity).toBe('1');
+    } finally {
+      style.remove();
+    }
   });
 
   it('keeps the featured card artwork wide and focused on the upper location', async () => {
@@ -383,7 +451,7 @@ describe('BonusGamesScreen', () => {
     localStorage.setItem('bonus-games:last-skill', 'accuracy');
     renderCatalog();
 
-    const focus = await screen.findByRole('region', { name: 'Текущая квалификация' });
+    const focus = await screen.findByRole('region', { name: 'Текущая игра' });
     expect(within(focus).getByRole('heading', { name: 'Архивный пляж' })).toBeInTheDocument();
     expect(within(focus).getByRole('button', { name: 'Продолжить' })).toBeInTheDocument();
   });
@@ -432,6 +500,38 @@ describe('BonusGamesScreen', () => {
     const artwork = await screen.findByAltText('Площадка «Курорт»');
     expect(artwork).toHaveAttribute('src', 'https://media.example.test/resort-thumb.webp');
     expect(artwork).toHaveStyle({ objectPosition: 'center top' });
+    expect(artwork).toHaveClass('bonus-game-card__artwork--locked');
+  });
+
+  it('labels the featured qualification as the current game', async () => {
+    mockCatalog([card({})]);
+    renderCatalog();
+
+    expect(await screen.findByRole('heading', { name: 'Текущая игра' })).toHaveClass(
+      'section-label',
+      'sections-group__title',
+    );
+  });
+
+  it('shows only non-zero first-clear rewards in compact future cards', async () => {
+    mockCatalog([
+      card({ id: 'beach', title: 'Пляж', reward: { coins: 0, stars: 0, experience: 0 } }),
+      card({
+        id: 'resort',
+        title: 'Курорт',
+        sort_order: 2,
+        state: 'sequence_locked',
+        reward: { coins: 21, stars: 0, experience: 25 },
+      }),
+    ]);
+    renderCatalog();
+
+    const compactCard = (await screen.findByRole('heading', { name: 'Курорт' })).closest('article');
+    expect(compactCard).not.toBeNull();
+    expect(within(compactCard!).getByLabelText('Монеты: 21')).toHaveTextContent('21');
+    expect(within(compactCard!).getByLabelText('Опыт: 25')).toHaveTextContent('25');
+    expect(within(compactCard!).queryByLabelText('Звёзды: 0')).not.toBeInTheDocument();
+    expect(within(compactCard!).queryByText('За первое прохождение')).not.toBeInTheDocument();
   });
 
   it('renders first-clear rewards as accessible resource icons', async () => {
@@ -452,7 +552,9 @@ describe('BonusGamesScreen', () => {
     ]);
     renderCatalog();
 
-    expect(await screen.findByText('21 голов из 21 бросков · 2 периода · 21 бросок')).toBeInTheDocument();
+    expect(
+      await screen.findByText('21 голов из 21 бросков · 2 периода · 21 бросок'),
+    ).toBeInTheDocument();
     expect(screen.getByText('За первое прохождение')).toBeInTheDocument();
     expect(screen.getByLabelText('Монеты: 21')).toHaveTextContent('21');
     expect(screen.getByLabelText('Звёзды: 22')).toHaveTextContent('22');
@@ -463,7 +565,11 @@ describe('BonusGamesScreen', () => {
   it('omits zero first-clear rewards and the whole reward block when all values are zero', async () => {
     mockCatalog([
       card({ id: 'some-rewards', reward: { coins: 0, stars: 3, experience: 0 } }),
-      card({ id: 'no-rewards', title: 'Без награды', reward: { coins: 0, stars: 0, experience: 0 } }),
+      card({
+        id: 'no-rewards',
+        title: 'Без награды',
+        reward: { coins: 0, stars: 0, experience: 0 },
+      }),
     ]);
     renderCatalog();
 
