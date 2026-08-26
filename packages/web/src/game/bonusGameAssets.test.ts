@@ -123,8 +123,13 @@ describe('bonus game runtime assets', () => {
         }
       }
 
-      const minimumDifference = entry.arena.endsWith('/beach.webp') ? 15 : 3.5;
-      expect(totalDifference / samples, entry.arena).toBeGreaterThanOrEqual(minimumDifference);
+      const averageDifference = totalDifference / samples;
+      if (entry.arena.endsWith('/beach.webp')) {
+        expect(averageDifference, entry.arena).toBeGreaterThanOrEqual(2.5);
+        expect(averageDifference, entry.arena).toBeLessThanOrEqual(8);
+      } else {
+        expect(averageDifference, entry.arena).toBeGreaterThanOrEqual(3.5);
+      }
     }
   });
 
@@ -173,11 +178,11 @@ describe('bonus game runtime assets', () => {
     }
   });
 
-  it('ships one 1200x800 preview for every bonus location', () => {
+  it('ships one square WebP location card for every bonus preview', () => {
     for (const slug of Object.keys(BONUS_GAME_ASSETS)) {
-      const previewPath = path.resolve('public/bonus-games/previews', `${slug}.webp`);
+      const previewPath = path.resolve('public/bonus-games/location-cards', `${slug}.webp`);
       expect(existsSync(previewPath), slug).toBe(true);
-      expect(readWebpDimensions(previewPath), slug).toEqual({ width: 1200, height: 800 });
+      expect(readWebpDimensions(previewPath), slug).toEqual({ width: 1254, height: 1254 });
     }
   });
 

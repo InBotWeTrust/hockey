@@ -51,7 +51,12 @@ const approvedStaticMediaPaths = {
   goalkeeper_save: new Set(
     approvedStaticMediaSlugs.map((slug) => `/bonus-games/goalkeepers/${slug}-save.webp`),
   ),
-  preview: new Set(approvedStaticMediaSlugs.map((slug) => `/bonus-games/previews/${slug}.webp`)),
+  preview: new Set(
+    approvedStaticMediaSlugs.flatMap((slug) => [
+      `/bonus-games/location-cards/${slug}.webp`,
+      `/bonus-games/previews/${slug}.webp`,
+    ]),
+  ),
 } satisfies Record<BonusMediaReferenceField, ReadonlySet<string>>;
 
 const slug = z

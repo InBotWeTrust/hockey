@@ -121,7 +121,7 @@ function attempt(overrides: Partial<BonusGameAttempt> = {}): BonusGameAttempt {
       use_inventory: false,
       preview_title: 'Первая квалификация',
       preview_story: 'История',
-      preview_artwork_url: '/bonus-games/previews/beach.webp',
+      preview_artwork_url: '/bonus-games/location-cards/beach.webp',
       preview_revision: 1,
       periods: [
         {
@@ -274,9 +274,20 @@ describe('BonusGamePlayScreen', () => {
 
     expect(screen.getByTestId('bonus-play-view')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Первая квалификация' })).toBeInTheDocument();
-    expect(screen.getByText('20 голов из 50 бросков')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Больше не показывать' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Понятно' }));
+    expect(screen.getByRole('img', { name: 'Локация «Пляж» и её вратарь' })).toHaveAttribute(
+      'src',
+      '/bonus-games/location-cards/beach.webp',
+    );
+    const qualification = screen.getByText('20 голов из 50 бросков');
+    expect(qualification).toBeInTheDocument();
+    expect(qualification.querySelector('.bonus-game-preview-modal__condition-icon')).not.toBeNull();
+    const dismissCheckbox = screen.getByRole('checkbox', { name: 'Больше не показывать' });
+    const acknowledgeButton = screen.getByRole('button', { name: 'К игре' });
+    expect(
+      acknowledgeButton.compareDocumentPosition(dismissCheckbox) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    fireEvent.click(dismissCheckbox);
+    fireEvent.click(acknowledgeButton);
 
     await waitFor(() => expect(acknowledgePreview).toHaveBeenCalledWith(true));
   });

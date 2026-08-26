@@ -8,6 +8,7 @@ import {
 } from '@hockey/game-core';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Target } from 'lucide-react';
 import type {
   BonusGameAttempt,
   BonusPeriodLoadoutSelection,
@@ -187,8 +188,24 @@ function BonusPreview({
       />
       <p className="modal-copy bonus-game-preview-modal__story">{attempt.rules.preview_story}</p>
       <p className="bonus-game-preview-modal__condition">
+        <Target
+          className="bonus-game-preview-modal__condition-icon"
+          size={17}
+          strokeWidth={2.4}
+          aria-hidden="true"
+        />
         {qualificationDescription(attempt.rules.qualification_rules)}
       </p>
+      <div className="modal-actions">
+        <button
+          type="button"
+          className="modal-primary btn btn--cta"
+          disabled={busy}
+          onClick={() => void onAcknowledge(dismissFuture)}
+        >
+          {busy ? 'Сохраняем…' : 'К игре'}
+        </button>
+      </div>
       <label className="bonus-game-preview-modal__checkbox">
         <input
           type="checkbox"
@@ -198,16 +215,6 @@ function BonusPreview({
         />
         <span>Больше не показывать</span>
       </label>
-      <div className="modal-actions">
-        <button
-          type="button"
-          className="modal-primary btn btn--cta"
-          disabled={busy}
-          onClick={() => void onAcknowledge(dismissFuture)}
-        >
-          {busy ? 'Сохраняем…' : 'Понятно'}
-        </button>
-      </div>
     </AccessibleModal>
   );
 }

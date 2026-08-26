@@ -67,7 +67,7 @@ export interface GameLoop {
   // треугольные волны / синусоиды возобновляются с той же точки в ту же
   // сторону, в которую двигались до остановки.
   beginShooterPause: () => void;
-  endShooterPause: () => void;
+  endShooterPause: (expectedDurationMs?: number) => void;
   beginScenePause: () => void;
   endScenePause: () => void;
   getShooterT: () => number;
@@ -336,9 +336,12 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
     beginShooterPause() {
       if (shooterPauseStartedAt === null) shooterPauseStartedAt = renderNowMs;
     },
-    endShooterPause() {
+    endShooterPause(expectedDurationMs) {
       if (shooterPauseStartedAt !== null) {
-        shooterPausedTotal += renderNowMs - shooterPauseStartedAt;
+        shooterPausedTotal +=
+          expectedDurationMs === undefined
+            ? renderNowMs - shooterPauseStartedAt
+            : Math.max(0, expectedDurationMs);
         shooterPauseStartedAt = null;
       }
     },

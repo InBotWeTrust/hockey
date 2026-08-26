@@ -68,7 +68,7 @@ function committedMedia(slug: ApprovedStaticSlug) {
     goalkeeperSaveUrl: `/bonus-games/goalkeepers/${slug}-save.webp`,
     previewTitle: `${slug} preview`,
     previewStory: `${slug} preview story`,
-    previewArtworkUrl: `/bonus-games/previews/${slug}.webp`,
+    previewArtworkUrl: `/bonus-games/location-cards/${slug}.webp`,
   };
 }
 

@@ -616,6 +616,64 @@ describe('bonusGameStore', () => {
     expect(useBonusGameStore.getState()).toEqual(stateAfterBoundary);
   });
 
+  it('unlocks every deferred response so a speed attempt accepts more than three shots', async () => {
+    const speedAttempt: BonusGameAttempt = {
+      ...initialAttempt,
+      shots_taken: 0,
+      current_period_shots_taken: 0,
+      goals: 0,
+      current_goal_streak: 0,
+      best_goal_streak: 0,
+      rules: {
+        ...initialAttempt.rules,
+        skill_code: 'speed',
+        target_goals: 18,
+        qualification_rules: {
+          type: 'goals_in_time',
+          targetGoals: 18,
+          activeTimeMs: 120_000,
+        },
+        periods: [
+          {
+            ...initialAttempt.rules.periods[0]!,
+            duration_ms: 120_000,
+            shots_limit: null,
+          },
+        ],
+      },
+    };
+    vi.mocked(submitBonusShot).mockImplementation(async (_attemptId, body) => ({
+      server_result: 'goal',
+      attempt: {
+        ...speedAttempt,
+        shots_taken: body.claimed_shot_index,
+        current_period_shots_taken: body.claimed_shot_index,
+        goals: body.claimed_shot_index,
+        current_goal_streak: body.claimed_shot_index,
+        best_goal_streak: body.claimed_shot_index,
+      },
+      reward_granted: false,
+      balances: { coins: 10, stars: 2, experience: 7 },
+    }));
+    useBonusGameStore.getState().applyState(speedAttempt);
+
+    for (let shotIndex = 1; shotIndex <= 4; shotIndex += 1) {
+      expect(useBonusGameStore.getState().canSubmitShot()).toBe(true);
+      const result = await useBonusGameStore.getState().submitShot(
+        { ...shot, claimed_shot_index: shotIndex },
+        { deferApply: true },
+      );
+
+      expect(result?.attempt.shots_taken).toBe(shotIndex);
+      expect(useBonusGameStore.getState().canSubmitShot()).toBe(false);
+      useBonusGameStore.getState().applyPendingShot();
+      expect(useBonusGameStore.getState().attempt?.shots_taken).toBe(shotIndex);
+    }
+
+    expect(submitBonusShot).toHaveBeenCalledTimes(4);
+    expect(useBonusGameStore.getState().canSubmitShot()).toBe(true);
+  });
+
   it('invalidates a read started during a deferred shot before applying the pending result', async () => {
     // This catches an in-flight GET replacing either the optimistic frame or the saved terminal DTO.
     let performanceNow = 500;

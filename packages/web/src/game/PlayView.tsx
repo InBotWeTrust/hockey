@@ -1539,7 +1539,7 @@ export function PlayView<TState>({
     };
 
     scheduleShotTimeout(() => {
-      if (continuousClockDuringResult) loop.endShooterPause();
+      if (continuousClockDuringResult) loop.endShooterPause(flightMs);
       else loop.beginScenePause();
       puck.holdAt({
         x: puckShotPath.end.x,

@@ -497,7 +497,10 @@ describe('PlayView', () => {
 
     expect(shotResolver).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        input: expect.objectContaining({ tapTime: 1_434, shooterTapTime: 1_000 }),
+        input: expect.objectContaining({
+          tapTime: 1_434,
+          shooterTapTime: 1_000.666_666_666_666_6,
+        }),
       }),
     );
   });

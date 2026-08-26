@@ -1499,12 +1499,15 @@
 }
 
 .modal-card.bonus-game-preview-modal {
-  width: min(100%, 390px);
+  width: min(100%, 520px);
+  max-height: calc(var(--app-viewport-height, 100dvh) - var(--app-safe-top) - var(--app-safe-bottom) - 20px);
+  overflow-y: auto;
+  padding: 18px 16px 16px;
 }
 
 .bonus-game-preview-modal__artwork {
   width: 100%;
-  aspect-ratio: 3 / 2;
+  aspect-ratio: 1;
   display: block;
   border: 1px solid rgba(255, 255, 255, 0.82);
   border-radius: 18px;
@@ -1513,15 +1516,25 @@
   box-shadow: 0 10px 26px rgba(15, 23, 42, 0.14);
 }
 
+.modal-backdrop:has(.bonus-game-preview-modal) {
+  padding-right: 10px;
+  padding-left: 10px;
+}
+
 .bonus-game-preview-modal__story {
   margin-top: 12px;
 }
 
 .bonus-game-preview-modal__condition {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   margin-top: 10px;
-  padding: 10px 12px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.5);
+}
+
+.bonus-game-preview-modal__condition-icon {
+  flex: 0 0 auto;
+  color: rgba(15, 23, 42, 0.64);
 }
 
 .bonus-game-preview-modal__checkbox {
@@ -1529,7 +1542,7 @@
   display: flex;
   align-items: center;
   gap: 9px;
-  margin-top: 8px;
+  margin-top: 10px;
   color: rgba(15, 23, 42, 0.72);
   font-size: 13px;
   font-weight: 800;
