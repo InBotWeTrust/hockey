@@ -319,9 +319,9 @@ describe('BonusGamePlayScreen', () => {
       shotButtonLabel: 'НАЧАТЬ',
       entranceBeforeInactiveAction: true,
       goalsOnlyWhileInactive: true,
-      continuousClockDuringResult: true,
-      freezeRenderingDuringResult: true,
     });
+    expect(props).not.toHaveProperty('continuousClockDuringResult');
+    expect(props).not.toHaveProperty('freezeRenderingDuringResult');
 
     fireEvent.click(screen.getByRole('button', { name: 'НАЧАТЬ' }));
 

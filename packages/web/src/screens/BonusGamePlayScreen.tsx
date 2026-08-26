@@ -679,8 +679,6 @@ export function BonusGamePlayScreen(): JSX.Element {
         }
         entranceBeforeInactiveAction={true}
         goalsOnlyWhileInactive={true}
-        continuousClockDuringResult={true}
-        freezeRenderingDuringResult={true}
         sessionStartedAt={attempt.period_started_at}
         serverNow={attempt.server_now}
         receivedAtPerformanceMs={receivedAtPerformanceMs ?? undefined}
