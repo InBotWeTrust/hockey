@@ -13,6 +13,9 @@ export interface AdminTournament {
   registrationOpensAt?: string | null;
   registrationClosesAt?: string | null;
   startsAt?: string | null;
+  projectedEndsAt?: string | null;
+  completedAt?: string | null;
+  rewardEditability?: { regular: 'editable' | 'paid'; playoff: 'editable' | 'paid' };
   rules?: Record<string, unknown> & { config?: Record<string, unknown> };
 }
 
@@ -114,6 +117,20 @@ export function updateAdminTournament(
   return apiFetch<{ tournament: AdminTournament }>(`/admin/tournaments/${tournamentId}`, {
     method: 'PATCH',
     body: JSON.stringify({ ...body, expectedRevision }),
+  });
+}
+
+export function updateAdminTournamentRewards(
+  tournamentId: string,
+  expectedRevision: number,
+  body: {
+    regular?: Array<{ place: number; experience: number; coins: number; stars: number }>;
+    playoff?: Array<{ place: number; experience: number; coins: number; stars: number }>;
+  },
+) {
+  return apiFetch<{ tournament: AdminTournament }>(`/admin/tournaments/${tournamentId}/rewards`, {
+    method: 'PATCH',
+    body: JSON.stringify({ expectedRevision, ...body }),
   });
 }
 

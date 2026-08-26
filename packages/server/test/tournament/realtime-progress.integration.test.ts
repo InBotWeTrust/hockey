@@ -226,8 +226,8 @@ describe.skipIf(!hasIntegrationEnv)('tournament duel realtime progress', () => {
       description: '',
       rules: tournamentRules(template.rows[0]!.id),
       createdBy: ADMIN_ID,
-      registrationOpensAt: null,
-      registrationClosesAt: null,
+      registrationOpensAt: new Date('2020-01-01T00:00:00.000Z'),
+      registrationClosesAt: new Date('2030-08-31T07:00:00.000Z'),
       startsAt: new Date('2030-09-01T07:00:00.000Z'),
     });
     await publishTournament(pool, tournament.id, tournament.revision, ADMIN_ID);

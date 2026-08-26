@@ -32,6 +32,7 @@ import {
   rescheduleTournamentFixture,
   resolveTournamentNoShow,
   updateTournamentDraft,
+  updateTournamentRewards,
   withdrawTournamentApplication,
   type TournamentRulesSnapshot,
 } from './service.js';
@@ -107,6 +108,20 @@ const draftSchema = z.object({
 const updateSchema = draftSchema.omit({ slug: true }).extend({
   expectedRevision: z.number().int().min(1),
 });
+
+const stageRewardsSchema = z
+  .array(
+    z.object({
+      place: z.number().int().min(1),
+      experience: z.number().int().min(0),
+      coins: z.number().int().min(0),
+      stars: z.number().int().min(0),
+    }),
+  )
+  .max(64)
+  .refine((rows) => new Set(rows.map((row) => row.place)).size === rows.length, {
+    message: 'reward places must be unique',
+  });
 
 function parseRules(input: z.infer<typeof rulesSchema>): TournamentRulesSnapshot {
   return {
@@ -450,6 +465,29 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
         registrationClosesAt:
           body.registrationClosesAt === null ? null : new Date(body.registrationClosesAt),
         startsAt: body.startsAt === null ? null : new Date(body.startsAt),
+      }),
+    };
+  });
+
+  app.patch('/admin/tournaments/:tournamentId/rewards', admin, async (req) => {
+    const params = z.object({ tournamentId: uuid }).parse(req.params);
+    const body = z
+      .object({
+        expectedRevision: z.number().int().min(1),
+        regular: stageRewardsSchema.optional(),
+        playoff: stageRewardsSchema.optional(),
+      })
+      .refine((value) => value.regular !== undefined || value.playoff !== undefined, {
+        message: 'at least one reward stage is required',
+      })
+      .parse(req.body);
+    return {
+      tournament: await updateTournamentRewards(app.pg, {
+        tournamentId: params.tournamentId,
+        expectedRevision: body.expectedRevision,
+        updatedBy: req.user.id,
+        ...(body.regular !== undefined ? { regular: body.regular } : {}),
+        ...(body.playoff !== undefined ? { playoff: body.playoff } : {}),
       }),
     };
   });

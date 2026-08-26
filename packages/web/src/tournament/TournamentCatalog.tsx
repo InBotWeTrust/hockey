@@ -140,6 +140,43 @@ function numberValue(value: unknown, fallback = 0): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
+function tournamentDateLabel(
+  value: string | null | undefined,
+  timezone: string,
+  withZone = true,
+): string {
+  if (!value) return 'Дата пока не назначена';
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return 'Дата пока не назначена';
+  try {
+    const formatted = new Intl.DateTimeFormat('ru-RU', {
+      timeZone: timezone,
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(date);
+    return withZone ? `${formatted} (${timezone})` : formatted;
+  } catch {
+    return date.toLocaleString('ru-RU');
+  }
+}
+
+function importantTournamentDate(tournament: TournamentSummary): string | null {
+  const timezone = String(tournament.rules.config.timezone ?? 'Europe/Moscow');
+  if (
+    ['registration', 'registration_blocked'].includes(tournament.status) &&
+    tournament.registrationClosesAt
+  ) {
+    return `Заявки до ${tournamentDateLabel(tournament.registrationClosesAt, timezone, false)}`;
+  }
+  if (tournament.startsAt) {
+    return `Старт ${tournamentDateLabel(tournament.startsAt, timezone, false)}`;
+  }
+  return null;
+}
+
 function pluralRu(value: number, one: string, few: string, many: string): string {
   const lastTwo = Math.abs(value) % 100;
   if (lastTwo >= 11 && lastTwo <= 14) return many;
@@ -237,7 +274,7 @@ function TournamentRules({ tournament }: { tournament: TournamentSummary }): JSX
   const regularDescription =
     regularSource === 'daily_aggregate'
       ? `Турнир продлится ${numberValue(config.dailyDays)} ${pluralRu(numberValue(config.dailyDays), 'день', 'дня', 'дней')}. Результат каждого дня определяется ${dailyMetricLabels[String(config.dailyMetric ?? 'goals_sum')] ?? 'по количеству голов'}. ${config.bestDays === null || config.bestDays === undefined ? 'В итог войдут результаты всех дней.' : `В итог войдут лучшие ${String(config.bestDays)} ${pluralRu(numberValue(config.bestDays), 'день', 'дня', 'дней')}.`}`
-      : `Каждый сыграет с каждым ${cycles === 1 ? 'один раз' : `${cycles} ${pluralRu(cycles, 'раз', 'раза', 'раз')}`}. Каждый день ${roundsPerDay === 1 ? 'проходит один тур' : `проходит ${roundsPerDay} ${pluralRu(roundsPerDay, 'тур', 'тура', 'туров')}`}. Первый тур начнётся в ${String(config.firstRoundLocalTime ?? 'указанное в расписании время')}.`;
+      : `Каждый сыграет с каждым ${cycles === 1 ? 'один раз' : `${cycles} ${pluralRu(cycles, 'раз', 'раза', 'раз')}`}. Каждый день ${roundsPerDay === 1 ? 'проходит один тур' : `проходит ${roundsPerDay} ${pluralRu(roundsPerDay, 'тур', 'тура', 'туров')}`}. Первый тур начнётся ${tournamentDateLabel(tournament.startsAt, String(config.timezone ?? 'Europe/Moscow'))}.`;
 
   return (
     <div className="tournament-rules">
@@ -405,28 +442,67 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
       />
       <section className="glass tournament-details__content">
         {tab === 'overview' && (
-          <div className="tournament-overview-grid">
-            <button
-              type="button"
-              className="tournament-overview-grid__participants"
-              onClick={() => setParticipantsOpen(true)}
-            >
-              <span>Участники</span>
-              <strong>
-                {tournament.participantCount} / {tournament.rules.config.participantLimit}
-              </strong>
-            </button>
-            <div>
-              <span>Плей-офф</span>
-              <strong>{tournament.rules.config.playoffSize} игроков</strong>
-            </div>
-            <div>
-              <span>Вступительный взнос</span>
-              <strong>
-                {tournament.rules.config.entryFeeCoins === 0
-                  ? 'Бесплатно'
-                  : `${tournament.rules.config.entryFeeCoins} монет`}
-              </strong>
+          <div className="tournament-overview-layout">
+            <section className="tournament-overview-dates">
+              <h3>Сроки</h3>
+              <dl>
+                <div>
+                  <dt>Регистрация</dt>
+                  <dd>
+                    {tournamentDateLabel(
+                      tournament.registrationOpensAt,
+                      String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
+                    )}{' '}
+                    —{' '}
+                    {tournamentDateLabel(
+                      tournament.registrationClosesAt,
+                      String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Первый турнирный день</dt>
+                  <dd>
+                    {tournamentDateLabel(
+                      tournament.startsAt,
+                      String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt>{tournament.completedAt ? 'Турнир завершён' : 'Плановое окончание'}</dt>
+                  <dd>
+                    {tournamentDateLabel(
+                      tournament.completedAt ?? tournament.projectedEndsAt,
+                      String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
+                    )}
+                  </dd>
+                </div>
+              </dl>
+            </section>
+            <div className="tournament-overview-grid">
+              <button
+                type="button"
+                className="tournament-overview-grid__participants"
+                onClick={() => setParticipantsOpen(true)}
+              >
+                <span>Участники</span>
+                <strong>
+                  {tournament.participantCount} / {tournament.rules.config.participantLimit}
+                </strong>
+              </button>
+              <div>
+                <span>Плей-офф</span>
+                <strong>{tournament.rules.config.playoffSize} игроков</strong>
+              </div>
+              <div>
+                <span>Вступительный взнос</span>
+                <strong>
+                  {tournament.rules.config.entryFeeCoins === 0
+                    ? 'Бесплатно'
+                    : `${tournament.rules.config.entryFeeCoins} монет`}
+                </strong>
+              </div>
             </div>
           </div>
         )}
@@ -665,6 +741,11 @@ export function TournamentCatalog(): JSX.Element {
                     {tournament.participantCount} / {tournament.rules.config.participantLimit}{' '}
                     участников
                   </span>
+                  {importantTournamentDate(tournament) && (
+                    <span className="tournament-catalog-card__date">
+                      {importantTournamentDate(tournament)}
+                    </span>
+                  )}
                 </span>
               </button>
             ))}

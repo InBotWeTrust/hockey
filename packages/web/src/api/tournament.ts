@@ -26,6 +26,9 @@ export interface TournamentSummary {
   registrationOpensAt: string | null;
   registrationClosesAt: string | null;
   startsAt: string | null;
+  projectedEndsAt?: string | null;
+  completedAt?: string | null;
+  rewardEditability?: { regular: 'editable' | 'paid'; playoff: 'editable' | 'paid' };
   rules: {
     config: {
       participantLimit: number;

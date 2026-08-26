@@ -26,7 +26,7 @@ const stages = [
   'Доступ',
   'Регулярка',
   'Плей-офф',
-  'Расписание',
+  'Сроки',
   'Награды',
   'Уведомления',
   'Проверка',
@@ -47,6 +47,7 @@ interface PlayoffRoundDraft {
   roundBreakMinutes: number;
   overtimeCount: number;
   shootoutInitialShots: number;
+  firstGameNotBefore: string;
 }
 
 interface TournamentDraftOrigin {
@@ -112,6 +113,7 @@ const defaultPlayoffRound = (): PlayoffRoundDraft => ({
   roundBreakMinutes: 1_440,
   overtimeCount: 1,
   shootoutInitialShots: 3,
+  firstGameNotBefore: '',
 });
 
 const defaultDraft: TournamentDraft = {
@@ -413,6 +415,10 @@ function localDateTimeValue(value: string | null | undefined, timezone: string):
   return `${String(parts.year).padStart(4, '0')}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}T${String(parts.hour).padStart(2, '0')}:${String(parts.minute).padStart(2, '0')}`;
 }
 
+function localDateValue(value: string | null | undefined, timezone: string): string {
+  return localDateTimeValue(value, timezone).slice(0, 10);
+}
+
 function rewardsDraft(value: unknown): string {
   return Array.isArray(value)
     ? value
@@ -467,7 +473,7 @@ function draftFromTournament(tournament: AdminTournament): TournamentDraft {
     timezone,
     registrationOpensAt: localDateTimeValue(tournament.registrationOpensAt, timezone),
     registrationClosesAt: localDateTimeValue(tournament.registrationClosesAt, timezone),
-    startsAt: localDateTimeValue(tournament.startsAt, timezone),
+    startsAt: localDateValue(tournament.startsAt, timezone),
     origin: {
       timezone,
       registrationOpensAt: tournament.registrationOpensAt ?? null,
@@ -522,6 +528,10 @@ function draftFromTournament(tournament: AdminTournament): TournamentDraft {
           overtime.shootoutInitialShots,
           fallback.shootoutInitialShots,
         ),
+        firstGameNotBefore: localDateTimeValue(
+          typeof configured.firstGameStartsAt === 'string' ? configured.firstGameStartsAt : null,
+          timezone,
+        ),
       };
     }),
     regularRewards: rewardsDraft(rewards.regular),
@@ -546,6 +556,7 @@ function serializeDraft(draft: TournamentDraft): Record<string, unknown> {
       gameWindowMs: round.gameWindowMinutes * 60_000,
       gameBreakMs: round.gameBreakMinutes * 60_000,
       roundBreakMs: round.roundBreakMinutes * 60_000,
+      firstGameStartsAt: dateOrNull(round.firstGameNotBefore, draft.timezone),
       overtime: { count: round.overtimeCount, shootoutInitialShots: round.shootoutInitialShots },
     }));
   return {
@@ -553,7 +564,9 @@ function serializeDraft(draft: TournamentDraft): Record<string, unknown> {
     description: draft.description,
     imageUrl: draft.imageUrl,
     startsAt: dateOrNull(
-      draft.startsAt,
+      draft.startsAt === ''
+        ? ''
+        : `${draft.startsAt}T${draft.regularSource === 'head_to_head' ? draft.firstRoundLocalTime : '00:00'}`,
       draft.timezone,
       draft.origin && { iso: draft.origin.startsAt, timezone: draft.origin.timezone },
     ),
@@ -1345,7 +1358,7 @@ export function TournamentAdmin(): JSX.Element {
       <TournamentOperations
         tournament={selectedTournament}
         onBack={() => setSelectedTournament(null)}
-        onEdit={() => {
+        onEdit={(initialStage = 0) => {
           artworkUploadGeneration.current += 1;
           artworkUpload.reset();
           setEditingTournament(selectedTournament);
@@ -1354,7 +1367,7 @@ export function TournamentAdmin(): JSX.Element {
           const snapshot = JSON.stringify(serializeDraft(nextDraft));
           lastSavedSnapshot.current = snapshot;
           initializeSaveQueue(selectedTournament, snapshot);
-          setStage(0);
+          setStage(initialStage);
           setMaxStage(7);
           setSaveState('saved');
           setWizardOpen(true);
@@ -1979,6 +1992,21 @@ export function TournamentAdmin(): JSX.Element {
                             value={round.homeSequence}
                             onChange={(homeSequence) => updatePlayoffRound(index, { homeSequence })}
                           />
+                          <TournamentAdminField
+                            label="Начать не раньше"
+                            help="Необязательная нижняя граница для первой игры этого раунда. Если предыдущий раунд закончится позже, новый начнётся после него."
+                          >
+                            <input
+                              aria-label={`Раунд ${index + 1}: начать не раньше`}
+                              type="datetime-local"
+                              value={round.firstGameNotBefore}
+                              onChange={(event) =>
+                                updatePlayoffRound(index, {
+                                  firstGameNotBefore: event.target.value,
+                                })
+                              }
+                            />
+                          </TournamentAdminField>
                           <details className="tournament-admin-details">
                             <summary>Тайминги, овертайм и буллиты</summary>
                             <div className="tournament-admin-grid">
@@ -2089,12 +2117,12 @@ export function TournamentAdmin(): JSX.Element {
                       />
                     </TournamentAdminField>
                     <TournamentAdminField
-                      label="Старт турнира"
-                      help="Дата первого турнирного дня; календарь строится относительно неё."
+                      label="Первый турнирный день"
+                      help="День, когда начнётся турнир. Для формата «каждый с каждым» время первого тура задаётся отдельно в настройках регулярки."
                     >
                       <input
-                        aria-label="Старт турнира"
-                        type="datetime-local"
+                        aria-label="Первый турнирный день"
+                        type="date"
                         value={draft.startsAt}
                         onChange={(event) => setDraft({ ...draft, startsAt: event.target.value })}
                       />

@@ -226,8 +226,8 @@ async function createRegisteredTournament(
     description: 'Deterministic synthetic acceptance season',
     rules: tournamentRules(input.regularSource, input.duelTemplateId),
     createdBy: ADMIN_ID,
-    registrationOpensAt: null,
-    registrationClosesAt: null,
+    registrationOpensAt: new Date('2020-01-01T00:00:00.000Z'),
+    registrationClosesAt: new Date(input.startsAt.getTime() - 86_400_000),
     startsAt: input.startsAt,
   });
   await publishTournament(pool, tournament.id, tournament.revision, ADMIN_ID);

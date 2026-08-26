@@ -28,6 +28,7 @@ import {
   resolveTournamentNoShow,
   startTournamentPlayoffs,
   updateTournamentDraft,
+  updateTournamentRewards,
   type TournamentRulesSnapshot,
 } from '../../src/tournament/service.js';
 import * as tournamentService from '../../src/tournament/service.js';
@@ -203,8 +204,8 @@ async function createPublishedTournament(
     description: 'Tournament integration test',
     rules: tournamentRules,
     createdBy: ADMIN_ID,
-    registrationOpensAt: null,
-    registrationClosesAt: null,
+    registrationOpensAt: new Date('2020-01-01T00:00:00.000Z'),
+    registrationClosesAt: new Date('2030-08-31T07:00:00.000Z'),
     startsAt: new Date('2030-09-01T07:00:00.000Z'),
   });
   await publishTournament(pool, tournament.id, tournament.revision, ADMIN_ID);
@@ -707,7 +708,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       description: 'Понятные правила для игроков',
       rules: updatedRules,
       updatedBy: ADMIN_ID,
-      registrationOpensAt: null,
+      registrationOpensAt: new Date('2020-01-01T00:00:00.000Z'),
       registrationClosesAt: new Date('2030-08-31T18:00:00.000Z'),
       startsAt: new Date('2030-09-01T08:00:00.000Z'),
     });
@@ -751,8 +752,8 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         description: tournament.description,
         rules: rules(25),
         updatedBy: ADMIN_ID,
-        registrationOpensAt: null,
-        registrationClosesAt: null,
+        registrationOpensAt: new Date('2020-01-01T00:00:00.000Z'),
+        registrationClosesAt: new Date('2030-08-31T07:00:00.000Z'),
         startsAt: new Date('2030-09-01T07:00:00.000Z'),
       }),
     ).rejects.toMatchObject({ code: 'conflict' });
@@ -761,6 +762,70 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       [tournament.id],
     );
     expect(revisions.rows[0]!.count).toBe('1');
+  });
+
+  it('publishes a reward-only revision and preserves the untouched stage', async () => {
+    await seedUsers(pool, 100);
+    const tournament = await createPublishedTournament(pool, 'reward-only-revision', 0, {
+      ...rules(0),
+      stageRewards: {
+        regular: [{ place: 1, coins: 10, stars: 1, experience: 20 }],
+        playoff: [{ place: 1, coins: 50, stars: 5, experience: 100 }],
+      },
+    });
+
+    const updated = await updateTournamentRewards(pool, {
+      tournamentId: tournament.id,
+      expectedRevision: tournament.revision,
+      updatedBy: ADMIN_ID,
+      regular: [{ place: 1, coins: 25, stars: 2, experience: 40 }],
+    });
+
+    expect(updated).toMatchObject({
+      revision: tournament.revision + 1,
+      rewardEditability: { regular: 'editable', playoff: 'editable' },
+      rules: {
+        stageRewards: {
+          regular: [{ place: 1, coins: 25, stars: 2, experience: 40 }],
+          playoff: [{ place: 1, coins: 50, stars: 5, experience: 100 }],
+        },
+      },
+    });
+  });
+
+  it('blocks only a paid reward stage and still allows editing the other stage', async () => {
+    await seedUsers(pool, 100);
+    const tournament = await createPublishedTournament(pool, 'paid-stage-lock', 0, {
+      ...rules(0),
+      stageRewards: { regular: [], playoff: [] },
+    });
+    const application = await applyToTournament(pool, tournament.id, PLAYER_IDS[0]);
+    await pool.query(
+      `insert into tournament_economy_event
+         (tournament_id, participant_id, idempotency_key, kind, status, metadata, applied_at)
+       values ($1, $2, $3, 'stage_reward', 'applied', '{"stage":"regular"}'::jsonb, now())`,
+      [tournament.id, application.participantId, `${tournament.id}:paid-regular-test`],
+    );
+
+    await expect(
+      updateTournamentRewards(pool, {
+        tournamentId: tournament.id,
+        expectedRevision: tournament.revision,
+        updatedBy: ADMIN_ID,
+        regular: [{ place: 1, coins: 1, stars: 0, experience: 0 }],
+      }),
+    ).rejects.toMatchObject({ code: 'rewards_paid' });
+
+    const updated = await updateTournamentRewards(pool, {
+      tournamentId: tournament.id,
+      expectedRevision: tournament.revision,
+      updatedBy: ADMIN_ID,
+      playoff: [{ place: 1, coins: 2, stars: 1, experience: 3 }],
+    });
+    expect(updated).toMatchObject({
+      revision: tournament.revision + 1,
+      rewardEditability: { regular: 'paid', playoff: 'editable' },
+    });
   });
 
   afterAll(async () => {

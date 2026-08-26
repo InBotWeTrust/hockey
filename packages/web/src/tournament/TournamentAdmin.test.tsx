@@ -30,6 +30,7 @@ function dstOverlapTournament(): api.AdminTournament {
       config: {
         regularSource: 'head_to_head',
         timezone: 'America/New_York',
+        firstRoundLocalTime: '01:30',
       },
     },
   };
@@ -980,8 +981,16 @@ describe('TournamentAdmin', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
     await chooseGlassOption('Часовой пояс', 'America/New_York');
-    fireEvent.change(screen.getByLabelText('Старт турнира'), {
-      target: { value: '2030-09-01T12:00' },
+    act(() => {
+      fireEvent.change(screen.getByLabelText('Открытие регистрации'), {
+        target: { value: '2030-08-30T10:00' },
+      });
+      fireEvent.change(screen.getByLabelText('Закрытие регистрации'), {
+        target: { value: '2030-08-31T10:00' },
+      });
+      fireEvent.change(screen.getByLabelText('Первый турнирный день'), {
+        target: { value: '2030-09-01' },
+      });
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
@@ -1009,7 +1018,9 @@ describe('TournamentAdmin', () => {
     await waitFor(() => expect(update).toHaveBeenCalled());
     expect(update.mock.calls.at(-1)?.[2]).toEqual(
       expect.objectContaining({
-        startsAt: '2030-09-01T16:00:00.000Z',
+        registrationOpensAt: '2030-08-30T14:00:00.000Z',
+        registrationClosesAt: '2030-08-31T14:00:00.000Z',
+        startsAt: '2030-09-01T23:00:00.000Z',
         rules: expect.objectContaining({
           config: expect.objectContaining({
             registrationMode: 'approval',
@@ -1195,6 +1206,9 @@ describe('TournamentAdmin', () => {
           regularSource: 'head_to_head',
           revision: 3,
           participantCount: 0,
+          registrationOpensAt: '2030-01-01T09:00:00.000Z',
+          registrationClosesAt: '2030-01-02T09:00:00.000Z',
+          startsAt: '2030-01-03T09:00:00.000Z',
         },
       ],
     });
@@ -1281,9 +1295,9 @@ describe('TournamentAdmin', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок DST' }));
     fireEvent.click(screen.getByRole('button', { name: 'Редактировать' }));
-    fireEvent.click(screen.getByRole('button', { name: '5. Расписание' }));
-    fireEvent.change(screen.getByLabelText('Старт турнира'), {
-      target: { value: '2026-11-01T01:45' },
+    fireEvent.click(screen.getByRole('button', { name: '3. Регулярка' }));
+    fireEvent.change(screen.getByLabelText('Первый тур дня'), {
+      target: { value: '01:45' },
     });
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
     fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
@@ -1314,7 +1328,7 @@ describe('TournamentAdmin', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок DST' }));
     fireEvent.click(screen.getByRole('button', { name: 'Редактировать' }));
-    fireEvent.click(screen.getByRole('button', { name: '5. Расписание' }));
+    fireEvent.click(screen.getByRole('button', { name: '5. Сроки' }));
     await chooseGlassOption('Часовой пояс', 'Europe/Moscow');
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
     fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
@@ -1345,9 +1359,13 @@ describe('TournamentAdmin', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок DST' }));
     fireEvent.click(screen.getByRole('button', { name: 'Редактировать' }));
-    fireEvent.click(screen.getByRole('button', { name: '5. Расписание' }));
-    fireEvent.change(screen.getByLabelText('Старт турнира'), {
-      target: { value: '2026-03-08T02:30' },
+    fireEvent.click(screen.getByRole('button', { name: '3. Регулярка' }));
+    fireEvent.change(screen.getByLabelText('Первый тур дня'), {
+      target: { value: '02:30' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '5. Сроки' }));
+    fireEvent.change(screen.getByLabelText('Первый турнирный день'), {
+      target: { value: '2026-03-08' },
     });
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
     await act(async () => {

@@ -37,6 +37,23 @@ export interface TournamentRulesSnapshot {
   [key: string]: unknown;
 }
 
+export function assertTournamentDatesReady(
+  registrationOpensAt: Date | null,
+  registrationClosesAt: Date | null,
+  startsAt: Date | null,
+): void {
+  if (registrationOpensAt === null || registrationClosesAt === null || startsAt === null) {
+    throw new AppError('dates_required', 'registration and tournament dates are required', 409);
+  }
+  if (registrationOpensAt >= registrationClosesAt || registrationClosesAt >= startsAt) {
+    throw new AppError(
+      'invalid_date_order',
+      'registration opening must precede closing and tournament start',
+      409,
+    );
+  }
+}
+
 interface TournamentRow {
   id: string;
   slug: string;
@@ -57,12 +74,74 @@ interface TournamentRow {
   updated_at: Date;
   rules_snapshot: TournamentRulesSnapshot;
   participant_count: number;
+  regular_rewards_paid?: boolean;
+  playoff_rewards_paid?: boolean;
   my_participant_state?: string | null;
   my_participant_id?: string | null;
   my_final_place?: number | null;
 }
 
+function optionalRuleRecord(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+export function projectedTournamentEnd(
+  startsAt: Date | null,
+  rules: TournamentRulesSnapshot,
+): Date | null {
+  if (startsAt === null) return null;
+  const config = rules.config;
+  let cursor = new Date(startsAt);
+  if (config.regularSource === 'head_to_head') {
+    const participantCount = Math.max(2, config.participantLimit);
+    const roundsPerCycle = participantCount % 2 === 0 ? participantCount - 1 : participantCount;
+    const totalRounds = roundsPerCycle * config.roundRobinCycles;
+    const lastRoundIndex = Math.max(0, totalRounds - 1);
+    const dayIndex = Math.floor(lastRoundIndex / config.roundsPerDay);
+    const roundIndexInDay = lastRoundIndex % config.roundsPerDay;
+    cursor = addZonedCalendarDays(cursor, config.timezone, dayIndex);
+    cursor = new Date(
+      cursor.getTime() +
+        roundIndexInDay * (config.fixtureWindowMs + config.roundBreakMs) +
+        config.fixtureWindowMs,
+    );
+  } else {
+    cursor = addZonedCalendarDays(cursor, config.timezone, Math.max(1, config.dailyDays));
+  }
+
+  const configuredRounds = Array.isArray(rules.playoffRounds) ? rules.playoffRounds : [];
+  const roundCount = Math.log2(config.playoffSize);
+  for (let index = 0; index < roundCount; index += 1) {
+    const round = optionalRuleRecord(configuredRounds[index]);
+    const winsRequired =
+      typeof round.winsRequired === 'number' && Number.isInteger(round.winsRequired)
+        ? Math.max(1, round.winsRequired)
+        : 4;
+    const gameWindowMs =
+      typeof round.gameWindowMs === 'number' && round.gameWindowMs > 0
+        ? round.gameWindowMs
+        : ONE_DAY_MS;
+    const gameBreakMs =
+      typeof round.gameBreakMs === 'number' && round.gameBreakMs >= 0 ? round.gameBreakMs : 0;
+    const roundBreakMs =
+      typeof round.roundBreakMs === 'number' && round.roundBreakMs >= 0 ? round.roundBreakMs : 0;
+    const firstGameStartsAt = validIsoDate(round.firstGameStartsAt);
+    if (firstGameStartsAt !== null && firstGameStartsAt > cursor) cursor = firstGameStartsAt;
+    const maximumGames = winsRequired * 2 - 1;
+    cursor = new Date(
+      cursor.getTime() +
+        maximumGames * gameWindowMs +
+        Math.max(0, maximumGames - 1) * gameBreakMs +
+        (index < roundCount - 1 ? roundBreakMs : 0),
+    );
+  }
+  return cursor;
+}
+
 function mapTournament(row: TournamentRow) {
+  const projectedEndsAt = projectedTournamentEnd(row.starts_at, row.rules_snapshot);
   return {
     id: row.id,
     slug: row.slug,
@@ -78,6 +157,11 @@ function mapTournament(row: TournamentRow) {
     registrationClosesAt: row.registration_closes_at?.toISOString() ?? null,
     startsAt: row.starts_at?.toISOString() ?? null,
     completedAt: row.completed_at?.toISOString() ?? null,
+    projectedEndsAt: projectedEndsAt?.toISOString() ?? null,
+    rewardEditability: {
+      regular: row.regular_rewards_paid === true ? ('paid' as const) : ('editable' as const),
+      playoff: row.playoff_rewards_paid === true ? ('paid' as const) : ('editable' as const),
+    },
     cancelledAt: row.cancelled_at?.toISOString() ?? null,
     participantCount: Number(row.participant_count),
     rules: row.rules_snapshot,
@@ -141,6 +225,16 @@ async function terminalizeTournamentFixtureDuels(
 
 const tournamentSelect = `
   select t.*, r.rules_snapshot,
+         exists (
+           select 1 from tournament_economy_event event
+            where event.tournament_id = t.id and event.kind = 'stage_reward'
+              and event.status = 'applied' and event.metadata->>'stage' = 'regular'
+         ) as regular_rewards_paid,
+         exists (
+           select 1 from tournament_economy_event event
+            where event.tournament_id = t.id and event.kind = 'stage_reward'
+              and event.status = 'applied' and event.metadata->>'stage' = 'playoff'
+         ) as playoff_rewards_paid,
          (select count(*)::int from tournament_participant p
            where p.tournament_id = t.id and p.state = 'approved') as participant_count
     from tournament t
@@ -356,6 +450,13 @@ export async function updateTournamentDraft(
     if (Number(tournament.current_revision) !== input.expectedRevision) {
       throw new AppError('revision_conflict', 'tournament was changed in another tab', 409);
     }
+    if (updatesPublishedRules) {
+      assertTournamentDatesReady(
+        input.registrationOpensAt,
+        input.registrationClosesAt,
+        input.startsAt,
+      );
+    }
     if (Number(tournament.participant_count) > 0) {
       const currentConfig = tournament.rules_snapshot.config;
       if (input.rules.config.entryFeeCoins !== currentConfig.entryFeeCoins) {
@@ -417,6 +518,109 @@ export async function updateTournamentDraft(
   });
 }
 
+export async function updateTournamentRewards(
+  pool: Pool,
+  input: {
+    tournamentId: string;
+    expectedRevision: number;
+    updatedBy: string;
+    regular?: Array<{ place: number; experience: number; coins: number; stars: number }>;
+    playoff?: Array<{ place: number; experience: number; coins: number; stars: number }>;
+  },
+) {
+  return inTransaction(pool, async (client) => {
+    await lockTournament(client, input.tournamentId);
+    const current = await client.query<{
+      status: TournamentStatus;
+      current_revision: number;
+      rules_snapshot: TournamentRulesSnapshot;
+      published_revision_id: string | null;
+      regular_paid: boolean;
+      playoff_paid: boolean;
+    }>(
+      `select t.status, t.current_revision, revision.rules_snapshot, t.published_revision_id,
+              exists (
+                select 1 from tournament_economy_event event
+                 where event.tournament_id = t.id and event.kind = 'stage_reward'
+                   and event.status = 'applied' and event.metadata->>'stage' = 'regular'
+              ) as regular_paid,
+              exists (
+                select 1 from tournament_economy_event event
+                 where event.tournament_id = t.id and event.kind = 'stage_reward'
+                   and event.status = 'applied' and event.metadata->>'stage' = 'playoff'
+              ) as playoff_paid
+         from tournament t
+         join tournament_revision revision
+           on revision.tournament_id = t.id and revision.revision = t.current_revision
+        where t.id = $1
+        for update of t`,
+      [input.tournamentId],
+    );
+    const tournament = current.rows[0];
+    if (tournament === undefined) throw new AppError('not_found', 'tournament not found', 404);
+    if (tournament.published_revision_id === null) {
+      throw new AppError('conflict', 'draft rewards must be edited in the tournament wizard', 409);
+    }
+    if (['cancelled', 'archived'].includes(tournament.status)) {
+      throw new AppError('conflict', 'tournament rewards can no longer be edited', 409);
+    }
+    if (Number(tournament.current_revision) !== input.expectedRevision) {
+      throw new AppError('revision_conflict', 'tournament was changed in another tab', 409);
+    }
+    if (input.regular !== undefined && tournament.regular_paid) {
+      throw new AppError('rewards_paid', 'regular rewards have already been paid', 409);
+    }
+    if (input.playoff !== undefined && tournament.playoff_paid) {
+      throw new AppError('rewards_paid', 'playoff rewards have already been paid', 409);
+    }
+    const previousRewards = optionalRuleRecord(tournament.rules_snapshot.stageRewards);
+    const stageRewards = {
+      regular: input.regular ?? previousRewards.regular ?? [],
+      playoff: input.playoff ?? previousRewards.playoff ?? [],
+    };
+    const rules: TournamentRulesSnapshot = {
+      ...tournament.rules_snapshot,
+      stageRewards,
+    };
+    const revision = input.expectedRevision + 1;
+    const inserted = await client.query<{ id: string }>(
+      `insert into tournament_revision
+         (tournament_id, revision, rules_snapshot, is_published, published_at, created_by)
+       values ($1, $2, $3, true, now(), $4)
+       returning id`,
+      [input.tournamentId, revision, JSON.stringify(rules), input.updatedBy],
+    );
+    await client.query(
+      `update tournament
+          set current_revision = $2, published_revision_id = $3,
+              updated_by = $4, updated_at = now()
+        where id = $1`,
+      [input.tournamentId, revision, inserted.rows[0]!.id, input.updatedBy],
+    );
+    await client.query(
+      `insert into event_log (user_id, type, payload)
+       values ($1, 'admin_tournament_rewards_updated', $2)`,
+      [
+        input.updatedBy,
+        JSON.stringify({
+          tournament_id: input.tournamentId,
+          revision,
+          changed_stages: [
+            ...(input.regular !== undefined ? ['regular'] : []),
+            ...(input.playoff !== undefined ? ['playoff'] : []),
+          ],
+          previous: previousRewards,
+          next: stageRewards,
+        }),
+      ],
+    );
+    const updated = await client.query<TournamentRow>(`${tournamentSelect} where t.id = $1`, [
+      input.tournamentId,
+    ]);
+    return mapTournament(updated.rows[0]!);
+  });
+}
+
 export async function publishTournament(
   pool: Pool,
   tournamentId: string,
@@ -429,8 +633,12 @@ export async function publishTournament(
       status: TournamentStatus;
       current_revision: number;
       revision_id: string;
+      registration_opens_at: Date | null;
+      registration_closes_at: Date | null;
+      starts_at: Date | null;
     }>(
-      `select t.status, t.current_revision, r.id as revision_id
+      `select t.status, t.current_revision, r.id as revision_id,
+              t.registration_opens_at, t.registration_closes_at, t.starts_at
          from tournament t
          join tournament_revision r
            on r.tournament_id = t.id and r.revision = t.current_revision
@@ -444,6 +652,11 @@ export async function publishTournament(
     if (Number(tournament.current_revision) !== expectedRevision) {
       throw new AppError('revision_conflict', 'tournament was changed in another tab', 409);
     }
+    assertTournamentDatesReady(
+      tournament.registration_opens_at,
+      tournament.registration_closes_at,
+      tournament.starts_at,
+    );
     await client.query(
       `update tournament_revision set is_published = true, published_at = now()
         where id = $1`,
