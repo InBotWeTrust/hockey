@@ -114,9 +114,14 @@ describe('TournamentCatalog', () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByRole('heading', { name: 'Активные турниры' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Предстоящие' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Завершённые' })).toBeInTheDocument();
+    const sectionHeadings = [
+      await screen.findByRole('heading', { name: 'Активные турниры' }),
+      screen.getByRole('heading', { name: 'Предстоящие' }),
+      screen.getByRole('heading', { name: 'Завершённые' }),
+    ];
+    for (const heading of sectionHeadings) {
+      expect(heading.className).toBe('section-label sections-group__title');
+    }
     expect(screen.getByText('Вы участвуете')).toBeInTheDocument();
     expect(screen.getByText('Заявка подана')).toBeInTheDocument();
     expect(screen.getByText('Ваше место: 2')).toBeInTheDocument();

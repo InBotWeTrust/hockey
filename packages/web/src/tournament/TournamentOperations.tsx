@@ -974,7 +974,8 @@ export function TournamentOperations({
                 Возобновить турнир
               </button>
             )}
-            {!['draft', 'cancelled', 'completed', 'archived'].includes(status) && (
+            {!['cancelled', 'completed', 'archived'].includes(status) &&
+              (status !== 'draft' || tournament.participantCount > 0) && (
               <button
                 type="button"
                 className="admin-compact-btn admin-compact-btn--danger"

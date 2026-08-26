@@ -1449,6 +1449,7 @@ describe('TournamentAdmin', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок CRUD' }));
     fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
+    expect(screen.queryByRole('button', { name: 'Отменить турнир' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Редактировать турнир' }));
     expect(screen.getByRole('textbox', { name: 'Название' })).toHaveValue('Кубок CRUD');
     fireEvent.change(screen.getByRole('textbox', { name: 'Название' }), {
@@ -1478,5 +1479,42 @@ describe('TournamentAdmin', () => {
     expect(remove).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Подтвердить удаление черновика' }));
     await waitFor(() => expect(remove).toHaveBeenCalledWith(tournament.id));
+  });
+
+  it('allows a draft with participants to be cancelled instead of leaving it stuck', async () => {
+    const tournament = {
+      id: '00000000-0000-4000-8000-000000000933',
+      slug: 'draft-with-participant',
+      title: 'Кубок с заявкой',
+      description: 'Черновик, в котором уже есть участник',
+      status: 'draft',
+      regularSource: 'head_to_head' as const,
+      revision: 3,
+      participantCount: 1,
+      registrationOpensAt: null,
+      registrationClosesAt: null,
+      startsAt: null,
+      rules: { config: { regularSource: 'head_to_head' } },
+    };
+    vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [tournament] });
+    vi.spyOn(api, 'fetchAdminTournamentParticipants').mockResolvedValue({ participants: [] });
+    const cancel = vi.spyOn(api, 'cancelAdminTournament').mockResolvedValue({
+      tournamentId: tournament.id,
+      status: 'cancelled',
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentAdmin />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок с заявкой' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
+
+    expect(screen.queryByRole('button', { name: 'Удалить черновик' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Отменить турнир' }));
+
+    await waitFor(() => expect(cancel).toHaveBeenCalledWith(tournament.id, 3));
   });
 });

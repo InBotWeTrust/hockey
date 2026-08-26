@@ -4054,15 +4054,6 @@
   min-width: 0;
 }
 
-.tournament-catalog__heading {
-  margin: 4px 0 0;
-  color: rgba(244, 250, 255, 0.96);
-  font-size: 15px;
-  font-weight: 760;
-  line-height: 1.3;
-  text-align: left;
-}
-
 .tournament-catalog-card {
   display: grid;
   grid-template-columns: 76px minmax(0, 1fr);

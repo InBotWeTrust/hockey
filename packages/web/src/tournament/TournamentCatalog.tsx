@@ -706,7 +706,7 @@ export function TournamentCatalog(): JSX.Element {
     <div className="tournament-catalog">
       {sections.map((section) => (
         <section key={section.title} className="tournament-catalog__section">
-          <h2 className="tournament-catalog__heading">{section.title}</h2>
+          <h2 className="section-label sections-group__title">{section.title}</h2>
           <div className="tournament-catalog__cards">
             {section.tournaments.map((tournament) => (
               <button
