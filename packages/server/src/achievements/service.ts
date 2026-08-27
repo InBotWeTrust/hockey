@@ -78,7 +78,11 @@ export async function fetchProfileAchievements(
   await grantStatAchievements(db, userId, stats);
 
   const { rows } = await db.query<AchievementRow>(
-    `select a.id, a.photo_url, a.title, a.description, a.requirement, ua.unlocked_at
+    `select a.id, a.photo_url, a.title, a.description, a.requirement,
+            coalesce(
+              to_jsonb(ua) ->> 'completed_at',
+              to_jsonb(ua) ->> 'unlocked_at'
+            )::timestamptz as unlocked_at
        from achievements a
        left join user_achievements ua
          on ua.achievement_id = a.id and ua.user_id = $1
