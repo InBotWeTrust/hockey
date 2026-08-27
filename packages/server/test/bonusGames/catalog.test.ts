@@ -152,10 +152,17 @@ describe.skipIf(!hasIntegrationEnv)('bonus game catalog and paid unlocks', () =>
       gameId: game.id,
       slug: game.slug,
       title: `Игра ${game.slug}`,
+      skillCode: 'accuracy',
       revision: 1,
       targetGoals: 18,
+      qualificationRules: { type: 'goals_from_shots', targetGoals: 18, shotsLimit: 30 },
       totalPeriods: 1,
       breakDurationMs: 0,
+      useInventory: false,
+      previewTitle: 'Старое превью',
+      previewStory: 'Старая история',
+      previewArtworkUrl: '/previews/old.webp',
+      previewRevision: 1,
       periods: [PERIOD_RULE],
       goalkeeperReadyUrl: `/goalies/${game.slug}-ready.webp`,
       goalkeeperSaveUrl: `/goalies/${game.slug}-save.webp`,
@@ -344,6 +351,53 @@ describe.skipIf(!hasIntegrationEnv)('bonus game catalog and paid unlocks', () =>
       [userId, game.id],
     );
     expect(sideEffects.rows[0]).toEqual({ xp: 10, unlocks: 0, events: 0 });
+  });
+
+  it('keeps an active attempt card consistent with its immutable snapshot', async () => {
+    const userId = await createUser();
+    const game = await createGame({ sortOrder: 1 });
+    const attemptId = await createAttempt(userId, game);
+    await pool.query(
+      `update bonus_game
+          set slug = 'accuracy-moscow', title = 'Москва', target_goals = 25,
+              qualification_rules = '{"type":"goals_from_shots","targetGoals":25,"shotsLimit":40}'::jsonb,
+              preview_title = 'Новое превью', preview_story = 'Новая история',
+              preview_artwork_url = '/world-tour/moscow-preview.webp', preview_revision = 2,
+              goalkeeper_ready_url = '/world-tour/moscow-ready.webp',
+              goalkeeper_save_url = '/world-tour/moscow-save.webp'
+        where id = $1`,
+      [game.id],
+    );
+    await pool.query(
+      `update arena_theme
+          set slug = 'accuracy-world-tour-moscow', title = 'Москва',
+              artwork_url = '/world-tour/moscow.webp',
+              thumbnail_url = '/world-tour/moscow-preview.webp'
+        where id = $1`,
+      [arenaId],
+    );
+
+    const card = (await listBonusGameCards(pool, userId))[0]!;
+
+    expect(card).toMatchObject({
+      slug: game.slug,
+      title: `Игра ${game.slug}`,
+      target_goals: 18,
+      preview_title: 'Старое превью',
+      preview_story: 'Старая история',
+      preview_artwork_url: '/previews/old.webp',
+      preview_revision: 1,
+      goalkeeper_ready_url: `/goalies/${game.slug}-ready.webp`,
+      goalkeeper_save_url: `/goalies/${game.slug}-save.webp`,
+      arena: {
+        slug: 'default',
+        title: 'Стандартная',
+        artwork_url: '/arenas/default.webp',
+        thumbnail_url: '/arenas/default-thumb.webp',
+      },
+      state: 'in_progress',
+      active_attempt: { id: attemptId },
+    });
   });
 
   it('does not charge or create a paid unlock when a completed free game becomes paid', async () => {

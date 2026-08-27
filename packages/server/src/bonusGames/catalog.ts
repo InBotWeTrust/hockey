@@ -7,6 +7,7 @@ import type {
   BonusSkillCode,
   BonusGameAttemptState,
   BonusPeriodRule,
+  BonusRulesSnapshot,
   BonusRewardSnapshot,
 } from './types.js';
 
@@ -115,6 +116,8 @@ interface CatalogRow {
   attempt_break_started_at: Date | null;
   attempt_shots_taken: number | null;
   attempt_goals: number | null;
+  attempt_rules_snapshot: BonusRulesSnapshot | null;
+  attempt_reward_snapshot: BonusRewardSnapshot | null;
 }
 
 function toIso(value: Date | null): string | null {
@@ -231,7 +234,9 @@ export async function listBonusGameCards(
             attempt.period_started_at as attempt_period_started_at,
             attempt.break_started_at as attempt_break_started_at,
             attempt.shots_taken as attempt_shots_taken,
-            attempt.goals as attempt_goals
+            attempt.goals as attempt_goals,
+            attempt.rules_snapshot as attempt_rules_snapshot,
+            attempt.reward_snapshot as attempt_reward_snapshot
        from catalog_games game
        join arena_theme arena on arena.id = game.arena_theme_id
        left join user_bonus_game_completion predecessor_completion
@@ -251,43 +256,59 @@ export async function listBonusGameCards(
 
   return rows.map((row) => {
     const state = deriveCardState(row, hasAmateurAccess);
-    const qualificationRules = normalizeBonusQualificationRules(row.qualification_rules, {
-      targetGoals: Number(row.target_goals),
-      shotsLimit: row.period_rules.reduce((sum, period) => sum + (period.shotsLimit ?? 0), 0),
-    });
+    const activeRules = row.attempt_id === null ? null : row.attempt_rules_snapshot;
+    const periodRules = activeRules?.periods ?? row.period_rules;
+    const targetGoals = activeRules?.targetGoals ?? Number(row.target_goals);
+    const qualificationRules = normalizeBonusQualificationRules(
+      activeRules?.qualificationRules ?? row.qualification_rules,
+      {
+        targetGoals,
+        shotsLimit: periodRules.reduce((sum, period) => sum + (period.shotsLimit ?? 0), 0),
+      },
+    );
+    const activeArena = activeRules?.arena;
+    const reward = row.attempt_reward_snapshot ?? {
+      coins: Number(row.reward_coins),
+      stars: Number(row.reward_stars),
+      experience: Number(row.reward_experience),
+    };
     return {
       id: row.id,
-      slug: row.slug,
-      title: row.title,
-      skill_code: row.skill_code,
+      slug: activeRules?.slug ?? row.slug,
+      title: activeRules?.title ?? row.title,
+      skill_code: activeRules?.skillCode ?? row.skill_code,
       description: row.description,
       sort_order: Number(row.sort_order),
       access_type: row.access_type,
       unlock_price_stars: Number(row.unlock_price_stars),
-      target_goals: Number(row.target_goals),
+      target_goals: targetGoals,
       qualification_rules: qualificationRules,
-      total_periods: Number(row.total_periods),
-      break_duration_ms: Number(row.break_duration_ms),
-      use_inventory: row.use_inventory,
-      preview_title: row.preview_title,
-      preview_story: row.preview_story,
-      preview_artwork_url: row.preview_artwork_url,
-      preview_revision: Number(row.preview_revision),
-      period_rules: row.period_rules,
-      reward: {
-        coins: Number(row.reward_coins),
-        stars: Number(row.reward_stars),
-        experience: Number(row.reward_experience),
-      },
-      goalkeeper_ready_url: row.goalkeeper_ready_url,
-      goalkeeper_save_url: row.goalkeeper_save_url,
-      arena: {
-        id: row.arena_id,
-        slug: row.arena_slug,
-        title: row.arena_title,
-        artwork_url: row.arena_artwork_url,
-        thumbnail_url: row.arena_thumbnail_url,
-      },
+      total_periods: activeRules?.totalPeriods ?? Number(row.total_periods),
+      break_duration_ms: activeRules?.breakDurationMs ?? Number(row.break_duration_ms),
+      use_inventory: activeRules?.useInventory ?? row.use_inventory,
+      preview_title: activeRules?.previewTitle ?? row.preview_title,
+      preview_story: activeRules?.previewStory ?? row.preview_story,
+      preview_artwork_url: activeRules?.previewArtworkUrl ?? row.preview_artwork_url,
+      preview_revision: activeRules?.previewRevision ?? Number(row.preview_revision),
+      period_rules: periodRules,
+      reward,
+      goalkeeper_ready_url: activeRules?.goalkeeperReadyUrl ?? row.goalkeeper_ready_url,
+      goalkeeper_save_url: activeRules?.goalkeeperSaveUrl ?? row.goalkeeper_save_url,
+      arena: activeArena
+        ? {
+            id: activeArena.id,
+            slug: activeArena.slug,
+            title: activeArena.title,
+            artwork_url: activeArena.artworkUrl,
+            thumbnail_url: activeArena.thumbnailUrl,
+          }
+        : {
+            id: row.arena_id,
+            slug: row.arena_slug,
+            title: row.arena_title,
+            artwork_url: row.arena_artwork_url,
+            thumbnail_url: row.arena_thumbnail_url,
+          },
       is_unlocked: row.access_type === 'free' || row.unlock_id !== null,
       is_completed: row.completion_id !== null,
       state,

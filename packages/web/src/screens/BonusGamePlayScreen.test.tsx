@@ -252,7 +252,7 @@ describe('BonusGamePlayScreen', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Загружаем бонусную игру…');
   });
 
-  it('shows the qualification preview over the mounted ice and acknowledges dismissal', async () => {
+  it('shows the qualification preview over the mounted ice without a dismissal checkbox', async () => {
     const acknowledgePreview = vi.fn(async () => attempt({ preview_required: false }));
     setStore({
       attempt: attempt({
@@ -281,15 +281,11 @@ describe('BonusGamePlayScreen', () => {
     const qualification = screen.getByText('20 голов из 50 бросков');
     expect(qualification).toBeInTheDocument();
     expect(qualification.querySelector('.bonus-game-preview-modal__condition-icon')).not.toBeNull();
-    const dismissCheckbox = screen.getByRole('checkbox', { name: 'Больше не показывать' });
     const acknowledgeButton = screen.getByRole('button', { name: 'К игре' });
-    expect(
-      acknowledgeButton.compareDocumentPosition(dismissCheckbox) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    fireEvent.click(dismissCheckbox);
+    expect(screen.queryByRole('checkbox', { name: 'Больше не показывать' })).not.toBeInTheDocument();
     fireEvent.click(acknowledgeButton);
 
-    await waitFor(() => expect(acknowledgePreview).toHaveBeenCalledWith(true));
+    await waitFor(() => expect(acknowledgePreview).toHaveBeenCalledWith(false));
   });
 
   it('shows the idle period on the rink and starts it through the primary button', () => {
@@ -374,6 +370,32 @@ describe('BonusGamePlayScreen', () => {
     });
     expect(props).not.toHaveProperty('rinkAspectRatio');
     expect(props).not.toHaveProperty('gameLayerStyle');
+  });
+
+  it('matches World Tour save-pose framing to the training goalkeeper', () => {
+    setStore({
+      attempt: attempt({
+        arena: {
+          id: 'world-tour-arena-1',
+          slug: 'moscow',
+          title: 'Москва',
+          artwork_url: '/bonus-games/world-tour/arenas/moscow.webp',
+          thumbnail_url: '/bonus-games/world-tour/previews/moscow.webp',
+        },
+        goalkeeper_ready_url: '/bonus-games/world-tour/goalkeepers/moscow-ready.webp',
+        goalkeeper_save_url: '/bonus-games/world-tour/goalkeepers/moscow-save.webp',
+      }),
+    });
+
+    renderScreen();
+
+    const props = playViewProbe.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(props).toMatchObject({
+      goalieOptions: {
+        idleSizeScale: 1.22,
+        saveSizeScale: 1.04,
+      },
+    });
   });
 
   it('defers the shot DTO until PlayView reaches its visual boundary', async () => {

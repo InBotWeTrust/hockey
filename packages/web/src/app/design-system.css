@@ -1198,6 +1198,10 @@
   box-shadow: none;
 }
 
+.bonus-game-card--featured.bonus-game-card--world-tour .bonus-game-card__artwork-frame {
+  height: clamp(176px, 48vw, 204px);
+}
+
 .bonus-game-card--compact {
   height: 144px;
   min-height: 144px;
@@ -1537,23 +1541,6 @@
 .bonus-game-preview-modal__condition-icon {
   flex: 0 0 auto;
   color: rgba(15, 23, 42, 0.64);
-}
-
-.bonus-game-preview-modal__checkbox {
-  min-height: 40px;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  margin-top: 10px;
-  color: rgba(15, 23, 42, 0.72);
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.bonus-game-preview-modal__checkbox input {
-  width: 18px;
-  height: 18px;
-  accent-color: #2563eb;
 }
 
 .bonus-game-inventory-fields {

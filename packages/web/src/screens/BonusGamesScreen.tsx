@@ -425,17 +425,26 @@ function BonusGameCard({
     (game.state === 'level_locked' ||
       game.state === 'sequence_locked' ||
       game.state === 'archived');
+  const isWorldTourArtwork = game.arena.thumbnail_url.includes('/bonus-games/world-tour/');
+  const featuredArtworkPosition =
+    featured && isWorldTourArtwork
+      ? game.arena.slug === 'accuracy-world-tour-moscow'
+        ? 'center 50%'
+        : 'center 43%'
+      : 'center top';
 
   return (
     <article
-      className={`bonus-game-card${featured ? ' bonus-game-card--featured' : ''}${compact ? ' bonus-game-card--compact' : ''}${game.state === 'completed' ? ' bonus-game-card--completed' : ''}`}
+      className={`bonus-game-card${featured ? ' bonus-game-card--featured' : ''}${featured && isWorldTourArtwork ? ' bonus-game-card--world-tour' : ''}${compact ? ' bonus-game-card--compact' : ''}${game.state === 'completed' ? ' bonus-game-card--completed' : ''}`}
     >
       <div className="bonus-game-card__artwork-frame">
         <img
           className={`bonus-game-card__artwork${game.state === 'completed' ? ' bonus-game-card__artwork--completed' : ''}${artworkIsLocked ? ' bonus-game-card__artwork--locked' : ''}`}
           src={versionBonusGameArtwork(game.arena.thumbnail_url)}
           alt={`Площадка «${game.arena.title}»`}
-          style={{ objectPosition: 'center top' }}
+          style={{
+            objectPosition: featuredArtworkPosition,
+          }}
         />
       </div>
       {compact && game.state === 'completed' && (

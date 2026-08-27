@@ -2,7 +2,26 @@ import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { BONUS_GAME_ASSETS, BONUS_GAME_SECTION_ARTWORK } from './bonusGameAssets';
+import * as bonusGameAssets from './bonusGameAssets';
+
+const { BONUS_GAME_ASSETS, BONUS_GAME_SECTION_ARTWORK, WORLD_TOUR_BONUS_GAME_ASSETS } =
+  bonusGameAssets;
+
+const WORLD_TOUR_SLUGS = [
+  'moscow',
+  'istanbul',
+  'rome',
+  'paris',
+  'london',
+  'new-york',
+  'rio-de-janeiro',
+  'cape-town',
+  'dubai',
+  'mumbai',
+  'singapore',
+  'beijing',
+  'tokyo',
+] as const;
 
 interface RawImage {
   data: Buffer;
@@ -66,6 +85,27 @@ describe('bonus game runtime assets', () => {
     expect(script).not.toContain('amateur-daily-court.webp');
   });
 
+  it('rebuilds World Tour arenas from each complete generated location without a second ice layer', () => {
+    const script = readFileSync(path.resolve('scripts/build-world-tour-assets.mjs'), 'utf8');
+
+    expect(script).toContain('assets/bonus-games/world-tour/generated-arenas');
+    expect(script).not.toContain('amateur-daily-court.webp');
+    expect(script).not.toContain('flagColourField');
+    expect(script).not.toContain('createCanonicalMarkingLayer');
+  });
+
+  it('keeps the larger featured artwork height scoped to World Tour cards', () => {
+    const styles = readFileSync(path.resolve('src/app/design-system.css'), 'utf8');
+
+    expect(styles).toContain(
+      '.bonus-game-card--featured .bonus-game-card__artwork-frame {\n  width: 100%;\n  height: 154px;',
+    );
+    expect(styles).toContain(
+      '.bonus-game-card--featured.bonus-game-card--world-tour .bonus-game-card__artwork-frame {',
+    );
+    expect(styles).toContain('height: clamp(176px, 48vw, 204px);');
+  });
+
   it('declares all approved bonus asset paths', () => {
     expect(Object.keys(BONUS_GAME_ASSETS)).toEqual([
       'beach',
@@ -97,7 +137,10 @@ describe('bonus game runtime assets', () => {
   });
 
   it('keeps every bonus arena on the same 1212x2000 geometry as the live game court', () => {
-    for (const entry of Object.values(BONUS_GAME_ASSETS)) {
+    for (const entry of [
+      ...Object.values(BONUS_GAME_ASSETS),
+      ...Object.values(WORLD_TOUR_BONUS_GAME_ASSETS),
+    ]) {
       const filePath = path.resolve('public', entry.arena.slice(1));
       expect(readWebpDimensions(filePath), entry.arena).toEqual({ width: 1212, height: 2000 });
     }
@@ -190,8 +233,50 @@ describe('bonus game runtime assets', () => {
     }
   });
 
+  it('declares the complete 13-city World Tour runtime asset set', () => {
+    const worldTour = (
+      bonusGameAssets as unknown as {
+        WORLD_TOUR_BONUS_GAME_ASSETS?: Record<
+          string,
+          {
+            arena: string;
+            preview: string;
+            goalkeeperReady: string;
+            goalkeeperSave: string;
+          }
+        >;
+      }
+    ).WORLD_TOUR_BONUS_GAME_ASSETS;
+
+    expect(worldTour).toBeDefined();
+    expect(Object.keys(worldTour ?? {})).toEqual(WORLD_TOUR_SLUGS);
+
+    for (const slug of WORLD_TOUR_SLUGS) {
+      const entry = worldTour?.[slug];
+      expect(entry).toEqual({
+        arena: `/bonus-games/world-tour/arenas/${slug}.webp`,
+        preview: `/bonus-games/world-tour/previews/${slug}.webp`,
+        goalkeeperReady: `/bonus-games/world-tour/goalkeepers/${slug}-ready.webp`,
+        goalkeeperSave: `/bonus-games/world-tour/goalkeepers/${slug}-save.webp`,
+      });
+      expect(readWebpDimensions(path.resolve('public', entry!.arena.slice(1)))).toEqual({
+        width: 1212,
+        height: 2000,
+      });
+      expect(readWebpDimensions(path.resolve('public', entry!.preview.slice(1)))).toEqual({
+        width: 1254,
+        height: 1254,
+      });
+      expect(existsSync(path.resolve('public', entry!.goalkeeperReady.slice(1)))).toBe(true);
+      expect(existsSync(path.resolve('public', entry!.goalkeeperSave.slice(1)))).toBe(true);
+    }
+  });
+
   it('keeps the upper goal line aligned with the daily-court master at Y=779', async () => {
-    for (const entry of Object.values(BONUS_GAME_ASSETS)) {
+    for (const entry of [
+      ...Object.values(BONUS_GAME_ASSETS),
+      ...Object.values(WORLD_TOUR_BONUS_GAME_ASSETS),
+    ]) {
       const filePath = path.resolve('public', entry.arena.slice(1));
       const { data, info } = await sharp(filePath)
         .removeAlpha()

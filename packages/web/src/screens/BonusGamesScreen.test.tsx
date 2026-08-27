@@ -458,6 +458,30 @@ describe('BonusGamesScreen', () => {
     expect(artwork.parentElement).toHaveClass('bonus-game-card__artwork-frame');
   });
 
+  it('gives the featured World Tour card a landmark-forward crop', async () => {
+    localStorage.setItem('bonus-games:last-skill', 'accuracy');
+    mockCatalog([
+      card({
+        id: 'accuracy-moscow',
+        slug: 'accuracy-moscow',
+        title: 'Москва',
+        skill_code: 'accuracy',
+        arena: {
+          id: 'arena-moscow',
+          slug: 'accuracy-world-tour-moscow',
+          title: 'Москва',
+          artwork_url: '/bonus-games/world-tour/arenas/moscow.webp',
+          thumbnail_url: '/bonus-games/world-tour/previews/moscow.webp',
+        },
+      }),
+    ]);
+    renderCatalog();
+
+    const artwork = await screen.findByAltText('Площадка «Москва»');
+    expect(artwork.closest('article')).toHaveClass('bonus-game-card--world-tour');
+    expect(artwork).toHaveStyle({ objectPosition: 'center 50%' });
+  });
+
   it('opens the server-reported active attempt when continuing a game', async () => {
     mockCatalog([
       card({

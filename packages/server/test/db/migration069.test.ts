@@ -208,6 +208,7 @@ describe.skipIf(!hasIntegrationEnv)('069 bonus skill catalogue reset', () => {
       '069_bonus_game_qualifications.sql',
       '069_official_dialogs.sql',
       '070_bonus_game_preview_location_cards.sql',
+      '071_bonus_game_accuracy_world_tour.sql',
     ]);
 
     const accuracy = await pool.query<{
@@ -219,7 +220,7 @@ describe.skipIf(!hasIntegrationEnv)('069 bonus skill catalogue reset', () => {
                 and slug in ('accuracy-extra-draft', 'accuracy-extra-archived')) as extra_duplicated
          from bonus_game`,
     );
-    expect(accuracy.rows[0]).toEqual({ count: 10, extra_duplicated: false });
+    expect(accuracy.rows[0]).toEqual({ count: 13, extra_duplicated: false });
 
     const preservedExtras = await pool.query<{
       id: string;

@@ -43,6 +43,16 @@ const BONUS_GAME_GOALIE_OPTIONS: Omit<GoalieOptions, 'idleSpriteUrl' | 'saveSpri
   shadow: true,
 };
 
+function bonusGoalieOptions(attempt: BonusGameAttempt): GoalieOptions {
+  const isWorldTour = attempt.goalkeeper_ready_url.includes('/bonus-games/world-tour/');
+  return {
+    ...BONUS_GAME_GOALIE_OPTIONS,
+    saveSizeScale: isWorldTour ? 1.04 : BONUS_GAME_GOALIE_OPTIONS.saveSizeScale,
+    idleSpriteUrl: attempt.goalkeeper_ready_url,
+    saveSpriteUrl: attempt.goalkeeper_save_url,
+  };
+}
+
 function formatCountdown(ms: number): string {
   const totalSeconds = Math.max(0, Math.ceil(ms / 1_000));
   const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
@@ -174,7 +184,6 @@ function BonusPreview({
   busy: boolean;
   onAcknowledge: (dismissFuture: boolean) => void | Promise<unknown>;
 }): JSX.Element {
-  const [dismissFuture, setDismissFuture] = useState(false);
   return (
     <AccessibleModal
       title={attempt.rules.preview_title}
@@ -202,20 +211,11 @@ function BonusPreview({
           type="button"
           className="modal-primary btn btn--cta"
           disabled={busy}
-          onClick={() => void onAcknowledge(dismissFuture)}
+          onClick={() => void onAcknowledge(false)}
         >
           {busy ? 'Сохраняем…' : 'К игре'}
         </button>
       </div>
-      <label className="bonus-game-preview-modal__checkbox">
-        <input
-          type="checkbox"
-          checked={dismissFuture}
-          disabled={busy}
-          onChange={(event) => setDismissFuture(event.target.checked)}
-        />
-        <span>Больше не показывать</span>
-      </label>
     </AccessibleModal>
   );
 }
@@ -637,11 +637,7 @@ export function BonusGamePlayScreen(): JSX.Element {
         seed={attempt.attempt_seed}
         goalieId={null}
         goalieConfig={goalieConfig}
-        goalieOptions={{
-          ...BONUS_GAME_GOALIE_OPTIONS,
-          idleSpriteUrl: attempt.goalkeeper_ready_url,
-          saveSpriteUrl: attempt.goalkeeper_save_url,
-        }}
+        goalieOptions={bonusGoalieOptions(attempt)}
         preloadAssets={preloadAssets}
         periodNumber={periodNumber}
         periodsTotal={attempt.rules.total_periods}
