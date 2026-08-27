@@ -766,6 +766,8 @@ function authoritativeShotInput(
 const BONUS_SHOT_NETWORK_LAG_TOLERANCE_MS = 2_500;
 const BONUS_SHOT_FUTURE_TOLERANCE_MS = 250;
 const BONUS_SHOT_CLOCK_RELATION_TOLERANCE_MS = 100;
+const BONUS_SHOT_TIMER_DRIFT_ALLOWANCE_PER_SHOT_MS = 250;
+const BONUS_SHOT_FLIGHT_DRIFT_ALLOWANCE_PER_SHOT_MS = 20;
 const BONUS_SHOT_RESULT_PAUSE_MS = 1_000;
 
 function invalidBonusShotTime(): AppError {
@@ -811,8 +813,10 @@ function assertBonusShotTimeFresh(
     elapsedMs - previousShots * BONUS_SHOT_RESULT_PAUSE_MS,
   );
   const expectedShooterTime = expectedSceneTime - previousShots * flightMs;
+  const accumulatedTimerDrift =
+    previousShots * BONUS_SHOT_TIMER_DRIFT_ALLOWANCE_PER_SHOT_MS;
   const isNearAuthoritativeClock = (actual: number, expected: number): boolean =>
-    actual >= expected - BONUS_SHOT_NETWORK_LAG_TOLERANCE_MS &&
+    actual >= expected - BONUS_SHOT_NETWORK_LAG_TOLERANCE_MS - accumulatedTimerDrift &&
     actual <= expected + BONUS_SHOT_FUTURE_TOLERANCE_MS;
 
   if (
@@ -824,7 +828,10 @@ function assertBonusShotTimeFresh(
 
   const shooterLag = input.tapTime - input.shooterTapTime;
   const expectedShooterLag = previousShots * flightMs;
-  if (Math.abs(shooterLag - expectedShooterLag) > BONUS_SHOT_CLOCK_RELATION_TOLERANCE_MS) {
+  const relationTolerance =
+    BONUS_SHOT_CLOCK_RELATION_TOLERANCE_MS +
+    previousShots * BONUS_SHOT_FLIGHT_DRIFT_ALLOWANCE_PER_SHOT_MS;
+  if (Math.abs(shooterLag - expectedShooterLag) > relationTolerance) {
     throw invalidBonusShotTime();
   }
 }
