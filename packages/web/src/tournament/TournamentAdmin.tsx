@@ -37,16 +37,17 @@ type RegistrationMode = 'open' | 'approval' | 'invite_only';
 type Visibility = 'public' | 'hidden';
 type DailyMetric = 'goals_sum' | 'accuracy_average' | 'daily_place_points';
 type PlayoffSize = 2 | 4 | 8 | 16;
+type NumericDraftValue = number | '';
 
 interface PlayoffRoundDraft {
-  winsRequired: number;
+  winsRequired: NumericDraftValue;
   duelTemplateId: string;
   homeSequence: string;
-  gameWindowMinutes: number;
-  gameBreakMinutes: number;
-  roundBreakMinutes: number;
-  overtimeCount: number;
-  shootoutInitialShots: number;
+  gameWindowMinutes: NumericDraftValue;
+  gameBreakMinutes: NumericDraftValue;
+  roundBreakMinutes: NumericDraftValue;
+  overtimeCount: NumericDraftValue;
+  shootoutInitialShots: NumericDraftValue;
   firstGameNotBefore: string;
 }
 
@@ -65,41 +66,41 @@ interface TournamentDraft {
   regularSource: RegularSource;
   registrationMode: RegistrationMode;
   visibility: Visibility;
-  participantLimit: number;
+  participantLimit: NumericDraftValue;
   playoffSize: PlayoffSize;
-  entryFeeCoins: number;
+  entryFeeCoins: NumericDraftValue;
   minLevel: string;
   maxLevel: string;
-  minGoals: number;
-  minExperience: number;
+  minGoals: NumericDraftValue;
+  minExperience: NumericDraftValue;
   invitedUserIds: string;
   bannedUserIds: string;
   timezone: string;
   registrationOpensAt: string;
   registrationClosesAt: string;
   startsAt: string;
-  roundRobinCycles: number;
-  roundsPerDay: number;
+  roundRobinCycles: NumericDraftValue;
+  roundsPerDay: NumericDraftValue;
   firstRoundLocalTime: string;
-  fixtureWindowMinutes: number;
-  roundBreakMinutes: number;
-  dailyDays: number;
+  fixtureWindowMinutes: NumericDraftValue;
+  roundBreakMinutes: NumericDraftValue;
+  dailyDays: NumericDraftValue;
   dailyMetric: DailyMetric;
   bestDays: string;
   regularDuelTemplateId: string;
-  regulationWin: number;
-  overtimeWin: number;
-  overtimeLoss: number;
-  draw: number;
-  loss: number;
-  technicalLoss: number;
+  regulationWin: NumericDraftValue;
+  overtimeWin: NumericDraftValue;
+  overtimeLoss: NumericDraftValue;
+  draw: NumericDraftValue;
+  loss: NumericDraftValue;
+  technicalLoss: NumericDraftValue;
   tieBreakCriteria: string;
   dailyPlacePoints: string;
   playoffRounds: PlayoffRoundDraft[];
   regularRewards: string;
   playoffRewards: string;
   reminderMinutes: string;
-  deadlineLeadMinutes: number;
+  deadlineLeadMinutes: NumericDraftValue;
   notificationOverrides: string;
   origin?: TournamentDraftOrigin;
 }
@@ -171,6 +172,33 @@ function splitList(value: string, separator = ','): string[] {
 
 function optionalNumber(value: string): number | null {
   return value.trim() === '' ? null : Number(value);
+}
+
+function optionalPositiveNumber(value: string): number | null {
+  const parsed = optionalNumber(value);
+  return parsed === null || parsed <= 0 ? null : parsed;
+}
+
+function editableNumber(value: string): NumericDraftValue {
+  return value === '' ? '' : Number(value);
+}
+
+function draftNumber(value: NumericDraftValue): number {
+  return value === '' ? 0 : value;
+}
+
+function requiredInteger(
+  value: NumericDraftValue,
+  label: string,
+  min: number,
+  max?: number,
+): number {
+  if (value === '') throw new Error(`Заполните поле «${label}».`);
+  if (!Number.isInteger(value) || value < min || (max !== undefined && value > max)) {
+    const range = max === undefined ? `не меньше ${min}` : `от ${min} до ${max}`;
+    throw new Error(`Поле «${label}» должно быть целым числом ${range}.`);
+  }
+  return value;
 }
 
 type WallClockParts = {
@@ -354,15 +382,6 @@ function parseNotificationOverrides(value: string): NotificationOverrideDraft {
   );
 }
 
-function draftValidationError(draft: TournamentDraft): string | null {
-  try {
-    serializeDraft(draft);
-    return null;
-  } catch (error) {
-    return error instanceof Error ? error.message : 'Проверьте заполненные поля.';
-  }
-}
-
 function notificationOverridesDraft(value: unknown): string {
   const overrides = objectValue(value);
   return JSON.stringify(
@@ -399,8 +418,9 @@ function objectValue(value: unknown): Record<string, unknown> {
     : {};
 }
 
-function numberValue(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+function numberValue(value: unknown, fallback: NumericDraftValue): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  return fallback === '' ? 0 : fallback;
 }
 
 function stringValue(value: unknown, fallback = ''): string {
@@ -484,8 +504,9 @@ function draftFromTournament(tournament: AdminTournament): TournamentDraft {
     roundsPerDay: numberValue(config.roundsPerDay, next.roundsPerDay),
     firstRoundLocalTime: stringValue(config.firstRoundLocalTime, next.firstRoundLocalTime),
     fixtureWindowMinutes:
-      numberValue(config.fixtureWindowMs, next.fixtureWindowMinutes * 60_000) / 60_000,
-    roundBreakMinutes: numberValue(config.roundBreakMs, next.roundBreakMinutes * 60_000) / 60_000,
+      numberValue(config.fixtureWindowMs, draftNumber(next.fixtureWindowMinutes) * 60_000) / 60_000,
+    roundBreakMinutes:
+      numberValue(config.roundBreakMs, draftNumber(next.roundBreakMinutes) * 60_000) / 60_000,
     dailyDays: numberValue(config.dailyDays, next.dailyDays),
     dailyMetric:
       config.dailyMetric === 'accuracy_average' || config.dailyMetric === 'daily_place_points'
@@ -518,11 +539,14 @@ function draftFromTournament(tournament: AdminTournament): TournamentDraft {
           ? configured.homeSequence.map(String).join('-')
           : fallback.homeSequence,
         gameWindowMinutes:
-          numberValue(configured.gameWindowMs, fallback.gameWindowMinutes * 60_000) / 60_000,
+          numberValue(configured.gameWindowMs, draftNumber(fallback.gameWindowMinutes) * 60_000) /
+          60_000,
         gameBreakMinutes:
-          numberValue(configured.gameBreakMs, fallback.gameBreakMinutes * 60_000) / 60_000,
+          numberValue(configured.gameBreakMs, draftNumber(fallback.gameBreakMinutes) * 60_000) /
+          60_000,
         roundBreakMinutes:
-          numberValue(configured.roundBreakMs, fallback.roundBreakMinutes * 60_000) / 60_000,
+          numberValue(configured.roundBreakMs, draftNumber(fallback.roundBreakMinutes) * 60_000) /
+          60_000,
         overtimeCount: numberValue(overtime.count, fallback.overtimeCount),
         shootoutInitialShots: numberValue(
           overtime.shootoutInitialShots,
@@ -540,25 +564,87 @@ function draftFromTournament(tournament: AdminTournament): TournamentDraft {
       ? rules.notificationReminderOffsetsMs.map((value) => numberValue(value, 0) / 60_000).join(',')
       : next.reminderMinutes,
     deadlineLeadMinutes:
-      numberValue(rules.notificationDeadlineLeadMs, next.deadlineLeadMinutes * 60_000) / 60_000,
+      numberValue(
+        rules.notificationDeadlineLeadMs,
+        draftNumber(next.deadlineLeadMinutes) * 60_000,
+      ) / 60_000,
     notificationOverrides: notificationOverridesDraft(rules.notificationOverrides),
   };
 }
 
 function serializeDraft(draft: TournamentDraft): Record<string, unknown> {
+  const participantLimit = requiredInteger(
+    draft.participantLimit,
+    'Лимит участников',
+    2,
+    draft.regularSource === 'head_to_head' ? 64 : 10_000,
+  );
+  const entryFeeCoins = requiredInteger(draft.entryFeeCoins, 'Вступительный взнос, монеты', 0);
+  const minGoals = requiredInteger(draft.minGoals, 'Минимум голов', 0);
+  const minExperience = requiredInteger(draft.minExperience, 'Минимум опыта', 0);
+  const deadlineLeadMinutes = requiredInteger(
+    draft.deadlineLeadMinutes,
+    'Напоминание о дедлайне, минуты',
+    0,
+    1_440,
+  );
+  const roundRobinCycles =
+    draft.regularSource === 'head_to_head'
+      ? requiredInteger(draft.roundRobinCycles, 'Количество кругов', 1, 20)
+      : null;
+  const roundsPerDay =
+    draft.regularSource === 'head_to_head'
+      ? requiredInteger(draft.roundsPerDay, 'Туров в день', 1, 24)
+      : null;
+  const fixtureWindowMinutes =
+    draft.regularSource === 'head_to_head'
+      ? requiredInteger(draft.fixtureWindowMinutes, 'Окно игры, минуты', 1, 1_440)
+      : null;
+  const roundBreakMinutes =
+    draft.regularSource === 'head_to_head'
+      ? requiredInteger(draft.roundBreakMinutes, 'Пауза между турами, минуты', 0, 1_440)
+      : null;
+  const dailyDays =
+    draft.regularSource === 'daily_aggregate'
+      ? requiredInteger(draft.dailyDays, 'Дней регулярки', 1, 366)
+      : null;
+  const regularScoring = {
+    regulationWin: requiredInteger(draft.regulationWin, 'Очки: победа в основное время', 0),
+    overtimeWin: requiredInteger(draft.overtimeWin, 'Очки: победа в овертайме', 0),
+    overtimeLoss: requiredInteger(draft.overtimeLoss, 'Очки: поражение в овертайме', 0),
+    draw: requiredInteger(draft.draw, 'Очки: ничья', 0),
+    loss: requiredInteger(draft.loss, 'Очки: обычное поражение', 0),
+    technicalLoss: requiredInteger(draft.technicalLoss, 'Очки: техническое поражение', 0),
+  };
   const configuredPlayoffRounds = draft.playoffRounds
     .slice(0, playoffRoundCount(draft.playoffSize))
-    .map((round, index) => ({
-      roundNumber: index + 1,
-      winsRequired: round.winsRequired,
-      homeSequence: normalizedHomeSequence(round.homeSequence, round.winsRequired),
-      duelTemplateId: round.duelTemplateId || null,
-      gameWindowMs: round.gameWindowMinutes * 60_000,
-      gameBreakMs: round.gameBreakMinutes * 60_000,
-      roundBreakMs: round.roundBreakMinutes * 60_000,
-      firstGameStartsAt: dateOrNull(round.firstGameNotBefore, draft.timezone),
-      overtime: { count: round.overtimeCount, shootoutInitialShots: round.shootoutInitialShots },
-    }));
+    .map((round, index) => {
+      const prefix = `Раунд ${index + 1}`;
+      const winsRequired = requiredInteger(round.winsRequired, `${prefix}: побед для серии`, 1, 20);
+      return {
+        roundNumber: index + 1,
+        winsRequired,
+        homeSequence: normalizedHomeSequence(round.homeSequence, winsRequired),
+        duelTemplateId: round.duelTemplateId || null,
+        gameWindowMs:
+          requiredInteger(round.gameWindowMinutes, `${prefix}: окно игры, минуты`, 1) * 60_000,
+        gameBreakMs:
+          requiredInteger(round.gameBreakMinutes, `${prefix}: пауза между играми, минуты`, 0) *
+          60_000,
+        roundBreakMs:
+          requiredInteger(round.roundBreakMinutes, `${prefix}: пауза после раунда, минуты`, 0) *
+          60_000,
+        firstGameStartsAt: dateOrNull(round.firstGameNotBefore, draft.timezone),
+        overtime: {
+          count: requiredInteger(round.overtimeCount, `${prefix}: овертаймов`, 0),
+          shootoutInitialShots: requiredInteger(
+            round.shootoutInitialShots,
+            `${prefix}: бросков в буллитах`,
+            1,
+          ),
+        },
+      };
+    });
   return {
     title: draft.title,
     description: draft.description,
@@ -585,55 +671,48 @@ function serializeDraft(draft: TournamentDraft): Record<string, unknown> {
         draft.regularSource === 'head_to_head'
           ? {
               regularSource: 'head_to_head',
-              participantLimit: draft.participantLimit,
+              participantLimit,
               playoffSize: draft.playoffSize,
               timezone: draft.timezone,
               registrationMode: draft.registrationMode,
               visibility: draft.visibility,
-              entryFeeCoins: draft.entryFeeCoins,
-              roundRobinCycles: draft.roundRobinCycles,
-              roundsPerDay: draft.roundsPerDay,
+              entryFeeCoins,
+              roundRobinCycles,
+              roundsPerDay,
               firstRoundLocalTime: draft.firstRoundLocalTime,
-              fixtureWindowMs: draft.fixtureWindowMinutes * 60_000,
-              roundBreakMs: draft.roundBreakMinutes * 60_000,
+              fixtureWindowMs: fixtureWindowMinutes! * 60_000,
+              roundBreakMs: roundBreakMinutes! * 60_000,
               dailyDays: null,
               dailyMetric: null,
               bestDays: null,
             }
           : {
               regularSource: 'daily_aggregate',
-              participantLimit: draft.participantLimit,
+              participantLimit,
               playoffSize: draft.playoffSize,
               timezone: draft.timezone,
               registrationMode: draft.registrationMode,
               visibility: draft.visibility,
-              entryFeeCoins: draft.entryFeeCoins,
+              entryFeeCoins,
               roundRobinCycles: null,
               roundsPerDay: null,
               firstRoundLocalTime: null,
               fixtureWindowMs: null,
               roundBreakMs: null,
-              dailyDays: draft.dailyDays,
+              dailyDays,
               dailyMetric: draft.dailyMetric,
               bestDays: optionalNumber(draft.bestDays),
             },
       eligibility: {
-        minLevel: optionalNumber(draft.minLevel),
-        maxLevel: optionalNumber(draft.maxLevel),
-        minGoals: draft.minGoals,
-        minExperience: draft.minExperience,
+        minLevel: optionalPositiveNumber(draft.minLevel),
+        maxLevel: optionalPositiveNumber(draft.maxLevel),
+        minGoals,
+        minExperience,
         invitedUserIds: splitList(draft.invitedUserIds),
         bannedUserIds: splitList(draft.bannedUserIds),
       },
       regularDuelTemplateId: draft.regularDuelTemplateId || null,
-      regularScoring: {
-        regulationWin: draft.regulationWin,
-        overtimeWin: draft.overtimeWin,
-        overtimeLoss: draft.overtimeLoss,
-        draw: draft.draw,
-        loss: draft.loss,
-        technicalLoss: draft.technicalLoss,
-      },
+      regularScoring,
       tieBreakCriteria: splitList(draft.tieBreakCriteria),
       dailyPlacePoints: splitList(draft.dailyPlacePoints).map(Number).filter(Number.isFinite),
       playoffRounds: configuredPlayoffRounds,
@@ -646,7 +725,7 @@ function serializeDraft(draft: TournamentDraft): Record<string, unknown> {
         .map(Number)
         .filter((minutes) => Number.isInteger(minutes) && minutes >= 0 && minutes <= 1_440)
         .map((minutes) => minutes * 60_000),
-      notificationDeadlineLeadMs: draft.deadlineLeadMinutes * 60_000,
+      notificationDeadlineLeadMs: deadlineLeadMinutes * 60_000,
       notificationOverrides: parseNotificationOverrides(draft.notificationOverrides),
     },
   };
@@ -1199,6 +1278,7 @@ export function TournamentAdmin(): JSX.Element {
   const [maxStage, setMaxStage] = useState(0);
   const [saveState, setSaveState] = useState<TournamentDraftSaveStatus>('idle');
   const [finishing, setFinishing] = useState(false);
+  const [validationNotice, setValidationNotice] = useState<string | null>(null);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [draft, setDraft] = useState(freshDraft);
   const [editingTournament, setEditingTournament] = useState<AdminTournament | null>(null);
@@ -1212,7 +1292,6 @@ export function TournamentAdmin(): JSX.Element {
   const saveQueueGeneration = useRef(0);
   const createInFlight = useRef(false);
   const artworkUploadGeneration = useRef(0);
-  const validationError = draftValidationError(draft);
   const artworkUpload = useMutation({
     mutationFn: ({ file }: { file: File; generation: number }) =>
       uploadAdminTournamentArtwork(file),
@@ -1262,21 +1341,16 @@ export function TournamentAdmin(): JSX.Element {
     },
   });
 
-  const enqueueCurrentDraft = () => {
-    if (editingTournament === null || saveQueue.current === undefined) return;
-    const body = serializeDraft(draft);
-    saveQueue.current.enqueue(body, JSON.stringify(body));
-  };
-
   useEffect(() => {
     if (!wizardOpen || editingTournament === null || create.isPending) return;
+    setValidationNotice(null);
     let snapshot: string;
     let body: ReturnType<typeof serializeDraft>;
     try {
       body = serializeDraft(draft);
       snapshot = JSON.stringify(body);
     } catch {
-      setSaveState('error');
+      setSaveState('idle');
       return;
     }
     if (snapshot === lastSavedSnapshot.current) {
@@ -1333,21 +1407,28 @@ export function TournamentAdmin(): JSX.Element {
   };
 
   const finishWizard = async () => {
-    if (!draft.title.trim() || finishing || artworkUpload.isPending || validationError !== null)
+    if (!draft.title.trim() || finishing || artworkUpload.isPending) return;
+    let body: ReturnType<typeof serializeDraft>;
+    try {
+      body = serializeDraft(draft);
+    } catch (error) {
+      setValidationNotice(error instanceof Error ? error.message : 'Проверьте заполненные поля.');
       return;
+    }
+    setValidationNotice(null);
     setFinishing(true);
     if (saveDebounce.current !== undefined) window.clearTimeout(saveDebounce.current);
     try {
       if (editingTournament === null) {
         if (createInFlight.current) return;
         createInFlight.current = true;
-        const body = serializeDraft(draft);
         const result = await create.mutateAsync({ body, snapshot: JSON.stringify(body) });
         setSaveNotice('Изменения сохранены.');
         closeWizard(result.tournament);
         return;
       }
-      enqueueCurrentDraft();
+      saveQueue.current?.enqueue(body, JSON.stringify(body));
+      if (saveQueue.current?.status === 'error') saveQueue.current.retry();
       const result = await saveQueue.current?.flush();
       setSaveNotice('Изменения сохранены.');
       closeWizard(result?.tournament ?? editingTournament);
@@ -1378,6 +1459,7 @@ export function TournamentAdmin(): JSX.Element {
           setStage(initialStage);
           setMaxStage(7);
           setSaveState('saved');
+          setValidationNotice(null);
           setWizardOpen(true);
           setSelectedTournament(null);
         }}
@@ -1415,6 +1497,7 @@ export function TournamentAdmin(): JSX.Element {
             setStage(0);
             setMaxStage(0);
             setSaveState('idle');
+            setValidationNotice(null);
             setFinishing(false);
             setWizardOpen(true);
           }}
@@ -1599,7 +1682,7 @@ export function TournamentAdmin(): JSX.Element {
                         min="0"
                         value={draft.entryFeeCoins}
                         onChange={(event) =>
-                          setDraft({ ...draft, entryFeeCoins: Number(event.target.value) })
+                          setDraft({ ...draft, entryFeeCoins: editableNumber(event.target.value) })
                         }
                       />
                     </TournamentAdminField>
@@ -1637,7 +1720,7 @@ export function TournamentAdmin(): JSX.Element {
                         min="0"
                         value={draft.minGoals}
                         onChange={(event) =>
-                          setDraft({ ...draft, minGoals: Number(event.target.value) })
+                          setDraft({ ...draft, minGoals: editableNumber(event.target.value) })
                         }
                       />
                     </TournamentAdminField>
@@ -1651,7 +1734,7 @@ export function TournamentAdmin(): JSX.Element {
                         min="0"
                         value={draft.minExperience}
                         onChange={(event) =>
-                          setDraft({ ...draft, minExperience: Number(event.target.value) })
+                          setDraft({ ...draft, minExperience: editableNumber(event.target.value) })
                         }
                       />
                     </TournamentAdminField>
@@ -1700,7 +1783,10 @@ export function TournamentAdmin(): JSX.Element {
                         max={draft.regularSource === 'head_to_head' ? 64 : 10_000}
                         value={draft.participantLimit}
                         onChange={(event) =>
-                          setDraft({ ...draft, participantLimit: Number(event.target.value) })
+                          setDraft({
+                            ...draft,
+                            participantLimit: editableNumber(event.target.value),
+                          })
                         }
                       />
                     </TournamentAdminField>
@@ -1717,7 +1803,10 @@ export function TournamentAdmin(): JSX.Element {
                             max="20"
                             value={draft.roundRobinCycles}
                             onChange={(event) =>
-                              setDraft({ ...draft, roundRobinCycles: Number(event.target.value) })
+                              setDraft({
+                                ...draft,
+                                roundRobinCycles: editableNumber(event.target.value),
+                              })
                             }
                           />
                         </TournamentAdminField>
@@ -1732,7 +1821,10 @@ export function TournamentAdmin(): JSX.Element {
                             max="24"
                             value={draft.roundsPerDay}
                             onChange={(event) =>
-                              setDraft({ ...draft, roundsPerDay: Number(event.target.value) })
+                              setDraft({
+                                ...draft,
+                                roundsPerDay: editableNumber(event.target.value),
+                              })
                             }
                           />
                         </TournamentAdminField>
@@ -1761,7 +1853,7 @@ export function TournamentAdmin(): JSX.Element {
                             onChange={(event) =>
                               setDraft({
                                 ...draft,
-                                fixtureWindowMinutes: Number(event.target.value),
+                                fixtureWindowMinutes: editableNumber(event.target.value),
                               })
                             }
                           />
@@ -1776,7 +1868,10 @@ export function TournamentAdmin(): JSX.Element {
                             min="0"
                             value={draft.roundBreakMinutes}
                             onChange={(event) =>
-                              setDraft({ ...draft, roundBreakMinutes: Number(event.target.value) })
+                              setDraft({
+                                ...draft,
+                                roundBreakMinutes: editableNumber(event.target.value),
+                              })
                             }
                           />
                         </TournamentAdminField>
@@ -1852,7 +1947,10 @@ export function TournamentAdmin(): JSX.Element {
                                   type="number"
                                   value={draft[field]}
                                   onChange={(event) =>
-                                    setDraft({ ...draft, [field]: Number(event.target.value) })
+                                    setDraft({
+                                      ...draft,
+                                      [field]: editableNumber(event.target.value),
+                                    })
                                   }
                                 />
                               </TournamentAdminField>
@@ -1881,7 +1979,7 @@ export function TournamentAdmin(): JSX.Element {
                             max="366"
                             value={draft.dailyDays}
                             onChange={(event) =>
-                              setDraft({ ...draft, dailyDays: Number(event.target.value) })
+                              setDraft({ ...draft, dailyDays: editableNumber(event.target.value) })
                             }
                           />
                         </TournamentAdminField>
@@ -1967,7 +2065,7 @@ export function TournamentAdmin(): JSX.Element {
                               value={round.winsRequired}
                               onChange={(event) =>
                                 updatePlayoffRound(index, {
-                                  winsRequired: Number(event.target.value),
+                                  winsRequired: editableNumber(event.target.value),
                                 })
                               }
                             />
@@ -1998,7 +2096,7 @@ export function TournamentAdmin(): JSX.Element {
                           </TournamentAdminField>
                           <HomeSequenceEditor
                             roundNumber={index + 1}
-                            winsRequired={round.winsRequired}
+                            winsRequired={round.winsRequired === '' ? 1 : round.winsRequired}
                             value={round.homeSequence}
                             onChange={(homeSequence) => updatePlayoffRound(index, { homeSequence })}
                           />
@@ -2062,7 +2160,7 @@ export function TournamentAdmin(): JSX.Element {
                                     value={round[field]}
                                     onChange={(event) =>
                                       updatePlayoffRound(index, {
-                                        [field]: Number(event.target.value),
+                                        [field]: editableNumber(event.target.value),
                                       })
                                     }
                                   />
@@ -2176,7 +2274,10 @@ export function TournamentAdmin(): JSX.Element {
                         max="1440"
                         value={draft.deadlineLeadMinutes}
                         onChange={(event) =>
-                          setDraft({ ...draft, deadlineLeadMinutes: Number(event.target.value) })
+                          setDraft({
+                            ...draft,
+                            deadlineLeadMinutes: editableNumber(event.target.value),
+                          })
                         }
                       />
                     </TournamentAdminField>
@@ -2215,16 +2316,22 @@ export function TournamentAdmin(): JSX.Element {
               </div>
               <div className="modal-actions">
                 <div className="tournament-wizard__save-state" role="status" aria-live="polite">
-                  {finishing && 'Сохраняем изменения и закрываем…'}
-                  {!finishing && saveState === 'saving' && 'Сохраняем изменения…'}
-                  {!finishing && saveState === 'saved' &&
+                  {validationNotice !== null && <span>{validationNotice}</span>}
+                  {validationNotice === null && finishing && 'Сохраняем изменения и закрываем…'}
+                  {validationNotice === null &&
+                    !finishing &&
+                    saveState === 'saving' &&
+                    'Сохраняем изменения…'}
+                  {validationNotice === null &&
+                    !finishing &&
+                    saveState === 'saved' &&
                     (editingTournament?.status === 'draft'
                       ? 'Черновик сохранён автоматически'
                       : 'Изменения сохранены автоматически')}
-                  {!finishing && saveState === 'error' && (
+                  {validationNotice === null && !finishing && saveState === 'error' && (
                     <>
-                      <span>{validationError ?? 'Не удалось сохранить изменения.'}</span>
-                      {validationError === null && saveQueue.current !== undefined && (
+                      <span>Не удалось сохранить изменения.</span>
+                      {saveQueue.current !== undefined && (
                         <button
                           type="button"
                           className="admin-compact-btn"
@@ -2256,11 +2363,28 @@ export function TournamentAdmin(): JSX.Element {
                     onClick={() => {
                       if (stage === 0 && editingTournament === null) {
                         if (createInFlight.current) return;
-                        const body = serializeDraft(draft);
+                        let body: ReturnType<typeof serializeDraft>;
+                        try {
+                          body = serializeDraft(draft);
+                        } catch (error) {
+                          setValidationNotice(
+                            error instanceof Error ? error.message : 'Проверьте заполненные поля.',
+                          );
+                          return;
+                        }
                         createInFlight.current = true;
                         create.mutate({ body, snapshot: JSON.stringify(body) });
                         return;
                       }
+                      try {
+                        serializeDraft(draft);
+                      } catch (error) {
+                        setValidationNotice(
+                          error instanceof Error ? error.message : 'Проверьте заполненные поля.',
+                        );
+                        return;
+                      }
+                      setValidationNotice(null);
                       const next = stage + 1;
                       setStage(next);
                       setMaxStage((current) => Math.max(current, next));
@@ -2276,9 +2400,7 @@ export function TournamentAdmin(): JSX.Element {
                       !draft.title.trim() ||
                       create.isPending ||
                       artworkUpload.isPending ||
-                      finishing ||
-                      saveState === 'error' ||
-                      validationError !== null
+                      finishing
                     }
                     onClick={() => void finishWizard()}
                   >

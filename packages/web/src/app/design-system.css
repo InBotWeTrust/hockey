@@ -1500,7 +1500,9 @@
 
 .modal-card.bonus-game-preview-modal {
   width: min(100%, 520px);
-  max-height: calc(var(--app-viewport-height, 100dvh) - var(--app-safe-top) - var(--app-safe-bottom) - 20px);
+  max-height: calc(
+    var(--app-viewport-height, 100dvh) - var(--app-safe-top) - var(--app-safe-bottom) - 20px
+  );
   overflow-y: auto;
   padding: 18px 16px 16px;
 }
@@ -4058,6 +4060,29 @@
   flex-direction: column;
   gap: 10px;
   min-width: 0;
+}
+
+.tournament-catalog__empty {
+  padding: 8px 2px;
+  color: rgba(244, 250, 255, 0.94);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.45;
+  text-shadow: 0 2px 9px rgba(3, 12, 24, 0.78);
+}
+
+.tournament-wizard input[type='number'],
+.tournament-operation-rewards input[type='number'] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.tournament-wizard input[type='number']::-webkit-inner-spin-button,
+.tournament-wizard input[type='number']::-webkit-outer-spin-button,
+.tournament-operation-rewards input[type='number']::-webkit-inner-spin-button,
+.tournament-operation-rewards input[type='number']::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
 }
 
 .tournament-catalog__section,

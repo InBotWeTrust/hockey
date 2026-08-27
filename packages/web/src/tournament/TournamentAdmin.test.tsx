@@ -470,6 +470,193 @@ describe('TournamentAdmin', () => {
     );
   });
 
+  it('lets the final action retry a failed autosave and closes only after it succeeds', async () => {
+    const tournament: api.AdminTournament = {
+      id: 'failed-final-save-cup',
+      slug: 'failed-final-save-cup',
+      title: 'Кубок повторного сохранения',
+      description: 'Исходное описание',
+      status: 'draft',
+      regularSource: 'head_to_head',
+      revision: 4,
+      participantCount: 0,
+      rules: { config: { regularSource: 'head_to_head' } },
+    };
+    vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [tournament] });
+    vi.spyOn(api, 'fetchAdminTournamentParticipants').mockResolvedValue({ participants: [] });
+    const update = vi
+      .spyOn(api, 'updateAdminTournament')
+      .mockRejectedValueOnce(new Error('network failed'))
+      .mockResolvedValueOnce({
+        tournament: { ...tournament, description: 'Новое описание', revision: 5 },
+      });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentAdmin />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Открыть Кубок повторного сохранения' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать турнир' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Описание' }), {
+      target: { value: 'Новое описание' },
+    });
+
+    expect(await screen.findByText('Не удалось сохранить изменения.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
+    const finish = screen.getByRole('button', { name: 'Сохранить и закрыть' });
+    expect(finish).toBeEnabled();
+    fireEvent.click(finish);
+
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Создание турнира' })).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole('status')).toHaveTextContent('Изменения сохранены.');
+  });
+
+  it('treats zero level limits as no restriction instead of sending an invalid request', async () => {
+    const tournament: api.AdminTournament = {
+      id: 'zero-level-limit-cup',
+      slug: 'zero-level-limit-cup',
+      title: 'Кубок без ограничения уровня',
+      description: '',
+      status: 'draft',
+      regularSource: 'head_to_head',
+      revision: 2,
+      participantCount: 0,
+      rules: {
+        config: { regularSource: 'head_to_head' },
+        eligibility: { minLevel: null, maxLevel: null },
+      },
+    };
+    vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [tournament] });
+    vi.spyOn(api, 'fetchAdminTournamentParticipants').mockResolvedValue({ participants: [] });
+    const update = vi.spyOn(api, 'updateAdminTournament').mockResolvedValue({
+      tournament: { ...tournament, revision: 3 },
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentAdmin />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Открыть Кубок без ограничения уровня' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать турнир' }));
+    fireEvent.click(screen.getByRole('button', { name: '2. Доступ' }));
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Минимальный уровень' }), {
+      target: { value: '0' },
+    });
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Максимальный уровень' }), {
+      target: { value: '0' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '1. Основное' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Описание' }), {
+      target: { value: 'Сохранить без ограничения уровня' },
+    });
+
+    await waitFor(() => expect(update).toHaveBeenCalled());
+    expect(update.mock.calls.at(-1)?.[2]).toEqual(
+      expect.objectContaining({
+        rules: expect.objectContaining({
+          eligibility: expect.objectContaining({ minLevel: null, maxLevel: null }),
+        }),
+      }),
+    );
+  });
+
+  it('allows required numeric fields to be cleared while editing and validates on save', async () => {
+    const tournament: api.AdminTournament = {
+      id: 'editable-number-cup',
+      slug: 'editable-number-cup',
+      title: 'Кубок удобных чисел',
+      description: '',
+      status: 'draft',
+      regularSource: 'head_to_head',
+      revision: 3,
+      participantCount: 0,
+      rules: {
+        config: { regularSource: 'head_to_head', entryFeeCoins: 10 },
+      },
+    };
+    vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [tournament] });
+    vi.spyOn(api, 'fetchAdminTournamentParticipants').mockResolvedValue({ participants: [] });
+    const update = vi.spyOn(api, 'updateAdminTournament').mockResolvedValue({
+      tournament: { ...tournament, revision: 4 },
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentAdmin />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок удобных чисел' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать турнир' }));
+    fireEvent.click(screen.getByRole('button', { name: '2. Доступ' }));
+    const entryFee = screen.getByRole('spinbutton', { name: 'Вступительный взнос, монеты' });
+    fireEvent.change(entryFee, { target: { value: '' } });
+
+    expect(entryFee).toHaveValue(null);
+    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 700)));
+    expect(update).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
+    const finish = screen.getByRole('button', { name: 'Сохранить и закрыть' });
+    expect(finish).toBeEnabled();
+    fireEvent.click(finish);
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Заполните поле «Вступительный взнос, монеты».',
+    );
+    expect(screen.getByRole('dialog', { name: 'Создание турнира' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '2. Доступ' }));
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Вступительный взнос, монеты' }), {
+      target: { value: '25' },
+    });
+    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 700)));
+    await waitFor(() => expect(update).toHaveBeenCalled());
+    expect(update.mock.calls.at(-1)?.[2]).toEqual(
+      expect.objectContaining({
+        rules: expect.objectContaining({
+          config: expect.objectContaining({ entryFeeCoins: 25 }),
+        }),
+      }),
+    );
+  });
+
+  it('removes native number steppers inside the tournament editor', () => {
+    const style = document.createElement('style');
+    style.textContent = designSystemCss;
+    const wizard = document.createElement('div');
+    wizard.className = 'tournament-wizard';
+    const input = document.createElement('input');
+    input.type = 'number';
+    wizard.append(input);
+    document.head.append(style);
+    document.body.append(wizard);
+
+    expect(getComputedStyle(input).appearance).toBe('textfield');
+    expect(
+      Array.from(style.sheet?.cssRules ?? []).some(
+        (rule) =>
+          rule instanceof CSSStyleRule && rule.selectorText.includes('::-webkit-inner-spin-button'),
+      ),
+    ).toBe(true);
+
+    wizard.remove();
+    style.remove();
+  });
+
   it('keeps an incomplete notification card dirty instead of deleting it', async () => {
     const tournament: api.AdminTournament = {
       id: 'notify-cup',
@@ -511,7 +698,10 @@ describe('TournamentAdmin', () => {
     expect(body).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('Заполните текст уведомления');
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
-    expect(screen.getByRole('button', { name: 'Сохранить и закрыть' })).toBeDisabled();
+    const finish = screen.getByRole('button', { name: 'Сохранить и закрыть' });
+    expect(finish).toBeEnabled();
+    fireEvent.click(finish);
+    expect(screen.getByRole('status')).toHaveTextContent('Заполните текст уведомления.');
     expect(update).not.toHaveBeenCalled();
   });
 

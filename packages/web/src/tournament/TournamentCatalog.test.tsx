@@ -12,6 +12,21 @@ describe('TournamentCatalog', () => {
     useAuthStore.setState({ user: { id: 'u1', displayName: 'Первый' } });
   });
 
+  it('shows a readable empty state when there are no published tournaments', async () => {
+    vi.spyOn(api, 'fetchTournaments').mockResolvedValue({ tournaments: [] });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TournamentCatalog />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    const empty = await screen.findByText('Турниров пока нет.');
+    expect(empty).toHaveClass('tournament-catalog__empty');
+  });
+
   it('renders published tournaments and their registration state', async () => {
     vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
       tournaments: [

@@ -681,7 +681,13 @@ export function TournamentCatalog(): JSX.Element {
   if (selected) return <TournamentDetails tournament={selected} />;
   if (catalog.isLoading) return <div role="status">Загрузка турниров…</div>;
   if (catalog.isError) return <div role="status">Турниры пока недоступны.</div>;
-  if (tournaments.length === 0) return <div role="status">Сейчас нет открытых турниров.</div>;
+  if (tournaments.length === 0) {
+    return (
+      <div role="status" className="tournament-catalog__empty">
+        Турниров пока нет.
+      </div>
+    );
+  }
   const sections = [
     {
       title: 'Активные турниры',
