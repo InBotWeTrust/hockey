@@ -44,10 +44,8 @@ const BONUS_GAME_GOALIE_OPTIONS: Omit<GoalieOptions, 'idleSpriteUrl' | 'saveSpri
 };
 
 function bonusGoalieOptions(attempt: BonusGameAttempt): GoalieOptions {
-  const isWorldTour = attempt.goalkeeper_ready_url.includes('/bonus-games/world-tour/');
   return {
     ...BONUS_GAME_GOALIE_OPTIONS,
-    saveSizeScale: isWorldTour ? 1.04 : BONUS_GAME_GOALIE_OPTIONS.saveSizeScale,
     idleSpriteUrl: attempt.goalkeeper_ready_url,
     saveSpriteUrl: attempt.goalkeeper_save_url,
   };

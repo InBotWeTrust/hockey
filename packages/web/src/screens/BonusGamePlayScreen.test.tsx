@@ -393,7 +393,7 @@ describe('BonusGamePlayScreen', () => {
     expect(props).toMatchObject({
       goalieOptions: {
         idleSizeScale: 1.22,
-        saveSizeScale: 1.04,
+        saveSizeScale: 0.96,
       },
     });
   });

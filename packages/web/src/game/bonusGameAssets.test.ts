@@ -30,6 +30,7 @@ interface RawImage {
 
 interface SharpPipeline {
   removeAlpha(): SharpPipeline;
+  ensureAlpha(): SharpPipeline;
   raw(): SharpPipeline;
   toBuffer(options: { resolveWithObject: true }): Promise<RawImage>;
 }
@@ -75,13 +76,72 @@ function readWebpDimensions(filePath: string): { width: number; height: number }
   throw new Error(`Missing WebP image chunk: ${filePath}`);
 }
 
+async function findKickplateY(filePath: string, x: number): Promise<number> {
+  const { data, info } = await sharp(filePath)
+    .removeAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  let bestY = 620;
+  let bestSignal = Number.NEGATIVE_INFINITY;
+
+  for (let y = 620; y <= 880; y += 1) {
+    let signal = 0;
+    for (let sampleX = x - 3; sampleX <= x + 3; sampleX += 1) {
+      const offset = (y * info.width + sampleX) * info.channels;
+      const red = data[offset]!;
+      const green = data[offset + 1]!;
+      const blue = data[offset + 2]!;
+      signal += red + green - 2 * blue;
+    }
+    if (signal > bestSignal) {
+      bestSignal = signal;
+      bestY = y;
+    }
+  }
+
+  return bestY;
+}
+
+async function visibleAlphaBounds(filePath: string): Promise<{
+  width: number;
+  height: number;
+  canvasWidth: number;
+  canvasHeight: number;
+}> {
+  const { data, info } = await sharp(filePath)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  let minX = info.width;
+  let minY = info.height;
+  let maxX = -1;
+  let maxY = -1;
+
+  for (let y = 0; y < info.height; y += 1) {
+    for (let x = 0; x < info.width; x += 1) {
+      if (data[(y * info.width + x) * info.channels + 3]! <= 8) continue;
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+    }
+  }
+
+  return {
+    width: maxX - minX + 1,
+    height: maxY - minY + 1,
+    canvasWidth: info.width,
+    canvasHeight: info.height,
+  };
+}
+
 describe('bonus game runtime assets', () => {
   it('rebuilds arenas from the approved generated masters instead of legacy overlays', () => {
     const script = readFileSync(path.resolve('scripts/build-bonus-assets.mjs'), 'utf8');
 
-    expect(script).toContain("assets/bonus-games/generated-arenas");
-    expect(script).toContain("assets/bonus-games/generated-previews");
-    expect(script).not.toContain("assets/bonus-games/textures");
+    expect(script).toContain('assets/bonus-games/generated-arenas');
+    expect(script).toContain('assets/bonus-games/generated-previews');
+    expect(script).not.toContain('assets/bonus-games/textures');
     expect(script).not.toContain('amateur-daily-court.webp');
   });
 
@@ -272,11 +332,8 @@ describe('bonus game runtime assets', () => {
     }
   });
 
-  it('keeps the upper goal line aligned with the daily-court master at Y=779', async () => {
-    for (const entry of [
-      ...Object.values(BONUS_GAME_ASSETS),
-      ...Object.values(WORLD_TOUR_BONUS_GAME_ASSETS),
-    ]) {
+  it('keeps the original bonus arenas aligned with the daily-court master at Y=779', async () => {
+    for (const entry of Object.values(BONUS_GAME_ASSETS)) {
       const filePath = path.resolve('public', entry.arena.slice(1));
       const { data, info } = await sharp(filePath)
         .removeAlpha()
@@ -307,6 +364,45 @@ describe('bonus game runtime assets', () => {
 
       candidates.sort((left, right) => right.warmLineSignal - left.warmLineSignal);
       expect(Math.abs(candidates[0]!.y - 779), entry.arena).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('keeps every World Tour rink centred with both goal-travel edges on Y=779', async () => {
+    for (const slug of WORLD_TOUR_SLUGS) {
+      const filePath = path.resolve('public/bonus-games/world-tour/arenas', `${slug}.webp`);
+      const samples = await Promise.all(
+        [89, 150, 300, 912, 1062, 1123].map((x) => findKickplateY(filePath, x)),
+      );
+      const [leftGoalEdge, leftOuter, leftInner, rightInner, rightOuter, rightGoalEdge] = samples;
+
+      expect(Math.abs(leftGoalEdge! - 779), `${slug}: left goal edge`).toBeLessThanOrEqual(4);
+      expect(Math.abs(rightGoalEdge! - 779), `${slug}: right goal edge`).toBeLessThanOrEqual(4);
+      expect(Math.abs(leftOuter! - rightOuter!), `${slug}: outer symmetry`).toBeLessThanOrEqual(4);
+      expect(Math.abs(leftInner! - rightInner!), `${slug}: inner symmetry`).toBeLessThanOrEqual(4);
+    }
+  });
+
+  it('normalises World Tour ready and save poses to the same visible height', async () => {
+    for (const slug of WORLD_TOUR_SLUGS) {
+      const ready = await visibleAlphaBounds(
+        path.resolve('public/bonus-games/world-tour/goalkeepers', `${slug}-ready.webp`),
+      );
+      const save = await visibleAlphaBounds(
+        path.resolve('public/bonus-games/world-tour/goalkeepers', `${slug}-save.webp`),
+      );
+
+      expect(
+        { width: ready.canvasWidth, height: ready.canvasHeight },
+        `${slug}: ready canvas`,
+      ).toEqual({ width: 1254, height: 1254 });
+      expect(
+        { width: save.canvasWidth, height: save.canvasHeight },
+        `${slug}: save canvas`,
+      ).toEqual({ width: 1254, height: 1254 });
+      expect(
+        Math.abs(ready.height - save.height),
+        `${slug}: visible pose height`,
+      ).toBeLessThanOrEqual(12);
     }
   });
 });
