@@ -380,4 +380,33 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
       error: { code: 'bad_request', message: 'custom_profile_incomplete' },
     });
   });
+
+  it('returns profile after achievements schema renames unlocked_at to completed_at', async () => {
+    const { accessToken, user } = await loginTelegram({ id: '49' });
+    await app.pg.query(
+      `update users
+          set lifetime_shots_total = 1,
+              lifetime_goals_total = 1
+        where id = $1`,
+      [user.id],
+    );
+    await app.pg.query(
+      'alter table user_achievements rename column unlocked_at to completed_at',
+    );
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/me',
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      displayName: 'Alice',
+      stats: { shots: 1, goals: 1, accuracy: 100 },
+      achievements: expect.arrayContaining([
+        expect.objectContaining({ id: 'first-goal', isUnlocked: true }),
+      ]),
+    });
+  });
 });
