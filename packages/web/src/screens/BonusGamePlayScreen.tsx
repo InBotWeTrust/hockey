@@ -712,7 +712,7 @@ export function BonusGamePlayScreen(): JSX.Element {
           return result ? { serverResult: result.serverResult, state: result.attempt } : null;
         }}
         applyState={() => undefined}
-        applyResolvedState={() => applyPendingShot()}
+        applyResolvedState={(next) => applyPendingShot(next)}
         overlayControls={
           needsReconcile ? (
             <BonusReconcileOverlay loading={loading} onRetry={() => void reconcileAttempt()} />

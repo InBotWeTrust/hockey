@@ -769,6 +769,33 @@ describe('bonusGameStore', () => {
     });
   });
 
+  it('applies PlayView authoritative fallback when the deferred slot is no longer available', () => {
+    const completedAttempt = {
+      ...initialAttempt,
+      status: 'completed' as const,
+      state: 'closed' as const,
+      period_started_at: null,
+      period_ends_at: null,
+      closed_at: '2026-08-24T10:01:01.000Z',
+      shots_taken: 3,
+      current_period_shots_taken: 3,
+      goals: 3,
+      reward_granted: true,
+    };
+    vi.spyOn(performance, 'now').mockReturnValue(2_000);
+    useBonusGameStore.setState({ pendingShot: null, inFlight: true });
+
+    const applied = useBonusGameStore.getState().applyPendingShot(completedAttempt);
+
+    expect(applied).toEqual(completedAttempt);
+    expect(useBonusGameStore.getState()).toMatchObject({
+      attempt: completedAttempt,
+      pendingShot: null,
+      inFlight: false,
+      receivedAtPerformanceMs: 2_000,
+    });
+  });
+
   it('uses a safe fallback for an initial non-API load failure', async () => {
     // This catches browser or parser details leaking into player-visible copy.
     vi.mocked(fetchBonusAttempt).mockRejectedValueOnce(

@@ -31,7 +31,7 @@ interface BonusGameStoreState {
   loadCurrent: () => Promise<BonusGameAttempt | null>;
   loadAttempt: (attemptId: string) => Promise<BonusGameAttempt | null>;
   applyState: (next: BonusGameAttempt | null) => void;
-  applyPendingShot: () => BonusGameAttempt | null;
+  applyPendingShot: (fallback?: BonusGameAttempt) => BonusGameAttempt | null;
   optimisticAddShot: (claimed: ShotResultType) => void;
   startPeriod: (loadout?: BonusPeriodLoadoutSelection) => Promise<BonusGameAttempt | null>;
   acknowledgePreview: (dismissFuture: boolean) => Promise<BonusGameAttempt | null>;
@@ -165,11 +165,12 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
 
   applyState: (next) => applyServerAttempt(set, get, next),
 
-  applyPendingShot: () => {
+  applyPendingShot: (fallback) => {
     const pendingShot = get().pendingShot;
-    if (pendingShot === null) return null;
+    const resolvedAttempt = pendingShot?.attempt ?? fallback ?? null;
+    if (resolvedAttempt === null) return null;
     set({
-      attempt: pendingShot.attempt,
+      attempt: resolvedAttempt,
       pendingShot: null,
       loading: false,
       error: null,
@@ -177,9 +178,9 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
       inFlight: false,
       needsReconcile: false,
       requestEpoch: get().requestEpoch + 1,
-      receivedAtPerformanceMs: pendingShot.receivedAtPerformanceMs,
+      receivedAtPerformanceMs: pendingShot?.receivedAtPerformanceMs ?? performance.now(),
     });
-    return pendingShot.attempt;
+    return resolvedAttempt;
   },
 
   optimisticAddShot: (claimed) => {

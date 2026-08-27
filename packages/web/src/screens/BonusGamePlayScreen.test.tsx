@@ -416,13 +416,13 @@ describe('BonusGamePlayScreen', () => {
       attempt: completedAttempt,
       rewardGranted: true,
     }));
-    const applyPendingShot = vi.fn(() => {
+    const applyPendingShot = vi.fn((next?: BonusGameAttempt) => {
       useBonusGameStore.setState({
-        attempt: completedAttempt,
+        attempt: next ?? completedAttempt,
         pendingShot: null,
         inFlight: false,
       });
-      return completedAttempt;
+      return next ?? completedAttempt;
     });
     setStore({
       submitShot,
@@ -448,6 +448,7 @@ describe('BonusGamePlayScreen', () => {
     act(() => props.applyResolvedState?.(completedAttempt));
 
     expect(applyPendingShot).toHaveBeenCalledTimes(1);
+    expect(applyPendingShot).toHaveBeenCalledWith(completedAttempt);
     expect(screen.getByRole('dialog', { name: 'Игра пройдена' })).toHaveTextContent(
       'Награда за первое прохождение',
     );
@@ -460,6 +461,43 @@ describe('BonusGamePlayScreen', () => {
       shots: 29,
       shotsTotal: 50,
     });
+  });
+
+  it('applies the terminal DTO supplied by PlayView even when the pending store slot was cleared', async () => {
+    // PlayView owns the visual boundary and passes the authoritative DTO back after the
+    // puck flight/result pause. The screen must not depend on a second, lossy store lookup.
+    const completedAttempt = attempt({
+      status: 'completed',
+      state: 'closed',
+      period_started_at: null,
+      period_ends_at: null,
+      closed_at: '2026-08-24T10:01:00.000Z',
+      reward_granted: true,
+      goals: 20,
+      shots_taken: 29,
+      current_period_shots_taken: 4,
+    });
+    const submitShot = vi.fn(async () => ({
+      serverResult: 'goal' as const,
+      attempt: completedAttempt,
+      rewardGranted: true,
+    }));
+    const applyPendingShot = vi.fn((next?: BonusGameAttempt) => {
+      useBonusGameStore.setState({ attempt: next ?? null, pendingShot: null, inFlight: false });
+      return next ?? null;
+    });
+    setStore({ submitShot, applyPendingShot, pendingShot: null, inFlight: true });
+    renderScreen();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Тестовый бросок' }));
+    await waitFor(() => expect(submitShot).toHaveBeenCalledTimes(1));
+
+    const props = playViewProbe.mock.calls.at(-1)?.[0] as {
+      applyResolvedState?: (next: BonusGameAttempt) => void;
+    };
+    act(() => props.applyResolvedState?.(completedAttempt));
+
+    expect(screen.getByRole('dialog', { name: 'Игра пройдена' })).toBeInTheDocument();
   });
 
   it('applies a deferred response that arrives after the play route unmounts', async () => {
