@@ -2207,8 +2207,8 @@ export function TournamentAdmin(): JSX.Element {
                       {draft.timezone} · {draft.startsAt || 'старт не задан'}
                     </span>
                     <span>
-                      Создание сохраняет draft. Публикация выполняется отдельным действием с защитой
-                      по номеру ревизии.
+                      Изменения сохраняются автоматически. Кнопка ниже сохранит последние правки и
+                      закроет форму. Запуск турнира выполняется отдельно.
                     </span>
                   </div>
                 )}
@@ -2216,8 +2216,11 @@ export function TournamentAdmin(): JSX.Element {
               <div className="modal-actions">
                 <div className="tournament-wizard__save-state" role="status" aria-live="polite">
                   {finishing && 'Сохраняем изменения и закрываем…'}
-                  {!finishing && saveState === 'saving' && 'Сохраняем…'}
-                  {!finishing && saveState === 'saved' && 'Сохранено'}
+                  {!finishing && saveState === 'saving' && 'Сохраняем изменения…'}
+                  {!finishing && saveState === 'saved' &&
+                    (editingTournament?.status === 'draft'
+                      ? 'Черновик сохранён автоматически'
+                      : 'Изменения сохранены автоматически')}
                   {!finishing && saveState === 'error' && (
                     <>
                       <span>{validationError ?? 'Не удалось сохранить изменения.'}</span>
@@ -2279,7 +2282,7 @@ export function TournamentAdmin(): JSX.Element {
                     }
                     onClick={() => void finishWizard()}
                   >
-                    {finishing ? 'Сохраняем и закрываем…' : 'Готово'}
+                    {finishing ? 'Сохраняем и закрываем…' : 'Сохранить и закрыть'}
                   </button>
                 )}
               </div>

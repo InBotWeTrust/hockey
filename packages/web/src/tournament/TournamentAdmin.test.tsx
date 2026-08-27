@@ -100,7 +100,7 @@ describe('TournamentAdmin', () => {
     expect(advanced).not.toHaveAttribute('open');
   });
 
-  it('waits for the latest save before Done closes the wizard and opens operations', async () => {
+  it('explains draft autosave and waits for the latest save before closing the wizard', async () => {
     const tournament: api.AdminTournament = {
       id: '00000000-0000-4000-8000-000000000948',
       slug: 'flush-cup',
@@ -130,11 +130,17 @@ describe('TournamentAdmin', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок очереди' }));
     fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
     fireEvent.click(screen.getByRole('button', { name: 'Редактировать турнир' }));
+    expect(screen.getByRole('status')).toHaveTextContent('Черновик сохранён автоматически');
     fireEvent.change(screen.getByRole('textbox', { name: 'Описание' }), {
       target: { value: 'Последняя версия' },
     });
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
+    expect(
+      screen.getByText(
+        'Изменения сохраняются автоматически. Кнопка ниже сохранит последние правки и закроет форму. Запуск турнира выполняется отдельно.',
+      ),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить и закрыть' }));
 
     expect(screen.getByRole('button', { name: 'Сохраняем и закрываем…' })).toBeDisabled();
     expect(screen.getByRole('status')).toHaveTextContent('Сохраняем изменения и закрываем…');
@@ -199,7 +205,7 @@ describe('TournamentAdmin', () => {
 
     await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
     expect(create.mock.calls[0]?.[0]).not.toHaveProperty('slug');
-    expect(await screen.findByText('Сохранено')).toBeInTheDocument();
+    expect(await screen.findByText('Черновик сохранён автоматически')).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Регистрация' })).toBeInTheDocument();
   });
 
@@ -374,7 +380,7 @@ describe('TournamentAdmin', () => {
     expect(place).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('Заполните место награды');
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить и закрыть' }));
     expect(update).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog', { name: 'Создание турнира' })).toBeInTheDocument();
   });
@@ -415,7 +421,7 @@ describe('TournamentAdmin', () => {
 
     fireEvent.change(place, { target: { value: '1' } });
 
-    expect(await screen.findByText('Сохранено')).toBeInTheDocument();
+    expect(await screen.findByText('Черновик сохранён автоматически')).toBeInTheDocument();
     expect(update).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
     expect(
@@ -505,7 +511,7 @@ describe('TournamentAdmin', () => {
     expect(body).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('Заполните текст уведомления');
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
-    expect(screen.getByRole('button', { name: 'Готово' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Сохранить и закрыть' })).toBeDisabled();
     expect(update).not.toHaveBeenCalled();
   });
 
@@ -715,7 +721,7 @@ describe('TournamentAdmin', () => {
         ),
       { timeout: 2_000 },
     );
-    expect(await screen.findByText('Сохранено')).toBeInTheDocument();
+    expect(await screen.findByText('Черновик сохранён автоматически')).toBeInTheDocument();
   });
 
   it('edits tie-break priority and home order with domain controls', async () => {
@@ -1268,7 +1274,7 @@ describe('TournamentAdmin', () => {
       target: { value: 'Описание обновлено' },
     });
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить и закрыть' }));
 
     await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
     const body = update.mock.calls[0]?.[2];
@@ -1312,7 +1318,7 @@ describe('TournamentAdmin', () => {
       target: { value: '01:45' },
     });
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить и закрыть' }));
 
     await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
     expect(update.mock.calls[0]?.[2]).toEqual(
@@ -1344,7 +1350,7 @@ describe('TournamentAdmin', () => {
     fireEvent.click(screen.getByRole('button', { name: '5. Сроки' }));
     await chooseGlassOption('Часовой пояс', 'Europe/Moscow');
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить и закрыть' }));
 
     await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
     expect(update.mock.calls[0]?.[2]).toEqual(
@@ -1383,7 +1389,7 @@ describe('TournamentAdmin', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Сохранить и закрыть' }));
     });
 
     expect(update).not.toHaveBeenCalled();
@@ -1456,7 +1462,7 @@ describe('TournamentAdmin', () => {
       target: { value: 'Кубок CRUD обновлён' },
     });
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить и закрыть' }));
     await waitFor(() =>
       expect(update).toHaveBeenCalledWith(
         tournament.id,
