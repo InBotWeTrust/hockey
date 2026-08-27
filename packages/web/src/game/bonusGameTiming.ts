@@ -1,5 +1,6 @@
 import { GOAL_OPENING, PUCK_START } from '@hockey/game-core';
 import type { BonusGameAttempt } from '../api/bonusGames.js';
+import { SHOT_RESULT_PAUSE_MS } from './shotTiming.js';
 
 export interface BonusGameClockBasis {
   sceneElapsedMs: number;
@@ -27,7 +28,7 @@ export function deriveBonusGameClockBasis(attempt: BonusGameAttempt): BonusGameC
 
   const wallElapsedMs = Math.max(0, serverNow - startedAt);
   const acceptedShots = Math.max(0, attempt.current_period_shots_taken);
-  const sceneElapsedMs = wallElapsedMs;
+  const sceneElapsedMs = Math.max(0, wallElapsedMs - acceptedShots * SHOT_RESULT_PAUSE_MS);
   const flightMs = (PUCK_START.y - GOAL_OPENING.y) / rule.puck_speed_per_ms;
   return {
     sceneElapsedMs,

@@ -18,7 +18,10 @@ import {
   submitBonusShot,
   type SubmitBonusShotInput,
 } from '../../src/bonusGames/service.js';
-import type { BonusPeriodRule } from '../../src/bonusGames/types.js';
+import {
+  buildBonusGoalieConfig,
+  type BonusPeriodRule,
+} from '../../src/bonusGames/types.js';
 import { applyMigrations } from '../../src/db/migrations.js';
 import { createTestPool, hasIntegrationEnv, resetDatabase } from '../helpers/testDb.js';
 
@@ -70,6 +73,12 @@ const THIRD_SHOT_INPUT: ShotInput = {
   shooterTapTime: 2_133.333_333_333_333,
 };
 
+const FOURTH_SHOT_INPUT: ShotInput = {
+  ...GOAL_INPUT,
+  tapTime: 4_000,
+  shooterTapTime: 2_700,
+};
+
 const RECORDED_CLIENT_SAVE_INPUT: ShotInput = {
   tapTime: 105_815.999_999_880_79,
   shooterTapTime: 105_815.999_999_880_79,
@@ -81,6 +90,7 @@ const RECORDED_CLIENT_SAVE_INPUT: ShotInput = {
 
 const SECOND_SHOT_AT = new Date('2026-08-23T12:00:03.000Z');
 const THIRD_SHOT_AT = new Date('2026-08-23T12:00:05.000Z');
+const FOURTH_SHOT_AT = new Date('2026-08-23T12:00:07.000Z');
 
 function withoutShooterTime(): SubmitBonusShotInput['input'] {
   const { shooterTapTime: _omitted, ...input } = GOAL_INPUT;
@@ -660,6 +670,60 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
     expect(response).toMatchObject({
       serverResult: 'miss',
       attempt: { status: 'active', state: 'period_active', shotsTaken: 2, goals: 1 },
+    });
+  });
+
+  it('accepts the fourth shot after three daily-style result pauses', async () => {
+    const userId = await createUser();
+    const period = { ...PERIODS[0]!, shotsLimit: 10 };
+    const game = await createGame({ targetGoals: 10, periods: [period] });
+    const attemptId = await createActiveAttempt(userId, game.id);
+    await submitBonusShot(pool, {
+      userId,
+      attemptId,
+      claimedShotIndex: 1,
+      input: GOAL_INPUT,
+      claimedResult: 'goal',
+      now: SHOT_AT,
+    });
+    await submitBonusShot(pool, {
+      userId,
+      attemptId,
+      claimedShotIndex: 2,
+      input: SECOND_SHOT_INPUT,
+      claimedResult: 'miss',
+      now: SECOND_SHOT_AT,
+    });
+    await submitBonusShot(pool, {
+      userId,
+      attemptId,
+      claimedShotIndex: 3,
+      input: THIRD_SHOT_INPUT,
+      claimedResult: 'miss',
+      now: THIRD_SHOT_AT,
+    });
+    const fourthResult = resolvePerspectiveCourtShot(
+      FOURTH_SHOT_INPUT,
+      buildBonusGoalieConfig('shot-game-1', 'Игра 1', period),
+      deriveShotSeed(ATTEMPT_SEED, 1, 4),
+      4,
+      STICK_NEUTRAL,
+      getSessionPhaseOffsets(ATTEMPT_SEED),
+    ).type;
+
+    const response = await submitBonusShot(pool, {
+      userId,
+      attemptId,
+      claimedShotIndex: 4,
+      input: FOURTH_SHOT_INPUT,
+      claimedResult: fourthResult,
+      now: FOURTH_SHOT_AT,
+    });
+
+    expect(response.attempt).toMatchObject({
+      status: 'active',
+      state: 'period_active',
+      shotsTaken: 4,
     });
   });
 

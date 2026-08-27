@@ -766,6 +766,7 @@ function authoritativeShotInput(
 const BONUS_SHOT_NETWORK_LAG_TOLERANCE_MS = 2_500;
 const BONUS_SHOT_FUTURE_TOLERANCE_MS = 250;
 const BONUS_SHOT_CLOCK_RELATION_TOLERANCE_MS = 100;
+const BONUS_SHOT_RESULT_PAUSE_MS = 1_000;
 
 function invalidBonusShotTime(): AppError {
   return new AppError(BONUS_SHOT_TIME_INVALID_CODE, 'bonus shot timing is invalid', 400);
@@ -803,9 +804,12 @@ function assertBonusShotTimeFresh(
 
   const elapsedMs = Math.max(0, now.getTime() - attempt.period_started_at.getTime());
   const flightMs = (PUCK_START.y - GOAL_OPENING.y) / rule.puckSpeedPerMs;
-  // The period clock is continuous. A successful shot response updates score
-  // only and must never move the scene clock backwards.
-  const expectedSceneTime = elapsedMs;
+  // Period expiry remains wall-clock based, while the deterministic scene uses
+  // the same one-second result pause as the daily game after every accepted shot.
+  const expectedSceneTime = Math.max(
+    0,
+    elapsedMs - previousShots * BONUS_SHOT_RESULT_PAUSE_MS,
+  );
   const expectedShooterTime = expectedSceneTime - previousShots * flightMs;
   const isNearAuthoritativeClock = (actual: number, expected: number): boolean =>
     actual >= expected - BONUS_SHOT_NETWORK_LAG_TOLERANCE_MS &&

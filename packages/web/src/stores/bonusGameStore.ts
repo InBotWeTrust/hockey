@@ -265,7 +265,12 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
       };
     } catch (error) {
       const details = errorDetails(error, 'Не удалось отправить бросок.');
-      recordMutationFailure(set, get, details);
+      try {
+        const reconciled = await fetchBonusAttempt(attempt.id);
+        applyServerAttempt(set, get, reconciled.attempt);
+      } catch {
+        recordMutationFailure(set, get, details);
+      }
       return null;
     } finally {
       shotInFlight = false;

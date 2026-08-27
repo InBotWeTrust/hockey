@@ -276,7 +276,7 @@ describe('BonusGamePlayScreen', () => {
     expect(screen.getByRole('heading', { name: 'Первая квалификация' })).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'Локация «Пляж» и её вратарь' })).toHaveAttribute(
       'src',
-      '/bonus-games/location-cards/beach.webp?v=20260826-themed-ice-v2',
+      '/bonus-games/location-cards/beach.webp?v=20260827-generated-arenas-v3',
     );
     const qualification = screen.getByText('20 голов из 50 бросков');
     expect(qualification).toBeInTheDocument();
@@ -333,7 +333,7 @@ describe('BonusGamePlayScreen', () => {
 
     expect(screen.getByTestId('bonus-rink-background')).toHaveAttribute(
       'src',
-      '/bonus-games/arenas/beach.webp?v=20260826-themed-ice-v2',
+      '/bonus-games/arenas/beach.webp?v=20260827-generated-arenas-v3',
     );
     const props = playViewProbe.mock.calls.at(-1)?.[0] as Record<string, unknown>;
     expect(props).toMatchObject({
@@ -343,9 +343,9 @@ describe('BonusGamePlayScreen', () => {
       goals: 18,
       shotsTotal: 25,
       stickEffects: STICK_NEUTRAL,
-      longCourtBackground: '/bonus-games/arenas/beach.webp?v=20260826-themed-ice-v2',
-      initialSceneElapsedMs: 9_000,
-      initialShooterElapsedMs: 7_800,
+      longCourtBackground: '/bonus-games/arenas/beach.webp?v=20260827-generated-arenas-v3',
+      initialSceneElapsedMs: 6_000,
+      initialShooterElapsedMs: 4_800,
       goalieOptions: {
         idleSpriteUrl: '/bonus-games/goalkeepers/beach-ready.webp',
         saveSpriteUrl: '/bonus-games/goalkeepers/beach-save.webp',
@@ -367,7 +367,7 @@ describe('BonusGamePlayScreen', () => {
         goalFrequency: 0.5,
       },
       preloadAssets: [
-        '/bonus-games/arenas/beach.webp?v=20260826-themed-ice-v2',
+        '/bonus-games/arenas/beach.webp?v=20260827-generated-arenas-v3',
         '/bonus-games/goalkeepers/beach-ready.webp',
         '/bonus-games/goalkeepers/beach-save.webp',
       ],

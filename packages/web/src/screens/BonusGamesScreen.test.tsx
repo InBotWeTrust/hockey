@@ -452,7 +452,7 @@ describe('BonusGamesScreen', () => {
     const artwork = await screen.findByAltText('Площадка «Пляж»');
     expect(artwork).toHaveAttribute(
       'src',
-      '/bonus-games/arenas/beach.webp?v=20260826-themed-ice-v2',
+      '/bonus-games/arenas/beach.webp?v=20260827-generated-arenas-v3',
     );
     expect(artwork).toHaveStyle({ objectPosition: 'center top' });
     expect(artwork.parentElement).toHaveClass('bonus-game-card__artwork-frame');
@@ -571,7 +571,7 @@ describe('BonusGamesScreen', () => {
 
     expect(await screen.findByAltText('Площадка «Пляж»')).toHaveAttribute(
       'src',
-      '/bonus-games/arenas/beach.webp?v=20260826-themed-ice-v2',
+      '/bonus-games/arenas/beach.webp?v=20260827-generated-arenas-v3',
     );
   });
 

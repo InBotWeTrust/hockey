@@ -549,6 +549,30 @@ describe('bonusGameStore', () => {
     expect(useBonusGameStore.getState().receivedAtPerformanceMs).toBe(1_000);
   });
 
+  it('silently restores authoritative state when a shot request is rejected', async () => {
+    const staleError = new ApiError(
+      409,
+      'bonus_shot_time_stale',
+      'Бросок уже обработан. Обновляем состояние попытки.',
+    );
+    vi.mocked(submitBonusShot).mockRejectedValueOnce(staleError);
+    vi.mocked(fetchBonusAttempt).mockResolvedValueOnce(response(initialAttempt));
+    useBonusGameStore.getState().applyState(initialAttempt);
+    useBonusGameStore.getState().optimisticAddShot('goal');
+
+    await useBonusGameStore.getState().submitShot(shot);
+
+    expect(fetchBonusAttempt).toHaveBeenCalledWith(initialAttempt.id);
+    expect(useBonusGameStore.getState()).toMatchObject({
+      attempt: initialAttempt,
+      error: null,
+      errorCode: null,
+      needsReconcile: false,
+      inFlight: false,
+      pendingShot: null,
+    });
+  });
+
   it('defers an authoritative shot response until the visual boundary applies it once', async () => {
     // This catches terminal or break state replacing the play screen while the puck is still flying.
     let performanceNow = 1_000;

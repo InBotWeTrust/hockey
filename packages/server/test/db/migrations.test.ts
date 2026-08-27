@@ -421,6 +421,8 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '067_tournament_artwork.sql',
       '068_tournament_revision_history.sql',
       '069_bonus_game_qualifications.sql',
+      '069_official_dialogs.sql',
+      '070_bonus_game_preview_location_cards.sql',
     ]);
   });
 
@@ -760,6 +762,8 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '067_tournament_artwork.sql',
       '068_tournament_revision_history.sql',
       '069_bonus_game_qualifications.sql',
+      '069_official_dialogs.sql',
+      '070_bonus_game_preview_location_cards.sql',
     ]);
 
     const activeInventory = await pool.query<{

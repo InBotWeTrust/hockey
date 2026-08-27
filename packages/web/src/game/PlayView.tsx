@@ -52,6 +52,7 @@ import { Hitboxes, type HitboxesOptions } from './renderer/Hitboxes.js';
 import { IceCar, iceCarPosAt } from './renderer/IceCar.js';
 import { Player, type PlayerOptions } from './renderer/Player.js';
 import { Puck, type PuckOptions } from './renderer/Puck.js';
+import { SHOT_RESULT_PAUSE_MS } from './shotTiming.js';
 import {
   TRAINING_LONG_COURT_BACKGROUND,
   TRAINING_NEW_COURT_BACKGROUND,
@@ -76,8 +77,6 @@ import {
   resolveNewTrainingCourtShot,
   type TrainingCourtDesign,
 } from './trainingNewCourt.js';
-
-const PAUSE_MS = 1000;
 
 export type PlayShotResolver = (context: {
   input: ShotInput;
@@ -1576,7 +1575,7 @@ export function PlayView<TState>({
         applyPending();
         pendingMidShotApplyRef.current = null;
       }
-    }, flightMs + PAUSE_MS);
+    }, flightMs + SHOT_RESULT_PAUSE_MS);
 
     void submitShot({
       shotIndex,
@@ -1959,7 +1958,7 @@ export function PlayView<TState>({
       {isShowingResult && lastResult && (
         <ResultModal
           result={lastResult}
-          durationMs={PAUSE_MS}
+          durationMs={SHOT_RESULT_PAUSE_MS}
           subText={resultSubText}
           displayKind={resultDisplayKind ?? undefined}
         />

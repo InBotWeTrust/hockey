@@ -204,7 +204,11 @@ describe.skipIf(!hasIntegrationEnv)('069 bonus skill catalogue reset', () => {
     );
 
     const applied = await applyMigrations(pool, MIGRATIONS_DIR);
-    expect(applied.applied).toEqual(['069_bonus_game_qualifications.sql']);
+    expect(applied.applied).toEqual([
+      '069_bonus_game_qualifications.sql',
+      '069_official_dialogs.sql',
+      '070_bonus_game_preview_location_cards.sql',
+    ]);
 
     const accuracy = await pool.query<{
       count: number;

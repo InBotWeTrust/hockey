@@ -57,6 +57,15 @@ function readWebpDimensions(filePath: string): { width: number; height: number }
 }
 
 describe('bonus game runtime assets', () => {
+  it('rebuilds arenas from the approved generated masters instead of legacy overlays', () => {
+    const script = readFileSync(path.resolve('scripts/build-bonus-assets.mjs'), 'utf8');
+
+    expect(script).toContain("assets/bonus-games/generated-arenas");
+    expect(script).toContain("assets/bonus-games/generated-previews");
+    expect(script).not.toContain("assets/bonus-games/textures");
+    expect(script).not.toContain('amateur-daily-court.webp');
+  });
+
   it('declares all approved bonus asset paths', () => {
     expect(Object.keys(BONUS_GAME_ASSETS)).toEqual([
       'beach',
@@ -124,12 +133,7 @@ describe('bonus game runtime assets', () => {
       }
 
       const averageDifference = totalDifference / samples;
-      if (entry.arena.endsWith('/beach.webp')) {
-        expect(averageDifference, entry.arena).toBeGreaterThanOrEqual(2.5);
-        expect(averageDifference, entry.arena).toBeLessThanOrEqual(8);
-      } else {
-        expect(averageDifference, entry.arena).toBeGreaterThanOrEqual(3.5);
-      }
+      expect(averageDifference, entry.arena).toBeGreaterThanOrEqual(3.5);
     }
   });
 
@@ -193,10 +197,12 @@ describe('bonus game runtime assets', () => {
         .removeAlpha()
         .raw()
         .toBuffer({ resolveWithObject: true });
-      const candidates: Array<{ y: number; redPixels: number }> = [];
+      const candidates: Array<{ y: number; warmLineSignal: number }> = [];
 
-      for (let y = 750; y <= 810; y += 1) {
-        let redPixels = 0;
+      // Search tightly around the fixed goal-line guide so stronger red details
+      // from the nearby faceoff circles cannot mask a deliberately faded line.
+      for (let y = 775; y <= 783; y += 1) {
+        let warmLineSignal = 0;
         for (const [startX, endX] of [
           [80, 400],
           [812, 1132],
@@ -206,13 +212,15 @@ describe('bonus game runtime assets', () => {
             const red = data[offset]!;
             const green = data[offset + 1]!;
             const blue = data[offset + 2]!;
-            if (red - green > 3 && red - blue > 3) redPixels += 1;
+            // Red and cyberpunk magenta both separate from the cool ice by
+            // carrying substantially less green than their red/blue channels.
+            warmLineSignal += red + blue - 2 * green;
           }
         }
-        candidates.push({ y, redPixels });
+        candidates.push({ y, warmLineSignal });
       }
 
-      candidates.sort((left, right) => right.redPixels - left.redPixels);
+      candidates.sort((left, right) => right.warmLineSignal - left.warmLineSignal);
       expect(Math.abs(candidates[0]!.y - 779), entry.arena).toBeLessThanOrEqual(1);
     }
   });

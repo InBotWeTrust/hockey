@@ -105,8 +105,8 @@ describe('deriveBonusGameClockBasis', () => {
       }),
     );
 
-    expect(clocks.sceneElapsedMs).toBe(9_000);
-    expect(clocks.shooterElapsedMs).toBeCloseTo(7_700, 8);
+    expect(clocks.sceneElapsedMs).toBe(6_000);
+    expect(clocks.shooterElapsedMs).toBeCloseTo(4_700, 8);
   });
 
   it('ignores shots archived in prior partial periods', () => {
@@ -120,8 +120,8 @@ describe('deriveBonusGameClockBasis', () => {
       }),
     );
 
-    expect(clocks.sceneElapsedMs).toBe(9_000);
-    expect(clocks.shooterElapsedMs).toBeCloseTo(7_800, 8);
+    expect(clocks.sceneElapsedMs).toBe(6_000);
+    expect(clocks.shooterElapsedMs).toBeCloseTo(4_800, 8);
   });
 
   it('rebases a reconciled snapshot from its new server time and accepted count', () => {
@@ -133,8 +133,8 @@ describe('deriveBonusGameClockBasis', () => {
       }),
     );
 
-    expect(clocks.sceneElapsedMs).toBe(10_000);
-    expect(clocks.shooterElapsedMs).toBeCloseTo(8_700, 8);
+    expect(clocks.sceneElapsedMs).toBe(7_000);
+    expect(clocks.shooterElapsedMs).toBeCloseTo(5_700, 8);
   });
 
   it('starts a new period from its own start and zero current-period shots', () => {
