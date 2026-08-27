@@ -11,12 +11,11 @@ const ARENA_WIDTH = 1212;
 const ARENA_HEIGHT = 2000;
 const GOAL_LINE_Y = 779;
 const RINK_CENTER_X = 606;
-const GOAL_TRAVEL_MIN_X = 89;
-const GOAL_TRAVEL_MAX_X = 1123;
-const BOARD_APEX_Y = 721;
+const BOARD_VALIDATION_XS = [82, 186, 300, 606, 912, 1026, 1130];
 
 const worldTourArenaSourceDir = path.join(root, 'assets/bonus-games/world-tour/generated-arenas');
 const worldTourArenaDir = path.join(root, 'public/bonus-games/world-tour/arenas');
+const dailyCourtPath = path.join(root, 'public/sprites/amateur-daily-court.webp');
 const worldTourGoalkeeperSourceDir = path.join(
   root,
   'assets/bonus-games/world-tour/generated-goalkeepers',
@@ -76,18 +75,6 @@ async function detectSourceGoalLineY(sourcePath) {
 function smoothStep(value) {
   const clamped = Math.max(0, Math.min(1, value));
   return clamped * clamped * (3 - 2 * clamped);
-}
-
-function canonicalBoardY(x) {
-  if (x < GOAL_TRAVEL_MIN_X) {
-    return GOAL_LINE_Y + (GOAL_TRAVEL_MIN_X - x) * 0.7;
-  }
-  if (x > GOAL_TRAVEL_MAX_X) {
-    return GOAL_LINE_Y + (x - GOAL_TRAVEL_MAX_X) * 0.7;
-  }
-  const halfTravel = GOAL_TRAVEL_MAX_X - RINK_CENTER_X;
-  const distance = Math.abs(x - RINK_CENTER_X) / halfTravel;
-  return BOARD_APEX_Y + (GOAL_LINE_Y - BOARD_APEX_Y) * distance ** 5;
 }
 
 function median(values) {
@@ -174,7 +161,7 @@ function sampleBilinear(data, info, x, y, channel) {
   );
 }
 
-async function normaliseArenaGeometry(input) {
+async function normaliseArenaGeometry(input, canonicalBoardCurve) {
   const { data, info } = await sharp(input)
     .removeAlpha()
     .raw()
@@ -186,7 +173,7 @@ async function normaliseArenaGeometry(input) {
   for (let targetX = 0; targetX < ARENA_WIDTH; targetX += 1) {
     const sourceX = sourceXForTargetX(targetX, sourceCenterX);
     const sourceCurveY = sourceCurve[Math.max(0, Math.min(ARENA_WIDTH - 1, Math.round(sourceX)))];
-    const targetCurveY = canonicalBoardY(targetX);
+    const targetCurveY = canonicalBoardCurve[targetX];
     const curveOffset = sourceCurveY - targetCurveY;
 
     for (let targetY = 0; targetY < ARENA_HEIGHT; targetY += 1) {
@@ -209,7 +196,7 @@ async function normaliseArenaGeometry(input) {
   };
 }
 
-async function buildArena(slug) {
+async function buildArena(slug, canonicalBoardCurve) {
   const sourcePath = path.join(worldTourArenaSourceDir, `${slug}-approved-source.png`);
   const outputPath = path.join(worldTourArenaDir, `${slug}.webp`);
   const temporaryPath = path.join(worldTourArenaDir, `.${slug}.tmp.webp`);
@@ -259,13 +246,16 @@ async function buildArena(slug) {
     ])
     .png()
     .toBuffer();
-  const firstGeometryPass = await normaliseArenaGeometry(verticallyNormalised);
+  const firstGeometryPass = await normaliseArenaGeometry(
+    verticallyNormalised,
+    canonicalBoardCurve,
+  );
   const firstGeometryPassPng = await sharp(firstGeometryPass.buffer, {
     raw: firstGeometryPass.raw,
   })
     .png()
     .toBuffer();
-  const geometry = await normaliseArenaGeometry(firstGeometryPassPng);
+  const geometry = await normaliseArenaGeometry(firstGeometryPassPng, canonicalBoardCurve);
   console.log(`${slug}: source rink centre ${firstGeometryPass.sourceCenterX.toFixed(1)}`);
 
   await sharp(geometry.buffer, { raw: geometry.raw }).webp({ quality: 92 }).toFile(temporaryPath);
@@ -276,14 +266,9 @@ async function buildArena(slug) {
     .raw()
     .toBuffer({ resolveWithObject: true });
   const outputCurve = detectKickplateCurve(data, info);
-  for (const [label, x] of [
-    ['left', GOAL_TRAVEL_MIN_X],
-    ['right', GOAL_TRAVEL_MAX_X],
-  ]) {
-    if (Math.abs(outputCurve[x] - GOAL_LINE_Y) > 4) {
-      throw new Error(
-        `${slug}: expected ${label} goal-travel edge at ${GOAL_LINE_Y}, got ${outputCurve[x]}`,
-      );
+  for (const x of BOARD_VALIDATION_XS) {
+    if (Math.abs(outputCurve[x] - canonicalBoardCurve[x]) > 4) {
+      throw new Error(`${slug}: board geometry differs from daily court at X=${x}`);
     }
   }
 }
@@ -501,7 +486,12 @@ async function buildGoalkeeper(slug, pose) {
 
 await mkdir(worldTourArenaDir, { recursive: true });
 await mkdir(worldTourGoalkeeperDir, { recursive: true });
-for (const arena of approvedArenas) await buildArena(arena);
+const canonicalDailyCourt = await sharp(dailyCourtPath)
+  .removeAlpha()
+  .raw()
+  .toBuffer({ resolveWithObject: true });
+const canonicalBoardCurve = detectKickplateCurve(canonicalDailyCourt.data, canonicalDailyCourt.info);
+for (const arena of approvedArenas) await buildArena(arena, canonicalBoardCurve);
 for (const slug of approvedArenas) {
   await buildGoalkeeper(slug, 'ready');
   await buildGoalkeeper(slug, 'save');

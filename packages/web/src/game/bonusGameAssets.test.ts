@@ -145,11 +145,11 @@ describe('bonus game runtime assets', () => {
     expect(script).not.toContain('amateur-daily-court.webp');
   });
 
-  it('rebuilds World Tour arenas from each complete generated location without a second ice layer', () => {
+  it('rebuilds World Tour locations against the canonical daily-court board geometry', () => {
     const script = readFileSync(path.resolve('scripts/build-world-tour-assets.mjs'), 'utf8');
 
     expect(script).toContain('assets/bonus-games/world-tour/generated-arenas');
-    expect(script).not.toContain('amateur-daily-court.webp');
+    expect(script).toContain('amateur-daily-court.webp');
     expect(script).not.toContain('flagColourField');
     expect(script).not.toContain('createCanonicalMarkingLayer');
   });
@@ -367,18 +367,21 @@ describe('bonus game runtime assets', () => {
     }
   });
 
-  it('keeps every World Tour rink centred with both goal-travel edges on Y=779', async () => {
+  it('matches every World Tour board to the daily-game court across the goal travel corridor', async () => {
+    const dailyCourtPath = path.resolve('public/sprites/amateur-daily-court.webp');
+    const sampleXs = [82, 186, 300, 606, 912, 1026, 1130];
+    const dailyBoard = await Promise.all(sampleXs.map((x) => findKickplateY(dailyCourtPath, x)));
+
     for (const slug of WORLD_TOUR_SLUGS) {
       const filePath = path.resolve('public/bonus-games/world-tour/arenas', `${slug}.webp`);
-      const samples = await Promise.all(
-        [89, 150, 300, 912, 1062, 1123].map((x) => findKickplateY(filePath, x)),
-      );
-      const [leftGoalEdge, leftOuter, leftInner, rightInner, rightOuter, rightGoalEdge] = samples;
+      const board = await Promise.all(sampleXs.map((x) => findKickplateY(filePath, x)));
 
-      expect(Math.abs(leftGoalEdge! - 779), `${slug}: left goal edge`).toBeLessThanOrEqual(4);
-      expect(Math.abs(rightGoalEdge! - 779), `${slug}: right goal edge`).toBeLessThanOrEqual(4);
-      expect(Math.abs(leftOuter! - rightOuter!), `${slug}: outer symmetry`).toBeLessThanOrEqual(4);
-      expect(Math.abs(leftInner! - rightInner!), `${slug}: inner symmetry`).toBeLessThanOrEqual(4);
+      for (let index = 0; index < sampleXs.length; index += 1) {
+        expect(
+          Math.abs(board[index]! - dailyBoard[index]!),
+          `${slug}: board at X=${sampleXs[index]}`,
+        ).toBeLessThanOrEqual(4);
+      }
     }
   });
 
