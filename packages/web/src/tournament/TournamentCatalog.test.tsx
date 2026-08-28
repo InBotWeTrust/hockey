@@ -260,7 +260,7 @@ describe('TournamentCatalog', () => {
     );
   });
 
-  it('opens the fixture live screen from the published schedule', async () => {
+  it('opens the current game screen from the published schedule', async () => {
     vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
       tournaments: [
         {
@@ -326,7 +326,7 @@ describe('TournamentCatalog', () => {
     expect(screen.getAllByRole('tab')).toHaveLength(5);
     fireEvent.click(screen.getByRole('tab', { name: 'Расписание' }));
 
-    expect(await screen.findAllByRole('button', { name: 'Открыть live' })).toHaveLength(1);
+    expect(await screen.findAllByRole('button', { name: 'Открыть игру' })).toHaveLength(1);
     expect(screen.getByText('Третий — Четвёртый')).toBeInTheDocument();
     expect(screen.getAllByText('Запланирована')).toHaveLength(2);
     expect(screen.getByLabelText('Площадка: Дома')).toBeInTheDocument();
@@ -532,10 +532,68 @@ describe('TournamentCatalog', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Будущий кубок' }));
 
+    expect(screen.getByText('Ждём открытия регистрации')).toBeInTheDocument();
     expect(screen.getByText(/Регистрация откроется/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Регистрация ещё не открыта' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Регистрация ещё не открыта' }));
     expect(apply).not.toHaveBeenCalled();
+  });
+
+  it('shows daily aggregate matchdays even though the format has no fixtures', async () => {
+    vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
+      tournaments: [
+        {
+          id: 'daily-1',
+          slug: 'daily-cup',
+          title: 'Ежедневный кубок',
+          description: 'Четыре игровых дня',
+          status: 'regular',
+          regularSource: 'daily_aggregate',
+          visibility: 'public',
+          revision: 2,
+          participantCount: 6,
+          myParticipantState: 'approved',
+          registrationOpensAt: '2030-08-01T07:00:00.000Z',
+          registrationClosesAt: '2030-08-31T07:00:00.000Z',
+          startsAt: '2030-09-01T07:00:00.000Z',
+          rules: { config: { participantLimit: 16, entryFeeCoins: 0, playoffSize: 4 } },
+        },
+      ],
+    });
+    vi.spyOn(api, 'fetchTournamentSchedule').mockResolvedValue({
+      fixtures: [],
+      matchdays: [
+        {
+          id: 'day-1',
+          number: 1,
+          localDate: '2030-09-01',
+          startsAt: '2030-09-01T07:00:00.000Z',
+          endsAt: '2030-09-02T07:00:00.000Z',
+        },
+        {
+          id: 'day-2',
+          number: 2,
+          localDate: '2030-09-02',
+          startsAt: '2030-09-02T07:00:00.000Z',
+          endsAt: '2030-09-03T07:00:00.000Z',
+        },
+      ],
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TournamentCatalog />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Ежедневный кубок' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Расписание' }));
+
+    expect(await screen.findByText('Турнирный день 1')).toBeInTheDocument();
+    expect(screen.getByText('Турнирный день 2')).toBeInTheDocument();
+    expect(screen.queryByText('Расписание появится позже.')).not.toBeInTheDocument();
   });
 
   it('shows the published format, playoff rounds and stage rewards to players', async () => {
@@ -597,7 +655,7 @@ describe('TournamentCatalog', () => {
 
     expect(
       screen.getByText(
-        'Каждый сыграет с каждым один раз. Каждый день проходит 3 тура. Первый тур начнётся 1 сентября 2030 г. в 10:00 (Europe/Moscow).',
+        'Каждый сыграет с каждым один раз. Каждый день проходит 3 тура. Первый тур начнётся 1 сентября 2030 г. в 10:00 (МСК).',
       ),
     ).toBeInTheDocument();
     expect(
@@ -741,7 +799,7 @@ describe('TournamentCatalog', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Стартовый кубок' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Расписание' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Открыть live' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть игру' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Начать игру' }));
 
     await waitFor(() => expect(open).toHaveBeenCalledWith('t1', 'f1'));
@@ -835,7 +893,7 @@ describe('TournamentCatalog', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок позднего ответа' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Расписание' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Открыть live' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть игру' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Начать игру' }));
     fireEvent.click(screen.getByRole('button', { name: 'К расписанию' }));
 
@@ -927,7 +985,7 @@ describe('TournamentCatalog', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок поздней ошибки' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Расписание' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Открыть live' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть игру' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Начать игру' }));
     fireEvent.click(screen.getByRole('button', { name: 'К расписанию' }));
 
@@ -935,7 +993,7 @@ describe('TournamentCatalog', () => {
       rejectOpen(new Error('late network failure'));
       await Promise.resolve();
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Открыть live' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть игру' }));
 
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
@@ -1005,7 +1063,7 @@ describe('TournamentCatalog', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок ошибки' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Расписание' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Открыть live' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть игру' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Начать игру' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось открыть игру');

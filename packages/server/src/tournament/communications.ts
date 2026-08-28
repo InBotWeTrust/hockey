@@ -182,9 +182,13 @@ export async function dispatchTournamentCommunication(
     body: string;
     createdBy: string;
     systemUserId?: string;
+    invalidateUnreadCache?: (userId: string) => Promise<void>;
   },
 ) {
-  if (input.kind === 'direct_message' && input.systemUserId === undefined) {
+  if (
+    (input.kind === 'direct_message' || input.kind === 'official_news') &&
+    input.systemUserId === undefined
+  ) {
     throw new AppError('configuration_error', 'SYSTEM_USER_ID is required', 409);
   }
   const lockKey = `tournament-dispatch:${input.idempotencyKey}`;
@@ -216,7 +220,7 @@ export async function dispatchTournamentCommunication(
     if (!dispatch) {
       const newsChannel =
         input.kind === 'official_news'
-          ? await ensureDefaultNewsChannel(pool, input.createdBy)
+          ? await ensureDefaultNewsChannel(pool, input.systemUserId!)
           : null;
       const audience =
         newsChannel === null
@@ -298,9 +302,9 @@ export async function dispatchTournamentCommunication(
     let failed = 0;
     if (dispatch.kind === 'official_news') {
       const channelId = audienceSnapshot.channelId;
-      const senderId = dispatch.created_by;
+      const senderId = input.systemUserId;
       try {
-        if (typeof channelId !== 'string' || senderId === null)
+        if (typeof channelId !== 'string' || senderId === undefined)
           throw new Error('invalid news snapshot');
         const existing = await pool.query<{ id: string }>(
           `select id from messages
@@ -324,6 +328,10 @@ export async function dispatchTournamentCommunication(
           });
           await publishMessageNew(pool, publisher, channelId, 'channel', message);
           delivered = 1;
+        }
+        if (input.invalidateUnreadCache !== undefined) {
+          const users = await pool.query<{ id: string }>(`select id from users`);
+          await Promise.all(users.rows.map((user) => input.invalidateUnreadCache!(user.id)));
         }
       } catch {
         failed = 1;

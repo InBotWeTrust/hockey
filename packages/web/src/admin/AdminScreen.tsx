@@ -60,6 +60,7 @@ import { AchievementDetailsSheet, AchievementTile } from '../screens/profileSect
 import { WeeklyChallengesAdmin } from './WeeklyChallengesAdmin.js';
 import { BonusGamesAdmin } from './BonusGamesAdmin.js';
 import { TournamentAdmin } from '../tournament/TournamentAdmin.js';
+import { tournamentTimezoneLabel } from '../tournament/timezoneLabel.js';
 import {
   createAdminInventoryItem,
   createAdminDuelTemplate,
@@ -171,7 +172,7 @@ type SettingsSectionId = 'daily' | 'training' | 'amateur' | 'pro';
 type AdminFeedbackStatus = AdminFeedbackQuery['status'];
 
 const tabs: Array<{ id: AdminTab; label: string; icon: JSX.Element }> = [
-  { id: 'dashboard', label: 'Дашборд', icon: <BarChart3 size={15} /> },
+  { id: 'dashboard', label: 'Обзор', icon: <BarChart3 size={15} /> },
   { id: 'users', label: 'Игроки', icon: <Users size={15} /> },
   { id: 'notifications', label: 'Уведомления', icon: <Bell size={15} /> },
   { id: 'channel', label: 'Коммуникации', icon: <Megaphone size={15} /> },
@@ -879,7 +880,7 @@ export function AdminScreen(): JSX.Element {
     >
       <header className="admin-screen__toolbar">
         <div className="section-label admin-screen__current-section">
-          Админ · {tabs.find((item) => item.id === tab)?.label ?? 'Дашборд'}
+          Админ · {tabs.find((item) => item.id === tab)?.label ?? 'Обзор'}
         </div>
         <button
           ref={adminMenuButtonRef}
@@ -1135,13 +1136,13 @@ function DashboardPanel({
       }}
     >
       <div className="section-label" style={{ margin: '0 0 0 -14px' }}>
-        Дашборд
+        Обзор
       </div>
       <GlassSelect
         value={period}
         options={dashboardPeriodOptions}
         onChange={onPeriod}
-        ariaLabel="Период дашборда"
+        ariaLabel="Период обзора"
       />
     </div>
   );
@@ -1339,17 +1340,17 @@ function DashboardMetricGrid({
     {
       label: 'Активные',
       value: numberText(dashboard.users.activeInPeriod),
-      note: `7д ${numberText(dashboard.users.active7d)} · год ${numberText(dashboard.users.active365d)}`,
+      note: `За 7 дней: ${numberText(dashboard.users.active7d)} · за год: ${numberText(dashboard.users.active365d)}`,
     },
     {
-      label: 'DAU / WAU',
+      label: 'Активность за день и неделю',
       value: percentText(dashboard.engagement.dauWauPercent),
-      note: `WAU / MAU ${percentText(dashboard.engagement.wauMauPercent)}`,
+      note: `За неделю и месяц ${percentText(dashboard.engagement.wauMauPercent)}`,
     },
     {
       label: 'Время в приложении',
       value: minutesText(dashboard.engagement.avgDailyActivitySpanMinutes),
-      note: 'среднее окно активности',
+      note: 'От первого до последнего входа за день',
     },
     {
       label: 'Платящие',
@@ -1357,9 +1358,9 @@ function DashboardMetricGrid({
       note: `${percentText(dashboard.payments.payerConversionPercent)} от игроков`,
     },
     {
-      label: 'ARPU',
+      label: 'Выручка на игрока',
       value: moneyText(dashboard.payments.arpuPeriodRub),
-      note: `${periodLabel} · ARPPU ${moneyText(dashboard.payments.arppuPeriodRub)}`,
+      note: `${periodLabel} · на платящего игрока ${moneyText(dashboard.payments.arppuPeriodRub)}`,
     },
     {
       label: 'Броски',
@@ -1374,10 +1375,10 @@ function DashboardMetricGrid({
     {
       label: 'Чат',
       value: numberText(dashboard.chat.messagesPeriod),
-      note: `${numberText(dashboard.chat.activeUsersPeriod)} авторов за ${periodLabel}`,
+      note: `${pluralText(dashboard.chat.activeUsersPeriod, 'автор', 'автора', 'авторов')} за ${periodLabel}`,
     },
     {
-      label: 'Фидбек',
+      label: 'Отзывы',
       value: numberText(dashboard.feedback.unread),
       note: `${numberText(dashboard.feedback.total)} всего`,
     },
@@ -1782,7 +1783,7 @@ function UsersPanel({
           type="search"
           value={search}
           onChange={(event) => onSearch(event.target.value)}
-          placeholder="Имя, username или tg id"
+          placeholder="Имя, ник или номер профиля"
           aria-label="Поиск игроков"
           style={{
             flex: 1,
@@ -2304,7 +2305,7 @@ function UserDetailsModal({
         <IdentityCards identities={user.identities} />
 
         <MetaPair
-          left={{ label: 'Часовой пояс', value: user.timezone }}
+          left={{ label: 'Часовой пояс', value: tournamentTimezoneLabel(user.timezone) }}
           right={{ label: 'Последний визит', value: dateText(user.lastSeenAt) }}
         />
 
@@ -3100,7 +3101,7 @@ function PushMonitoringPanel({
               <DashboardMiniStat
                 label="Клики"
                 value={numberText(overview?.clickCount ?? 0)}
-                note={`CTR ${percentText(overview?.deliveryClickRate ?? 0)}`}
+                note={`Переходы ${percentText(overview?.deliveryClickRate ?? 0)}`}
               />
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>

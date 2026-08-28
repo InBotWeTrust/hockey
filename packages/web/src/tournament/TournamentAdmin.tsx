@@ -13,6 +13,7 @@ import {
   type AdminTournament,
   type AdminTournamentUserOption,
 } from './adminApi.js';
+import { tournamentTimezoneLabel, tournamentTimezoneOptionLabel } from './timezoneLabel.js';
 import { TournamentOperations } from './TournamentOperations.js';
 import { participantsCountLabel, tournamentStatusLabel } from './labels.js';
 import { TournamentAdminField, TournamentAdminGroupHelp } from './TournamentAdminField.js';
@@ -258,7 +259,9 @@ function wallClockToIso(value: string, timezone: string): string {
   }
   const resolved = new Date(candidate);
   if (wallClockAsUtc(timeZoneParts(resolved, timezone)) !== desired) {
-    throw new Error(`Такого локального времени нет в часовом поясе ${timezone}`);
+    throw new Error(
+      `Такого времени нет в часовом поясе «${tournamentTimezoneOptionLabel(timezone)}». Выберите другое время.`,
+    );
   }
   return resolved.toISOString();
 }
@@ -964,8 +967,8 @@ const notificationEvents = [
   ['tournament.application_approved', 'Заявка подтверждена'],
   ['tournament.schedule_published', 'Календарь опубликован'],
   ['tournament.fixture_opened', 'Окно игры открыто'],
-  ['tournament.live_soon', 'Live-старт приближается'],
-  ['tournament.deadline', 'Дедлайн'],
+  ['tournament.live_soon', 'Скоро начало игры'],
+  ['tournament.deadline', 'Срок игры заканчивается'],
   ['tournament.result_ready', 'Результат'],
   ['tournament.rescheduled', 'Перенос'],
   ['tournament.playoff_started', 'Плей-офф'],
@@ -1001,7 +1004,8 @@ function NotificationEditor({
       <fieldset className="tournament-structured-editor">
         <legend>Напоминания до старта</legend>
         <TournamentAdminGroupHelp>
-          Несколько отдельных push-напоминаний, отсчитанных назад от начала игры.
+          Можно заранее напомнить игрокам о начале игры. Каждое время создаёт отдельное
+          уведомление на телефон.
         </TournamentAdminGroupHelp>
         {reminderValues.map((minutes, index) => (
           <div className="tournament-table-row" key={index}>
@@ -1204,13 +1208,13 @@ function TournamentPlayerPicker({
       <legend>{label}</legend>
       <TournamentAdminGroupHelp>
         {kind === 'invited'
-          ? 'Найдите игроков по имени или username. ID используются только внутри системы.'
+          ? 'Найдите игрока по имени или нику в Telegram/VK.'
           : 'Эти игроки не смогут подать заявку или принять приглашение.'}
       </TournamentAdminGroupHelp>
       <input
         type="search"
         aria-label={searchLabel}
-        placeholder="Имя или username"
+        placeholder="Имя или ник в Telegram/VK"
         value={search}
         onChange={(event) => setSearch(event.target.value)}
       />
@@ -1579,7 +1583,7 @@ export function TournamentAdmin(): JSX.Element {
                     </TournamentAdminField>
                     <TournamentAdminField
                       label="Изображение турнира"
-                      help="Необязательная квадратная картинка WebP для каталога. Рекомендуемый размер — 1024 × 1024 пикселя."
+                      help="Необязательная квадратная картинка для каталога. Рекомендуемый размер — 1024 × 1024 пикселя."
                     >
                       <div className="tournament-artwork-field">
                         <img
@@ -1588,7 +1592,7 @@ export function TournamentAdmin(): JSX.Element {
                           alt="Изображение турнира"
                         />
                         <label className="admin-compact-btn tournament-artwork-field__upload">
-                          {artworkUpload.isPending ? 'Загрузка…' : 'Выбрать WebP'}
+                          {artworkUpload.isPending ? 'Загрузка…' : 'Выбрать изображение'}
                           <input
                             aria-label="Изображение турнира"
                             type="file"
@@ -1758,7 +1762,7 @@ export function TournamentAdmin(): JSX.Element {
                   <div className="tournament-admin-grid">
                     <TournamentAdminField
                       label="Формат"
-                      help="«Каждый с каждым» создаёт личные дуэли; дневной зачёт сравнивает результаты обычной daily-игры."
+                      help="«Каждый с каждым» создаёт личные дуэли; дневной зачёт сравнивает результаты обычной ежедневной игры."
                     >
                       <GlassSelect
                         ariaLabel="Формат"
@@ -2194,8 +2198,11 @@ export function TournamentAdmin(): JSX.Element {
                           'Asia/Magadan',
                           'Asia/Kamchatka',
                           'America/New_York',
-                        ].map((timezone) => ({ value: timezone, label: timezone }))}
-                        onChange={(timezone) => setDraft({ ...draft, timezone })}
+                        ].map((timezone) => ({
+                          value: timezone,
+                          label: tournamentTimezoneOptionLabel(timezone),
+                        }))}
+                        onChange={(timezone) => setDraft((current) => ({ ...current, timezone }))}
                       />
                     </TournamentAdminField>
                     <TournamentAdminField
@@ -2206,9 +2213,10 @@ export function TournamentAdmin(): JSX.Element {
                         aria-label="Открытие регистрации"
                         type="datetime-local"
                         value={draft.registrationOpensAt}
-                        onChange={(event) =>
-                          setDraft({ ...draft, registrationOpensAt: event.target.value })
-                        }
+                        onChange={(event) => {
+                          const registrationOpensAt = event.target.value;
+                          setDraft((current) => ({ ...current, registrationOpensAt }));
+                        }}
                       />
                     </TournamentAdminField>
                     <TournamentAdminField
@@ -2219,9 +2227,10 @@ export function TournamentAdmin(): JSX.Element {
                         aria-label="Закрытие регистрации"
                         type="datetime-local"
                         value={draft.registrationClosesAt}
-                        onChange={(event) =>
-                          setDraft({ ...draft, registrationClosesAt: event.target.value })
-                        }
+                        onChange={(event) => {
+                          const registrationClosesAt = event.target.value;
+                          setDraft((current) => ({ ...current, registrationClosesAt }));
+                        }}
                       />
                     </TournamentAdminField>
                     <TournamentAdminField
@@ -2232,7 +2241,10 @@ export function TournamentAdmin(): JSX.Element {
                         aria-label="Первый турнирный день"
                         type="date"
                         value={draft.startsAt}
-                        onChange={(event) => setDraft({ ...draft, startsAt: event.target.value })}
+                        onChange={(event) => {
+                          const startsAt = event.target.value;
+                          setDraft((current) => ({ ...current, startsAt }));
+                        }}
                       />
                     </TournamentAdminField>
                   </div>
@@ -2282,8 +2294,7 @@ export function TournamentAdmin(): JSX.Element {
                       />
                     </TournamentAdminField>
                     <div className="tournament-admin-note">
-                      Если переопределение не задано, используется глобальный push-шаблон.
-                      Поддерживаются переменные вида {'{{tournamentTitle}}'}.
+                      Если свой текст не задан, игрок получит стандартное уведомление.
                     </div>
                   </div>
                 )}
@@ -2305,7 +2316,8 @@ export function TournamentAdmin(): JSX.Element {
                       · {draft.participantLimit} участников · плей-офф {draft.playoffSize}
                     </span>
                     <span>
-                      {draft.timezone} · {draft.startsAt || 'старт не задан'}
+                      {tournamentTimezoneLabel(draft.timezone)} ·{' '}
+                      {draft.startsAt || 'старт не задан'}
                     </span>
                     <span>
                       Изменения сохраняются автоматически. Кнопка ниже сохранит последние правки и

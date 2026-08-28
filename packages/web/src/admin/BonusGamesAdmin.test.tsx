@@ -177,6 +177,8 @@ describe('bonus games admin', () => {
       expect(within(actions).getByRole('button', { name })).toHaveClass('admin-compact-btn');
     }
     expect(within(actions).getByText('В архив')).toBeInTheDocument();
+    expect(screen.getByText('1 период')).toBeInTheDocument();
+    expect(screen.queryByText(/ревизи/i)).not.toBeInTheDocument();
   });
 
   it('fetches the bonus catalog only on its tab and exposes the complete editor and archive copy', async () => {
@@ -643,13 +645,17 @@ describe('bonus games admin', () => {
       target: { files: [new File([new Uint8Array([1])], 'goalie.png', { type: 'image/png' })] },
     });
     expect(
-      await within(editor).findByText('Можно загрузить только файл WebP.'),
+      await within(editor).findByText(
+        'Этот формат изображения не поддерживается. Выберите другой файл.',
+      ),
     ).toBeInTheDocument();
     expect(uploadCalls).toHaveLength(0);
     fireEvent.change(picker, {
       target: { files: [new File([], 'empty.webp', { type: 'image/webp' })] },
     });
-    expect(await within(editor).findByText('Файл WebP пустой.')).toBeInTheDocument();
+    expect(
+      await within(editor).findByText('Выбранное изображение пустое. Выберите другой файл.'),
+    ).toBeInTheDocument();
     expect(uploadCalls).toHaveLength(0);
 
     fireEvent.change(picker, {

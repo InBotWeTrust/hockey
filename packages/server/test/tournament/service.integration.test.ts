@@ -2,7 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import { Pool as PgPool, type Pool } from 'pg';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../../src/app.js';
 import { createJwt } from '../../src/auth/jwt.js';
 import { applyMigrations } from '../../src/db/migrations.js';
@@ -20,6 +20,7 @@ import {
   createTournamentDraft,
   disqualifyTournamentParticipant,
   generateRegularSchedule,
+  getTournamentMatchdays,
   getTournamentSchedule,
   inviteTournamentParticipant,
   publishRegularSchedule,
@@ -1175,6 +1176,35 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         where event_type = 'tournament.schedule_published'`,
     );
     expect(deliveries.rows[0]?.count).toBe(String(PLAYER_IDS.length));
+  });
+
+  it('returns generated matchdays for a daily aggregate schedule without fixtures', async () => {
+    await seedUsers(pool, 0);
+    const dailyRules = dailyPlayoffTournamentRules();
+    dailyRules.config = parseTournamentConfig({
+      ...dailyRules.config,
+      dailyDays: 4,
+      bestDays: 3,
+    });
+    const tournament = await createPublishedTournament(
+      pool,
+      'daily-aggregate-visible-schedule',
+      0,
+      dailyRules,
+    );
+    await applyToTournament(pool, tournament.id, PLAYER_IDS[0]);
+    await applyToTournament(pool, tournament.id, PLAYER_IDS[1]);
+
+    await expect(
+      generateRegularSchedule(pool, tournament.id, tournament.revision),
+    ).resolves.toMatchObject({ status: 'scheduling', matchdayCount: 4, fixtureCount: 0 });
+    expect(await getTournamentSchedule(pool, tournament.id)).toEqual([]);
+    expect(await getTournamentMatchdays(pool, tournament.id)).toEqual([
+      expect.objectContaining({ number: 1, localDate: '2030-09-01' }),
+      expect.objectContaining({ number: 2, localDate: '2030-09-02' }),
+      expect.objectContaining({ number: 3, localDate: '2030-09-03' }),
+      expect.objectContaining({ number: 4, localDate: '2030-09-04' }),
+    ]);
   });
 
   it('rolls back playoff materialization when its audience outbox insert fails', async () => {
@@ -2847,6 +2877,11 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
 
   it('publishes an idempotent tournament news post in the official channel', async () => {
     await seedUsers(pool, 0);
+    await pool.query(
+      `insert into users (id, display_name, timezone, account_kind)
+       values ($1, 'Ультимейт Хоккей', 'Europe/Moscow', 'official')`,
+      [SYSTEM_SENDER_ID],
+    );
     const tournament = await createPublishedTournament(pool, 'official-news-dispatch', 0);
     const published: Array<{ channel: string; type: string }> = [];
     const publisher = {
@@ -2862,6 +2897,8 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       title: 'Турнирная новость',
       body: 'Календарь турнира опубликован.',
       createdBy: ADMIN_ID,
+      systemUserId: SYSTEM_SENDER_ID,
+      invalidateUnreadCache: vi.fn(async () => undefined),
     } as const;
 
     const first = await dispatchTournamentCommunication(pool, publisher, input as never);
@@ -2873,12 +2910,17 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       content: string;
       tournament_dispatch_id: string;
       channel_slug: string;
+      sender_id: string;
+      account_kind: string;
     }>(
       `select message.content,
               message.metadata->>'tournamentDispatchId' as tournament_dispatch_id,
-              chat.channel_slug
+              chat.channel_slug,
+              message.sender_id,
+              sender.account_kind
          from messages message
          join chats chat on chat.id = message.chat_id
+         join users sender on sender.id = message.sender_id
         where message.metadata->>'tournamentId' = $1`,
       [tournament.id],
     );
@@ -2887,8 +2929,14 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         content: 'Календарь турнира опубликован.',
         tournament_dispatch_id: first.dispatchId,
         channel_slug: 'news',
+        sender_id: SYSTEM_SENDER_ID,
+        account_kind: 'official',
       },
     ]);
+    expect(input.invalidateUnreadCache).toHaveBeenCalledWith(ADMIN_ID);
+    for (const playerId of PLAYER_IDS) {
+      expect(input.invalidateUnreadCache).toHaveBeenCalledWith(playerId);
+    }
     expect(published).toHaveLength(1);
     expect(published[0]).toMatchObject({ type: 'message:new' });
   });
@@ -2968,6 +3016,11 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
 
   it('does not exhaust the pool when concurrent manual dispatch retries share an idempotency key', async () => {
     await seedUsers(pool, 0);
+    await pool.query(
+      `insert into users (id, display_name, timezone, account_kind)
+       values ($1, 'Ультимейт Хоккей', 'Europe/Moscow', 'official')`,
+      [SYSTEM_SENDER_ID],
+    );
     const tournament = await createPublishedTournament(pool, 'pool-safe-manual-dispatch', 0);
     const { databaseUrl } = getTestUrls();
     const constrainedPool = new PgPool({
@@ -2989,6 +3042,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       title: 'Безопасная отправка',
       body: 'Одна новость при конкурентных повторах.',
       createdBy: ADMIN_ID,
+      systemUserId: SYSTEM_SENDER_ID,
     } as const;
 
     try {
@@ -3074,6 +3128,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
           title: 'Занятая отправка',
           body: 'Повторите отправку позже.',
           createdBy: ADMIN_ID,
+          systemUserId: SYSTEM_SENDER_ID,
         },
       ).then(
         () => ({ kind: 'resolved' as const }),

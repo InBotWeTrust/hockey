@@ -33,6 +33,7 @@ import {
   type AdminTournamentFixture,
   type AdminTournamentParticipant,
 } from './adminApi.js';
+import { tournamentTimezoneLabel } from './timezoneLabel.js';
 import { participantStateLabel, paymentStateLabel, tournamentStatusLabel } from './labels.js';
 
 type OperationsTab =
@@ -58,6 +59,26 @@ function readableDate(value: string | null): string {
   return Number.isFinite(date.getTime()) ? date.toLocaleString('ru-RU') : 'время не задано';
 }
 
+function matchdayWindow(startsAt: string, endsAt: string, timezone: string): string {
+  const start = tournamentDate(startsAt, timezone);
+  const end = tournamentDate(endsAt, timezone);
+  return `${start} — ${end}`;
+}
+
+function matchdayCountLabel(count: number): string {
+  const lastTwo = count % 100;
+  const last = count % 10;
+  const word =
+    lastTwo >= 11 && lastTwo <= 14
+      ? 'турнирных дней'
+      : last === 1
+        ? 'турнирный день'
+        : last >= 2 && last <= 4
+          ? 'турнирных дня'
+          : 'турнирных дней';
+  return `${count} ${word}`;
+}
+
 function tournamentDate(value: string | null | undefined, timezone: string): string {
   if (!value) return 'Не задано';
   const date = new Date(value);
@@ -70,7 +91,7 @@ function tournamentDate(value: string | null | undefined, timezone: string): str
       year: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
-    }).format(date)} (${timezone})`;
+    }).format(date)} (${tournamentTimezoneLabel(timezone)})`;
   } catch {
     return date.toLocaleString('ru-RU');
   }
@@ -98,7 +119,7 @@ function fixtureStatusLabel(status: string): string {
 
 function dispatchKindLabel(kind: unknown): string {
   const labels: Record<string, string> = {
-    push: 'Push',
+    push: 'Уведомление на телефон',
     direct_message: 'Личные сообщения',
     official_news: 'Официальные новости',
   };
@@ -262,6 +283,7 @@ export function TournamentOperations({
     null,
   );
   const [editingRewards, setEditingRewards] = useState(false);
+  const [lifecycleFeedback, setLifecycleFeedback] = useState<string | null>(null);
   const [rewardRevision, setRewardRevision] = useState(tournament.revision);
   const [regularRewards, setRegularRewards] = useState(() =>
     tournamentRewardRows(tournament, 'regular'),
@@ -326,7 +348,8 @@ export function TournamentOperations({
       if (action === 'publish_schedule') return publishAdminTournamentSchedule(tournament.id);
       return startAdminTournamentPlayoffs(tournament.id);
     },
-    onSuccess: (result) => {
+    onMutate: () => setLifecycleFeedback(null),
+    onSuccess: (result, action) => {
       if (
         typeof result === 'object' &&
         result !== null &&
@@ -334,8 +357,32 @@ export function TournamentOperations({
       ) {
         setStatus((result as { status: string }).status);
       }
+      if (action === 'generate' && typeof result === 'object' && result !== null) {
+        const generated = result as {
+          status?: string;
+          participantCount?: number;
+          matchdayCount?: number;
+          fixtureCount?: number;
+        };
+        if (generated.status === 'registration_blocked') {
+          setLifecycleFeedback(
+            `Календарь не создан: подтверждено только ${generated.participantCount ?? 0} участников. Проверьте заявки и размер плей-офф.`,
+          );
+        } else if ((generated.matchdayCount ?? 0) > 0) {
+          const matchdayCount = generated.matchdayCount ?? 0;
+          setLifecycleFeedback(
+            generated.fixtureCount === 0
+              ? `Календарь создан: ${matchdayCountLabel(matchdayCount)}.`
+              : `Календарь создан: ${matchdayCount} игровых дней, ${generated.fixtureCount} матчей.`,
+          );
+        }
+      }
       refreshOperations();
     },
+    onError: () =>
+      setLifecycleFeedback(
+        'Не удалось создать календарь. Проверьте подтверждённые заявки, даты и настройки турнира.',
+      ),
   });
   const approve = useMutation({
     mutationFn: (participantId: string) =>
@@ -457,7 +504,8 @@ export function TournamentOperations({
     (tab === 'schedule' &&
       !schedule.isLoading &&
       !schedule.isError &&
-      schedule.data?.fixtures.length === 0) ||
+      schedule.data?.fixtures.length === 0 &&
+      (schedule.data.matchdays?.length ?? 0) === 0) ||
     (tab === 'standings' && standings.data?.standings.length === 0) ||
     (tab === 'bracket' && bracket.data?.series.length === 0);
   const canEditRules = ['draft', 'registration', 'registration_blocked'].includes(status);
@@ -507,9 +555,9 @@ export function TournamentOperations({
           </button>
         </div>
       </div>
-      {notice && (
+      {(notice || lifecycleFeedback) && (
         <div className="tournament-operations__notice" role="status">
-          {notice}
+          {notice ?? lifecycleFeedback}
         </div>
       )}
       <SegmentedTabs
@@ -539,7 +587,7 @@ export function TournamentOperations({
                 <input
                   type="search"
                   aria-label="Найти игрока"
-                  placeholder="Имя, Telegram ID или VK ID"
+                  placeholder="Имя или номер профиля в Telegram/VK"
                   value={inviteSearch}
                   onChange={(event) => setInviteSearch(event.target.value)}
                 />
@@ -630,7 +678,13 @@ export function TournamentOperations({
                 Изменить сроки
               </button>
             )}
-            {!canEditRules && (
+            {status === 'scheduling' && (
+              <div className="tournament-operation-hint">
+                Календарь создан, но участники его ещё не видят. Проверьте даты и выберите
+                «Опубликовать календарь» в действиях турнира.
+              </div>
+            )}
+            {!canEditRules && status !== 'scheduling' && (
               <div className="tournament-operation-hint">
                 Календарь уже опубликован. Чтобы изменить время, выберите конкретную игру и укажите
                 причину переноса — участники получат уведомление.
@@ -638,9 +692,18 @@ export function TournamentOperations({
             )}
             {schedule.isLoading && <div>Загрузка календаря…</div>}
             {schedule.isError && <div role="alert">Не удалось загрузить календарь.</div>}
-            {!schedule.isLoading && !schedule.isError && schedule.data?.fixtures.length === 0 && (
-              <div className="tournament-admin-empty">Календарь пока пуст.</div>
-            )}
+            {!schedule.isLoading &&
+              !schedule.isError &&
+              schedule.data?.fixtures.length === 0 &&
+              (schedule.data.matchdays?.length ?? 0) === 0 && (
+                <div className="tournament-admin-empty">Календарь пока пуст.</div>
+              )}
+            {schedule.data?.matchdays?.map((matchday) => (
+              <article className="tournament-matchday-row" key={matchday.id}>
+                <strong>Турнирный день {matchday.number}</strong>
+                <span>{matchdayWindow(matchday.startsAt, matchday.endsAt, tournamentTimezone)}</span>
+              </article>
+            ))}
             {schedule.data?.fixtures.map((fixture) => (
               <button
                 key={fixture.id}
@@ -655,7 +718,7 @@ export function TournamentOperations({
             ))}
             {selectedFixture !== null && (
               <div className="tournament-operation-editor">
-                <strong>Операции матча №{selectedFixture.fixtureNumber}</strong>
+                <strong>Управление игрой №{selectedFixture.fixtureNumber}</strong>
                 <input
                   type="datetime-local"
                   value={startsAt}
@@ -794,14 +857,14 @@ export function TournamentOperations({
               Получателей: {audiencePreview.data?.count ?? '…'}
             </div>
             <label className="tournament-operations__field">
-              <span>Канал</span>
+              <span>Способ отправки</span>
               <GlassSelect
-                ariaLabel="Канал"
+                ariaLabel="Способ отправки"
                 value={dispatchKind}
                 options={[
-                  { value: 'push', label: 'Push' },
+                  { value: 'push', label: 'Уведомление на телефон' },
                   { value: 'direct_message', label: 'Личные сообщения' },
-                  { value: 'official_news', label: 'Официальный канал новостей' },
+                  { value: 'official_news', label: 'Новость в официальном канале' },
                 ]}
                 onChange={setDispatchKind}
               />

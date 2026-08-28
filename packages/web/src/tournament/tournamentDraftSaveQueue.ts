@@ -49,7 +49,12 @@ export class TournamentDraftSaveQueue<TSnapshot, TResult> {
       return;
     }
     if (this.pending?.key === key) return;
+    const failedKey = this.failure === null ? null : this.pending?.key;
     this.pending = { snapshot, key };
+    if (this.failure !== null && key !== failedKey) {
+      this.failure = null;
+      this.setStatus('saving');
+    }
     if (this.failure === null) this.pump();
   }
 

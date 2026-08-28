@@ -14,6 +14,7 @@ import {
   duplicateTournamentDraft,
   deleteEmptyDraft,
   getTournament,
+  getTournamentMatchdays,
   getTournamentSchedule,
   getTournamentStandings,
   getTournamentBracket,
@@ -48,6 +49,7 @@ import {
   previewTournamentAudience,
 } from './communications.js';
 import { createMediaProxyUrl } from '../storage/mediaAccess.js';
+import { invalidateUnreadCache } from '../chat/cache.js';
 import {
   createMediaObjectKey,
   type ObjectStorageClient,
@@ -191,7 +193,11 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
     await requireTournamentFeature(app);
     const params = z.object({ tournamentId: uuid }).parse(req.params);
     await getTournament(app.pg, params.tournamentId, req.user.id);
-    return { fixtures: await getTournamentSchedule(app.pg, params.tournamentId) };
+    const [fixtures, matchdays] = await Promise.all([
+      getTournamentSchedule(app.pg, params.tournamentId),
+      getTournamentMatchdays(app.pg, params.tournamentId),
+    ]);
+    return { fixtures, matchdays };
   });
 
   app.get('/tournaments/:tournamentId/standings', authenticated, async (req) => {
@@ -256,6 +262,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
       ...body,
       createdBy: req.user.id,
       ...(options.systemUserId !== undefined ? { systemUserId: options.systemUserId } : {}),
+      invalidateUnreadCache: (userId) => invalidateUnreadCache(app.redis, userId),
     });
     reply.status(202);
     return result;
@@ -336,7 +343,11 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
   app.get('/admin/tournaments/:tournamentId/schedule', admin, async (req) => {
     const params = z.object({ tournamentId: uuid }).parse(req.params);
     await getTournament(app.pg, params.tournamentId);
-    return { fixtures: await getTournamentSchedule(app.pg, params.tournamentId) };
+    const [fixtures, matchdays] = await Promise.all([
+      getTournamentSchedule(app.pg, params.tournamentId),
+      getTournamentMatchdays(app.pg, params.tournamentId),
+    ]);
+    return { fixtures, matchdays };
   });
 
   app.get('/admin/tournaments/:tournamentId/standings', admin, async (req) => {

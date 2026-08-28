@@ -110,4 +110,27 @@ describe('TournamentDraftSaveQueue', () => {
     await expect(queue.flush()).resolves.toEqual({ revision: 8, title: 'Retry' });
     expect(save).toHaveBeenNthCalledWith(2, { title: 'Retry' }, 7);
   });
+
+  it('automatically retries when the user corrects a snapshot after a failed write', async () => {
+    const save = vi
+      .fn<[Snapshot, number], Promise<Saved>>()
+      .mockRejectedValueOnce(new Error('invalid draft'))
+      .mockResolvedValueOnce({ revision: 8, title: 'Corrected' });
+    const queue = new TournamentDraftSaveQueue({
+      initialRevision: 7,
+      initialSnapshotKey: 'initial',
+      save,
+      revisionOf: (result: Saved) => result.revision,
+    });
+
+    queue.enqueue({ title: 'Invalid' }, 'invalid');
+    await expect(queue.flush()).rejects.toThrow('invalid draft');
+
+    queue.enqueue({ title: 'Corrected' }, 'corrected');
+
+    await expect(queue.flush()).resolves.toEqual({ revision: 8, title: 'Corrected' });
+    expect(save).toHaveBeenNthCalledWith(2, { title: 'Corrected' }, 7);
+    expect(queue.snapshotKey).toBe('corrected');
+    expect(queue.status).toBe('saved');
+  });
 });

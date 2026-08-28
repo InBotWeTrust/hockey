@@ -6,9 +6,9 @@ const GENERIC_SERVER_ERROR_MESSAGE = 'Не удалось выполнить з�
 const SERVER_ERROR_MESSAGES: Record<string, string> = {
   telegram_already_linked: 'Аккаунт уже занят',
   vk_already_linked: 'Аккаунт уже занят',
-  unsupported_media_type: 'Формат файла не поддерживается. Загрузите JPG, PNG, WebP или GIF.',
+  unsupported_media_type: 'Это изображение не подходит. Выберите другое из галереи.',
   FST_ERR_CTP_INVALID_MEDIA_TYPE:
-    'Формат файла не поддерживается. Загрузите JPG, PNG, WebP или GIF.',
+    'Это изображение не подходит. Выберите другое из галереи.',
   'open duel already exists for this opponent': 'С этим игроком уже есть открытая дуэль.',
   bonus_level_locked: 'Бонус-игры доступны после открытия любительского уровня.',
   bonus_previous_game_required: 'Сначала завершите предыдущую бонус-игру.',
@@ -54,7 +54,7 @@ export function __resetRefreshStateForTests(): void {
 
 async function parseError(res: Response): Promise<ApiError> {
   let code = 'http_error';
-  let message = `HTTP ${res.status}`;
+  let message = GENERIC_SERVER_ERROR_MESSAGE;
   try {
     // Server (errorsPlugin) sends `{ error: { code, message } }`. Older
     // callers/tests may still send the flat `{ error, message }` shape, so

@@ -22,6 +22,18 @@ import {
 
 const bonusGamesQueryKey = ['admin', 'bonus-games'] as const;
 
+function periodsText(value: number): string {
+  const mod10 = value % 10;
+  const mod100 = value % 100;
+  const word =
+    mod10 === 1 && mod100 !== 11
+      ? 'период'
+      : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)
+        ? 'периода'
+        : 'периодов';
+  return `${value} ${word}`;
+}
+
 const defaultPeriod: AdminBonusPeriodRule = {
   periodNumber: 1,
   durationMs: 240_000,
@@ -524,7 +536,7 @@ function BonusGameCard({
             {game.targetGoals}
           </div>
           <div style={{ marginTop: 4, color: 'var(--muted)', fontSize: 11 }}>
-            {game.totalPeriods} пер. · ревизия {game.revision}
+            {periodsText(game.totalPeriods)}
           </div>
         </div>
       </div>

@@ -25,11 +25,11 @@ function connectionLabel(status: TournamentSocketStatus): string {
     case 'open':
       return 'Соединение установлено';
     case 'connecting':
-      return 'Подключаем live-соединение…';
+      return 'Подключаем обновление счёта…';
     case 'reconnecting':
-      return 'Восстанавливаем live-соединение…';
+      return 'Восстанавливаем обновление счёта…';
     case 'closed':
-      return 'Live-соединение недоступно, данные обновляются через HTTP';
+      return 'Автоматическое обновление временно недоступно. Счёт продолжит обновляться.';
   }
 }
 
@@ -135,14 +135,14 @@ export function TournamentFixtureLive({
     },
   });
 
-  if (liveQuery.isLoading) return <div role="status">Загрузка live-игры…</div>;
+  if (liveQuery.isLoading) return <div role="status">Загрузка игры…</div>;
   if (liveQuery.isError || live === null) {
     return (
       <div style={{ display: 'grid', gap: 10 }}>
         <button type="button" className="btn btn--ghost" onClick={onBack}>
           К расписанию
         </button>
-        <div role="status">Live-данные игры пока недоступны.</div>
+        <div role="status">Данные игры пока недоступны.</div>
       </div>
     );
   }

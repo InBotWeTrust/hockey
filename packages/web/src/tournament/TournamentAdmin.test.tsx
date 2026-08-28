@@ -429,7 +429,7 @@ describe('TournamentAdmin', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('retries the visible saved snapshot after a failed autosave is reverted', async () => {
+  it('automatically retries after a failed autosave when the user corrects the form', async () => {
     const tournament: api.AdminTournament = {
       id: 'failed-save-cup',
       slug: 'failed-save-cup',
@@ -462,12 +462,12 @@ describe('TournamentAdmin', () => {
     expect(await screen.findByText('Не удалось сохранить изменения.')).toBeInTheDocument();
 
     fireEvent.change(description, { target: { value: 'Исходное описание' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Повторить сохранение' }));
 
     await waitFor(() => expect(update).toHaveBeenCalledTimes(2));
     expect(update.mock.calls[1]?.[2]).toEqual(
       expect.objectContaining({ description: 'Исходное описание' }),
     );
+    expect(await screen.findByText('Черновик сохранён автоматически')).toBeInTheDocument();
   });
 
   it('lets the final action retry a failed autosave and closes only after it succeeds', async () => {
@@ -692,7 +692,7 @@ describe('TournamentAdmin', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
     fireEvent.click(screen.getByRole('button', { name: 'Редактировать турнир' }));
     fireEvent.click(screen.getByRole('button', { name: '7. Уведомления' }));
-    const body = screen.getByRole('textbox', { name: 'Live-старт приближается: текст' });
+    const body = screen.getByRole('textbox', { name: 'Скоро начало игры: текст' });
     fireEvent.change(body, { target: { value: '' } });
 
     expect(body).toBeInTheDocument();
@@ -742,7 +742,7 @@ describe('TournamentAdmin', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
     fireEvent.click(screen.getByRole('button', { name: 'Редактировать турнир' }));
     fireEvent.click(screen.getByRole('button', { name: '7. Уведомления' }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Live-старт приближается: текст' }), {
+    fireEvent.change(screen.getByRole('textbox', { name: 'Скоро начало игры: текст' }), {
       target: { value: 'До старта | 15 минут\nОткройте расписание' },
     });
 
@@ -1186,7 +1186,7 @@ describe('TournamentAdmin', () => {
       target: { value: '4' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
-    await chooseGlassOption('Часовой пояс', 'America/New_York');
+    await chooseGlassOption('Часовой пояс', 'Нью-Йорк');
     act(() => {
       fireEvent.change(screen.getByLabelText('Открытие регистрации'), {
         target: { value: '2030-08-30T10:00' },
@@ -1211,12 +1211,12 @@ describe('TournamentAdmin', () => {
       target: { value: '3' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
-    await chooseGlassOption('Событие уведомления', 'Live-старт приближается');
+    await chooseGlassOption('Событие уведомления', 'Скоро начало игры');
     fireEvent.click(screen.getByRole('button', { name: 'Настроить событие' }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Live-старт приближается: заголовок' }), {
+    fireEvent.change(screen.getByRole('textbox', { name: 'Скоро начало игры: заголовок' }), {
       target: { value: 'Скоро матч {{tournamentTitle}}' },
     });
-    fireEvent.change(screen.getByRole('textbox', { name: 'Live-старт приближается: текст' }), {
+    fireEvent.change(screen.getByRole('textbox', { name: 'Скоро начало игры: текст' }), {
       target: { value: 'До начала {{minutes}} минут' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
@@ -1362,7 +1362,10 @@ describe('TournamentAdmin', () => {
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть управление участником' }));
     const playerSearch = screen.getByRole('searchbox', { name: 'Найти игрока' });
-    expect(playerSearch).toHaveAttribute('placeholder', 'Имя, Telegram ID или VK ID');
+    expect(playerSearch).toHaveAttribute(
+      'placeholder',
+      'Имя или номер профиля в Telegram/VK',
+    );
     fireEvent.change(playerSearch, { target: { value: '432014500' } });
     expect(
       await screen.findByRole('button', { name: /Пригласить Найденный игрок/ }),
@@ -1380,7 +1383,7 @@ describe('TournamentAdmin', () => {
     expect(await screen.findByRole('textbox', { name: 'Сообщение' })).toBeInTheDocument();
     expect(screen.queryByPlaceholderText('Заголовок')).not.toBeInTheDocument();
     expect(screen.queryByPlaceholderText('Текст сообщения')).not.toBeInTheDocument();
-    await chooseGlassOption('Канал', 'Личные сообщения');
+    await chooseGlassOption('Способ отправки', 'Личные сообщения');
     fireEvent.change(screen.getByRole('textbox', { name: 'Сообщение' }), {
       target: { value: 'Проверка личной рассылки' },
     });
@@ -1424,6 +1427,17 @@ describe('TournamentAdmin', () => {
       status: 'registration',
       revision: 3,
     });
+    vi.spyOn(api, 'fetchAdminTournamentSchedule').mockResolvedValue({
+      fixtures: [],
+      matchdays: [],
+    });
+    const generate = vi.spyOn(api, 'generateAdminTournamentSchedule').mockResolvedValue({
+      tournamentId: '00000000-0000-4000-8000-000000000921',
+      status: 'scheduling',
+      matchdayCount: 4,
+      roundCount: 0,
+      fixtureCount: 0,
+    });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
@@ -1441,6 +1455,11 @@ describe('TournamentAdmin', () => {
     expect(screen.getByRole('button', { name: 'Создать календарь' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Открыть регистрацию' })).not.toBeInTheDocument();
     expect(publish).toHaveBeenCalledWith('00000000-0000-4000-8000-000000000921', 3);
+    fireEvent.click(screen.getByRole('button', { name: 'Создать календарь' }));
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Календарь создан: 4 турнирных дня.',
+    );
+    expect(generate).toHaveBeenCalledWith('00000000-0000-4000-8000-000000000921', 3);
   });
 
   it('preserves the later DST occurrence when unrelated fields change', async () => {
@@ -1538,7 +1557,7 @@ describe('TournamentAdmin', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
     fireEvent.click(screen.getByRole('button', { name: 'Редактировать турнир' }));
     fireEvent.click(screen.getByRole('button', { name: '5. Сроки' }));
-    await chooseGlassOption('Часовой пояс', 'Europe/Moscow');
+    await chooseGlassOption('Часовой пояс', 'Москва (МСК)');
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить и закрыть' }));
 

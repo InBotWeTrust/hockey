@@ -61,6 +61,14 @@ export interface TournamentFixture {
   score: { home: number; away: number };
 }
 
+export interface TournamentMatchday {
+  id: string;
+  number: number;
+  localDate: string;
+  startsAt: string;
+  endsAt: string;
+}
+
 export interface TournamentLiveParticipant {
   userId: string;
   state: string;
@@ -114,7 +122,9 @@ export function withdrawFromTournament(tournamentId: string) {
 }
 
 export function fetchTournamentSchedule(tournamentId: string) {
-  return apiFetch<{ fixtures: TournamentFixture[] }>(`/tournaments/${tournamentId}/schedule`);
+  return apiFetch<{ fixtures: TournamentFixture[]; matchdays?: TournamentMatchday[] }>(
+    `/tournaments/${tournamentId}/schedule`,
+  );
 }
 
 export function fetchTournamentParticipants(tournamentId: string) {

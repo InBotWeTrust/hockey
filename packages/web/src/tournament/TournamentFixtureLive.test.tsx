@@ -108,7 +108,7 @@ describe('TournamentFixtureLive', () => {
     });
   });
 
-  it('shows live progress, presence and lets the opponent accept a proposal', async () => {
+  it('shows current game progress, presence and lets the opponent accept a proposal', async () => {
     renderLive();
 
     expect(await screen.findByText('2 : 1')).toBeInTheDocument();
@@ -143,14 +143,15 @@ describe('TournamentFixtureLive', () => {
     });
   });
 
-  it('keeps the HTTP play action available regardless of socket state', async () => {
+  it('keeps the play action available while automatic updates reconnect', async () => {
     const { onPlay } = renderLive();
 
     await screen.findByText('2 : 1');
     act(() => socketHarness.options?.onStatus('reconnecting'));
     fireEvent.click(screen.getByRole('button', { name: 'Перейти к игре' }));
 
-    expect(screen.getByText('Восстанавливаем live-соединение…')).toBeInTheDocument();
+    expect(screen.getByText('Восстанавливаем обновление счёта…')).toBeInTheDocument();
+    expect(screen.queryByText(/live|HTTP/i)).not.toBeInTheDocument();
     expect(onPlay).toHaveBeenCalledTimes(1);
   });
 

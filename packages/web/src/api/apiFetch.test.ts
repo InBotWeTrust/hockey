@@ -97,7 +97,16 @@ describe('apiFetch', () => {
     await expect(apiFetch('/chat/c/uploads')).rejects.toMatchObject({
       status: 415,
       code: 'FST_ERR_CTP_INVALID_MEDIA_TYPE',
-      message: 'Формат файла не поддерживается. Загрузите JPG, PNG, WebP или GIF.',
+      message: 'Это изображение не подходит. Выберите другое из галереи.',
+    });
+  });
+
+  it('does not expose a technical status when an error has no readable body', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('', { status: 503 }));
+
+    await expect(apiFetch('/x')).rejects.toMatchObject({
+      status: 503,
+      message: 'Не удалось выполнить запрос. Попробуйте ещё раз.',
     });
   });
 

@@ -21,6 +21,7 @@ import { SegmentedTabs } from '../components/SegmentedTabs.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import { UserAvatar } from '../chat/components/UserAvatar.js';
 import { tournamentStatusLabel } from './labels.js';
+import { tournamentTimezoneLabel } from './timezoneLabel.js';
 
 type TournamentTab = 'overview' | 'standings' | 'schedule' | 'playoff' | 'rules';
 
@@ -87,7 +88,7 @@ function fixtureStatusLabel(status: string): string {
     blocked: 'Ожидает решения',
     paused: 'Ожидает решения',
   };
-  return labels[status] ?? status;
+  return labels[status] ?? 'Статус уточняется';
 }
 
 function fixtureTimeLabel(fixture: TournamentFixture): string {
@@ -109,9 +110,26 @@ function registrationWindow(
   isOpen: boolean;
   label: string;
   actionLabel: string;
+  timingLabel: string | null;
 } {
   if (tournament.status !== 'registration') {
-    return { isOpen: false, label: statusLabel(tournament.status), actionLabel: '' };
+    const lifecycle: Record<string, { label: string; timingLabel: string | null }> = {
+      registration_blocked: {
+        label: 'Регистрация завершена',
+        timingLabel: 'Организаторы проверяют состав участников',
+      },
+      scheduling: { label: 'Регистрация завершена', timingLabel: 'Готовим расписание' },
+      regular: { label: 'Турнир идёт', timingLabel: 'Следите за календарём и результатами' },
+      playoff: { label: 'Идёт плей-офф', timingLabel: 'Следите за сеткой и следующими играми' },
+      paused: { label: 'Турнир на паузе', timingLabel: 'О продолжении сообщат организаторы' },
+      completed: { label: 'Турнир завершён', timingLabel: null },
+      cancelled: { label: 'Турнир отменён', timingLabel: null },
+    };
+    const copy = lifecycle[tournament.status] ?? {
+      label: statusLabel(tournament.status),
+      timingLabel: null,
+    };
+    return { isOpen: false, ...copy, actionLabel: '' };
   }
   const opensAt =
     tournament.registrationOpensAt === null ? null : new Date(tournament.registrationOpensAt);
@@ -120,14 +138,38 @@ function registrationWindow(
   if (opensAt !== null && Number.isFinite(opensAt.getTime()) && now < opensAt) {
     return {
       isOpen: false,
-      label: `Регистрация откроется ${opensAt.toLocaleString('ru-RU')}`,
+      label: 'Ждём открытия регистрации',
+      timingLabel: `Регистрация откроется ${opensAt.toLocaleString('ru-RU', {
+        day: 'numeric',
+        month: 'long',
+        hour: '2-digit',
+        minute: '2-digit',
+      })}`,
       actionLabel: 'Регистрация ещё не открыта',
     };
   }
   if (closesAt !== null && Number.isFinite(closesAt.getTime()) && now >= closesAt) {
-    return { isOpen: false, label: 'Регистрация завершена', actionLabel: 'Регистрация завершена' };
+    return {
+      isOpen: false,
+      label: 'Регистрация завершена',
+      timingLabel: 'Готовим расписание',
+      actionLabel: 'Регистрация завершена',
+    };
   }
-  return { isOpen: true, label: 'Идёт регистрация', actionLabel: '' };
+  return {
+    isOpen: true,
+    label: 'Идёт регистрация',
+    timingLabel:
+      closesAt !== null && Number.isFinite(closesAt.getTime())
+        ? `Заявки принимаются до ${closesAt.toLocaleString('ru-RU', {
+            day: 'numeric',
+            month: 'long',
+            hour: '2-digit',
+            minute: '2-digit',
+          })}`
+        : null,
+    actionLabel: '',
+  };
 }
 
 function objectValue(value: unknown): Record<string, unknown> {
@@ -157,7 +199,7 @@ function tournamentDateLabel(
       hour: '2-digit',
       minute: '2-digit',
     }).format(date);
-    return withZone ? `${formatted} (${timezone})` : formatted;
+    return withZone ? `${formatted} (${tournamentTimezoneLabel(timezone)})` : formatted;
   } catch {
     return date.toLocaleString('ru-RU');
   }
@@ -216,7 +258,7 @@ function tieBreakSentence(criteria: unknown): string {
     goals_for: 'количеству забитых шайб',
   };
   const values = Array.isArray(criteria)
-    ? criteria.map(String).map((criterion) => labels[criterion] ?? criterion)
+    ? criteria.map(String).map((criterion) => labels[criterion] ?? 'дополнительному правилу')
     : ['очкам'];
   if (values.length <= 1) {
     return `Если несколько игроков окажутся вровень, места определятся по ${values[0] ?? 'очкам'}.`;
@@ -432,6 +474,9 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
         </div>
         <h2>{tournament.title}</h2>
         <div className="tournament-details__description">{tournament.description}</div>
+        {registrationState.timingLabel && (
+          <div className="tournament-details__timing">{registrationState.timingLabel}</div>
+        )}
       </section>
       <SegmentedTabs
         ariaLabel="Разделы турнира"
@@ -516,7 +561,7 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
               {standings.data.standings.map((row, index) => (
                 <div key={String(row.user_id ?? index)}>
                   <strong>{index + 1}</strong>
-                  <span>{String(row.display_name ?? row.user_id ?? index + 1)}</span>
+                  <span>{String(row.display_name ?? `Участник ${index + 1}`)}</span>
                   <span>{String(row.points ?? '')}</span>
                 </div>
               ))}
@@ -567,12 +612,31 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
                           setSelectedFixture(fixture);
                         }}
                       >
-                        Открыть live
+                        Открыть игру
                       </button>
                     )}
                   </article>
                 );
               })}
+            </div>
+          ) : (schedule.data?.matchdays?.length ?? 0) > 0 ? (
+            <div className="tournament-matchday-list">
+              {schedule.data!.matchdays!.map((matchday) => (
+                <article className="tournament-matchday-row" key={matchday.id}>
+                  <strong>Турнирный день {matchday.number}</strong>
+                  <span>
+                    {tournamentDateLabel(
+                      matchday.startsAt,
+                      String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
+                    )}{' '}
+                    —{' '}
+                    {tournamentDateLabel(
+                      matchday.endsAt,
+                      String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
+                    )}
+                  </span>
+                </article>
+              ))}
             </div>
           ) : (
             <div>Расписание ещё не опубликовано.</div>
@@ -747,9 +811,11 @@ export function TournamentCatalog(): JSX.Element {
                     {tournament.participantCount} / {tournament.rules.config.participantLimit}{' '}
                     участников
                   </span>
-                  {importantTournamentDate(tournament) && (
+                  {(registrationWindow(tournament).timingLabel ??
+                    importantTournamentDate(tournament)) && (
                     <span className="tournament-catalog-card__date">
-                      {importantTournamentDate(tournament)}
+                      {registrationWindow(tournament).timingLabel ??
+                        importantTournamentDate(tournament)}
                     </span>
                   )}
                 </span>

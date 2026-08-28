@@ -10,6 +10,7 @@ const DISPATCH_INPUT = {
   title: 'Занятая отправка',
   body: 'Повторите отправку позже.',
   createdBy: '00000000-0000-4000-8000-000000000902',
+  systemUserId: '00000000-0000-4000-8000-000000000903',
 } as const;
 
 function observeDispatch(pool: Pool) {

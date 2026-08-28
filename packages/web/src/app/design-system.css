@@ -4204,6 +4204,14 @@
   line-height: 1.5;
 }
 
+.tournament-details__timing {
+  margin-top: 7px;
+  color: #244d73;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
 .tournament-details__content {
   min-height: 150px;
   color: var(--ink);
@@ -4720,6 +4728,33 @@
   text-align: left;
 }
 
+.tournament-matchday-list {
+  display: grid;
+  gap: 8px;
+}
+
+.tournament-matchday-row {
+  display: grid;
+  gap: 3px;
+  padding: 10px 11px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.78);
+  color: #17324d;
+}
+
+.tournament-matchday-row strong {
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.tournament-matchday-row span {
+  color: #536b82;
+  font-size: 10px;
+  font-weight: 560;
+  line-height: 1.4;
+}
+
 .tournament-operation-editor {
   display: grid;
   gap: 7px;
@@ -5149,6 +5184,11 @@
 
 .tournament-operations__empty-panel .tournament-operation-dates dd {
   color: rgb(255, 255, 255);
+}
+
+.tournament-operations__empty-panel .tournament-operation-hint,
+.tournament-operations__empty-panel .tournament-operations__hint {
+  color: rgba(241, 245, 249, 0.9);
 }
 
 .tournament-operations__quick-edit {

@@ -43,6 +43,14 @@ export interface AdminTournamentFixture {
   score: { home: number; away: number };
 }
 
+export interface AdminTournamentMatchday {
+  id: string;
+  number: number;
+  localDate: string;
+  startsAt: string;
+  endsAt: string;
+}
+
 export interface AdminTournamentDuelTemplate {
   id: string;
   title: string;
@@ -87,10 +95,12 @@ export function uploadAdminTournamentArtwork(
   file: File,
 ): Promise<{ url: string; objectKey: string }> {
   if (file.type !== 'image/webp') {
-    return Promise.reject(new Error('Можно загрузить только файл WebP.'));
+    return Promise.reject(
+      new Error('Этот формат изображения не поддерживается. Выберите другой файл.'),
+    );
   }
   if (file.size === 0) {
-    return Promise.reject(new Error('Файл WebP пустой.'));
+    return Promise.reject(new Error('Выбранное изображение пустое. Выберите другой файл.'));
   }
   return apiFetch('/admin/tournaments/media/artwork', {
     method: 'POST',
@@ -208,7 +218,7 @@ export function disqualifyAdminTournamentParticipant(
 }
 
 export function fetchAdminTournamentSchedule(tournamentId: string) {
-  return apiFetch<{ fixtures: AdminTournamentFixture[] }>(
+  return apiFetch<{ fixtures: AdminTournamentFixture[]; matchdays?: AdminTournamentMatchday[] }>(
     `/admin/tournaments/${tournamentId}/schedule`,
   );
 }
@@ -226,7 +236,14 @@ export function fetchAdminTournamentBracket(tournamentId: string) {
 }
 
 export function generateAdminTournamentSchedule(tournamentId: string, expectedRevision: number) {
-  return apiFetch(`/admin/tournaments/${tournamentId}/schedule/generate`, {
+  return apiFetch<{
+    tournamentId: string;
+    status: 'scheduling' | 'registration_blocked';
+    participantCount?: number;
+    matchdayCount?: number;
+    roundCount?: number;
+    fixtureCount?: number;
+  }>(`/admin/tournaments/${tournamentId}/schedule/generate`, {
     method: 'POST',
     body: JSON.stringify({ expectedRevision }),
   });

@@ -852,10 +852,17 @@ describe('AdminScreen', () => {
     renderAdmin();
 
     expect(screen.queryByRole('button', { name: 'Обзор' })).not.toBeInTheDocument();
-    expect((await screen.findAllByText('Дашборд')).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText('Обзор')).length).toBeGreaterThan(0);
     expect(await screen.findByText('Ультимейт Хоккей')).toBeInTheDocument();
     expect(await screen.findByText('Активные пользователи')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('combobox', { name: 'Период дашборда' }));
+    expect(await screen.findByText('Активность за день и неделю')).toBeInTheDocument();
+    expect(await screen.findByText('Выручка на игрока')).toBeInTheDocument();
+    expect(screen.getByText('За 7 дней: 1 · за год: 1')).toBeInTheDocument();
+    expect(screen.getByText('От первого до последнего входа за день')).toBeInTheDocument();
+    expect(screen.getByText('0 авторов за 30 дней')).toBeInTheDocument();
+    expect(screen.queryByText(/7д|среднее окно активности|1 авторов/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/DAU|WAU|MAU|ARPU|ARPPU|Фидбек/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('combobox', { name: 'Период обзора' }));
     fireEvent.click(await screen.findByRole('option', { name: '90 дней' }));
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith('/api/admin/summary?period=90d', expect.any(Object)),
@@ -866,7 +873,7 @@ describe('AdminScreen', () => {
       name: 'Разделы администратора',
     });
     expect(within(adminNavigation).getAllByRole('button')).toHaveLength(13);
-    expect(within(adminNavigation).getByRole('button', { name: 'Дашборд' })).toHaveAttribute(
+    expect(within(adminNavigation).getByRole('button', { name: 'Обзор' })).toHaveAttribute(
       'aria-current',
       'page',
     );
@@ -960,7 +967,8 @@ describe('AdminScreen', () => {
     selectAdminSection('Уведомления');
     expect(await screen.findByText('Уведомления (2)')).toBeInTheDocument();
     expect(await screen.findByText('Мониторинг доставок')).toBeInTheDocument();
-    expect(screen.getByText('CTR 50%')).toBeInTheDocument();
+    expect(screen.getByText('Переходы 50%')).toBeInTheDocument();
+    expect(screen.queryByText(/CTR/)).not.toBeInTheDocument();
     expect((await screen.findAllByText('Новости игры')).length).toBeGreaterThan(0);
     expect(screen.getByText('/chat/{{chatId}}')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Редактировать Новости игры' }));
@@ -1015,6 +1023,8 @@ describe('AdminScreen', () => {
 
     fireEvent.click(screen.getByText('Regular Player'));
     expect(await screen.findByText('В игре с 01.05.2026')).toBeInTheDocument();
+    expect(screen.getByText('МСК')).toBeInTheDocument();
+    expect(screen.queryByText('Europe/Moscow')).not.toBeInTheDocument();
     expect(await screen.findByText('Первое сообщение в личке')).toBeInTheDocument();
     expect(screen.getByText('Истории покупок пока нет.')).toBeInTheDocument();
 

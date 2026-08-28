@@ -1265,6 +1265,7 @@ export async function generateRegularSchedule(
     await client.query(`delete from tournament_matchday where tournament_id = $1`, [tournamentId]);
     let roundCount = 0;
     let fixtureCount = 0;
+    let matchdayCount = 0;
     if (config.regularSource === 'head_to_head') {
       const plan = buildHeadToHeadSchedulePlan({
         participantIds: participants.rows.map((participant) => participant.id),
@@ -1293,6 +1294,7 @@ export async function generateRegularSchedule(
            returning id`,
           [tournamentId, number, startsAt, endsAt, config.timezone],
         );
+        matchdayCount += 1;
         matchdayIds.set(number, inserted.rows[0]!.id);
       }
       for (const round of plan) {
@@ -1342,13 +1344,20 @@ export async function generateRegularSchedule(
            values ($1, $2, ($3::timestamptz at time zone $5)::date, $3, $4)`,
           [tournamentId, day, startsAt, endsAt, config.timezone],
         );
+        matchdayCount += 1;
       }
     }
     await client.query(
       `update tournament set status = 'scheduling', updated_at = now() where id = $1`,
       [tournamentId],
     );
-    return { tournamentId, status: 'scheduling' as const, roundCount, fixtureCount };
+    return {
+      tournamentId,
+      status: 'scheduling' as const,
+      matchdayCount,
+      roundCount,
+      fixtureCount,
+    };
   });
 }
 
@@ -1425,6 +1434,29 @@ export async function getTournamentSchedule(pool: Pool, tournamentId: string) {
     home: row.home_user_id === null ? null : { userId: row.home_user_id, name: row.home_name },
     away: row.away_user_id === null ? null : { userId: row.away_user_id, name: row.away_name },
     score: { home: Number(row.home_score), away: Number(row.away_score) },
+  }));
+}
+
+export async function getTournamentMatchdays(pool: Pool, tournamentId: string) {
+  const { rows } = await pool.query<{
+    id: string;
+    number: number;
+    local_date: string;
+    starts_at: Date;
+    ends_at: Date;
+  }>(
+    `select id, number, local_date, starts_at, ends_at
+       from tournament_matchday
+      where tournament_id = $1
+      order by number`,
+    [tournamentId],
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    number: Number(row.number),
+    localDate: row.local_date,
+    startsAt: row.starts_at.toISOString(),
+    endsAt: row.ends_at.toISOString(),
   }));
 }
 
