@@ -2,26 +2,15 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react';
-import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
-import {
-  ArrowLeft,
-  ChevronRight,
-  Crosshair,
-  Info,
-  Search,
-  SlidersHorizontal,
-  Swords,
-  X,
-} from 'lucide-react';
+import { ArrowLeft, ChevronRight, Crosshair, Info, Search, Swords, X } from 'lucide-react';
 import {
   DEFAULT_DUEL_INVENTORY_TIMING,
   SHOOTER_AMPLITUDE,
@@ -35,7 +24,6 @@ import {
   PlayView,
   TRAINING_AMATEUR_GOALIE_OPTIONS,
   TRAINING_STREET_PLAYER_OPTIONS,
-  clampPuckSpeed,
   computeInitialElapsedMs,
   formatMs,
   periodSpeedPresetFor,
@@ -152,7 +140,6 @@ const DUEL_KIND_ARTWORK_IMAGES: Record<AmateurDuelKind, string> = {
   classic: '/modes/amateur-duel.webp',
 };
 const TRAINING_HITBOX_TOGGLE_STORAGE_KEY = 'hockey.trainingHitboxesVisible';
-const TRAINING_SPEED_OVERRIDES_STORAGE_KEY = 'hockey.trainingSpeedOverrides';
 const OPPONENT_ONLINE_WINDOW_MS = 2 * 60 * 1000;
 const OPPONENT_RECENT_WINDOW_MS = 5 * 60 * 1000;
 const DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED = 1000;
@@ -187,34 +174,6 @@ function readTrainingHitboxesVisible(): boolean {
   }
 }
 
-function clampFrequency(value: number): number {
-  return Math.min(3, Math.max(0.1, Number(value.toFixed(3))));
-}
-
-function readTrainingSpeedOverrides(): SpeedOverrides | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = window.localStorage.getItem(TRAINING_SPEED_OVERRIDES_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<Record<keyof SpeedOverrides, unknown>>;
-    if (
-      typeof parsed.goalFreq !== 'number' ||
-      typeof parsed.goalieFreq !== 'number' ||
-      typeof parsed.shooterFreq !== 'number' ||
-      typeof parsed.puckSpeed !== 'number'
-    ) {
-      return null;
-    }
-    return {
-      goalFreq: clampFrequency(parsed.goalFreq),
-      goalieFreq: clampFrequency(parsed.goalieFreq),
-      shooterFreq: clampFrequency(parsed.shooterFreq),
-      puckSpeed: clampPuckSpeed(parsed.puckSpeed),
-    };
-  } catch {
-    return null;
-  }
-}
 const AMATEUR_DAILY_COURT_BACKGROUND = '/sprites/amateur-daily-court.webp';
 const ARENA_ICE_COURT_BACKGROUND = '/sprites/app-arena-ice.webp';
 const ARENA_CUBE_IMAGE = '/sprites/app-arena-cube.webp';
@@ -225,19 +184,6 @@ function saveTrainingHitboxesVisible(value: boolean): void {
     window.localStorage.setItem(TRAINING_HITBOX_TOGGLE_STORAGE_KEY, String(value));
   } catch {
     // The toggle is a local admin aid; storage failure should not block gameplay.
-  }
-}
-
-function saveTrainingSpeedOverrides(value: SpeedOverrides | null): void {
-  if (typeof window === 'undefined') return;
-  try {
-    if (value === null) {
-      window.localStorage.removeItem(TRAINING_SPEED_OVERRIDES_STORAGE_KEY);
-      return;
-    }
-    window.localStorage.setItem(TRAINING_SPEED_OVERRIDES_STORAGE_KEY, JSON.stringify(value));
-  } catch {
-    // Speed controls are a local training aid; storage failure should not block gameplay.
   }
 }
 
@@ -565,11 +511,7 @@ export function DailyScreen(): JSX.Element {
         );
       }
       if (amateurView === 'tournaments') {
-        return (
-          <AmateurTournamentsPage
-            onBack={fromSections ? openSections : openHub}
-          />
-        );
+        return <AmateurTournamentsPage onBack={fromSections ? openSections : openHub} />;
       }
     }
     return (
@@ -2677,6 +2619,7 @@ function TrainingPlaceholder({
   const error = useTrainingSessionStore((s) => s.error);
   const inFlight = useTrainingSessionStore((s) => s.inFlight);
   const refresh = useTrainingSessionStore((s) => s.refresh);
+  const start = useTrainingSessionStore((s) => s.start);
   const [selectedPeriod, setSelectedPeriod] = useState<1 | 2 | 3>(1);
   const [playTraining, setPlayTraining] = useState(() => autoPlay);
   const [localPlayEntrance, setLocalPlayEntrance] = useState(false);
@@ -2727,6 +2670,10 @@ function TrainingPlaceholder({
 
   const handleTrainingAction = async (): Promise<void> => {
     setLocalPlayEntrance(false);
+    if (data?.state === 'active' && data.selected_period !== selectedPeriod) {
+      const switched = await start(selectedPeriod);
+      if (switched === null) return;
+    }
     setPlayTraining(true);
     onPlayStart?.();
   };
@@ -2799,6 +2746,7 @@ function TrainingPlaceholder({
               { id: '3', label: '3 период' },
             ]}
             activeTab={String(selectedPeriod)}
+            disabled={inFlight}
             onChange={(id) => setSelectedPeriod(Number(id) as 1 | 2 | 3)}
           />
           <PeriodSpeedSummary periodNumber={selectedPeriod} presets={data?.period_speed_presets} />
@@ -7586,183 +7534,6 @@ function TrainingHitboxesToggle({
   );
 }
 
-type TrainingSpeedKey = keyof SpeedOverrides;
-
-const TRAINING_SPEED_FIELDS: Array<{
-  key: TrainingSpeedKey;
-  label: string;
-  min: number;
-  max: number;
-  step: number;
-  suffix: string;
-}> = [
-  { key: 'shooterFreq', label: 'Игрок', min: 0.1, max: 3, step: 0.05, suffix: '/с' },
-  { key: 'goalieFreq', label: 'Вратарь', min: 0.1, max: 3, step: 0.05, suffix: '/с' },
-  { key: 'goalFreq', label: 'Ворота', min: 0.1, max: 3, step: 0.05, suffix: '/с' },
-  { key: 'puckSpeed', label: 'Шайба', min: 0.2, max: 5, step: 0.05, suffix: '' },
-];
-
-function speedValueText(value: number, suffix: string): string {
-  const formatted = value.toLocaleString('ru-RU', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-  return suffix ? `${formatted}${suffix}` : formatted;
-}
-
-function TrainingSpeedControls({
-  value,
-  defaults,
-  open,
-  onOpen,
-  onClose,
-  onChange,
-  onReset,
-}: {
-  value: SpeedOverrides;
-  defaults: SpeedOverrides;
-  open: boolean;
-  onOpen: () => void;
-  onClose: () => void;
-  onChange: (next: SpeedOverrides) => void;
-  onReset: () => void;
-}): JSX.Element {
-  const hasCustomSpeeds = TRAINING_SPEED_FIELDS.some(
-    (field) => Math.abs(value[field.key] - defaults[field.key]) > 0.001,
-  );
-
-  const button = (
-    <button
-      type="button"
-      aria-label="Скорости"
-      title="Скорости"
-      onClick={onOpen}
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        width: 34,
-        height: 34,
-        padding: 0,
-        borderRadius: 999,
-        background: hasCustomSpeeds ? 'rgba(8, 24, 43, 0.86)' : 'rgba(255, 255, 255, 0.82)',
-        border: hasCustomSpeeds
-          ? '1px solid rgba(255, 255, 255, 0.34)'
-          : '1px solid rgba(15, 23, 42, 0.12)',
-        boxShadow: hasCustomSpeeds
-          ? '0 10px 22px rgba(7, 19, 33, 0.22)'
-          : '0 8px 18px rgba(15, 23, 42, 0.12), inset 0 1px 0 rgba(255,255,255,0.86)',
-        backdropFilter: 'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
-        color: hasCustomSpeeds ? '#ffffff' : 'rgba(15, 23, 42, 0.68)',
-        cursor: 'pointer',
-      }}
-    >
-      <SlidersHorizontal aria-hidden="true" size={17} strokeWidth={2.4} />
-    </button>
-  );
-
-  return (
-    <>
-      {button}
-      {open &&
-        createPortal(
-          <div className="modal-backdrop" style={{ zIndex: 520 }} onClick={onClose}>
-            <section
-              role="dialog"
-              aria-modal="true"
-              aria-label="Скорости тренировки"
-              className="modal-card"
-              onClick={(event) => event.stopPropagation()}
-              style={{ width: 'min(100%, 360px)', padding: '22px 20px 20px' }}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 10,
-                }}
-              >
-                <h2 className="modal-title">Скорости тренировки</h2>
-                <button
-                  type="button"
-                  className="icon-btn"
-                  aria-label="Закрыть"
-                  onClick={onClose}
-                  style={{ width: 34, height: 34, flex: '0 0 auto' }}
-                >
-                  <X size={16} />
-                </button>
-              </div>
-              <div style={{ display: 'grid', gap: 16, marginTop: 18 }}>
-                {TRAINING_SPEED_FIELDS.map((field) => (
-                  <label key={field.key} style={{ display: 'grid', gap: 8 }}>
-                    <span
-                      style={{
-                        display: 'flex',
-                        alignItems: 'baseline',
-                        justifyContent: 'space-between',
-                        gap: 10,
-                        color: 'var(--ink)',
-                        fontSize: 13,
-                        fontWeight: 900,
-                      }}
-                    >
-                      <span>{field.label}</span>
-                      <span
-                        style={{
-                          color: 'var(--muted)',
-                          fontVariantNumeric: 'tabular-nums',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {speedValueText(value[field.key], field.suffix)}
-                      </span>
-                    </span>
-                    <input
-                      type="range"
-                      min={field.min}
-                      max={field.max}
-                      step={field.step}
-                      value={value[field.key]}
-                      onChange={(event) => {
-                        const raw = Number(event.currentTarget.value);
-                        const nextValue =
-                          field.key === 'puckSpeed' ? clampPuckSpeed(raw) : clampFrequency(raw);
-                        onChange({ ...value, [field.key]: nextValue });
-                      }}
-                      style={{ width: '100%', accentColor: '#162136' }}
-                    />
-                  </label>
-                ))}
-              </div>
-              <div className="modal-actions" style={{ gridTemplateColumns: '1fr 1fr' }}>
-                <button
-                  type="button"
-                  className="btn btn--ghost"
-                  onClick={onReset}
-                  style={{ minHeight: 50, fontSize: 12, letterSpacing: 0 }}
-                >
-                  Сбросить
-                </button>
-                <button
-                  type="button"
-                  className="btn btn--cta"
-                  onClick={onClose}
-                  style={{ minHeight: 50, fontSize: 12, letterSpacing: 0 }}
-                >
-                  Готово
-                </button>
-              </div>
-            </section>
-          </div>,
-          document.body,
-        )}
-    </>
-  );
-}
-
 function TrainingPlayView({
   onBack,
   selectedPeriod = 1,
@@ -7788,21 +7559,8 @@ function TrainingPlayView({
   const userRole = useAuthStore((s) => s.user?.role);
   const experimentalTrainingCourt = useAuthStore((s) => s.user?.experimentalTrainingCourt);
   const [hitboxesVisible, setHitboxesVisible] = useState(() => readTrainingHitboxesVisible());
-  const [speedControlsOpen, setSpeedControlsOpen] = useState(false);
-  const [trainingSpeedOverrides, setTrainingSpeedOverrides] = useState<SpeedOverrides | null>(() =>
-    readTrainingSpeedOverrides(),
-  );
   const [now, setNow] = useState(Date.now());
   const canShowTrainingDebugControls = userRole === 'admin' || experimentalTrainingCourt === true;
-  const trainingPeriodNumber = data?.selected_period ?? selectedPeriod;
-  const trainingDefaultSpeeds = useMemo(
-    () => speedOverridesForPeriod(trainingPeriodNumber, data?.period_speed_presets),
-    [data?.period_speed_presets, trainingPeriodNumber],
-  );
-  const effectiveTrainingSpeeds = useMemo(
-    () => trainingSpeedOverrides ?? trainingDefaultSpeeds,
-    [trainingDefaultSpeeds, trainingSpeedOverrides],
-  );
   const isTrainingLockedByDaily =
     dailyData?.state === 'period_active' ||
     dailyData?.state === 'break_active' ||
@@ -7813,14 +7571,6 @@ function TrainingPlayView({
   const handleHitboxesChange = useCallback((next: boolean): void => {
     setHitboxesVisible(next);
     saveTrainingHitboxesVisible(next);
-  }, []);
-  const handleSpeedOverridesChange = useCallback((next: SpeedOverrides): void => {
-    setTrainingSpeedOverrides(next);
-    saveTrainingSpeedOverrides(next);
-  }, []);
-  const handleSpeedOverridesReset = useCallback((): void => {
-    setTrainingSpeedOverrides(null);
-    saveTrainingSpeedOverrides(null);
   }, []);
   const handleStartTraining = useCallback(async (): Promise<TrainingStateResponse | null> => {
     if (!canStartTraining) return null;
@@ -7890,7 +7640,6 @@ function TrainingPlayView({
         periodNumber={data.selected_period ?? selectedPeriod}
         scoreboardPeriodsTotal={1}
         periodSpeedPresets={data.period_speed_presets}
-        speedOverrides={trainingSpeedOverrides ?? undefined}
         sessionStartedAt={data.started_at}
         serverNow={data.server_now}
         receivedAtPerformanceMs={data.received_at_performance_ms}
@@ -7920,18 +7669,7 @@ function TrainingPlayView({
         goalieOptions={TRAINING_AMATEUR_GOALIE_OPTIONS}
         overlayControls={
           canShowTrainingDebugControls ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <TrainingHitboxesToggle checked={hitboxesVisible} onChange={handleHitboxesChange} />
-              <TrainingSpeedControls
-                value={effectiveTrainingSpeeds}
-                defaults={trainingDefaultSpeeds}
-                open={speedControlsOpen}
-                onOpen={() => setSpeedControlsOpen(true)}
-                onClose={() => setSpeedControlsOpen(false)}
-                onChange={handleSpeedOverridesChange}
-                onReset={handleSpeedOverridesReset}
-              />
-            </div>
+            <TrainingHitboxesToggle checked={hitboxesVisible} onChange={handleHitboxesChange} />
           ) : undefined
         }
       />

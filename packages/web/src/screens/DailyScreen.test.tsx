@@ -1659,8 +1659,12 @@ describe('DailyScreen', () => {
     expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();
   });
 
-  it('keeps active training on the setup screen until the user continues it', async () => {
+  it('switches an active training session to the selected period before opening the rink', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch');
+    let resolveSwitch!: (response: Response) => void;
+    const switchResponse = new Promise<Response>((resolve) => {
+      resolveSwitch = resolve;
+    });
     fetchMock.mockReset();
     fetchMock.mockImplementation(async (input) => {
       const url = String(input);
@@ -1671,10 +1675,7 @@ describe('DailyScreen', () => {
         });
       }
       if (url.includes('/duel/training/start')) {
-        return new Response(JSON.stringify(trainingActiveState), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
+        return switchResponse;
       }
       return new Response(JSON.stringify(baseState), {
         status: 200,
@@ -1690,11 +1691,34 @@ describe('DailyScreen', () => {
     fireEvent.click(screen.getByRole('tab', { name: '3 период' }));
     expect(screen.getByRole('tab', { name: '3 период' })).toHaveAttribute('aria-selected', 'true');
     fireEvent.click(screen.getByRole('button', { name: /Продолжить тренировку/ }));
+    const switchRequest = await waitFor(() =>
+      fetchMock.mock.calls.find((call) => String(call[0]).includes('/duel/training/start')),
+    );
+    expect(switchRequest).toBeDefined();
+    expect(JSON.parse(String((switchRequest?.[1] as RequestInit | undefined)?.body))).toEqual({
+      period_number: 3,
+    });
+    expect(screen.getByRole('tab', { name: '1 период' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('tab', { name: '1 период' }));
+    expect(screen.getByRole('tab', { name: '3 период' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();
+
+    resolveSwitch(
+      new Response(
+        JSON.stringify({
+          ...trainingActiveState,
+          selected_period: 3,
+          shots_taken: 21,
+        }),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        },
+      ),
+    );
     expect(await screen.findByRole('button', { name: 'БРОСОК' })).toBeInTheDocument();
-    expect(
-      fetchMock.mock.calls.some((call) => String(call[0]).includes('/duel/training/start')),
-    ).toBe(false);
-    expect(screen.getByText('12/500')).toBeInTheDocument();
+    expect(useTrainingSessionStore.getState().data?.selected_period).toBe(3);
+    expect(screen.getByText('21/500')).toBeInTheDocument();
     expect(screen.getByText('ЛИМИТ')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Звук в разработке' }));
     expect(screen.getByRole('status')).toHaveTextContent('Звук в разработке');
@@ -1748,7 +1772,7 @@ describe('DailyScreen', () => {
     });
   });
 
-  it('uses the perspective court in training and lets admins tune debug controls', async () => {
+  it('uses the perspective court in training without independent speed controls', async () => {
     useAuthStore.getState().setSession({
       accessToken: 'token',
       refreshToken: 'r',
@@ -1789,17 +1813,7 @@ describe('DailyScreen', () => {
     fireEvent.click(hitboxesToggle);
     expect(hitboxesToggle).toBeChecked();
     expect(localStorage.getItem('hockey.trainingHitboxesVisible')).toBe('true');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Скорости' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Скорости тренировки' });
-    expect(within(dialog).getByText('Игрок')).toBeInTheDocument();
-    const sliders = within(dialog).getAllByRole('slider');
-    expect(sliders[0]).toHaveValue('0.7');
-    fireEvent.change(sliders[0]!, { target: { value: '1.1' } });
-    expect(sliders[0]).toHaveValue('1.1');
-    expect(localStorage.getItem('hockey.trainingSpeedOverrides')).toContain('"shooterFreq":1.1');
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Сбросить' }));
-    expect(localStorage.getItem('hockey.trainingSpeedOverrides')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Скорости' })).not.toBeInTheDocument();
   });
 
   it('lets non-admin testers with the experimental flag toggle hitboxes', async () => {

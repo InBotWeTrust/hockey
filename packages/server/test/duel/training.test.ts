@@ -281,7 +281,56 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
     expect(userRows.rows[0].lifetime_goals_total).toBe(0);
   });
 
-  it('uses submitted training speed overrides for shot resolution', async () => {
+  it('returns current daily period speed settings in training state', async () => {
+    const configuredSpeeds = {
+      puckSpeedPerMs: 1.91,
+      shooterFrequency: 1.11,
+      goalieFrequency: 1.21,
+      goalFrequency: 0.81,
+    };
+    const entries = [
+      ['daily.period_2.puck_speed_per_ms', configuredSpeeds.puckSpeedPerMs],
+      ['daily.period_2.shooter_frequency', configuredSpeeds.shooterFrequency],
+      ['daily.period_2.goalie_frequency', configuredSpeeds.goalieFrequency],
+      ['daily.period_2.goal_frequency', configuredSpeeds.goalFrequency],
+    ] as const;
+    for (const [key, value] of entries) {
+      await pool.query(
+        `insert into game_settings (key, value, label, description)
+         values ($1, to_jsonb($2::numeric), 'test', 'test')
+         on conflict (key) do update set value = excluded.value`,
+        [key, value],
+      );
+    }
+
+    const state = await getState();
+    expect(state.period_speed_presets).toEqual(
+      expect.arrayContaining([{ periodNumber: 2, ...configuredSpeeds }]),
+    );
+  });
+
+  it('uses current daily period settings instead of client speed overrides', async () => {
+    const configuredSpeeds = {
+      puckSpeedPerMs: 1.92,
+      shooterFrequency: 1.12,
+      goalieFrequency: 1.22,
+      goalFrequency: 0.82,
+    };
+    const entries = [
+      ['daily.period_2.puck_speed_per_ms', configuredSpeeds.puckSpeedPerMs],
+      ['daily.period_2.shooter_frequency', configuredSpeeds.shooterFrequency],
+      ['daily.period_2.goalie_frequency', configuredSpeeds.goalieFrequency],
+      ['daily.period_2.goal_frequency', configuredSpeeds.goalFrequency],
+    ] as const;
+    for (const [key, value] of entries) {
+      await pool.query(
+        `insert into game_settings (key, value, label, description)
+         values ($1, to_jsonb($2::numeric), 'test', 'test')
+         on conflict (key) do update set value = excluded.value`,
+        [key, value],
+      );
+    }
+
     await startTraining(2);
     const r = await submitShot(1, 'goal', {
       puckSpeedPerMs: 1.85,
@@ -295,12 +344,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
       `select input_payload from shot_session where user_id = $1`,
       [userId],
     );
-    expect(rows[0]?.input_payload).toMatchObject({
-      puckSpeedPerMs: 1.85,
-      shooterFrequency: 1.15,
-      goalieFrequency: 1.25,
-      goalFrequency: 0.95,
-    });
+    expect(rows[0]?.input_payload).toMatchObject(configuredSpeeds);
   });
 
   it('closes after the 500th shot', async () => {
