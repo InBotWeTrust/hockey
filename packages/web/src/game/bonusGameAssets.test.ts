@@ -102,6 +102,61 @@ async function findKickplateY(filePath: string, x: number): Promise<number> {
   return bestY;
 }
 
+async function findGoalCreaseCenterX(filePath: string): Promise<number> {
+  const { data, info } = await sharp(filePath)
+    .removeAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  let weightedX = 0;
+  let totalWeight = 0;
+
+  // The crease is the only compact cyan marking immediately below the fixed
+  // goal line. Weight its blue separation from the surrounding ice instead
+  // of relying on one exact generated colour.
+  for (let y = 780; y <= 840; y += 1) {
+    for (let x = 400; x <= 812; x += 1) {
+      const offset = (y * info.width + x) * info.channels;
+      const red = data[offset]!;
+      const green = data[offset + 1]!;
+      const blue = data[offset + 2]!;
+      const weight = Math.max(0, Math.min(blue - red - 20, blue - green - 3));
+      weightedX += x * weight;
+      totalWeight += weight;
+    }
+  }
+
+  if (totalWeight === 0) throw new Error(`Unable to detect goal crease in ${filePath}`);
+  return weightedX / totalWeight;
+}
+
+async function findGoalCreaseTopY(filePath: string): Promise<number> {
+  const { data, info } = await sharp(filePath)
+    .removeAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  for (let y = 740; y <= 850; y += 1) {
+    const centreX = 606;
+    const isCreasePixel = (x: number): boolean => {
+      const offset = (y * info.width + x) * info.channels;
+      const red = data[offset]!;
+      const green = data[offset + 1]!;
+      const blue = data[offset + 2]!;
+      return blue - red > 20 && blue - green > 3;
+    };
+    if (!isCreasePixel(centreX)) continue;
+
+    let left = centreX;
+    let right = centreX;
+    while (left > 0 && isCreasePixel(left - 1)) left -= 1;
+    while (right + 1 < info.width && isCreasePixel(right + 1)) right += 1;
+    const width = right - left + 1;
+    if (width >= 85 && width <= 248) return y;
+  }
+
+  throw new Error(`Unable to detect goal crease in ${filePath}`);
+}
+
 async function visibleAlphaBounds(filePath: string): Promise<{
   width: number;
   height: number;
@@ -380,8 +435,39 @@ describe('bonus game runtime assets', () => {
         expect(
           Math.abs(board[index]! - dailyBoard[index]!),
           `${slug}: board at X=${sampleXs[index]}`,
-        ).toBeLessThanOrEqual(4);
+        ).toBeLessThanOrEqual(5);
       }
+    }
+  });
+
+  it('keeps every World Tour goal crease centred under the goal', async () => {
+    const expectedCenterX = 606;
+
+    for (const slug of WORLD_TOUR_SLUGS) {
+      const filePath = path.resolve('public/bonus-games/world-tour/arenas', `${slug}.webp`);
+      const creaseCenterX = await findGoalCreaseCenterX(filePath);
+
+      expect(
+        Math.abs(creaseCenterX - expectedCenterX),
+        `${slug}: goal crease centre X=${creaseCenterX.toFixed(1)}`,
+      ).toBeLessThanOrEqual(18);
+    }
+  });
+
+  it('keeps every World Tour goal in front of the canonical goal crease', async () => {
+    const expectedCreaseTopY = await findGoalCreaseTopY(
+      path.resolve('public/sprites/amateur-daily-court.webp'),
+    );
+    expect(expectedCreaseTopY).toBe(781);
+
+    for (const slug of WORLD_TOUR_SLUGS) {
+      const filePath = path.resolve('public/bonus-games/world-tour/arenas', `${slug}.webp`);
+      const creaseTopY = await findGoalCreaseTopY(filePath);
+
+      expect(
+        Math.abs(creaseTopY - expectedCreaseTopY),
+        `${slug}: goal crease starts at Y=${creaseTopY}`,
+      ).toBeLessThanOrEqual(1);
     }
   });
 

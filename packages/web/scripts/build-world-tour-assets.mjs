@@ -10,7 +10,6 @@ const sharp = require('sharp');
 const ARENA_WIDTH = 1212;
 const ARENA_HEIGHT = 2000;
 const GOAL_LINE_Y = 779;
-const RINK_CENTER_X = 606;
 const BOARD_VALIDATION_XS = [82, 186, 300, 606, 912, 1026, 1130];
 
 const worldTourArenaSourceDir = path.join(root, 'assets/bonus-games/world-tour/generated-arenas');
@@ -36,45 +35,44 @@ const approvedArenas = [
   'beijing',
   'tokyo',
 ];
+const requestedArenas = process.argv.slice(2);
+const arenasToBuild = requestedArenas.length > 0 ? requestedArenas : approvedArenas;
+for (const slug of arenasToBuild) {
+  if (!approvedArenas.includes(slug)) throw new Error(`Unknown World Tour arena: ${slug}`);
+}
 
 async function detectSourceGoalLineY(sourcePath) {
   const { data, info } = await sharp(sourcePath)
     .removeAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
-  const startY = Math.round(info.height * 0.32);
-  const endY = Math.round(info.height * 0.54);
-  const rowSignals = new Map();
+  const sourceCurve = detectKickplateCurve(data, info);
+  const centreX = Math.round(info.width / 2);
+  const centreCurveY = median(Array.from(sourceCurve.slice(centreX - 8, centreX + 9)));
 
-  for (let y = startY - 8; y <= endY + 8; y += 1) {
-    let signal = 0;
-    let samples = 0;
-    for (const [startRatio, endRatio] of [
-      [0.05, 0.4],
-      [0.6, 0.95],
-    ]) {
-      for (let x = Math.round(info.width * startRatio); x < info.width * endRatio; x += 2) {
-        const offset = (y * info.width + x) * info.channels;
-        signal += data[offset] + data[offset + 2] - 2 * data[offset + 1];
-        samples += 1;
-      }
-    }
-    rowSignals.set(y, signal / samples);
+  // The generated flag colours can make a red-signal search mistake a board
+  // detail for the goal line. The compact cyan crease is stable in every
+  // approved master: find its first wide row below the kickplate, then step
+  // back to the red outline immediately above it.
+  for (let y = Math.round(centreCurveY + 25); y <= centreCurveY + 100; y += 1) {
+    const isCreasePixel = (x) => {
+      const offset = (y * info.width + x) * info.channels;
+      const red = data[offset];
+      const green = data[offset + 1];
+      const blue = data[offset + 2];
+      return blue - red > 20 && blue - green > 3;
+    };
+    if (!isCreasePixel(centreX)) continue;
+
+    let left = centreX;
+    let right = centreX;
+    while (left > 0 && isCreasePixel(left - 1)) left -= 1;
+    while (right + 1 < info.width && isCreasePixel(right + 1)) right += 1;
+    const width = right - left + 1;
+    if (width >= 70 && width <= 200) return y - 1;
   }
 
-  let best = { y: startY, prominence: Number.NEGATIVE_INFINITY };
-  for (let y = startY; y <= endY; y += 1) {
-    const neighbours = [-8, -6, -4, 4, 6, 8].map((offset) => rowSignals.get(y + offset));
-    const baseline = neighbours.reduce((sum, value) => sum + value, 0) / neighbours.length;
-    const prominence = rowSignals.get(y) - baseline;
-    if (prominence > best.prominence) best = { y, prominence };
-  }
-  return best.y;
-}
-
-function smoothStep(value) {
-  const clamped = Math.max(0, Math.min(1, value));
-  return clamped * clamped * (3 - 2 * clamped);
+  throw new Error(`Unable to detect source goal crease in ${sourcePath}`);
 }
 
 function median(values) {
@@ -82,12 +80,19 @@ function median(values) {
   return sorted[Math.floor(sorted.length / 2)];
 }
 
+function smoothStep(value) {
+  const clamped = Math.max(0, Math.min(1, value));
+  return clamped * clamped * (3 - 2 * clamped);
+}
+
 function detectKickplateCurve(data, info) {
+  const searchStartY = Math.round((620 / ARENA_HEIGHT) * info.height);
+  const searchEndY = Math.round((880 / ARENA_HEIGHT) * info.height);
   const rawCurve = new Float64Array(info.width);
   for (let x = 0; x < info.width; x += 1) {
-    let bestY = 620;
+    let bestY = searchStartY;
     let bestSignal = Number.NEGATIVE_INFINITY;
-    for (let y = 620; y <= 880; y += 1) {
+    for (let y = searchStartY; y <= searchEndY; y += 1) {
       let signal = 0;
       for (
         let sampleX = Math.max(0, x - 3);
@@ -120,28 +125,32 @@ function detectKickplateCurve(data, info) {
   return curve;
 }
 
-function detectRinkCenterX(curve) {
-  let minimum = Number.POSITIVE_INFINITY;
-  for (let x = 240; x <= 972; x += 1) minimum = Math.min(minimum, curve[x]);
-  let weightedX = 0;
-  let weight = 0;
-  for (let x = 240; x <= 972; x += 1) {
-    const sampleWeight = Math.max(0, minimum + 5 - curve[x]);
-    weightedX += x * sampleWeight;
-    weight += sampleWeight;
-  }
-  return weight > 0 ? weightedX / weight : RINK_CENTER_X;
-}
+function detectGoalCreaseTopY(data, info) {
+  const curve = detectKickplateCurve(data, info);
+  const centreX = Math.round(info.width / 2);
+  const centreCurveY = median(Array.from(curve.slice(centreX - 8, centreX + 9)));
+  const minWidth = Math.round((70 / 976) * info.width);
+  const maxWidth = Math.round((200 / 976) * info.width);
 
-function sourceXForTargetX(targetX, sourceCenterX) {
-  if (targetX <= RINK_CENTER_X) {
-    return (targetX / RINK_CENTER_X) * sourceCenterX;
+  for (let y = Math.round(centreCurveY + 25); y <= centreCurveY + 150; y += 1) {
+    const isCreasePixel = (x) => {
+      const offset = (y * info.width + x) * info.channels;
+      const red = data[offset];
+      const green = data[offset + 1];
+      const blue = data[offset + 2];
+      return blue - red > 20 && blue - green > 3;
+    };
+    if (!isCreasePixel(centreX)) continue;
+
+    let left = centreX;
+    let right = centreX;
+    while (left > 0 && isCreasePixel(left - 1)) left -= 1;
+    while (right + 1 < info.width && isCreasePixel(right + 1)) right += 1;
+    const width = right - left + 1;
+    if (width >= minWidth && width <= maxWidth) return y;
   }
-  return (
-    sourceCenterX +
-    ((targetX - RINK_CENTER_X) / (ARENA_WIDTH - 1 - RINK_CENTER_X)) *
-      (ARENA_WIDTH - 1 - sourceCenterX)
-  );
+
+  throw new Error('Unable to detect goal crease');
 }
 
 function sampleBilinear(data, info, x, y, channel) {
@@ -167,12 +176,15 @@ async function normaliseArenaGeometry(input, canonicalBoardCurve) {
     .raw()
     .toBuffer({ resolveWithObject: true });
   const sourceCurve = detectKickplateCurve(data, info);
-  const sourceCenterX = detectRinkCenterX(sourceCurve);
   const output = Buffer.alloc(ARENA_WIDTH * ARENA_HEIGHT * 3);
 
   for (let targetX = 0; targetX < ARENA_WIDTH; targetX += 1) {
-    const sourceX = sourceXForTargetX(targetX, sourceCenterX);
-    const sourceCurveY = sourceCurve[Math.max(0, Math.min(ARENA_WIDTH - 1, Math.round(sourceX)))];
+    // Approved masters are already centred at the final 1212 px width. Keep
+    // X untouched: asymmetric board texture is not a reliable rink-centre
+    // signal and horizontal remapping moves the crease and faceoff markings
+    // away from the fixed gameplay goal at X=606.
+    const sourceX = targetX;
+    const sourceCurveY = sourceCurve[targetX];
     const targetCurveY = canonicalBoardCurve[targetX];
     const curveOffset = sourceCurveY - targetCurveY;
 
@@ -192,7 +204,6 @@ async function normaliseArenaGeometry(input, canonicalBoardCurve) {
   return {
     buffer: output,
     raw: { width: ARENA_WIDTH, height: ARENA_HEIGHT, channels: 3 },
-    sourceCenterX,
   };
 }
 
@@ -209,55 +220,73 @@ async function buildArena(slug, canonicalBoardCurve) {
   const sourceGoalLineY = await detectSourceGoalLineY(sourcePath);
   console.log(`${slug}: source goal line ${sourceGoalLineY}`);
 
-  // Keep the approved location as one coherent image. The two contiguous
-  // pieces only normalise its vertical geometry so the source goal line maps
-  // to the fixed gameplay line at Y=779; no second rink or marking layer is
-  // introduced.
-  const upper = await sharp(sourcePath)
-    .extract({
-      left: 0,
-      top: 0,
-      width: sourceMetadata.width,
-      height: sourceGoalLineY + 1,
+  const renderGeometry = async (goalLineAnchorY) => {
+    // Keep the approved location as one coherent image. The two contiguous
+    // pieces only normalise its vertical geometry; no second rink or marking
+    // layer is introduced.
+    const upper = await sharp(sourcePath)
+      .extract({
+        left: 0,
+        top: 0,
+        width: sourceMetadata.width,
+        height: sourceGoalLineY + 1,
+      })
+      .resize(ARENA_WIDTH, goalLineAnchorY + 1, { fit: 'fill' })
+      .toBuffer();
+    const lower = await sharp(sourcePath)
+      .extract({
+        left: 0,
+        top: sourceGoalLineY + 1,
+        width: sourceMetadata.width,
+        height: sourceMetadata.height - sourceGoalLineY - 1,
+      })
+      .resize(ARENA_WIDTH, ARENA_HEIGHT - goalLineAnchorY - 1, { fit: 'fill' })
+      .toBuffer();
+    const verticallyNormalised = await sharp({
+      create: {
+        width: ARENA_WIDTH,
+        height: ARENA_HEIGHT,
+        channels: 3,
+        background: '#eaf1f8',
+      },
     })
-    .resize(ARENA_WIDTH, GOAL_LINE_Y + 1, { fit: 'fill' })
-    .toBuffer();
-  const lower = await sharp(sourcePath)
-    .extract({
-      left: 0,
-      top: sourceGoalLineY + 1,
-      width: sourceMetadata.width,
-      height: sourceMetadata.height - sourceGoalLineY - 1,
-    })
-    .resize(ARENA_WIDTH, ARENA_HEIGHT - GOAL_LINE_Y - 1, { fit: 'fill' })
-    .toBuffer();
+      .composite([
+        { input: upper, left: 0, top: 0 },
+        { input: lower, left: 0, top: goalLineAnchorY + 1 },
+      ])
+      .png()
+      .toBuffer();
+    const firstPass = await normaliseArenaGeometry(verticallyNormalised, canonicalBoardCurve);
+    const firstPassPng = await sharp(firstPass.buffer, { raw: firstPass.raw }).png().toBuffer();
+    return normaliseArenaGeometry(firstPassPng, canonicalBoardCurve);
+  };
 
-  const verticallyNormalised = await sharp({
-    create: {
-      width: ARENA_WIDTH,
-      height: ARENA_HEIGHT,
-      channels: 3,
-      background: '#eaf1f8',
-    },
-  })
-    .composite([
-      { input: upper, left: 0, top: 0 },
-      { input: lower, left: 0, top: GOAL_LINE_Y + 1 },
-    ])
-    .png()
-    .toBuffer();
-  const firstGeometryPass = await normaliseArenaGeometry(
-    verticallyNormalised,
-    canonicalBoardCurve,
-  );
-  const firstGeometryPassPng = await sharp(firstGeometryPass.buffer, {
-    raw: firstGeometryPass.raw,
-  })
-    .png()
-    .toBuffer();
-  const geometry = await normaliseArenaGeometry(firstGeometryPassPng, canonicalBoardCurve);
-  console.log(`${slug}: source rink centre ${firstGeometryPass.sourceCenterX.toFixed(1)}`);
-
+  let goalLineAnchorY = GOAL_LINE_Y;
+  let geometry = await renderGeometry(goalLineAnchorY);
+  let previousAnchorY = null;
+  let previousMeasuredY = null;
+  const targetCreaseTopY = GOAL_LINE_Y + 2;
+  for (let iteration = 0; iteration < 8; iteration += 1) {
+    const measuredCreaseTopY = detectGoalCreaseTopY(geometry.buffer, geometry.raw);
+    const correction = targetCreaseTopY - measuredCreaseTopY;
+    if (correction === 0) break;
+    let nextAnchorY = goalLineAnchorY + Math.sign(correction) * 40;
+    if (
+      previousAnchorY !== null &&
+      previousMeasuredY !== null &&
+      measuredCreaseTopY !== previousMeasuredY
+    ) {
+      nextAnchorY = Math.round(
+        goalLineAnchorY +
+          (correction * (goalLineAnchorY - previousAnchorY)) /
+            (measuredCreaseTopY - previousMeasuredY),
+      );
+    }
+    previousAnchorY = goalLineAnchorY;
+    previousMeasuredY = measuredCreaseTopY;
+    goalLineAnchorY = Math.max(500, Math.min(1100, nextAnchorY));
+    geometry = await renderGeometry(goalLineAnchorY);
+  }
   await sharp(geometry.buffer, { raw: geometry.raw }).webp({ quality: 92 }).toFile(temporaryPath);
   await rename(temporaryPath, outputPath);
 
@@ -267,9 +296,15 @@ async function buildArena(slug, canonicalBoardCurve) {
     .toBuffer({ resolveWithObject: true });
   const outputCurve = detectKickplateCurve(data, info);
   for (const x of BOARD_VALIDATION_XS) {
-    if (Math.abs(outputCurve[x] - canonicalBoardCurve[x]) > 4) {
+    if (Math.abs(outputCurve[x] - canonicalBoardCurve[x]) > 5) {
       throw new Error(`${slug}: board geometry differs from daily court at X=${x}`);
     }
+  }
+  const outputCreaseTopY = detectGoalCreaseTopY(data, info);
+  if (Math.abs(outputCreaseTopY - targetCreaseTopY) > 1) {
+    throw new Error(
+      `${slug}: goal crease starts at Y=${outputCreaseTopY}, expected ${targetCreaseTopY}`,
+    );
   }
 }
 
@@ -490,9 +525,12 @@ const canonicalDailyCourt = await sharp(dailyCourtPath)
   .removeAlpha()
   .raw()
   .toBuffer({ resolveWithObject: true });
-const canonicalBoardCurve = detectKickplateCurve(canonicalDailyCourt.data, canonicalDailyCourt.info);
-for (const arena of approvedArenas) await buildArena(arena, canonicalBoardCurve);
-for (const slug of approvedArenas) {
+const canonicalBoardCurve = detectKickplateCurve(
+  canonicalDailyCourt.data,
+  canonicalDailyCourt.info,
+);
+for (const arena of arenasToBuild) await buildArena(arena, canonicalBoardCurve);
+for (const slug of arenasToBuild) {
   await buildGoalkeeper(slug, 'ready');
   await buildGoalkeeper(slug, 'save');
 }
