@@ -164,7 +164,7 @@ describe('bonus goalkeeper asset framing', () => {
       expect(readyMetadata.hasAlpha, `${slug} ready alpha`).toBe(true);
       expect(saveMetadata.hasAlpha, `${slug} save alpha`).toBe(true);
       expect([readyMetadata.width, readyMetadata.height]).toEqual([1_254, 1_254]);
-      expect([saveMetadata.width, saveMetadata.height]).toEqual([1_354, 1_254]);
+      expect([saveMetadata.width, saveMetadata.height]).toEqual([1_254, 1_254]);
 
       const [ready, save, trainingReady, trainingSave] = await Promise.all([
         visibleFill(readyPath),
@@ -174,9 +174,8 @@ describe('bonus goalkeeper asset framing', () => {
       ]);
       const readyHeightRatio =
         ready.height / ready.canvasHeight / (trainingReady.height / trainingReady.canvasHeight);
-      const saveAssetHeightRatio =
+      const saveHeightRatio =
         save.height / save.canvasHeight / (trainingSave.height / trainingSave.canvasHeight);
-      const saveHeightRatio = saveAssetHeightRatio * (1.04 / 0.96);
       const readyWidthRatio =
         ready.width / ready.canvasWidth / (trainingReady.width / trainingReady.canvasWidth);
       const saveWidthRatio =
