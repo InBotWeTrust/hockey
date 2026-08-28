@@ -727,7 +727,7 @@
   border: 1px solid rgba(205, 232, 255, 0.46);
   border-radius: clamp(14px, 5cqw, 22px);
   color: #f8fbff;
-  background: linear-gradient(135deg, rgba(7, 24, 45, 0.18), rgba(15, 51, 78, 0.1));
+  background: linear-gradient(135deg, rgba(7, 24, 45, 0.12), rgba(15, 51, 78, 0.06));
   box-shadow:
     0 14px 30px rgba(0, 10, 27, 0.3),
     0 0 20px rgba(111, 190, 255, 0.11),
@@ -848,6 +848,16 @@
 
 .game-scoreboard__metric--small .game-scoreboard__value {
   font-size: clamp(14px, 4.8cqw, 20px);
+}
+
+.game-scoreboard__metric--timer.game-scoreboard__metric--small .game-scoreboard__label {
+  font-size: clamp(6px, 1.8cqw, 8px);
+  letter-spacing: 0.025em;
+}
+
+.game-scoreboard__metric--timer.game-scoreboard__metric--small .game-scoreboard__value {
+  font-size: clamp(12px, 3.9cqw, 18px);
+  letter-spacing: -0.035em;
 }
 
 .game-scoreboard__status-line {
