@@ -14,7 +14,6 @@ import {
   type TournamentFixture,
   type TournamentSummary,
 } from '../api/tournament.js';
-import { TournamentFixtureLive } from './TournamentFixtureLive.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { VenueBadge, type VenueRole } from '../components/VenueBadge.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
@@ -23,7 +22,8 @@ import { UserAvatar } from '../chat/components/UserAvatar.js';
 import { tournamentStatusLabel } from './labels.js';
 import { tournamentTimezoneLabel } from './timezoneLabel.js';
 import { TournamentStandingsTable } from './TournamentStandingsTable.js';
-import { TournamentMatchdayRow } from './TournamentMatchdayTimes.js';
+import { TournamentScheduleCalendar } from './TournamentScheduleCalendar.js';
+import { TournamentPlayoffBracket } from './TournamentPlayoffBracket.js';
 
 type TournamentTab = 'overview' | 'standings' | 'schedule' | 'playoff' | 'rules';
 
@@ -78,9 +78,9 @@ function participationLabel(tournament: TournamentSummary): string {
 
 function fixtureStatusLabel(status: string): string {
   const labels: Record<string, string> = {
-    conditional: 'Условная игра',
+    conditional: 'Соперники определятся позже',
     scheduled: 'Запланирована',
-    open: 'Окно открыто',
+    open: 'Можно начинать игру',
     active: 'Идёт игра',
     completed: 'Завершена',
     settled: 'Завершена',
@@ -93,16 +93,50 @@ function fixtureStatusLabel(status: string): string {
   return labels[status] ?? 'Статус уточняется';
 }
 
-function fixtureTimeLabel(fixture: TournamentFixture): string {
+function fixtureCanOpen(fixture: TournamentFixture, now = Date.now()): boolean {
+  if (fixture.status === 'open' || fixture.status === 'active') return true;
+  if (fixture.status !== 'scheduled' || fixture.scheduledStartsAt === null) return false;
+  const startsAt = new Date(fixture.scheduledStartsAt).getTime();
+  const endsAt =
+    fixture.windowEndsAt === null
+      ? Number.POSITIVE_INFINITY
+      : new Date(fixture.windowEndsAt).getTime();
+  return Number.isFinite(startsAt) && startsAt <= now && now < endsAt;
+}
+
+function fixtureTimeLabel(fixture: TournamentFixture, timezone: string): string {
   if (fixture.scheduledStartsAt === null) return 'Время ещё не назначено';
   const startsAt = new Date(fixture.scheduledStartsAt);
   if (!Number.isFinite(startsAt.getTime())) return 'Время ещё не назначено';
-  return startsAt.toLocaleString('ru-RU', {
-    day: 'numeric',
-    month: 'long',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  try {
+    const dateFormatter = new Intl.DateTimeFormat('ru-RU', {
+      timeZone: timezone,
+      day: 'numeric',
+      month: 'long',
+    });
+    const dateKeyFormatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const timeFormatter = new Intl.DateTimeFormat('ru-RU', {
+      timeZone: timezone,
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    const startDate = dateFormatter.format(startsAt);
+    const startTime = timeFormatter.format(startsAt);
+    if (fixture.windowEndsAt === null) return `${startDate} в ${startTime}`;
+    const endsAt = new Date(fixture.windowEndsAt);
+    if (!Number.isFinite(endsAt.getTime())) return `${startDate} в ${startTime}`;
+    const endTime = timeFormatter.format(endsAt);
+    return dateKeyFormatter.format(startsAt) === dateKeyFormatter.format(endsAt)
+      ? `${startDate}, ${startTime}–${endTime}`
+      : `${startDate}, ${startTime} — ${dateFormatter.format(endsAt)}, ${endTime}`;
+  } catch {
+    return startsAt.toLocaleString('ru-RU');
+  }
 }
 
 function registrationWindow(
@@ -384,9 +418,9 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
   const location = useLocation();
   const currentUserId = useAuthStore((state) => state.user?.id ?? null);
   const [tab, setTab] = useState<TournamentTab>(() => tournamentTabFromSearch(location.search));
-  const [selectedFixture, setSelectedFixture] = useState<TournamentFixture | null>(null);
   const [participantsOpen, setParticipantsOpen] = useState(false);
   const activeFixtureId = useRef<string | null>(null);
+  const fixtureOpeningRef = useRef(false);
   const openFixtureGeneration = useRef(0);
   const queryClient = useQueryClient();
   const registrationState = registrationWindow(tournament);
@@ -443,29 +477,12 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
       params.set('play', '1');
       navigate(`/?${params.toString()}`);
     },
+    onSettled: (_data, _error, variables) => {
+      if (variables.generation === openFixtureGeneration.current) {
+        fixtureOpeningRef.current = false;
+      }
+    },
   });
-
-  if (selectedFixture !== null) {
-    return (
-      <TournamentFixtureLive
-        fixture={selectedFixture}
-        onBack={() => {
-          openFixtureGeneration.current += 1;
-          activeFixtureId.current = null;
-          openFixture.reset();
-          setSelectedFixture(null);
-        }}
-        onPlay={() => {
-          const generation = openFixtureGeneration.current + 1;
-          openFixtureGeneration.current = generation;
-          activeFixtureId.current = selectedFixture.id;
-          openFixture.mutate({ fixtureId: selectedFixture.id, generation });
-        }}
-        playPending={openFixture.isPending}
-        playError={openFixture.isError}
-      />
-    );
-  }
 
   return (
     <div className="tournament-details">
@@ -494,13 +511,17 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
               <h3>Сроки</h3>
               <dl>
                 <div>
-                  <dt>Регистрация</dt>
+                  <dt>Начало регистрации</dt>
                   <dd>
                     {tournamentDateLabel(
                       tournament.registrationOpensAt,
                       String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
-                    )}{' '}
-                    —{' '}
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Конец регистрации</dt>
+                  <dd>
                     {tournamentDateLabel(
                       tournament.registrationClosesAt,
                       String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
@@ -577,70 +598,118 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
             <div role="status">Загрузка расписания…</div>
           ) : schedule.isError ? (
             <div role="status">Не удалось загрузить расписание.</div>
-          ) : schedule.data?.fixtures.length ? (
-            <div className="tournament-fixture-list">
-              {schedule.data.fixtures.map((fixture) => {
-                const mine =
-                  fixture.home?.userId === currentUserId || fixture.away?.userId === currentUserId;
-                const playable =
-                  fixture.status === 'scheduled' ||
-                  fixture.status === 'open' ||
-                  fixture.status === 'active';
+          ) : schedule.data &&
+            (schedule.data.fixtures.length > 0 || (schedule.data.matchdays?.length ?? 0) > 0) ? (
+            <TournamentScheduleCalendar
+              fixtures={schedule.data.fixtures}
+              matchdays={schedule.data.matchdays ?? []}
+              regularSource={tournament.regularSource}
+              currentUserId={currentUserId}
+              isParticipant={tournament.myParticipantState === 'approved'}
+              timezone={String(tournament.rules.config.timezone ?? 'Europe/Moscow')}
+              rangeStartsAt={tournament.startsAt}
+              rangeEndsAt={tournament.completedAt ?? tournament.projectedEndsAt ?? null}
+              onOpenDailyGame={() => {
+                const params = new URLSearchParams({
+                  view: 'daily',
+                  section: 'tournaments',
+                  tournament: tournament.id,
+                  tab: 'schedule',
+                });
+                if (new URLSearchParams(location.search).get('from') === 'sections') {
+                  params.set('from', 'sections');
+                }
+                navigate(`/?${params.toString()}`);
+              }}
+              formatDateTime={(value) =>
+                tournamentDateLabel(
+                  value,
+                  String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
+                )
+              }
+              renderFixture={(fixture, mine) => {
+                const playable = fixtureCanOpen(fixture);
+                const finished =
+                  ['completed', 'settled', 'forfeit', 'technical'].includes(fixture.status) ||
+                  fixture.score.home + fixture.score.away > 0;
                 return (
-                  <article key={fixture.id} className="tournament-fixture-card">
+                  <article
+                    key={fixture.id}
+                    className={`tournament-fixture-card${mine ? ' tournament-fixture-card--mine' : ''}`}
+                  >
                     <div className="tournament-fixture-card__meta">
-                      <span>{fixtureTimeLabel(fixture)}</span>
+                      <span>
+                        {fixtureTimeLabel(
+                          fixture,
+                          String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
+                        )}
+                      </span>
                       <strong>{fixtureStatusLabel(fixture.status)}</strong>
                     </div>
                     <div className="tournament-fixture-summary">
-                      <span>
-                        {fixture.home?.name ?? 'Участник'} — {fixture.away?.name ?? 'Участник'}
-                      </span>
-                      <VenueBadge role={fixtureVenueRole(fixture, currentUserId)} />
-                    </div>
-                    {(['settled', 'forfeit'].includes(fixture.status) ||
-                      fixture.score.home + fixture.score.away > 0) && (
-                      <div className="tournament-fixture-card__score">
-                        Счёт {fixture.score.home}:{fixture.score.away}
+                      <div className="tournament-fixture-matchup">
+                        <div className="tournament-fixture-matchup__avatars">
+                          <UserAvatar
+                            avatarUrl={fixture.home?.avatarUrl}
+                            name={fixture.home?.name}
+                            size={28}
+                            alt={fixture.home?.name ?? 'Хозяин'}
+                          />
+                          <UserAvatar
+                            avatarUrl={fixture.away?.avatarUrl}
+                            name={fixture.away?.name}
+                            size={28}
+                            alt={fixture.away?.name ?? 'Гость'}
+                          />
+                        </div>
+                        <span className="tournament-fixture-matchup__names">
+                          {fixture.home?.name ?? 'Участник'} — {fixture.away?.name ?? 'Участник'}
+                        </span>
                       </div>
-                    )}
-                    {mine && playable && (
-                      <button
-                        type="button"
-                        className="admin-compact-btn tournament-fixture-card__action"
-                        onClick={() => {
-                          openFixtureGeneration.current += 1;
-                          activeFixtureId.current = fixture.id;
-                          openFixture.reset();
-                          setSelectedFixture(fixture);
-                        }}
-                      >
-                        Открыть игру
-                      </button>
+                    </div>
+                    {(finished || mine) && (
+                      <div className="tournament-fixture-card__footer">
+                        <div>
+                          {finished && (
+                            <strong className="tournament-fixture-card__score">
+                              Счёт {fixture.score.home}:{fixture.score.away}
+                            </strong>
+                          )}
+                          {mine && playable && (
+                            <>
+                              <button
+                                type="button"
+                                className="admin-compact-btn tournament-fixture-card__action tournament-fixture-card__action--primary"
+                                disabled={openFixture.isPending}
+                                onClick={() => {
+                                  if (fixtureOpeningRef.current) return;
+                                  fixtureOpeningRef.current = true;
+                                  const generation = openFixtureGeneration.current + 1;
+                                  openFixtureGeneration.current = generation;
+                                  activeFixtureId.current = fixture.id;
+                                  openFixture.reset();
+                                  openFixture.mutate({ fixtureId: fixture.id, generation });
+                                }}
+                              >
+                                {openFixture.isPending && activeFixtureId.current === fixture.id
+                                  ? 'Открываем…'
+                                  : 'Открыть игру'}
+                              </button>
+                              {openFixture.isError && activeFixtureId.current === fixture.id && (
+                                <span className="tournament-fixture-card__error" role="alert">
+                                  Не удалось открыть игру. Попробуйте ещё раз.
+                                </span>
+                              )}
+                            </>
+                          )}
+                        </div>
+                        {mine && <VenueBadge role={fixtureVenueRole(fixture, currentUserId)} />}
+                      </div>
                     )}
                   </article>
                 );
-              })}
-            </div>
-          ) : (schedule.data?.matchdays?.length ?? 0) > 0 ? (
-            <div className="tournament-matchday-list">
-              {schedule.data!.matchdays!.map((matchday) => (
-                <TournamentMatchdayRow
-                  key={matchday.id}
-                  number={matchday.number}
-                  startsAt={matchday.startsAt}
-                  endsAt={matchday.endsAt}
-                  startLabel={tournamentDateLabel(
-                    matchday.startsAt,
-                    String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
-                  )}
-                  endLabel={tournamentDateLabel(
-                    matchday.endsAt,
-                    String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
-                  )}
-                />
-              ))}
-            </div>
+              }}
+            />
           ) : (
             <div>Расписание ещё не опубликовано.</div>
           ))}
@@ -650,12 +719,11 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
           ) : bracket.isError ? (
             <div role="status">Не удалось загрузить сетку плей-офф.</div>
           ) : bracket.data?.series.length ? (
-            bracket.data.series.map((series, index) => (
-              <div className="tournament-bracket-row" key={String(series.id ?? index)}>
-                {String(series.higher_name ?? 'Определяется')} —{' '}
-                {String(series.lower_name ?? 'Определяется')}
-              </div>
-            ))
+            <TournamentPlayoffBracket
+              key={tournament.id}
+              series={bracket.data.series}
+              timezone={String(tournament.rules.config.timezone ?? 'Europe/Moscow')}
+            />
           ) : (
             <div>Сетка появится после завершения регулярного чемпионата.</div>
           ))}

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent, act, within, cleanup } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   DAILY_PERIOD_SPEED_PRESETS,
@@ -1021,6 +1021,47 @@ describe('DailyScreen', () => {
 
     expect(await findArenaCta('Ежедневная игра: 1-й период')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();
+  });
+
+  it('returns from a tournament daily game to that tournament schedule', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ...baseState,
+          state: 'period_active',
+          current_period: 1,
+          current_period_shots: 4,
+          current_period_goals: 2,
+          daily_seed: 'seed-abc',
+          period_ends_at: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    function LocationProbe() {
+      return <output aria-label="Текущий адрес">{useLocation().search}</output>;
+    }
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter
+          initialEntries={[
+            '/?view=daily&section=tournaments&tournament=daily-1&tab=schedule&from=sections',
+          ]}
+        >
+          <DailyScreen />
+          <LocationProbe />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByRole('button', { name: 'К турниру' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'К режимам' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'К турниру' }));
+
+    expect(screen.getByLabelText('Текущий адрес')).toHaveTextContent(
+      'view=amateur&section=tournaments&tournament=daily-1&tab=schedule&from=sections',
+    );
   });
 
   it('keeps the third period playable instead of showing the closed-day modal', async () => {

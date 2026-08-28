@@ -506,7 +506,14 @@ export function DailyScreen(): JSX.Element {
   if (selectedLevel === 'beginner' && beginnerMode === 'daily' && dailyView === 'play') {
     return (
       <DailyPlayView
-        onBack={openHub}
+        backLabel={tournamentOrigin ? 'К турниру' : 'К режимам'}
+        onBack={() => {
+          if (tournamentOrigin) {
+            navigate(tournamentDuelBackPath(fromSections, tournamentId), { replace: true });
+            return;
+          }
+          openHub();
+        }}
         playEntranceOnMount={pendingPlayEntrance === 'daily'}
         onEntranceConsumed={() => setPendingPlayEntrance(null)}
         playRouteTransitionOnMount={pendingPlayRouteTransition === 'daily'}
@@ -7326,12 +7333,14 @@ interface DailyStatsModalState {
 
 function DailyPlayView({
   onBack,
+  backLabel = 'К режимам',
   playEntranceOnMount = false,
   onEntranceConsumed,
   playRouteTransitionOnMount = false,
   onRouteTransitionConsumed,
 }: {
   onBack: () => void;
+  backLabel?: string;
   playEntranceOnMount?: boolean;
   onEntranceConsumed?: () => void;
   playRouteTransitionOnMount?: boolean;
@@ -7466,6 +7475,7 @@ function DailyPlayView({
         playRouteTransitionOnMount={playRouteTransitionOnMount}
         onRouteTransitionConsumed={onRouteTransitionConsumed}
         onBack={onBack}
+        backLabel={backLabel}
         active={data.state === 'period_active'}
         seed={data.daily_seed}
         goalieId={data.goalie_id}

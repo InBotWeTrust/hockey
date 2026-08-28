@@ -1468,9 +1468,16 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     );
     const home = homeFixture.rows[0]!;
     expect(home.venue_mode).toBe('home_selected');
+    await pool.query(`update users set avatar_url = '/home-player.webp' where id = $1`, [
+      home.home_user_id,
+    ]);
     expect(await getTournamentSchedule(pool, homeTournament.id)).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ id: home.id, venueMode: 'home_selected' }),
+        expect.objectContaining({
+          id: home.id,
+          venueMode: 'home_selected',
+          home: expect.objectContaining({ avatarUrl: '/home-player.webp' }),
+        }),
       ]),
     );
     const beach = await selectHomeArena(pool, home.home_user_id, 'beach');
@@ -2045,6 +2052,30 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     expect(finalSeries.rows[0]).toEqual({
       higher_seed_participant_id: firstRound.rows[0]!.higher_seed_participant_id,
       status: 'pending',
+    });
+    const bracket = await tournamentService.getTournamentBracket(pool, tournament.id);
+    const completedSemifinal = bracket.find((series) => series.depends_on?.key === 'R1S1');
+    const waitingFinal = bracket.find((series) => series.depends_on?.key === 'R2S1');
+    expect(completedSemifinal).toMatchObject({
+      higher_seed: 1,
+      lower_seed: 4,
+      winner_user_id: PLAYER_IDS[0],
+    });
+    expect(completedSemifinal.fixtures).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          status: 'forfeit',
+          homeName: expect.any(String),
+          awayName: expect.any(String),
+          homeScore: expect.any(Number),
+          awayScore: expect.any(Number),
+          winnerSide: expect.stringMatching(/^(home|away)$/),
+        }),
+      ]),
+    );
+    expect(waitingFinal).toMatchObject({
+      higher_seed: 1,
+      lower_seed: null,
     });
     const notifications = await pool.query<{ event_key: string }>(
       `select event_key from push_delivery_log

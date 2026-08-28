@@ -1384,7 +1384,10 @@ export async function publishRegularSchedule(pool: Pool, tournamentId: string) {
       [tournamentId],
     );
     const publishedConfig = current.rules_snapshot.config;
-    if (current.regular_source === 'daily_aggregate' && publishedConfig.regularSource === 'daily_aggregate') {
+    if (
+      current.regular_source === 'daily_aggregate' &&
+      publishedConfig.regularSource === 'daily_aggregate'
+    ) {
       await rebuildDailyAggregateStandings(client, tournamentId, {
         ...current.rules_snapshot,
         config: publishedConfig,
@@ -1417,15 +1420,35 @@ export async function getTournamentSchedule(pool: Pool, tournamentId: string) {
     venue_mode: 'home_selected' | 'neutral_default';
     home_user_id: string | null;
     home_name: string | null;
+    home_avatar_url: string | null;
     away_user_id: string | null;
     away_name: string | null;
+    away_avatar_url: string | null;
     home_score: number;
     away_score: number;
   }>(
     `select f.id, f.fixture_number, r.stage, r.number as round_number,
             f.scheduled_starts_at, f.window_ends_at, f.status, f.venue_mode,
             hp.user_id as home_user_id, hu.display_name as home_name,
+            coalesce(
+              case
+                when hu.display_source = 'custom' then hu.custom_avatar_url
+                when hu.display_source = 'vk' then hu.vk_avatar_url
+                when hu.display_source = 'telegram' then hu.tg_avatar_url
+                else hu.avatar_url
+              end,
+              hu.avatar_url
+            ) as home_avatar_url,
             ap.user_id as away_user_id, au.display_name as away_name,
+            coalesce(
+              case
+                when au.display_source = 'custom' then au.custom_avatar_url
+                when au.display_source = 'vk' then au.vk_avatar_url
+                when au.display_source = 'telegram' then au.tg_avatar_url
+                else au.avatar_url
+              end,
+              au.avatar_url
+            ) as away_avatar_url,
             f.home_score, f.away_score
        from tournament_fixture f
        join tournament_round r on r.id = f.round_id
@@ -1446,8 +1469,22 @@ export async function getTournamentSchedule(pool: Pool, tournamentId: string) {
     windowEndsAt: row.window_ends_at?.toISOString() ?? null,
     status: row.status,
     venueMode: row.venue_mode,
-    home: row.home_user_id === null ? null : { userId: row.home_user_id, name: row.home_name },
-    away: row.away_user_id === null ? null : { userId: row.away_user_id, name: row.away_name },
+    home:
+      row.home_user_id === null
+        ? null
+        : {
+            userId: row.home_user_id,
+            name: row.home_name,
+            avatarUrl: row.home_avatar_url,
+          },
+    away:
+      row.away_user_id === null
+        ? null
+        : {
+            userId: row.away_user_id,
+            name: row.away_name,
+            avatarUrl: row.away_avatar_url,
+          },
     score: { home: Number(row.home_score), away: Number(row.away_score) },
   }));
 }
@@ -2286,17 +2323,74 @@ export async function getTournamentBracket(pool: Pool, tournamentId: string) {
   const { rows } = await pool.query(
     `select s.id, s.bracket_position, s.kind, s.wins_required, s.higher_seed_wins,
             s.lower_seed_wins, s.status, s.home_sequence, s.depends_on,
-            hp.user_id as higher_user_id, hu.display_name as higher_name,
-            lp.user_id as lower_user_id, lu.display_name as lower_name,
-            wp.user_id as winner_user_id
+            r.number as round_number, r.name as round_name,
+            hp.user_id as higher_user_id, hs.rank as higher_seed,
+            hu.display_name as higher_name,
+            coalesce(
+              case
+                when hu.display_source = 'custom' then hu.custom_avatar_url
+                when hu.display_source = 'vk' then hu.vk_avatar_url
+                when hu.display_source = 'telegram' then hu.tg_avatar_url
+                else hu.avatar_url
+              end,
+              hu.avatar_url
+            ) as higher_avatar_url,
+            lp.user_id as lower_user_id, ls.rank as lower_seed,
+            lu.display_name as lower_name,
+            coalesce(
+              case
+                when lu.display_source = 'custom' then lu.custom_avatar_url
+                when lu.display_source = 'vk' then lu.vk_avatar_url
+                when lu.display_source = 'telegram' then lu.tg_avatar_url
+                else lu.avatar_url
+              end,
+              lu.avatar_url
+            ) as lower_avatar_url,
+            wp.user_id as winner_user_id, fixture_schedule.fixtures
        from tournament_playoff_series s
+       join tournament_round r on r.id = s.round_id
        left join tournament_participant hp on hp.id = s.higher_seed_participant_id
+       left join tournament_standing hs
+         on hs.tournament_id = s.tournament_id and hs.participant_id = hp.id
        left join users hu on hu.id = hp.user_id
        left join tournament_participant lp on lp.id = s.lower_seed_participant_id
+       left join tournament_standing ls
+         on ls.tournament_id = s.tournament_id and ls.participant_id = lp.id
        left join users lu on lu.id = lp.user_id
        left join tournament_participant wp on wp.id = s.winner_participant_id
+       left join lateral (
+         select coalesce(
+           jsonb_agg(
+             jsonb_build_object(
+               'id', fixture.id,
+               'gameNumber', coalesce((fixture.result_snapshot->>'gameNumber')::int, 1),
+               'scheduledStartsAt', fixture.scheduled_starts_at,
+               'windowEndsAt', fixture.window_ends_at,
+               'status', fixture.status,
+               'homeName', fixture_home_user.display_name,
+               'awayName', fixture_away_user.display_name,
+               'homeScore', fixture.home_score,
+               'awayScore', fixture.away_score,
+               'winnerSide', case
+                 when fixture.winner_participant_id = fixture.home_participant_id then 'home'
+                 when fixture.winner_participant_id = fixture.away_participant_id then 'away'
+                 else null
+               end
+             ) order by fixture.fixture_number
+           ),
+           '[]'::jsonb
+         ) as fixtures
+           from tournament_fixture fixture
+           left join tournament_participant fixture_home
+             on fixture_home.id = fixture.home_participant_id
+           left join users fixture_home_user on fixture_home_user.id = fixture_home.user_id
+           left join tournament_participant fixture_away
+             on fixture_away.id = fixture.away_participant_id
+           left join users fixture_away_user on fixture_away_user.id = fixture_away.user_id
+          where fixture.series_id = s.id
+       ) fixture_schedule on true
       where s.tournament_id = $1
-      order by s.kind, s.round_id, s.bracket_position`,
+      order by r.number, s.kind, s.bracket_position`,
     [tournamentId],
   );
   return rows;

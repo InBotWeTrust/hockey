@@ -56,8 +56,8 @@ export interface TournamentFixture {
   windowEndsAt: string | null;
   status: string;
   venueMode: 'home_selected' | 'neutral_default';
-  home: { userId: string; name: string | null } | null;
-  away: { userId: string; name: string | null } | null;
+  home: { userId: string; name: string | null; avatarUrl?: string | null } | null;
+  away: { userId: string; name: string | null; avatarUrl?: string | null } | null;
   score: { home: number; away: number };
 }
 
@@ -67,6 +67,48 @@ export interface TournamentMatchday {
   localDate: string;
   startsAt: string;
   endsAt: string;
+}
+
+export interface TournamentBracketSource {
+  type: 'seed' | 'winner' | 'loser';
+  participantId?: string;
+  seriesKey?: string;
+}
+
+export interface TournamentBracketFixture {
+  id: string;
+  gameNumber: number;
+  scheduledStartsAt: string | null;
+  windowEndsAt: string | null;
+  status: string;
+  homeName: string | null;
+  awayName: string | null;
+  homeScore: number | null;
+  awayScore: number | null;
+  winnerSide: 'home' | 'away' | null;
+}
+
+export interface TournamentBracketSeries {
+  id: string;
+  bracket_position: number;
+  kind: 'championship' | 'third_place';
+  round_number: number;
+  round_name: string;
+  wins_required: number;
+  higher_seed_wins: number;
+  lower_seed_wins: number;
+  status: string;
+  higher_user_id: string | null;
+  higher_name: string | null;
+  higher_avatar_url: string | null;
+  higher_seed: number | null;
+  lower_user_id: string | null;
+  lower_name: string | null;
+  lower_avatar_url: string | null;
+  lower_seed: number | null;
+  winner_user_id: string | null;
+  depends_on: { key?: string; sources?: TournamentBracketSource[] } | null;
+  fixtures: TournamentBracketFixture[];
 }
 
 export interface TournamentLiveParticipant {
@@ -150,9 +192,7 @@ export function openTournamentFixtureSegment(tournamentId: string, fixtureId: st
 }
 
 export function fetchTournamentBracket(tournamentId: string) {
-  return apiFetch<{ series: Array<Record<string, unknown>> }>(
-    `/tournaments/${tournamentId}/bracket`,
-  );
+  return apiFetch<{ series: TournamentBracketSeries[] }>(`/tournaments/${tournamentId}/bracket`);
 }
 
 export function fetchFixtureLiveState(fixtureId: string) {
