@@ -452,7 +452,7 @@ describe('BonusGamesScreen', () => {
     const artwork = await screen.findByAltText('Площадка «Пляж»');
     expect(artwork).toHaveAttribute(
       'src',
-      '/bonus-games/arenas/beach.webp?v=20260828-world-tour-daily-board-v4',
+      '/bonus-games/arenas/beach.webp?v=20260828-world-tour-regenerated-v5',
     );
     expect(artwork).toHaveStyle({ objectPosition: 'center top' });
     expect(artwork.parentElement).toHaveClass('bonus-game-card__artwork-frame');
@@ -595,7 +595,7 @@ describe('BonusGamesScreen', () => {
 
     expect(await screen.findByAltText('Площадка «Пляж»')).toHaveAttribute(
       'src',
-      '/bonus-games/arenas/beach.webp?v=20260828-world-tour-daily-board-v4',
+      '/bonus-games/arenas/beach.webp?v=20260828-world-tour-regenerated-v5',
     );
   });
 
