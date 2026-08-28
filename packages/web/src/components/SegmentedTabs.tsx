@@ -10,12 +10,14 @@ export function SegmentedTabs<T extends string>({
   ariaLabel,
   onChange,
   scrollable = false,
+  disabled = false,
 }: {
   items: Array<SegmentedTabItem<T>>;
   activeTab: T;
   ariaLabel: string;
   onChange: (tab: T) => void;
   scrollable?: boolean;
+  disabled?: boolean;
 }): JSX.Element {
   const isCompact = items.length >= 4;
   const columns = isCompact
@@ -37,6 +39,7 @@ export function SegmentedTabs<T extends string>({
             type="button"
             role="tab"
             aria-selected={active}
+            disabled={disabled}
             onClick={() => {
               if (active) return;
               onChange(tab.id);

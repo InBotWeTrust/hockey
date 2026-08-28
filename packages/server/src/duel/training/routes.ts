@@ -381,10 +381,10 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
         ...(body.input.shooterTapTime !== undefined
           ? { shooterTapTime: body.input.shooterTapTime }
           : {}),
-        puckSpeedPerMs: body.input.puckSpeedPerMs ?? periodSpeeds.puckSpeedPerMs,
-        shooterFrequency: body.input.shooterFrequency ?? periodSpeeds.shooterFrequency,
-        goalieFrequency: body.input.goalieFrequency ?? periodSpeeds.goalieFrequency,
-        goalFrequency: body.input.goalFrequency ?? periodSpeeds.goalFrequency,
+        puckSpeedPerMs: periodSpeeds.puckSpeedPerMs,
+        shooterFrequency: periodSpeeds.shooterFrequency,
+        goalieFrequency: periodSpeeds.goalieFrequency,
+        goalFrequency: periodSpeeds.goalFrequency,
       };
       const result = resolvePerspectiveCourtShot(
         shotInput,
