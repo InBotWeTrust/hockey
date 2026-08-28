@@ -3007,6 +3007,7 @@ function TrainingPlaceholder({
   const error = useTrainingSessionStore((s) => s.error);
   const inFlight = useTrainingSessionStore((s) => s.inFlight);
   const refresh = useTrainingSessionStore((s) => s.refresh);
+  const start = useTrainingSessionStore((s) => s.start);
   const [selectedPeriod, setSelectedPeriod] = useState<1 | 2 | 3>(1);
   const [playTraining, setPlayTraining] = useState(() => autoPlay);
   const [localPlayEntrance, setLocalPlayEntrance] = useState(false);
@@ -3057,6 +3058,10 @@ function TrainingPlaceholder({
 
   const handleTrainingAction = async (): Promise<void> => {
     setLocalPlayEntrance(false);
+    if (data?.state === 'active' && data.selected_period !== selectedPeriod) {
+      const switched = await start(selectedPeriod);
+      if (switched === null) return;
+    }
     setPlayTraining(true);
     onPlayStart?.();
   };
@@ -3112,6 +3117,7 @@ function TrainingPlaceholder({
                   { id: '3', label: '3 период' },
                 ]}
                 value={String(selectedPeriod)}
+                disabled={loading || inFlight}
                 onChange={(id) => setSelectedPeriod(Number(id) as 1 | 2 | 3)}
               />
               <PeriodSpeedSummary
@@ -3121,7 +3127,7 @@ function TrainingPlaceholder({
               <button
                 type="button"
                 className="btn btn--cta"
-                disabled={inFlight}
+                disabled={loading || inFlight}
                 onClick={() => void handleTrainingAction()}
               >
                 {trainingActionLabel}
