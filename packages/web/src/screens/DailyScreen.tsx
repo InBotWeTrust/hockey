@@ -7652,15 +7652,26 @@ function TrainingSpeedControls({
         aria-label="Скорости"
         title="Скорости"
         onClick={onOpen}
-        style={
-          hasCustomSpeeds
-            ? {
-                background: 'rgba(8, 24, 43, 0.86)',
-                borderColor: 'rgba(255, 255, 255, 0.34)',
-                color: '#ffffff',
-              }
-            : undefined
-        }
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 34,
+          height: 34,
+          padding: 0,
+          borderRadius: 999,
+          background: hasCustomSpeeds ? 'rgba(8, 24, 43, 0.86)' : 'rgba(255, 255, 255, 0.82)',
+          border: hasCustomSpeeds
+            ? '1px solid rgba(255, 255, 255, 0.34)'
+            : '1px solid rgba(15, 23, 42, 0.12)',
+          boxShadow: hasCustomSpeeds
+            ? '0 10px 22px rgba(7, 19, 33, 0.22)'
+            : '0 8px 18px rgba(15, 23, 42, 0.12), inset 0 1px 0 rgba(255,255,255,0.86)',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+          color: hasCustomSpeeds ? '#ffffff' : 'rgba(15, 23, 42, 0.68)',
+          cursor: 'pointer',
+        }}
       >
         <SlidersHorizontal aria-hidden="true" size={17} strokeWidth={2.4} />
       </button>
