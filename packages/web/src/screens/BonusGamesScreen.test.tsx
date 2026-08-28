@@ -314,6 +314,7 @@ describe('BonusGamesScreen', () => {
     renderCatalog();
 
     expect(await screen.findByRole('heading', { name: 'Бонусные игры' })).toBeInTheDocument();
+    expect(screen.queryByRole('tablist', { name: 'Разделы любителей' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Назад' })).toBeInTheDocument();
     expect(screen.queryByText('Разделы')).not.toBeInTheDocument();
   });
@@ -346,7 +347,7 @@ describe('BonusGamesScreen', () => {
     );
   });
 
-  it('uses action buttons for availability without rendering a separate status line', async () => {
+  it('uses card-wide controls for actionable games and a lock marker for closed games', async () => {
     mockCatalog([
       card({ id: 'beach', title: 'Пляж', state: 'completed', is_completed: true }),
       card({
@@ -369,14 +370,17 @@ describe('BonusGamesScreen', () => {
     ]);
     renderCatalog();
 
-    expect(await screen.findByRole('button', { name: 'Открыть за 1 звезду' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Повторить' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Закрыта' })).toBeInTheDocument();
+    const purchaseControl = await screen.findByRole('button', { name: 'Открыть за 1 звезду' });
+    const repeatControl = screen.getByRole('button', { name: 'Повторить' });
+    expect(purchaseControl).toHaveClass('bonus-game-card__hit-area');
+    expect(repeatControl).toHaveClass('bonus-game-card__hit-area');
+    expect(screen.queryByRole('button', { name: 'Закрыта' })).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Дальше' })).toHaveClass(
       'section-label',
       'sections-group__title',
     );
     expect(screen.getByLabelText('Игра пройдена')).toBeInTheDocument();
+    expect(screen.getByLabelText('Игра закрыта')).toBeInTheDocument();
     expect(screen.queryByText('Нужно пройти: Пляж')).not.toBeInTheDocument();
     expect(screen.queryByText('Готова к игре')).not.toBeInTheDocument();
   });
@@ -404,12 +408,59 @@ describe('BonusGamesScreen', () => {
     expect(completionMarker).not.toHaveTextContent('Пройдено');
     expect(completedCard!.querySelector('.bonus-game-card__completion')).toBeNull();
     expect(within(completedCard!).getByRole('button', { name: 'Повторить' })).toHaveClass(
-      'bonus-game-card__action--repeat',
+      'bonus-game-card__hit-area',
     );
-    expect(within(completedCard!).queryByLabelText('Монеты: 100')).not.toBeInTheDocument();
+    expect(completedCard!.querySelector('.bonus-game-card__action')).toBeNull();
+    expect(within(completedCard!).getByLabelText('Монеты: 100')).toBeInTheDocument();
+    expect(completedCard!.querySelector('.bonus-game-card__reward')).toHaveClass(
+      'bonus-game-card__reward--muted',
+    );
   });
 
-  it('keeps a conflicting repeat action clickable and visibly dark', async () => {
+  it('keeps a reserved chevron slot and splits compact game rules into two lines', async () => {
+    mockCatalog([
+      card({ id: 'beach', title: 'Пляж', state: 'completed', is_completed: true }),
+      card({
+        id: 'resort',
+        title: 'Курорт',
+        sort_order: 2,
+        state: 'available',
+      }),
+      card({
+        id: 'locked-resort',
+        title: 'Закрытый курорт',
+        sort_order: 3,
+        state: 'sequence_locked',
+        is_unlocked: false,
+      }),
+    ]);
+    renderCatalog();
+
+    const compactCard = (await screen.findByRole('heading', { name: 'Пляж' })).closest('article');
+    const availableCard = screen.getByRole('heading', { name: 'Курорт' }).closest('article');
+    const lockedCard = screen.getByRole('heading', { name: 'Закрытый курорт' }).closest('article');
+    expect(compactCard).not.toBeNull();
+    expect(compactCard).toHaveClass('bonus-game-card--compact');
+    expect(within(compactCard!).getByText('18 голов из 30 бросков')).toHaveClass(
+      'bonus-game-card__details-primary',
+    );
+    expect(within(compactCard!).getByText('1 период · 30 бросков')).toHaveClass(
+      'bonus-game-card__details-secondary',
+    );
+    expect(availableCard!.querySelector('.bonus-game-card__chevron')).toHaveClass(
+      'card-chevron',
+    );
+    expect(availableCard!.querySelector('.bonus-game-card__chevron')).not.toHaveClass(
+      'bonus-game-card__chevron--hidden',
+    );
+    expect(lockedCard!.querySelector('.bonus-game-card__chevron')).toHaveClass(
+      'bonus-game-card__chevron--hidden',
+    );
+    expect(lockedCard!.querySelector('.bonus-game-card__chevron')).toBeInTheDocument();
+    expect(within(lockedCard!).getByLabelText('Игра закрыта')).toBeInTheDocument();
+  });
+
+  it('keeps a conflicting repeat card actionable through the card-wide control', async () => {
     mockCatalog([
       card({ id: 'speed-beach', state: 'completed', is_completed: true }),
       card({
@@ -432,17 +483,9 @@ describe('BonusGamesScreen', () => {
 
     const repeatButton = await screen.findByRole('button', { name: 'Повторить' });
     expect(repeatButton).toBeEnabled();
+    expect(repeatButton).toHaveClass('bonus-game-card__hit-area');
     fireEvent.click(repeatButton);
     expect(screen.getByRole('dialog', { name: 'Уже идёт другая игра' })).toBeInTheDocument();
-    const style = document.createElement('style');
-    style.textContent = designSystemCss;
-    document.head.append(style);
-    try {
-      expect(getComputedStyle(repeatButton).backgroundColor).toBe('rgb(15, 23, 42)');
-      expect(getComputedStyle(repeatButton).opacity).toBe('1');
-    } finally {
-      style.remove();
-    }
   });
 
   it('keeps the featured card artwork wide and focused on the upper location', async () => {
@@ -452,7 +495,7 @@ describe('BonusGamesScreen', () => {
     const artwork = await screen.findByAltText('Площадка «Пляж»');
     expect(artwork).toHaveAttribute(
       'src',
-      '/bonus-games/arenas/beach.webp?v=20260828-world-tour-goal-line-v6',
+      '/bonus-games/arenas/beach.webp?v=20260829-world-tour-user-pngs-v10',
     );
     expect(artwork).toHaveStyle({ objectPosition: 'center top' });
     expect(artwork.parentElement).toHaveClass('bonus-game-card__artwork-frame');
@@ -595,7 +638,7 @@ describe('BonusGamesScreen', () => {
 
     expect(await screen.findByAltText('Площадка «Пляж»')).toHaveAttribute(
       'src',
-      '/bonus-games/arenas/beach.webp?v=20260828-world-tour-goal-line-v6',
+      '/bonus-games/arenas/beach.webp?v=20260829-world-tour-user-pngs-v10',
     );
   });
 
@@ -674,9 +717,12 @@ describe('BonusGamesScreen', () => {
     ]);
     renderCatalog();
 
-    expect(
-      await screen.findByText('21 голов из 21 бросков · 2 периода · 21 бросок'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('21 голов из 21 бросков')).toHaveClass(
+      'bonus-game-card__details-primary',
+    );
+    expect(screen.getByText('2 периода · 21 бросок')).toHaveClass(
+      'bonus-game-card__details-secondary',
+    );
     expect(screen.getByText('За первое прохождение')).toBeInTheDocument();
     expect(screen.getByLabelText('Монеты: 21')).toHaveTextContent('21');
     expect(screen.getByLabelText('Звёзды: 22')).toHaveTextContent('22');

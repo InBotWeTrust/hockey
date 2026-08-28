@@ -123,7 +123,7 @@ const HUB_PERIOD_DURATION_MS = 20 * 60 * 1000;
 type GameLevel = 'beginner' | 'amateur' | 'pro';
 type BeginnerMode = 'daily' | 'training';
 type DailyView = 'arena' | 'play';
-type AmateurView = 'duels' | 'tournaments';
+type AmateurView = 'hub' | 'duels' | 'tournaments';
 type AmateurDuelTab = 'game' | 'locker' | 'rating' | 'history';
 type DuelHistoryFilter = 'current' | 'all' | string;
 type ModeInfoModalContent = { title: string; text: string };
@@ -334,6 +334,31 @@ type PlayOpenOptions = {
 
 type PendingPlayMarker = 'daily' | 'training' | `duel:${string}` | null;
 
+export function initialGameRouteState(search: string): {
+  selectedLevel: GameLevel;
+  activeAmateurMatchId: string | null;
+  amateurView: AmateurView;
+  beginnerMode: BeginnerMode;
+  dailyView: DailyView;
+} {
+  const params = new URLSearchParams(search);
+  const view = params.get('view');
+  const amateurSection = params.get('section');
+  const activeAmateurMatchId = view === 'amateur' ? params.get('match') : null;
+  return {
+    selectedLevel: view === 'amateur' ? 'amateur' : view === 'pro' ? 'pro' : 'beginner',
+    activeAmateurMatchId,
+    amateurView:
+      amateurSection === 'tournaments'
+        ? 'tournaments'
+        : amateurSection === 'duels'
+          ? 'duels'
+          : 'hub',
+    beginnerMode: view === 'training' ? 'training' : 'daily',
+    dailyView: view === 'daily' ? 'play' : 'arena',
+  };
+}
+
 export function duelBackLabel(
   source: 'challenge' | 'matchmaking' | 'tournament',
   directPlayOnly: boolean,
@@ -366,17 +391,14 @@ export function DailyScreen(): JSX.Element {
   const fromSections = routeParams.get('from') === 'sections';
   const tournamentOrigin = routeParams.get('section') === 'tournaments';
   const tournamentId = routeParams.get('tournament');
-  const [selectedLevel, setSelectedLevel] = useState<GameLevel>('beginner');
-  const [activeAmateurMatchId, setActiveAmateurMatchId] = useState<string | null>(null);
-  const [amateurView, setAmateurView] = useState<AmateurView>('duels');
-  const [beginnerMode, setBeginnerMode] = useState<BeginnerMode>(() => {
-    const view = new URLSearchParams(location.search).get('view');
-    return view === 'training' ? 'training' : 'daily';
-  });
-  const [dailyView, setDailyView] = useState<DailyView>(() => {
-    const view = new URLSearchParams(location.search).get('view');
-    return view === 'daily' ? 'play' : 'arena';
-  });
+  const initialRouteState = initialGameRouteState(location.search);
+  const [selectedLevel, setSelectedLevel] = useState<GameLevel>(initialRouteState.selectedLevel);
+  const [activeAmateurMatchId, setActiveAmateurMatchId] = useState<string | null>(
+    initialRouteState.activeAmateurMatchId,
+  );
+  const [amateurView, setAmateurView] = useState<AmateurView>(initialRouteState.amateurView);
+  const [beginnerMode, setBeginnerMode] = useState<BeginnerMode>(initialRouteState.beginnerMode);
+  const [dailyView, setDailyView] = useState<DailyView>(initialRouteState.dailyView);
   const [pendingPlayEntrance, setPendingPlayEntrance] = useState<PendingPlayMarker>(null);
   const [pendingPlayRouteTransition, setPendingPlayRouteTransition] =
     useState<PendingPlayMarker>(null);
@@ -414,7 +436,9 @@ export function DailyScreen(): JSX.Element {
         setActiveAmateurMatchId(matchId);
       } else {
         setActiveAmateurMatchId(null);
-        setAmateurView(section === 'tournaments' ? 'tournaments' : 'duels');
+        setAmateurView(
+          section === 'tournaments' ? 'tournaments' : section === 'duels' ? 'duels' : 'hub',
+        );
       }
     }
     if (view === 'pro') {
@@ -513,6 +537,14 @@ export function DailyScreen(): JSX.Element {
     navigate('/?view=training&play=1', { replace: true });
   };
 
+  const openAmateurHub = (): void => {
+    setPendingPlayEntrance(null);
+    setPendingPlayRouteTransition(null);
+    setActiveAmateurMatchId(null);
+    setAmateurView('hub');
+    navigate(`/?view=amateur${fromSections ? '&from=sections' : ''}`, { replace: true });
+  };
+
   if (selectedLevel === 'beginner' && beginnerMode === 'daily' && dailyView === 'play') {
     return (
       <DailyPlayView
@@ -568,10 +600,28 @@ export function DailyScreen(): JSX.Element {
           />
         );
       }
+      if (amateurView === 'hub') {
+        return (
+          <AmateurHubPage
+            onBack={fromSections ? openSections : openHub}
+            onOpenSection={(section) => {
+              if (section === 'bonus-games') {
+                navigate(fromSections ? '/bonus-games?from=sections' : '/bonus-games');
+                return;
+              }
+              setAmateurView(section);
+              navigate(
+                `/?view=amateur&section=${section}${fromSections ? '&from=sections' : ''}`,
+                { replace: true },
+              );
+            }}
+          />
+        );
+      }
       if (amateurView === 'duels') {
         return (
           <AmateurDuelsPage
-            onBack={fromSections ? openSections : openHub}
+            onBack={openAmateurHub}
             onOpenMatch={(matchId) => {
               setActiveAmateurMatchId(matchId);
               navigate(
@@ -583,7 +633,7 @@ export function DailyScreen(): JSX.Element {
         );
       }
       if (amateurView === 'tournaments') {
-        return <AmateurTournamentsPage onBack={fromSections ? openSections : openHub} />;
+        return <AmateurTournamentsPage onBack={openAmateurHub} />;
       }
     }
     return (
@@ -3227,6 +3277,65 @@ function AmateurTournamentsPage({ onBack }: { onBack: () => void }): JSX.Element
   return (
     <ModeShell title="Турниры" onBack={onBack}>
       <TournamentCatalog />
+    </ModeShell>
+  );
+}
+
+function AmateurHubPage({
+  onBack,
+  onOpenSection,
+}: {
+  onBack: () => void;
+  onOpenSection: (section: 'duels' | 'bonus-games' | 'tournaments') => void;
+}): JSX.Element {
+  const sections = [
+    {
+      id: 'duels' as const,
+      title: 'Дуэли',
+      description: 'Матчи один на один',
+      artwork: '/modes/amateur-duel-card.webp',
+    },
+    {
+      id: 'bonus-games' as const,
+      title: 'Бонусные игры',
+      description: 'Скорость, точность и награды',
+      artwork: '/bonus-games/section-card.webp',
+    },
+    {
+      id: 'tournaments' as const,
+      title: 'Турниры',
+      description: 'Соревнования и турнирная сетка',
+      artwork: '/modes/tournaments.webp',
+    },
+  ];
+
+  return (
+    <ModeShell title="Любители" onBack={onBack}>
+      <div className="amateur-hub-grid" aria-label="Разделы любителей">
+        {sections.map((section) => (
+          <button
+            key={section.id}
+            type="button"
+            className="section-card-surface amateur-hub-card"
+            aria-label={section.title}
+            onClick={() => onOpenSection(section.id)}
+          >
+            <span className="amateur-hub-card__art" aria-hidden="true">
+              <img src={section.artwork} alt="" draggable={false} />
+            </span>
+            <span className="amateur-hub-card__copy">
+              <strong>{section.title}</strong>
+              <span>{section.description}</span>
+            </span>
+            <ChevronRight
+              className="card-chevron"
+              size={20}
+              strokeWidth={2.7}
+              aria-hidden="true"
+            />
+          </button>
+        ))}
+      </div>
     </ModeShell>
   );
 }
@@ -7196,26 +7305,9 @@ function LevelPlaceholder({
   level: Exclude<GameLevel, 'beginner'>;
   onBack: () => void;
 }): JSX.Element {
-  const isAmateur = level === 'amateur';
   return (
-    <ModeShell title={isAmateur ? 'Любители' : 'Профессионалы'} onBack={onBack}>
-      {isAmateur ? (
-        <>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 8 }}>
-            <TotalCell label="ДОСТУП" value="1000" />
-          </div>
-          <div style={{ color: 'var(--muted)', fontSize: 14, lineHeight: 1.45 }}>
-            Раздел откроется после 1000 голов в дневной игре начального уровня.
-          </div>
-        </>
-      ) : (
-        <div style={{ color: 'var(--muted)', fontSize: 14, lineHeight: 1.45 }}>
-          Профессиональный раздел в разработке.
-        </div>
-      )}
-      <button type="button" className="btn btn--cta" disabled>
-        {isAmateur ? 'Закрыто' : 'В разработке'}
-      </button>
+    <ModeShell title={level === 'amateur' ? 'Любители' : 'Профессионалы'} onBack={onBack}>
+      <div className="level-placeholder-copy">Раздел в разработке</div>
     </ModeShell>
   );
 }

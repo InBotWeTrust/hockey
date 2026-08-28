@@ -16,6 +16,7 @@ import {
   duelInventoryItemRemaining,
   duelScoreboardOpponent,
   duelRinkReadyPresenceForMatch,
+  initialGameRouteState,
   isDuelInventoryLow,
   isDuelReadyPresenceState,
   tournamentDuelBackPath,
@@ -1967,7 +1968,7 @@ describe('DailyScreen', () => {
     expect(screen.queryByRole('button', { name: 'Профессионалы' })).not.toBeInTheDocument();
   });
 
-  it('opens amateur routes directly in duels without rendering the old combined hub', async () => {
+  it('opens an amateur chooser with duels, bonus games and tournaments', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = input instanceof Request ? input.url : String(input);
       if (url.includes('/tournaments')) {
@@ -1990,12 +1991,36 @@ describe('DailyScreen', () => {
 
     renderWith(['/?view=amateur']);
 
-    expect(await screen.findByRole('heading', { name: 'Дуэли' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Турниры' })).not.toBeInTheDocument();
-    expect(screen.queryByText('Временно недоступно')).not.toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Любители' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button').map((button) => button.getAttribute('aria-label')).filter(Boolean)).toEqual([
+      'Назад',
+      'Дуэли',
+      'Бонусные игры',
+      'Турниры',
+    ]);
+    ['Дуэли', 'Бонусные игры', 'Турниры'].forEach((name) => {
+      expect(screen.getByRole('button', { name }).querySelector('svg')).toHaveClass(
+        'card-chevron',
+      );
+    });
   });
 
-  it('does not cross-link duels and tournaments from their direct routes', async () => {
+  it('opens a direct amateur route without flashing the daily arena first', () => {
+    // Break caught: route-derived state must be correct on the first render, before effects run.
+    expect(initialGameRouteState('?view=amateur&section=duels&from=sections')).toMatchObject({
+      selectedLevel: 'amateur',
+      amateurView: 'duels',
+      beginnerMode: 'daily',
+      dailyView: 'arena',
+      activeAmateurMatchId: null,
+    });
+    expect(initialGameRouteState('?view=amateur&from=sections')).toMatchObject({
+      selectedLevel: 'amateur',
+      amateurView: 'hub',
+    });
+  });
+
+  it('keeps direct amateur routes focused on their selected section', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = input instanceof Request ? input.url : String(input);
       if (url.includes('/tournaments')) {
@@ -2019,13 +2044,20 @@ describe('DailyScreen', () => {
     const tournamentRoute = renderWith(['/?view=amateur&section=tournaments']);
     expect(await screen.findByRole('heading', { name: 'Турниры' })).toBeInTheDocument();
     expect(screen.queryByRole('tablist', { name: 'Разделы любителей' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Дуэли' })).not.toBeInTheDocument();
     tournamentRoute.unmount();
 
     renderWith(['/?view=amateur&section=duels']);
     expect(await screen.findByRole('heading', { name: 'Дуэли' })).toBeInTheDocument();
     expect(screen.queryByRole('tablist', { name: 'Разделы любителей' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Турниры' })).not.toBeInTheDocument();
+  });
+
+  it('shows one readable development message on the professional page', async () => {
+    renderWith(['/?view=pro&from=sections']);
+
+    expect(await screen.findByRole('heading', { name: 'Профессионалы' })).toBeInTheDocument();
+    expect(screen.getAllByText('Раздел в разработке')).toHaveLength(1);
+    expect(screen.queryByText('Профессиональный раздел в разработке.')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'В разработке' })).not.toBeInTheDocument();
   });
 
   it('opens player profile from amateur duel rating row', async () => {

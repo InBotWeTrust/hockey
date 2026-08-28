@@ -305,7 +305,7 @@ export function AchievementsScreen(): JSX.Element {
           }}
         />
         <div className="section-label section-label--page">
-          Задания ({countText(selectedFilterCounts.completed, selectedFilterCounts.total)})
+          Задания · {countText(selectedFilterCounts.completed, selectedFilterCounts.total)}
         </div>
         <div
           role="tablist"

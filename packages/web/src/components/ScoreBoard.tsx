@@ -129,7 +129,10 @@ export function GameScoreboard({
   ariaLabel = 'Игровое табло',
 }: GameScoreboardProps): JSX.Element {
   return (
-    <section className="game-scoreboard" aria-label={ariaLabel}>
+    <section
+      className="game-scoreboard game-scoreboard--stable-surface"
+      aria-label={ariaLabel}
+    >
       <div className="game-scoreboard__rows">
         {rows.map((row) => (
           <div

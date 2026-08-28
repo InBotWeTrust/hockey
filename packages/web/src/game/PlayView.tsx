@@ -618,6 +618,7 @@ export function PlayView<TState>({
   const entranceRafRef = useRef<number | null>(null);
   const routeCameraRafRef = useRef<number | null>(null);
   const routeBackTimeoutRef = useRef<number | null>(null);
+  const clockRebaseRafRef = useRef<number | null>(null);
   const skipNextUnsuppressedEntranceRef = useRef(false);
   const iceCarRef = useRef<IceCar | null>(null);
   const iceCarRafRef = useRef<number | null>(null);
@@ -913,6 +914,10 @@ export function PlayView<TState>({
       if (routeCameraRafRef.current !== null) {
         cancelAnimationFrame(routeCameraRafRef.current);
         routeCameraRafRef.current = null;
+      }
+      if (clockRebaseRafRef.current !== null) {
+        cancelAnimationFrame(clockRebaseRafRef.current);
+        clockRebaseRafRef.current = null;
       }
       if (routeBackTimeoutRef.current !== null) {
         window.clearTimeout(routeBackTimeoutRef.current);
@@ -1414,6 +1419,18 @@ export function PlayView<TState>({
     refreshRef.current?.(s);
   }, []);
 
+  const scheduleClockRebaseFromLatestTiming = useCallback((): void => {
+    loopRef.current?.rebaseTime(computeInitialPlayClocks(sessionTimingRef.current));
+    if (clockRebaseRafRef.current !== null) {
+      window.cancelAnimationFrame(clockRebaseRafRef.current);
+    }
+    clockRebaseRafRef.current = window.requestAnimationFrame(() => {
+      clockRebaseRafRef.current = null;
+      if (!mountedRef.current) return;
+      loopRef.current?.rebaseTime(computeInitialPlayClocks(sessionTimingRef.current));
+    });
+  }, []);
+
   const handleBackTap = useCallback((): void => {
     if (routeBackTimeoutRef.current !== null) return;
     onBack();
@@ -1561,7 +1578,7 @@ export function PlayView<TState>({
       }
       if (pendingClockRebaseRef.current) {
         pendingClockRebaseRef.current = false;
-        loop.rebaseTime(computeInitialPlayClocks(sessionTimingRef.current));
+        scheduleClockRebaseFromLatestTiming();
       }
       puck.release();
       if (result.type === 'save') goalie.setSavePose(false);
@@ -1592,7 +1609,7 @@ export function PlayView<TState>({
         if (shotAnimationInProgressRef.current) {
           pendingClockRebaseRef.current = true;
         } else {
-          loopRef.current?.rebaseTime(computeInitialPlayClocks(sessionTimingRef.current));
+          scheduleClockRebaseFromLatestTiming();
         }
         return;
       }
@@ -1610,6 +1627,7 @@ export function PlayView<TState>({
     submitShot,
     applyState,
     applyResolvedState,
+    scheduleClockRebaseFromLatestTiming,
   ]);
 
   const handleInactiveAction = useCallback(async (): Promise<void> => {

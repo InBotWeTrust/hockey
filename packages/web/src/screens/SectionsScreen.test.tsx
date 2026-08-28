@@ -2,15 +2,18 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AchievementDto } from '../api/achievements.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
 import { SectionsScreen } from './SectionsScreen.js';
 
 interface MockSectionsData {
+  achievements?: AchievementDto[];
   achievementsUnclaimedCount?: number;
   weeklyChallenge?: Record<string, unknown> | null;
   weeklyPendingRewards?: Array<Record<string, unknown>>;
   dailyLifetimeTotalGoals?: number;
+  dailyAmateurUnlockGoalsRequired?: number;
   profileCompetitionLevel?: 'beginner' | 'amateur' | 'professional';
   profileRequest?: 'error' | 'loading';
 }
@@ -35,10 +38,12 @@ function LocationProbe(): JSX.Element {
 }
 
 function mockSectionsApi({
+  achievements = [],
   achievementsUnclaimedCount = 1,
   weeklyChallenge = null,
   weeklyPendingRewards = [],
   dailyLifetimeTotalGoals = 300,
+  dailyAmateurUnlockGoalsRequired = 300,
   profileCompetitionLevel,
   profileRequest,
 }: MockSectionsData = {}): void {
@@ -47,7 +52,7 @@ function mockSectionsApi({
     if (url.endsWith('/api/achievements')) {
       return Promise.resolve(
         new Response(
-          JSON.stringify({ achievements: [], unclaimedCount: achievementsUnclaimedCount }),
+          JSON.stringify({ achievements, unclaimedCount: achievementsUnclaimedCount }),
           {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
@@ -75,7 +80,7 @@ function mockSectionsApi({
             total_periods: 3,
             daily_total_shots: 0,
             lifetime_total_goals: dailyLifetimeTotalGoals,
-            amateur_unlock_goals_required: 300,
+            amateur_unlock_goals_required: dailyAmateurUnlockGoalsRequired,
           }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         ),
@@ -115,6 +120,28 @@ function mockSectionsApi({
   });
 }
 
+function sectionAchievement(
+  id: string,
+  status: AchievementDto['status'],
+): AchievementDto {
+  return {
+    id,
+    photoUrl: '/achievements/first-goal.webp',
+    title: id,
+    description: 'Описание',
+    requirement: 'Условие',
+    category: 'daily',
+    availability: 'active',
+    futureTag: null,
+    rewardCurrency: 0,
+    rewardStars: 0,
+    rewardExperience: 0,
+    status,
+    isUnlocked: status !== 'locked',
+    isClaimable: status === 'completed_unclaimed',
+  };
+}
+
 describe('SectionsScreen', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -123,22 +150,17 @@ describe('SectionsScreen', () => {
   });
 
   it('marks the achievements section when an achievement reward is waiting', async () => {
-    mockSectionsApi();
+    mockSectionsApi({
+      achievements: [
+        sectionAchievement('claimed', 'claimed'),
+        sectionAchievement('waiting', 'completed_unclaimed'),
+        sectionAchievement('locked', 'locked'),
+      ],
+    });
     renderSections();
 
-    expect(await screen.findByText('1 награда ждёт')).toBeInTheDocument();
+    expect(await screen.findByText('2/3 наград')).toBeInTheDocument();
     expect(screen.getByLabelText('Требуется действие')).toBeInTheDocument();
-  });
-
-  it.each([
-    { count: 1, text: '1 награда ждёт' },
-    { count: 2, text: '2 награды ждут' },
-    { count: 5, text: '5 наград ждут' },
-  ])('uses Russian plural forms for $count achievement rewards', async ({ count, text }) => {
-    mockSectionsApi({ achievementsUnclaimedCount: count });
-    renderSections();
-
-    expect(await screen.findByText(text)).toBeInTheDocument();
   });
 
   it('keeps the weekly challenge out of the sections list', async () => {
@@ -165,8 +187,6 @@ describe('SectionsScreen', () => {
     const modes = screen.getByRole('region', { name: 'Игровые режимы' });
     expect(within(modes).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual([
       'Любители',
-      'Бонусные игры',
-      'Турниры',
       'Профессионалы',
     ]);
     within(quickAccess)
@@ -174,7 +194,40 @@ describe('SectionsScreen', () => {
       .forEach((button) => expect(button).toHaveClass('section-card-surface'));
     within(modes)
       .getAllByRole('button')
-      .forEach((button) => expect(button).toHaveClass('section-card-surface'));
+      .forEach((button) => {
+        expect(button).toHaveClass('section-card-surface');
+        expect(button.querySelector('svg')).toHaveClass('card-chevron');
+      });
+  });
+
+  it('uses wide daily and shop cards around one compact training and tasks row', async () => {
+    // Break caught: all four quick actions used the same half-width card and lost hierarchy.
+    mockSectionsApi();
+    renderSections();
+
+    const quickAccess = await screen.findByRole('region', { name: 'Быстрый доступ' });
+    expect(within(quickAccess).getByRole('button', { name: 'Ежедневная игра' })).toHaveClass(
+      'sections-quick-card--wide',
+    );
+    expect(within(quickAccess).getByRole('button', { name: 'Магазин' })).toHaveClass(
+      'sections-quick-card--wide',
+    );
+    expect(within(quickAccess).getByRole('button', { name: 'Тренировка' })).not.toHaveClass(
+      'sections-quick-card--wide',
+    );
+    expect(within(quickAccess).getByRole('button', { name: 'Задания' })).not.toHaveClass(
+      'sections-quick-card--wide',
+    );
+    ['Ежедневная игра', 'Магазин'].forEach((name) => {
+      expect(
+        within(quickAccess).getByRole('button', { name }).querySelector('.card-chevron'),
+      ).toBeInTheDocument();
+    });
+    ['Тренировка', 'Задания'].forEach((name) => {
+      expect(
+        within(quickAccess).getByRole('button', { name }).querySelector('.card-chevron'),
+      ).toBeNull();
+    });
   });
 
   it('starts directly with quick access without a duplicate page label', async () => {
@@ -186,88 +239,84 @@ describe('SectionsScreen', () => {
     expect(screen.queryByText('Разделы')).toBeNull();
   });
 
-  it('orders amateur duels, bonus games, tournaments and professional sections', async () => {
+  it('keeps bonus games and tournaments inside the amateur parent section', async () => {
     mockSectionsApi();
     renderSections();
 
-    await screen.findByRole('button', { name: 'Бонусные игры' });
-    const labels = screen.getAllByRole('button').map((button) => button.textContent ?? '');
-    const amateurIndex = labels.findIndex((label) => label.includes('Любители'));
-    const bonusIndex = labels.findIndex((label) => label.includes('Бонусные игры'));
-    const tournamentIndex = labels.findIndex((label) => label.includes('Турниры'));
-    const proIndex = labels.findIndex((label) => label.includes('Профессионалы'));
-
-    expect(bonusIndex).toBe(amateurIndex + 1);
-    expect(tournamentIndex).toBe(bonusIndex + 1);
-    expect(proIndex).toBe(tournamentIndex + 1);
+    const amateur = await screen.findByRole('button', { name: 'Любители' });
+    expect(amateur).toHaveTextContent('Дуэли, бонусные игры и турниры');
+    expect(amateur).not.toHaveTextContent('Раздел открыт');
+    expect(screen.queryByRole('button', { name: 'Бонусные игры' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Турниры' })).toBeNull();
   });
 
-  it('opens amateur duels directly for an unlocked player', async () => {
+  it('shows only server-configured goal progress while the amateur section is locked', async () => {
+    mockSectionsApi({
+      dailyLifetimeTotalGoals: 42,
+      dailyAmateurUnlockGoalsRequired: 750,
+      profileCompetitionLevel: 'beginner',
+    });
+    renderSections();
+
+    const amateur = await screen.findByRole('button', { name: 'Любители' });
+    expect(amateur).toHaveTextContent('42/750 до открытия');
+    expect(amateur).not.toHaveTextContent('Дуэли, бонусные игры и турниры');
+    expect(amateur).not.toHaveTextContent('Раздел открыт');
+  });
+
+  it('keeps a single supporting line on the professional card', async () => {
+    mockSectionsApi();
+    renderSections();
+
+    const professional = await screen.findByRole('button', { name: 'Профессионалы' });
+    expect(within(professional).getByText('Игры самого высокого уровня')).toHaveStyle({
+      fontSize: '12px',
+      fontWeight: '850',
+    });
+    expect(professional).not.toHaveTextContent('Раздел в разработке');
+  });
+
+  it('opens the amateur section chooser for an unlocked player', async () => {
     mockSectionsApi({ profileCompetitionLevel: 'amateur' });
     renderSections();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Любители' }));
 
     expect(screen.getByTestId('location')).toHaveTextContent(
-      '/?view=amateur&section=duels&from=sections',
+      '/?view=amateur&from=sections',
     );
   });
 
-  it('opens the tournament catalog directly for an unlocked player', async () => {
-    mockSectionsApi({ profileCompetitionLevel: 'amateur' });
-    renderSections();
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Турниры' }));
-
-    expect(screen.getByTestId('location')).toHaveTextContent(
-      '/?view=amateur&section=tournaments&from=sections',
-    );
-  });
-
-  it('keeps tournaments locked until the amateur level is available', async () => {
+  it('keeps the amateur parent locked until the amateur level is available', async () => {
     mockSectionsApi({ dailyLifetimeTotalGoals: 0, profileCompetitionLevel: 'beginner' });
     renderSections();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Турниры' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Любители' }));
 
     expect(screen.getByTestId('location')).toHaveTextContent('/sections');
-    expect(screen.getByRole('dialog', { name: 'Нужен любительский уровень' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Не хватает шайб' })).toBeInTheDocument();
   });
 
-  it('opens bonus games for a server-authorized amateur below the daily goal threshold', async () => {
+  it('opens the amateur parent for a server-authorized amateur below the daily goal threshold', async () => {
     mockSectionsApi({ dailyLifetimeTotalGoals: 0, profileCompetitionLevel: 'amateur' });
     renderSections();
 
-    expect(await screen.findByText('Игры и награды за первое прохождение')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Бонусные игры' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Любители' }));
 
-    expect(screen.getByTestId('location')).toHaveTextContent('/bonus-games');
-    expect(screen.queryByRole('dialog', { name: 'Нужен любительский уровень' })).toBeNull();
-  });
-
-  it('keeps bonus games locked for a beginner below the daily goal threshold', async () => {
-    mockSectionsApi({ dailyLifetimeTotalGoals: 0, profileCompetitionLevel: 'beginner' });
-    renderSections();
-
-    await waitFor(() => {
-      expect(
-        vi.mocked(globalThis.fetch).mock.calls.some(([input]) => String(input).endsWith('/api/me')),
-      ).toBe(true);
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Бонусные игры' }));
-
-    expect(screen.getByTestId('location')).toHaveTextContent('/sections');
-    expect(screen.getByRole('dialog', { name: 'Нужен любительский уровень' })).toBeInTheDocument();
+    expect(screen.getByTestId('location')).toHaveTextContent(
+      '/?view=amateur&from=sections',
+    );
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('focuses locked info and restores the exact section card after Escape', async () => {
     mockSectionsApi({ dailyLifetimeTotalGoals: 0, profileCompetitionLevel: 'beginner' });
     renderSections();
-    const trigger = await screen.findByRole('button', { name: 'Бонусные игры' });
+    const trigger = await screen.findByRole('button', { name: 'Любители' });
     trigger.focus();
     fireEvent.click(trigger);
 
-    const dialog = screen.getByRole('dialog', { name: 'Нужен любительский уровень' });
+    const dialog = screen.getByRole('dialog', { name: 'Не хватает шайб' });
     await waitFor(() => expect(screen.getByRole('button', { name: 'Понятно' })).toHaveFocus());
     fireEvent.keyDown(dialog, { key: 'Escape' });
 
@@ -284,22 +333,29 @@ describe('SectionsScreen', () => {
       });
       renderSections();
 
-      fireEvent.click(await screen.findByRole('button', { name: 'Бонусные игры' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Любители' }));
 
-      expect(screen.getByTestId('location')).toHaveTextContent('/bonus-games');
-      expect(screen.queryByRole('dialog', { name: 'Нужен любительский уровень' })).toBeNull();
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        '/?view=amateur&from=sections',
+      );
+      expect(screen.queryByRole('dialog')).toBeNull();
     },
   );
 
-  it('summarizes achievement rewards and weekly challenge actions on the achievements card', async () => {
+  it('keeps achievement progress visible while rewards and weekly actions need attention', async () => {
     mockSectionsApi({
+      achievements: [
+        sectionAchievement('claimed', 'claimed'),
+        sectionAchievement('waiting', 'completed_unclaimed'),
+        sectionAchievement('locked', 'locked'),
+      ],
       achievementsUnclaimedCount: 2,
       weeklyChallenge: { id: 'challenge-1', title: 'Неделя снайпера', canJoin: true },
       weeklyPendingRewards: [{ id: 'challenge-old', title: 'Прошлая неделя' }],
     });
     renderSections();
 
-    expect(await screen.findByText('4 действия ждут')).toBeInTheDocument();
+    expect(await screen.findByText('2/3 наград')).toBeInTheDocument();
     expect(screen.getByLabelText('Требуется действие')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Челлендж недели' })).toBeNull();
   });

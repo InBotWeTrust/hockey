@@ -111,7 +111,7 @@ describe('AchievementsScreen', () => {
     renderAchievements();
 
     expect(await screen.findByRole('tab', { name: 'Задания', selected: true })).toBeInTheDocument();
-    expect(await screen.findByText('Задания (1/1)')).toBeInTheDocument();
+    expect(await screen.findByText('Задания · 1/1')).toBeInTheDocument();
     expect((await screen.findAllByLabelText('Требуется действие')).length).toBeGreaterThanOrEqual(
       1,
     );
@@ -171,7 +171,7 @@ describe('AchievementsScreen', () => {
     ]);
     renderAchievements();
 
-    expect(await screen.findByText('Задания (2/5)')).toBeInTheDocument();
+    expect(await screen.findByText('Задания · 2/5')).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Все' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Получить' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Ежедневная' })).toBeInTheDocument();
@@ -182,21 +182,21 @@ describe('AchievementsScreen', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Ежедневная' }));
 
     expect(screen.getByRole('tab', { name: 'Ежедневная', selected: true })).toBeInTheDocument();
-    expect(screen.getByText('Задания (2/3)')).toBeInTheDocument();
+    expect(screen.getByText('Задания · 2/3')).toBeInTheDocument();
     expect(screen.getByText('День 1')).toBeInTheDocument();
     expect(screen.queryByText('Тренировочная цель')).toBeNull();
 
     fireEvent.click(screen.getByRole('tab', { name: 'Получить' }));
 
     expect(screen.getByRole('tab', { name: 'Получить', selected: true })).toBeInTheDocument();
-    expect(screen.getByText('Задания (1/1)')).toBeInTheDocument();
+    expect(screen.getByText('Задания · 1/1')).toBeInTheDocument();
     expect(screen.getByText('День 2')).toBeInTheDocument();
     expect(screen.queryByText('День 1')).toBeNull();
 
     fireEvent.click(screen.getByRole('tab', { name: 'Тренировка' }));
 
     expect(screen.getByRole('tab', { name: 'Тренировка', selected: true })).toBeInTheDocument();
-    expect(screen.getByText('Задания (0/1)')).toBeInTheDocument();
+    expect(screen.getByText('Задания · 0/1')).toBeInTheDocument();
     expect(screen.getByText('Тренировочная цель')).toBeInTheDocument();
     expect(screen.queryByText('День 1')).toBeNull();
   });

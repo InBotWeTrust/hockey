@@ -572,6 +572,76 @@ describe('PlayView', () => {
     );
   });
 
+  it('rebases a rejected final shot from the refreshed server timing before the retry', async () => {
+    // Break caught: the rejected request resolved before React committed the refreshed daily
+    // snapshot, so an immediate rebase reused stale clocks and made several retries fail.
+    vi.useFakeTimers();
+    let now = 1_000;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    const shotResolver: PlayShotResolver = vi.fn(() => ({ type: 'miss', reason: 'wide' }));
+    let resolveSubmit: ((value: null) => void) | undefined;
+    const submitShot = vi.fn(
+      () =>
+        new Promise<null>((resolve) => {
+          resolveSubmit = resolve;
+        }),
+    );
+    const commonProps = {
+      suppressedByModal: false,
+      showIceCar: false,
+      onBack: () => undefined,
+      active: true,
+      seed: 'daily-seed',
+      goalieId: null,
+      goalieConfig: beachGoalie,
+      periodNumber: 1,
+      speedOverrides: { goalFreq: 0.45, goalieFreq: 0.5, shooterFreq: 0.65, puckSpeed: 1.2 },
+      goals: 29,
+      shots: 29,
+      shotsTotal: 30,
+      shotResolver,
+      optimisticAddShot: () => undefined,
+      submitShot,
+      applyState: () => undefined,
+    } as const;
+    const view = render(
+      <PlayView
+        {...commonProps}
+        initialSceneElapsedMs={1_000}
+        initialShooterElapsedMs={1_000}
+        receivedAtPerformanceMs={1_000}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+    now = 2_500;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_500);
+      resolveSubmit?.(null);
+      await Promise.resolve();
+    });
+
+    view.rerender(
+      <PlayView
+        {...commonProps}
+        initialSceneElapsedMs={10_000}
+        initialShooterElapsedMs={8_000}
+        receivedAtPerformanceMs={2_500}
+      />,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+
+    expect(shotResolver).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        input: expect.objectContaining({ tapTime: 10_000, shooterTapTime: 8_000 }),
+      }),
+    );
+  });
+
   it('applies a fast authoritative result only after the flight and result pause', async () => {
     // This catches a completed, failed, or break DTO replacing the rink during its final animation.
     vi.useFakeTimers();

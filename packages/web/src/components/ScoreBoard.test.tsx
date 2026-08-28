@@ -1,6 +1,10 @@
 import { render, screen } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildGameScoreboardModel, GameScoreboard, ScoreBoard } from './ScoreBoard.js';
+
+const designSystemCss = readFileSync(resolve(process.cwd(), 'src/app/design-system.css'), 'utf8');
 
 function expectTextOrder(text: string, parts: string[]): void {
   let lastIndex = -1;
@@ -12,6 +16,17 @@ function expectTextOrder(text: string, parts: string[]): void {
 }
 
 describe('ScoreBoard', () => {
+  it('uses a translucent liquid-glass surface instead of an opaque fill', () => {
+    const scoreboardRule = designSystemCss.match(/\.game-scoreboard \{(?<body>[\s\S]*?)\n\}/)?.groups
+      ?.body;
+
+    expect(scoreboardRule).toContain('rgba(7, 24, 45, 0.12)');
+    expect(scoreboardRule).toContain('rgba(15, 51, 78, 0.06)');
+    expect(scoreboardRule).toContain('backdrop-filter: blur(18px) saturate(145%);');
+    expect(scoreboardRule).not.toMatch(/rgba\([^)]*,\s*(?:0\.8[5-9]|0\.9\d?|1)\)/);
+    expect(designSystemCss).toContain('@media (prefers-reduced-transparency: reduce)');
+  });
+
   it('renders configurable rows with their own metric counts and a notice', () => {
     render(
       <GameScoreboard
@@ -44,7 +59,10 @@ describe('ScoreBoard', () => {
       />,
     );
 
-    expect(screen.getByLabelText('Игровое табло')).toHaveClass('game-scoreboard');
+    expect(screen.getByLabelText('Игровое табло')).toHaveClass(
+      'game-scoreboard',
+      'game-scoreboard--stable-surface',
+    );
     expect(screen.getByTestId('scoreboard-row-summary')).toHaveStyle({
       gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
     });

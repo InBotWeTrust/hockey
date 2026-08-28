@@ -1,7 +1,16 @@
 import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Check, CircleDollarSign, Info, Star, TrendingUp } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import {
+  ArrowLeft,
+  Check,
+  ChevronRight,
+  CircleDollarSign,
+  Info,
+  LockKeyhole,
+  Star,
+  TrendingUp,
+} from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { rewardColor, type RewardTone } from '../app/rewardColors.js';
 import {
   fetchBonusGames,
@@ -51,6 +60,8 @@ function isPlayable(game: BonusGameCard): boolean {
 
 export function BonusGamesScreen(): JSX.Element {
   const navigate = useNavigate();
+  const location = useLocation();
+  const fromSections = new URLSearchParams(location.search).get('from') === 'sections';
   const queryClient = useQueryClient();
   const [purchaseGame, setPurchaseGame] = useState<BonusGameCard | null>(null);
   const [purchaseNotice, setPurchaseNotice] = useState<string | null>(null);
@@ -178,7 +189,7 @@ export function BonusGamesScreen(): JSX.Element {
           <button
             type="button"
             className="icon-btn"
-            onClick={() => navigate('/sections')}
+            onClick={() => navigate(`/?view=amateur${fromSections ? '&from=sections' : ''}`)}
             aria-label="Назад"
             title="Назад"
           >
@@ -437,6 +448,15 @@ function BonusGameCard({
     <article
       className={`bonus-game-card${featured ? ' bonus-game-card--featured' : ''}${featured && isWorldTourArtwork ? ' bonus-game-card--world-tour' : ''}${compact ? ' bonus-game-card--compact' : ''}${game.state === 'completed' ? ' bonus-game-card--completed' : ''}`}
     >
+      {canAct && (
+        <button
+          type="button"
+          className="bonus-game-card__hit-area"
+          disabled={isStarting}
+          onClick={onAction}
+          aria-label={isStarting ? 'Подготавливаем…' : label}
+        />
+      )}
       <div className="bonus-game-card__artwork-frame">
         <img
           className={`bonus-game-card__artwork${game.state === 'completed' ? ' bonus-game-card__artwork--completed' : ''}${artworkIsLocked ? ' bonus-game-card__artwork--locked' : ''}`}
@@ -452,23 +472,32 @@ function BonusGameCard({
           <Check size={13} strokeWidth={3} aria-hidden="true" />
         </span>
       )}
+      {compact && !canAct && (
+        <span className="bonus-game-card__completed-pill" aria-label="Игра закрыта">
+          <LockKeyhole size={13} strokeWidth={2.6} aria-hidden="true" />
+        </span>
+      )}
       <div className="bonus-game-card__content">
         <div className="bonus-game-card__eyebrow">Игра {numberText(game.sort_order)}</div>
         <h2 className="bonus-game-card__title">{game.title}</h2>
         {game.description && <p className="bonus-game-card__description">{game.description}</p>}
         <p className="bonus-game-card__details">
-          {qualificationDescription(game.qualification_rules)} ·{' '}
-          {formatRussianCount(game.total_periods, 'период', 'периода', 'периодов')} ·{' '}
-          {game.qualification_rules.type === 'goals_from_shots'
-            ? formatRussianCount(totalShots, 'бросок', 'броска', 'бросков')
-            : 'без лимита бросков'}
+          <span className="bonus-game-card__details-primary">
+            {qualificationDescription(game.qualification_rules)}
+          </span>
+          <span className="bonus-game-card__details-secondary">
+            {formatRussianCount(game.total_periods, 'период', 'периода', 'периодов')} ·{' '}
+            {game.qualification_rules.type === 'goals_from_shots'
+              ? formatRussianCount(totalShots, 'бросок', 'броска', 'бросков')
+              : 'без лимита бросков'}
+          </span>
         </p>
-        {game.state === 'completed' ? (
-          !compact ? (
-            <p className="bonus-game-card__reward-note">Повторная игра без награды</p>
-          ) : null
+        {game.state === 'completed' && !compact ? (
+          <p className="bonus-game-card__reward-note">Повторная игра без награды</p>
         ) : firstClearRewards.length > 0 ? (
-          <div className="bonus-game-card__reward">
+          <div
+            className={`bonus-game-card__reward${game.state === 'completed' ? ' bonus-game-card__reward--muted' : ''}`}
+          >
             {!compact && (
               <span className="bonus-game-card__reward-title">За первое прохождение</span>
             )}
@@ -485,14 +514,12 @@ function BonusGameCard({
             </div>
           </div>
         ) : null}
-        <button
-          type="button"
-          className={`btn btn--cta bonus-game-card__action${game.state === 'completed' ? ' bonus-game-card__action--repeat' : ''}`}
-          disabled={!canAct || isStarting}
-          onClick={onAction}
+        <span
+          className={`card-chevron bonus-game-card__chevron${canAct ? '' : ' bonus-game-card__chevron--hidden'}`}
+          aria-hidden="true"
         >
-          {isStarting ? 'Подготавливаем…' : label}
-        </button>
+          <ChevronRight size={19} strokeWidth={2.7} />
+        </span>
       </div>
     </article>
   );

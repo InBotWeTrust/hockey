@@ -8,7 +8,6 @@ import { fetchWeeklyChallenge } from '../api/weeklyChallenge.js';
 import type { ProfileData } from './profileTypes.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
-import { BONUS_GAME_SECTION_ARTWORK } from '../game/bonusGameAssets.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 
 const DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED = 300;
@@ -19,7 +18,6 @@ const SECTION_ARTWORK = {
   daily: '/daily-game/start.webp',
   training: '/modes/beginner.webp',
   amateur: '/modes/amateur.webp',
-  tournaments: '/modes/tournaments.webp',
   pro: '/modes/pro.webp',
   shop: '/modes/shop.webp',
 } as const;
@@ -28,22 +26,6 @@ type SectionTone = 'active' | 'default' | 'muted';
 
 function numberText(value: number): string {
   return new Intl.NumberFormat('ru-RU', { useGrouping: false }).format(value);
-}
-
-function waitingActionText(value: number): string {
-  if (value === 1) return '1 действие ждёт';
-  const mod10 = value % 10;
-  const mod100 = value % 100;
-  const noun = mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) ? 'действия' : 'действий';
-  return `${numberText(value)} ${noun} ждут`;
-}
-
-function waitingRewardText(value: number): string {
-  if (value === 1) return '1 награда ждёт';
-  const mod10 = value % 10;
-  const mod100 = value % 100;
-  const noun = mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) ? 'награды' : 'наград';
-  return `${numberText(value)} ${noun} ждут`;
 }
 
 export function SectionsScreen(): JSX.Element {
@@ -83,6 +65,11 @@ export function SectionsScreen(): JSX.Element {
   const trainingShotsLimit = trainingData?.shots_limit ?? 500;
   const trainingShotsTaken = trainingData?.shots_taken ?? 0;
   const dailyShotsLimit = (dailyData?.shots_per_period ?? 30) * (dailyData?.total_periods ?? 3);
+  const achievements = achievementsQuery.data?.achievements ?? [];
+  const achievementsCompletedCount = achievements.filter(
+    (achievement) =>
+      achievement.status === 'claimed' || achievement.status === 'completed_unclaimed',
+  ).length;
   const achievementsUnclaimedCount = achievementsQuery.data?.unclaimedCount ?? 0;
   const weeklyCanClaimReward =
     weeklyChallenge.data?.challenge?.canClaimReward === true ||
@@ -96,12 +83,7 @@ export function SectionsScreen(): JSX.Element {
       ? 1
       : 0) +
     (weeklyChallenge.data?.pendingRewards?.length ?? 0);
-  const achievementsMeta =
-    sectionTasksActionCount > achievementsUnclaimedCount
-      ? waitingActionText(sectionTasksActionCount)
-      : achievementsUnclaimedCount > 0
-        ? waitingRewardText(achievementsUnclaimedCount)
-        : 'Награды, серии и будущие цели';
+  const achievementsMeta = `${numberText(achievementsCompletedCount)}/${numberText(achievements.length)} наград`;
 
   const openAmateurs = (): void => {
     if (!isAmateurUnlocked) {
@@ -111,29 +93,7 @@ export function SectionsScreen(): JSX.Element {
       });
       return;
     }
-    navigate('/?view=amateur&section=duels&from=sections');
-  };
-
-  const openTournaments = (): void => {
-    if (!isAmateurUnlocked) {
-      setLockedInfo({
-        title: 'Нужен любительский уровень',
-        text: 'Турниры доступны после открытия любительского уровня.',
-      });
-      return;
-    }
-    navigate('/?view=amateur&section=tournaments&from=sections');
-  };
-
-  const openBonusGames = (): void => {
-    if (!isAmateurUnlocked) {
-      setLockedInfo({
-        title: 'Нужен любительский уровень',
-        text: 'Бонусные игры доступны после открытия любительского уровня.',
-      });
-      return;
-    }
-    navigate('/bonus-games');
+    navigate('/?view=amateur&from=sections');
   };
 
   return (
@@ -163,6 +123,7 @@ export function SectionsScreen(): JSX.Element {
               title="Ежедневная игра"
               meta={`${numberText(dailyData?.daily_total_shots ?? 0)}/${numberText(dailyShotsLimit)} бросков`}
               tone="active"
+              size="wide"
               artworkSrc={SECTION_ARTWORK.daily}
               onClick={() => navigate('/daily')}
             />
@@ -175,7 +136,7 @@ export function SectionsScreen(): JSX.Element {
             />
             <QuickSectionCard
               title="Задания"
-              meta={sectionTasksActionCount > 0 ? achievementsMeta : 'Цели и награды'}
+              meta={achievementsMeta}
               tone={sectionTasksActionCount > 0 ? 'active' : 'default'}
               artworkSrc={SECTION_ARTWORK.achievements}
               attention={sectionTasksActionCount > 0 || weeklyNeedsDecision}
@@ -185,6 +146,7 @@ export function SectionsScreen(): JSX.Element {
               title="Магазин"
               meta="Инвентарь и предметы"
               tone="default"
+              size="wide"
               artworkSrc={SECTION_ARTWORK.shop}
               onClick={() => navigate('/inventory')}
             />
@@ -198,11 +160,10 @@ export function SectionsScreen(): JSX.Element {
           <div className="sections-mode-list">
             <SectionCard
               title="Любители"
-              description="Дуэли один на один и соревновательный рейтинг"
-              meta={
+              supportingText={
                 isAmateurUnlocked
-                  ? 'Раздел открыт'
-                  : `${numberText(amateurGoals)}/${numberText(amateurUnlockGoalsRequired)} шайб для открытия`
+                  ? 'Дуэли, бонусные игры и турниры'
+                  : `${numberText(amateurGoals)}/${numberText(amateurUnlockGoalsRequired)} до открытия`
               }
               tone={isAmateurUnlocked ? 'default' : 'muted'}
               artworkSrc={SECTION_ARTWORK.amateur}
@@ -216,29 +177,8 @@ export function SectionsScreen(): JSX.Element {
               onClick={openAmateurs}
             />
             <SectionCard
-              title="Бонусные игры"
-              description="Серия тематических матчей и новые домашние площадки"
-              meta={
-                isAmateurUnlocked
-                  ? 'Игры и награды за первое прохождение'
-                  : 'Нужен любительский уровень'
-              }
-              tone={isAmateurUnlocked ? 'default' : 'muted'}
-              artworkSrc={BONUS_GAME_SECTION_ARTWORK}
-              onClick={openBonusGames}
-            />
-            <SectionCard
-              title="Турниры"
-              description="Регулярные чемпионаты, плей-офф, календарь и призы"
-              meta={isAmateurUnlocked ? 'Каталог и мои заявки' : 'Нужен любительский уровень'}
-              tone={isAmateurUnlocked ? 'default' : 'muted'}
-              artworkSrc={SECTION_ARTWORK.tournaments}
-              onClick={openTournaments}
-            />
-            <SectionCard
               title="Профессионалы"
-              description="Игры самого высокого уровня"
-              meta="Раздел в разработке"
+              supportingText="Игры самого высокого уровня"
               tone="muted"
               artworkSrc={SECTION_ARTWORK.pro}
               onClick={() => navigate('/?view=pro&from=sections')}
@@ -272,6 +212,7 @@ function QuickSectionCard({
   title,
   meta,
   tone,
+  size = 'compact',
   artworkSrc,
   attention,
   onClick,
@@ -279,6 +220,7 @@ function QuickSectionCard({
   title: string;
   meta: string;
   tone: Exclude<SectionTone, 'muted'>;
+  size?: 'compact' | 'wide' | undefined;
   artworkSrc: string;
   attention?: boolean | undefined;
   onClick: () => void;
@@ -286,7 +228,7 @@ function QuickSectionCard({
   return (
     <button
       type="button"
-      className={`section-card-surface sections-quick-card sections-quick-card--${tone}`}
+      className={`section-card-surface sections-quick-card sections-quick-card--${tone}${size === 'wide' ? ' sections-quick-card--wide' : ''}`}
       aria-label={title}
       onClick={onClick}
     >
@@ -300,27 +242,31 @@ function QuickSectionCard({
           {meta}
         </span>
       </span>
+      {size === 'wide' && (
+        <ChevronRight
+          className="card-chevron"
+          aria-hidden="true"
+          size={19}
+          strokeWidth={2.7}
+        />
+      )}
     </button>
   );
 }
 
 function SectionCard({
   title,
-  description,
-  meta,
+  supportingText,
   tone,
   artworkSrc,
   progress,
-  attention,
   onClick,
 }: {
   title: string;
-  description: string;
-  meta: string;
+  supportingText: string;
   tone: SectionTone;
   artworkSrc: string;
   progress?: number | undefined;
-  attention?: boolean | undefined;
   onClick: () => void;
 }): JSX.Element {
   const muted = tone === 'muted';
@@ -410,42 +356,23 @@ function SectionCard({
         >
           {title}
         </span>
-        <span style={{ color: 'rgba(15,23,42,0.62)', fontSize: 12, fontWeight: 750 }}>
-          {description}
-        </span>
         <span
           style={{
-            color: 'rgba(15,23,42,0.54)',
+            color: 'rgba(15,23,42,0.62)',
             fontSize: 12,
             fontWeight: 850,
             fontVariantNumeric: 'tabular-nums',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-            minWidth: 0,
           }}
         >
-          {attention && (
-            <span
-              aria-label="Требуется действие"
-              style={{
-                width: 7,
-                height: 7,
-                borderRadius: 999,
-                background: 'rgba(220, 38, 38, 0.92)',
-                boxShadow: '0 0 0 3px rgba(220, 38, 38, 0.14)',
-                flex: '0 0 7px',
-              }}
-            />
-          )}
-          {meta}
+          {supportingText}
         </span>
       </span>
       <ChevronRight
+        className="card-chevron"
         aria-hidden="true"
         size={19}
         strokeWidth={2.7}
-        style={{ justifySelf: 'end', color: 'rgba(15,23,42,0.54)' }}
+        style={{ justifySelf: 'end' }}
       />
     </button>
   );

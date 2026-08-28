@@ -76,32 +76,6 @@ function readWebpDimensions(filePath: string): { width: number; height: number }
   throw new Error(`Missing WebP image chunk: ${filePath}`);
 }
 
-async function findKickplateY(filePath: string, x: number): Promise<number> {
-  const { data, info } = await sharp(filePath)
-    .removeAlpha()
-    .raw()
-    .toBuffer({ resolveWithObject: true });
-  let bestY = 620;
-  let bestSignal = Number.NEGATIVE_INFINITY;
-
-  for (let y = 620; y <= 880; y += 1) {
-    let signal = 0;
-    for (let sampleX = x - 3; sampleX <= x + 3; sampleX += 1) {
-      const offset = (y * info.width + sampleX) * info.channels;
-      const red = data[offset]!;
-      const green = data[offset + 1]!;
-      const blue = data[offset + 2]!;
-      signal += red + green - 2 * blue;
-    }
-    if (signal > bestSignal) {
-      bestSignal = signal;
-      bestY = y;
-    }
-  }
-
-  return bestY;
-}
-
 async function findGoalCreaseCenterX(filePath: string): Promise<number> {
   const { data, info } = await sharp(filePath)
     .removeAlpha()
@@ -157,6 +131,31 @@ async function findGoalCreaseTopY(filePath: string): Promise<number> {
   throw new Error(`Unable to detect goal crease in ${filePath}`);
 }
 
+async function findGoalLineY(filePath: string, x: number): Promise<number> {
+  const { data, info } = await sharp(filePath)
+    .removeAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const warmSignal = (y: number): number => {
+    let signal = 0;
+    for (let sampleX = x - 4; sampleX <= x + 4; sampleX += 1) {
+      const offset = (y * info.width + sampleX) * info.channels;
+      signal += data[offset]! + data[offset + 2]! - 2 * data[offset + 1]!;
+    }
+    return signal / 9;
+  };
+  let bestY = 750;
+  let bestContrast = Number.NEGATIVE_INFINITY;
+  for (let y = 750; y <= 795; y += 1) {
+    const contrast = warmSignal(y) - (warmSignal(y - 5) + warmSignal(y + 5)) / 2;
+    if (contrast > bestContrast) {
+      bestContrast = contrast;
+      bestY = y;
+    }
+  }
+  return bestY;
+}
+
 async function visibleAlphaBounds(filePath: string): Promise<{
   width: number;
   height: number;
@@ -200,13 +199,14 @@ describe('bonus game runtime assets', () => {
     expect(script).not.toContain('amateur-daily-court.webp');
   });
 
-  it('rebuilds World Tour locations against the canonical daily-court board geometry', () => {
+  it('rebuilds World Tour locations without overlaying or bending the generated rink', () => {
     const script = readFileSync(path.resolve('scripts/build-world-tour-assets.mjs'), 'utf8');
 
     expect(script).toContain('assets/bonus-games/world-tour/generated-arenas');
-    expect(script).toContain('amateur-daily-court.webp');
     expect(script).not.toContain('flagColourField');
     expect(script).not.toContain('createCanonicalMarkingLayer');
+    expect(script).not.toContain('normaliseArenaGeometry');
+    expect(script).not.toContain('interpolateBoardOffsets');
   });
 
   it('keeps the larger featured artwork height scoped to World Tour cards', () => {
@@ -422,21 +422,16 @@ describe('bonus game runtime assets', () => {
     }
   });
 
-  it('matches every World Tour board to the daily-game court across the goal travel corridor', async () => {
-    const dailyCourtPath = path.resolve('public/sprites/amateur-daily-court.webp');
-    const sampleXs = [82, 186, 300, 606, 912, 1026, 1130];
-    const dailyBoard = await Promise.all(sampleXs.map((x) => findKickplateY(dailyCourtPath, x)));
+  it('keeps every World Tour face line level through the central goal-travel corridor', async () => {
+    const sampleXs = [300, 400, 812, 912];
 
     for (const slug of WORLD_TOUR_SLUGS) {
       const filePath = path.resolve('public/bonus-games/world-tour/arenas', `${slug}.webp`);
-      const board = await Promise.all(sampleXs.map((x) => findKickplateY(filePath, x)));
+      const lineYs = await Promise.all(sampleXs.map((x) => findGoalLineY(filePath, x)));
 
-      for (let index = 0; index < sampleXs.length; index += 1) {
-        expect(
-          Math.abs(board[index]! - dailyBoard[index]!),
-          `${slug}: board at X=${sampleXs[index]}`,
-        ).toBeLessThanOrEqual(5);
-      }
+      expect(Math.max(...lineYs) - Math.min(...lineYs), `${slug}: face line`).toBeLessThanOrEqual(
+        4,
+      );
     }
   });
 
@@ -450,7 +445,7 @@ describe('bonus game runtime assets', () => {
       expect(
         Math.abs(creaseCenterX - expectedCenterX),
         `${slug}: goal crease centre X=${creaseCenterX.toFixed(1)}`,
-      ).toBeLessThanOrEqual(18);
+      ).toBeLessThanOrEqual(10);
     }
   });
 
