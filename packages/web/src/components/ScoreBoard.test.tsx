@@ -85,6 +85,23 @@ describe('ScoreBoard', () => {
     expect(model.notice).toBeUndefined();
   });
 
+  it('uses compact typography for a long countdown in every game mode', () => {
+    render(
+      <ScoreBoard
+        period={3}
+        timer="23:59:59"
+        timerLabel="ДО ОБНОВЛЕНИЯ"
+        goals={78}
+        shots={90}
+        shotsTotal={90}
+      />,
+    );
+
+    expect(screen.getByText('23:59:59').closest('.game-scoreboard__metric')).toHaveClass(
+      'game-scoreboard__metric--small',
+    );
+  });
+
   it('builds the existing duel order and opponent status notice', () => {
     const model = buildGameScoreboardModel({
       period: 1,
