@@ -67,6 +67,12 @@ export interface TournamentMatchday {
   localDate: string;
   startsAt: string;
   endsAt: string;
+  myResult?: {
+    goals: number;
+    shots: number;
+    accuracy: number;
+    completed: boolean;
+  } | null;
 }
 
 export interface TournamentBracketSource {

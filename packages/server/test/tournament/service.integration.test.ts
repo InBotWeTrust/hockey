@@ -1208,6 +1208,45 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     ]);
   });
 
+  it('returns the authenticated player daily result with the matching tournament day', async () => {
+    await seedUsers(pool, 0);
+    const dailyRules = dailyPlayoffTournamentRules();
+    dailyRules.config = parseTournamentConfig({
+      ...dailyRules.config,
+      dailyDays: 2,
+      bestDays: 2,
+    });
+    const tournament = await createPublishedTournament(
+      pool,
+      'daily-aggregate-player-result',
+      0,
+      dailyRules,
+    );
+    const application = await applyToTournament(pool, tournament.id, PLAYER_IDS[0]);
+    await applyToTournament(pool, tournament.id, PLAYER_IDS[1]);
+    await generateRegularSchedule(pool, tournament.id, tournament.revision);
+    await pool.query(
+      `insert into tournament_daily_result
+         (tournament_id, participant_id, tournament_day, player_local_date,
+          goals, shots, accuracy, completed, source_snapshot, finalized_at)
+       values ($1, $2, 1, '2030-09-01', 37, 90, $3, true, '{}', now())`,
+      [tournament.id, application.participantId, 37 / 90],
+    );
+
+    const matchdays = await getTournamentMatchdays(pool, tournament.id, PLAYER_IDS[0]);
+
+    expect(matchdays[0]).toMatchObject({
+      number: 1,
+      myResult: {
+        goals: 37,
+        shots: 90,
+        accuracy: 0.41111,
+        completed: true,
+      },
+    });
+    expect(matchdays[1]).toMatchObject({ number: 2, myResult: null });
+  });
+
   it('shows every approved daily aggregate participant with zeroes when the regular season starts', async () => {
     await seedUsers(pool, 0);
     await pool.query(`update users set avatar_url = '/player-one.webp' where id = $1`, [

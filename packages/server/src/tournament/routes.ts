@@ -198,7 +198,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
     await getTournament(app.pg, params.tournamentId, req.user.id);
     const [fixtures, matchdays] = await Promise.all([
       getTournamentSchedule(app.pg, params.tournamentId),
-      getTournamentMatchdays(app.pg, params.tournamentId),
+      getTournamentMatchdays(app.pg, params.tournamentId, req.user.id),
     ]);
     return { fixtures, matchdays };
   });

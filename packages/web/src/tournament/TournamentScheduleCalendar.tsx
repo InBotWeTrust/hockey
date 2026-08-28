@@ -76,6 +76,15 @@ function initialDateKey(eventKeys: string[], todayKey: string): string {
   return eventKeys.find((key) => key > todayKey) ?? eventKeys[0] ?? todayKey;
 }
 
+function puckWord(value: number): string {
+  const lastTwo = Math.abs(value) % 100;
+  if (lastTwo >= 11 && lastTwo <= 14) return 'шайб';
+  const last = lastTwo % 10;
+  if (last === 1) return 'шайба';
+  if (last >= 2 && last <= 4) return 'шайбы';
+  return 'шайб';
+}
+
 export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProps) {
   const today = datePartsInTimezone(Date.now(), props.timezone) ?? {
     year: new Date().getUTCFullYear(),
@@ -272,11 +281,24 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
                 startLabel={props.formatDateTime(selectedMatchday.startsAt)}
                 endLabel={props.formatDateTime(selectedMatchday.endsAt)}
               />
-              {props.isParticipant && selectedDate === today.key && props.onOpenDailyGame && (
-                <button type="button" className="btn btn--cta" onClick={props.onOpenDailyGame}>
-                  Открыть ежедневную игру
-                </button>
+              {selectedMatchday.myResult?.completed === true && (
+                <div className="tournament-matchday-result" aria-label="Ваш результат игры">
+                  <strong>Ваш результат</strong>
+                  <span>
+                    {selectedMatchday.myResult.goals} {puckWord(selectedMatchday.myResult.goals)} из{' '}
+                    {selectedMatchday.myResult.shots} · точность{' '}
+                    {Math.round(selectedMatchday.myResult.accuracy * 100)}%
+                  </span>
+                </div>
               )}
+              {props.isParticipant &&
+                selectedDate === today.key &&
+                selectedMatchday.myResult?.completed !== true &&
+                props.onOpenDailyGame && (
+                  <button type="button" className="btn btn--cta" onClick={props.onOpenDailyGame}>
+                    Открыть ежедневную игру
+                  </button>
+                )}
             </>
           ) : (
             <p>В этот день игр нет.</p>

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { TournamentFixture } from '../api/tournament.js';
 import { TournamentScheduleCalendar } from './TournamentScheduleCalendar.js';
 
@@ -20,6 +20,10 @@ function fixture(index: number, mine = false): TournamentFixture {
 }
 
 describe('TournamentScheduleCalendar', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('opens the selected day in a modal and shows my game first', () => {
     const fixtures = [fixture(1), fixture(2), fixture(3), fixture(4), fixture(5), fixture(6, true)];
     render(
@@ -75,5 +79,80 @@ describe('TournamentScheduleCalendar', () => {
     expect(screen.getByRole('dialog', { name: 'Игры выбранного дня' })).toHaveTextContent(
       'В этот день игр нет.',
     );
+  });
+
+  it('shows a completed daily result instead of the open-game button', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2030-09-01T12:00:00.000Z'));
+
+    render(
+      <TournamentScheduleCalendar
+        fixtures={[]}
+        matchdays={[
+          {
+            id: 'day-1',
+            number: 1,
+            localDate: '2030-09-01',
+            startsAt: '2030-09-01T00:00:00.000Z',
+            endsAt: '2030-09-02T00:00:00.000Z',
+            myResult: {
+              goals: 37,
+              shots: 90,
+              accuracy: 37 / 90,
+              completed: true,
+            },
+          },
+        ]}
+        regularSource="daily_aggregate"
+        currentUserId="me"
+        isParticipant
+        timezone="Europe/Moscow"
+        rangeStartsAt="2030-09-01T00:00:00.000Z"
+        rangeEndsAt="2030-09-02T00:00:00.000Z"
+        renderFixture={() => null}
+        formatDateTime={(value) => value}
+        onOpenDailyGame={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Ваш результат')).toBeInTheDocument();
+    expect(screen.getByText('37 шайб из 90 · точность 41%')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Открыть ежедневную игру' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/место/i)).not.toBeInTheDocument();
+  });
+
+  it('keeps the daily-game button while the current game is unfinished', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2030-09-01T12:00:00.000Z'));
+
+    render(
+      <TournamentScheduleCalendar
+        fixtures={[]}
+        matchdays={[
+          {
+            id: 'day-1',
+            number: 1,
+            localDate: '2030-09-01',
+            startsAt: '2030-09-01T00:00:00.000Z',
+            endsAt: '2030-09-02T00:00:00.000Z',
+            myResult: null,
+          },
+        ]}
+        regularSource="daily_aggregate"
+        currentUserId="me"
+        isParticipant
+        timezone="Europe/Moscow"
+        rangeStartsAt="2030-09-01T00:00:00.000Z"
+        rangeEndsAt="2030-09-02T00:00:00.000Z"
+        renderFixture={() => null}
+        formatDateTime={(value) => value}
+        onOpenDailyGame={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Открыть ежедневную игру' })).toBeInTheDocument();
+    expect(screen.queryByText('Ваш результат')).not.toBeInTheDocument();
   });
 });

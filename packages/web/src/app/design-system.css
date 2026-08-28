@@ -4566,6 +4566,25 @@
   font-weight: 620;
 }
 
+.tournament-matchday-result {
+  display: grid;
+  gap: 2px;
+  padding: 3px 1px;
+  color: #17324d;
+}
+
+.tournament-matchday-result strong {
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.tournament-matchday-result span {
+  color: #405d78;
+  font-size: 11px;
+  font-weight: 520;
+  line-height: 1.4;
+}
+
 .tournament-calendar__expand {
   justify-self: center;
   padding: 5px 10px;

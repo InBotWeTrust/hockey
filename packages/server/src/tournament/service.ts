@@ -1489,19 +1489,39 @@ export async function getTournamentSchedule(pool: Pool, tournamentId: string) {
   }));
 }
 
-export async function getTournamentMatchdays(pool: Pool, tournamentId: string) {
+export async function getTournamentMatchdays(
+  pool: Pool,
+  tournamentId: string,
+  userId: string | null = null,
+) {
   const { rows } = await pool.query<{
     id: string;
     number: number;
     local_date: string;
     starts_at: Date;
     ends_at: Date;
+    result_id: string | null;
+    result_goals: number | null;
+    result_shots: number | null;
+    result_accuracy: string | null;
+    result_completed: boolean | null;
   }>(
-    `select id, number, local_date, starts_at, ends_at
-       from tournament_matchday
-      where tournament_id = $1
-      order by number`,
-    [tournamentId],
+    `select matchday.id, matchday.number, matchday.local_date,
+            matchday.starts_at, matchday.ends_at,
+            result.id as result_id, result.goals as result_goals,
+            result.shots as result_shots, result.accuracy as result_accuracy,
+            result.completed as result_completed
+       from tournament_matchday matchday
+       left join tournament_participant participant
+         on participant.tournament_id = matchday.tournament_id
+        and participant.user_id = $2
+       left join tournament_daily_result result
+         on result.tournament_id = matchday.tournament_id
+        and result.participant_id = participant.id
+        and result.tournament_day = matchday.number
+      where matchday.tournament_id = $1
+      order by matchday.number`,
+    [tournamentId, userId],
   );
   return rows.map((row) => ({
     id: row.id,
@@ -1509,6 +1529,15 @@ export async function getTournamentMatchdays(pool: Pool, tournamentId: string) {
     localDate: row.local_date,
     startsAt: row.starts_at.toISOString(),
     endsAt: row.ends_at.toISOString(),
+    myResult:
+      row.result_id === null
+        ? null
+        : {
+            goals: Number(row.result_goals),
+            shots: Number(row.result_shots),
+            accuracy: Number(row.result_accuracy),
+            completed: row.result_completed === true,
+          },
   }));
 }
 
