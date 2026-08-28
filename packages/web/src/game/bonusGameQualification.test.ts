@@ -36,6 +36,15 @@ describe('qualificationProgress', () => {
     ).toBe('ЦЕЛЬ 14/18 · СЕРИЯ 2/3');
   });
 
+  it('resets the displayed streak after a save or miss', () => {
+    expect(
+      qualificationProgress(
+        { type: 'goals_from_shots', targetGoals: 42, shotsLimit: 50, requiredGoalStreak: 4 },
+        { goals: 5, shots: 8, currentStreak: 0, bestStreak: 3 },
+      ),
+    ).toBe('ЦЕЛЬ 5/42 · СЕРИЯ 0/4');
+  });
+
   it('shows goal progress for accuracy qualifications', () => {
     expect(
       qualificationProgress(

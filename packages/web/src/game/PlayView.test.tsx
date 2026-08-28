@@ -513,6 +513,65 @@ describe('PlayView', () => {
     );
   });
 
+  it('does not accumulate a rejected shot in the next authoritative clock relation', async () => {
+    // A rejected request is not part of the server shot history. Its visual flight must not
+    // remain in the shooter/scene clock delta, regardless of how many accepted shots the
+    // admin-configured game contains.
+    vi.useFakeTimers();
+    let now = 1_000;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    const shotResolver: PlayShotResolver = vi.fn(() => ({ type: 'miss', reason: 'wide' }));
+
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="bonus-seed"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        goals={0}
+        shots={55}
+        shotsTotal={100}
+        initialSceneElapsedMs={80_000}
+        initialShooterElapsedMs={58_333.333_333_333_33}
+        receivedAtPerformanceMs={1_000}
+        clockRebaseKey="period-1"
+        speedOverrides={{ goalFreq: 0.45, goalieFreq: 0.5, shooterFreq: 0.65, puckSpeed: 1.2 }}
+        shotResolver={shotResolver}
+        optimisticAddShot={() => undefined}
+        submitShot={async () => null}
+        applyState={() => undefined}
+      />,
+    );
+    await act(async () => Promise.resolve());
+
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+    await act(async () => Promise.resolve());
+
+    now = 2_434;
+    act(() => tickerCallbacks.at(-1)?.());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_434);
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+      await Promise.resolve();
+    });
+
+    expect(shotResolver).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        input: expect.objectContaining({
+          tapTime: 81_434,
+          shooterTapTime: 59_767.333_333_333_33,
+        }),
+      }),
+    );
+  });
+
   it('applies a fast authoritative result only after the flight and result pause', async () => {
     // This catches a completed, failed, or break DTO replacing the rink during its final animation.
     vi.useFakeTimers();

@@ -22,6 +22,6 @@ export function qualificationProgress(
 ): string {
   const primary = `ЦЕЛЬ ${state.goals}/${rules.targetGoals}`;
   if (rules.requiredGoalStreak === undefined) return primary;
-  const achieved = Math.max(state.currentStreak, state.bestStreak);
+  const achieved = state.currentStreak;
   return `${primary} · СЕРИЯ ${Math.min(achieved, rules.requiredGoalStreak)}/${rules.requiredGoalStreak}`;
 }

@@ -1585,7 +1585,17 @@ export function PlayView<TState>({
       if (!mountedRef.current) return;
       shotSubmitPendingRef.current = false;
       setIsShotSubmitPending(false);
-      if (res === null) return;
+      if (res === null) {
+        // A rejected shot was rendered locally but does not exist in the
+        // authoritative shot history. Drop its flight/pause contribution from
+        // both clocks so any later shot starts from the reconciled server basis.
+        if (shotAnimationInProgressRef.current) {
+          pendingClockRebaseRef.current = true;
+        } else {
+          loopRef.current?.rebaseTime(computeInitialPlayClocks(sessionTimingRef.current));
+        }
+        return;
+      }
       const applyNextState = () => (applyResolvedState ?? applyState)(res.state);
       if (shotAnimationInProgressRef.current) {
         pendingMidShotApplyRef.current = applyNextState;
