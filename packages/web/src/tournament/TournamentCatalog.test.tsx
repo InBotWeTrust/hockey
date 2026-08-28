@@ -540,6 +540,7 @@ describe('TournamentCatalog', () => {
   });
 
   it('shows daily aggregate matchdays even though the format has no fixtures', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(new Date('2030-09-02T12:00:00.000Z').getTime());
     vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
       tournaments: [
         {
@@ -577,6 +578,13 @@ describe('TournamentCatalog', () => {
           startsAt: '2030-09-02T07:00:00.000Z',
           endsAt: '2030-09-03T07:00:00.000Z',
         },
+        {
+          id: 'day-3',
+          number: 3,
+          localDate: '2030-09-03',
+          startsAt: '2030-09-03T07:00:00.000Z',
+          endsAt: '2030-09-04T07:00:00.000Z',
+        },
       ],
     });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -593,8 +601,20 @@ describe('TournamentCatalog', () => {
 
     expect(await screen.findByText('1-й тур')).toBeInTheDocument();
     expect(screen.getByText('2-й тур')).toBeInTheDocument();
-    expect(screen.getAllByText('Начало')).toHaveLength(2);
-    expect(screen.getAllByText('Конец')).toHaveLength(2);
+    expect(screen.getByText('3-й тур')).toBeInTheDocument();
+    expect(screen.getAllByText('Начало')).toHaveLength(3);
+    expect(screen.getAllByText('Конец')).toHaveLength(3);
+    expect(screen.getByText('1-й тур').closest('article')).toHaveClass(
+      'tournament-matchday-row--past',
+    );
+    expect(screen.getByText('1-й тур').closest('article')).toHaveTextContent('Завершён');
+    expect(screen.getByText('2-й тур').closest('article')).toHaveClass(
+      'tournament-matchday-row--current',
+    );
+    expect(screen.getByText('2-й тур').closest('article')).toHaveTextContent('Сейчас');
+    expect(screen.getByText('3-й тур').closest('article')).toHaveClass(
+      'tournament-matchday-row--upcoming',
+    );
     expect(screen.queryByText('Расписание появится позже.')).not.toBeInTheDocument();
   });
 

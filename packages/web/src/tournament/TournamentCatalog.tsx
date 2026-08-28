@@ -23,7 +23,7 @@ import { UserAvatar } from '../chat/components/UserAvatar.js';
 import { tournamentStatusLabel } from './labels.js';
 import { tournamentTimezoneLabel } from './timezoneLabel.js';
 import { TournamentStandingsTable } from './TournamentStandingsTable.js';
-import { TournamentMatchdayTimes } from './TournamentMatchdayTimes.js';
+import { TournamentMatchdayRow } from './TournamentMatchdayTimes.js';
 
 type TournamentTab = 'overview' | 'standings' | 'schedule' | 'playoff' | 'rules';
 
@@ -624,19 +624,20 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
           ) : (schedule.data?.matchdays?.length ?? 0) > 0 ? (
             <div className="tournament-matchday-list">
               {schedule.data!.matchdays!.map((matchday) => (
-                <article className="tournament-matchday-row" key={matchday.id}>
-                  <strong>{matchday.number}-й тур</strong>
-                  <TournamentMatchdayTimes
-                    start={tournamentDateLabel(
-                      matchday.startsAt,
-                      String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
-                    )}
-                    end={tournamentDateLabel(
-                      matchday.endsAt,
-                      String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
-                    )}
-                  />
-                </article>
+                <TournamentMatchdayRow
+                  key={matchday.id}
+                  number={matchday.number}
+                  startsAt={matchday.startsAt}
+                  endsAt={matchday.endsAt}
+                  startLabel={tournamentDateLabel(
+                    matchday.startsAt,
+                    String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
+                  )}
+                  endLabel={tournamentDateLabel(
+                    matchday.endsAt,
+                    String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
+                  )}
+                />
               ))}
             </div>
           ) : (

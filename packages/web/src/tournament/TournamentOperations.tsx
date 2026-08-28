@@ -40,7 +40,7 @@ import {
   tournamentStatusLabel,
 } from './labels.js';
 import { TournamentStandingsTable } from './TournamentStandingsTable.js';
-import { TournamentMatchdayTimes } from './TournamentMatchdayTimes.js';
+import { TournamentMatchdayRow } from './TournamentMatchdayTimes.js';
 
 type OperationsTab =
   | 'participants'
@@ -699,13 +699,14 @@ export function TournamentOperations({
                 <div className="tournament-admin-empty">Календарь пока пуст.</div>
               )}
             {schedule.data?.matchdays?.map((matchday) => (
-              <article className="tournament-matchday-row" key={matchday.id}>
-                <strong>{matchday.number}-й тур</strong>
-                <TournamentMatchdayTimes
-                  start={tournamentDate(matchday.startsAt, tournamentTimezone)}
-                  end={tournamentDate(matchday.endsAt, tournamentTimezone)}
-                />
-              </article>
+              <TournamentMatchdayRow
+                key={matchday.id}
+                number={matchday.number}
+                startsAt={matchday.startsAt}
+                endsAt={matchday.endsAt}
+                startLabel={tournamentDate(matchday.startsAt, tournamentTimezone)}
+                endLabel={tournamentDate(matchday.endsAt, tournamentTimezone)}
+              />
             ))}
             {schedule.data?.fixtures.map((fixture) => (
               <button

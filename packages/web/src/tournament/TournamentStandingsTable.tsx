@@ -28,40 +28,41 @@ export function TournamentStandingsTable(props: {
 }) {
   const result = resultColumn(props.regularSource, props.dailyMetric);
   return (
-    <div className="tournament-standing-table-wrap">
-      <table className="tournament-standing-table">
-        <thead>
-          <tr>
-            <th scope="col">Место</th>
-            <th scope="col">Игрок</th>
-            <th scope="col">Игры</th>
-            <th scope="col">{result.heading}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {props.rows.map((row, index) => (
+    <table className="tournament-standing-table">
+      <thead>
+        <tr>
+          <th scope="col">Место</th>
+          <th scope="col">Игрок</th>
+          <th scope="col">Игры</th>
+          <th scope="col">{result.heading}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {props.rows.map((row, index) => {
+          const playerName = String(row.display_name ?? `Участник ${index + 1}`);
+          return (
             <tr key={String(row.user_id ?? index)}>
               <td>{displayNumber(row.rank ?? index + 1, 0)}</td>
               <td>
                 <div className="tournament-standing-player">
                   <UserAvatar
                     avatarUrl={typeof row.avatar_url === 'string' ? row.avatar_url : null}
-                    name={String(row.display_name ?? `Участник ${index + 1}`)}
+                    name={playerName}
                     size={28}
                     fontSize={11}
-                    alt={String(row.display_name ?? `Участник ${index + 1}`)}
+                    alt={playerName}
                     style={{ background: 'rgba(30, 91, 151, 0.13)', color: '#244d73' }}
                   />
-                  <span>{String(row.display_name ?? `Участник ${index + 1}`)}</span>
+                  <span title={playerName}>{playerName}</span>
                 </div>
               </td>
               <td>{displayNumber(row.played, 0)}</td>
               <td>{result.value(row)}</td>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          );
+        })}
+      </tbody>
+    </table>
   );
 }
 import { UserAvatar } from '../chat/components/UserAvatar.js';

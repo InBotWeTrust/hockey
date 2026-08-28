@@ -4314,15 +4314,6 @@
   background: rgba(255, 255, 255, 0.36);
 }
 
-.tournament-standing-table-wrap {
-  width: 100%;
-  min-width: 0;
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.62);
-  border-radius: 14px;
-  background: rgba(239, 246, 252, 0.58);
-}
-
 .tournament-standing-table {
   width: 100%;
   border-collapse: collapse;
@@ -4382,6 +4373,10 @@
   min-width: 0;
   align-items: center;
   gap: 7px;
+}
+
+.tournament-standing-player > :first-child {
+  flex: 0 0 auto;
 }
 
 .tournament-standing-player > span {
@@ -4834,6 +4829,48 @@
   font-size: 10px;
   font-weight: 560;
   line-height: 1.4;
+}
+
+.tournament-matchday-row__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tournament-matchday-row .tournament-matchday-row__status {
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 760;
+  line-height: 1.25;
+}
+
+.tournament-matchday-row--current {
+  border-color: rgba(58, 149, 216, 0.5);
+  background: rgba(213, 239, 255, 0.92);
+  box-shadow: 0 7px 20px rgba(20, 96, 154, 0.12);
+}
+
+.tournament-matchday-row--current .tournament-matchday-row__status {
+  background: rgba(21, 119, 187, 0.13);
+  color: #12649c;
+}
+
+.tournament-matchday-row--past {
+  border-color: rgba(130, 149, 166, 0.16);
+  background: rgba(223, 232, 240, 0.58);
+  color: #5b7084;
+}
+
+.tournament-matchday-row--past .tournament-matchday-row__status {
+  background: rgba(83, 107, 130, 0.1);
+  color: #667b8e;
+}
+
+.tournament-matchday-row--past .tournament-matchday-times span,
+.tournament-matchday-row--past .tournament-matchday-times b {
+  color: #718496;
 }
 
 .tournament-matchday-times {
