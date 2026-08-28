@@ -562,6 +562,7 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
             <TournamentStandingsTable
               rows={standings.data.standings}
               regularSource={String(tournament.rules.config.regularSource ?? '')}
+              playoffSize={Number(tournament.rules.config.playoffSize ?? 0)}
               dailyMetric={
                 typeof tournament.rules.config.dailyMetric === 'string'
                   ? tournament.rules.config.dailyMetric

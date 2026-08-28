@@ -9,6 +9,7 @@ describe('TournamentStandingsTable', () => {
       <TournamentStandingsTable
         regularSource="daily_aggregate"
         dailyMetric="goals_sum"
+        playoffSize={2}
         rows={[
           {
             rank: 1,
@@ -30,6 +31,9 @@ describe('TournamentStandingsTable', () => {
       'Шайбы',
     ]);
     const rows = screen.getAllByRole('row').slice(1);
+    expect(rows[0]).toHaveClass('tournament-standing-table__playoff-place');
+    expect(rows[1]).toHaveClass('tournament-standing-table__playoff-place');
+    expect(rows[2]).not.toHaveClass('tournament-standing-table__playoff-place');
     expect(
       within(rows[0]!)
         .getAllByRole('cell')

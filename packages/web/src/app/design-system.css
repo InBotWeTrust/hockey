@@ -4390,6 +4390,10 @@
   border-bottom: 0;
 }
 
+.tournament-standing-table tbody tr.tournament-standing-table__playoff-place {
+  background: rgba(147, 207, 243, 0.2);
+}
+
 .tournament-fixture-card {
   display: grid;
   gap: 6px;

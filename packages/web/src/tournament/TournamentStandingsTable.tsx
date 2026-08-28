@@ -25,8 +25,10 @@ export function TournamentStandingsTable(props: {
   rows: Array<Record<string, unknown>>;
   regularSource: string;
   dailyMetric: string | null;
+  playoffSize?: number | null;
 }) {
   const result = resultColumn(props.regularSource, props.dailyMetric);
+  const playoffSize = Math.max(0, Math.floor(Number(props.playoffSize) || 0));
   return (
     <table className="tournament-standing-table">
       <thead>
@@ -40,8 +42,13 @@ export function TournamentStandingsTable(props: {
       <tbody>
         {props.rows.map((row, index) => {
           const playerName = String(row.display_name ?? `Участник ${index + 1}`);
+          const rank = Number(row.rank ?? index + 1);
+          const isPlayoffPlace = playoffSize > 0 && Number.isFinite(rank) && rank <= playoffSize;
           return (
-            <tr key={String(row.user_id ?? index)}>
+            <tr
+              key={String(row.user_id ?? index)}
+              className={isPlayoffPlace ? 'tournament-standing-table__playoff-place' : undefined}
+            >
               <td>{displayNumber(row.rank ?? index + 1, 0)}</td>
               <td>
                 <div className="tournament-standing-player">
