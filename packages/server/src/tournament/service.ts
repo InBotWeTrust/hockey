@@ -14,6 +14,7 @@ import {
   type PlayoffParticipantSource,
 } from './playoffs.js';
 import { rebuildHeadToHeadStandings } from './standingsPersistence.js';
+import { rebuildDailyAggregateStandings } from './dailyAggregate.js';
 import { advanceTournamentPlayoffSeries } from './playoffSeriesLifecycle.js';
 import {
   enqueueTournamentFixtureResultPush,
@@ -1364,9 +1365,16 @@ export async function generateRegularSchedule(
 export async function publishRegularSchedule(pool: Pool, tournamentId: string) {
   return inTransaction(pool, async (client) => {
     await lockTournament(client, tournamentId);
-    const tournament = await client.query<{ title: string; current_revision: number }>(
-      `select title, current_revision from tournament
-        where id = $1 and status = 'scheduling' for update`,
+    const tournament = await client.query<{
+      title: string;
+      current_revision: number;
+      regular_source: TournamentConfig['regularSource'];
+      rules_snapshot: TournamentRulesSnapshot;
+    }>(
+      `select t.title, t.current_revision, t.regular_source, revision.rules_snapshot
+         from tournament t
+         join tournament_revision revision on revision.id = t.published_revision_id
+        where t.id = $1 and t.status = 'scheduling' for update of t`,
       [tournamentId],
     );
     const current = tournament.rows[0];
@@ -1375,6 +1383,13 @@ export async function publishRegularSchedule(pool: Pool, tournamentId: string) {
       `update tournament set status = 'regular', updated_at = now() where id = $1`,
       [tournamentId],
     );
+    const publishedConfig = current.rules_snapshot.config;
+    if (current.regular_source === 'daily_aggregate' && publishedConfig.regularSource === 'daily_aggregate') {
+      await rebuildDailyAggregateStandings(client, tournamentId, {
+        ...current.rules_snapshot,
+        config: publishedConfig,
+      });
+    }
     await enqueueTournamentAudiencePush(client, {
       tournamentId,
       eventType: 'tournament.schedule_published',
@@ -1462,7 +1477,17 @@ export async function getTournamentMatchdays(pool: Pool, tournamentId: string) {
 
 export async function getTournamentStandings(pool: Pool, tournamentId: string) {
   const { rows } = await pool.query(
-    `select s.rank, p.user_id, u.display_name, s.played, s.wins, s.draws, s.losses,
+    `select s.rank, p.user_id, u.display_name,
+            coalesce(
+              case
+                when u.display_source = 'custom' then u.custom_avatar_url
+                when u.display_source = 'vk' then u.vk_avatar_url
+                when u.display_source = 'telegram' then u.tg_avatar_url
+                else u.avatar_url
+              end,
+              u.avatar_url
+            ) as avatar_url,
+            s.played, s.wins, s.draws, s.losses,
             s.goals_for, s.goals_against, s.points, s.metrics
        from tournament_standing s
        join tournament_participant p on p.id = s.participant_id

@@ -4314,6 +4314,87 @@
   background: rgba(255, 255, 255, 0.36);
 }
 
+.tournament-standing-table-wrap {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.62);
+  border-radius: 14px;
+  background: rgba(239, 246, 252, 0.58);
+}
+
+.tournament-standing-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 620;
+  line-height: 1.25;
+}
+
+.tournament-standing-table th,
+.tournament-standing-table td {
+  padding: 10px 7px;
+  border-bottom: 1px solid rgba(100, 116, 139, 0.13);
+  vertical-align: middle;
+}
+
+.tournament-standing-table th {
+  color: #45627e;
+  font-size: 9px;
+  font-weight: 880;
+  letter-spacing: 0.045em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.tournament-standing-table th:first-child,
+.tournament-standing-table td:first-child {
+  width: 50px;
+  text-align: center;
+}
+
+.tournament-standing-table th:nth-child(3),
+.tournament-standing-table td:nth-child(3) {
+  width: 44px;
+  text-align: center;
+}
+
+.tournament-standing-table th:last-child,
+.tournament-standing-table td:last-child {
+  width: 64px;
+  padding-right: 10px;
+  text-align: right;
+}
+
+.tournament-standing-table td:nth-child(2) {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tournament-standing-player {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+}
+
+.tournament-standing-player > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tournament-standing-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
 .tournament-fixture-card {
   display: grid;
   gap: 6px;
@@ -4753,6 +4834,22 @@
   font-size: 10px;
   font-weight: 560;
   line-height: 1.4;
+}
+
+.tournament-matchday-times {
+  display: grid;
+  gap: 2px;
+}
+
+.tournament-matchday-times > span {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  gap: 6px;
+}
+
+.tournament-matchday-times b {
+  color: #294b6b;
+  font-weight: 760;
 }
 
 .tournament-operation-editor {

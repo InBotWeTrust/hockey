@@ -22,6 +22,8 @@ import { AccessibleModal } from '../components/AccessibleModal.js';
 import { UserAvatar } from '../chat/components/UserAvatar.js';
 import { tournamentStatusLabel } from './labels.js';
 import { tournamentTimezoneLabel } from './timezoneLabel.js';
+import { TournamentStandingsTable } from './TournamentStandingsTable.js';
+import { TournamentMatchdayTimes } from './TournamentMatchdayTimes.js';
 
 type TournamentTab = 'overview' | 'standings' | 'schedule' | 'playoff' | 'rules';
 
@@ -506,7 +508,7 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
                   </dd>
                 </div>
                 <div>
-                  <dt>Первый турнирный день</dt>
+                  <dt>Первый тур</dt>
                   <dd>
                     {tournamentDateLabel(
                       tournament.startsAt,
@@ -557,15 +559,15 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
           ) : standings.isError ? (
             <div role="status">Не удалось загрузить таблицу.</div>
           ) : standings.data?.standings.length ? (
-            <div className="tournament-standing-list">
-              {standings.data.standings.map((row, index) => (
-                <div key={String(row.user_id ?? index)}>
-                  <strong>{index + 1}</strong>
-                  <span>{String(row.display_name ?? `Участник ${index + 1}`)}</span>
-                  <span>{String(row.points ?? '')}</span>
-                </div>
-              ))}
-            </div>
+            <TournamentStandingsTable
+              rows={standings.data.standings}
+              regularSource={String(tournament.rules.config.regularSource ?? '')}
+              dailyMetric={
+                typeof tournament.rules.config.dailyMetric === 'string'
+                  ? tournament.rules.config.dailyMetric
+                  : null
+              }
+            />
           ) : (
             <div>Таблица появится после первых результатов.</div>
           ))}
@@ -623,18 +625,17 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
             <div className="tournament-matchday-list">
               {schedule.data!.matchdays!.map((matchday) => (
                 <article className="tournament-matchday-row" key={matchday.id}>
-                  <strong>Турнирный день {matchday.number}</strong>
-                  <span>
-                    {tournamentDateLabel(
+                  <strong>{matchday.number}-й тур</strong>
+                  <TournamentMatchdayTimes
+                    start={tournamentDateLabel(
                       matchday.startsAt,
                       String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
-                    )}{' '}
-                    —{' '}
-                    {tournamentDateLabel(
+                    )}
+                    end={tournamentDateLabel(
                       matchday.endsAt,
                       String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
                     )}
-                  </span>
+                  />
                 </article>
               ))}
             </div>

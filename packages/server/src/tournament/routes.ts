@@ -39,7 +39,10 @@ import {
 } from './service.js';
 import { openTournamentFixtureSegment } from './fixtureLifecycle.js';
 import { publishTournamentFixtureProgress } from './realtimeProgress.js';
-import { finalizeTournamentDailyDay } from './dailyAggregate.js';
+import {
+  finalizeTournamentDailyDay,
+  refreshCompletedTournamentDailyResultsForTournament,
+} from './dailyAggregate.js';
 import { grantTournamentStageRewards } from './rewards.js';
 import { getFixtureLiveState, proposeFixtureLiveTime, respondFixtureLiveProposal } from './live.js';
 import { enqueueTournamentAudiencePush } from '../push/tournament.js';
@@ -204,6 +207,10 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
     await requireTournamentFeature(app);
     const params = z.object({ tournamentId: uuid }).parse(req.params);
     await getTournament(app.pg, params.tournamentId, req.user.id);
+    await refreshCompletedTournamentDailyResultsForTournament(app.pg, {
+      tournamentId: params.tournamentId,
+      now: new Date(),
+    });
     return { standings: await getTournamentStandings(app.pg, params.tournamentId) };
   });
 
@@ -353,6 +360,10 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
   app.get('/admin/tournaments/:tournamentId/standings', admin, async (req) => {
     const params = z.object({ tournamentId: uuid }).parse(req.params);
     await getTournament(app.pg, params.tournamentId);
+    await refreshCompletedTournamentDailyResultsForTournament(app.pg, {
+      tournamentId: params.tournamentId,
+      now: new Date(),
+    });
     return { standings: await getTournamentStandings(app.pg, params.tournamentId) };
   });
 

@@ -22,6 +22,7 @@ import {
   generateRegularSchedule,
   getTournamentMatchdays,
   getTournamentSchedule,
+  getTournamentStandings,
   inviteTournamentParticipant,
   publishRegularSchedule,
   publishTournament,
@@ -1205,6 +1206,56 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       expect.objectContaining({ number: 3, localDate: '2030-09-03' }),
       expect.objectContaining({ number: 4, localDate: '2030-09-04' }),
     ]);
+  });
+
+  it('shows every approved daily aggregate participant with zeroes when the regular season starts', async () => {
+    await seedUsers(pool, 0);
+    await pool.query(`update users set avatar_url = '/player-one.webp' where id = $1`, [
+      PLAYER_IDS[0],
+    ]);
+    const tournament = await createPublishedTournament(
+      pool,
+      'daily-aggregate-zero-standings',
+      0,
+      dailyPlayoffTournamentRules(),
+    );
+    await applyToTournament(pool, tournament.id, PLAYER_IDS[0]);
+    await applyToTournament(pool, tournament.id, PLAYER_IDS[1]);
+    await generateRegularSchedule(pool, tournament.id, tournament.revision);
+
+    await publishRegularSchedule(pool, tournament.id);
+
+    const standings = await pool.query<{
+      user_id: string;
+      rank: number;
+      played: number;
+      points: string;
+    }>(
+      `select participant.user_id, standing.rank, standing.played,
+              standing.points::text
+         from tournament_standing standing
+         join tournament_participant participant on participant.id = standing.participant_id
+        where standing.tournament_id = $1
+        order by participant.user_id`,
+      [tournament.id],
+    );
+    expect(standings.rows.map((row) => row.user_id).sort()).toEqual(PLAYER_IDS.slice(0, 2).sort());
+    expect(standings.rows.map((row) => row.rank).sort()).toEqual([1, 2]);
+    expect(standings.rows.every((row) => row.played === 0 && row.points === '0.0000')).toBe(true);
+
+    const publicStandings = await getTournamentStandings(pool, tournament.id);
+    expect(publicStandings.find((row) => row.user_id === PLAYER_IDS[0])).toEqual(
+      expect.objectContaining({
+        display_name: 'Tournament Player 1',
+        avatar_url: '/player-one.webp',
+      }),
+    );
+    expect(publicStandings.find((row) => row.user_id === PLAYER_IDS[1])).toEqual(
+      expect.objectContaining({
+        display_name: 'Tournament Player 2',
+        avatar_url: null,
+      }),
+    );
   });
 
   it('rolls back playoff materialization when its audience outbox insert fails', async () => {

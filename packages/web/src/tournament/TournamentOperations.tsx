@@ -34,7 +34,13 @@ import {
   type AdminTournamentParticipant,
 } from './adminApi.js';
 import { tournamentTimezoneLabel } from './timezoneLabel.js';
-import { participantStateLabel, paymentStateLabel, tournamentStatusLabel } from './labels.js';
+import {
+  participantStateLabel,
+  paymentStateLabel,
+  tournamentStatusLabel,
+} from './labels.js';
+import { TournamentStandingsTable } from './TournamentStandingsTable.js';
+import { TournamentMatchdayTimes } from './TournamentMatchdayTimes.js';
 
 type OperationsTab =
   | 'participants'
@@ -59,23 +65,17 @@ function readableDate(value: string | null): string {
   return Number.isFinite(date.getTime()) ? date.toLocaleString('ru-RU') : 'время не задано';
 }
 
-function matchdayWindow(startsAt: string, endsAt: string, timezone: string): string {
-  const start = tournamentDate(startsAt, timezone);
-  const end = tournamentDate(endsAt, timezone);
-  return `${start} — ${end}`;
-}
-
 function matchdayCountLabel(count: number): string {
   const lastTwo = count % 100;
   const last = count % 10;
   const word =
     lastTwo >= 11 && lastTwo <= 14
-      ? 'турнирных дней'
+      ? 'туров'
       : last === 1
-        ? 'турнирный день'
+        ? 'тур'
         : last >= 2 && last <= 4
-          ? 'турнирных дня'
-          : 'турнирных дней';
+          ? 'тура'
+          : 'туров';
   return `${count} ${word}`;
 }
 
@@ -656,7 +656,7 @@ export function TournamentOperations({
                 <dd>{tournamentDate(tournament.registrationClosesAt, tournamentTimezone)}</dd>
               </div>
               <div>
-                <dt>Первый турнирный день</dt>
+                <dt>Первый тур</dt>
                 <dd>{tournamentDate(tournament.startsAt, tournamentTimezone)}</dd>
               </div>
               <div>
@@ -700,8 +700,11 @@ export function TournamentOperations({
               )}
             {schedule.data?.matchdays?.map((matchday) => (
               <article className="tournament-matchday-row" key={matchday.id}>
-                <strong>Турнирный день {matchday.number}</strong>
-                <span>{matchdayWindow(matchday.startsAt, matchday.endsAt, tournamentTimezone)}</span>
+                <strong>{matchday.number}-й тур</strong>
+                <TournamentMatchdayTimes
+                  start={tournamentDate(matchday.startsAt, tournamentTimezone)}
+                  end={tournamentDate(matchday.endsAt, tournamentTimezone)}
+                />
               </article>
             ))}
             {schedule.data?.fixtures.map((fixture) => (
@@ -762,11 +765,15 @@ export function TournamentOperations({
         )}
         {tab === 'standings' &&
           (standings.data?.standings.length ? (
-            standings.data.standings.map((row, index) => (
-              <div key={String(row.user_id ?? index)}>
-                {index + 1}. {rowLabel(row, index)} · {String(row.points ?? 0)} очков
-              </div>
-            ))
+            <TournamentStandingsTable
+              rows={standings.data.standings}
+              regularSource={String(tournament.rules?.config?.regularSource ?? '')}
+              dailyMetric={
+                typeof tournament.rules?.config?.dailyMetric === 'string'
+                  ? tournament.rules.config.dailyMetric
+                  : null
+              }
+            />
           ) : (
             <div className="tournament-admin-empty">Таблица пуста.</div>
           ))}
@@ -969,7 +976,7 @@ export function TournamentOperations({
                 </button>
                 {!datesReady && (
                   <div className="tournament-operation-hint">
-                    Сначала укажите открытие и закрытие регистрации и первый турнирный день.
+                    Сначала укажите открытие и закрытие регистрации и дату первого тура.
                     Порядок: открытие → закрытие → старт.
                   </div>
                 )}

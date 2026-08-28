@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -140,19 +140,24 @@ describe('TournamentOperations', () => {
     expect(await screen.findByText('Плановое окончание')).toBeInTheDocument();
     expect(screen.getByText(/^1 августа 2030.*\(МСК\)/)).toBeInTheDocument();
     expect(screen.queryByText(/Europe\/Moscow/)).not.toBeInTheDocument();
-    expect(await screen.findByText('Турнирный день 1')).toBeInTheDocument();
+    expect(await screen.findByText('1-й тур')).toBeInTheDocument();
     expect(screen.queryByText('Календарь пока пуст.')).not.toBeInTheDocument();
     const style = document.createElement('style');
     style.textContent = designSystemCss;
     document.head.append(style);
     try {
-      expect(getComputedStyle(screen.getByText('Турнирный день 1')).color).toBe('rgb(23, 50, 77)');
-      expect(getComputedStyle(screen.getByText(/1 сентября 2030.*2 сентября 2030/)).color).toBe(
+      expect(getComputedStyle(screen.getByText('1-й тур')).color).toBe('rgb(23, 50, 77)');
+      const matchday = screen.getByText('1-й тур').closest('article');
+      expect(matchday).not.toBeNull();
+      expect(getComputedStyle(within(matchday!).getByText(/^1 сентября 2030/)).color).toBe(
         'rgb(83, 107, 130)',
       );
     } finally {
       style.remove();
     }
+    expect(screen.getByText('Начало')).toBeInTheDocument();
+    expect(screen.getByText('Конец')).toBeInTheDocument();
+    expect(screen.queryByText(/1 сентября 2030.*2 сентября 2030/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Изменить сроки' }));
     expect(onEdit).toHaveBeenCalledWith(4);
 

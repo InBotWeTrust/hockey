@@ -28,6 +28,7 @@ import {
   getGameSettings,
   type GameSettings,
 } from '../gameSettings.js';
+import { refreshCompletedTournamentDailyResultsForUser } from '../../tournament/dailyAggregate.js';
 
 const shotBodySchema = z.object({
   shot_index: z.number().int().min(1),
@@ -628,7 +629,7 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
     }
     const body = parsed.data;
 
-    return withTransaction(app, async (client): Promise<ShotSubmitResponse> => {
+    const response = await withTransaction(app, async (client): Promise<ShotSubmitResponse> => {
       const now = new Date();
       const settings = await getGameSettings(client);
       const { pool, localToday } = await reconcileDayPool(client, req.user.id, now, settings.daily);
@@ -862,5 +863,19 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
       const state = await buildState(client, currentPool, localToday, req.user.id, settings, now);
       return { server_result: serverResult, state };
     });
+    if (response.state.state === 'closed') {
+      try {
+        await refreshCompletedTournamentDailyResultsForUser(app.pg, {
+          userId: req.user.id,
+          now: new Date(),
+        });
+      } catch (error) {
+        app.log.warn(
+          { err: error, userId: req.user.id },
+          'failed to refresh tournament standings after daily completion',
+        );
+      }
+    }
+    return response;
   });
 };

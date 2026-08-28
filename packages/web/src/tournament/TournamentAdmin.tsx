@@ -2234,11 +2234,11 @@ export function TournamentAdmin(): JSX.Element {
                       />
                     </TournamentAdminField>
                     <TournamentAdminField
-                      label="Первый турнирный день"
+                      label="Первый тур"
                       help="День, когда начнётся турнир. Для формата «каждый с каждым» время первого тура задаётся отдельно в настройках регулярки."
                     >
                       <input
-                        aria-label="Первый турнирный день"
+                        aria-label="Первый тур"
                         type="date"
                         value={draft.startsAt}
                         onChange={(event) => {

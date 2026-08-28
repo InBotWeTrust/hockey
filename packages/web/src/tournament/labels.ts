@@ -51,3 +51,27 @@ export function russianPlural(value: number, one: string, few: string, many: str
 export function participantsCountLabel(value: number): string {
   return `${value} ${russianPlural(value, 'участник', 'участника', 'участников')}`;
 }
+
+function formattedNumber(value: number, maximumFractionDigits: number): string {
+  return new Intl.NumberFormat('ru-RU', { maximumFractionDigits }).format(value);
+}
+
+export function tournamentStandingValueLabel(
+  rawValue: unknown,
+  regularSource: string,
+  dailyMetric: string | null,
+): string {
+  const parsed = Number(rawValue);
+  const value = Number.isFinite(parsed) ? parsed : 0;
+  if (regularSource === 'daily_aggregate' && dailyMetric === 'goals_sum') {
+    const goals = Math.round(value);
+    return `${formattedNumber(goals, 0)} ${russianPlural(goals, 'гол', 'гола', 'голов')}`;
+  }
+  if (regularSource === 'daily_aggregate' && dailyMetric === 'accuracy_average') {
+    return `${formattedNumber(value * 100, 1)}%`;
+  }
+  const pointsLabel = Number.isInteger(value)
+    ? russianPlural(value, 'очко', 'очка', 'очков')
+    : 'очка';
+  return `${formattedNumber(value, 2)} ${pointsLabel}`;
+}

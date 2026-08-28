@@ -13,6 +13,25 @@ interface DailyParticipantSourceRow {
   shots: number;
 }
 
+interface DailyRulesSnapshot {
+  config: {
+    regularSource: string;
+    dailyDays: number;
+    dailyMetric: TournamentDailyMetric;
+    bestDays: number | null;
+  };
+  dailyPlacePoints?: number[];
+}
+
+interface DailyResultRow {
+  participant_id: string;
+  tournament_day: number;
+  goals: number;
+  shots: number;
+  completed: boolean;
+  place_points: number;
+}
+
 async function transaction<T>(pool: Pool, work: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await pool.connect();
   try {
@@ -28,6 +47,252 @@ async function transaction<T>(pool: Pool, work: (client: PoolClient) => Promise<
   }
 }
 
+async function refreshDailyDayPlacements(
+  client: PoolClient,
+  tournamentId: string,
+  tournamentDay: number,
+  rules: DailyRulesSnapshot,
+): Promise<void> {
+  const results = await client.query<{
+    participant_id: string;
+    goals: number;
+    shots: number;
+  }>(
+    `select participant_id, goals, shots
+       from tournament_daily_result
+      where tournament_id = $1 and tournament_day = $2 and completed = true`,
+    [tournamentId, tournamentDay],
+  );
+  const placementInput = results.rows.map((result) => ({
+    participantId: result.participant_id,
+    value:
+      rules.config.dailyMetric === 'accuracy_average'
+        ? Number(result.shots) === 0
+          ? 0
+          : Number(result.goals) / Number(result.shots)
+        : Number(result.goals),
+  }));
+  const placements = awardSharedPlacePoints(
+    placementInput,
+    rules.dailyPlacePoints ?? placementInput.map((_, index) => placementInput.length - index),
+  );
+  for (const placement of placements) {
+    await client.query(
+      `update tournament_daily_result
+          set place = $4, place_points = $5
+        where tournament_id = $1 and tournament_day = $2 and participant_id = $3`,
+      [tournamentId, tournamentDay, placement.participantId, placement.place, placement.points],
+    );
+  }
+}
+
+export async function rebuildDailyAggregateStandings(
+  client: PoolClient,
+  tournamentId: string,
+  rules: DailyRulesSnapshot,
+): Promise<void> {
+  await client.query(`select pg_advisory_xact_lock(hashtext($1))`, [
+    `tournament-daily-standings:${tournamentId}`,
+  ]);
+  const [participants, allResults] = await Promise.all([
+    client.query<{ participant_id: string }>(
+      `select id as participant_id
+         from tournament_participant
+        where tournament_id = $1
+          and state in ('approved', 'withdrawn', 'removed', 'disqualified')
+        order by id`,
+      [tournamentId],
+    ),
+    client.query<DailyResultRow>(
+      `select participant_id, tournament_day, goals, shots, completed, place_points
+         from tournament_daily_result where tournament_id = $1`,
+      [tournamentId],
+    ),
+  ]);
+  const calculated = calculateDailyAggregateStandings(
+    allResults.rows.map((row) => ({
+      participantId: row.participant_id,
+      day: Number(row.tournament_day),
+      goals: Number(row.goals),
+      shots: Number(row.shots),
+      completed: row.completed,
+      placePoints: Number(row.place_points),
+    })),
+    { metric: rules.config.dailyMetric, bestDays: rules.config.bestDays },
+  );
+  const calculatedByParticipant = new Map(
+    calculated.map((standing) => [standing.participantId, standing]),
+  );
+  const playedByParticipant = new Map<string, number>();
+  for (const result of allResults.rows) {
+    if (!result.completed) continue;
+    playedByParticipant.set(
+      result.participant_id,
+      (playedByParticipant.get(result.participant_id) ?? 0) + 1,
+    );
+  }
+  const standings = participants.rows
+    .map(({ participant_id: participantId }) => {
+      const calculatedStanding = calculatedByParticipant.get(participantId);
+      return {
+        participantId,
+        value: calculatedStanding?.value ?? 0,
+        countedDays: calculatedStanding?.countedDays ?? [],
+        played: playedByParticipant.get(participantId) ?? 0,
+      };
+    })
+    .sort(
+      (left, right) =>
+        right.value - left.value || left.participantId.localeCompare(right.participantId),
+    );
+
+  await client.query(`delete from tournament_standing where tournament_id = $1`, [tournamentId]);
+  for (const [index, standing] of standings.entries()) {
+    await client.query(
+      `insert into tournament_standing
+         (tournament_id, participant_id, rank, played, points, metrics, tie_key, source_version)
+       values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        tournamentId,
+        standing.participantId,
+        index + 1,
+        standing.played,
+        standing.value,
+        JSON.stringify({ metric: rules.config.dailyMetric, countedDays: standing.countedDays }),
+        JSON.stringify([standing.value]),
+        allResults.rows.length,
+      ],
+    );
+  }
+}
+
+async function refreshCompletedTournamentDailyResults(
+  pool: Pool,
+  input: { userId: string | null; tournamentId: string | null; now: Date },
+) {
+  return transaction(pool, async (client) => {
+    const completed = await client.query<{
+      tournament_id: string;
+      tournament_day: number;
+      participant_id: string;
+      user_id: string;
+      player_local_date: string;
+      goals: number;
+      shots: number;
+      rules_snapshot: DailyRulesSnapshot;
+    }>(
+      `select t.id as tournament_id, days.tournament_day, participant.id as participant_id,
+              participant.user_id, day_pool.day_date::text as player_local_date,
+              coalesce(sum(period.goals), 0)::int as goals,
+              coalesce(sum(period.shots_taken), 0)::int as shots,
+              revision.rules_snapshot
+         from tournament t
+         join tournament_revision revision on revision.id = t.published_revision_id
+         join tournament_participant participant
+           on participant.tournament_id = t.id
+         join users player on player.id = participant.user_id
+         cross join lateral generate_series(
+           1,
+           greatest(0, coalesce((revision.rules_snapshot->'config'->>'dailyDays')::int, 0))
+         ) as days(tournament_day)
+         join day_pool
+           on day_pool.user_id = participant.user_id
+          and day_pool.day_date =
+              ((t.starts_at at time zone player.timezone)::date + (days.tournament_day - 1))
+          and day_pool.state = 'closed'
+         join period_log period on period.day_pool_id = day_pool.id
+        where t.status = 'regular'
+          and t.regular_source = 'daily_aggregate'
+          and t.starts_at is not null
+          and ($1::uuid is null or participant.user_id = $1)
+          and ($2::uuid is null or t.id = $2)
+          and participant.state in ('approved', 'withdrawn', 'removed', 'disqualified')
+        group by t.id, days.tournament_day, participant.id, participant.user_id,
+                 day_pool.day_date, revision.rules_snapshot
+       having count(distinct period.period_number) = 3
+        order by t.id, days.tournament_day`,
+      [input.userId, input.tournamentId],
+    );
+    const refreshedDays = new Set<string>();
+    const touchedTournaments = new Map<string, DailyRulesSnapshot>();
+    for (const source of completed.rows) {
+      await client.query(`select pg_advisory_xact_lock(hashtext($1))`, [
+        `tournament-daily:${source.tournament_id}:${source.tournament_day}`,
+      ]);
+      await client.query(
+        `insert into tournament_daily_result
+           (tournament_id, participant_id, tournament_day, player_local_date,
+            goals, shots, accuracy, place, place_points, completed, source_snapshot, finalized_at)
+         values ($1, $2, $3, $4, $5, $6, $7, null, 0, true, $8, $9)
+         on conflict (tournament_id, participant_id, tournament_day) do update
+           set player_local_date = excluded.player_local_date,
+               goals = excluded.goals, shots = excluded.shots, accuracy = excluded.accuracy,
+               completed = true, source_snapshot = excluded.source_snapshot,
+               finalized_at = excluded.finalized_at`,
+        [
+          source.tournament_id,
+          source.participant_id,
+          source.tournament_day,
+          source.player_local_date,
+          Number(source.goals),
+          Number(source.shots),
+          Number(source.shots) === 0 ? 0 : Number(source.goals) / Number(source.shots),
+          JSON.stringify({ userId: source.user_id, periodCount: 3, provisional: true }),
+          input.now,
+        ],
+      );
+      await refreshDailyDayPlacements(
+        client,
+        source.tournament_id,
+        Number(source.tournament_day),
+        source.rules_snapshot,
+      );
+      touchedTournaments.set(source.tournament_id, source.rules_snapshot);
+      refreshedDays.add(`${source.tournament_id}:${source.tournament_day}`);
+    }
+    if (input.tournamentId !== null && !touchedTournaments.has(input.tournamentId)) {
+      const tournament = await client.query<{ rules_snapshot: DailyRulesSnapshot }>(
+        `select revision.rules_snapshot
+           from tournament t
+           join tournament_revision revision on revision.id = t.published_revision_id
+          where t.id = $1 and t.status = 'regular' and t.regular_source = 'daily_aggregate'`,
+        [input.tournamentId],
+      );
+      const existing = tournament.rows[0];
+      if (existing) touchedTournaments.set(input.tournamentId, existing.rules_snapshot);
+    }
+    for (const [tournamentId, rules] of touchedTournaments) {
+      await rebuildDailyAggregateStandings(client, tournamentId, rules);
+    }
+    return {
+      refreshedDays: refreshedDays.size,
+      refreshedParticipants: completed.rows.length,
+    };
+  });
+}
+
+export function refreshCompletedTournamentDailyResultsForUser(
+  pool: Pool,
+  input: { userId: string; now: Date },
+) {
+  return refreshCompletedTournamentDailyResults(pool, {
+    userId: input.userId,
+    tournamentId: null,
+    now: input.now,
+  });
+}
+
+export function refreshCompletedTournamentDailyResultsForTournament(
+  pool: Pool,
+  input: { tournamentId: string; now: Date },
+) {
+  return refreshCompletedTournamentDailyResults(pool, {
+    userId: null,
+    tournamentId: input.tournamentId,
+    now: input.now,
+  });
+}
+
 export async function finalizeTournamentDailyDay(
   pool: Pool,
   input: { tournamentId: string; tournamentDay: number; now: Date },
@@ -39,15 +304,7 @@ export async function finalizeTournamentDailyDay(
     const tournamentResult = await client.query<{
       status: string;
       starts_at: Date | null;
-      rules_snapshot: {
-        config: {
-          regularSource: string;
-          dailyDays: number;
-          dailyMetric: TournamentDailyMetric;
-          bestDays: number | null;
-        };
-        dailyPlacePoints?: number[];
-      };
+      rules_snapshot: DailyRulesSnapshot;
     }>(
       `select t.status, t.starts_at, r.rules_snapshot
          from tournament t join tournament_revision r on r.id = t.published_revision_id
@@ -156,46 +413,7 @@ export async function finalizeTournamentDailyDay(
         ],
       );
     }
-    const allResults = await client.query<{
-      participant_id: string;
-      tournament_day: number;
-      goals: number;
-      shots: number;
-      completed: boolean;
-      place_points: number;
-    }>(
-      `select participant_id, tournament_day, goals, shots, completed, place_points
-         from tournament_daily_result where tournament_id = $1`,
-      [input.tournamentId],
-    );
-    const standings = calculateDailyAggregateStandings(
-      allResults.rows.map((row) => ({
-        participantId: row.participant_id,
-        day: Number(row.tournament_day),
-        goals: Number(row.goals),
-        shots: Number(row.shots),
-        completed: row.completed,
-        placePoints: Number(row.place_points),
-      })),
-      { metric, bestDays: tournament.rules_snapshot.config.bestDays },
-    );
-    await client.query(`delete from tournament_standing where tournament_id = $1`, [input.tournamentId]);
-    for (const [index, standing] of standings.entries()) {
-      await client.query(
-        `insert into tournament_standing
-           (tournament_id, participant_id, rank, points, metrics, tie_key, source_version)
-         values ($1, $2, $3, $4, $5, $6, $7)`,
-        [
-          input.tournamentId,
-          standing.participantId,
-          index + 1,
-          standing.value,
-          JSON.stringify({ metric, countedDays: standing.countedDays }),
-          JSON.stringify([standing.value]),
-          allResults.rows.length,
-        ],
-      );
-    }
+    await rebuildDailyAggregateStandings(client, input.tournamentId, tournament.rules_snapshot);
     return { tournamentId: input.tournamentId, tournamentDay: input.tournamentDay, finalized: sources.rows.length };
   });
 }

@@ -6,7 +6,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { applyMigrations } from '../../src/db/migrations.js';
 import { dbPlugin } from '../../src/plugins/db.js';
 import { pushSchedulerPlugin } from '../../src/plugins/pushScheduler.js';
-import { finalizeDueTournamentDailyDays } from '../../src/tournament/dailyAggregate.js';
+import {
+  finalizeDueTournamentDailyDays,
+  refreshCompletedTournamentDailyResultsForUser,
+  refreshCompletedTournamentDailyResultsForTournament,
+} from '../../src/tournament/dailyAggregate.js';
 import {
   createTestPool,
   getTestUrls,
@@ -20,7 +24,7 @@ const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
 async function createDueDailyTournament(
   pool: Pool,
   input: { slug: string; startsAt: Date },
-): Promise<{ tournamentId: string }> {
+): Promise<{ tournamentId: string; playerIds: string[] }> {
   const admin = await pool.query<{ id: string }>(
     `insert into users (id, display_name, timezone, role)
      values (gen_random_uuid(), 'Daily tournament admin', 'UTC', 'admin')
@@ -70,7 +74,7 @@ async function createDueDailyTournament(
       [tournamentId, player.id],
     );
   }
-  return { tournamentId };
+  return { tournamentId, playerIds: players.rows.map((player) => player.id) };
 }
 
 describe.skipIf(!hasIntegrationEnv)('daily tournament maintenance', () => {
@@ -116,6 +120,91 @@ describe.skipIf(!hasIntegrationEnv)('daily tournament maintenance', () => {
       { completed: false, goals: 0, place_points: 0 },
       { completed: false, goals: 0, place_points: 0 },
     ]);
+  });
+
+  it('shows a completed daily game in provisional standings before the other local day closes', async () => {
+    const startsAt = new Date('2030-09-01T10:00:00.000Z');
+    const { tournamentId, playerIds } = await createDueDailyTournament(pool, {
+      slug: 'daily-live-standings',
+      startsAt,
+    });
+    const completedPlayerId = playerIds[0]!;
+    const dayPool = await pool.query<{ id: string }>(
+      `insert into day_pool
+         (user_id, day_date, state, current_period, closed_at, game_core_version, daily_seed)
+       values ($1, '2030-09-01', 'closed', 3, $2, 1, 'daily-live-result')
+       returning id`,
+      [completedPlayerId, new Date('2030-09-01T18:00:00.000Z')],
+    );
+    await pool.query(
+      `insert into period_log
+         (day_pool_id, period_number, started_at, ended_at, shots_taken, goals, closed_reason)
+       values
+         ($1, 1, '2030-09-01T12:00:00Z', '2030-09-01T12:10:00Z', 30, 8, 'quota'),
+         ($1, 2, '2030-09-01T13:00:00Z', '2030-09-01T13:10:00Z', 30, 9, 'quota'),
+         ($1, 3, '2030-09-01T14:00:00Z', '2030-09-01T14:10:00Z', 30, 10, 'quota')`,
+      [dayPool.rows[0]!.id],
+    );
+
+    const refreshed = await refreshCompletedTournamentDailyResultsForUser(pool, {
+      userId: completedPlayerId,
+      now: new Date('2030-09-01T18:01:00.000Z'),
+    });
+
+    expect(refreshed).toEqual({ refreshedDays: 1, refreshedParticipants: 1 });
+    const standings = await pool.query<{
+      user_id: string;
+      goals: number;
+      completed: boolean;
+      rank: number;
+    }>(
+      `select p.user_id, coalesce(r.goals, 0)::int as goals,
+              coalesce(r.completed, false) as completed, s.rank
+         from tournament_standing s
+         join tournament_participant p on p.id = s.participant_id
+         left join tournament_daily_result r
+           on r.tournament_id = s.tournament_id
+          and r.participant_id = s.participant_id
+          and r.tournament_day = 1
+        where s.tournament_id = $1
+        order by s.rank, p.user_id`,
+      [tournamentId],
+    );
+    expect(standings.rows).toEqual([
+      { user_id: completedPlayerId, goals: 27, completed: true, rank: 1 },
+      {
+        user_id: playerIds[1]!,
+        goals: 0,
+        completed: false,
+        rank: 2,
+      },
+    ]);
+  });
+
+  it('restores zero standings for an existing regular daily tournament before anyone plays', async () => {
+    const { tournamentId, playerIds } = await createDueDailyTournament(pool, {
+      slug: 'daily-existing-zero-standings',
+      startsAt: new Date('2030-09-01T10:00:00.000Z'),
+    });
+
+    await expect(
+      refreshCompletedTournamentDailyResultsForTournament(pool, {
+        tournamentId,
+        now: new Date('2030-09-01T11:00:00.000Z'),
+      }),
+    ).resolves.toEqual({ refreshedDays: 0, refreshedParticipants: 0 });
+
+    const standings = await pool.query<{ user_id: string; rank: number; points: string }>(
+      `select participant.user_id, standing.rank, standing.points::text
+         from tournament_standing standing
+         join tournament_participant participant on participant.id = standing.participant_id
+        where standing.tournament_id = $1
+        order by participant.user_id`,
+      [tournamentId],
+    );
+    expect(standings.rows.map((row) => row.user_id).sort()).toEqual(playerIds.sort());
+    expect(standings.rows.map((row) => row.rank).sort()).toEqual([1, 2]);
+    expect(standings.rows.every((row) => row.points === '0.0000')).toBe(true);
   });
 
   it('lets only one concurrent due-day finalizer write the daily results', async () => {

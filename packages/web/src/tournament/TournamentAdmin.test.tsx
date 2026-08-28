@@ -1194,7 +1194,7 @@ describe('TournamentAdmin', () => {
       fireEvent.change(screen.getByLabelText('Закрытие регистрации'), {
         target: { value: '2030-08-31T10:00' },
       });
-      fireEvent.change(screen.getByLabelText('Первый турнирный день'), {
+      fireEvent.change(screen.getByLabelText('Первый тур'), {
         target: { value: '2030-09-01' },
       });
     });
@@ -1457,7 +1457,7 @@ describe('TournamentAdmin', () => {
     expect(publish).toHaveBeenCalledWith('00000000-0000-4000-8000-000000000921', 3);
     fireEvent.click(screen.getByRole('button', { name: 'Создать календарь' }));
     expect(await screen.findByRole('status')).toHaveTextContent(
-      'Календарь создан: 4 турнирных дня.',
+      'Календарь создан: 4 тура.',
     );
     expect(generate).toHaveBeenCalledWith('00000000-0000-4000-8000-000000000921', 3);
   });
@@ -1593,7 +1593,7 @@ describe('TournamentAdmin', () => {
       target: { value: '02:30' },
     });
     fireEvent.click(screen.getByRole('button', { name: '5. Сроки' }));
-    fireEvent.change(screen.getByLabelText('Первый турнирный день'), {
+    fireEvent.change(screen.getByLabelText('Первый тур'), {
       target: { value: '2026-03-08' },
     });
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));

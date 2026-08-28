@@ -591,8 +591,10 @@ describe('TournamentCatalog', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Ежедневный кубок' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Расписание' }));
 
-    expect(await screen.findByText('Турнирный день 1')).toBeInTheDocument();
-    expect(screen.getByText('Турнирный день 2')).toBeInTheDocument();
+    expect(await screen.findByText('1-й тур')).toBeInTheDocument();
+    expect(screen.getByText('2-й тур')).toBeInTheDocument();
+    expect(screen.getAllByText('Начало')).toHaveLength(2);
+    expect(screen.getAllByText('Конец')).toHaveLength(2);
     expect(screen.queryByText('Расписание появится позже.')).not.toBeInTheDocument();
   });
 
