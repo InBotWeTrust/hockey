@@ -1823,6 +1823,7 @@ describe('DailyScreen', () => {
     expect(localStorage.getItem('hockey.trainingHitboxesVisible')).toBe('true');
 
     const speedControl = screen.getByRole('button', { name: 'Скорости' });
+    expect(speedControl).toHaveStyle({ background: 'rgba(255, 255, 255, 0.82)' });
     fireEvent.click(speedControl);
     const dialog = await screen.findByRole('dialog', { name: 'Скорости тренировки' });
     const sliders = within(dialog).getAllByRole('slider');
