@@ -242,6 +242,16 @@ function saveTrainingSpeedOverrides(value: SpeedOverrides | null): void {
   }
 }
 
+function isDevTrainingDebugHost(hostname: string): boolean {
+  const normalizedHostname = hostname.trim().toLowerCase();
+  return (
+    normalizedHostname === 'dev.hockey.inbotwetrust.ru' ||
+    normalizedHostname === 'localhost' ||
+    normalizedHostname === '127.0.0.1' ||
+    normalizedHostname === '::1'
+  );
+}
+
 function movementDistancePxForElapsed(elapsedMs: number, shooterFrequency: number): number {
   const safeElapsed = Math.max(0, elapsedMs);
   const safeFrequency = Math.max(0, shooterFrequency);
@@ -7788,7 +7798,10 @@ function TrainingPlayView({
     readTrainingSpeedOverrides(),
   );
   const [now, setNow] = useState(Date.now());
-  const canShowTrainingDebugControls = userRole === 'admin' || experimentalTrainingCourt === true;
+  const canShowTrainingDebugControls =
+    isDevTrainingDebugHost(window.location.hostname) ||
+    userRole === 'admin' ||
+    experimentalTrainingCourt === true;
   const trainingPeriodNumber = data?.selected_period ?? selectedPeriod;
   const trainingDefaultSpeeds = useMemo(
     () => speedOverridesForPeriod(trainingPeriodNumber, data?.period_speed_presets),
