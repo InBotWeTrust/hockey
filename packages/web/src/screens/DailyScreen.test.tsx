@@ -1880,6 +1880,38 @@ describe('DailyScreen', () => {
     expect(sliders[0]).toHaveValue('1.35');
   });
 
+  it('shows both training debug controls to ordinary players on dev hosts', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'token',
+      refreshToken: 'r',
+      user: { id: 'u3', displayName: 'Regular dev player', role: 'player' },
+    });
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingActiveState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify(baseState), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=training']);
+    fireEvent.click(await screen.findByRole('button', { name: /Продолжить тренировку/ }));
+
+    expect(await screen.findByRole('checkbox', { name: 'Хитбоксы' })).toBeInTheDocument();
+    const speedControl = screen.getByRole('button', { name: 'Скорости' });
+    fireEvent.click(speedControl);
+    const dialog = await screen.findByRole('dialog', { name: 'Скорости тренировки' });
+    expect(within(dialog).getAllByRole('slider')).toHaveLength(4);
+  });
+
   it('lets non-admin testers with the experimental flag toggle hitboxes', async () => {
     useAuthStore.getState().setSession({
       accessToken: 'token',
