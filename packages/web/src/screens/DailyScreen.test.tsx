@@ -1772,7 +1772,7 @@ describe('DailyScreen', () => {
     });
   });
 
-  it('uses the perspective court in training without independent speed controls', async () => {
+  it('lets admins override daily period speeds from the second training debug control', async () => {
     useAuthStore.getState().setSession({
       accessToken: 'token',
       refreshToken: 'r',
@@ -1783,10 +1783,18 @@ describe('DailyScreen', () => {
     fetchMock.mockImplementation(async (input) => {
       const url = String(input);
       if (url.includes('/duel/training/state')) {
-        return new Response(JSON.stringify(trainingActiveState), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
+        return new Response(
+          JSON.stringify({
+            ...trainingActiveState,
+            period_speed_presets: trainingActiveState.period_speed_presets.map((preset) =>
+              preset.periodNumber === 2 ? { ...preset, shooterFrequency: 1.35 } : preset,
+            ),
+          }),
+          {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          },
+        );
       }
       if (url.includes('/duel/training/start')) {
         return new Response(JSON.stringify(trainingActiveState), {
@@ -1813,7 +1821,21 @@ describe('DailyScreen', () => {
     fireEvent.click(hitboxesToggle);
     expect(hitboxesToggle).toBeChecked();
     expect(localStorage.getItem('hockey.trainingHitboxesVisible')).toBe('true');
-    expect(screen.queryByRole('button', { name: 'Скорости' })).not.toBeInTheDocument();
+
+    const speedControl = screen.getByRole('button', { name: 'Скорости' });
+    fireEvent.click(speedControl);
+    const dialog = await screen.findByRole('dialog', { name: 'Скорости тренировки' });
+    const sliders = within(dialog).getAllByRole('slider');
+    expect(sliders).toHaveLength(4);
+    expect(sliders[0]).toHaveValue('1.35');
+
+    fireEvent.change(sliders[0]!, { target: { value: '1.1' } });
+    expect(sliders[0]).toHaveValue('1.1');
+    expect(localStorage.getItem('hockey.trainingSpeedOverrides')).toContain('"shooterFreq":1.1');
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Сбросить' }));
+    expect(localStorage.getItem('hockey.trainingSpeedOverrides')).toBeNull();
+    expect(sliders[0]).toHaveValue('1.35');
   });
 
   it('lets non-admin testers with the experimental flag toggle hitboxes', async () => {
