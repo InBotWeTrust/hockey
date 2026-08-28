@@ -1038,7 +1038,7 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
       },
       expectedCode: 'bonus_shot_time_stale',
       expectedStatus: 409,
-      periodAgeSeconds: 10,
+      periodAgeSeconds: 30,
     },
   ])('rejects $name without shot, aggregate, or reward writes', async (testCase) => {
     const longPeriod = { ...PERIODS[0]!, durationMs: 300_000 };

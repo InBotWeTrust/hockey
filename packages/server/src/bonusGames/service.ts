@@ -763,10 +763,13 @@ function authoritativeShotInput(
   };
 }
 
-const BONUS_SHOT_NETWORK_LAG_TOLERANCE_MS = 2_500;
-const BONUS_SHOT_FUTURE_TOLERANCE_MS = 250;
+// Keep bonus play as resilient to browser/main-thread stalls as daily play.
+// These are wall-clock freshness bounds, not game-rule constants, so they must
+// remain independent of an admin-edited target, quota, period count, or skill.
+const BONUS_SHOT_STALE_TOLERANCE_MS = 12_000;
+const BONUS_SHOT_FUTURE_TOLERANCE_MS = 2_500;
 const BONUS_SHOT_CLOCK_RELATION_TOLERANCE_MS = 100;
-const BONUS_SHOT_TIMER_DRIFT_ALLOWANCE_PER_SHOT_MS = 250;
+const BONUS_SHOT_TIMER_DRIFT_ALLOWANCE_PER_SHOT_MS = 2_000;
 const BONUS_SHOT_FLIGHT_DRIFT_ALLOWANCE_PER_SHOT_MS = 20;
 const BONUS_SHOT_RESULT_PAUSE_MS = 1_000;
 
@@ -816,7 +819,7 @@ function assertBonusShotTimeFresh(
   const accumulatedTimerDrift =
     previousShots * BONUS_SHOT_TIMER_DRIFT_ALLOWANCE_PER_SHOT_MS;
   const isNearAuthoritativeClock = (actual: number, expected: number): boolean =>
-    actual >= expected - BONUS_SHOT_NETWORK_LAG_TOLERANCE_MS - accumulatedTimerDrift &&
+    actual >= expected - BONUS_SHOT_STALE_TOLERANCE_MS - accumulatedTimerDrift &&
     actual <= expected + BONUS_SHOT_FUTURE_TOLERANCE_MS;
 
   if (

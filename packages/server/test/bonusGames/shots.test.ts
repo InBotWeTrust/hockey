@@ -612,7 +612,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
         claimedShotIndex: 1,
         input: { ...GOAL_INPUT, tapTime: 730, shooterTapTime: 730 },
         claimedResult: 'goal',
-        now: new Date('2026-08-23T12:00:10.000Z'),
+        now: new Date('2026-08-23T12:00:30.000Z'),
       }),
     ).rejects.toMatchObject({ code: 'bonus_shot_time_stale', statusCode: 409 });
 
@@ -743,6 +743,54 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
       const input: ShotInput = {
         tapTime,
         shooterTapTime: tapTime - previousShots * (flightMs + 10),
+        puckSpeedPerMs: period.puckSpeedPerMs,
+        shooterFrequency: period.shooterFrequency,
+        goalieFrequency: period.goalieFrequency,
+        goalFrequency: period.goalFrequency,
+      };
+      const claimedResult = resolvePerspectiveCourtShot(
+        input,
+        buildBonusGoalieConfig('shot-game-1', 'Игра 1', period),
+        deriveShotSeed(ATTEMPT_SEED, 1, shotIndex),
+        shotIndex,
+        STICK_NEUTRAL,
+        getSessionPhaseOffsets(ATTEMPT_SEED),
+      ).type;
+
+      await submitBonusShot(pool, {
+        userId,
+        attemptId,
+        claimedShotIndex: shotIndex,
+        input,
+        claimedResult,
+        now: new Date(NOW.getTime() + wallElapsedMs),
+      });
+    }
+
+    const attempt = await pool.query<{ shots_taken: number }>(
+      'select shots_taken::int from bonus_game_attempt where id = $1',
+      [attemptId],
+    );
+    expect(attempt.rows[0]?.shots_taken).toBe(30);
+  });
+
+  it('keeps accepting an admin-sized period when browser rendering delays accumulate like daily play', async () => {
+    // A location image decode, background tab, or slow phone may stretch the visual result pause.
+    // Daily play tolerates that drift; bonus rules edited to longer periods must not become
+    // unplayable only because the client clock falls behind the wall clock over many shots.
+    const userId = await createUser();
+    const period = { ...PERIODS[0]!, durationMs: 300_000, shotsLimit: 50 };
+    const game = await createGame({ targetGoals: 50, periods: [period] });
+    const attemptId = await createActiveAttempt(userId, game.id);
+    const flightMs = (PUCK_START.y - GOAL_OPENING.y) / period.puckSpeedPerMs;
+
+    for (let shotIndex = 1; shotIndex <= 30; shotIndex += 1) {
+      const previousShots = shotIndex - 1;
+      const wallElapsedMs = shotIndex * 3_000;
+      const tapTime = wallElapsedMs - previousShots * 1_600;
+      const input: ShotInput = {
+        tapTime,
+        shooterTapTime: tapTime - previousShots * flightMs,
         puckSpeedPerMs: period.puckSpeedPerMs,
         shooterFrequency: period.shooterFrequency,
         goalieFrequency: period.goalieFrequency,
