@@ -212,8 +212,9 @@ export async function loadBonusAttemptDto(
            and period_number = $2) as current_period_shots_taken,
        exists(
          select 1
-           from user_bonus_game_completion
+           from bonus_game_economy_event
           where attempt_id = $1
+            and kind = 'first_clear_reward'
        ) as reward_granted,
        (select loadout.snapshot
           from bonus_game_period_loadout loadout

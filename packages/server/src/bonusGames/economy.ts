@@ -301,6 +301,19 @@ export async function grantFirstClearReward(
     return { granted: false, balances: await readBalanceSnapshot(client, input.userId) };
   }
 
+  const existingReward = await client.query<{ id: string }>(
+    `select id
+       from bonus_game_economy_event
+      where user_id = $1
+        and bonus_game_id = $2
+        and kind = 'first_clear_reward'
+      limit 1`,
+    [input.userId, input.gameId],
+  );
+  if (existingReward.rows[0] !== undefined) {
+    return { granted: false, balances: await readBalanceSnapshot(client, input.userId) };
+  }
+
   const accountResult = await client.query<LockedCurrencyAccountRow>(
     `update user_currency_account
         set balance = balance + $2,

@@ -1298,6 +1298,76 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
     ).toBe(1);
   });
 
+  it('completes after a catalogue reset preserved the reward event but removed completion', async () => {
+    const userId = await createUser();
+    const game = await createGame({ targetGoals: 1 });
+    await pool.query(
+      `update users
+          set xp = 6, experience = 60
+        where id = $1`,
+      [userId],
+    );
+    await pool.query(
+      `update user_currency_account
+          set balance = 120
+        where user_id = $1`,
+      [userId],
+    );
+    await pool.query(
+      `insert into currency_ledger
+         (user_id, reason, available_delta, reserved_delta,
+          balance_after, reserved_after, metadata, created_at)
+       values ($1, 'bonus_game_reward', 100, 0, 120, 0,
+               jsonb_build_object('bonus_game_id', $2::text), $3)`,
+      [userId, game.id, NOW],
+    );
+    await pool.query(
+      `insert into bonus_game_economy_event
+         (user_id, bonus_game_id, attempt_id, kind,
+          coins_delta, stars_delta, experience_delta,
+          coins_after, stars_after, experience_after, snapshot, created_at)
+       values ($1, $2, null, 'first_clear_reward',
+               100, 1, 50, 120, 6, 60,
+               '{"coins":100,"stars":1,"experience":50}'::jsonb, $3)`,
+      [userId, game.id, NOW],
+    );
+    const attemptId = await createActiveAttempt(userId, game.id);
+
+    const response = await submitBonusShot(pool, {
+      userId,
+      attemptId,
+      claimedShotIndex: 1,
+      input: GOAL_INPUT,
+      claimedResult: 'goal',
+      now: SHOT_AT,
+    });
+
+    expect(response).toMatchObject({
+      serverResult: 'goal',
+      rewardGranted: null,
+      attempt: {
+        status: 'completed',
+        state: 'closed',
+        rewardGranted: false,
+        shotsTaken: 1,
+        goals: 1,
+      },
+    });
+    expect(await balances(userId)).toEqual({ coins: 120, stars: 6, experience: 60 });
+    expect(await countRows('shot_session', 'bonus_game_attempt_id = $1', [attemptId])).toBe(1);
+    expect(await countRows('user_bonus_game_completion', 'attempt_id = $1', [attemptId])).toBe(1);
+    expect(
+      await countRows(
+        'bonus_game_economy_event',
+        "user_id = $1 and bonus_game_id = $2 and kind = 'first_clear_reward'",
+        [userId, game.id],
+      ),
+    ).toBe(1);
+    expect(
+      await countRows('currency_ledger', "user_id = $1 and reason = 'bonus_game_reward'", [userId]),
+    ).toBe(1);
+  });
+
   it('grants the first-clear reward once when the final shot is submitted concurrently', async () => {
     const userId = await createUser();
     const game = await createGame({ targetGoals: 2 });
