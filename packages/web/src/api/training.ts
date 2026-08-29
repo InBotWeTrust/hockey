@@ -1,4 +1,5 @@
 import { apiFetch } from './apiFetch.js';
+import type { GameRequestOptions } from './requestTimeout.js';
 import type { ShotInputPayload, ShotResultType } from './duel.js';
 import type { DailyPeriodSpeedPreset } from '@hockey/game-core';
 
@@ -42,8 +43,10 @@ function stampTrainingState(state: TrainingStateResponse): TrainingStateResponse
   };
 }
 
-export function fetchTrainingState(): Promise<TrainingStateResponse> {
-  return apiFetch<TrainingStateResponse>('/duel/training/state').then(stampTrainingState);
+export function fetchTrainingState(options?: GameRequestOptions): Promise<TrainingStateResponse> {
+  return apiFetch<TrainingStateResponse>('/duel/training/state', {
+    ...(options?.signal === undefined ? {} : { signal: options.signal }),
+  }).then(stampTrainingState);
 }
 
 export function startTraining(body: StartTrainingRequest): Promise<TrainingStateResponse> {
@@ -55,9 +58,11 @@ export function startTraining(body: StartTrainingRequest): Promise<TrainingState
 
 export function submitTrainingShot(
   body: SubmitTrainingShotRequest,
+  options?: GameRequestOptions,
 ): Promise<SubmitTrainingShotResponse> {
   return apiFetch<SubmitTrainingShotResponse>('/duel/training/shot', {
     method: 'POST',
     body: JSON.stringify(body),
+    ...(options?.signal === undefined ? {} : { signal: options.signal }),
   }).then((res) => ({ ...res, state: stampTrainingState(res.state) }));
 }

@@ -5,6 +5,7 @@ import {
   submitTrainingShot,
   type TrainingStateResponse,
 } from '../api/training.js';
+import { isGameRequestTimeout, withGameRequestTimeout } from '../api/requestTimeout.js';
 import type { ShotInputPayload, ShotResultType } from '../api/duel.js';
 
 interface TrainingSessionStoreState {
@@ -73,20 +74,51 @@ export const useTrainingSessionStore = create<TrainingSessionStoreState>()((set,
   },
 
   submitShot: async ({ shotIndex, input, claimedResult }) => {
+    const submittedState = get().data;
     try {
-      const res = await submitTrainingShot({
-        shot_index: shotIndex,
-        input,
-        claimed_result: claimedResult,
-      });
+      const res = await withGameRequestTimeout((signal) =>
+        submitTrainingShot(
+          {
+            shot_index: shotIndex,
+            input,
+            claimed_result: claimedResult,
+          },
+          { signal },
+        ),
+      );
       set({ error: null });
       return { serverResult: res.server_result, state: res.state };
     } catch (err) {
       try {
-        const data = await fetchTrainingState();
-        set({ data, error: err instanceof Error ? err.message : 'training shot failed' });
+        const data = await withGameRequestTimeout((signal) => fetchTrainingState({ signal }));
+        if (get().data === submittedState) {
+          set({
+            data,
+            error: isGameRequestTimeout(err)
+              ? null
+              : err instanceof Error
+                ? err.message
+                : 'training shot failed',
+          });
+        }
       } catch {
-        set({ error: err instanceof Error ? err.message : 'training shot failed' });
+        if (
+          submittedState &&
+          get().data === submittedState &&
+          submittedState.state === 'active' &&
+          submittedState.shots_taken === shotIndex
+        ) {
+          set({
+            data: {
+              ...submittedState,
+              shots_taken: Math.max(0, submittedState.shots_taken - 1),
+              goals: Math.max(0, submittedState.goals - (claimedResult === 'goal' ? 1 : 0)),
+            },
+            error: err instanceof Error ? err.message : 'training shot failed',
+          });
+        } else if (get().data === submittedState) {
+          set({ error: err instanceof Error ? err.message : 'training shot failed' });
+        }
       }
       return null;
     }

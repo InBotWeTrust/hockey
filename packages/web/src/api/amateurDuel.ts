@@ -5,6 +5,7 @@ import type {
   StickEffects,
 } from '@hockey/game-core';
 import { apiFetch } from './apiFetch.js';
+import type { GameRequestOptions } from './requestTimeout.js';
 import type { ShotInputPayload, ShotResultType } from './duel.js';
 
 export type AmateurDuelMatchStatus =
@@ -356,10 +357,13 @@ export function fetchAmateurEvents(): Promise<{ events: AmateurDuelMatch[] }> {
   }));
 }
 
-export function fetchAmateurMatch(matchId: string): Promise<{ match: AmateurDuelMatchState }> {
-  return apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}`).then(
-    (res) => ({ match: stampMatch(res.match) }),
-  );
+export function fetchAmateurMatch(
+  matchId: string,
+  options?: GameRequestOptions,
+): Promise<{ match: AmateurDuelMatchState }> {
+  return apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}`, {
+    ...(options?.signal === undefined ? {} : { signal: options.signal }),
+  }).then((res) => ({ match: stampMatch(res.match) }));
 }
 
 export function challengeAmateurDuel(body: {
@@ -445,10 +449,12 @@ export function updateAmateurDuelLoadout(
 export function submitAmateurDuelShot(
   matchId: string,
   body: SubmitAmateurDuelShotRequest,
+  options?: GameRequestOptions,
 ): Promise<SubmitAmateurDuelShotResponse> {
   return apiFetch<SubmitAmateurDuelShotResponse>(`/duel/amateur/matches/${matchId}/shot`, {
     method: 'POST',
     body: JSON.stringify(body),
+    ...(options?.signal === undefined ? {} : { signal: options.signal }),
   }).then((res) => ({ ...res, match: stampMatch(res.match) }));
 }
 

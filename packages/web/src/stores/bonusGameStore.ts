@@ -11,6 +11,7 @@ import {
   type BonusShotRequest,
 } from '../api/bonusGames.js';
 import { ApiError } from '../api/apiFetch.js';
+import { withGameRequestTimeout } from '../api/requestTimeout.js';
 import type { ShotResultType } from '../api/duel.js';
 
 interface PendingBonusShot {
@@ -49,23 +50,6 @@ interface BonusGameStoreState {
 }
 
 let shotInFlight = false;
-const BONUS_SHOT_REQUEST_TIMEOUT_MS = 12_000;
-
-async function withRequestTimeout<T>(request: (signal: AbortSignal) => Promise<T>): Promise<T> {
-  const controller = new AbortController();
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_resolve, reject) => {
-    timeoutId = setTimeout(() => {
-      controller.abort();
-      reject(new DOMException('The request timed out.', 'TimeoutError'));
-    }, BONUS_SHOT_REQUEST_TIMEOUT_MS);
-  });
-  try {
-    return await Promise.race([request(controller.signal), timeout]);
-  } finally {
-    if (timeoutId !== undefined) clearTimeout(timeoutId);
-  }
-}
 
 function errorDetails(error: unknown, fallback: string): { message: string; code: string | null } {
   if (error instanceof ApiError) return { message: error.message, code: error.code };
@@ -258,7 +242,7 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
     beginMutation(set, get);
     let keepLockedForDeferredApply = false;
     try {
-      const response = await withRequestTimeout((signal) =>
+      const response = await withGameRequestTimeout((signal) =>
         submitBonusShot(attempt.id, body, { signal }),
       );
       const receivedAtPerformanceMs = performance.now();
@@ -286,7 +270,7 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
     } catch (error) {
       const details = errorDetails(error, 'Не удалось отправить бросок.');
       try {
-        const reconciled = await withRequestTimeout((signal) =>
+        const reconciled = await withGameRequestTimeout((signal) =>
           fetchBonusAttempt(attempt.id, { signal }),
         );
         applyServerAttempt(set, get, reconciled.attempt);

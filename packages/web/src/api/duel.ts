@@ -1,4 +1,5 @@
 import { apiFetch } from './apiFetch.js';
+import type { GameRequestOptions } from './requestTimeout.js';
 import type { DailyPeriodSpeedPreset } from '@hockey/game-core';
 
 export type DailyState = 'idle' | 'period_active' | 'break_active' | 'closed';
@@ -93,8 +94,10 @@ function stampDailyState(state: DailyStateResponse): DailyStateResponse {
   };
 }
 
-export function fetchDailyState(): Promise<DailyStateResponse> {
-  return apiFetch<DailyStateResponse>('/duel/daily/state').then(stampDailyState);
+export function fetchDailyState(options?: GameRequestOptions): Promise<DailyStateResponse> {
+  return apiFetch<DailyStateResponse>('/duel/daily/state', {
+    ...(options?.signal === undefined ? {} : { signal: options.signal }),
+  }).then(stampDailyState);
 }
 
 export function fetchDailyHistory(limit = 20, offset = 0): Promise<DailyHistoryResponse> {
@@ -107,9 +110,13 @@ export function startDailyPeriod(): Promise<DailyStateResponse> {
   }).then(stampDailyState);
 }
 
-export function submitDailyShot(body: SubmitShotRequest): Promise<SubmitShotResponse> {
+export function submitDailyShot(
+  body: SubmitShotRequest,
+  options?: GameRequestOptions,
+): Promise<SubmitShotResponse> {
   return apiFetch<SubmitShotResponse>('/duel/daily/shot', {
     method: 'POST',
     body: JSON.stringify(body),
+    ...(options?.signal === undefined ? {} : { signal: options.signal }),
   }).then((res) => ({ ...res, state: stampDailyState(res.state) }));
 }
