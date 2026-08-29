@@ -116,14 +116,8 @@ function deferred<T>() {
   };
 }
 
-function rejectWhenAborted<T>(signal: AbortSignal | undefined): Promise<T> {
-  return new Promise<T>((_resolve, reject) => {
-    signal?.addEventListener(
-      'abort',
-      () => reject(new DOMException('The operation was aborted.', 'AbortError')),
-      { once: true },
-    );
-  });
+function neverSettles<T>(): Promise<T> {
+  return new Promise<T>(() => undefined);
 }
 
 describe('bonusGameStore', () => {
@@ -606,10 +600,7 @@ describe('bonusGameStore', () => {
       best_goal_streak: 3,
       reward_granted: true,
     };
-    vi.mocked(submitBonusShot).mockImplementation((...args) => {
-      const options = (args as unknown as [string, BonusShotRequest, { signal?: AbortSignal }])[2];
-      return rejectWhenAborted<BonusShotResponse>(options?.signal);
-    });
+    vi.mocked(submitBonusShot).mockImplementation(() => neverSettles<BonusShotResponse>());
     vi.mocked(fetchBonusAttempt).mockResolvedValueOnce(response(completedAttempt));
     useBonusGameStore.getState().applyState(initialAttempt);
 
@@ -630,14 +621,8 @@ describe('bonusGameStore', () => {
 
   it('releases a stalled final shot when both submission and reconciliation time out', async () => {
     vi.useFakeTimers();
-    vi.mocked(submitBonusShot).mockImplementation((...args) => {
-      const options = (args as unknown as [string, BonusShotRequest, { signal?: AbortSignal }])[2];
-      return rejectWhenAborted<BonusShotResponse>(options?.signal);
-    });
-    vi.mocked(fetchBonusAttempt).mockImplementation((...args) => {
-      const options = (args as unknown as [string, { signal?: AbortSignal }])[1];
-      return rejectWhenAborted<BonusAttemptResponse>(options?.signal);
-    });
+    vi.mocked(submitBonusShot).mockImplementation(() => neverSettles<BonusShotResponse>());
+    vi.mocked(fetchBonusAttempt).mockImplementation(() => neverSettles<BonusAttemptResponse>());
     useBonusGameStore.getState().applyState(initialAttempt);
 
     const submit = useBonusGameStore.getState().submitShot(shot, { deferApply: true });

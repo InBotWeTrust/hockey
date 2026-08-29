@@ -53,11 +53,17 @@ const BONUS_SHOT_REQUEST_TIMEOUT_MS = 12_000;
 
 async function withRequestTimeout<T>(request: (signal: AbortSignal) => Promise<T>): Promise<T> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), BONUS_SHOT_REQUEST_TIMEOUT_MS);
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timeoutId = setTimeout(() => {
+      controller.abort();
+      reject(new DOMException('The request timed out.', 'TimeoutError'));
+    }, BONUS_SHOT_REQUEST_TIMEOUT_MS);
+  });
   try {
-    return await request(controller.signal);
+    return await Promise.race([request(controller.signal), timeout]);
   } finally {
-    clearTimeout(timeoutId);
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
   }
 }
 
