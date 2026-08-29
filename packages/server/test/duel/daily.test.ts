@@ -274,22 +274,19 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     });
   });
 
-  it('rejects stale shot tapTime after an active period has moved on', async () => {
+  it('rejects a shot whose tapTime moves backwards from the last accepted shot', async () => {
     const start = await startPeriod();
     expect(start.statusCode).toBe(200);
-    await pool.query(
-      `update day_pool
-          set period_started_at = now() - interval '1 minute'
-        where user_id = $1`,
-      [userId],
-    );
+
+    const first = await submitShot(1);
+    expect(first.statusCode).toBe(200);
 
     const shot = await app.inject({
       method: 'POST',
       url: '/duel/daily/shot',
       headers: authHeader(),
       payload: {
-        shot_index: 1,
+        shot_index: 2,
         input: { tapTime: 1000 },
         claimed_result: 'goal',
       },
@@ -298,22 +295,42 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     expect(shot.statusCode).toBe(409);
   });
 
-  it('writes a diagnostic event when a daily shot is rejected as stale', async () => {
+  it('completes the period on the 30th monotonic shot after a long client-side pause', async () => {
     const start = await startPeriod();
     expect(start.statusCode).toBe(200);
+
+    for (let shotIndex = 1; shotIndex < 30; shotIndex += 1) {
+      const accepted = await submitShot(shotIndex);
+      expect(accepted.statusCode).toBe(200);
+    }
+
     await pool.query(
       `update day_pool
-          set period_started_at = now() - interval '1 minute'
+          set period_started_at = now() - interval '5 minutes'
         where user_id = $1`,
       [userId],
     );
+
+    const resumed = await submitShot(30);
+
+    expect(resumed.statusCode).toBe(200);
+    expect(resumed.json().state.state).toBe('break_active');
+    expect(resumed.json().state.current_period).toBe(1);
+  });
+
+  it('writes a diagnostic event when a daily shot is rejected as stale', async () => {
+    const start = await startPeriod();
+    expect(start.statusCode).toBe(200);
+
+    const first = await submitShot(1);
+    expect(first.statusCode).toBe(200);
 
     const shot = await app.inject({
       method: 'POST',
       url: '/duel/daily/shot',
       headers: authHeader(),
       payload: {
-        shot_index: 1,
+        shot_index: 2,
         input: { tapTime: 1000 },
         claimed_result: 'goal',
       },
@@ -333,8 +350,8 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     expect(rows[0].payload).toMatchObject({
       mode: 'daily',
       reason: 'tap_time_stale',
-      requested_shot_index: 1,
-      current_shots: 0,
+      requested_shot_index: 2,
+      current_shots: 1,
     });
   });
 

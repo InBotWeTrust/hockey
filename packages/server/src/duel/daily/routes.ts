@@ -50,8 +50,6 @@ const historyQuerySchema = z.object({
 });
 
 const TAP_TIME_FUTURE_TOLERANCE_MS = 2500;
-const TAP_TIME_STALE_TOLERANCE_MS = 12_000;
-const TAP_TIME_PAUSE_ALLOWANCE_PER_SHOT_MS = 2_000;
 
 type DailyShotRejectReason =
   | 'no_active_day_pool'
@@ -344,10 +342,15 @@ async function aggregateCurrentPeriod(
   client: PoolClient,
   dayPoolId: string,
   periodNumber: number,
-): Promise<{ shots: number; goals: number }> {
-  const { rows } = await client.query<{ shots: string; goals: string }>(
+): Promise<{ shots: number; goals: number; lastTapTime: number | null }> {
+  const { rows } = await client.query<{
+    shots: string;
+    goals: string;
+    last_tap_time: string | null;
+  }>(
     `select count(*)::int as shots,
-            count(*) filter (where server_result = 'goal')::int as goals
+            count(*) filter (where server_result = 'goal')::int as goals,
+            max((input_payload->>'tapTime')::double precision) as last_tap_time
        from shot_session
       where mode = 'daily' and day_pool_id = $1 and period_number = $2`,
     [dayPoolId, periodNumber],
@@ -355,6 +358,8 @@ async function aggregateCurrentPeriod(
   return {
     shots: Number(rows[0]!.shots),
     goals: Number(rows[0]!.goals),
+    lastTapTime:
+      rows[0]!.last_tap_time === null ? null : Number(rows[0]!.last_tap_time),
   };
 }
 
@@ -478,7 +483,7 @@ async function buildState(
 
 function validateDailyTapTimeFresh(
   pool: DayPoolRow,
-  previousShots: number,
+  previousTapTime: number | null,
   tapTime: number,
   now: Date,
 ): DailyTapTimeReject | null {
@@ -499,10 +504,7 @@ function validateDailyTapTimeFresh(
 
   const elapsedMs = Math.max(0, now.getTime() - pool.period_started_at.getTime());
   const futureLimit = elapsedMs + TAP_TIME_FUTURE_TOLERANCE_MS;
-  const staleLimit = Math.max(
-    0,
-    elapsedMs - TAP_TIME_STALE_TOLERANCE_MS - previousShots * TAP_TIME_PAUSE_ALLOWANCE_PER_SHOT_MS,
-  );
+  const staleLimit = previousTapTime ?? 0;
 
   if (tapTime > futureLimit || tapTime < staleLimit) {
     return {
@@ -702,7 +704,12 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
           new AppError('conflict', 'shot quota for this period exhausted', 409),
         );
       }
-      const tapTimeReject = validateDailyTapTimeFresh(pool, cur.shots, body.input.tapTime, now);
+      const tapTimeReject = validateDailyTapTimeFresh(
+        pool,
+        cur.lastTapTime,
+        body.input.tapTime,
+        now,
+      );
       if (tapTimeReject) {
         await rejectDailyShot(
           app,
