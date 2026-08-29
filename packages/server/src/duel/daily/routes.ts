@@ -703,7 +703,7 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
         const { rows } = await client.query<DayPoolRow>(updateSql, [periodEndedAt, pool.id]);
         currentPool = rows[0]!;
         if (isFinalPeriod) {
-          await grantAchievements(client, req.user.id, ['first-game']);
+          await grantAchievements(client, req.user.id, ['first-daily-game', 'first-game']);
           await appendEvent(client, req.user.id, 'day_pool_closed', {
             day_pool_id: pool.id,
             reason: 'completed',

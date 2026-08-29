@@ -1,4 +1,5 @@
 import type { PoolClient } from 'pg';
+import { grantAchievements } from '../../achievements/service.js';
 import { AppError } from '../../plugins/errors.js';
 import { appendEvent } from '../eventLog.js';
 
@@ -221,6 +222,7 @@ export async function reconcileDayPool(
           day_pool_id: pool.id,
           reason: 'completed',
         });
+        await grantAchievements(client, pool.user_id, ['first-daily-game', 'first-game']);
         return { pool, timezone, localToday: today };
       }
     }
@@ -251,6 +253,7 @@ export async function reconcileDayPool(
           day_pool_id: pool.id,
           reason: 'completed',
         });
+        await grantAchievements(client, pool.user_id, ['first-daily-game', 'first-game']);
         return { pool, timezone, localToday: today };
       }
     }
@@ -282,6 +285,7 @@ export async function reconcileDayPool(
       day_pool_id: pool.id,
       reason: 'completed',
     });
+    await grantAchievements(client, pool.user_id, ['first-daily-game', 'first-game']);
     return { pool, timezone, localToday: today };
   }
 
