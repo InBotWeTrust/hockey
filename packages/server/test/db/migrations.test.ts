@@ -503,6 +503,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '069_official_dialogs.sql',
       '070_bonus_game_preview_location_cards.sql',
       '071_bonus_game_accuracy_world_tour.sql',
+      '072_tournament_fixture_series_lookup.sql',
     ]);
   });
 
@@ -845,6 +846,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '069_official_dialogs.sql',
       '070_bonus_game_preview_location_cards.sql',
       '071_bonus_game_accuracy_world_tour.sql',
+      '072_tournament_fixture_series_lookup.sql',
     ]);
 
     const activeInventory = await pool.query<{

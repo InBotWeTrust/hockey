@@ -209,6 +209,7 @@ describe.skipIf(!hasIntegrationEnv)('069 bonus skill catalogue reset', () => {
       '069_official_dialogs.sql',
       '070_bonus_game_preview_location_cards.sql',
       '071_bonus_game_accuracy_world_tour.sql',
+      '072_tournament_fixture_series_lookup.sql',
     ]);
 
     const accuracy = await pool.query<{

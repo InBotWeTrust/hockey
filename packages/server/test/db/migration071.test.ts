@@ -173,7 +173,10 @@ describe.skipIf(!hasIntegrationEnv)('071 accuracy World Tour migration', () => {
     );
 
     const applied = await applyMigrations(pool, MIGRATIONS_DIR);
-    expect(applied.applied).toEqual(['071_bonus_game_accuracy_world_tour.sql']);
+    expect(applied.applied).toEqual([
+      '071_bonus_game_accuracy_world_tour.sql',
+      '072_tournament_fixture_series_lookup.sql',
+    ]);
 
     const preserved = await pool.query<{
       completions: number;
