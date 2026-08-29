@@ -505,6 +505,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '071_bonus_game_accuracy_world_tour.sql',
       '072_tournament_fixture_series_lookup.sql',
       '073_backfill_first_daily_game.sql',
+      '074_allow_bonus_repurchase_after_refund.sql',
     ]);
   });
 
@@ -654,16 +655,29 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       [
         [
           'bonus_game_attempt_one_active_user_idx',
-          'bonus_game_economy_one_unlock_purchase_idx',
           'bonus_game_economy_one_first_clear_reward_idx',
         ],
       ],
     );
-    expect(partialUniqueIndexes.rows).toHaveLength(3);
+    expect(partialUniqueIndexes.rows).toHaveLength(2);
     for (const index of partialUniqueIndexes.rows) {
       expect(index.indexdef).toContain('CREATE UNIQUE INDEX');
       expect(index.indexdef).toContain(' WHERE ');
     }
+
+    const unlockPurchaseIndex = await pool.query<{ indexdef: string }>(
+      `select indexdef
+         from pg_indexes
+        where schemaname = 'public'
+          and indexname = 'bonus_game_economy_unlock_purchase_idx'`,
+    );
+    expect(unlockPurchaseIndex.rows).toHaveLength(1);
+    expect(unlockPurchaseIndex.rows[0]?.indexdef).toContain('CREATE INDEX');
+    expect(unlockPurchaseIndex.rows[0]?.indexdef).not.toContain('CREATE UNIQUE INDEX');
+    expect(unlockPurchaseIndex.rows[0]?.indexdef).toContain('(user_id, bonus_game_id)');
+    expect(unlockPurchaseIndex.rows[0]?.indexdef).toContain(
+      "WHERE (kind = 'unlock_purchase'::text)",
+    );
 
     const bonusShotIndex = await pool.query<{ indexdef: string }>(
       `select indexdef
@@ -849,6 +863,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '071_bonus_game_accuracy_world_tour.sql',
       '072_tournament_fixture_series_lookup.sql',
       '073_backfill_first_daily_game.sql',
+      '074_allow_bonus_repurchase_after_refund.sql',
     ]);
 
     const activeInventory = await pool.query<{

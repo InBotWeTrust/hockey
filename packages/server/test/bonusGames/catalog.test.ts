@@ -568,6 +568,77 @@ describe.skipIf(!hasIntegrationEnv)('bonus game catalog and paid unlocks', () =>
     expect(tracked.tracker.maxConcurrentQueries).toBe(1);
   });
 
+  it('allows a repurchase after a catalogue reset refunded and removed the old unlock', async () => {
+    const userId = await createUser({ stars: 10 });
+    const paid = await createGame({ sortOrder: 1, accessType: 'paid', price: 1 });
+    const historicalPurchase = await pool.query<{ id: string }>(
+      `insert into bonus_game_economy_event
+         (user_id, bonus_game_id, kind,
+          coins_delta, stars_delta, experience_delta,
+          coins_after, stars_after, experience_after, snapshot, created_at)
+       values ($1, $2, 'unlock_purchase',
+               0, -1, 0, 0, 9, 0,
+               '{"priceStars":1,"reason":"historical_purchase"}'::jsonb, $3)
+       returning id`,
+      [userId, paid.id, NOW],
+    );
+    await pool.query(
+      `insert into bonus_game_economy_event
+         (user_id, bonus_game_id, kind,
+          coins_delta, stars_delta, experience_delta,
+          coins_after, stars_after, experience_after, snapshot, created_at)
+       values ($1, $2, 'unlock_refund',
+               0, 1, 0, 0, 10, 0,
+               jsonb_build_object(
+                 'reason', 'bonus_skill_catalog_reset',
+                 'originalEconomyEventId', $3::text
+               ), $4)`,
+      [userId, paid.id, historicalPurchase.rows[0]!.id, new Date(NOW.getTime() + 1)],
+    );
+
+    const result = await purchaseBonusGame(pool, {
+      userId,
+      gameId: paid.id,
+      expectedPriceStars: 1,
+      now: new Date(NOW.getTime() + 2),
+    });
+
+    expect(result).toEqual({ unlocked: true, starBalance: 9 });
+    const state = await pool.query<{
+      xp: number;
+      purchases: number;
+      refunds: number;
+      unlocks: number;
+      current_event_id: string;
+      current_event_kind: string;
+    }>(
+      `select users.xp::int,
+              count(distinct event.id) filter (where event.kind = 'unlock_purchase')::int as purchases,
+              count(distinct event.id) filter (where event.kind = 'unlock_refund')::int as refunds,
+              count(distinct unlock.id)::int as unlocks,
+              min(unlock.economy_event_id::text) as current_event_id,
+              min(current_event.kind) as current_event_kind
+         from users
+         left join bonus_game_economy_event event
+           on event.user_id = users.id and event.bonus_game_id = $2
+         left join user_bonus_game_unlock unlock
+           on unlock.user_id = users.id and unlock.bonus_game_id = $2
+         left join bonus_game_economy_event current_event
+           on current_event.id = unlock.economy_event_id
+        where users.id = $1
+        group by users.id`,
+      [userId, paid.id],
+    );
+    expect(state.rows[0]).toEqual({
+      xp: 9,
+      purchases: 2,
+      refunds: 1,
+      unlocks: 1,
+      current_event_id: expect.not.stringMatching(historicalPurchase.rows[0]!.id),
+      current_event_kind: 'unlock_purchase',
+    });
+  });
+
   it('debits a paid unlock once under concurrent requests and returns the committed balance', async () => {
     const userId = await createUser({ stars: 10 });
     const paid = await createGame({ sortOrder: 1, accessType: 'paid', price: 1 });

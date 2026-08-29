@@ -211,6 +211,7 @@ describe.skipIf(!hasIntegrationEnv)('069 bonus skill catalogue reset', () => {
       '071_bonus_game_accuracy_world_tour.sql',
       '072_tournament_fixture_series_lookup.sql',
       '073_backfill_first_daily_game.sql',
+      '074_allow_bonus_repurchase_after_refund.sql',
     ]);
 
     const accuracy = await pool.query<{
