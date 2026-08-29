@@ -350,7 +350,10 @@ async function aggregateCurrentPeriod(
   }>(
     `select count(*)::int as shots,
             count(*) filter (where server_result = 'goal')::int as goals,
-            max((input_payload->>'tapTime')::double precision) as last_tap_time
+            (array_agg(
+              (input_payload->>'tapTime')::double precision
+              order by shot_index desc
+            ))[1] as last_tap_time
        from shot_session
       where mode = 'daily' and day_pool_id = $1 and period_number = $2`,
     [dayPoolId, periodNumber],

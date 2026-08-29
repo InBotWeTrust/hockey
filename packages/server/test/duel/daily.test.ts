@@ -295,9 +295,24 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     expect(shot.statusCode).toBe(409);
   });
 
-  it('completes the period on the 30th monotonic shot after a long client-side pause', async () => {
-    const start = await startPeriod();
-    expect(start.statusCode).toBe(200);
+  it('completes the second period on the 30th monotonic shot after a long client-side pause', async () => {
+    const firstPeriod = await startPeriod();
+    expect(firstPeriod.statusCode).toBe(200);
+    for (let shotIndex = 1; shotIndex <= 30; shotIndex += 1) {
+      const accepted = await submitShot(shotIndex);
+      expect(accepted.statusCode).toBe(200);
+    }
+    await pool.query(
+      `update day_pool
+          set break_started_at = now() - interval '16 minutes'
+        where user_id = $1`,
+      [userId],
+    );
+    expect((await getState()).state).toBe('idle');
+
+    const secondPeriod = await startPeriod();
+    expect(secondPeriod.statusCode).toBe(200);
+    expect(secondPeriod.json().current_period).toBe(2);
 
     for (let shotIndex = 1; shotIndex < 30; shotIndex += 1) {
       const accepted = await submitShot(shotIndex);
@@ -315,7 +330,52 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
 
     expect(resumed.statusCode).toBe(200);
     expect(resumed.json().state.state).toBe('break_active');
-    expect(resumed.json().state.current_period).toBe(1);
+    expect(resumed.json().state.current_period).toBe(2);
+  });
+
+  it('uses the latest accepted shot instead of the historical maximum tapTime', async () => {
+    const start = await startPeriod();
+    expect(start.statusCode).toBe(200);
+
+    expect((await submitShot(1)).statusCode).toBe(200);
+    expect((await submitShot(2)).statusCode).toBe(200);
+    await pool.query(
+      `update shot_session
+          set input_payload = jsonb_set(
+            input_payload,
+            '{tapTime}',
+            to_jsonb(case shot_index when 1 then 2000 else 1000 end)
+          )
+        where user_id = $1
+          and mode = 'daily'
+          and period_number = 1
+          and shot_index in (1, 2)`,
+      [userId],
+    );
+
+    const resumed = await app.inject({
+      method: 'POST',
+      url: '/duel/daily/shot',
+      headers: authHeader(),
+      payload: {
+        shot_index: 3,
+        input: { tapTime: 1500 },
+        claimed_result: 'goal',
+      },
+    });
+    expect(resumed.statusCode).toBe(200);
+
+    const backwards = await app.inject({
+      method: 'POST',
+      url: '/duel/daily/shot',
+      headers: authHeader(),
+      payload: {
+        shot_index: 4,
+        input: { tapTime: 1400 },
+        claimed_result: 'goal',
+      },
+    });
+    expect(backwards.statusCode).toBe(409);
   });
 
   it('writes a diagnostic event when a daily shot is rejected as stale', async () => {
