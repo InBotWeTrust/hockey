@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  GOAL_OPENING,
   PERSPECTIVE_COURT_GOALIE_VISUAL_X_SCALE,
   PERSPECTIVE_COURT_GOALIE_VISUAL_Y_OFFSET,
   PERSPECTIVE_COURT_VISUAL_Y_SCALE,
+  PUCK_START,
   STICK_NEUTRAL,
   type GoalieConfig,
 } from '@hockey/game-core';
@@ -42,6 +44,12 @@ const BONUS_GAME_GOALIE_OPTIONS: Omit<GoalieOptions, 'idleSpriteUrl' | 'saveSpri
   saveVisualYOffset: 10,
   shadow: true,
 };
+
+// PlayView normally applies the deferred server DTO at the end of the puck animation.
+// Keep a screen-level fallback so a throttled/lost animation callback cannot leave the
+// accepted shot locked forever and prevent the next (possibly qualifying) shot.
+const BONUS_PENDING_SHOT_FALLBACK_PADDING_MS = 1_250;
+const BONUS_PENDING_SHOT_FALLBACK_MIN_DELAY_MS = 250;
 
 function bonusGoalieOptions(attempt: BonusGameAttempt): GoalieOptions {
   return {
@@ -447,6 +455,7 @@ export function BonusGamePlayScreen(): JSX.Element {
   const inFlight = useBonusGameStore((state) => state.inFlight);
   const needsReconcile = useBonusGameStore((state) => state.needsReconcile);
   const receivedAtPerformanceMs = useBonusGameStore((state) => state.receivedAtPerformanceMs);
+  const pendingShot = useBonusGameStore((state) => state.pendingShot);
   const loadCurrent = useBonusGameStore((state) => state.loadCurrent);
   const loadAttempt = useBonusGameStore((state) => state.loadAttempt);
   const applyPendingShot = useBonusGameStore((state) => state.applyPendingShot);
@@ -463,6 +472,27 @@ export function BonusGamePlayScreen(): JSX.Element {
   const loadedRouteRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
   const isAuthoritativeBreak = attempt?.status === 'active' && attempt.state === 'break_active';
+
+  useEffect(() => {
+    if (pendingShot === null) return;
+    const pendingAttempt = pendingShot.attempt;
+    const pendingRule = ruleForPeriod(pendingAttempt, pendingAttempt.current_period);
+    if (pendingRule === null) return;
+    const puckSpeed = speedOverridesFor(pendingRule, pendingAttempt.current_loadout).puckSpeed;
+    const flightMs = (PUCK_START.y - GOAL_OPENING.y) / puckSpeed;
+    const applyAtPerformanceMs =
+      pendingShot.receivedAtPerformanceMs + flightMs + BONUS_PENDING_SHOT_FALLBACK_PADDING_MS;
+    const delayMs = Math.max(
+      BONUS_PENDING_SHOT_FALLBACK_MIN_DELAY_MS,
+      applyAtPerformanceMs - performance.now(),
+    );
+    const timeoutId = window.setTimeout(() => {
+      const currentPending = useBonusGameStore.getState().pendingShot;
+      if (currentPending?.attempt !== pendingAttempt) return;
+      applyPendingShot(pendingAttempt);
+    }, delayMs);
+    return () => window.clearTimeout(timeoutId);
+  }, [applyPendingShot, pendingShot]);
 
   useEffect(() => {
     mountedRef.current = true;

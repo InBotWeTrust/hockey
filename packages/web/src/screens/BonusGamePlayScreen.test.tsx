@@ -563,6 +563,65 @@ describe('BonusGamePlayScreen', () => {
     });
   });
 
+  it('releases an accepted shot when the visual completion callback is lost', async () => {
+    // Dev evidence: the server accepted the shot that brought Beach to 17/18,
+    // but the client kept the deferred store lock and never sent the qualifying shot.
+    vi.useFakeTimers();
+    vi.spyOn(performance, 'now').mockReturnValue(1_000);
+    const acceptedAttempt = attempt({
+      current_period: 1,
+      shots_taken: 18,
+      current_period_shots_taken: 18,
+      goals: 17,
+      current_goal_streak: 7,
+      best_goal_streak: 10,
+      rules: {
+        ...attempt().rules,
+        skill_code: 'speed',
+        qualification_rules: {
+          type: 'goals_in_time',
+          targetGoals: 18,
+          activeTimeMs: 120_000,
+        },
+        periods: [
+          {
+            ...attempt().rules.periods[0]!,
+            shots_limit: null,
+            duration_ms: 120_000,
+          },
+        ],
+      },
+    });
+    const applyPendingShot = vi.fn(() => {
+      useBonusGameStore.setState({
+        attempt: acceptedAttempt,
+        pendingShot: null,
+        inFlight: false,
+      });
+      return acceptedAttempt;
+    });
+    setStore({
+      attempt: acceptedAttempt,
+      pendingShot: { attempt: acceptedAttempt, receivedAtPerformanceMs: 1_000 },
+      inFlight: true,
+      applyPendingShot,
+    });
+
+    renderScreen();
+
+    expect(applyPendingShot).not.toHaveBeenCalled();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
+
+    expect(applyPendingShot).toHaveBeenCalledTimes(1);
+    expect(useBonusGameStore.getState()).toMatchObject({
+      attempt: acceptedAttempt,
+      pendingShot: null,
+      inFlight: false,
+    });
+  });
+
   it('uses the deferred response receipt when rendering the break countdown', () => {
     vi.useFakeTimers();
     vi.spyOn(performance, 'now').mockReturnValue(4_321);
