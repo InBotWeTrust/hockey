@@ -709,7 +709,13 @@ export function BonusGamePlayScreen(): JSX.Element {
             { deferApply: true },
           );
           if (!mountedRef.current) applyPendingShot();
-          return result ? { serverResult: result.serverResult, state: result.attempt } : null;
+          return result
+            ? {
+                serverResult: result.serverResult,
+                state: result.attempt,
+                ...(result.isCurrent === undefined ? {} : { isCurrent: result.isCurrent }),
+              }
+            : null;
         }}
         applyState={() => undefined}
         applyResolvedState={(next) => applyPendingShot(next)}

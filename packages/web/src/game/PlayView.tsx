@@ -277,7 +277,11 @@ export interface PlayViewProps<TState> {
     shotIndex: number;
     input: ShotInput;
     claimedResult: ShotResult['type'];
-  }) => Promise<{ serverResult: ShotResult['type']; state: TState } | null>;
+  }) => Promise<{
+    serverResult: ShotResult['type'];
+    state: TState;
+    isCurrent?: (() => boolean) | undefined;
+  } | null>;
   applyState: (next: TState) => void;
   applyResolvedState?: ((next: TState) => void) | undefined;
   rinkLayer?: ReactNode;
@@ -637,6 +641,21 @@ export function PlayView<TState>({
   const [resultSubText, setResultSubText] = useState<string | null>(null);
   const [resultDisplayKind, setResultDisplayKind] = useState<ResultModalKind | null>(null);
   const [lastResult, setLastResult] = useState<ShotResult | null>(null);
+  const liveScoreboardRef = useRef({
+    goals: scoreboardGoals ?? goals,
+    shots,
+    notice: scoreboardNotice,
+  });
+  liveScoreboardRef.current = {
+    goals: scoreboardGoals ?? goals,
+    shots,
+    notice: scoreboardNotice,
+  };
+  const [scoreboardSnapshot, setScoreboardSnapshot] = useState<{
+    goals: number;
+    shots: number;
+    notice: string | undefined;
+  } | null>(null);
   const [playLayout, setPlayLayout] = useState<{
     rinkWidth: number;
     rinkHeight: number;
@@ -1535,6 +1554,7 @@ export function PlayView<TState>({
               : 'Очень далеко...';
     }
 
+    setScoreboardSnapshot(liveScoreboardRef.current);
     optimisticAddShot(result.type);
     shotSubmitPendingRef.current = true;
     shotAnimationInProgressRef.current = true;
@@ -1565,6 +1585,7 @@ export function PlayView<TState>({
         y: result.type === 'save' ? GOAL_OPENING.y + 20 : GOAL_OPENING.y,
       });
       if (result.type === 'save') goalie.setSavePose(true);
+      setScoreboardSnapshot(null);
       setLastResult(result);
       setResultSubText(subText);
       setResultDisplayKind(displayKind);
@@ -1613,7 +1634,10 @@ export function PlayView<TState>({
         }
         return;
       }
-      const applyNextState = () => (applyResolvedState ?? applyState)(res.state);
+      const applyNextState = () => {
+        if (res.isCurrent?.() === false) return;
+        (applyResolvedState ?? applyState)(res.state);
+      };
       if (shotAnimationInProgressRef.current) {
         pendingMidShotApplyRef.current = applyNextState;
         return;
@@ -1670,6 +1694,9 @@ export function PlayView<TState>({
   }, [handleInactiveAction, handleShotTap, inactiveAction, primaryActionBlocked]);
 
   const timerValue = timer ?? formatMs(scoreboardRemaining);
+  const visibleScoreboardGoals = scoreboardSnapshot?.goals ?? scoreboardGoals ?? goals;
+  const visibleScoreboardShots = scoreboardSnapshot?.shots ?? shots;
+  const visibleScoreboardNotice = scoreboardSnapshot?.notice ?? scoreboardNotice;
   const isDuelShotBlocked = active && currentDuelCondition?.canShoot === false;
   const isDuelRestBlocked = isDuelShotBlocked && currentDuelCondition?.status === 'exhausted_stop';
   const effectiveShotButtonLabel = duelPrimaryButtonLabel(shotButtonLabel, currentDuelCondition);
@@ -1699,10 +1726,10 @@ export function PlayView<TState>({
             periodsTotal,
             timer: timerValue,
             timerLabel: timerLabel ?? 'ВРЕМЯ',
-            goals: scoreboardGoals ?? goals,
-            shots,
+            goals: visibleScoreboardGoals,
+            shots: visibleScoreboardShots,
             ...(shotsTotal !== undefined ? { shotsTotal } : {}),
-            ...(scoreboardNotice !== undefined ? { notice: scoreboardNotice } : {}),
+            ...(visibleScoreboardNotice !== undefined ? { notice: visibleScoreboardNotice } : {}),
             ...(scoreboardOpponent !== undefined ? { opponent: scoreboardOpponent } : {}),
           })}
         />
@@ -1768,8 +1795,8 @@ export function PlayView<TState>({
             periodsTotal={scoreboardPeriodsTotal ?? periodsTotal}
             timer={timerValue}
             timerLabel={timerLabel}
-            goals={scoreboardGoals ?? goals}
-            shots={shots}
+            goals={visibleScoreboardGoals}
+            shots={visibleScoreboardShots}
             shotsTotal={shotsTotal}
             opponent={scoreboardOpponent}
           />

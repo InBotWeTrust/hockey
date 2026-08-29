@@ -8,7 +8,10 @@ import {
   type AmateurDuelLoadoutSelection,
   type AmateurDuelMatchState,
 } from '../api/amateurDuel.js';
-import { isGameRequestTimeout, withGameRequestTimeout } from '../api/requestTimeout.js';
+import {
+  isDefinitiveGameRequestError,
+  withGameRequestReconciliation,
+} from '../api/requestTimeout.js';
 import type { ShotInputPayload, ShotResultType } from '../api/duel.js';
 
 interface AmateurDuelStoreState {
@@ -29,7 +32,11 @@ interface AmateurDuelStoreState {
     shotIndex: number;
     input: ShotInputPayload;
     claimedResult: ShotResultType;
-  }) => Promise<{ serverResult: ShotResultType; state: AmateurDuelMatchState } | null>;
+  }) => Promise<{
+    serverResult: ShotResultType;
+    state: AmateurDuelMatchState;
+    isCurrent: () => boolean;
+  } | null>;
 }
 
 export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) => ({
@@ -136,8 +143,9 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
     const current = get().match;
     if (!current) return null;
     try {
-      const res = await withGameRequestTimeout((signal) =>
-        submitAmateurDuelShot(
+      const outcome = await withGameRequestReconciliation({
+        request: (signal) =>
+          submitAmateurDuelShot(
           current.id,
           {
             shot_index: shotIndex,
@@ -146,47 +154,55 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
           },
           { signal },
         ),
-      );
-      set({ error: null });
-      return { serverResult: res.server_result, state: res.match };
-    } catch (err) {
-      try {
-        const { match } = await withGameRequestTimeout((signal) =>
-          fetchAmateurMatch(current.id, { signal }),
-        );
+        reconcile: async (signal) => (await fetchAmateurMatch(current.id, { signal })).match,
+        isReconciled: (match) =>
+          match.id === current.id &&
+          (match.me.state !== 'period_active' || match.current_period_shots >= shotIndex),
+        isRequestErrorDefinitive: isDefinitiveGameRequestError,
+      });
+      if (outcome.kind === 'unreconciled') {
         if (get().match === current) {
           set({
-            match,
-            error: isGameRequestTimeout(err)
-              ? null
-              : err instanceof Error
-                ? err.message
-                : 'duel shot failed',
+            match: outcome.value,
+            error:
+              outcome.error instanceof Error ? outcome.error.message : 'duel shot failed',
           });
         }
-      } catch {
-        if (
-          get().match === current &&
-          current.me.state === 'period_active' &&
-          current.current_period_shots === shotIndex
-        ) {
-          const goalDelta = claimedResult === 'goal' ? 1 : 0;
-          set({
-            match: {
-              ...current,
-              current_period_shots: Math.max(0, current.current_period_shots - 1),
-              current_period_goals: Math.max(0, current.current_period_goals - goalDelta),
-              me: {
-                ...current.me,
-                shots_taken: Math.max(0, current.me.shots_taken - 1),
-                goals: Math.max(0, current.me.goals - goalDelta),
-              },
+        return null;
+      }
+      const res =
+        outcome.kind === 'request'
+          ? outcome.value
+          : { server_result: claimedResult, match: outcome.value };
+      if (get().match !== current) return null;
+      set({ error: null });
+      return {
+        serverResult: res.server_result,
+        state: res.match,
+        isCurrent: () => get().match === current,
+      };
+    } catch (err) {
+      if (
+        get().match === current &&
+        current.me.state === 'period_active' &&
+        current.current_period_shots === shotIndex
+      ) {
+        const goalDelta = claimedResult === 'goal' ? 1 : 0;
+        set({
+          match: {
+            ...current,
+            current_period_shots: Math.max(0, current.current_period_shots - 1),
+            current_period_goals: Math.max(0, current.current_period_goals - goalDelta),
+            me: {
+              ...current.me,
+              shots_taken: Math.max(0, current.me.shots_taken - 1),
+              goals: Math.max(0, current.me.goals - goalDelta),
             },
-            error: err instanceof Error ? err.message : 'duel shot failed',
-          });
-        } else if (get().match === current) {
-          set({ error: err instanceof Error ? err.message : 'duel shot failed' });
-        }
+          },
+          error: err instanceof Error ? err.message : 'duel shot failed',
+        });
+      } else if (get().match === current) {
+        set({ error: err instanceof Error ? err.message : 'duel shot failed' });
       }
       return null;
     }

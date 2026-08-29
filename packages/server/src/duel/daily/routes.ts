@@ -29,6 +29,7 @@ import {
   type GameSettings,
 } from '../gameSettings.js';
 import { refreshCompletedTournamentDailyResultsForUser } from '../../tournament/dailyAggregate.js';
+import { scheduleDailyCompletionSideEffect } from './completionSideEffects.js';
 
 const shotBodySchema = z.object({
   shot_index: z.number().int().min(1),
@@ -864,17 +865,20 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
       return { server_result: serverResult, state };
     });
     if (response.state.state === 'closed') {
-      try {
-        await refreshCompletedTournamentDailyResultsForUser(app.pg, {
-          userId: req.user.id,
-          now: new Date(),
-        });
-      } catch (error) {
-        app.log.warn(
-          { err: error, userId: req.user.id },
-          'failed to refresh tournament standings after daily completion',
-        );
-      }
+      scheduleDailyCompletionSideEffect(
+        async () => {
+          await refreshCompletedTournamentDailyResultsForUser(app.pg, {
+            userId: req.user.id,
+            now: new Date(),
+          });
+        },
+        (error) => {
+          app.log.warn(
+            { err: error, userId: req.user.id },
+            'failed to refresh tournament standings after daily completion',
+          );
+        },
+      );
     }
     return response;
   });

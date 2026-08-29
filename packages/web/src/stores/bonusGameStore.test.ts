@@ -612,10 +612,16 @@ describe('bonusGameStore', () => {
       signal: expect.any(AbortSignal),
     });
     expect(useBonusGameStore.getState()).toMatchObject({
+      attempt: initialAttempt,
+      pendingShot: { attempt: completedAttempt },
+      inFlight: true,
+      needsReconcile: false,
+    });
+    useBonusGameStore.getState().applyPendingShot();
+    expect(useBonusGameStore.getState()).toMatchObject({
       attempt: completedAttempt,
       pendingShot: null,
       inFlight: false,
-      needsReconcile: false,
     });
   });
 
@@ -624,9 +630,10 @@ describe('bonusGameStore', () => {
     vi.mocked(submitBonusShot).mockImplementation(() => neverSettles<BonusShotResponse>());
     vi.mocked(fetchBonusAttempt).mockImplementation(() => neverSettles<BonusAttemptResponse>());
     useBonusGameStore.getState().applyState(initialAttempt);
+    useBonusGameStore.getState().optimisticAddShot('goal');
 
     const submit = useBonusGameStore.getState().submitShot(shot, { deferApply: true });
-    await vi.advanceTimersByTimeAsync(24_000);
+    await vi.advanceTimersByTimeAsync(12_000);
     await submit;
 
     expect(useBonusGameStore.getState()).toMatchObject({

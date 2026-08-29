@@ -11,7 +11,10 @@ import {
   type BonusShotRequest,
 } from '../api/bonusGames.js';
 import { ApiError } from '../api/apiFetch.js';
-import { withGameRequestTimeout } from '../api/requestTimeout.js';
+import {
+  isDefinitiveGameRequestError,
+  withGameRequestReconciliation,
+} from '../api/requestTimeout.js';
 import type { ShotResultType } from '../api/duel.js';
 
 interface PendingBonusShot {
@@ -22,6 +25,7 @@ interface PendingBonusShot {
 interface BonusGameStoreState {
   attempt: BonusGameAttempt | null;
   pendingShot: PendingBonusShot | null;
+  optimisticShotBase: BonusGameAttempt | null;
   loading: boolean;
   error: string | null;
   errorCode: string | null;
@@ -43,6 +47,7 @@ interface BonusGameStoreState {
     serverResult: ShotResultType;
     attempt: BonusGameAttempt;
     rewardGranted: boolean;
+    isCurrent?: (() => boolean) | undefined;
   } | null>;
   abandon: () => Promise<BonusGameAttempt | null>;
   refresh: () => Promise<BonusGameAttempt | null>;
@@ -65,6 +70,7 @@ function applyServerAttempt(
   set({
     attempt,
     pendingShot: null,
+    optimisticShotBase: null,
     loading: false,
     error: null,
     errorCode: null,
@@ -99,12 +105,14 @@ function recordMutationFailure(
   // Reads may have been issued after beginMutation. Invalidate them atomically
   // with the ambiguity lock so none can clear this failure before a fresh read.
   set({
+    attempt: get().optimisticShotBase ?? get().attempt,
     inFlight: false,
     loading: false,
     error: details.message,
     errorCode: details.code,
     needsReconcile: true,
     pendingShot: null,
+    optimisticShotBase: null,
     requestEpoch: get().requestEpoch + 1,
   });
 }
@@ -112,6 +120,7 @@ function recordMutationFailure(
 export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
   attempt: null,
   pendingShot: null,
+  optimisticShotBase: null,
   loading: false,
   error: null,
   errorCode: null,
@@ -173,6 +182,7 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
     set({
       attempt: resolvedAttempt,
       pendingShot: null,
+      optimisticShotBase: null,
       loading: false,
       error: null,
       errorCode: null,
@@ -188,6 +198,7 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
     const attempt = get().attempt;
     if (!attempt || attempt.status !== 'active' || attempt.state !== 'period_active') return;
     set({
+      optimisticShotBase: attempt,
       attempt: {
         ...attempt,
         shots_taken: attempt.shots_taken + 1,
@@ -240,14 +251,37 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
     if (!attempt || !get().canSubmitShot() || shotInFlight) return null;
     shotInFlight = true;
     beginMutation(set, get);
-    let keepLockedForDeferredApply = false;
+    // Starting a read only bumps requestEpoch; it must not invalidate the shot.
+    // An applied read/new attempt replaces the object reference and does.
+    const requestIsCurrent = (): boolean => get().attempt === attempt;
     try {
-      const response = await withGameRequestTimeout((signal) =>
-        submitBonusShot(attempt.id, body, { signal }),
-      );
+      const outcome = await withGameRequestReconciliation({
+        request: (signal) => submitBonusShot(attempt.id, body, { signal }),
+        reconcile: async (signal) => (await fetchBonusAttempt(attempt.id, { signal })).attempt,
+        isReconciled: (candidate) =>
+          candidate.id === attempt.id &&
+          (candidate.status !== 'active' ||
+            candidate.state !== 'period_active' ||
+            candidate.current_period_shots_taken >= body.claimed_shot_index),
+        isRequestErrorDefinitive: isDefinitiveGameRequestError,
+      });
+      if (!requestIsCurrent()) return null;
+      if (outcome.kind === 'unreconciled') {
+        applyServerAttempt(set, get, outcome.value);
+        set({ inFlight: false });
+        return null;
+      }
+      const response =
+        outcome.kind === 'request'
+          ? outcome.value
+          : {
+              server_result: body.claimed_result,
+              attempt: outcome.value,
+              reward_granted: outcome.value.reward_granted,
+              balances: { coins: 0, stars: 0, experience: 0 },
+            };
       const receivedAtPerformanceMs = performance.now();
       if (options?.deferApply) {
-        keepLockedForDeferredApply = true;
         set({
           pendingShot: {
             attempt: response.attempt,
@@ -261,26 +295,25 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
         });
       } else {
         applyServerAttempt(set, get, response.attempt, receivedAtPerformanceMs);
+        set({ inFlight: false });
       }
+      const pendingAttempt = response.attempt;
       return {
         serverResult: response.server_result,
         attempt: response.attempt,
         rewardGranted: response.reward_granted,
+        isCurrent: () =>
+          options?.deferApply === true
+            ? get().pendingShot?.attempt === pendingAttempt
+            : get().attempt === pendingAttempt,
       };
     } catch (error) {
+      if (!requestIsCurrent()) return null;
       const details = errorDetails(error, 'Не удалось отправить бросок.');
-      try {
-        const reconciled = await withGameRequestTimeout((signal) =>
-          fetchBonusAttempt(attempt.id, { signal }),
-        );
-        applyServerAttempt(set, get, reconciled.attempt);
-      } catch {
-        recordMutationFailure(set, get, details);
-      }
+      recordMutationFailure(set, get, details);
       return null;
     } finally {
       shotInFlight = false;
-      if (!keepLockedForDeferredApply) set({ inFlight: false });
     }
   },
 

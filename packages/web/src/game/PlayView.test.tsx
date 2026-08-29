@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type GoalieConfig } from '@hockey/game-core';
+import { useState } from 'react';
 import { PlayView, type PlayShotResolver } from './PlayView.js';
 import type * as ReactModule from 'react';
 
@@ -339,6 +340,51 @@ describe('PlayView', () => {
 
     expect(optimisticAddShot).toHaveBeenCalledTimes(1);
     expect(submitShot).toHaveBeenCalledTimes(1);
+  });
+
+  it('reveals the optimistic scoreboard result only when the puck reaches the goal', async () => {
+    vi.useFakeTimers();
+
+    function Harness(): JSX.Element {
+      const [score, setScore] = useState({ goals: 0, shots: 0 });
+      return (
+        <PlayView
+          suppressedByModal={false}
+          showIceCar={false}
+          onBack={() => undefined}
+          active
+          seed="bonus-seed"
+          goalieId={null}
+          goalieConfig={beachGoalie}
+          periodNumber={1}
+          speedOverrides={{ goalFreq: 0.45, goalieFreq: 0.5, shooterFreq: 0.65, puckSpeed: 1.2 }}
+          goals={score.goals}
+          shots={score.shots}
+          shotsTotal={30}
+          shotResolver={() => ({ type: 'goal', hitPoint: { x: 286, y: 60 } })}
+          optimisticAddShot={() =>
+            setScore((current) => ({ goals: current.goals + 1, shots: current.shots + 1 }))
+          }
+          submitShot={() => new Promise(() => undefined)}
+          applyState={() => undefined}
+        />
+      );
+    }
+
+    render(<Harness />);
+    const scoreboard = screen.getByLabelText('Игровое табло');
+
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+
+    expect(scoreboard.textContent).toContain('ГОЛЫ00');
+    expect(scoreboard.textContent).toContain('БРОСКИ00/30');
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(434);
+    });
+
+    expect(scoreboard.textContent).toContain('ГОЛЫ01');
+    expect(scoreboard.textContent).toContain('БРОСКИ01/30');
   });
 
   it('blocks the primary action without stopping an active scene', () => {
@@ -697,6 +743,47 @@ describe('PlayView', () => {
       status: 'completed',
       rewardGranted: true,
     });
+    expect(applyState).not.toHaveBeenCalled();
+  });
+
+  it('does not apply a resolved shot after its game session is no longer current', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(performance, 'now').mockReturnValue(1_000);
+    const applyState = vi.fn();
+    let current = true;
+
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="session-a"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        speedOverrides={{ goalFreq: 0.45, goalieFreq: 0.5, shooterFreq: 0.65, puckSpeed: 1.2 }}
+        goals={2}
+        shots={2}
+        shotsTotal={3}
+        shotResolver={() => ({ type: 'goal', hitPoint: { x: 286, y: 60 } })}
+        optimisticAddShot={() => undefined}
+        submitShot={async () => ({
+          serverResult: 'goal',
+          state: { session: 'a', status: 'completed' },
+          isCurrent: () => current,
+        })}
+        applyState={applyState}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+    await act(async () => Promise.resolve());
+    current = false;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_500);
+    });
+
     expect(applyState).not.toHaveBeenCalled();
   });
 });

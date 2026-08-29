@@ -7,7 +7,10 @@ import {
   type ShotInputPayload,
   type ShotResultType,
 } from '../api/duel.js';
-import { isGameRequestTimeout, withGameRequestTimeout } from '../api/requestTimeout.js';
+import {
+  isDefinitiveGameRequestError,
+  withGameRequestReconciliation,
+} from '../api/requestTimeout.js';
 
 interface DailyStoreState {
   data: DailyStateResponse | null;
@@ -29,7 +32,11 @@ interface DailyStoreState {
     shotIndex: number;
     input: ShotInputPayload;
     claimedResult: ShotResultType;
-  }) => Promise<{ serverResult: ShotResultType; state: DailyStateResponse } | null>;
+  }) => Promise<{
+    serverResult: ShotResultType;
+    state: DailyStateResponse;
+    isCurrent: () => boolean;
+  } | null>;
 }
 
 export const useDailyStore = create<DailyStoreState>()((set, get) => ({
@@ -102,8 +109,9 @@ export const useDailyStore = create<DailyStoreState>()((set, get) => ({
   submitShot: async ({ shotIndex, input, claimedResult }) => {
     const submittedState = get().data;
     try {
-      const res = await withGameRequestTimeout((signal) =>
-        submitDailyShot(
+      const outcome = await withGameRequestReconciliation({
+        request: (signal) =>
+          submitDailyShot(
           {
             shot_index: shotIndex,
             input,
@@ -111,46 +119,55 @@ export const useDailyStore = create<DailyStoreState>()((set, get) => ({
           },
           { signal },
         ),
-      );
+        reconcile: (signal) => fetchDailyState({ signal }),
+        isReconciled: (state) =>
+          state.state !== 'period_active' || state.current_period_shots >= shotIndex,
+        isRequestErrorDefinitive: isDefinitiveGameRequestError,
+      });
+      if (outcome.kind === 'unreconciled') {
+        if (get().data === submittedState) {
+          set({
+            data: outcome.value,
+            error:
+              outcome.error instanceof Error ? outcome.error.message : 'shot failed',
+          });
+        }
+        return null;
+      }
+      const res =
+        outcome.kind === 'request'
+          ? outcome.value
+          : { server_result: claimedResult, state: outcome.value };
+      if (get().data !== submittedState) return null;
       // Caller decides when to applyState — for the 30th shot we want to
       // hold on the current view until the broadcast/period summary modals
       // are dismissed.
       set({ error: null });
-      return { serverResult: res.server_result, state: res.state };
+      return {
+        serverResult: res.server_result,
+        state: res.state,
+        isCurrent: () => get().data === submittedState,
+      };
     } catch (err) {
-      try {
-        const data = await withGameRequestTimeout((signal) => fetchDailyState({ signal }));
-        if (get().data === submittedState) {
-          set({
-            data,
-            error: isGameRequestTimeout(err)
-              ? null
-              : err instanceof Error
-                ? err.message
-                : 'shot failed',
-          });
-        }
-      } catch {
-        if (
-          submittedState &&
-          get().data === submittedState &&
-          submittedState.state === 'period_active' &&
-          submittedState.current_period_shots === shotIndex
-        ) {
-          const goalDelta = claimedResult === 'goal' ? 1 : 0;
-          set({
-            data: {
-              ...submittedState,
-              current_period_shots: Math.max(0, submittedState.current_period_shots - 1),
-              current_period_goals: Math.max(0, submittedState.current_period_goals - goalDelta),
-              daily_total_shots: Math.max(0, submittedState.daily_total_shots - 1),
-              daily_total_goals: Math.max(0, submittedState.daily_total_goals - goalDelta),
-            },
-            error: err instanceof Error ? err.message : 'shot failed',
-          });
-        } else if (get().data === submittedState) {
-          set({ error: err instanceof Error ? err.message : 'shot failed' });
-        }
+      if (
+        submittedState &&
+        get().data === submittedState &&
+        submittedState.state === 'period_active' &&
+        submittedState.current_period_shots === shotIndex
+      ) {
+        const goalDelta = claimedResult === 'goal' ? 1 : 0;
+        set({
+          data: {
+            ...submittedState,
+            current_period_shots: Math.max(0, submittedState.current_period_shots - 1),
+            current_period_goals: Math.max(0, submittedState.current_period_goals - goalDelta),
+            daily_total_shots: Math.max(0, submittedState.daily_total_shots - 1),
+            daily_total_goals: Math.max(0, submittedState.daily_total_goals - goalDelta),
+          },
+          error: err instanceof Error ? err.message : 'shot failed',
+        });
+      } else if (get().data === submittedState) {
+        set({ error: err instanceof Error ? err.message : 'shot failed' });
       }
       return null;
     }

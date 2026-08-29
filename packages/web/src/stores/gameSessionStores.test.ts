@@ -13,6 +13,7 @@ import { fetchTrainingState, startTraining, submitTrainingShot } from '../api/tr
 import { useAmateurDuelStore } from './amateurDuelStore.js';
 import { useDailyStore } from './dailyStore.js';
 import { useTrainingSessionStore } from './trainingSessionStore.js';
+import { ApiError } from '../api/apiFetch.js';
 
 vi.mock('../api/duel.js', () => ({
   fetchDailyState: vi.fn(),
@@ -155,7 +156,9 @@ describe('game session stores', () => {
       daily_total_shots: 30,
       daily_total_goals: 11,
     };
-    vi.mocked(submitDailyShot).mockRejectedValueOnce(new Error('internal error'));
+    vi.mocked(submitDailyShot).mockRejectedValueOnce(
+      new ApiError(409, 'daily_shot_index_mismatch', 'internal error'),
+    );
     vi.mocked(fetchDailyState).mockResolvedValueOnce(staleActiveState);
     useDailyStore.setState({ data: optimisticFinalState, error: null });
 
@@ -212,12 +215,14 @@ describe('game session stores', () => {
       });
 
     await vi.advanceTimersByTimeAsync(12_000);
-    await submit;
+    const result = await submit;
 
     expect(settled).toBe(true);
     expect(fetchDailyState).toHaveBeenCalledWith({
       signal: expect.any(AbortSignal),
     });
+    expect(result?.state).toEqual(completedState);
+    if (result) useDailyStore.getState().applyState(result.state);
     expect(useDailyStore.getState().data).toEqual(completedState);
     expect(useDailyStore.getState().error).toBeNull();
   });
@@ -243,7 +248,7 @@ describe('game session stores', () => {
       input: { tapTime: 3000 },
       claimedResult: 'goal',
     });
-    await vi.advanceTimersByTimeAsync(24_000);
+    await vi.advanceTimersByTimeAsync(12_000);
     await submit;
 
     expect(useDailyStore.getState().data).toMatchObject({
@@ -287,9 +292,11 @@ describe('game session stores', () => {
       claimedResult: 'goal',
     });
     await vi.advanceTimersByTimeAsync(12_000);
-    await submit;
+    const result = await submit;
 
     expect(fetchTrainingState).toHaveBeenCalledWith({ signal: expect.any(AbortSignal) });
+    expect(result?.state).toEqual(closed);
+    if (result) useTrainingSessionStore.getState().applyState(result.state);
     expect(useTrainingSessionStore.getState().data).toEqual(closed);
     expect(useTrainingSessionStore.getState().error).toBeNull();
   });
@@ -312,7 +319,7 @@ describe('game session stores', () => {
       input: { tapTime: 3000 },
       claimedResult: 'goal',
     });
-    await vi.advanceTimersByTimeAsync(24_000);
+    await vi.advanceTimersByTimeAsync(12_000);
     await submit;
 
     expect(useTrainingSessionStore.getState().data).toMatchObject({
@@ -360,11 +367,13 @@ describe('game session stores', () => {
       claimedResult: 'goal',
     });
     await vi.advanceTimersByTimeAsync(12_000);
-    await submit;
+    const result = await submit;
 
     expect(fetchAmateurMatch).toHaveBeenCalledWith(active.id, {
       signal: expect.any(AbortSignal),
     });
+    expect(result?.state).toEqual(settled);
+    if (result) useAmateurDuelStore.getState().applyState(result.state);
     expect(useAmateurDuelStore.getState().match).toEqual(settled);
     expect(useAmateurDuelStore.getState().error).toBeNull();
   });
@@ -387,7 +396,7 @@ describe('game session stores', () => {
       input: { tapTime: 3000 },
       claimedResult: 'goal',
     });
-    await vi.advanceTimersByTimeAsync(24_000);
+    await vi.advanceTimersByTimeAsync(12_000);
     await submit;
 
     expect(useAmateurDuelStore.getState().match).toMatchObject({
@@ -405,7 +414,9 @@ describe('game session stores', () => {
     } as AmateurDuelMatchState;
     const next = { ...previous, id: 'match-b' };
     let resolveReconciliation: ((value: { match: AmateurDuelMatchState }) => void) | undefined;
-    vi.mocked(submitAmateurDuelShot).mockRejectedValueOnce(new Error('request failed'));
+    vi.mocked(submitAmateurDuelShot).mockRejectedValueOnce(
+      new ApiError(409, 'duel_shot_index_mismatch', 'request failed'),
+    );
     vi.mocked(fetchAmateurMatch).mockImplementationOnce(
       () =>
         new Promise((resolve) => {
