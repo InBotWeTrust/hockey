@@ -64,15 +64,15 @@ Run: `pnpm --filter @hockey/web exec vitest run src/stores/bonusGameStore.test.t
 - Consumes: the Task 1 commit.
 - Produces: one reviewed commit deployed by GitHub Actions to branch `dev`.
 
-- [ ] **Step 1: Review the diff for lock leaks, stale response races, timer cleanup, and abort compatibility**
+- [x] **Step 1: Review the diff for lock leaks, stale response races, timer cleanup, and abort compatibility**
 
-- [ ] **Step 2: Fix every Critical or Important review finding and rerun focused tests**
+- [x] **Step 2: Fix every Critical or Important review finding and rerun focused tests**
 
-- [ ] **Step 3: Run repository verification**
+- [x] **Step 3: Run repository verification**
 
 Run: `pnpm typecheck`, `pnpm lint`, `pnpm build`, and `pnpm test` with local PostgreSQL/Redis access.
 
-- [ ] **Step 4: Commit only scoped tracked files**
+- [x] **Step 4: Commit only scoped tracked files**
 
 Commit message: `fix(bonus-games): recover stalled final shots`
 
