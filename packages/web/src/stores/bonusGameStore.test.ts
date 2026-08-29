@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   BonusAttemptResponse,
   BonusGameAttempt,
@@ -116,6 +116,16 @@ function deferred<T>() {
   };
 }
 
+function rejectWhenAborted<T>(signal: AbortSignal | undefined): Promise<T> {
+  return new Promise<T>((_resolve, reject) => {
+    signal?.addEventListener(
+      'abort',
+      () => reject(new DOMException('The operation was aborted.', 'AbortError')),
+      { once: true },
+    );
+  });
+}
+
 describe('bonusGameStore', () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -130,6 +140,11 @@ describe('bonusGameStore', () => {
       receivedAtPerformanceMs: null,
       pendingShot: null,
     });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it('captures the client receipt clock when an authoritative response is installed', async () => {
@@ -562,7 +577,9 @@ describe('bonusGameStore', () => {
 
     await useBonusGameStore.getState().submitShot(shot);
 
-    expect(fetchBonusAttempt).toHaveBeenCalledWith(initialAttempt.id);
+    expect(fetchBonusAttempt).toHaveBeenCalledWith(initialAttempt.id, {
+      signal: expect.any(AbortSignal),
+    });
     expect(useBonusGameStore.getState()).toMatchObject({
       attempt: initialAttempt,
       error: null,
@@ -571,6 +588,70 @@ describe('bonusGameStore', () => {
       inFlight: false,
       pendingShot: null,
     });
+  });
+
+  it('recovers a completed attempt when the final-shot response stalls', async () => {
+    vi.useFakeTimers();
+    const completedAttempt: BonusGameAttempt = {
+      ...initialAttempt,
+      status: 'completed',
+      state: 'closed',
+      period_started_at: null,
+      period_ends_at: null,
+      closed_at: '2026-08-24T10:01:01.000Z',
+      shots_taken: 3,
+      current_period_shots_taken: 3,
+      goals: 3,
+      current_goal_streak: 3,
+      best_goal_streak: 3,
+      reward_granted: true,
+    };
+    vi.mocked(submitBonusShot).mockImplementation((...args) => {
+      const options = (args as unknown as [string, BonusShotRequest, { signal?: AbortSignal }])[2];
+      return rejectWhenAborted<BonusShotResponse>(options?.signal);
+    });
+    vi.mocked(fetchBonusAttempt).mockResolvedValueOnce(response(completedAttempt));
+    useBonusGameStore.getState().applyState(initialAttempt);
+
+    const submit = useBonusGameStore.getState().submitShot(shot, { deferApply: true });
+    await vi.advanceTimersByTimeAsync(12_000);
+    await submit;
+
+    expect(fetchBonusAttempt).toHaveBeenCalledWith(initialAttempt.id, {
+      signal: expect.any(AbortSignal),
+    });
+    expect(useBonusGameStore.getState()).toMatchObject({
+      attempt: completedAttempt,
+      pendingShot: null,
+      inFlight: false,
+      needsReconcile: false,
+    });
+  });
+
+  it('releases a stalled final shot when both submission and reconciliation time out', async () => {
+    vi.useFakeTimers();
+    vi.mocked(submitBonusShot).mockImplementation((...args) => {
+      const options = (args as unknown as [string, BonusShotRequest, { signal?: AbortSignal }])[2];
+      return rejectWhenAborted<BonusShotResponse>(options?.signal);
+    });
+    vi.mocked(fetchBonusAttempt).mockImplementation((...args) => {
+      const options = (args as unknown as [string, { signal?: AbortSignal }])[1];
+      return rejectWhenAborted<BonusAttemptResponse>(options?.signal);
+    });
+    useBonusGameStore.getState().applyState(initialAttempt);
+
+    const submit = useBonusGameStore.getState().submitShot(shot, { deferApply: true });
+    await vi.advanceTimersByTimeAsync(24_000);
+    await submit;
+
+    expect(useBonusGameStore.getState()).toMatchObject({
+      attempt: initialAttempt,
+      pendingShot: null,
+      inFlight: false,
+      needsReconcile: true,
+      error: 'Не удалось отправить бросок.',
+    });
+    expect(useBonusGameStore.getState().canSubmitShot()).toBe(false);
   });
 
   it('defers an authoritative shot response until the visual boundary applies it once', async () => {

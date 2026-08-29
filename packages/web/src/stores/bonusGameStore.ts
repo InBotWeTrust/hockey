@@ -49,6 +49,17 @@ interface BonusGameStoreState {
 }
 
 let shotInFlight = false;
+const BONUS_SHOT_REQUEST_TIMEOUT_MS = 12_000;
+
+async function withRequestTimeout<T>(request: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), BONUS_SHOT_REQUEST_TIMEOUT_MS);
+  try {
+    return await request(controller.signal);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
 
 function errorDetails(error: unknown, fallback: string): { message: string; code: string | null } {
   if (error instanceof ApiError) return { message: error.message, code: error.code };
@@ -241,7 +252,9 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
     beginMutation(set, get);
     let keepLockedForDeferredApply = false;
     try {
-      const response = await submitBonusShot(attempt.id, body);
+      const response = await withRequestTimeout((signal) =>
+        submitBonusShot(attempt.id, body, { signal }),
+      );
       const receivedAtPerformanceMs = performance.now();
       if (options?.deferApply) {
         keepLockedForDeferredApply = true;
@@ -267,7 +280,9 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
     } catch (error) {
       const details = errorDetails(error, 'Не удалось отправить бросок.');
       try {
-        const reconciled = await fetchBonusAttempt(attempt.id);
+        const reconciled = await withRequestTimeout((signal) =>
+          fetchBonusAttempt(attempt.id, { signal }),
+        );
         applyServerAttempt(set, get, reconciled.attempt);
       } catch {
         recordMutationFailure(set, get, details);

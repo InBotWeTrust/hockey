@@ -203,6 +203,10 @@ export interface BonusShotResponse {
   balances: BonusReward;
 }
 
+interface BonusRequestOptions {
+  signal?: AbortSignal;
+}
+
 function legacyQualificationRules(input: {
   target_goals: number;
   periods?: BonusPeriodRule[];
@@ -283,8 +287,13 @@ export const fetchCurrentBonusAttempt = (): Promise<BonusCurrentAttemptResponse>
     attempt: response.attempt === null ? null : normalizeBonusAttempt(response.attempt),
   }));
 
-export const fetchBonusAttempt = (attemptId: string): Promise<BonusAttemptResponse> =>
-  apiFetch<BonusAttemptResponse>(`/bonus-games/attempts/${attemptId}`).then(normalizeAttemptResponse);
+export const fetchBonusAttempt = (
+  attemptId: string,
+  options?: BonusRequestOptions,
+): Promise<BonusAttemptResponse> =>
+  apiFetch<BonusAttemptResponse>(`/bonus-games/attempts/${attemptId}`, {
+    ...(options?.signal === undefined ? {} : { signal: options.signal }),
+  }).then(normalizeAttemptResponse);
 
 export const purchaseBonusGame = ({
   gameId,
@@ -322,10 +331,12 @@ export const acknowledgeBonusPreview = (
 export const submitBonusShot = (
   attemptId: string,
   body: BonusShotRequest,
+  options?: BonusRequestOptions,
 ): Promise<BonusShotResponse> =>
   apiFetch<BonusShotResponse>(`/bonus-games/attempts/${attemptId}/shot`, {
     method: 'POST',
     body: JSON.stringify(body),
+    ...(options?.signal === undefined ? {} : { signal: options.signal }),
   }).then((response) => ({ ...response, attempt: normalizeBonusAttempt(response.attempt) }));
 
 export const abandonBonusAttempt = (attemptId: string): Promise<BonusAttemptResponse> =>
