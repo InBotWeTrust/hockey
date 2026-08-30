@@ -1,8 +1,33 @@
-export type TournamentRegularSource = 'head_to_head' | 'daily_aggregate';
+export type TournamentRegularSource = 'head_to_head' | 'daily_aggregate' | 'classic';
 export type TournamentRegistrationMode = 'open' | 'approval' | 'invite_only';
 export type TournamentVisibility = 'public' | 'hidden';
 export type TournamentDailyMetric = 'goals_sum' | 'accuracy_average' | 'daily_place_points';
+export type TournamentClassicIncompleteResultPolicy =
+  | 'all_shots'
+  | 'completed_periods'
+  | 'completed_game';
 export type TournamentPlayoffSize = 2 | 4 | 8 | 16;
+
+export interface TournamentClassicPeriodSpeedPreset {
+  periodNumber: 1 | 2 | 3;
+  goalFrequency: number;
+  goalieFrequency: number;
+  shooterFrequency: number;
+  puckSpeedPerMs: number;
+}
+
+export interface TournamentClassicRules {
+  goalieId: string;
+  shotsPerPeriod: number;
+  periodDurationMs: number;
+  breakDurationMs: number;
+  incompleteResultPolicy: TournamentClassicIncompleteResultPolicy;
+  periodSpeedPresets: [
+    TournamentClassicPeriodSpeedPreset,
+    TournamentClassicPeriodSpeedPreset,
+    TournamentClassicPeriodSpeedPreset,
+  ];
+}
 
 export type TournamentStatus =
   | 'draft'
@@ -49,5 +74,20 @@ export interface DailyAggregateTournamentConfig extends TournamentConfigBase {
   bestDays: number | null;
 }
 
-export type TournamentConfig = HeadToHeadTournamentConfig | DailyAggregateTournamentConfig;
+export interface ClassicTournamentConfig extends TournamentConfigBase {
+  regularSource: 'classic';
+  roundRobinCycles: null;
+  roundsPerDay: null;
+  firstRoundLocalTime: null;
+  fixtureWindowMs: null;
+  roundBreakMs: null;
+  dailyDays: number;
+  dailyMetric: TournamentDailyMetric;
+  bestDays: number | null;
+  classicRules: TournamentClassicRules;
+}
 
+export type TournamentConfig =
+  | HeadToHeadTournamentConfig
+  | DailyAggregateTournamentConfig
+  | ClassicTournamentConfig;

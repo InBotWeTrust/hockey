@@ -6,6 +6,7 @@ export type EventType =
   | 'day_pool_created'
   | 'day_pool_closed'
   | 'period_closed'
+  | 'tournament_classic_period_started'
   | 'training_session_created'
   | 'training_session_closed'
   | 'amateur_duel_challenge_created'

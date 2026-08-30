@@ -40,6 +40,17 @@ export function deriveBonusAttemptSeed(
     .digest('hex');
 }
 
+export function deriveClassicTournamentSeed(
+  tournamentId: string,
+  userId: string,
+  tournamentDay: number,
+  secret: string,
+): string {
+  return createHash('sha256')
+    .update(`${tournamentId}:${userId}:tournament_classic:${tournamentDay}:${secret}`)
+    .digest('hex');
+}
+
 // Per-shot seed derivation lives in @hockey/game-core so the client uses
 // the exact same function (cross-client determinism for the gybrid
 // simulation). Re-export here so server callers can import from one place.

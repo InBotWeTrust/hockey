@@ -1385,8 +1385,8 @@ export async function publishRegularSchedule(pool: Pool, tournamentId: string) {
     );
     const publishedConfig = current.rules_snapshot.config;
     if (
-      current.regular_source === 'daily_aggregate' &&
-      publishedConfig.regularSource === 'daily_aggregate'
+      current.regular_source !== 'head_to_head' &&
+      publishedConfig.regularSource !== 'head_to_head'
     ) {
       await rebuildDailyAggregateStandings(client, tournamentId, {
         ...current.rules_snapshot,
@@ -2100,7 +2100,7 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
     if (!tournament || tournament.status !== 'regular') {
       throw new AppError('conflict', 'regular season is not active', 409);
     }
-    if (tournament.rules_snapshot.config.regularSource === 'daily_aggregate') {
+    if (tournament.rules_snapshot.config.regularSource !== 'head_to_head') {
       const coverage = await client.query<{
         participant_count: number;
         result_count: number;

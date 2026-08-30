@@ -26,6 +26,10 @@ const tournamentArtworkMigrationUrl = new URL(
   '../../db/migrations/067_tournament_artwork.sql',
   import.meta.url,
 );
+const tournamentClassicMigrationUrl = new URL(
+  '../../db/migrations/075_tournament_classic.sql',
+  import.meta.url,
+);
 
 describe('tournament migration contract', () => {
   it('creates the complete tournament orchestration schema', async () => {
@@ -114,6 +118,17 @@ describe('tournament migration contract', () => {
     const sql = await readFile(tournamentArtworkMigrationUrl, 'utf8');
 
     expect(sql).toMatch(/alter table tournament\s+add column if not exists image_url text/i);
+    expect(sql).not.toMatch(/drop\s+(column|table)/i);
+  });
+
+  it('adds isolated classic sessions with idempotent constraints', async () => {
+    const sql = await readFile(tournamentClassicMigrationUrl, 'utf8');
+
+    expect(sql).toContain('create table if not exists tournament_classic_session');
+    expect(sql).toContain('create table if not exists tournament_classic_period');
+    expect(sql).toContain('unique (tournament_id, participant_id, tournament_day)');
+    expect(sql).toContain('tournament_classic_session_id');
+    expect(sql).toContain("'tournament_classic'");
     expect(sql).not.toMatch(/drop\s+(column|table)/i);
   });
 });

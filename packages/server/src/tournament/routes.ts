@@ -58,11 +58,29 @@ import {
   type ObjectStorageClient,
   type ObjectStorageUploadResult,
 } from '../storage/objectStorage.js';
+import {
+  getClassicGameState,
+  listActiveClassicGames,
+  startClassicGamePeriod,
+  submitClassicGameShot,
+} from './classicGame.js';
 
 const uuid = z.string().uuid();
 const nullableDate = z.string().datetime({ offset: true }).nullable().default(null);
 const nullableImageUrl = z.string().trim().max(2048).nullable().optional();
 const TOURNAMENT_ARTWORK_MAX_PIXELS = 2048 * 2048;
+const classicShotSchema = z.object({
+  shot_index: z.number().int().min(1),
+  input: z.object({
+    tapTime: z.number().finite().min(0),
+    shooterTapTime: z.number().finite().optional(),
+    puckSpeedPerMs: z.number().finite().optional(),
+    shooterFrequency: z.number().finite().optional(),
+    goalieFrequency: z.number().finite().optional(),
+    goalFrequency: z.number().finite().optional(),
+  }),
+  claimed_result: z.enum(['goal', 'save', 'miss']),
+});
 
 const eligibilitySchema = z
   .object({
@@ -153,6 +171,7 @@ interface TournamentRoutesOptions {
   systemUserId?: string;
   objectStorage?: ObjectStorageClient;
   mediaAccessSecret: string;
+  tournamentGameSeedSecret: string;
 }
 
 export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = async (
@@ -175,6 +194,67 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
   app.get('/tournaments', authenticated, async (req) => {
     await requireTournamentFeature(app);
     return { tournaments: await listPlayerTournaments(app.pg, req.user.id) };
+  });
+
+  app.get('/tournaments/classic/active', authenticated, async (req) => {
+    await requireTournamentFeature(app);
+    return {
+      games: await listActiveClassicGames(app.pg, { userId: req.user.id, now: new Date() }),
+    };
+  });
+
+  app.get('/tournaments/:tournamentId/classic/state', authenticated, async (req) => {
+    await requireTournamentFeature(app);
+    const params = z.object({ tournamentId: uuid }).parse(req.params);
+    return getClassicGameState(app.pg, {
+      userId: req.user.id,
+      tournamentId: params.tournamentId,
+      now: new Date(),
+      seedSecret: options.tournamentGameSeedSecret,
+    });
+  });
+
+  app.post('/tournaments/:tournamentId/classic/period/start', authenticated, async (req) => {
+    await requireTournamentFeature(app);
+    const params = z.object({ tournamentId: uuid }).parse(req.params);
+    return startClassicGamePeriod(app.pg, {
+      userId: req.user.id,
+      tournamentId: params.tournamentId,
+      now: new Date(),
+      seedSecret: options.tournamentGameSeedSecret,
+    });
+  });
+
+  app.post('/tournaments/:tournamentId/classic/shot', authenticated, async (req) => {
+    await requireTournamentFeature(app);
+    const params = z.object({ tournamentId: uuid }).parse(req.params);
+    const body = classicShotSchema.parse(req.body);
+    return submitClassicGameShot(app.pg, {
+      userId: req.user.id,
+      tournamentId: params.tournamentId,
+      now: new Date(),
+      seedSecret: options.tournamentGameSeedSecret,
+      shotIndex: body.shot_index,
+      input: {
+        tapTime: body.input.tapTime,
+        ...(body.input.shooterTapTime === undefined
+          ? {}
+          : { shooterTapTime: body.input.shooterTapTime }),
+        ...(body.input.puckSpeedPerMs === undefined
+          ? {}
+          : { puckSpeedPerMs: body.input.puckSpeedPerMs }),
+        ...(body.input.shooterFrequency === undefined
+          ? {}
+          : { shooterFrequency: body.input.shooterFrequency }),
+        ...(body.input.goalieFrequency === undefined
+          ? {}
+          : { goalieFrequency: body.input.goalieFrequency }),
+        ...(body.input.goalFrequency === undefined
+          ? {}
+          : { goalFrequency: body.input.goalFrequency }),
+      },
+      claimedResult: body.claimed_result,
+    });
   });
 
   app.get('/tournaments/:tournamentId', authenticated, async (req) => {
