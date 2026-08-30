@@ -45,6 +45,15 @@ describe('qualificationProgress', () => {
     ).toBe('ЦЕЛЬ 5/42 · СЕРИЯ 0/4');
   });
 
+  it('keeps an achieved streak fulfilled after a later-period miss', () => {
+    expect(
+      qualificationProgress(
+        { type: 'goals_from_shots', targetGoals: 42, shotsLimit: 50, requiredGoalStreak: 4 },
+        { goals: 18, shots: 28, currentStreak: 1, bestStreak: 4 },
+      ),
+    ).toBe('ЦЕЛЬ 18/42 · СЕРИЯ 4/4');
+  });
+
   it('shows goal progress for accuracy qualifications', () => {
     expect(
       qualificationProgress(

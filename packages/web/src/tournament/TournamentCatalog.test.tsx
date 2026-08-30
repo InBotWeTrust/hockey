@@ -427,6 +427,69 @@ describe('TournamentCatalog', () => {
     expect(sections).toBeInTheDocument();
   });
 
+  it('shows configured playoff dates in a later calendar month before fixtures exist', async () => {
+    vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
+      tournaments: [
+        {
+          id: 'daily-cup',
+          slug: 'daily-cup',
+          title: 'Ежедневный кубок',
+          description: '',
+          status: 'regular',
+          regularSource: 'daily_aggregate',
+          visibility: 'public',
+          revision: 1,
+          participantCount: 8,
+          myParticipantState: 'approved',
+          registrationOpensAt: null,
+          registrationClosesAt: null,
+          startsAt: '2030-08-28T00:00:00.000Z',
+          projectedEndsAt: '2030-09-15T00:00:00.000Z',
+          rules: {
+            config: {
+              participantLimit: 8,
+              entryFeeCoins: 0,
+              playoffSize: 4,
+              timezone: 'Europe/Moscow',
+            },
+            playoffRounds: [{ roundNumber: 1, firstGameStartsAt: '2030-09-05T12:00:00.000Z' }],
+          },
+        },
+      ],
+    });
+    vi.spyOn(api, 'fetchTournamentSchedule').mockResolvedValue({
+      fixtures: [],
+      matchdays: [
+        {
+          id: 'august-day',
+          number: 1,
+          localDate: '2030-08-28',
+          startsAt: '2030-08-28T00:00:00.000Z',
+          endsAt: '2030-08-29T00:00:00.000Z',
+          myResult: null,
+        },
+      ],
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TournamentCatalog />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Ежедневный кубок' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Расписание' }));
+    expect(await screen.findByText('Август 2030')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Следующий месяц' }));
+
+    expect(screen.getByText('Сентябрь 2030')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /5 сентября.*плей-офф/i })).toHaveClass(
+      'tournament-calendar__day--playoff',
+    );
+  });
+
   it('shows a settled zero-zero fixture score', async () => {
     vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
       tournaments: [

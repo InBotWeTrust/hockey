@@ -74,6 +74,8 @@ import type {
   ShotResultType,
 } from '../api/duel.js';
 import type { TrainingStateResponse } from '../api/training.js';
+import { fetchBonusGames } from '../api/bonusGames.js';
+import type { ProfileData } from './profileTypes.js';
 import {
   fetchMyInventory,
   patchEquipment,
@@ -610,10 +612,9 @@ export function DailyScreen(): JSX.Element {
                 return;
               }
               setAmateurView(section);
-              navigate(
-                `/?view=amateur&section=${section}${fromSections ? '&from=sections' : ''}`,
-                { replace: true },
-              );
+              navigate(`/?view=amateur&section=${section}${fromSections ? '&from=sections' : ''}`, {
+                replace: true,
+              });
             }}
           />
         );
@@ -823,7 +824,7 @@ function GameHub({
               timerLabel: 'До обновления',
               timer: formatHms(nextDayRemaining),
               activePeriod: null,
-              ariaLabel: `Завершена. До обновления ${formatHms(nextDayRemaining)}. Периоды не активны`,
+              ariaLabel: `Завершена. До обновления ${formatHms(nextDayRemaining)}`,
             }
           : isDailyLockedByTraining
             ? {
@@ -971,6 +972,7 @@ function GameHub({
         periodsTotal={data.total_periods}
         timer={dailyHubScoreboard.timer}
         timerLabel={dailyHubScoreboard.timerLabel}
+        timerOnly={data.state === 'closed'}
       />
     ),
   };
@@ -1549,6 +1551,7 @@ function DailyHubScoreboard({
   periodsTotal,
   timer,
   timerLabel,
+  timerOnly = false,
 }: {
   activePeriod: number | null;
   align?: 'center' | 'left';
@@ -1556,37 +1559,44 @@ function DailyHubScoreboard({
   periodsTotal: number;
   timer: string;
   timerLabel: string;
+  timerOnly?: boolean;
 }): JSX.Element {
   return (
     <div
       aria-label={ariaLabel}
+      className={timerOnly ? 'daily-hub-scoreboard--timer-only' : undefined}
       style={{
         width: align === 'left' ? 'auto' : '100%',
         maxWidth: align === 'left' ? 'none' : 306,
         padding: 0,
         display: 'grid',
-        gridTemplateColumns:
-          align === 'left' ? 'max-content max-content' : 'minmax(0, 1fr) minmax(0, 1fr)',
+        gridTemplateColumns: timerOnly
+          ? 'minmax(0, 1fr)'
+          : align === 'left'
+            ? 'max-content max-content'
+            : 'minmax(0, 1fr) minmax(0, 1fr)',
         alignItems: 'center',
-        justifyItems: align === 'left' ? 'start' : 'center',
+        justifyItems: timerOnly ? 'center' : align === 'left' ? 'start' : 'center',
         gap: align === 'left' ? 36 : 'clamp(6px, 1.1vh, 10px)',
         margin: '0 auto',
       }}
     >
       <DailyEventScoreboardColumn align={align} label={timerLabel} value={timer} />
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: align === 'left' ? 'flex-start' : 'center',
-          gap: 5,
-          minWidth: 0,
-          lineHeight: 1,
-        }}
-      >
-        <DailyEventScoreboardLabel>Период</DailyEventScoreboardLabel>
-        <DailyPeriodTabs activePeriod={activePeriod} align={align} periodsTotal={periodsTotal} />
-      </div>
+      {!timerOnly && (
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: align === 'left' ? 'flex-start' : 'center',
+            gap: 5,
+            minWidth: 0,
+            lineHeight: 1,
+          }}
+        >
+          <DailyEventScoreboardLabel>Период</DailyEventScoreboardLabel>
+          <DailyPeriodTabs activePeriod={activePeriod} align={align} periodsTotal={periodsTotal} />
+        </div>
+      )}
     </div>
   );
 }
@@ -2656,16 +2666,21 @@ function ModeShell({
   title,
   onBack,
   children,
+  variant = 'default',
 }: {
   title: string;
   onBack: () => void;
   children: React.ReactNode;
+  variant?: 'default' | 'section-hub';
 }): JSX.Element {
+  const isSectionHub = variant === 'section-hub';
   return (
     <main
-      className="screen"
+      className={`screen mode-shell${isSectionHub ? ' mode-shell--section-hub' : ''}`}
       style={{
-        padding: 'calc(22px + var(--app-safe-top)) 24px 24px',
+        padding: isSectionHub
+          ? 'calc(18px + var(--app-safe-top)) 14px 24px'
+          : 'calc(22px + var(--app-safe-top)) 24px 24px',
         gap: 14,
       }}
     >
@@ -2680,33 +2695,43 @@ function ModeShell({
         }}
       >
         <div
-          className="mode-shell__header"
-          style={{ display: 'flex', alignItems: 'center', gap: 10 }}
+          className={isSectionHub ? 'bonus-games-catalog__header' : 'mode-shell__header'}
+          style={isSectionHub ? undefined : { display: 'flex', alignItems: 'center', gap: 10 }}
         >
           <button
             type="button"
-            className="icon-btn"
+            className={isSectionHub ? 'icon-btn catalog-header-back' : 'icon-btn'}
             onClick={onBack}
             aria-label="Назад"
             title="Назад"
-            style={{
-              width: 40,
-              height: 40,
-              minWidth: 40,
-              minHeight: 40,
-              borderRadius: 999,
-              padding: 0,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
+            style={
+              isSectionHub
+                ? undefined
+                : {
+                    width: 40,
+                    height: 40,
+                    minWidth: 40,
+                    minHeight: 40,
+                    borderRadius: 999,
+                    padding: 0,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }
+            }
           >
             <ArrowLeft size={16} />
           </button>
           <h1
-            className="mode-shell__title"
-            style={{ margin: 0, minWidth: 0, fontSize: 24, fontWeight: 800 }}
+            className={
+              isSectionHub
+                ? 'bonus-games-catalog__title screen-title-on-arena'
+                : 'mode-shell__title'
+            }
+            style={
+              isSectionHub ? undefined : { margin: 0, minWidth: 0, fontSize: 24, fontWeight: 800 }
+            }
           >
             {title}
           </h1>
@@ -2822,8 +2847,33 @@ function TrainingPlaceholder({
   }
 
   return (
-    <ModeShell title="Тренировка" onBack={onBack}>
+    <ModeShell title="Тренировка" onBack={onBack} variant="section-hub">
       <section className="mode-info-card training-info-card" aria-label="Информация о тренировке">
+        <div className="training-info-overview">
+          <div className="training-info-artwork">
+            <img src="/modes/beginner.webp" alt="Тренировка" draggable={false} />
+          </div>
+          <div className="training-info-overview__copy">
+            {loading && !data ? (
+              <div className="training-info-copy">Загрузка...</div>
+            ) : (
+              <>
+                {error && <div className="training-info-error">{error}</div>}
+                {canConfigureTraining && (
+                  <div className="training-info-copy">
+                    Выбери модель периода. Скорости игрока, ворот, шайбы и вратаря будут такими же,
+                    как в дневной игре выбранного периода.
+                  </div>
+                )}
+                {data?.state === 'closed' && (
+                  <div className="training-info-copy">
+                    Тренировка на сегодня завершена. Новая откроется завтра.
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
         <div className="training-summary-grid">
           <TotalCell label="ЛИМИТ" value={`${shotsTaken}/${shotsLimit}`} />
           <TotalCell label="ЧАСТОТА" value="24ч" />
@@ -2832,30 +2882,12 @@ function TrainingPlaceholder({
             value={data ? formatHms(nextDayRemaining) : '--:--:--'}
           />
         </div>
-        {loading && !data ? (
-          <div className="training-info-copy">Загрузка...</div>
-        ) : (
-          <>
-            {error && <div className="training-info-error">{error}</div>}
-            {canConfigureTraining && (
-              <div className="training-info-copy">
-                Выбери модель периода. Скорости игрока, ворот, шайбы и вратаря будут такими же, как
-                в дневной игре выбранного периода.
-              </div>
-            )}
-            {data?.state === 'closed' && (
-              <>
-                <div className="training-summary-grid">
-                  <TotalCell label="ГОЛЫ" value={String(goals)} />
-                  <TotalCell label="БРОСКИ" value={`${shotsTaken}/${shotsLimit}`} />
-                  <TotalCell label="ТОЧНОСТЬ" value={`${accuracy}%`} />
-                </div>
-                <div className="training-info-copy">
-                  Тренировка на сегодня завершена. Новая откроется завтра.
-                </div>
-              </>
-            )}
-          </>
+        {!loading && data?.state === 'closed' && (
+          <div className="training-summary-grid">
+            <TotalCell label="ГОЛЫ" value={String(goals)} />
+            <TotalCell label="БРОСКИ" value={`${shotsTaken}/${shotsLimit}`} />
+            <TotalCell label="ТОЧНОСТЬ" value={`${accuracy}%`} />
+          </div>
         )}
       </section>
       {!loading && canConfigureTraining && (
@@ -3275,7 +3307,7 @@ function DuelStatusBadge({ match }: { match: AmateurDuelMatch }): JSX.Element {
 
 function AmateurTournamentsPage({ onBack }: { onBack: () => void }): JSX.Element {
   return (
-    <ModeShell title="Турниры" onBack={onBack}>
+    <ModeShell title="Турниры" onBack={onBack} variant="section-hub">
       <TournamentCatalog />
     </ModeShell>
   );
@@ -3288,6 +3320,15 @@ function AmateurHubPage({
   onBack: () => void;
   onOpenSection: (section: 'duels' | 'bonus-games' | 'tournaments') => void;
 }): JSX.Element {
+  const bonusCatalog = useQuery({
+    queryKey: ['bonus-games'],
+    queryFn: fetchBonusGames,
+  });
+  const bonusProgress = bonusCatalog.isError
+    ? 'Прогресс недоступен'
+    : bonusCatalog.data
+      ? `${bonusCatalog.data.games.filter((game) => game.is_completed).length}/${bonusCatalog.data.games.length} пройдено`
+      : '—/— пройдено';
   const sections = [
     {
       id: 'duels' as const,
@@ -3298,7 +3339,7 @@ function AmateurHubPage({
     {
       id: 'bonus-games' as const,
       title: 'Бонусные игры',
-      description: 'Скорость, точность и награды',
+      description: bonusProgress,
       artwork: '/bonus-games/section-card.webp',
     },
     {
@@ -3310,7 +3351,7 @@ function AmateurHubPage({
   ];
 
   return (
-    <ModeShell title="Любители" onBack={onBack}>
+    <ModeShell title="Любители" onBack={onBack} variant="section-hub">
       <div className="amateur-hub-grid" aria-label="Разделы любителей">
         {sections.map((section) => (
           <button
@@ -3327,12 +3368,7 @@ function AmateurHubPage({
               <strong>{section.title}</strong>
               <span>{section.description}</span>
             </span>
-            <ChevronRight
-              className="card-chevron"
-              size={20}
-              strokeWidth={2.7}
-              aria-hidden="true"
-            />
+            <ChevronRight className="card-chevron" size={20} strokeWidth={2.7} aria-hidden="true" />
           </button>
         ))}
       </div>
@@ -3677,7 +3713,7 @@ function AmateurDuelsPage({
     !challengeMut.isPending;
 
   return (
-    <ModeShell title="Дуэли" onBack={onBack}>
+    <ModeShell title="Дуэли" onBack={onBack} variant="section-hub">
       <SegmentedTabs
         ariaLabel="Разделы дуэлей"
         activeTab={duelTab}
@@ -7459,6 +7495,10 @@ function DailyPlayView({
   const setDeferredState = useDailyStore((s) => s.setDeferredState);
   const applyDeferredState = useDailyStore((s) => s.applyDeferredState);
   const userId = useAuthStore((s) => s.user?.id ?? '');
+  const profileQuery = useQuery<ProfileData>({
+    queryKey: ['profile'],
+    queryFn: () => apiFetch<ProfileData>('/me'),
+  });
   const isBreak = data.state === 'break_active';
   const isClosed = data.state === 'closed';
   const rawCanStartPeriod = data.state === 'idle' && data.current_period < data.total_periods;
@@ -7524,6 +7564,16 @@ function DailyPlayView({
   }, [applyDeferredState, onBack, statsModal, userId]);
 
   const hasStatsModal = statsModal !== null;
+  const amateurUnlockGoalsRequired = Math.max(
+    0,
+    data.amateur_unlock_goals_required ?? DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED,
+  );
+  const dailyCourtBackground =
+    profileQuery.data?.competitionLevel === 'amateur' ||
+    profileQuery.data?.competitionLevel === 'professional' ||
+    data.lifetime_total_goals >= amateurUnlockGoalsRequired
+      ? AMATEUR_DAILY_COURT_BACKGROUND
+      : undefined;
   const trainingCooldownEndsAt = data.training_cooldown_ends_at
     ? new Date(data.training_cooldown_ends_at).getTime()
     : 0;
@@ -7631,7 +7681,7 @@ function DailyPlayView({
         submitShot={submitShot}
         applyState={applyState}
         applyResolvedState={applyDailyResolvedState}
-        longCourtBackground={AMATEUR_DAILY_COURT_BACKGROUND}
+        longCourtBackground={dailyCourtBackground}
       />
       {statsModal && (
         <DailyGameStatsModal

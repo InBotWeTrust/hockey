@@ -13,6 +13,7 @@ interface TournamentScheduleCalendarProps {
   timezone: string;
   rangeStartsAt: string | null;
   rangeEndsAt: string | null;
+  playoffStartsAt?: string[];
   renderFixture: (fixture: TournamentFixture, mine: boolean) => ReactNode;
   formatDateTime: (value: string) => string;
   onOpenDailyGame?: () => void;
@@ -105,16 +106,40 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
     () => new Map(props.matchdays.map((matchday) => [matchday.localDate, matchday])),
     [props.matchdays],
   );
-  const eventKeys = useMemo(
+  const playoffDateKeys = useMemo(
     () =>
       Array.from(
         new Set(
-          props.regularSource === 'daily_aggregate'
-            ? props.matchdays.map((matchday) => matchday.localDate)
-            : Array.from(fixturesByDate.keys()),
+          (props.playoffStartsAt ?? [])
+            .map((value) => datePartsInTimezone(value, props.timezone)?.key ?? null)
+            .filter((key): key is string => key !== null),
         ),
       ).sort(),
-    [fixturesByDate, props.matchdays, props.regularSource],
+    [props.playoffStartsAt, props.timezone],
+  );
+  const playoffFixtureDateKeys = useMemo(
+    () =>
+      Array.from(fixturesByDate.entries())
+        .filter(([, fixtures]) =>
+          fixtures.some(
+            (fixture) => fixture.stage === 'playoff' || fixture.stage === 'third_place',
+          ),
+        )
+        .map(([key]) => key),
+    [fixturesByDate],
+  );
+  const eventKeys = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...(props.regularSource === 'daily_aggregate'
+            ? props.matchdays.map((matchday) => matchday.localDate)
+            : Array.from(fixturesByDate.keys())),
+          ...playoffDateKeys,
+          ...playoffFixtureDateKeys,
+        ]),
+      ).sort(),
+    [fixturesByDate, playoffDateKeys, playoffFixtureDateKeys, props.matchdays, props.regularSource],
   );
   const rangeStart =
     (props.rangeStartsAt === null
@@ -123,8 +148,16 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
     eventKeys[0] ??
     today.key;
   const requestedRangeEnd =
-    props.rangeEndsAt === null ? null : datePartsInTimezone(props.rangeEndsAt, props.timezone)?.key;
-  const rangeEndCandidate = requestedRangeEnd ?? eventKeys[eventKeys.length - 1] ?? rangeStart;
+    props.rangeEndsAt === null
+      ? null
+      : (datePartsInTimezone(props.rangeEndsAt, props.timezone)?.key ?? null);
+  const lastEventKey = eventKeys[eventKeys.length - 1];
+  const rangeEndCandidate =
+    requestedRangeEnd === null
+      ? (lastEventKey ?? rangeStart)
+      : lastEventKey !== undefined && lastEventKey > requestedRangeEnd
+        ? lastEventKey
+        : requestedRangeEnd;
   const rangeEnd = rangeEndCandidate < rangeStart ? rangeStart : rangeEndCandidate;
   const preferredDate = initialDateKey(eventKeys, today.key);
   const [selectedDate, setSelectedDate] = useState(preferredDate);
@@ -136,12 +169,12 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
   });
 
   useEffect(() => {
-    if (eventKeys.length === 0 || eventKeys.includes(selectedDate)) return;
+    if (selectedDate >= rangeStart && selectedDate <= rangeEnd) return;
     const next = initialDateKey(eventKeys, today.key);
     const [year, month] = next.split('-').map(Number);
     setSelectedDate(next);
     if (year !== undefined && month !== undefined) setVisibleMonth({ year, month });
-  }, [eventKeys, selectedDate, today.key]);
+  }, [eventKeys, rangeEnd, rangeStart, selectedDate, today.key]);
 
   const firstWeekday = new Date(Date.UTC(visibleMonth.year, visibleMonth.month - 1, 1)).getUTCDay();
   const leadingDays = (firstWeekday + 6) % 7;
@@ -228,9 +261,11 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
             props.regularSource === 'daily_aggregate'
               ? matchday !== undefined
               : fixtures.length > 0;
-          const hasPlayoff = fixtures.some(
-            (fixture) => fixture.stage === 'playoff' || fixture.stage === 'third_place',
-          );
+          const hasPlayoff =
+            playoffDateKeys.includes(key) ||
+            fixtures.some(
+              (fixture) => fixture.stage === 'playoff' || fixture.stage === 'third_place',
+            );
           const mine =
             props.regularSource === 'daily_aggregate'
               ? hasEvents && props.isParticipant
@@ -259,13 +294,46 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
             >
               <span>{day}</span>
               {hasEvents && <i aria-hidden="true" />}
-              {hasPlayoff && (
-                <em className="tournament-calendar__playoff-mark" aria-hidden="true" />
+              {hasPlayoff && mine && props.regularSource === 'head_to_head' && (
+                <em className="tournament-calendar__mine-mark" aria-hidden="true" />
               )}
             </button>
           );
         })}
       </div>
+
+      <ul className="tournament-calendar__legend" aria-label="Обозначения календаря">
+        <li>
+          <span
+            className="tournament-calendar__legend-dot tournament-calendar__legend-dot--events"
+            aria-hidden="true"
+          />
+          {props.regularSource === 'daily_aggregate' ? 'Игровой день' : 'Есть игры'}
+        </li>
+        {props.regularSource === 'head_to_head' && (
+          <li>
+            <span
+              className="tournament-calendar__legend-dot tournament-calendar__legend-dot--mine"
+              aria-hidden="true"
+            />
+            Ваша игра
+          </li>
+        )}
+        <li>
+          <span
+            className="tournament-calendar__legend-dot tournament-calendar__legend-dot--playoff"
+            aria-hidden="true"
+          />
+          Плей-офф
+        </li>
+        <li>
+          <span
+            className="tournament-calendar__legend-dot tournament-calendar__legend-dot--selected"
+            aria-hidden="true"
+          />
+          Выбранный день
+        </li>
+      </ul>
 
       {props.regularSource === 'daily_aggregate' && (
         <div className="tournament-calendar__details" aria-live="polite">

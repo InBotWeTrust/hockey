@@ -335,9 +335,9 @@ describe('BonusGamePlayScreen', () => {
     expect(props).toMatchObject({
       goalieId: null,
       periodNumber: 2,
-      shots: 3,
+      shots: 28,
       goals: 18,
-      shotsTotal: 25,
+      shotsTotal: 50,
       stickEffects: STICK_NEUTRAL,
       longCourtBackground:
         '/bonus-games/arenas/beach.webp?v=20260829-world-tour-user-pngs-v10',
@@ -396,6 +396,26 @@ describe('BonusGamePlayScreen', () => {
         idleSizeScale: 1.22,
         saveSizeScale: 0.96,
       },
+    });
+  });
+
+  it('keeps goals and shots cumulative on later bonus-game periods', () => {
+    setStore({
+      attempt: attempt({
+        current_period: 2,
+        goals: 18,
+        shots_taken: 28,
+        current_period_shots_taken: 3,
+      }),
+    });
+
+    renderScreen();
+
+    expect(playViewProbe.mock.calls.at(-1)?.[0]).toMatchObject({
+      periodNumber: 2,
+      goals: 18,
+      shots: 28,
+      shotsTotal: 50,
     });
   });
 
@@ -640,7 +660,10 @@ describe('BonusGamePlayScreen', () => {
     renderScreen();
 
     expect(screen.getByTestId('bonus-play-view')).toBeInTheDocument();
-    expect(screen.getByRole('dialog', { name: 'Перерыв' })).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog', { name: 'Перерыв' });
+    expect(dialog).toBeInTheDocument();
+    expect(dialog).toHaveTextContent('До следующего периода');
+    expect(dialog).not.toHaveTextContent('серверной проверки таймера');
     expect(screen.getByRole('timer')).toHaveTextContent('00:02');
     expect(playViewProbe.mock.calls.at(-1)?.[0]).toMatchObject({
       active: false,

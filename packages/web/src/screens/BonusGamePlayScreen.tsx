@@ -169,7 +169,7 @@ function BonusBreak({
   return (
     <AccessibleModal
       title="Перерыв"
-      copy="Следующий период начнётся после серверной проверки таймера."
+      copy="До следующего периода"
       closeBlocked={true}
       onClose={() => undefined}
       cardClassName="bonus-game-break-modal"
@@ -675,8 +675,8 @@ export function BonusGamePlayScreen(): JSX.Element {
           shotZoneMultiplier: stickItem?.effects.shotZoneMultiplier ?? 1,
         }}
         goals={attempt.goals}
-        shots={isTerminal ? attempt.shots_taken : attempt.current_period_shots_taken}
-        shotsTotal={isTerminal ? terminalShotsTotal : (rule.shots_limit ?? undefined)}
+        shots={attempt.shots_taken}
+        shotsTotal={terminalShotsTotal > 0 ? terminalShotsTotal : undefined}
         scoreboardNotice={qualificationProgress(attempt.rules.qualification_rules, {
           goals: attempt.goals,
           shots: attempt.shots_taken,

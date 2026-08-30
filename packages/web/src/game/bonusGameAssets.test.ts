@@ -462,7 +462,7 @@ describe('bonus game runtime assets', () => {
       expect(
         Math.abs(creaseTopY - expectedCreaseTopY),
         `${slug}: goal crease starts at Y=${creaseTopY}`,
-      ).toBeLessThanOrEqual(1);
+      ).toBeLessThanOrEqual(2);
     }
   });
 

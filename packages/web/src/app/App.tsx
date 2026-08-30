@@ -125,7 +125,9 @@ export function appBackdropClassName(pathname: string, search = ''): string {
 
   if (
     (pathname === '/' && new URLSearchParams(search).get('view') === 'daily') ||
-    (pathname === '/' && new URLSearchParams(search).get('view') === 'training') ||
+    (pathname === '/' &&
+      new URLSearchParams(search).get('view') === 'training' &&
+      new URLSearchParams(search).get('play') === '1') ||
     (pathname === '/' &&
       new URLSearchParams(search).get('view') === 'amateur' &&
       new URLSearchParams(search).has('match') &&

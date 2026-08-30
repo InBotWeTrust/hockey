@@ -8,6 +8,13 @@ import { startVkOAuth } from '../auth/vkAuth.js';
 import { detectTimezone } from '../auth/timezone.js';
 import { useTelegramMiniAppAuth } from '../auth/useTelegramMiniAppAuth.js';
 
+const COMPACT_CODE_VIEWPORT_HEIGHT = 520;
+
+function isKeyboardSizedViewport(): boolean {
+  if (typeof window === 'undefined') return false;
+  return (window.visualViewport?.height ?? window.innerHeight) <= COMPACT_CODE_VIEWPORT_HEIGHT;
+}
+
 export function LoginScreen(): JSX.Element {
   const navigate = useNavigate();
   const setSession = useAuthStore((s) => s.setSession);
@@ -21,6 +28,7 @@ export function LoginScreen(): JSX.Element {
   const [devPending, setDevPending] = useState(false);
   const [vkError, setVkError] = useState<string | null>(null);
   const [vkPending, setVkPending] = useState(false);
+  const [compactCodeViewport, setCompactCodeViewport] = useState(isKeyboardSizedViewport);
   const miniAppAuth = useTelegramMiniAppAuth();
 
   const mutation = useMutation<AuthSession, Error, TelegramAuthPayload>({
@@ -40,6 +48,19 @@ export function LoginScreen(): JSX.Element {
       navigate('/', { replace: true });
     }
   }, [accessToken, miniAppAuth.isTelegramMiniApp, navigate]);
+
+  useEffect(() => {
+    if (!devCodeLoginEnabled) return;
+    const update = (): void => setCompactCodeViewport(isKeyboardSizedViewport());
+    const viewport = window.visualViewport;
+    update();
+    viewport?.addEventListener('resize', update);
+    window.addEventListener('resize', update);
+    return () => {
+      viewport?.removeEventListener('resize', update);
+      window.removeEventListener('resize', update);
+    };
+  }, [devCodeLoginEnabled]);
 
   if (miniAppAuth.isTelegramMiniApp) {
     return (
@@ -81,10 +102,10 @@ export function LoginScreen(): JSX.Element {
 
   return (
     <main
-      className="screen login-screen"
+      className={`screen login-screen${devCodeLoginEnabled && compactCodeViewport ? ' login-screen--compact-code' : ''}`}
       style={{
         textAlign: 'center',
-        height: '100dvh',
+        height: 'var(--app-viewport-height, 100dvh)',
         minHeight: 0,
         overflow: 'hidden',
         paddingTop: 'var(--app-safe-top)',
@@ -92,11 +113,7 @@ export function LoginScreen(): JSX.Element {
       }}
     >
       <div className="login-screen__brand">
-        <img
-          src="/icons/app-logo.webp"
-          alt="Ультимейт Хоккей"
-          className="login-screen__logo"
-        />
+        <img src="/icons/app-logo.webp" alt="Ультимейт Хоккей" className="login-screen__logo" />
         <h1 className="login-screen__title">Ультимейт Хоккей</h1>
         <div className="login-screen__tagline">Живи жизнью профессионального хоккеиста</div>
         <div className="login-screen__benefits" aria-label="Возможности игры">
@@ -108,7 +125,7 @@ export function LoginScreen(): JSX.Element {
         </div>
       </div>
 
-      <div style={{ flex: 1, minHeight: 8 }} />
+      <div className="login-screen__spacer" style={{ flex: 1, minHeight: 8 }} />
 
       <div className="login-screen__actions">
         {devCodeLoginEnabled ? (

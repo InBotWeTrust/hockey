@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { AccessibleModal } from '../components/AccessibleModal.js';
 import {
   fetchDailyHistory,
   fetchDailyState,
@@ -11,6 +12,37 @@ import {
 } from '../api/duel.js';
 
 const HISTORY_PAGE_SIZE = 20;
+const CALENDAR_WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+const MONTH_NAMES = [
+  'Январь',
+  'Февраль',
+  'Март',
+  'Апрель',
+  'Май',
+  'Июнь',
+  'Июль',
+  'Август',
+  'Сентябрь',
+  'Октябрь',
+  'Ноябрь',
+  'Декабрь',
+];
+const MONTH_NAMES_GENITIVE = [
+  'января',
+  'февраля',
+  'марта',
+  'апреля',
+  'мая',
+  'июня',
+  'июля',
+  'августа',
+  'сентября',
+  'октября',
+  'ноября',
+  'декабря',
+];
+
+type CalendarDayStatus = 'completed' | 'incomplete' | 'missed';
 
 function numberText(value: number): string {
   return new Intl.NumberFormat('ru-RU').format(value);
@@ -30,6 +62,55 @@ function formatDailyGameDate(dayDate: string): string {
   const [year, month, day] = dayDate.split('-');
   if (!year || !month || !day) return dayDate;
   return `${day}.${month}.${year}`;
+}
+
+function currentMonthKey(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function shiftMonth(monthKey: string, delta: number): string {
+  const [yearText, monthText] = monthKey.split('-');
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const shifted = new Date(Date.UTC(year, month - 1 + delta, 1));
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+function monthTitle(monthKey: string): string {
+  const [yearText, monthText] = monthKey.split('-');
+  const monthName = MONTH_NAMES[Number(monthText) - 1] ?? monthText;
+  return `${monthName} ${yearText}`;
+}
+
+function calendarDayLabel(dayDate: string): string {
+  const [year, month, day] = dayDate.split('-');
+  const monthName = MONTH_NAMES_GENITIVE[Number(month) - 1] ?? month;
+  return `${Number(day)} ${monthName} ${year}`;
+}
+
+function calendarDays(monthKey: string): Array<number | null> {
+  const [yearText, monthText] = monthKey.split('-');
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const numberOfDays = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const mondayFirstOffset = (new Date(Date.UTC(year, month - 1, 1)).getUTCDay() + 6) % 7;
+  return [
+    ...Array.from<null>({ length: mondayFirstOffset }).fill(null),
+    ...Array.from({ length: numberOfDays }, (_, index) => index + 1),
+  ];
+}
+
+function calendarStatus(game: DailyGameStats, totalPeriods: number): CalendarDayStatus {
+  if (game.total_shots <= 0) return 'missed';
+  if (game.periods.length >= totalPeriods) return 'completed';
+  return 'incomplete';
+}
+
+function calendarStatusLabel(status: CalendarDayStatus): string {
+  if (status === 'completed') return 'игра завершена';
+  if (status === 'incomplete') return 'игра начата, но не завершена';
+  return 'без бросков';
 }
 
 function formatDurationMs(ms: number): string {
@@ -117,6 +198,8 @@ function todayTimer(
 export function DailyOverviewScreen(): JSX.Element {
   const navigate = useNavigate();
   const [now, setNow] = useState(() => Date.now());
+  const [calendarMonth, setCalendarMonth] = useState<string | null>(null);
+  const [selectedGame, setSelectedGame] = useState<DailyGameStats | null>(null);
   const state = useQuery({
     queryKey: ['daily', 'state'],
     queryFn: fetchDailyState,
@@ -132,17 +215,37 @@ export function DailyOverviewScreen(): JSX.Element {
   const historySummary = history.data?.pages[0]?.summary;
   const syncedNow = dailyNowMs(today, now);
   const timer = todayTimer(today, syncedNow);
+  const latestMonth = today?.day_date?.slice(0, 7) ?? currentMonthKey();
+  const selectedMonth = calendarMonth ?? latestMonth;
+  const gamesByDate = useMemo(() => new Map(games.map((game) => [game.day_date, game])), [games]);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 500);
     return () => window.clearInterval(id);
   }, []);
 
+  useEffect(() => {
+    if (!history.hasNextPage || history.isFetchingNextPage) return;
+    const oldestLoadedDate = games.reduce<string | null>(
+      (oldest, game) => (oldest === null || game.day_date < oldest ? game.day_date : oldest),
+      null,
+    );
+    if (oldestLoadedDate === null || oldestLoadedDate > `${selectedMonth}-01`) {
+      void history.fetchNextPage();
+    }
+  }, [
+    games,
+    history.fetchNextPage,
+    history.hasNextPage,
+    history.isFetchingNextPage,
+    selectedMonth,
+  ]);
+
   return (
     <main
-      className="screen"
+      className="screen mode-shell mode-shell--section-hub"
       style={{
-        padding: 'calc(22px + var(--app-safe-top)) 24px 24px',
+        padding: 'calc(18px + var(--app-safe-top)) 14px 24px',
         overflowY: 'auto',
         WebkitOverflowScrolling: 'touch',
       }}
@@ -157,34 +260,17 @@ export function DailyOverviewScreen(): JSX.Element {
           gap: 14,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div className="bonus-games-catalog__header">
           <button
             type="button"
-            className="icon-btn"
+            className="icon-btn catalog-header-back"
             onClick={() => navigate('/sections')}
             aria-label="Назад"
             title="Назад"
-            style={{
-              width: 40,
-              height: 40,
-              minWidth: 40,
-              minHeight: 40,
-              borderRadius: 999,
-              padding: 0,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
           >
             <ArrowLeft size={16} />
           </button>
-          <h1
-            className="screen-title-on-arena"
-            style={{ margin: 0, minWidth: 0, fontSize: 24, fontWeight: 800 }}
-          >
-            Ежедневная игра
-          </h1>
+          <h1 className="bonus-games-catalog__title screen-title-on-arena">Ежедневная игра</h1>
         </div>
 
         <section aria-label="Сегодняшняя игра" style={{ display: 'grid', gap: 8 }}>
@@ -240,12 +326,10 @@ export function DailyOverviewScreen(): JSX.Element {
                     alignItems: 'center',
                     gap: 10,
                     maxWidth: '100%',
-                    minHeight: 30,
-                    padding: '6px 10px',
-                    borderRadius: 999,
-                    background: 'rgba(255,255,255,0.48)',
-                    border: '1px solid rgba(255,255,255,0.66)',
-                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.72)',
+                    padding: 0,
+                    background: 'transparent',
+                    border: 0,
+                    boxShadow: 'none',
                   }}
                 >
                   <span
@@ -316,38 +400,190 @@ export function DailyOverviewScreen(): JSX.Element {
           ) : (
             <div style={{ display: 'grid', gap: 8 }}>
               {historySummary && <HistorySummaryCard summary={historySummary} />}
-              {games.length === 0 ? (
-                <div
-                  className="glass"
-                  style={{
-                    borderRadius: 22,
-                    padding: 16,
-                    color: 'var(--muted)',
-                    fontSize: 13,
-                    fontWeight: 750,
-                  }}
-                >
-                  Завершённые ежедневные игры появятся здесь.
-                </div>
-              ) : (
-                games.map((game) => <HistoryCard key={game.day_date} game={game} />)
-              )}
-              {history.hasNextPage && (
-                <button
-                  type="button"
-                  className="btn btn--ghost"
-                  disabled={history.isFetchingNextPage}
-                  onClick={() => void history.fetchNextPage()}
-                  style={{ minHeight: 42, justifyContent: 'center' }}
-                >
-                  {history.isFetchingNextPage ? 'Загрузка...' : 'Загрузить ещё'}
-                </button>
-              )}
+              <DailyHistoryCalendar
+                monthKey={selectedMonth}
+                latestMonth={latestMonth}
+                gamesByDate={gamesByDate}
+                totalPeriods={today?.total_periods ?? 3}
+                loadingOlderDays={history.isFetchingNextPage}
+                onPreviousMonth={() => setCalendarMonth(shiftMonth(selectedMonth, -1))}
+                onNextMonth={() => setCalendarMonth(shiftMonth(selectedMonth, 1))}
+                onSelectGame={setSelectedGame}
+              />
             </div>
           )}
         </section>
       </section>
+      {selectedGame ? (
+        <DailyGameResultModal
+          game={selectedGame}
+          totalPeriods={today?.total_periods ?? 3}
+          onClose={() => setSelectedGame(null)}
+        />
+      ) : null}
     </main>
+  );
+}
+
+function DailyHistoryCalendar({
+  monthKey,
+  latestMonth,
+  gamesByDate,
+  totalPeriods,
+  loadingOlderDays,
+  onPreviousMonth,
+  onNextMonth,
+  onSelectGame,
+}: {
+  monthKey: string;
+  latestMonth: string;
+  gamesByDate: Map<string, DailyGameStats>;
+  totalPeriods: number;
+  loadingOlderDays: boolean;
+  onPreviousMonth: () => void;
+  onNextMonth: () => void;
+  onSelectGame: (game: DailyGameStats) => void;
+}): JSX.Element {
+  const days = calendarDays(monthKey);
+  return (
+    <section className="glass daily-calendar" aria-label="Календарь ежедневных игр">
+      <div className="daily-calendar__header">
+        <button
+          type="button"
+          className="icon-btn daily-calendar__nav"
+          aria-label="Предыдущий месяц"
+          onClick={onPreviousMonth}
+        >
+          <ChevronLeft size={16} />
+        </button>
+        <h2 className="daily-calendar__month">{monthTitle(monthKey)}</h2>
+        <button
+          type="button"
+          className="icon-btn daily-calendar__nav"
+          aria-label="Следующий месяц"
+          disabled={monthKey >= latestMonth}
+          onClick={onNextMonth}
+        >
+          <ChevronRight size={16} />
+        </button>
+      </div>
+      <div className="daily-calendar__weekdays" aria-hidden="true">
+        {CALENDAR_WEEKDAYS.map((weekday) => (
+          <span key={weekday}>{weekday}</span>
+        ))}
+      </div>
+      <div className="daily-calendar__grid">
+        {days.map((day, index) => {
+          if (day === null) {
+            return <span key={`empty-${index}`} className="daily-calendar__empty" />;
+          }
+          const dayDate = `${monthKey}-${String(day).padStart(2, '0')}`;
+          const game = gamesByDate.get(dayDate);
+          if (!game) {
+            return (
+              <span key={dayDate} className="daily-calendar__day daily-calendar__day--neutral">
+                {day}
+              </span>
+            );
+          }
+          const status = calendarStatus(game, totalPeriods);
+          return (
+            <button
+              key={dayDate}
+              type="button"
+              className={`daily-calendar__day daily-calendar__day--${status}`}
+              aria-label={`${calendarDayLabel(dayDate)}: ${calendarStatusLabel(status)}`}
+              onClick={() => onSelectGame(game)}
+            >
+              {day}
+            </button>
+          );
+        })}
+      </div>
+      <div className="daily-calendar__legend" aria-label="Обозначения календаря">
+        <span>
+          <i className="daily-calendar__dot daily-calendar__dot--completed" />
+          Завершена
+        </span>
+        <span>
+          <i className="daily-calendar__dot daily-calendar__dot--incomplete" />
+          Начата
+        </span>
+        <span>
+          <i className="daily-calendar__dot daily-calendar__dot--missed" />
+          Без бросков
+        </span>
+      </div>
+      {loadingOlderDays ? <div className="daily-calendar__loading">Загружаем дни…</div> : null}
+    </section>
+  );
+}
+
+function DailyGameResultModal({
+  game,
+  totalPeriods,
+  onClose,
+}: {
+  game: DailyGameStats;
+  totalPeriods: number;
+  onClose: () => void;
+}): JSX.Element {
+  const formattedDate = formatDailyGameDate(game.day_date);
+  const periodSlots = Array.from({ length: totalPeriods }, (_, index) => {
+    const periodNumber = index + 1;
+    return {
+      periodNumber,
+      period: game.periods.find((entry) => entry.period_number === periodNumber),
+    };
+  });
+  return (
+    <AccessibleModal
+      title={formattedDate}
+      ariaLabel={`Результат за ${formattedDate}`}
+      onClose={onClose}
+      headerAction={
+        <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
+          <X size={16} />
+        </button>
+      }
+    >
+      <div className="daily-result-modal__summary">
+        <div>
+          <span>Голы</span>
+          <strong>
+            {game.total_goals} из {game.total_shots}
+          </strong>
+        </div>
+        <div>
+          <span>Процент</span>
+          <strong>{formatGoalRate(game.total_goals, game.total_shots)}</strong>
+        </div>
+        <div>
+          <span>Время</span>
+          <strong>{formatDurationMs(game.total_duration_ms)}</strong>
+        </div>
+      </div>
+      <div className="daily-result-modal__periods">
+        {periodSlots.map(({ periodNumber, period }) => (
+          <div
+            key={periodNumber}
+            className={`daily-result-modal__period${period ? '' : ' daily-result-modal__period--empty'}`}
+          >
+            <span>{periodNumber} период</span>
+            {period ? (
+              <>
+                <strong>
+                  {period.goals}/{period.shots_taken}
+                </strong>
+                <small>{formatDurationMs(period.duration_ms)}</small>
+              </>
+            ) : (
+              <strong>Не сыгран</strong>
+            )}
+          </div>
+        ))}
+      </div>
+    </AccessibleModal>
   );
 }
 
@@ -527,61 +763,5 @@ function StatTile({ label, value }: { label: string; value: string }): JSX.Eleme
         {value}
       </div>
     </div>
-  );
-}
-
-function HistoryCard({ game }: { game: DailyGameStats }): JSX.Element {
-  return (
-    <article
-      className="glass"
-      style={{
-        borderRadius: 22,
-        padding: 14,
-        display: 'grid',
-        gap: 10,
-      }}
-    >
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 10 }}>
-        <div style={{ minWidth: 0 }}>
-          <h2 style={{ margin: 0, color: 'var(--ink)', fontSize: 15, fontWeight: 950 }}>
-            {formatDailyGameDate(game.day_date)}
-          </h2>
-        </div>
-        <div style={{ color: 'var(--ink)', fontSize: 14, fontWeight: 950, textAlign: 'right' }}>
-          {formatGoalRate(game.total_goals, game.total_shots)} ({numberText(game.total_goals)} из{' '}
-          {numberText(game.total_shots)})
-        </div>
-      </div>
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-          gap: 6,
-        }}
-      >
-        {game.periods.slice(0, 3).map((period) => (
-          <div
-            key={period.period_number}
-            style={{
-              borderRadius: 14,
-              padding: '8px 6px',
-              textAlign: 'center',
-              background: 'rgba(255,255,255,0.38)',
-              border: '1px solid rgba(255,255,255,0.56)',
-            }}
-          >
-            <div style={{ color: 'var(--muted)', fontSize: 9, fontWeight: 900 }}>
-              {period.period_number} период
-            </div>
-            <div style={{ marginTop: 4, color: 'var(--ink)', fontSize: 12, fontWeight: 900 }}>
-              {period.goals}/{period.shots_taken}
-            </div>
-            <div style={{ marginTop: 2, color: 'var(--muted)', fontSize: 10, fontWeight: 750 }}>
-              {formatDurationMs(period.duration_ms)}
-            </div>
-          </div>
-        ))}
-      </div>
-    </article>
   );
 }

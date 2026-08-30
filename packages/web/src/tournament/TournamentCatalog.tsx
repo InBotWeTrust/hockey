@@ -214,6 +214,14 @@ function objectValue(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function tournamentPlayoffStartsAt(tournament: TournamentSummary): string[] {
+  if (!Array.isArray(tournament.rules.playoffRounds)) return [];
+  return tournament.rules.playoffRounds.flatMap((value) => {
+    const startsAt = objectValue(value).firstGameStartsAt;
+    return typeof startsAt === 'string' && startsAt.length > 0 ? [startsAt] : [];
+  });
+}
+
 function numberValue(value: unknown, fallback = 0): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
@@ -609,6 +617,7 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
               timezone={String(tournament.rules.config.timezone ?? 'Europe/Moscow')}
               rangeStartsAt={tournament.startsAt}
               rangeEndsAt={tournament.completedAt ?? tournament.projectedEndsAt ?? null}
+              playoffStartsAt={tournamentPlayoffStartsAt(tournament)}
               onOpenDailyGame={() => {
                 const params = new URLSearchParams({
                   view: 'daily',
