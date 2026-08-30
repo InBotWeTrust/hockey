@@ -676,6 +676,7 @@ export function BonusGamePlayScreen(): JSX.Element {
         }}
         goals={attempt.goals}
         shots={attempt.shots_taken}
+        shotIndexBase={attempt.current_period_shots_taken}
         shotsTotal={terminalShotsTotal > 0 ? terminalShotsTotal : undefined}
         scoreboardNotice={qualificationProgress(attempt.rules.qualification_rules, {
           goals: attempt.goals,

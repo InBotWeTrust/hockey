@@ -180,6 +180,43 @@ describe('PlayView', () => {
     expect(resolvedContexts[0]?.goalieConfig).toEqual(beachGoalie);
   });
 
+  it('starts the server shot index from one in a new period while preserving cumulative shots', () => {
+    // Break caught: after 41 cumulative shots in period one, period two sent index 42
+    // even though the server-authoritative index for the new period must restart at one.
+    const resolvedContexts: Parameters<PlayShotResolver>[0][] = [];
+    const shotResolver: PlayShotResolver = (context) => {
+      resolvedContexts.push(context);
+      return { type: 'miss', reason: 'wide' };
+    };
+    const submitShot = vi.fn(() => new Promise<null>(() => undefined));
+
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="bonus-seed"
+        goalieId="rookie"
+        goalieConfig={beachGoalie}
+        periodNumber={2}
+        goals={35}
+        shots={41}
+        shotIndexBase={0}
+        shotResolver={shotResolver}
+        optimisticAddShot={() => undefined}
+        submitShot={submitShot}
+        applyState={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+
+    expect(resolvedContexts).toHaveLength(1);
+    expect(resolvedContexts[0]?.shotIndex).toBe(1);
+    expect(submitShot).toHaveBeenCalledWith(expect.objectContaining({ shotIndex: 1 }));
+  });
+
   it('uses separate authoritative scene and shooter clocks for the next tap', () => {
     vi.spyOn(performance, 'now').mockReturnValue(1_000);
     const shotResolver: PlayShotResolver = vi.fn(() => ({ type: 'miss', reason: 'wide' }));

@@ -250,6 +250,7 @@ export interface PlayViewProps<TState> {
   goals: number;
   scoreboardGoals?: number | undefined;
   shots: number;
+  shotIndexBase?: number | undefined;
   shotsTotal?: number | undefined;
   timer?: string | undefined;
   timerLabel?: string | undefined;
@@ -323,6 +324,7 @@ interface PlaySessionSnapshot {
   goalieConfig: GoalieConfig | null;
   periodNumber: number;
   shots: number;
+  shotIndexBase: number;
   shotsTotal: number | undefined;
 }
 
@@ -528,6 +530,7 @@ export function PlayView<TState>({
   goals,
   scoreboardGoals,
   shots,
+  shotIndexBase,
   shotsTotal,
   timer,
   timerLabel,
@@ -584,9 +587,10 @@ export function PlayView<TState>({
       goalieConfig: goalieConfig ?? null,
       periodNumber,
       shots,
+      shotIndexBase: shotIndexBase ?? shots,
       shotsTotal,
     }),
-    [active, seed, goalieId, goalieConfig, periodNumber, shots, shotsTotal],
+    [active, seed, goalieId, goalieConfig, periodNumber, shots, shotIndexBase, shotsTotal],
   );
   const sessionRef = useRef(session);
   sessionRef.current = session;
@@ -1467,7 +1471,7 @@ export function PlayView<TState>({
     if (!cur.seed) return;
     if (typeof cur.shotsTotal === 'number' && cur.shots >= cur.shotsTotal) return;
 
-    const shotIndex = cur.shots + 1;
+    const shotIndex = cur.shotIndexBase + 1;
     const goalieCfg = cur.goalieConfig ?? (cur.goalieId ? getGoalie(cur.goalieId) : null);
     if (!goalieCfg) return;
     const overrides = speedsRef.current;

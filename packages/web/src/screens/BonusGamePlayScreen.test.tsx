@@ -26,6 +26,7 @@ vi.mock('../game/PlayView.js', () => ({
     onBack: () => void;
     backLabel?: string;
     optimisticAddShot: (result: 'goal' | 'save' | 'miss') => void;
+    shotIndexBase?: number;
     submitShot: (args: {
       shotIndex: number;
       input: {
@@ -399,7 +400,7 @@ describe('BonusGamePlayScreen', () => {
     });
   });
 
-  it('keeps goals and shots cumulative on later bonus-game periods', () => {
+  it('keeps the scoreboard cumulative while restarting the server shot index each period', () => {
     setStore({
       attempt: attempt({
         current_period: 2,
@@ -415,6 +416,7 @@ describe('BonusGamePlayScreen', () => {
       periodNumber: 2,
       goals: 18,
       shots: 28,
+      shotIndexBase: 3,
       shotsTotal: 50,
     });
   });
