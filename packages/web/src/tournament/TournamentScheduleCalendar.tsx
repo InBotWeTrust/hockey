@@ -7,7 +7,7 @@ import { TournamentMatchdayRow } from './TournamentMatchdayTimes.js';
 interface TournamentScheduleCalendarProps {
   fixtures: TournamentFixture[];
   matchdays: TournamentMatchday[];
-  regularSource: 'head_to_head' | 'daily_aggregate';
+  regularSource: 'head_to_head' | 'daily_aggregate' | 'classic';
   currentUserId: string | null;
   isParticipant: boolean;
   timezone: string;

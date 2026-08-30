@@ -5,13 +5,13 @@ function displayNumber(rawValue: unknown, maximumFractionDigits = 2): string {
 }
 
 function resultColumn(regularSource: string, dailyMetric: string | null) {
-  if (regularSource === 'daily_aggregate' && dailyMetric === 'accuracy_average') {
+  if (regularSource !== 'head_to_head' && dailyMetric === 'accuracy_average') {
     return {
       heading: 'Точность',
       value: (row: Record<string, unknown>) => `${displayNumber(Number(row.points) * 100, 1)}%`,
     };
   }
-  if (regularSource === 'daily_aggregate' && dailyMetric === 'daily_place_points') {
+  if (regularSource !== 'head_to_head' && dailyMetric === 'daily_place_points') {
     return { heading: 'Очки', value: (row: Record<string, unknown>) => displayNumber(row.points) };
   }
   return {

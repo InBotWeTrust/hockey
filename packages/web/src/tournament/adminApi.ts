@@ -7,7 +7,7 @@ export interface AdminTournament {
   description: string;
   imageUrl?: string | null;
   status: string;
-  regularSource: 'head_to_head' | 'daily_aggregate';
+  regularSource: 'head_to_head' | 'daily_aggregate' | 'classic';
   revision: number;
   participantCount: number;
   registrationOpensAt?: string | null;

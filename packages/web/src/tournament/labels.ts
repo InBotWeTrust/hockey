@@ -63,11 +63,11 @@ export function tournamentStandingValueLabel(
 ): string {
   const parsed = Number(rawValue);
   const value = Number.isFinite(parsed) ? parsed : 0;
-  if (regularSource === 'daily_aggregate' && dailyMetric === 'goals_sum') {
+  if (regularSource !== 'head_to_head' && dailyMetric === 'goals_sum') {
     const goals = Math.round(value);
     return `${formattedNumber(goals, 0)} ${russianPlural(goals, 'гол', 'гола', 'голов')}`;
   }
-  if (regularSource === 'daily_aggregate' && dailyMetric === 'accuracy_average') {
+  if (regularSource !== 'head_to_head' && dailyMetric === 'accuracy_average') {
     return `${formattedNumber(value * 100, 1)}%`;
   }
   const pointsLabel = Number.isInteger(value)

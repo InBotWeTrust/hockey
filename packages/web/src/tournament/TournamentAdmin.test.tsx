@@ -1013,6 +1013,70 @@ describe('TournamentAdmin', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('configures a separate three-period classic tournament game', async () => {
+    vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [] });
+    vi.spyOn(api, 'fetchAdminTournamentDuelTemplates').mockResolvedValue({ templates: [] });
+    const tournament = {
+      id: '00000000-0000-4000-8000-000000000979',
+      slug: 'classic-controls',
+      title: 'Кубок классики',
+      description: '',
+      status: 'draft',
+      regularSource: 'classic' as const,
+      revision: 1,
+      participantCount: 0,
+    };
+    vi.spyOn(api, 'createAdminTournament').mockResolvedValue({ tournament });
+    const update = vi
+      .spyOn(api, 'updateAdminTournament')
+      .mockResolvedValue({ tournament: { ...tournament, revision: 2 } });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentAdmin />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Создать' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Название' }), {
+      target: { value: tournament.title },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    await screen.findByRole('combobox', { name: 'Регистрация' });
+    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    await chooseGlassOption('Формат', 'Классика');
+
+    expect(screen.getByRole('spinbutton', { name: 'Бросков в периоде' })).toHaveValue(30);
+    expect(screen.getByText('1-й период')).toBeInTheDocument();
+    expect(screen.getByText('2-й период')).toBeInTheDocument();
+    expect(screen.getByText('3-й период')).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('spinbutton', { name: '2-й период: шайба' }), {
+      target: { value: '2.25' },
+    });
+
+    await waitFor(
+      () =>
+        expect(update).toHaveBeenCalledWith(
+          tournament.id,
+          expect.any(Number),
+          expect.objectContaining({
+            rules: expect.objectContaining({
+              config: expect.objectContaining({
+                regularSource: 'classic',
+                classicRules: expect.objectContaining({
+                  shotsPerPeriod: 30,
+                  periodSpeedPresets: expect.arrayContaining([
+                    expect.objectContaining({ periodNumber: 2, puckSpeedPerMs: 2.25 }),
+                  ]),
+                }),
+              }),
+            }),
+          }),
+        ),
+      { timeout: 2_000 },
+    );
+  });
+
   it('asks before closing when the draft has unsaved changes', async () => {
     vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [] });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -1362,10 +1426,7 @@ describe('TournamentAdmin', () => {
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть управление участником' }));
     const playerSearch = screen.getByRole('searchbox', { name: 'Найти игрока' });
-    expect(playerSearch).toHaveAttribute(
-      'placeholder',
-      'Имя или номер профиля в Telegram/VK',
-    );
+    expect(playerSearch).toHaveAttribute('placeholder', 'Имя или номер профиля в Telegram/VK');
     fireEvent.change(playerSearch, { target: { value: '432014500' } });
     expect(
       await screen.findByRole('button', { name: /Пригласить Найденный игрок/ }),
@@ -1456,9 +1517,7 @@ describe('TournamentAdmin', () => {
     expect(screen.queryByRole('button', { name: 'Открыть регистрацию' })).not.toBeInTheDocument();
     expect(publish).toHaveBeenCalledWith('00000000-0000-4000-8000-000000000921', 3);
     fireEvent.click(screen.getByRole('button', { name: 'Создать календарь' }));
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      'Календарь создан: 4 тура.',
-    );
+    expect(await screen.findByRole('status')).toHaveTextContent('Календарь создан: 4 тура.');
     expect(generate).toHaveBeenCalledWith('00000000-0000-4000-8000-000000000921', 3);
   });
 

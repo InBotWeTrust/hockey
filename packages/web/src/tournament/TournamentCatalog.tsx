@@ -341,6 +341,12 @@ function playoffRoundTitle(roundNumber: number): string {
   );
 }
 
+function playoffFormatLabel(kind: 'express' | 'express_plus' | 'classic'): string {
+  if (kind === 'express') return 'Экспресс';
+  if (kind === 'express_plus') return 'Микс';
+  return 'Классика';
+}
+
 function TournamentRules({ tournament }: { tournament: TournamentSummary }): JSX.Element {
   const config = objectValue(tournament.rules.config);
   const playoffRounds = Array.isArray(tournament.rules.playoffRounds)
@@ -357,10 +363,27 @@ function TournamentRules({ tournament }: { tournament: TournamentSummary }): JSX
     accuracy_average: 'по средней точности',
     daily_place_points: 'по очкам за место',
   };
+  const classicRules = objectValue(config.classicRules);
+  const classicIncompleteLabels: Record<string, string> = {
+    completed_game: 'в таблицу попадут только полностью завершённые игры',
+    completed_periods: 'в таблицу попадут завершённые периоды',
+    all_shots: 'в таблицу попадут все сделанные броски',
+  };
+  const classicSpeedDescription = Array.isArray(classicRules.periodSpeedPresets)
+    ? classicRules.periodSpeedPresets
+        .map((value, index) => {
+          const preset = objectValue(value);
+          return `${index + 1}-й период: ворота ${String(preset.goalFrequency ?? '—')}, вратарь ${String(preset.goalieFrequency ?? '—')}, игрок ${String(preset.shooterFrequency ?? '—')}, шайба ${String(preset.puckSpeedPerMs ?? '—')}`;
+        })
+        .join('; ')
+    : '';
+  const aggregateDescription = `Турнир продлится ${numberValue(config.dailyDays)} ${pluralRu(numberValue(config.dailyDays), 'день', 'дня', 'дней')}. Результат каждого дня определяется ${dailyMetricLabels[String(config.dailyMetric ?? 'goals_sum')] ?? 'по количеству голов'}. ${config.bestDays === null || config.bestDays === undefined ? 'В итог войдут результаты всех дней.' : `В итог войдут лучшие ${String(config.bestDays)} ${pluralRu(numberValue(config.bestDays), 'день', 'дня', 'дней')}.`}`;
   const regularDescription =
     regularSource === 'daily_aggregate'
-      ? `Турнир продлится ${numberValue(config.dailyDays)} ${pluralRu(numberValue(config.dailyDays), 'день', 'дня', 'дней')}. Результат каждого дня определяется ${dailyMetricLabels[String(config.dailyMetric ?? 'goals_sum')] ?? 'по количеству голов'}. ${config.bestDays === null || config.bestDays === undefined ? 'В итог войдут результаты всех дней.' : `В итог войдут лучшие ${String(config.bestDays)} ${pluralRu(numberValue(config.bestDays), 'день', 'дня', 'дней')}.`}`
-      : `Каждый сыграет с каждым ${cycles === 1 ? 'один раз' : `${cycles} ${pluralRu(cycles, 'раз', 'раза', 'раз')}`}. Каждый день ${roundsPerDay === 1 ? 'проходит один тур' : `проходит ${roundsPerDay} ${pluralRu(roundsPerDay, 'тур', 'тура', 'туров')}`}. Первый тур начнётся ${tournamentDateLabel(tournament.startsAt, String(config.timezone ?? 'Europe/Moscow'))}.`;
+      ? aggregateDescription
+      : regularSource === 'classic'
+        ? `${aggregateDescription} В каждом туре — отдельная игра «Классика»: 3 периода по ${numberValue(classicRules.shotsPerPeriod)} ${pluralRu(numberValue(classicRules.shotsPerPeriod), 'броску', 'броска', 'бросков')}, по ${numberValue(classicRules.periodDurationMs) / 60_000} мин. Перерыв — ${numberValue(classicRules.breakDurationMs) / 60_000} мин. Если игру не закончить, ${classicIncompleteLabels[String(classicRules.incompleteResultPolicy ?? 'completed_game')] ?? classicIncompleteLabels.completed_game}. ${classicSpeedDescription.length > 0 ? `Скорости: ${classicSpeedDescription}.` : ''}`
+        : `Каждый сыграет с каждым ${cycles === 1 ? 'один раз' : `${cycles} ${pluralRu(cycles, 'раз', 'раза', 'раз')}`}. Каждый день ${roundsPerDay === 1 ? 'проходит один тур' : `проходит ${roundsPerDay} ${pluralRu(roundsPerDay, 'тур', 'тура', 'туров')}`}. Первый тур начнётся ${tournamentDateLabel(tournament.startsAt, String(config.timezone ?? 'Europe/Moscow'))}.`;
 
   return (
     <div className="tournament-rules">
@@ -379,11 +402,21 @@ function TournamentRules({ tournament }: { tournament: TournamentSummary }): JSX
             const winsRequired = numberValue(round.winsRequired, 1);
             const overtimeCount = numberValue(overtime.count, 1);
             const shootoutShots = numberValue(overtime.shootoutInitialShots, 3);
+            const format = tournament.playoffFormats?.find(
+              (candidate) => candidate.roundNumber === roundNumber,
+            );
             return (
               <article className="tournament-rules__round" key={String(round.roundNumber ?? index)}>
                 <h4>{playoffRoundTitle(roundNumber)}</h4>
                 <p>
                   Серия идёт до {winsRequired} {pluralRu(winsRequired, 'победы', 'побед', 'побед')}.
+                </p>
+                <p>
+                  Формат игры:{' '}
+                  {format === undefined
+                    ? 'будет объявлен перед стартом'
+                    : playoffFormatLabel(format.duelKind)}
+                  .
                 </p>
                 <p>{homeSequenceSentence(round.homeSequence)}</p>
                 <p className="tournament-rules__muted">
@@ -732,6 +765,9 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
               key={tournament.id}
               series={bracket.data.series}
               timezone={String(tournament.rules.config.timezone ?? 'Europe/Moscow')}
+              {...(tournament.playoffFormats === undefined
+                ? {}
+                : { formats: tournament.playoffFormats })}
             />
           ) : (
             <div>Сетка появится после завершения регулярного чемпионата.</div>

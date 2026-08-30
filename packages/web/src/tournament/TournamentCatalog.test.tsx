@@ -1022,6 +1022,7 @@ describe('TournamentCatalog', () => {
           registrationOpensAt: null,
           registrationClosesAt: null,
           startsAt: '2030-09-01T07:00:00.000Z',
+          playoffFormats: [{ roundNumber: 1, duelKind: 'express_plus' }],
           rules: {
             config: {
               participantLimit: 8,
@@ -1074,6 +1075,9 @@ describe('TournamentCatalog', () => {
     ).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Первый раунд' })).toBeInTheDocument();
     expect(screen.getByText('Серия идёт до 4 побед.')).toBeInTheDocument();
+    expect(
+      screen.getByText((_content, element) => element?.textContent === 'Формат игры: Микс.'),
+    ).toBeInTheDocument();
     expect(
       screen.getByText(
         'Первые две игры — дома, следующие две — в гостях. Затем площадки чередуются: дома, в гостях, дома.',

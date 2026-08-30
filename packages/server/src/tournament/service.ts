@@ -175,6 +175,47 @@ function mapTournament(row: TournamentRow) {
   };
 }
 
+type PlayoffDuelKind = 'express' | 'express_plus' | 'classic';
+
+async function playoffFormatsByTournament(
+  pool: Pool,
+  rows: TournamentRow[],
+): Promise<Map<string, Array<{ roundNumber: number; duelKind: PlayoffDuelKind }>>> {
+  const references: Array<{ tournamentId: string; roundNumber: number; templateId: string }> = [];
+  for (const row of rows) {
+    const configured = Array.isArray(row.rules_snapshot.playoffRounds)
+      ? row.rules_snapshot.playoffRounds
+      : [];
+    configured.forEach((value, index) => {
+      const round = optionalRuleRecord(value);
+      if (typeof round.duelTemplateId !== 'string') return;
+      references.push({
+        tournamentId: row.id,
+        roundNumber: typeof round.roundNumber === 'number' ? Number(round.roundNumber) : index + 1,
+        templateId: round.duelTemplateId,
+      });
+    });
+  }
+  const templateIds = [...new Set(references.map((reference) => reference.templateId))];
+  if (templateIds.length === 0) return new Map();
+  const templates = await pool.query<{ id: string; duel_kind: PlayoffDuelKind }>(
+    `select id, duel_kind from amateur_duel_template where id = any($1::uuid[])`,
+    [templateIds],
+  );
+  const kindByTemplate = new Map(
+    templates.rows.map((template) => [template.id, template.duel_kind]),
+  );
+  const result = new Map<string, Array<{ roundNumber: number; duelKind: PlayoffDuelKind }>>();
+  for (const reference of references) {
+    const duelKind = kindByTemplate.get(reference.templateId);
+    if (duelKind === undefined) continue;
+    const formats = result.get(reference.tournamentId) ?? [];
+    formats.push({ roundNumber: reference.roundNumber, duelKind });
+    result.set(reference.tournamentId, formats);
+  }
+  return result;
+}
+
 async function inTransaction<T>(pool: Pool, work: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await pool.connect();
   try {
@@ -312,7 +353,11 @@ export async function listAdminTournaments(pool: Pool) {
   const { rows } = await pool.query<TournamentRow>(
     `${tournamentSelect} order by t.created_at desc`,
   );
-  return rows.map(mapTournament);
+  const formats = await playoffFormatsByTournament(pool, rows);
+  return rows.map((row) => ({
+    ...mapTournament(row),
+    playoffFormats: formats.get(row.id) ?? [],
+  }));
 }
 
 export async function listPlayerTournaments(pool: Pool, userId: string) {
@@ -404,7 +449,8 @@ export async function getTournament(pool: Pool, tournamentId: string, userId?: s
   if (userId !== undefined && row.visibility === 'hidden' && row.my_participant_state === null) {
     throw new AppError('not_found', 'tournament not found', 404);
   }
-  return mapTournament(row);
+  const formats = await playoffFormatsByTournament(pool, [row]);
+  return { ...mapTournament(row), playoffFormats: formats.get(row.id) ?? [] };
 }
 
 export async function updateTournamentDraft(
