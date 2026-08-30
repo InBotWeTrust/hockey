@@ -214,6 +214,7 @@ describe.skipIf(!hasIntegrationEnv)('069 bonus skill catalogue reset', () => {
       '074_allow_bonus_repurchase_after_refund.sql',
       '075_tournament_classic.sql',
       '076_speed_bonus_game_balance.sql',
+      '077_accuracy_world_tour_movement_balance.sql',
     ]);
 
     const accuracy = await pool.query<{

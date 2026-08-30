@@ -255,7 +255,10 @@ describe.skipIf(!hasIntegrationEnv)('076 speed bonus game balance', () => {
       });
     }
 
-    expect(applied.applied).toEqual([MIGRATION_NAME]);
+    expect(applied.applied).toEqual([
+      MIGRATION_NAME,
+      '077_accuracy_world_tour_movement_balance.sql',
+    ]);
     const attempt = await pool.query<{
       status: string;
       definition_revision: number;

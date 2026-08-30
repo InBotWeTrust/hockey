@@ -180,6 +180,7 @@ describe.skipIf(!hasIntegrationEnv)('071 accuracy World Tour migration', () => {
       '074_allow_bonus_repurchase_after_refund.sql',
       '075_tournament_classic.sql',
       '076_speed_bonus_game_balance.sql',
+      '077_accuracy_world_tour_movement_balance.sql',
     ]);
 
     const preserved = await pool.query<{
