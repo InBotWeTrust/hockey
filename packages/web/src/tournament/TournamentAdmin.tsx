@@ -33,12 +33,20 @@ const stages = [
   'Проверка',
 ] as const;
 
-type RegularSource = 'head_to_head' | 'daily_aggregate';
+type RegularSource = 'head_to_head' | 'daily_aggregate' | 'classic';
 type RegistrationMode = 'open' | 'approval' | 'invite_only';
 type Visibility = 'public' | 'hidden';
 type DailyMetric = 'goals_sum' | 'accuracy_average' | 'daily_place_points';
 type PlayoffSize = 2 | 4 | 8 | 16;
 type NumericDraftValue = number | '';
+type ClassicIncompletePolicy = 'all_shots' | 'completed_periods' | 'completed_game';
+
+interface ClassicPeriodDraft {
+  goalSpeed: NumericDraftValue;
+  goalieSpeed: NumericDraftValue;
+  playerSpeed: NumericDraftValue;
+  puckSpeed: NumericDraftValue;
+}
 
 interface PlayoffRoundDraft {
   winsRequired: NumericDraftValue;
@@ -88,6 +96,11 @@ interface TournamentDraft {
   dailyDays: NumericDraftValue;
   dailyMetric: DailyMetric;
   bestDays: string;
+  classicShotsPerPeriod: NumericDraftValue;
+  classicPeriodMinutes: NumericDraftValue;
+  classicBreakMinutes: NumericDraftValue;
+  classicIncompletePolicy: ClassicIncompletePolicy;
+  classicPeriods: [ClassicPeriodDraft, ClassicPeriodDraft, ClassicPeriodDraft];
   regularDuelTemplateId: string;
   regulationWin: NumericDraftValue;
   overtimeWin: NumericDraftValue;
@@ -118,6 +131,12 @@ const defaultPlayoffRound = (): PlayoffRoundDraft => ({
   firstGameNotBefore: '',
 });
 
+const defaultClassicPeriods = (): [ClassicPeriodDraft, ClassicPeriodDraft, ClassicPeriodDraft] => [
+  { goalSpeed: 0.55, goalieSpeed: 0.65, playerSpeed: 0.8, puckSpeed: 1.3 },
+  { goalSpeed: 0.72, goalieSpeed: 0.84, playerSpeed: 1, puckSpeed: 1.55 },
+  { goalSpeed: 0.9, goalieSpeed: 1.05, playerSpeed: 1.18, puckSpeed: 1.8 },
+];
+
 const defaultDraft: TournamentDraft = {
   slug: '',
   title: '',
@@ -147,6 +166,11 @@ const defaultDraft: TournamentDraft = {
   dailyDays: 14,
   dailyMetric: 'goals_sum',
   bestDays: '',
+  classicShotsPerPeriod: 30,
+  classicPeriodMinutes: 20,
+  classicBreakMinutes: 15,
+  classicIncompletePolicy: 'completed_game',
+  classicPeriods: defaultClassicPeriods(),
   regularDuelTemplateId: '',
   regulationWin: 3,
   overtimeWin: 2,
@@ -198,6 +222,14 @@ function requiredInteger(
   if (!Number.isInteger(value) || value < min || (max !== undefined && value > max)) {
     const range = max === undefined ? `не меньше ${min}` : `от ${min} до ${max}`;
     throw new Error(`Поле «${label}» должно быть целым числом ${range}.`);
+  }
+  return value;
+}
+
+function requiredNumber(value: NumericDraftValue, label: string, min: number, max: number): number {
+  if (value === '') throw new Error(`Заполните поле «${label}».`);
+  if (!Number.isFinite(value) || value < min || value > max) {
+    throw new Error(`Поле «${label}» должно быть числом от ${min} до ${max}.`);
   }
   return value;
 }
@@ -412,6 +444,7 @@ function freshDraft(): TournamentDraft {
   return {
     ...defaultDraft,
     playoffRounds: defaultDraft.playoffRounds.map((round) => ({ ...round })),
+    classicPeriods: defaultClassicPeriods(),
   };
 }
 
@@ -462,6 +495,10 @@ function draftFromTournament(tournament: AdminTournament): TournamentDraft {
   const eligibility = objectValue(rules.eligibility);
   const scoring = objectValue(rules.regularScoring);
   const rewards = objectValue(rules.stageRewards);
+  const classicRules = objectValue(config.classicRules);
+  const classicSpeedPresets = Array.isArray(classicRules.periodSpeedPresets)
+    ? classicRules.periodSpeedPresets
+    : [];
   const configuredRounds = Array.isArray(rules.playoffRounds) ? rules.playoffRounds : [];
   const playoffSizeValue = numberValue(config.playoffSize, next.playoffSize);
   const playoffSize = ([2, 4, 8, 16] as number[]).includes(playoffSizeValue)
@@ -474,7 +511,10 @@ function draftFromTournament(tournament: AdminTournament): TournamentDraft {
     title: tournament.title,
     description: tournament.description,
     imageUrl: tournament.imageUrl ?? null,
-    regularSource: config.regularSource === 'daily_aggregate' ? 'daily_aggregate' : 'head_to_head',
+    regularSource:
+      config.regularSource === 'daily_aggregate' || config.regularSource === 'classic'
+        ? config.regularSource
+        : 'head_to_head',
     registrationMode:
       config.registrationMode === 'approval' || config.registrationMode === 'invite_only'
         ? config.registrationMode
@@ -517,6 +557,29 @@ function draftFromTournament(tournament: AdminTournament): TournamentDraft {
         : 'goals_sum',
     bestDays:
       config.bestDays === null || config.bestDays === undefined ? '' : String(config.bestDays),
+    classicShotsPerPeriod: numberValue(classicRules.shotsPerPeriod, next.classicShotsPerPeriod),
+    classicPeriodMinutes:
+      numberValue(classicRules.periodDurationMs, draftNumber(next.classicPeriodMinutes) * 60_000) /
+      60_000,
+    classicBreakMinutes:
+      numberValue(classicRules.breakDurationMs, draftNumber(next.classicBreakMinutes) * 60_000) /
+      60_000,
+    classicIncompletePolicy:
+      classicRules.incompleteResultPolicy === 'all_shots' ||
+      classicRules.incompleteResultPolicy === 'completed_periods'
+        ? classicRules.incompleteResultPolicy
+        : 'completed_game',
+    classicPeriods: next.classicPeriods.map((fallback, index) => {
+      const preset = objectValue(
+        classicSpeedPresets.find((candidate) => objectValue(candidate).periodNumber === index + 1),
+      );
+      return {
+        goalSpeed: numberValue(preset.goalFrequency, fallback.goalSpeed),
+        goalieSpeed: numberValue(preset.goalieFrequency, fallback.goalieSpeed),
+        playerSpeed: numberValue(preset.shooterFrequency, fallback.playerSpeed),
+        puckSpeed: numberValue(preset.puckSpeedPerMs, fallback.puckSpeed),
+      };
+    }) as [ClassicPeriodDraft, ClassicPeriodDraft, ClassicPeriodDraft],
     regularDuelTemplateId: stringValue(rules.regularDuelTemplateId),
     regulationWin: numberValue(scoring.regulationWin, next.regulationWin),
     overtimeWin: numberValue(scoring.overtimeWin, next.overtimeWin),
@@ -608,8 +671,49 @@ function serializeDraft(draft: TournamentDraft): Record<string, unknown> {
       ? requiredInteger(draft.roundBreakMinutes, 'Пауза между турами, минуты', 0, 1_440)
       : null;
   const dailyDays =
-    draft.regularSource === 'daily_aggregate'
+    draft.regularSource !== 'head_to_head'
       ? requiredInteger(draft.dailyDays, 'Дней регулярки', 1, 366)
+      : null;
+  const classicRules =
+    draft.regularSource === 'classic'
+      ? {
+          goalieId: 'rookie',
+          shotsPerPeriod: requiredInteger(draft.classicShotsPerPeriod, 'Бросков в периоде', 1, 100),
+          periodDurationMs:
+            requiredInteger(draft.classicPeriodMinutes, 'Длительность периода, минуты', 1, 180) *
+            60_000,
+          breakDurationMs:
+            requiredInteger(draft.classicBreakMinutes, 'Длительность перерыва, минуты', 0, 180) *
+            60_000,
+          incompleteResultPolicy: draft.classicIncompletePolicy,
+          periodSpeedPresets: draft.classicPeriods.map((period, index) => ({
+            periodNumber: index + 1,
+            goalFrequency: requiredNumber(
+              period.goalSpeed,
+              `${index + 1}-й период: ворота`,
+              0.1,
+              3,
+            ),
+            goalieFrequency: requiredNumber(
+              period.goalieSpeed,
+              `${index + 1}-й период: вратарь`,
+              0.1,
+              3,
+            ),
+            shooterFrequency: requiredNumber(
+              period.playerSpeed,
+              `${index + 1}-й период: игрок`,
+              0.1,
+              3,
+            ),
+            puckSpeedPerMs: requiredNumber(
+              period.puckSpeed,
+              `${index + 1}-й период: шайба`,
+              0.2,
+              5,
+            ),
+          })),
+        }
       : null;
   const regularScoring = {
     regulationWin: requiredInteger(draft.regulationWin, 'Очки: победа в основное время', 0),
@@ -690,7 +794,7 @@ function serializeDraft(draft: TournamentDraft): Record<string, unknown> {
               bestDays: null,
             }
           : {
-              regularSource: 'daily_aggregate',
+              regularSource: draft.regularSource,
               participantLimit,
               playoffSize: draft.playoffSize,
               timezone: draft.timezone,
@@ -705,6 +809,7 @@ function serializeDraft(draft: TournamentDraft): Record<string, unknown> {
               dailyDays,
               dailyMetric: draft.dailyMetric,
               bestDays: optionalNumber(draft.bestDays),
+              ...(classicRules === null ? {} : { classicRules }),
             },
       eligibility: {
         minLevel: optionalPositiveNumber(draft.minLevel),
@@ -1004,8 +1109,8 @@ function NotificationEditor({
       <fieldset className="tournament-structured-editor">
         <legend>Напоминания до старта</legend>
         <TournamentAdminGroupHelp>
-          Можно заранее напомнить игрокам о начале игры. Каждое время создаёт отдельное
-          уведомление на телефон.
+          Можно заранее напомнить игрокам о начале игры. Каждое время создаёт отдельное уведомление
+          на телефон.
         </TournamentAdminGroupHelp>
         {reminderValues.map((minutes, index) => (
           <div className="tournament-table-row" key={index}>
@@ -1378,6 +1483,14 @@ export function TournamentAdmin(): JSX.Element {
       playoffRounds: current.playoffRounds.map((round, roundIndex) =>
         roundIndex === index ? { ...round, ...patch } : round,
       ),
+    }));
+  };
+  const updateClassicPeriod = (index: number, patch: Partial<ClassicPeriodDraft>) => {
+    setDraft((current) => ({
+      ...current,
+      classicPeriods: current.classicPeriods.map((period, periodIndex) =>
+        periodIndex === index ? { ...period, ...patch } : period,
+      ) as [ClassicPeriodDraft, ClassicPeriodDraft, ClassicPeriodDraft],
     }));
   };
   const closeWizard = (tournament: AdminTournament | null = editingTournament) => {
@@ -1762,7 +1875,7 @@ export function TournamentAdmin(): JSX.Element {
                   <div className="tournament-admin-grid">
                     <TournamentAdminField
                       label="Формат"
-                      help="«Каждый с каждым» создаёт личные дуэли; дневной зачёт сравнивает результаты обычной ежедневной игры."
+                      help="«Каждый с каждым» создаёт личные дуэли; дневной зачёт берёт обычную ежедневную игру; «Классика» запускает отдельную турнирную игру с вашими настройками."
                     >
                       <GlassSelect
                         ariaLabel="Формат"
@@ -1770,6 +1883,7 @@ export function TournamentAdmin(): JSX.Element {
                         options={[
                           { value: 'head_to_head', label: 'Каждый с каждым' },
                           { value: 'daily_aggregate', label: 'Результаты ежедневных игр' },
+                          { value: 'classic', label: 'Классика' },
                         ]}
                         onChange={(regularSource: RegularSource) =>
                           setDraft({ ...draft, regularSource })
@@ -2027,6 +2141,125 @@ export function TournamentAdmin(): JSX.Element {
                             }
                           />
                         </div>
+                        {draft.regularSource === 'classic' && (
+                          <>
+                            <TournamentAdminField
+                              label="Бросков в периоде"
+                              help="Одинаковое количество бросков в каждом из трёх периодов."
+                            >
+                              <input
+                                aria-label="Бросков в периоде"
+                                type="number"
+                                min="1"
+                                max="100"
+                                value={draft.classicShotsPerPeriod}
+                                onChange={(event) =>
+                                  setDraft({
+                                    ...draft,
+                                    classicShotsPerPeriod: editableNumber(event.target.value),
+                                  })
+                                }
+                              />
+                            </TournamentAdminField>
+                            <TournamentAdminField
+                              label="Длительность периода, минуты"
+                              help="Время на каждый период. Всего в игре всегда три периода."
+                            >
+                              <input
+                                aria-label="Длительность периода, минуты"
+                                type="number"
+                                min="1"
+                                max="180"
+                                value={draft.classicPeriodMinutes}
+                                onChange={(event) =>
+                                  setDraft({
+                                    ...draft,
+                                    classicPeriodMinutes: editableNumber(event.target.value),
+                                  })
+                                }
+                              />
+                            </TournamentAdminField>
+                            <TournamentAdminField
+                              label="Длительность перерыва, минуты"
+                              help="Пауза между периодами. Можно поставить 0."
+                            >
+                              <input
+                                aria-label="Длительность перерыва, минуты"
+                                type="number"
+                                min="0"
+                                max="180"
+                                value={draft.classicBreakMinutes}
+                                onChange={(event) =>
+                                  setDraft({
+                                    ...draft,
+                                    classicBreakMinutes: editableNumber(event.target.value),
+                                  })
+                                }
+                              />
+                            </TournamentAdminField>
+                            <TournamentAdminField
+                              label="Если игрок не закончил игру"
+                              help="Определяет, какая часть незавершённой попытки попадёт в таблицу после закрытия тура."
+                            >
+                              <GlassSelect
+                                ariaLabel="Если игрок не закончил игру"
+                                value={draft.classicIncompletePolicy}
+                                options={[
+                                  { value: 'completed_game', label: 'Не учитывать результат' },
+                                  {
+                                    value: 'completed_periods',
+                                    label: 'Учесть завершённые периоды',
+                                  },
+                                  { value: 'all_shots', label: 'Учесть все сделанные броски' },
+                                ]}
+                                onChange={(classicIncompletePolicy: ClassicIncompletePolicy) =>
+                                  setDraft({ ...draft, classicIncompletePolicy })
+                                }
+                              />
+                            </TournamentAdminField>
+                            {draft.classicPeriods.map((period, index) => (
+                              <fieldset
+                                key={index}
+                                className="tournament-playoff-round tournament-admin-grid__wide"
+                              >
+                                <legend>{index + 1}-й период</legend>
+                                <TournamentAdminGroupHelp>
+                                  Скорость движения. Чем больше значение, тем быстрее объект.
+                                </TournamentAdminGroupHelp>
+                                <div className="tournament-admin-grid">
+                                  {(
+                                    [
+                                      ['goalSpeed', 'Ворота', 0.1, 3],
+                                      ['goalieSpeed', 'Вратарь', 0.1, 3],
+                                      ['playerSpeed', 'Игрок', 0.1, 3],
+                                      ['puckSpeed', 'Шайба', 0.2, 5],
+                                    ] as const
+                                  ).map(([field, label, min, max]) => (
+                                    <TournamentAdminField
+                                      key={field}
+                                      label={label}
+                                      help={`Скорость: от ${min} до ${max}.`}
+                                    >
+                                      <input
+                                        aria-label={`${index + 1}-й период: ${label.toLowerCase()}`}
+                                        type="number"
+                                        min={min}
+                                        max={max}
+                                        step="0.01"
+                                        value={period[field]}
+                                        onChange={(event) =>
+                                          updateClassicPeriod(index, {
+                                            [field]: editableNumber(event.target.value),
+                                          })
+                                        }
+                                      />
+                                    </TournamentAdminField>
+                                  ))}
+                                </div>
+                              </fieldset>
+                            ))}
+                          </>
+                        )}
                       </>
                     )}
                   </div>
@@ -2312,7 +2545,11 @@ export function TournamentAdmin(): JSX.Element {
                       · {draft.visibility === 'public' ? 'виден в каталоге' : 'скрытый'}
                     </span>
                     <span>
-                      {draft.regularSource === 'head_to_head' ? 'Каждый с каждым' : 'Дневной зачёт'}{' '}
+                      {draft.regularSource === 'head_to_head'
+                        ? 'Каждый с каждым'
+                        : draft.regularSource === 'classic'
+                          ? 'Классика'
+                          : 'Дневной зачёт'}{' '}
                       · {draft.participantLimit} участников · плей-офф {draft.playoffSize}
                     </span>
                     <span>

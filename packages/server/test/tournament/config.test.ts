@@ -59,6 +59,88 @@ describe('tournament config', () => {
     });
     expect(daily.participantLimit).toBe(10_000);
   });
+
+  it('accepts a configurable three-period classic regular season', () => {
+    const classic = parseTournamentConfig({
+      ...baseConfig,
+      regularSource: 'classic',
+      participantLimit: 128,
+      roundRobinCycles: null,
+      roundsPerDay: null,
+      firstRoundLocalTime: null,
+      fixtureWindowMs: null,
+      roundBreakMs: null,
+      dailyDays: 14,
+      dailyMetric: 'goals_sum',
+      bestDays: 10,
+      classicRules: {
+        shotsPerPeriod: 30,
+        periodDurationMs: 20 * 60_000,
+        breakDurationMs: 15 * 60_000,
+        incompleteResultPolicy: 'completed_game',
+        periodSpeedPresets: [
+          {
+            periodNumber: 1,
+            goalFrequency: 0.55,
+            goalieFrequency: 0.65,
+            shooterFrequency: 0.8,
+            puckSpeedPerMs: 1.3,
+          },
+          {
+            periodNumber: 2,
+            goalFrequency: 0.72,
+            goalieFrequency: 0.84,
+            shooterFrequency: 1,
+            puckSpeedPerMs: 1.55,
+          },
+          {
+            periodNumber: 3,
+            goalFrequency: 0.9,
+            goalieFrequency: 1.05,
+            shooterFrequency: 1.18,
+            puckSpeedPerMs: 1.8,
+          },
+        ],
+      },
+    });
+
+    expect(classic.regularSource).toBe('classic');
+    expect(classic.classicRules.incompleteResultPolicy).toBe('completed_game');
+    expect(classic.classicRules.goalieId).toBe('rookie');
+    expect(classic.classicRules.periodSpeedPresets).toHaveLength(3);
+  });
+
+  it('rejects classic rules without exactly one speed preset for each period', () => {
+    expect(() =>
+      parseTournamentConfig({
+        ...baseConfig,
+        regularSource: 'classic',
+        roundRobinCycles: null,
+        roundsPerDay: null,
+        firstRoundLocalTime: null,
+        fixtureWindowMs: null,
+        roundBreakMs: null,
+        dailyDays: 7,
+        dailyMetric: 'accuracy_average',
+        bestDays: null,
+        classicRules: {
+          shotsPerPeriod: 20,
+          periodDurationMs: 600_000,
+          breakDurationMs: 60_000,
+          incompleteResultPolicy: 'completed_periods',
+          periodSpeedPresets: [
+            {
+              periodNumber: 1,
+              goalFrequency: 0.55,
+              goalieFrequency: 0.65,
+              shooterFrequency: 0.8,
+              puckSpeedPerMs: 1.3,
+            },
+          ],
+        },
+      }),
+    ).toThrow('classic requires speed settings for periods 1, 2 and 3');
+  });
 });
 
 describe('tournament lifecycle', () => {

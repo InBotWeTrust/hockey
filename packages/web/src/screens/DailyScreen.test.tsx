@@ -25,10 +25,12 @@ import { PlayView, duelFatigueNoticeLabel, duelPrimaryButtonLabel } from '../gam
 import { useAuthStore } from '../auth/authStore.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
+import { useClassicTournamentStore } from '../stores/classicTournamentStore.js';
 import type { DailyStateResponse } from '../api/duel.js';
 import type { TrainingStateResponse } from '../api/training.js';
 import type { AmateurDuelMatchState } from '../api/amateurDuel.js';
 import type { BonusGameCard } from '../api/bonusGames.js';
+import type { ClassicTournamentState } from '../api/tournamentClassic.js';
 
 vi.mock('../game/PixiStage.js', () => ({
   PixiStage: () => <div data-testid="pixi-stage-stub" />,
@@ -85,6 +87,20 @@ const trainingActiveState: TrainingStateResponse = {
   goals: 5,
   training_seed: 'a'.repeat(64),
   started_at: '2026-04-25T11:55:00.000Z',
+};
+
+const classicIdleState: ClassicTournamentState = {
+  ...baseState,
+  tournament_id: 'classic-1',
+  tournament_title: 'Кубок классики',
+  tournament_day: 1,
+  session_id: 'classic-session-1',
+  expired: false,
+  closes_at: '2030-09-01T21:00:00.000Z',
+  period_duration_ms: 1_200_000,
+  break_duration_ms: 900_000,
+  daily_seed: 'classic-seed',
+  result: null,
 };
 
 const settledDuelMatch: AmateurDuelMatchState = {
@@ -266,6 +282,13 @@ beforeEach(() => {
     error: null,
   });
   useTrainingSessionStore.setState({ data: null, loading: false, inFlight: false, error: null });
+  useClassicTournamentStore.setState({
+    tournamentId: null,
+    data: null,
+    loading: false,
+    inFlight: false,
+    error: null,
+  });
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = input instanceof Request ? input.url : String(input);
     return new Response(
@@ -285,6 +308,128 @@ afterEach(() => {
 });
 
 describe('DailyScreen', () => {
+  it('shows every active classic tournament on the arena and opens its own game', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const body = url.includes('/tournaments/classic/active')
+        ? {
+            games: [
+              {
+                tournament_id: 'classic-1',
+                tournament_title: 'Кубок классики',
+                tournament_day: 1,
+                starts_at: '2030-09-01T00:00:00.000Z',
+                closes_at: '2030-09-01T21:00:00.000Z',
+                state: 'available',
+                current_period: 0,
+                total_shots: 0,
+                total_goals: 0,
+              },
+            ],
+          }
+        : url.includes('/tournaments/classic-1/classic/state')
+          ? classicIdleState
+          : url.includes('/duel/training/state')
+            ? trainingIdleState
+            : baseState;
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=arena']);
+    expect(
+      await screen.findByRole('article', { name: 'Турнир · 1-й тур: Кубок классики' }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Начать' }));
+
+    expect(await screen.findByText('Кубок классики · 1-й тур')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'НАЧАТЬ' })).toBeInTheDocument();
+  });
+
+  it('puts an already started classic game before a new one', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const body = url.includes('/tournaments/classic/active')
+        ? {
+            games: [
+              {
+                tournament_id: 'new-classic',
+                tournament_title: 'Новая классика',
+                tournament_day: 1,
+                starts_at: '2030-09-01T00:00:00.000Z',
+                closes_at: '2030-09-01T21:00:00.000Z',
+                state: 'available',
+                current_period: 0,
+                total_shots: 0,
+                total_goals: 0,
+              },
+              {
+                tournament_id: 'started-classic',
+                tournament_title: 'Начатая классика',
+                tournament_day: 2,
+                starts_at: '2030-09-01T00:00:00.000Z',
+                closes_at: '2030-09-01T21:00:00.000Z',
+                state: 'period_active',
+                current_period: 1,
+                total_shots: 4,
+                total_goals: 2,
+              },
+            ],
+          }
+        : url.includes('/duel/training/state')
+          ? trainingIdleState
+          : baseState;
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=arena']);
+
+    const selectors = await screen.findAllByRole('button', { name: /^Выбрать Турнир/ });
+    expect(selectors.map((button) => button.getAttribute('aria-label'))).toEqual([
+      'Выбрать Турнир · 2-й тур',
+      'Выбрать Турнир · 1-й тур',
+    ]);
+  });
+
+  it('shows a completed classic result without an action button', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const body = url.includes('/tournaments/classic/active')
+        ? {
+            games: [
+              {
+                tournament_id: 'completed-classic',
+                tournament_title: 'Финишная классика',
+                tournament_day: 3,
+                starts_at: '2030-09-01T00:00:00.000Z',
+                closes_at: '2030-09-01T21:00:00.000Z',
+                state: 'closed',
+                current_period: 3,
+                total_shots: 90,
+                total_goals: 36,
+              },
+            ],
+          }
+        : url.includes('/duel/training/state')
+          ? trainingIdleState
+          : baseState;
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=arena']);
+
+    expect(await screen.findByLabelText('Результат: 36 шайб, точность 40%')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Начать|Продолжить/ })).toBeNull();
+  });
+
   it('keeps tournament duel navigation tied to the tournament section', () => {
     expect(duelBackLabel('tournament', true)).toBe('К турниру');
     expect(duelBackLabel('challenge', true)).toBe('К арене');

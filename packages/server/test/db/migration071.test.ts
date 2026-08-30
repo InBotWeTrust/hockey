@@ -178,6 +178,7 @@ describe.skipIf(!hasIntegrationEnv)('071 accuracy World Tour migration', () => {
       '072_tournament_fixture_series_lookup.sql',
       '073_backfill_first_daily_game.sql',
       '074_allow_bonus_repurchase_after_refund.sql',
+      '075_tournament_classic.sql',
     ]);
 
     const preserved = await pool.query<{

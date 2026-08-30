@@ -17,7 +17,7 @@ export interface TournamentSummary {
   description: string;
   imageUrl?: string | null;
   status: TournamentStatus;
-  regularSource: 'head_to_head' | 'daily_aggregate';
+  regularSource: 'head_to_head' | 'daily_aggregate' | 'classic';
   visibility: 'public' | 'hidden';
   revision: number;
   participantCount: number;
@@ -29,6 +29,10 @@ export interface TournamentSummary {
   projectedEndsAt?: string | null;
   completedAt?: string | null;
   rewardEditability?: { regular: 'editable' | 'paid'; playoff: 'editable' | 'paid' };
+  playoffFormats?: Array<{
+    roundNumber: number;
+    duelKind: 'express' | 'express_plus' | 'classic';
+  }>;
   rules: {
     config: {
       participantLimit: number;

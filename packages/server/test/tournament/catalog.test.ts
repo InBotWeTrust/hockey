@@ -31,6 +31,11 @@ describe('player tournament catalog', () => {
           ],
         };
       }
+      if (queryNumber === 3) {
+        return {
+          rows: [{ id: 'template-mix', duel_kind: 'express_plus' }],
+        };
+      }
       return {
         rows: [
           {
@@ -51,7 +56,10 @@ describe('player tournament catalog', () => {
             cancelled_at: null,
             created_at: new Date('2030-01-01T00:00:00.000Z'),
             updated_at: new Date('2030-01-02T00:00:00.000Z'),
-            rules_snapshot: { config: { regularSource: 'head_to_head' } },
+            rules_snapshot: {
+              config: { regularSource: 'head_to_head' },
+              playoffRounds: [{ roundNumber: 1, duelTemplateId: 'template-mix' }],
+            },
             participant_count: 8,
             my_participant_state: 'approved',
             my_participant_id: 'participant-8',
@@ -67,6 +75,7 @@ describe('player tournament catalog', () => {
       imageUrl: '/api/media/proxy/tournaments/artwork/ice.webp?token=signed',
       myParticipantState: 'approved',
       myFinalPlace: 1,
+      playoffFormats: [{ roundNumber: 1, duelKind: 'express_plus' }],
     });
   });
 

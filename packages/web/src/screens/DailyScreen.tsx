@@ -48,6 +48,12 @@ import { startVkOAuth } from '../auth/vkAuth.js';
 import { detectTimezone } from '../auth/timezone.js';
 import { apiFetch, ApiError } from '../api/apiFetch.js';
 import { useDailyStore } from '../stores/dailyStore.js';
+import { useClassicTournamentStore } from '../stores/classicTournamentStore.js';
+import {
+  fetchActiveClassicTournamentGames,
+  type ActiveClassicTournamentGame,
+  type ClassicTournamentState,
+} from '../api/tournamentClassic.js';
 import {
   DEMO_GOALIE_ID,
   DEMO_PERIOD_NUMBER,
@@ -129,7 +135,7 @@ type AmateurView = 'hub' | 'duels' | 'tournaments';
 type AmateurDuelTab = 'game' | 'locker' | 'rating' | 'history';
 type DuelHistoryFilter = 'current' | 'all' | string;
 type ModeInfoModalContent = { title: string; text: string };
-type ArenaEntryKind = 'daily' | 'training' | 'duel';
+type ArenaEntryKind = 'daily' | 'training' | 'duel' | 'classic';
 interface ArenaEntry {
   id: string;
   kind: ArenaEntryKind;
@@ -451,6 +457,17 @@ export function DailyScreen(): JSX.Element {
     }
   }, [location.search]);
 
+  if (routeParams.get('view') === 'classic' && tournamentId !== null) {
+    return (
+      <ClassicTournamentPlayView
+        tournamentId={tournamentId}
+        onBack={() =>
+          navigate(tournamentDuelBackPath(fromSections, tournamentId), { replace: true })
+        }
+      />
+    );
+  }
+
   if (!data) {
     return (
       <main
@@ -704,6 +721,7 @@ function GameHub({
   onOpenTrainingPlay: (options?: PlayOpenOptions) => void;
   onOpenAmateurMatch: (matchId: string, options?: PlayOpenOptions) => void;
 }): JSX.Element {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const data = useDailyStore((s) => s.data)!;
   const refresh = useDailyStore((s) => s.refresh);
@@ -746,6 +764,11 @@ function GameHub({
     enabled: data.lifetime_total_goals >= amateurUnlockGoalsRequired,
     refetchInterval: 30_000,
   });
+  const classicTournamentGames = useQuery({
+    queryKey: ['tournaments', 'classic', 'active'],
+    queryFn: fetchActiveClassicTournamentGames,
+    refetchInterval: 30_000,
+  });
   const amateurEventItems = amateurEvents.data?.events ?? [];
   const duelStatsCurrentMatch = duelStatsMatch
     ? (amateurEventItems.find((event) => event.id === duelStatsMatch.id) ?? duelStatsMatch)
@@ -762,13 +785,19 @@ function GameHub({
       data.state !== 'break_active' &&
       data.state !== 'closed' &&
       !isDailyLockedByTraining &&
-      activeDuelEvents.length === 0
+      activeDuelEvents.length === 0 &&
+      (classicTournamentGames.data?.games?.length ?? 0) === 0
     ) {
       return undefined;
     }
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
-  }, [activeDuelEvents.length, data.state, isDailyLockedByTraining]);
+  }, [
+    activeDuelEvents.length,
+    classicTournamentGames.data?.games?.length,
+    data.state,
+    isDailyLockedByTraining,
+  ]);
 
   useEffect(() => {
     if (data.state === 'period_active' && periodEndsAt > 0 && periodRemaining === 0) void refresh();
@@ -1052,10 +1081,85 @@ function GameHub({
       ),
     };
   });
-  const arenaEntries: ArenaEntry[] =
-    duelArenaEntries.length > 0
-      ? [...duelArenaEntries, dailyArenaEntry, trainingArenaEntry]
-      : [dailyArenaEntry, trainingArenaEntry];
+  const classicArenaEntries = [...(classicTournamentGames.data?.games ?? [])]
+    .sort((left, right) => {
+      const priority = (game: ActiveClassicTournamentGame): number => {
+        if (
+          game.state === 'period_active' ||
+          game.state === 'break_active' ||
+          (game.state === 'idle' && game.current_period > 0)
+        ) {
+          return 0;
+        }
+        return game.state === 'closed' ? 2 : 1;
+      };
+      return priority(left) - priority(right);
+    })
+    .map<ArenaEntry>((game) => {
+      const deadlineRemaining = Math.max(0, timestampMs(game.closes_at) - now);
+      const started =
+        game.state === 'period_active' ||
+        game.state === 'break_active' ||
+        (game.state === 'idle' && game.current_period > 0);
+      const completed = game.state === 'closed';
+      const accuracy = formatGoalRate(game.total_goals, game.total_shots);
+      return {
+        id: `classic-${game.tournament_id}`,
+        kind: 'classic',
+        eyebrow: `Турнир · ${game.tournament_day}-й тур`,
+        title: game.tournament_title,
+        subtitle: completed
+          ? 'Игра завершена, результат сохранён.'
+          : started
+            ? 'Турнирная игра уже начата.'
+            : 'Отдельная игра по правилам этого турнира.',
+        meta: completed
+          ? `${game.total_goals} шайб · точность ${accuracy}`
+          : `${game.current_period > 0 ? `${game.current_period}-й период` : 'Три периода'} · до ${formatEventRemaining(deadlineRemaining)}`,
+        ctaLabel: started ? 'Продолжить' : 'Начать',
+        disabled: completed,
+        secondaryActions: completed ? (
+          <div
+            aria-label={`Результат: ${game.total_goals} шайб, точность ${accuracy}`}
+            style={{
+              color: '#e9fbff',
+              fontSize: 'clamp(12px, 1.7vh, 15px)',
+              fontWeight: 900,
+              textAlign: 'center',
+            }}
+          >
+            {game.total_goals} шайб · точность {accuracy}
+          </div>
+        ) : undefined,
+        onEnter: () =>
+          navigate(`/?view=classic&tournament=${encodeURIComponent(game.tournament_id)}`, {
+            replace: true,
+          }),
+        ...(completed
+          ? {}
+          : {
+              scoreboard: (
+                <DailyHubScoreboard
+                  activePeriod={
+                    game.state === 'period_active'
+                      ? game.current_period
+                      : Math.min(3, game.current_period + 1)
+                  }
+                  ariaLabel={`${game.tournament_title}. ${game.tournament_day}-й тур. До закрытия ${formatEventRemaining(deadlineRemaining)}`}
+                  periodsTotal={3}
+                  timer={formatEventRemaining(deadlineRemaining)}
+                  timerLabel="До закрытия"
+                />
+              ),
+            }),
+      };
+    });
+  const arenaEntries: ArenaEntry[] = [
+    ...duelArenaEntries,
+    ...classicArenaEntries,
+    dailyArenaEntry,
+    trainingArenaEntry,
+  ];
   const duelArenaEntryIds = duelArenaEntries.map((entry) => entry.id).join('|');
   const firstDuelArenaEntryId = duelArenaEntries[0]?.id ?? null;
 
@@ -7694,6 +7798,142 @@ function DailyPlayView({
         />
       )}
     </>
+  );
+}
+
+function ClassicTournamentPlayView({
+  tournamentId,
+  onBack,
+}: {
+  tournamentId: string;
+  onBack: () => void;
+}): JSX.Element {
+  const data = useClassicTournamentStore((state) => state.data);
+  const loading = useClassicTournamentStore((state) => state.loading);
+  const error = useClassicTournamentStore((state) => state.error);
+  const inFlight = useClassicTournamentStore((state) => state.inFlight);
+  const refresh = useClassicTournamentStore((state) => state.refresh);
+  const startPeriod = useClassicTournamentStore((state) => state.startPeriod);
+  const optimisticAddShot = useClassicTournamentStore((state) => state.optimisticAddShot);
+  const submitShot = useClassicTournamentStore((state) => state.submitShot);
+  const applyState = useClassicTournamentStore((state) => state.applyState);
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    void refresh(tournamentId);
+  }, [refresh, tournamentId]);
+
+  useEffect(() => {
+    if (data?.state !== 'break_active' && data?.state !== 'closed') return undefined;
+    const timer = window.setInterval(() => setNow(Date.now()), 500);
+    return () => window.clearInterval(timer);
+  }, [data?.state]);
+
+  if (data === null) {
+    return (
+      <main className="screen arena-error-state">
+        {error ? (
+          <>
+            <div className="arena-error-state__title">Не удалось открыть игру</div>
+            <div className="arena-error-state__copy">{error}</div>
+            <button
+              type="button"
+              className="btn btn--cta"
+              disabled={loading}
+              onClick={() => void refresh(tournamentId)}
+            >
+              Повторить
+            </button>
+            <button type="button" className="btn btn--ghost" onClick={onBack}>
+              К турниру
+            </button>
+          </>
+        ) : (
+          <div className="route-loading" role="status">
+            Загружаем турнирную игру…
+          </div>
+        )}
+      </main>
+    );
+  }
+
+  const active = data.state === 'period_active';
+  const breakEndsAt = data.break_ends_at ? timestampMs(data.break_ends_at) : 0;
+  const periodEndsAt = data.period_ends_at ? timestampMs(data.period_ends_at) : 0;
+  const closesAt = timestampMs(data.closes_at);
+  const breakRemaining = Math.max(0, breakEndsAt - now);
+  const closesRemaining = Math.max(0, closesAt - now);
+  const canStart = data.state === 'idle' && data.current_period < data.total_periods;
+  const nextPeriod = Math.min(data.total_periods, data.current_period + 1);
+  const periodNumber = active ? data.current_period : canStart ? nextPeriod : data.current_period;
+  const completedResult = data.result;
+
+  return (
+    <PlayView<ClassicTournamentState>
+      suppressedByModal={!active}
+      showIceCar={!active}
+      onBack={onBack}
+      backLabel="К турниру"
+      active={active}
+      seed={data.daily_seed}
+      goalieId={data.goalie_id}
+      periodNumber={Math.max(1, periodNumber)}
+      periodSpeedPresets={data.period_speed_presets}
+      sessionStartedAt={data.period_started_at}
+      serverNow={data.server_now}
+      receivedAtPerformanceMs={data.received_at_performance_ms}
+      goals={active ? data.current_period_goals : data.daily_total_goals}
+      scoreboardGoals={data.daily_total_goals}
+      shots={active ? data.current_period_shots : data.daily_total_shots}
+      shotsTotal={active ? data.shots_per_period : data.shots_per_period * data.total_periods}
+      periodsTotal={data.total_periods}
+      scoreboardPeriodsTotal={data.total_periods}
+      timer={
+        data.state === 'break_active'
+          ? formatMs(breakRemaining)
+          : data.state === 'closed'
+            ? formatEventRemaining(closesRemaining)
+            : canStart
+              ? formatMs(data.period_duration_ms)
+              : undefined
+      }
+      timerLabel={
+        data.state === 'break_active'
+          ? 'ПЕРЕРЫВ'
+          : data.state === 'closed'
+            ? 'ДО ЗАКРЫТИЯ'
+            : canStart
+              ? 'ВРЕМЯ'
+              : undefined
+      }
+      scoreboardNotice={
+        data.state === 'closed' && completedResult !== null
+          ? `${completedResult.goals} шайб · точность ${Math.round(completedResult.accuracy * 100)}%`
+          : `${data.tournament_title} · ${data.tournament_day}-й тур`
+      }
+      shotButtonLabel={
+        canStart
+          ? inFlight
+            ? 'НАЧИНАЕМ...'
+            : data.current_period === 0
+              ? 'НАЧАТЬ'
+              : 'ПРОДОЛЖИТЬ'
+          : data.state === 'break_active'
+            ? 'ЛЁД ГОТОВИТСЯ'
+            : data.state === 'closed'
+              ? 'ИГРА ЗАВЕРШЕНА'
+              : undefined
+      }
+      inactiveAction={canStart ? startPeriod : undefined}
+      entranceBeforeInactiveAction
+      periodEndsAt={active && periodEndsAt > 0 ? periodEndsAt : undefined}
+      onTimerExpired={() => refresh(tournamentId)}
+      optimisticAddShot={optimisticAddShot}
+      submitShot={submitShot}
+      applyState={applyState}
+      applyResolvedState={applyState}
+      longCourtBackground={AMATEUR_DAILY_COURT_BACKGROUND}
+    />
   );
 }
 

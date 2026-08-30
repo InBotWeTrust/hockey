@@ -212,6 +212,7 @@ describe.skipIf(!hasIntegrationEnv)('069 bonus skill catalogue reset', () => {
       '072_tournament_fixture_series_lookup.sql',
       '073_backfill_first_daily_game.sql',
       '074_allow_bonus_repurchase_after_refund.sql',
+      '075_tournament_classic.sql',
     ]);
 
     const accuracy = await pool.query<{

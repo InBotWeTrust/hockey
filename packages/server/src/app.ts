@@ -127,6 +127,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await app.register(amateurDuelRoutes, { duelSeedSecret: config.DAILY_SEED_SECRET });
   await app.register(tournamentRoutes, {
     mediaAccessSecret: config.JWT_SECRET,
+    tournamentGameSeedSecret: config.DAILY_SEED_SECRET,
     ...(config.SYSTEM_USER_ID !== undefined ? { systemUserId: config.SYSTEM_USER_ID } : {}),
     ...(objectStorage !== undefined ? { objectStorage } : {}),
   });
@@ -158,6 +159,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
       options.pushWorkerEnabled ?? config.PUSH_WORKER_ENABLED ?? config.NODE_ENV === 'production',
     workerConcurrency: config.PUSH_WORKER_CONCURRENCY,
     workerBatchSize: config.PUSH_WORKER_BATCH_SIZE,
+    tournamentGameSeedSecret: config.DAILY_SEED_SECRET,
   });
 
   return app;

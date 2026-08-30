@@ -165,6 +165,12 @@ describe('BottomNav remembered navigation', () => {
     expect(screen.queryByRole('button', { name: 'Игра' })).toBeNull();
   });
 
+  it('hides the dock inside a classic tournament game', () => {
+    renderBottomNav('/?view=classic&tournament=t1');
+
+    expect(screen.queryByRole('button', { name: 'Игра' })).toBeNull();
+  });
+
   it('hides the dock on the demo rink', () => {
     renderBottomNav('/demo');
 

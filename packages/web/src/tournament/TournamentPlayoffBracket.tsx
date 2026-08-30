@@ -9,6 +9,16 @@ import { UserAvatar } from '../chat/components/UserAvatar.js';
 interface TournamentPlayoffBracketProps {
   series: TournamentBracketSeries[];
   timezone: string;
+  formats?: Array<{
+    roundNumber: number;
+    duelKind: 'express' | 'express_plus' | 'classic';
+  }>;
+}
+
+function formatLabel(kind: 'express' | 'express_plus' | 'classic'): string {
+  if (kind === 'express') return 'Экспресс';
+  if (kind === 'express_plus') return 'Микс';
+  return 'Классика';
 }
 
 function stageName(roundNumber: number, finalRound: number, plural: boolean): string {
@@ -196,7 +206,11 @@ function SeriesCard(props: {
   );
 }
 
-export function TournamentPlayoffBracket({ series, timezone }: TournamentPlayoffBracketProps) {
+export function TournamentPlayoffBracket({
+  series,
+  timezone,
+  formats,
+}: TournamentPlayoffBracketProps) {
   const championship = series.filter((item) => item.kind === 'championship');
   const finalRound = Math.max(...championship.map((item) => item.round_number));
   const byKey = new Map(
@@ -258,6 +272,17 @@ export function TournamentPlayoffBracket({ series, timezone }: TournamentPlayoff
         className={`tournament-bracket-round${selectedView.bronze ? ' tournament-bracket-round--bronze' : ''}`}
       >
         <h3>{selectedView.label}</h3>
+        <p className="tournament-rules__muted">
+          Формат игры:{' '}
+          {(() => {
+            const configured = formats?.find(
+              (format) => format.roundNumber === selectedView.roundNumber,
+            );
+            return configured === undefined
+              ? 'будет объявлен перед стартом'
+              : formatLabel(configured.duelKind);
+          })()}
+        </p>
         <div>
           {selectedView.series.map((item) => (
             <SeriesCard

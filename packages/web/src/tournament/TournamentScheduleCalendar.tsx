@@ -7,7 +7,7 @@ import { TournamentMatchdayRow } from './TournamentMatchdayTimes.js';
 interface TournamentScheduleCalendarProps {
   fixtures: TournamentFixture[];
   matchdays: TournamentMatchday[];
-  regularSource: 'head_to_head' | 'daily_aggregate';
+  regularSource: 'head_to_head' | 'daily_aggregate' | 'classic';
   currentUserId: string | null;
   isParticipant: boolean;
   timezone: string;
@@ -132,7 +132,7 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
     () =>
       Array.from(
         new Set([
-          ...(props.regularSource === 'daily_aggregate'
+          ...(props.regularSource !== 'head_to_head'
             ? props.matchdays.map((matchday) => matchday.localDate)
             : Array.from(fixturesByDate.keys())),
           ...playoffDateKeys,
@@ -258,20 +258,18 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
           const fixtures = fixturesByDate.get(key) ?? [];
           const matchday = matchdaysByDate.get(key);
           const hasEvents =
-            props.regularSource === 'daily_aggregate'
-              ? matchday !== undefined
-              : fixtures.length > 0;
+            props.regularSource !== 'head_to_head' ? matchday !== undefined : fixtures.length > 0;
           const hasPlayoff =
             playoffDateKeys.includes(key) ||
             fixtures.some(
               (fixture) => fixture.stage === 'playoff' || fixture.stage === 'third_place',
             );
           const mine =
-            props.regularSource === 'daily_aggregate'
+            props.regularSource !== 'head_to_head'
               ? hasEvents && props.isParticipant
               : fixtures.some((fixture) => isMine(fixture, props.currentUserId));
           const descriptions = [spokenDate(visibleMonth.year, visibleMonth.month, day)];
-          if (props.regularSource === 'daily_aggregate' && hasEvents)
+          if (props.regularSource !== 'head_to_head' && hasEvents)
             descriptions.push('игровой день');
           if (props.regularSource === 'head_to_head' && hasEvents) {
             descriptions.push(`${fixtures.length} ${fixtures.length === 1 ? 'игра' : 'игры'}`);
@@ -308,7 +306,7 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
             className="tournament-calendar__legend-dot tournament-calendar__legend-dot--events"
             aria-hidden="true"
           />
-          {props.regularSource === 'daily_aggregate' ? 'Игровой день' : 'Есть игры'}
+          {props.regularSource !== 'head_to_head' ? 'Игровой день' : 'Есть игры'}
         </li>
         {props.regularSource === 'head_to_head' && (
           <li>
@@ -335,7 +333,7 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
         </li>
       </ul>
 
-      {props.regularSource === 'daily_aggregate' && (
+      {props.regularSource !== 'head_to_head' && (
         <div className="tournament-calendar__details" aria-live="polite">
           <h4>
             {spokenDate(...(selectedDate.split('-').map(Number) as [number, number, number]))}
@@ -364,7 +362,9 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
                 selectedMatchday.myResult?.completed !== true &&
                 props.onOpenDailyGame && (
                   <button type="button" className="btn btn--cta" onClick={props.onOpenDailyGame}>
-                    Открыть ежедневную игру
+                    {props.regularSource === 'classic'
+                      ? 'Открыть турнирную игру'
+                      : 'Открыть ежедневную игру'}
                   </button>
                 )}
             </>

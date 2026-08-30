@@ -226,5 +226,6 @@ describe('app backdrop variants', () => {
     expect(appBackdropClassName('/', '?view=training')).toBe('app-shell--arena');
     expect(appBackdropClassName('/', '?view=training&play=1')).toBe('');
     expect(appBackdropClassName('/', '?view=amateur&match=m1&play=1')).toBe('');
+    expect(appBackdropClassName('/', '?view=classic&tournament=t1')).toBe('');
   });
 });
