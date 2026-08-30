@@ -5,7 +5,7 @@ type InventoryArtworkItem = Pick<InventoryItem, 'kind' | 'rarity'> & {
   imageUrl?: string | null;
 };
 
-const INVENTORY_ARTWORK_VERSION = '20260602-nutrition-cans-v1';
+const INVENTORY_ARTWORK_VERSION = '20260830-base-equipment-v1';
 
 function versionInventoryArtwork(url: string): string {
   if (!url.startsWith('/inventory/') || url.includes('?')) return url;
@@ -30,6 +30,12 @@ const FALLBACK_ARTWORK: Record<InventoryEquipmentKind, Record<InventoryTier, str
   },
 };
 
+const BASE_ARTWORK: Record<InventoryEquipmentKind, string> = {
+  stick: versionInventoryArtwork('/inventory/stick-base.webp'),
+  skates: versionInventoryArtwork('/inventory/skates-base.webp'),
+  nutrition: versionInventoryArtwork('/inventory/nutrition-none.webp'),
+};
+
 const LEGACY_GROUP_ARTWORK = new Set([
   '/inventory/sticks.webp',
   '/inventory/skates.webp',
@@ -43,7 +49,7 @@ function tierFor(item: InventoryArtworkItem): InventoryTier {
 }
 
 export function placeholderArtworkForKind(kind: InventoryEquipmentKind): string {
-  return FALLBACK_ARTWORK[kind].bronze;
+  return BASE_ARTWORK[kind];
 }
 
 export function artworkForInventoryItem(item: InventoryArtworkItem): string {

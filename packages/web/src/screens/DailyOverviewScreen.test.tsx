@@ -145,13 +145,30 @@ describe('DailyOverviewScreen', () => {
       within(calendar).getByRole('button', { name: /29 августа 2026: игра завершена/ }),
     ).toHaveClass('daily-calendar__day--completed');
     expect(
+      within(
+        within(calendar).getByRole('button', { name: /29 августа 2026: игра завершена/ }),
+      ).getByLabelText('Забито шайб: 45'),
+    ).toHaveTextContent('45');
+    expect(
       within(calendar).getByRole('button', {
         name: /28 августа 2026: игра начата, но не завершена/,
       }),
     ).toHaveClass('daily-calendar__day--incomplete');
     expect(
+      within(
+        within(calendar).getByRole('button', {
+          name: /28 августа 2026: игра начата, но не завершена/,
+        }),
+      ).getByLabelText('Забито шайб: 14'),
+    ).toHaveTextContent('14');
+    expect(
       within(calendar).getByRole('button', { name: /27 августа 2026: без бросков/ }),
     ).toHaveClass('daily-calendar__day--missed');
+    expect(
+      within(
+        within(calendar).getByRole('button', { name: /27 августа 2026: без бросков/ }),
+      ).getByLabelText('Забито шайб: 0'),
+    ).toHaveTextContent('0');
     expect(screen.queryByText('29.08.2026')).not.toBeInTheDocument();
   });
 

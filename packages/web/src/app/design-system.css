@@ -2455,8 +2455,8 @@
   padding: 0 10px;
 }
 .segmented-tabs--compact .segmented-tabs__item {
-  font-size: 12px;
-  padding: 0 8px;
+  font-size: 11px;
+  padding: 0 4px;
   text-overflow: clip;
 }
 .segmented-tabs--scrollable {
@@ -3393,6 +3393,459 @@
   margin: 0 0 2px;
 }
 
+.duel-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.duel-game-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.duel-section-title {
+  padding: 2px 8px;
+  color: rgba(240, 248, 255, 0.92);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: normal;
+  letter-spacing: 0.14em;
+  text-shadow: 0 1px 7px rgba(4, 15, 28, 0.78);
+}
+
+.duel-section-title--with-action {
+  position: relative;
+  display: block;
+  padding-right: 32px;
+}
+
+.duel-section-info-btn {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  color: rgba(240, 248, 255, 0.92);
+}
+
+.duel-section-info-btn:active {
+  transform: translateY(-50%) scale(0.94);
+}
+
+.duel-form-section-title {
+  position: relative;
+  display: block;
+  margin: -2px 0;
+  padding: 2px 32px 2px 8px;
+  line-height: normal;
+}
+
+.duel-form-section-info-btn {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+}
+
+.duel-form-section-info-btn:active {
+  transform: translateY(-50%) scale(0.94);
+}
+
+.duel-locker-kind-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+
+.duel-locker-kind-section {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.duel-locker-slot {
+  min-width: 0;
+  min-height: 96px;
+  padding: 10px;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: clamp(68px, 22vw, 84px) minmax(0, 1fr) 20px;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  border-radius: 22px;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.duel-locker-slot[data-empty='true'] {
+  border-color: rgba(255, 255, 255, 0.62);
+}
+
+.duel-locker-slot__artwork {
+  width: 100%;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.78);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.28);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.78),
+    0 10px 18px rgba(15, 23, 42, 0.1);
+}
+
+.duel-locker-slot__copy {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.duel-locker-slot__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.duel-locker-slot__status {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.duel-equipment-empty {
+  padding: 8px 2px 4px;
+}
+
+.duel-equipment-empty__message {
+  color: rgba(51, 65, 85, 0.78);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.duel-equipment-empty__action {
+  width: 100%;
+  min-height: 46px;
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.duel-equipment-option {
+  color: var(--ink);
+  border: 1px solid rgba(255, 255, 255, 0.76);
+  background: rgba(255, 255, 255, 0.22);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.56);
+}
+
+.duel-equipment-option--selected {
+  border-color: rgba(255, 255, 255, 0.92);
+  background: rgba(245, 249, 253, 0.88);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.86),
+    0 8px 18px rgba(15, 23, 42, 0.1);
+}
+
+.duel-equipment-option__check {
+  width: 18px;
+  height: 18px;
+  justify-self: end;
+  display: grid;
+  place-items: center;
+  border: 2px solid rgba(71, 85, 105, 0.34);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.42);
+  color: #ffffff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62);
+}
+
+.duel-equipment-option__check--selected {
+  width: 20px;
+  height: 20px;
+  border: 0;
+  background: #1f2a3d;
+  box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.1);
+}
+
+.duel-rating-month-nav {
+  min-height: 0;
+  padding: 0;
+}
+
+.tournament-details__content.duel-rating-table-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 22px;
+}
+
+.duel-card-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.duel-card-opponent-name {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.duel-card-status {
+  flex: 0 0 auto;
+  max-width: 48%;
+  overflow: hidden;
+  color: rgba(15, 23, 42, 0.62);
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.duel-card-meta {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.15;
+}
+
+.duel-card-venue {
+  width: fit-content;
+  color: rgba(15, 23, 42, 0.58);
+  font-size: 10px;
+  font-weight: 760;
+}
+
+.duel-invite-action {
+  box-shadow: none;
+}
+
+.duel-invite-action--decline {
+  border: 1px solid rgba(128, 49, 61, 0.2);
+  background: rgba(163, 72, 83, 0.16);
+  color: #6f2933;
+}
+
+.duel-invite-action--accept {
+  border: 1px solid rgba(42, 100, 68, 0.2);
+  background: rgba(65, 128, 91, 0.18);
+  color: #244f38;
+}
+
+.arena-duel-invite-action {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.arena-duel-invite-action--decline {
+  border: 1px solid rgba(221, 127, 139, 0.52);
+  background: rgba(119, 48, 61, 0.64);
+  color: rgba(255, 238, 241, 0.96);
+}
+
+.arena-duel-invite-action--accept {
+  border: 1px solid rgba(114, 177, 139, 0.52);
+  background: rgba(43, 96, 65, 0.68);
+  color: rgba(239, 255, 245, 0.96);
+}
+
+.glass .duel-section-title,
+.modal-card .duel-section-title {
+  color: rgba(15, 23, 42, 0.78);
+  text-shadow: none;
+}
+
+.duel-empty-current {
+  min-height: 64px;
+  padding: 12px 14px;
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  color: rgba(15, 23, 42, 0.72);
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.duel-state-card {
+  min-height: 64px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  background: rgba(230, 239, 248, 0.88);
+  color: rgba(15, 23, 42, 0.74);
+  font-size: 14px;
+  font-weight: 750;
+  display: flex;
+  align-items: center;
+}
+
+.duel-state-card--error {
+  color: #7f1d1d;
+}
+
+.tournament-standing-player--button {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tournament-standing-player--button:disabled {
+  cursor: default;
+}
+
+.tournament-standing-table tbody tr.tournament-standing-table__current-user {
+  color: #fff;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.95));
+}
+
+.duel-history-summary {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.94);
+  border-radius: 22px;
+  background: linear-gradient(
+    135deg,
+    rgba(147, 197, 253, 0.72),
+    rgba(219, 234, 254, 0.86) 52%,
+    rgba(255, 255, 255, 0.72)
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 18px 42px rgba(37, 99, 235, 0.2);
+}
+
+.duel-history-summary__header {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.duel-history-summary__header h2,
+.duel-history-summary__header strong {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 950;
+  line-height: 1.05;
+}
+
+.duel-history-summary__header h2 {
+  min-width: 0;
+  font-size: 15px;
+}
+
+.duel-history-summary__header strong {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.duel-history-summary__tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+}
+
+.duel-history-summary__tiles > div {
+  min-width: 0;
+  padding: 9px 3px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.48);
+  text-align: center;
+}
+
+.duel-history-summary__tiles dt {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 900;
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.duel-history-summary__tiles dd {
+  margin: 5px 0 0;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 950;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+
+.duel-day-dialog {
+  width: min(430px, calc(100vw - 28px));
+  display: grid;
+  gap: 14px;
+}
+
+.duel-day-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.duel-day-match {
+  width: 100%;
+  min-height: 60px;
+  padding: 8px 10px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.5);
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  color: #0f172a;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.duel-day-match__copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.duel-day-match__copy strong,
+.duel-day-match__copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.duel-day-match__copy strong { font-size: 14px; }
+.duel-day-match__copy span { color: rgba(15, 23, 42, 0.62); font-size: 11px; font-weight: 750; }
+.duel-day-match__result { font-size: 11px; font-weight: 900; }
+.duel-day-match__result--win { color: #166534; }
+.duel-day-match__result--draw { color: #854d0e; }
+.duel-day-match__result--loss { color: #991b1b; }
+
 .duel-kind-picker {
   border: 1px solid rgba(255, 255, 255, 0.74);
   background: rgba(255, 255, 255, 0.34);
@@ -3503,6 +3956,7 @@
 }
 
 .daily-calendar__day {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -3535,6 +3989,68 @@ button.daily-calendar__day:active {
 .daily-calendar__day--completed {
   background: linear-gradient(145deg, rgba(134, 239, 172, 0.9), rgba(74, 222, 128, 0.68));
   color: #14532d;
+}
+
+.daily-calendar__day--duel {
+  background: rgba(162, 216, 248, 0.72);
+  color: #103f68;
+}
+
+.daily-calendar__day-number {
+  line-height: 1;
+}
+
+.daily-calendar__duel-count {
+  position: absolute;
+  top: 4px;
+  right: 5px;
+  color: rgba(16, 63, 104, 0.68);
+  font-family: var(--font-sans);
+  font-size: 7px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.daily-calendar__goal-count {
+  position: absolute;
+  top: 4px;
+  right: 5px;
+  color: currentColor;
+  font-family: var(--font-sans);
+  font-size: 7px;
+  font-weight: 900;
+  line-height: 1;
+  opacity: 0.68;
+}
+
+.daily-calendar__duel-results {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  left: 4px;
+  display: flex;
+  justify-content: center;
+  gap: 2px;
+}
+
+.daily-calendar__duel-result {
+  width: 4px;
+  height: 4px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.78);
+}
+
+.daily-calendar__duel-result--win {
+  background: #2fbf71;
+}
+
+.daily-calendar__duel-result--loss {
+  background: #d45f67;
+}
+
+.daily-calendar__duel-result--draw {
+  background: #e1ad24;
 }
 
 .daily-calendar__day--incomplete {
@@ -3571,6 +4087,18 @@ button.daily-calendar__day:active {
 
 .daily-calendar__dot--completed {
   background: #4ade80;
+}
+.daily-calendar__dot--duel {
+  background: #1681bd;
+}
+.daily-calendar__dot--win {
+  background: #2fbf71;
+}
+.daily-calendar__dot--loss {
+  background: #d45f67;
+}
+.daily-calendar__dot--draw {
+  background: #e1ad24;
 }
 .daily-calendar__dot--incomplete {
   background: #facc15;
@@ -4817,6 +5345,84 @@ button.daily-calendar__day:active {
 
 .tournament-standing-table tbody tr.tournament-standing-table__playoff-place {
   background: rgba(147, 207, 243, 0.2);
+}
+
+.tournament-standing-table--duel-rating {
+  font-size: 11px;
+}
+
+.tournament-standing-table--duel-rating th,
+.tournament-standing-table--duel-rating td {
+  padding: 8px 2px;
+  text-align: center;
+}
+
+.tournament-standing-table--duel-rating th {
+  font-size: 8px;
+  letter-spacing: 0.025em;
+}
+
+.tournament-standing-table--duel-rating th:first-child,
+.tournament-standing-table--duel-rating td:first-child {
+  width: 24px;
+}
+
+.tournament-standing-table--duel-rating th:nth-child(n + 3):nth-child(-n + 6),
+.tournament-standing-table--duel-rating td:nth-child(n + 3):nth-child(-n + 6) {
+  width: 28px;
+}
+
+.tournament-standing-table--duel-rating th:last-child,
+.tournament-standing-table--duel-rating td:last-child {
+  width: 34px;
+  padding-right: 2px;
+  text-align: center;
+}
+
+.tournament-standing-table--duel-rating th:nth-child(2),
+.tournament-standing-table--duel-rating td:nth-child(2) {
+  text-align: left;
+}
+
+.tournament-standing-table--duel-rating td:nth-child(2) {
+  font-size: 12px;
+  font-weight: 740;
+}
+
+.tournament-standing-table--duel-rating .tournament-standing-player {
+  gap: 5px;
+}
+
+.tournament-standing-table--duel-rating tbody tr.tournament-standing-table__current-user {
+  color: var(--ink);
+  background: transparent;
+  box-shadow: none;
+}
+
+.tournament-standing-table--duel-rating tbody tr.tournament-standing-table__current-user td {
+  border-bottom-color: transparent;
+  background: rgba(147, 197, 253, 0.38);
+}
+
+.tournament-standing-table--duel-rating
+  tbody
+  tr.tournament-standing-table__medal-place--gold
+  td {
+  background: rgba(250, 204, 21, 0.16);
+}
+
+.tournament-standing-table--duel-rating
+  tbody
+  tr.tournament-standing-table__medal-place--silver
+  td {
+  background: rgba(148, 163, 184, 0.18);
+}
+
+.tournament-standing-table--duel-rating
+  tbody
+  tr.tournament-standing-table__medal-place--bronze
+  td {
+  background: rgba(194, 122, 75, 0.16);
 }
 
 .tournament-fixture-card {
@@ -6424,6 +7030,34 @@ button.daily-calendar__day:active {
   color: var(--muted);
   font-size: 10px;
   font-weight: 720;
+}
+
+.arena-duel-opponent-name {
+  font-size: clamp(13px, 1.9vh, 18px);
+}
+
+.arena-duel-venue-label {
+  font-size: clamp(7px, 0.95vh, 9px);
+}
+
+.arena-duel-format-heading {
+  font-size: clamp(7px, 1vh, 9px);
+  font-weight: 950;
+  line-height: 1;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.arena-duel-venue-label {
+  display: block;
+  width: fit-content;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: rgba(196, 242, 255, 0.82);
+  font-weight: 850;
+  line-height: 1;
+  text-shadow: 0 0 7px rgba(0, 12, 24, 0.88);
 }
 
 @media (max-width: 520px) {

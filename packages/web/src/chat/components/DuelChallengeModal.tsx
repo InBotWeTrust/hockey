@@ -33,7 +33,7 @@ export function hasOpenDuelWithUser(matches: AmateurDuelMatch[], userId: string)
 
 export function duelKindText(kind: AmateurDuelKind): string {
   if (kind === 'express') return 'Экспресс';
-  if (kind === 'express_plus') return 'Экспресс+';
+  if (kind === 'express_plus') return 'Микс';
   return 'Классика';
 }
 

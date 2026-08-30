@@ -415,7 +415,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
   }
 
   it('creates a pending challenge and rejects duplicate open matches', async () => {
-    const templateId = await createTemplate();
+    const templateId = await createTemplate({ duelKind: 'express_plus', totalPeriods: 2 });
     const first = await challenge(templateId);
     expect(first.statusCode).toBe(200);
     expect(first.json().match.status).toBe('invited');
@@ -428,6 +428,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
         limit 1`,
     );
     expect(inviteMessage.rows[0]?.content).toContain('Ответить: в течение 15 мин');
+    expect(inviteMessage.rows[0]?.content).toContain('Формат: Микс, 2 период(а)');
     expect(inviteMessage.rows[0]?.content.split('\n')[0]).toBe('Player A вызывает вас на дуэль.');
     expect(inviteMessage.rows[0]?.content).not.toContain('Окно:');
     expect(Date.parse(String(inviteMessage.rows[0]?.metadata.endsAt))).toBeLessThan(
@@ -1541,6 +1542,169 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       settledMatchId,
     ]);
     expect(history.json().stats).toEqual({ duels: 1, wins: 1, points: 3 });
+  });
+
+  it('returns rating visibility and available Moscow seasons', async () => {
+    await pool.query(
+      `insert into amateur_duel_rating
+         (season_key, user_id, points, wins, draws, losses, goals_for, goals_against,
+          matches_played, active_duration_seconds)
+       values ('2026-04', $1, 3, 1, 0, 0, 4, 2, 1, 180),
+              ('2026-05', $1, 1, 0, 1, 0, 2, 2, 1, 190)`,
+      [userA],
+    );
+
+    const enabled = await app.inject({
+      method: 'GET',
+      url: '/duel/amateur/rating?season_key=2026-04',
+      headers: auth(tokenA),
+    });
+
+    expect(enabled.statusCode).toBe(200);
+    expect(enabled.json()).toMatchObject({
+      season_key: '2026-04',
+      rating_visible: true,
+      available_seasons: ['2026-05', '2026-04'],
+    });
+
+    await pool.query(
+      `insert into game_settings (key, value, label, description)
+       values ('amateur.rating_visibility', '"disabled"'::jsonb, 'Рейтинг', 'test')
+       on conflict (key) do update set value = excluded.value`,
+    );
+    const disabled = await app.inject({
+      method: 'GET',
+      url: '/duel/amateur/rating?season_key=2026-05',
+      headers: auth(tokenA),
+    });
+    expect(disabled.statusCode).toBe(200);
+    expect(disabled.json().rating_visible).toBe(false);
+    expect(disabled.json().rating).toHaveLength(1);
+  });
+
+  it('keeps awarding rating points while rating visibility is disabled', async () => {
+    await pool.query(
+      `insert into game_settings (key, value, label, description)
+       values ('amateur.rating_visibility', '"disabled"'::jsonb, 'Рейтинг', 'test')
+       on conflict (key) do update set value = excluded.value`,
+    );
+    const templateId = await createTemplate({ totalPeriods: 1 });
+    const created = await challenge(templateId);
+    const matchId = String(created.json().match.id);
+    const startedA = await acceptReadyAndStart(matchId);
+    expect(startedA.statusCode).toBe(200);
+    const startedB = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/period/start`,
+      headers: auth(tokenB),
+    });
+    expect(startedB.statusCode).toBe(200);
+    for (const [token, tapTime] of [
+      [tokenA, 1000],
+      [tokenB, 1200],
+    ] as const) {
+      const shot = await app.inject({
+        method: 'POST',
+        url: `/duel/amateur/matches/${matchId}/shot`,
+        headers: auth(token),
+        payload: { shot_index: 1, input: { tapTime }, claimed_result: 'goal' },
+      });
+      expect(shot.statusCode).toBe(200);
+    }
+    const ratings = await pool.query<{ matches_played: number }>(
+      `select matches_played from amateur_duel_rating where user_id = any($1::uuid[])`,
+      [[userA, userB]],
+    );
+    expect(ratings.rows).toHaveLength(2);
+    expect(ratings.rows.every((row) => row.matches_played === 1)).toBe(true);
+  });
+
+  it('builds the personal-timezone history calendar from completed duels only', async () => {
+    await pool.query(`update users set timezone = 'America/New_York' where id = $1`, [userA]);
+    const templateId = await createTemplate();
+
+    async function insertHistoryMatch(input: {
+      settledAt: string;
+      settledReason: string;
+      challengerState: 'completed' | 'forfeit';
+      opponentState: 'completed' | 'forfeit';
+      outcome: 'challenger_win' | 'opponent_win' | 'draw';
+    }) {
+      const created = await challenge(templateId);
+      const matchId = String(created.json().match.id);
+      await pool.query(
+        `update amateur_duel_match
+            set status = 'settled', settled_at = $2, settled_reason = $3, outcome = $4,
+                winner_user_id = case
+                  when $4 = 'challenger_win' then challenger_user_id
+                  when $4 = 'opponent_win' then opponent_user_id
+                  else null
+                end
+          where id = $1`,
+        [matchId, input.settledAt, input.settledReason, input.outcome],
+      );
+      await pool.query(
+        `update amateur_duel_participant
+            set state = case when side = 'challenger' then $2 else $3 end,
+                goals = case when side = 'challenger' then 4 else 2 end,
+                shots_taken = 5
+          where match_id = $1`,
+        [matchId, input.challengerState, input.opponentState],
+      );
+      return matchId;
+    }
+
+    const includedId = await insertHistoryMatch({
+      settledAt: '2026-05-01T02:30:00.000Z',
+      settledReason: 'completed',
+      challengerState: 'completed',
+      opponentState: 'completed',
+      outcome: 'challenger_win',
+    });
+    await pool.query(
+      `update amateur_duel_match
+          set source = 'tournament', home_user_id = $2, venue_policy = 'home_selected'
+        where id = $1`,
+      [includedId, userA],
+    );
+    await insertHistoryMatch({
+      settledAt: '2026-05-02T12:00:00.000Z',
+      settledReason: 'no_show',
+      challengerState: 'completed',
+      opponentState: 'forfeit',
+      outcome: 'challenger_win',
+    });
+    await insertHistoryMatch({
+      settledAt: '2026-06-01T04:30:00.000Z',
+      settledReason: 'completed',
+      challengerState: 'completed',
+      opponentState: 'completed',
+      outcome: 'draw',
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/duel/amateur/history/calendar?month_key=2026-04',
+      headers: auth(tokenA),
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().month_key).toBe('2026-04');
+    expect(response.json().available_months).toEqual(['2026-06', '2026-04']);
+    expect(response.json().range).toEqual({ from: '2026-04', to: '2026-06' });
+    expect(response.json().stats).toEqual({
+      played: 2,
+      wins: 1,
+      draws: 1,
+      losses: 0,
+      win_percentage: 50,
+    });
+    expect(response.json().days).toEqual([
+      expect.objectContaining({
+        day: 30,
+        matches: [expect.objectContaining({ id: includedId, result: 'win', venue_role: 'home' })],
+      }),
+    ]);
   });
 
   it('pairs matchmaking players into a ready room', async () => {
