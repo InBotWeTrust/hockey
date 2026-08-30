@@ -26,6 +26,9 @@ export function TournamentStandingsTable(props: {
   regularSource: string;
   dailyMetric: string | null;
   playoffSize?: number | null;
+  currentUserId?: string | null;
+  onPlayerClick?: (row: Record<string, unknown>) => void;
+  resultHeading?: string;
 }) {
   const result = resultColumn(props.regularSource, props.dailyMetric);
   const playoffSize = Math.max(0, Math.floor(Number(props.playoffSize) || 0));
@@ -36,22 +39,35 @@ export function TournamentStandingsTable(props: {
           <th scope="col">Место</th>
           <th scope="col">Игрок</th>
           <th scope="col">Игры</th>
-          <th scope="col">{result.heading}</th>
+          <th scope="col">{props.resultHeading ?? result.heading}</th>
         </tr>
       </thead>
       <tbody>
         {props.rows.map((row, index) => {
           const playerName = String(row.display_name ?? `Участник ${index + 1}`);
           const rank = Number(row.rank ?? index + 1);
+          const userId = String(row.user_id ?? '');
           const isPlayoffPlace = playoffSize > 0 && Number.isFinite(rank) && rank <= playoffSize;
+          const isCurrentUser = props.currentUserId === userId;
           return (
             <tr
               key={String(row.user_id ?? index)}
-              className={isPlayoffPlace ? 'tournament-standing-table__playoff-place' : undefined}
+              className={[
+                isPlayoffPlace ? 'tournament-standing-table__playoff-place' : '',
+                isCurrentUser ? 'tournament-standing-table__current-user' : '',
+              ]
+                .filter(Boolean)
+                .join(' ') || undefined}
             >
               <td>{displayNumber(row.rank ?? index + 1, 0)}</td>
               <td>
-                <div className="tournament-standing-player">
+                <button
+                  type="button"
+                  className="tournament-standing-player tournament-standing-player--button"
+                  aria-label={`Открыть профиль ${playerName}`}
+                  disabled={!props.onPlayerClick}
+                  onClick={() => props.onPlayerClick?.(row)}
+                >
                   <UserAvatar
                     avatarUrl={typeof row.avatar_url === 'string' ? row.avatar_url : null}
                     name={playerName}
@@ -61,7 +77,7 @@ export function TournamentStandingsTable(props: {
                     style={{ background: 'rgba(30, 91, 151, 0.13)', color: '#244d73' }}
                   />
                   <span title={playerName}>{playerName}</span>
-                </div>
+                </button>
               </td>
               <td>{displayNumber(row.played, 0)}</td>
               <td>{result.value(row)}</td>

@@ -212,6 +212,10 @@ const duelRatingQuerySchema = z.object({
   season_key: seasonKeySchema.optional(),
 });
 
+const duelHistoryCalendarQuerySchema = z.object({
+  month_key: seasonKeySchema.optional(),
+});
+
 const matchmakingJoinSchema = z
   .object({
     template_id: uuid.optional(),
@@ -3632,6 +3636,127 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
     });
   });
 
+  app.get('/duel/amateur/history/calendar', { preHandler: [app.authenticate] }, async (req) => {
+    const query = duelHistoryCalendarQuerySchema.parse(req.query);
+    const { rows: userRows } = await app.pg.query<{ timezone: string }>(
+      `select coalesce(timezone, 'Europe/Moscow') as timezone from users where id = $1`,
+      [req.user.id],
+    );
+    const timezone = userRows[0]?.timezone ?? 'Europe/Moscow';
+    const currentMonth = new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+    })
+      .formatToParts(new Date())
+      .reduce<Record<string, string>>((parts, part) => {
+        if (part.type === 'year' || part.type === 'month') parts[part.type] = part.value;
+        return parts;
+      }, {});
+    const monthKey = query.month_key ?? `${currentMonth.year ?? '1970'}-${currentMonth.month ?? '01'}`;
+    const validDuelSql = `
+      from amateur_duel_match m
+      join amateur_duel_participant me on me.match_id = m.id and me.user_id = $1
+      join amateur_duel_participant opponent on opponent.match_id = m.id and opponent.user_id <> $1
+      join users opponent_user on opponent_user.id = opponent.user_id
+      where (m.challenger_user_id = $1 or m.opponent_user_id = $1)
+        and m.status = 'settled'
+        and m.settled_at is not null
+        and m.settled_reason = 'completed'
+        and me.state = 'completed'
+        and opponent.state = 'completed'`;
+    const { rows: monthRows } = await app.pg.query<{
+      id: string;
+      local_day: number;
+      settled_at: Date;
+      opponent_user_id: string;
+      opponent_display_name: string;
+      opponent_avatar_url: string | null;
+      duel_kind: DuelKind;
+      my_goals: number;
+      opponent_goals: number;
+      winner_user_id: string | null;
+      outcome: DuelOutcome;
+    }>(
+      `select m.id,
+              extract(day from m.settled_at at time zone $2)::int as local_day,
+              m.settled_at,
+              opponent.user_id as opponent_user_id,
+              opponent_user.display_name as opponent_display_name,
+              opponent_user.avatar_url as opponent_avatar_url,
+              m.duel_kind,
+              me.goals as my_goals,
+              opponent.goals as opponent_goals,
+              m.winner_user_id,
+              m.outcome
+         ${validDuelSql}
+          and to_char(m.settled_at at time zone $2, 'YYYY-MM') = $3
+        order by m.settled_at asc`,
+      [req.user.id, timezone, monthKey],
+    );
+    const { rows: summaryRows } = await app.pg.query<{
+      played: number;
+      wins: number;
+      draws: number;
+      losses: number;
+    }>(
+      `select count(*)::int as played,
+              count(*) filter (where m.winner_user_id = $1)::int as wins,
+              count(*) filter (where m.outcome = 'draw')::int as draws,
+              count(*) filter (
+                where m.outcome <> 'draw' and m.winner_user_id is distinct from $1
+              )::int as losses
+         ${validDuelSql}`,
+      [req.user.id],
+    );
+    const { rows: availableRows } = await app.pg.query<{ month_key: string }>(
+      `select distinct to_char(m.settled_at at time zone $2, 'YYYY-MM') as month_key
+         ${validDuelSql}
+        order by month_key desc`,
+      [req.user.id, timezone],
+    );
+    const stats = summaryRows[0] ?? { played: 0, wins: 0, draws: 0, losses: 0 };
+    const days = new Map<number, Array<Record<string, unknown>>>();
+    for (const row of monthRows) {
+      const result =
+        row.outcome === 'draw'
+          ? 'draw'
+          : row.winner_user_id === req.user.id
+            ? 'win'
+            : 'loss';
+      const matches = days.get(row.local_day) ?? [];
+      matches.push({
+        id: row.id,
+        settled_at: row.settled_at.toISOString(),
+        opponent: {
+          user_id: row.opponent_user_id,
+          display_name: row.opponent_display_name,
+          avatar_url: row.opponent_avatar_url,
+        },
+        duel_kind: row.duel_kind,
+        my_goals: Number(row.my_goals),
+        opponent_goals: Number(row.opponent_goals),
+        result,
+      });
+      days.set(row.local_day, matches);
+    }
+    const availableMonths = availableRows.map((row) => row.month_key);
+    return {
+      month_key: monthKey,
+      timezone,
+      available_months: availableMonths,
+      range: {
+        from: availableMonths.at(-1) ?? monthKey,
+        to: availableMonths[0] ?? monthKey,
+      },
+      stats: {
+        ...stats,
+        win_percentage: stats.played > 0 ? Math.round((stats.wins / stats.played) * 100) : 0,
+      },
+      days: [...days.entries()].map(([day, matches]) => ({ day, matches })),
+    };
+  });
+
   app.get('/duel/amateur/events', { preHandler: [app.authenticate] }, async (req) => {
     const response = await withTransaction(app, async (client) => {
       const now = new Date();
@@ -4512,6 +4637,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
   app.get('/duel/amateur/rating', { preHandler: [app.authenticate] }, async (req) => {
     const query = duelRatingQuerySchema.parse(req.query);
     const seasonKey = query.season_key ?? seasonKeyMoscow(new Date());
+    const settings = await getGameSettings(app.pg);
     const { rows } = await app.pg.query<RatingRow>(
       `select r.user_id, u.display_name, u.avatar_url, r.points, r.wins, r.draws, r.losses,
 	              r.goals_for, r.goals_against, r.matches_played, r.active_duration_seconds
@@ -4536,7 +4662,16 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
 	        where ranked.user_id = $2`,
       [seasonKey, req.user.id],
     );
-    return { season_key: seasonKey, rating: rows, me_rank: rankRows[0]?.rank ?? null };
+    const { rows: seasonRows } = await app.pg.query<{ season_key: string }>(
+      `select distinct season_key from amateur_duel_rating order by season_key desc`,
+    );
+    return {
+      season_key: seasonKey,
+      rating_visible: settings.amateur.ratingVisibility === 'enabled',
+      available_seasons: seasonRows.map((row) => row.season_key),
+      rating: rows,
+      me_rank: rankRows[0]?.rank ?? null,
+    };
   });
 
   app.get(

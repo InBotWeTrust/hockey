@@ -299,8 +299,39 @@ export interface AmateurDuelHistoryResponse {
 
 export interface AmateurDuelRatingResponse {
   season_key: string;
+  rating_visible: boolean;
+  available_seasons: string[];
   rating: AmateurRatingRow[];
   me_rank: number | null;
+}
+
+export interface AmateurDuelHistoryCalendarMatch {
+  id: string;
+  settled_at: string;
+  opponent: {
+    user_id: string;
+    display_name: string;
+    avatar_url: string | null;
+  };
+  duel_kind: AmateurDuelKind;
+  my_goals: number;
+  opponent_goals: number;
+  result: 'win' | 'draw' | 'loss';
+}
+
+export interface AmateurDuelHistoryCalendarResponse {
+  month_key: string;
+  timezone: string;
+  available_months: string[];
+  range: { from: string; to: string };
+  stats: {
+    played: number;
+    wins: number;
+    draws: number;
+    losses: number;
+    win_percentage: number;
+  };
+  days: Array<{ day: number; matches: AmateurDuelHistoryCalendarMatch[] }>;
 }
 
 export interface SubmitAmateurDuelShotRequest {
@@ -469,4 +500,15 @@ export function fetchAmateurRating(seasonKey?: string): Promise<AmateurDuelRatin
   if (seasonKey) params.set('season_key', seasonKey);
   const query = params.toString();
   return apiFetch<AmateurDuelRatingResponse>(`/duel/amateur/rating${query ? `?${query}` : ''}`);
+}
+
+export function fetchAmateurHistoryCalendar(
+  monthKey?: string,
+): Promise<AmateurDuelHistoryCalendarResponse> {
+  const params = new URLSearchParams();
+  if (monthKey) params.set('month_key', monthKey);
+  const query = params.toString();
+  return apiFetch<AmateurDuelHistoryCalendarResponse>(
+    `/duel/amateur/history/calendar${query ? `?${query}` : ''}`,
+  );
 }

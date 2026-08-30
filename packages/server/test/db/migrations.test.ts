@@ -509,7 +509,12 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '075_tournament_classic.sql',
       '076_speed_bonus_game_balance.sql',
       '077_accuracy_world_tour_movement_balance.sql',
+      '078_amateur_rating_visibility.sql',
     ]);
+    const ratingVisibility = await pool.query<{ value: string }>(
+      `select value #>> '{}' as value from game_settings where key = 'amateur.rating_visibility'`,
+    );
+    expect(ratingVisibility.rows[0]?.value).toBe('enabled');
   });
 
   it('enforces the bonus snapshot, index, and enum constraint contract', async () => {
@@ -870,6 +875,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '075_tournament_classic.sql',
       '076_speed_bonus_game_balance.sql',
       '077_accuracy_world_tour_movement_balance.sql',
+      '078_amateur_rating_visibility.sql',
     ]);
 
     const activeInventory = await pool.query<{

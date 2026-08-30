@@ -95,7 +95,6 @@ import {
   cancelAmateurDuel,
   declineAmateurDuel,
   fetchAmateurEvents,
-  fetchAmateurHistory,
   fetchAmateurMatch,
   fetchAmateurMatches,
   fetchAmateurRating,
@@ -116,6 +115,8 @@ import {
   type AmateurDuelTemplate,
   type AmateurOpponent,
 } from '../api/amateurDuel.js';
+import { AmateurDuelRatingTab } from '../components/duel/AmateurDuelRatingTab.js';
+import { AmateurDuelHistoryTab } from '../components/duel/AmateurDuelHistoryTab.js';
 import { StartPeriodModal } from '../components/StartPeriodModal.js';
 import { getLastSeenAt, setLastSeenAt } from '../stores/seenPeriods.js';
 import { TournamentCatalog } from '../tournament/TournamentCatalog.js';
@@ -133,7 +134,6 @@ type BeginnerMode = 'daily' | 'training';
 type DailyView = 'arena' | 'play';
 type AmateurView = 'hub' | 'duels' | 'tournaments';
 type AmateurDuelTab = 'game' | 'locker' | 'rating' | 'history';
-type DuelHistoryFilter = 'current' | 'all' | string;
 type ModeInfoModalContent = { title: string; text: string };
 type ArenaEntryKind = 'daily' | 'training' | 'duel' | 'classic';
 interface ArenaEntry {
@@ -3316,33 +3316,6 @@ function currentMoscowSeasonKey(): string {
   return `${year}-${month}`;
 }
 
-function formatSeasonKeyLabel(seasonKey: string): string {
-  const match = /^(\d{4})-(\d{2})$/.exec(seasonKey);
-  if (!match) return seasonKey;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  if (!Number.isFinite(year) || !Number.isFinite(month)) return seasonKey;
-  return new Intl.DateTimeFormat('ru-RU', {
-    month: 'long',
-    year: 'numeric',
-  }).format(new Date(Date.UTC(year, month - 1, 1)));
-}
-
-function duelHistoryStats(matches: AmateurDuelMatch[]): {
-  duels: number;
-  wins: number;
-  points: number;
-} {
-  return matches.reduce(
-    (acc, match) => ({
-      duels: acc.duels + 1,
-      wins: acc.wins + (match.winner_user_id === match.me.user_id ? 1 : 0),
-      points: acc.points + match.me.result_points,
-    }),
-    { duels: 0, wins: 0, points: 0 },
-  );
-}
-
 function DuelStatusBadge({ match }: { match: AmateurDuelMatch }): JSX.Element {
   const status = duelOutcomeText(match);
   const dotColor =
@@ -3652,7 +3625,6 @@ function AmateurDuelsPage({
   const currentUserId = useAuthStore((s) => s.user?.id ?? null);
   const queryClient = useQueryClient();
   const [duelTab, setDuelTab] = useState<AmateurDuelTab>('game');
-  const [historyFilter, setHistoryFilter] = useState<DuelHistoryFilter>('current');
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [duelCreationMode, setDuelCreationMode] = useState<'matchmaking' | 'challenge'>(
     'matchmaking',
@@ -3666,7 +3638,7 @@ function AmateurDuelsPage({
   const [quickPickInfoOpen, setQuickPickInfoOpen] = useState(false);
   const [opponentSearchInfoOpen, setOpponentSearchInfoOpen] = useState(false);
   const [lockerInfoOpen, setLockerInfoOpen] = useState(false);
-  const [historyResultMatch, setHistoryResultMatch] = useState<AmateurDuelMatch | null>(null);
+  const [historyResultMatchId, setHistoryResultMatchId] = useState<string | null>(null);
   const [ratingProfile, setRatingProfile] = useState<UserPickerItem | null>(null);
   const [opponentQuery, setOpponentQuery] = useState('');
   const [selectedOpponent, setSelectedOpponent] = useState<AmateurOpponent | null>(null);
@@ -3691,25 +3663,14 @@ function AmateurDuelsPage({
     enabled: duelCreationMode === 'challenge',
   });
   const rating = useQuery({
-    queryKey: ['amateur-duel', 'rating'],
+    queryKey: ['amateur-duel', 'rating', 'current'],
     queryFn: () => fetchAmateurRating(),
   });
   const currentSeasonKey = rating.data?.season_key ?? currentMoscowSeasonKey();
-  const selectedHistorySeasonKey =
-    historyFilter === 'current'
-      ? currentSeasonKey
-      : historyFilter === 'all'
-        ? undefined
-        : historyFilter;
-  const historyQuery = useQuery({
-    queryKey: ['amateur-duel', 'history', selectedHistorySeasonKey ?? 'all'],
-    queryFn: () => fetchAmateurHistory(selectedHistorySeasonKey),
-    enabled: duelTab === 'history',
-  });
   const historyResultDetails = useQuery({
-    queryKey: ['amateur-duel', 'matches', historyResultMatch?.id],
-    queryFn: () => fetchAmateurMatch(historyResultMatch?.id ?? ''),
-    enabled: historyResultMatch !== null,
+    queryKey: ['amateur-duel', 'matches', historyResultMatchId],
+    queryFn: () => fetchAmateurMatch(historyResultMatchId ?? ''),
+    enabled: historyResultMatchId !== null,
   });
 
   const matchmakingMut = useMutation({
@@ -3761,20 +3722,13 @@ function AmateurDuelsPage({
   );
   const openDuelSlotsUsed = activeMatches.length;
   const hasOpenDuelSlot = openDuelSlotsUsed < 5;
-  const filteredHistory = historyQuery.data?.matches ?? [];
-  const historyStats = historyQuery.data?.stats ?? duelHistoryStats(filteredHistory);
-  const historySeasons = Array.from(
-    new Set([currentSeasonKey, ...(historyQuery.data?.seasons ?? [])]),
+  const currentMatches = activeMatches.filter((match) => match.status !== 'invited');
+  const incomingInvites = activeMatches.filter(
+    (match) => match.status === 'invited' && match.me.side === 'opponent',
   );
-  const historyFilterItems = [
-    { id: 'current', label: 'Текущий месяц' },
-    ...historySeasons
-      .filter((seasonKey) => seasonKey !== currentSeasonKey)
-      .map((seasonKey) => ({ id: seasonKey, label: formatSeasonKeyLabel(seasonKey) })),
-    { id: 'all', label: 'Всё время' },
-  ];
-  const historyRatingPlace =
-    selectedHistorySeasonKey !== undefined ? (historyQuery.data?.rating_place ?? null) : null;
+  const outgoingInvites = activeMatches.filter(
+    (match) => match.status === 'invited' && match.me.side === 'challenger',
+  );
   const selectedTemplate = selectedTemplateId
     ? (templateItems.find((item) => item.id === selectedTemplateId) ?? null)
     : (templateItems[0] ?? null);
@@ -3816,6 +3770,40 @@ function AmateurDuelsPage({
     selectedOpponent !== null &&
     !challengeMut.isPending;
 
+  useEffect(() => {
+    if (rating.data?.rating_visible === false && duelTab === 'rating') setDuelTab('game');
+  }, [duelTab, rating.data?.rating_visible]);
+
+  const renderDuelCards = (items: AmateurDuelMatch[]) =>
+    items.map((match) => {
+      const canCancelInvite =
+        match.status === 'invited' && match.source === 'challenge' && match.me.side === 'challenger';
+      const canAnswerInvite = isDuelInviteForMe(match);
+      return (
+        <DuelListCard
+          key={match.id}
+          match={match}
+          onOpen={() => onOpenMatch(match.id)}
+          {...(canAnswerInvite
+            ? {
+                onAcceptInvite: () => acceptInviteMut.mutate(match.id),
+                onDeclineInvite: () => declineInviteMut.mutate(match.id),
+                inviteAnswerPending:
+                  (acceptInviteMut.isPending && acceptInviteMut.variables === match.id) ||
+                  (declineInviteMut.isPending && declineInviteMut.variables === match.id),
+              }
+            : {})}
+          {...(canCancelInvite
+            ? {
+                onCancelInvite: () => cancelChallengeMut.mutate(match.id),
+                cancelInvitePending:
+                  cancelChallengeMut.isPending && cancelChallengeMut.variables === match.id,
+              }
+            : {})}
+        />
+      );
+    });
+
   return (
     <ModeShell title="Дуэли" onBack={onBack} variant="section-hub">
       <SegmentedTabs
@@ -3824,20 +3812,48 @@ function AmateurDuelsPage({
         items={[
           { id: 'game', label: 'Игра' },
           { id: 'locker', label: 'Раздевалка' },
-          { id: 'rating', label: 'Рейтинг' },
+          ...(rating.data?.rating_visible === false
+            ? []
+            : [{ id: 'rating', label: 'Рейтинг' }]),
           { id: 'history', label: 'История' },
         ]}
         onChange={(id) => setDuelTab(id as AmateurDuelTab)}
       />
 
       {duelTab === 'game' && (
-        <>
-          <section
-            className="mode-setup-card duel-creation-card"
-            aria-label="Новая дуэль"
-            style={{ display: 'flex', flexDirection: 'column', gap: 10 }}
-          >
-            <div className="section-label section-label--page">Новая дуэль</div>
+        <div className="duel-game-layout">
+          <section className="duel-section" aria-label="Текущие дуэли">
+            <div className="duel-section-title">
+              Текущие дуэли ({openDuelSlotsUsed}/5)
+            </div>
+            {currentMatches.length === 0 ? (
+              <div role="status" className="glass duel-empty-current">
+                <Swords size={18} strokeWidth={2.2} aria-hidden="true" />
+                <span>Активных матчей пока нет</span>
+              </div>
+            ) : (
+              renderDuelCards(currentMatches)
+            )}
+          </section>
+          {incomingInvites.length > 0 && (
+            <section className="duel-section" aria-label="Входящие приглашения">
+              <div className="duel-section-title">Входящие приглашения</div>
+              {renderDuelCards(incomingInvites)}
+            </section>
+          )}
+          {outgoingInvites.length > 0 && (
+            <section className="duel-section" aria-label="Отправленные вызовы">
+              <div className="duel-section-title">Отправленные вызовы</div>
+              {renderDuelCards(outgoingInvites)}
+            </section>
+          )}
+          <div className="duel-section">
+            <div className="duel-section-title">Новая дуэль</div>
+            <section
+              className="mode-setup-card duel-creation-card"
+              aria-label="Новая дуэль"
+              style={{ display: 'flex', flexDirection: 'column', gap: 10 }}
+            >
             <SegmentedTabs
               ariaLabel="Сценарий новой дуэли"
               activeTab={duelCreationMode}
@@ -4253,93 +4269,10 @@ function AmateurDuelsPage({
                 )}
               </>
             )}
-          </section>
+            </section>
+          </div>
 
-          <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div
-              className="section-label section-label--page"
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                gap: 8,
-              }}
-            >
-              <span>Текущие дуэли ({openDuelSlotsUsed}/5)</span>
-            </div>
-            {activeMatches.length === 0 && (
-              <div
-                role="status"
-                className="glass"
-                style={{
-                  minHeight: 132,
-                  borderRadius: 22,
-                  padding: 16,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 8,
-                  textAlign: 'center',
-                  color: 'var(--muted)',
-                }}
-              >
-                <span
-                  aria-hidden="true"
-                  style={{
-                    width: 46,
-                    height: 46,
-                    borderRadius: 999,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    background: 'rgba(226, 240, 252, 0.52)',
-                    border: '1px solid rgba(255, 255, 255, 0.76)',
-                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9)',
-                  }}
-                >
-                  <Swords size={20} strokeWidth={2.2} />
-                </span>
-                <div style={{ fontSize: 12, fontWeight: 800, lineHeight: 1.35 }}>
-                  Пока нет приглашений и текущих дуэлей
-                </div>
-                <div style={{ fontSize: 11, fontWeight: 700, lineHeight: 1.35, opacity: 0.78 }}>
-                  Начните поиск или вызовите игрока выше.
-                </div>
-              </div>
-            )}
-            {activeMatches.map((match) => {
-              const canCancelInvite =
-                match.status === 'invited' &&
-                match.source === 'challenge' &&
-                match.me.side === 'challenger';
-              const canAnswerInvite = isDuelInviteForMe(match);
-              return (
-                <DuelListCard
-                  key={match.id}
-                  match={match}
-                  onOpen={() => onOpenMatch(match.id)}
-                  {...(canAnswerInvite
-                    ? {
-                        onAcceptInvite: () => acceptInviteMut.mutate(match.id),
-                        onDeclineInvite: () => declineInviteMut.mutate(match.id),
-                        inviteAnswerPending:
-                          (acceptInviteMut.isPending && acceptInviteMut.variables === match.id) ||
-                          (declineInviteMut.isPending && declineInviteMut.variables === match.id),
-                      }
-                    : {})}
-                  {...(canCancelInvite
-                    ? {
-                        onCancelInvite: () => cancelChallengeMut.mutate(match.id),
-                        cancelInvitePending:
-                          cancelChallengeMut.isPending && cancelChallengeMut.variables === match.id,
-                      }
-                    : {})}
-                />
-              );
-            })}
-          </section>
-        </>
+        </div>
       )}
 
       {duelTab === 'locker' && (
@@ -4350,188 +4283,25 @@ function AmateurDuelsPage({
       )}
 
       {duelTab === 'rating' && (
-        <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div className="section-label section-label--page">Рейтинг</div>
-          {(rating.data?.rating ?? []).length === 0 ? (
-            <div className="glass" style={{ borderRadius: 18, padding: 14, color: 'var(--muted)' }}>
-              Рейтинг появится после первых завершённых дуэлей.
-            </div>
-          ) : (
-            <>
-              <div
-                aria-hidden="true"
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '24px minmax(0, 1fr) auto',
-                  alignItems: 'center',
-                  gap: 8,
-                  padding: '0 14px 0',
-                  color: 'rgba(15, 23, 42, 0.55)',
-                  fontSize: 10,
-                  fontWeight: 900,
-                  letterSpacing: '0.14em',
-                  textTransform: 'uppercase',
-                }}
-              >
-                <span>#</span>
-                <span>Игрок</span>
-                <span>Очки</span>
-              </div>
-              {(rating.data?.rating ?? []).map((row, index) => {
-                const isMe = currentUserId === row.user_id;
-                return (
-                  <button
-                    type="button"
-                    key={row.user_id}
-                    className="glass"
-                    aria-label={`Открыть профиль ${row.display_name}`}
-                    onClick={() =>
-                      setRatingProfile({
-                        userId: row.user_id,
-                        displayName: row.display_name,
-                        avatarUrl: row.avatar_url,
-                      })
-                    }
-                    style={{
-                      width: '100%',
-                      borderRadius: 16,
-                      padding: '10px 14px',
-                      display: 'grid',
-                      gridTemplateColumns: '24px minmax(0, 1fr) auto',
-                      alignItems: 'center',
-                      gap: 8,
-                      minHeight: 48,
-                      color: isMe ? '#ffffff' : 'var(--ink)',
-                      fontSize: 14,
-                      fontWeight: 800,
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                      border: isMe
-                        ? '1px solid rgba(255,255,255,0.22)'
-                        : '1px solid rgba(255,255,255,0.8)',
-                      background: isMe
-                        ? 'linear-gradient(180deg, rgba(15, 23, 42, 0.94), rgba(30, 41, 59, 0.94))'
-                        : undefined,
-                      boxShadow: isMe ? '0 12px 24px rgba(15, 23, 42, 0.2)' : undefined,
-                    }}
-                  >
-                    <span>{index + 1}</span>
-                    <span
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 10,
-                        minWidth: 0,
-                      }}
-                    >
-                      <UserAvatar
-                        avatarUrl={row.avatar_url}
-                        name={row.display_name}
-                        size={34}
-                        fontSize={14}
-                        alt={`Аватар ${row.display_name}`}
-                      />
-                      <span
-                        style={{
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {row.display_name}
-                      </span>
-                    </span>
-                    <span
-                      style={{
-                        justifySelf: 'end',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {row.points}
-                    </span>
-                  </button>
-                );
-              })}
-            </>
-          )}
-        </section>
+        <AmateurDuelRatingTab
+          currentUserId={currentUserId}
+          initialSeasonKey={currentSeasonKey}
+          onOpenProfile={setRatingProfile}
+        />
       )}
 
       {duelTab === 'history' && (
-        <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div className="section-label section-label--page">История</div>
-          <GlassSelect
-            ariaLabel="Месяц истории дуэлей"
-            value={historyFilter}
-            options={historyFilterItems.map((item) => ({
-              value: item.id,
-              label: item.label,
-            }))}
-            onChange={setHistoryFilter}
-          />
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns:
-                selectedHistorySeasonKey !== undefined ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)',
-              gap: 8,
-            }}
-          >
-            <TotalCell label="ДУЭЛИ" value={String(historyStats.duels)} />
-            <TotalCell label="ПОБЕДЫ" value={String(historyStats.wins)} />
-            <TotalCell label="ОЧКИ" value={String(historyStats.points)} />
-            {selectedHistorySeasonKey !== undefined && (
-              <TotalCell
-                label="МЕСТО"
-                value={historyRatingPlace !== null ? `#${historyRatingPlace}` : '—'}
-              />
-            )}
-          </div>
-          {historyQuery.isLoading ? (
-            <div
-              style={{
-                color: 'rgba(15, 23, 42, 0.68)',
-                fontSize: 16,
-                fontWeight: 700,
-                lineHeight: 1.35,
-              }}
-            >
-              Загрузка истории...
-            </div>
-          ) : filteredHistory.length === 0 ? (
-            <div
-              style={{
-                color: 'rgba(15, 23, 42, 0.68)',
-                fontSize: 16,
-                fontWeight: 700,
-                lineHeight: 1.35,
-              }}
-            >
-              {selectedHistorySeasonKey
-                ? `За ${formatSeasonKeyLabel(selectedHistorySeasonKey)} сыгранных дуэлей пока нет.`
-                : 'Архив появится после первых завершённых дуэлей.'}
-            </div>
-          ) : (
-            filteredHistory
-              .slice(0, 12)
-              .map((match) => (
-                <DuelListCard
-                  key={match.id}
-                  match={match}
-                  onOpen={() => setHistoryResultMatch(match)}
-                />
-              ))
-          )}
-        </section>
+        <AmateurDuelHistoryTab
+          initialMonthKey={currentSeasonKey}
+          onOpenMatch={setHistoryResultMatchId}
+        />
       )}
-      {historyResultMatch && (
+      {historyResultMatchId && historyResultDetails.data?.match && (
         <DuelResultModal
-          match={historyResultDetails.data?.match ?? historyResultMatch}
+          match={historyResultDetails.data.match}
           isLoadingDetails={historyResultDetails.isFetching && !historyResultDetails.data}
           closeLabel="Понятно"
-          onClose={() => setHistoryResultMatch(null)}
+          onClose={() => setHistoryResultMatchId(null)}
         />
       )}
       {matchmakingRulesOpen && (
