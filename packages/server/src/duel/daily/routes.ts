@@ -13,6 +13,7 @@ import {
   evaluateDailyClosedAchievements,
   evaluateDailyPeriodClosedAchievements,
   evaluateDailyShotAchievements,
+  type DailyClosedAchievementEvent,
 } from '../../achievements/engine.js';
 import { AppError } from '../../plugins/errors.js';
 import { appendEvent } from '../eventLog.js';
@@ -634,6 +635,7 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
       throw new AppError('bad_request', 'invalid shot payload', 400);
     }
     const body = parsed.data;
+    let closedAchievementEvent: DailyClosedAchievementEvent | null = null;
 
     const response = await withTransaction(app, async (client): Promise<ShotSubmitResponse> => {
       const now = new Date();
@@ -861,19 +863,31 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
             day_pool_id: pool.id,
             reason: 'completed',
           });
-          await evaluateDailyClosedAchievements(client, {
+          closedAchievementEvent = {
             userId: req.user.id,
             dayPoolId: pool.id,
             dayDate: pool.day_date,
             totalPeriods: settings.daily.totalPeriods,
             shotsPerPeriod: settings.daily.shotsPerPeriod,
-          });
+          };
         }
       }
 
       const state = await buildState(client, currentPool, localToday, req.user.id, settings, now);
       return { server_result: serverResult, state };
     });
+    if (closedAchievementEvent !== null) {
+      const event: DailyClosedAchievementEvent = closedAchievementEvent;
+      scheduleDailyCompletionSideEffect(
+        () => evaluateDailyClosedAchievements(app.pg, event),
+        (error) => {
+          app.log.warn(
+            { err: error, userId: req.user.id, dayPoolId: event.dayPoolId },
+            'failed to evaluate achievements after daily completion',
+          );
+        },
+      );
+    }
     if (response.state.state === 'closed') {
       scheduleDailyCompletionSideEffect(
         async () => {

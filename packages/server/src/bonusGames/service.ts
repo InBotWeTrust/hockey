@@ -687,20 +687,44 @@ async function fetchAcceptedBonusShot(
   return rows[0] ?? null;
 }
 
-async function countBonusPeriodShots(
+interface BonusPeriodShotState {
+  count: number;
+  lastTapTime: number | null;
+  lastShooterTapTime: number | null;
+}
+
+async function fetchBonusPeriodShotState(
   client: PoolClient,
   attemptId: string,
   periodNumber: number,
-): Promise<number> {
-  const { rows } = await client.query<{ count: number }>(
-    `select count(*)::int as count
+): Promise<BonusPeriodShotState> {
+  const { rows } = await client.query<{
+    count: number;
+    last_tap_time: number | null;
+    last_shooter_tap_time: number | null;
+  }>(
+    `select count(*)::int as count,
+            (array_agg(
+              (input_payload->>'tapTime')::double precision
+              order by shot_index desc
+            ))[1] as last_tap_time,
+            (array_agg(
+              (input_payload->>'shooterTapTime')::double precision
+              order by shot_index desc
+            ))[1] as last_shooter_tap_time
        from shot_session
       where mode = 'bonus'
         and bonus_game_attempt_id = $1
         and period_number = $2`,
     [attemptId, periodNumber],
   );
-  return Number(rows[0]!.count);
+  const row = rows[0]!;
+  return {
+    count: Number(row.count),
+    lastTapTime: row.last_tap_time === null ? null : Number(row.last_tap_time),
+    lastShooterTapTime:
+      row.last_shooter_tap_time === null ? null : Number(row.last_shooter_tap_time),
+  };
 }
 
 function periodRuleForAttempt(attempt: BonusGameAttemptRow): BonusPeriodRule {
@@ -771,7 +795,6 @@ const BONUS_SHOT_STALE_TOLERANCE_MS = 12_000;
 const BONUS_SHOT_FUTURE_TOLERANCE_MS = 2_500;
 const BONUS_SHOT_CLOCK_RELATION_TOLERANCE_MS = 100;
 const BONUS_SHOT_TIMER_DRIFT_ALLOWANCE_PER_SHOT_MS = 2_000;
-const BONUS_SHOT_FLIGHT_DRIFT_ALLOWANCE_PER_SHOT_MS = 20;
 const BONUS_SHOT_RESULT_PAUSE_MS = 1_000;
 
 function invalidBonusShotTime(): AppError {
@@ -800,6 +823,7 @@ function assertBonusShotInputClockBase(
 function assertBonusShotTimeFresh(
   attempt: BonusGameAttemptRow,
   previousShots: number,
+  previousInput: { tapTime: number; shooterTapTime: number } | null,
   input: SubmitBonusShotInput['input'],
   rule: BonusPeriodRule,
   now: Date,
@@ -831,11 +855,16 @@ function assertBonusShotTimeFresh(
   }
 
   const shooterLag = input.tapTime - input.shooterTapTime;
-  const expectedShooterLag = previousShots * flightMs;
-  const relationTolerance =
-    BONUS_SHOT_CLOCK_RELATION_TOLERANCE_MS +
-    previousShots * BONUS_SHOT_FLIGHT_DRIFT_ALLOWANCE_PER_SHOT_MS;
-  if (Math.abs(shooterLag - expectedShooterLag) > relationTolerance) {
+  const previousShooterLag =
+    previousInput === null ? 0 : previousInput.tapTime - previousInput.shooterTapTime;
+  const expectedLagIncrease = previousInput === null ? 0 : flightMs;
+  // Validate one rendered flight at a time. Comparing against a theoretical
+  // zero-drift total made a harmless few milliseconds per animation accumulate
+  // until a later shot was rejected solely because its index was high.
+  if (
+    Math.abs(shooterLag - previousShooterLag - expectedLagIncrease) >
+    BONUS_SHOT_CLOCK_RELATION_TOLERANCE_MS
+  ) {
     throw invalidBonusShotTime();
   }
 }
@@ -889,11 +918,12 @@ export async function submitBonusShot(
       }
     } else {
       const rule = periodRuleForAttempt(attempt);
-      const acceptedShotCount = await countBonusPeriodShots(
+      const periodShotState = await fetchBonusPeriodShotState(
         client,
         attempt.id,
         attempt.current_period,
       );
+      const acceptedShotCount = periodShotState.count;
       const expectedShotIndex = acceptedShotCount + 1;
       if (input.claimedShotIndex !== expectedShotIndex) {
         deferredError = new AppError(
@@ -908,7 +938,21 @@ export async function submitBonusShot(
           409,
         );
       } else {
-        assertBonusShotTimeFresh(attempt, acceptedShotCount, input.input, rule, input.now);
+        const previousInput =
+          periodShotState.lastTapTime === null || periodShotState.lastShooterTapTime === null
+            ? null
+            : {
+                tapTime: periodShotState.lastTapTime,
+                shooterTapTime: periodShotState.lastShooterTapTime,
+              };
+        assertBonusShotTimeFresh(
+          attempt,
+          acceptedShotCount,
+          previousInput,
+          input.input,
+          rule,
+          input.now,
+        );
         const shotSeed = deriveShotSeed(
           attempt.attempt_seed,
           attempt.current_period,

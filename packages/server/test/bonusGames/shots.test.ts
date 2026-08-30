@@ -822,6 +822,53 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
     expect(attempt.rows[0]?.shots_taken).toBe(30);
   });
 
+  it('keeps accepting any admin-sized shot count with small per-shot renderer drift', async () => {
+    const userId = await createUser();
+    const period = { ...PERIODS[0]!, durationMs: 600_000, shotsLimit: 100 };
+    const game = await createGame({ targetGoals: 100, periods: [period] });
+    const attemptId = await createActiveAttempt(userId, game.id);
+    const flightMs = (PUCK_START.y - GOAL_OPENING.y) / period.puckSpeedPerMs;
+
+    for (let shotIndex = 1; shotIndex <= 100; shotIndex += 1) {
+      const previousShots = shotIndex - 1;
+      const wallElapsedMs = shotIndex * 3_000;
+      const tapTime = wallElapsedMs - previousShots * 1_000;
+      const input: ShotInput = {
+        tapTime,
+        // A late animation frame adds a few milliseconds to every rendered
+        // flight. That drift must not become an index-dependent rejection.
+        shooterTapTime: tapTime - previousShots * (flightMs + 25),
+        puckSpeedPerMs: period.puckSpeedPerMs,
+        shooterFrequency: period.shooterFrequency,
+        goalieFrequency: period.goalieFrequency,
+        goalFrequency: period.goalFrequency,
+      };
+      const claimedResult = resolvePerspectiveCourtShot(
+        input,
+        buildBonusGoalieConfig('shot-game-1', 'Игра 1', period),
+        deriveShotSeed(ATTEMPT_SEED, 1, shotIndex),
+        shotIndex,
+        STICK_NEUTRAL,
+        getSessionPhaseOffsets(ATTEMPT_SEED),
+      ).type;
+
+      await submitBonusShot(pool, {
+        userId,
+        attemptId,
+        claimedShotIndex: shotIndex,
+        input,
+        claimedResult,
+        now: new Date(NOW.getTime() + wallElapsedMs),
+      });
+    }
+
+    const attempt = await pool.query<{ shots_taken: number }>(
+      'select shots_taken::int from bonus_game_attempt where id = $1',
+      [attemptId],
+    );
+    expect(attempt.rows[0]?.shots_taken).toBe(100);
+  });
+
   it('accepts resumed clocks derived from authoritative elapsed time and accepted pauses', async () => {
     const userId = await createUser();
     const game = await createGame({ targetGoals: 3 });
