@@ -121,6 +121,38 @@ async function seedClassicTournament(pool: Pool) {
   );
 }
 
+async function configureIncompleteGamePolicy(
+  pool: Pool,
+  policy: 'all_shots' | 'completed_periods' | 'completed_game',
+): Promise<void> {
+  await pool.query(
+    `update tournament_revision
+        set rules_snapshot = jsonb_set(
+          jsonb_set(
+            rules_snapshot,
+            '{config,classicRules,incompleteResultPolicy}',
+            to_jsonb($2::text)
+          ),
+          '{config,classicRules,shotsPerPeriod}',
+          '2'::jsonb
+        )
+      where id = $1`,
+    [REVISION_ID, policy],
+  );
+}
+
+async function submitMiss(pool: Pool, shotIndex: number, now: Date): Promise<void> {
+  await submitClassicGameShot(pool, {
+    userId: PLAYER_ID,
+    tournamentId: TOURNAMENT_ID,
+    now,
+    seedSecret: SEED_SECRET,
+    shotIndex,
+    input: { tapTime: 0 },
+    claimedResult: 'miss',
+  });
+}
+
 describe.skipIf(!hasIntegrationEnv)('classic tournament game integration', () => {
   let pool: Pool;
 
@@ -164,6 +196,65 @@ describe.skipIf(!hasIntegrationEnv)('classic tournament game integration', () =>
     ]);
     const sessions = await pool.query(`select id from tournament_classic_session`);
     expect(sessions.rowCount).toBe(1);
+  });
+
+  it('does not duplicate a session or shot when requests arrive together', async () => {
+    const states = await Promise.all([
+      getClassicGameState(pool, {
+        userId: PLAYER_ID,
+        tournamentId: TOURNAMENT_ID,
+        now: NOW,
+        seedSecret: SEED_SECRET,
+      }),
+      getClassicGameState(pool, {
+        userId: PLAYER_ID,
+        tournamentId: TOURNAMENT_ID,
+        now: NOW,
+        seedSecret: SEED_SECRET,
+      }),
+    ]);
+    expect(new Set(states.map((state) => state.session_id)).size).toBe(1);
+
+    await startClassicGamePeriod(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+    });
+    const shots = await Promise.allSettled([
+      submitClassicGameShot(pool, {
+        userId: PLAYER_ID,
+        tournamentId: TOURNAMENT_ID,
+        now: NOW,
+        seedSecret: SEED_SECRET,
+        shotIndex: 1,
+        input: { tapTime: 0 },
+        claimedResult: 'miss',
+      }),
+      submitClassicGameShot(pool, {
+        userId: PLAYER_ID,
+        tournamentId: TOURNAMENT_ID,
+        now: NOW,
+        seedSecret: SEED_SECRET,
+        shotIndex: 1,
+        input: { tapTime: 0 },
+        claimedResult: 'miss',
+      }),
+    ]);
+
+    expect(shots.filter((shot) => shot.status === 'fulfilled')).toHaveLength(1);
+    expect(shots.filter((shot) => shot.status === 'rejected')).toHaveLength(1);
+    expect(
+      await pool.query(`select id from tournament_classic_session where tournament_id = $1`, [
+        TOURNAMENT_ID,
+      ]),
+    ).toMatchObject({ rowCount: 1 });
+    expect(
+      await pool.query(`select id from shot_session where mode = 'tournament_classic'`),
+    ).toMatchObject({ rowCount: 1 });
+    expect(
+      await pool.query(`select lifetime_shots_total from users where id = $1`, [PLAYER_ID]),
+    ).toMatchObject({ rows: [{ lifetime_shots_total: 1 }] });
   });
 
   it('plays three one-shot periods, updates lifetime totals and records one tournament result', async () => {
@@ -239,4 +330,46 @@ describe.skipIf(!hasIntegrationEnv)('classic tournament game integration', () =>
     );
     expect(session.rows).toEqual([{ state: 'expired' }]);
   });
+
+  it.each([
+    { policy: 'all_shots' as const, expectedShots: 1, expectedCounted: true },
+    { policy: 'completed_periods' as const, expectedShots: 2, expectedCounted: true },
+    { policy: 'completed_game' as const, expectedShots: 0, expectedCounted: false },
+  ])(
+    'applies the $policy rule when the tournament day ends',
+    async ({ policy, expectedShots, expectedCounted }) => {
+      await configureIncompleteGamePolicy(pool, policy);
+      await startClassicGamePeriod(pool, {
+        userId: PLAYER_ID,
+        tournamentId: TOURNAMENT_ID,
+        now: NOW,
+        seedSecret: SEED_SECRET,
+      });
+      await submitMiss(pool, 1, NOW);
+
+      if (policy === 'completed_periods') {
+        await submitMiss(pool, 2, new Date(NOW.getTime() + 1));
+        const secondPeriodAt = new Date(NOW.getTime() + 2);
+        await startClassicGamePeriod(pool, {
+          userId: PLAYER_ID,
+          tournamentId: TOURNAMENT_ID,
+          now: secondPeriodAt,
+          seedSecret: SEED_SECRET,
+        });
+        await submitMiss(pool, 1, secondPeriodAt);
+      }
+
+      await finalizeDueClassicTournamentDays(pool, {
+        now: new Date('2030-09-01T21:00:00.000Z'),
+        seedSecret: SEED_SECRET,
+      });
+
+      const result = await pool.query<{ shots: number; completed: boolean }>(
+        `select shots, completed from tournament_daily_result
+          where tournament_id = $1 and participant_id = $2 and tournament_day = 1`,
+        [TOURNAMENT_ID, PARTICIPANT_ID],
+      );
+      expect(result.rows).toEqual([{ shots: expectedShots, completed: expectedCounted }]);
+    },
+  );
 });

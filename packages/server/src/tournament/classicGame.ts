@@ -100,6 +100,8 @@ export interface ClassicGameState {
   daily_seed: string;
   goalie_id: string;
   shots_per_period: number;
+  period_duration_ms: number;
+  break_duration_ms: number;
   total_periods: 3;
   period_speed_presets: TournamentClassicRules['periodSpeedPresets'];
   recent_periods: ClassicPeriodLogEntry[];
@@ -356,10 +358,7 @@ async function fetchPeriods(client: PoolClient, sessionId: string): Promise<Clas
   return rows;
 }
 
-async function refreshDayPlacements(
-  client: PoolClient,
-  context: ClassicContext,
-): Promise<void> {
+async function refreshDayPlacements(client: PoolClient, context: ClassicContext): Promise<void> {
   const results = await client.query<{
     participant_id: string;
     goals: number;
@@ -666,6 +665,8 @@ async function buildState(
     daily_seed: session.session_seed,
     goalie_id: session.rules_snapshot.goalieId,
     shots_per_period: session.rules_snapshot.shotsPerPeriod,
+    period_duration_ms: session.rules_snapshot.periodDurationMs,
+    break_duration_ms: session.rules_snapshot.breakDurationMs,
     total_periods: 3,
     period_speed_presets: session.rules_snapshot.periodSpeedPresets,
     recent_periods: periods.map((period) => ({
@@ -745,12 +746,7 @@ export async function listActiveClassicGames(
     tournament_day: Number(row.tournament_day),
     starts_at: row.starts_at.toISOString(),
     closes_at: row.ends_at.toISOString(),
-    state:
-      row.state === null
-        ? 'available'
-        : row.state === 'expired'
-          ? 'closed'
-          : row.state,
+    state: row.state === null ? 'available' : row.state === 'expired' ? 'closed' : row.state,
     current_period: Number(row.current_period ?? 0),
     total_shots: Number(row.total_shots),
     total_goals: Number(row.total_goals),
@@ -778,7 +774,11 @@ export async function startClassicGamePeriod(
     let session = await getOrCreateSession(client, context, input.userId, input.seedSecret);
     session = await reconcileSession(client, context, session, input.now);
     if (session.state !== 'idle') {
-      throw new AppError('conflict', `cannot start classic period in state '${session.state}'`, 409);
+      throw new AppError(
+        'conflict',
+        `cannot start classic period in state '${session.state}'`,
+        409,
+      );
     }
     if (session.current_period >= 3) {
       throw new AppError('conflict', 'all classic periods are completed', 409);

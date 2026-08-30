@@ -429,7 +429,11 @@ export async function listPlayerTournaments(pool: Pool, userId: string) {
         ? null
         : (finalPlaceByParticipant.get(row.my_participant_id) ?? null);
   }
-  return rows.map(mapTournament);
+  const formats = await playoffFormatsByTournament(pool, rows);
+  return rows.map((row) => ({
+    ...mapTournament(row),
+    playoffFormats: formats.get(row.id) ?? [],
+  }));
 }
 
 export async function getTournament(pool: Pool, tournamentId: string, userId?: string) {

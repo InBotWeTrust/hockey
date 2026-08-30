@@ -653,7 +653,7 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
               playoffStartsAt={tournamentPlayoffStartsAt(tournament)}
               onOpenDailyGame={() => {
                 const params = new URLSearchParams({
-                  view: 'daily',
+                  view: tournament.regularSource === 'classic' ? 'classic' : 'daily',
                   section: 'tournaments',
                   tournament: tournament.id,
                   tab: 'schedule',

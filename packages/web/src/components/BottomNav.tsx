@@ -102,6 +102,7 @@ function isOpenRinkRoute(location: NavLocation): boolean {
   const params = new URLSearchParams(location.search);
   const view = params.get('view');
   if (view === 'daily') return true;
+  if (view === 'classic') return true;
   if (view === 'training' && params.get('play') === '1') return true;
   return view === 'amateur' && params.has('match') && params.get('play') === '1';
 }

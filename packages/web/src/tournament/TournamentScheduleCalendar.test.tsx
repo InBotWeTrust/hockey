@@ -220,6 +220,39 @@ describe('TournamentScheduleCalendar', () => {
     expect(screen.queryByText('Ваш результат')).not.toBeInTheDocument();
   });
 
+  it('opens the separate classic tournament game from its matchday', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2030-09-01T12:00:00.000Z'));
+    const openGame = vi.fn();
+    render(
+      <TournamentScheduleCalendar
+        fixtures={[]}
+        matchdays={[
+          {
+            id: 'classic-day-1',
+            number: 1,
+            localDate: '2030-09-01',
+            startsAt: '2030-09-01T00:00:00.000Z',
+            endsAt: '2030-09-02T00:00:00.000Z',
+            myResult: null,
+          },
+        ]}
+        regularSource="classic"
+        currentUserId="me"
+        isParticipant
+        timezone="Europe/Moscow"
+        rangeStartsAt="2030-09-01T00:00:00.000Z"
+        rangeEndsAt="2030-09-02T00:00:00.000Z"
+        renderFixture={() => null}
+        formatDateTime={(value) => value}
+        onOpenDailyGame={openGame}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть турнирную игру' }));
+    expect(openGame).toHaveBeenCalledOnce();
+  });
+
   it('keeps an empty in-range month visible after manual navigation', () => {
     render(
       <TournamentScheduleCalendar
