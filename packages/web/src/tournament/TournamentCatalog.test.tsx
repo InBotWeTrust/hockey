@@ -423,7 +423,7 @@ describe('TournamentCatalog', () => {
     expect(screen.getByText('Можно начинать игру')).toBeInTheDocument();
     expect(screen.getByText('Запланирована')).toBeInTheDocument();
     expect(screen.getByLabelText('Площадка: Дома')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Площадка: Нейтрально')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Площадка: Нейтральное поле')).not.toBeInTheDocument();
     expect(sections).toBeInTheDocument();
   });
 

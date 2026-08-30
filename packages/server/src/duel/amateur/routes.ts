@@ -2950,7 +2950,7 @@ function formatDuelInviteTtl(ms: number): string {
 
 function duelKindLabel(kind: DuelKind): string {
   if (kind === 'express') return 'Экспресс';
-  if (kind === 'express_plus') return 'Экспресс+';
+  if (kind === 'express_plus') return 'Микс';
   return 'Классика';
 }
 
@@ -3677,6 +3677,9 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
       opponent_goals: number;
       winner_user_id: string | null;
       outcome: DuelOutcome;
+      source: AmateurDuelSource;
+      home_user_id: string | null;
+      venue_policy: MatchmakingVenuePolicy | 'direct_challenge' | 'home_selected' | null;
     }>(
       `select m.id,
               extract(day from m.settled_at at time zone $2)::int as local_day,
@@ -3688,7 +3691,10 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
               me.goals as my_goals,
               opponent.goals as opponent_goals,
               m.winner_user_id,
-              m.outcome
+              m.outcome,
+              m.source,
+              m.home_user_id,
+              m.venue_policy
          ${validDuelSql}
           and to_char(m.settled_at at time zone $2, 'YYYY-MM') = $3
         order by m.settled_at asc`,
@@ -3736,6 +3742,14 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
         duel_kind: row.duel_kind,
         my_goals: Number(row.my_goals),
         opponent_goals: Number(row.opponent_goals),
+        venue_role: duelVenueRole(
+          {
+            source: row.source,
+            venuePolicy: row.venue_policy,
+            homeUserId: row.home_user_id,
+          },
+          req.user.id,
+        ),
         result,
       });
       days.set(row.local_day, matches);

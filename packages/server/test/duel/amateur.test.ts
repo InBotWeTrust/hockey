@@ -415,7 +415,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
   }
 
   it('creates a pending challenge and rejects duplicate open matches', async () => {
-    const templateId = await createTemplate();
+    const templateId = await createTemplate({ duelKind: 'express_plus', totalPeriods: 2 });
     const first = await challenge(templateId);
     expect(first.statusCode).toBe(200);
     expect(first.json().match.status).toBe('invited');
@@ -428,6 +428,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
         limit 1`,
     );
     expect(inviteMessage.rows[0]?.content).toContain('Ответить: в течение 15 мин');
+    expect(inviteMessage.rows[0]?.content).toContain('Формат: Микс, 2 период(а)');
     expect(inviteMessage.rows[0]?.content.split('\n')[0]).toBe('Player A вызывает вас на дуэль.');
     expect(inviteMessage.rows[0]?.content).not.toContain('Окно:');
     expect(Date.parse(String(inviteMessage.rows[0]?.metadata.endsAt))).toBeLessThan(
@@ -1660,6 +1661,12 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       opponentState: 'completed',
       outcome: 'challenger_win',
     });
+    await pool.query(
+      `update amateur_duel_match
+          set source = 'tournament', home_user_id = $2, venue_policy = 'home_selected'
+        where id = $1`,
+      [includedId, userA],
+    );
     await insertHistoryMatch({
       settledAt: '2026-05-02T12:00:00.000Z',
       settledReason: 'no_show',
@@ -1695,7 +1702,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(response.json().days).toEqual([
       expect.objectContaining({
         day: 30,
-        matches: [expect.objectContaining({ id: includedId, result: 'win' })],
+        matches: [expect.objectContaining({ id: includedId, result: 'win', venue_role: 'home' })],
       }),
     ]);
   });

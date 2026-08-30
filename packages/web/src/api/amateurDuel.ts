@@ -316,6 +316,7 @@ export interface AmateurDuelHistoryCalendarMatch {
   duel_kind: AmateurDuelKind;
   my_goals: number;
   opponent_goals: number;
+  venue_role: 'home' | 'away' | 'neutral';
   result: 'win' | 'draw' | 'loss';
 }
 

@@ -209,7 +209,11 @@ describe.skipIf(!hasIntegrationEnv)('077 accuracy World Tour movement balance', 
       ]);
     }
 
-    expect(applied.applied).toEqual([MIGRATION_NAME]);
+    expect(applied.applied).toEqual([
+      MIGRATION_NAME,
+      '078_amateur_rating_visibility.sql',
+      '079_rename_express_plus_to_mix.sql',
+    ]);
     const attempt = await pool.query<{
       status: string;
       definition_revision: number;

@@ -89,6 +89,46 @@ const trainingActiveState: TrainingStateResponse = {
   started_at: '2026-04-25T11:55:00.000Z',
 };
 
+const challengeTemplates = [
+  {
+    id: 'classic-template',
+    title: 'Классика',
+    duel_kind: 'classic',
+    total_periods: 3,
+    shots_per_period: 30,
+    period_duration_ms: 1_200_000,
+    period_rules: [1, 2, 3].map((periodNumber) => ({
+      periodNumber,
+      mode: 'quota',
+      durationMs: 1_200_000,
+      shotsLimit: 30,
+    })),
+  },
+  {
+    id: 'mix-template',
+    title: 'Микс',
+    duel_kind: 'express_plus',
+    total_periods: 2,
+    shots_per_period: 30,
+    period_duration_ms: 180_000,
+    period_rules: [
+      { periodNumber: 1, mode: 'quota', durationMs: 180_000, shotsLimit: 30 },
+      { periodNumber: 2, mode: 'time_attack', durationMs: 180_000, shotsLimit: null },
+    ],
+  },
+  {
+    id: 'express-template',
+    title: 'Экспресс',
+    duel_kind: 'express',
+    total_periods: 1,
+    shots_per_period: 30,
+    period_duration_ms: 180_000,
+    period_rules: [
+      { periodNumber: 1, mode: 'time_attack', durationMs: 180_000, shotsLimit: null },
+    ],
+  },
+];
+
 const classicIdleState: ClassicTournamentState = {
   ...baseState,
   tournament_id: 'classic-1',
@@ -863,6 +903,7 @@ describe('DailyScreen', () => {
     localStorage.setItem('hockey.arenaSelectedEntryId', 'training');
     const activeMatch: AmateurDuelMatchState = {
       ...settledDuelMatch,
+      rules: { ...settledDuelMatch.rules, duelKind: 'express_plus' },
       status: 'active',
       outcome: null,
       winner_user_id: null,
@@ -909,7 +950,25 @@ describe('DailyScreen', () => {
     renderWith(['/?view=arena']);
 
     await screen.findByRole('article', { name: 'Активная дуэль: Duel Opponent' });
-    expect(screen.getByLabelText('Площадка: Нейтрально')).toBeInTheDocument();
+    expect(screen.getByText('Активная дуэль (Ваш ход)')).toBeInTheDocument();
+    expect(screen.queryByText('Ваш ход')).not.toBeInTheDocument();
+    expect(screen.getByText('Duel Opponent')).toHaveClass('arena-duel-opponent-name');
+    const formatHeading = screen.getByText('Микс');
+    expect(formatHeading).toHaveClass('arena-duel-format-heading');
+    expect(formatHeading).toHaveStyle({
+      color: 'rgba(247, 254, 255, 0.92)',
+      marginTop: '3px',
+      textAlign: 'center',
+    });
+    expect(screen.getByLabelText('Площадка: Нейтральное поле')).toHaveClass(
+      'arena-duel-venue-label',
+    );
+    expect(screen.getByLabelText('Площадка: Нейтральное поле')).not.toHaveClass('venue-badge');
+    const duelIdentity = screen
+      .getByRole('article', { name: 'Активная дуэль: Duel Opponent' })
+      .querySelector('.arena-duel-identity');
+    expect(duelIdentity).toHaveStyle({ gap: 'clamp(5px, 1vh, 8px)' });
+    expect(duelIdentity).not.toContainElement(formatHeading);
     expect(screen.getByLabelText('Выбрать Активная дуэль')).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(screen.getByLabelText('Выбрать Ежедневная игра'));
     expect(
@@ -965,16 +1024,25 @@ describe('DailyScreen', () => {
 
     renderWith(['/?view=arena']);
 
-    expect(await screen.findByText('Ждём ответ соперника')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Активная дуэль (Ждём ответ соперника)'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Ждём ответ соперника')).not.toBeInTheDocument();
     expect(screen.getByText('До автоотмены')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Ждём ответ' })).toBeInTheDocument();
 
     const duelDots = await screen.findAllByLabelText('Выбрать Активная дуэль');
     fireEvent.click(duelDots[1] as HTMLElement);
 
-    expect(await screen.findByText('Вас вызвали')).toBeInTheDocument();
+    expect(await screen.findByText('Активная дуэль (Вас вызвали)')).toBeInTheDocument();
+    expect(screen.queryByText('Вас вызвали')).not.toBeInTheDocument();
     expect(screen.getByText('До ответа')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Принять' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Отклонить' })).toHaveClass(
+      'arena-duel-invite-action--decline',
+    );
+    expect(screen.getByRole('button', { name: 'Принять' })).toHaveClass(
+      'arena-duel-invite-action--accept',
+    );
   });
 
   it('restores the last selected arena card after returning home', async () => {
@@ -2551,12 +2619,34 @@ describe('DailyScreen', () => {
             available_months: ['2026-05', '2026-04'],
             range: { from: '2026-04', to: '2026-05' },
             stats: { played: 2, wins: 1, draws: 0, losses: 1, win_percentage: 50 },
-            days: [{ day: 16, matches: [{
-              id: settledDuelMatch.id,
-              settled_at: settledDuelMatch.settled_at,
-              opponent: { user_id: 'u2', display_name: 'Duel Opponent', avatar_url: null },
-              duel_kind: 'classic', my_goals: 3, opponent_goals: 1, result: 'win',
-            }] }],
+            days: [{ day: 16, matches: [
+              {
+                id: 'calendar-loss-1', settled_at: '2026-05-16T08:00:00.000Z',
+                opponent: { user_id: 'u3', display_name: 'First Opponent', avatar_url: null },
+                duel_kind: 'express', my_goals: 1, opponent_goals: 2, result: 'loss',
+              },
+              {
+                id: settledDuelMatch.id, settled_at: settledDuelMatch.settled_at,
+                opponent: { user_id: 'u2', display_name: 'Duel Opponent', avatar_url: null },
+                duel_kind: 'classic', my_goals: 3, opponent_goals: 1, result: 'win',
+                venue_role: 'home',
+              },
+              {
+                id: 'calendar-loss-2', settled_at: '2026-05-16T10:00:00.000Z',
+                opponent: { user_id: 'u4', display_name: 'Third Opponent', avatar_url: null },
+                duel_kind: 'express_plus', my_goals: 0, opponent_goals: 1, result: 'loss',
+              },
+              {
+                id: 'calendar-win-2', settled_at: '2026-05-16T11:00:00.000Z',
+                opponent: { user_id: 'u5', display_name: 'Fourth Opponent', avatar_url: null },
+                duel_kind: 'express', my_goals: 2, opponent_goals: 0, result: 'win',
+              },
+              {
+                id: 'calendar-win-3', settled_at: '2026-05-16T12:00:00.000Z',
+                opponent: { user_id: 'u6', display_name: 'Fifth Opponent', avatar_url: null },
+                duel_kind: 'classic', my_goals: 4, opponent_goals: 2, result: 'win',
+              },
+            ] }],
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
         );
@@ -2583,17 +2673,52 @@ describe('DailyScreen', () => {
 
     fireEvent.click(await screen.findByRole('tab', { name: 'История' }));
 
-    fireEvent.click(await screen.findByRole('button', { name: '16, сыграно дуэлей: 1' }));
+    const historyHeading = within(await screen.findByLabelText('История дуэлей')).getByText('История');
+    expect(historyHeading).toHaveClass('section-label', 'duel-section-title');
+    const lifetimeSummary = screen.getByLabelText('За всё время');
+    const calendar = await screen.findByLabelText('Календарь дуэлей: Май 2026');
+    const monthSummary = screen.getByLabelText('Статистика за май');
+    expect(lifetimeSummary).toHaveClass('glass', 'duel-history-summary');
+    expect(monthSummary).toHaveClass('glass', 'duel-history-summary');
+    expect(calendar).toHaveClass('daily-calendar');
+    expect(lifetimeSummary.nextElementSibling).toBe(monthSummary);
+    expect(monthSummary.nextElementSibling).toBe(calendar);
+    expect(within(monthSummary).getByText('60% побед')).toBeInTheDocument();
+    const playedDay = screen.getByRole('button', { name: '16, сыграно дуэлей: 5' });
+    expect(playedDay).toHaveClass(
+      'daily-calendar__day--duel',
+    );
+    expect(within(playedDay).getByLabelText('Количество дуэлей: 5')).toHaveTextContent('5');
+    expect(
+      Array.from(playedDay.querySelectorAll('.daily-calendar__duel-result')).map((dot) =>
+        dot.className.split(' ').at(-1),
+      ),
+    ).toEqual([
+      'daily-calendar__duel-result--loss',
+      'daily-calendar__duel-result--win',
+      'daily-calendar__duel-result--loss',
+      'daily-calendar__duel-result--win',
+      'daily-calendar__duel-result--win',
+    ]);
+    expect(screen.getByText('Игровой день')).toBeInTheDocument();
+    expect(screen.getByText('Победа')).toBeInTheDocument();
+    expect(screen.getByText('Поражение')).toBeInTheDocument();
+    expect(screen.getByText('Ничья')).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Месяц календаря дуэлей' })).not.toBeInTheDocument();
+
+    fireEvent.click(playedDay);
+    expect(await screen.findByRole('dialog', { name: 'Дуэли за 16 мая' })).toBeInTheDocument();
     expect(await screen.findByText('Duel Opponent')).toBeInTheDocument();
-    expect(screen.getByText('50%')).toBeInTheDocument();
+    expect(screen.getByText('Классика · 3:1 · Дома')).toBeInTheDocument();
+    expect(screen.getByText('50% побед')).toBeInTheDocument();
     expect(screen.queryByText('No Show')).not.toBeInTheDocument();
     expect(screen.queryByText('Cancelled Player')).not.toBeInTheDocument();
     expect(screen.queryByText('Ответа не было')).not.toBeInTheDocument();
     expect(screen.queryByText('Вы отменили вызов')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
-    fireEvent.click(screen.getByRole('combobox', { name: 'Месяц календаря дуэлей' }));
-    fireEvent.click(await screen.findByRole('option', { name: 'апрель 2026 г.' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Предыдущий месяц' }));
+    expect(await screen.findByRole('heading', { name: 'Апрель 2026' })).toBeInTheDocument();
 
     fireEvent.click(await screen.findByRole('button', { name: '12, сыграно дуэлей: 1' }));
     expect(await screen.findByText('April Opponent')).toBeInTheDocument();
@@ -2837,7 +2962,243 @@ describe('DailyScreen', () => {
     expect(outgoingRegion.compareDocumentPosition(creation) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.queryByRole('region', { name: 'Входящие приглашения' })).not.toBeInTheDocument();
     expect(within(creation).queryByText('Новая дуэль')).not.toBeInTheDocument();
-    expect(screen.getByText('Текущие дуэли (2/5)')).toBeInTheDocument();
+    expect(screen.getByText('Текущие дуэли (2/5)')).toHaveClass(
+      'section-label',
+      'duel-section-title',
+    );
+    expect(screen.getByText('Новая дуэль')).toHaveClass('section-label', 'duel-section-title');
+  });
+
+  it('renders plain duel metadata and muted invite actions', async () => {
+    const currentMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      id: 'current-layout-match',
+      status: 'active',
+      settled_at: null,
+      settled_reason: null,
+      outcome: null,
+      winner_user_id: null,
+      me: { ...settledDuelMatch.me, state: 'accepted' },
+      opponent: {
+        ...settledDuelMatch.opponent,
+        display_name: 'Александр Очень-Длинная-Фамилия',
+        state: 'accepted',
+      },
+    };
+    const incomingMatch: AmateurDuelMatchState = {
+      ...currentMatch,
+      id: 'incoming-layout-match',
+      status: 'invited',
+      me: { ...currentMatch.me, side: 'opponent', state: 'invited' },
+      opponent: {
+        ...currentMatch.opponent,
+        display_name: 'Мария Север',
+        side: 'challenger',
+        state: 'loadout_pending',
+      },
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/templates')) {
+        return new Response(JSON.stringify({ templates: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/matches')) {
+        return new Response(JSON.stringify({ matches: [currentMatch, incomingMatch] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/rating')) {
+        return new Response(
+          JSON.stringify({
+            season_key: '2026-05',
+            rating_visible: true,
+            available_seasons: ['2026-05'],
+            rating: [],
+            me_rank: null,
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=amateur&section=duels']);
+
+    const currentRegion = await screen.findByRole('region', { name: 'Текущие дуэли' });
+    const currentStatus = await within(currentRegion).findByLabelText('Статус: Ваш ход');
+    expect(currentStatus).toHaveClass('duel-card-status');
+    expect(currentStatus.parentElement).toHaveClass('duel-card-heading');
+    expect(currentStatus.querySelector('[aria-hidden="true"]')).not.toBeInTheDocument();
+
+    const incomingRegion = await screen.findByRole('region', { name: 'Входящие приглашения' });
+    const incomingStatus = within(incomingRegion).getByLabelText('Статус: Вас вызвали');
+    expect(incomingStatus).toHaveClass('duel-card-status');
+    expect(incomingStatus.parentElement).toHaveClass('duel-card-heading');
+    const venue = within(incomingRegion).getByLabelText('Площадка: Нейтральное поле');
+    expect(venue).toHaveClass('duel-card-venue');
+    expect(venue).not.toHaveClass('venue-badge');
+    expect(within(incomingRegion).getByRole('button', { name: 'Отклонить' })).toHaveClass(
+      'duel-invite-action--decline',
+    );
+    expect(within(incomingRegion).getByRole('button', { name: 'Принять' })).toHaveClass(
+      'duel-invite-action--accept',
+    );
+  });
+
+  it('uses compact shared section headings in the locker and challenge form', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/inventory/me')) {
+        return new Response(
+          JSON.stringify({
+            balances: { tokens: 0, stars: 0, experience: 0 },
+            equipped: { stickItemId: null, skatesItemId: null, nutritionItemId: null },
+            items: { stick: [], skates: [], nutrition: [] },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/templates')) {
+        return new Response(JSON.stringify({ templates: challengeTemplates }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/opponents')) {
+        return new Response(JSON.stringify({ users: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/matches')) {
+        return new Response(JSON.stringify({ matches: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/rating')) {
+        return new Response(
+          JSON.stringify({
+            season_key: '2026-05',
+            rating_visible: true,
+            available_seasons: ['2026-05'],
+            rating: [],
+            me_rank: null,
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=amateur&section=duels']);
+    fireEvent.click(await screen.findByRole('tab', { name: 'Раздевалка' }));
+
+    expect(screen.queryByText('Доступный инвентарь')).not.toBeInTheDocument();
+    const infoButton = screen.getByRole('button', { name: 'Что такое раздевалка' });
+    expect(infoButton).toHaveClass('duel-section-info-btn');
+    expect(infoButton.querySelector('svg')).toHaveAttribute('stroke', 'rgba(240, 248, 255, 0.92)');
+    const lockerSlots = [
+      screen.getByRole('button', { name: /^Коньки:/ }),
+      screen.getByRole('button', { name: /^Клюшка:/ }),
+      screen.getByRole('button', { name: /^Питание:/ }),
+    ];
+    const lockerKindHeadings = ['Коньки', 'Клюшка', 'Питание'].map((title) =>
+      screen.getByText(title, { selector: '.duel-locker-kind-section__title' }),
+    );
+    expect(lockerKindHeadings).toHaveLength(3);
+    lockerKindHeadings.forEach((title, index) => {
+      expect(title).toHaveClass('duel-section-title');
+      expect(title.parentElement).toHaveClass('duel-locker-kind-section');
+      expect(title.parentElement).toContainElement(lockerSlots[index]!);
+    });
+    expect(lockerKindHeadings[0]).toHaveClass('duel-section-title--with-action');
+    expect(lockerKindHeadings[0]).toContainElement(infoButton);
+    for (const slot of lockerSlots) {
+      expect(slot).toHaveClass('duel-locker-slot');
+      expect(slot.querySelector('.card-chevron')).toBeInTheDocument();
+      expect(slot.querySelector('.duel-locker-slot__copy')).toHaveClass(
+        'amateur-hub-card__copy',
+      );
+    }
+    expect(lockerSlots[0]).toHaveAccessibleName('Коньки: Обычные коньки. Базовый вариант');
+    expect(lockerSlots[1]).toHaveAccessibleName('Клюшка: Обычная клюшка. Базовый вариант');
+    expect(lockerSlots[2]).toHaveAccessibleName('Питание: Без питания. Базовый вариант');
+    expect(lockerSlots[0]?.querySelector('img')).toHaveAttribute(
+      'src',
+      expect.stringContaining('/inventory/skates-base.webp'),
+    );
+    expect(lockerSlots[1]?.querySelector('img')).toHaveAttribute(
+      'src',
+      expect.stringContaining('/inventory/stick-base.webp'),
+    );
+    expect(lockerSlots[2]?.querySelector('img')).toHaveAttribute(
+      'src',
+      expect.stringContaining('/inventory/nutrition-none.webp'),
+    );
+
+    fireEvent.click(lockerSlots[1]!);
+    const equipmentDialog = screen.getByRole('dialog', { name: 'Клюшка' });
+    const baseStick = within(equipmentDialog).getByRole('button', { name: /Обычная клюшка/ });
+    expect(baseStick).toHaveAttribute('aria-pressed', 'true');
+    expect(baseStick).toHaveClass('duel-equipment-option', 'duel-equipment-option--selected');
+    expect(baseStick.querySelector('.duel-equipment-option__check--selected svg')).toBeInTheDocument();
+    const emptyMessage = within(equipmentDialog).getByText('Купленных клюшек пока нет');
+    expect(emptyMessage).toHaveClass('duel-equipment-empty__message');
+    expect(emptyMessage.parentElement).toHaveClass('duel-equipment-empty');
+    expect(emptyMessage.parentElement).not.toHaveClass('glass');
+    expect(within(equipmentDialog).getByRole('button', { name: 'В магазин' })).toHaveClass(
+      'btn--cta',
+      'duel-equipment-empty__action',
+    );
+    fireEvent.click(within(equipmentDialog).getByRole('button', { name: 'Закрыть' }));
+
+    fireEvent.click(lockerSlots[0]!);
+    const skatesDialog = screen.getByRole('dialog', { name: 'Коньки' });
+    expect(within(skatesDialog).getByText('Выберите предмет для этого слота.')).toBeInTheDocument();
+    fireEvent.click(within(skatesDialog).getByRole('button', { name: 'Закрыть' }));
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Игра' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Вызвать' }));
+
+    const quickPickHeading = screen.getByText('Быстрый выбор').parentElement;
+    const searchHeading = screen.getByText('Поиск', { selector: 'span' }).parentElement;
+    expect(quickPickHeading).toHaveClass('duel-form-section-title');
+    expect(searchHeading).toHaveClass('duel-form-section-title');
+    expect(quickPickHeading).not.toHaveClass('section-label--page');
+    expect(searchHeading).not.toHaveClass('section-label--page');
+
+    const templateSelect = screen.getByRole('combobox', { name: 'Шаблон дуэли' });
+    expect(templateSelect).toHaveTextContent('Экспресс (1 период · 3 мин · на скорость)');
+    expect(screen.queryByLabelText('Параметры дуэли')).not.toBeInTheDocument();
+    fireEvent.click(templateSelect);
+    expect((await screen.findAllByRole('option')).map((option) => option.textContent?.trim())).toEqual([
+      'Экспресс (1 период · 3 мин · на скорость)',
+      'Микс (2 периода · 30 бросков + 3 мин на скорость)',
+      'Классика (3 периода · 20 мин · 90 бросков)',
+    ]);
   });
 
   it('hides a disabled rating tab and keeps the game tab selected', async () => {
@@ -2924,7 +3285,7 @@ describe('DailyScreen', () => {
     expect(within(duelSetup).getByRole('button', { name: 'Начать поиск' })).toBeInTheDocument();
 
     const express = await screen.findByRole('button', { name: 'Экспресс' });
-    const expressPlus = await screen.findByRole('button', { name: 'Экспресс+' });
+    const expressPlus = await screen.findByRole('button', { name: 'Микс' });
     const classic = await screen.findByRole('button', { name: 'Классика' });
     expect(express).toHaveAttribute('aria-pressed', 'true');
     expect(expressPlus).toHaveAttribute('aria-pressed', 'true');
@@ -3020,7 +3381,7 @@ describe('DailyScreen', () => {
     });
   });
 
-  it('keeps current duel status below long opponent names', async () => {
+  it('keeps current duel status beside truncated long opponent names', async () => {
     const invitedMatch: AmateurDuelMatchState = {
       ...settledDuelMatch,
       status: 'invited',
@@ -3072,16 +3433,15 @@ describe('DailyScreen', () => {
     renderWith(['/?view=amateur&section=duels']);
 
     const status = await screen.findByLabelText('Статус: Ждём ответ соперника');
-    expect(screen.getByText('Торквимада Очень Длинное Имя')).toHaveStyle({
+    const opponentName = screen.getByText('Торквимада Очень Длинное Имя');
+    expect(opponentName).toHaveStyle({
       overflow: 'hidden',
       textOverflow: 'ellipsis',
       whiteSpace: 'nowrap',
     });
-    expect(status).toHaveStyle({
-      gridColumn: '2 / 3',
-      gridRow: '2',
-      maxWidth: '100%',
-    });
+    expect(status).toHaveClass('duel-card-status');
+    expect(status.parentElement).toHaveClass('duel-card-heading');
+    expect(status.parentElement).toContainElement(opponentName);
   });
 
   it('labels an outgoing duel detail as waiting from my perspective', async () => {
@@ -3170,7 +3530,7 @@ describe('DailyScreen', () => {
     expect(screen.queryByLabelText('Статус соперника: ждём ответ')).not.toBeInTheDocument();
   });
 
-  it('highlights the current user in amateur duel rating with a filled row', async () => {
+  it('renders compact duel rating records with calendar-style month navigation', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = input instanceof Request ? input.url : String(input);
       if (url.includes('/duel/training/state')) {
@@ -3195,6 +3555,8 @@ describe('DailyScreen', () => {
         return new Response(
           JSON.stringify({
             season_key: '2026-05',
+            rating_visible: true,
+            available_seasons: ['2026-05', '2026-04'],
             rating: [
               {
                 user_id: 'u1',
@@ -3223,6 +3585,7 @@ describe('DailyScreen', () => {
                 active_duration_seconds: 180,
               },
             ],
+            me_rank: 1,
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
         );
@@ -3237,7 +3600,31 @@ describe('DailyScreen', () => {
 
     fireEvent.click(await screen.findByRole('tab', { name: 'Рейтинг' }));
     const myRow = await screen.findByRole('button', { name: 'Открыть профиль Tester' });
-    expect(myRow.closest('tr')).toHaveClass('tournament-standing-table__current-user');
+    expect(screen.getByText('Рейтинг', { selector: 'div' })).toHaveClass(
+      'section-label',
+      'duel-section-title',
+    );
+    expect(screen.queryByRole('combobox', { name: 'Месяц рейтинга дуэлей' })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Май 2026' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Предыдущий месяц рейтинга' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Следующий месяц рейтинга' })).toBeDisabled();
+    const currentRow = myRow.closest('tr') as HTMLElement;
+    expect(currentRow).toHaveClass('tournament-standing-table__current-user');
+    const currentCells = within(currentRow).getAllByRole('cell');
+    expect(currentCells[0]).toHaveTextContent('1');
+    expect(currentCells.slice(2).map((cell) => cell.textContent)).toEqual(['1', '1', '0', '0', '3']);
+    const ratingTableCard = myRow.closest('table')?.parentElement;
+    expect(ratingTableCard).toHaveClass('glass', 'tournament-details__content');
+    expect(ratingTableCard).not.toHaveClass('duel-rating-table-wrap');
+    const ratingTable = myRow.closest('table');
+    expect(ratingTable).toHaveClass('tournament-standing-table--duel-rating');
+    const ratingCard = ratingTable?.closest('.duel-rating-table-card');
+    expect(ratingCard).toContainElement(screen.getByRole('heading', { name: 'Май 2026' }));
+    expect(
+      within(ratingTable as HTMLElement)
+        .getAllByRole('columnheader')
+        .map((header) => header.textContent),
+    ).toEqual(['М', 'Игрок', 'И', 'В', 'Н', 'П', 'О']);
   });
 
   it('starts a daily period from the rink start button', async () => {

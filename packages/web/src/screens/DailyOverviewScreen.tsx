@@ -495,7 +495,13 @@ function DailyHistoryCalendar({
               aria-label={`${calendarDayLabel(dayDate)}: ${calendarStatusLabel(status)}`}
               onClick={() => onSelectGame(game)}
             >
-              {day}
+              <span className="daily-calendar__day-number">{day}</span>
+              <span
+                className="daily-calendar__goal-count"
+                aria-label={`Забито шайб: ${game.total_goals}`}
+              >
+                {game.total_goals}
+              </span>
             </button>
           );
         })}

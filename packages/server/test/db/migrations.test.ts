@@ -510,6 +510,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '076_speed_bonus_game_balance.sql',
       '077_accuracy_world_tour_movement_balance.sql',
       '078_amateur_rating_visibility.sql',
+      '079_rename_express_plus_to_mix.sql',
     ]);
     const ratingVisibility = await pool.query<{ value: string }>(
       `select value #>> '{}' as value from game_settings where key = 'amateur.rating_visibility'`,
@@ -876,6 +877,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '076_speed_bonus_game_balance.sql',
       '077_accuracy_world_tour_movement_balance.sql',
       '078_amateur_rating_visibility.sql',
+      '079_rename_express_plus_to_mix.sql',
     ]);
 
     const activeInventory = await pool.query<{

@@ -258,6 +258,8 @@ describe.skipIf(!hasIntegrationEnv)('076 speed bonus game balance', () => {
     expect(applied.applied).toEqual([
       MIGRATION_NAME,
       '077_accuracy_world_tour_movement_balance.sql',
+      '078_amateur_rating_visibility.sql',
+      '079_rename_express_plus_to_mix.sql',
     ]);
     const attempt = await pool.query<{
       status: string;

@@ -552,7 +552,7 @@ describe('AdminScreen', () => {
             templates: [
               {
                 id: 'duel-template-1',
-                title: 'Экспресс+',
+                title: 'Микс',
                 description: 'Два периода: первый с лимитом 30 бросков, второй на скорость.',
                 duelKind: 'express_plus',
                 duelVariant: 'classic',
@@ -950,11 +950,11 @@ describe('AdminScreen', () => {
 
     selectAdminSection('Дуэли');
     expect(await screen.findByText('Шаблоны дуэлей (1)')).toBeInTheDocument();
-    expect(await screen.findByText('Экспресс+')).toBeInTheDocument();
+    expect(await screen.findByText('Микс')).toBeInTheDocument();
     const duelStatus = screen.getByText('Активен');
     expect(duelStatus).toHaveStyle('align-self: start');
     expect(duelStatus).toHaveStyle('min-height: 34px');
-    fireEvent.click(screen.getByRole('button', { name: 'Редактировать Экспресс+' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать Микс' }));
     const duelDialog = await screen.findByRole('dialog', { name: 'Редактирование дуэли' });
     expect(within(duelDialog).getByText('Скорости по периодам')).toBeInTheDocument();
     expect(within(duelDialog).getAllByText('Скорость ворот')).toHaveLength(2);

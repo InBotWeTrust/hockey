@@ -3,7 +3,7 @@ export type VenueRole = 'home' | 'away' | 'neutral';
 const VENUE_LABELS: Record<VenueRole, string> = {
   home: 'Дома',
   away: 'В гостях',
-  neutral: 'Нейтрально',
+  neutral: 'Нейтральное поле',
 };
 
 export function venueRoleLabel(role: VenueRole): string {

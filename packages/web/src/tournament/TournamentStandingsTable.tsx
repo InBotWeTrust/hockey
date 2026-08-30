@@ -29,17 +29,28 @@ export function TournamentStandingsTable(props: {
   currentUserId?: string | null;
   onPlayerClick?: (row: Record<string, unknown>) => void;
   resultHeading?: string;
+  variant?: 'default' | 'duel-rating';
 }) {
   const result = resultColumn(props.regularSource, props.dailyMetric);
   const playoffSize = Math.max(0, Math.floor(Number(props.playoffSize) || 0));
+  const isDuelRating = props.variant === 'duel-rating';
   return (
-    <table className="tournament-standing-table">
+    <table
+      className={`tournament-standing-table${isDuelRating ? ' tournament-standing-table--duel-rating' : ''}`}
+    >
       <thead>
         <tr>
-          <th scope="col">Место</th>
+          <th scope="col">{isDuelRating ? 'М' : 'Место'}</th>
           <th scope="col">Игрок</th>
-          <th scope="col">Игры</th>
-          <th scope="col">{props.resultHeading ?? result.heading}</th>
+          <th scope="col">{isDuelRating ? 'И' : 'Игры'}</th>
+          {isDuelRating ? (
+            <>
+              <th scope="col">В</th>
+              <th scope="col">Н</th>
+              <th scope="col">П</th>
+            </>
+          ) : null}
+          <th scope="col">{isDuelRating ? 'О' : (props.resultHeading ?? result.heading)}</th>
         </tr>
       </thead>
       <tbody>
@@ -49,12 +60,23 @@ export function TournamentStandingsTable(props: {
           const userId = String(row.user_id ?? '');
           const isPlayoffPlace = playoffSize > 0 && Number.isFinite(rank) && rank <= playoffSize;
           const isCurrentUser = props.currentUserId === userId;
+          const medalClass =
+            isDuelRating && !isCurrentUser
+              ? rank === 1
+                ? 'tournament-standing-table__medal-place--gold'
+                : rank === 2
+                  ? 'tournament-standing-table__medal-place--silver'
+                  : rank === 3
+                    ? 'tournament-standing-table__medal-place--bronze'
+                    : ''
+              : '';
           return (
             <tr
               key={String(row.user_id ?? index)}
               className={[
                 isPlayoffPlace ? 'tournament-standing-table__playoff-place' : '',
                 isCurrentUser ? 'tournament-standing-table__current-user' : '',
+                medalClass,
               ]
                 .filter(Boolean)
                 .join(' ') || undefined}
@@ -71,8 +93,8 @@ export function TournamentStandingsTable(props: {
                   <UserAvatar
                     avatarUrl={typeof row.avatar_url === 'string' ? row.avatar_url : null}
                     name={playerName}
-                    size={28}
-                    fontSize={11}
+                    size={isDuelRating ? 24 : 28}
+                    fontSize={isDuelRating ? 10 : 11}
                     alt={playerName}
                     style={{ background: 'rgba(30, 91, 151, 0.13)', color: '#244d73' }}
                   />
@@ -80,6 +102,13 @@ export function TournamentStandingsTable(props: {
                 </button>
               </td>
               <td>{displayNumber(row.played, 0)}</td>
+              {isDuelRating ? (
+                <>
+                  <td>{displayNumber(row.wins, 0)}</td>
+                  <td>{displayNumber(row.draws, 0)}</td>
+                  <td>{displayNumber(row.losses, 0)}</td>
+                </>
+              ) : null}
               <td>{result.value(row)}</td>
             </tr>
           );

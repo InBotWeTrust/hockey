@@ -1,16 +1,17 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { fetchAmateurRating } from '../../api/amateurDuel.js';
 import type { UserPickerItem } from '../../chat/api.js';
-import { GlassSelect } from '../GlassSelect.js';
 import { TournamentStandingsTable } from '../../tournament/TournamentStandingsTable.js';
 
 function monthLabel(key: string): string {
   const [year, month] = key.split('-').map(Number);
   if (!year || !month) return key;
-  return new Intl.DateTimeFormat('ru-RU', { month: 'long', year: 'numeric' }).format(
+  const label = new Intl.DateTimeFormat('ru-RU', { month: 'long', year: 'numeric' }).format(
     new Date(Date.UTC(year, month - 1, 1)),
   );
+  return `${label.charAt(0).toUpperCase()}${label.slice(1).replace(/\s*г\.$/, '')}`;
 }
 
 export function AmateurDuelRatingTab({
@@ -28,7 +29,10 @@ export function AmateurDuelRatingTab({
     queryFn: () => fetchAmateurRating(seasonKey),
   });
   const data = rating.data;
-  const seasons = Array.from(new Set([seasonKey, ...(data?.available_seasons ?? [])]));
+  const seasons = Array.from(new Set([seasonKey, ...(data?.available_seasons ?? [])])).sort();
+  const seasonIndex = seasons.indexOf(seasonKey);
+  const previousSeason = seasonIndex > 0 ? seasons[seasonIndex - 1] : undefined;
+  const nextSeason = seasonIndex >= 0 ? seasons[seasonIndex + 1] : undefined;
   const rows = (data?.rating ?? []).map((row, index) => ({
     ...row,
     rank: index + 1,
@@ -37,26 +41,45 @@ export function AmateurDuelRatingTab({
 
   return (
     <section className="duel-section" aria-label="Рейтинг дуэлей">
-      <div className="duel-section-title">Рейтинг</div>
-      <GlassSelect
-        ariaLabel="Месяц рейтинга дуэлей"
-        value={seasonKey}
-        options={seasons.map((key) => ({ value: key, label: monthLabel(key) }))}
-        onChange={setSeasonKey}
-      />
-      {rating.isLoading ? (
-        <div className="duel-state-card">Загрузка рейтинга…</div>
-      ) : rating.isError ? (
-        <div className="duel-state-card duel-state-card--error">Не удалось загрузить рейтинг.</div>
-      ) : rows.length === 0 ? (
-        <div className="duel-state-card">Рейтинг появится после первых завершённых дуэлей.</div>
-      ) : (
-        <div className="duel-rating-table-wrap">
+      <div className="section-label duel-section-title">Рейтинг</div>
+      <section
+        className="glass tournament-details__content duel-rating-table-card"
+        aria-label="Таблица рейтинга дуэлей"
+      >
+        <div className="daily-calendar__header duel-rating-month-nav">
+          <button
+            type="button"
+            className="icon-btn daily-calendar__nav"
+            aria-label="Предыдущий месяц рейтинга"
+            disabled={previousSeason === undefined}
+            onClick={() => previousSeason && setSeasonKey(previousSeason)}
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <h2 className="daily-calendar__month">{monthLabel(seasonKey)}</h2>
+          <button
+            type="button"
+            className="icon-btn daily-calendar__nav"
+            aria-label="Следующий месяц рейтинга"
+            disabled={nextSeason === undefined}
+            onClick={() => nextSeason && setSeasonKey(nextSeason)}
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
+        {rating.isLoading ? (
+          <div className="duel-state-card">Загрузка рейтинга…</div>
+        ) : rating.isError ? (
+          <div className="duel-state-card duel-state-card--error">Не удалось загрузить рейтинг.</div>
+        ) : rows.length === 0 ? (
+          <div className="duel-state-card">Рейтинг появится после первых завершённых дуэлей.</div>
+        ) : (
           <TournamentStandingsTable
             rows={rows}
             regularSource="rating"
             dailyMetric="daily_place_points"
             resultHeading="Очки"
+            variant="duel-rating"
             currentUserId={currentUserId}
             onPlayerClick={(row) =>
               onOpenProfile({
@@ -66,8 +89,8 @@ export function AmateurDuelRatingTab({
               })
             }
           />
-        </div>
-      )}
+        )}
+      </section>
     </section>
   );
 }

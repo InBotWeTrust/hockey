@@ -51,4 +51,28 @@ describe('TournamentStandingsTable', () => {
     expect(lastRowCells[3]).toHaveTextContent('0');
     expect(document.querySelector('.tournament-standing-table-wrap')).not.toBeInTheDocument();
   });
+
+  it('marks duel rating medal places while keeping the current-user highlight primary', () => {
+    render(
+      <TournamentStandingsTable
+        variant="duel-rating"
+        regularSource="head_to_head"
+        dailyMetric={null}
+        currentUserId="user-2"
+        rows={[
+          { user_id: 'user-1', rank: 1, display_name: 'Первый', played: 5, wins: 5 },
+          { user_id: 'user-2', rank: 2, display_name: 'Вы', played: 5, wins: 3 },
+          { user_id: 'user-3', rank: 3, display_name: 'Третий', played: 5, wins: 2 },
+          { user_id: 'user-4', rank: 4, display_name: 'Четвёртый', played: 5, wins: 1 },
+        ]}
+      />,
+    );
+
+    const rows = screen.getAllByRole('row').slice(1);
+    expect(rows[0]).toHaveClass('tournament-standing-table__medal-place--gold');
+    expect(rows[1]).toHaveClass('tournament-standing-table__current-user');
+    expect(rows[1]).not.toHaveClass('tournament-standing-table__medal-place--silver');
+    expect(rows[2]).toHaveClass('tournament-standing-table__medal-place--bronze');
+    expect(rows[3]?.className).toBe('');
+  });
 });
