@@ -507,6 +507,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '073_backfill_first_daily_game.sql',
       '074_allow_bonus_repurchase_after_refund.sql',
       '075_tournament_classic.sql',
+      '076_speed_bonus_game_balance.sql',
     ]);
   });
 
@@ -866,6 +867,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '073_backfill_first_daily_game.sql',
       '074_allow_bonus_repurchase_after_refund.sql',
       '075_tournament_classic.sql',
+      '076_speed_bonus_game_balance.sql',
     ]);
 
     const activeInventory = await pool.query<{
