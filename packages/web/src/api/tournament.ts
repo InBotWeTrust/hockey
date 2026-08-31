@@ -155,6 +155,61 @@ export interface TournamentLiveState {
   participants: TournamentLiveParticipant[];
 }
 
+export interface TournamentFixtureAttemptState {
+  attempt: {
+    id: string;
+    number: number;
+    kind: 'initial' | 'replay';
+    status: string;
+    scheduledStart: string;
+    readinessExpiresAt: string;
+    hardDeadlineAt: string;
+    myReady: boolean;
+    opponentReady: boolean;
+    duelMatchId: string | null;
+    result: {
+      outcome: string;
+      winnerUserId: string | null;
+      myScore: number | null;
+      opponentScore: number | null;
+      myAccuracy: number | null;
+      opponentAccuracy: number | null;
+      myActiveTimeMs: number | null;
+      opponentActiveTimeMs: number | null;
+    } | null;
+    incidentType: string | null;
+  };
+  opponentProgress: {
+    state: string;
+    currentPeriod: number;
+    periodEndsAt: string | null;
+  } | null;
+  series: {
+    id: string;
+    winsRequired: number;
+    myWins: number;
+    opponentWins: number;
+    higherSeedWins: number;
+    lowerSeedWins: number;
+    higherSeedUserId: string;
+    lowerSeedUserId: string;
+    status: string;
+    winnerUserId: string | null;
+  } | null;
+  tournament: {
+    status: string;
+    winnerUserId: string | null;
+  };
+  nextGameChoice: {
+    nextFixtureId: string;
+    expiresAt: string;
+    myChoice: 'immediate' | 'scheduled' | null;
+    opponentChoice: 'immediate' | 'scheduled' | null;
+    canChoose: boolean;
+    startsImmediately: boolean;
+  } | null;
+}
+
 export function fetchTournaments(): Promise<{ tournaments: TournamentSummary[] }> {
   return apiFetch('/tournaments');
 }
@@ -203,6 +258,23 @@ export function openTournamentFixtureSegment(tournamentId: string, fixtureId: st
 
 export function fetchTournamentBracket(tournamentId: string) {
   return apiFetch<{ series: TournamentBracketSeries[] }>(`/tournaments/${tournamentId}/bracket`);
+}
+
+export function fetchTournamentFixtureAttempt(tournamentId: string, fixtureId: string) {
+  return apiFetch<TournamentFixtureAttemptState>(
+    `/tournaments/${tournamentId}/fixtures/${fixtureId}/attempt`,
+  );
+}
+
+export function chooseTournamentNextGame(
+  tournamentId: string,
+  fixtureId: string,
+  choice: 'immediate' | 'scheduled',
+) {
+  return apiFetch<NonNullable<TournamentFixtureAttemptState['nextGameChoice']>>(
+    `/tournaments/${tournamentId}/fixtures/${fixtureId}/attempt/next-game-choice`,
+    { method: 'POST', body: JSON.stringify({ choice }) },
+  );
 }
 
 export function fetchFixtureLiveState(fixtureId: string) {

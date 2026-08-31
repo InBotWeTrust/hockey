@@ -763,6 +763,17 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
           ) : bracket.data?.series.length ? (
             <TournamentPlayoffBracket
               key={tournament.id}
+              tournamentId={tournament.id}
+              currentUserId={currentUserId}
+              onOpenFixture={(fixtureId) => {
+                if (fixtureOpeningRef.current) return;
+                fixtureOpeningRef.current = true;
+                const generation = openFixtureGeneration.current + 1;
+                openFixtureGeneration.current = generation;
+                activeFixtureId.current = fixtureId;
+                openFixture.reset();
+                openFixture.mutate({ fixtureId, generation });
+              }}
               series={bracket.data.series}
               timezone={String(tournament.rules.config.timezone ?? 'Europe/Moscow')}
               {...(tournament.playoffFormats === undefined

@@ -6131,6 +6131,101 @@ button.daily-calendar__day:active {
   text-align: right;
 }
 
+.tournament-playoff-attempt {
+  display: grid;
+  gap: 7px;
+  margin-top: 6px;
+  padding: 10px;
+  border: 1px solid rgba(72, 115, 153, 0.2);
+  border-radius: 13px;
+  background: rgba(230, 242, 251, 0.72);
+  color: #173c5e;
+}
+
+.tournament-playoff-attempt > strong,
+.tournament-playoff-attempt > span,
+.tournament-playoff-attempt__readiness > strong,
+.tournament-playoff-attempt__readiness > span,
+.tournament-playoff-attempt__progress > strong,
+.tournament-playoff-attempt__progress > span,
+.tournament-playoff-attempt__scheduled > strong,
+.tournament-playoff-attempt__scheduled > span,
+.tournament-playoff-attempt__incident > strong,
+.tournament-playoff-attempt__incident > span,
+.tournament-playoff-attempt__choice > strong,
+.tournament-playoff-attempt__choice > span {
+  display: block;
+}
+
+.tournament-playoff-attempt > strong,
+.tournament-playoff-attempt__readiness > strong,
+.tournament-playoff-attempt__progress > strong,
+.tournament-playoff-attempt__scheduled > strong,
+.tournament-playoff-attempt__incident > strong,
+.tournament-playoff-attempt__choice > strong {
+  font-size: 11px;
+  font-weight: 820;
+  line-height: 1.35;
+}
+
+.tournament-playoff-attempt > span,
+.tournament-playoff-attempt__readiness > span,
+.tournament-playoff-attempt__progress > span,
+.tournament-playoff-attempt__scheduled > span,
+.tournament-playoff-attempt__incident > span,
+.tournament-playoff-attempt__choice > span {
+  color: #536d84;
+  font-size: 10px;
+  font-weight: 560;
+  line-height: 1.4;
+}
+
+.tournament-playoff-attempt__readiness,
+.tournament-playoff-attempt__progress,
+.tournament-playoff-attempt__scheduled,
+.tournament-playoff-attempt__incident,
+.tournament-playoff-attempt__choice {
+  display: grid;
+  gap: 5px;
+}
+
+.tournament-playoff-attempt__choice > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.tournament-playoff-attempt .btn {
+  min-height: 34px;
+  padding: 7px 10px;
+  font-size: 10px;
+  letter-spacing: 0;
+}
+
+.tournament-playoff-attempt__eyebrow {
+  color: #70501d;
+}
+
+.tournament-playoff-attempt__result,
+.tournament-playoff-attempt__series-win {
+  color: #1f6a4a;
+}
+
+.tournament-playoff-attempt__incident {
+  padding: 8px;
+  border-radius: 10px;
+  background: rgba(255, 237, 196, 0.72);
+  color: #775414;
+}
+
+.tournament-playoff-attempt__tournament-win {
+  padding: 9px 10px;
+  border-radius: 11px;
+  background: linear-gradient(135deg, rgba(255, 226, 122, 0.8), rgba(255, 244, 204, 0.9));
+  color: #67470d;
+  text-align: center;
+}
+
 .tournament-bracket-round--bronze .tournament-bracket-series {
   border-color: rgba(174, 122, 64, 0.28);
   background: rgba(255, 244, 225, 0.3);
@@ -6512,6 +6607,94 @@ button.daily-calendar__day:active {
   font-size: 11px;
   font-weight: 730;
   text-align: left;
+}
+
+.tournament-operation-incidents,
+.tournament-admin-series-list {
+  display: grid;
+  gap: 8px;
+}
+
+.tournament-operation-incidents {
+  padding: 10px;
+  border: 1px solid rgba(190, 77, 62, 0.24);
+  border-radius: 14px;
+  background: rgba(255, 239, 235, 0.72);
+}
+
+.tournament-operation-incidents h3,
+.tournament-operation-incidents p {
+  margin: 0;
+}
+
+.tournament-operation-incidents h3 {
+  color: #802f28;
+  font-size: 13px;
+}
+
+.tournament-operation-incidents p {
+  color: #76544f;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.tournament-operation-list-row--incident {
+  display: grid;
+  gap: 2px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.tournament-operation-list-row--incident > span {
+  color: #76544f;
+  font-size: 10px;
+  font-weight: 620;
+}
+
+.tournament-admin-series {
+  display: grid;
+  gap: 8px;
+  padding: 11px;
+  border: 1px solid rgba(100, 116, 139, 0.14);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.46);
+}
+
+.tournament-admin-series__heading,
+.tournament-admin-series__players,
+.tournament-series-decision__score {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tournament-admin-series__heading > div,
+.tournament-admin-series__players,
+.tournament-series-decision,
+.tournament-series-decision__confirmation {
+  display: grid;
+  gap: 6px;
+}
+
+.tournament-admin-series__heading span,
+.tournament-admin-series__players span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.tournament-series-decision__confirmation {
+  padding: 10px;
+  border: 1px solid rgba(190, 77, 62, 0.22);
+  border-radius: 13px;
+  background: rgba(255, 239, 235, 0.7);
+}
+
+.tournament-series-decision__confirmation p {
+  margin: 0;
+  color: #674b47;
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .tournament-matchday-list {

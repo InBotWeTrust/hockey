@@ -43,6 +43,49 @@ describe('TournamentAdmin', () => {
     vi.restoreAllMocks();
   });
 
+  it('configures playoff rounds by days, daily game limit, readiness and start interval', async () => {
+    vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [] });
+    vi.spyOn(api, 'fetchAdminTournamentDuelTemplates').mockResolvedValue({ templates: [] });
+    vi.spyOn(api, 'createAdminTournament').mockResolvedValue({
+      tournament: {
+        id: '00000000-0000-4000-8000-000000000950',
+        slug: 'schedule-cup',
+        title: 'Кубок расписания',
+        description: '',
+        status: 'draft',
+        regularSource: 'head_to_head',
+        revision: 1,
+        participantCount: 0,
+      },
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentAdmin />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Создать' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Название' }), {
+      target: { value: 'Кубок расписания' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    expect(await screen.findByRole('combobox', { name: 'Регистрация' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    expect(await screen.findByRole('spinbutton', { name: 'Кругов' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+
+    expect(screen.getByRole('spinbutton', { name: 'Раунд 1: дней на раунд' })).toHaveValue(2);
+    expect(screen.getByRole('spinbutton', { name: 'Раунд 1: максимум игр в день' })).toHaveValue(4);
+    expect(screen.getByRole('spinbutton', { name: 'Раунд 1: минут на готовность' })).toHaveValue(5);
+    expect(screen.getByRole('spinbutton', { name: 'Раунд 1: интервал стартов, минуты' })).toHaveValue(
+      20,
+    );
+    expect(screen.getByLabelText('Раунд 1: начало первой игры')).toBeInTheDocument();
+    expect(screen.queryByText(/овертайм/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/буллит/i)).not.toBeInTheDocument();
+  });
+
   it('uses compact described fields, custom selects and collapsed advanced settings', async () => {
     vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [] });
     vi.spyOn(api, 'fetchAdminTournamentDuelTemplates').mockResolvedValue({ templates: [] });
