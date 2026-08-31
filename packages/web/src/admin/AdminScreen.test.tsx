@@ -416,6 +416,12 @@ describe('AdminScreen', () => {
           { status: 200, headers: { 'content-type': 'application/json' } },
         );
       }
+      if (url.includes('/admin/tournaments/pending-applications')) {
+        return new Response(JSON.stringify({ count: 2 }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
       if (url.includes('/admin/channel/news')) {
         return new Response(
           JSON.stringify({
@@ -886,6 +892,9 @@ describe('AdminScreen', () => {
     const menuWithUnreadCount = openAdminMenu();
     expect(
       within(menuWithUnreadCount).getByRole('button', { name: 'Отзывы (2)' }),
+    ).toBeInTheDocument();
+    expect(
+      within(menuWithUnreadCount).getByRole('button', { name: 'Турниры (2)' }),
     ).toBeInTheDocument();
     fireEvent.click(
       within(menuWithUnreadCount).getByRole('button', {

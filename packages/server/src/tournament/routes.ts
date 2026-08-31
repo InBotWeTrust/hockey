@@ -6,9 +6,11 @@ import { createTournamentDuelMatch } from '../duel/amateur/routes.js';
 import { parseTournamentConfig } from './config.js';
 import {
   applyToTournament,
+  approveAllTournamentApplications,
   approveTournamentParticipant,
   archiveTournament,
   cancelTournament,
+  countPendingTournamentApplications,
   createTournamentDraft,
   disqualifyTournamentParticipant,
   duplicateTournamentDraft,
@@ -28,6 +30,7 @@ import {
   pauseTournament,
   publishTournament,
   publishRegularSchedule,
+  rejectTournamentApplication,
   resumeTournament,
   startTournamentPlayoffs,
   rescheduleTournamentFixture,
@@ -328,7 +331,9 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
   app.get('/admin/tournaments/:tournamentId/audience-preview', admin, async (req) => {
     const params = z.object({ tournamentId: uuid }).parse(req.params);
     const query = z
-      .object({ audience: z.enum(['approved', 'all_participants']).default('approved') })
+      .object({
+        audience: z.enum(['approved', 'all_participants', 'all_players']).default('approved'),
+      })
       .parse(req.query);
     return previewTournamentAudience(app.pg, params.tournamentId, query.audience);
   });
@@ -339,9 +344,10 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
       .object({
         idempotencyKey: z.string().trim().min(8).max(200),
         kind: z.enum(['push', 'direct_message', 'official_news']),
-        audience: z.enum(['approved', 'all_participants']),
+        audience: z.enum(['approved', 'all_participants', 'all_players']),
         title: z.string().trim().min(1).max(120),
         body: z.string().trim().min(1).max(4000),
+        includeTournamentButton: z.boolean().default(false),
       })
       .parse(req.body);
     const result = await dispatchTournamentCommunication(app.pg, app.realtime, {
@@ -415,6 +421,10 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
 
   app.get('/admin/tournaments', admin, async () => ({
     tournaments: await listAdminTournaments(app.pg),
+  }));
+
+  app.get('/admin/tournaments/pending-applications', admin, async () => ({
+    count: await countPendingTournamentApplications(app.pg),
   }));
 
   app.get('/admin/tournaments/:tournamentId', admin, async (req) => {
@@ -627,6 +637,11 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
     return inviteTournamentParticipant(app.pg, params.tournamentId, body.userId, req.user.id);
   });
 
+  app.post('/admin/tournaments/:tournamentId/participants/approve-all', admin, async (req) => {
+    const params = z.object({ tournamentId: uuid }).parse(req.params);
+    return approveAllTournamentApplications(app.pg, params.tournamentId, req.user.id);
+  });
+
   app.post(
     '/admin/tournaments/:tournamentId/participants/:participantId/approve',
     admin,
@@ -638,6 +653,20 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
         params.participantId,
         req.user.id,
       );
+    },
+  );
+
+  app.post(
+    '/admin/tournaments/:tournamentId/participants/:participantId/reject',
+    admin,
+    async (req) => {
+      const params = z.object({ tournamentId: uuid, participantId: uuid }).parse(req.params);
+      const body = z.object({ reason: z.string().trim().min(3).max(1000) }).parse(req.body);
+      return rejectTournamentApplication(app.pg, {
+        ...params,
+        reason: body.reason,
+        adminUserId: req.user.id,
+      });
     },
   );
 

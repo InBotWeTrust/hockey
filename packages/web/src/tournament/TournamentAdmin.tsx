@@ -1642,6 +1642,9 @@ export function TournamentAdmin(): JSX.Element {
           <div className="tournament-admin-card__title">{tournament.title}</div>
           <div className="tournament-admin-card__meta">
             {participantsCountLabel(tournament.participantCount)}
+            {(tournament.pendingApplicationCount ?? 0) > 0 && (
+              <> · Заявки: {tournament.pendingApplicationCount}</>
+            )}
           </div>
         </button>
       ))}

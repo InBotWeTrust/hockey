@@ -69,6 +69,10 @@ export interface AdminSummary {
   gameCoreVersion: number;
 }
 
+export function fetchAdminTournamentPendingApplications(): Promise<{ count: number }> {
+  return apiFetch<{ count: number }>('/admin/tournaments/pending-applications');
+}
+
 export interface AdminDashboardSeriesPoint {
   date: string;
   newUsers: number;

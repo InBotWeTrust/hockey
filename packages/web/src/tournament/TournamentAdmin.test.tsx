@@ -1333,6 +1333,7 @@ describe('TournamentAdmin', () => {
           regularSource: 'head_to_head',
           revision: 2,
           participantCount: 3,
+          pendingApplicationCount: 1,
         },
       ],
     });
@@ -1358,6 +1359,16 @@ describe('TournamentAdmin', () => {
           entry_fee_coins: 0,
           entry_fee_state: 'not_required',
         },
+        {
+          id: '00000000-0000-4000-8000-000000000907',
+          user_id: '00000000-0000-4000-8000-000000000908',
+          display_name: 'Отклонённый игрок',
+          avatar_url: null,
+          state: 'rejected',
+          seed: null,
+          entry_fee_coins: 0,
+          entry_fee_state: 'not_required',
+        },
       ],
     });
     vi.spyOn(api, 'fetchAdminTournamentSchedule').mockResolvedValue({ fixtures: [] });
@@ -1377,11 +1388,41 @@ describe('TournamentAdmin', () => {
       count: 1,
       recipients: [],
     });
-    vi.spyOn(api, 'fetchAdminTournamentDispatches').mockResolvedValue({ dispatches: [] });
+    vi.spyOn(api, 'fetchAdminTournamentDispatches').mockResolvedValue({
+      dispatches: [
+        {
+          id: 'dispatch-sending',
+          kind: 'direct_message',
+          status: 'sending',
+          delivered_count: 2,
+          recipient_count: 4,
+        },
+        {
+          id: 'dispatch-partial',
+          kind: 'push',
+          status: 'partially_failed',
+          delivered_count: 3,
+          recipient_count: 4,
+        },
+      ],
+    });
     const dispatch = vi
       .spyOn(api, 'dispatchAdminTournamentCommunication')
       .mockRejectedValue(new Error('SYSTEM_USER_ID is required'));
+    const approveAll = vi
+      .spyOn(api, 'approveAllAdminTournamentApplications')
+      .mockResolvedValue({ approvedCount: 1 });
+    const reject = vi
+      .spyOn(api, 'rejectAdminTournamentApplication')
+      .mockResolvedValue({
+        participantId: '00000000-0000-4000-8000-000000000902',
+        state: 'rejected',
+      });
+    const disqualify = vi
+      .spyOn(api, 'disqualifyAdminTournamentParticipant')
+      .mockResolvedValue({ participantId: '00000000-0000-4000-8000-000000000905' });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
     render(
       <QueryClientProvider client={client}>
         <TournamentAdmin />
@@ -1391,6 +1432,7 @@ describe('TournamentAdmin', () => {
     const adminCard = await screen.findByRole('button', { name: 'Открыть Кубок админа' });
     expect(adminCard).toHaveTextContent('Идёт регистрация');
     expect(adminCard).toHaveTextContent('3 участника');
+    expect(adminCard).toHaveTextContent('Заявки: 1');
     expect(adminCard).not.toHaveTextContent(/registration|ревизия/i);
     fireEvent.click(adminCard);
 
@@ -1399,10 +1441,28 @@ describe('TournamentAdmin', () => {
     expect(screen.queryByText('К списку турниров')).not.toBeInTheDocument();
     expect(screen.getByText('Идёт регистрация')).toBeInTheDocument();
     expect(screen.queryByText(/ревизия/i)).not.toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Заявки и оплаты' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Заявки и оплаты (1)' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Календарь' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Рассылки' })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Причина отклонения' })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Все' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Подтверждены' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Требуют подтверждения' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Отклонены' })).toBeInTheDocument();
     expect(await screen.findByText('Игрок на проверке')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Отклонены' }));
+    expect(screen.getByText('Отклонённый игрок')).toBeInTheDocument();
+    expect(screen.queryByText('Игрок на проверке')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Требуют подтверждения' }));
+    expect(screen.getByText('Игрок на проверке')).toBeInTheDocument();
+    expect(screen.queryByText('Подтверждённый игрок')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Принять все заявки (1)' }));
+    await waitFor(() =>
+      expect(approveAll).toHaveBeenCalledWith('00000000-0000-4000-8000-000000000901'),
+    );
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ['admin', 'tournaments', 'pending-applications'],
+    });
     expect(
       screen.getByText(/Заявка подана · Взнос: 25 монет · Ожидает оплаты/),
     ).toBeInTheDocument();
@@ -1418,12 +1478,50 @@ describe('TournamentAdmin', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Управление: Игрок на проверке' }));
     expect(screen.getByRole('dialog', { name: 'Игрок на проверке' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Одобрить заявку' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Отклонить заявку' }));
+    invalidate.mockClear();
+    const rejectionReason = screen.getByRole('textbox', { name: 'Причина отклонения' });
+    expect(rejectionReason).toHaveValue('');
+    expect(screen.getByRole('button', { name: 'Подтвердить отклонение' })).toBeDisabled();
+    fireEvent.change(rejectionReason, { target: { value: 'Не выполнены условия участия' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Подтвердить отклонение' }));
+    await waitFor(() =>
+      expect(reject).toHaveBeenCalledWith(
+        '00000000-0000-4000-8000-000000000901',
+        '00000000-0000-4000-8000-000000000902',
+        'Не выполнены условия участия',
+      ),
+    );
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ['admin', 'tournaments', 'pending-applications'],
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Управление: Игрок на проверке' }));
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть управление участником' }));
 
+    fireEvent.click(screen.getByRole('tab', { name: 'Все' }));
     fireEvent.click(screen.getByRole('button', { name: 'Управление: Подтверждённый игрок' }));
     expect(
       screen.getByRole('button', { name: 'Дисквалифицировать участника' }),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('textbox', { name: 'Причина дисквалификации' }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Дисквалифицировать участника' }));
+    const disqualificationReason = screen.getByRole('textbox', {
+      name: 'Причина дисквалификации',
+    });
+    expect(disqualificationReason).toHaveValue('');
+    expect(screen.getByRole('button', { name: 'Подтвердить дисквалификацию' })).toBeDisabled();
+    fireEvent.change(disqualificationReason, { target: { value: 'Нарушение правил турнира' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Подтвердить дисквалификацию' }));
+    await waitFor(() =>
+      expect(disqualify).toHaveBeenCalledWith(
+        '00000000-0000-4000-8000-000000000901',
+        '00000000-0000-4000-8000-000000000905',
+        'Нарушение правил турнира',
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Управление: Подтверждённый игрок' }));
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть управление участником' }));
     const playerSearch = screen.getByRole('searchbox', { name: 'Найти игрока' });
     expect(playerSearch).toHaveAttribute('placeholder', 'Имя или номер профиля в Telegram/VK');
@@ -1445,20 +1543,31 @@ describe('TournamentAdmin', () => {
     expect(screen.queryByPlaceholderText('Заголовок')).not.toBeInTheDocument();
     expect(screen.queryByPlaceholderText('Текст сообщения')).not.toBeInTheDocument();
     await chooseGlassOption('Способ отправки', 'Личные сообщения');
+    await chooseGlassOption('Аудитория', 'Все игроки');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Кнопка перехода в турнир' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Сообщение' }), {
       target: { value: 'Проверка личной рассылки' },
     });
+    fireEvent.click(screen.getByRole('button', { name: 'Отправить рассылку' }));
     fireEvent.click(screen.getByRole('button', { name: 'Отправить рассылку' }));
     await waitFor(() =>
       expect(dispatch).toHaveBeenCalledWith(
         '00000000-0000-4000-8000-000000000901',
         expect.objectContaining({
           kind: 'direct_message',
-          audience: 'approved',
+          audience: 'all_players',
           body: 'Проверка личной рассылки',
+          includeTournamentButton: true,
         }),
       ),
     );
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByText(/Личные сообщения · Отправляется · доставлено 2 \/ 4/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Уведомление на телефон · Отправлена частично · доставлено 3 \/ 4/),
+    ).toBeInTheDocument();
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Не удалось отправить рассылку. Попробуйте ещё раз.',
     );

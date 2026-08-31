@@ -140,6 +140,31 @@ describe('ChatBubble — author tap', () => {
     );
   });
 
+  it('renders the tournament action stored with an announcement', () => {
+    render(
+      <ChatBubble
+        {...defaults()}
+        message={{
+          ...baseMessage,
+          content: 'Регистрация открыта.',
+          metadata: {
+            type: 'tournament_announcement',
+            action: {
+              type: 'tournament',
+              label: 'Перейти в турнир',
+              url: '/?view=amateur&section=tournaments&tournament=cup-1&tab=overview&from=sections',
+            },
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByRole('link', { name: 'Перейти в турнир' })).toHaveAttribute(
+      'href',
+      '/?view=amateur&section=tournaments&tournament=cup-1&tab=overview&from=sections',
+    );
+  });
+
   it('clicking the author name calls onOpenProfile with sender info', () => {
     const onOpenProfile = vi.fn();
     render(<ChatBubble {...defaults()} onOpenProfile={onOpenProfile} />);
