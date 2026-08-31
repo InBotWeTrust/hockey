@@ -24,6 +24,19 @@ interface TournamentPlayoffBracketProps {
   }>;
 }
 
+export function currentSeriesFixtureId(
+  fixtures: Array<{ id: string; status: string }>,
+): string | null {
+  return (
+    fixtures.find((fixture) =>
+      ['open', 'active', 'ready_check'].includes(fixture.status),
+    )?.id ??
+    fixtures.find((fixture) => fixture.status === 'scheduled')?.id ??
+    fixtures.at(-1)?.id ??
+    null
+  );
+}
+
 function seriesScoreLabel(state: TournamentFixtureAttemptState): string | null {
   if (state.series === null) return null;
   if (state.series.myWins === state.series.opponentWins) {
@@ -413,7 +426,7 @@ function SeriesCard(props: {
   const isMySeries =
     props.currentUserId !== null &&
     [props.series.higher_user_id, props.series.lower_user_id].includes(props.currentUserId);
-  const latestFixtureId = props.series.fixtures.at(-1)?.id ?? null;
+  const latestFixtureId = currentSeriesFixtureId(props.series.fixtures);
   return (
     <article className="tournament-bracket-series">
       <header>

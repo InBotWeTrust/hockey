@@ -1,7 +1,10 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { TournamentFixtureAttemptState } from '../api/tournament.js';
-import { TournamentPlayoffAttemptView } from './TournamentPlayoffBracket.js';
+import {
+  currentSeriesFixtureId,
+  TournamentPlayoffAttemptView,
+} from './TournamentPlayoffBracket.js';
 
 function attemptState(
   patch: Partial<TournamentFixtureAttemptState> = {},
@@ -43,6 +46,17 @@ function attemptState(
 describe('TournamentPlayoffAttemptView', () => {
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('opens the earliest unresolved game instead of the last conditional game in the series', () => {
+    expect(
+      currentSeriesFixtureId([
+        { id: 'game-1', status: 'settled' },
+        { id: 'game-2', status: 'active' },
+        { id: 'game-3', status: 'scheduled' },
+        { id: 'game-4', status: 'conditional' },
+      ]),
+    ).toBe('game-2');
   });
 
   it('shows live readiness and opponent period countdowns', () => {
