@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { AppError } from '../plugins/errors.js';
 import { createTournamentDuelMatch } from '../duel/amateur/routes.js';
 import { parseTournamentConfig } from './config.js';
+import { normalizePublishedTournamentLifecycleRules } from './lifecycleRules.js';
 import {
   applyToTournament,
   approveAllTournamentApplications,
@@ -149,12 +150,18 @@ const stageRewardsSchema = z
     message: 'reward places must be unique',
   });
 
-function parseRules(input: z.infer<typeof rulesSchema>): TournamentRulesSnapshot {
-  return {
-    ...input,
-    config: parseTournamentConfig(input.config),
-    eligibility: input.eligibility,
-  };
+export function parseRules(input: z.infer<typeof rulesSchema>): TournamentRulesSnapshot {
+  try {
+    return normalizePublishedTournamentLifecycleRules({
+      ...input,
+      config: parseTournamentConfig(input.config),
+      eligibility: input.eligibility,
+    }) as TournamentRulesSnapshot;
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    if (error instanceof Error) throw new AppError('bad_request', error.message, 400);
+    throw error;
+  }
 }
 
 async function requireAdmin(app: Parameters<FastifyPluginAsync>[0], req: FastifyRequest) {
@@ -175,6 +182,7 @@ interface TournamentRoutesOptions {
   objectStorage?: ObjectStorageClient;
   mediaAccessSecret: string;
   tournamentGameSeedSecret: string;
+  duelSeedSecret: string;
 }
 
 export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = async (
@@ -313,7 +321,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
       const opened = await openTournamentFixtureSegment(
         app.pg,
         { ...params, userId: req.user.id, now: new Date() },
-        createTournamentDuelMatch,
+        (client, input) => createTournamentDuelMatch(client, input, options.duelSeedSecret),
       );
       await publishTournamentFixtureProgress(app.pg, app.realtime, app.log, {
         duelMatchId: opened.duelMatchId,

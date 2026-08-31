@@ -7,6 +7,14 @@ import { enqueueTournamentFixtureResultPush } from './fixtureNotifications.js';
 import { lockTournamentFixture } from './locks.js';
 import { resolveDefaultArena, resolveEffectiveArena } from '../arenas/service.js';
 import type { ArenaSnapshot } from '../arenas/types.js';
+import {
+  tournamentDuelTemplateSnapshotSchema,
+  type TournamentDuelTemplateSnapshot,
+} from '../duel/amateur/tournamentTemplateSnapshot.js';
+import {
+  reconcileTournamentAttemptForFixture,
+  settleEarnedTournamentAttemptForDuel,
+} from './fixtureAttempts.js';
 
 interface FixtureContextRow {
   id: string;
@@ -37,6 +45,10 @@ export interface TournamentDuelFactory {
       awayUserId: string;
       startsAt: Date;
       endsAt: Date;
+      readyExpiresAt?: Date;
+      hardDeadlineAt?: Date;
+      autoContinue?: boolean;
+      templateSnapshot?: TournamentDuelTemplateSnapshot;
       now: Date;
       venue: {
         mode: 'home_selected' | 'neutral_default';
@@ -154,6 +166,148 @@ export async function openTournamentFixtureSegment(
     if (!['scheduled', 'open', 'active'].includes(fixture.status)) {
       throw new AppError('conflict', 'fixture is not playable', 409);
     }
+    const attemptResult = await client.query<{
+      id: string;
+      attempt_number: number;
+      kind: 'initial' | 'replay';
+      status: string;
+      scheduled_starts_at: Date;
+      readiness_expires_at: Date;
+      hard_deadline_at: Date;
+      amateur_duel_match_id: string | null;
+      result_snapshot: Record<string, unknown> | null;
+    }>(
+      `select id, attempt_number, kind, status, scheduled_starts_at,
+              readiness_expires_at, hard_deadline_at, amateur_duel_match_id, result_snapshot
+         from tournament_fixture_attempt
+        where fixture_id = $1
+        order by attempt_number desc
+        limit 1
+        for update`,
+      [fixture.id],
+    );
+    const attempt = attemptResult.rows[0];
+    if (attempt !== undefined) {
+      const reconciledAttempt = await reconcileTournamentAttemptForFixture(client, {
+        fixtureId: fixture.id,
+        now: input.now,
+      });
+      if (reconciledAttempt.changed) {
+        await client.query('commit');
+        throw new AppError('conflict', 'tournament attempt is not playable', 409);
+      }
+      if (!['pending', 'ready_check', 'active'].includes(attempt.status)) {
+        throw new AppError('conflict', 'tournament attempt is not playable', 409);
+      }
+      if (input.now < attempt.scheduled_starts_at || input.now >= attempt.hard_deadline_at) {
+        throw new AppError('fixture_window_closed', 'fixture window is closed', 409);
+      }
+      const attemptSegment = await client.query<{
+        id: string;
+        kind: string;
+        sequence_number: number;
+        duel_match_id: string | null;
+      }>(
+        `select id, kind, sequence_number, duel_match_id
+           from tournament_fixture_segment
+          where fixture_id = $1 and sequence_number = $2
+          limit 1
+          for update`,
+        [fixture.id, attempt.attempt_number],
+      );
+      if (attempt.amateur_duel_match_id !== null) {
+        const segment = attemptSegment.rows[0];
+        if (segment === undefined || segment.duel_match_id !== attempt.amateur_duel_match_id) {
+          throw new AppError('server_error', 'tournament attempt duel link is inconsistent', 500);
+        }
+        await client.query('commit');
+        return {
+          fixtureId: fixture.id,
+          segmentId: segment.id,
+          duelMatchId: attempt.amateur_duel_match_id,
+          kind: segment.kind,
+          sequenceNumber: Number(segment.sequence_number),
+        };
+      }
+      const snapshot = attempt.result_snapshot ?? {};
+      const templateId = stringSetting(snapshot, 'duelTemplateId');
+      const templateSnapshot = tournamentDuelTemplateSnapshotSchema.safeParse(
+        snapshot.templateSnapshot,
+      );
+      const autoContinue =
+        attempt.kind === 'replay' && stringSetting(snapshot, 'readinessMode') === 'auto_continue';
+      if (templateId === null || !templateSnapshot.success) {
+        throw new AppError(
+          'configuration_error',
+          'duel template is not configured for fixture',
+          409,
+        );
+      }
+      const segment =
+        attemptSegment.rows[0] ??
+        (
+          await client.query<{
+            id: string;
+            kind: string;
+            sequence_number: number;
+            duel_match_id: string | null;
+          }>(
+            `insert into tournament_fixture_segment
+               (fixture_id, sequence_number, kind, status, rules_snapshot)
+             values ($1, $2, 'regulation', 'pending', $3::jsonb)
+             returning id, kind, sequence_number, duel_match_id`,
+            [fixture.id, attempt.attempt_number, JSON.stringify(snapshot)],
+          )
+        ).rows[0]!;
+      const venue = await resolveFixtureVenue(client, fixture);
+      const duel = await createDuel(client, {
+        templateId,
+        homeUserId: fixture.home_user_id,
+        awayUserId: fixture.away_user_id,
+        startsAt: attempt.scheduled_starts_at,
+        endsAt: attempt.hard_deadline_at,
+        readyExpiresAt: attempt.readiness_expires_at,
+        hardDeadlineAt: attempt.hard_deadline_at,
+        ...(autoContinue ? { autoContinue: true } : {}),
+        templateSnapshot: templateSnapshot.data,
+        now: input.now,
+        venue,
+      });
+      await client.query(
+        `update tournament_fixture_segment
+            set duel_match_id = $2, status = $3
+          where id = $1`,
+        [segment.id, duel.matchId, autoContinue ? 'active' : 'scheduled'],
+      );
+      await client.query(
+        `update tournament_fixture_attempt
+            set amateur_duel_match_id = $2,
+                status = $3,
+                home_ready_at = case when $4 then $5 else home_ready_at end,
+                away_ready_at = case when $4 then $5 else away_ready_at end,
+                updated_at = now()
+          where id = $1 and amateur_duel_match_id is null`,
+        [
+          attempt.id,
+          duel.matchId,
+          autoContinue ? 'active' : 'ready_check',
+          autoContinue,
+          input.now,
+        ],
+      );
+      await client.query(
+        `update tournament_fixture set status = 'active', updated_at = now() where id = $1`,
+        [fixture.id],
+      );
+      await client.query('commit');
+      return {
+        fixtureId: fixture.id,
+        segmentId: segment.id,
+        duelMatchId: duel.matchId,
+        kind: segment.kind,
+        sequenceNumber: Number(segment.sequence_number),
+      };
+    }
     if (fixture.scheduled_starts_at === null || fixture.window_ends_at === null) {
       throw new AppError('conflict', 'fixture window is not configured', 409);
     }
@@ -247,6 +401,16 @@ export async function settleTournamentSegmentForDuel(
   client: PoolClient,
   input: { duelMatchId: string; homeScore: number; awayScore: number; settledAt: Date },
 ): Promise<{ fixtureId: string; completed: boolean } | null> {
+  const attemptSettlement = await settleEarnedTournamentAttemptForDuel(client, {
+    duelMatchId: input.duelMatchId,
+    settledAt: input.settledAt,
+  });
+  if (attemptSettlement.matched && attemptSettlement.fixtureId !== undefined) {
+    return {
+      fixtureId: attemptSettlement.fixtureId,
+      completed: attemptSettlement.completed,
+    };
+  }
   const segmentResult = await client.query<{
     id: string;
     fixture_id: string;
