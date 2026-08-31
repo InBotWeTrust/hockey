@@ -18,6 +18,7 @@ import {
   type TournamentRulesSnapshot,
 } from '../../src/tournament/service.js';
 import { openTournamentFixtureSegment } from '../../src/tournament/fixtureLifecycle.js';
+import { advanceTournamentPlayoffSeries } from '../../src/tournament/playoffSeriesLifecycle.js';
 import {
   createTestPool,
   getTestUrls,
@@ -2186,5 +2187,667 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
       both_incomplete_count: 1,
       both_no_show_count: 0,
     });
+  });
+
+  it('returns a participant-safe attempt state with series progress and terminal winners', async () => {
+    const context = await openFirstPlayoffAttempt(pool, 'attempt-player-state');
+    const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+    const homeToken = await jwt.issueAccessToken({ sub: context.fixture.home_user_id });
+    const awayToken = await jwt.issueAccessToken({ sub: context.fixture.away_user_id });
+
+    for (const [userId, token] of [
+      [context.fixture.home_user_id, homeToken],
+      [context.fixture.away_user_id, awayToken],
+    ] as const) {
+      const ready = await app.inject({
+        method: 'POST',
+        url: `/duel/amateur/matches/${context.opened.duelMatchId}/ready`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { loadout: {} },
+      });
+      expect(ready.statusCode, userId).toBe(200);
+    }
+
+    const opponentPeriodStartedAt = new Date('2030-10-26T17:01:00.000Z');
+    await pool.query(
+      `update amateur_duel_participant
+          set state = 'period_active', current_period = 1, period_started_at = $3,
+              goals = 99, shots_taken = 100
+        where match_id = $1 and user_id = $2`,
+      [context.opened.duelMatchId, context.fixture.away_user_id, opponentPeriodStartedAt],
+    );
+
+    const active = await app.inject({
+      method: 'GET',
+      url: `/tournaments/${context.tournamentId}/fixtures/${context.fixture.fixture_id}/attempt`,
+      headers: { authorization: `Bearer ${homeToken}` },
+    });
+    expect(active.statusCode).toBe(200);
+    expect(active.json()).toMatchObject({
+      attempt: {
+        number: 1,
+        kind: 'initial',
+        status: 'active',
+        myReady: true,
+        opponentReady: true,
+        duelMatchId: context.opened.duelMatchId,
+        result: null,
+      },
+      opponentProgress: {
+        state: 'period_active',
+        currentPeriod: 1,
+        periodEndsAt: '2030-10-26T17:02:00.000Z',
+      },
+      series: {
+        winsRequired: 2,
+        myWins: 0,
+        opponentWins: 0,
+        higherSeedWins: 0,
+        lowerSeedWins: 0,
+        status: 'scheduled',
+        winnerUserId: null,
+      },
+      tournament: { status: 'playoff', winnerUserId: null },
+    });
+    expect(JSON.stringify(active.json())).not.toContain('99');
+    expect(active.json().opponentProgress).not.toHaveProperty('goals');
+    expect(active.json().opponentProgress).not.toHaveProperty('shots');
+
+    await pool.query(
+      `update tournament_fixture_attempt
+          set status = 'settled', winner_participant_id = $2, outcome = 'home_win',
+              home_score = 4, away_score = 2, home_accuracy = 55.25,
+              away_accuracy = 50.00, home_active_time_ms = 90000,
+              away_active_time_ms = 95000, settled_at = now()
+        where fixture_id = $1`,
+      [context.fixture.fixture_id, context.fixture.home_participant_id],
+    );
+    await pool.query(
+      `update tournament_playoff_series
+          set status = 'completed', higher_seed_wins = 2, lower_seed_wins = 1,
+              winner_participant_id = $2
+        where id = $1`,
+      [context.fixture.series_id, context.fixture.home_participant_id],
+    );
+    await pool.query(`update tournament set status = 'completed' where id = $1`, [
+      context.tournamentId,
+    ]);
+
+    const terminal = await app.inject({
+      method: 'GET',
+      url: `/tournaments/${context.tournamentId}/fixtures/${context.fixture.fixture_id}/attempt`,
+      headers: { authorization: `Bearer ${awayToken}` },
+    });
+    expect(terminal.statusCode).toBe(200);
+    expect(terminal.json()).toMatchObject({
+      attempt: {
+        status: 'settled',
+        result: {
+          outcome: 'home_win',
+          winnerUserId: context.fixture.home_user_id,
+          myScore: 2,
+          opponentScore: 4,
+          myAccuracy: 50,
+          opponentAccuracy: 55.25,
+          myActiveTimeMs: 95000,
+          opponentActiveTimeMs: 90000,
+        },
+      },
+      series: {
+        winsRequired: 2,
+        myWins: 1,
+        opponentWins: 2,
+        higherSeedWins: 2,
+        lowerSeedWins: 1,
+        status: 'completed',
+        winnerUserId: context.fixture.home_user_id,
+      },
+      tournament: {
+        status: 'completed',
+        winnerUserId: context.fixture.home_user_id,
+      },
+    });
+  });
+
+  it('lazily settles an expired one-ready attempt before returning player state', async () => {
+    const context = await openFirstPlayoffAttempt(pool, 'attempt-player-state-reconcile');
+    const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+    const homeToken = await jwt.issueAccessToken({ sub: context.fixture.home_user_id });
+    const ready = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${context.opened.duelMatchId}/ready`,
+      headers: { authorization: `Bearer ${homeToken}` },
+      payload: { loadout: {} },
+    });
+    expect(ready.statusCode).toBe(200);
+    const deadline = await pool.query<{ readiness_expires_at: Date }>(
+      `select readiness_expires_at from tournament_fixture_attempt where fixture_id = $1`,
+      [context.fixture.fixture_id],
+    );
+
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(deadline.rows[0]!.readiness_expires_at.getTime() + 1));
+    try {
+      const reconciliationToken = await jwt.issueAccessToken({
+        sub: context.fixture.home_user_id,
+      });
+      const state = await app.inject({
+        method: 'GET',
+        url: `/tournaments/${context.tournamentId}/fixtures/${context.fixture.fixture_id}/attempt`,
+        headers: { authorization: `Bearer ${reconciliationToken}` },
+      });
+      expect(state.statusCode).toBe(200);
+      expect(state.json()).toMatchObject({
+        attempt: {
+          status: 'technical_result',
+          result: {
+            outcome: 'away_no_show',
+            winnerUserId: context.fixture.home_user_id,
+          },
+        },
+        series: { myWins: 1, opponentWins: 0 },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('cancels every remaining open attempt when a playoff series is won', async () => {
+    const context = await openFirstPlayoffAttempt(pool, 'attempt-series-cleanup');
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      await advanceTournamentPlayoffSeries(client, {
+        seriesId: context.fixture.series_id,
+        winnerParticipantId: context.fixture.home_participant_id,
+      });
+      await advanceTournamentPlayoffSeries(client, {
+        seriesId: context.fixture.series_id,
+        winnerParticipantId: context.fixture.home_participant_id,
+      });
+      await client.query('commit');
+    } catch (error) {
+      await client.query('rollback');
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    const attempts = await pool.query<{
+      status: string;
+      duel_status: string | null;
+      fixture_status: string;
+    }>(
+      `select attempt.status, duel.status as duel_status, fixture.status as fixture_status
+         from tournament_fixture_attempt attempt
+         join tournament_fixture fixture on fixture.id = attempt.fixture_id
+         left join amateur_duel_match duel on duel.id = attempt.amateur_duel_match_id
+        where fixture.series_id = $1
+        order by fixture.fixture_number, attempt.attempt_number`,
+      [context.fixture.series_id],
+    );
+    expect(attempts.rows).toHaveLength(3);
+    expect(attempts.rows.every((row) => row.status === 'cancelled')).toBe(true);
+    expect(attempts.rows.every((row) => row.fixture_status === 'cancelled')).toBe(true);
+    expect(attempts.rows.find((row) => row.duel_status !== null)?.duel_status).toBe('cancelled');
+  });
+
+  it('offers the next game only after both earned results and starts it when both choose now', async () => {
+    const context = await openFirstPlayoffAttempt(pool, 'attempt-next-game-choice');
+    const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+    const homeToken = await jwt.issueAccessToken({ sub: context.fixture.home_user_id });
+    const awayToken = await jwt.issueAccessToken({ sub: context.fixture.away_user_id });
+    for (const token of [homeToken, awayToken]) {
+      const ready = await app.inject({
+        method: 'POST',
+        url: `/duel/amateur/matches/${context.opened.duelMatchId}/ready`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { loadout: {} },
+      });
+      expect(ready.statusCode).toBe(200);
+    }
+
+    await pool.query(
+      `update amateur_duel_participant
+          set state = case when user_id = $2 then 'completed' else 'period_active' end,
+              completed_at = case when user_id = $2 then now() else null end,
+              current_period = case when user_id = $2 then 2 else 1 end,
+              period_started_at = case when user_id = $2 then null else now() end,
+              goals = case when user_id = $2 then 3 else 1 end,
+              shots_taken = 5, active_duration_ms = 90000
+        where match_id = $1`,
+      [context.opened.duelMatchId, context.fixture.home_user_id],
+    );
+    const waiting = await app.inject({
+      method: 'GET',
+      url: `/tournaments/${context.tournamentId}/fixtures/${context.fixture.fixture_id}/attempt`,
+      headers: { authorization: `Bearer ${homeToken}` },
+    });
+    expect(waiting.statusCode).toBe(200);
+    expect(waiting.json().nextGameChoice).toBeNull();
+    expect(waiting.json().opponentProgress).toMatchObject({
+      state: 'period_active',
+      currentPeriod: 1,
+    });
+
+    await pool.query(
+      `update amateur_duel_participant
+          set state = 'completed', completed_at = now(), current_period = 2,
+              period_started_at = null, goals = case when user_id = $2 then 3 else 1 end,
+              shots_taken = 5, active_duration_ms = 90000
+        where match_id = $1`,
+      [context.opened.duelMatchId, context.fixture.home_user_id],
+    );
+    const settled = await app.inject({
+      method: 'GET',
+      url: `/duel/amateur/matches/${context.opened.duelMatchId}`,
+      headers: { authorization: `Bearer ${homeToken}` },
+    });
+    expect(settled.statusCode).toBe(200);
+    const choiceState = await app.inject({
+      method: 'GET',
+      url: `/tournaments/${context.tournamentId}/fixtures/${context.fixture.fixture_id}/attempt`,
+      headers: { authorization: `Bearer ${homeToken}` },
+    });
+    expect(choiceState.statusCode).toBe(200);
+    expect(choiceState.json().nextGameChoice).toMatchObject({
+      myChoice: null,
+      opponentChoice: null,
+      canChoose: true,
+      startsImmediately: false,
+    });
+    const nextFixtureId = choiceState.json().nextGameChoice.nextFixtureId as string;
+
+    const homeChoice = await app.inject({
+      method: 'POST',
+      url: `/tournaments/${context.tournamentId}/fixtures/${context.fixture.fixture_id}/attempt/next-game-choice`,
+      headers: { authorization: `Bearer ${homeToken}` },
+      payload: { choice: 'immediate' },
+    });
+    expect(homeChoice.statusCode).toBe(200);
+    expect(homeChoice.json()).toMatchObject({
+      myChoice: 'immediate',
+      opponentChoice: null,
+      startsImmediately: false,
+    });
+    const awayChoice = await app.inject({
+      method: 'POST',
+      url: `/tournaments/${context.tournamentId}/fixtures/${context.fixture.fixture_id}/attempt/next-game-choice`,
+      headers: { authorization: `Bearer ${awayToken}` },
+      payload: { choice: 'immediate' },
+    });
+    expect(awayChoice.statusCode).toBe(200);
+    expect(awayChoice.json()).toMatchObject({
+      myChoice: 'immediate',
+      opponentChoice: 'immediate',
+      startsImmediately: true,
+      nextFixtureId,
+    });
+
+    const nextAttempt = await pool.query<{
+      status: string;
+      scheduled_starts_at: Date;
+      readiness_expires_at: Date;
+      hard_deadline_at: Date;
+      readiness_mode: string;
+      fixture_starts_at: Date;
+    }>(
+      `select attempt.status, attempt.scheduled_starts_at, attempt.readiness_expires_at,
+              attempt.hard_deadline_at,
+              attempt.result_snapshot->>'readinessMode' as readiness_mode,
+              fixture.scheduled_starts_at as fixture_starts_at
+         from tournament_fixture_attempt attempt
+         join tournament_fixture fixture on fixture.id = attempt.fixture_id
+        where fixture.id = $1`,
+      [nextFixtureId],
+    );
+    expect(nextAttempt.rows[0]).toMatchObject({
+      status: 'pending',
+      readiness_mode: 'next_game_auto_continue',
+    });
+    expect(nextAttempt.rows[0]!.fixture_starts_at.toISOString()).toBe(
+      nextAttempt.rows[0]!.scheduled_starts_at.toISOString(),
+    );
+    expect(nextAttempt.rows[0]!.readiness_expires_at.getTime()).toBeGreaterThan(
+      nextAttempt.rows[0]!.scheduled_starts_at.getTime(),
+    );
+    expect(nextAttempt.rows[0]!.hard_deadline_at.getTime()).toBeGreaterThan(
+      nextAttempt.rows[0]!.readiness_expires_at.getTime(),
+    );
+
+    const openedNext = await app.inject({
+      method: 'POST',
+      url: `/tournaments/${context.tournamentId}/fixtures/${nextFixtureId}/segments/open`,
+      headers: { authorization: `Bearer ${homeToken}` },
+    });
+    expect(openedNext.statusCode).toBe(200);
+    const activeNext = await pool.query<{
+      attempt_status: string;
+      duel_status: string;
+      ready_players: number;
+    }>(
+      `select attempt.status as attempt_status, duel.status as duel_status,
+              count(*) filter (where participant.ready_at is not null)::int as ready_players
+         from tournament_fixture_attempt attempt
+         join amateur_duel_match duel on duel.id = attempt.amateur_duel_match_id
+         join amateur_duel_participant participant on participant.match_id = duel.id
+        where attempt.fixture_id = $1
+        group by attempt.id, duel.id`,
+      [nextFixtureId],
+    );
+    expect(activeNext.rows[0]).toEqual({
+      attempt_status: 'active',
+      duel_status: 'active',
+      ready_players: 2,
+    });
+    const lateChange = await app.inject({
+      method: 'POST',
+      url: `/tournaments/${context.tournamentId}/fixtures/${context.fixture.fixture_id}/attempt/next-game-choice`,
+      headers: { authorization: `Bearer ${awayToken}` },
+      payload: { choice: 'scheduled' },
+    });
+    expect(lateChange.statusCode).toBe(409);
+  });
+
+  it('forces a series winner only after a second admin confirmation and preserves factual score', async () => {
+    const context = await openFirstPlayoffAttempt(pool, 'attempt-admin-series-winner');
+    const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+    const adminToken = await jwt.issueAccessToken({ sub: ADMIN_ID });
+    const requested = await app.inject({
+      method: 'POST',
+      url: `/admin/tournaments/${context.tournamentId}/series/${context.fixture.series_id}/winner-decisions`,
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: {
+        winnerParticipantId: context.fixture.home_participant_id,
+        reason: 'Соперник не может продолжить серию',
+        idempotencyKey: 'admin-series-winner-request-1',
+      },
+    });
+    expect(requested.statusCode).toBe(201);
+    expect(requested.json()).toMatchObject({
+      status: 'pending',
+      winnerParticipantId: context.fixture.home_participant_id,
+      factualScore: { higherSeedWins: 0, lowerSeedWins: 0 },
+    });
+
+    const beforeConfirmation = await pool.query<{
+      series_status: string;
+      attempt_status: string;
+    }>(
+      `select series.status as series_status, attempt.status as attempt_status
+         from tournament_playoff_series series
+         join tournament_fixture fixture on fixture.series_id = series.id
+         join tournament_fixture_attempt attempt on attempt.fixture_id = fixture.id
+        where series.id = $1 and attempt.amateur_duel_match_id is not null`,
+      [context.fixture.series_id],
+    );
+    expect(beforeConfirmation.rows[0]).toEqual({
+      series_status: 'scheduled',
+      attempt_status: 'ready_check',
+    });
+
+    const confirmed = await app.inject({
+      method: 'POST',
+      url: `/admin/tournaments/${context.tournamentId}/series/${context.fixture.series_id}/winner-decisions/${requested.json().id}/confirm`,
+      headers: { authorization: `Bearer ${adminToken}` },
+    });
+    expect(confirmed.statusCode).toBe(200);
+    expect(confirmed.json()).toMatchObject({
+      status: 'confirmed',
+      winnerParticipantId: context.fixture.home_participant_id,
+      factualScore: { higherSeedWins: 0, lowerSeedWins: 0 },
+    });
+    const repeated = await app.inject({
+      method: 'POST',
+      url: `/admin/tournaments/${context.tournamentId}/series/${context.fixture.series_id}/winner-decisions/${requested.json().id}/confirm`,
+      headers: { authorization: `Bearer ${adminToken}` },
+    });
+    expect(repeated.statusCode).toBe(200);
+    expect(repeated.json()).toEqual(confirmed.json());
+
+    const persisted = await pool.query<{
+      status: string;
+      winner_participant_id: string;
+      higher_seed_wins: number;
+      lower_seed_wins: number;
+      open_attempts: number;
+      adjustment_count: number;
+      reason: string;
+    }>(
+      `select series.status, series.winner_participant_id,
+              series.higher_seed_wins, series.lower_seed_wins,
+              (select count(*)::int
+                 from tournament_fixture_attempt attempt
+                 join tournament_fixture fixture on fixture.id = attempt.fixture_id
+                where fixture.series_id = series.id
+                  and attempt.status <> 'cancelled') as open_attempts,
+              (select count(*)::int from tournament_adjustment adjustment
+                where adjustment.tournament_id = series.tournament_id
+                  and adjustment.kind = 'incident_resolution'
+                  and adjustment.payload->>'seriesDecisionId' = $2::text) as adjustment_count,
+              decision.reason
+         from tournament_playoff_series series
+         join tournament_series_admin_decision decision on decision.series_id = series.id
+        where series.id = $1 and decision.id = $2::uuid`,
+      [context.fixture.series_id, requested.json().id],
+    );
+    expect(persisted.rows[0]).toEqual({
+      status: 'completed',
+      winner_participant_id: context.fixture.home_participant_id,
+      higher_seed_wins: 0,
+      lower_seed_wins: 0,
+      open_attempts: 0,
+      adjustment_count: 1,
+      reason: 'Соперник не может продолжить серию',
+    });
+  });
+
+  it('keeps an admin reschedule aligned with a pending attempt and blocks player time proposals', async () => {
+    const context = await openFirstPlayoffAttempt(pool, 'attempt-admin-reschedule');
+    const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+    const adminToken = await jwt.issueAccessToken({ sub: ADMIN_ID });
+    const homeToken = await jwt.issueAccessToken({ sub: context.fixture.home_user_id });
+    const pending = await pool.query<{
+      fixture_id: string;
+      scheduled_starts_at: Date;
+      readiness_expires_at: Date;
+      hard_deadline_at: Date;
+    }>(
+      `select fixture.id as fixture_id, attempt.scheduled_starts_at,
+              attempt.readiness_expires_at, attempt.hard_deadline_at
+         from tournament_fixture fixture
+         join tournament_fixture_attempt attempt on attempt.fixture_id = fixture.id
+        where fixture.series_id = $1 and attempt.status = 'pending'
+        order by fixture.fixture_number
+        limit 1`,
+      [context.fixture.series_id],
+    );
+    const original = pending.rows[0]!;
+    const startsAt = new Date(original.scheduled_starts_at.getTime() + 3_600_000);
+    const endsAt = new Date(original.hard_deadline_at.getTime() + 3_600_000);
+    const rescheduled = await app.inject({
+      method: 'PATCH',
+      url: `/admin/tournaments/${context.tournamentId}/fixtures/${original.fixture_id}/schedule`,
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: {
+        startsAt: startsAt.toISOString(),
+        endsAt: endsAt.toISOString(),
+        reason: 'Перенос по решению администратора',
+      },
+    });
+    expect(rescheduled.statusCode).toBe(200);
+    const aligned = await pool.query<{
+      fixture_starts_at: Date;
+      fixture_ends_at: Date;
+      attempt_starts_at: Date;
+      attempt_readiness_at: Date;
+      attempt_deadline_at: Date;
+    }>(
+      `select fixture.scheduled_starts_at as fixture_starts_at,
+              fixture.window_ends_at as fixture_ends_at,
+              attempt.scheduled_starts_at as attempt_starts_at,
+              attempt.readiness_expires_at as attempt_readiness_at,
+              attempt.hard_deadline_at as attempt_deadline_at
+         from tournament_fixture fixture
+         join tournament_fixture_attempt attempt on attempt.fixture_id = fixture.id
+        where fixture.id = $1`,
+      [original.fixture_id],
+    );
+    expect(aligned.rows[0]!.fixture_starts_at.toISOString()).toBe(startsAt.toISOString());
+    expect(aligned.rows[0]!.fixture_ends_at.toISOString()).toBe(endsAt.toISOString());
+    expect(aligned.rows[0]!.attempt_starts_at.toISOString()).toBe(startsAt.toISOString());
+    expect(aligned.rows[0]!.attempt_deadline_at.toISOString()).toBe(endsAt.toISOString());
+    expect(
+      aligned.rows[0]!.attempt_readiness_at.getTime() -
+        aligned.rows[0]!.attempt_starts_at.getTime(),
+    ).toBe(original.readiness_expires_at.getTime() - original.scheduled_starts_at.getTime());
+
+    const playerProposal = await app.inject({
+      method: 'POST',
+      url: `/tournaments/fixtures/${original.fixture_id}/live/proposals`,
+      headers: { authorization: `Bearer ${homeToken}` },
+      payload: { proposedAt: new Date(startsAt.getTime() + 60_000).toISOString() },
+    });
+    expect(playerProposal.statusCode).toBe(409);
+    expect(playerProposal.json()).toMatchObject({
+      error: {
+        code: 'conflict',
+        message: 'Время турнирной игры назначает администратор',
+      },
+    });
+
+    const activeReschedule = await app.inject({
+      method: 'PATCH',
+      url: `/admin/tournaments/${context.tournamentId}/fixtures/${context.fixture.fixture_id}/schedule`,
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: {
+        startsAt: startsAt.toISOString(),
+        endsAt: endsAt.toISOString(),
+        reason: 'Нельзя переносить после начала готовности',
+      },
+    });
+    expect(activeReschedule.statusCode).toBe(409);
+  });
+
+  it('keeps attempt state consistent when an admin resolves a tournament no-show', async () => {
+    const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+    const adminToken = await jwt.issueAccessToken({ sub: ADMIN_ID });
+    const single = await openFirstPlayoffAttempt(pool, 'attempt-admin-single-no-show');
+    const awarded = await app.inject({
+      method: 'POST',
+      url: `/admin/tournaments/${single.tournamentId}/fixtures/${single.fixture.fixture_id}/no-show`,
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: { absent: 'away', reason: 'Гость не подтвердил готовность' },
+    });
+    expect(awarded.statusCode).toBe(200);
+    const awardedState = await pool.query<{
+      attempt_status: string;
+      attempt_outcome: string;
+      duel_status: string;
+      higher_seed_wins: number;
+      lower_seed_wins: number;
+    }>(
+      `select attempt.status as attempt_status, attempt.outcome as attempt_outcome,
+              duel.status as duel_status, series.higher_seed_wins, series.lower_seed_wins
+         from tournament_fixture_attempt attempt
+         join tournament_fixture fixture on fixture.id = attempt.fixture_id
+         join tournament_playoff_series series on series.id = fixture.series_id
+         join amateur_duel_match duel on duel.id = attempt.amateur_duel_match_id
+        where attempt.fixture_id = $1`,
+      [single.fixture.fixture_id],
+    );
+    expect(awardedState.rows[0]).toEqual({
+      attempt_status: 'technical_result',
+      attempt_outcome: 'away_no_show',
+      duel_status: 'cancelled',
+      higher_seed_wins: 1,
+      lower_seed_wins: 0,
+    });
+
+    const both = await openFirstPlayoffAttempt(pool, 'attempt-admin-both-no-show');
+    const paused = await app.inject({
+      method: 'POST',
+      url: `/admin/tournaments/${both.tournamentId}/fixtures/${both.fixture.fixture_id}/no-show`,
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: { absent: 'both', reason: 'Оба игрока не вышли на связь' },
+    });
+    expect(paused.statusCode).toBe(200);
+    const pausedState = await pool.query<{
+      attempt_status: string;
+      attempt_outcome: string;
+      fixture_status: string;
+      series_status: string;
+      tournament_status: string;
+      incidents: number;
+    }>(
+      `select attempt.status as attempt_status, attempt.outcome as attempt_outcome,
+              fixture.status as fixture_status, series.status as series_status,
+              tournament.status as tournament_status,
+              (select count(*)::int from tournament_incident incident
+                where incident.fixture_attempt_id = attempt.id
+                  and incident.kind = 'both_no_show') as incidents
+         from tournament_fixture_attempt attempt
+         join tournament_fixture fixture on fixture.id = attempt.fixture_id
+         join tournament_playoff_series series on series.id = fixture.series_id
+         join tournament tournament on tournament.id = fixture.tournament_id
+        where attempt.fixture_id = $1`,
+      [both.fixture.fixture_id],
+    );
+    expect(pausedState.rows[0]).toEqual({
+      attempt_status: 'needs_admin_decision',
+      attempt_outcome: 'both_no_show',
+      fixture_status: 'paused',
+      series_status: 'paused',
+      tournament_status: 'playoff',
+      incidents: 1,
+    });
+  });
+
+  it('records technical attempts and cancels only unused games after disqualification', async () => {
+    const context = await openFirstPlayoffAttempt(pool, 'attempt-admin-disqualification');
+    const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+    const adminToken = await jwt.issueAccessToken({ sub: ADMIN_ID });
+    const response = await app.inject({
+      method: 'POST',
+      url: `/admin/tournaments/${context.tournamentId}/participants/${context.fixture.away_participant_id}/disqualify`,
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: { reason: 'Игрок снят с турнира администратором' },
+    });
+    expect(response.statusCode).toBe(200);
+
+    const attempts = await pool.query<{
+      attempt_number: number;
+      status: string;
+      outcome: string;
+      winner_participant_id: string | null;
+    }>(
+      `select attempt.attempt_number, attempt.status, attempt.outcome,
+              attempt.winner_participant_id
+         from tournament_fixture_attempt attempt
+         join tournament_fixture fixture on fixture.id = attempt.fixture_id
+        where fixture.series_id = $1
+        order by fixture.fixture_number`,
+      [context.fixture.series_id],
+    );
+    expect(attempts.rows).toEqual([
+      {
+        attempt_number: 1,
+        status: 'technical_result',
+        outcome: 'away_no_show',
+        winner_participant_id: context.fixture.home_participant_id,
+      },
+      {
+        attempt_number: 1,
+        status: 'technical_result',
+        outcome: 'home_no_show',
+        winner_participant_id: context.fixture.home_participant_id,
+      },
+      {
+        attempt_number: 1,
+        status: 'cancelled',
+        outcome: 'cancelled',
+        winner_participant_id: null,
+      },
+    ]);
   });
 });

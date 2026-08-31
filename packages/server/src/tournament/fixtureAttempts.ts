@@ -1,4 +1,4 @@
-import type { PoolClient } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import { AppError } from '../plugins/errors.js';
 import {
   calculateHardGameDeadline,
@@ -27,6 +27,61 @@ export interface ResolvedRoundGameDay extends RoundGameDay {
   dayNumber: number;
   firstGameStartsAt: Date;
   id?: string;
+}
+
+export interface TournamentFixtureAttemptStateDTO {
+  attempt: {
+    id: string;
+    number: number;
+    kind: 'initial' | 'replay';
+    status: string;
+    scheduledStart: string;
+    readinessExpiresAt: string;
+    hardDeadlineAt: string;
+    myReady: boolean;
+    opponentReady: boolean;
+    duelMatchId: string | null;
+    result: {
+      outcome: string;
+      winnerUserId: string | null;
+      myScore: number | null;
+      opponentScore: number | null;
+      myAccuracy: number | null;
+      opponentAccuracy: number | null;
+      myActiveTimeMs: number | null;
+      opponentActiveTimeMs: number | null;
+    } | null;
+    incidentType: string | null;
+  };
+  opponentProgress: {
+    state: string;
+    currentPeriod: number;
+    periodEndsAt: string | null;
+  } | null;
+  series: {
+    id: string;
+    winsRequired: number;
+    myWins: number;
+    opponentWins: number;
+    higherSeedWins: number;
+    lowerSeedWins: number;
+    higherSeedUserId: string;
+    lowerSeedUserId: string;
+    status: string;
+    winnerUserId: string | null;
+  } | null;
+  tournament: {
+    status: string;
+    winnerUserId: string | null;
+  };
+  nextGameChoice: {
+    nextFixtureId: string;
+    expiresAt: string;
+    myChoice: 'immediate' | 'scheduled' | null;
+    opponentChoice: 'immediate' | 'scheduled' | null;
+    canChoose: boolean;
+    startsImmediately: boolean;
+  } | null;
 }
 
 interface DuelTemplateTimingRow {
@@ -626,6 +681,13 @@ export async function settleEarnedTournamentAttemptForDuel(
       seriesId: context.series_id,
       winnerParticipantId,
     });
+    await createNextGameChoices(client, {
+      seriesId: context.series_id,
+      settledAttemptId: context.attempt_id,
+      homeParticipantId: context.home_participant_id,
+      awayParticipantId: context.away_participant_id,
+      settledAt: input.settledAt,
+    });
   }
   if (context.round_stage === 'regular') {
     await rebuildHeadToHeadStandings(client, context.tournament_id);
@@ -637,6 +699,42 @@ export async function settleEarnedTournamentAttemptForDuel(
     winnerParticipantId,
   });
   return { matched: true, fixtureId: context.fixture_id, completed: true };
+}
+
+async function createNextGameChoices(
+  client: PoolClient,
+  input: {
+    seriesId: string;
+    settledAttemptId: string;
+    homeParticipantId: string;
+    awayParticipantId: string;
+    settledAt: Date;
+  },
+): Promise<void> {
+  const nextFixture = await client.query<{ id: string }>(
+    `select fixture.id
+       from tournament_playoff_series series
+       join tournament_fixture fixture on fixture.series_id = series.id
+      where series.id = $1 and series.status = 'active'
+        and fixture.status = 'scheduled'
+        and coalesce((fixture.result_snapshot->>'gameNumber')::int, 1) =
+            series.higher_seed_wins + series.lower_seed_wins + 1
+      order by fixture.fixture_number
+      limit 1`,
+    [input.seriesId],
+  );
+  const nextFixtureId = nextFixture.rows[0]?.id;
+  if (nextFixtureId === undefined) return;
+  const expiresAt = new Date(input.settledAt.getTime() + 60_000);
+  for (const participantId of [input.homeParticipantId, input.awayParticipantId]) {
+    await client.query(
+      `insert into tournament_next_game_choice
+         (fixture_attempt_id, participant_id, next_fixture_id, choice, expires_at)
+       values ($1, $2, $3, 'scheduled', $4)
+       on conflict (fixture_attempt_id, participant_id) do nothing`,
+      [input.settledAttemptId, participantId, nextFixtureId, expiresAt],
+    );
+  }
 }
 
 async function settleTechnicalTournamentAttempt(
@@ -986,4 +1084,436 @@ export async function reconcileTournamentAttemptForFixture(
     return { matched: true, changed };
   }
   return { matched: true, changed: false };
+}
+
+interface PlayerAttemptStateRow {
+  attempt_id: string;
+  attempt_number: number;
+  attempt_kind: 'initial' | 'replay';
+  attempt_status: string;
+  scheduled_starts_at: Date;
+  readiness_expires_at: Date;
+  hard_deadline_at: Date;
+  amateur_duel_match_id: string | null;
+  home_ready_at: Date | null;
+  away_ready_at: Date | null;
+  outcome: string | null;
+  home_score: number | null;
+  away_score: number | null;
+  home_accuracy: string | number | null;
+  away_accuracy: string | number | null;
+  home_active_time_ms: string | number | null;
+  away_active_time_ms: string | number | null;
+  result_snapshot: Record<string, unknown> | null;
+  incident_type: string | null;
+  home_user_id: string;
+  away_user_id: string;
+  attempt_winner_user_id: string | null;
+  opponent_state: string | null;
+  opponent_current_period: number | null;
+  opponent_period_started_at: Date | null;
+  series_id: string | null;
+  wins_required: number | null;
+  higher_seed_wins: number | null;
+  lower_seed_wins: number | null;
+  higher_seed_user_id: string | null;
+  lower_seed_user_id: string | null;
+  series_status: string | null;
+  series_winner_user_id: string | null;
+  tournament_status: string;
+  tournament_winner_user_id: string | null;
+  next_fixture_id: string | null;
+  choice_expires_at: Date | null;
+  my_choice: 'immediate' | 'scheduled' | null;
+  my_choice_decided_at: Date | null;
+  opponent_choice: 'immediate' | 'scheduled' | null;
+  opponent_choice_decided_at: Date | null;
+  next_readiness_mode: string | null;
+}
+
+function nullableNumber(value: string | number | null): number | null {
+  return value === null ? null : Number(value);
+}
+
+function periodEndsAt(row: PlayerAttemptStateRow): string | null {
+  if (
+    row.opponent_state !== 'period_active' ||
+    row.opponent_period_started_at === null ||
+    row.opponent_current_period === null
+  ) {
+    return null;
+  }
+  const durations = row.result_snapshot?.periodDurationsMs;
+  if (!Array.isArray(durations)) return null;
+  const duration = durations[row.opponent_current_period - 1];
+  if (typeof duration !== 'number' || !Number.isFinite(duration) || duration < 0) return null;
+  return new Date(row.opponent_period_started_at.getTime() + duration).toISOString();
+}
+
+async function fetchPlayerAttemptStateRow(
+  client: PoolClient,
+  input: { tournamentId: string; fixtureId: string; userId: string },
+): Promise<PlayerAttemptStateRow> {
+  const result = await client.query<PlayerAttemptStateRow>(
+    `select attempt.id as attempt_id, attempt.attempt_number,
+            attempt.kind as attempt_kind, attempt.status as attempt_status,
+            attempt.scheduled_starts_at, attempt.readiness_expires_at,
+            attempt.hard_deadline_at, attempt.amateur_duel_match_id,
+            attempt.home_ready_at, attempt.away_ready_at, attempt.outcome,
+            attempt.home_score, attempt.away_score,
+            attempt.home_accuracy, attempt.away_accuracy,
+            attempt.home_active_time_ms, attempt.away_active_time_ms,
+            attempt.result_snapshot,
+            incident.kind as incident_type,
+            home.user_id as home_user_id, away.user_id as away_user_id,
+            attempt_winner.user_id as attempt_winner_user_id,
+            opponent_duel.state as opponent_state,
+            opponent_duel.current_period as opponent_current_period,
+            opponent_duel.period_started_at as opponent_period_started_at,
+            series.id as series_id, series.wins_required,
+            series.higher_seed_wins, series.lower_seed_wins,
+            higher_seed.user_id as higher_seed_user_id,
+            lower_seed.user_id as lower_seed_user_id,
+            series.status as series_status,
+            series_winner.user_id as series_winner_user_id,
+            tournament.status as tournament_status,
+            tournament_winner.user_id as tournament_winner_user_id,
+            my_choice.next_fixture_id, my_choice.expires_at as choice_expires_at,
+            my_choice.choice as my_choice, my_choice.decided_at as my_choice_decided_at,
+            opponent_choice.choice as opponent_choice,
+            opponent_choice.decided_at as opponent_choice_decided_at,
+            next_attempt.result_snapshot->>'readinessMode' as next_readiness_mode
+       from tournament_fixture fixture
+       join tournament tournament on tournament.id = fixture.tournament_id
+       join tournament_participant home on home.id = fixture.home_participant_id
+       join tournament_participant away on away.id = fixture.away_participant_id
+       join lateral (
+         select candidate.*
+           from tournament_fixture_attempt candidate
+          where candidate.fixture_id = fixture.id
+          order by candidate.attempt_number desc
+          limit 1
+       ) attempt on true
+       left join tournament_participant attempt_winner
+         on attempt_winner.id = attempt.winner_participant_id
+       left join tournament_playoff_series series on series.id = fixture.series_id
+       left join tournament_participant higher_seed
+         on higher_seed.id = series.higher_seed_participant_id
+       left join tournament_participant lower_seed
+         on lower_seed.id = series.lower_seed_participant_id
+       left join tournament_participant series_winner
+         on series_winner.id = series.winner_participant_id
+       left join tournament_next_game_choice my_choice
+         on my_choice.fixture_attempt_id = attempt.id
+        and my_choice.participant_id = case
+          when home.user_id = $3 then fixture.home_participant_id
+          else fixture.away_participant_id
+        end
+       left join tournament_next_game_choice opponent_choice
+         on opponent_choice.fixture_attempt_id = attempt.id
+        and opponent_choice.participant_id = case
+          when home.user_id = $3 then fixture.away_participant_id
+          else fixture.home_participant_id
+        end
+       left join lateral (
+         select candidate.result_snapshot
+           from tournament_fixture_attempt candidate
+          where candidate.fixture_id = my_choice.next_fixture_id
+          order by candidate.attempt_number desc
+          limit 1
+       ) next_attempt on true
+       left join amateur_duel_participant opponent_duel
+         on opponent_duel.match_id = attempt.amateur_duel_match_id
+        and opponent_duel.user_id = case when home.user_id = $3 then away.user_id else home.user_id end
+       left join lateral (
+         select open_incident.kind
+           from tournament_incident open_incident
+          where open_incident.fixture_attempt_id = attempt.id
+          order by (open_incident.status = 'open') desc, open_incident.opened_at desc
+          limit 1
+       ) incident on true
+       left join lateral (
+         select final_winner.user_id
+           from tournament_playoff_series final_series
+           join tournament_round final_round on final_round.id = final_series.round_id
+           join tournament_participant final_winner
+             on final_winner.id = final_series.winner_participant_id
+          where final_series.tournament_id = tournament.id
+            and final_series.kind = 'championship'
+            and final_series.status = 'completed'
+          order by final_round.number desc
+          limit 1
+       ) tournament_winner on true
+      where fixture.id = $1 and fixture.tournament_id = $2
+        and $3::uuid in (home.user_id, away.user_id)`,
+    [input.fixtureId, input.tournamentId, input.userId],
+  );
+  const row = result.rows[0];
+  if (row === undefined) throw new AppError('not_found', 'tournament attempt not found', 404);
+  return row;
+}
+
+export async function getTournamentFixtureAttemptState(
+  pool: Pool,
+  input: { tournamentId: string; fixtureId: string; userId: string; now: Date },
+): Promise<TournamentFixtureAttemptStateDTO> {
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    await client.query(`select pg_advisory_xact_lock(hashtext($1))`, [
+      `tournament:${input.tournamentId}`,
+    ]);
+    await client.query(`select pg_advisory_xact_lock(hashtext($1))`, [
+      `tournament-fixture:${input.fixtureId}`,
+    ]);
+    let row = await fetchPlayerAttemptStateRow(client, input);
+    if (row.amateur_duel_match_id === null) {
+      await reconcileTournamentAttemptForFixture(client, {
+        fixtureId: input.fixtureId,
+        now: input.now,
+      });
+    } else {
+      await reconcileTournamentAttemptForDuel(client, {
+        duelMatchId: row.amateur_duel_match_id,
+        now: input.now,
+      });
+    }
+    row = await fetchPlayerAttemptStateRow(client, input);
+    await client.query('commit');
+
+    const isHome = row.home_user_id === input.userId;
+    const isHigherSeed = row.higher_seed_user_id === input.userId;
+    const terminalResult =
+      row.outcome === null || ['pending', 'ready_check', 'active'].includes(row.attempt_status)
+        ? null
+        : {
+            outcome: row.outcome,
+            winnerUserId: row.attempt_winner_user_id,
+            myScore: isHome ? row.home_score : row.away_score,
+            opponentScore: isHome ? row.away_score : row.home_score,
+            myAccuracy: nullableNumber(isHome ? row.home_accuracy : row.away_accuracy),
+            opponentAccuracy: nullableNumber(isHome ? row.away_accuracy : row.home_accuracy),
+            myActiveTimeMs: nullableNumber(
+              isHome ? row.home_active_time_ms : row.away_active_time_ms,
+            ),
+            opponentActiveTimeMs: nullableNumber(
+              isHome ? row.away_active_time_ms : row.home_active_time_ms,
+            ),
+          };
+
+    return {
+      attempt: {
+        id: row.attempt_id,
+        number: Number(row.attempt_number),
+        kind: row.attempt_kind,
+        status: row.attempt_status,
+        scheduledStart: row.scheduled_starts_at.toISOString(),
+        readinessExpiresAt: row.readiness_expires_at.toISOString(),
+        hardDeadlineAt: row.hard_deadline_at.toISOString(),
+        myReady: isHome ? row.home_ready_at !== null : row.away_ready_at !== null,
+        opponentReady: isHome ? row.away_ready_at !== null : row.home_ready_at !== null,
+        duelMatchId: row.amateur_duel_match_id,
+        result: terminalResult,
+        incidentType: row.incident_type,
+      },
+      opponentProgress:
+        row.opponent_state === null
+          ? null
+          : {
+              state: row.opponent_state,
+              currentPeriod: Number(row.opponent_current_period ?? 0),
+              periodEndsAt: periodEndsAt(row),
+            },
+      series:
+        row.series_id === null ||
+        row.wins_required === null ||
+        row.higher_seed_user_id === null ||
+        row.lower_seed_user_id === null
+          ? null
+          : {
+              id: row.series_id,
+              winsRequired: Number(row.wins_required),
+              myWins: Number(isHigherSeed ? row.higher_seed_wins : row.lower_seed_wins),
+              opponentWins: Number(isHigherSeed ? row.lower_seed_wins : row.higher_seed_wins),
+              higherSeedWins: Number(row.higher_seed_wins),
+              lowerSeedWins: Number(row.lower_seed_wins),
+              higherSeedUserId: row.higher_seed_user_id,
+              lowerSeedUserId: row.lower_seed_user_id,
+              status: row.series_status!,
+              winnerUserId: row.series_winner_user_id,
+            },
+      tournament: {
+        status: row.tournament_status,
+        winnerUserId: row.tournament_winner_user_id,
+      },
+      nextGameChoice:
+        row.next_fixture_id === null || row.choice_expires_at === null
+          ? null
+          : {
+              nextFixtureId: row.next_fixture_id,
+              expiresAt: row.choice_expires_at.toISOString(),
+              myChoice: row.my_choice_decided_at === null ? null : row.my_choice,
+              opponentChoice: row.opponent_choice_decided_at === null ? null : row.opponent_choice,
+              canChoose: row.my_choice_decided_at === null && input.now < row.choice_expires_at,
+              startsImmediately: row.next_readiness_mode === 'next_game_auto_continue',
+            },
+    };
+  } catch (error) {
+    await client.query('rollback').catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function chooseTournamentNextGame(
+  pool: Pool,
+  input: {
+    tournamentId: string;
+    fixtureId: string;
+    userId: string;
+    choice: 'immediate' | 'scheduled';
+    now: Date;
+  },
+): Promise<NonNullable<TournamentFixtureAttemptStateDTO['nextGameChoice']>> {
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    await client.query(`select pg_advisory_xact_lock(hashtext($1))`, [
+      `tournament:${input.tournamentId}`,
+    ]);
+    await client.query(`select pg_advisory_xact_lock(hashtext($1))`, [
+      `tournament-fixture:${input.fixtureId}`,
+    ]);
+    const choices = await client.query<{
+      id: string;
+      participant_id: string;
+      user_id: string;
+      next_fixture_id: string;
+      choice: 'immediate' | 'scheduled';
+      decided_at: Date | null;
+      expires_at: Date;
+    }>(
+      `select choice.id, choice.participant_id, participant.user_id,
+              choice.next_fixture_id, choice.choice, choice.decided_at, choice.expires_at
+         from tournament_fixture fixture
+         join tournament_fixture_attempt attempt on attempt.fixture_id = fixture.id
+         join tournament_next_game_choice choice on choice.fixture_attempt_id = attempt.id
+         join tournament_participant participant on participant.id = choice.participant_id
+        where fixture.id = $1 and fixture.tournament_id = $2
+          and attempt.attempt_number = (
+            select max(candidate.attempt_number)
+              from tournament_fixture_attempt candidate
+             where candidate.fixture_id = fixture.id
+          )
+        order by choice.participant_id
+        for update of choice`,
+      [input.fixtureId, input.tournamentId],
+    );
+    const mine = choices.rows.find((choice) => choice.user_id === input.userId);
+    const opponent = choices.rows.find((choice) => choice.user_id !== input.userId);
+    if (mine === undefined || opponent === undefined) {
+      throw new AppError('not_found', 'next game choice is not available', 404);
+    }
+    const fixedNextGame = await client.query<{ readiness_mode: string | null }>(
+      `select result_snapshot->>'readinessMode' as readiness_mode
+         from tournament_fixture_attempt
+        where fixture_id = $1
+        order by attempt_number desc
+        limit 1`,
+      [mine.next_fixture_id],
+    );
+    if (fixedNextGame.rows[0]?.readiness_mode === 'next_game_auto_continue') {
+      if (mine.decided_at !== null && mine.choice === input.choice) {
+        await client.query('commit');
+        return {
+          nextFixtureId: mine.next_fixture_id,
+          expiresAt: mine.expires_at.toISOString(),
+          myChoice: mine.choice,
+          opponentChoice: opponent.decided_at === null ? null : opponent.choice,
+          canChoose: false,
+          startsImmediately: true,
+        };
+      }
+      throw new AppError('conflict', 'Следующая игра уже начинается', 409);
+    }
+    if (input.now >= mine.expires_at) {
+      throw new AppError('conflict', 'next game choice has expired', 409);
+    }
+    await client.query(
+      `update tournament_next_game_choice
+          set choice = $2, decided_at = $3, updated_at = now()
+        where id = $1`,
+      [mine.id, input.choice, input.now],
+    );
+    mine.choice = input.choice;
+    mine.decided_at = input.now;
+
+    const startsImmediately =
+      mine.choice === 'immediate' &&
+      mine.decided_at !== null &&
+      opponent.choice === 'immediate' &&
+      opponent.decided_at !== null;
+    if (startsImmediately) {
+      const nextAttempt = await client.query<{
+        id: string;
+        scheduled_starts_at: Date;
+        readiness_expires_at: Date;
+        hard_deadline_at: Date;
+        result_snapshot: Record<string, unknown> | null;
+      }>(
+        `select id, scheduled_starts_at, readiness_expires_at, hard_deadline_at,
+                result_snapshot
+           from tournament_fixture_attempt
+          where fixture_id = $1 and status = 'pending'
+          order by attempt_number desc
+          limit 1
+          for update`,
+        [mine.next_fixture_id],
+      );
+      const attempt = nextAttempt.rows[0];
+      if (attempt === undefined) {
+        throw new AppError('conflict', 'next tournament game is not available', 409);
+      }
+      if (attempt.result_snapshot?.readinessMode !== 'next_game_auto_continue') {
+        const readinessExpiresAt = new Date(input.now.getTime() + 10_000);
+        const gameplayDurationMs = Math.max(
+          1,
+          attempt.hard_deadline_at.getTime() - attempt.readiness_expires_at.getTime(),
+        );
+        const hardDeadlineAt = new Date(readinessExpiresAt.getTime() + gameplayDurationMs);
+        await client.query(
+          `update tournament_fixture_attempt
+              set scheduled_starts_at = $2, readiness_expires_at = $3,
+                  hard_deadline_at = $4,
+                  result_snapshot = coalesce(result_snapshot, '{}'::jsonb)
+                    || '{"readinessMode":"next_game_auto_continue"}'::jsonb,
+                  updated_at = now()
+            where id = $1 and status = 'pending'`,
+          [attempt.id, input.now, readinessExpiresAt, hardDeadlineAt],
+        );
+        await client.query(
+          `update tournament_fixture
+              set status = 'scheduled', scheduled_starts_at = $2,
+                  window_ends_at = $3, updated_at = now()
+            where id = $1 and status in ('conditional', 'scheduled')`,
+          [mine.next_fixture_id, input.now, hardDeadlineAt],
+        );
+      }
+    }
+    await client.query('commit');
+    return {
+      nextFixtureId: mine.next_fixture_id,
+      expiresAt: mine.expires_at.toISOString(),
+      myChoice: mine.choice,
+      opponentChoice: opponent.decided_at === null ? null : opponent.choice,
+      canChoose: false,
+      startsImmediately,
+    };
+  } catch (error) {
+    await client.query('rollback').catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 }

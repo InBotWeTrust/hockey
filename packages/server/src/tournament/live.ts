@@ -103,6 +103,21 @@ export async function assertFixtureParticipant(pool: Pool, fixtureId: string, us
   return fixtureParticipant(pool, fixtureId, userId);
 }
 
+async function assertPlayerTimeProposalAllowed(
+  client: PoolClient,
+  fixtureId: string,
+): Promise<void> {
+  const attempt = await client.query<{ exists: boolean }>(
+    `select exists(
+       select 1 from tournament_fixture_attempt where fixture_id = $1
+     ) as exists`,
+    [fixtureId],
+  );
+  if (attempt.rows[0]?.exists === true) {
+    throw new AppError('conflict', 'Время турнирной игры назначает администратор', 409);
+  }
+}
+
 async function getFixtureLiveOverlapWarnings(
   client: Pool | PoolClient,
   input: { fixtureId: string; proposedAt: Date },
@@ -176,6 +191,7 @@ export async function proposeFixtureLiveTime(
       `fixture-live:${input.fixtureId}`,
     ]);
     const fixture = await fixtureParticipant(client, input.fixtureId, input.userId, true);
+    await assertPlayerTimeProposalAllowed(client, input.fixtureId);
     if (
       fixture.scheduled_starts_at === null ||
       fixture.window_ends_at === null ||
@@ -220,6 +236,7 @@ export async function respondFixtureLiveProposal(
       `fixture-live:${input.fixtureId}`,
     ]);
     await fixtureParticipant(client, input.fixtureId, input.userId, true);
+    await assertPlayerTimeProposalAllowed(client, input.fixtureId);
     const responder = await client.query<{ id: string }>(
       `select p.id from tournament_participant p
          join tournament_fixture f on f.tournament_id = p.tournament_id

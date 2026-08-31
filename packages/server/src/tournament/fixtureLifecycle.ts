@@ -234,8 +234,10 @@ export async function openTournamentFixtureSegment(
       const templateSnapshot = tournamentDuelTemplateSnapshotSchema.safeParse(
         snapshot.templateSnapshot,
       );
+      const readinessMode = stringSetting(snapshot, 'readinessMode');
       const autoContinue =
-        attempt.kind === 'replay' && stringSetting(snapshot, 'readinessMode') === 'auto_continue';
+        (attempt.kind === 'replay' && readinessMode === 'auto_continue') ||
+        readinessMode === 'next_game_auto_continue';
       if (templateId === null || !templateSnapshot.success) {
         throw new AppError(
           'configuration_error',

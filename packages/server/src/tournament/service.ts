@@ -2898,9 +2898,67 @@ export async function rescheduleTournamentFixture(
 ) {
   return inTransaction(pool, async (client) => {
     await lockTournamentFixture(client, input);
+    const attempt = await client.query<{
+      id: string;
+      status: string;
+      amateur_duel_match_id: string | null;
+      scheduled_starts_at: Date;
+      readiness_expires_at: Date;
+      hard_deadline_at: Date;
+    }>(
+      `select id, status, amateur_duel_match_id, scheduled_starts_at,
+              readiness_expires_at, hard_deadline_at
+         from tournament_fixture_attempt
+        where fixture_id = $1
+        order by attempt_number desc
+        limit 1
+        for update`,
+      [input.fixtureId],
+    );
+    const currentAttempt = attempt.rows[0];
+    if (currentAttempt !== undefined) {
+      if (
+        currentAttempt.amateur_duel_match_id !== null ||
+        !['pending', 'needs_reschedule', 'needs_admin_decision'].includes(currentAttempt.status)
+      ) {
+        throw new AppError('conflict', 'Игру нельзя перенести после начала готовности', 409);
+      }
+      const readinessDurationMs =
+        currentAttempt.readiness_expires_at.getTime() -
+        currentAttempt.scheduled_starts_at.getTime();
+      const gameplayDurationMs =
+        currentAttempt.hard_deadline_at.getTime() - currentAttempt.readiness_expires_at.getTime();
+      const readinessExpiresAt = new Date(input.startsAt.getTime() + readinessDurationMs);
+      const hardDeadlineAt = new Date(readinessExpiresAt.getTime() + gameplayDurationMs);
+      if (hardDeadlineAt.getTime() !== input.endsAt.getTime()) {
+        throw new AppError(
+          'bad_request',
+          'Конец игры должен учитывать готовность и длительность выбранного формата',
+          400,
+        );
+      }
+      await client.query(
+        `update tournament_fixture_attempt
+            set status = 'pending', scheduled_starts_at = $2,
+                readiness_expires_at = $3, hard_deadline_at = $4,
+                outcome = null, winner_participant_id = null, settled_at = null,
+                result_snapshot = coalesce(result_snapshot, '{}'::jsonb)
+                  || jsonb_build_object('rescheduledReason', $5::text),
+                updated_at = now()
+          where id = $1`,
+        [currentAttempt.id, input.startsAt, readinessExpiresAt, hardDeadlineAt, input.reason],
+      );
+      await client.query(
+        `update tournament_incident
+            set status = 'resolved', resolved_at = now(), resolved_by = $2, updated_at = now()
+          where fixture_attempt_id = $1 and status = 'open'`,
+        [currentAttempt.id, input.adminUserId],
+      );
+    }
     const updated = await client.query(
       `update tournament_fixture
           set scheduled_starts_at = $3, window_ends_at = $4,
+              status = case when status = 'paused' then 'scheduled' else status end,
               rescheduled_reason = $5, updated_at = now()
         where id = $1 and tournament_id = $2
           and status in ('conditional', 'scheduled', 'open', 'paused')
@@ -2909,6 +2967,13 @@ export async function rescheduleTournamentFixture(
     );
     if (updated.rowCount === 0)
       throw new AppError('conflict', 'fixture cannot be rescheduled', 409);
+    await client.query(
+      `update tournament_playoff_series series
+          set status = 'scheduled', updated_at = now()
+         from tournament_fixture fixture
+        where fixture.id = $1 and fixture.series_id = series.id and series.status = 'paused'`,
+      [input.fixtureId],
+    );
     await client.query(
       `insert into tournament_adjustment
          (tournament_id, fixture_id, kind, payload, reason, created_by)
@@ -2962,6 +3027,18 @@ export async function resolveTournamentNoShow(
     if (!fixture || fixture.home_participant_id === null || fixture.away_participant_id === null) {
       throw new AppError('not_found', 'fixture not found', 404);
     }
+    const attemptResult = await client.query<{
+      id: string;
+      status: string;
+    }>(
+      `select id, status from tournament_fixture_attempt
+        where fixture_id = $1
+        order by attempt_number desc
+        limit 1
+        for update`,
+      [input.fixtureId],
+    );
+    const attempt = attemptResult.rows[0];
     let fixtureChanged = false;
     if (input.absent === 'both' && fixture.stage !== 'regular') {
       const paused = await client.query(
@@ -2981,12 +3058,38 @@ export async function resolveTournamentNoShow(
         );
       }
       if (fixtureChanged) {
+        if (attempt !== undefined) {
+          await client.query(
+            `update tournament_fixture_attempt
+                set status = 'needs_admin_decision', outcome = 'both_no_show',
+                    result_snapshot = coalesce(result_snapshot, '{}'::jsonb)
+                      || $2::jsonb,
+                    updated_at = now()
+              where id = $1 and status in (
+                'pending', 'ready_check', 'active', 'needs_reschedule', 'needs_admin_decision'
+              )`,
+            [attempt.id, JSON.stringify({ reason: input.reason, resolvedByAdmin: true })],
+          );
+          await client.query(
+            `insert into tournament_incident
+               (tournament_id, series_id, fixture_id, fixture_attempt_id, kind, details)
+             values ($1, $2, $3, $4, 'both_no_show', $5::jsonb)
+             on conflict (fixture_attempt_id, kind) where status = 'open' do nothing`,
+            [
+              input.tournamentId,
+              fixture.series_id,
+              input.fixtureId,
+              attempt.id,
+              JSON.stringify({ reason: input.reason, resolvedByAdmin: true }),
+            ],
+          );
+        }
         await terminalizeTournamentFixtureDuels(client, {
           tournamentId: input.tournamentId,
           fixtureIds: [input.fixtureId],
           reason: 'tournament_no_show',
         });
-        if (fixture.tournament_status !== 'paused') {
+        if (attempt === undefined && fixture.tournament_status !== 'paused') {
           await client.query(
             `insert into tournament_adjustment
                (tournament_id, fixture_id, kind, payload, reason, created_by)
@@ -3000,11 +3103,13 @@ export async function resolveTournamentNoShow(
             ],
           );
         }
-        await client.query(
-          `update tournament set status = 'paused', updated_at = now()
-            where id = $1 and status <> 'paused'`,
-          [input.tournamentId],
-        );
+        if (attempt === undefined) {
+          await client.query(
+            `update tournament set status = 'paused', updated_at = now()
+              where id = $1 and status <> 'paused'`,
+            [input.tournamentId],
+          );
+        }
       }
     } else {
       const winner =
@@ -3036,6 +3141,25 @@ export async function resolveTournamentNoShow(
       );
       if ((updated.rowCount ?? 0) > 0) {
         fixtureChanged = true;
+        if (attempt !== undefined && winner !== null) {
+          await client.query(
+            `update tournament_fixture_attempt
+                set status = 'technical_result', winner_participant_id = $2,
+                    outcome = $3,
+                    result_snapshot = coalesce(result_snapshot, '{}'::jsonb)
+                      || $4::jsonb,
+                    settled_at = now(), updated_at = now()
+              where id = $1 and status in (
+                'pending', 'ready_check', 'active', 'needs_reschedule', 'needs_admin_decision'
+              )`,
+            [
+              attempt.id,
+              winner,
+              input.absent === 'home' ? 'home_no_show' : 'away_no_show',
+              JSON.stringify({ reason: input.reason, resolvedByAdmin: true }),
+            ],
+          );
+        }
         await terminalizeTournamentFixtureDuels(client, {
           tournamentId: input.tournamentId,
           fixtureIds: [input.fixtureId],
@@ -3140,6 +3264,27 @@ export async function disqualifyTournamentParticipant(
       );
       if (updated.rowCount === 0) continue;
       futureForfeits += 1;
+      await client.query(
+        `update tournament_fixture_attempt
+            set status = 'technical_result', winner_participant_id = $2,
+                outcome = $3,
+                result_snapshot = coalesce(result_snapshot, '{}'::jsonb)
+                  || $4::jsonb,
+                settled_at = now(), updated_at = now()
+          where fixture_id = $1 and status in (
+            'pending', 'ready_check', 'active', 'needs_reschedule', 'needs_admin_decision'
+          )`,
+        [
+          fixture.id,
+          fixture.winner_participant_id,
+          fixture.side === 'home' ? 'home_no_show' : 'away_no_show',
+          JSON.stringify({
+            technical: true,
+            disqualification: true,
+            reason: input.reason,
+          }),
+        ],
+      );
       await terminalizeTournamentFixtureDuels(client, {
         tournamentId: input.tournamentId,
         fixtureIds: [fixture.id],
