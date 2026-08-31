@@ -666,6 +666,56 @@ async function fetchTournamentFixtureDeadlineRows(
   return rows;
 }
 
+async function fetchTournamentReadinessEndingRows(
+  pool: Queryable,
+  now: Date,
+  lateWindowMs: number,
+): Promise<ScheduledPushSubscriptionRow[]> {
+  const { rows } = await pool.query<ScheduledPushSubscriptionRow>(
+    `with candidates as (
+       select attempt.id as attempt_id, fixture.id as fixture_id,
+              tournament.title as tournament_title, participant.user_id,
+              attempt.readiness_expires_at - interval '1 minute' as event_due_at
+         from tournament_fixture_attempt attempt
+         join tournament_fixture fixture on fixture.id = attempt.fixture_id
+         join tournament on tournament.id = fixture.tournament_id
+         cross join lateral (
+           values
+             (fixture.home_participant_id, attempt.home_ready_at),
+             (fixture.away_participant_id, attempt.away_ready_at)
+         ) as side(participant_id, ready_at)
+         join tournament_participant participant on participant.id = side.participant_id
+         left join user_push_preferences pref on pref.user_id = participant.user_id
+        where tournament.status = 'playoff'
+          and attempt.status = 'ready_check'
+          and side.ready_at is null
+          and participant.state = 'approved'
+          and coalesce(pref.tournament_events, true)
+          and attempt.readiness_expires_at > $1::timestamptz
+     )
+     select ps.id as subscription_id, ps.user_id, ps.endpoint, ps.p256dh, ps.auth,
+            c.attempt_id::text || ':readiness-ending:' ||
+              ((extract(epoch from c.event_due_at) * 1000)::bigint)::text as event_key,
+            ''::text as local_date, null::uuid as day_pool_id, null::int as period_number,
+            c.event_due_at, null::uuid as training_shot_id,
+            c.tournament_title, c.fixture_id
+       from candidates c
+       join push_subscriptions ps on ps.user_id = c.user_id
+      where c.event_due_at <= $1::timestamptz
+        and c.event_due_at > $1::timestamptz - ($2::bigint * interval '1 millisecond')
+        and not exists (
+          select 1 from push_delivery_log pdl
+           where pdl.user_id = c.user_id
+             and pdl.event_type = 'tournament.readiness_ending'
+             and pdl.event_key = c.attempt_id::text || ':readiness-ending:' ||
+               ((extract(epoch from c.event_due_at) * 1000)::bigint)::text
+        )
+      order by ps.user_id, ps.updated_at desc`,
+    [now.toISOString(), lateWindowMs],
+  );
+  return rows;
+}
+
 async function tryAcquireSchedulerLock(client: PoolClient): Promise<boolean> {
   const { rows } = await client.query<{ locked: boolean }>(
     `select pg_try_advisory_xact_lock($1::int, $2::int) as locked`,
@@ -727,6 +777,9 @@ async function schedulePushDeliveries(
     : [];
   const tournamentFixtureDeadlineRows = tournamentsEnabled
     ? await fetchTournamentFixtureDeadlineRows(client, now, lateWindowMs)
+    : [];
+  const tournamentReadinessEndingRows = tournamentsEnabled
+    ? await fetchTournamentReadinessEndingRows(client, now, lateWindowMs)
     : [];
 
   const dailyAvailableTargets = collectTargets('daily.available', dailyAvailableRows, (row) => ({
@@ -860,6 +913,20 @@ async function schedulePushDeliveries(
     },
   );
 
+  const tournamentReadinessEndingTargets = collectTargets(
+    'tournament.readiness_ending',
+    tournamentReadinessEndingRows,
+    (row) => ({
+      variables: { tournamentTitle: row.tournament_title, fixtureId: row.fixture_id },
+      fallback: {
+        title: 'Осталась минута',
+        body: 'Подтвердите готовность, иначе будет засчитано техническое поражение.',
+        url: '/?view=amateur&section=tournaments',
+      },
+      tag: `ultimate-hockey-tournament-readiness-ending-${row.fixture_id}`,
+    }),
+  );
+
   return [
     await enqueueTargets(client, 'daily.available', dailyAvailableTargets),
     await enqueueTargets(
@@ -878,6 +945,11 @@ async function schedulePushDeliveries(
             client,
             'tournament.fixture_deadline',
             tournamentFixtureDeadlineTargets,
+          ),
+          await enqueueTargets(
+            client,
+            'tournament.readiness_ending',
+            tournamentReadinessEndingTargets,
           ),
         ]
       : []),

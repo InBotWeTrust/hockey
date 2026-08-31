@@ -220,6 +220,7 @@ describe.skipIf(!hasIntegrationEnv)('069 bonus skill catalogue reset', () => {
       '080_sync_mix_period_speeds.sql',
       '081_daily_period_achievement_event_indexes.sql',
       '082_tournament_playoff_scheduling.sql',
+      '083_tournament_playoff_notifications.sql',
     ]);
 
     const accuracy = await pool.query<{

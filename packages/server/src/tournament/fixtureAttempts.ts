@@ -15,7 +15,10 @@ import {
 } from '../duel/amateur/tournamentTemplateSnapshot.js';
 import { advanceTournamentPlayoffSeries } from './playoffSeriesLifecycle.js';
 import { rebuildHeadToHeadStandings } from './standingsPersistence.js';
-import { enqueueTournamentFixtureResultPush } from './fixtureNotifications.js';
+import {
+  enqueueTournamentFixtureResultPush,
+  enqueueTournamentOpponentReadyPush,
+} from './fixtureNotifications.js';
 
 export interface DuelTemplateLifecycleSnapshot extends SnapshottedDuelTemplateTiming {
   duelTemplateId: string;
@@ -349,10 +352,21 @@ export async function mirrorTournamentAttemptReady(
       where fixture.id = attempt.fixture_id
         and attempt.amateur_duel_match_id = $1
         and attempt.status = 'ready_check'
-        and $2::uuid in (home.user_id, away.user_id)`,
+        and $2::uuid in (home.user_id, away.user_id)
+        and case
+              when home.user_id = $2 then attempt.home_ready_at
+              else attempt.away_ready_at
+            end is null`,
     [input.duelMatchId, input.userId, input.readyAt],
   );
-  return (mirrored.rowCount ?? 0) > 0;
+  const changed = (mirrored.rowCount ?? 0) > 0;
+  if (changed) {
+    await enqueueTournamentOpponentReadyPush(client, {
+      duelMatchId: input.duelMatchId,
+      readyUserId: input.userId,
+    });
+  }
+  return changed;
 }
 
 export async function markTournamentAttemptActive(

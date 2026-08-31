@@ -1350,7 +1350,7 @@ describe('TournamentAdmin', () => {
               homeSequence: ['H', 'H', 'A', 'A', 'H', 'A', 'H'],
             }),
           ]),
-          notificationReminderOffsetsMs: [3_600_000, 900_000],
+          notificationReminderOffsetsMs: [1_800_000, 300_000],
           notificationOverrides: {
             'tournament.live_soon': {
               title: 'Скоро матч {{tournamentTitle}}',

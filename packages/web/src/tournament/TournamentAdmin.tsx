@@ -187,7 +187,7 @@ const defaultDraft: TournamentDraft = {
   playoffRounds: Array.from({ length: 4 }, defaultPlayoffRound),
   regularRewards: '',
   playoffRewards: '',
-  reminderMinutes: '60,15',
+  reminderMinutes: '30,5',
   deadlineLeadMinutes: 30,
   notificationOverrides: '',
 };

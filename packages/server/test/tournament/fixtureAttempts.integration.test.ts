@@ -589,7 +589,6 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
       [tournament.id],
     );
     const row = fixture.rows[0]!;
-
     await expect(
       openTournamentFixtureSegment(
         pool,
@@ -831,6 +830,11 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
       [tournament.id],
     );
     const row = fixture.rows[0]!;
+    await pool.query(
+      `insert into push_subscriptions (user_id, endpoint, p256dh, auth)
+       values ($1, $2, 'test-p256dh', 'test-auth')`,
+      [row.away_user_id, `https://push.example.test/tournament-ready/${row.away_user_id}`],
+    );
     const opened = await openTournamentFixtureSegment(
       pool,
       {
@@ -872,6 +876,17 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
       persisted.rows[0]!.participant_ready_at,
     );
     expect(persisted.rows[0]!.attempt_away_ready_at).toBeNull();
+    const opponentReadyPush = await pool.query<{ event_type: string; event_key: string }>(
+      `select event_type, event_key from push_delivery_log
+        where user_id = $1 and event_type = 'tournament.opponent_ready'`,
+      [row.away_user_id],
+    );
+    expect(opponentReadyPush.rows).toEqual([
+      expect.objectContaining({
+        event_type: 'tournament.opponent_ready',
+        event_key: expect.stringContaining(opened.duelMatchId),
+      }),
+    ]);
   });
 
   it('keeps the immutable attempt hard deadline when both players become ready', async () => {
