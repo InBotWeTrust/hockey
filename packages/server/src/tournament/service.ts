@@ -1157,11 +1157,15 @@ export async function approveAllTournamentApplications(
         where tournament_id = $1 and state = 'approved'`,
       [tournamentId],
     );
-    if (
-      Number(approved.rows[0]?.count ?? 0) + pending.rows.length >
-      tournament.rules_snapshot.config.participantLimit
-    ) {
-      throw new AppError('capacity_reached', 'capacity reached', 409);
+    const approvedCount = Number(approved.rows[0]?.count ?? 0);
+    const participantLimit = tournament.rules_snapshot.config.participantLimit;
+    if (approvedCount + pending.rows.length > participantLimit) {
+      throw new AppError('capacity_reached', 'capacity reached', 409, {
+        approvedCount,
+        participantLimit,
+        availableSlots: Math.max(0, participantLimit - approvedCount),
+        pendingCount: pending.rows.length,
+      });
     }
 
     const entryFeeCoins = tournament.rules_snapshot.config.entryFeeCoins;

@@ -53,6 +53,36 @@ describe('apiFetch', () => {
     await expect(apiFetch('/x')).rejects.toBeInstanceOf(ApiError);
   });
 
+  it('preserves public error details for client-side recovery copy', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockJson(
+        {
+          error: {
+            code: 'capacity_reached',
+            message: 'capacity reached',
+            details: {
+              approvedCount: 14,
+              participantLimit: 16,
+              availableSlots: 2,
+              pendingCount: 3,
+            },
+          },
+        },
+        { status: 409 },
+      ),
+    );
+
+    await expect(apiFetch('/x')).rejects.toMatchObject({
+      code: 'capacity_reached',
+      details: {
+        approvedCount: 14,
+        participantLimit: 16,
+        availableSlots: 2,
+        pendingCount: 3,
+      },
+    });
+  });
+
   it.each(['bad_request', 'unexpected_internal_code'])(
     'keeps unknown server code %s but never exposes its internal message',
     async (code) => {
