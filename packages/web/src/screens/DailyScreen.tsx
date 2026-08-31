@@ -3448,7 +3448,10 @@ function DuelKindPreferencePicker({
   };
 
   return (
-    <div className="duel-kind-picker" style={{ borderRadius: 16, padding: '10px 10px 12px' }}>
+    <div
+      className="glass duel-kind-picker"
+      style={{ borderRadius: 16, padding: '10px 10px 12px' }}
+    >
       <div
         style={{
           display: 'flex',
@@ -3467,7 +3470,7 @@ function DuelKindPreferencePicker({
           onClick={onInfo}
           aria-label="Правила поиска соперника"
         >
-          <Info size={12} color="var(--muted)" />
+          <Info className="duel-kind-picker__info-icon" size={12} />
         </button>
       </div>
       <div
@@ -3904,6 +3907,7 @@ function AmateurDuelsPage({
                   <>
                     <GlassSelect
                       ariaLabel="Шаблон дуэли"
+                      buttonClassName="duel-template-select"
                       value={selectedTemplate.id}
                       options={templateItems.map((template) => ({
                         value: template.id,
@@ -3926,7 +3930,10 @@ function AmateurDuelsPage({
                     <Info size={12} color="var(--muted)" />
                   </button>
                 </div>
-                <div className="glass" style={{ borderRadius: 18, padding: 12 }}>
+                <div
+                  className="glass duel-quick-pick"
+                  style={{ borderRadius: 18, padding: 12 }}
+                >
                   <div
                     aria-label="Быстрый выбор соперника"
                     className="no-scrollbar"
@@ -3945,6 +3952,9 @@ function AmateurDuelsPage({
                           <button
                             key={opponent.userId}
                             type="button"
+                            className={`duel-quick-pick__opponent${
+                              active ? ' duel-quick-pick__opponent--active' : ''
+                            }`}
                             aria-label={`Выбрать соперника ${opponent.displayName}`}
                             onClick={() => {
                               setSelectedOpponent(opponent);
@@ -3957,7 +3967,6 @@ function AmateurDuelsPage({
                               flexDirection: 'column',
                               alignItems: 'center',
                               gap: 6,
-                              color: active ? 'var(--ink)' : 'var(--muted)',
                               fontSize: 10,
                               fontWeight: 900,
                               lineHeight: 1.05,
@@ -3996,6 +4005,7 @@ function AmateurDuelsPage({
                               />
                             </span>
                             <span
+                              className="duel-quick-pick__name"
                               style={{
                                 width: '100%',
                                 overflow: 'hidden',
@@ -4009,7 +4019,10 @@ function AmateurDuelsPage({
                         );
                       })
                     ) : (
-                      <div style={{ color: 'var(--muted)', fontSize: 13, fontWeight: 700 }}>
+                      <div
+                        className="duel-quick-pick__empty"
+                        style={{ fontSize: 13, fontWeight: 700 }}
+                      >
                         Игроков пока не видно. Можно найти по имени.
                       </div>
                     )}
@@ -4026,9 +4039,10 @@ function AmateurDuelsPage({
                     <Info size={12} color="var(--muted)" />
                   </button>
                 </div>
-                <div className="glass-dock-field" style={{ minHeight: 48 }}>
-                  <Search size={14} color="var(--muted)" aria-hidden />
+                <div className="glass-dock-field duel-opponent-search" style={{ minHeight: 48 }}>
+                  <Search className="duel-opponent-search__icon" size={14} aria-hidden />
                   <input
+                    className="duel-opponent-search__input"
                     aria-label="Поиск соперника"
                     value={opponentQuery}
                     onChange={(event) => {
@@ -4042,7 +4056,6 @@ function AmateurDuelsPage({
                       border: 'none',
                       outline: 'none',
                       background: 'transparent',
-                      color: 'var(--ink)',
                       fontSize: 14,
                       fontWeight: 800,
                       fontFamily: 'inherit',
@@ -4171,7 +4184,7 @@ function AmateurDuelsPage({
                 </div>
                 <button
                   type="button"
-                  className="btn btn--cta"
+                  className="btn btn--cta duel-challenge-submit"
                   disabled={!canChallenge}
                   onClick={() => {
                     if (!selectedTemplate || !selectedOpponent) return;

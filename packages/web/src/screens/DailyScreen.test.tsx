@@ -3220,7 +3220,23 @@ describe('DailyScreen', () => {
     expect(quickPickHeading).not.toHaveClass('section-label--page');
     expect(searchHeading).not.toHaveClass('section-label--page');
 
+    expect(screen.getByLabelText('Быстрый выбор соперника').parentElement).toHaveClass(
+      'duel-quick-pick',
+    );
+    expect(screen.getByText('Игроков пока не видно. Можно найти по имени.')).toHaveClass(
+      'duel-quick-pick__empty',
+    );
+
+    const opponentSearch = screen.getByRole('searchbox', { name: 'Поиск соперника' });
+    expect(opponentSearch).toHaveClass('duel-opponent-search__input');
+    expect(opponentSearch.parentElement).toHaveClass('duel-opponent-search');
+
+    const challengeSubmit = screen.getByRole('button', { name: 'Выберите соперника' });
+    expect(challengeSubmit).toBeDisabled();
+    expect(challengeSubmit).toHaveClass('duel-challenge-submit');
+
     const templateSelect = screen.getByRole('combobox', { name: 'Шаблон дуэли' });
+    expect(templateSelect).toHaveClass('duel-template-select');
     expect(templateSelect).toHaveTextContent('Экспресс (1 период · 3 мин · на скорость)');
     expect(screen.queryByLabelText('Параметры дуэли')).not.toBeInTheDocument();
     fireEvent.click(templateSelect);
@@ -3259,6 +3275,7 @@ describe('DailyScreen', () => {
     expect(emptyCurrentDuels).toHaveTextContent('Активных матчей пока нет');
     expect(emptyCurrentDuels).not.toHaveClass('glass');
     expect(emptyCurrentDuels.querySelector('svg')).toBeNull();
+    expect(emptyCurrentDuels).toHaveClass('duel-empty-current');
   });
 
   it('uses only concrete duel formats for matchmaking filters', async () => {
@@ -3312,6 +3329,11 @@ describe('DailyScreen', () => {
     renderWith(['/?view=amateur&section=duels']);
 
     expect(screen.queryByRole('button', { name: 'Все' })).not.toBeInTheDocument();
+    const formatInfoButton = await screen.findByRole('button', {
+      name: 'Правила поиска соперника',
+    });
+    expect(formatInfoButton.closest('.duel-kind-picker')).toHaveClass('glass');
+    expect(formatInfoButton.querySelector('svg')).toHaveClass('duel-kind-picker__info-icon');
 
     const duelSetup = await screen.findByRole('region', { name: 'Новая дуэль' });
     expect(duelSetup).toHaveClass('duel-creation-card');
