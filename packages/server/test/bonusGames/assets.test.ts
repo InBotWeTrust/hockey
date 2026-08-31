@@ -43,7 +43,7 @@ const WORLD_TOUR_SLUGS = [
 
 async function visibleBounds(
   filePath: string,
-  minimumAlpha = 0,
+  minimumAlpha = 8,
 ): Promise<{ width: number; height: number }> {
   const { data, info } = await sharp(filePath)
     .ensureAlpha()
