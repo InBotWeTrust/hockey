@@ -10,6 +10,7 @@ export interface AdminTournament {
   regularSource: 'head_to_head' | 'daily_aggregate' | 'classic';
   revision: number;
   participantCount: number;
+  pendingApplicationCount?: number;
   registrationOpensAt?: string | null;
   registrationClosesAt?: string | null;
   startsAt?: string | null;
@@ -206,6 +207,24 @@ export function approveAdminTournamentParticipant(tournamentId: string, particip
   });
 }
 
+export function approveAllAdminTournamentApplications(tournamentId: string) {
+  return apiFetch<{ approvedCount: number }>(
+    `/admin/tournaments/${tournamentId}/participants/approve-all`,
+    { method: 'POST' },
+  );
+}
+
+export function rejectAdminTournamentApplication(
+  tournamentId: string,
+  participantId: string,
+  reason: string,
+) {
+  return apiFetch<{ participantId: string; state: 'rejected' }>(
+    `/admin/tournaments/${tournamentId}/participants/${participantId}/reject`,
+    { method: 'POST', body: JSON.stringify({ reason }) },
+  );
+}
+
 export function disqualifyAdminTournamentParticipant(
   tournamentId: string,
   participantId: string,
@@ -285,7 +304,7 @@ export function resolveAdminTournamentNoShow(
 
 export function previewAdminTournamentAudience(
   tournamentId: string,
-  audience: 'approved' | 'all_participants',
+  audience: 'approved' | 'all_participants' | 'all_players',
 ) {
   return apiFetch<{ count: number; recipients: Array<Record<string, unknown>> }>(
     `/admin/tournaments/${tournamentId}/audience-preview?audience=${audience}`,
@@ -311,9 +330,10 @@ export function dispatchAdminTournamentCommunication(
   input: {
     idempotencyKey: string;
     kind: 'push' | 'direct_message' | 'official_news';
-    audience: 'approved' | 'all_participants';
+    audience: 'approved' | 'all_participants' | 'all_players';
     title: string;
     body: string;
+    includeTournamentButton?: boolean;
   },
 ) {
   return apiFetch<AdminTournamentDispatchResult>(`/admin/tournaments/${tournamentId}/dispatches`, {

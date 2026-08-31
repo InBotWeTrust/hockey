@@ -6,6 +6,7 @@ import { ReactionBar } from './ReactionBar.js';
 import { useLongPress } from '../useLongPress.js';
 import { UserAvatar } from './UserAvatar.js';
 import { messageAttachments, messageBodyPreview } from '../messagePreview.js';
+import { TournamentAnnouncementAction } from './TournamentAnnouncementAction.js';
 
 interface ChatBubbleProps {
   message: ChatMessageDTO;
@@ -359,6 +360,7 @@ function ChatBubbleImpl({
           reactions={message.reactions}
           onToggle={(emoji) => onReact(message.id, emoji)}
         />
+        {!message.isDeleted && <TournamentAnnouncementAction metadata={message.metadata} />}
         {actionSlot && <div style={{ marginTop: 8 }}>{actionSlot}</div>}
       </div>
     </div>

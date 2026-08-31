@@ -14,9 +14,11 @@ import {
   respondFixtureLiveProposal,
 } from '../../src/tournament/live.js';
 import {
+  approveAllTournamentApplications,
   applyToTournament,
   approveTournamentParticipant,
   cancelTournament,
+  countPendingTournamentApplications,
   createTournamentDraft,
   disqualifyTournamentParticipant,
   generateRegularSchedule,
@@ -24,8 +26,10 @@ import {
   getTournamentSchedule,
   getTournamentStandings,
   inviteTournamentParticipant,
+  listAdminTournaments,
   publishRegularSchedule,
   publishTournament,
+  rejectTournamentApplication,
   rescheduleTournamentFixture,
   resolveTournamentNoShow,
   startTournamentPlayoffs,
@@ -1078,6 +1082,128 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       entry_fee_state: 'paid',
       ledger_count: '1',
     });
+  });
+
+  it('approves all pending applications once and records the administrator audit', async () => {
+    await seedUsers(pool, 100);
+    const approvalRules = rules(25);
+    approvalRules.config.registrationMode = 'approval';
+    const tournament = await createPublishedTournament(
+      pool,
+      'bulk-application-approval',
+      25,
+      approvalRules,
+    );
+    await applyToTournament(pool, tournament.id, PLAYER_IDS[0]);
+    await applyToTournament(pool, tournament.id, PLAYER_IDS[1]);
+    const before = await listAdminTournaments(pool);
+    expect(before.find((item) => item.id === tournament.id)).toMatchObject({
+      participantCount: 0,
+      pendingApplicationCount: 2,
+    });
+    await pool.query(`update tournament set status = 'registration_blocked' where id = $1`, [
+      tournament.id,
+    ]);
+
+    await expect(approveAllTournamentApplications(pool, tournament.id, ADMIN_ID)).resolves.toEqual({
+      approvedCount: 2,
+    });
+    await expect(approveAllTournamentApplications(pool, tournament.id, ADMIN_ID)).resolves.toEqual({
+      approvedCount: 0,
+    });
+
+    const participants = await pool.query<{ state: string; approved_by: string | null }>(
+      `select state, approved_by from tournament_participant
+        where tournament_id = $1 order by user_id`,
+      [tournament.id],
+    );
+    expect(participants.rows).toEqual([
+      { state: 'approved', approved_by: ADMIN_ID },
+      { state: 'approved', approved_by: ADMIN_ID },
+    ]);
+    const balances = await pool.query<{ balance: number }>(
+      `select account.balance from user_currency_account account
+        where account.user_id = any($1::uuid[]) order by account.user_id`,
+      [[PLAYER_IDS[0], PLAYER_IDS[1]]],
+    );
+    expect(balances.rows).toEqual([{ balance: 75 }, { balance: 75 }]);
+    const after = await listAdminTournaments(pool);
+    expect(after.find((item) => item.id === tournament.id)).toMatchObject({
+      participantCount: 2,
+      pendingApplicationCount: 0,
+    });
+    const audit = await pool.query<{ count: string }>(
+      `select count(*)::text as count from event_log
+        where user_id = $1 and type = 'admin_tournament_applications_bulk_approved'
+          and payload->>'tournament_id' = $2`,
+      [ADMIN_ID, tournament.id],
+    );
+    expect(audit.rows[0]?.count).toBe('1');
+  });
+
+  it('rejects a pending application with the administrator reason', async () => {
+    await seedUsers(pool, 100);
+    const rejectionRules = rules(0);
+    rejectionRules.config.registrationMode = 'approval';
+    const tournament = await createPublishedTournament(
+      pool,
+      'application-rejection',
+      0,
+      rejectionRules,
+    );
+    const application = await applyToTournament(pool, tournament.id, PLAYER_IDS[0]);
+
+    await expect(
+      rejectTournamentApplication(pool, {
+        tournamentId: tournament.id,
+        participantId: application.participantId,
+        reason: 'Не выполнены условия участия',
+        adminUserId: ADMIN_ID,
+      }),
+    ).resolves.toEqual({ participantId: application.participantId, state: 'rejected' });
+
+    const participant = await pool.query<{ state: string; reason: string | null }>(
+      `select state, metadata->>'rejectionReason' as reason
+         from tournament_participant where id = $1`,
+      [application.participantId],
+    );
+    expect(participant.rows[0]).toEqual({
+      state: 'rejected',
+      reason: 'Не выполнены условия участия',
+    });
+    const audit = await pool.query<{ reason: string | null }>(
+      `select payload->>'reason' as reason from event_log
+        where user_id = $1 and type = 'admin_tournament_application_rejected'`,
+      [ADMIN_ID],
+    );
+    expect(audit.rows).toEqual([{ reason: 'Не выполнены условия участия' }]);
+  });
+
+  it('rejects a pending application while registration is extended', async () => {
+    await seedUsers(pool, 100);
+    const rejectionRules = rules(0);
+    rejectionRules.config.registrationMode = 'approval';
+    const tournament = await createPublishedTournament(
+      pool,
+      'extended-application-rejection',
+      0,
+      rejectionRules,
+    );
+    const application = await applyToTournament(pool, tournament.id, PLAYER_IDS[0]);
+    await pool.query(`update tournament set status = 'registration_blocked' where id = $1`, [
+      tournament.id,
+    ]);
+
+    await expect(countPendingTournamentApplications(pool)).resolves.toBe(1);
+
+    await expect(
+      rejectTournamentApplication(pool, {
+        tournamentId: tournament.id,
+        participantId: application.participantId,
+        reason: 'Не выполнены условия участия',
+        adminUserId: ADMIN_ID,
+      }),
+    ).resolves.toEqual({ participantId: application.participantId, state: 'rejected' });
   });
 
   it('rolls back automatic application approval when its push outbox insert fails', async () => {
@@ -3017,6 +3143,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       audience: 'approved',
       title: 'Турнирная новость',
       body: 'Календарь турнира опубликован.',
+      includeTournamentButton: true,
       createdBy: ADMIN_ID,
       systemUserId: SYSTEM_SENDER_ID,
       invalidateUnreadCache: vi.fn(async () => undefined),
@@ -3033,12 +3160,14 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       channel_slug: string;
       sender_id: string;
       account_kind: string;
+      action_url: string;
     }>(
       `select message.content,
               message.metadata->>'tournamentDispatchId' as tournament_dispatch_id,
               chat.channel_slug,
               message.sender_id,
-              sender.account_kind
+              sender.account_kind,
+              message.metadata #>> '{action,url}' as action_url
          from messages message
          join chats chat on chat.id = message.chat_id
          join users sender on sender.id = message.sender_id
@@ -3052,6 +3181,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         channel_slug: 'news',
         sender_id: SYSTEM_SENDER_ID,
         account_kind: 'official',
+        action_url: `/?view=amateur&section=tournaments&tournament=${tournament.id}&tab=overview&from=sections`,
       },
     ]);
     expect(input.invalidateUnreadCache).toHaveBeenCalledWith(ADMIN_ID);
@@ -3086,6 +3216,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       audience: 'approved',
       title: 'Сообщение участникам',
       body: 'Матчи начнутся через час.',
+      includeTournamentButton: true,
       createdBy: ADMIN_ID,
       systemUserId: SYSTEM_SENDER_ID,
     });
@@ -3097,12 +3228,14 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       sender_id: string;
       chat_type: string;
       channel_slug: string | null;
+      action_url: string;
     }>(
       `select message.content,
               message.metadata->>'recipientUserId' as recipient_user_id,
               message.sender_id,
               chat.type as chat_type,
-              chat.channel_slug
+              chat.channel_slug,
+              message.metadata #>> '{action,url}' as action_url
          from messages message
          join chats chat on chat.id = message.chat_id
         where message.metadata->>'tournamentDispatchId' = $1
@@ -3116,6 +3249,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         sender_id: SYSTEM_SENDER_ID,
         chat_type: 'direct',
         channel_slug: null,
+        action_url: `/?view=amateur&section=tournaments&tournament=${tournament.id}&tab=overview&from=sections`,
       })),
     );
     expect(published).toHaveLength(4);

@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { ArrowLeft, Ellipsis, Pencil, X } from 'lucide-react';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import { GlassSelect } from '../components/GlassSelect.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
 import {
   archiveAdminTournament,
+  approveAllAdminTournamentApplications,
   approveAdminTournamentParticipant,
   cancelAdminTournament,
   deleteAdminTournamentDraft,
@@ -24,6 +25,7 @@ import {
   previewAdminTournamentAudience,
   publishAdminTournament,
   publishAdminTournamentSchedule,
+  rejectAdminTournamentApplication,
   resolveAdminTournamentNoShow,
   resumeAdminTournament,
   rescheduleAdminTournamentFixture,
@@ -34,11 +36,7 @@ import {
   type AdminTournamentParticipant,
 } from './adminApi.js';
 import { tournamentTimezoneLabel } from './timezoneLabel.js';
-import {
-  participantStateLabel,
-  paymentStateLabel,
-  tournamentStatusLabel,
-} from './labels.js';
+import { participantStateLabel, paymentStateLabel, tournamentStatusLabel } from './labels.js';
 import { TournamentStandingsTable } from './TournamentStandingsTable.js';
 import { TournamentMatchdayRow } from './TournamentMatchdayTimes.js';
 
@@ -49,6 +47,15 @@ type OperationsTab =
   | 'bracket'
   | 'rewards'
   | 'dispatches';
+
+type ParticipantFilter = 'all' | 'approved' | 'applied' | 'rejected';
+
+const participantFilters: Array<{ id: ParticipantFilter; label: string }> = [
+  { id: 'all', label: 'Все' },
+  { id: 'approved', label: 'Подтверждены' },
+  { id: 'applied', label: 'Требуют подтверждения' },
+  { id: 'rejected', label: 'Отклонены' },
+];
 
 const tabs: Array<{ key: OperationsTab; label: string }> = [
   { key: 'participants', label: 'Заявки и оплаты' },
@@ -130,8 +137,10 @@ function dispatchStatusLabel(status: unknown): string {
   const labels: Record<string, string> = {
     pending: 'Готовится',
     processing: 'Отправляется',
+    sending: 'Отправляется',
     sent: 'Отправлена',
     partial: 'Отправлена частично',
+    partially_failed: 'Отправлена частично',
     failed: 'Ошибка отправки',
   };
   return labels[String(status)] ?? 'Статус уточняется';
@@ -267,15 +276,25 @@ export function TournamentOperations({
   const [tab, setTab] = useState<OperationsTab>('participants');
   const [status, setStatus] = useState(tournament.status);
   const [reason, setReason] = useState('Решение администратора');
+  const [participantFilter, setParticipantFilter] = useState<ParticipantFilter>('all');
+  const [rejectingApplication, setRejectingApplication] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [disqualifyingParticipant, setDisqualifyingParticipant] = useState(false);
+  const [disqualificationReason, setDisqualificationReason] = useState('');
   const [selectedFixture, setSelectedFixture] = useState<AdminTournamentFixture | null>(null);
   const [startsAt, setStartsAt] = useState('');
   const [endsAt, setEndsAt] = useState('');
   const [absent, setAbsent] = useState<'home' | 'away' | 'both'>('home');
-  const [audience, setAudience] = useState<'approved' | 'all_participants'>('approved');
+  const [audience, setAudience] = useState<'approved' | 'all_participants' | 'all_players'>(
+    'approved',
+  );
   const [dispatchKind, setDispatchKind] = useState<'push' | 'direct_message' | 'official_news'>(
     'push',
   );
   const [dispatchBody, setDispatchBody] = useState('');
+  const [includeTournamentButton, setIncludeTournamentButton] = useState(false);
+  const dispatchInFlightRef = useRef(false);
+  const dispatchSequenceRef = useRef(0);
   const [inviteSearch, setInviteSearch] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
@@ -302,6 +321,15 @@ export function TournamentOperations({
     queryFn: () => fetchAdminTournamentParticipants(tournament.id),
     enabled: tab === 'participants',
   });
+  const pendingApplicationCount =
+    participants.data?.participants.filter((participant) => participant.state === 'applied')
+      .length ??
+    tournament.pendingApplicationCount ??
+    0;
+  const filteredParticipants =
+    participants.data?.participants.filter(
+      (participant) => participantFilter === 'all' || participant.state === participantFilter,
+    ) ?? [];
   const schedule = useQuery({
     queryKey: scheduleKey,
     queryFn: () => fetchAdminTournamentSchedule(tournament.id),
@@ -389,14 +417,48 @@ export function TournamentOperations({
       approveAdminTournamentParticipant(tournament.id, participantId),
     onSuccess: () => {
       setSelectedParticipant(null);
+      void client.invalidateQueries({ queryKey: ['admin', 'tournaments'] });
+      void client.invalidateQueries({
+        queryKey: ['admin', 'tournaments', 'pending-applications'],
+      });
+      return client.invalidateQueries({ queryKey: participantsKey });
+    },
+  });
+  const approveAll = useMutation({
+    mutationFn: () => approveAllAdminTournamentApplications(tournament.id),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['admin', 'tournaments'] });
+      void client.invalidateQueries({
+        queryKey: ['admin', 'tournaments', 'pending-applications'],
+      });
+      return client.invalidateQueries({ queryKey: participantsKey });
+    },
+  });
+  const rejectApplication = useMutation({
+    mutationFn: (participantId: string) =>
+      rejectAdminTournamentApplication(tournament.id, participantId, rejectionReason.trim()),
+    onSuccess: () => {
+      setSelectedParticipant(null);
+      setRejectingApplication(false);
+      setRejectionReason('');
+      void client.invalidateQueries({ queryKey: ['admin', 'tournaments'] });
+      void client.invalidateQueries({
+        queryKey: ['admin', 'tournaments', 'pending-applications'],
+      });
       return client.invalidateQueries({ queryKey: participantsKey });
     },
   });
   const disqualify = useMutation({
     mutationFn: (participantId: string) =>
-      disqualifyAdminTournamentParticipant(tournament.id, participantId, reason),
+      disqualifyAdminTournamentParticipant(
+        tournament.id,
+        participantId,
+        disqualificationReason.trim(),
+      ),
     onSuccess: () => {
       setSelectedParticipant(null);
+      setDisqualifyingParticipant(false);
+      setDisqualificationReason('');
       return client.invalidateQueries({ queryKey: participantsKey });
     },
   });
@@ -421,19 +483,30 @@ export function TournamentOperations({
     },
   });
   const dispatch = useMutation({
-    mutationFn: () =>
+    mutationFn: (idempotencyKey: string) =>
       dispatchAdminTournamentCommunication(tournament.id, {
-        idempotencyKey: `${tournament.id}:${Date.now()}`,
+        idempotencyKey,
         kind: dispatchKind,
         audience,
         title: `Турнир: ${tournament.title}`,
         body: dispatchBody,
+        includeTournamentButton,
       }),
     onSuccess: () => {
       setDispatchBody('');
+      setIncludeTournamentButton(false);
       void client.invalidateQueries({ queryKey: dispatchesKey });
     },
+    onSettled: () => {
+      dispatchInFlightRef.current = false;
+    },
   });
+  const submitDispatch = () => {
+    if (dispatchInFlightRef.current || !dispatchBody.trim()) return;
+    dispatchInFlightRef.current = true;
+    const sequence = dispatchSequenceRef.current++;
+    dispatch.mutate(`${tournament.id}:${Date.now()}:${sequence}`);
+  };
   const duplicate = useMutation({
     mutationFn: () =>
       duplicateAdminTournament(tournament.id, {
@@ -563,7 +636,13 @@ export function TournamentOperations({
       <SegmentedTabs
         ariaLabel="Управление турниром"
         activeTab={tab}
-        items={tabs.map((item) => ({ id: item.key, label: item.label }))}
+        items={tabs.map((item) => ({
+          id: item.key,
+          label:
+            item.key === 'participants' && pendingApplicationCount > 0
+              ? `${item.label} (${pendingApplicationCount})`
+              : item.label,
+        }))}
         onChange={setTab}
         scrollable
       />
@@ -574,14 +653,6 @@ export function TournamentOperations({
       >
         {tab === 'participants' && (
           <>
-            <label className="tournament-operations__field">
-              <span>Причина решения</span>
-              <input
-                aria-label="Причина решения"
-                value={reason}
-                onChange={(event) => setReason(event.target.value)}
-              />
-            </label>
             {['draft', 'registration', 'registration_blocked'].includes(status) && (
               <div className="tournament-player-search">
                 <input
@@ -618,13 +689,50 @@ export function TournamentOperations({
                 )}
               </div>
             )}
-            {participants.data?.participants.map((participant) => (
+            <SegmentedTabs
+              ariaLabel="Фильтр заявок"
+              activeTab={participantFilter}
+              items={participantFilters}
+              onChange={setParticipantFilter}
+              scrollable
+            />
+            {pendingApplicationCount > 0 &&
+              ['registration', 'registration_blocked'].includes(status) && (
+              <button
+                type="button"
+                className="admin-compact-btn admin-compact-btn--primary tournament-approve-all"
+                disabled={approveAll.isPending}
+                onClick={() => approveAll.mutate()}
+              >
+                Принять все заявки ({pendingApplicationCount})
+              </button>
+            )}
+            {approveAll.isSuccess && (
+              <div className="tournament-dispatch-feedback" role="status">
+                Принято заявок: {approveAll.data.approvedCount}.
+              </div>
+            )}
+            {approveAll.isError && (
+              <div
+                className="tournament-dispatch-feedback tournament-dispatch-feedback--error"
+                role="alert"
+              >
+                Не удалось принять все заявки. Проверьте лимит участников и оплату.
+              </div>
+            )}
+            {filteredParticipants.map((participant) => (
               <button
                 key={participant.id}
                 type="button"
                 className="tournament-participant-admin-row"
                 aria-label={`Управление: ${participant.display_name}`}
-                onClick={() => setSelectedParticipant(participant)}
+                onClick={() => {
+                  setSelectedParticipant(participant);
+                  setRejectingApplication(false);
+                  setRejectionReason('');
+                  setDisqualifyingParticipant(false);
+                  setDisqualificationReason('');
+                }}
               >
                 <div className="tournament-participant-admin-row__identity">
                   <strong>{participant.display_name}</strong>
@@ -642,6 +750,10 @@ export function TournamentOperations({
             {participants.data?.participants.length === 0 && (
               <div className="tournament-admin-empty">Заявок пока нет.</div>
             )}
+            {(participants.data?.participants.length ?? 0) > 0 &&
+              filteredParticipants.length === 0 && (
+                <div className="tournament-admin-empty">В этом разделе заявок нет.</div>
+              )}
           </>
         )}
         {tab === 'schedule' && (
@@ -858,6 +970,7 @@ export function TournamentOperations({
                 options={[
                   { value: 'approved', label: 'Подтверждённые участники' },
                   { value: 'all_participants', label: 'Все заявки и участники' },
+                  { value: 'all_players', label: 'Все игроки' },
                 ]}
                 onChange={setAudience}
               />
@@ -891,11 +1004,22 @@ export function TournamentOperations({
                 }}
               />
             </label>
+            <label className="tournament-dispatch-tournament-button">
+              <input
+                type="checkbox"
+                checked={includeTournamentButton}
+                onChange={(event) => {
+                  dispatch.reset();
+                  setIncludeTournamentButton(event.target.checked);
+                }}
+              />
+              <span>Кнопка перехода в турнир</span>
+            </label>
             <button
               type="button"
               className="admin-compact-btn tournament-dispatch-submit"
               disabled={!dispatchBody.trim() || dispatch.isPending}
-              onClick={() => dispatch.mutate()}
+              onClick={submitDispatch}
             >
               Отправить рассылку
             </button>
@@ -978,8 +1102,8 @@ export function TournamentOperations({
                 </button>
                 {!datesReady && (
                   <div className="tournament-operation-hint">
-                    Сначала укажите открытие и закрытие регистрации и дату первого тура.
-                    Порядок: открытие → закрытие → старт.
+                    Сначала укажите открытие и закрытие регистрации и дату первого тура. Порядок:
+                    открытие → закрытие → старт.
                   </div>
                 )}
               </>
@@ -1048,18 +1172,18 @@ export function TournamentOperations({
             )}
             {!['cancelled', 'completed', 'archived'].includes(status) &&
               (status !== 'draft' || tournament.participantCount > 0) && (
-              <button
-                type="button"
-                className="admin-compact-btn admin-compact-btn--danger"
-                disabled={cancel.isPending}
-                onClick={() => {
-                  setActionsOpen(false);
-                  cancel.mutate();
-                }}
-              >
-                Отменить турнир
-              </button>
-            )}
+                <button
+                  type="button"
+                  className="admin-compact-btn admin-compact-btn--danger"
+                  disabled={cancel.isPending}
+                  onClick={() => {
+                    setActionsOpen(false);
+                    cancel.mutate();
+                  }}
+                >
+                  Отменить турнир
+                </button>
+              )}
             {['cancelled', 'completed'].includes(status) && (
               <button
                 type="button"
@@ -1097,13 +1221,25 @@ export function TournamentOperations({
         <AccessibleModal
           title={selectedParticipant.display_name}
           ariaLabel={selectedParticipant.display_name}
-          onClose={() => setSelectedParticipant(null)}
+          onClose={() => {
+            setSelectedParticipant(null);
+            setRejectingApplication(false);
+            setRejectionReason('');
+            setDisqualifyingParticipant(false);
+            setDisqualificationReason('');
+          }}
           headerAction={
             <button
               type="button"
               className="icon-btn"
               aria-label="Закрыть управление участником"
-              onClick={() => setSelectedParticipant(null)}
+              onClick={() => {
+                setSelectedParticipant(null);
+                setRejectingApplication(false);
+                setRejectionReason('');
+                setDisqualifyingParticipant(false);
+                setDisqualificationReason('');
+              }}
             >
               <X size={16} />
             </button>
@@ -1127,15 +1263,91 @@ export function TournamentOperations({
                 Одобрить заявку
               </button>
             )}
-            {selectedParticipant.state === 'approved' && (
+            {selectedParticipant.state === 'applied' && !rejectingApplication && (
               <button
                 type="button"
                 className="admin-compact-btn admin-compact-btn--danger"
-                disabled={reason.length < 3 || disqualify.isPending}
-                onClick={() => disqualify.mutate(selectedParticipant.id)}
+                onClick={() => setRejectingApplication(true)}
+              >
+                Отклонить заявку
+              </button>
+            )}
+            {selectedParticipant.state === 'applied' && rejectingApplication && (
+              <div className="tournament-participant-rejection">
+                <label className="tournament-operations__field">
+                  <span>Причина отклонения</span>
+                  <textarea
+                    aria-label="Причина отклонения"
+                    value={rejectionReason}
+                    placeholder="Напишите причину для игрока"
+                    onChange={(event) => setRejectionReason(event.target.value)}
+                  />
+                </label>
+                <div className="modal-actions">
+                  <button
+                    type="button"
+                    className="admin-compact-btn"
+                    onClick={() => {
+                      setRejectingApplication(false);
+                      setRejectionReason('');
+                    }}
+                  >
+                    Назад
+                  </button>
+                  <button
+                    type="button"
+                    className="admin-compact-btn admin-compact-btn--danger"
+                    disabled={rejectionReason.trim().length < 3 || rejectApplication.isPending}
+                    onClick={() => rejectApplication.mutate(selectedParticipant.id)}
+                  >
+                    Подтвердить отклонение
+                  </button>
+                </div>
+              </div>
+            )}
+            {selectedParticipant.state === 'approved' && !disqualifyingParticipant && (
+              <button
+                type="button"
+                className="admin-compact-btn admin-compact-btn--danger"
+                onClick={() => setDisqualifyingParticipant(true)}
               >
                 Дисквалифицировать участника
               </button>
+            )}
+            {selectedParticipant.state === 'approved' && disqualifyingParticipant && (
+              <div className="tournament-participant-rejection">
+                <label className="tournament-operations__field">
+                  <span>Причина дисквалификации</span>
+                  <textarea
+                    aria-label="Причина дисквалификации"
+                    value={disqualificationReason}
+                    placeholder="Напишите причину для игрока"
+                    onChange={(event) => setDisqualificationReason(event.target.value)}
+                  />
+                </label>
+                <div className="modal-actions">
+                  <button
+                    type="button"
+                    className="admin-compact-btn"
+                    onClick={() => {
+                      setDisqualifyingParticipant(false);
+                      setDisqualificationReason('');
+                    }}
+                  >
+                    Назад
+                  </button>
+                  <button
+                    type="button"
+                    className="admin-compact-btn admin-compact-btn--danger"
+                    disabled={
+                      disqualificationReason.trim().length < 3 || disqualify.isPending
+                    }
+                    onClick={() => disqualify.mutate(selectedParticipant.id)}
+                  >
+                    Подтвердить дисквалификацию
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         </AccessibleModal>

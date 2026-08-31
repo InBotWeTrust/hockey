@@ -75,6 +75,7 @@ interface TournamentRow {
   updated_at: Date;
   rules_snapshot: TournamentRulesSnapshot;
   participant_count: number;
+  pending_application_count?: number;
   regular_rewards_paid?: boolean;
   playoff_rewards_paid?: boolean;
   my_participant_state?: string | null;
@@ -165,6 +166,7 @@ function mapTournament(row: TournamentRow) {
     },
     cancelledAt: row.cancelled_at?.toISOString() ?? null,
     participantCount: Number(row.participant_count),
+    pendingApplicationCount: Number(row.pending_application_count ?? 0),
     rules: row.rules_snapshot,
     ...(row.my_participant_state !== undefined
       ? { myParticipantState: row.my_participant_state }
@@ -278,7 +280,9 @@ const tournamentSelect = `
               and event.status = 'applied' and event.metadata->>'stage' = 'playoff'
          ) as playoff_rewards_paid,
          (select count(*)::int from tournament_participant p
-           where p.tournament_id = t.id and p.state = 'approved') as participant_count
+           where p.tournament_id = t.id and p.state = 'approved') as participant_count,
+         (select count(*)::int from tournament_participant p
+           where p.tournament_id = t.id and p.state = 'applied') as pending_application_count
     from tournament t
     join tournament_revision r
       on r.tournament_id = t.id and r.revision = t.current_revision`;
@@ -312,7 +316,8 @@ export async function createTournamentDraft(
          (slug, title, description, image_url, regular_source, visibility, current_revision,
           registration_opens_at, registration_closes_at, starts_at, created_by, updated_by)
        values ($1, $2, $3, $4, $5, $6, 1, $7, $8, $9, $10, $10)
-       returning *, 0::int as participant_count, $11::jsonb as rules_snapshot`,
+       returning *, 0::int as participant_count, 0::int as pending_application_count,
+                 $11::jsonb as rules_snapshot`,
       [
         slug,
         input.title,
@@ -358,6 +363,17 @@ export async function listAdminTournaments(pool: Pool) {
     ...mapTournament(row),
     playoffFormats: formats.get(row.id) ?? [],
   }));
+}
+
+export async function countPendingTournamentApplications(pool: Pool): Promise<number> {
+  const { rows } = await pool.query<{ count: number }>(
+    `select count(*)::int as count
+       from tournament_participant participant
+       join tournament on tournament.id = participant.tournament_id
+      where participant.state = 'applied'
+        and tournament.status in ('registration', 'registration_blocked')`,
+  );
+  return Number(rows[0]?.count ?? 0);
 }
 
 export async function listPlayerTournaments(pool: Pool, userId: string) {
@@ -1046,7 +1062,7 @@ export async function approveTournamentParticipant(
       [tournamentId],
     );
     const tournament = tournamentResult.rows[0];
-    if (!tournament || tournament.status !== 'registration') {
+    if (!tournament || !['registration', 'registration_blocked'].includes(tournament.status)) {
       throw new AppError('registration_closed', 'registration is closed', 409);
     }
     const participantResult = await client.query<{
@@ -1100,6 +1116,164 @@ export async function approveTournamentParticipant(
       },
     });
     return { participantId, state: 'approved' as const };
+  });
+}
+
+export async function approveAllTournamentApplications(
+  pool: Pool,
+  tournamentId: string,
+  approvedBy: string,
+) {
+  return inTransaction(pool, async (client) => {
+    await lockTournament(client, tournamentId);
+    const tournamentResult = await client.query<{
+      status: TournamentStatus;
+      title: string;
+      rules_snapshot: TournamentRulesSnapshot;
+    }>(
+      `select t.status, t.title, r.rules_snapshot from tournament t
+         join tournament_revision r on r.id = t.published_revision_id
+        where t.id = $1 for update of t`,
+      [tournamentId],
+    );
+    const tournament = tournamentResult.rows[0];
+    if (!tournament || !['registration', 'registration_blocked'].includes(tournament.status)) {
+      throw new AppError('registration_closed', 'registration is closed', 409);
+    }
+    const pending = await client.query<{
+      id: string;
+      user_id: string;
+    }>(
+      `select id, user_id from tournament_participant
+        where tournament_id = $1 and state = 'applied'
+        order by created_at, id
+        for update`,
+      [tournamentId],
+    );
+    if (pending.rows.length === 0) return { approvedCount: 0 };
+
+    const approved = await client.query<{ count: number }>(
+      `select count(*)::int as count from tournament_participant
+        where tournament_id = $1 and state = 'approved'`,
+      [tournamentId],
+    );
+    if (
+      Number(approved.rows[0]?.count ?? 0) + pending.rows.length >
+      tournament.rules_snapshot.config.participantLimit
+    ) {
+      throw new AppError('capacity_reached', 'capacity reached', 409);
+    }
+
+    const entryFeeCoins = tournament.rules_snapshot.config.entryFeeCoins;
+    for (const participant of pending.rows) {
+      await client.query(
+        `update tournament_participant
+            set state = 'approved', approved_by = $2, joined_at = now(),
+                entry_fee_coins = $3,
+                entry_fee_state = case when $3 = 0 then 'not_required' else 'pending' end,
+                updated_at = now()
+          where id = $1`,
+        [participant.id, approvedBy, entryFeeCoins],
+      );
+      await applyEntryFee(client, {
+        tournamentId,
+        participantId: participant.id,
+        userId: participant.user_id,
+        amount: entryFeeCoins,
+      });
+      await enqueueTournamentPush(client, {
+        tournamentId,
+        userId: participant.user_id,
+        eventType: 'tournament.application_approved',
+        eventKey: `${tournamentId}:application-approved:${participant.user_id}`,
+        variables: { tournamentTitle: tournament.title },
+        fallback: {
+          title: 'Заявка подтверждена',
+          body: `${tournament.title}: вы участвуете.`,
+          url: '/?view=amateur&section=tournaments',
+        },
+      });
+    }
+    await client.query(
+      `insert into event_log (user_id, type, payload)
+       values ($1, 'admin_tournament_applications_bulk_approved', $2)`,
+      [
+        approvedBy,
+        JSON.stringify({
+          tournament_id: tournamentId,
+          approved_count: pending.rows.length,
+          participant_ids: pending.rows.map((participant) => participant.id),
+        }),
+      ],
+    );
+    return { approvedCount: pending.rows.length };
+  });
+}
+
+export async function rejectTournamentApplication(
+  pool: Pool,
+  input: {
+    tournamentId: string;
+    participantId: string;
+    reason: string;
+    adminUserId: string;
+  },
+) {
+  return inTransaction(pool, async (client) => {
+    await lockTournament(client, input.tournamentId);
+    const tournament = await client.query<{ status: TournamentStatus; title: string }>(
+      `select status, title from tournament where id = $1 for update`,
+      [input.tournamentId],
+    );
+    if (
+      !tournament.rows[0] ||
+      !['registration', 'registration_blocked'].includes(tournament.rows[0].status)
+    ) {
+      throw new AppError('registration_closed', 'registration is closed', 409);
+    }
+    const participant = await client.query<{ user_id: string; updated_at: Date }>(
+      `update tournament_participant
+          set state = 'rejected', updated_at = now(),
+              metadata = metadata || jsonb_build_object(
+                'rejectionReason', $3::text,
+                'rejectedBy', $4::text,
+                'rejectedAt', now()
+              )
+        where id = $1 and tournament_id = $2 and state = 'applied'
+        returning user_id, updated_at`,
+      [input.participantId, input.tournamentId, input.reason, input.adminUserId],
+    );
+    const rejected = participant.rows[0];
+    if (!rejected) throw new AppError('conflict', 'application cannot be rejected', 409);
+
+    await enqueueTournamentPush(client, {
+      tournamentId: input.tournamentId,
+      userId: rejected.user_id,
+      eventType: 'tournament.manual',
+      eventKey: `${input.participantId}:application-rejected:${rejected.updated_at.toISOString()}`,
+      variables: {
+        title: 'Заявка отклонена',
+        body: `${tournament.rows[0].title}: заявка не подтверждена.`,
+      },
+      fallback: {
+        title: 'Заявка отклонена',
+        body: `${tournament.rows[0].title}: заявка не подтверждена.`,
+        url: '/?view=amateur&section=tournaments',
+      },
+    });
+    await client.query(
+      `insert into event_log (user_id, type, payload)
+       values ($1, 'admin_tournament_application_rejected', $2)`,
+      [
+        input.adminUserId,
+        JSON.stringify({
+          tournament_id: input.tournamentId,
+          participant_id: input.participantId,
+          reason: input.reason,
+        }),
+      ],
+    );
+    return { participantId: input.participantId, state: 'rejected' as const };
   });
 }
 

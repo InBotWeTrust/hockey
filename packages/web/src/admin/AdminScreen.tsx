@@ -82,6 +82,7 @@ import {
   fetchAdminPayments,
   fetchAdminPushMonitoring,
   fetchAdminSummary,
+  fetchAdminTournamentPendingApplications,
   fetchAdminUser,
   fetchAdminUsers,
   patchAdminChannelPost,
@@ -803,6 +804,11 @@ export function AdminScreen(): JSX.Element {
     queryFn: () => fetchAdminFeedback(feedbackQuery),
     enabled: canTryAdmin,
   });
+  const pendingTournamentApplications = useQuery({
+    queryKey: ['admin', 'tournaments', 'pending-applications'],
+    queryFn: fetchAdminTournamentPendingApplications,
+    enabled: canTryAdmin,
+  });
   const mismatches = useQuery({
     queryKey: ['admin', 'mismatches', mismatchPeriod],
     queryFn: () => fetchAdminMismatches(mismatchPeriod),
@@ -853,6 +859,7 @@ export function AdminScreen(): JSX.Element {
 
   const selectedUser = users.data?.users.find((item) => item.id === selectedUserId) ?? null;
   const feedbackUnreadCount = feedback.data?.unreadCount ?? 0;
+  const pendingTournamentApplicationCount = pendingTournamentApplications.data?.count ?? 0;
 
   if (denied) {
     return (
@@ -925,7 +932,11 @@ export function AdminScreen(): JSX.Element {
               <nav className="admin-drawer__navigation" aria-label="Разделы администратора">
                 {tabs.map((item) => {
                   const label =
-                    item.id === 'feedback' ? `${item.label} (${feedbackUnreadCount})` : item.label;
+                    item.id === 'feedback'
+                      ? `${item.label} (${feedbackUnreadCount})`
+                      : item.id === 'tournaments' && pendingTournamentApplicationCount > 0
+                        ? `${item.label} (${pendingTournamentApplicationCount})`
+                        : item.label;
                   return (
                     <button
                       key={item.id}

@@ -1,6 +1,9 @@
 import type { Pool, PoolClient } from 'pg';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { dispatchTournamentCommunication } from '../../src/tournament/communications.js';
+import {
+  dispatchTournamentCommunication,
+  previewTournamentAudience,
+} from '../../src/tournament/communications.js';
 
 const DISPATCH_INPUT = {
   tournamentId: '00000000-0000-4000-8000-000000000901',
@@ -102,5 +105,21 @@ describe('tournament communication lock acquisition', () => {
     expect(client.query).toHaveBeenCalledTimes(1);
     expect(client.release).toHaveBeenCalledTimes(1);
     expect(client.release).toHaveBeenCalledWith(true);
+  });
+});
+
+describe('tournament communication audiences', () => {
+  it('selects every unblocked player account without requiring a tournament application', async () => {
+    const query = vi.fn().mockResolvedValue({
+      rows: [{ user_id: 'player-1', display_name: 'Игрок', state: 'player' }],
+    });
+    const pool = { query } as unknown as Pool;
+
+    await expect(previewTournamentAudience(pool, 'tournament-1', 'all_players')).resolves.toEqual({
+      count: 1,
+      recipients: [{ user_id: 'player-1', display_name: 'Игрок', state: 'player' }],
+    });
+    expect(query).toHaveBeenCalledWith(expect.stringContaining("u.account_kind = 'player'"), []);
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('u.blocked_at is null'), []);
   });
 });

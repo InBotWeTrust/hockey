@@ -4,7 +4,21 @@ import { publishMessageNew, type EventPublisher } from '../chat/events.js';
 import { AppError } from '../plugins/errors.js';
 import { enqueueTournamentPush } from '../push/tournament.js';
 
-export type TournamentAudience = 'approved' | 'all_participants';
+export type TournamentAudience = 'approved' | 'all_participants' | 'all_players';
+
+interface TournamentAnnouncementAction {
+  type: 'tournament';
+  label: 'Перейти в турнир';
+  url: string;
+}
+
+function tournamentAnnouncementAction(tournamentId: string): TournamentAnnouncementAction {
+  return {
+    type: 'tournament',
+    label: 'Перейти в турнир',
+    url: `/?view=amateur&section=tournaments&tournament=${encodeURIComponent(tournamentId)}&tab=overview&from=sections`,
+  };
+}
 
 const DISPATCH_LOCK_RETRY_DELAY_MS = 10;
 const DISPATCH_LOCK_ACQUIRE_TIMEOUT_MS = 1_000;
@@ -159,6 +173,20 @@ export async function previewTournamentAudience(
   tournamentId: string,
   audience: TournamentAudience,
 ) {
+  if (audience === 'all_players') {
+    const { rows } = await pool.query<{
+      user_id: string;
+      display_name: string;
+      state: string;
+    }>(
+      `select u.id as user_id, u.display_name, 'player'::text as state
+         from users u
+        where u.account_kind = 'player' and u.blocked_at is null
+        order by u.display_name, u.id`,
+      [],
+    );
+    return { count: rows.length, recipients: rows };
+  }
   const states = audienceStates(audience);
   const { rows } = await pool.query<{ user_id: string; display_name: string; state: string }>(
     `select p.user_id, u.display_name, p.state
@@ -180,6 +208,7 @@ export async function dispatchTournamentCommunication(
     audience: TournamentAudience;
     title: string;
     body: string;
+    includeTournamentButton?: boolean;
     createdBy: string;
     systemUserId?: string;
     invalidateUnreadCache?: (userId: string) => Promise<void>;
@@ -252,7 +281,13 @@ export async function dispatchTournamentCommunication(
             input.idempotencyKey,
             input.kind,
             JSON.stringify(audienceSnapshot),
-            JSON.stringify({ title: input.title, body: input.body }),
+            JSON.stringify({
+              title: input.title,
+              body: input.body,
+              ...(input.includeTournamentButton === true
+                ? { action: tournamentAnnouncementAction(input.tournamentId) }
+                : {}),
+            }),
             audience.count,
             input.createdBy,
           ],
@@ -283,6 +318,18 @@ export async function dispatchTournamentCommunication(
         : {};
     const title = payloadSnapshot.title;
     const body = payloadSnapshot.body;
+    const action =
+      typeof payloadSnapshot.action === 'object' &&
+      payloadSnapshot.action !== null &&
+      !Array.isArray(payloadSnapshot.action)
+        ? (payloadSnapshot.action as Record<string, unknown>)
+        : null;
+    const announcementAction =
+      action?.type === 'tournament' &&
+      action.label === 'Перейти в турнир' &&
+      typeof action.url === 'string'
+        ? (action as unknown as TournamentAnnouncementAction)
+        : null;
     const recipientIds = audienceSnapshot.recipients;
     if (
       typeof title !== 'string' ||
@@ -324,6 +371,7 @@ export async function dispatchTournamentCommunication(
               title,
               tournamentId: dispatch.tournament_id,
               tournamentDispatchId: dispatchId,
+              ...(announcementAction !== null ? { action: announcementAction } : {}),
             },
           });
           await publishMessageNew(pool, publisher, channelId, 'channel', message);
@@ -350,7 +398,7 @@ export async function dispatchTournamentCommunication(
               fallback: {
                 title,
                 body,
-                url: '/?view=amateur&section=tournaments',
+                url: announcementAction?.url ?? '/?view=amateur&section=tournaments',
               },
             });
             const existing = queued
@@ -392,6 +440,7 @@ export async function dispatchTournamentCommunication(
                 tournamentId: dispatch.tournament_id,
                 tournamentDispatchId: dispatchId,
                 recipientUserId: recipientId,
+                ...(announcementAction !== null ? { action: announcementAction } : {}),
               },
             });
             await publishMessageNew(pool, publisher, dm.chatId, 'direct', message);

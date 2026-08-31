@@ -7078,6 +7078,33 @@ button.daily-calendar__day:active {
   justify-self: start;
 }
 
+.tournament-dispatch-tournament-button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: fit-content;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 760;
+  cursor: pointer;
+}
+
+.tournament-dispatch-tournament-button input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: #0f172a;
+}
+
+.tournament-announcement-action {
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px 14px;
+  font-size: 12px;
+  letter-spacing: 0;
+  text-decoration: none;
+}
+
 .tournament-dispatch-feedback {
   color: #244d73;
   font-size: 11px;
