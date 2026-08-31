@@ -161,9 +161,7 @@ export function BonusGamesScreen(): JSX.Element {
     games.find((game) => game.active_attempt !== null) ??
     games.find((game) => game.state === 'in_progress') ??
     games.find((game) => game.state === 'available' || game.state === 'purchase_required') ??
-    [...games].reverse().find((game) => game.state === 'completed') ??
-    games[0] ??
-    null;
+    (games.every((game) => game.state === 'completed') ? null : (games[0] ?? null));
   const completedGames = games.filter(
     (game) => game.state === 'completed' && game.id !== focusGame?.id,
   );
@@ -235,20 +233,22 @@ export function BonusGamesScreen(): JSX.Element {
           </div>
         ) : catalogQuery.data?.games.length === 0 ? (
           <div className="bonus-games-catalog__notice">Сейчас нет доступных бонусных игр.</div>
-        ) : focusGame !== null ? (
+        ) : games.length > 0 ? (
           <div className="bonus-games-catalog__groups">
-            <section className="bonus-games-focus" aria-labelledby="bonus-games-current-title">
-              <h2 id="bonus-games-current-title" className="section-label sections-group__title">
-                Текущая игра
-              </h2>
-              <BonusGameCard
-                game={focusGame}
-                actionLabel={actionLabel(focusGame)}
-                isStarting={startMutation.isPending && startMutation.variables === focusGame.id}
-                onAction={() => openGame(focusGame)}
-                featured={true}
-              />
-            </section>
+            {focusGame !== null ? (
+              <section className="bonus-games-focus" aria-labelledby="bonus-games-current-title">
+                <h2 id="bonus-games-current-title" className="section-label sections-group__title">
+                  Текущая игра
+                </h2>
+                <BonusGameCard
+                  game={focusGame}
+                  actionLabel={actionLabel(focusGame)}
+                  isStarting={startMutation.isPending && startMutation.variables === focusGame.id}
+                  onAction={() => openGame(focusGame)}
+                  featured={true}
+                />
+              </section>
+            ) : null}
             {completedGames.length > 0 ? (
               <section
                 className="bonus-games-group"

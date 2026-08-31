@@ -32,7 +32,10 @@ import {
   qualificationDescription,
   qualificationProgress,
 } from '../game/bonusGameQualification.js';
-import { versionBonusGameArtwork } from '../game/bonusGameArtwork.js';
+import {
+  versionBonusGameArtwork,
+  versionBonusGameGoalkeeper,
+} from '../game/bonusGameArtwork.js';
 
 const BONUS_GAME_GOALIE_OPTIONS: Omit<GoalieOptions, 'idleSpriteUrl' | 'saveSpriteUrl'> = {
   visualYScale: PERSPECTIVE_COURT_VISUAL_Y_SCALE,
@@ -54,8 +57,8 @@ const BONUS_PENDING_SHOT_FALLBACK_MIN_DELAY_MS = 250;
 function bonusGoalieOptions(attempt: BonusGameAttempt): GoalieOptions {
   return {
     ...BONUS_GAME_GOALIE_OPTIONS,
-    idleSpriteUrl: attempt.goalkeeper_ready_url,
-    saveSpriteUrl: attempt.goalkeeper_save_url,
+    idleSpriteUrl: versionBonusGameGoalkeeper(attempt.goalkeeper_ready_url),
+    saveSpriteUrl: versionBonusGameGoalkeeper(attempt.goalkeeper_save_url),
   };
 }
 
@@ -641,10 +644,11 @@ export function BonusGamePlayScreen(): JSX.Element {
   const speedOverrides = speedOverridesFor(rule, attempt.current_loadout);
   const stickItem = attempt.current_loadout?.items.find((item) => item.kind === 'stick');
   const arenaArtworkUrl = versionBonusGameArtwork(attempt.arena.artwork_url);
+  const goalieOptions = bonusGoalieOptions(attempt);
   const preloadAssets = [
     arenaArtworkUrl,
-    attempt.goalkeeper_ready_url,
-    attempt.goalkeeper_save_url,
+    goalieOptions.idleSpriteUrl!,
+    goalieOptions.saveSpriteUrl!,
   ];
   const clockRebaseKey = deriveBonusGameClockEpoch(attempt);
   const terminalShotsTotal = attempt.rules.periods.reduce(
@@ -665,7 +669,7 @@ export function BonusGamePlayScreen(): JSX.Element {
         seed={attempt.attempt_seed}
         goalieId={null}
         goalieConfig={goalieConfig}
-        goalieOptions={bonusGoalieOptions(attempt)}
+        goalieOptions={goalieOptions}
         preloadAssets={preloadAssets}
         periodNumber={periodNumber}
         periodsTotal={attempt.rules.total_periods}
