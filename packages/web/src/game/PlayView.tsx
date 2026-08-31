@@ -1664,19 +1664,16 @@ export function PlayView<TState>({
     try {
       const loop = loopRef.current;
       const ticker = tickerRef.current;
-      if (entranceBeforeInactiveAction && loop && ticker) {
+      if (
+        entranceBeforeInactiveAction &&
+        loop &&
+        ticker &&
+        !skipNextUnsuppressedEntranceRef.current
+      ) {
         skipNextUnsuppressedEntranceRef.current = true;
         await startEntranceAnimation(loop, ticker, { attachOnComplete: false, animateGoal: false });
       }
-      const result = await inactiveAction();
-      if (entranceBeforeInactiveAction && result == null) {
-        skipNextUnsuppressedEntranceRef.current = false;
-        loop?.detach();
-        goalRef.current?.update(scaleRef.current, 0);
-        if (playerRef.current) playerRef.current.container.visible = false;
-        if (goalieRef.current) goalieRef.current.container.visible = false;
-        if (puckRef.current) puckRef.current.container.visible = false;
-      }
+      await inactiveAction();
     } finally {
       setIsInactiveActionPending(false);
     }

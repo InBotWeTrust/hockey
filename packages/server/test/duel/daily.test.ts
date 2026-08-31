@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
@@ -8,6 +8,7 @@ import { buildApp } from '../../src/app.js';
 import { applyMigrations } from '../../src/db/migrations.js';
 import { findOrCreateTelegramUser } from '../../src/auth/users.js';
 import { createJwt } from '../../src/auth/jwt.js';
+import { waitForDailyCompletionSideEffects } from '../../src/duel/daily/completionSideEffects.js';
 import {
   createTestPool,
   createTestRedis,
@@ -66,10 +67,12 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
   });
 
   afterAll(async () => {
+    await waitForDailyCompletionSideEffects();
     await app.close();
   });
 
   beforeEach(async () => {
+    await waitForDailyCompletionSideEffects();
     await pool.query(
       `truncate users, auth_providers, user_wallet, user_equipment, user_sticks,
               training_session, day_pool, period_log, shot_session, event_log
@@ -212,6 +215,38 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     expect(rows[0].current_period).toBe(1);
     expect(rows[0].daily_seed).toMatch(/^[0-9a-f]{64}$/);
     expect(rows[0].game_core_version).toBeGreaterThan(0);
+  });
+
+  it('returns authoritative state without waiting for pending achievement recovery', async () => {
+    const started = await startPeriod();
+    expect(started.statusCode).toBe(200);
+
+    const locker = await pool.connect();
+    await locker.query('begin');
+    await locker.query('lock table event_log in access exclusive mode');
+    const responsePromise = app.inject({
+      method: 'GET',
+      url: '/duel/daily/state',
+      headers: authHeader(),
+    });
+
+    try {
+      const outcome = await Promise.race([
+        responsePromise.then((response) => ({ kind: 'response' as const, response })),
+        new Promise<{ kind: 'timeout' }>((resolve) => {
+          setTimeout(() => resolve({ kind: 'timeout' }), 300);
+        }),
+      ]);
+      expect(outcome.kind).toBe('response');
+      if (outcome.kind === 'response') {
+        expect(outcome.response.statusCode).toBe(200);
+        expect(outcome.response.json().state).toBe('period_active');
+      }
+    } finally {
+      await locker.query('rollback');
+      locker.release();
+      await responsePromise;
+    }
   });
 
   it('daily history includes all-time summary from registration day', async () => {
@@ -455,6 +490,37 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     expect(rows.length).toBe(1);
     expect(rows[0].shots_taken).toBe(30);
     expect(rows[0].closed_reason).toBe('quota');
+
+    await vi.waitFor(async () => {
+      const evaluated = await pool.query<{ count: string }>(
+        `select count(*)::text as count
+           from event_log
+          where user_id = $1
+            and type = 'daily_period_achievements_evaluated'`,
+        [userId],
+      );
+      expect(Number(evaluated.rows[0]?.count)).toBe(1);
+    });
+
+    // A missing completion marker represents a process interruption after
+    // the period commit. The next state request must safely replay evaluation.
+    await pool.query(
+      `delete from event_log
+        where user_id = $1
+          and type = 'daily_period_achievements_evaluated'`,
+      [userId],
+    );
+    await getState();
+    await vi.waitFor(async () => {
+      const retried = await pool.query<{ count: string }>(
+        `select count(*)::text as count
+           from event_log
+          where user_id = $1
+            and type = 'daily_period_achievements_evaluated'`,
+        [userId],
+      );
+      expect(Number(retried.rows[0]?.count)).toBe(1);
+    });
   });
 
   it('rejects 31st shot (state is break_active after quota)', async () => {

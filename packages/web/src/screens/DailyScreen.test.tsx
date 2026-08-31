@@ -1256,6 +1256,36 @@ describe('DailyScreen', () => {
     expect(await screen.findByRole('button', { name: 'БРОСОК' })).toBeInTheDocument();
   });
 
+  it('blocks another daily shot while an ambiguous result is being reconciled', async () => {
+    const activeState: DailyStateResponse = {
+      ...baseState,
+      state: 'period_active',
+      current_period: 1,
+      current_period_shots: 29,
+      current_period_goals: 12,
+      daily_total_shots: 29,
+      daily_total_goals: 12,
+      daily_seed: 'seed-abc',
+      period_ends_at: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
+    };
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(activeState), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    renderWith(['/?view=daily']);
+    expect(await screen.findByRole('button', { name: 'БРОСОК' })).toBeEnabled();
+
+    vi.mocked(globalThis.fetch).mockImplementation(() => new Promise(() => undefined));
+    act(() => {
+      useDailyStore.setState({ needsReconcile: true });
+    });
+
+    expect(screen.getByRole('button', { name: 'ПРОВЕРЯЕМ...' })).toBeDisabled();
+    expect(screen.getByText('Проверяем результат')).toBeInTheDocument();
+  });
+
   it('returns from an active daily period to the modes hub', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(
@@ -3225,7 +3255,10 @@ describe('DailyScreen', () => {
 
     await waitFor(() => expect(screen.queryByRole('tab', { name: 'Рейтинг' })).not.toBeInTheDocument());
     expect(screen.getByRole('tab', { name: 'Игра' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('status')).toHaveTextContent('Активных матчей пока нет');
+    const emptyCurrentDuels = screen.getByRole('status');
+    expect(emptyCurrentDuels).toHaveTextContent('Активных матчей пока нет');
+    expect(emptyCurrentDuels).not.toHaveClass('glass');
+    expect(emptyCurrentDuels.querySelector('svg')).toBeNull();
   });
 
   it('uses only concrete duel formats for matchmaking filters', async () => {
@@ -3281,7 +3314,8 @@ describe('DailyScreen', () => {
     expect(screen.queryByRole('button', { name: 'Все' })).not.toBeInTheDocument();
 
     const duelSetup = await screen.findByRole('region', { name: 'Новая дуэль' });
-    expect(duelSetup).toHaveClass('mode-setup-card', 'duel-creation-card');
+    expect(duelSetup).toHaveClass('duel-creation-card');
+    expect(duelSetup).not.toHaveClass('mode-setup-card');
     expect(within(duelSetup).getByRole('button', { name: 'Начать поиск' })).toBeInTheDocument();
 
     const express = await screen.findByRole('button', { name: 'Экспресс' });

@@ -8,6 +8,7 @@ import { buildApp } from '../../src/app.js';
 import { applyMigrations } from '../../src/db/migrations.js';
 import { findOrCreateTelegramUser } from '../../src/auth/users.js';
 import { createJwt } from '../../src/auth/jwt.js';
+import { waitForDailyCompletionSideEffects } from '../../src/duel/daily/completionSideEffects.js';
 import {
   createTestPool,
   createTestRedis,
@@ -61,10 +62,12 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
   });
 
   afterAll(async () => {
+    await waitForDailyCompletionSideEffects();
     await app.close();
   });
 
   beforeEach(async () => {
+    await waitForDailyCompletionSideEffects();
     await pool.query(
       `truncate users, auth_providers, user_wallet, user_equipment, user_sticks,
               training_session, day_pool, period_log, shot_session, event_log

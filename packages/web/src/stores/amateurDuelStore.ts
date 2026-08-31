@@ -90,7 +90,25 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
     if (get().inFlight) return null;
     set({ inFlight: true, error: null });
     try {
-      const { match } = await startAmateurDuelPeriod(current.id, loadout);
+      const outcome = await withGameRequestReconciliation({
+        request: (signal) => startAmateurDuelPeriod(current.id, loadout, { signal }),
+        reconcile: async (signal) => (await fetchAmateurMatch(current.id, { signal })).match,
+        isReconciled: (match) =>
+          match.id === current.id &&
+          (match.me.state !== 'accepted' || match.me.current_period > current.me.current_period),
+        isRequestErrorDefinitive: isDefinitiveGameRequestError,
+      });
+      if (get().match !== current) {
+        set({ inFlight: false });
+        return null;
+      }
+      if (outcome.kind === 'unreconciled') {
+        const message =
+          outcome.error instanceof Error ? outcome.error.message : 'failed to start duel period';
+        set({ match: outcome.value, inFlight: false, error: message });
+        return null;
+      }
+      const match = outcome.kind === 'request' ? outcome.value.match : outcome.value;
       set({ match, inFlight: false, error: null });
       return match;
     } catch (err) {

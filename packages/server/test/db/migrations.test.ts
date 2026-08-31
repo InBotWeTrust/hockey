@@ -42,6 +42,19 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     const second = await applyMigrations(pool, MIGRATIONS_DIR);
     expect(second.applied).toEqual([]);
 
+    const achievementIndexes = await pool.query<{ indexdef: string }>(
+      `select indexdef
+         from pg_indexes
+        where schemaname = 'public'
+          and indexname in (
+            'event_log_daily_period_closed_achievement_idx',
+            'event_log_daily_period_achievements_evaluated_idx'
+          )
+        order by indexname`,
+    );
+    expect(achievementIndexes.rows).toHaveLength(2);
+    expect(achievementIndexes.rows.every(({ indexdef }) => indexdef.includes('CREATE'))).toBe(true);
+
     const { rows } = await pool.query<{ table_name: string }>(
       "select table_name from information_schema.tables where table_schema = 'public' order by table_name",
     );
@@ -511,11 +524,91 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '077_accuracy_world_tour_movement_balance.sql',
       '078_amateur_rating_visibility.sql',
       '079_rename_express_plus_to_mix.sql',
+      '080_sync_mix_period_speeds.sql',
+      '081_daily_period_achievement_event_indexes.sql',
     ]);
+    const achievementEventIndexes = await pool.query<{
+      indexname: string;
+      indexdef: string;
+    }>(
+      `select indexname, indexdef
+         from pg_indexes
+        where schemaname = 'public'
+          and indexname in (
+            'event_log_daily_period_closed_achievement_idx',
+            'event_log_daily_period_achievements_evaluated_idx'
+          )
+        order by indexname`,
+    );
+    expect(achievementEventIndexes.rows).toHaveLength(2);
+    for (const index of achievementEventIndexes.rows) {
+      expect(index.indexdef).toContain('(user_id, ((payload ->>');
+      expect(index.indexdef).toContain("'day_pool_id'::text");
+      expect(index.indexdef).toContain("'period_number'::text");
+      expect(index.indexdef).toContain('WHERE (type =');
+    }
     const ratingVisibility = await pool.query<{ value: string }>(
       `select value #>> '{}' as value from game_settings where key = 'amateur.rating_visibility'`,
     );
     expect(ratingVisibility.rows[0]?.value).toBe('enabled');
+
+    const mixTemplate = await pool.query<{ period_speed_presets: unknown }>(
+      `select period_speed_presets
+         from amateur_duel_template
+        where duel_kind = 'express_plus'
+          and deleted_at is null`,
+    );
+    expect(mixTemplate.rows).toHaveLength(1);
+    expect(mixTemplate.rows[0]?.period_speed_presets).toEqual([
+      {
+        periodNumber: 1,
+        goalFrequency: 0.5,
+        goalieFrequency: 0.6,
+        shooterFrequency: 0.75,
+        puckSpeedPerMs: 1.25,
+      },
+      {
+        periodNumber: 2,
+        goalFrequency: 0.5,
+        goalieFrequency: 0.6,
+        shooterFrequency: 0.7,
+        puckSpeedPerMs: 1.25,
+      },
+    ]);
+
+    const customPresets = [
+      {
+        periodNumber: 1,
+        goalFrequency: 0.41,
+        goalieFrequency: 0.52,
+        shooterFrequency: 0.63,
+        puckSpeedPerMs: 1.14,
+      },
+    ];
+    const migration080 = await fs.readFile(
+      path.join(MIGRATIONS_DIR, '080_sync_mix_period_speeds.sql'),
+      'utf8',
+    );
+    await pool.query('begin');
+    try {
+      await pool.query(
+        `update amateur_duel_template
+            set period_speed_presets = $1::jsonb
+          where duel_kind = 'express_plus'
+            and deleted_at is null`,
+        [JSON.stringify(customPresets)],
+      );
+      await pool.query(migration080);
+      const customisedMix = await pool.query<{ period_speed_presets: unknown }>(
+        `select period_speed_presets
+           from amateur_duel_template
+          where duel_kind = 'express_plus'
+            and deleted_at is null`,
+      );
+      expect(customisedMix.rows[0]?.period_speed_presets).toEqual(customPresets);
+    } finally {
+      await pool.query('rollback');
+    }
   });
 
   it('enforces the bonus snapshot, index, and enum constraint contract', async () => {
@@ -878,6 +971,8 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '077_accuracy_world_tour_movement_balance.sql',
       '078_amateur_rating_visibility.sql',
       '079_rename_express_plus_to_mix.sql',
+      '080_sync_mix_period_speeds.sql',
+      '081_daily_period_achievement_event_indexes.sql',
     ]);
 
     const activeInventory = await pool.query<{

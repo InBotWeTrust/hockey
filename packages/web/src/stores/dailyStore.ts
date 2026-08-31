@@ -22,6 +22,7 @@ interface DailyStoreState {
   loading: boolean;
   error: string | null;
   inFlight: boolean;
+  needsReconcile: boolean;
   refresh: () => Promise<void>;
   startPeriod: () => Promise<DailyStateResponse | null>;
   applyState: (next: DailyStateResponse) => void;
@@ -45,12 +46,13 @@ export const useDailyStore = create<DailyStoreState>()((set, get) => ({
   loading: false,
   error: null,
   inFlight: false,
+  needsReconcile: false,
 
   refresh: async () => {
     set({ loading: true, error: null });
     try {
       const data = await fetchDailyState();
-      set({ data, loading: false, error: null });
+      set({ data, loading: false, error: null, needsReconcile: false });
     } catch (err) {
       set({
         loading: false,
@@ -61,9 +63,26 @@ export const useDailyStore = create<DailyStoreState>()((set, get) => ({
 
   startPeriod: async () => {
     if (get().inFlight) return null;
+    const submittedState = get().data;
     set({ inFlight: true, error: null });
     try {
-      const data = await startDailyPeriod();
+      const outcome = await withGameRequestReconciliation({
+        request: (signal) => startDailyPeriod({ signal }),
+        reconcile: (signal) => fetchDailyState({ signal }),
+        isReconciled: (state) => state.state !== 'idle',
+        isRequestErrorDefinitive: isDefinitiveGameRequestError,
+      });
+      if (get().data !== submittedState) {
+        set({ inFlight: false });
+        return null;
+      }
+      if (outcome.kind === 'unreconciled') {
+        const message =
+          outcome.error instanceof Error ? outcome.error.message : 'failed to start period';
+        set({ data: outcome.value, inFlight: false, error: message });
+        return null;
+      }
+      const data = outcome.value;
       set({ data, inFlight: false, error: null });
       return data;
     } catch (err) {
@@ -83,7 +102,8 @@ export const useDailyStore = create<DailyStoreState>()((set, get) => ({
     }
   },
 
-  applyState: (next) => set({ data: next, deferredState: null, error: null }),
+  applyState: (next) =>
+    set({ data: next, deferredState: null, error: null, needsReconcile: false }),
 
   setDeferredState: (next) => set({ deferredState: next }),
 
@@ -107,6 +127,7 @@ export const useDailyStore = create<DailyStoreState>()((set, get) => ({
   },
 
   submitShot: async ({ shotIndex, input, claimedResult }) => {
+    if (get().needsReconcile) return null;
     const submittedState = get().data;
     try {
       const outcome = await withGameRequestReconciliation({
@@ -128,6 +149,7 @@ export const useDailyStore = create<DailyStoreState>()((set, get) => ({
         if (get().data === submittedState) {
           set({
             data: outcome.value,
+            needsReconcile: false,
             error:
               outcome.error instanceof Error ? outcome.error.message : 'shot failed',
           });
@@ -149,25 +171,11 @@ export const useDailyStore = create<DailyStoreState>()((set, get) => ({
         isCurrent: () => get().data === submittedState,
       };
     } catch (err) {
-      if (
-        submittedState &&
-        get().data === submittedState &&
-        submittedState.state === 'period_active' &&
-        submittedState.current_period_shots === shotIndex
-      ) {
-        const goalDelta = claimedResult === 'goal' ? 1 : 0;
+      if (get().data === submittedState) {
         set({
-          data: {
-            ...submittedState,
-            current_period_shots: Math.max(0, submittedState.current_period_shots - 1),
-            current_period_goals: Math.max(0, submittedState.current_period_goals - goalDelta),
-            daily_total_shots: Math.max(0, submittedState.daily_total_shots - 1),
-            daily_total_goals: Math.max(0, submittedState.daily_total_goals - goalDelta),
-          },
+          needsReconcile: true,
           error: err instanceof Error ? err.message : 'shot failed',
         });
-      } else if (get().data === submittedState) {
-        set({ error: err instanceof Error ? err.message : 'shot failed' });
       }
       return null;
     }

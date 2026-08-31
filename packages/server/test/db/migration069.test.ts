@@ -217,6 +217,8 @@ describe.skipIf(!hasIntegrationEnv)('069 bonus skill catalogue reset', () => {
       '077_accuracy_world_tour_movement_balance.sql',
       '078_amateur_rating_visibility.sql',
       '079_rename_express_plus_to_mix.sql',
+      '080_sync_mix_period_speeds.sql',
+      '081_daily_period_achievement_event_indexes.sql',
     ]);
 
     const accuracy = await pool.query<{
