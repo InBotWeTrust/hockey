@@ -3670,7 +3670,7 @@
 }
 
 .duel-empty-current {
-  padding: 2px 0;
+  padding: 6px 0 2px;
   color: rgba(240, 248, 255, 0.86);
   font-size: 13px;
   font-weight: 700;
@@ -3849,10 +3849,72 @@
 .duel-day-match__result--draw { color: #854d0e; }
 .duel-day-match__result--loss { color: #991b1b; }
 
-.duel-kind-picker {
-  border: 1px solid rgba(255, 255, 255, 0.74);
-  background: rgba(255, 255, 255, 0.34);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+.duel-kind-picker,
+.duel-quick-pick {
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  background: #dce6ef;
+  box-shadow:
+    0 8px 18px rgba(4, 15, 28, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.duel-kind-picker__info-icon {
+  color: rgba(15, 23, 42, 0.72);
+}
+
+.duel-quick-pick__opponent,
+.duel-quick-pick__empty {
+  color: rgba(51, 65, 85, 0.88);
+  text-shadow: none;
+}
+
+.duel-quick-pick__opponent--active {
+  color: #0f172a;
+}
+
+.duel-quick-pick__name {
+  letter-spacing: 0.01em;
+}
+
+.duel-opponent-search {
+  background: #dce6ef;
+  border-color: rgba(255, 255, 255, 0.96);
+  box-shadow:
+    0 8px 18px rgba(4, 15, 28, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.duel-template-select {
+  --glass-select-background: #dce6ef;
+  --glass-select-border: rgba(255, 255, 255, 0.96);
+  --glass-select-shadow:
+    0 8px 18px rgba(4, 15, 28, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.duel-opponent-search__icon {
+  flex: 0 0 auto;
+  color: rgba(15, 23, 42, 0.72);
+}
+
+.duel-opponent-search__input {
+  min-width: 0;
+  color: #0f172a;
+}
+
+.duel-opponent-search__input::placeholder {
+  color: rgba(15, 23, 42, 0.58);
+  opacity: 1;
+}
+
+.duel-challenge-submit:disabled {
+  opacity: 1;
+  background: rgba(15, 23, 42, 0.72);
+  border-color: rgba(15, 23, 42, 0.78);
+  color: rgba(248, 252, 255, 0.9);
+  box-shadow:
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.16),
+    0 8px 18px rgba(4, 15, 28, 0.14);
 }
 
 .training-summary-grid {

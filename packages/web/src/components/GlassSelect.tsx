@@ -18,11 +18,13 @@ export function GlassSelect<T extends string>({
   options,
   onChange,
   ariaLabel,
+  buttonClassName,
 }: {
   value: T;
   options: Array<GlassSelectOption<T>>;
   onChange: (value: T) => void;
   ariaLabel: string;
+  buttonClassName?: string;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -130,6 +132,7 @@ export function GlassSelect<T extends string>({
     <div ref={ref} style={{ position: 'relative', minWidth: 0 }}>
       <button
         ref={buttonRef}
+        className={buttonClassName}
         type="button"
         role="combobox"
         aria-label={ariaLabel}
@@ -147,15 +150,18 @@ export function GlassSelect<T extends string>({
           minWidth: 0,
           height: 44,
           borderRadius: 14,
-          border: '1px solid rgba(255, 255, 255, 0.72)',
-          background: 'rgba(255, 255, 255, 0.52)',
+          border:
+            '1px solid var(--glass-select-border, rgba(255, 255, 255, 0.72))',
+          background:
+            'var(--glass-select-background, rgba(255, 255, 255, 0.52))',
           color: 'var(--ink)',
           padding: '0 10px 0 12px',
           font: 'inherit',
           fontSize: 13,
           fontWeight: 800,
           outline: 'none',
-          boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.72)',
+          boxShadow:
+            'var(--glass-select-shadow, inset 0 1px 0 rgba(255, 255, 255, 0.72))',
           display: 'grid',
           gridTemplateColumns: 'minmax(0, 1fr) 18px',
           alignItems: 'center',

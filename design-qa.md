@@ -59,6 +59,34 @@ final result: passed
 
 ---
 
+# Design QA — контраст формы новой дуэли
+
+## Evidence
+
+- Source visual truth:
+  - `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-65bc48a8-d203-434d-8a78-b95ddd4db83e.png`
+  - `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-d47257a4-8c87-476a-a303-8d33dd30fdcd.png`
+- Local implementation URL: `http://127.0.0.1:5175/?view=amateur&section=duels&from=sections`.
+- Browser-rendered implementation screenshot: unavailable because the in-app browser opened the unauthenticated login state.
+
+## Implemented surfaces
+
+- Formats, duel-template dropdown, quick opponent selection, and opponent search use the same opaque light surface.
+- Text and icons inside those surfaces use dark high-contrast colors.
+- The disabled challenge CTA keeps a dark surface with readable light text.
+- The empty current-duel copy has balanced vertical spacing without a container or icon.
+
+## Verification
+
+- Focused duel UI tests pass.
+- Full web test suite passes.
+- Repository typecheck, lint, and production build pass.
+- Auth state was not changed during QA.
+
+final result: blocked — authenticated browser state is required for a rendered screenshot of this specific screen.
+
+---
+
 # Design QA — рейтинг любительских дуэлей
 
 ## Evidence
