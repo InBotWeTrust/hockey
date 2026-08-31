@@ -1141,6 +1141,34 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     expect(audit.rows[0]?.count).toBe('1');
   });
 
+  it('reports current capacity numbers when all pending applications do not fit', async () => {
+    await seedUsers(pool, 100);
+    const approvalRules = rules(0);
+    approvalRules.config.registrationMode = 'approval';
+    approvalRules.config.participantLimit = 2;
+    const tournament = await createPublishedTournament(
+      pool,
+      'bulk-application-capacity',
+      0,
+      approvalRules,
+    );
+    await applyToTournament(pool, tournament.id, PLAYER_IDS[0]);
+    await applyToTournament(pool, tournament.id, PLAYER_IDS[1]);
+    await applyToTournament(pool, tournament.id, PLAYER_IDS[2]);
+
+    await expect(
+      approveAllTournamentApplications(pool, tournament.id, ADMIN_ID),
+    ).rejects.toMatchObject({
+      code: 'capacity_reached',
+      details: {
+        approvedCount: 0,
+        participantLimit: 2,
+        availableSlots: 2,
+        pendingCount: 3,
+      },
+    });
+  });
+
   it('rejects a pending application with the administrator reason', async () => {
     await seedUsers(pool, 100);
     const rejectionRules = rules(0);

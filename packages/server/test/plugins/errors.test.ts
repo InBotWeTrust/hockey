@@ -14,6 +14,35 @@ describe('errorsPlugin', () => {
     expect(res.json()).toEqual({ error: { code: 'not_found', message: 'user not found' } });
   });
 
+  it('returns explicitly public error details for actionable conflicts', async () => {
+    const app = Fastify();
+    await app.register(errorsPlugin);
+    app.get('/capacity', async () => {
+      throw new AppError('capacity_reached', 'capacity reached', 409, {
+        approvedCount: 14,
+        participantLimit: 16,
+        availableSlots: 2,
+        pendingCount: 3,
+      });
+    });
+
+    const res = await app.inject({ method: 'GET', url: '/capacity' });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toEqual({
+      error: {
+        code: 'capacity_reached',
+        message: 'capacity reached',
+        details: {
+          approvedCount: 14,
+          participantLimit: 16,
+          availableSlots: 2,
+          pendingCount: 3,
+        },
+      },
+    });
+  });
+
   it('masks unknown 5xx and logs original', async () => {
     const app = Fastify({ logger: false });
     await app.register(errorsPlugin);

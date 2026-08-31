@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { ArrowLeft, Ellipsis, Pencil, X } from 'lucide-react';
+import { ApiError } from '../api/apiFetch.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import { GlassSelect } from '../components/GlassSelect.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
@@ -36,7 +37,12 @@ import {
   type AdminTournamentParticipant,
 } from './adminApi.js';
 import { tournamentTimezoneLabel } from './timezoneLabel.js';
-import { participantStateLabel, paymentStateLabel, tournamentStatusLabel } from './labels.js';
+import {
+  participantStateLabel,
+  paymentStateLabel,
+  russianPlural,
+  tournamentStatusLabel,
+} from './labels.js';
 import { TournamentStandingsTable } from './TournamentStandingsTable.js';
 import { TournamentMatchdayRow } from './TournamentMatchdayTimes.js';
 
@@ -65,6 +71,58 @@ const tabs: Array<{ key: OperationsTab; label: string }> = [
   { key: 'rewards', label: 'Награды' },
   { key: 'dispatches', label: 'Рассылки' },
 ];
+
+function applicationWord(count: number): string {
+  return russianPlural(count, 'заявку', 'заявки', 'заявок');
+}
+
+function nonNegativeInteger(value: unknown): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null;
+}
+
+function approveAllErrorMessage(
+  error: Error | null,
+  tournament: AdminTournament,
+  participants: AdminTournamentParticipant[] | undefined,
+  pendingApplicationCount: number,
+): string {
+  const code = error instanceof ApiError ? error.code : null;
+  if (code === 'insufficient_coins') {
+    return 'Не удалось принять заявки: у одного или нескольких игроков недостаточно монет для взноса.';
+  }
+  if (code === 'registration_closed') {
+    return 'Заявки нельзя принять: регистрация на турнир уже закрыта.';
+  }
+  if (code === 'capacity_reached') {
+    const details = error instanceof ApiError ? error.details : undefined;
+    const approvedFromError = nonNegativeInteger(details?.approvedCount);
+    const limitFromError = nonNegativeInteger(details?.participantLimit);
+    const slotsFromError = nonNegativeInteger(details?.availableSlots);
+    const pendingFromError = nonNegativeInteger(details?.pendingCount);
+    const rawLimit = tournament.rules?.config?.participantLimit;
+    const localLimit = typeof rawLimit === 'number' ? rawLimit : null;
+    const localApprovedCount = participants?.filter(
+      (participant) => participant.state === 'approved',
+    ).length;
+    const approvedCount = approvedFromError ?? localApprovedCount ?? null;
+    const participantLimit = limitFromError ?? localLimit;
+    const availableSlots =
+      slotsFromError ??
+      (approvedCount !== null && participantLimit !== null
+        ? Math.max(0, participantLimit - approvedCount)
+        : null);
+    const pendingCount = pendingFromError ?? pendingApplicationCount;
+    if (approvedCount !== null && participantLimit !== null && availableSlots !== null) {
+      const recommendation =
+        availableSlots > 0
+          ? `Примите ${availableSlots} ${applicationWord(availableSlots)} по одной или увеличьте максимум участников.`
+          : 'Освободите места или увеличьте максимум участников.';
+      return `Нельзя принять все заявки: подтверждено ${approvedCount} из ${participantLimit}, свободно ${availableSlots} ${russianPlural(availableSlots, 'место', 'места', 'мест')}, а заявок ${pendingCount}. ${recommendation}`;
+    }
+    return 'Нельзя принять все заявки: в турнире недостаточно свободных мест. Примите часть заявок по одной или увеличьте максимум участников.';
+  }
+  return 'Не удалось принять заявки. Обновите страницу и попробуйте ещё раз.';
+}
 
 function readableDate(value: string | null): string {
   if (value === null) return 'время не задано';
@@ -717,7 +775,12 @@ export function TournamentOperations({
                 className="tournament-dispatch-feedback tournament-dispatch-feedback--error"
                 role="alert"
               >
-                Не удалось принять все заявки. Проверьте лимит участников и оплату.
+                {approveAllErrorMessage(
+                  approveAll.error,
+                  tournament,
+                  participants.data?.participants,
+                  pendingApplicationCount,
+                )}
               </div>
             )}
             {filteredParticipants.map((participant) => (

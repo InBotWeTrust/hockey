@@ -3,8 +3,10 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '../api/apiFetch.js';
 import * as api from './adminApi.js';
 import { TournamentAdmin } from './TournamentAdmin.js';
+import { TournamentOperations } from './TournamentOperations.js';
 
 const designSystemCss = readFileSync(resolve(process.cwd(), 'src/app/design-system.css'), 'utf8');
 
@@ -1572,6 +1574,110 @@ describe('TournamentAdmin', () => {
       'Не удалось отправить рассылку. Попробуйте ещё раз.',
     );
   });
+
+  it.each([
+    {
+      code: 'capacity_reached',
+      details: {
+        approvedCount: 14,
+        participantLimit: 16,
+        availableSlots: 2,
+        pendingCount: 3,
+      },
+      expected:
+        'Нельзя принять все заявки: подтверждено 14 из 16, свободно 2 места, а заявок 3. Примите 2 заявки по одной или увеличьте максимум участников.',
+    },
+    {
+      code: 'capacity_reached',
+      details: {
+        approvedCount: 8,
+        participantLimit: 30,
+        availableSlots: 22,
+        pendingCount: 23,
+      },
+      expected:
+        'Нельзя принять все заявки: подтверждено 8 из 30, свободно 22 места, а заявок 23. Примите 22 заявки по одной или увеличьте максимум участников.',
+    },
+    {
+      code: 'insufficient_coins',
+      details: undefined,
+      expected:
+        'Не удалось принять заявки: у одного или нескольких игроков недостаточно монет для взноса.',
+    },
+    {
+      code: 'registration_closed',
+      details: undefined,
+      expected: 'Заявки нельзя принять: регистрация на турнир уже закрыта.',
+    },
+    {
+      code: 'unexpected_error',
+      details: undefined,
+      expected: 'Не удалось принять заявки. Обновите страницу и попробуйте ещё раз.',
+    },
+  ])(
+    'explains the $code bulk approval error in plain language',
+    async ({ code, details, expected }) => {
+    const tournament: api.AdminTournament = {
+      id: '00000000-0000-4000-8000-000000000971',
+      slug: 'capacity-cup',
+      title: 'Кубок на 16 игроков',
+      description: '',
+      status: 'registration',
+      regularSource: 'head_to_head',
+      revision: 2,
+      participantCount: 17,
+      pendingApplicationCount: 3,
+      rules: { config: { participantLimit: 16 } },
+    };
+    const approvedParticipants: api.AdminTournamentParticipant[] = Array.from(
+      { length: 14 },
+      (_, index) => ({
+        id: `approved-${index}`,
+        user_id: `approved-user-${index}`,
+        display_name: `Подтверждённый игрок ${index + 1}`,
+        avatar_url: null,
+        state: 'approved',
+        seed: index + 1,
+        entry_fee_coins: 0,
+        entry_fee_state: 'not_required',
+      }),
+    );
+    const pendingParticipants: api.AdminTournamentParticipant[] = Array.from(
+      { length: 3 },
+      (_, index) => ({
+        id: `pending-${index}`,
+        user_id: `pending-user-${index}`,
+        display_name: `Новая заявка ${index + 1}`,
+        avatar_url: null,
+        state: 'applied',
+        seed: null,
+        entry_fee_coins: 25,
+        entry_fee_state: 'pending',
+      }),
+    );
+    vi.spyOn(api, 'fetchAdminTournamentParticipants').mockResolvedValue({
+      participants: [...approvedParticipants, ...pendingParticipants],
+    });
+    vi.spyOn(api, 'approveAllAdminTournamentApplications').mockRejectedValue(
+      new ApiError(409, code, 'Внутренняя ошибка', details),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentOperations
+          tournament={tournament}
+          onBack={vi.fn()}
+          onEdit={vi.fn()}
+          onRemoved={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Принять все заявки (3)' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(expected);
+    },
+  );
 
   it('updates the operational lifecycle controls after publishing without leaving the screen', async () => {
     vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({

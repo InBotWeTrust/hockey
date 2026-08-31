@@ -7,6 +7,7 @@ export class AppError extends Error {
     public readonly code: string,
     message: string,
     public readonly statusCode = 400,
+    public readonly details?: Record<string, unknown>,
   ) {
     super(message);
     this.name = 'AppError';
@@ -37,7 +38,11 @@ const plugin: FastifyPluginAsync = async (app) => {
   app.setErrorHandler((err, req, reply) => {
     if (err instanceof AppError) {
       reply.status(err.statusCode).send({
-        error: { code: err.code, message: err.message },
+        error: {
+          code: err.code,
+          message: err.message,
+          ...(err.details ? { details: err.details } : {}),
+        },
       });
       return;
     }
