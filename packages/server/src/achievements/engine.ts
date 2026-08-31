@@ -5,6 +5,7 @@ import {
   setAchievementProgress,
 } from './progress.js';
 import { completeAchievements } from './service.js';
+import { appendEvent } from '../duel/eventLog.js';
 
 type Queryable = Pool | PoolClient;
 type ShotResult = 'goal' | 'save' | 'miss';
@@ -198,6 +199,46 @@ export async function evaluateDailyPeriodClosedAchievements(
     lastNAllGoals(results, 10) ? ['final-push'] : [],
     { source: 'daily_period_closed', ...event },
   );
+}
+
+export async function evaluatePendingDailyPeriodClosedAchievements(
+  db: Queryable,
+  userId: string,
+): Promise<void> {
+  const { rows } = await db.query<{
+    day_pool_id: string;
+    period_number: string;
+  }>(
+    `select distinct
+            closed.payload->>'day_pool_id' as day_pool_id,
+            closed.payload->>'period_number' as period_number
+       from event_log closed
+      where closed.user_id = $1
+        and closed.type = 'period_closed'
+        and not exists (
+          select 1
+            from event_log evaluated
+           where evaluated.user_id = closed.user_id
+             and evaluated.type = 'daily_period_achievements_evaluated'
+             and evaluated.payload->>'day_pool_id' = closed.payload->>'day_pool_id'
+             and evaluated.payload->>'period_number' = closed.payload->>'period_number'
+        )`,
+    [userId],
+  );
+
+  for (const row of rows) {
+    const periodNumber = Number(row.period_number);
+    if (!row.day_pool_id || !Number.isInteger(periodNumber)) continue;
+    await evaluateDailyPeriodClosedAchievements(db, {
+      userId,
+      dayPoolId: row.day_pool_id,
+      periodNumber,
+    });
+    await appendEvent(db, userId, 'daily_period_achievements_evaluated', {
+      day_pool_id: row.day_pool_id,
+      period_number: periodNumber,
+    });
+  }
 }
 
 export async function evaluateDailyClosedAchievements(

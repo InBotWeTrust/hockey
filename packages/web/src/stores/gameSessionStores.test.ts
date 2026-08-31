@@ -67,6 +67,7 @@ describe('game session stores', () => {
       loading: false,
       error: null,
       inFlight: false,
+      needsReconcile: false,
     });
     useTrainingSessionStore.setState({
       data: null,
@@ -133,7 +134,51 @@ describe('game session stores', () => {
     expect(result).toBe(activeState);
     expect(fetchDailyState).toHaveBeenCalledTimes(1);
     expect(useDailyStore.getState().data).toBe(activeState);
-    expect(useDailyStore.getState().error).toBe('already active');
+    expect(useDailyStore.getState().error).toBeNull();
+    expect(useDailyStore.getState().inFlight).toBe(false);
+  });
+
+  it('recovers a daily period that starts while the start response is stalled', async () => {
+    vi.useFakeTimers();
+    const idleState = {
+      state: 'idle',
+      current_period: 0,
+    } as unknown as DailyStateResponse;
+    const activeState = {
+      state: 'period_active',
+      current_period: 1,
+    } as unknown as DailyStateResponse;
+    vi.mocked(startDailyPeriod).mockImplementation(() => neverSettles());
+    vi.mocked(fetchDailyState).mockResolvedValueOnce(activeState);
+    useDailyStore.setState({ data: idleState, error: null });
+
+    let result: DailyStateResponse | null | undefined;
+    void useDailyStore.getState().startPeriod().then((value) => {
+      result = value;
+    });
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(fetchDailyState).toHaveBeenCalledWith({ signal: expect.any(AbortSignal) });
+    expect(result).toBe(activeState);
+    expect(useDailyStore.getState().data).toBe(activeState);
+    expect(useDailyStore.getState().inFlight).toBe(false);
+  });
+
+  it('releases the daily start lock when a concurrent refresh wins', async () => {
+    const idle = { state: 'idle', current_period: 0 } as DailyStateResponse;
+    const refreshed = { state: 'period_active', current_period: 1 } as DailyStateResponse;
+    let resolveStart: ((value: DailyStateResponse) => void) | undefined;
+    vi.mocked(startDailyPeriod).mockImplementation(
+      () => new Promise((resolve) => (resolveStart = resolve)),
+    );
+    useDailyStore.setState({ data: idle });
+
+    const start = useDailyStore.getState().startPeriod();
+    useDailyStore.setState({ data: refreshed });
+    resolveStart?.(refreshed);
+    await start;
+
+    expect(useDailyStore.getState().data).toBe(refreshed);
     expect(useDailyStore.getState().inFlight).toBe(false);
   });
 
@@ -227,7 +272,7 @@ describe('game session stores', () => {
     expect(useDailyStore.getState().error).toBeNull();
   });
 
-  it('unlocks a daily retry when both final-shot requests stall', async () => {
+  it('keeps a daily shot locked until an ambiguous final-shot request is reconciled', async () => {
     vi.useFakeTimers();
     const optimistic = {
       state: 'period_active',
@@ -252,11 +297,31 @@ describe('game session stores', () => {
     await submit;
 
     expect(useDailyStore.getState().data).toMatchObject({
-      current_period_shots: 99,
-      current_period_goals: 50,
-      daily_total_shots: 99,
-      daily_total_goals: 50,
+      current_period_shots: 100,
+      current_period_goals: 51,
+      daily_total_shots: 100,
+      daily_total_goals: 51,
     });
+    expect(useDailyStore.getState().needsReconcile).toBe(true);
+
+    await useDailyStore.getState().submitShot({
+      shotIndex: 100,
+      input: { tapTime: 3001 },
+      claimedResult: 'save',
+    });
+    expect(submitDailyShot).toHaveBeenCalledTimes(1);
+
+    const authoritative = {
+      ...optimistic,
+      state: 'closed' as const,
+      current_period_shots: 0,
+      current_period_goals: 0,
+    };
+    vi.mocked(fetchDailyState).mockResolvedValueOnce(authoritative);
+    await useDailyStore.getState().refresh();
+
+    expect(useDailyStore.getState().data).toEqual(authoritative);
+    expect(useDailyStore.getState().needsReconcile).toBe(false);
   });
 
   it('does not start a second training request while one is already in flight', async () => {
@@ -338,6 +403,60 @@ describe('game session stores', () => {
     expect(startResult).toBeNull();
     expect(readyAmateurDuel).not.toHaveBeenCalled();
     expect(startAmateurDuelPeriod).not.toHaveBeenCalled();
+  });
+
+  it('recovers a duel period that starts while the start response is stalled', async () => {
+    vi.useFakeTimers();
+    const accepted = {
+      ...amateurDuelState,
+      me: { state: 'accepted', current_period: 0 },
+    } as AmateurDuelMatchState;
+    const active = {
+      ...accepted,
+      me: { state: 'period_active', current_period: 1 },
+    } as AmateurDuelMatchState;
+    vi.mocked(startAmateurDuelPeriod).mockImplementation(() => neverSettles());
+    vi.mocked(fetchAmateurMatch).mockResolvedValueOnce({ match: active });
+    useAmateurDuelStore.setState({ match: accepted });
+
+    let result: AmateurDuelMatchState | null | undefined;
+    void useAmateurDuelStore.getState().startPeriod({}).then((value) => {
+      result = value;
+    });
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(fetchAmateurMatch).toHaveBeenCalledWith(accepted.id, {
+      signal: expect.any(AbortSignal),
+    });
+    expect(result).toBe(active);
+    expect(useAmateurDuelStore.getState().match).toBe(active);
+    expect(useAmateurDuelStore.getState().inFlight).toBe(false);
+  });
+
+  it('releases the duel start lock when polling refresh wins', async () => {
+    const accepted = {
+      ...amateurDuelState,
+      me: { state: 'accepted', current_period: 0 },
+    } as AmateurDuelMatchState;
+    const refreshed = {
+      ...accepted,
+      me: { state: 'period_active', current_period: 1 },
+    } as AmateurDuelMatchState;
+    let resolveStart:
+      | ((value: { match: AmateurDuelMatchState }) => void)
+      | undefined;
+    vi.mocked(startAmateurDuelPeriod).mockImplementation(
+      () => new Promise((resolve) => (resolveStart = resolve)),
+    );
+    useAmateurDuelStore.setState({ match: accepted });
+
+    const start = useAmateurDuelStore.getState().startPeriod({});
+    useAmateurDuelStore.setState({ match: refreshed });
+    resolveStart?.({ match: refreshed });
+    await start;
+
+    expect(useAmateurDuelStore.getState().match).toBe(refreshed);
+    expect(useAmateurDuelStore.getState().inFlight).toBe(false);
   });
 
   it('recovers duel state when a shot request stalls', async () => {

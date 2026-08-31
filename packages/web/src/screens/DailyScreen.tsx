@@ -20,7 +20,6 @@ import {
   Info,
   Search,
   SlidersHorizontal,
-  Swords,
   X,
 } from 'lucide-react';
 import {
@@ -3804,9 +3803,8 @@ function AmateurDuelsPage({
               Текущие дуэли ({openDuelSlotsUsed}/5)
             </div>
             {currentMatches.length === 0 ? (
-              <div role="status" className="glass duel-empty-current">
-                <Swords size={18} strokeWidth={2.2} aria-hidden="true" />
-                <span>Активных матчей пока нет</span>
+              <div role="status" className="duel-empty-current">
+                Активных матчей пока нет
               </div>
             ) : (
               renderDuelCards(currentMatches)
@@ -3826,11 +3824,7 @@ function AmateurDuelsPage({
           )}
           <div className="duel-section">
             <div className="section-label duel-section-title">Новая дуэль</div>
-            <section
-              className="mode-setup-card duel-creation-card"
-              aria-label="Новая дуэль"
-              style={{ display: 'flex', flexDirection: 'column', gap: 10 }}
-            >
+            <section className="duel-creation-card" aria-label="Новая дуэль">
             <SegmentedTabs
               ariaLabel="Сценарий новой дуэли"
               activeTab={duelCreationMode}
@@ -7173,6 +7167,7 @@ function DailyPlayView({
   const deferredState = useDailyStore((s) => s.deferredState);
   const startPeriod = useDailyStore((s) => s.startPeriod);
   const pending = useDailyStore((s) => s.inFlight);
+  const needsReconcile = useDailyStore((s) => s.needsReconcile);
   const optimisticAddShot = useDailyStore((s) => s.optimisticAddShot);
   const submitShot = useDailyStore((s) => s.submitShot);
   const refresh = useDailyStore((s) => s.refresh);
@@ -7302,6 +7297,23 @@ function DailyPlayView({
     refresh,
   ]);
 
+  useEffect(() => {
+    if (!needsReconcile) return undefined;
+    let cancelled = false;
+    let retryId: number | undefined;
+    const reconcile = async (): Promise<void> => {
+      await refresh();
+      if (!cancelled && useDailyStore.getState().needsReconcile) {
+        retryId = window.setTimeout(() => void reconcile(), 1_500);
+      }
+    };
+    void reconcile();
+    return () => {
+      cancelled = true;
+      if (retryId !== undefined) window.clearTimeout(retryId);
+    };
+  }, [needsReconcile, refresh]);
+
   return (
     <>
       <PlayView<DailyStateResponse>
@@ -7346,9 +7358,17 @@ function DailyPlayView({
                 ? 'ДО ИГРЫ'
                 : undefined
         }
-        scoreboardNotice={isDailyLockedByTraining ? 'Нужно восстановиться' : undefined}
+        scoreboardNotice={
+          needsReconcile
+            ? 'Проверяем результат'
+            : isDailyLockedByTraining
+              ? 'Нужно восстановиться'
+              : undefined
+        }
         shotButtonLabel={
-          canStartPeriod
+          needsReconcile
+            ? 'ПРОВЕРЯЕМ...'
+            : canStartPeriod
             ? pending
               ? 'НАЧИНАЕМ...'
               : 'НАЧАТЬ'
@@ -7359,6 +7379,7 @@ function DailyPlayView({
                 : undefined
         }
         inactiveAction={canStartPeriod ? handleStartPeriod : undefined}
+        primaryActionBlocked={needsReconcile}
         entranceBeforeInactiveAction={true}
         periodEndsAt={data.state === 'period_active' ? periodEndsAt : undefined}
         onTimerExpired={refresh}

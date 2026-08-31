@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { DAILY_PERIOD_SPEED_PRESETS } from '@hockey/game-core';
 import { PlayView } from '../game/PlayView.js';
@@ -173,5 +173,53 @@ describe('PlayView rink availability visuals', () => {
     expect(inactiveAction).not.toHaveBeenCalled();
     expect(goalUpdate).toHaveBeenCalledWith(expect.anything(), 0, 0);
     expect(goalUpdate).not.toHaveBeenCalledWith(expect.anything(), 0, -140);
+  });
+
+  it('keeps the players on the rink when starting the period fails', async () => {
+    let now = 0;
+    const animationFrames: FrameRequestCallback[] = [];
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    vi.mocked(window.requestAnimationFrame).mockImplementation((callback) => {
+      animationFrames.push(callback);
+      return animationFrames.length;
+    });
+    const inactiveAction = vi.fn(async () => null);
+    render(
+      <PlayView
+        suppressedByModal={true}
+        showIceCar={false}
+        onBack={() => undefined}
+        active={false}
+        seed={null}
+        goalieId="rookie"
+        periodNumber={1}
+        periodSpeedPresets={[...DAILY_PERIOD_SPEED_PRESETS]}
+        goals={0}
+        shots={0}
+        shotsTotal={30}
+        shotButtonLabel="НАЧАТЬ"
+        inactiveAction={inactiveAction}
+        entranceBeforeInactiveAction={true}
+        optimisticAddShot={() => undefined}
+        submitShot={noopSubmit}
+        applyState={() => undefined}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'НАЧАТЬ' }));
+    now = 1_400;
+    await act(async () => {
+      animationFrames.shift()?.(now);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(inactiveAction).toHaveBeenCalledTimes(1));
+    expect(rinkLayerChildren().slice(1, 5).map((child) => child.visible)).toEqual([
+      true,
+      true,
+      true,
+      true,
+    ]);
+    expect(screen.getByRole('button', { name: 'НАЧАТЬ' })).toBeEnabled();
   });
 });

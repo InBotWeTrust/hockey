@@ -104,9 +104,10 @@ export function fetchDailyHistory(limit = 20, offset = 0): Promise<DailyHistoryR
   return apiFetch<DailyHistoryResponse>(`/duel/daily/history?limit=${limit}&offset=${offset}`);
 }
 
-export function startDailyPeriod(): Promise<DailyStateResponse> {
+export function startDailyPeriod(options?: GameRequestOptions): Promise<DailyStateResponse> {
   return apiFetch<DailyStateResponse>('/duel/daily/period/start', {
     method: 'POST',
+    ...(options?.signal === undefined ? {} : { signal: options.signal }),
   }).then(stampDailyState);
 }
 

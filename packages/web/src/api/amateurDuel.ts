@@ -458,12 +458,14 @@ export function leaveAmateurMatchmaking(templateId?: string): Promise<{ ok: true
 export function startAmateurDuelPeriod(
   matchId: string,
   loadout?: AmateurDuelLoadoutSelection,
+  options?: GameRequestOptions,
 ): Promise<{ match: AmateurDuelMatchState }> {
   return apiFetch<{ match: AmateurDuelMatchState }>(
     `/duel/amateur/matches/${matchId}/period/start`,
     {
       method: 'POST',
       ...(loadout ? { body: JSON.stringify({ loadout }) } : {}),
+      ...(options?.signal === undefined ? {} : { signal: options.signal }),
     },
   ).then((res) => ({ match: stampMatch(res.match) }));
 }

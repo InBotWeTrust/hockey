@@ -9,11 +9,15 @@ import {
   resolvePerspectiveCourtShot,
   type DailyPeriodSpeedPreset,
 } from '@hockey/game-core';
-import { evaluateTrainingClosedAchievements } from '../../achievements/engine.js';
+import {
+  evaluatePendingDailyPeriodClosedAchievements,
+  evaluateTrainingClosedAchievements,
+} from '../../achievements/engine.js';
 import { AppError } from '../../plugins/errors.js';
 import { appendEvent } from '../eventLog.js';
 import { deriveShotSeed, deriveTrainingSeed } from '../seed.js';
 import { reconcileDayPool, type DayPoolRow } from '../daily/reconcile.js';
+import { scheduleDailyCompletionSideEffect } from '../daily/completionSideEffects.js';
 import {
   getConfiguredDailyPeriodSpeedPreset,
   getGameSettings,
@@ -256,6 +260,18 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
   app,
   opts,
 ) => {
+  const schedulePendingAchievementRecovery = (userId: string): void => {
+    scheduleDailyCompletionSideEffect(
+      () => evaluatePendingDailyPeriodClosedAchievements(app.pg, userId),
+      (error) => {
+        app.log.warn(
+          { err: error, userId },
+          'failed to recover pending daily period achievements',
+        );
+      },
+    );
+  };
+
   app.get('/duel/training/state', { preHandler: [app.authenticate] }, async (req) =>
     withTransaction(app, async (client): Promise<TrainingStateResponse> => {
       const now = new Date();
@@ -276,7 +292,7 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
     }
     const { period_number: selectedPeriod } = parsed.data;
 
-    return withTransaction(app, async (client): Promise<TrainingStateResponse> => {
+    const state = await withTransaction(app, async (client): Promise<TrainingStateResponse> => {
       const now = new Date();
       const settings = await getGameSettings(client);
       await assertTrainingAvailableDuringDaily(client, req.user.id, now, settings);
@@ -328,6 +344,8 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
       });
       return buildTrainingState(client, created, localToday, timezone, settings, now);
     });
+    schedulePendingAchievementRecovery(req.user.id);
+    return state;
   });
 
   app.post('/duel/training/shot', { preHandler: [app.authenticate] }, async (req) => {
@@ -337,7 +355,7 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
     }
     const body = parsed.data;
 
-    return withTransaction(app, async (client): Promise<TrainingShotSubmitResponse> => {
+    const response = await withTransaction(app, async (client): Promise<TrainingShotSubmitResponse> => {
       const now = new Date();
       const settings = await getGameSettings(client);
       await assertTrainingAvailableDuringDaily(client, req.user.id, now, settings);
@@ -456,5 +474,7 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
       );
       return { server_result: serverResult, state };
     });
+    schedulePendingAchievementRecovery(req.user.id);
+    return response;
   });
 };
