@@ -215,6 +215,7 @@ describe.skipIf(!hasIntegrationEnv)('077 accuracy World Tour movement balance', 
       '079_rename_express_plus_to_mix.sql',
       '080_sync_mix_period_speeds.sql',
       '081_daily_period_achievement_event_indexes.sql',
+      '082_tournament_playoff_scheduling.sql',
     ]);
     const attempt = await pool.query<{
       status: string;
