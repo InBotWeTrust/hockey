@@ -217,6 +217,7 @@ describe.skipIf(!hasIntegrationEnv)('077 accuracy World Tour movement balance', 
       '081_daily_period_achievement_event_indexes.sql',
       '082_tournament_playoff_scheduling.sql',
       '083_tournament_playoff_notifications.sql',
+      '084_tournament_series_notification_url.sql',
     ]);
     const attempt = await pool.query<{
       status: string;

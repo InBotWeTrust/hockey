@@ -73,7 +73,7 @@ export async function enqueueTournamentSeriesNextGamePush(
       fallback: {
         title: 'Следующая игра серии',
         body: `Следующий матч откроется ${startsAt}.`,
-        url: '/?view=tournaments',
+        url: '/?view=amateur&section=tournaments',
       },
     });
   }

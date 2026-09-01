@@ -695,8 +695,9 @@ async function settlePlayedPlayoffFixture(
 }
 
 async function seriesNextGameDeliveries(pool: Pool) {
-  return pool.query<{ user_id: string; event_key: string; body: string }>(
-    `select user_id, event_key, payload->>'body' as body from push_delivery_log
+  return pool.query<{ user_id: string; event_key: string; body: string; url: string }>(
+    `select user_id, event_key, payload->>'body' as body, payload->>'url' as url
+       from push_delivery_log
       where event_type = 'tournament.series_next_game'
       order by event_key, user_id`,
   );
@@ -2424,11 +2425,13 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         user_id: nextFixture!.home_user_id,
         event_key: `${nextFixture!.id}:series-next-game:${startsAt}`,
         body: `Следующий матч откроется ${startsAt}.`,
+        url: '/?view=amateur&section=tournaments',
       },
       {
         user_id: nextFixture!.away_user_id,
         event_key: `${nextFixture!.id}:series-next-game:${startsAt}`,
         body: `Следующий матч откроется ${startsAt}.`,
+        url: '/?view=amateur&section=tournaments',
       },
     ]);
   });
