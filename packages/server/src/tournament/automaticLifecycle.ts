@@ -1,4 +1,4 @@
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import { AppError } from '../plugins/errors.js';
 import { finalizeClassicTournamentDay } from './classicGame.js';
 import { finalizeTournamentDailyDay } from './dailyAggregate.js';
@@ -269,7 +269,10 @@ async function finalizeExpiredRegularDays(
   }
 }
 
-async function regularResultsComplete(pool: Pool, row: LifecycleRow): Promise<boolean> {
+async function regularResultsComplete(
+  pool: Pool | PoolClient,
+  row: LifecycleRow,
+): Promise<boolean> {
   const source = row.rules_snapshot.config.regularSource;
   if (source === 'head_to_head') {
     const { rows } = await pool.query<{ fixture_count: number; terminal_count: number }>(
@@ -316,6 +319,7 @@ async function enqueuePlayoffBlockedPushes(
     TournamentLifecycleDecision['reason'],
     'regular_results_incomplete' | 'playoff_schedule_missing'
   >,
+  now: Date,
 ): Promise<void> {
   const notification =
     reason === 'playoff_schedule_missing'
@@ -341,17 +345,43 @@ async function enqueuePlayoffBlockedPushes(
   try {
     await client.query('begin');
     await lockTournament(client, tournamentId);
-    const tournament = await client.query<{
-      status: TournamentStatus;
-      title: string;
-      current_revision: number;
-      created_by: string;
-    }>(
-      `select status, title, current_revision, created_by from tournament where id = $1 for update`,
+    const tournament = await client.query<
+      LifecycleRow & {
+        title: string;
+        created_by: string;
+      }
+    >(
+      `select t.id, t.status, t.title, t.current_revision, t.created_by::text,
+              t.registration_opens_at, t.registration_closes_at, revision.rules_snapshot,
+              (
+                select count(*)::int from tournament_participant participant
+                 where participant.tournament_id = t.id and participant.state = 'approved'
+              ) as approved_participant_count,
+              exists(
+                select 1 from tournament_matchday matchday where matchday.tournament_id = t.id
+              ) as schedule_exists,
+              false as regular_results_complete
+         from tournament t
+         join tournament_revision revision on revision.id = t.published_revision_id
+        where t.id = $1
+        for update of t`,
       [tournamentId],
     );
     const row = tournament.rows[0];
-    if (row?.status === 'regular') {
+    if (row !== undefined) {
+      const currentSnapshot = tournamentLifecycleSnapshot({
+        ...row,
+        regular_results_complete: await regularResultsComplete(client, row),
+      });
+      const currentDecision = evaluateTournamentLifecycle(currentSnapshot, now);
+      const requestedAction =
+        reason === 'playoff_schedule_missing'
+          ? 'playoff_schedule_missing'
+          : 'await_regular_results';
+      if (currentDecision.action !== requestedAction) {
+        await client.query('commit');
+        return;
+      }
       const recipients = await client.query<{ id: string }>(
         `select distinct id::text as id from users where id = $1 or role = 'admin'`,
         [row.created_by],
@@ -502,6 +532,7 @@ export async function reconcileTournamentLifecycle(
         lifecycleDecision.action === 'playoff_schedule_missing'
           ? 'playoff_schedule_missing'
           : 'regular_results_incomplete',
+        options.now,
       );
     } else if (lifecycleDecision.action === 'start_playoff') {
       const started = await startTournamentPlayoffs(pool, snapshot.tournamentId, options.now);

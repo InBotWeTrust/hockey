@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { applyMigrations } from '../../src/db/migrations.js';
 import { reconcileTournamentLifecycle } from '../../src/tournament/automaticLifecycle.js';
 import { parseTournamentConfig } from '../../src/tournament/config.js';
+import { lockTournament } from '../../src/tournament/locks.js';
 import {
   generateRegularSchedule,
   publishRegularSchedule,
@@ -847,6 +848,151 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
       title: 'Настройте расписание плей-офф',
       body: 'В турнире «Автоматический кубок» завершён регулярный сезон. Укажите даты и время игр плей-офф.',
     });
+  });
+
+  it('does not send a stale missing-schedule alert after the published revision adds a playoff time', async () => {
+    const tournament = await seedAutomaticTournament(pool, {
+      source: 'head_to_head',
+      approved: 4,
+      playoffSize: 4,
+      subscribedAdmins: 2,
+    });
+    await reconcileTournamentLifecycle(pool, { now: CLOSES_AT, tournamentId: tournament.id });
+    await publishRegularSchedule(pool, tournament.id);
+    await pool.query(
+      `update tournament_fixture
+          set status = 'settled', home_score = 1, away_score = 0,
+              winner_participant_id = home_participant_id
+        where tournament_id = $1`,
+      [tournament.id],
+    );
+    const template = await pool.query<{ id: string }>(
+      `select id from amateur_duel_template
+        where deleted_at is null and is_active
+        order by starts_at, id limit 1`,
+    );
+    const blocker = await pool.connect();
+    let transactionOpen = false;
+    let reconcile: Promise<Awaited<ReturnType<typeof reconcileTournamentLifecycle>>> | null = null;
+    try {
+      await blocker.query('begin');
+      transactionOpen = true;
+      await lockTournament(blocker, tournament.id);
+
+      reconcile = reconcileTournamentLifecycle(pool, {
+        now: new Date('2030-10-27T15:00:00.000Z'),
+        tournamentId: tournament.id,
+      });
+      await waitForBlockedTournamentUpdate(pool);
+
+      const revision = await blocker.query<{ id: string }>(
+        `with previous as (
+           update tournament_revision
+              set is_published = false
+            where tournament_id = $1 and is_published
+          returning tournament_id, rules_snapshot, created_by
+         )
+         insert into tournament_revision
+           (tournament_id, revision, rules_snapshot, is_published, created_by, published_at)
+         select tournament_id,
+                2,
+                rules_snapshot || jsonb_build_object(
+                  'regularDuelTemplateId', $2::text,
+                  'playoffRounds', jsonb_build_array(jsonb_build_object(
+                    'roundNumber', 1,
+                    'winsRequired', 1,
+                    'homeSequence', jsonb_build_array('H'),
+                    'duelTemplateId', $2::text,
+                    'gameWindowMs', 3600000,
+                    'gameBreakMs', 0,
+                    'roundBreakMs', 0,
+                    'firstGameStartsAt', '2030-10-27T16:00:00.000Z'
+                  ))
+                ),
+                true,
+                created_by,
+                now()
+           from previous
+         returning id`,
+        [tournament.id, template.rows[0]!.id],
+      );
+      await blocker.query(
+        `update tournament
+            set current_revision = 2, published_revision_id = $2
+          where id = $1`,
+        [tournament.id, revision.rows[0]!.id],
+      );
+      await blocker.query('commit');
+      transactionOpen = false;
+
+      const report = await reconcile;
+      const deliveries = await pool.query<{ count: number }>(
+        `select count(*)::int as count from push_delivery_log
+          where event_type = 'tournament.playoff_schedule_missing'
+            and event_key like $1`,
+        [`${tournament.id}:playoff-schedule-missing:%`],
+      );
+
+      expect(report.items[0]).toMatchObject({ action: 'playoff_schedule_missing' });
+      expect(deliveries.rows[0]!.count).toBe(0);
+    } finally {
+      if (transactionOpen) await blocker.query('rollback');
+      blocker.release();
+      await Promise.allSettled(reconcile === null ? [] : [reconcile]);
+    }
+  });
+
+  it('does not send a stale incomplete-results alert after the last regular game settles', async () => {
+    const tournament = await seedAutomaticTournament(pool, {
+      source: 'head_to_head',
+      approved: 4,
+      playoffSize: 4,
+      subscribedAdmins: 2,
+    });
+    await reconcileTournamentLifecycle(pool, { now: CLOSES_AT, tournamentId: tournament.id });
+    await publishRegularSchedule(pool, tournament.id);
+    await configureAutomaticPlayoffs(pool, {
+      tournamentId: tournament.id,
+      firstGameStartsAt: '2030-10-27T15:00:00.000Z',
+    });
+    const blocker = await pool.connect();
+    let transactionOpen = false;
+    let reconcile: Promise<Awaited<ReturnType<typeof reconcileTournamentLifecycle>>> | null = null;
+    try {
+      await blocker.query('begin');
+      transactionOpen = true;
+      await lockTournament(blocker, tournament.id);
+
+      reconcile = reconcileTournamentLifecycle(pool, {
+        now: new Date('2030-10-27T15:00:00.000Z'),
+        tournamentId: tournament.id,
+      });
+      await waitForBlockedTournamentUpdate(pool);
+      await blocker.query(
+        `update tournament_fixture
+            set status = 'settled', home_score = 1, away_score = 0,
+                winner_participant_id = home_participant_id
+          where tournament_id = $1`,
+        [tournament.id],
+      );
+      await blocker.query('commit');
+      transactionOpen = false;
+
+      const report = await reconcile;
+      const deliveries = await pool.query<{ count: number }>(
+        `select count(*)::int as count from push_delivery_log
+          where event_type = 'tournament.playoff_blocked'
+            and event_key like $1`,
+        [`${tournament.id}:playoff-blocked:%`],
+      );
+
+      expect(report.items[0]).toMatchObject({ action: 'await_regular_results' });
+      expect(deliveries.rows[0]!.count).toBe(0);
+    } finally {
+      if (transactionOpen) await blocker.query('rollback');
+      blocker.release();
+      await Promise.allSettled(reconcile === null ? [] : [reconcile]);
+    }
   });
 
   it('reports a changed lifecycle when it materializes a cutoff tie-break', async () => {
