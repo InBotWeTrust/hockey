@@ -29,24 +29,30 @@ interface UserProfileSheetProps {
 }
 
 export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JSX.Element | null {
+  if (!sender) return null;
+  return <UserProfileSheetContent key={sender.userId} sender={sender} onClose={onClose} />;
+}
+
+function UserProfileSheetContent({
+  sender,
+  onClose,
+}: {
+  sender: UserPickerItem;
+  onClose: () => void;
+}): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const meId = useAuthStore((s) => s.user?.id ?? null);
-  const senderId = sender?.userId ?? '';
+  const senderId = sender.userId;
   const [selectedAchievement, setSelectedAchievement] = useState<ProfileAchievement | null>(null);
   const [duelPickerOpen, setDuelPickerOpen] = useState(false);
 
   // Slide-up: render off-screen on first frame, then animate in.
   const [entered, setEntered] = useState(false);
   useEffect(() => {
-    setSelectedAchievement(null);
-    if (sender) {
-      const id = requestAnimationFrame(() => setEntered(true));
-      return () => cancelAnimationFrame(id);
-    }
-    setEntered(false);
-    return undefined;
-  }, [sender]);
+    const id = requestAnimationFrame(() => setEntered(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
 
   const { mutate, isPending } = useMutation({
     mutationFn: (otherUserId: string) => findOrCreateDM(otherUserId),
@@ -86,8 +92,6 @@ export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JS
     staleTime: 10_000,
   });
   const hasOpenDuel = hasOpenDuelWithUser(openMatchesQuery.data?.matches ?? [], senderId);
-
-  if (!sender) return null;
 
   const displayName = profile?.displayName ?? sender.displayName;
   const avatarUrl = profile?.avatarUrl ?? sender.avatarUrl;

@@ -60,8 +60,31 @@ function readToken(req: { query: unknown }): string | null {
   return typeof t === 'string' ? t : null;
 }
 
+const websocketServerClosePromises = new WeakMap<object, Promise<void>>();
+
+function closeWebsocketServer(this: FastifyInstance): Promise<void> {
+  const server = this.websocketServer;
+  const existing = websocketServerClosePromises.get(server);
+  if (existing) return existing;
+
+  for (const client of server.clients) {
+    client.terminate();
+  }
+  const closing = new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error && error.message !== 'The server is not running') {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
+  websocketServerClosePromises.set(server, closing);
+  return closing;
+}
+
 const plugin: FastifyPluginAsync<ChatWsOptions> = async (app, opts) => {
-  await app.register(fastifyWebsocket);
+  await app.register(fastifyWebsocket, { preClose: closeWebsocketServer });
 
   const pingIntervalMs = opts.pingIntervalMs ?? 30_000;
   const pongTimeoutMs = opts.pongTimeoutMs ?? 10_000;

@@ -25,7 +25,10 @@ function renderRoom(
   configure?.(queryClient);
   render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[`/chat/${chatId}${search}`]}>
+      <MemoryRouter
+        initialEntries={[`/chat/${chatId}${search}`]}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
         <Routes>
           <Route path="/chat/:chatId" element={<ChatRoomScreen />} />
           <Route path="/chat" element={<div>list</div>} />
@@ -79,6 +82,12 @@ function longPressBubble(messageId: string): void {
     vi.advanceTimersByTime(500);
   });
   fireEvent.pointerUp(wrapper, { pointerId: 1, clientX: 0, clientY: 0 });
+}
+
+async function runAllTimersInAct(): Promise<void> {
+  await act(async () => {
+    await vi.runAllTimersAsync();
+  });
 }
 
 describe('ChatRoomScreen', () => {
@@ -638,7 +647,7 @@ describe('ChatRoomScreen', () => {
     renderRoom('c1');
     // Run pending timers from React's effects (mark-as-read + initial render),
     // then move on to the synchronous test interactions.
-    await vi.runAllTimersAsync();
+    await runAllTimersInAct();
 
     longPressBubble('m1');
     expect(screen.getByRole('menuitem', { name: 'Ответить' })).toBeInTheDocument();
@@ -664,7 +673,7 @@ describe('ChatRoomScreen', () => {
     const delSpy = vi.spyOn(api, 'deleteMessage').mockResolvedValue(undefined);
 
     renderRoom('c1');
-    await vi.runAllTimersAsync();
+    await runAllTimersInAct();
 
     longPressBubble('m2');
     expect(screen.getByRole('menuitem', { name: 'Удалить' })).toBeInTheDocument();
@@ -687,7 +696,7 @@ describe('ChatRoomScreen', () => {
     const updateSpy = vi.spyOn(api, 'updateMessage').mockResolvedValue(edited);
 
     renderRoom('c1');
-    await vi.runAllTimersAsync();
+    await runAllTimersInAct();
 
     longPressBubble('m2');
     fireEvent.click(screen.getByRole('menuitem', { name: /редактировать/i }));
@@ -710,7 +719,7 @@ describe('ChatRoomScreen', () => {
       .mockResolvedValue({ messageId: 'm1', emoji: '👍', removed: null });
 
     const { queryClient } = renderRoom('c1');
-    await vi.runAllTimersAsync();
+    await runAllTimersInAct();
 
     longPressBubble('m1');
     // The favorite shelf renders FAVORITE_EMOJI as <button aria-label="<emoji>">.
@@ -754,7 +763,7 @@ describe('ChatRoomScreen', () => {
     const addSpy = vi.spyOn(api, 'addReaction').mockRejectedValue(new Error('boom'));
 
     const { queryClient } = renderRoom('c1');
-    await vi.runAllTimersAsync();
+    await runAllTimersInAct();
 
     longPressBubble('m1');
     const favorite = screen.getByRole('button', { name: '👍' });

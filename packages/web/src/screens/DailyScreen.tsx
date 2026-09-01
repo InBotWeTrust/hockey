@@ -6340,9 +6340,9 @@ function DuelRulesPanel({ match }: { match: AmateurDuelMatch }): JSX.Element {
           {duelKindText(match.rules.duelKind)}
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {chips.map((chip) => (
+          {chips.map((chip, index) => (
             <span
-              key={chip}
+              key={`${index}-${chip}`}
               className="pill"
               style={{
                 fontSize: 11,

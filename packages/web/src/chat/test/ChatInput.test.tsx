@@ -171,6 +171,7 @@ describe('ChatInput', () => {
     fireEvent.click(screen.getByLabelText('Отправить'));
 
     expect(onSend).toHaveBeenCalledWith('**важно**', null);
+    await waitFor(() => expect(textarea.value).toBe(''));
   });
 
   it('keeps draft text visible until async send succeeds', async () => {
@@ -213,7 +214,7 @@ describe('ChatInput', () => {
     expect(screen.getByLabelText('Отправить')).toBeDisabled();
   });
 
-  it('submits with Enter on desktop keyboards', () => {
+  it('submits with Enter on desktop keyboards', async () => {
     mockCoarsePointer(false);
     const onSend = vi.fn();
     render(<ChatInput replyTo={null} onClearReply={vi.fn()} onSend={onSend} />);
@@ -223,6 +224,7 @@ describe('ChatInput', () => {
 
     expect(fireEvent.keyDown(textarea, { key: 'Enter' })).toBe(false);
     expect(onSend).toHaveBeenCalledWith('сообщение', null);
+    await waitFor(() => expect(textarea.value).toBe(''));
   });
 
   it('keeps Enter as a line break key on touch phones', () => {
@@ -269,5 +271,6 @@ describe('ChatInput', () => {
     fireEvent.click(screen.getByLabelText('Отправить'));
 
     expect(onEdit).toHaveBeenCalledWith('m1', 'новый текст');
+    await waitFor(() => expect(textarea.value).toBe(''));
   });
 });
