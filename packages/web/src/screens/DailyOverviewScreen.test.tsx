@@ -176,6 +176,61 @@ describe('DailyOverviewScreen', () => {
     expect(screen.queryByText('29.08.2026')).not.toBeInTheDocument();
   });
 
+  it('opens the server current month and shows an active zero-shot day immediately', async () => {
+    fetchDailyStateMock.mockResolvedValue({
+      ...dailyState,
+      state: 'period_active',
+      current_period: 1,
+      day_date: '2026-09-01',
+      period_started_at: '2026-09-01T09:00:00.000Z',
+      period_ends_at: '2026-09-01T09:20:00.000Z',
+      next_day_starts_at: '2026-09-02T00:00:00.000Z',
+      server_now: '2026-09-01T09:01:00.000Z',
+    });
+
+    renderScreen();
+
+    const calendar = await screen.findByRole('region', { name: 'Календарь ежедневных игр' });
+    expect(within(calendar).getByText('Сентябрь 2026')).toBeInTheDocument();
+    const activeDay = within(calendar).getByRole('button', {
+      name: /1 сентября 2026: игра идёт/,
+    });
+    expect(activeDay).toHaveClass(
+      'daily-calendar__day--incomplete',
+      'daily-calendar__day--active-today',
+    );
+    expect(within(activeDay).getByLabelText('Забито шайб: 0')).toHaveTextContent('0');
+  });
+
+  it('uses live totals for today without duplicating a cached history day', async () => {
+    fetchDailyStateMock.mockResolvedValue({
+      ...dailyState,
+      state: 'period_active',
+      current_period: 2,
+      current_period_shots: 4,
+      current_period_goals: 3,
+      daily_total_shots: 34,
+      daily_total_goals: 17,
+      day_date: '2026-08-29',
+      period_started_at: '2026-08-29T13:00:00.000Z',
+      period_ends_at: '2026-08-29T13:20:00.000Z',
+    });
+
+    renderScreen();
+
+    const calendar = await screen.findByRole('region', { name: 'Календарь ежедневных игр' });
+    const activeDays = within(calendar).getAllByRole('button', {
+      name: /29 августа 2026: игра идёт/,
+    });
+    expect(activeDays).toHaveLength(1);
+    expect(within(activeDays[0]!).getByLabelText('Забито шайб: 17')).toHaveTextContent('17');
+    expect(
+      within(calendar).getByRole('button', {
+        name: /28 августа 2026: игра начата, но не завершена/,
+      }),
+    ).not.toHaveClass('daily-calendar__day--active-today');
+  });
+
   it('opens a completed day result in a modal and navigates between calendar months', async () => {
     renderScreen();
 

@@ -2715,6 +2715,12 @@ describe('DailyScreen', () => {
           { status: 200, headers: { 'content-type': 'application/json' } },
         );
       }
+      if (url.includes(`/duel/amateur/matches/${settledDuelMatch.id}`)) {
+        return new Response(JSON.stringify({ match: settledDuelMatch }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
       if (url.includes('/duel/amateur/matches')) {
         return new Response(
           JSON.stringify({ matches: [settledDuelMatch, expiredMatch, cancelledMatch] }),
@@ -2773,7 +2779,9 @@ describe('DailyScreen', () => {
     ).not.toBeInTheDocument();
 
     fireEvent.click(playedDay);
-    expect(await screen.findByRole('dialog', { name: 'Дуэли за 16 мая' })).toBeInTheDocument();
+    const dayDialog = await screen.findByRole('dialog', { name: 'Дуэли за 16 мая' });
+    expect(dayDialog).toBeInTheDocument();
+    expect(within(dayDialog).getAllByRole('button', { name: 'Закрыть' })).toHaveLength(2);
     expect(await screen.findByText('Duel Opponent')).toBeInTheDocument();
     expect(screen.getByText('Классика · 3:1 · Дома')).toBeInTheDocument();
     expect(screen.getByText('50% побед')).toBeInTheDocument();
@@ -2782,7 +2790,34 @@ describe('DailyScreen', () => {
     expect(screen.queryByText('Ответа не было')).not.toBeInTheDocument();
     expect(screen.queryByText('Вы отменили вызов')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+    const duelRow = within(dayDialog).getByRole('button', {
+      name: 'Дуэль с Duel Opponent',
+    });
+    expect(duelRow).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(duelRow);
+    expect(duelRow).toHaveAttribute('aria-expanded', 'true');
+    expect(
+      await within(dayDialog).findByLabelText('Подробности дуэли с Duel Opponent'),
+    ).toBeInTheDocument();
+    expect(within(dayDialog).getByText('Периоды')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Результат дуэли' })).not.toBeInTheDocument();
+    fireEvent.click(duelRow);
+    expect(duelRow).toHaveAttribute('aria-expanded', 'false');
+    expect(
+      within(dayDialog).queryByLabelText('Подробности дуэли с Duel Opponent'),
+    ).not.toBeInTheDocument();
+    fireEvent.click(duelRow);
+    const otherDuelRow = within(dayDialog).getByRole('button', {
+      name: 'Дуэль с First Opponent',
+    });
+    fireEvent.click(otherDuelRow);
+    expect(duelRow).toHaveAttribute('aria-expanded', 'false');
+    expect(otherDuelRow).toHaveAttribute('aria-expanded', 'true');
+    expect(
+      within(dayDialog).queryByLabelText('Подробности дуэли с Duel Opponent'),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(within(dayDialog).getAllByRole('button', { name: 'Закрыть' }).at(-1)!);
     fireEvent.click(screen.getByRole('button', { name: 'Предыдущий месяц' }));
     expect(await screen.findByRole('heading', { name: 'Апрель 2026' })).toBeInTheDocument();
 
@@ -2979,9 +3014,7 @@ describe('DailyScreen', () => {
 
     fireEvent.click(await screen.findByRole('tab', { name: 'История' }));
     fireEvent.click(await screen.findByRole('button', { name: '17, сыграно дуэлей: 1' }));
-    fireEvent.click(
-      await screen.findByRole('button', { name: 'Открыть дуэль с Inventory Opponent' }),
-    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Дуэль с Inventory Opponent' }));
 
     const totalUsage = await screen.findByLabelText('Общий расход инвентаря');
     expect(within(totalUsage).getByText('Клюшка тест')).toBeInTheDocument();
@@ -3831,9 +3864,7 @@ describe('DailyScreen', () => {
     renderWith(['/?view=amateur&section=duels']);
 
     fireEvent.click(await screen.findByRole('tab', { name: 'Рейтинг' }));
-    const emptyCopy = await screen.findByText(
-      'Рейтинг появится после первых завершённых дуэлей.',
-    );
+    const emptyCopy = await screen.findByText('Рейтинг появится после первых завершённых дуэлей.');
     expect(emptyCopy).toHaveClass('duel-rating-empty');
     expect(emptyCopy).not.toHaveClass('duel-state-card', 'glass');
   });

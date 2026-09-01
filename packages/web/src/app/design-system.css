@@ -3833,14 +3833,33 @@
 
 .duel-day-dialog {
   width: min(430px, calc(100vw - 28px));
+  max-height: calc(100dvh - 28px);
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 14px;
+  overflow: hidden;
+}
+
+.duel-day-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.duel-day-dialog__header .modal-title {
+  min-width: 0;
+  margin: 0;
 }
 
 .duel-day-list {
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
 }
 
 .duel-day-match {
@@ -3858,6 +3877,23 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
+}
+
+.duel-day-match-group {
+  overflow: hidden;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.duel-day-match-group .duel-day-match {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.duel-day-match-group--expanded .duel-day-match {
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
 }
 
 .duel-day-match__copy {
@@ -3885,6 +3921,18 @@
   font-size: 11px;
   font-weight: 900;
 }
+.duel-day-match__aside {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.duel-day-match__chevron {
+  color: rgba(15, 23, 42, 0.42);
+  transition: transform 160ms ease;
+}
+.duel-day-match[aria-expanded='true'] .duel-day-match__chevron {
+  transform: rotate(180deg);
+}
 .duel-day-match__result--win {
   color: #166534;
 }
@@ -3893,6 +3941,53 @@
 }
 .duel-day-match__result--loss {
   color: #991b1b;
+}
+
+.duel-inline-result {
+  animation: duel-inline-result-reveal 180ms ease-out;
+}
+
+.duel-inline-result .duel-result-card {
+  width: 100%;
+  max-height: none !important;
+  padding: 12px;
+  border: 0;
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.34);
+  box-shadow: none;
+}
+
+.duel-inline-result__status {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  color: rgba(15, 23, 42, 0.62);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.duel-inline-result__status .btn {
+  min-height: 40px;
+}
+
+@keyframes duel-inline-result-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .duel-inline-result {
+    animation: none;
+  }
+  .duel-day-match__chevron {
+    transition: none;
+  }
 }
 
 .duel-kind-picker,
@@ -4165,6 +4260,31 @@ button.daily-calendar__day:active {
 .daily-calendar__day--incomplete {
   background: linear-gradient(145deg, rgba(253, 230, 138, 0.92), rgba(250, 204, 21, 0.7));
   color: #713f12;
+}
+
+.daily-calendar__day--active-today {
+  animation: daily-calendar-active-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes daily-calendar-active-pulse {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.72),
+      0 0 0 0 rgba(250, 204, 21, 0.18);
+  }
+  50% {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.72),
+      0 0 0 5px rgba(250, 204, 21, 0.3),
+      0 0 16px rgba(250, 204, 21, 0.28);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .daily-calendar__day--active-today {
+    animation: none;
+  }
 }
 
 .daily-calendar__day--missed {

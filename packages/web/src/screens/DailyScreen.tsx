@@ -3664,6 +3664,7 @@ function AmateurDuelsPage({
     queryFn: () => fetchAmateurMatch(historyResultMatchId ?? ''),
     enabled: historyResultMatchId !== null,
   });
+  const closeHistoryResult = useCallback(() => setHistoryResultMatchId(null), []);
 
   const matchmakingMut = useMutation({
     mutationFn: (duelKinds: AmateurDuelKind[]) => joinAmateurMatchmaking(duelKinds),
@@ -4242,14 +4243,40 @@ function AmateurDuelsPage({
         <AmateurDuelHistoryTab
           initialMonthKey={currentSeasonKey}
           onOpenMatch={setHistoryResultMatchId}
-        />
-      )}
-      {historyResultMatchId && historyResultDetails.data?.match && (
-        <DuelResultModal
-          match={historyResultDetails.data.match}
-          isLoadingDetails={historyResultDetails.isFetching && !historyResultDetails.data}
-          closeLabel="Понятно"
-          onClose={() => setHistoryResultMatchId(null)}
+          onCloseMatch={closeHistoryResult}
+          expandedMatchId={historyResultMatchId}
+          expandedContent={
+            historyResultMatchId ? (
+              historyResultDetails.data?.match ? (
+                <section
+                  className="duel-inline-result"
+                  aria-label={`Подробности дуэли с ${historyResultDetails.data.match.opponent.display_name || 'соперником'}`}
+                >
+                  <DuelResultCard
+                    match={historyResultDetails.data.match}
+                    isLoadingDetails={historyResultDetails.isFetching && !historyResultDetails.data}
+                  />
+                </section>
+              ) : (
+                <div className="duel-inline-result__status" role="status">
+                  {historyResultDetails.isError ? (
+                    <>
+                      <span>Не удалось загрузить подробности дуэли.</span>
+                      <button
+                        type="button"
+                        className="btn btn--ghost"
+                        onClick={() => void historyResultDetails.refetch()}
+                      >
+                        Повторить
+                      </button>
+                    </>
+                  ) : (
+                    'Загружаем подробности дуэли…'
+                  )}
+                </div>
+              )
+            ) : null
+          }
         />
       )}
       {matchmakingRulesOpen && (
@@ -5351,6 +5378,32 @@ function DuelResultModal({
   closeLabel?: string;
   isLoadingDetails?: boolean;
 }): JSX.Element {
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Результат дуэли">
+      <DuelResultCard
+        match={match}
+        isLoadingDetails={isLoadingDetails}
+        footer={
+          <div className="modal-actions">
+            <button type="button" className="modal-primary btn btn--cta" onClick={onClose}>
+              {closeLabel}
+            </button>
+          </div>
+        }
+      />
+    </div>
+  );
+}
+
+function DuelResultCard({
+  match,
+  isLoadingDetails = false,
+  footer,
+}: {
+  match: AmateurDuelMatch;
+  isLoadingDetails?: boolean;
+  footer?: ReactNode;
+}): JSX.Element {
   const title =
     match.status !== 'settled'
       ? duelOutcomeText(match)
@@ -5378,142 +5431,136 @@ function DuelResultModal({
   const tiebreaker = duelTiebreakerExplanation(match);
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Результат дуэли">
+    <div
+      className="modal-card duel-result-card"
+      style={{
+        maxHeight: 'calc(100dvh - 64px)',
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      <div className="section-label" style={{ margin: 0, padding: 0 }}>
+        Результат
+      </div>
       <div
-        className="modal-card"
         style={{
-          maxHeight: 'calc(100dvh - 64px)',
-          overflow: 'hidden',
+          marginTop: 8,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+        }}
+      >
+        <h2 className="modal-title" style={{ margin: 0, fontSize: 26, lineHeight: 1.08 }}>
+          {title}
+        </h2>
+        <span
+          aria-hidden="true"
+          style={{
+            width: 16,
+            height: 16,
+            borderRadius: 999,
+            background: resultColor,
+            boxShadow: `0 0 0 5px ${resultColor}24, 0 0 18px ${resultColor}66`,
+            flexShrink: 0,
+          }}
+        />
+      </div>
+      <div
+        aria-label={`Итог дуэли ${match.me.goals}:${match.opponent.goals}`}
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+          gap: 10,
+          marginTop: 16,
+        }}
+      >
+        <DailyStatsMetric label="Счёт" value={`${match.me.goals}:${match.opponent.goals}`} />
+        <DailyStatsMetric label="Очки" value={pointsText} />
+      </div>
+      <div
+        style={{
+          marginTop: 14,
+          display: 'grid',
+          gap: 8,
+        }}
+      >
+        <DuelResultDetailRow label="Тип" value={duelKindText(match.rules.duelKind)} />
+        <DuelResultDetailRow label="Соперник" value={match.opponent.display_name || 'Игрок'} />
+        {tiebreaker && (
+          <>
+            <DuelResultDetailRow label={tiebreaker.label} value={tiebreaker.value} />
+            <DuelResultDetailRow label="Итог" value={tiebreaker.result} />
+          </>
+        )}
+        {match.rules.winStarReward > 0 && (
+          <DuelResultDetailRow
+            label="Звёзды за победу"
+            value={`+${match.rules.winStarReward}`}
+            tone="star"
+          />
+        )}
+        <DuelResultDetailRow label="Начало" value={formatShortDateTime(match.starts_at)} />
+      </div>
+      <DuelInventoryUsageSummary
+        match={match}
+        title="Общий расход инвентаря"
+        label="Общий расход инвентаря"
+        style={{ marginTop: 14 }}
+      />
+      <div
+        style={{
+          marginTop: 16,
+          minHeight: 0,
+          flex: hasMultiplePeriods ? '1 1 auto' : '0 0 auto',
           display: 'flex',
           flexDirection: 'column',
+          overflow: 'hidden',
         }}
       >
         <div className="section-label" style={{ margin: 0, padding: 0 }}>
-          Результат
+          Периоды
         </div>
-        <div
-          style={{
-            marginTop: 8,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-          }}
-        >
-          <h2 className="modal-title" style={{ margin: 0, fontSize: 26, lineHeight: 1.08 }}>
-            {title}
-          </h2>
-          <span
-            aria-hidden="true"
+        {hasPeriodDetails ? (
+          <div
             style={{
-              width: 16,
-              height: 16,
-              borderRadius: 999,
-              background: resultColor,
-              boxShadow: `0 0 0 5px ${resultColor}24, 0 0 18px ${resultColor}66`,
-              flexShrink: 0,
+              minHeight: 0,
+              flex: hasMultiplePeriods ? '1 1 auto' : undefined,
+              maxHeight: hasMultiplePeriods ? 'min(38dvh, 330px)' : undefined,
+              overflowY: hasMultiplePeriods ? 'auto' : undefined,
+              paddingRight: hasMultiplePeriods ? 2 : 0,
             }}
-          />
-        </div>
-        <div
-          aria-label={`Итог дуэли ${match.me.goals}:${match.opponent.goals}`}
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-            gap: 10,
-            marginTop: 16,
-          }}
-        >
-          <DailyStatsMetric label="Счёт" value={`${match.me.goals}:${match.opponent.goals}`} />
-          <DailyStatsMetric label="Очки" value={pointsText} />
-        </div>
-        <div
-          style={{
-            marginTop: 14,
-            display: 'grid',
-            gap: 8,
-          }}
-        >
-          <DuelResultDetailRow label="Тип" value={duelKindText(match.rules.duelKind)} />
-          <DuelResultDetailRow label="Соперник" value={match.opponent.display_name || 'Игрок'} />
-          {tiebreaker && (
-            <>
-              <DuelResultDetailRow label={tiebreaker.label} value={tiebreaker.value} />
-              <DuelResultDetailRow label="Итог" value={tiebreaker.result} />
-            </>
-          )}
-          {match.rules.winStarReward > 0 && (
-            <DuelResultDetailRow
-              label="Звёзды за победу"
-              value={`+${match.rules.winStarReward}`}
-              tone="star"
+          >
+            <DuelResultPeriodComparison
+              match={match}
+              totalPeriods={match.rules.totalPeriods}
+              mePeriods={mePeriods}
+              opponentPeriods={opponentPeriods}
+              opponentName={match.opponent.display_name || 'Соперник'}
             />
-          )}
-          <DuelResultDetailRow label="Начало" value={formatShortDateTime(match.starts_at)} />
-        </div>
-        <DuelInventoryUsageSummary
-          match={match}
-          title="Общий расход инвентаря"
-          label="Общий расход инвентаря"
-          style={{ marginTop: 14 }}
-        />
-        <div
-          style={{
-            marginTop: 16,
-            minHeight: 0,
-            flex: hasMultiplePeriods ? '1 1 auto' : '0 0 auto',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-          }}
-        >
-          <div className="section-label" style={{ margin: 0, padding: 0 }}>
-            Периоды
           </div>
-          {hasPeriodDetails ? (
-            <div
-              style={{
-                minHeight: 0,
-                flex: hasMultiplePeriods ? '1 1 auto' : undefined,
-                maxHeight: hasMultiplePeriods ? 'min(38dvh, 330px)' : undefined,
-                overflowY: hasMultiplePeriods ? 'auto' : undefined,
-                paddingRight: hasMultiplePeriods ? 2 : 0,
-              }}
-            >
-              <DuelResultPeriodComparison
-                match={match}
-                totalPeriods={match.rules.totalPeriods}
-                mePeriods={mePeriods}
-                opponentPeriods={opponentPeriods}
-                opponentName={match.opponent.display_name || 'Соперник'}
-              />
-            </div>
-          ) : (
-            <div
-              style={{
-                marginTop: 8,
-                borderRadius: 16,
-                padding: '12px 14px',
-                background: 'rgba(255,255,255,0.42)',
-                border: '1px solid rgba(255,255,255,0.62)',
-                color: 'rgba(15, 23, 42, 0.58)',
-                fontSize: 12,
-                fontWeight: 750,
-                lineHeight: 1.35,
-              }}
-            >
-              {isLoadingDetails
-                ? 'Загружаем статистику периодов...'
-                : 'Подробная статистика периодов пока недоступна.'}
-            </div>
-          )}
-        </div>
-        <div className="modal-actions">
-          <button type="button" className="modal-primary btn btn--cta" onClick={onClose}>
-            {closeLabel}
-          </button>
-        </div>
+        ) : (
+          <div
+            style={{
+              marginTop: 8,
+              borderRadius: 16,
+              padding: '12px 14px',
+              background: 'rgba(255,255,255,0.42)',
+              border: '1px solid rgba(255,255,255,0.62)',
+              color: 'rgba(15, 23, 42, 0.58)',
+              fontSize: 12,
+              fontWeight: 750,
+              lineHeight: 1.35,
+            }}
+          >
+            {isLoadingDetails
+              ? 'Загружаем статистику периодов...'
+              : 'Подробная статистика периодов пока недоступна.'}
+          </div>
+        )}
       </div>
+      {footer}
     </div>
   );
 }
