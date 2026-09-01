@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { UserProfileSheet } from '../components/UserProfileSheet.js';
 import * as api from '../api.js';
 import * as amateurDuelApi from '../../api/amateurDuel.js';
 import { useAuthStore } from '../../auth/authStore.js';
+import { userKeys } from '../../lib/queryKeys.js';
 
 const publicProfile: api.UserPublicProfileDTO = {
   id: 'u1',
@@ -34,19 +35,29 @@ const publicProfile: api.UserPublicProfileDTO = {
   lastSeenAt: null,
 };
 
-function renderSheet(props: Parameters<typeof UserProfileSheet>[0]): { qc: QueryClient } {
+async function renderSheet(
+  props: Parameters<typeof UserProfileSheet>[0],
+  configure?: (queryClient: QueryClient) => void,
+): Promise<{ qc: QueryClient }> {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  render(
-    <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={['/chat/c1']}>
-        <Routes>
-          <Route path="/chat/:chatId" element={<UserProfileSheet {...props} />} />
-        </Routes>
-      </MemoryRouter>
-    </QueryClientProvider>,
-  );
+  configure?.(qc);
+  await act(async () => {
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter
+          initialEntries={['/chat/c1']}
+          future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        >
+          <Routes>
+            <Route path="/chat/:chatId" element={<UserProfileSheet {...props} />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await Promise.resolve();
+  });
   return { qc };
 }
 
@@ -138,22 +149,37 @@ describe('UserProfileSheet', () => {
   });
   afterEach(() => {
     vi.restoreAllMocks();
-    useAuthStore.setState({ accessToken: null, refreshToken: null, user: null });
+    act(() => {
+      useAuthStore.setState({ accessToken: null, refreshToken: null, user: null });
+    });
   });
 
-  it('returns null when sender is null', () => {
+  it('returns null without loading profiles when sender is null', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    useAuthStore.setState({
+      accessToken: 'token',
+      refreshToken: 'refresh',
+      user: { id: 'me', displayName: 'Me', grip: 'right' },
+    });
     const { container } = render(
       <QueryClientProvider client={new QueryClient()}>
-        <MemoryRouter>
+        <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <UserProfileSheet sender={null} onClose={() => {}} />
         </MemoryRouter>
       </QueryClientProvider>,
     );
     expect(container.firstChild).toBeNull();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(api.fetchUserProfile).not.toHaveBeenCalled();
+    expect(
+      consoleError.mock.calls.some(([message]) => String(message).includes('not wrapped in act')),
+    ).toBe(false);
   });
 
   it('renders displayName, public stats and achievements when sender is provided', async () => {
-    renderSheet({
+    await renderSheet({
       sender: { userId: 'u1', displayName: 'Иван Петров', avatarUrl: null },
       onClose: () => {},
     });
@@ -177,13 +203,14 @@ describe('UserProfileSheet', () => {
 
   it('clicking "Написать в личку" calls findOrCreateDM and closes the sheet', async () => {
     const onClose = vi.fn();
-    renderSheet({
+    const { qc } = await renderSheet({
       sender: { userId: 'u1', displayName: 'Иван', avatarUrl: null },
       onClose,
     });
     fireEvent.click(screen.getByRole('button', { name: /написать в личку/i }));
     await waitFor(() => expect(api.findOrCreateDM).toHaveBeenCalledWith('u1'));
     await waitFor(() => expect(onClose).toHaveBeenCalled());
+    await waitFor(() => expect(qc.isMutating()).toBe(0));
   });
 
   it('does not show duel action when current user is a beginner', async () => {
@@ -198,12 +225,24 @@ describe('UserProfileSheet', () => {
         : publicProfile,
     );
 
-    renderSheet({
-      sender: { userId: 'u1', displayName: 'Иван', avatarUrl: null },
-      onClose: () => {},
-    });
+    const { qc } = await renderSheet(
+      {
+        sender: { userId: 'u1', displayName: 'Иван', avatarUrl: null },
+        onClose: () => {},
+      },
+      (queryClient) => {
+        queryClient.setQueryData(userKeys.profile('me'), {
+          ...publicProfile,
+          id: 'me',
+          competitionLevel: 'beginner',
+        });
+        queryClient.setQueryData(userKeys.profile('u1'), publicProfile);
+      },
+    );
 
     expect(await screen.findByText('Любитель')).toBeInTheDocument();
+    await waitFor(() => expect(qc.isFetching()).toBe(0));
+    await waitFor(() => expect(qc.isMutating()).toBe(0));
     expect(screen.queryByRole('button', { name: /вызвать на дуэль/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /написать в личку/i })).toBeInTheDocument();
   });
@@ -215,12 +254,18 @@ describe('UserProfileSheet', () => {
       user: { id: 'u1', displayName: 'Иван Петров' },
     });
 
-    renderSheet({
-      sender: { userId: 'u1', displayName: 'Иван Петров', avatarUrl: null },
-      onClose: () => {},
-    });
+    const { qc } = await renderSheet(
+      {
+        sender: { userId: 'u1', displayName: 'Иван Петров', avatarUrl: null },
+        onClose: () => {},
+      },
+      (queryClient) => {
+        queryClient.setQueryData(userKeys.profile('u1'), publicProfile);
+      },
+    );
 
     expect(await screen.findByText('Это ваш профиль')).toBeInTheDocument();
+    await waitFor(() => expect(qc.isFetching()).toBe(0));
     expect(screen.queryByRole('button', { name: /написать в личку/i })).not.toBeInTheDocument();
   });
 
@@ -235,10 +280,17 @@ describe('UserProfileSheet', () => {
     );
     const onClose = vi.fn();
 
-    renderSheet({
-      sender: { userId: 'u1', displayName: 'Иван', avatarUrl: null },
-      onClose,
-    });
+    const { qc } = await renderSheet(
+      {
+        sender: { userId: 'u1', displayName: 'Иван', avatarUrl: null },
+        onClose,
+      },
+      (queryClient) => {
+        queryClient.setQueryData(userKeys.profile('me'), { ...publicProfile, id: 'me' });
+        queryClient.setQueryData(userKeys.profile('u1'), publicProfile);
+        queryClient.setQueryData(['amateur-duel', 'matches'], { matches: [] });
+      },
+    );
 
     fireEvent.click(await screen.findByRole('button', { name: /вызвать на дуэль/i }));
     expect(await screen.findByRole('dialog', { name: 'Выбор типа дуэли' })).toBeInTheDocument();
@@ -254,10 +306,13 @@ describe('UserProfileSheet', () => {
     await waitFor(() =>
       expect(screen.queryByRole('dialog', { name: 'Выбор типа дуэли' })).not.toBeInTheDocument(),
     );
+    await waitFor(() => expect(qc.isFetching()).toBe(0));
+    await waitFor(() => expect(qc.isMutating()).toBe(0));
     expect(onClose).not.toHaveBeenCalled();
   });
 
   it('closes the duel type modal with Escape without closing the profile sheet', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     useAuthStore.setState({
       accessToken: 'tok',
       refreshToken: 'rtok',
@@ -268,7 +323,7 @@ describe('UserProfileSheet', () => {
     );
     const onClose = vi.fn();
 
-    renderSheet({
+    await renderSheet({
       sender: { userId: 'u1', displayName: 'Иван', avatarUrl: null },
       onClose,
     });
@@ -280,13 +335,16 @@ describe('UserProfileSheet', () => {
     expect(screen.queryByRole('dialog', { name: 'Выбор типа дуэли' })).not.toBeInTheDocument();
     expect(screen.getByRole('dialog', { name: 'Профиль игрока' })).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
+    expect(
+      consoleError.mock.calls.some(([message]) => String(message).includes('not wrapped in act')),
+    ).toBe(false);
   });
 
   it('clicking the backdrop calls onClose', () => {
     const onClose = vi.fn();
     render(
       <QueryClientProvider client={new QueryClient()}>
-        <MemoryRouter>
+        <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <UserProfileSheet
             sender={{ userId: 'u1', displayName: 'Иван', avatarUrl: null }}
             onClose={onClose}

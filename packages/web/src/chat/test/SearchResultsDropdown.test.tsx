@@ -39,7 +39,9 @@ function wrap(ui: JSX.Element): JSX.Element {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return (
     <QueryClientProvider client={qc}>
-      <MemoryRouter>{ui}</MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        {ui}
+      </MemoryRouter>
     </QueryClientProvider>
   );
 }
@@ -47,7 +49,7 @@ function wrap(ui: JSX.Element): JSX.Element {
 describe('SearchResultsDropdown', () => {
   beforeEach(() => {
     navigateMock.mockReset();
-    apiFetchMock.mockReset();
+    apiFetchMock.mockReset().mockResolvedValue([]);
   });
   afterEach(() => {
     vi.useRealTimers();

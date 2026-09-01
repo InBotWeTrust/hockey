@@ -23,55 +23,60 @@ export async function fetchWeeklyChallengeProgress(
   db: Queryable,
   window: ProgressWindow,
 ): Promise<WeeklyChallengeProgressMap> {
-  const [{ rows: goalRows }, { rows: duelRows }, { rows: inviteRows }, { rows: trainingRows }] =
-    await Promise.all([
-      db.query<{ goals: string }>(
-        `select count(*)::text as goals
-           from shot_session
-          where user_id = $1
-            and server_result = 'goal'
-            and created_at >= $2
-            and created_at <= $3`,
-        [window.userId, window.from, window.to],
-      ),
-      db.query<{ played: string; won: string }>(
-        `select
-            count(*) filter (where p.state = 'completed')::text as played,
-            count(*) filter (where m.winner_user_id = $1)::text as won
-           from amateur_duel_participant p
-           join amateur_duel_match m on m.id = p.match_id
-          where p.user_id = $1
-            and m.status = 'settled'
-            and coalesce(m.settled_at, m.updated_at) >= $2
-            and coalesce(m.settled_at, m.updated_at) <= $3`,
-        [window.userId, window.from, window.to],
-      ),
-      db.query<{ invites: string }>(
-        `select count(*)::text as invites
-           from amateur_duel_match
-          where challenger_user_id = $1
-            and source = 'challenge'
-            and created_at >= $2
-            and created_at <= $3`,
-        [window.userId, window.from, window.to],
-      ),
-      db.query<{ completed: string }>(
-        `select count(*)::text as completed
-           from training_session
-          where user_id = $1
-            and state = 'closed'
-            and coalesce(closed_at, started_at) >= $2
-            and coalesce(closed_at, started_at) <= $3`,
-        [window.userId, window.from, window.to],
-      ),
-    ]);
+  const { rows } = await db.query<{
+    goals: string;
+    played: string;
+    won: string;
+    invites: string;
+    completed: string;
+  }>(
+    `with goal_progress as (
+       select count(*)::text as goals
+         from shot_session
+        where user_id = $1
+          and server_result = 'goal'
+          and created_at >= $2
+          and created_at <= $3
+     ), duel_progress as (
+       select
+         count(*) filter (where p.state = 'completed')::text as played,
+         count(*) filter (where m.winner_user_id = $1)::text as won
+         from amateur_duel_participant p
+         join amateur_duel_match m on m.id = p.match_id
+        where p.user_id = $1
+          and m.status = 'settled'
+          and coalesce(m.settled_at, m.updated_at) >= $2
+          and coalesce(m.settled_at, m.updated_at) <= $3
+     ), invite_progress as (
+       select count(*)::text as invites
+         from amateur_duel_match
+        where challenger_user_id = $1
+          and source = 'challenge'
+          and created_at >= $2
+          and created_at <= $3
+     ), training_progress as (
+       select count(*)::text as completed
+         from training_session
+        where user_id = $1
+          and state = 'closed'
+          and coalesce(closed_at, started_at) >= $2
+          and coalesce(closed_at, started_at) <= $3
+     )
+     select goals, played, won, invites, completed
+       from goal_progress
+       cross join duel_progress
+       cross join invite_progress
+       cross join training_progress`,
+    [window.userId, window.from, window.to],
+  );
+  const row = rows[0];
 
   return {
-    goals_scored: Number(goalRows[0]?.goals ?? 0),
-    duels_played: Number(duelRows[0]?.played ?? 0),
-    duels_won: Number(duelRows[0]?.won ?? 0),
-    duel_invites_sent: Number(inviteRows[0]?.invites ?? 0),
-    trainings_completed: Number(trainingRows[0]?.completed ?? 0),
+    goals_scored: Number(row?.goals ?? 0),
+    duels_played: Number(row?.played ?? 0),
+    duels_won: Number(row?.won ?? 0),
+    duel_invites_sent: Number(row?.invites ?? 0),
+    trainings_completed: Number(row?.completed ?? 0),
   };
 }
 
