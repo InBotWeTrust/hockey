@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { X } from 'lucide-react';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import {
   archiveAdminBonusGame,
@@ -202,8 +203,7 @@ function formValidationError(form: BonusGameFormState): string | null {
     (form.skillCode === 'speed' && qualification.type !== 'goals_in_time') ||
     (form.skillCode === 'accuracy' && qualification.type !== 'goals_from_shots') ||
     (qualification.requiredGoalStreak !== undefined &&
-      (!Number.isInteger(qualification.requiredGoalStreak) ||
-        qualification.requiredGoalStreak < 1))
+      (!Number.isInteger(qualification.requiredGoalStreak) || qualification.requiredGoalStreak < 1))
   ) {
     return 'Проверьте условие квалификации.';
   }
@@ -371,7 +371,8 @@ export function BonusGamesAdmin(): JSX.Element {
     },
   });
   const reorderMutation = useMutation({
-    mutationFn: (gameIds: string[]) => reorderAdminBonusGames({ skillCode: selectedSkill, gameIds }),
+    mutationFn: (gameIds: string[]) =>
+      reorderAdminBonusGames({ skillCode: selectedSkill, gameIds }),
     onSuccess: (data) => {
       queryClient.setQueryData(bonusGamesQueryKey, data);
       setReorderTarget(null);
@@ -679,10 +680,7 @@ function BonusGameEditor({
   function setRequiredGoalStreak(value: number): void {
     const rules: AdminBonusQualificationRules = { ...form.qualificationRules };
     delete rules.requiredGoalStreak;
-    setField(
-      'qualificationRules',
-      value > 0 ? { ...rules, requiredGoalStreak: value } : rules,
-    );
+    setField('qualificationRules', value > 0 ? { ...rules, requiredGoalStreak: value } : rules);
   }
 
   function requestCancel(): void {
@@ -735,273 +733,294 @@ function BonusGameEditor({
       onClose={requestCancel}
       closeBlocked={pending}
       wide
+      cardClassName="bonus-game-editor-modal"
+      headerAction={
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label="Закрыть редактор"
+          onClick={requestCancel}
+          disabled={pending}
+        >
+          <X size={17} />
+        </button>
+      }
     >
-      <div style={{ display: 'grid', gap: 10 }}>
-        <h3 className="admin-form-section-title">Основное</h3>
-        <Field label="Код игры">
-          <input value={form.slug} onChange={(event) => setField('slug', event.target.value)} />
-        </Field>
-        <Field label="Название">
-          <input value={form.title} onChange={(event) => setField('title', event.target.value)} />
-        </Field>
-        <Field label="Описание">
-          <textarea
-            rows={3}
-            value={form.description}
-            onChange={(event) => setField('description', event.target.value)}
-          />
-        </Field>
-        <Grid>
-          <NumberField
-            label="Порядок"
-            value={form.sortOrder}
-            min={1}
-            onChange={(value) => setField('sortOrder', value)}
-          />
-          <Field label="Статус">
-            <select
-              value={form.status}
-              onChange={(event) => setField('status', event.target.value as AdminBonusGameStatus)}
-            >
-              <option value="draft">Черновик</option>
-              <option value="active">Активна</option>
-              <option value="archived">В архиве</option>
-            </select>
+      <form
+        className="bonus-game-editor"
+        aria-label="Параметры бонусной игры"
+        onSubmit={(event) => {
+          event.preventDefault();
+          requestSave();
+        }}
+      >
+        <div className="bonus-game-editor__scroll">
+          <h3 className="admin-form-section-title bonus-game-editor__section">Основное</h3>
+          <Field label="Код игры">
+            <input value={form.slug} onChange={(event) => setField('slug', event.target.value)} />
           </Field>
-          <Field label="Доступ">
-            <select
-              value={form.accessType}
-              onChange={(event) =>
-                setField('accessType', event.target.value as AdminBonusGameAccessType)
-              }
-            >
-              <option value="free">Бесплатная</option>
-              <option value="paid">Платная</option>
-            </select>
+          <Field label="Название">
+            <input value={form.title} onChange={(event) => setField('title', event.target.value)} />
           </Field>
-          <NumberField
-            label="Цена в звёздах"
-            value={form.unlockPriceStars}
-            min={0}
-            onChange={(value) => setField('unlockPriceStars', value)}
-          />
-        </Grid>
-        <h3 className="admin-form-section-title">Квалификация</h3>
-        <Grid>
-          <Field label="Навык">
-            <input value={form.skillCode === 'speed' ? 'Скорость' : 'Точность'} readOnly />
-          </Field>
-          <NumberField
-            label="Нужно голов"
-            value={form.qualificationRules.targetGoals}
-            min={1}
-            onChange={(value) =>
-              setField('qualificationRules', {
-                ...form.qualificationRules,
-                targetGoals: value,
-              } as AdminBonusQualificationRules)
-            }
-          />
-          {form.qualificationRules.type === 'goals_in_time' ? (
-            <NumberField
-              label="Активное время, мс"
-              value={form.qualificationRules.activeTimeMs}
-              min={1_000}
-              onChange={(value) =>
-                setField('qualificationRules', {
-                  ...form.qualificationRules,
-                  activeTimeMs: value,
-                } as AdminBonusQualificationRules)
-              }
+          <Field label="Описание">
+            <textarea
+              rows={3}
+              value={form.description}
+              onChange={(event) => setField('description', event.target.value)}
             />
-          ) : (
+          </Field>
+          <Grid>
             <NumberField
-              label="Бросков в квалификации"
-              value={form.qualificationRules.shotsLimit}
+              label="Порядок"
+              value={form.sortOrder}
+              min={1}
+              onChange={(value) => setField('sortOrder', value)}
+            />
+            <Field label="Статус">
+              <select
+                value={form.status}
+                onChange={(event) => setField('status', event.target.value as AdminBonusGameStatus)}
+              >
+                <option value="draft">Черновик</option>
+                <option value="active">Активна</option>
+                <option value="archived">В архиве</option>
+              </select>
+            </Field>
+            <Field label="Доступ">
+              <select
+                value={form.accessType}
+                onChange={(event) =>
+                  setField('accessType', event.target.value as AdminBonusGameAccessType)
+                }
+              >
+                <option value="free">Бесплатная</option>
+                <option value="paid">Платная</option>
+              </select>
+            </Field>
+            <NumberField
+              label="Цена в звёздах"
+              value={form.unlockPriceStars}
+              min={0}
+              onChange={(value) => setField('unlockPriceStars', value)}
+            />
+          </Grid>
+          <h3 className="admin-form-section-title bonus-game-editor__section">Квалификация</h3>
+          <Grid>
+            <Field label="Навык">
+              <input value={form.skillCode === 'speed' ? 'Скорость' : 'Точность'} readOnly />
+            </Field>
+            <NumberField
+              label="Нужно голов"
+              value={form.qualificationRules.targetGoals}
               min={1}
               onChange={(value) =>
                 setField('qualificationRules', {
                   ...form.qualificationRules,
-                  shotsLimit: value,
+                  targetGoals: value,
                 } as AdminBonusQualificationRules)
               }
             />
-          )}
-          <NumberField
-            label="Обязательная серия (0 — нет)"
-            value={form.qualificationRules.requiredGoalStreak ?? 0}
-            min={0}
-            onChange={setRequiredGoalStreak}
-          />
-        </Grid>
-        <h3 className="admin-form-section-title">Периоды</h3>
-        <Grid>
-          <NumberField
-            label="Периодов"
-            value={form.totalPeriods}
-            min={1}
-            max={9}
-            onChange={setTotalPeriods}
-          />
-          <NumberField
-            label="Перерыв, мс"
-            value={form.breakDurationMs}
-            min={0}
-            onChange={(value) => setField('breakDurationMs', value)}
-          />
-        </Grid>
-        {form.periods.map((period, index) => (
-          <PeriodEditor
-            key={period.periodNumber}
-            period={period}
-            showShotsLimit={form.skillCode === 'accuracy'}
-            onChange={(patch) => setPeriod(index, patch)}
-          />
-        ))}
-        <h3 className="admin-form-section-title">Превью</h3>
-        <Field label="Заголовок превью">
-          <input
-            value={form.previewTitle}
-            onChange={(event) => setField('previewTitle', event.target.value)}
-          />
-        </Field>
-        <Field label="История">
-          <textarea
-            rows={4}
-            value={form.previewStory}
-            onChange={(event) => setField('previewStory', event.target.value)}
-          />
-        </Field>
-        <Grid>
-          <NumberField
-            label="Ревизия превью"
-            value={form.previewRevision}
-            min={1}
-            onChange={(value) => setField('previewRevision', value)}
-          />
-        </Grid>
-        <MediaField
-          label="Иллюстрация превью 1200×800"
-          uploadLabel="Загрузить иллюстрацию превью"
-          value={form.previewArtworkUrl}
-          kind="preview"
-          pending={uploadMutation.isPending}
-          onValue={(value) => setMediaValue('preview', value)}
-          onFile={requestUpload}
-        />
-        <h3 className="admin-form-section-title">Инвентарь</h3>
-        <Field label="Использовать инвентарь">
-          <input
-            type="checkbox"
-            checked={form.useInventory}
-            onChange={(event) => setField('useInventory', event.target.checked)}
-          />
-        </Field>
-        <h3 className="admin-form-section-title">Награды и доступ</h3>
-        <Grid>
-          <NumberField
-            label="Награда: монеты"
-            value={form.rewardCoins}
-            min={0}
-            onChange={(value) => setField('rewardCoins', value)}
-          />
-          <NumberField
-            label="Награда: звёзды"
-            value={form.rewardStars}
-            min={0}
-            onChange={(value) => setField('rewardStars', value)}
-          />
-          <NumberField
-            label="Награда: опыт"
-            value={form.rewardExperience}
-            min={0}
-            onChange={(value) => setField('rewardExperience', value)}
-          />
-        </Grid>
-        <Field label="Код площадки">
-          <input
-            value={form.arenaSlug}
-            onChange={(event) => setField('arenaSlug', event.target.value)}
-          />
-        </Field>
-        <Field label="Название площадки">
-          <input
-            value={form.arenaTitle}
-            onChange={(event) => setField('arenaTitle', event.target.value)}
-          />
-        </Field>
-        <MediaField
-          label="Фон площадки"
-          uploadLabel="Загрузить фон площадки"
-          value={form.arenaArtworkUrl}
-          kind="arena"
-          pending={uploadMutation.isPending}
-          onValue={(value) => setMediaValue('arena', value)}
-          onFile={requestUpload}
-        />
-        <MediaField
-          label="Миниатюра площадки"
-          uploadLabel="Загрузить миниатюру площадки"
-          value={form.arenaThumbnailUrl}
-          kind="thumbnail"
-          pending={uploadMutation.isPending}
-          onValue={(value) => setMediaValue('thumbnail', value)}
-          onFile={requestUpload}
-        />
-        <Grid>
-          <Field label="Статус площадки">
-            <select
-              value={form.arenaStatus}
-              onChange={(event) =>
-                setField('arenaStatus', event.target.value as 'active' | 'archived')
-              }
-            >
-              <option value="active">Активна</option>
-              <option value="archived">В архиве</option>
-            </select>
-          </Field>
-          <Field label="Можно выбрать домашней">
+            {form.qualificationRules.type === 'goals_in_time' ? (
+              <NumberField
+                label="Активное время, мс"
+                value={form.qualificationRules.activeTimeMs}
+                min={1_000}
+                onChange={(value) =>
+                  setField('qualificationRules', {
+                    ...form.qualificationRules,
+                    activeTimeMs: value,
+                  } as AdminBonusQualificationRules)
+                }
+              />
+            ) : (
+              <NumberField
+                label="Бросков в квалификации"
+                value={form.qualificationRules.shotsLimit}
+                min={1}
+                onChange={(value) =>
+                  setField('qualificationRules', {
+                    ...form.qualificationRules,
+                    shotsLimit: value,
+                  } as AdminBonusQualificationRules)
+                }
+              />
+            )}
+            <NumberField
+              label="Обязательная серия (0 — нет)"
+              value={form.qualificationRules.requiredGoalStreak ?? 0}
+              min={0}
+              onChange={setRequiredGoalStreak}
+            />
+          </Grid>
+          <h3 className="admin-form-section-title bonus-game-editor__section">Периоды</h3>
+          <Grid>
+            <NumberField
+              label="Периодов"
+              value={form.totalPeriods}
+              min={1}
+              max={9}
+              onChange={setTotalPeriods}
+            />
+            <NumberField
+              label="Перерыв, мс"
+              value={form.breakDurationMs}
+              min={0}
+              onChange={(value) => setField('breakDurationMs', value)}
+            />
+          </Grid>
+          {form.periods.map((period, index) => (
+            <PeriodEditor
+              key={period.periodNumber}
+              period={period}
+              showShotsLimit={form.skillCode === 'accuracy'}
+              onChange={(patch) => setPeriod(index, patch)}
+            />
+          ))}
+          <h3 className="admin-form-section-title bonus-game-editor__section">Превью</h3>
+          <Field label="Заголовок превью">
             <input
-              type="checkbox"
-              checked={form.arenaIsSelectable}
-              onChange={(event) => setField('arenaIsSelectable', event.target.checked)}
+              value={form.previewTitle}
+              onChange={(event) => setField('previewTitle', event.target.value)}
             />
           </Field>
-        </Grid>
-        <MediaField
-          label="Вратарь: готов"
-          uploadLabel="Загрузить обычное изображение вратаря"
-          value={form.goalkeeperReadyUrl}
-          kind="goalkeeper_ready"
-          pending={uploadMutation.isPending}
-          onValue={(value) => setMediaValue('goalkeeper_ready', value)}
-          onFile={requestUpload}
-        />
-        <MediaField
-          label="Вратарь: сейв"
-          uploadLabel="Загрузить изображение сейва вратаря"
-          value={form.goalkeeperSaveUrl}
-          kind="goalkeeper_save"
-          pending={uploadMutation.isPending}
-          onValue={(value) => setMediaValue('goalkeeper_save', value)}
-          onFile={requestUpload}
-        />
-        {validationError !== null && (
-          <div role="alert" style={{ color: 'var(--red-deep)', fontSize: 12 }}>
-            {validationError}
-          </div>
-        )}
-        {mutation.isError && (
-          <div role="alert" style={{ color: 'var(--red-deep)', fontSize: 12 }}>
-            {errorMessage(mutation.error)}
-          </div>
-        )}
-        {uploadMutation.isError && (
-          <div role="alert" style={{ color: 'var(--red-deep)', fontSize: 12 }}>
-            {errorMessage(uploadMutation.error)}
-          </div>
-        )}
-        <div className="modal-actions" style={{ gridTemplateColumns: '1fr 1fr' }}>
+          <Field label="История">
+            <textarea
+              rows={4}
+              value={form.previewStory}
+              onChange={(event) => setField('previewStory', event.target.value)}
+            />
+          </Field>
+          <Grid>
+            <NumberField
+              label="Ревизия превью"
+              value={form.previewRevision}
+              min={1}
+              onChange={(value) => setField('previewRevision', value)}
+            />
+          </Grid>
+          <MediaField
+            label="Иллюстрация превью 1200×800"
+            uploadLabel="Загрузить иллюстрацию превью"
+            value={form.previewArtworkUrl}
+            kind="preview"
+            pending={uploadMutation.isPending}
+            onValue={(value) => setMediaValue('preview', value)}
+            onFile={requestUpload}
+          />
+          <h3 className="admin-form-section-title bonus-game-editor__section">Инвентарь</h3>
+          <Field label="Использовать инвентарь">
+            <input
+              type="checkbox"
+              checked={form.useInventory}
+              onChange={(event) => setField('useInventory', event.target.checked)}
+            />
+          </Field>
+          <h3 className="admin-form-section-title bonus-game-editor__section">Награды и доступ</h3>
+          <Grid>
+            <NumberField
+              label="Награда: монеты"
+              value={form.rewardCoins}
+              min={0}
+              onChange={(value) => setField('rewardCoins', value)}
+            />
+            <NumberField
+              label="Награда: звёзды"
+              value={form.rewardStars}
+              min={0}
+              onChange={(value) => setField('rewardStars', value)}
+            />
+            <NumberField
+              label="Награда: опыт"
+              value={form.rewardExperience}
+              min={0}
+              onChange={(value) => setField('rewardExperience', value)}
+            />
+          </Grid>
+          <Field label="Код площадки">
+            <input
+              value={form.arenaSlug}
+              onChange={(event) => setField('arenaSlug', event.target.value)}
+            />
+          </Field>
+          <Field label="Название площадки">
+            <input
+              value={form.arenaTitle}
+              onChange={(event) => setField('arenaTitle', event.target.value)}
+            />
+          </Field>
+          <MediaField
+            label="Фон площадки"
+            uploadLabel="Загрузить фон площадки"
+            value={form.arenaArtworkUrl}
+            kind="arena"
+            pending={uploadMutation.isPending}
+            onValue={(value) => setMediaValue('arena', value)}
+            onFile={requestUpload}
+          />
+          <MediaField
+            label="Миниатюра площадки"
+            uploadLabel="Загрузить миниатюру площадки"
+            value={form.arenaThumbnailUrl}
+            kind="thumbnail"
+            pending={uploadMutation.isPending}
+            onValue={(value) => setMediaValue('thumbnail', value)}
+            onFile={requestUpload}
+          />
+          <Grid>
+            <Field label="Статус площадки">
+              <select
+                value={form.arenaStatus}
+                onChange={(event) =>
+                  setField('arenaStatus', event.target.value as 'active' | 'archived')
+                }
+              >
+                <option value="active">Активна</option>
+                <option value="archived">В архиве</option>
+              </select>
+            </Field>
+            <Field label="Можно выбрать домашней">
+              <input
+                type="checkbox"
+                checked={form.arenaIsSelectable}
+                onChange={(event) => setField('arenaIsSelectable', event.target.checked)}
+              />
+            </Field>
+          </Grid>
+          <MediaField
+            label="Вратарь: готов"
+            uploadLabel="Загрузить обычное изображение вратаря"
+            value={form.goalkeeperReadyUrl}
+            kind="goalkeeper_ready"
+            pending={uploadMutation.isPending}
+            onValue={(value) => setMediaValue('goalkeeper_ready', value)}
+            onFile={requestUpload}
+          />
+          <MediaField
+            label="Вратарь: сейв"
+            uploadLabel="Загрузить изображение сейва вратаря"
+            value={form.goalkeeperSaveUrl}
+            kind="goalkeeper_save"
+            pending={uploadMutation.isPending}
+            onValue={(value) => setMediaValue('goalkeeper_save', value)}
+            onFile={requestUpload}
+          />
+          {validationError !== null && (
+            <div role="alert" className="bonus-game-editor__alert">
+              {validationError}
+            </div>
+          )}
+          {mutation.isError && (
+            <div role="alert" className="bonus-game-editor__alert">
+              {errorMessage(mutation.error)}
+            </div>
+          )}
+          {uploadMutation.isError && (
+            <div role="alert" className="bonus-game-editor__alert">
+              {errorMessage(uploadMutation.error)}
+            </div>
+          )}
+        </div>
+        <div className="modal-actions bonus-game-editor__actions">
           <button
             type="button"
             className="btn btn--ghost"
@@ -1011,15 +1030,14 @@ function BonusGameEditor({
             Отмена
           </button>
           <button
-            type="button"
+            type="submit"
             className="modal-primary btn--cta"
-            onClick={requestSave}
             disabled={pending || (!archiveTransition && validationError !== null)}
           >
             Сохранить
           </button>
         </div>
-      </div>
+      </form>
     </Modal>
   );
 }
@@ -1035,7 +1053,7 @@ function PeriodEditor({
 }): JSX.Element {
   return (
     <section
-      className="glass"
+      className="glass bonus-game-editor__period"
       aria-label={`${period.periodNumber}-й период`}
       style={{ borderRadius: 18, padding: 12, display: 'grid', gap: 10 }}
     >
@@ -1139,22 +1157,27 @@ function MediaField({
   onFile: (kind: AdminBonusMediaKind, file: File) => void;
 }): JSX.Element {
   return (
-    <div style={{ display: 'grid', gap: 6 }}>
+    <div className="bonus-game-editor__media">
       <Field label={label}>
         <input value={value} onChange={(event) => onValue(event.target.value)} />
       </Field>
-      <label style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 800 }}>
-        {uploadLabel}
-        <input
-          type="file"
-          accept="image/webp"
-          disabled={pending}
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) onFile(kind, file);
-          }}
-        />
-      </label>
+      <div className="bonus-game-editor__upload-row">
+        <span className="bonus-game-editor__upload-label">{uploadLabel}</span>
+        <label className="bonus-game-editor__upload-button">
+          <span>{pending ? 'Загрузка…' : 'Выбрать WebP'}</span>
+          <input
+            className="visually-hidden"
+            type="file"
+            aria-label={uploadLabel}
+            accept="image/webp"
+            disabled={pending}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) onFile(kind, file);
+            }}
+          />
+        </label>
+      </div>
     </div>
   );
 }
@@ -1247,6 +1270,8 @@ function Modal({
   onClose,
   closeBlocked = false,
   wide = false,
+  cardClassName,
+  headerAction,
   children,
 }: {
   title: string;
@@ -1254,6 +1279,8 @@ function Modal({
   onClose: () => void;
   closeBlocked?: boolean;
   wide?: boolean;
+  cardClassName?: string;
+  headerAction?: ReactNode;
   children: ReactNode;
 }): JSX.Element {
   return (
@@ -1262,6 +1289,8 @@ function Modal({
       copy={copy}
       onClose={onClose}
       closeBlocked={closeBlocked}
+      {...(cardClassName === undefined ? {} : { cardClassName })}
+      {...(headerAction === undefined ? {} : { headerAction })}
       {...(wide
         ? {
             cardStyle: {

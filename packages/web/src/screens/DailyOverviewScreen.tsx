@@ -598,17 +598,13 @@ function HistorySummaryCard({ summary }: { summary: DailyHistorySummary }): JSX.
   const goalRate = formatGoalRate(summary.total_goals, summary.total_shots);
   return (
     <article
-      className="glass"
+      className="glass daily-history-summary"
       aria-label="Общая статистика ежедневных игр"
       style={{
         borderRadius: 22,
         padding: 14,
         display: 'grid',
         gap: 10,
-        background:
-          'linear-gradient(135deg, rgba(147,197,253,0.72), rgba(219,234,254,0.86) 52%, rgba(255,255,255,0.72))',
-        border: '1px solid rgba(255,255,255,0.94)',
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.92), 0 18px 42px rgba(37,99,235,0.2)',
       }}
     >
       <div

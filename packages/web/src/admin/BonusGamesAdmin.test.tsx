@@ -234,6 +234,11 @@ describe('bonus games admin', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Редактировать Пляжный хоккей' }));
     const editor = await screen.findByRole('dialog', { name: 'Редактирование бонусной игры' });
+    expect(editor).toHaveClass('bonus-game-editor-modal');
+    expect(within(editor).getByRole('form', { name: 'Параметры бонусной игры' })).toHaveClass(
+      'bonus-game-editor',
+    );
+    expect(within(editor).getByRole('button', { name: 'Закрыть редактор' })).toBeInTheDocument();
     for (const label of [
       'Название',
       'Описание',
@@ -279,6 +284,10 @@ describe('bonus games admin', () => {
     ]) {
       expect(within(editor).getByLabelText(uploadLabel)).toBeInTheDocument();
     }
+    expect(editor.querySelectorAll('.bonus-game-editor__section').length).toBeGreaterThanOrEqual(6);
+    expect(
+      editor.querySelectorAll('.bonus-game-editor__upload-button').length,
+    ).toBeGreaterThanOrEqual(4);
 
     fireEvent.click(within(editor).getByRole('button', { name: 'Отмена' }));
     fireEvent.click(screen.getByRole('button', { name: 'Архивировать Пляжный хоккей' }));
