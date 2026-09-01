@@ -7,6 +7,7 @@ import { reconcileTournamentLifecycle } from '../../src/tournament/automaticLife
 import { parseTournamentConfig } from '../../src/tournament/config.js';
 import {
   generateRegularSchedule,
+  publishRegularSchedule,
   type TournamentRulesSnapshot,
   updateTournamentDraft,
 } from '../../src/tournament/service.js';
@@ -180,6 +181,57 @@ async function counts(pool: Pool, tournamentId: string) {
     [tournamentId],
   );
   return rows[0]!;
+}
+
+async function configureAutomaticPlayoffs(
+  pool: Pool,
+  input: { tournamentId: string; firstGameStartsAt: string },
+): Promise<void> {
+  const template = await pool.query<{ id: string }>(
+    `select id from amateur_duel_template
+      where deleted_at is null and is_active
+      order by starts_at, id limit 1`,
+  );
+  await pool.query(
+    `update tournament_revision
+        set rules_snapshot = rules_snapshot || jsonb_build_object(
+          'regularDuelTemplateId', $2::text,
+          'playoffRounds', jsonb_build_array(jsonb_build_object(
+            'roundNumber', 1,
+            'winsRequired', 1,
+            'homeSequence', jsonb_build_array('H'),
+            'duelTemplateId', $2::text,
+            'gameWindowMs', 3600000,
+            'gameBreakMs', 0,
+            'roundBreakMs', 0,
+            'firstGameStartsAt', $3::text
+          ))
+        )
+      where tournament_id = $1 and revision = 1`,
+    [input.tournamentId, template.rows[0]!.id, input.firstGameStartsAt],
+  );
+}
+
+async function prepareCompletedHeadToHeadRegular(pool: Pool, input: { firstGameStartsAt: string }) {
+  const tournament = await seedAutomaticTournament(pool, {
+    source: 'head_to_head',
+    approved: 4,
+    playoffSize: 4,
+  });
+  await reconcileTournamentLifecycle(pool, { now: CLOSES_AT, tournamentId: tournament.id });
+  await publishRegularSchedule(pool, tournament.id);
+  await pool.query(
+    `update tournament_fixture
+        set status = 'settled', home_score = 1, away_score = 0,
+            winner_participant_id = home_participant_id
+      where tournament_id = $1`,
+    [tournament.id],
+  );
+  await configureAutomaticPlayoffs(pool, {
+    tournamentId: tournament.id,
+    firstGameStartsAt: input.firstGameStartsAt,
+  });
+  return tournament;
 }
 
 async function reconcileAfterLockedParticipantMutation(
@@ -557,5 +609,98 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
       changed: false,
       reason: null,
     });
+  });
+
+  it('does not start playoffs before the first configured game time', async () => {
+    const tournament = await prepareCompletedHeadToHeadRegular(pool, {
+      firstGameStartsAt: '2030-10-27T15:00:00.000Z',
+    });
+
+    const report = await reconcileTournamentLifecycle(pool, {
+      now: new Date('2030-10-27T14:59:59.000Z'),
+      tournamentId: tournament.id,
+    });
+
+    expect(report.items[0]).toMatchObject({ action: 'await_playoff_time', changed: false });
+    expect(
+      (
+        await pool.query<{ status: string }>(`select status from tournament where id = $1`, [
+          tournament.id,
+        ])
+      ).rows[0]?.status,
+    ).toBe('regular');
+  });
+
+  it('starts playoffs once at the configured instant and creates only duel fixtures', async () => {
+    const tournament = await prepareCompletedHeadToHeadRegular(pool, {
+      firstGameStartsAt: '2030-10-27T15:00:00.000Z',
+    });
+
+    const first = await reconcileTournamentLifecycle(pool, {
+      now: new Date('2030-10-27T15:00:00.000Z'),
+      tournamentId: tournament.id,
+    });
+    const second = await reconcileTournamentLifecycle(pool, {
+      now: new Date('2030-10-27T15:01:00.000Z'),
+      tournamentId: tournament.id,
+    });
+    const playoff = await pool.query<{
+      series_count: number;
+      fixture_count: number;
+      non_duel: number;
+    }>(
+      `select
+         (select count(*)::int from tournament_playoff_series where tournament_id = $1) as series_count,
+         (select count(*)::int from tournament_fixture where tournament_id = $1 and series_id is not null) as fixture_count,
+         (select count(*)::int from tournament_fixture where tournament_id = $1
+            and series_id is not null and result_snapshot->>'duelTemplateId' is null) as non_duel`,
+      [tournament.id],
+    );
+
+    expect(first.items[0]).toMatchObject({
+      action: 'start_playoff',
+      after: 'playoff',
+      changed: true,
+    });
+    expect(second.items[0]).toMatchObject({ action: 'playoff_active', changed: false });
+    expect(playoff.rows[0]).toMatchObject({ series_count: 4, non_duel: 0 });
+    expect(playoff.rows[0]!.fixture_count).toBeGreaterThan(0);
+  });
+
+  it('reports incomplete regular results after the playoff deadline and notifies admins once', async () => {
+    const tournament = await seedAutomaticTournament(pool, {
+      source: 'head_to_head',
+      approved: 4,
+      playoffSize: 4,
+      subscribedAdmins: 2,
+    });
+    await reconcileTournamentLifecycle(pool, { now: CLOSES_AT, tournamentId: tournament.id });
+    await publishRegularSchedule(pool, tournament.id);
+    await configureAutomaticPlayoffs(pool, {
+      tournamentId: tournament.id,
+      firstGameStartsAt: '2030-10-27T15:00:00.000Z',
+    });
+
+    const first = await reconcileTournamentLifecycle(pool, {
+      now: new Date('2030-10-27T15:00:00.000Z'),
+      tournamentId: tournament.id,
+    });
+    await reconcileTournamentLifecycle(pool, {
+      now: new Date('2030-10-27T15:01:00.000Z'),
+      tournamentId: tournament.id,
+    });
+    const delivery = await pool.query<{ count: number }>(
+      `select count(*)::int as count from push_delivery_log
+        where event_type = 'tournament.playoff_blocked'
+          and event_key = $1`,
+      [`${tournament.id}:playoff-blocked:${tournament.revision}`],
+    );
+
+    expect(first.items[0]).toMatchObject({
+      action: 'await_regular_results',
+      reason: 'regular_results_incomplete',
+      changed: false,
+    });
+    expect(delivery.rows[0]!.count).toBe(2);
   });
 });

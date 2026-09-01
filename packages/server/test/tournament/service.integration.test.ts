@@ -1579,6 +1579,81 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     expect(deliveries.rows[0]?.count).toBe(String(PLAYER_IDS.length));
   });
 
+  it('returns the existing playoff instead of materializing a second bracket on retry', async () => {
+    await seedUsers(pool, 0);
+    const tournament = await createPublishedTournament(
+      pool,
+      'idempotent-playoff-start',
+      0,
+      playoffTournamentRules(2, {
+        playoffRounds: [
+          {
+            roundNumber: 1,
+            winsRequired: 1,
+            homeSequence: ['H'],
+            duelTemplateId: '00000000-0000-4000-8000-000000000801',
+            gameWindowMs: 3_600_000,
+            gameBreakMs: 0,
+            roundBreakMs: 0,
+          },
+        ],
+      }),
+    );
+    await prepareTournamentForPlayoffs(pool, tournament.id, [4, 3, 2, 1]);
+
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-01T08:00:00.000Z'));
+    await expect(
+      startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-01T08:01:00.000Z')),
+    ).resolves.toMatchObject({ tournamentId: tournament.id, status: 'playoff', seriesCount: 1 });
+
+    const series = await pool.query<{ count: number }>(
+      `select count(*)::int as count from tournament_playoff_series where tournament_id = $1`,
+      [tournament.id],
+    );
+    expect(series.rows[0]!.count).toBe(1);
+  });
+
+  it('rebases a missed playoff game day into the next future local slot', async () => {
+    await seedUsers(pool, 0);
+    const template = await pool.query<{ id: string }>(
+      `select id from amateur_duel_template
+        where deleted_at is null and is_active
+        order by created_at limit 1`,
+    );
+    const tournament = await createPublishedTournament(
+      pool,
+      'rebased-playoff-game-days',
+      0,
+      playoffTournamentRules(2, {
+        playoffRounds: [
+          {
+            roundNumber: 1,
+            winsRequired: 1,
+            homeSequence: ['H'],
+            duelTemplateId: template.rows[0]!.id,
+            readinessMinutes: 5,
+            plannedStartIntervalMinutes: 20,
+            scheduleDays: [
+              { localDate: '2030-09-01', firstWaveLocalTime: '10:00', maxResultGames: 1 },
+            ],
+          },
+        ],
+      }),
+    );
+    await prepareTournamentForPlayoffs(pool, tournament.id, [4, 3, 2, 1]);
+
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-02T08:15:00.000Z'));
+
+    const fixture = await pool.query<{ scheduled_starts_at: Date }>(
+      `select fixture.scheduled_starts_at
+         from tournament_fixture fixture
+         join tournament_playoff_series series on series.id = fixture.series_id
+        where series.tournament_id = $1`,
+      [tournament.id],
+    );
+    expect(fixture.rows[0]!.scheduled_starts_at.toISOString()).toBe('2030-09-03T07:00:00.000Z');
+  });
+
   it('rolls back tournament completion when its audience outbox insert fails', async () => {
     await seedUsers(pool, 0);
     await subscribeTournamentUsers(pool, PLAYER_IDS);

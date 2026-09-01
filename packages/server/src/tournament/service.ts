@@ -24,7 +24,7 @@ import {
   AUTOMATIC_TOURNAMENT_LIFECYCLE_VERSION,
   automaticLifecycleVersion,
 } from './automaticLifecycle.js';
-import type { RoundGameDay } from './playoffScheduling.js';
+import { rebaseRoundGameDaysAtOrAfter, type RoundGameDay } from './playoffScheduling.js';
 import {
   buildPlayoffSeriesPlan,
   buildPlayoffFixtureWindows,
@@ -2067,7 +2067,10 @@ function maxDate(...dates: Date[]): Date {
   return new Date(Math.max(...dates.map((date) => date.getTime())));
 }
 
-function playoffRoundRules(rules: TournamentRulesSnapshot, roundNumber: number): PlayoffRoundRules {
+export function playoffRoundRules(
+  rules: TournamentRulesSnapshot,
+  roundNumber: number,
+): PlayoffRoundRules {
   const configured = Array.isArray(rules.playoffRounds)
     ? rules.playoffRounds.find(
         (value) =>
@@ -2522,7 +2525,22 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
       [tournamentId],
     );
     const tournament = tournamentResult.rows[0];
-    if (!tournament || tournament.status !== 'regular') {
+    if (!tournament) {
+      throw new AppError('conflict', 'regular season is not active', 409);
+    }
+    const existingSeries = await client.query<{ count: number }>(
+      `select count(*)::int as count from tournament_playoff_series where tournament_id = $1`,
+      [tournamentId],
+    );
+    if (Number(existingSeries.rows[0]?.count ?? 0) > 0) {
+      return {
+        tournamentId,
+        status:
+          tournament.status === 'playoff' ? ('playoff' as const) : ('tiebreak_required' as const),
+        seriesCount: Number(existingSeries.rows[0]!.count),
+      };
+    }
+    if (tournament.status !== 'regular') {
       throw new AppError('conflict', 'regular season is not active', 409);
     }
     if (tournament.rules_snapshot.config.regularSource !== 'head_to_head') {
@@ -2650,10 +2668,12 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
         throw new AppError('configuration_error', 'playoff duel template is not configured', 409);
       }
       if (rules.scheduleDays !== null) {
-        const days = resolveRoundGameDays(
+        const rebasedDays = rebaseRoundGameDaysAtOrAfter(
           tournament.rules_snapshot.config.timezone,
           rules.scheduleDays,
+          baseTime,
         );
+        const days = resolveRoundGameDays(tournament.rules_snapshot.config.timezone, rebasedDays);
         const template = await loadDuelTemplateLifecycleSnapshot(client, rules.duelTemplateId);
         const lastGame = scheduledStartForSeriesGame(
           days,
