@@ -1,4 +1,5 @@
 import { apiFetch } from '../api/apiFetch.js';
+import type { TournamentLifecycleDTO } from '../api/tournament.js';
 
 export interface AdminTournament {
   id: string;
@@ -10,6 +11,7 @@ export interface AdminTournament {
   regularSource: 'head_to_head' | 'daily_aggregate' | 'classic';
   revision: number;
   participantCount: number;
+  lifecycle?: TournamentLifecycleDTO;
   pendingApplicationCount?: number;
   registrationOpensAt?: string | null;
   registrationClosesAt?: string | null;

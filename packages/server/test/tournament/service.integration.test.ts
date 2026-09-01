@@ -1235,6 +1235,27 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     expect(audit.rows[0]?.count).toBe('1');
   });
 
+  it('gives administrators the human registration block from the current lifecycle snapshot', async () => {
+    await seedUsers(pool, 100);
+    const tournament = await createPublishedTournament(pool, 'lifecycle-admin-block', 0, {
+      ...rules(0),
+      automaticLifecycleVersion: 1,
+    });
+    await pool.query(`update tournament set status = 'registration_blocked' where id = $1`, [
+      tournament.id,
+    ]);
+
+    const tournaments = await listAdminTournaments(pool);
+
+    expect(tournaments.find((item) => item.id === tournament.id)?.lifecycle).toEqual({
+      action: 'block_registration',
+      dueAt: null,
+      approvedParticipantCount: 0,
+      requiredParticipantCount: 2,
+      reason: 'not_enough_participants',
+    });
+  });
+
   it('reports current capacity numbers when all pending applications do not fit', async () => {
     await seedUsers(pool, 100);
     const approvalRules = rules(0);

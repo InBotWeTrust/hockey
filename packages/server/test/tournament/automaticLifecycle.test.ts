@@ -78,6 +78,21 @@ describe('evaluateTournamentLifecycle', () => {
     });
   });
 
+  it('keeps the registration block visible after reconciliation has changed the status', () => {
+    expect(
+      evaluateTournamentLifecycle(
+        {
+          ...fixtureFor('after registration closes without enough players'),
+          status: 'registration_blocked',
+        },
+        NOW,
+      ),
+    ).toMatchObject({
+      action: 'block_registration',
+      reason: 'not_enough_participants',
+    });
+  });
+
   it('uses date instants at the registration boundaries', () => {
     const opensAt = new Date('2030-01-10T12:00:00.000Z');
     const closesAt = new Date('2030-01-10T12:00:00.000Z');

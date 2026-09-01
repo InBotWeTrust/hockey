@@ -58,6 +58,15 @@ export interface TournamentLifecycleDecision {
     | null;
 }
 
+/** Public lifecycle state for both the player and administrator tournament views. */
+export interface TournamentLifecycleDTO {
+  action: TournamentLifecycleAction;
+  dueAt: string | null;
+  approvedParticipantCount: number;
+  requiredParticipantCount: number;
+  reason: TournamentLifecycleDecision['reason'];
+}
+
 export interface ReconcileTournamentLifecycleOptions {
   now: Date;
   tournamentId?: string;
@@ -170,6 +179,8 @@ export function evaluateTournamentLifecycle(
   snapshot: TournamentLifecycleSnapshot,
   now: Date,
 ): TournamentLifecycleDecision {
+  if (snapshot.status === 'draft') return decision(snapshot, 'unchanged');
+
   if (snapshot.automaticLifecycleVersion !== AUTOMATIC_TOURNAMENT_LIFECYCLE_VERSION) {
     return decision(snapshot, 'legacy_requires_audit', null, 'legacy_requires_audit');
   }
@@ -191,6 +202,10 @@ export function evaluateTournamentLifecycle(
       return decision(snapshot, 'block_registration', null, 'not_enough_participants');
     }
     return decision(snapshot, 'generate_schedule');
+  }
+
+  if (snapshot.status === 'registration_blocked') {
+    return decision(snapshot, 'block_registration', null, 'not_enough_participants');
   }
 
   if (snapshot.status === 'scheduling') {
@@ -216,6 +231,16 @@ export function evaluateTournamentLifecycle(
   if (snapshot.status === 'playoff') return decision(snapshot, 'playoff_active');
 
   return decision(snapshot, 'unchanged');
+}
+
+function lifecycleDto(decision: TournamentLifecycleDecision): TournamentLifecycleDTO {
+  return {
+    action: decision.action,
+    dueAt: decision.dueAt?.toISOString() ?? null,
+    approvedParticipantCount: decision.approvedParticipantCount,
+    requiredParticipantCount: decision.requiredParticipantCount,
+    reason: decision.reason,
+  };
 }
 
 function tournamentLifecycleSnapshot(row: LifecycleRow): TournamentLifecycleSnapshot {
@@ -417,8 +442,8 @@ async function enqueuePlayoffBlockedPushes(
 }
 
 async function loadLifecycleRows(
-  pool: Pool,
-  tournamentId: string | undefined,
+  pool: Pool | PoolClient,
+  tournamentIds: string[] | undefined,
 ): Promise<LifecycleRow[]> {
   const { rows } = await pool.query<LifecycleRow>(
     `select t.id, t.status, t.current_revision, t.registration_opens_at,
@@ -433,11 +458,35 @@ async function loadLifecycleRows(
             false as regular_results_complete
        from tournament t
        join tournament_revision revision on revision.id = t.published_revision_id
-      where ($1::uuid is null or t.id = $1)
+      where ($1::uuid[] is null or t.id = any($1::uuid[]))
       order by t.created_at, t.id`,
-    [tournamentId ?? null],
+    [tournamentIds === undefined ? null : tournamentIds],
   );
   return rows;
+}
+
+/**
+ * Read the same lifecycle snapshot used by reconciliation without mutating the tournament.
+ * Routes reconcile first, then call this helper through the catalogue/detail read service.
+ */
+export async function loadTournamentLifecycleDTOs(
+  pool: Pool | PoolClient,
+  tournamentIds: string[],
+  now: Date,
+): Promise<Map<string, TournamentLifecycleDTO>> {
+  if (Number.isNaN(now.getTime())) throw new Error('now must be a valid date');
+  if (tournamentIds.length === 0) return new Map();
+
+  const rows = await loadLifecycleRows(pool, tournamentIds);
+  const result = new Map<string, TournamentLifecycleDTO>();
+  for (const row of rows) {
+    const snapshot = tournamentLifecycleSnapshot({
+      ...row,
+      regular_results_complete: await regularResultsComplete(pool, row),
+    });
+    result.set(snapshot.tournamentId, lifecycleDto(evaluateTournamentLifecycle(snapshot, now)));
+  }
+  return result;
 }
 
 function plannedAfterStatus(
@@ -475,7 +524,10 @@ export async function reconcileTournamentLifecycle(
   options: ReconcileTournamentLifecycleOptions,
 ): Promise<TournamentLifecycleReconcileReport> {
   if (Number.isNaN(options.now.getTime())) throw new Error('now must be a valid date');
-  const rows = await loadLifecycleRows(pool, options.tournamentId);
+  const rows = await loadLifecycleRows(
+    pool,
+    options.tournamentId === undefined ? undefined : [options.tournamentId],
+  );
   const items: TournamentLifecycleReconcileItem[] = [];
 
   for (const row of rows) {

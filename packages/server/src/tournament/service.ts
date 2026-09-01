@@ -23,6 +23,8 @@ import {
 import {
   AUTOMATIC_TOURNAMENT_LIFECYCLE_VERSION,
   automaticLifecycleVersion,
+  loadTournamentLifecycleDTOs,
+  type TournamentLifecycleDTO,
 } from './automaticLifecycle.js';
 import { rebaseRoundGameDaysAtOrAfter, type RoundGameDay } from './playoffScheduling.js';
 import {
@@ -220,8 +222,19 @@ export function projectedTournamentEnd(
   return cursor;
 }
 
-function mapTournament(row: TournamentRow) {
+function fallbackTournamentLifecycle(row: TournamentRow): TournamentLifecycleDTO {
+  return {
+    action: 'unchanged',
+    dueAt: null,
+    approvedParticipantCount: Number(row.participant_count),
+    requiredParticipantCount: row.rules_snapshot.config.playoffSize,
+    reason: null,
+  };
+}
+
+function mapTournament(row: TournamentRow, lifecycle?: TournamentLifecycleDTO) {
   const projectedEndsAt = projectedTournamentEnd(row.starts_at, row.rules_snapshot);
+  const resolvedLifecycle = lifecycle ?? fallbackTournamentLifecycle(row);
   return {
     id: row.id,
     slug: row.slug,
@@ -245,6 +258,7 @@ function mapTournament(row: TournamentRow) {
     cancelledAt: row.cancelled_at?.toISOString() ?? null,
     participantCount: Number(row.participant_count),
     pendingApplicationCount: Number(row.pending_application_count ?? 0),
+    lifecycle: resolvedLifecycle,
     rules: row.rules_snapshot,
     ...(row.my_participant_state !== undefined
       ? { myParticipantState: row.my_participant_state }
@@ -253,6 +267,26 @@ function mapTournament(row: TournamentRow) {
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
+}
+
+async function lifecycleByTournament(
+  pool: Pool | PoolClient,
+  rows: TournamentRow[],
+): Promise<Map<string, TournamentLifecycleDTO>> {
+  const lifecycle = await loadTournamentLifecycleDTOs(
+    pool,
+    rows.filter((row) => row.published_revision_id !== null).map((row) => row.id),
+    new Date(),
+  );
+  for (const row of rows) {
+    if (!lifecycle.has(row.id)) lifecycle.set(row.id, fallbackTournamentLifecycle(row));
+  }
+  return lifecycle;
+}
+
+async function mapTournamentWithLifecycle(pool: Pool | PoolClient, row: TournamentRow) {
+  const lifecycle = await lifecycleByTournament(pool, [row]);
+  return mapTournament(row, lifecycle.get(row.id));
 }
 
 type PlayoffDuelKind = 'express' | 'express_plus' | 'classic';
@@ -417,7 +451,7 @@ export async function createTournamentDraft(
        values ($1, 1, $2, $3)`,
       [tournament.id, JSON.stringify(input.rules), input.createdBy],
     );
-    return mapTournament(tournament);
+    return mapTournamentWithLifecycle(client, tournament);
   });
 }
 
@@ -436,9 +470,12 @@ export async function listAdminTournaments(pool: Pool) {
   const { rows } = await pool.query<TournamentRow>(
     `${tournamentSelect} order by t.created_at desc`,
   );
-  const formats = await playoffFormatsByTournament(pool, rows);
+  const [formats, lifecycle] = await Promise.all([
+    playoffFormatsByTournament(pool, rows),
+    lifecycleByTournament(pool, rows),
+  ]);
   return rows.map((row) => ({
-    ...mapTournament(row),
+    ...mapTournament(row, lifecycle.get(row.id)),
     playoffFormats: formats.get(row.id) ?? [],
   }));
 }
@@ -523,9 +560,12 @@ export async function listPlayerTournaments(pool: Pool, userId: string) {
         ? null
         : (finalPlaceByParticipant.get(row.my_participant_id) ?? null);
   }
-  const formats = await playoffFormatsByTournament(pool, rows);
+  const [formats, lifecycle] = await Promise.all([
+    playoffFormatsByTournament(pool, rows),
+    lifecycleByTournament(pool, rows),
+  ]);
   return rows.map((row) => ({
-    ...mapTournament(row),
+    ...mapTournament(row, lifecycle.get(row.id)),
     playoffFormats: formats.get(row.id) ?? [],
   }));
 }
@@ -547,8 +587,14 @@ export async function getTournament(pool: Pool, tournamentId: string, userId?: s
   if (userId !== undefined && row.visibility === 'hidden' && row.my_participant_state === null) {
     throw new AppError('not_found', 'tournament not found', 404);
   }
-  const formats = await playoffFormatsByTournament(pool, [row]);
-  return { ...mapTournament(row), playoffFormats: formats.get(row.id) ?? [] };
+  const [formats, lifecycle] = await Promise.all([
+    playoffFormatsByTournament(pool, [row]),
+    lifecycleByTournament(pool, [row]),
+  ]);
+  return {
+    ...mapTournament(row, lifecycle.get(row.id)),
+    playoffFormats: formats.get(row.id) ?? [],
+  };
 }
 
 export async function updateTournamentDraft(
@@ -664,7 +710,7 @@ export async function updateTournamentDraft(
     const updated = await client.query<TournamentRow>(`${tournamentSelect} where t.id = $1`, [
       input.tournamentId,
     ]);
-    return mapTournament(updated.rows[0]!);
+    return mapTournamentWithLifecycle(client, updated.rows[0]!);
   });
 }
 
@@ -767,7 +813,7 @@ export async function updateTournamentRewards(
     const updated = await client.query<TournamentRow>(`${tournamentSelect} where t.id = $1`, [
       input.tournamentId,
     ]);
-    return mapTournament(updated.rows[0]!);
+    return mapTournamentWithLifecycle(client, updated.rows[0]!);
   });
 }
 

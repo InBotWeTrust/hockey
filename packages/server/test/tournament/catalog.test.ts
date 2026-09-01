@@ -79,6 +79,64 @@ describe('player tournament catalog', () => {
     });
   });
 
+  it('exposes the next automatic registration action from the current tournament snapshot', async () => {
+    const pool = {
+      query: async () => ({
+        rows: [
+          {
+            id: 't-lifecycle',
+            slug: 'future-cup',
+            title: 'Будущий кубок',
+            description: '',
+            image_url: null,
+            status: 'registration',
+            regular_source: 'head_to_head',
+            visibility: 'public',
+            current_revision: 1,
+            published_revision_id: 'revision-1',
+            registration_opens_at: new Date('2030-08-01T07:00:00.000Z'),
+            registration_closes_at: new Date('2030-08-31T07:00:00.000Z'),
+            starts_at: new Date('2030-09-01T07:00:00.000Z'),
+            completed_at: null,
+            cancelled_at: null,
+            created_at: new Date('2030-01-01T00:00:00.000Z'),
+            updated_at: new Date('2030-01-01T00:00:00.000Z'),
+            rules_snapshot: {
+              automaticLifecycleVersion: 1,
+              config: {
+                regularSource: 'head_to_head',
+                playoffSize: 4,
+                participantLimit: 4,
+                roundRobinCycles: 1,
+                roundsPerDay: 1,
+                fixtureWindowMs: 3_600_000,
+                roundBreakMs: 0,
+                timezone: 'Europe/Moscow',
+              },
+            },
+            participant_count: 3,
+            pending_application_count: 0,
+            approved_participant_count: 3,
+            schedule_exists: false,
+            regular_results_complete: false,
+            my_participant_state: null,
+            my_participant_id: null,
+          },
+        ],
+      }),
+    } as unknown as Pool;
+
+    const tournaments = await listPlayerTournaments(pool, 'user-1');
+
+    expect(tournaments[0]?.lifecycle).toEqual({
+      action: 'registration_waiting',
+      dueAt: '2030-08-01T07:00:00.000Z',
+      approvedParticipantCount: 3,
+      requiredParticipantCount: 4,
+      reason: null,
+    });
+  });
+
   it('preserves existing artwork when an older PATCH omits imageUrl', async () => {
     let updateSql = '';
     let updateValues: unknown[] = [];

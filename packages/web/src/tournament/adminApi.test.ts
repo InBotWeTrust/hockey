@@ -5,6 +5,7 @@ import {
   approveAdminTournamentParticipant,
   dispatchAdminTournamentCommunication,
   fetchAdminTournamentParticipants,
+  fetchAdminTournaments,
   rejectAdminTournamentApplication,
 } from './adminApi.js';
 
@@ -78,5 +79,41 @@ describe('tournament admin API', () => {
         }),
       }),
     );
+  });
+
+  it('keeps the lifecycle contract returned by the tournament list', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              tournaments: [
+                {
+                  id: 'tournament-1',
+                  lifecycle: {
+                    action: 'playoff_schedule_missing',
+                    dueAt: null,
+                    approvedParticipantCount: 4,
+                    requiredParticipantCount: 4,
+                    reason: 'playoff_schedule_missing',
+                  },
+                },
+              ],
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          ),
+      ),
+    );
+
+    const response = await fetchAdminTournaments();
+
+    expect(response.tournaments[0]?.lifecycle).toEqual({
+      action: 'playoff_schedule_missing',
+      dueAt: null,
+      approvedParticipantCount: 4,
+      requiredParticipantCount: 4,
+      reason: 'playoff_schedule_missing',
+    });
   });
 });
