@@ -73,6 +73,12 @@ function participationLabel(tournament: TournamentSummary): string {
   if (tournament.status === 'registration' && tournament.myParticipantState === 'approved') {
     return 'Заявка принята';
   }
+  if (
+    tournament.myParticipantState === 'approved' &&
+    tournament.lifecycle.action === 'await_manual_regular_start'
+  ) {
+    return 'Заявка подтверждена. Ожидаем начала регулярного сезона.';
+  }
   return participantStateLabel(tournament.myParticipantState);
 }
 
@@ -147,7 +153,32 @@ function registrationWindow(
   label: string;
   actionLabel: string;
   timingLabel: string | null;
+  hideAction: boolean;
 } {
+  if (tournament.lifecycle.action === 'registration_waiting') {
+    return {
+      isOpen: false,
+      label: 'Ждём открытия регистрации',
+      timingLabel:
+        tournament.lifecycle.dueAt === null
+          ? 'Регистрация откроется позже'
+          : `Регистрация откроется ${tournamentLifecycleDateLabel(tournament.lifecycle.dueAt)}`,
+      actionLabel: 'Регистрация ещё не открыта',
+      hideAction: true,
+    };
+  }
+  if (tournament.lifecycle.action === 'registration_open') {
+    return {
+      isOpen: true,
+      label: 'Идёт регистрация',
+      timingLabel:
+        tournament.lifecycle.dueAt === null
+          ? null
+          : `Заявки принимаются до ${tournamentLifecycleDateLabel(tournament.lifecycle.dueAt)}`,
+      actionLabel: '',
+      hideAction: false,
+    };
+  }
   if (tournament.status !== 'registration') {
     const lifecycle: Record<string, { label: string; timingLabel: string | null }> = {
       registration_blocked: {
@@ -165,7 +196,7 @@ function registrationWindow(
       label: statusLabel(tournament.status),
       timingLabel: null,
     };
-    return { isOpen: false, ...copy, actionLabel: '' };
+    return { isOpen: false, ...copy, actionLabel: '', hideAction: true };
   }
   const opensAt =
     tournament.registrationOpensAt === null ? null : new Date(tournament.registrationOpensAt);
@@ -182,6 +213,7 @@ function registrationWindow(
         minute: '2-digit',
       })}`,
       actionLabel: 'Регистрация ещё не открыта',
+      hideAction: false,
     };
   }
   if (closesAt !== null && Number.isFinite(closesAt.getTime()) && now >= closesAt) {
@@ -190,6 +222,7 @@ function registrationWindow(
       label: 'Регистрация завершена',
       timingLabel: 'Готовим расписание',
       actionLabel: 'Регистрация завершена',
+      hideAction: true,
     };
   }
   return {
@@ -205,7 +238,24 @@ function registrationWindow(
           })}`
         : null,
     actionLabel: '',
+    hideAction: false,
   };
+}
+
+function tournamentLifecycleDateLabel(value: string): string {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return 'позже';
+  const parts = new Intl.DateTimeFormat('ru-RU', {
+    timeZone: 'Europe/Moscow',
+    day: 'numeric',
+    month: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((item) => item.type === type)?.value ?? '';
+  return `${part('day')} ${part('month')} в ${part('hour')}:${part('minute')} мск`;
 }
 
 function objectValue(value: unknown): Record<string, unknown> {
@@ -645,6 +695,7 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
               fixtures={schedule.data.fixtures}
               matchdays={schedule.data.matchdays ?? []}
               regularSource={tournament.regularSource}
+              tournamentStatus={tournament.status}
               currentUserId={currentUserId}
               isParticipant={tournament.myParticipantState === 'approved'}
               timezone={String(tournament.rules.config.timezone ?? 'Europe/Moscow')}
@@ -786,6 +837,7 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
         {tab === 'rules' && <TournamentRules tournament={tournament} />}
       </section>
       {tournament.status === 'registration' &&
+        !registrationState.hideAction &&
         (tournament.myParticipantState === null ||
           ['invited', 'applied', 'approved'].includes(tournament.myParticipantState)) && (
           <button

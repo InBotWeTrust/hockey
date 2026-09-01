@@ -5,7 +5,10 @@ import {
   approveAdminTournamentParticipant,
   dispatchAdminTournamentCommunication,
   fetchAdminTournamentParticipants,
+  fetchAdminTournaments,
+  generateAdminTournamentManualSchedule,
   rejectAdminTournamentApplication,
+  startAdminTournamentRegularSeason,
 } from './adminApi.js';
 
 describe('tournament admin API', () => {
@@ -76,6 +79,63 @@ describe('tournament admin API', () => {
           body: 'Регистрация открыта.',
           includeTournamentButton: true,
         }),
+      }),
+    );
+  });
+
+  it('keeps the lifecycle contract returned by the tournament list', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              tournaments: [
+                {
+                  id: 'tournament-1',
+                  lifecycle: {
+                    action: 'playoff_schedule_missing',
+                    dueAt: null,
+                    approvedParticipantCount: 4,
+                    requiredParticipantCount: 4,
+                    reason: 'playoff_schedule_missing',
+                  },
+                },
+              ],
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          ),
+      ),
+    );
+
+    const response = await fetchAdminTournaments();
+
+    expect(response.tournaments[0]?.lifecycle).toEqual({
+      action: 'playoff_schedule_missing',
+      dueAt: null,
+      approvedParticipantCount: 4,
+      requiredParticipantCount: 4,
+      reason: 'playoff_schedule_missing',
+    });
+  });
+
+  it('uses the existing schedule publication endpoint to start the regular season', async () => {
+    await startAdminTournamentRegularSeason('tournament-1');
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/admin/tournaments/tournament-1/schedule/publish',
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
+  it('uses the dedicated endpoint for the exceptional manual head-to-head schedule', async () => {
+    await generateAdminTournamentManualSchedule('tournament-1', 7, 2);
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/admin/tournaments/tournament-1/schedule/generate-manual',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ expectedRevision: 7, playoffSize: 2 }),
       }),
     );
   });

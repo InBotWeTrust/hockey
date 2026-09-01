@@ -605,6 +605,9 @@ const pushEventTypeSchema = z.enum([
   'training.available',
   'duel.challenge_received',
   'duel.result_ready',
+  'tournament.registration_blocked',
+  'tournament.playoff_blocked',
+  'tournament.playoff_schedule_missing',
   'news.posted',
 ]);
 

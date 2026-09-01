@@ -10,6 +10,35 @@ export type TournamentStatus =
   | 'completed'
   | 'cancelled';
 
+export type TournamentLifecycleAction =
+  | 'legacy_requires_audit'
+  | 'registration_waiting'
+  | 'registration_open'
+  | 'generate_schedule'
+  | 'block_registration'
+  | 'await_manual_regular_start'
+  | 'regular_active'
+  | 'await_regular_results'
+  | 'playoff_schedule_missing'
+  | 'await_playoff_time'
+  | 'start_playoff'
+  | 'playoff_active'
+  | 'terminal'
+  | 'unchanged';
+
+export interface TournamentLifecycleDTO {
+  action: TournamentLifecycleAction;
+  dueAt: string | null;
+  approvedParticipantCount: number;
+  requiredParticipantCount: number;
+  reason:
+    | 'not_enough_participants'
+    | 'regular_results_incomplete'
+    | 'playoff_schedule_missing'
+    | 'legacy_requires_audit'
+    | null;
+}
+
 export interface TournamentSummary {
   id: string;
   slug: string;
@@ -21,6 +50,7 @@ export interface TournamentSummary {
   visibility: 'public' | 'hidden';
   revision: number;
   participantCount: number;
+  lifecycle: TournamentLifecycleDTO;
   myParticipantState: string | null;
   myFinalPlace?: number | null;
   registrationOpensAt: string | null;
@@ -77,6 +107,28 @@ export interface TournamentMatchday {
     accuracy: number;
     completed: boolean;
   } | null;
+}
+
+export type TournamentGameContextAction =
+  | 'play_daily'
+  | 'play_classic'
+  | 'round_completed'
+  | 'not_started'
+  | 'waiting_playoff'
+  | 'playoff_active'
+  | 'tournament_completed'
+  | 'not_participant';
+
+export interface TournamentGameContext {
+  action: TournamentGameContextAction;
+  tournamentDay: number | null;
+  result: {
+    goals: number;
+    shots: number;
+    accuracy: number;
+    completed: boolean;
+  } | null;
+  message: string | null;
 }
 
 export interface TournamentBracketSource {
@@ -232,6 +284,10 @@ export function fetchTournamentSchedule(tournamentId: string) {
   return apiFetch<{ fixtures: TournamentFixture[]; matchdays?: TournamentMatchday[] }>(
     `/tournaments/${tournamentId}/schedule`,
   );
+}
+
+export function fetchTournamentGameContext(tournamentId: string) {
+  return apiFetch<TournamentGameContext>(`/tournaments/${tournamentId}/game-context`);
 }
 
 export function fetchTournamentParticipants(tournamentId: string) {

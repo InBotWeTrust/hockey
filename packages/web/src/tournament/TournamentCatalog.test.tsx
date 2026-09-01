@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { MemoryRouter, useLocation } from 'react-router-dom';
@@ -9,6 +9,13 @@ import * as api from '../api/tournament.js';
 import { TournamentCatalog } from './TournamentCatalog.js';
 
 const designSystemCss = readFileSync(resolve(process.cwd(), 'src/app/design-system.css'), 'utf8');
+const TEST_LIFECYCLE: api.TournamentLifecycleDTO = {
+  action: 'unchanged',
+  dueAt: null,
+  approvedParticipantCount: 0,
+  requiredParticipantCount: 2,
+  reason: null,
+};
 
 describe('TournamentCatalog', () => {
   beforeEach(() => {
@@ -44,6 +51,7 @@ describe('TournamentCatalog', () => {
           visibility: 'public',
           revision: 1,
           participantCount: 12,
+          lifecycle: TEST_LIFECYCLE,
           myParticipantState: null,
           registrationOpensAt: null,
           registrationClosesAt: null,
@@ -78,6 +86,7 @@ describe('TournamentCatalog', () => {
           visibility: 'public',
           revision: 1,
           participantCount: 12,
+          lifecycle: TEST_LIFECYCLE,
           myParticipantState: null,
           registrationOpensAt: '2030-08-27T13:35:00.000Z',
           registrationClosesAt: '2030-08-28T14:35:00.000Z',
@@ -114,6 +123,46 @@ describe('TournamentCatalog', () => {
     expect(screen.queryByText('Конец', { exact: true })).not.toBeInTheDocument();
   });
 
+  it('shows the registration deadline from the lifecycle response while applications are open', async () => {
+    vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
+      tournaments: [
+        {
+          id: 't-open',
+          slug: 'open-cup',
+          title: 'Открытый кубок',
+          description: '',
+          status: 'registration',
+          regularSource: 'head_to_head',
+          visibility: 'public',
+          revision: 1,
+          participantCount: 3,
+          lifecycle: {
+            ...TEST_LIFECYCLE,
+            action: 'registration_open',
+            dueAt: '2030-09-01T07:00:00.000Z',
+          },
+          myParticipantState: null,
+          registrationOpensAt: null,
+          registrationClosesAt: null,
+          startsAt: null,
+          rules: { config: { participantLimit: 8, entryFeeCoins: 0, playoffSize: 4 } },
+        },
+      ],
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TournamentCatalog />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByText('Заявки принимаются до 1 сентября в 10:00 мск'),
+    ).toBeInTheDocument();
+  });
+
   it('keeps tournament rule copy visually lighter than its headings', () => {
     expect(designSystemCss).toContain(
       '.tournament-rules p {\n  color: #26384d;\n  font-size: 13px;\n  font-weight: 440;',
@@ -134,6 +183,7 @@ describe('TournamentCatalog', () => {
           visibility: 'public',
           revision: 1,
           participantCount: 8,
+          lifecycle: TEST_LIFECYCLE,
           myParticipantState: 'approved',
           myFinalPlace: null,
           registrationOpensAt: null,
@@ -152,6 +202,7 @@ describe('TournamentCatalog', () => {
           visibility: 'public',
           revision: 1,
           participantCount: 3,
+          lifecycle: TEST_LIFECYCLE,
           myParticipantState: 'applied',
           myFinalPlace: null,
           registrationOpensAt: null,
@@ -170,6 +221,7 @@ describe('TournamentCatalog', () => {
           visibility: 'public',
           revision: 1,
           participantCount: 8,
+          lifecycle: TEST_LIFECYCLE,
           myParticipantState: 'approved',
           myFinalPlace: 2,
           registrationOpensAt: null,
@@ -228,6 +280,7 @@ describe('TournamentCatalog', () => {
           visibility: 'public',
           revision: 1,
           participantCount: 2,
+          lifecycle: TEST_LIFECYCLE,
           myParticipantState: 'approved',
           myFinalPlace: null,
           registrationOpensAt: null,
@@ -291,6 +344,7 @@ describe('TournamentCatalog', () => {
           visibility: 'public',
           revision: 1,
           participantCount: 1,
+          lifecycle: TEST_LIFECYCLE,
           myParticipantState: 'approved',
           registrationOpensAt: null,
           registrationClosesAt: null,
@@ -332,6 +386,7 @@ describe('TournamentCatalog', () => {
           visibility: 'public',
           revision: 1,
           participantCount: 2,
+          lifecycle: TEST_LIFECYCLE,
           myParticipantState: 'approved',
           registrationOpensAt: null,
           registrationClosesAt: null,
@@ -440,6 +495,7 @@ describe('TournamentCatalog', () => {
           visibility: 'public',
           revision: 1,
           participantCount: 8,
+          lifecycle: TEST_LIFECYCLE,
           myParticipantState: 'approved',
           registrationOpensAt: null,
           registrationClosesAt: null,
@@ -503,6 +559,7 @@ describe('TournamentCatalog', () => {
           visibility: 'public',
           revision: 1,
           participantCount: 2,
+          lifecycle: TEST_LIFECYCLE,
           myParticipantState: 'approved',
           registrationOpensAt: null,
           registrationClosesAt: null,
@@ -570,6 +627,7 @@ describe('TournamentCatalog', () => {
           visibility: 'public',
           revision: 2,
           participantCount: 4,
+          lifecycle: TEST_LIFECYCLE,
           myParticipantState: 'approved',
           registrationOpensAt: null,
           registrationClosesAt: null,
@@ -773,6 +831,7 @@ describe('TournamentCatalog', () => {
           visibility: 'public',
           revision: 2,
           participantCount: 2,
+          lifecycle: TEST_LIFECYCLE,
           myParticipantState: 'approved',
           registrationOpensAt: null,
           registrationClosesAt: null,
@@ -895,6 +954,7 @@ describe('TournamentCatalog', () => {
           visibility: 'public',
           revision: 1,
           participantCount: 2,
+          lifecycle: TEST_LIFECYCLE,
           myParticipantState: 'approved',
           registrationOpensAt: null,
           registrationClosesAt: null,
@@ -954,6 +1014,7 @@ describe('TournamentCatalog', () => {
           visibility: 'public',
           revision: 1,
           participantCount: 2,
+          lifecycle: TEST_LIFECYCLE,
           myParticipantState: 'approved',
           registrationOpensAt: null,
           registrationClosesAt: null,
@@ -1008,6 +1069,7 @@ describe('TournamentCatalog', () => {
           visibility: 'public',
           revision: 1,
           participantCount: 0,
+          lifecycle: TEST_LIFECYCLE,
           myParticipantState: null,
           registrationOpensAt: '2099-09-01T07:00:00.000Z',
           registrationClosesAt: '2099-09-10T07:00:00.000Z',
@@ -1035,6 +1097,83 @@ describe('TournamentCatalog', () => {
     expect(apply).not.toHaveBeenCalled();
   });
 
+  it('uses lifecycle availability for registration and the approved-player waiting state', async () => {
+    vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
+      tournaments: [
+        {
+          id: 'waiting-registration',
+          slug: 'waiting-registration',
+          title: 'Регистрация позже',
+          description: '',
+          status: 'registration',
+          regularSource: 'daily_aggregate',
+          visibility: 'public',
+          revision: 1,
+          participantCount: 0,
+          lifecycle: {
+            action: 'registration_waiting',
+            dueAt: '2030-09-01T07:00:00.000Z',
+            approvedParticipantCount: 0,
+            requiredParticipantCount: 2,
+            reason: null,
+          },
+          myParticipantState: null,
+          registrationOpensAt: null,
+          registrationClosesAt: null,
+          startsAt: null,
+          rules: { config: { participantLimit: 8, entryFeeCoins: 0, playoffSize: 2 } },
+        },
+        {
+          id: 'waiting-regular',
+          slug: 'waiting-regular',
+          title: 'Ждём старт сезона',
+          description: '',
+          status: 'scheduling',
+          regularSource: 'classic',
+          visibility: 'public',
+          revision: 1,
+          participantCount: 4,
+          lifecycle: {
+            action: 'await_manual_regular_start',
+            dueAt: null,
+            approvedParticipantCount: 4,
+            requiredParticipantCount: 2,
+            reason: null,
+          },
+          myParticipantState: 'approved',
+          registrationOpensAt: null,
+          registrationClosesAt: null,
+          startsAt: null,
+          rules: { config: { participantLimit: 8, entryFeeCoins: 0, playoffSize: 2 } },
+        },
+      ],
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TournamentCatalog />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Регистрация позже' }));
+    expect(screen.getByText('Регистрация откроется 1 сентября в 10:00 мск')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Подать заявку' })).not.toBeInTheDocument();
+
+    cleanup();
+    render(
+      <MemoryRouter initialEntries={['/?tournament=waiting-regular']}>
+        <QueryClientProvider client={client}>
+          <TournamentCatalog />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+    expect(
+      screen.getByText('Заявка подтверждена. Ожидаем начала регулярного сезона.'),
+    ).toBeInTheDocument();
+  });
+
   it('shows daily aggregate matchdays even though the format has no fixtures', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(new Date('2030-09-02T12:00:00.000Z').getTime());
     vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
@@ -1049,6 +1188,7 @@ describe('TournamentCatalog', () => {
           visibility: 'public',
           revision: 2,
           participantCount: 6,
+          lifecycle: TEST_LIFECYCLE,
           myParticipantState: 'approved',
           registrationOpensAt: '2030-08-01T07:00:00.000Z',
           registrationClosesAt: '2030-08-31T07:00:00.000Z',
@@ -1140,6 +1280,7 @@ describe('TournamentCatalog', () => {
           visibility: 'public',
           revision: 4,
           participantCount: 4,
+          lifecycle: TEST_LIFECYCLE,
           myParticipantState: null,
           registrationOpensAt: null,
           registrationClosesAt: null,
@@ -1230,6 +1371,7 @@ describe('TournamentCatalog', () => {
           visibility: 'public',
           revision: 1,
           participantCount: 1,
+          lifecycle: TEST_LIFECYCLE,
           myParticipantState: 'invited',
           registrationOpensAt: null,
           registrationClosesAt: null,
@@ -1273,6 +1415,7 @@ describe('TournamentCatalog', () => {
           visibility: 'public',
           revision: 1,
           participantCount: 2,
+          lifecycle: TEST_LIFECYCLE,
           myParticipantState: 'approved',
           registrationOpensAt: null,
           registrationClosesAt: null,
@@ -1353,6 +1496,7 @@ describe('TournamentCatalog', () => {
           visibility: 'public',
           revision: 1,
           participantCount: 2,
+          lifecycle: TEST_LIFECYCLE,
           myParticipantState: 'approved',
           registrationOpensAt: null,
           registrationClosesAt: null,
@@ -1437,6 +1581,7 @@ describe('TournamentCatalog', () => {
           visibility: 'public',
           revision: 1,
           participantCount: 2,
+          lifecycle: TEST_LIFECYCLE,
           myParticipantState: 'approved',
           registrationOpensAt: null,
           registrationClosesAt: null,
@@ -1499,6 +1644,7 @@ describe('TournamentCatalog', () => {
           visibility: 'public',
           revision: 1,
           participantCount: 2,
+          lifecycle: TEST_LIFECYCLE,
           myParticipantState: 'approved',
           registrationOpensAt: null,
           registrationClosesAt: null,

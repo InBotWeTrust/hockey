@@ -8,6 +8,7 @@ import {
   fetchAdminTournamentDuelTemplates,
   fetchAdminTournamentUsers,
   fetchAdminTournaments,
+  publishAdminTournament,
   uploadAdminTournamentArtwork,
   updateAdminTournament,
   type AdminTournament,
@@ -632,10 +633,7 @@ function draftFromTournament(tournament: AdminTournament): TournamentDraft {
           (maximum, day) => Math.max(maximum, numberValue(day.maxResultGames, 0)),
           draftNumber(fallback.maxGamesPerDay),
         ),
-        readinessMinutes: numberValue(
-          configured.readinessMinutes,
-          fallback.readinessMinutes,
-        ),
+        readinessMinutes: numberValue(configured.readinessMinutes, fallback.readinessMinutes),
         plannedStartIntervalMinutes: numberValue(
           configured.plannedStartIntervalMinutes,
           fallback.plannedStartIntervalMinutes,
@@ -937,7 +935,12 @@ function playoffScheduleDays(
   const start = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})$/.exec(round.firstGameNotBefore);
   if (start === null) throw new Error(`${prefix}: укажите дату и время первой игры`);
   const totalGames = winsRequired * 2 - 1;
-  const daysPerRound = requiredInteger(round.daysPerRound, `${prefix}: дней на раунд`, 1, totalGames);
+  const daysPerRound = requiredInteger(
+    round.daysPerRound,
+    `${prefix}: дней на раунд`,
+    1,
+    totalGames,
+  );
   const maxGamesPerDay = requiredInteger(
     round.maxGamesPerDay,
     `${prefix}: максимум игр в день`,
@@ -1452,6 +1455,7 @@ export function TournamentAdmin(): JSX.Element {
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [draft, setDraft] = useState(freshDraft);
   const [editingTournament, setEditingTournament] = useState<AdminTournament | null>(null);
+  const [playoffScheduleOnly, setPlayoffScheduleOnly] = useState(false);
   const [selectedTournament, setSelectedTournament] = useState<AdminTournament | null>(null);
   const lastSavedSnapshot = useRef('');
   const saveQueue =
@@ -1563,6 +1567,7 @@ export function TournamentAdmin(): JSX.Element {
     setWizardOpen(false);
     setConfirmClose(false);
     setFinishing(false);
+    setPlayoffScheduleOnly(false);
     if (tournament !== null) setSelectedTournament(tournament);
     setEditingTournament(null);
   };
@@ -1596,23 +1601,75 @@ export function TournamentAdmin(): JSX.Element {
     setValidationNotice(null);
     setFinishing(true);
     if (saveDebounce.current !== undefined) window.clearTimeout(saveDebounce.current);
+    let publishingDraft = false;
     try {
       if (editingTournament === null) {
         if (createInFlight.current) return;
         createInFlight.current = true;
         const result = await create.mutateAsync({ body, snapshot: JSON.stringify(body) });
-        setSaveNotice('Изменения сохранены.');
-        closeWizard(result.tournament);
+        publishingDraft = true;
+        const published = await publishAdminTournament(
+          result.tournament.id,
+          result.tournament.revision,
+        );
+        await client.invalidateQueries({ queryKey: ['admin', 'tournaments'] });
+        const refreshed = await client.fetchQuery({
+          queryKey: ['admin', 'tournaments'],
+          queryFn: fetchAdminTournaments,
+        });
+        setSaveNotice('Турнир опубликован.');
+        closeWizard(
+          refreshed.tournaments.find((item) => item.id === result.tournament.id) ?? {
+            ...result.tournament,
+            status: published.status,
+            revision: published.revision,
+          },
+        );
         return;
       }
       saveQueue.current?.enqueue(body, JSON.stringify(body));
       if (saveQueue.current?.status === 'error') saveQueue.current.retry();
       const result = await saveQueue.current?.flush();
+      const savedTournament = result?.tournament ?? editingTournament;
+      if (savedTournament.status === 'draft') {
+        publishingDraft = true;
+        const published = await publishAdminTournament(
+          savedTournament.id,
+          savedTournament.revision,
+        );
+        await client.invalidateQueries({ queryKey: ['admin', 'tournaments'] });
+        const refreshed = await client.fetchQuery({
+          queryKey: ['admin', 'tournaments'],
+          queryFn: fetchAdminTournaments,
+        });
+        setSaveNotice('Турнир опубликован.');
+        closeWizard(
+          refreshed.tournaments.find((item) => item.id === savedTournament.id) ?? {
+            ...savedTournament,
+            status: published.status,
+            revision: published.revision,
+          },
+        );
+        return;
+      }
       setSaveNotice('Изменения сохранены.');
-      closeWizard(result?.tournament ?? editingTournament);
+      closeWizard(savedTournament);
     } catch {
+      if (publishingDraft) {
+        setValidationNotice('Не удалось опубликовать турнир.');
+      }
       setFinishing(false);
     }
+  };
+
+  const refreshSelectedTournament = async (tournamentId: string) => {
+    await client.invalidateQueries({ queryKey: ['admin', 'tournaments'] });
+    const refreshed = await client.fetchQuery({
+      queryKey: ['admin', 'tournaments'],
+      queryFn: fetchAdminTournaments,
+    });
+    const current = refreshed.tournaments.find((item) => item.id === tournamentId);
+    if (current !== undefined) setSelectedTournament(current);
   };
 
   if (selectedTournament !== null) {
@@ -1624,7 +1681,7 @@ export function TournamentAdmin(): JSX.Element {
           setSelectedTournament(null);
         }}
         notice={saveNotice}
-        onEdit={(initialStage = 0) => {
+        onEdit={(initialStage = 0, scheduleOnly = false) => {
           setSaveNotice(null);
           artworkUploadGeneration.current += 1;
           artworkUpload.reset();
@@ -1634,14 +1691,16 @@ export function TournamentAdmin(): JSX.Element {
           const snapshot = JSON.stringify(serializeDraft(nextDraft));
           lastSavedSnapshot.current = snapshot;
           initializeSaveQueue(selectedTournament, snapshot);
-          setStage(initialStage);
-          setMaxStage(7);
+          setStage(scheduleOnly ? 3 : initialStage);
+          setMaxStage(scheduleOnly ? 3 : 7);
+          setPlayoffScheduleOnly(scheduleOnly);
           setSaveState('saved');
           setValidationNotice(null);
           setWizardOpen(true);
           setSelectedTournament(null);
         }}
         onRemoved={() => setSelectedTournament(null)}
+        onTournamentUpdated={() => refreshSelectedTournament(selectedTournament.id)}
       />
     );
   }
@@ -1677,6 +1736,7 @@ export function TournamentAdmin(): JSX.Element {
             setSaveState('idle');
             setValidationNotice(null);
             setFinishing(false);
+            setPlayoffScheduleOnly(false);
             setWizardOpen(true);
           }}
         >
@@ -1721,7 +1781,11 @@ export function TournamentAdmin(): JSX.Element {
             >
               <div className="modal-header tournament-wizard__header">
                 <h2 className="modal-title" style={{ margin: 0 }}>
-                  {editingTournament === null ? 'Новый турнир' : 'Редактирование турнира'}
+                  {playoffScheduleOnly
+                    ? 'Расписание плей-офф'
+                    : editingTournament === null
+                      ? 'Новый турнир'
+                      : 'Редактирование турнира'}
                 </h2>
                 <button
                   type="button"
@@ -1732,19 +1796,21 @@ export function TournamentAdmin(): JSX.Element {
                   <X size={16} />
                 </button>
               </div>
-              <div className="tournament-wizard__steps" aria-label="Этапы создания турнира">
-                {stages.map((label, index) => (
-                  <button
-                    key={label}
-                    type="button"
-                    className={stage === index ? 'chip chip--active' : 'chip'}
-                    disabled={index > maxStage}
-                    onClick={() => setStage(index)}
-                  >
-                    {index + 1}. {label}
-                  </button>
-                ))}
-              </div>
+              {!playoffScheduleOnly && (
+                <div className="tournament-wizard__steps" aria-label="Этапы создания турнира">
+                  {stages.map((label, index) => (
+                    <button
+                      key={label}
+                      type="button"
+                      className={stage === index ? 'chip chip--active' : 'chip'}
+                      disabled={index > maxStage}
+                      onClick={() => setStage(index)}
+                    >
+                      {index + 1}. {label}
+                    </button>
+                  ))}
+                </div>
+              )}
               <div className="modal-copy tournament-wizard__body">
                 {stage === 0 && (
                   <div className="tournament-admin-grid tournament-admin-grid--single">
@@ -2330,78 +2396,87 @@ export function TournamentAdmin(): JSX.Element {
                 )}
                 {stage === 3 && (
                   <div className="tournament-admin-grid tournament-admin-grid--single">
-                    <TournamentAdminField
-                      label="Размер плей-офф"
-                      help="Сколько лучших игроков попадут в фиксированную сетку: 2, 4, 8 или 16."
-                    >
-                      <GlassSelect
-                        ariaLabel="Размер плей-офф"
-                        value={String(draft.playoffSize)}
-                        options={[2, 4, 8, 16].map((size) => ({
-                          value: String(size),
-                          label: `${size} участников`,
-                        }))}
-                        onChange={(value) =>
-                          setDraft({ ...draft, playoffSize: Number(value) as PlayoffSize })
-                        }
-                      />
-                    </TournamentAdminField>
+                    {!playoffScheduleOnly && (
+                      <TournamentAdminField
+                        label="Размер плей-офф"
+                        help="Сколько лучших игроков попадут в фиксированную сетку: 2, 4, 8 или 16."
+                      >
+                        <GlassSelect
+                          ariaLabel="Размер плей-офф"
+                          value={String(draft.playoffSize)}
+                          options={[2, 4, 8, 16].map((size) => ({
+                            value: String(size),
+                            label: `${size} участников`,
+                          }))}
+                          onChange={(value) =>
+                            setDraft({ ...draft, playoffSize: Number(value) as PlayoffSize })
+                          }
+                        />
+                      </TournamentAdminField>
+                    )}
                     {draft.playoffRounds
                       .slice(0, playoffRoundCount(draft.playoffSize))
                       .map((round, index) => (
                         <fieldset key={index} className="tournament-playoff-round">
                           <legend>Раунд {index + 1}</legend>
                           <TournamentAdminGroupHelp>
-                            Настройте серию, дни и точное время игр. Ничьей в плей-офф нет: при
-                            полном равенстве игра проводится заново.
+                            {playoffScheduleOnly
+                              ? 'Укажите только время и распределение уже настроенных игр по раунду.'
+                              : 'Настройте серию, дни и точное время игр. Ничьей в плей-офф нет: при полном равенстве игра проводится заново.'}
                           </TournamentAdminGroupHelp>
-                          <TournamentAdminField
-                            label="Побед для серии"
-                            help="Серия завершится, когда один игрок первым наберёт это число побед."
-                          >
-                            <input
-                              aria-label={`Раунд ${index + 1}: побед для серии`}
-                              type="number"
-                              min="1"
-                              max="20"
-                              value={round.winsRequired}
-                              onChange={(event) =>
-                                updatePlayoffRound(index, {
-                                  winsRequired: editableNumber(event.target.value),
-                                })
-                              }
-                            />
-                          </TournamentAdminField>
-                          <TournamentAdminField
-                            label="Шаблон дуэли"
-                            help="Периоды и броски для каждой игры этого раунда."
-                          >
-                            <GlassSelect
-                              ariaLabel={`Раунд ${index + 1}: шаблон дуэли`}
-                              value={round.duelTemplateId}
-                              options={[
-                                { value: '', label: 'Выберите шаблон' },
-                                ...(duelTemplates.data?.templates ?? [])
-                                  .filter(
-                                    (template) =>
-                                      template.isActive || template.id === round.duelTemplateId,
-                                  )
-                                  .map((template) => ({
-                                    value: template.id,
-                                    label: `${template.title}${!template.isActive ? ' · архивный' : ''}`,
-                                  })),
-                              ]}
-                              onChange={(duelTemplateId) =>
-                                updatePlayoffRound(index, { duelTemplateId })
-                              }
-                            />
-                          </TournamentAdminField>
-                          <HomeSequenceEditor
-                            roundNumber={index + 1}
-                            winsRequired={round.winsRequired === '' ? 1 : round.winsRequired}
-                            value={round.homeSequence}
-                            onChange={(homeSequence) => updatePlayoffRound(index, { homeSequence })}
-                          />
+                          {!playoffScheduleOnly && (
+                            <>
+                              <TournamentAdminField
+                                label="Побед для серии"
+                                help="Серия завершится, когда один игрок первым наберёт это число побед."
+                              >
+                                <input
+                                  aria-label={`Раунд ${index + 1}: побед для серии`}
+                                  type="number"
+                                  min="1"
+                                  max="20"
+                                  value={round.winsRequired}
+                                  onChange={(event) =>
+                                    updatePlayoffRound(index, {
+                                      winsRequired: editableNumber(event.target.value),
+                                    })
+                                  }
+                                />
+                              </TournamentAdminField>
+                              <TournamentAdminField
+                                label="Шаблон дуэли"
+                                help="Периоды и броски для каждой игры этого раунда."
+                              >
+                                <GlassSelect
+                                  ariaLabel={`Раунд ${index + 1}: шаблон дуэли`}
+                                  value={round.duelTemplateId}
+                                  options={[
+                                    { value: '', label: 'Выберите шаблон' },
+                                    ...(duelTemplates.data?.templates ?? [])
+                                      .filter(
+                                        (template) =>
+                                          template.isActive || template.id === round.duelTemplateId,
+                                      )
+                                      .map((template) => ({
+                                        value: template.id,
+                                        label: `${template.title}${!template.isActive ? ' · архивный' : ''}`,
+                                      })),
+                                  ]}
+                                  onChange={(duelTemplateId) =>
+                                    updatePlayoffRound(index, { duelTemplateId })
+                                  }
+                                />
+                              </TournamentAdminField>
+                              <HomeSequenceEditor
+                                roundNumber={index + 1}
+                                winsRequired={round.winsRequired === '' ? 1 : round.winsRequired}
+                                value={round.homeSequence}
+                                onChange={(homeSequence) =>
+                                  updatePlayoffRound(index, { homeSequence })
+                                }
+                              />
+                            </>
+                          )}
                           <TournamentAdminField
                             label="Начало первой игры"
                             help="Дата и время первой игры раунда. Остальные игры распределятся по выбранным дням."
@@ -2419,32 +2494,72 @@ export function TournamentAdmin(): JSX.Element {
                           </TournamentAdminField>
                           <div className="tournament-admin-grid">
                             {(
-                              [
+                              (playoffScheduleOnly
+                                ? [
+                                    [
+                                      'daysPerRound',
+                                      'Дней на раунд',
+                                      1,
+                                      'Сколько календарных дней отводится на всю серию.',
+                                    ],
+                                    [
+                                      'maxGamesPerDay',
+                                      'Максимум игр в день',
+                                      1,
+                                      'Ограничение на один день. В последний день система оставит только нужное число игр.',
+                                    ],
+                                    [
+                                      'roundBreakMinutes',
+                                      'Пауза после раунда, минуты',
+                                      0,
+                                      'Сколько времени будет между завершением раунда и следующим раундом.',
+                                    ],
+                                  ]
+                                : [
+                                    [
+                                      'daysPerRound',
+                                      'Дней на раунд',
+                                      1,
+                                      'Сколько календарных дней отводится на всю серию.',
+                                    ],
+                                    [
+                                      'maxGamesPerDay',
+                                      'Максимум игр в день',
+                                      1,
+                                      'Ограничение на один день. В последний день система оставит только нужное число игр.',
+                                    ],
+                                    [
+                                      'readinessMinutes',
+                                      'Минут на готовность',
+                                      1,
+                                      'Столько времени есть у обоих игроков, чтобы подтвердить готовность.',
+                                    ],
+                                    [
+                                      'plannedStartIntervalMinutes',
+                                      'Интервал стартов, минуты',
+                                      1,
+                                      'Через сколько минут по расписанию начинается следующая игра серии.',
+                                    ],
+                                    [
+                                      'roundBreakMinutes',
+                                      'Пауза после раунда, минуты',
+                                      0,
+                                      'Сколько времени будет между завершением раунда и следующим раундом.',
+                                    ],
+                                  ]) as Array<
                                 [
-                                  'daysPerRound',
-                                  'Дней на раунд',
-                                  1,
-                                  'Сколько календарных дней отводится на всю серию.',
-                                ],
-                                [
-                                  'maxGamesPerDay',
-                                  'Максимум игр в день',
-                                  1,
-                                  'Ограничение на один день. В последний день система оставит только нужное число игр.',
-                                ],
-                                [
-                                  'readinessMinutes',
-                                  'Минут на готовность',
-                                  1,
-                                  'Столько времени есть у обоих игроков, чтобы подтвердить готовность.',
-                                ],
-                                [
-                                  'plannedStartIntervalMinutes',
-                                  'Интервал стартов, минуты',
-                                  1,
-                                  'Через сколько минут по расписанию начинается следующая игра серии.',
-                                ],
-                              ] as const
+                                  (
+                                    | 'daysPerRound'
+                                    | 'maxGamesPerDay'
+                                    | 'readinessMinutes'
+                                    | 'plannedStartIntervalMinutes'
+                                    | 'roundBreakMinutes'
+                                  ),
+                                  string,
+                                  number,
+                                  string,
+                                ]
+                              >
                             ).map(([field, label, min, help]) => (
                               <TournamentAdminField key={field} label={label} help={help}>
                                 <input
@@ -2614,15 +2729,26 @@ export function TournamentAdmin(): JSX.Element {
                     </span>
                     <span>
                       Изменения сохраняются автоматически. Кнопка ниже сохранит последние правки и
-                      закроет форму. Запуск турнира выполняется отдельно.
+                      опубликует турнир. Регистрация откроется и закроется по указанным датам, а
+                      регулярный сезон вы начнёте вручную, когда всё будет готово.
                     </span>
                   </div>
                 )}
               </div>
               <div className="modal-actions">
-                <div className="tournament-wizard__save-state" role="status" aria-live="polite">
+                <div
+                  className="tournament-wizard__save-state"
+                  role={validationNotice === null ? 'status' : 'alert'}
+                  aria-live={validationNotice === null ? 'polite' : 'assertive'}
+                >
                   {validationNotice !== null && <span>{validationNotice}</span>}
-                  {validationNotice === null && finishing && 'Сохраняем изменения и закрываем…'}
+                  {validationNotice === null &&
+                    finishing &&
+                    (playoffScheduleOnly
+                      ? 'Сохраняем расписание…'
+                      : editingTournament?.status === 'draft'
+                        ? 'Публикуем…'
+                        : 'Сохраняем изменения и закрываем…')}
                   {validationNotice === null &&
                     !finishing &&
                     saveState === 'saving' &&
@@ -2648,7 +2774,7 @@ export function TournamentAdmin(): JSX.Element {
                     </>
                   )}
                 </div>
-                {stage > 0 && (
+                {!playoffScheduleOnly && stage > 0 && (
                   <button
                     type="button"
                     className="btn btn--ghost"
@@ -2657,7 +2783,7 @@ export function TournamentAdmin(): JSX.Element {
                     Назад
                   </button>
                 )}
-                {stage < stages.length - 1 ? (
+                {!playoffScheduleOnly && stage < stages.length - 1 ? (
                   <button
                     type="button"
                     className="modal-primary btn btn--cta"
@@ -2709,7 +2835,17 @@ export function TournamentAdmin(): JSX.Element {
                     }
                     onClick={() => void finishWizard()}
                   >
-                    {finishing ? 'Сохраняем и закрываем…' : 'Сохранить и закрыть'}
+                    {finishing
+                      ? playoffScheduleOnly
+                        ? 'Сохраняем расписание…'
+                        : editingTournament?.status === 'draft'
+                          ? 'Публикуем…'
+                          : 'Сохраняем и закрываем…'
+                      : playoffScheduleOnly
+                        ? 'Сохранить расписание'
+                        : editingTournament?.status === 'draft'
+                          ? 'Сохранить и опубликовать'
+                          : 'Сохранить и закрыть'}
                   </button>
                 )}
               </div>

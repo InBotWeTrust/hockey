@@ -7,8 +7,16 @@ import { ApiError } from '../api/apiFetch.js';
 import * as api from './adminApi.js';
 import { TournamentAdmin } from './TournamentAdmin.js';
 import { TournamentOperations } from './TournamentOperations.js';
+import type { TournamentLifecycleDTO } from '../api/tournament.js';
 
 const designSystemCss = readFileSync(resolve(process.cwd(), 'src/app/design-system.css'), 'utf8');
+const TEST_LIFECYCLE: TournamentLifecycleDTO = {
+  action: 'unchanged',
+  dueAt: null,
+  approvedParticipantCount: 0,
+  requiredParticipantCount: 2,
+  reason: null,
+};
 
 async function chooseGlassOption(label: string, option: string | RegExp): Promise<void> {
   fireEvent.click(screen.getByRole('combobox', { name: label }));
@@ -25,6 +33,7 @@ function dstOverlapTournament(): api.AdminTournament {
     regularSource: 'head_to_head',
     revision: 7,
     participantCount: 0,
+    lifecycle: TEST_LIFECYCLE,
     registrationOpensAt: '2026-11-01T06:10:00.000Z',
     registrationClosesAt: '2026-11-01T06:20:00.000Z',
     startsAt: '2026-11-01T06:30:00.000Z',
@@ -41,6 +50,11 @@ function dstOverlapTournament(): api.AdminTournament {
 describe('TournamentAdmin', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.spyOn(api, 'publishAdminTournament').mockResolvedValue({
+      tournamentId: 'published-tournament',
+      status: 'registration',
+      revision: 1,
+    });
   });
 
   it('configures playoff rounds by days, daily game limit, readiness and start interval', async () => {
@@ -56,6 +70,7 @@ describe('TournamentAdmin', () => {
         regularSource: 'head_to_head',
         revision: 1,
         participantCount: 0,
+        lifecycle: TEST_LIFECYCLE,
       },
     });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -78,12 +93,136 @@ describe('TournamentAdmin', () => {
     expect(screen.getByRole('spinbutton', { name: 'Раунд 1: дней на раунд' })).toHaveValue(2);
     expect(screen.getByRole('spinbutton', { name: 'Раунд 1: максимум игр в день' })).toHaveValue(4);
     expect(screen.getByRole('spinbutton', { name: 'Раунд 1: минут на готовность' })).toHaveValue(5);
-    expect(screen.getByRole('spinbutton', { name: 'Раунд 1: интервал стартов, минуты' })).toHaveValue(
-      20,
-    );
+    expect(
+      screen.getByRole('spinbutton', { name: 'Раунд 1: интервал стартов, минуты' }),
+    ).toHaveValue(20);
     expect(screen.getByLabelText('Раунд 1: начало первой игры')).toBeInTheDocument();
     expect(screen.queryByText(/овертайм/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/буллит/i)).not.toBeInTheDocument();
+  });
+
+  it('publishes a newly created draft before closing the wizard', async () => {
+    const draftTournament: api.AdminTournament = {
+      id: '00000000-0000-4000-8000-000000000951',
+      slug: 'published-cup',
+      title: 'Опубликованный кубок',
+      description: '',
+      status: 'draft',
+      regularSource: 'head_to_head',
+      revision: 1,
+      participantCount: 0,
+      lifecycle: TEST_LIFECYCLE,
+    };
+    vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [] });
+    vi.spyOn(api, 'fetchAdminTournamentDuelTemplates').mockResolvedValue({ templates: [] });
+    vi.spyOn(api, 'createAdminTournament').mockResolvedValue({ tournament: draftTournament });
+    const publish = vi.spyOn(api, 'publishAdminTournament').mockResolvedValue({
+      tournamentId: draftTournament.id,
+      status: 'registration',
+      revision: 1,
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentAdmin />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Создать' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Название' }), {
+      target: { value: draftTournament.title },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    for (let step = 0; step < 6; step += 1) {
+      fireEvent.click(await screen.findByRole('button', { name: 'Далее' }));
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить и опубликовать' }));
+    await waitFor(() => expect(publish).toHaveBeenCalledWith(draftTournament.id, 1));
+    expect(screen.queryByRole('dialog', { name: 'Создание турнира' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the wizard open when publishing a new draft fails', async () => {
+    const draftTournament: api.AdminTournament = {
+      id: '00000000-0000-4000-8000-000000000952',
+      slug: 'failed-publish-cup',
+      title: 'Кубок с ошибкой публикации',
+      description: '',
+      status: 'draft',
+      regularSource: 'head_to_head',
+      revision: 1,
+      participantCount: 0,
+      lifecycle: TEST_LIFECYCLE,
+    };
+    vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [] });
+    vi.spyOn(api, 'fetchAdminTournamentDuelTemplates').mockResolvedValue({ templates: [] });
+    vi.spyOn(api, 'createAdminTournament').mockResolvedValue({ tournament: draftTournament });
+    vi.spyOn(api, 'publishAdminTournament').mockRejectedValue(new Error('publish failed'));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentAdmin />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Создать' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Название' }), {
+      target: { value: draftTournament.title },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    for (let step = 0; step < 6; step += 1) {
+      fireEvent.click(await screen.findByRole('button', { name: 'Далее' }));
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить и опубликовать' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось опубликовать турнир.');
+    expect(screen.getByRole('dialog', { name: 'Создание турнира' })).toBeInTheDocument();
+  });
+
+  it('saves an edit to a published tournament without publishing it again', async () => {
+    const publishedTournament: api.AdminTournament = {
+      ...dstOverlapTournament(),
+      status: 'registration',
+      revision: 7,
+    };
+    vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({
+      tournaments: [publishedTournament],
+    });
+    vi.spyOn(api, 'fetchAdminTournamentParticipants').mockResolvedValue({ participants: [] });
+    vi.spyOn(api, 'fetchAdminTournamentDuelTemplates').mockResolvedValue({ templates: [] });
+    const update = vi.spyOn(api, 'updateAdminTournament').mockResolvedValue({
+      tournament: {
+        ...publishedTournament,
+        description: 'Описание после публикации',
+        revision: 8,
+      },
+    });
+    const publish = vi.spyOn(api, 'publishAdminTournament');
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentAdmin />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок DST' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать турнир' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Описание' }), {
+      target: { value: 'Описание после публикации' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить и закрыть' }));
+
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith(
+        publishedTournament.id,
+        publishedTournament.revision,
+        expect.objectContaining({ description: 'Описание после публикации' }),
+      ),
+    );
+    expect(publish).not.toHaveBeenCalled();
+    expect(await screen.findByRole('status')).toHaveTextContent('Изменения сохранены.');
   });
 
   it('uses compact described fields, custom selects and collapsed advanced settings', async () => {
@@ -99,6 +238,7 @@ describe('TournamentAdmin', () => {
         regularSource: 'head_to_head',
         revision: 1,
         participantCount: 0,
+        lifecycle: TEST_LIFECYCLE,
       },
     });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -155,6 +295,7 @@ describe('TournamentAdmin', () => {
       regularSource: 'head_to_head',
       revision: 4,
       participantCount: 0,
+      lifecycle: TEST_LIFECYCLE,
       rules: { config: { regularSource: 'head_to_head' } },
     };
     vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [tournament] });
@@ -182,13 +323,13 @@ describe('TournamentAdmin', () => {
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
     expect(
       screen.getByText(
-        'Изменения сохраняются автоматически. Кнопка ниже сохранит последние правки и закроет форму. Запуск турнира выполняется отдельно.',
+        'Изменения сохраняются автоматически. Кнопка ниже сохранит последние правки и опубликует турнир. Регистрация откроется и закроется по указанным датам, а регулярный сезон вы начнёте вручную, когда всё будет готово.',
       ),
     ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Сохранить и закрыть' }));
+    fireEvent.click(screen.getByRole('button', { name: /Сохранить и (закрыть|опубликовать)/ }));
 
-    expect(screen.getByRole('button', { name: 'Сохраняем и закрываем…' })).toBeDisabled();
-    expect(screen.getByRole('status')).toHaveTextContent('Сохраняем изменения и закрываем…');
+    expect(screen.getByRole('button', { name: 'Публикуем…' })).toBeDisabled();
+    expect(screen.getByRole('status')).toHaveTextContent('Публикуем…');
 
     expect(update).toHaveBeenCalledWith(
       tournament.id,
@@ -206,7 +347,7 @@ describe('TournamentAdmin', () => {
     await waitFor(() =>
       expect(screen.queryByRole('dialog', { name: 'Создание турнира' })).not.toBeInTheDocument(),
     );
-    expect(screen.getByRole('status')).toHaveTextContent('Изменения сохранены.');
+    expect(screen.getByRole('status')).toHaveTextContent('Турнир опубликован.');
     expect(screen.getByRole('tab', { name: 'Заявки и оплаты' })).toBeInTheDocument();
     expect(
       screen.queryByRole('alertdialog', { name: 'Закрыть без сохранения?' }),
@@ -225,6 +366,7 @@ describe('TournamentAdmin', () => {
         regularSource: 'head_to_head',
         revision: 1,
         participantCount: 0,
+        lifecycle: TEST_LIFECYCLE,
       },
     });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -272,6 +414,7 @@ describe('TournamentAdmin', () => {
         regularSource: 'head_to_head',
         revision: 1,
         participantCount: 0,
+        lifecycle: TEST_LIFECYCLE,
       },
     });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -385,6 +528,7 @@ describe('TournamentAdmin', () => {
         regularSource: 'head_to_head',
         revision: 1,
         participantCount: 0,
+        lifecycle: TEST_LIFECYCLE,
       },
     });
     expect(await screen.findByRole('combobox', { name: 'Регистрация' })).toBeInTheDocument();
@@ -400,6 +544,7 @@ describe('TournamentAdmin', () => {
       regularSource: 'head_to_head',
       revision: 3,
       participantCount: 0,
+      lifecycle: TEST_LIFECYCLE,
       rules: {
         config: { regularSource: 'head_to_head' },
         stageRewards: { regular: [{ place: 1, experience: 100, coins: 50, stars: 3 }] },
@@ -425,7 +570,7 @@ describe('TournamentAdmin', () => {
     expect(place).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('Заполните место награды');
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Сохранить и закрыть' }));
+    fireEvent.click(screen.getByRole('button', { name: /Сохранить и (закрыть|опубликовать)/ }));
     expect(update).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog', { name: 'Создание турнира' })).toBeInTheDocument();
   });
@@ -440,6 +585,7 @@ describe('TournamentAdmin', () => {
       regularSource: 'head_to_head',
       revision: 3,
       participantCount: 0,
+      lifecycle: TEST_LIFECYCLE,
       rules: {
         config: { regularSource: 'head_to_head' },
         stageRewards: { regular: [{ place: 1, experience: 100, coins: 50, stars: 3 }] },
@@ -484,6 +630,7 @@ describe('TournamentAdmin', () => {
       regularSource: 'head_to_head',
       revision: 4,
       participantCount: 0,
+      lifecycle: TEST_LIFECYCLE,
       rules: { config: { regularSource: 'head_to_head' } },
     };
     vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [tournament] });
@@ -525,6 +672,7 @@ describe('TournamentAdmin', () => {
       regularSource: 'head_to_head',
       revision: 4,
       participantCount: 0,
+      lifecycle: TEST_LIFECYCLE,
       rules: { config: { regularSource: 'head_to_head' } },
     };
     vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [tournament] });
@@ -553,7 +701,7 @@ describe('TournamentAdmin', () => {
 
     expect(await screen.findByText('Не удалось сохранить изменения.')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
-    const finish = screen.getByRole('button', { name: 'Сохранить и закрыть' });
+    const finish = screen.getByRole('button', { name: /Сохранить и (закрыть|опубликовать)/ });
     expect(finish).toBeEnabled();
     fireEvent.click(finish);
 
@@ -561,7 +709,7 @@ describe('TournamentAdmin', () => {
     await waitFor(() =>
       expect(screen.queryByRole('dialog', { name: 'Создание турнира' })).not.toBeInTheDocument(),
     );
-    expect(screen.getByRole('status')).toHaveTextContent('Изменения сохранены.');
+    expect(screen.getByRole('status')).toHaveTextContent('Турнир опубликован.');
   });
 
   it('treats zero level limits as no restriction instead of sending an invalid request', async () => {
@@ -574,6 +722,7 @@ describe('TournamentAdmin', () => {
       regularSource: 'head_to_head',
       revision: 2,
       participantCount: 0,
+      lifecycle: TEST_LIFECYCLE,
       rules: {
         config: { regularSource: 'head_to_head' },
         eligibility: { minLevel: null, maxLevel: null },
@@ -628,6 +777,7 @@ describe('TournamentAdmin', () => {
       regularSource: 'head_to_head',
       revision: 3,
       participantCount: 0,
+      lifecycle: TEST_LIFECYCLE,
       rules: {
         config: { regularSource: 'head_to_head', entryFeeCoins: 10 },
       },
@@ -656,10 +806,10 @@ describe('TournamentAdmin', () => {
     expect(update).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
-    const finish = screen.getByRole('button', { name: 'Сохранить и закрыть' });
+    const finish = screen.getByRole('button', { name: /Сохранить и (закрыть|опубликовать)/ });
     expect(finish).toBeEnabled();
     fireEvent.click(finish);
-    expect(screen.getByRole('status')).toHaveTextContent(
+    expect(screen.getByRole('alert')).toHaveTextContent(
       'Заполните поле «Вступительный взнос, монеты».',
     );
     expect(screen.getByRole('dialog', { name: 'Создание турнира' })).toBeInTheDocument();
@@ -712,6 +862,7 @@ describe('TournamentAdmin', () => {
       regularSource: 'head_to_head',
       revision: 2,
       participantCount: 0,
+      lifecycle: TEST_LIFECYCLE,
       rules: {
         config: { regularSource: 'head_to_head' },
         notificationOverrides: {
@@ -743,10 +894,10 @@ describe('TournamentAdmin', () => {
     expect(body).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('Заполните текст уведомления');
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
-    const finish = screen.getByRole('button', { name: 'Сохранить и закрыть' });
+    const finish = screen.getByRole('button', { name: /Сохранить и (закрыть|опубликовать)/ });
     expect(finish).toBeEnabled();
     fireEvent.click(finish);
-    expect(screen.getByRole('status')).toHaveTextContent('Заполните текст уведомления.');
+    expect(screen.getByRole('alert')).toHaveTextContent('Заполните текст уведомления.');
     expect(update).not.toHaveBeenCalled();
   });
 
@@ -760,6 +911,7 @@ describe('TournamentAdmin', () => {
       regularSource: 'head_to_head',
       revision: 5,
       participantCount: 0,
+      lifecycle: TEST_LIFECYCLE,
       rules: {
         config: { regularSource: 'head_to_head' },
         notificationOverrides: {
@@ -843,6 +995,7 @@ describe('TournamentAdmin', () => {
       regularSource: 'head_to_head' as const,
       revision: 1,
       participantCount: 0,
+      lifecycle: TEST_LIFECYCLE,
       rules: { config: { regularSource: 'head_to_head' } },
     };
     vi.spyOn(api, 'createAdminTournament').mockResolvedValue({ tournament });
@@ -893,6 +1046,7 @@ describe('TournamentAdmin', () => {
         regularSource: 'head_to_head',
         revision: 1,
         participantCount: 0,
+        lifecycle: TEST_LIFECYCLE,
       },
     });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -927,6 +1081,7 @@ describe('TournamentAdmin', () => {
       regularSource: 'head_to_head' as const,
       revision: 1,
       participantCount: 0,
+      lifecycle: TEST_LIFECYCLE,
     };
     vi.spyOn(api, 'createAdminTournament').mockResolvedValue({ tournament });
     const update = vi.spyOn(api, 'updateAdminTournament').mockResolvedValue({
@@ -982,6 +1137,7 @@ describe('TournamentAdmin', () => {
       regularSource: 'head_to_head' as const,
       revision: 1,
       participantCount: 0,
+      lifecycle: TEST_LIFECYCLE,
     };
     vi.spyOn(api, 'createAdminTournament').mockResolvedValue({ tournament });
     vi.spyOn(api, 'updateAdminTournament').mockResolvedValue({ tournament });
@@ -1021,6 +1177,7 @@ describe('TournamentAdmin', () => {
         regularSource: 'daily_aggregate',
         revision: 1,
         participantCount: 0,
+        lifecycle: TEST_LIFECYCLE,
       },
     });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -1070,6 +1227,7 @@ describe('TournamentAdmin', () => {
       regularSource: 'classic' as const,
       revision: 1,
       participantCount: 0,
+      lifecycle: TEST_LIFECYCLE,
     };
     vi.spyOn(api, 'createAdminTournament').mockResolvedValue({ tournament });
     const update = vi
@@ -1192,6 +1350,7 @@ describe('TournamentAdmin', () => {
         regularSource: 'head_to_head',
         revision: 1,
         participantCount: 0,
+        lifecycle: TEST_LIFECYCLE,
       },
     });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -1244,6 +1403,7 @@ describe('TournamentAdmin', () => {
         regularSource: 'head_to_head',
         revision: 1,
         participantCount: 0,
+        lifecycle: TEST_LIFECYCLE,
       },
     });
     const update = vi.spyOn(api, 'updateAdminTournament').mockResolvedValue({
@@ -1256,6 +1416,7 @@ describe('TournamentAdmin', () => {
         regularSource: 'head_to_head',
         revision: 2,
         participantCount: 0,
+        lifecycle: TEST_LIFECYCLE,
       },
     });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -1378,6 +1539,7 @@ describe('TournamentAdmin', () => {
           regularSource: 'head_to_head',
           revision: 2,
           participantCount: 3,
+          lifecycle: TEST_LIFECYCLE,
           pendingApplicationCount: 1,
         },
       ],
@@ -1457,12 +1619,10 @@ describe('TournamentAdmin', () => {
     const approveAll = vi
       .spyOn(api, 'approveAllAdminTournamentApplications')
       .mockResolvedValue({ approvedCount: 1 });
-    const reject = vi
-      .spyOn(api, 'rejectAdminTournamentApplication')
-      .mockResolvedValue({
-        participantId: '00000000-0000-4000-8000-000000000902',
-        state: 'rejected',
-      });
+    const reject = vi.spyOn(api, 'rejectAdminTournamentApplication').mockResolvedValue({
+      participantId: '00000000-0000-4000-8000-000000000902',
+      state: 'rejected',
+    });
     const disqualify = vi
       .spyOn(api, 'disqualifyAdminTournamentParticipant')
       .mockResolvedValue({ participantId: '00000000-0000-4000-8000-000000000905' });
@@ -1517,7 +1677,7 @@ describe('TournamentAdmin', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
     expect(screen.getByRole('dialog', { name: 'Действия турнира' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Дублировать турнир' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Создать календарь' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Создать календарь' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть действия турнира' }));
 
     fireEvent.click(screen.getByRole('button', { name: 'Управление: Игрок на проверке' }));
@@ -1660,69 +1820,70 @@ describe('TournamentAdmin', () => {
   ])(
     'explains the $code bulk approval error in plain language',
     async ({ code, details, expected }) => {
-    const tournament: api.AdminTournament = {
-      id: '00000000-0000-4000-8000-000000000971',
-      slug: 'capacity-cup',
-      title: 'Кубок на 16 игроков',
-      description: '',
-      status: 'registration',
-      regularSource: 'head_to_head',
-      revision: 2,
-      participantCount: 17,
-      pendingApplicationCount: 3,
-      rules: { config: { participantLimit: 16 } },
-    };
-    const approvedParticipants: api.AdminTournamentParticipant[] = Array.from(
-      { length: 14 },
-      (_, index) => ({
-        id: `approved-${index}`,
-        user_id: `approved-user-${index}`,
-        display_name: `Подтверждённый игрок ${index + 1}`,
-        avatar_url: null,
-        state: 'approved',
-        seed: index + 1,
-        entry_fee_coins: 0,
-        entry_fee_state: 'not_required',
-      }),
-    );
-    const pendingParticipants: api.AdminTournamentParticipant[] = Array.from(
-      { length: 3 },
-      (_, index) => ({
-        id: `pending-${index}`,
-        user_id: `pending-user-${index}`,
-        display_name: `Новая заявка ${index + 1}`,
-        avatar_url: null,
-        state: 'applied',
-        seed: null,
-        entry_fee_coins: 25,
-        entry_fee_state: 'pending',
-      }),
-    );
-    vi.spyOn(api, 'fetchAdminTournamentParticipants').mockResolvedValue({
-      participants: [...approvedParticipants, ...pendingParticipants],
-    });
-    vi.spyOn(api, 'approveAllAdminTournamentApplications').mockRejectedValue(
-      new ApiError(409, code, 'Внутренняя ошибка', details),
-    );
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(
-      <QueryClientProvider client={client}>
-        <TournamentOperations
-          tournament={tournament}
-          onBack={vi.fn()}
-          onEdit={vi.fn()}
-          onRemoved={vi.fn()}
-        />
-      </QueryClientProvider>,
-    );
+      const tournament: api.AdminTournament = {
+        id: '00000000-0000-4000-8000-000000000971',
+        slug: 'capacity-cup',
+        title: 'Кубок на 16 игроков',
+        description: '',
+        status: 'registration',
+        regularSource: 'head_to_head',
+        revision: 2,
+        participantCount: 17,
+        lifecycle: TEST_LIFECYCLE,
+        pendingApplicationCount: 3,
+        rules: { config: { participantLimit: 16 } },
+      };
+      const approvedParticipants: api.AdminTournamentParticipant[] = Array.from(
+        { length: 14 },
+        (_, index) => ({
+          id: `approved-${index}`,
+          user_id: `approved-user-${index}`,
+          display_name: `Подтверждённый игрок ${index + 1}`,
+          avatar_url: null,
+          state: 'approved',
+          seed: index + 1,
+          entry_fee_coins: 0,
+          entry_fee_state: 'not_required',
+        }),
+      );
+      const pendingParticipants: api.AdminTournamentParticipant[] = Array.from(
+        { length: 3 },
+        (_, index) => ({
+          id: `pending-${index}`,
+          user_id: `pending-user-${index}`,
+          display_name: `Новая заявка ${index + 1}`,
+          avatar_url: null,
+          state: 'applied',
+          seed: null,
+          entry_fee_coins: 25,
+          entry_fee_state: 'pending',
+        }),
+      );
+      vi.spyOn(api, 'fetchAdminTournamentParticipants').mockResolvedValue({
+        participants: [...approvedParticipants, ...pendingParticipants],
+      });
+      vi.spyOn(api, 'approveAllAdminTournamentApplications').mockRejectedValue(
+        new ApiError(409, code, 'Внутренняя ошибка', details),
+      );
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      render(
+        <QueryClientProvider client={client}>
+          <TournamentOperations
+            tournament={tournament}
+            onBack={vi.fn()}
+            onEdit={vi.fn()}
+            onRemoved={vi.fn()}
+          />
+        </QueryClientProvider>,
+      );
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Принять все заявки (3)' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Принять все заявки (3)' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(expected);
+      expect(await screen.findByRole('alert')).toHaveTextContent(expected);
     },
   );
 
-  it('updates the operational lifecycle controls after publishing without leaving the screen', async () => {
+  it('does not expose obsolete registration or ordinary calendar actions', async () => {
     vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({
       tournaments: [
         {
@@ -1734,6 +1895,7 @@ describe('TournamentAdmin', () => {
           regularSource: 'head_to_head',
           revision: 3,
           participantCount: 0,
+          lifecycle: TEST_LIFECYCLE,
           registrationOpensAt: '2030-01-01T09:00:00.000Z',
           registrationClosesAt: '2030-01-02T09:00:00.000Z',
           startsAt: '2030-01-03T09:00:00.000Z',
@@ -1741,22 +1903,6 @@ describe('TournamentAdmin', () => {
       ],
     });
     vi.spyOn(api, 'fetchAdminTournamentParticipants').mockResolvedValue({ participants: [] });
-    const publish = vi.spyOn(api, 'publishAdminTournament').mockResolvedValue({
-      tournamentId: '00000000-0000-4000-8000-000000000921',
-      status: 'registration',
-      revision: 3,
-    });
-    vi.spyOn(api, 'fetchAdminTournamentSchedule').mockResolvedValue({
-      fixtures: [],
-      matchdays: [],
-    });
-    const generate = vi.spyOn(api, 'generateAdminTournamentSchedule').mockResolvedValue({
-      tournamentId: '00000000-0000-4000-8000-000000000921',
-      status: 'scheduling',
-      matchdayCount: 4,
-      roundCount: 0,
-      fixtureCount: 0,
-    });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
@@ -1766,17 +1912,8 @@ describe('TournamentAdmin', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок переходов' }));
     fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Открыть регистрацию' }));
-
-    expect(await screen.findByText('Идёт регистрация')).toBeInTheDocument();
-    expect(screen.queryByText(/ревизия/i)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
-    expect(screen.getByRole('button', { name: 'Создать календарь' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Открыть регистрацию' })).not.toBeInTheDocument();
-    expect(publish).toHaveBeenCalledWith('00000000-0000-4000-8000-000000000921', 3);
-    fireEvent.click(screen.getByRole('button', { name: 'Создать календарь' }));
-    expect(await screen.findByRole('status')).toHaveTextContent('Календарь создан: 4 тура.');
-    expect(generate).toHaveBeenCalledWith('00000000-0000-4000-8000-000000000921', 3);
+    expect(screen.queryByRole('button', { name: 'Создать календарь' })).not.toBeInTheDocument();
   });
 
   it('groups the admin schedule by day and separates unresolved future games', async () => {
@@ -1789,6 +1926,7 @@ describe('TournamentAdmin', () => {
       regularSource: 'head_to_head',
       revision: 5,
       participantCount: 8,
+      lifecycle: TEST_LIFECYCLE,
       rules: { config: { timezone: 'Europe/Moscow' } },
     };
     vi.spyOn(api, 'fetchAdminTournamentParticipants').mockResolvedValue({ participants: [] });
@@ -1880,7 +2018,7 @@ describe('TournamentAdmin', () => {
       target: { value: 'Описание обновлено' },
     });
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Сохранить и закрыть' }));
+    fireEvent.click(screen.getByRole('button', { name: /Сохранить и (закрыть|опубликовать)/ }));
 
     await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
     const body = update.mock.calls[0]?.[2];
@@ -1924,7 +2062,7 @@ describe('TournamentAdmin', () => {
       target: { value: '01:45' },
     });
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Сохранить и закрыть' }));
+    fireEvent.click(screen.getByRole('button', { name: /Сохранить и (закрыть|опубликовать)/ }));
 
     await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
     expect(update.mock.calls[0]?.[2]).toEqual(
@@ -1956,7 +2094,7 @@ describe('TournamentAdmin', () => {
     fireEvent.click(screen.getByRole('button', { name: '5. Сроки' }));
     await chooseGlassOption('Часовой пояс', 'Москва (МСК)');
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Сохранить и закрыть' }));
+    fireEvent.click(screen.getByRole('button', { name: /Сохранить и (закрыть|опубликовать)/ }));
 
     await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
     expect(update.mock.calls[0]?.[2]).toEqual(
@@ -1995,7 +2133,7 @@ describe('TournamentAdmin', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Сохранить и закрыть' }));
+      fireEvent.click(screen.getByRole('button', { name: /Сохранить и (закрыть|опубликовать)/ }));
     });
 
     expect(update).not.toHaveBeenCalled();
@@ -2011,6 +2149,7 @@ describe('TournamentAdmin', () => {
       regularSource: 'head_to_head' as const,
       revision: 5,
       participantCount: 0,
+      lifecycle: TEST_LIFECYCLE,
       registrationOpensAt: null,
       registrationClosesAt: null,
       startsAt: null,
@@ -2068,7 +2207,7 @@ describe('TournamentAdmin', () => {
       target: { value: 'Кубок CRUD обновлён' },
     });
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Сохранить и закрыть' }));
+    fireEvent.click(screen.getByRole('button', { name: /Сохранить и (закрыть|опубликовать)/ }));
     await waitFor(() =>
       expect(update).toHaveBeenCalledWith(
         tournament.id,
@@ -2082,7 +2221,7 @@ describe('TournamentAdmin', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Дублировать турнир' }));
     await waitFor(() =>
       expect(duplicate).toHaveBeenCalledWith(tournament.id, {
-        title: 'Копия: Кубок CRUD обновлён',
+        title: 'Копия: Кубок CRUD',
       }),
     );
 
@@ -2103,6 +2242,7 @@ describe('TournamentAdmin', () => {
       regularSource: 'head_to_head' as const,
       revision: 3,
       participantCount: 1,
+      lifecycle: TEST_LIFECYCLE,
       registrationOpensAt: null,
       registrationClosesAt: null,
       startsAt: null,

@@ -22,6 +22,7 @@ import { chatWs } from './chat/ws.js';
 import { adminRoutes } from './admin/routes.js';
 import { pushRoutes } from './push/routes.js';
 import { pushSchedulerPlugin } from './plugins/pushScheduler.js';
+import { tournamentLifecyclePlugin } from './plugins/tournamentLifecycle.js';
 import { createObjectStorageClient } from './storage/objectStorage.js';
 import { arenaRoutes } from './arenas/routes.js';
 import { bonusGameRoutes } from './bonusGames/routes.js';
@@ -33,6 +34,8 @@ export interface BuildAppOptions {
   config?: AppConfig;
   pushSchedulerEnabled?: boolean;
   pushWorkerEnabled?: boolean;
+  tournamentLifecycleEnabled?: boolean;
+  tournamentLifecycleIntervalMs?: number;
 }
 
 export async function buildApp(options: BuildAppOptions = {}) {
@@ -82,6 +85,13 @@ export async function buildApp(options: BuildAppOptions = {}) {
     await validateOfficialAccount(app.pg, config.SYSTEM_USER_ID);
   }
   await app.register(redisPlugin, { url: config.REDIS_URL });
+  await app.register(tournamentLifecyclePlugin, {
+    enabled: options.tournamentLifecycleEnabled ?? (config.NODE_ENV === 'test' ? false : true),
+    ...(options.tournamentLifecycleIntervalMs === undefined
+      ? {}
+      : { intervalMs: options.tournamentLifecycleIntervalMs }),
+    classicSeedSecret: config.DAILY_SEED_SECRET,
+  });
   await app.register(realtimePlugin);
   await app.register(authPlugin, { accessSecret: config.JWT_SECRET });
   await app.register(lastSeenPlugin);

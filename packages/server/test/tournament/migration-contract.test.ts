@@ -34,6 +34,14 @@ const playoffSchedulingMigrationUrl = new URL(
   '../../db/migrations/082_tournament_playoff_scheduling.sql',
   import.meta.url,
 );
+const adminAttentionNotificationMigrationUrl = new URL(
+  '../../db/migrations/087_tournament_admin_attention_notification.sql',
+  import.meta.url,
+);
+const playoffScheduleMissingNotificationMigrationUrl = new URL(
+  '../../db/migrations/088_tournament_playoff_schedule_missing_notification.sql',
+  import.meta.url,
+);
 
 describe('tournament migration contract', () => {
   it('creates the complete tournament orchestration schema', async () => {
@@ -197,6 +205,28 @@ describe('tournament migration contract', () => {
     ]) {
       expect(sql).toContain(index);
     }
+    expect(sql).not.toMatch(/drop\s+(column|table)/i);
+  });
+
+  it('adds idempotent tournament admin-attention notification templates', async () => {
+    const sql = await readFile(adminAttentionNotificationMigrationUrl, 'utf8');
+
+    expect(sql).toContain("'tournament.registration_blocked'");
+    expect(sql).toContain("'tournament.playoff_blocked'");
+    expect(sql).toContain("'tournament'");
+    expect(sql).toContain("'/admin'");
+    expect(sql).toContain('on conflict (key) do nothing');
+    expect(sql).not.toMatch(/drop\s+(column|table)/i);
+  });
+
+  it('adds an idempotent notification template for missing playoff schedule dates', async () => {
+    const sql = await readFile(playoffScheduleMissingNotificationMigrationUrl, 'utf8');
+
+    expect(sql).toContain("'tournament.playoff_schedule_missing'");
+    expect(sql).toContain('Настройте расписание плей-офф');
+    expect(sql).toContain('Укажите даты и время игр плей-офф');
+    expect(sql).toContain("'/admin'");
+    expect(sql).toContain('on conflict (key) do nothing');
     expect(sql).not.toMatch(/drop\s+(column|table)/i);
   });
 });

@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from 'pg';
 import { AppError } from '../plugins/errors.js';
+import { appendEvent } from '../duel/eventLog.js';
 import { grantTournamentStageRewardsWithClient, resolvePlayoffPlacements } from './rewards.js';
 import { cancelTournamentDuel } from '../duel/amateur/lifecycle.js';
 import { enqueueTournamentAudiencePush, enqueueTournamentPush } from '../push/tournament.js';
@@ -19,8 +20,15 @@ import {
 import {
   DEFAULT_TOURNAMENT_PLANNED_START_INTERVAL_MINUTES,
   DEFAULT_TOURNAMENT_READINESS_MINUTES,
+  normalizePublishedTournamentLifecycleRules,
 } from './lifecycleRules.js';
-import type { RoundGameDay } from './playoffScheduling.js';
+import {
+  AUTOMATIC_TOURNAMENT_LIFECYCLE_VERSION,
+  automaticLifecycleVersion,
+  loadTournamentLifecycleDTOs,
+  type TournamentLifecycleDTO,
+} from './automaticLifecycle.js';
+import { rebaseRoundGameDaysAtOrAfter, type RoundGameDay } from './playoffScheduling.js';
 import {
   buildPlayoffSeriesPlan,
   buildPlayoffFixtureWindows,
@@ -38,7 +46,7 @@ import {
 import { lockTournament, lockTournamentFixture } from './locks.js';
 import { canTransitionTournament } from './lifecycle.js';
 import { tournamentSlugBase } from './slug.js';
-import type { TournamentConfig, TournamentStatus } from './types.js';
+import type { TournamentConfig, TournamentPlayoffSize, TournamentStatus } from './types.js';
 
 export interface TournamentRulesSnapshot {
   config: TournamentConfig;
@@ -51,6 +59,125 @@ export interface TournamentRulesSnapshot {
     bannedUserIds: string[];
   };
   [key: string]: unknown;
+}
+
+const PLAYOFF_SCHEDULING_FIELDS = new Set(['firstGameStartsAt', 'scheduleDays', 'roundBreakMs']);
+const DEFAULT_PLAYOFF_READINESS_MINUTES = 5;
+const DEFAULT_PLAYOFF_START_INTERVAL_MINUTES = 20;
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+  if (value !== null && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'undefined';
+}
+
+function rulesWithoutPlayoffSchedule(rules: TournamentRulesSnapshot): Record<string, unknown> {
+  const rest: Record<string, unknown> = { ...rules };
+  const playoffRounds = rest.playoffRounds;
+  delete rest.playoffRounds;
+  delete rest.automaticLifecycleVersion;
+  delete rest.duelLifecycleVersion;
+  return {
+    ...rest,
+    playoffRounds: Array.isArray(playoffRounds)
+      ? playoffRounds.map((round) => {
+          if (round === null || typeof round !== 'object' || Array.isArray(round)) return round;
+          const values = round as Record<string, unknown>;
+          return Object.fromEntries(
+            Object.entries(values).filter(([key, value]) => {
+              if (PLAYOFF_SCHEDULING_FIELDS.has(key)) return false;
+              // The HTTP parser fills these legacy omissions with their standard values only
+              // after scheduleDays appears. They are not a manual rule change.
+              if (key === 'readinessMinutes' && value === DEFAULT_PLAYOFF_READINESS_MINUTES) {
+                return false;
+              }
+              if (
+                key === 'plannedStartIntervalMinutes' &&
+                value === DEFAULT_PLAYOFF_START_INTERVAL_MINUTES
+              ) {
+                return false;
+              }
+              return true;
+            }),
+          );
+        })
+      : playoffRounds,
+  };
+}
+
+function isPlayoffScheduleOnlyRulesUpdate(
+  current: TournamentRulesSnapshot,
+  next: TournamentRulesSnapshot,
+): boolean {
+  return (
+    stableJson(rulesWithoutPlayoffSchedule(current)) ===
+    stableJson(rulesWithoutPlayoffSchedule(next))
+  );
+}
+
+export interface GenerateRegularScheduleOutcome {
+  tournamentId: string;
+  beforeStatus: TournamentStatus;
+  status: 'registration_blocked' | 'scheduling';
+  revision: number;
+  participantCount: number;
+  playoffSize: TournamentConfig['playoffSize'];
+  title: string;
+  createdBy: string;
+  changed: boolean;
+  matchdayCount: number;
+  roundCount: number;
+  fixtureCount: number;
+}
+
+async function enqueueRegistrationBlockedPushes(
+  client: PoolClient,
+  outcome: Pick<
+    GenerateRegularScheduleOutcome,
+    'tournamentId' | 'revision' | 'participantCount' | 'playoffSize' | 'title' | 'createdBy'
+  >,
+): Promise<void> {
+  const recipients = await client.query<{ id: string }>(
+    `select distinct id::text as id
+       from users
+      where id = $1 or role = 'admin'`,
+    [outcome.createdBy],
+  );
+  const eventKey = `${outcome.tournamentId}:registration-blocked:${outcome.revision}`;
+  for (const recipient of recipients.rows) {
+    const previousDelivery = await client.query<{ exists: boolean }>(
+      `select exists(
+         select 1 from push_delivery_log
+          where user_id = $1
+            and event_type = 'tournament.registration_blocked'
+            and event_key like $2 || '%'
+       ) as exists`,
+      [recipient.id, `${outcome.tournamentId}:registration-blocked:`],
+    );
+    if (previousDelivery.rows[0]!.exists) continue;
+    await enqueueTournamentPush(client, {
+      userId: recipient.id,
+      tournamentId: outcome.tournamentId,
+      eventType: 'tournament.registration_blocked',
+      eventKey,
+      variables: {
+        tournamentTitle: outcome.title,
+        approvedCount: outcome.participantCount,
+        requiredCount: outcome.playoffSize,
+      },
+      fallback: {
+        title: 'Турнир требует внимания',
+        body: `В турнире «${outcome.title}» подтверждено ${outcome.participantCount} из ${outcome.playoffSize} участников.`,
+        url: '/admin',
+      },
+    });
+  }
 }
 
 export function assertTournamentDatesReady(
@@ -157,8 +284,19 @@ export function projectedTournamentEnd(
   return cursor;
 }
 
-function mapTournament(row: TournamentRow) {
+function fallbackTournamentLifecycle(row: TournamentRow): TournamentLifecycleDTO {
+  return {
+    action: 'unchanged',
+    dueAt: null,
+    approvedParticipantCount: Number(row.participant_count),
+    requiredParticipantCount: row.rules_snapshot.config.playoffSize,
+    reason: null,
+  };
+}
+
+function mapTournament(row: TournamentRow, lifecycle?: TournamentLifecycleDTO) {
   const projectedEndsAt = projectedTournamentEnd(row.starts_at, row.rules_snapshot);
+  const resolvedLifecycle = lifecycle ?? fallbackTournamentLifecycle(row);
   return {
     id: row.id,
     slug: row.slug,
@@ -182,6 +320,7 @@ function mapTournament(row: TournamentRow) {
     cancelledAt: row.cancelled_at?.toISOString() ?? null,
     participantCount: Number(row.participant_count),
     pendingApplicationCount: Number(row.pending_application_count ?? 0),
+    lifecycle: resolvedLifecycle,
     rules: row.rules_snapshot,
     ...(row.my_participant_state !== undefined
       ? { myParticipantState: row.my_participant_state }
@@ -190,6 +329,26 @@ function mapTournament(row: TournamentRow) {
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
+}
+
+async function lifecycleByTournament(
+  pool: Pool | PoolClient,
+  rows: TournamentRow[],
+): Promise<Map<string, TournamentLifecycleDTO>> {
+  const lifecycle = await loadTournamentLifecycleDTOs(
+    pool,
+    rows.filter((row) => row.published_revision_id !== null).map((row) => row.id),
+    new Date(),
+  );
+  for (const row of rows) {
+    if (!lifecycle.has(row.id)) lifecycle.set(row.id, fallbackTournamentLifecycle(row));
+  }
+  return lifecycle;
+}
+
+async function mapTournamentWithLifecycle(pool: Pool | PoolClient, row: TournamentRow) {
+  const lifecycle = await lifecycleByTournament(pool, [row]);
+  return mapTournament(row, lifecycle.get(row.id));
 }
 
 type PlayoffDuelKind = 'express' | 'express_plus' | 'classic';
@@ -354,7 +513,7 @@ export async function createTournamentDraft(
        values ($1, 1, $2, $3)`,
       [tournament.id, JSON.stringify(input.rules), input.createdBy],
     );
-    return mapTournament(tournament);
+    return mapTournamentWithLifecycle(client, tournament);
   });
 }
 
@@ -373,9 +532,12 @@ export async function listAdminTournaments(pool: Pool) {
   const { rows } = await pool.query<TournamentRow>(
     `${tournamentSelect} order by t.created_at desc`,
   );
-  const formats = await playoffFormatsByTournament(pool, rows);
+  const [formats, lifecycle] = await Promise.all([
+    playoffFormatsByTournament(pool, rows),
+    lifecycleByTournament(pool, rows),
+  ]);
   return rows.map((row) => ({
-    ...mapTournament(row),
+    ...mapTournament(row, lifecycle.get(row.id)),
     playoffFormats: formats.get(row.id) ?? [],
   }));
 }
@@ -460,9 +622,12 @@ export async function listPlayerTournaments(pool: Pool, userId: string) {
         ? null
         : (finalPlaceByParticipant.get(row.my_participant_id) ?? null);
   }
-  const formats = await playoffFormatsByTournament(pool, rows);
+  const [formats, lifecycle] = await Promise.all([
+    playoffFormatsByTournament(pool, rows),
+    lifecycleByTournament(pool, rows),
+  ]);
   return rows.map((row) => ({
-    ...mapTournament(row),
+    ...mapTournament(row, lifecycle.get(row.id)),
     playoffFormats: formats.get(row.id) ?? [],
   }));
 }
@@ -484,8 +649,14 @@ export async function getTournament(pool: Pool, tournamentId: string, userId?: s
   if (userId !== undefined && row.visibility === 'hidden' && row.my_participant_state === null) {
     throw new AppError('not_found', 'tournament not found', 404);
   }
-  const formats = await playoffFormatsByTournament(pool, [row]);
-  return { ...mapTournament(row), playoffFormats: formats.get(row.id) ?? [] };
+  const [formats, lifecycle] = await Promise.all([
+    playoffFormatsByTournament(pool, [row]),
+    lifecycleByTournament(pool, [row]),
+  ]);
+  return {
+    ...mapTournament(row, lifecycle.get(row.id)),
+    playoffFormats: formats.get(row.id) ?? [],
+  };
 }
 
 export async function updateTournamentDraft(
@@ -510,11 +681,23 @@ export async function updateTournamentDraft(
       current_revision: number;
       rules_snapshot: TournamentRulesSnapshot;
       participant_count: number;
+      playoff_series_exists: boolean;
+      title: string;
+      description: string;
+      image_url: string | null;
+      registration_opens_at: Date | null;
+      registration_closes_at: Date | null;
+      starts_at: Date | null;
     }>(
       `select t.status, t.current_revision, revision.rules_snapshot,
               (select count(*)::int from tournament_participant participant
                 where participant.tournament_id = t.id
-                  and participant.state in ('invited', 'applied', 'approved')) as participant_count
+                  and participant.state in ('invited', 'applied', 'approved')) as participant_count,
+              exists (
+                select 1 from tournament_playoff_series series where series.tournament_id = t.id
+              ) as playoff_series_exists,
+              t.title, t.description, t.image_url,
+              t.registration_opens_at, t.registration_closes_at, t.starts_at
          from tournament t
          join tournament_revision revision
            on revision.tournament_id = t.id and revision.revision = t.current_revision
@@ -523,9 +706,19 @@ export async function updateTournamentDraft(
     );
     const tournament = current.rows[0];
     if (!tournament) throw new AppError('not_found', 'tournament not found', 404);
-    const updatesPublishedRules = ['registration', 'registration_blocked'].includes(
-      tournament.status,
-    );
+    const regularScheduleRecovery =
+      tournament.status === 'regular' &&
+      !tournament.playoff_series_exists &&
+      tournament.title === input.title &&
+      tournament.description === input.description &&
+      (input.imageUrl === undefined || input.imageUrl === tournament.image_url) &&
+      input.registrationOpensAt?.getTime() === tournament.registration_opens_at?.getTime() &&
+      input.registrationClosesAt?.getTime() === tournament.registration_closes_at?.getTime() &&
+      input.startsAt?.getTime() === tournament.starts_at?.getTime() &&
+      isPlayoffScheduleOnlyRulesUpdate(tournament.rules_snapshot, input.rules);
+    const updatesPublishedRules =
+      ['registration', 'registration_blocked'].includes(tournament.status) ||
+      regularScheduleRecovery;
     if (tournament.status !== 'draft' && !updatesPublishedRules) {
       throw new AppError('conflict', 'tournament format can no longer be edited', 409);
     }
@@ -551,6 +744,15 @@ export async function updateTournamentDraft(
         throw new AppError('conflict', 'participant limit is below current applications', 409);
       }
     }
+    const nextRules: TournamentRulesSnapshot = { ...input.rules };
+    delete nextRules.automaticLifecycleVersion;
+    delete nextRules.duelLifecycleVersion;
+    if (automaticLifecycleVersion(tournament.rules_snapshot) !== null) {
+      nextRules.automaticLifecycleVersion = AUTOMATIC_TOURNAMENT_LIFECYCLE_VERSION;
+    }
+    if (tournament.rules_snapshot.duelLifecycleVersion === 2) {
+      nextRules.duelLifecycleVersion = 2;
+    }
     const revision = input.expectedRevision + 1;
     const insertedRevision = await client.query<{ id: string }>(
       `insert into tournament_revision
@@ -560,7 +762,7 @@ export async function updateTournamentDraft(
       [
         input.tournamentId,
         revision,
-        JSON.stringify(input.rules),
+        JSON.stringify(nextRules),
         updatesPublishedRules,
         input.updatedBy,
       ],
@@ -568,7 +770,14 @@ export async function updateTournamentDraft(
     const updatesImage = Object.prototype.hasOwnProperty.call(input, 'imageUrl');
     await client.query(
       `update tournament
-          set title = $2, description = $3,
+          set status = case
+                when status = 'registration_blocked'
+                  and $10::timestamptz > now()
+                  and (registration_closes_at is null or $10::timestamptz > registration_closes_at)
+                then 'registration'
+                else status
+              end,
+              title = $2, description = $3,
               image_url = case when $4::boolean then $5 else image_url end,
               regular_source = $6, visibility = $7,
               current_revision = $8, registration_opens_at = $9,
@@ -596,7 +805,7 @@ export async function updateTournamentDraft(
     const updated = await client.query<TournamentRow>(`${tournamentSelect} where t.id = $1`, [
       input.tournamentId,
     ]);
-    return mapTournament(updated.rows[0]!);
+    return mapTournamentWithLifecycle(client, updated.rows[0]!);
   });
 }
 
@@ -699,7 +908,7 @@ export async function updateTournamentRewards(
     const updated = await client.query<TournamentRow>(`${tournamentSelect} where t.id = $1`, [
       input.tournamentId,
     ]);
-    return mapTournament(updated.rows[0]!);
+    return mapTournamentWithLifecycle(client, updated.rows[0]!);
   });
 }
 
@@ -1032,7 +1241,7 @@ export async function inviteTournamentParticipant(
       [tournamentId],
     );
     if (!tournament.rows[0]) throw new AppError('not_found', 'tournament not found', 404);
-    if (tournament.rows[0].status !== 'registration') {
+    if (!['registration', 'registration_blocked'].includes(tournament.rows[0].status)) {
       throw new AppError('registration_closed', 'registration is closed', 409);
     }
     const entryFeeCoins = Number(tournament.rows[0].entry_fee_coins);
@@ -1464,16 +1673,19 @@ export async function generateRegularSchedule(
   pool: Pool,
   tournamentId: string,
   expectedRevision: number,
-) {
+  options: { manualPlayoffSize?: TournamentPlayoffSize; recoveredBy?: string } = {},
+): Promise<GenerateRegularScheduleOutcome> {
   return inTransaction(pool, async (client) => {
     await lockTournament(client, tournamentId);
     const tournamentResult = await client.query<{
       status: TournamentStatus;
       current_revision: number;
       starts_at: Date | null;
+      title: string;
+      created_by: string;
       rules_snapshot: TournamentRulesSnapshot;
     }>(
-      `select t.status, t.current_revision, t.starts_at, r.rules_snapshot
+      `select t.status, t.current_revision, t.starts_at, t.title, t.created_by::text, r.rules_snapshot
          from tournament t join tournament_revision r on r.id = t.published_revision_id
         where t.id = $1 for update of t`,
       [tournamentId],
@@ -1483,48 +1695,143 @@ export async function generateRegularSchedule(
     if (!['registration', 'registration_blocked', 'scheduling'].includes(tournament.status)) {
       throw new AppError('conflict', 'schedule cannot be regenerated after publication', 409);
     }
-    if (Number(tournament.current_revision) !== expectedRevision) {
-      throw new AppError('revision_conflict', 'tournament was changed in another tab', 409);
-    }
-    if (tournament.starts_at === null)
-      throw new AppError('conflict', 'start time is required', 409);
     const participants = await client.query<{ id: string }>(
       `select id from tournament_participant
         where tournament_id = $1 and state = 'approved'
         order by seed nulls last, joined_at, id`,
       [tournamentId],
     );
-    const config = tournament.rules_snapshot.config;
+    const participantCount = participants.rows.length;
+    const manualPlayoffSize = options.manualPlayoffSize;
+    const manualRecovery = manualPlayoffSize !== undefined;
+    let revision = Number(tournament.current_revision);
+    let rulesSnapshot = tournament.rules_snapshot;
+    let config = rulesSnapshot.config;
+    const acceptedManualRetry =
+      manualRecovery &&
+      tournament.status === 'scheduling' &&
+      revision === expectedRevision + 1 &&
+      config.playoffSize === manualPlayoffSize;
+    if (revision !== expectedRevision && !acceptedManualRetry) {
+      throw new AppError('revision_conflict', 'tournament was changed in another tab', 409);
+    }
+    if (
+      manualRecovery &&
+      (config.regularSource !== 'head_to_head' ||
+        participantCount < 2 ||
+        manualPlayoffSize > participantCount)
+    ) {
+      throw new AppError('conflict', 'manual schedule recovery is not available', 409);
+    }
+    if (manualRecovery && tournament.status !== 'registration_blocked' && !acceptedManualRetry) {
+      throw new AppError('conflict', 'manual schedule recovery is not available', 409);
+    }
+    const outcome = () => ({
+      tournamentId,
+      beforeStatus: tournament.status,
+      revision,
+      participantCount,
+      playoffSize: config.playoffSize,
+      title: tournament.title,
+      createdBy: tournament.created_by,
+    });
+    if (tournament.status === 'scheduling') {
+      const existing = await client.query<{
+        matchday_count: number;
+        round_count: number;
+        fixture_count: number;
+      }>(
+        `select
+           (select count(*)::int from tournament_matchday where tournament_id = $1) as matchday_count,
+           (select count(*)::int from tournament_round where tournament_id = $1) as round_count,
+           (select count(*)::int from tournament_fixture where tournament_id = $1) as fixture_count`,
+        [tournamentId],
+      );
+      const counts = existing.rows[0]!;
+      if (Number(counts.matchday_count) > 0) {
+        return {
+          ...outcome(),
+          status: 'scheduling' as const,
+          changed: false,
+          matchdayCount: Number(counts.matchday_count),
+          roundCount: Number(counts.round_count),
+          fixtureCount: Number(counts.fixture_count),
+        };
+      }
+    }
+    if (manualRecovery) {
+      if (options.recoveredBy === undefined) {
+        throw new AppError(
+          'configuration_error',
+          'manual schedule recovery requires an administrator',
+          409,
+        );
+      }
+      revision += 1;
+      rulesSnapshot = {
+        ...rulesSnapshot,
+        config: { ...config, playoffSize: manualPlayoffSize },
+      } as TournamentRulesSnapshot;
+      config = rulesSnapshot.config;
+      const insertedRevision = await client.query<{ id: string }>(
+        `insert into tournament_revision
+           (tournament_id, revision, rules_snapshot, is_published, published_at, created_by)
+         values ($1, $2, $3, true, now(), $4)
+         returning id`,
+        [tournamentId, revision, JSON.stringify(rulesSnapshot), options.recoveredBy],
+      );
+      await client.query(
+        `update tournament
+            set current_revision = $2, published_revision_id = $3, updated_by = $4, updated_at = now()
+          where id = $1`,
+        [tournamentId, revision, insertedRevision.rows[0]!.id, options.recoveredBy],
+      );
+      await appendEvent(client, options.recoveredBy, 'admin_tournament_manual_schedule_recovered', {
+        tournament_id: tournamentId,
+        previous_revision: expectedRevision,
+        revision,
+        playoff_size: manualPlayoffSize,
+        approved_participant_count: participantCount,
+      });
+    }
+    if (tournament.starts_at === null)
+      throw new AppError('conflict', 'start time is required', 409);
     const regularLifecycleV2 =
-      config.regularSource === 'head_to_head' &&
-      tournament.rules_snapshot.duelLifecycleVersion === 2;
+      config.regularSource === 'head_to_head' && rulesSnapshot.duelLifecycleVersion === 2;
     const regularReadinessMinutes = boundedInteger(
-      tournament.rules_snapshot.regularReadinessMinutes ??
-        tournament.rules_snapshot.readinessMinutes,
+      rulesSnapshot.regularReadinessMinutes ?? rulesSnapshot.readinessMinutes,
       DEFAULT_TOURNAMENT_READINESS_MINUTES,
       1,
       120,
     );
     let regularAttemptTemplate: DuelTemplateLifecycleSnapshot | null = null;
     if (regularLifecycleV2) {
-      if (typeof tournament.rules_snapshot.regularDuelTemplateId !== 'string') {
+      if (typeof rulesSnapshot.regularDuelTemplateId !== 'string') {
         throw new AppError('configuration_error', 'regular duel template is not configured', 409);
       }
       regularAttemptTemplate = await loadDuelTemplateLifecycleSnapshot(
         client,
-        tournament.rules_snapshot.regularDuelTemplateId,
+        rulesSnapshot.regularDuelTemplateId,
       );
     }
-    if (participants.rows.length < config.playoffSize) {
-      await client.query(
-        `update tournament set status = 'registration_blocked', updated_at = now() where id = $1`,
-        [tournamentId],
-      );
-      return {
-        tournamentId,
+    if (participantCount < config.playoffSize) {
+      const changed = tournament.status !== 'registration_blocked';
+      if (changed) {
+        await client.query(
+          `update tournament set status = 'registration_blocked', updated_at = now() where id = $1`,
+          [tournamentId],
+        );
+      }
+      const blockedOutcome = {
+        ...outcome(),
         status: 'registration_blocked' as const,
-        participantCount: participants.rows.length,
+        changed,
+        matchdayCount: 0,
+        roundCount: 0,
+        fixtureCount: 0,
       };
+      await enqueueRegistrationBlockedPushes(client, blockedOutcome);
+      return blockedOutcome;
     }
     await client.query(`delete from tournament_matchday where tournament_id = $1`, [tournamentId]);
     let roundCount = 0;
@@ -1626,8 +1933,9 @@ export async function generateRegularSchedule(
       [tournamentId],
     );
     return {
-      tournamentId,
+      ...outcome(),
       status: 'scheduling' as const,
+      changed: true,
       matchdayCount,
       roundCount,
       fixtureCount,
@@ -1814,6 +2122,204 @@ export async function getTournamentMatchdays(
   }));
 }
 
+export type TournamentGameContextAction =
+  | 'play_daily'
+  | 'play_classic'
+  | 'round_completed'
+  | 'not_started'
+  | 'waiting_playoff'
+  | 'playoff_active'
+  | 'tournament_completed'
+  | 'not_participant';
+
+export interface TournamentGameContext {
+  action: TournamentGameContextAction;
+  tournamentDay: number | null;
+  result: { goals: number; shots: number; accuracy: number; completed: boolean } | null;
+  message: string | null;
+}
+
+interface TournamentGameContextRow {
+  status: TournamentStatus;
+  regular_source: TournamentConfig['regularSource'];
+  participant_id: string | null;
+  participant_state: string | null;
+}
+
+interface TournamentGameContextMatchday {
+  number: number;
+  starts_at: Date;
+  ends_at: Date;
+  goals: number | null;
+  shots: number | null;
+  accuracy: string | null;
+  completed: boolean | null;
+}
+
+function gameContextResult(
+  row: Pick<TournamentGameContextMatchday, 'goals' | 'shots' | 'accuracy' | 'completed'>,
+): TournamentGameContext['result'] {
+  if (row.goals === null || row.shots === null || row.accuracy === null || row.completed === null) {
+    return null;
+  }
+  return {
+    goals: Number(row.goals),
+    shots: Number(row.shots),
+    accuracy: Number(Number(row.accuracy).toFixed(5)),
+    completed: row.completed === true,
+  };
+}
+
+function tournamentGameContext(
+  action: TournamentGameContextAction,
+  tournamentDay: number | null,
+  result: TournamentGameContext['result'],
+  message: string | null,
+): TournamentGameContext {
+  return { action, tournamentDay, result, message };
+}
+
+/**
+ * Resolves a tournament-origin game URL without reading or creating an ordinary daily attempt.
+ * Matchday windows are deliberately half-open: starts_at <= now < ends_at.
+ */
+export async function getTournamentGameContext(
+  pool: Pool,
+  input: { tournamentId: string; userId: string; now: Date },
+): Promise<TournamentGameContext> {
+  const tournament = await pool.query<TournamentGameContextRow>(
+    `select tournament.status, tournament.regular_source,
+            participant.id::text as participant_id, participant.state as participant_state
+       from tournament
+       left join tournament_participant participant
+         on participant.tournament_id = tournament.id and participant.user_id = $2
+      where tournament.id = $1
+        and (tournament.visibility = 'public' or participant.id is not null)`,
+    [input.tournamentId, input.userId],
+  );
+  const row = tournament.rows[0];
+  if (row === undefined) throw new AppError('not_found', 'tournament not found', 404);
+
+  if (row.participant_id === null || row.participant_state !== 'approved') {
+    return tournamentGameContext('not_participant', null, null, 'Вы не участвуете в этом турнире.');
+  }
+  if (row.status === 'playoff') {
+    return tournamentGameContext(
+      'playoff_active',
+      null,
+      null,
+      'Регулярный сезон завершён. Плей-офф уже начался.',
+    );
+  }
+  if (row.status === 'completed') {
+    return tournamentGameContext('tournament_completed', null, null, 'Турнир завершён.');
+  }
+  if (row.status === 'cancelled') {
+    return tournamentGameContext('tournament_completed', null, null, 'Турнир отменён.');
+  }
+  if (row.status === 'paused') {
+    return tournamentGameContext(
+      'not_started',
+      null,
+      null,
+      'Турнир поставлен на паузу. О продолжении сообщат организаторы.',
+    );
+  }
+  if (row.status !== 'regular') {
+    return tournamentGameContext('not_started', null, null, 'Регулярный сезон ещё не начался.');
+  }
+  if (row.regular_source === 'head_to_head') {
+    return tournamentGameContext(
+      'not_started',
+      null,
+      null,
+      'В этом турнире регулярный сезон проходит в дуэлях.',
+    );
+  }
+
+  const active = await pool.query<TournamentGameContextMatchday>(
+    `select matchday.number, matchday.starts_at, matchday.ends_at,
+            result.goals, result.shots, result.accuracy, result.completed
+       from tournament_matchday matchday
+       left join tournament_daily_result result
+         on result.tournament_id = matchday.tournament_id
+        and result.participant_id = $2
+        and result.tournament_day = matchday.number
+      where matchday.tournament_id = $1
+        and matchday.starts_at <= $3
+        and $3 < matchday.ends_at
+      order by matchday.number
+      limit 1`,
+    [input.tournamentId, row.participant_id, input.now],
+  );
+  const activeMatchday = active.rows[0];
+  if (activeMatchday !== undefined) {
+    const result = gameContextResult(activeMatchday);
+    if (result?.completed === true) {
+      return tournamentGameContext(
+        'round_completed',
+        Number(activeMatchday.number),
+        result,
+        'Этот тур уже завершён. Ожидаем следующий игровой день.',
+      );
+    }
+    return tournamentGameContext(
+      row.regular_source === 'classic' ? 'play_classic' : 'play_daily',
+      Number(activeMatchday.number),
+      result,
+      null,
+    );
+  }
+
+  const previous = await pool.query<TournamentGameContextMatchday>(
+    `select matchday.number, matchday.starts_at, matchday.ends_at,
+            result.goals, result.shots, result.accuracy, result.completed
+       from tournament_matchday matchday
+       left join tournament_daily_result result
+         on result.tournament_id = matchday.tournament_id
+        and result.participant_id = $2
+        and result.tournament_day = matchday.number
+      where matchday.tournament_id = $1 and matchday.ends_at <= $3
+      order by matchday.number desc
+      limit 1`,
+    [input.tournamentId, row.participant_id, input.now],
+  );
+  const last = previous.rows[0];
+  const next = await pool.query<{ number: number }>(
+    `select number from tournament_matchday
+      where tournament_id = $1 and starts_at > $2
+      order by number
+      limit 1`,
+    [input.tournamentId, input.now],
+  );
+  if (last !== undefined && next.rows[0] !== undefined) {
+    return tournamentGameContext(
+      'round_completed',
+      Number(last.number),
+      gameContextResult(last),
+      'Игровой день завершён. Следующий тур ещё не начался.',
+    );
+  }
+  if (last !== undefined) {
+    return tournamentGameContext(
+      'waiting_playoff',
+      Number(last.number),
+      gameContextResult(last),
+      'Регулярный сезон завершён. Ожидаем начала плей-офф.',
+    );
+  }
+  const first = await pool.query<{ number: number }>(
+    `select number from tournament_matchday where tournament_id = $1 order by number limit 1`,
+    [input.tournamentId],
+  );
+  return tournamentGameContext(
+    'not_started',
+    first.rows[0] === undefined ? null : Number(first.rows[0].number),
+    null,
+    'Регулярный сезон ещё не начался.',
+  );
+}
+
 export async function getTournamentStandings(pool: Pool, tournamentId: string) {
   const { rows } = await pool.query(
     `select s.rank, p.user_id, u.display_name,
@@ -1954,7 +2460,10 @@ function maxDate(...dates: Date[]): Date {
   return new Date(Math.max(...dates.map((date) => date.getTime())));
 }
 
-function playoffRoundRules(rules: TournamentRulesSnapshot, roundNumber: number): PlayoffRoundRules {
+export function playoffRoundRules(
+  rules: TournamentRulesSnapshot,
+  roundNumber: number,
+): PlayoffRoundRules {
   const configured = Array.isArray(rules.playoffRounds)
     ? rules.playoffRounds.find(
         (value) =>
@@ -2409,7 +2918,23 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
       [tournamentId],
     );
     const tournament = tournamentResult.rows[0];
-    if (!tournament || tournament.status !== 'regular') {
+    if (!tournament) {
+      throw new AppError('conflict', 'regular season is not active', 409);
+    }
+    const existingSeries = await client.query<{ count: number }>(
+      `select count(*)::int as count from tournament_playoff_series where tournament_id = $1`,
+      [tournamentId],
+    );
+    if (Number(existingSeries.rows[0]?.count ?? 0) > 0) {
+      return {
+        tournamentId,
+        status:
+          tournament.status === 'playoff' ? ('playoff' as const) : ('tiebreak_required' as const),
+        seriesCount: Number(existingSeries.rows[0]!.count),
+        created: false,
+      };
+    }
+    if (tournament.status !== 'regular') {
       throw new AppError('conflict', 'regular season is not active', 409);
     }
     if (tournament.rules_snapshot.config.regularSource !== 'head_to_head') {
@@ -2480,6 +3005,7 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
     const baseTime = await playoffBaseTime(client, tournamentId, now, tournament.starts_at);
     if (rebuilt.boundaryTieParticipantIds.length > 0) {
       const roundToCreate = tieBreakRoundToCreate;
+      const created = roundToCreate !== null;
       if (roundToCreate !== null) {
         const rules = tieBreakRules(tournament.rules_snapshot);
         if (rules.duelTemplateId === null) {
@@ -2501,6 +3027,7 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
         tournamentId,
         status: 'tiebreak_required' as const,
         participantIds: rebuilt.boundaryTieParticipantIds,
+        created,
       };
     }
     const size = tournament.rules_snapshot.config.playoffSize;
@@ -2537,10 +3064,16 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
         throw new AppError('configuration_error', 'playoff duel template is not configured', 409);
       }
       if (rules.scheduleDays !== null) {
-        const days = resolveRoundGameDays(
+        const earliestRoundStart = maxDate(
+          baseTime,
+          new Date(previousRoundEnd.getTime() + previousRoundBreakMs),
+        );
+        const rebasedDays = rebaseRoundGameDaysAtOrAfter(
           tournament.rules_snapshot.config.timezone,
           rules.scheduleDays,
+          earliestRoundStart,
         );
+        const days = resolveRoundGameDays(tournament.rules_snapshot.config.timezone, rebasedDays);
         const template = await loadDuelTemplateLifecycleSnapshot(client, rules.duelTemplateId);
         const lastGame = scheduledStartForSeriesGame(
           days,
@@ -2732,7 +3265,7 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
         url: '/?view=amateur&section=tournaments',
       },
     });
-    return { tournamentId, status: 'playoff' as const, seriesCount: seriesIds.size };
+    return { tournamentId, status: 'playoff' as const, seriesCount: seriesIds.size, created: true };
   });
 }
 
@@ -2818,12 +3351,15 @@ export async function duplicateTournamentDraft(
   input: { tournamentId: string; slug?: string; title: string; createdBy: string },
 ) {
   const source = await getTournament(pool, input.tournamentId);
+  const rules = normalizePublishedTournamentLifecycleRules(source.rules, {
+    markNewAutomaticLifecycle: true,
+  }) as TournamentRulesSnapshot;
   return createTournamentDraft(pool, {
     ...(input.slug !== undefined ? { slug: input.slug } : {}),
     title: input.title,
     description: source.description,
     imageUrl: source.imageUrl,
-    rules: source.rules,
+    rules,
     createdBy: input.createdBy,
     registrationOpensAt: null,
     registrationClosesAt: null,

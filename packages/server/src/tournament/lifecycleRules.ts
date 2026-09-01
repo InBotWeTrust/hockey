@@ -3,6 +3,12 @@ import {
   validateRoundGameDays,
   type RoundGameDay,
 } from './playoffScheduling.js';
+import { AUTOMATIC_TOURNAMENT_LIFECYCLE_VERSION } from './automaticLifecycle.js';
+
+export {
+  AUTOMATIC_TOURNAMENT_LIFECYCLE_VERSION,
+  automaticLifecycleVersion,
+} from './automaticLifecycle.js';
 
 export const DEFAULT_TOURNAMENT_READINESS_MINUTES = 5;
 export const DEFAULT_TOURNAMENT_PLANNED_START_INTERVAL_MINUTES = 20;
@@ -22,11 +28,14 @@ function explicitNumberOrDefault(value: unknown, fallback: number): number {
 
 export function normalizePublishedTournamentLifecycleRules<T extends UnknownRecord>(
   input: T,
-  options: { markNewHeadToHead?: boolean } = {},
+  options: { markNewHeadToHead?: boolean; markNewAutomaticLifecycle?: boolean } = {},
 ): T & UnknownRecord {
   const config = record(input.config);
   const shouldMarkHeadToHead =
     options.markNewHeadToHead !== false && config.regularSource === 'head_to_head';
+  const rulesWithoutLifecycleMarker = { ...input };
+  delete rulesWithoutLifecycleMarker.automaticLifecycleVersion;
+  const shouldMarkAutomaticLifecycle = options.markNewAutomaticLifecycle === true;
   const playoffRounds = Array.isArray(input.playoffRounds)
     ? input.playoffRounds.map((value) => {
         const round = record(value);
@@ -76,8 +85,11 @@ export function normalizePublishedTournamentLifecycleRules<T extends UnknownReco
     : input.playoffRounds;
 
   return {
-    ...input,
+    ...rulesWithoutLifecycleMarker,
     ...(playoffRounds !== undefined ? { playoffRounds } : {}),
+    ...(shouldMarkAutomaticLifecycle
+      ? { automaticLifecycleVersion: AUTOMATIC_TOURNAMENT_LIFECYCLE_VERSION }
+      : {}),
     ...(shouldMarkHeadToHead ? { duelLifecycleVersion: 2 } : {}),
-  };
+  } as T & UnknownRecord;
 }

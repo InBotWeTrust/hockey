@@ -31,6 +31,7 @@ describe('TournamentScheduleCalendar', () => {
         fixtures={fixtures}
         matchdays={[]}
         regularSource="head_to_head"
+        tournamentStatus="regular"
         currentUserId="me"
         isParticipant
         timezone="Europe/Moscow"
@@ -65,6 +66,7 @@ describe('TournamentScheduleCalendar', () => {
         fixtures={[fixture(1)]}
         matchdays={[]}
         regularSource="head_to_head"
+        tournamentStatus="regular"
         currentUserId="me"
         isParticipant
         timezone="Europe/Moscow"
@@ -87,6 +89,7 @@ describe('TournamentScheduleCalendar', () => {
         fixtures={[fixture(1, true)]}
         matchdays={[]}
         regularSource="head_to_head"
+        tournamentStatus="regular"
         currentUserId="me"
         isParticipant
         timezone="Europe/Moscow"
@@ -123,6 +126,7 @@ describe('TournamentScheduleCalendar', () => {
         fixtures={[opponentPlayoff, myPlayoff]}
         matchdays={[]}
         regularSource="head_to_head"
+        tournamentStatus="regular"
         currentUserId="me"
         isParticipant
         timezone="Europe/Moscow"
@@ -168,6 +172,7 @@ describe('TournamentScheduleCalendar', () => {
           },
         ]}
         regularSource="daily_aggregate"
+        tournamentStatus="regular"
         currentUserId="me"
         isParticipant
         timezone="Europe/Moscow"
@@ -205,6 +210,7 @@ describe('TournamentScheduleCalendar', () => {
           },
         ]}
         regularSource="daily_aggregate"
+        tournamentStatus="regular"
         currentUserId="me"
         isParticipant
         timezone="Europe/Moscow"
@@ -218,6 +224,75 @@ describe('TournamentScheduleCalendar', () => {
 
     expect(screen.getByRole('button', { name: 'Открыть ежедневную игру' })).toBeInTheDocument();
     expect(screen.queryByText('Ваш результат')).not.toBeInTheDocument();
+  });
+
+  it('does not offer a tournament game before the regular season starts', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2030-09-01T12:00:00.000Z'));
+
+    render(
+      <TournamentScheduleCalendar
+        fixtures={[]}
+        matchdays={[
+          {
+            id: 'day-1',
+            number: 1,
+            localDate: '2030-09-01',
+            startsAt: '2030-09-01T00:00:00.000Z',
+            endsAt: '2030-09-02T00:00:00.000Z',
+            myResult: null,
+          },
+        ]}
+        regularSource="daily_aggregate"
+        tournamentStatus="scheduling"
+        currentUserId="me"
+        isParticipant
+        timezone="Europe/Moscow"
+        rangeStartsAt="2030-09-01T00:00:00.000Z"
+        rangeEndsAt="2030-09-02T00:00:00.000Z"
+        renderFixture={() => null}
+        formatDateTime={(value) => value}
+        onOpenDailyGame={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.queryByRole('button', { name: 'Открыть ежедневную игру' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('offers a tournament game only inside the selected matchday time window', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2030-09-01T12:00:00.000Z'));
+    render(
+      <TournamentScheduleCalendar
+        fixtures={[]}
+        matchdays={[
+          {
+            id: 'day-1',
+            number: 1,
+            localDate: '2030-09-01',
+            startsAt: '2030-09-01T13:00:00.000Z',
+            endsAt: '2030-09-02T13:00:00.000Z',
+            myResult: null,
+          },
+        ]}
+        regularSource="classic"
+        tournamentStatus="regular"
+        currentUserId="me"
+        isParticipant
+        timezone="Europe/Moscow"
+        rangeStartsAt="2030-09-01T00:00:00.000Z"
+        rangeEndsAt="2030-09-02T13:00:00.000Z"
+        renderFixture={() => null}
+        formatDateTime={(value) => value}
+        onOpenDailyGame={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.queryByRole('button', { name: 'Открыть турнирную игру' }),
+    ).not.toBeInTheDocument();
   });
 
   it('opens the separate classic tournament game from its matchday', () => {
@@ -238,6 +313,7 @@ describe('TournamentScheduleCalendar', () => {
           },
         ]}
         regularSource="classic"
+        tournamentStatus="regular"
         currentUserId="me"
         isParticipant
         timezone="Europe/Moscow"
@@ -268,6 +344,7 @@ describe('TournamentScheduleCalendar', () => {
           },
         ]}
         regularSource="daily_aggregate"
+        tournamentStatus="regular"
         currentUserId="me"
         isParticipant
         timezone="Europe/Moscow"
@@ -298,6 +375,7 @@ describe('TournamentScheduleCalendar', () => {
           },
         ]}
         regularSource="daily_aggregate"
+        tournamentStatus="regular"
         currentUserId="me"
         isParticipant
         timezone="Europe/Moscow"
@@ -337,6 +415,7 @@ describe('TournamentScheduleCalendar', () => {
           },
         ]}
         regularSource="daily_aggregate"
+        tournamentStatus="regular"
         currentUserId="me"
         isParticipant
         timezone="Europe/Moscow"

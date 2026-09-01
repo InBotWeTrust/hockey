@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Ellipsis, Pencil, X } from 'lucide-react';
 import { ApiError } from '../api/apiFetch.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
@@ -21,18 +21,17 @@ import {
   fetchAdminTournamentStandings,
   fetchAdminTournamentUsers,
   generateAdminTournamentSchedule,
+  generateAdminTournamentManualSchedule,
   inviteAdminTournamentParticipant,
   pauseAdminTournament,
   previewAdminTournamentAudience,
-  publishAdminTournament,
-  publishAdminTournamentSchedule,
   confirmAdminTournamentSeriesWinner,
   rejectAdminTournamentApplication,
   requestAdminTournamentSeriesWinner,
   resolveAdminTournamentNoShow,
   resumeAdminTournament,
   rescheduleAdminTournamentFixture,
-  startAdminTournamentPlayoffs,
+  startAdminTournamentRegularSeason,
   updateAdminTournamentRewards,
   type AdminTournament,
   type AdminTournamentFixture,
@@ -59,6 +58,22 @@ type OperationsTab =
   | 'dispatches';
 
 type ParticipantFilter = 'all' | 'approved' | 'applied' | 'rejected';
+type PlayoffSize = 2 | 4 | 8 | 16;
+
+const PLAYOFF_SIZES: PlayoffSize[] = [2, 4, 8, 16];
+const MANUAL_SCHEDULE_RECOVERY_ERROR =
+  'Не удалось создать календарь. Проверьте число подтверждённых игроков и выбранный размер плей-офф, затем повторите.';
+
+function selectedManualPlayoffSize(approvedCount: number, currentSize: number): PlayoffSize {
+  const available = PLAYOFF_SIZES.filter((size) => size <= approvedCount);
+  const current = currentSize as PlayoffSize;
+  if (available.includes(current)) return current;
+  return available[available.length - 1] ?? 2;
+}
+
+function playoffSizeLabel(size: PlayoffSize): string {
+  return `${size} ${russianPlural(size, 'игрок', 'игрока', 'игроков')}`;
+}
 
 const participantFilters: Array<{ id: ParticipantFilter; label: string }> = [
   { id: 'all', label: 'Все' },
@@ -217,6 +232,82 @@ function tournamentDate(value: string | null | undefined, timezone: string): str
     }).format(date)} (${tournamentTimezoneLabel(timezone)})`;
   } catch {
     return date.toLocaleString('ru-RU');
+  }
+}
+
+function lifecycleDate(value: string | null, timezone: string): string | null {
+  if (value === null) return null;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  try {
+    const day = new Intl.DateTimeFormat('ru-RU', {
+      timeZone: timezone,
+      day: 'numeric',
+      month: 'long',
+    }).format(date);
+    const time = new Intl.DateTimeFormat('ru-RU', {
+      timeZone: timezone,
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(date);
+    return `${day} в ${time} ${tournamentTimezoneLabel(timezone).toLocaleLowerCase('ru-RU')}`;
+  } catch {
+    return null;
+  }
+}
+
+function lifecycleMessage(tournament: AdminTournament, timezone: string): string | null {
+  const { action, dueAt, approvedParticipantCount, requiredParticipantCount } =
+    tournament.lifecycle;
+  switch (action) {
+    case 'registration_waiting': {
+      const due = lifecycleDate(dueAt, timezone);
+      return due === null
+        ? 'Регистрация откроется автоматически.'
+        : `Регистрация откроется ${due}.`;
+    }
+    case 'registration_open': {
+      const due = lifecycleDate(dueAt, timezone);
+      return due === null
+        ? 'Регистрация открыта. После закрытия календарь создастся автоматически.'
+        : `Регистрация открыта до ${due}. После закрытия календарь создастся автоматически.`;
+    }
+    case 'generate_schedule':
+      return 'Регистрация завершена. Календарь создаётся автоматически.';
+    case 'block_registration':
+      return `Подтверждено ${approvedParticipantCount} из ${requiredParticipantCount}. Уменьшите размер плей-офф, продлите регистрацию или пригласите игроков.`;
+    case 'await_manual_regular_start':
+      return 'Календарь готов. Регулярный сезон начнётся после вашего подтверждения.';
+    case 'regular_active':
+      return 'Регулярный сезон идёт. Результаты обновляются после каждой завершённой игры.';
+    case 'await_regular_results':
+      return 'Плей-офф начнётся автоматически после завершения всех игр.';
+    case 'playoff_schedule_missing':
+      return 'Укажите дату и время первого раунда плей-офф в настройках турнира.';
+    case 'await_playoff_time': {
+      const due = lifecycleDate(dueAt, timezone);
+      return due === null
+        ? 'Плей-офф начнётся автоматически.'
+        : `Плей-офф начнётся автоматически ${due}.`;
+    }
+    case 'start_playoff':
+      return 'Плей-офф сформирован по итогам регулярного сезона.';
+    case 'playoff_active':
+      return 'Плей-офф идёт по расписанию.';
+    case 'terminal':
+      return 'Турнир завершён. Итоги и награды доступны в разделах турнира.';
+    case 'unchanged':
+      return tournament.status === 'regular'
+        ? 'Регулярный сезон идёт. Результаты обновляются после каждой завершённой игры.'
+        : tournament.status === 'playoff'
+          ? 'Плей-офф идёт по расписанию.'
+          : tournament.status === 'completed'
+            ? 'Турнир завершён. Итоги и награды доступны в разделах турнира.'
+            : null;
+    case 'legacy_requires_audit':
+      return 'Турнир создан по старым правилам. Нужна проверка администратора.';
+    default:
+      return null;
   }
 }
 
@@ -420,17 +511,34 @@ export function TournamentOperations({
   onBack,
   onEdit,
   onRemoved,
+  onTournamentUpdated,
   notice,
 }: {
   tournament: AdminTournament;
   onBack: () => void;
-  onEdit: (stage?: number) => void;
+  onEdit: (stage?: number, scheduleOnly?: boolean) => void;
   onRemoved: () => void;
+  onTournamentUpdated?: () => Promise<void> | void;
   notice?: string | null;
 }): JSX.Element {
   const client = useQueryClient();
   const [tab, setTab] = useState<OperationsTab>('participants');
   const [status, setStatus] = useState(tournament.status);
+  useEffect(() => setStatus(tournament.status), [tournament.status]);
+  const approvedParticipantCount = tournament.lifecycle.approvedParticipantCount;
+  const configuredPlayoffSize = Number(tournament.rules?.config?.playoffSize ?? 0);
+  const [manualScheduleRecoveryOpen, setManualScheduleRecoveryOpen] = useState(false);
+  const [manualScheduleRecoveryError, setManualScheduleRecoveryError] = useState<string | null>(
+    null,
+  );
+  const [manualPlayoffSize, setManualPlayoffSize] = useState<PlayoffSize>(() =>
+    selectedManualPlayoffSize(approvedParticipantCount, configuredPlayoffSize),
+  );
+  useEffect(() => {
+    setManualPlayoffSize(
+      selectedManualPlayoffSize(approvedParticipantCount, configuredPlayoffSize),
+    );
+  }, [approvedParticipantCount, configuredPlayoffSize]);
   const [reason, setReason] = useState('Решение администратора');
   const [participantFilter, setParticipantFilter] = useState<ParticipantFilter>('all');
   const [rejectingApplication, setRejectingApplication] = useState(false);
@@ -464,6 +572,7 @@ export function TournamentOperations({
   );
   const [editingRewards, setEditingRewards] = useState(false);
   const [lifecycleFeedback, setLifecycleFeedback] = useState<string | null>(null);
+  const [lifecycleFailed, setLifecycleFailed] = useState(false);
   const [rewardRevision, setRewardRevision] = useState(tournament.revision);
   const [regularRewards, setRegularRewards] = useState(() =>
     tournamentRewardRows(tournament, 'regular'),
@@ -529,16 +638,42 @@ export function TournamentOperations({
     void client.invalidateQueries({ queryKey: ['admin', 'tournaments'] });
     void client.invalidateQueries({ queryKey: ['admin', 'tournaments', tournament.id] });
   };
+  const openManualScheduleRecovery = () => {
+    setManualScheduleRecoveryError(null);
+    setManualScheduleRecoveryOpen(true);
+  };
+  const closeManualScheduleRecovery = () => {
+    setManualScheduleRecoveryError(null);
+    setManualScheduleRecoveryOpen(false);
+  };
   const lifecycle = useMutation({
-    mutationFn: (action: 'publish' | 'generate' | 'publish_schedule' | 'playoffs') => {
-      if (action === 'publish') return publishAdminTournament(tournament.id, tournament.revision);
+    mutationFn: (
+      action: 'generate' | 'manual_generate' | 'start_regular',
+    ): Promise<{
+      tournamentId: string;
+      status: string;
+      participantCount?: number;
+      matchdayCount?: number;
+      roundCount?: number;
+      fixtureCount?: number;
+    }> => {
       if (action === 'generate')
         return generateAdminTournamentSchedule(tournament.id, tournament.revision);
-      if (action === 'publish_schedule') return publishAdminTournamentSchedule(tournament.id);
-      return startAdminTournamentPlayoffs(tournament.id);
+      if (action === 'manual_generate') {
+        return generateAdminTournamentManualSchedule(
+          tournament.id,
+          tournament.revision,
+          manualPlayoffSize,
+        );
+      }
+      return startAdminTournamentRegularSeason(tournament.id);
     },
-    onMutate: () => setLifecycleFeedback(null),
-    onSuccess: (result, action) => {
+    onMutate: (action) => {
+      setLifecycleFeedback(null);
+      setLifecycleFailed(false);
+      if (action === 'manual_generate') setManualScheduleRecoveryError(null);
+    },
+    onSuccess: async (result, action) => {
       if (
         typeof result === 'object' &&
         result !== null &&
@@ -546,7 +681,11 @@ export function TournamentOperations({
       ) {
         setStatus((result as { status: string }).status);
       }
-      if (action === 'generate' && typeof result === 'object' && result !== null) {
+      if (
+        (action === 'generate' || action === 'manual_generate') &&
+        typeof result === 'object' &&
+        result !== null
+      ) {
         const generated = result as {
           status?: string;
           participantCount?: number;
@@ -566,47 +705,56 @@ export function TournamentOperations({
           );
         }
       }
+      if (action === 'start_regular') {
+        setLifecycleFeedback('Регулярный сезон начался.');
+      }
+      if (action === 'manual_generate') closeManualScheduleRecovery();
       refreshOperations();
+      await onTournamentUpdated?.();
     },
-    onError: () =>
+    onError: (_error, action) => {
+      if (action === 'manual_generate') {
+        setManualScheduleRecoveryError(MANUAL_SCHEDULE_RECOVERY_ERROR);
+        return;
+      }
+      setLifecycleFailed(true);
       setLifecycleFeedback(
-        'Не удалось создать календарь. Проверьте подтверждённые заявки, даты и настройки турнира.',
-      ),
+        action === 'start_regular'
+          ? 'Не удалось начать регулярный сезон. Обновите страницу и попробуйте ещё раз.'
+          : 'Не удалось создать календарь. Проверьте подтверждённые заявки, даты и настройки турнира.',
+      );
+    },
   });
+  const refreshTournamentAfterRosterMutation = async () => {
+    await client.invalidateQueries({ queryKey: ['admin', 'tournaments'] });
+    await client.invalidateQueries({ queryKey: ['admin', 'tournaments', 'pending-applications'] });
+    await onTournamentUpdated?.();
+  };
   const approve = useMutation({
     mutationFn: (participantId: string) =>
       approveAdminTournamentParticipant(tournament.id, participantId),
-    onSuccess: () => {
+    onSuccess: async () => {
       setSelectedParticipant(null);
-      void client.invalidateQueries({ queryKey: ['admin', 'tournaments'] });
-      void client.invalidateQueries({
-        queryKey: ['admin', 'tournaments', 'pending-applications'],
-      });
-      return client.invalidateQueries({ queryKey: participantsKey });
+      await refreshTournamentAfterRosterMutation();
+      await client.invalidateQueries({ queryKey: participantsKey });
     },
   });
   const approveAll = useMutation({
     mutationFn: () => approveAllAdminTournamentApplications(tournament.id),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: ['admin', 'tournaments'] });
-      void client.invalidateQueries({
-        queryKey: ['admin', 'tournaments', 'pending-applications'],
-      });
-      return client.invalidateQueries({ queryKey: participantsKey });
+    onSuccess: async () => {
+      await refreshTournamentAfterRosterMutation();
+      await client.invalidateQueries({ queryKey: participantsKey });
     },
   });
   const rejectApplication = useMutation({
     mutationFn: (participantId: string) =>
       rejectAdminTournamentApplication(tournament.id, participantId, rejectionReason.trim()),
-    onSuccess: () => {
+    onSuccess: async () => {
       setSelectedParticipant(null);
       setRejectingApplication(false);
       setRejectionReason('');
-      void client.invalidateQueries({ queryKey: ['admin', 'tournaments'] });
-      void client.invalidateQueries({
-        queryKey: ['admin', 'tournaments', 'pending-applications'],
-      });
-      return client.invalidateQueries({ queryKey: participantsKey });
+      await refreshTournamentAfterRosterMutation();
+      await client.invalidateQueries({ queryKey: participantsKey });
     },
   });
   const disqualify = useMutation({
@@ -616,11 +764,12 @@ export function TournamentOperations({
         participantId,
         disqualificationReason.trim(),
       ),
-    onSuccess: () => {
+    onSuccess: async () => {
       setSelectedParticipant(null);
       setDisqualifyingParticipant(false);
       setDisqualificationReason('');
-      return client.invalidateQueries({ queryKey: participantsKey });
+      await refreshTournamentAfterRosterMutation();
+      await client.invalidateQueries({ queryKey: participantsKey });
     },
   });
   const reschedule = useMutation({
@@ -725,9 +874,10 @@ export function TournamentOperations({
   });
   const invite = useMutation({
     mutationFn: (userId: string) => inviteAdminTournamentParticipant(tournament.id, userId),
-    onSuccess: () => {
+    onSuccess: async () => {
       setInviteSearch('');
-      void client.invalidateQueries({ queryKey: participantsKey });
+      await refreshTournamentAfterRosterMutation();
+      await client.invalidateQueries({ queryKey: participantsKey });
     },
   });
   const pause = useMutation({
@@ -769,22 +919,12 @@ export function TournamentOperations({
     (tab === 'bracket' && bracket.data?.series.length === 0);
   const canEditRules = ['draft', 'registration', 'registration_blocked'].includes(status);
   const tournamentTimezone = String(tournament.rules?.config?.timezone ?? 'Europe/Moscow');
-  const registrationOpensAt = tournament.registrationOpensAt
-    ? new Date(tournament.registrationOpensAt)
-    : null;
-  const registrationClosesAt = tournament.registrationClosesAt
-    ? new Date(tournament.registrationClosesAt)
-    : null;
-  const tournamentStartsAt = tournament.startsAt ? new Date(tournament.startsAt) : null;
-  const datesReady =
-    registrationOpensAt !== null &&
-    registrationClosesAt !== null &&
-    tournamentStartsAt !== null &&
-    Number.isFinite(registrationOpensAt.getTime()) &&
-    Number.isFinite(registrationClosesAt.getTime()) &&
-    Number.isFinite(tournamentStartsAt.getTime()) &&
-    registrationOpensAt < registrationClosesAt &&
-    registrationClosesAt < tournamentStartsAt;
+  const currentLifecycleMessage = lifecycleMessage(tournament, tournamentTimezone);
+  const canGenerateBlockedHeadToHeadSchedule =
+    tournament.regularSource === 'head_to_head' &&
+    status === 'registration_blocked' &&
+    tournament.lifecycle.action === 'block_registration' &&
+    tournament.lifecycle.approvedParticipantCount >= 2;
   const incidentStatuses = new Set([
     'paused',
     'blocked',
@@ -806,21 +946,22 @@ export function TournamentOperations({
           fixtureDate(right.scheduledStartsAt)?.getTime() ?? Number.MAX_SAFE_INTEGER;
         return leftTime - rightTime || left.fixtureNumber - right.fixtureNumber;
       })
-      .reduce<
-        Map<string, { key: string; label: string; fixtures: AdminTournamentFixture[] }>
-      >((groups, fixture) => {
-        const key = fixtureDayKey(fixture.scheduledStartsAt, tournamentTimezone);
-        const current = groups.get(key);
-        if (current) current.fixtures.push(fixture);
-        else {
-          groups.set(key, {
-            key,
-            label: fixtureDayLabel(fixture.scheduledStartsAt, tournamentTimezone),
-            fixtures: [fixture],
-          });
-        }
-        return groups;
-      }, new Map())
+      .reduce<Map<string, { key: string; label: string; fixtures: AdminTournamentFixture[] }>>(
+        (groups, fixture) => {
+          const key = fixtureDayKey(fixture.scheduledStartsAt, tournamentTimezone);
+          const current = groups.get(key);
+          if (current) current.fixtures.push(fixture);
+          else {
+            groups.set(key, {
+              key,
+              label: fixtureDayLabel(fixture.scheduledStartsAt, tournamentTimezone),
+              fixtures: [fixture],
+            });
+          }
+          return groups;
+        },
+        new Map(),
+      )
       .values(),
   );
   const openFixtureDayIndex = Math.max(
@@ -859,9 +1000,40 @@ export function TournamentOperations({
         </div>
       </div>
       {(notice || lifecycleFeedback) && (
-        <div className="tournament-operations__notice" role="status">
+        <div className="tournament-operations__notice" role={lifecycleFailed ? 'alert' : 'status'}>
           {notice ?? lifecycleFeedback}
         </div>
+      )}
+      {currentLifecycleMessage !== null && (
+        <section className="tournament-lifecycle-panel" aria-live="polite">
+          <p>{currentLifecycleMessage}</p>
+          {status === 'scheduling' &&
+            tournament.lifecycle.action === 'await_manual_regular_start' && (
+              <button
+                type="button"
+                className="admin-compact-btn admin-compact-btn--primary"
+                disabled={lifecycle.isPending}
+                onClick={() => lifecycle.mutate('start_regular')}
+              >
+                {lifecycle.isPending ? 'Начинаем регулярный сезон…' : 'Начать регулярный сезон'}
+              </button>
+            )}
+          {tournament.lifecycle.action === 'playoff_schedule_missing' && (
+            <button type="button" className="admin-compact-btn" onClick={() => onEdit(3, true)}>
+              Настроить расписание плей-офф
+            </button>
+          )}
+          {canGenerateBlockedHeadToHeadSchedule && (
+            <button
+              type="button"
+              className="admin-compact-btn"
+              disabled={lifecycle.isPending}
+              onClick={openManualScheduleRecovery}
+            >
+              {lifecycle.isPending ? 'Создаём календарь…' : 'Создать календарь'}
+            </button>
+          )}
+        </section>
       )}
       <SegmentedTabs
         ariaLabel="Управление турниром"
@@ -928,15 +1100,15 @@ export function TournamentOperations({
             />
             {pendingApplicationCount > 0 &&
               ['registration', 'registration_blocked'].includes(status) && (
-              <button
-                type="button"
-                className="admin-compact-btn admin-compact-btn--primary tournament-approve-all"
-                disabled={approveAll.isPending}
-                onClick={() => approveAll.mutate()}
-              >
-                Принять все заявки ({pendingApplicationCount})
-              </button>
-            )}
+                <button
+                  type="button"
+                  className="admin-compact-btn admin-compact-btn--primary tournament-approve-all"
+                  disabled={approveAll.isPending}
+                  onClick={() => approveAll.mutate()}
+                >
+                  Принять все заявки ({pendingApplicationCount})
+                </button>
+              )}
             {approveAll.isSuccess && (
               <div className="tournament-dispatch-feedback" role="status">
                 Принято заявок: {approveAll.data.approvedCount}.
@@ -1025,12 +1197,6 @@ export function TournamentOperations({
                 Изменить сроки
               </button>
             )}
-            {status === 'scheduling' && (
-              <div className="tournament-operation-hint">
-                Календарь создан, но участники его ещё не видят. Проверьте даты и выберите
-                «Опубликовать календарь» в действиях турнира.
-              </div>
-            )}
             {!canEditRules && status !== 'scheduling' && (
               <div className="tournament-operation-hint">
                 Календарь уже опубликован. Чтобы изменить время, выберите конкретную игру и укажите
@@ -1058,7 +1224,9 @@ export function TournamentOperations({
             {incidentFixtures.length > 0 && (
               <section className="tournament-operation-incidents">
                 <h3>Требуют решения</h3>
-                <p>Эти игры не продолжатся, пока администратор не назначит новое время или исход.</p>
+                <p>
+                  Эти игры не продолжатся, пока администратор не назначит новое время или исход.
+                </p>
                 {incidentFixtures.map((fixture) => (
                   <button
                     key={fixture.id}
@@ -1487,6 +1655,58 @@ export function TournamentOperations({
           </div>
         </AccessibleModal>
       )}
+      {manualScheduleRecoveryOpen && (
+        <AccessibleModal
+          title="Создать календарь"
+          ariaLabel="Создать календарь"
+          onClose={closeManualScheduleRecovery}
+          headerAction={
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Закрыть создание календаря"
+              onClick={closeManualScheduleRecovery}
+            >
+              <X size={16} />
+            </button>
+          }
+        >
+          <div className="tournament-series-decision">
+            <p className="modal-copy">
+              Подтверждённые игроки: {approvedParticipantCount}. Перед созданием календаря выберите
+              размер плей-офф. Этот выбор станет частью опубликованных правил турнира.
+            </p>
+            <label className="tournament-operations__field">
+              <span>Размер плей-офф</span>
+              <GlassSelect
+                ariaLabel="Размер плей-офф"
+                value={String(manualPlayoffSize)}
+                options={PLAYOFF_SIZES.filter((size) => size <= approvedParticipantCount).map(
+                  (size) => ({ value: String(size), label: playoffSizeLabel(size) }),
+                )}
+                onChange={(value) => setManualPlayoffSize(Number(value) as PlayoffSize)}
+              />
+            </label>
+            {manualScheduleRecoveryError !== null && (
+              <div className="tournament-operations__recovery-error" role="alert">
+                {manualScheduleRecoveryError}
+              </div>
+            )}
+            <div className="modal-actions tournament-operations__recovery-actions">
+              <button
+                type="button"
+                className="modal-primary btn btn--cta"
+                disabled={lifecycle.isPending}
+                onClick={() => lifecycle.mutate('manual_generate')}
+              >
+                {lifecycle.isPending
+                  ? 'Создаём календарь…'
+                  : 'Подтвердить размер плей-офф и создать календарь'}
+              </button>
+            </div>
+          </div>
+        </AccessibleModal>
+      )}
       {actionsOpen && (
         <AccessibleModal
           title="Действия турнира"
@@ -1527,61 +1747,16 @@ export function TournamentOperations({
             >
               Дублировать турнир
             </button>
-            {status === 'draft' && (
-              <>
-                <button
-                  type="button"
-                  className="admin-compact-btn"
-                  disabled={!datesReady || lifecycle.isPending}
-                  onClick={() => {
-                    setActionsOpen(false);
-                    lifecycle.mutate('publish');
-                  }}
-                >
-                  Открыть регистрацию
-                </button>
-                {!datesReady && (
-                  <div className="tournament-operation-hint">
-                    Сначала укажите открытие и закрытие регистрации и дату первого тура. Порядок:
-                    открытие → закрытие → старт.
-                  </div>
-                )}
-              </>
-            )}
-            {['registration', 'registration_blocked'].includes(status) && (
+            {canGenerateBlockedHeadToHeadSchedule && (
               <button
                 type="button"
                 className="admin-compact-btn"
                 onClick={() => {
                   setActionsOpen(false);
-                  lifecycle.mutate('generate');
+                  openManualScheduleRecovery();
                 }}
               >
                 Создать календарь
-              </button>
-            )}
-            {status === 'scheduling' && (
-              <button
-                type="button"
-                className="admin-compact-btn"
-                onClick={() => {
-                  setActionsOpen(false);
-                  lifecycle.mutate('publish_schedule');
-                }}
-              >
-                Опубликовать календарь
-              </button>
-            )}
-            {status === 'regular' && (
-              <button
-                type="button"
-                className="admin-compact-btn"
-                onClick={() => {
-                  setActionsOpen(false);
-                  lifecycle.mutate('playoffs');
-                }}
-              >
-                Запустить плей-офф
               </button>
             )}
             {!['draft', 'paused', 'completed', 'cancelled', 'archived'].includes(status) && (
@@ -1779,9 +1954,7 @@ export function TournamentOperations({
                   <button
                     type="button"
                     className="admin-compact-btn admin-compact-btn--danger"
-                    disabled={
-                      disqualificationReason.trim().length < 3 || disqualify.isPending
-                    }
+                    disabled={disqualificationReason.trim().length < 3 || disqualify.isPending}
                     onClick={() => disqualify.mutate(selectedParticipant.id)}
                   >
                     Подтвердить дисквалификацию

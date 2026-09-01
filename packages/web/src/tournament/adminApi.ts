@@ -1,4 +1,5 @@
 import { apiFetch } from '../api/apiFetch.js';
+import type { TournamentLifecycleDTO } from '../api/tournament.js';
 
 export interface AdminTournament {
   id: string;
@@ -10,6 +11,7 @@ export interface AdminTournament {
   regularSource: 'head_to_head' | 'daily_aggregate' | 'classic';
   revision: number;
   participantCount: number;
+  lifecycle: TournamentLifecycleDTO;
   pendingApplicationCount?: number;
   registrationOpensAt?: string | null;
   registrationClosesAt?: string | null;
@@ -212,7 +214,10 @@ export function inviteAdminTournamentParticipant(tournamentId: string, userId: s
   });
 }
 
-export function publishAdminTournament(tournamentId: string, expectedRevision: number) {
+export function publishAdminTournament(
+  tournamentId: string,
+  expectedRevision: number,
+): Promise<{ tournamentId: string; status: 'registration'; revision: number }> {
   return apiFetch(`/admin/tournaments/${tournamentId}/publish`, {
     method: 'POST',
     body: JSON.stringify({ expectedRevision }),
@@ -314,8 +319,29 @@ export function generateAdminTournamentSchedule(tournamentId: string, expectedRe
   });
 }
 
-export function publishAdminTournamentSchedule(tournamentId: string) {
-  return apiFetch(`/admin/tournaments/${tournamentId}/schedule/publish`, { method: 'POST' });
+export function generateAdminTournamentManualSchedule(
+  tournamentId: string,
+  expectedRevision: number,
+  playoffSize: 2 | 4 | 8 | 16,
+) {
+  return apiFetch<{
+    tournamentId: string;
+    status: 'scheduling';
+    participantCount: number;
+    matchdayCount: number;
+    roundCount: number;
+    fixtureCount: number;
+  }>(`/admin/tournaments/${tournamentId}/schedule/generate-manual`, {
+    method: 'POST',
+    body: JSON.stringify({ expectedRevision, playoffSize }),
+  });
+}
+
+export function startAdminTournamentRegularSeason(tournamentId: string) {
+  return apiFetch<{ tournamentId: string; status: 'regular' }>(
+    `/admin/tournaments/${tournamentId}/schedule/publish`,
+    { method: 'POST' },
+  );
 }
 
 export function startAdminTournamentPlayoffs(tournamentId: string) {

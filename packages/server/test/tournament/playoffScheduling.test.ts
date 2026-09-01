@@ -2,9 +2,48 @@ import { describe, expect, it } from 'vitest';
 import {
   allocateSeriesGamesByDay,
   calculateHardGameDeadline,
+  rebaseRoundGameDaysAtOrAfter,
   resolveTournamentDuelResult,
   validateRoundGameDays,
 } from '../../src/tournament/playoffScheduling.js';
+
+describe('rebaseRoundGameDaysAtOrAfter', () => {
+  it('moves a missed DST-bound round to the nearest future local slot without changing capacity', () => {
+    const configuredDays = [
+      { localDate: '2030-10-27', firstWaveLocalTime: '02:00', maxResultGames: 4 },
+      { localDate: '2030-10-28', firstWaveLocalTime: '02:00', maxResultGames: 3 },
+    ];
+
+    const rebased = rebaseRoundGameDaysAtOrAfter(
+      'Europe/Berlin',
+      configuredDays,
+      new Date('2030-10-27T02:15:00.000Z'),
+    );
+
+    expect(rebased[0]!.firstGameStartsAt.getTime()).toBeGreaterThan(
+      new Date('2030-10-27T02:15:00.000Z').getTime(),
+    );
+    expect(rebased.map((day) => day.maxResultGames)).toEqual([4, 3]);
+    expect(rebased.map((day) => day.localDate)).toEqual(['2030-10-28', '2030-10-29']);
+  });
+
+  it('skips a Europe/Berlin spring DST gap with one shared local-day shift', () => {
+    const rebased = rebaseRoundGameDaysAtOrAfter(
+      'Europe/Berlin',
+      [
+        { localDate: '2030-03-31', firstWaveLocalTime: '02:30', maxResultGames: 2 },
+        { localDate: '2030-04-01', firstWaveLocalTime: '02:30', maxResultGames: 1 },
+      ],
+      new Date('2030-03-30T00:00:00.000Z'),
+    );
+
+    expect(rebased.map((day) => day.localDate)).toEqual(['2030-04-01', '2030-04-02']);
+    expect(rebased.map((day) => day.firstGameStartsAt.toISOString())).toEqual([
+      '2030-04-01T00:30:00.000Z',
+      '2030-04-02T00:30:00.000Z',
+    ]);
+  });
+});
 
 describe('validateRoundGameDays', () => {
   it('accepts strictly ordered days whose capacity covers every possible series game', () => {

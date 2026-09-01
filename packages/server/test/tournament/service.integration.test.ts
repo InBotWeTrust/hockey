@@ -20,8 +20,10 @@ import {
   cancelTournament,
   countPendingTournamentApplications,
   createTournamentDraft,
+  duplicateTournamentDraft,
   disqualifyTournamentParticipant,
   generateRegularSchedule,
+  getTournamentGameContext,
   getTournamentMatchdays,
   getTournamentSchedule,
   getTournamentStandings,
@@ -655,7 +657,7 @@ async function settlePlayedPlayoffFixture(
     away_user_id: string;
     scheduled_starts_at: Date;
   },
-) {
+): Promise<{ duelMatchId: string; settledNow: boolean }> {
   const duel = await pool.query<{ id: string }>(
     `insert into amateur_duel_match
        (challenger_user_id, opponent_user_id, status, source, rules_snapshot,
@@ -679,13 +681,14 @@ async function settlePlayedPlayoffFixture(
   const client = await pool.connect();
   try {
     await client.query('begin');
-    await settleTournamentSegmentForDuel(client, {
+    const result = await settleTournamentSegmentForDuel(client, {
       duelMatchId: duel.rows[0]!.id,
       homeScore: 1,
       awayScore: 0,
       settledAt: fixture.scheduled_starts_at,
     });
     await client.query('commit');
+    return { duelMatchId: duel.rows[0]!.id, settledNow: result?.settledNow === true };
   } catch (error) {
     await client.query('rollback');
     throw error;
@@ -766,6 +769,94 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     });
     expect(updated.publishedRevisionId).toBe(revisions.rows[1]!.id);
   });
+
+  it('does not let a forged automatic lifecycle marker enable a legacy tournament revision', async () => {
+    await seedUsers(pool, 100);
+    const tournament = await createPublishedTournament(pool, 'legacy-marker-forgery', 0);
+
+    const updated = await updateTournamentDraft(pool, {
+      tournamentId: tournament.id,
+      expectedRevision: tournament.revision,
+      title: tournament.title,
+      description: tournament.description,
+      rules: { ...rules(0), automaticLifecycleVersion: 1 },
+      updatedBy: ADMIN_ID,
+      registrationOpensAt: new Date('2020-01-01T00:00:00.000Z'),
+      registrationClosesAt: new Date('2030-08-31T07:00:00.000Z'),
+      startsAt: new Date('2030-09-01T07:00:00.000Z'),
+    });
+    const revision = await pool.query<{ rules_snapshot: TournamentRulesSnapshot }>(
+      `select rules_snapshot from tournament_revision
+        where tournament_id = $1 and revision = $2`,
+      [tournament.id, updated.revision],
+    );
+
+    expect(revision.rows[0]!.rules_snapshot).not.toHaveProperty('automaticLifecycleVersion');
+  });
+
+  it('preserves a stored automatic lifecycle marker when an update payload omits it', async () => {
+    await seedUsers(pool, 100);
+    const tournament = await createPublishedTournament(pool, 'v1-marker-preserved', 0, {
+      ...rules(0),
+      automaticLifecycleVersion: 1,
+    });
+
+    const updated = await updateTournamentDraft(pool, {
+      tournamentId: tournament.id,
+      expectedRevision: tournament.revision,
+      title: tournament.title,
+      description: tournament.description,
+      rules: rules(0),
+      updatedBy: ADMIN_ID,
+      registrationOpensAt: new Date('2020-01-01T00:00:00.000Z'),
+      registrationClosesAt: new Date('2030-08-31T07:00:00.000Z'),
+      startsAt: new Date('2030-09-01T07:00:00.000Z'),
+    });
+    const revision = await pool.query<{ rules_snapshot: TournamentRulesSnapshot }>(
+      `select rules_snapshot from tournament_revision
+        where tournament_id = $1 and revision = $2`,
+      [tournament.id, updated.revision],
+    );
+
+    expect(revision.rows[0]!.rules_snapshot).toMatchObject({ automaticLifecycleVersion: 1 });
+  });
+
+  it.each([
+    ['legacy', rules(0)],
+    ['automatic', { ...rules(0), automaticLifecycleVersion: 1, duelLifecycleVersion: 1 }],
+  ] as const)(
+    'duplicates a %s tournament as a new automatic lifecycle draft',
+    async (_kind, sourceRules) => {
+      await seedUsers(pool, 100);
+      const source = await createPublishedTournament(
+        pool,
+        `duplicate-${_kind}-source`,
+        0,
+        sourceRules,
+      );
+
+      const duplicate = await duplicateTournamentDraft(pool, {
+        tournamentId: source.id,
+        slug: `duplicate-${_kind}-copy`,
+        title: `Копия ${_kind}`,
+        createdBy: ADMIN_ID,
+      });
+      const stored = await pool.query<{ rules_snapshot: TournamentRulesSnapshot }>(
+        `select rules_snapshot from tournament_revision
+        where tournament_id = $1 and revision = 1`,
+        [duplicate.id],
+      );
+
+      expect(duplicate).toMatchObject({ status: 'draft', revision: 1 });
+      expect(stored.rows[0]!.rules_snapshot).toMatchObject({
+        config: sourceRules.config,
+        eligibility: sourceRules.eligibility,
+        regularDuelTemplateId: sourceRules.regularDuelTemplateId,
+        automaticLifecycleVersion: 1,
+        duelLifecycleVersion: 2,
+      });
+    },
+  );
 
   it('does not change the registration price after a player has joined', async () => {
     await seedUsers(pool, 100);
@@ -1183,6 +1274,27 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     expect(audit.rows[0]?.count).toBe('1');
   });
 
+  it('gives administrators the human registration block from the current lifecycle snapshot', async () => {
+    await seedUsers(pool, 100);
+    const tournament = await createPublishedTournament(pool, 'lifecycle-admin-block', 0, {
+      ...rules(0),
+      automaticLifecycleVersion: 1,
+    });
+    await pool.query(`update tournament set status = 'registration_blocked' where id = $1`, [
+      tournament.id,
+    ]);
+
+    const tournaments = await listAdminTournaments(pool);
+
+    expect(tournaments.find((item) => item.id === tournament.id)?.lifecycle).toEqual({
+      action: 'block_registration',
+      dueAt: null,
+      approvedParticipantCount: 0,
+      requiredParticipantCount: 2,
+      reason: 'not_enough_participants',
+    });
+  });
+
   it('reports current capacity numbers when all pending applications do not fit', async () => {
     await seedUsers(pool, 100);
     const approvalRules = rules(0);
@@ -1443,6 +1555,232 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     expect(matchdays[1]).toMatchObject({ number: 2, myResult: null });
   });
 
+  describe('game context', () => {
+    it('allows an approved player to open only the currently active daily matchday', async () => {
+      await seedUsers(pool, 0);
+      const dailyRules = dailyPlayoffTournamentRules();
+      dailyRules.config = parseTournamentConfig({
+        ...dailyRules.config,
+        dailyDays: 2,
+        bestDays: 2,
+      });
+      const tournament = await createPublishedTournament(pool, 'daily-game-context', 0, dailyRules);
+      await applyToTournament(pool, tournament.id, PLAYER_IDS[0]);
+      await applyToTournament(pool, tournament.id, PLAYER_IDS[1]);
+      await generateRegularSchedule(pool, tournament.id, tournament.revision);
+      await publishRegularSchedule(pool, tournament.id);
+
+      await expect(
+        getTournamentGameContext(pool, {
+          tournamentId: tournament.id,
+          userId: PLAYER_IDS[0],
+          now: new Date('2030-09-02T12:00:00.000Z'),
+        }),
+      ).resolves.toEqual({
+        action: 'play_daily',
+        tournamentDay: 2,
+        result: null,
+        message: null,
+      });
+
+      const participant = await pool.query<{ id: string }>(
+        `select id from tournament_participant where tournament_id = $1 and user_id = $2`,
+        [tournament.id, PLAYER_IDS[0]],
+      );
+      await pool.query(
+        `insert into tournament_daily_result
+           (tournament_id, participant_id, tournament_day, player_local_date,
+            goals, shots, accuracy, completed, source_snapshot, finalized_at)
+         values ($1, $2, 2, '2030-09-02', 5, 30, $3, true, '{}', now())`,
+        [tournament.id, participant.rows[0]!.id, 5 / 30],
+      );
+      await expect(
+        getTournamentGameContext(pool, {
+          tournamentId: tournament.id,
+          userId: PLAYER_IDS[0],
+          now: new Date('2030-09-02T12:00:00.000Z'),
+        }),
+      ).resolves.toEqual({
+        action: 'round_completed',
+        tournamentDay: 2,
+        result: { goals: 5, shots: 30, accuracy: 0.16667, completed: true },
+        message: 'Этот тур уже завершён. Ожидаем следующий игровой день.',
+      });
+    });
+
+    it('returns a completed daily result instead of opening a stale tournament daily URL', async () => {
+      await seedUsers(pool, 0);
+      const tournament = await createPublishedTournament(
+        pool,
+        'daily-completed-game-context',
+        0,
+        dailyPlayoffTournamentRules(),
+      );
+      const application = await applyToTournament(pool, tournament.id, PLAYER_IDS[0]);
+      await applyToTournament(pool, tournament.id, PLAYER_IDS[1]);
+      await generateRegularSchedule(pool, tournament.id, tournament.revision);
+      await publishRegularSchedule(pool, tournament.id);
+      await pool.query(
+        `insert into tournament_daily_result
+           (tournament_id, participant_id, tournament_day, player_local_date,
+            goals, shots, accuracy, completed, source_snapshot, finalized_at)
+         values ($1, $2, 1, '2030-09-01', 24, 90, $3, true, '{}', now())`,
+        [tournament.id, application.participantId, 24 / 90],
+      );
+
+      await expect(
+        getTournamentGameContext(pool, {
+          tournamentId: tournament.id,
+          userId: PLAYER_IDS[0],
+          now: new Date('2030-09-02T08:00:00.000Z'),
+        }),
+      ).resolves.toEqual({
+        action: 'waiting_playoff',
+        tournamentDay: 1,
+        result: { goals: 24, shots: 90, accuracy: 0.26667, completed: true },
+        message: 'Регулярный сезон завершён. Ожидаем начала плей-офф.',
+      });
+    });
+
+    it('returns a credited incomplete result after its tournament day has closed', async () => {
+      await seedUsers(pool, 0);
+      const tournament = await createPublishedTournament(
+        pool,
+        'daily-incomplete-game-context',
+        0,
+        dailyPlayoffTournamentRules(),
+      );
+      const application = await applyToTournament(pool, tournament.id, PLAYER_IDS[0]);
+      await applyToTournament(pool, tournament.id, PLAYER_IDS[1]);
+      await generateRegularSchedule(pool, tournament.id, tournament.revision);
+      await publishRegularSchedule(pool, tournament.id);
+      await pool.query(
+        `insert into tournament_daily_result
+           (tournament_id, participant_id, tournament_day, player_local_date,
+            goals, shots, accuracy, completed, source_snapshot, finalized_at)
+         values ($1, $2, 1, '2030-09-01', 1, 2, $3, false, '{}', now())`,
+        [tournament.id, application.participantId, 1 / 2],
+      );
+
+      await expect(
+        getTournamentGameContext(pool, {
+          tournamentId: tournament.id,
+          userId: PLAYER_IDS[0],
+          now: new Date('2030-09-02T08:00:00.000Z'),
+        }),
+      ).resolves.toEqual({
+        action: 'waiting_playoff',
+        tournamentDay: 1,
+        result: { goals: 1, shots: 2, accuracy: 0.5, completed: false },
+        message: 'Регулярный сезон завершён. Ожидаем начала плей-офф.',
+      });
+    });
+
+    it('distinguishes classic, non-participant, pre-start, playoff and completed tournament states', async () => {
+      await seedUsers(pool, 0);
+      const classicRules = dailyPlayoffTournamentRules();
+      classicRules.config = parseTournamentConfig({
+        ...classicRules.config,
+        regularSource: 'classic',
+        dailyDays: 1,
+        bestDays: 1,
+        classicRules: {
+          goalieId: 'rookie',
+          shotsPerPeriod: 30,
+          periodDurationMs: 1_200_000,
+          breakDurationMs: 900_000,
+          incompleteResultPolicy: 'completed_game',
+          periodSpeedPresets: [1, 2, 3].map((periodNumber) => ({
+            periodNumber,
+            goalFrequency: 0.5,
+            goalieFrequency: 0.5,
+            shooterFrequency: 0.5,
+            puckSpeedPerMs: 0.5,
+          })),
+        },
+      });
+      const tournament = await createPublishedTournament(
+        pool,
+        'classic-game-context',
+        0,
+        classicRules,
+      );
+      await applyToTournament(pool, tournament.id, PLAYER_IDS[0]);
+      await applyToTournament(pool, tournament.id, PLAYER_IDS[1]);
+      await generateRegularSchedule(pool, tournament.id, tournament.revision);
+
+      await expect(
+        getTournamentGameContext(pool, {
+          tournamentId: tournament.id,
+          userId: PLAYER_IDS[0],
+          now: new Date('2030-09-01T12:00:00.000Z'),
+        }),
+      ).resolves.toMatchObject({ action: 'not_started', tournamentDay: null });
+
+      await publishRegularSchedule(pool, tournament.id);
+      await expect(
+        getTournamentGameContext(pool, {
+          tournamentId: tournament.id,
+          userId: PLAYER_IDS[2],
+          now: new Date('2030-09-01T12:00:00.000Z'),
+        }),
+      ).resolves.toMatchObject({ action: 'not_participant', tournamentDay: null });
+      await expect(
+        getTournamentGameContext(pool, {
+          tournamentId: tournament.id,
+          userId: PLAYER_IDS[0],
+          now: new Date('2030-09-01T12:00:00.000Z'),
+        }),
+      ).resolves.toMatchObject({ action: 'play_classic', tournamentDay: 1 });
+
+      await pool.query(`update tournament set status = 'playoff' where id = $1`, [tournament.id]);
+      await expect(
+        getTournamentGameContext(pool, {
+          tournamentId: tournament.id,
+          userId: PLAYER_IDS[0],
+          now: new Date('2030-09-01T12:00:00.000Z'),
+        }),
+      ).resolves.toMatchObject({ action: 'playoff_active', tournamentDay: null });
+
+      await pool.query(`update tournament set status = 'completed' where id = $1`, [tournament.id]);
+      await expect(
+        getTournamentGameContext(pool, {
+          tournamentId: tournament.id,
+          userId: PLAYER_IDS[0],
+          now: new Date('2030-09-01T12:00:00.000Z'),
+        }),
+      ).resolves.toMatchObject({ action: 'tournament_completed', tournamentDay: null });
+
+      await pool.query(`update tournament set status = 'paused' where id = $1`, [tournament.id]);
+      await expect(
+        getTournamentGameContext(pool, {
+          tournamentId: tournament.id,
+          userId: PLAYER_IDS[0],
+          now: new Date('2030-09-01T12:00:00.000Z'),
+        }),
+      ).resolves.toEqual({
+        action: 'not_started',
+        tournamentDay: null,
+        result: null,
+        message: 'Турнир поставлен на паузу. О продолжении сообщат организаторы.',
+      });
+
+      await pool.query(`update tournament set status = 'cancelled' where id = $1`, [tournament.id]);
+      await expect(
+        getTournamentGameContext(pool, {
+          tournamentId: tournament.id,
+          userId: PLAYER_IDS[0],
+          now: new Date('2030-09-01T12:00:00.000Z'),
+        }),
+      ).resolves.toEqual({
+        action: 'tournament_completed',
+        tournamentDay: null,
+        result: null,
+        message: 'Турнир отменён.',
+      });
+    });
+  });
+
   it('shows every approved daily aggregate participant with zeroes when the regular season starts', async () => {
     await seedUsers(pool, 0);
     await pool.query(`update users set avatar_url = '/player-one.webp' where id = $1`, [
@@ -1528,6 +1866,139 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     expect(deliveries.rows[0]?.count).toBe(String(PLAYER_IDS.length));
   });
 
+  it('returns the existing playoff instead of materializing a second bracket on retry', async () => {
+    await seedUsers(pool, 0);
+    const tournament = await createPublishedTournament(
+      pool,
+      'idempotent-playoff-start',
+      0,
+      playoffTournamentRules(2, {
+        playoffRounds: [
+          {
+            roundNumber: 1,
+            winsRequired: 1,
+            homeSequence: ['H'],
+            duelTemplateId: '00000000-0000-4000-8000-000000000801',
+            gameWindowMs: 3_600_000,
+            gameBreakMs: 0,
+            roundBreakMs: 0,
+          },
+        ],
+      }),
+    );
+    await prepareTournamentForPlayoffs(pool, tournament.id, [4, 3, 2, 1]);
+
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-01T08:00:00.000Z'));
+    await expect(
+      startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-01T08:01:00.000Z')),
+    ).resolves.toMatchObject({ tournamentId: tournament.id, status: 'playoff', seriesCount: 1 });
+
+    const series = await pool.query<{ count: number }>(
+      `select count(*)::int as count from tournament_playoff_series where tournament_id = $1`,
+      [tournament.id],
+    );
+    expect(series.rows[0]!.count).toBe(1);
+  });
+
+  it('rebases a missed playoff game day into the next future local slot', async () => {
+    await seedUsers(pool, 0);
+    const template = await pool.query<{ id: string }>(
+      `select id from amateur_duel_template
+        where deleted_at is null and is_active
+        order by created_at limit 1`,
+    );
+    const tournament = await createPublishedTournament(
+      pool,
+      'rebased-playoff-game-days',
+      0,
+      playoffTournamentRules(2, {
+        playoffRounds: [
+          {
+            roundNumber: 1,
+            winsRequired: 1,
+            homeSequence: ['H'],
+            duelTemplateId: template.rows[0]!.id,
+            readinessMinutes: 5,
+            plannedStartIntervalMinutes: 20,
+            scheduleDays: [
+              { localDate: '2030-09-01', firstWaveLocalTime: '10:00', maxResultGames: 1 },
+            ],
+          },
+        ],
+      }),
+    );
+    await prepareTournamentForPlayoffs(pool, tournament.id, [4, 3, 2, 1]);
+
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-02T08:15:00.000Z'));
+
+    const fixture = await pool.query<{ scheduled_starts_at: Date }>(
+      `select fixture.scheduled_starts_at
+         from tournament_fixture fixture
+         join tournament_playoff_series series on series.id = fixture.series_id
+        where series.tournament_id = $1`,
+      [tournament.id],
+    );
+    expect(fixture.rows[0]!.scheduled_starts_at.toISOString()).toBe('2030-09-03T07:00:00.000Z');
+  });
+
+  it('rebases each scheduled playoff round after the prior rebased round and its break', async () => {
+    await seedUsers(pool, 0);
+    const template = await pool.query<{ id: string }>(
+      `select id from amateur_duel_template
+        where deleted_at is null and is_active
+        order by created_at limit 1`,
+    );
+    const tournament = await createPublishedTournament(
+      pool,
+      'sequentially-rebased-playoff-rounds',
+      0,
+      playoffTournamentRules(4, {
+        playoffRounds: [
+          {
+            roundNumber: 1,
+            winsRequired: 1,
+            homeSequence: ['H'],
+            duelTemplateId: template.rows[0]!.id,
+            readinessMinutes: 5,
+            plannedStartIntervalMinutes: 20,
+            roundBreakMs: 86_400_000,
+            scheduleDays: [
+              { localDate: '2030-09-01', firstWaveLocalTime: '10:00', maxResultGames: 1 },
+            ],
+          },
+          {
+            roundNumber: 2,
+            winsRequired: 1,
+            homeSequence: ['H'],
+            duelTemplateId: template.rows[0]!.id,
+            readinessMinutes: 5,
+            plannedStartIntervalMinutes: 20,
+            roundBreakMs: 0,
+            scheduleDays: [
+              { localDate: '2030-09-01', firstWaveLocalTime: '10:00', maxResultGames: 1 },
+            ],
+          },
+        ],
+      }),
+    );
+    await prepareTournamentForPlayoffs(pool, tournament.id, [4, 3, 2, 1]);
+
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-02T08:15:00.000Z'));
+
+    const rounds = await pool.query<{ number: number; starts_at: Date; ends_at: Date }>(
+      `select number, starts_at, ends_at from tournament_round
+        where tournament_id = $1 and stage = 'playoff'
+        order by number`,
+      [tournament.id],
+    );
+
+    expect(rounds.rows.map((round) => round.number)).toEqual([1, 2]);
+    expect(rounds.rows[0]!.starts_at.toISOString()).toBe('2030-09-03T07:00:00.000Z');
+    expect(rounds.rows[1]!.starts_at.getTime()).toBeGreaterThanOrEqual(
+      rounds.rows[0]!.ends_at.getTime() + 86_400_000,
+    );
+  });
+
   it('rolls back tournament completion when its audience outbox insert fails', async () => {
     await seedUsers(pool, 0);
     await subscribeTournamentUsers(pool, PLAYER_IDS);
@@ -1536,6 +2007,13 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       'transactional-completion',
       0,
       playoffTournamentRules(2, {
+        stageRewards: {
+          regular: [],
+          playoff: [
+            { place: 1, coins: 10, stars: 1, experience: 20 },
+            { place: 2, coins: 5, stars: 0, experience: 10 },
+          ],
+        },
         playoffRounds: [
           {
             roundNumber: 1,
@@ -1593,21 +2071,39 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       }),
     ).resolves.toBeDefined();
     await expect(
+      resolveTournamentNoShow(pool, {
+        tournamentId: tournament.id,
+        fixtureId: finalFixture.rows[0]!.id,
+        absent: 'away',
+        reason: 'repeat completed final recovery request',
+        adminUserId: ADMIN_ID,
+      }),
+    ).resolves.toBeDefined();
+    await expect(
       grantTournamentStageRewards(pool, tournament.id, 'playoff'),
     ).resolves.toMatchObject({
       stage: 'playoff',
       granted: 0,
     });
-    const completed = await pool.query<{ status: string; delivery_count: string }>(
+    const completed = await pool.query<{
+      status: string;
+      delivery_count: string;
+      playoff_reward_count: string;
+    }>(
       `select tournament.status,
               (select count(*)::text from push_delivery_log
-                where event_type = 'tournament.completed') as delivery_count
+                where event_type = 'tournament.completed') as delivery_count,
+              (select count(*)::text from tournament_economy_event
+                where tournament_id = tournament.id
+                  and kind = 'stage_reward'
+                  and metadata->>'stage' = 'playoff') as playoff_reward_count
          from tournament where id = $1`,
       [tournament.id],
     );
     expect(completed.rows[0]).toEqual({
       status: 'completed',
       delivery_count: String(PLAYER_IDS.length),
+      playoff_reward_count: '2',
     });
   });
 
@@ -2434,6 +2930,30 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         url: '/?view=amateur&section=tournaments',
       },
     ]);
+  });
+
+  it('reports a regular fixture completion only for the transaction that settles it', async () => {
+    const { fixtures } = await createBestOfThreePlayoff(pool, 'newly-settled-fixture');
+    const first = await settlePlayedPlayoffFixture(pool, fixtures[0]!);
+    expect(first.settledNow).toBe(true);
+
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      const repeated = await settleTournamentSegmentForDuel(client, {
+        duelMatchId: first.duelMatchId,
+        homeScore: 1,
+        awayScore: 0,
+        settledAt: fixtures[0]!.scheduled_starts_at,
+      });
+      await client.query('commit');
+      expect(repeated).toEqual(expect.objectContaining({ completed: true, settledNow: false }));
+    } catch (error) {
+      await client.query('rollback');
+      throw error;
+    } finally {
+      client.release();
+    }
   });
 
   it('notifies both active participants when a technical result promotes the next fixture', async () => {
@@ -4537,6 +5057,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       tournamentId: tournament.id,
       status: 'tiebreak_required',
       participantIds: expect.any(Array),
+      created: true,
     });
 
     const round = await pool.query<{
@@ -4702,6 +5223,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       tournamentId: tournament.id,
       status: 'tiebreak_required',
       participantIds: [participantIds[1], participantIds[2]],
+      created: true,
     });
 
     const rounds = await pool.query<{ stage: string; status: string }>(
@@ -4856,6 +5378,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       tournamentId: tournament.id,
       status: 'tiebreak_required',
       participantIds: [firstTied, secondTied, thirdTied],
+      created: true,
     });
     await settleExpectedTieBreakRound(pool, {
       tournamentId: tournament.id,
@@ -4869,6 +5392,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       tournamentId: tournament.id,
       status: 'tiebreak_required',
       participantIds: [firstTied, secondTied, thirdTied],
+      created: true,
     });
     const afterFirstCycle = await pool.query<{
       number: number;
@@ -4913,6 +5437,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       tournamentId: tournament.id,
       status: 'tiebreak_required',
       participantIds: [firstTied, secondTied, thirdTied],
+      created: true,
     });
     const thirdRound = await pool.query<{ number: number; fixture_count: string }>(
       `select round.number, count(fixture.id)::text as fixture_count

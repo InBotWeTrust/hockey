@@ -386,6 +386,7 @@ interface DuelMatchRow {
 interface ReconciledMatch {
   match: DuelMatchRow;
   changed: boolean;
+  newlySettledRegularFixture?: { fixtureId: string; tournamentId: string };
 }
 
 interface DuelPeriodRule {
@@ -2638,18 +2639,32 @@ async function settleMatchIfReady(
     outcome,
     winner_user_id: winnerUserId,
   });
-  if (match.source === 'tournament') {
-    await settleTournamentSegmentForDuel(client, {
-      duelMatchId: match.id,
-      homeScore: Number(a.goals),
-      awayScore: Number(b.goals),
-      settledAt: now,
-    });
-  }
+  const tournamentSettlement =
+    match.source === 'tournament'
+      ? await settleTournamentSegmentForDuel(client, {
+          duelMatchId: match.id,
+          homeScore: Number(a.goals),
+          awayScore: Number(b.goals),
+          settledAt: now,
+        })
+      : null;
   if (settlementPolicy.evaluateAchievements) {
     await evaluateDuelSettledAchievements(client, { matchId: match.id, winnerUserId });
   }
-  return { match: rows[0]!, changed: true };
+  return {
+    match: rows[0]!,
+    changed: true,
+    ...(tournamentSettlement?.settledNow === true &&
+    tournamentSettlement.roundStage === 'regular' &&
+    tournamentSettlement.tournamentId !== undefined
+      ? {
+          newlySettledRegularFixture: {
+            fixtureId: tournamentSettlement.fixtureId,
+            tournamentId: tournamentSettlement.tournamentId,
+          },
+        }
+      : {}),
+  };
 }
 
 async function fetchMatchmakingTemplates(
@@ -2702,7 +2717,14 @@ async function reconcileMatch(
     now,
   });
   if (tournamentAttempt.changed) {
-    return { match: await fetchMatchForUpdate(client, match.id), changed: true };
+    const reconciledMatch = await fetchMatchForUpdate(client, match.id);
+    return {
+      match: reconciledMatch,
+      changed: true,
+      ...(tournamentAttempt.newlySettledRegularFixture === undefined
+        ? {}
+        : { newlySettledRegularFixture: tournamentAttempt.newlySettledRegularFixture }),
+    };
   }
   if (match.status === 'invited' || match.status === 'ready_check') {
     return settleMatchIfReady(client, match, now);
@@ -2774,7 +2796,13 @@ async function reconcileMatch(
   }
   const refreshed = await fetchMatchForUpdate(client, match.id);
   const settled = await settleMatchIfReady(client, refreshed, now);
-  return { match: settled.match, changed: changed || settled.changed };
+  return {
+    match: settled.match,
+    changed: changed || settled.changed,
+    ...(settled.newlySettledRegularFixture === undefined
+      ? {}
+      : { newlySettledRegularFixture: settled.newlySettledRegularFixture }),
+  };
 }
 
 async function fetchAvailableInventory(
@@ -3529,9 +3557,7 @@ async function activateReadyMatch(
   );
   return {
     ...rows[0]!,
-    ...(match.challenger_name !== undefined
-      ? { challenger_name: match.challenger_name }
-      : {}),
+    ...(match.challenger_name !== undefined ? { challenger_name: match.challenger_name } : {}),
     ...(match.challenger_avatar_url !== undefined
       ? { challenger_avatar_url: match.challenger_avatar_url }
       : {}),
@@ -3582,6 +3608,35 @@ async function publishDuelFixtureProgress(
   });
 }
 
+interface NewlySettledRegularFixture {
+  fixtureId: string;
+  tournamentId: string;
+}
+
+async function reconcileNewlySettledRegularFixture(
+  app: Parameters<FastifyPluginAsync>[0],
+  fixture: NewlySettledRegularFixture,
+): Promise<void> {
+  try {
+    await app.reconcileTournamentLifecycleBestEffort({ tournamentId: fixture.tournamentId });
+  } catch (err) {
+    app.log.error({ err, fixture }, 'regular tournament lifecycle reconcile failed');
+  }
+}
+
+async function reconcileNewlySettledRegularFixtures(
+  app: Parameters<FastifyPluginAsync>[0],
+  fixtures: Iterable<NewlySettledRegularFixture>,
+): Promise<void> {
+  const uniqueFixtures = new Map<string, NewlySettledRegularFixture>();
+  for (const fixture of fixtures) {
+    uniqueFixtures.set(fixture.fixtureId, fixture);
+  }
+  for (const fixture of uniqueFixtures.values()) {
+    await reconcileNewlySettledRegularFixture(app, fixture);
+  }
+}
+
 async function isSettled(client: PoolClient, matchId: string): Promise<boolean> {
   const { rows } = await client.query<{ status: MatchStatus }>(
     `select status from amateur_duel_match where id = $1`,
@@ -3593,10 +3648,7 @@ async function isSettled(client: PoolClient, matchId: string): Promise<boolean> 
 export const amateurDuelRoutes: FastifyPluginAsync<{
   duelSeedSecret: string;
   systemUserId?: string;
-}> = async (
-  app,
-  opts,
-) => {
+}> = async (app, opts) => {
   app.get('/duel/amateur/templates', { preHandler: [app.authenticate] }, async () => {
     const { rows } = await app.pg.query<DuelTemplateRow>(
       `with ranked_templates as (
@@ -3730,6 +3782,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       );
       const matches: DuelMatchDTO[] = [];
       const changedMatchIds = new Set<string>();
+      const newlySettledRegularFixtures = new Map<string, NewlySettledRegularFixture>();
       for (const row of rows) {
         const visibleMatch = await fetchVisibleMatchForUpdate(client, row.id);
         let reconciled: ReconciledMatch;
@@ -3740,6 +3793,11 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           reconciled = await reconcileMatch(client, visibleMatch, now);
         }
         if (reconciled.changed) changedMatchIds.add(reconciled.match.id);
+        if (reconciled.newlySettledRegularFixture !== undefined)
+          newlySettledRegularFixtures.set(
+            reconciled.newlySettledRegularFixture.fixtureId,
+            reconciled.newlySettledRegularFixture,
+          );
         const match = reconciled.match;
         if (
           match.status === 'invited' ||
@@ -3750,11 +3808,16 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           matches.push(await buildMatchDto(client, match, req.user.id, now));
         }
       }
-      return { matches, changedMatchIds: [...changedMatchIds] };
+      return {
+        matches,
+        changedMatchIds: [...changedMatchIds],
+        newlySettledRegularFixtures: [...newlySettledRegularFixtures.values()],
+      };
     });
     for (const matchId of response.changedMatchIds) {
       await publishDuelFixtureProgress(app, matchId);
     }
+    await reconcileNewlySettledRegularFixtures(app, response.newlySettledRegularFixtures);
     return { matches: response.matches };
   });
 
@@ -4014,6 +4077,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       );
       const events: DuelMatchDTO[] = [];
       const changedMatchIds = new Set<string>();
+      const newlySettledRegularFixtures = new Map<string, NewlySettledRegularFixture>();
       for (const row of rows) {
         const reconciled = await reconcileMatch(
           client,
@@ -4021,6 +4085,11 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           now,
         );
         if (reconciled.changed) changedMatchIds.add(reconciled.match.id);
+        if (reconciled.newlySettledRegularFixture !== undefined)
+          newlySettledRegularFixtures.set(
+            reconciled.newlySettledRegularFixture.fixtureId,
+            reconciled.newlySettledRegularFixture,
+          );
         const match = reconciled.match;
         if (
           match.status === 'invited' ||
@@ -4030,11 +4099,16 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           events.push(await buildMatchDto(client, match, req.user.id, now));
         }
       }
-      return { events, changedMatchIds: [...changedMatchIds] };
+      return {
+        events,
+        changedMatchIds: [...changedMatchIds],
+        newlySettledRegularFixtures: [...newlySettledRegularFixtures.values()],
+      };
     });
     for (const matchId of response.changedMatchIds) {
       await publishDuelFixtureProgress(app, matchId);
     }
+    await reconcileNewlySettledRegularFixtures(app, response.newlySettledRegularFixtures);
     return { events: response.events };
   });
 
@@ -4340,6 +4414,9 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
             matchId: match.id,
             status: match.status,
             changed: reconciled.changed,
+            ...(reconciled.newlySettledRegularFixture === undefined
+              ? {}
+              : { newlySettledRegularFixture: reconciled.newlySettledRegularFixture }),
           };
         }
         const rules = parseRulesSnapshot(match.rules_snapshot);
@@ -4386,6 +4463,9 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       });
       if (response.kind === 'terminal_conflict') {
         if (response.changed) await publishDuelFixtureProgress(app, response.matchId);
+        if (response.newlySettledRegularFixture !== undefined) {
+          await reconcileNewlySettledRegularFixture(app, response.newlySettledRegularFixture);
+        }
         throw new AppError('conflict', `cannot ready in duel status '${response.status}'`, 409);
       }
       await publishDuelFixtureProgress(app, response.match.id);
@@ -4556,9 +4636,15 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       return {
         match: await buildMatchStateDto(client, match, req.user.id, now),
         changed: reconciled.changed,
+        ...(reconciled.newlySettledRegularFixture === undefined
+          ? {}
+          : { newlySettledRegularFixture: reconciled.newlySettledRegularFixture }),
       };
     });
     if (response.changed) await publishDuelFixtureProgress(app, response.match.id);
+    if (response.newlySettledRegularFixture !== undefined) {
+      await reconcileNewlySettledRegularFixture(app, response.newlySettledRegularFixture);
+    }
     return { match: response.match };
   });
 
@@ -4879,16 +4965,28 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         ) {
           await closeParticipantPeriod(client, participant, rules, now, 'quota');
         }
-        match = (await reconcileMatch(client, await fetchMatchForUpdate(client, match.id), now))
-          .match;
+        const settledReconciliation = await reconcileMatch(
+          client,
+          await fetchMatchForUpdate(client, match.id),
+          now,
+        );
+        match = settledReconciliation.match;
         return {
           matchId: match.id,
           settled: match.status === 'settled',
+          ...(settledReconciliation.newlySettledRegularFixture === undefined
+            ? {}
+            : {
+                newlySettledRegularFixture: settledReconciliation.newlySettledRegularFixture,
+              }),
           server_result: serverResult,
           match: await buildMatchStateDto(client, match, req.user.id, now),
         };
       });
       await publishDuelFixtureProgress(app, response.matchId);
+      if (response.newlySettledRegularFixture !== undefined) {
+        await reconcileNewlySettledRegularFixture(app, response.newlySettledRegularFixture);
+      }
       if (response.settled) void notifySettlement(app, response.matchId);
       return response;
     },
@@ -4905,17 +5003,24 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         if (!isTerminalMatchStatus(visibleMatch.status)) {
           await assertTournamentDuelPlayable(client, visibleMatch);
         }
-        const match = (await reconcileMatch(client, visibleMatch, now)).match;
+        const reconciled = await reconcileMatch(client, visibleMatch, now);
+        const match = reconciled.match;
         if (match.challenger_user_id !== req.user.id && match.opponent_user_id !== req.user.id) {
           throw new AppError('forbidden', 'duel match access denied', 403);
         }
         return {
           settled: await isSettled(client, match.id),
           matchId: match.id,
+          ...(reconciled.newlySettledRegularFixture === undefined
+            ? {}
+            : { newlySettledRegularFixture: reconciled.newlySettledRegularFixture }),
           match: await buildMatchStateDto(client, match, req.user.id, now),
         };
       });
       await publishDuelFixtureProgress(app, response.matchId);
+      if (response.newlySettledRegularFixture !== undefined) {
+        await reconcileNewlySettledRegularFixture(app, response.newlySettledRegularFixture);
+      }
       if (response.settled) void notifySettlement(app, response.matchId);
       return { match: response.match };
     },
