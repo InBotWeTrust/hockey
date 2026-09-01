@@ -264,6 +264,41 @@ describe('TournamentScheduleCalendar', () => {
     expect(screen.queryByText('Завершён')).not.toBeInTheDocument();
   });
 
+  it('keeps matchdays waiting when a tournament is paused before the regular season starts', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2030-09-01T12:00:00.000Z'));
+
+    render(
+      <TournamentScheduleCalendar
+        fixtures={[]}
+        matchdays={[
+          {
+            id: 'day-1',
+            number: 1,
+            localDate: '2030-09-01',
+            startsAt: '2030-09-01T00:00:00.000Z',
+            endsAt: '2030-09-02T00:00:00.000Z',
+            myResult: null,
+          },
+        ]}
+        regularSource="daily_aggregate"
+        tournamentStatus="paused"
+        currentUserId="me"
+        isParticipant
+        timezone="Europe/Moscow"
+        rangeStartsAt="2030-09-01T00:00:00.000Z"
+        rangeEndsAt="2030-09-02T00:00:00.000Z"
+        renderFixture={() => null}
+        formatDateTime={(value) => value}
+        onOpenDailyGame={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Ожидает запуска')).toBeInTheDocument();
+    expect(screen.queryByText('Сейчас')).not.toBeInTheDocument();
+    expect(screen.queryByText('Завершён')).not.toBeInTheDocument();
+  });
+
   it('offers a tournament game only inside the selected matchday time window', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2030-09-01T12:00:00.000Z'));

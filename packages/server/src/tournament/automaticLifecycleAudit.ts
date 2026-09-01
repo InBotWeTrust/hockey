@@ -72,6 +72,8 @@ interface AuditTournamentRow {
   classic_session_count: number;
   classic_period_count: number;
   classic_shot_count: number;
+  missing_daily_result_count: number;
+  unexpected_daily_result_count: number;
 }
 
 interface MatchdayRow {
@@ -129,7 +131,9 @@ function hasOnlyCompletedDailyHistory(tournament: AuditTournamentRow): boolean {
     tournament.series_count === 0 &&
     tournament.classic_session_count === 0 &&
     tournament.classic_period_count === 0 &&
-    tournament.classic_shot_count === 0
+    tournament.classic_shot_count === 0 &&
+    tournament.missing_daily_result_count === 0 &&
+    tournament.unexpected_daily_result_count === 0
   );
 }
 
@@ -182,7 +186,34 @@ async function loadAuditTournament(
               join tournament_classic_session session
                 on session.id = shot.tournament_classic_session_id
               where session.tournament_id = t.id and shot.mode = 'tournament_classic')
-              as classic_shot_count
+              as classic_shot_count,
+            (select count(*)::int
+               from tournament_participant participant
+               cross join lateral generate_series(
+                 1,
+                 greatest(coalesce((revision.rules_snapshot->'config'->>'dailyDays')::int, 0), 0)
+               ) expected(day)
+              where participant.tournament_id = t.id
+                and participant.state = 'approved'
+                and not exists (
+                  select 1 from tournament_daily_result result
+                   where result.tournament_id = t.id
+                     and result.participant_id = participant.id
+                     and result.tournament_day = expected.day
+                     and result.completed
+                )) as missing_daily_result_count,
+            (select count(*)::int
+               from tournament_daily_result result
+               join tournament_participant participant on participant.id = result.participant_id
+              where result.tournament_id = t.id
+                and (
+                  participant.state <> 'approved'
+                  or result.tournament_day not between 1 and greatest(
+                    coalesce((revision.rules_snapshot->'config'->>'dailyDays')::int, 0),
+                    0
+                  )
+                  or not result.completed
+                )) as unexpected_daily_result_count
        from tournament t
        join tournament_revision revision on revision.id = t.published_revision_id
       where t.id = $1
@@ -534,7 +565,10 @@ export async function auditCompletedLegacyDailyTournamentLifecycle(
        join tournament_revision revision on revision.id = t.published_revision_id
       where t.status = 'regular'
         and t.regular_source = 'daily_aggregate'
-        and not (revision.rules_snapshot ? 'automaticLifecycleVersion')
+        and (
+          not (revision.rules_snapshot ? 'automaticLifecycleVersion')
+          or revision.rules_snapshot->>'automaticLifecycleVersion' = '1'
+        )
         and coalesce((revision.rules_snapshot->'config'->>'dailyDays')::int, 0) > 0
         and (select count(*)::int from tournament_participant participant
               where participant.tournament_id = t.id and participant.state = 'approved') > 0
@@ -543,6 +577,35 @@ export async function auditCompletedLegacyDailyTournamentLifecycle(
             = (select count(*)::int from tournament_participant participant
                 where participant.tournament_id = t.id and participant.state = 'approved')
               * (revision.rules_snapshot->'config'->>'dailyDays')::int
+        and not exists (
+          select 1
+            from tournament_participant participant
+            cross join lateral generate_series(
+              1,
+              (revision.rules_snapshot->'config'->>'dailyDays')::int
+            ) expected(day)
+           where participant.tournament_id = t.id
+             and participant.state = 'approved'
+             and not exists (
+               select 1 from tournament_daily_result result
+                where result.tournament_id = t.id
+                  and result.participant_id = participant.id
+                  and result.tournament_day = expected.day
+                  and result.completed
+             )
+        )
+        and not exists (
+          select 1
+            from tournament_daily_result result
+            join tournament_participant participant on participant.id = result.participant_id
+           where result.tournament_id = t.id
+             and (
+               participant.state <> 'approved'
+               or result.tournament_day not between 1
+                 and (revision.rules_snapshot->'config'->>'dailyDays')::int
+               or not result.completed
+             )
+        )
       order by t.created_at, t.id`,
   );
   const tournaments: AutomaticLifecycleAuditItem[] = [];
@@ -552,7 +615,17 @@ export async function auditCompletedLegacyDailyTournamentLifecycle(
       now: options.now,
       apply: options.apply,
     });
-    tournaments.push(...report.tournaments);
+    const item = report.tournaments[0];
+    if (item === undefined) continue;
+    if (options.apply && item.status === 'already_enabled') {
+      const reconcile = await reconcileTournamentLifecycle(pool, {
+        tournamentId: candidate.id,
+        now: options.now,
+      });
+      tournaments.push({ ...item, status: 'enabled', reconcile });
+    } else {
+      tournaments.push(item);
+    }
   }
   return { tournaments };
 }

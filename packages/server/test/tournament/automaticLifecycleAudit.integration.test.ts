@@ -334,7 +334,11 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle audit', () =
       source: 'daily_aggregate',
       userIdOffset: 100,
     });
-    for (const tournamentId of [complete.id, partial.id]) {
+    const misleading = await seedLegacyTournament(pool, 'legacy-audit-daily-misleading', {
+      source: 'daily_aggregate',
+      userIdOffset: 200,
+    });
+    for (const tournamentId of [complete.id, partial.id, misleading.id]) {
       await generateRegularSchedule(pool, tournamentId, 1);
       await publishRegularSchedule(pool, tournamentId);
     }
@@ -372,6 +376,42 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle audit', () =
        values ($1, $2, 1, '2030-09-04', 1, 3, $3, true, $4)`,
       [partial.id, partialParticipant.rows[0]!.id, 1 / 3, NOW],
     );
+    const misleadingParticipants = await pool.query<{ id: string }>(
+      `select id from tournament_participant where tournament_id = $1 order by id`,
+      [misleading.id],
+    );
+    let insertedApprovedResults = 0;
+    for (const participant of misleadingParticipants.rows) {
+      for (let day = 1; day <= 3 && insertedApprovedResults < 11; day += 1) {
+        await pool.query(
+          `insert into tournament_daily_result
+             (tournament_id, participant_id, tournament_day, player_local_date, goals, shots,
+              accuracy, completed, finalized_at)
+           values ($1, $2, $3, $4, 1, 10, 0.1, true, $5)`,
+          [misleading.id, participant.id, day, `2030-09-0${3 + day}`, NOW],
+        );
+        insertedApprovedResults += 1;
+      }
+    }
+    const withdrawnUserId = '00000000-0000-4000-8000-000000008399';
+    await pool.query(
+      `insert into users (id, display_name, timezone, role)
+       values ($1, 'Withdrawn player', 'Europe/Moscow', 'player')`,
+      [withdrawnUserId],
+    );
+    const withdrawn = await pool.query<{ id: string }>(
+      `insert into tournament_participant (tournament_id, user_id, state, joined_at)
+       values ($1, $2, 'withdrawn', $3)
+       returning id`,
+      [misleading.id, withdrawnUserId, NOW],
+    );
+    await pool.query(
+      `insert into tournament_daily_result
+         (tournament_id, participant_id, tournament_day, player_local_date, goals, shots,
+          accuracy, completed, finalized_at)
+       values ($1, $2, 1, '2030-09-04', 1, 10, 0.1, true, $3)`,
+      [misleading.id, withdrawn.rows[0]!.id, NOW],
+    );
 
     const report = await auditCompletedLegacyDailyTournamentLifecycle(pool, {
       now: NOW,
@@ -382,6 +422,15 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle audit', () =
     expect(report.tournaments[0]).toMatchObject({ id: complete.id, status: 'enabled' });
     expect(await automaticMarker(pool, complete.id)).toBe(1);
     expect(await automaticMarker(pool, partial.id)).toBeNull();
+    expect(await automaticMarker(pool, misleading.id)).toBeNull();
+
+    const retry = await auditCompletedLegacyDailyTournamentLifecycle(pool, {
+      now: NOW,
+      apply: true,
+    });
+    expect(retry.tournaments).toHaveLength(1);
+    expect(retry.tournaments[0]).toMatchObject({ id: complete.id, status: 'enabled' });
+    expect(retry.tournaments[0]?.reconcile).toBeDefined();
   });
 
   it('blocks a legacy Classic tournament with a persisted session and period', async () => {

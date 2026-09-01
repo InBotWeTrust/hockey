@@ -351,7 +351,9 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
                 endsAt={selectedMatchday.endsAt}
                 startLabel={props.formatDateTime(selectedMatchday.startsAt)}
                 endLabel={props.formatDateTime(selectedMatchday.endsAt)}
-                regularStarted={props.tournamentStatus !== 'scheduling'}
+                regularStarted={['regular', 'playoff', 'completed'].includes(
+                  props.tournamentStatus,
+                )}
               />
               {selectedMatchday.myResult?.completed === true && (
                 <div className="tournament-matchday-result" aria-label="Ваш результат игры">
