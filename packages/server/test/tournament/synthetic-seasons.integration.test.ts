@@ -9,6 +9,7 @@ import { createJwt } from '../../src/auth/jwt.js';
 import { applyMigrations } from '../../src/db/migrations.js';
 import { createTournamentDuelMatch } from '../../src/duel/amateur/routes.js';
 import { enqueueTournamentAudiencePush, enqueueTournamentPush } from '../../src/push/tournament.js';
+import { reconcileTournamentLifecycle } from '../../src/tournament/automaticLifecycle.js';
 import { parseTournamentConfig } from '../../src/tournament/config.js';
 import { finalizeDueTournamentDailyDays } from '../../src/tournament/dailyAggregate.js';
 import { openTournamentFixtureSegment } from '../../src/tournament/fixtureLifecycle.js';
@@ -48,6 +49,13 @@ const JWT_SECRET = 'synthetic-access-secret-at-least-16';
 const REFRESH_SECRET = 'synthetic-refresh-secret-at-least-16';
 const DAILY_SEED_SECRET = 'synthetic-daily-seed-at-least-16';
 const ENTRY_FEE = 5;
+const AUTOMATIC_REGISTRATION_OPENS_AT = new Date('2032-05-30T00:00:00.000Z');
+const AUTOMATIC_REGISTRATION_CLOSES_AT = new Date('2032-05-31T00:00:00.000Z');
+const AUTOMATIC_STARTS_AT = new Date('2032-06-01T12:00:00.000Z');
+const AUTOMATIC_PLAYOFF_STARTS_AT = new Date('2032-06-04T13:00:00.000Z');
+const CLASSIC_SEED_SECRET = 'synthetic-classic-seed-at-least-16';
+
+type RegularSource = 'head_to_head' | 'daily_aggregate' | 'classic';
 
 const REGULAR_REWARDS = [
   { place: 1, coins: 40, stars: 4, experience: 400 },
@@ -72,8 +80,9 @@ interface FixtureRow {
 }
 
 function tournamentRules(
-  regularSource: 'head_to_head' | 'daily_aggregate',
+  regularSource: RegularSource,
   duelTemplateId: string,
+  options: { automatic?: boolean; playoffStartsAt?: Date } = {},
 ): TournamentRulesSnapshot {
   const config =
     regularSource === 'head_to_head'
@@ -110,9 +119,45 @@ function tournamentRules(
           dailyDays: 3,
           dailyMetric: 'accuracy_average',
           bestDays: 2,
+          ...(regularSource === 'classic'
+            ? {
+                classicRules: {
+                  goalieId: 'rookie',
+                  shotsPerPeriod: 1,
+                  periodDurationMs: 60_000,
+                  breakDurationMs: 0,
+                  incompleteResultPolicy: 'completed_game' as const,
+                  periodSpeedPresets: [
+                    {
+                      periodNumber: 1 as const,
+                      goalFrequency: 0.55,
+                      goalieFrequency: 0.65,
+                      shooterFrequency: 0.8,
+                      puckSpeedPerMs: 1.3,
+                    },
+                    {
+                      periodNumber: 2 as const,
+                      goalFrequency: 0.72,
+                      goalieFrequency: 0.84,
+                      shooterFrequency: 1,
+                      puckSpeedPerMs: 1.55,
+                    },
+                    {
+                      periodNumber: 3 as const,
+                      goalFrequency: 0.9,
+                      goalieFrequency: 1.05,
+                      shooterFrequency: 1.18,
+                      puckSpeedPerMs: 1.8,
+                    },
+                  ],
+                },
+              }
+            : {}),
         });
   return {
     config,
+    ...(options.automatic ? { automaticLifecycleVersion: 1 } : {}),
+    ...(options.automatic && regularSource === 'head_to_head' ? { duelLifecycleVersion: 2 } : {}),
     eligibility: {
       minLevel: null,
       maxLevel: null,
@@ -141,6 +186,9 @@ function tournamentRules(
         gameWindowMs: 3_600_000,
         gameBreakMs: 0,
         roundBreakMs: 900_000,
+        ...(options.playoffStartsAt
+          ? { firstGameStartsAt: options.playoffStartsAt.toISOString() }
+          : {}),
       },
       {
         roundNumber: 2,
@@ -150,6 +198,13 @@ function tournamentRules(
         gameWindowMs: 3_600_000,
         gameBreakMs: 0,
         roundBreakMs: 0,
+        ...(options.playoffStartsAt
+          ? {
+              firstGameStartsAt: new Date(
+                options.playoffStartsAt.getTime() + 86_400_000,
+              ).toISOString(),
+            }
+          : {}),
       },
     ],
     stageRewards: {
@@ -165,6 +220,11 @@ async function seedUsersAndPush(pool: Pool): Promise<void> {
        (id, display_name, timezone, role, level, lifetime_goals_total, experience)
      values ($1, 'Synthetic Tournament Admin', 'UTC', 'admin', 10, 1000, 1000)`,
     [ADMIN_ID],
+  );
+  await pool.query(
+    `insert into push_subscriptions (user_id, endpoint, p256dh, auth)
+     values ($1, $2, 'synthetic-p256dh', 'synthetic-auth')`,
+    [ADMIN_ID, `https://push.synthetic.test/${ADMIN_ID}`],
   );
   for (const [index, playerId] of PLAYER_IDS.entries()) {
     await pool.query(
@@ -216,7 +276,12 @@ async function createRegisteredTournament(
     slug: string;
     title: string;
     startsAt: Date;
-    regularSource: 'head_to_head' | 'daily_aggregate';
+    registrationOpensAt?: Date;
+    registrationClosesAt?: Date;
+    playoffStartsAt?: Date;
+    approvedCount?: number;
+    automatic?: boolean;
+    regularSource: RegularSource;
     duelTemplateId: string;
   },
 ): Promise<{ id: string; revision: number }> {
@@ -224,30 +289,43 @@ async function createRegisteredTournament(
     slug: input.slug,
     title: input.title,
     description: 'Deterministic synthetic acceptance season',
-    rules: tournamentRules(input.regularSource, input.duelTemplateId),
+    rules: tournamentRules(input.regularSource, input.duelTemplateId, {
+      automatic: input.automatic,
+      playoffStartsAt: input.playoffStartsAt,
+    }),
     createdBy: ADMIN_ID,
-    registrationOpensAt: new Date('2020-01-01T00:00:00.000Z'),
-    registrationClosesAt: new Date(input.startsAt.getTime() - 86_400_000),
+    registrationOpensAt: input.registrationOpensAt ?? new Date('2020-01-01T00:00:00.000Z'),
+    registrationClosesAt:
+      input.registrationClosesAt ?? new Date(input.startsAt.getTime() - 86_400_000),
     startsAt: input.startsAt,
   });
   await publishTournament(pool, tournament.id, tournament.revision, ADMIN_ID);
-  for (const playerId of PLAYER_IDS) {
-    const application = await applyToTournament(pool, tournament.id, playerId);
-    expect(application.state).toBe('applied');
-    await approveTournamentParticipant(pool, tournament.id, application.participantId, ADMIN_ID);
-    const pushInput = {
-      userId: playerId,
-      eventType: 'tournament.application_approved' as const,
-      eventKey: `${tournament.id}:application-approved:${playerId}`,
-      variables: { tournamentTitle: input.title },
-      fallback: {
-        title: 'Заявка подтверждена',
-        body: `${input.title}: вы участвуете.`,
-        url: '/?view=amateur&section=tournaments',
-      },
-    };
-    expect(await enqueueTournamentPush(pool, pushInput)).toBe(false);
-    expect(await enqueueTournamentPush(pool, pushInput)).toBe(false);
+  const approvedPlayerIds = PLAYER_IDS.slice(0, input.approvedCount ?? PLAYER_IDS.length);
+  if (input.registrationOpensAt !== undefined) {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(input.registrationOpensAt.getTime() + 1));
+  }
+  try {
+    for (const playerId of approvedPlayerIds) {
+      const application = await applyToTournament(pool, tournament.id, playerId);
+      expect(application.state).toBe('applied');
+      await approveTournamentParticipant(pool, tournament.id, application.participantId, ADMIN_ID);
+      const pushInput = {
+        userId: playerId,
+        eventType: 'tournament.application_approved' as const,
+        eventKey: `${tournament.id}:application-approved:${playerId}`,
+        variables: { tournamentTitle: input.title },
+        fallback: {
+          title: 'Заявка подтверждена',
+          body: `${input.title}: вы участвуете.`,
+          url: '/?view=amateur&section=tournaments',
+        },
+      };
+      expect(await enqueueTournamentPush(pool, pushInput)).toBe(false);
+      expect(await enqueueTournamentPush(pool, pushInput)).toBe(false);
+    }
+  } finally {
+    if (input.registrationOpensAt !== undefined) vi.useRealTimers();
   }
   const participants = await pool.query<{
     state: string;
@@ -259,7 +337,7 @@ async function createRegisteredTournament(
     [tournament.id],
   );
   expect(participants.rows).toEqual(
-    PLAYER_IDS.map(() => ({
+    approvedPlayerIds.map(() => ({
       state: 'approved',
       entry_fee_state: 'paid',
       entry_fee_coins: ENTRY_FEE,
@@ -703,6 +781,111 @@ async function seedDailySourceRows(pool: Pool): Promise<void> {
   }
 }
 
+async function tournamentStatus(pool: Pool, tournamentId: string): Promise<string> {
+  const status = await pool.query<{ status: string }>(
+    `select status from tournament where id = $1`,
+    [tournamentId],
+  );
+  return status.rows[0]!.status;
+}
+
+async function settleAutomaticRegularSeason(
+  pool: Pool,
+  tournamentId: string,
+  regularSource: RegularSource,
+): Promise<void> {
+  if (regularSource !== 'head_to_head') return;
+  const fixtures = await pool.query<FixtureRow>(
+    `select fixture.id, fixture.home_participant_id, fixture.away_participant_id,
+            home.user_id as home_user_id, away.user_id as away_user_id,
+            fixture.scheduled_starts_at
+       from tournament_fixture fixture
+       join tournament_round round on round.id = fixture.round_id and round.stage = 'regular'
+       join tournament_participant home on home.id = fixture.home_participant_id
+       join tournament_participant away on away.id = fixture.away_participant_id
+      where fixture.tournament_id = $1 order by fixture.fixture_number`,
+    [tournamentId],
+  );
+  expect(fixtures.rows).toHaveLength(6);
+  for (const fixture of fixtures.rows) {
+    await settleFixtureTechnically(
+      pool,
+      tournamentId,
+      fixture,
+      desiredRegularWinner(fixture.home_user_id, fixture.away_user_id),
+    );
+  }
+}
+
+async function settleEveryAutomaticPlayoffSeries(pool: Pool, tournamentId: string): Promise<void> {
+  for (let completedSeries = 0; completedSeries < 4; completedSeries += 1) {
+    const next = await pool.query<FixtureRow>(
+      `select fixture.id, fixture.home_participant_id, fixture.away_participant_id,
+              home.user_id as home_user_id, away.user_id as away_user_id,
+              fixture.scheduled_starts_at
+         from tournament_fixture fixture
+         join tournament_round round on round.id = fixture.round_id
+         join tournament_participant home on home.id = fixture.home_participant_id
+         join tournament_participant away on away.id = fixture.away_participant_id
+        where fixture.tournament_id = $1 and fixture.series_id is not null
+          and fixture.status = 'scheduled'
+        order by fixture.fixture_number limit 1`,
+      [tournamentId],
+    );
+    const fixture = next.rows[0];
+    expect(fixture, `scheduled playoff fixture ${completedSeries + 1}`).toBeDefined();
+    await settleFixtureTechnically(pool, tournamentId, fixture!, fixture!.home_user_id);
+  }
+  expect(await tournamentStatus(pool, tournamentId)).toBe('completed');
+}
+
+async function duplicateCounts(
+  pool: Pool,
+  tournamentId: string,
+): Promise<{ schedule: number; series: number; rewards: number; notifications: number }> {
+  const duplicates = await pool.query<{
+    schedule: number;
+    series: number;
+    rewards: number;
+    notifications: number;
+  }>(
+    `select
+       (
+         select count(*)::int from (
+           select number from tournament_matchday where tournament_id = $1
+             group by number having count(*) > 1
+           union all
+           select number from tournament_round where tournament_id = $1
+             group by stage, number having count(*) > 1
+           union all
+           select fixture_number from tournament_fixture where tournament_id = $1
+             group by fixture_number having count(*) > 1
+         ) duplicated_schedule
+       ) as schedule,
+       (
+         select count(*)::int from (
+           select depends_on->>'key' from tournament_playoff_series where tournament_id = $1
+             group by depends_on->>'key' having count(*) > 1
+         ) duplicated_series
+       ) as series,
+       (
+         select count(*)::int from (
+           select idempotency_key from tournament_economy_event where tournament_id = $1
+             group by idempotency_key having count(*) > 1
+         ) duplicated_rewards
+       ) as rewards,
+       (
+         select count(*)::int from (
+           select user_id, event_type, event_key from push_delivery_log
+             where event_type like 'tournament.%' and event_key like $1 || ':%'
+             group by user_id, event_type, event_key having count(*) > 1
+         ) duplicated_notifications
+       ) as notifications`,
+    [tournamentId],
+  );
+  return duplicates.rows[0]!;
+}
+
 describe.skipIf(!hasIntegrationEnv)('synthetic tournament seasons', () => {
   let pool: Pool;
 
@@ -725,6 +908,192 @@ describe.skipIf(!hasIntegrationEnv)('synthetic tournament seasons', () => {
   afterAll(async () => {
     await pool.end();
   });
+
+  it.each(['head_to_head', 'daily_aggregate', 'classic'] as const)(
+    'runs the automatic lifecycle for %s through tournament completion',
+    async (regularSource) => {
+      await seedUsersAndPush(pool);
+      const duelTemplateId = await configureRewardingDuelTemplate(pool);
+      const title = `Synthetic Automatic ${regularSource}`;
+      const tournament = await createRegisteredTournament(pool, {
+        slug: `synthetic-automatic-${regularSource.replaceAll('_', '-')}`,
+        title,
+        startsAt: AUTOMATIC_STARTS_AT,
+        registrationOpensAt: AUTOMATIC_REGISTRATION_OPENS_AT,
+        registrationClosesAt: AUTOMATIC_REGISTRATION_CLOSES_AT,
+        playoffStartsAt: AUTOMATIC_PLAYOFF_STARTS_AT,
+        automatic: true,
+        regularSource,
+        duelTemplateId,
+      });
+
+      const beforeOpening = await reconcileTournamentLifecycle(pool, {
+        now: new Date(AUTOMATIC_REGISTRATION_OPENS_AT.getTime() - 1),
+        tournamentId: tournament.id,
+        classicSeedSecret: CLASSIC_SEED_SECRET,
+      });
+      expect(beforeOpening.items[0]).toMatchObject({
+        action: 'registration_waiting',
+        after: 'registration',
+        changed: false,
+      });
+      const registrationOpen = await reconcileTournamentLifecycle(pool, {
+        now: AUTOMATIC_REGISTRATION_OPENS_AT,
+        tournamentId: tournament.id,
+        classicSeedSecret: CLASSIC_SEED_SECRET,
+      });
+      expect(registrationOpen.items[0]).toMatchObject({
+        action: 'registration_open',
+        after: 'registration',
+        changed: false,
+      });
+
+      const registrationClosed = await reconcileTournamentLifecycle(pool, {
+        now: AUTOMATIC_REGISTRATION_CLOSES_AT,
+        tournamentId: tournament.id,
+        classicSeedSecret: CLASSIC_SEED_SECRET,
+      });
+      expect(registrationClosed.items[0]).toMatchObject({
+        action: 'generate_schedule',
+        after: 'scheduling',
+        changed: true,
+      });
+      expect(await tournamentStatus(pool, tournament.id)).toBe('scheduling');
+      const generated = await pool.query<{
+        matchdays: number;
+        rounds: number;
+        fixtures: number;
+      }>(
+        `select
+           (select count(*)::int from tournament_matchday where tournament_id = $1) as matchdays,
+           (select count(*)::int from tournament_round where tournament_id = $1) as rounds,
+           (select count(*)::int from tournament_fixture where tournament_id = $1) as fixtures`,
+        [tournament.id],
+      );
+      expect(generated.rows[0]).toEqual(
+        regularSource === 'head_to_head'
+          ? { matchdays: 1, rounds: 3, fixtures: 6 }
+          : { matchdays: 3, rounds: 0, fixtures: 0 },
+      );
+      const repeatedClose = await reconcileTournamentLifecycle(pool, {
+        now: AUTOMATIC_REGISTRATION_CLOSES_AT,
+        tournamentId: tournament.id,
+        classicSeedSecret: CLASSIC_SEED_SECRET,
+      });
+      expect(repeatedClose.items[0]).toMatchObject({
+        action: 'await_manual_regular_start',
+        after: 'scheduling',
+        changed: false,
+      });
+
+      await publishRegularSchedule(pool, tournament.id);
+      expect(await tournamentStatus(pool, tournament.id)).toBe('regular');
+      await settleAutomaticRegularSeason(pool, tournament.id, regularSource);
+      const playoff = await reconcileTournamentLifecycle(pool, {
+        now: AUTOMATIC_PLAYOFF_STARTS_AT,
+        tournamentId: tournament.id,
+        classicSeedSecret: CLASSIC_SEED_SECRET,
+      });
+      expect(playoff.items[0]).toMatchObject({
+        action: 'start_playoff',
+        after: 'playoff',
+        changed: true,
+      });
+      expect(await tournamentStatus(pool, tournament.id)).toBe('playoff');
+      const repeatedPlayoff = await reconcileTournamentLifecycle(pool, {
+        now: new Date(AUTOMATIC_PLAYOFF_STARTS_AT.getTime() + 1),
+        tournamentId: tournament.id,
+        classicSeedSecret: CLASSIC_SEED_SECRET,
+      });
+      expect(repeatedPlayoff.items[0]).toMatchObject({
+        action: 'playoff_active',
+        after: 'playoff',
+        changed: false,
+      });
+
+      await settleEveryAutomaticPlayoffSeries(pool, tournament.id);
+      const terminalRetry = await reconcileTournamentLifecycle(pool, {
+        now: new Date(AUTOMATIC_PLAYOFF_STARTS_AT.getTime() + 172_800_000),
+        tournamentId: tournament.id,
+        classicSeedSecret: CLASSIC_SEED_SECRET,
+      });
+      expect(terminalRetry.items[0]).toMatchObject({
+        action: 'terminal',
+        after: 'completed',
+        changed: false,
+      });
+      expect(await duplicateCounts(pool, tournament.id)).toEqual({
+        schedule: 0,
+        series: 0,
+        rewards: 0,
+        notifications: 0,
+      });
+    },
+  );
+
+  it.each(['head_to_head', 'daily_aggregate', 'classic'] as const)(
+    'blocks automatic %s scheduling without shrinking playoffs or duplicating admin notice',
+    async (regularSource) => {
+      await seedUsersAndPush(pool);
+      const duelTemplateId = await configureRewardingDuelTemplate(pool);
+      const tournament = await createRegisteredTournament(pool, {
+        slug: `synthetic-insufficient-${regularSource.replaceAll('_', '-')}`,
+        title: `Synthetic Insufficient ${regularSource}`,
+        startsAt: AUTOMATIC_STARTS_AT,
+        registrationOpensAt: AUTOMATIC_REGISTRATION_OPENS_AT,
+        registrationClosesAt: AUTOMATIC_REGISTRATION_CLOSES_AT,
+        playoffStartsAt: AUTOMATIC_PLAYOFF_STARTS_AT,
+        approvedCount: 3,
+        automatic: true,
+        regularSource,
+        duelTemplateId,
+      });
+
+      await reconcileTournamentLifecycle(pool, {
+        now: AUTOMATIC_REGISTRATION_CLOSES_AT,
+        tournamentId: tournament.id,
+        classicSeedSecret: CLASSIC_SEED_SECRET,
+      });
+      await reconcileTournamentLifecycle(pool, {
+        now: new Date(AUTOMATIC_REGISTRATION_CLOSES_AT.getTime() + 1),
+        tournamentId: tournament.id,
+        classicSeedSecret: CLASSIC_SEED_SECRET,
+      });
+
+      const blocked = await pool.query<{
+        status: string;
+        playoff_size: number;
+        matchdays: number;
+        rounds: number;
+        fixtures: number;
+        notifications: number;
+      }>(
+        `select tournament.status,
+                (revision.rules_snapshot->'config'->>'playoffSize')::int as playoff_size,
+                (select count(*)::int from tournament_matchday where tournament_id = tournament.id)
+                  as matchdays,
+                (select count(*)::int from tournament_round where tournament_id = tournament.id)
+                  as rounds,
+                (select count(*)::int from tournament_fixture where tournament_id = tournament.id)
+                  as fixtures,
+                (select count(*)::int from push_delivery_log
+                  where event_type = 'tournament.registration_blocked'
+                    and event_key like tournament.id::text || ':%') as notifications
+           from tournament
+           join tournament_revision revision on revision.id = tournament.published_revision_id
+          where tournament.id = $1`,
+        [tournament.id],
+      );
+      expect(blocked.rows[0]).toEqual({
+        status: 'registration_blocked',
+        playoff_size: 4,
+        matchdays: 0,
+        rounds: 0,
+        fixtures: 0,
+        notifications: 1,
+      });
+    },
+  );
 
   it('runs a complete head-to-head season through a real tournament duel and fixed playoffs', async () => {
     await seedUsersAndPush(pool);
