@@ -57,6 +57,18 @@
   --chrome-surface-border: rgba(255, 255, 255, 0.8);
   --chrome-surface-shadow: 0 14px 30px rgba(9, 31, 56, 0.2);
 }
+.app-shell--unified-glass {
+  --surface-card-bg: rgba(226, 233, 241, 0.74);
+  --surface-filter-bg: rgba(226, 236, 246, 0.78);
+  --surface-elevated-bg: rgba(237, 244, 250, 0.84);
+  --surface-border: rgba(255, 255, 255, 0.84);
+  --surface-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+  --surface-blur: blur(20px) saturate(124%);
+  --glass-bg: var(--surface-card-bg);
+  --glass-border: var(--surface-border);
+  --chrome-surface-bg: var(--surface-filter-bg);
+  --chrome-surface-border: rgba(255, 255, 255, 0.9);
+}
 .app-shell--login {
   background: #06172a;
   --glass-bg: rgba(7, 28, 52, 0.86);
@@ -3842,12 +3854,27 @@
   white-space: nowrap;
 }
 
-.duel-day-match__copy strong { font-size: 14px; }
-.duel-day-match__copy span { color: rgba(15, 23, 42, 0.62); font-size: 11px; font-weight: 750; }
-.duel-day-match__result { font-size: 11px; font-weight: 900; }
-.duel-day-match__result--win { color: #166534; }
-.duel-day-match__result--draw { color: #854d0e; }
-.duel-day-match__result--loss { color: #991b1b; }
+.duel-day-match__copy strong {
+  font-size: 14px;
+}
+.duel-day-match__copy span {
+  color: rgba(15, 23, 42, 0.62);
+  font-size: 11px;
+  font-weight: 750;
+}
+.duel-day-match__result {
+  font-size: 11px;
+  font-weight: 900;
+}
+.duel-day-match__result--win {
+  color: #166534;
+}
+.duel-day-match__result--draw {
+  color: #854d0e;
+}
+.duel-day-match__result--loss {
+  color: #991b1b;
+}
 
 .duel-kind-picker,
 .duel-quick-pick {
@@ -3887,9 +3914,7 @@
 .duel-template-select {
   --glass-select-background: #dce6ef;
   --glass-select-border: rgba(255, 255, 255, 0.96);
-  --glass-select-shadow:
-    0 8px 18px rgba(4, 15, 28, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  --glass-select-shadow: 0 8px 18px rgba(4, 15, 28, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.92);
 }
 
 .duel-opponent-search__icon {
@@ -5006,6 +5031,105 @@ button.daily-calendar__day:active {
     gap: 4px;
   }
 }
+
+/* === Unified light materials (personal profile and auth routes opt out in App.tsx) === */
+.app-shell--unified-glass
+  :is(
+    .glass,
+    .bonus-game-card,
+    .bonus-game-mode-card,
+    .mode-info-card,
+    .mode-setup-card,
+    .duel-state-card,
+    .section-card-surface,
+    .sections-quick-card,
+    .achievement-card,
+    .achievement-card__body,
+    .tournament-playoff-round,
+    .tournament-review-card,
+    .tournament-picker__result,
+    .tournament-ordered-list__row,
+    .tournament-notification-card,
+    .tournament-overview-grid > button,
+    .tournament-standing-list > div,
+    .tournament-fixture-card,
+    .tournament-bracket__round-tabs button,
+    .tournament-bracket-series,
+    .tournament-bracket-player,
+    .tournament-participants-list__row,
+    .tournament-player-search__results > button,
+    .tournament-participant-admin-row,
+    .tournament-operation-list-row,
+    .tournament-schedule-upcoming,
+    .tournament-schedule-fixture,
+    .tournament-admin-series,
+    .tournament-matchday-row,
+    .daily-result-modal__period,
+    .duel-history-summary__tiles > div,
+    .duel-day-match,
+    .admin-official-dialog__message,
+    .admin-official-dialog__attachment,
+    .tournament-operation-rewards__row > span,
+    .tournament-dispatch-message
+  ) {
+  background: var(--surface-card-bg);
+  border-color: var(--surface-border);
+  backdrop-filter: var(--surface-blur);
+  -webkit-backdrop-filter: var(--surface-blur);
+}
+
+.app-shell--unified-glass
+  :is(
+    .bonus-game-card--featured,
+    .section-card-surface--active,
+    .sections-quick-card--active,
+    .achievement-card--claimable .achievement-card__body,
+    .duel-equipment-option--selected,
+    .modal-card,
+    .admin-drawer,
+    .tournament-player-search__results
+  ) {
+  background: var(--surface-elevated-bg);
+  border-color: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(22px) saturate(132%);
+  -webkit-backdrop-filter: blur(22px) saturate(132%);
+}
+
+.app-shell--unified-glass
+  :is(
+    .segmented-tabs,
+    .glass-dock-surface,
+    .glass-dock-field,
+    .chat-create-search,
+    .header-bar.glass,
+    .chat-dock-header:not(.chat-dock-header--bare),
+    .chip:not(.chip--active),
+    .pill:not(.pill--dark),
+    .admin-screen input,
+    .admin-screen select,
+    .admin-screen textarea,
+    .bonus-game-inventory-fields select
+  ) {
+  background: var(--surface-filter-bg);
+  border-color: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(18px) saturate(125%);
+  -webkit-backdrop-filter: blur(18px) saturate(125%);
+}
+
+.app-shell--unified-glass .admin-screen .glass {
+  background: var(--surface-card-bg);
+}
+
+.app-shell--unified-glass :is(.section-card-surface--muted, .daily-result-modal__period--empty) {
+  background: rgba(226, 233, 241, 0.62);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .app-shell--unified-glass :is(.glass, .modal-card, .segmented-tabs, .glass-dock-surface) {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
 .venue-badge {
   min-height: 20px;
   padding: 0 8px;
@@ -5469,24 +5593,15 @@ button.daily-calendar__day:active {
   background: rgba(147, 197, 253, 0.38);
 }
 
-.tournament-standing-table--duel-rating
-  tbody
-  tr.tournament-standing-table__medal-place--gold
-  td {
+.tournament-standing-table--duel-rating tbody tr.tournament-standing-table__medal-place--gold td {
   background: rgba(250, 204, 21, 0.16);
 }
 
-.tournament-standing-table--duel-rating
-  tbody
-  tr.tournament-standing-table__medal-place--silver
-  td {
+.tournament-standing-table--duel-rating tbody tr.tournament-standing-table__medal-place--silver td {
   background: rgba(148, 163, 184, 0.18);
 }
 
-.tournament-standing-table--duel-rating
-  tbody
-  tr.tournament-standing-table__medal-place--bronze
-  td {
+.tournament-standing-table--duel-rating tbody tr.tournament-standing-table__medal-place--bronze td {
   background: rgba(194, 122, 75, 0.16);
 }
 
@@ -7535,4 +7650,37 @@ button.daily-calendar__day:active {
     padding: 6px 8px;
     font-size: 9px;
   }
+}
+
+/* Keep later tournament/admin declarations on the same material contract. */
+.app-shell--unified-glass
+  :is(
+    .tournament-overview-grid > button,
+    .tournament-standing-list > div,
+    .tournament-fixture-card,
+    .tournament-bracket__round-tabs button,
+    .tournament-bracket-series,
+    .tournament-bracket-player,
+    .tournament-participants-list__row,
+    .tournament-player-search__results > button,
+    .tournament-participant-admin-row,
+    .tournament-operation-list-row,
+    .tournament-schedule-upcoming,
+    .tournament-schedule-fixture,
+    .tournament-admin-series,
+    .tournament-matchday-row,
+    .admin-official-dialog__message,
+    .admin-official-dialog__attachment,
+    .tournament-operation-rewards__row > span,
+    .tournament-dispatch-message
+  ) {
+  background: var(--surface-card-bg);
+  border-color: var(--surface-border);
+  backdrop-filter: var(--surface-blur);
+  -webkit-backdrop-filter: var(--surface-blur);
+}
+
+.app-shell--unified-glass .tournament-player-search__results {
+  background: var(--surface-elevated-bg);
+  border-color: rgba(255, 255, 255, 0.94);
 }

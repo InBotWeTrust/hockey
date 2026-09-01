@@ -6,7 +6,7 @@ import { LoginScreen } from '../screens/LoginScreen.js';
 import { PrivateRoute } from '../auth/PrivateRoute.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { useBonusGameStore } from '../stores/bonusGameStore.js';
-import { App, RouteLoading, appBackdropClassName } from './App.js';
+import { App, RouteLoading, appBackdropClassName, appSurfaceClassName } from './App.js';
 
 vi.mock('../game/PlayView.js', () => ({
   PlayView: () => <div data-testid="play-view" />,
@@ -227,5 +227,24 @@ describe('app backdrop variants', () => {
     expect(appBackdropClassName('/', '?view=training&play=1')).toBe('');
     expect(appBackdropClassName('/', '?view=amateur&match=m1&play=1')).toBe('');
     expect(appBackdropClassName('/', '?view=classic&tournament=t1')).toBe('');
+  });
+});
+
+describe('app surface variants', () => {
+  it('uses unified glass outside the personal profile tab', () => {
+    expect(appSurfaceClassName('/sections')).toBe('app-shell--unified-glass');
+    expect(appSurfaceClassName('/users/user-1')).toBe('app-shell--unified-glass');
+    expect(appSurfaceClassName('/bonus-games')).toBe('app-shell--unified-glass');
+  });
+
+  it('preserves the personal profile tab and every nested profile screen', () => {
+    expect(appSurfaceClassName('/profile')).toBe('app-shell--profile-tab');
+    expect(appSurfaceClassName('/profile/settings')).toBe('app-shell--profile-tab');
+    expect(appSurfaceClassName('/profile/support')).toBe('app-shell--profile-tab');
+  });
+
+  it('preserves the dedicated dark authentication treatment', () => {
+    expect(appSurfaceClassName('/login')).toBe('app-shell--auth-surfaces');
+    expect(appSurfaceClassName('/auth/vk/callback')).toBe('app-shell--auth-surfaces');
   });
 });
