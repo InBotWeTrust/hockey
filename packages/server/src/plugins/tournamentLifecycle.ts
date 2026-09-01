@@ -40,11 +40,18 @@ export async function reconcileBestEffort(
 ): Promise<TournamentLifecycleReconcileReport | null> {
   try {
     if (!(await isTournamentFeatureEnabled(options.pool))) return null;
-    return await reconcileTournamentLifecycle(options.pool, {
+    const report = await reconcileTournamentLifecycle(options.pool, {
       now: options.now ?? new Date(),
       ...(options.tournamentId === undefined ? {} : { tournamentId: options.tournamentId }),
       classicSeedSecret: options.classicSeedSecret,
     });
+    if (report.failures.length > 0) {
+      options.log.error(
+        { failures: report.failures },
+        'tournament lifecycle reconcile completed with failures',
+      );
+    }
+    return report;
   } catch (err) {
     options.log.error(
       {
@@ -82,6 +89,12 @@ const plugin: FastifyPluginAsync<TournamentLifecyclePluginOptions> = async (app,
           now: new Date(),
           classicSeedSecret: opts.classicSeedSecret,
         });
+        if (report.failures.length > 0) {
+          app.log.error(
+            { failures: report.failures },
+            'tournament lifecycle tick completed with failures',
+          );
+        }
         const changed = report.items.filter((item) => item.changed);
         if (changed.length > 0) {
           app.log.info({ changed }, 'tournament lifecycle tick completed');

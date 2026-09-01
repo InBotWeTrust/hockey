@@ -20,6 +20,7 @@ import {
   cancelTournament,
   countPendingTournamentApplications,
   createTournamentDraft,
+  duplicateTournamentDraft,
   disqualifyTournamentParticipant,
   generateRegularSchedule,
   getTournamentGameContext,
@@ -819,6 +820,43 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
 
     expect(revision.rows[0]!.rules_snapshot).toMatchObject({ automaticLifecycleVersion: 1 });
   });
+
+  it.each([
+    ['legacy', rules(0)],
+    ['automatic', { ...rules(0), automaticLifecycleVersion: 1, duelLifecycleVersion: 1 }],
+  ] as const)(
+    'duplicates a %s tournament as a new automatic lifecycle draft',
+    async (_kind, sourceRules) => {
+      await seedUsers(pool, 100);
+      const source = await createPublishedTournament(
+        pool,
+        `duplicate-${_kind}-source`,
+        0,
+        sourceRules,
+      );
+
+      const duplicate = await duplicateTournamentDraft(pool, {
+        tournamentId: source.id,
+        slug: `duplicate-${_kind}-copy`,
+        title: `Копия ${_kind}`,
+        createdBy: ADMIN_ID,
+      });
+      const stored = await pool.query<{ rules_snapshot: TournamentRulesSnapshot }>(
+        `select rules_snapshot from tournament_revision
+        where tournament_id = $1 and revision = 1`,
+        [duplicate.id],
+      );
+
+      expect(duplicate).toMatchObject({ status: 'draft', revision: 1 });
+      expect(stored.rows[0]!.rules_snapshot).toMatchObject({
+        config: sourceRules.config,
+        eligibility: sourceRules.eligibility,
+        regularDuelTemplateId: sourceRules.regularDuelTemplateId,
+        automaticLifecycleVersion: 1,
+        duelLifecycleVersion: 2,
+      });
+    },
+  );
 
   it('does not change the registration price after a player has joined', async () => {
     await seedUsers(pool, 100);

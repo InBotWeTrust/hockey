@@ -10,7 +10,10 @@ import { reconcileTournamentLifecycle } from '../../src/tournament/automaticLife
 import { parseTournamentConfig } from '../../src/tournament/config.js';
 import { lockTournament } from '../../src/tournament/locks.js';
 import {
+  applyToTournament,
+  approveTournamentParticipant,
   generateRegularSchedule,
+  inviteTournamentParticipant,
   publishRegularSchedule,
   startTournamentPlayoffs,
   type TournamentRulesSnapshot,
@@ -689,6 +692,219 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
       [eventKey],
     );
     expect(deliveries.rows[0]!.count).toBe(2);
+  });
+
+  it('recovers blocked registration by extending the deadline before a player applies', async () => {
+    const tournament = await seedAutomaticTournament(pool, {
+      approved: 3,
+      playoffSize: 4,
+      subscribedAdmins: 2,
+    });
+    const latePlayerId = '00000000-0000-4000-8000-000000001001';
+    const extendedClosesAt = new Date(CLOSES_AT.getTime() + 7_200_000);
+    await pool.query(
+      `insert into users (id, display_name, timezone, role)
+       values ($1, 'Игрок после продления', 'Europe/Moscow', 'player')`,
+      [latePlayerId],
+    );
+    await pool.query(`insert into user_currency_account (user_id, balance) values ($1, 0)`, [
+      latePlayerId,
+    ]);
+
+    await reconcileTournamentLifecycle(pool, { now: CLOSES_AT, tournamentId: tournament.id });
+    const updated = await updateTournamentDraft(pool, {
+      tournamentId: tournament.id,
+      expectedRevision: tournament.revision,
+      title: 'Автоматический кубок',
+      description: '',
+      rules: rules('head_to_head', 4),
+      updatedBy: CREATOR_ID,
+      registrationOpensAt: new Date('2020-01-01T00:00:00.000Z'),
+      registrationClosesAt: extendedClosesAt,
+      startsAt: new Date(extendedClosesAt.getTime() + 86_400_000),
+    });
+    const application = await applyToTournament(pool, tournament.id, latePlayerId);
+    const scheduled = await reconcileTournamentLifecycle(pool, {
+      now: extendedClosesAt,
+      tournamentId: tournament.id,
+    });
+    const repeated = await reconcileTournamentLifecycle(pool, {
+      now: minuteAfter(extendedClosesAt),
+      tournamentId: tournament.id,
+    });
+    const persisted = await pool.query<{
+      status: string;
+      playoff_size: number;
+      blocked_deliveries: number;
+    }>(
+      `select tournament.status,
+              (revision.rules_snapshot->'config'->>'playoffSize')::int as playoff_size,
+              (select count(*)::int from push_delivery_log
+                where event_type = 'tournament.registration_blocked'
+                  and tournament_id = tournament.id) as blocked_deliveries
+         from tournament
+         join tournament_revision revision on revision.id = tournament.published_revision_id
+        where tournament.id = $1`,
+      [tournament.id],
+    );
+
+    expect(updated).toMatchObject({ status: 'registration', revision: 2 });
+    expect(application).toMatchObject({ tournamentId: tournament.id, state: 'approved' });
+    expect(scheduled.items[0]).toMatchObject({
+      action: 'generate_schedule',
+      after: 'scheduling',
+      changed: true,
+    });
+    expect(repeated.items[0]).toMatchObject({
+      action: 'await_manual_regular_start',
+      changed: false,
+    });
+    expect(persisted.rows[0]).toEqual({
+      status: 'scheduling',
+      playoff_size: 4,
+      blocked_deliveries: 2,
+    });
+    expect(await counts(pool, tournament.id)).toMatchObject({
+      matchdays: 1,
+      rounds: 3,
+      fixtures: 6,
+    });
+  });
+
+  it('recovers a blocked tournament after an invited player is approved', async () => {
+    const tournament = await seedAutomaticTournament(pool, {
+      source: 'daily_aggregate',
+      approved: 3,
+      playoffSize: 4,
+      subscribedAdmins: 2,
+      playerIdBase: 1_100,
+    });
+    const invitedPlayerId = '00000000-0000-4000-8000-000000001104';
+    await pool.query(
+      `insert into users (id, display_name, timezone, role)
+       values ($1, 'Приглашённый игрок', 'Europe/Moscow', 'player')`,
+      [invitedPlayerId],
+    );
+    await pool.query(`insert into user_currency_account (user_id, balance) values ($1, 0)`, [
+      invitedPlayerId,
+    ]);
+
+    await reconcileTournamentLifecycle(pool, { now: CLOSES_AT, tournamentId: tournament.id });
+    const invitation = await inviteTournamentParticipant(
+      pool,
+      tournament.id,
+      invitedPlayerId,
+      ADMIN_ID,
+    );
+    await approveTournamentParticipant(pool, tournament.id, invitation.participantId, ADMIN_ID);
+    const scheduled = await reconcileTournamentLifecycle(pool, {
+      now: minuteAfter(CLOSES_AT),
+      tournamentId: tournament.id,
+    });
+    const repeated = await reconcileTournamentLifecycle(pool, {
+      now: new Date(CLOSES_AT.getTime() + 120_000),
+      tournamentId: tournament.id,
+    });
+    const persisted = await pool.query<{
+      status: string;
+      playoff_size: number;
+      blocked_deliveries: number;
+    }>(
+      `select tournament.status,
+              (revision.rules_snapshot->'config'->>'playoffSize')::int as playoff_size,
+              (select count(*)::int from push_delivery_log
+                where event_type = 'tournament.registration_blocked'
+                  and tournament_id = tournament.id) as blocked_deliveries
+         from tournament
+         join tournament_revision revision on revision.id = tournament.published_revision_id
+        where tournament.id = $1`,
+      [tournament.id],
+    );
+
+    expect(scheduled.items[0]).toMatchObject({
+      action: 'generate_schedule',
+      after: 'scheduling',
+      changed: true,
+    });
+    expect(repeated.items[0]).toMatchObject({
+      action: 'await_manual_regular_start',
+      changed: false,
+    });
+    expect(persisted.rows[0]).toEqual({
+      status: 'scheduling',
+      playoff_size: 4,
+      blocked_deliveries: 2,
+    });
+    expect(await counts(pool, tournament.id)).toMatchObject({
+      matchdays: 3,
+      rounds: 0,
+      fixtures: 0,
+    });
+  });
+
+  it('continues bulk reconciliation after a broken tournament and reports its failure', async () => {
+    const broken = await seedAutomaticTournament(pool, {
+      approved: 0,
+      playoffSize: 2,
+      slugSuffix: '-broken-first',
+    });
+    const valid = await seedAutomaticTournament(pool, {
+      approved: 2,
+      playoffSize: 2,
+      slugSuffix: '-valid-second',
+      playerIdBase: 1_200,
+    });
+    await pool.query(
+      `update tournament_revision
+          set rules_snapshot = '{"automaticLifecycleVersion":1}'::jsonb
+        where tournament_id = $1`,
+      [broken.id],
+    );
+    await pool.query(
+      `update tournament
+          set created_at = case when id = $1 then '2020-01-01T00:00:00Z'::timestamptz
+                                else '2020-01-02T00:00:00Z'::timestamptz end
+        where id = any($2::uuid[])`,
+      [broken.id, [broken.id, valid.id]],
+    );
+
+    const first = await reconcileTournamentLifecycle(pool, { now: CLOSES_AT });
+    const second = await reconcileTournamentLifecycle(pool, { now: minuteAfter(CLOSES_AT) });
+
+    expect(first).toMatchObject({
+      scanned: 2,
+      changed: 1,
+      failures: [
+        {
+          tournamentId: broken.id,
+          code: 'unexpected_error',
+        },
+      ],
+    });
+    expect(first.items).toContainEqual(
+      expect.objectContaining({
+        tournamentId: valid.id,
+        action: 'generate_schedule',
+        changed: true,
+      }),
+    );
+    expect(second).toMatchObject({ scanned: 2, changed: 0 });
+    expect(second.failures).toHaveLength(1);
+    expect(second.items).toContainEqual(
+      expect.objectContaining({
+        tournamentId: valid.id,
+        action: 'await_manual_regular_start',
+        changed: false,
+      }),
+    );
+    expect(await counts(pool, valid.id)).toMatchObject({
+      matchdays: 1,
+      rounds: 1,
+      fixtures: 1,
+    });
+    await expect(
+      reconcileTournamentLifecycle(pool, { now: CLOSES_AT, tournamentId: broken.id }),
+    ).rejects.toThrow();
   });
 
   it('does not enqueue a new blocked delivery after a revision-only edit', async () => {

@@ -20,6 +20,7 @@ import {
 import {
   DEFAULT_TOURNAMENT_PLANNED_START_INTERVAL_MINUTES,
   DEFAULT_TOURNAMENT_READINESS_MINUTES,
+  normalizePublishedTournamentLifecycleRules,
 } from './lifecycleRules.js';
 import {
   AUTOMATIC_TOURNAMENT_LIFECYCLE_VERSION,
@@ -769,7 +770,14 @@ export async function updateTournamentDraft(
     const updatesImage = Object.prototype.hasOwnProperty.call(input, 'imageUrl');
     await client.query(
       `update tournament
-          set title = $2, description = $3,
+          set status = case
+                when status = 'registration_blocked'
+                  and $10::timestamptz > now()
+                  and (registration_closes_at is null or $10::timestamptz > registration_closes_at)
+                then 'registration'
+                else status
+              end,
+              title = $2, description = $3,
               image_url = case when $4::boolean then $5 else image_url end,
               regular_source = $6, visibility = $7,
               current_revision = $8, registration_opens_at = $9,
@@ -1233,7 +1241,7 @@ export async function inviteTournamentParticipant(
       [tournamentId],
     );
     if (!tournament.rows[0]) throw new AppError('not_found', 'tournament not found', 404);
-    if (tournament.rows[0].status !== 'registration') {
+    if (!['registration', 'registration_blocked'].includes(tournament.rows[0].status)) {
       throw new AppError('registration_closed', 'registration is closed', 409);
     }
     const entryFeeCoins = Number(tournament.rows[0].entry_fee_coins);
@@ -3343,12 +3351,15 @@ export async function duplicateTournamentDraft(
   input: { tournamentId: string; slug?: string; title: string; createdBy: string },
 ) {
   const source = await getTournament(pool, input.tournamentId);
+  const rules = normalizePublishedTournamentLifecycleRules(source.rules, {
+    markNewAutomaticLifecycle: true,
+  }) as TournamentRulesSnapshot;
   return createTournamentDraft(pool, {
     ...(input.slug !== undefined ? { slug: input.slug } : {}),
     title: input.title,
     description: source.description,
     imageUrl: source.imageUrl,
-    rules: source.rules,
+    rules,
     createdBy: input.createdBy,
     registrationOpensAt: null,
     registrationClosesAt: null,

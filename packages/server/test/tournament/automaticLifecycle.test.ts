@@ -95,6 +95,23 @@ describe('evaluateTournamentLifecycle', () => {
     });
   });
 
+  it('retries automatic schedule generation when a blocked tournament reaches its configured size', () => {
+    expect(
+      evaluateTournamentLifecycle(
+        {
+          ...fixtureFor('after registration closes with enough players'),
+          status: 'registration_blocked',
+        },
+        NOW,
+      ),
+    ).toMatchObject({
+      action: 'generate_schedule',
+      approvedParticipantCount: 4,
+      requiredParticipantCount: 4,
+      reason: null,
+    });
+  });
+
   it('uses date instants at the registration boundaries', () => {
     const opensAt = new Date('2030-01-10T12:00:00.000Z');
     const closesAt = new Date('2030-01-10T12:00:00.000Z');

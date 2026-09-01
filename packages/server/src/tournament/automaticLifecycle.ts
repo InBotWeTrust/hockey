@@ -83,10 +83,17 @@ export interface TournamentLifecycleReconcileItem {
   reason: TournamentLifecycleDecision['reason'];
 }
 
+export interface TournamentLifecycleReconcileFailure {
+  tournamentId: string;
+  code: string;
+  message: string;
+}
+
 export interface TournamentLifecycleReconcileReport {
   scanned: number;
   changed: number;
   items: TournamentLifecycleReconcileItem[];
+  failures: TournamentLifecycleReconcileFailure[];
 }
 
 interface LifecycleRow {
@@ -205,6 +212,9 @@ export function evaluateTournamentLifecycle(
   }
 
   if (snapshot.status === 'registration_blocked') {
+    if (snapshot.approvedParticipantCount >= snapshot.playoffSize) {
+      return decision(snapshot, 'generate_schedule');
+    }
     return decision(snapshot, 'block_registration', null, 'not_enough_participants');
   }
 
@@ -571,6 +581,94 @@ function reconcileGeneratedSchedule(outcome: GenerateRegularScheduleOutcome) {
   };
 }
 
+async function reconcileTournamentLifecycleRow(
+  pool: Pool,
+  row: LifecycleRow,
+  options: ReconcileTournamentLifecycleOptions,
+): Promise<TournamentLifecycleReconcileItem> {
+  const persistedSnapshot = tournamentLifecycleSnapshot(row);
+  if (persistedSnapshot.automaticLifecycleVersion !== AUTOMATIC_TOURNAMENT_LIFECYCLE_VERSION) {
+    const legacy = evaluateTournamentLifecycle(persistedSnapshot, options.now);
+    return {
+      tournamentId: persistedSnapshot.tournamentId,
+      before: persistedSnapshot.status,
+      after: persistedSnapshot.status,
+      action: legacy.action,
+      changed: false,
+      reason: legacy.reason,
+    };
+  }
+
+  if (options.dryRun !== true) {
+    await finalizeExpiredRegularDays(pool, row, options);
+  }
+  const snapshot = tournamentLifecycleSnapshot({
+    ...row,
+    regular_results_complete: await regularResultsComplete(pool, row),
+  });
+  const lifecycleDecision = evaluateTournamentLifecycle(snapshot, options.now);
+  let after = snapshot.status;
+  let changed = false;
+  let before = snapshot.status;
+  let action = lifecycleDecision.action;
+  let reason = lifecycleDecision.reason;
+
+  if (options.dryRun === true) {
+    after = plannedAfterStatus(snapshot.status, lifecycleDecision.action);
+  } else if (
+    lifecycleDecision.action === 'generate_schedule' ||
+    lifecycleDecision.action === 'block_registration'
+  ) {
+    const result = await generateRegularSchedule(pool, snapshot.tournamentId, snapshot.revision);
+    const reconciled = reconcileGeneratedSchedule(result);
+    before = reconciled.before;
+    after = reconciled.after;
+    action = reconciled.action;
+    changed = reconciled.changed;
+    reason = reconciled.reason;
+  } else if (
+    lifecycleDecision.action === 'await_regular_results' ||
+    lifecycleDecision.action === 'playoff_schedule_missing'
+  ) {
+    await enqueuePlayoffBlockedPushes(
+      pool,
+      snapshot.tournamentId,
+      lifecycleDecision.action === 'playoff_schedule_missing'
+        ? 'playoff_schedule_missing'
+        : 'regular_results_incomplete',
+      options.now,
+    );
+  } else if (lifecycleDecision.action === 'start_playoff') {
+    const started = await startTournamentPlayoffs(pool, snapshot.tournamentId, options.now);
+    after = started.status === 'playoff' ? 'playoff' : snapshot.status;
+    if (started.created) {
+      changed = true;
+    } else {
+      action = 'unchanged';
+    }
+  }
+
+  return {
+    tournamentId: snapshot.tournamentId,
+    before,
+    after,
+    action,
+    changed,
+    reason,
+  };
+}
+
+function reconcileFailure(
+  tournamentId: string,
+  error: unknown,
+): TournamentLifecycleReconcileFailure {
+  return {
+    tournamentId,
+    code: error instanceof AppError ? error.code : 'unexpected_error',
+    message: error instanceof Error ? error.message : 'unknown tournament lifecycle error',
+  };
+}
+
 export async function reconcileTournamentLifecycle(
   pool: Pool,
   options: ReconcileTournamentLifecycleOptions,
@@ -581,86 +679,21 @@ export async function reconcileTournamentLifecycle(
     options.tournamentId === undefined ? undefined : [options.tournamentId],
   );
   const items: TournamentLifecycleReconcileItem[] = [];
+  const failures: TournamentLifecycleReconcileFailure[] = [];
 
   for (const row of rows) {
-    const persistedSnapshot = tournamentLifecycleSnapshot(row);
-    if (persistedSnapshot.automaticLifecycleVersion !== AUTOMATIC_TOURNAMENT_LIFECYCLE_VERSION) {
-      const legacy = evaluateTournamentLifecycle(persistedSnapshot, options.now);
-      items.push({
-        tournamentId: persistedSnapshot.tournamentId,
-        before: persistedSnapshot.status,
-        after: persistedSnapshot.status,
-        action: legacy.action,
-        changed: false,
-        reason: legacy.reason,
-      });
-      continue;
+    try {
+      items.push(await reconcileTournamentLifecycleRow(pool, row, options));
+    } catch (error) {
+      if (options.tournamentId !== undefined) throw error;
+      failures.push(reconcileFailure(row.id, error));
     }
-
-    if (options.dryRun !== true) {
-      await finalizeExpiredRegularDays(pool, row, options);
-    }
-    const snapshot = tournamentLifecycleSnapshot({
-      ...row,
-      regular_results_complete: await regularResultsComplete(pool, row),
-    });
-    const lifecycleDecision = evaluateTournamentLifecycle(snapshot, options.now);
-    let after = snapshot.status;
-    let changed = false;
-    let before = snapshot.status;
-    let action = lifecycleDecision.action;
-    let reason = lifecycleDecision.reason;
-
-    if (options.dryRun === true) {
-      after = plannedAfterStatus(snapshot.status, lifecycleDecision.action);
-    } else if (
-      lifecycleDecision.action === 'generate_schedule' ||
-      lifecycleDecision.action === 'block_registration' ||
-      (snapshot.status === 'registration_blocked' &&
-        snapshot.automaticLifecycleVersion === AUTOMATIC_TOURNAMENT_LIFECYCLE_VERSION)
-    ) {
-      const result = await generateRegularSchedule(pool, snapshot.tournamentId, snapshot.revision);
-      const reconciled = reconcileGeneratedSchedule(result);
-      before = reconciled.before;
-      after = reconciled.after;
-      action = reconciled.action;
-      changed = reconciled.changed;
-      reason = reconciled.reason;
-    } else if (
-      lifecycleDecision.action === 'await_regular_results' ||
-      lifecycleDecision.action === 'playoff_schedule_missing'
-    ) {
-      await enqueuePlayoffBlockedPushes(
-        pool,
-        snapshot.tournamentId,
-        lifecycleDecision.action === 'playoff_schedule_missing'
-          ? 'playoff_schedule_missing'
-          : 'regular_results_incomplete',
-        options.now,
-      );
-    } else if (lifecycleDecision.action === 'start_playoff') {
-      const started = await startTournamentPlayoffs(pool, snapshot.tournamentId, options.now);
-      after = started.status === 'playoff' ? 'playoff' : snapshot.status;
-      if (started.created) {
-        changed = true;
-      } else {
-        action = 'unchanged';
-      }
-    }
-
-    items.push({
-      tournamentId: snapshot.tournamentId,
-      before,
-      after,
-      action,
-      changed,
-      reason,
-    });
   }
 
   return {
-    scanned: items.length,
+    scanned: rows.length,
     changed: items.filter((item) => item.changed).length,
     items,
+    failures,
   };
 }
