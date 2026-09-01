@@ -123,6 +123,50 @@ describe('TournamentCatalog', () => {
     expect(screen.queryByText('Конец', { exact: true })).not.toBeInTheDocument();
   });
 
+  it.each([
+    [1, '1 игрок'],
+    [4, '4 игрока'],
+    [5, '5 игроков'],
+    [11, '11 игроков'],
+    [21, '21 игрок'],
+  ])('uses the correct player form for a %i-player playoff', async (playoffSize, label) => {
+    vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
+      tournaments: [
+        {
+          id: 't1',
+          slug: 'ice-cup',
+          title: 'Кубок льда',
+          description: '',
+          status: 'registration',
+          regularSource: 'head_to_head',
+          visibility: 'public',
+          revision: 1,
+          participantCount: 1,
+          lifecycle: TEST_LIFECYCLE,
+          myParticipantState: null,
+          registrationOpensAt: null,
+          registrationClosesAt: null,
+          startsAt: null,
+          rules: {
+            config: { participantLimit: 32, entryFeeCoins: 0, playoffSize },
+          },
+        },
+      ],
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TournamentCatalog />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок льда' }));
+
+    expect(screen.getByText(label)).toBeInTheDocument();
+  });
+
   it('shows the registration deadline from the lifecycle response while applications are open', async () => {
     vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
       tournaments: [

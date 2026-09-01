@@ -652,7 +652,15 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
               </button>
               <div>
                 <span>Плей-офф</span>
-                <strong>{tournament.rules.config.playoffSize} игроков</strong>
+                <strong>
+                  {numberValue(tournament.rules.config.playoffSize)}{' '}
+                  {pluralRu(
+                    numberValue(tournament.rules.config.playoffSize),
+                    'игрок',
+                    'игрока',
+                    'игроков',
+                  )}
+                </strong>
               </div>
               <div>
                 <span>Вступительный взнос</span>
