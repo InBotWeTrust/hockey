@@ -71,6 +71,7 @@ const plugin: FastifyPluginAsync<TournamentLifecyclePluginOptions> = async (app,
 
   let closing = false;
   let activeTick: Promise<void> | null = null;
+  let timer: NodeJS.Timeout | null = null;
   function tick(): Promise<void> {
     if (closing) return Promise.resolve();
     if (activeTick !== null) return activeTick;
@@ -94,16 +95,19 @@ const plugin: FastifyPluginAsync<TournamentLifecyclePluginOptions> = async (app,
     return activeTick;
   }
 
-  const timer = setInterval(() => {
-    void tick();
-  }, opts.intervalMs ?? DEFAULT_INTERVAL_MS);
-  timer.unref();
   app.addHook('onReady', async () => {
     await tick();
+    setImmediate(() => {
+      if (closing) return;
+      timer = setInterval(() => {
+        void tick();
+      }, opts.intervalMs ?? DEFAULT_INTERVAL_MS);
+      timer.unref();
+    });
   });
   app.addHook('onClose', async () => {
     closing = true;
-    clearInterval(timer);
+    if (timer !== null) clearInterval(timer);
     await activeTick;
   });
 };

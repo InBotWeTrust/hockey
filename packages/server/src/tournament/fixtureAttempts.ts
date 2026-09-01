@@ -87,6 +87,11 @@ export interface TournamentFixtureAttemptStateDTO {
   } | null;
 }
 
+export interface TournamentFixtureAttemptStateReadResult {
+  state: TournamentFixtureAttemptStateDTO;
+  newlySettledRegularFixture?: { fixtureId: string; tournamentId: string };
+}
+
 interface DuelTemplateTimingRow {
   id: string;
   title: string;
@@ -1322,6 +1327,13 @@ export async function getTournamentFixtureAttemptState(
   pool: Pool,
   input: { tournamentId: string; fixtureId: string; userId: string; now: Date },
 ): Promise<TournamentFixtureAttemptStateDTO> {
+  return (await getTournamentFixtureAttemptStateWithReconciliation(pool, input)).state;
+}
+
+export async function getTournamentFixtureAttemptStateWithReconciliation(
+  pool: Pool,
+  input: { tournamentId: string; fixtureId: string; userId: string; now: Date },
+): Promise<TournamentFixtureAttemptStateReadResult> {
   const client = await pool.connect();
   try {
     await client.query('begin');
@@ -1332,17 +1344,16 @@ export async function getTournamentFixtureAttemptState(
       `tournament-fixture:${input.fixtureId}`,
     ]);
     let row = await fetchPlayerAttemptStateRow(client, input);
-    if (row.amateur_duel_match_id === null) {
-      await reconcileTournamentAttemptForFixture(client, {
-        fixtureId: input.fixtureId,
-        now: input.now,
-      });
-    } else {
-      await reconcileTournamentAttemptForDuel(client, {
-        duelMatchId: row.amateur_duel_match_id,
-        now: input.now,
-      });
-    }
+    const reconciledAttempt =
+      row.amateur_duel_match_id === null
+        ? await reconcileTournamentAttemptForFixture(client, {
+            fixtureId: input.fixtureId,
+            now: input.now,
+          })
+        : await reconcileTournamentAttemptForDuel(client, {
+            duelMatchId: row.amateur_duel_match_id,
+            now: input.now,
+          });
     row = await fetchPlayerAttemptStateRow(client, input);
     await client.query('commit');
 
@@ -1366,7 +1377,7 @@ export async function getTournamentFixtureAttemptState(
             ),
           };
 
-    return {
+    const state: TournamentFixtureAttemptStateDTO = {
       attempt: {
         id: row.attempt_id,
         number: Number(row.attempt_number),
@@ -1422,6 +1433,12 @@ export async function getTournamentFixtureAttemptState(
               canChoose: row.my_choice_decided_at === null && input.now < row.choice_expires_at,
               startsImmediately: row.next_readiness_mode === 'next_game_auto_continue',
             },
+    };
+    return {
+      state,
+      ...(reconciledAttempt.newlySettledRegularFixture === undefined
+        ? {}
+        : { newlySettledRegularFixture: reconciledAttempt.newlySettledRegularFixture }),
     };
   } catch (error) {
     await client.query('rollback').catch(() => undefined);

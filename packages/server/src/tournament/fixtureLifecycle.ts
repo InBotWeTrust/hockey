@@ -60,6 +60,15 @@ export interface TournamentDuelFactory {
   ): Promise<{ matchId: string }>;
 }
 
+export class TournamentFixtureAttemptTerminalError extends AppError {
+  constructor(
+    public readonly newlySettledRegularFixture: { fixtureId: string; tournamentId: string },
+  ) {
+    super('conflict', 'tournament attempt is not playable', 409);
+    this.name = 'TournamentFixtureAttemptTerminalError';
+  }
+}
+
 async function resolveFixtureVenue(
   client: PoolClient,
   fixture: FixtureContextRow,
@@ -194,6 +203,11 @@ export async function openTournamentFixtureSegment(
       });
       if (reconciledAttempt.changed) {
         await client.query('commit');
+        if (reconciledAttempt.newlySettledRegularFixture !== undefined) {
+          throw new TournamentFixtureAttemptTerminalError(
+            reconciledAttempt.newlySettledRegularFixture,
+          );
+        }
         throw new AppError('conflict', 'tournament attempt is not playable', 409);
       }
       if (!['pending', 'ready_check', 'active'].includes(attempt.status)) {

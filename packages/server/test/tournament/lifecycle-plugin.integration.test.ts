@@ -219,6 +219,71 @@ describe.skipIf(!hasIntegrationEnv)('tournament lifecycle plugin', () => {
     return app;
   }
 
+  async function openRegularFixtureWithOneReady(
+    server: FastifyInstance,
+    input: { slug: string },
+  ): Promise<{
+    tournamentId: string;
+    fixtureId: string;
+    readinessExpiresAt: Date;
+    homeAuth: { authorization: string };
+  }> {
+    const tournament = await seedAutomaticTournament(pool, {
+      slug: input.slug,
+      playoffSize: 2,
+      approvedUserIds: [PLAYER_ID, PLAYER_TWO_ID],
+    });
+    await generateRegularSchedule(pool, tournament.id, tournament.revision);
+    await publishRegularSchedule(pool, tournament.id);
+    const fixture = await pool.query<{
+      id: string;
+      home_user_id: string;
+      scheduled_starts_at: Date;
+    }>(
+      `select fixture.id, home.user_id as home_user_id, fixture.scheduled_starts_at
+         from tournament_fixture fixture
+         join tournament_round round on round.id = fixture.round_id
+         join tournament_participant home on home.id = fixture.home_participant_id
+        where fixture.tournament_id = $1 and round.stage = 'regular'
+        order by fixture.fixture_number
+        limit 1`,
+      [tournament.id],
+    );
+    const row = fixture.rows[0]!;
+    const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+    const homeAuth = {
+      authorization: `Bearer ${await jwt.issueAccessToken({ sub: row.home_user_id })}`,
+    };
+
+    vi.setSystemTime(new Date(row.scheduled_starts_at.getTime() + 1));
+    const opened = await server.inject({
+      method: 'POST',
+      url: `/tournaments/${tournament.id}/fixtures/${row.id}/segments/open`,
+      headers: homeAuth,
+    });
+    expect(opened.statusCode).toBe(200);
+    const readiness = await pool.query<{ readiness_expires_at: Date }>(
+      `select readiness_expires_at
+         from tournament_fixture_attempt
+        where fixture_id = $1`,
+      [row.id],
+    );
+    const ready = await server.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${opened.json().duelMatchId}/ready`,
+      headers: homeAuth,
+      payload: { loadout: {} },
+    });
+    expect(ready.statusCode).toBe(200);
+
+    return {
+      tournamentId: tournament.id,
+      fixtureId: row.id,
+      readinessExpiresAt: readiness.rows[0]!.readiness_expires_at,
+      homeAuth,
+    };
+  }
+
   it('runs lifecycle when push scheduling and push worker are disabled', async () => {
     const tournament = await seedAutomaticTournament(pool, {
       slug: 'lifecycle-worker',
@@ -473,6 +538,81 @@ describe.skipIf(!hasIntegrationEnv)('tournament lifecycle plugin', () => {
         },
       });
       expect(events.statusCode).toBe(200);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reconciles after segment-open lazily settles a one-ready regular fixture', async () => {
+    const server = await startApp({ lifecycleEnabled: false });
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const fixture = await openRegularFixtureWithOneReady(server, {
+        slug: 'lifecycle-segment-open-timeout',
+      });
+      vi.setSystemTime(new Date(fixture.readinessExpiresAt.getTime() + 1));
+      const reconcile = vi.spyOn(server, 'reconcileTournamentLifecycleBestEffort');
+
+      const first = await server.inject({
+        method: 'POST',
+        url: `/tournaments/${fixture.tournamentId}/fixtures/${fixture.fixtureId}/segments/open`,
+        headers: fixture.homeAuth,
+      });
+
+      expect(first.statusCode).toBe(409);
+      expect(first.json()).not.toHaveProperty('newlySettledRegularFixture');
+      expect(
+        await pool.query(`select status from tournament_fixture where id = $1`, [
+          fixture.fixtureId,
+        ]),
+      ).toMatchObject({ rows: [{ status: 'settled' }] });
+      expect(reconcile).toHaveBeenCalledTimes(1);
+      expect(reconcile).toHaveBeenCalledWith({ tournamentId: fixture.tournamentId });
+
+      const retry = await server.inject({
+        method: 'POST',
+        url: `/tournaments/${fixture.tournamentId}/fixtures/${fixture.fixtureId}/segments/open`,
+        headers: fixture.homeAuth,
+      });
+      expect(retry.statusCode).toBe(409);
+      expect(reconcile).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reconciles after attempt-state lazily settles a one-ready regular fixture', async () => {
+    const server = await startApp({ lifecycleEnabled: false });
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const fixture = await openRegularFixtureWithOneReady(server, {
+        slug: 'lifecycle-attempt-state-timeout',
+      });
+      vi.setSystemTime(new Date(fixture.readinessExpiresAt.getTime() + 1));
+      const reconcile = vi.spyOn(server, 'reconcileTournamentLifecycleBestEffort');
+
+      const first = await server.inject({
+        method: 'GET',
+        url: `/tournaments/${fixture.tournamentId}/fixtures/${fixture.fixtureId}/attempt`,
+        headers: fixture.homeAuth,
+      });
+
+      expect(first.statusCode).toBe(200);
+      expect(first.json()).toMatchObject({
+        attempt: { status: 'technical_result', result: { outcome: 'away_no_show' } },
+      });
+      expect(first.json()).not.toHaveProperty('newlySettledRegularFixture');
+      expect(reconcile).toHaveBeenCalledTimes(1);
+      expect(reconcile).toHaveBeenCalledWith({ tournamentId: fixture.tournamentId });
+
+      const retry = await server.inject({
+        method: 'GET',
+        url: `/tournaments/${fixture.tournamentId}/fixtures/${fixture.fixtureId}/attempt`,
+        headers: fixture.homeAuth,
+      });
+      expect(retry.statusCode).toBe(200);
+      expect(retry.json()).toEqual(first.json());
+      expect(reconcile).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
     }

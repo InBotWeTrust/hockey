@@ -41,8 +41,14 @@ import {
   withdrawTournamentApplication,
   type TournamentRulesSnapshot,
 } from './service.js';
-import { openTournamentFixtureSegment } from './fixtureLifecycle.js';
-import { chooseTournamentNextGame, getTournamentFixtureAttemptState } from './fixtureAttempts.js';
+import {
+  openTournamentFixtureSegment,
+  TournamentFixtureAttemptTerminalError,
+} from './fixtureLifecycle.js';
+import {
+  chooseTournamentNextGame,
+  getTournamentFixtureAttemptStateWithReconciliation,
+} from './fixtureAttempts.js';
 import { publishTournamentFixtureProgress } from './realtimeProgress.js';
 import {
   finalizeTournamentDailyDay,
@@ -185,6 +191,17 @@ async function requireAdmin(app: Parameters<FastifyPluginAsync>[0], req: Fastify
 async function requireTournamentFeature(app: Parameters<FastifyPluginAsync>[0]) {
   if (!(await isTournamentFeatureEnabled(app.pg))) {
     throw new AppError('not_found', 'tournaments are not available', 404);
+  }
+}
+
+async function reconcileNewlySettledRegularFixture(
+  app: Parameters<FastifyPluginAsync>[0],
+  fixture: { fixtureId: string; tournamentId: string },
+): Promise<void> {
+  try {
+    await app.reconcileTournamentLifecycleBestEffort({ tournamentId: fixture.tournamentId });
+  } catch (err) {
+    app.log.error({ err, fixture }, 'regular tournament lifecycle reconcile failed');
   }
 }
 
@@ -338,11 +355,19 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
     async (req) => {
       await requireTournamentFeature(app);
       const params = z.object({ tournamentId: uuid, fixtureId: uuid }).parse(req.params);
-      const opened = await openTournamentFixtureSegment(
-        app.pg,
-        { ...params, userId: req.user.id, now: new Date() },
-        (client, input) => createTournamentDuelMatch(client, input, options.duelSeedSecret),
-      );
+      let opened;
+      try {
+        opened = await openTournamentFixtureSegment(
+          app.pg,
+          { ...params, userId: req.user.id, now: new Date() },
+          (client, input) => createTournamentDuelMatch(client, input, options.duelSeedSecret),
+        );
+      } catch (error) {
+        if (error instanceof TournamentFixtureAttemptTerminalError) {
+          await reconcileNewlySettledRegularFixture(app, error.newlySettledRegularFixture);
+        }
+        throw error;
+      }
       await publishTournamentFixtureProgress(app.pg, app.realtime, app.log, {
         duelMatchId: opened.duelMatchId,
         sequence: Date.now(),
@@ -354,11 +379,15 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
   app.get('/tournaments/:tournamentId/fixtures/:fixtureId/attempt', authenticated, async (req) => {
     await requireTournamentFeature(app);
     const params = z.object({ tournamentId: uuid, fixtureId: uuid }).parse(req.params);
-    return getTournamentFixtureAttemptState(app.pg, {
+    const result = await getTournamentFixtureAttemptStateWithReconciliation(app.pg, {
       ...params,
       userId: req.user.id,
       now: new Date(),
     });
+    if (result.newlySettledRegularFixture !== undefined) {
+      await reconcileNewlySettledRegularFixture(app, result.newlySettledRegularFixture);
+    }
+    return result.state;
   });
 
   app.post(
