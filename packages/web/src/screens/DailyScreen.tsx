@@ -226,8 +226,20 @@ function readTrainingSpeedOverrides(): SpeedOverrides | null {
 }
 
 const AMATEUR_DAILY_COURT_BACKGROUND = '/sprites/amateur-daily-court.webp';
+const AMATEUR_TOURNAMENT_COURT_BACKGROUND = '/sprites/amateur-tournament-court.webp';
 const ARENA_ICE_COURT_BACKGROUND = '/sprites/app-arena-ice.webp';
 const ARENA_CUBE_IMAGE = '/sprites/app-arena-cube.webp';
+const LEGACY_STANDARD_ARENA_BACKGROUNDS = new Set([
+  '/sprites/arena-ice-court.webp',
+  '/sprites/arena-ice-court-v2.webp',
+]);
+
+function tournamentDuelCourtBackground(match: AmateurDuelMatchState): string | undefined {
+  if (match.source !== 'tournament') return undefined;
+  return LEGACY_STANDARD_ARENA_BACKGROUNDS.has(match.arena.artwork_url)
+    ? AMATEUR_TOURNAMENT_COURT_BACKGROUND
+    : match.arena.artwork_url;
+}
 
 function saveTrainingHitboxesVisible(value: boolean): void {
   if (typeof window === 'undefined') return;
@@ -5050,7 +5062,7 @@ function AmateurDuelPlayView({
           submitShot={submitShot}
           applyState={applyState}
           duelCondition={duelCondition}
-          longCourtBackground={match.source === 'tournament' ? match.arena.artwork_url : undefined}
+          longCourtBackground={tournamentDuelCourtBackground(match)}
           hudAddon={
             <DuelRinkLoadoutHud
               match={match}
@@ -5170,7 +5182,7 @@ function AmateurDuelPlayView({
           submitShot={submitShot}
           applyState={applyState}
           duelCondition={duelCondition}
-          longCourtBackground={match.source === 'tournament' ? match.arena.artwork_url : undefined}
+          longCourtBackground={tournamentDuelCourtBackground(match)}
           hudAddon={
             <DuelInventoryMiniHud
               match={match}

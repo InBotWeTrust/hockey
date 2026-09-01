@@ -3884,6 +3884,67 @@ describe('DailyScreen', () => {
     expect(document.querySelector('img[src="/bonus-games/arenas/beach.webp"]')).toBeTruthy();
   });
 
+  it('uses the playable standard arena background for a tournament duel', async () => {
+    const tournamentMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      status: 'active',
+      source: 'tournament',
+      venue_role: 'home',
+      outcome: null,
+      winner_user_id: null,
+      settled_at: null,
+      settled_reason: null,
+      starts_at: new Date(Date.now() - 60_000).toISOString(),
+      ends_at: new Date(Date.now() + 60 * 60_000).toISOString(),
+      server_now: new Date().toISOString(),
+      arena: {
+        ...settledDuelMatch.arena,
+        id: 'arena-default',
+        slug: 'default',
+        title: 'Стандартная арена',
+        artwork_url: '/sprites/arena-ice-court-v2.webp',
+        thumbnail_url: '/sprites/arena-ice-court-v2.webp',
+      },
+      me: {
+        ...settledDuelMatch.me,
+        state: 'accepted',
+        current_period: 0,
+      },
+      opponent: {
+        ...settledDuelMatch.opponent,
+        state: 'accepted',
+        current_period: 0,
+      },
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/matches/match-1')) {
+        return new Response(JSON.stringify({ match: tournamentMatch }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=amateur&match=match-1&play=1']);
+
+    expect(await screen.findByRole('button', { name: 'НАЧАТЬ' })).toBeEnabled();
+    expect(
+      document.querySelector('img[src="/sprites/amateur-tournament-court.webp"]'),
+    ).toBeTruthy();
+    expect(document.querySelector('img[src="/sprites/arena-ice-court-v2.webp"]')).toBeFalsy();
+  });
+
   it('builds live opponent progress for the amateur duel scoreboard', () => {
     const now = new Date();
     const activeMatch: AmateurDuelMatchState = {
