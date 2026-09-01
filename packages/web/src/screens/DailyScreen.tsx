@@ -2036,9 +2036,9 @@ export function duelEventTiming(match: AmateurDuelMatch, fallbackNow: number): D
 
   return {
     activePeriod: duelNextPeriod(match),
-    ariaLabel: `Счёт ${score}`,
-    label: 'Счёт',
-    value: score,
+    ariaLabel: `Время игрока ${formatDurationMs(match.me.active_duration_ms)}. Счёт ${score}`,
+    label: 'Время',
+    value: formatDurationMs(match.me.active_duration_ms),
   };
 }
 
@@ -3461,10 +3461,7 @@ function DuelKindPreferencePicker({
   };
 
   return (
-    <div
-      className="glass duel-kind-picker"
-      style={{ borderRadius: 16, padding: '10px 10px 12px' }}
-    >
+    <div className="glass duel-kind-picker" style={{ borderRadius: 16, padding: '10px 10px 12px' }}>
       <div
         style={{
           display: 'flex',
@@ -3769,7 +3766,9 @@ function AmateurDuelsPage({
   const renderDuelCards = (items: AmateurDuelMatch[]) =>
     items.map((match) => {
       const canCancelInvite =
-        match.status === 'invited' && match.source === 'challenge' && match.me.side === 'challenger';
+        match.status === 'invited' &&
+        match.source === 'challenge' &&
+        match.me.side === 'challenger';
       const canAnswerInvite = isDuelInviteForMe(match);
       return (
         <DuelListCard
@@ -3804,9 +3803,7 @@ function AmateurDuelsPage({
         items={[
           { id: 'game', label: 'Игра' },
           { id: 'locker', label: 'Раздевалка' },
-          ...(rating.data?.rating_visible === false
-            ? []
-            : [{ id: 'rating', label: 'Рейтинг' }]),
+          ...(rating.data?.rating_visible === false ? [] : [{ id: 'rating', label: 'Рейтинг' }]),
           { id: 'history', label: 'История' },
         ]}
         onChange={(id) => setDuelTab(id as AmateurDuelTab)}
@@ -3841,332 +3838,255 @@ function AmateurDuelsPage({
           <div className="duel-section">
             <div className="section-label duel-section-title">Новая дуэль</div>
             <section className="duel-creation-card" aria-label="Новая дуэль">
-            <SegmentedTabs
-              ariaLabel="Сценарий новой дуэли"
-              activeTab={duelCreationMode}
-              items={[
-                { id: 'matchmaking', label: 'Найти' },
-                { id: 'challenge', label: 'Вызвать' },
-              ]}
-              onChange={(id) => setDuelCreationMode(id as 'matchmaking' | 'challenge')}
-            />
-            {duelCreationMode === 'matchmaking' ? (
-              <>
-                <DuelKindPreferencePicker
-                  selected={matchmakingKinds}
-                  onChange={setMatchmakingKinds}
-                  onInfo={() => setMatchmakingRulesOpen(true)}
-                />
-                <button
-                  type="button"
-                  className="btn btn--cta"
-                  disabled={!canStartMatchmaking}
-                  onClick={() => {
-                    setMatchmakingNow(Date.now());
-                    matchmakingMut.mutate(matchmakingKinds);
-                  }}
-                >
-                  {matchmakingMut.isPending
-                    ? 'Запускаем поиск...'
-                    : isMatchmakingActive
-                      ? 'Поиск запущен'
-                      : isMatchmakingExpired
-                        ? 'Искать снова'
-                        : 'Начать поиск'}
-                </button>
-                {matchmakingTicket && (
-                  <div
-                    className="glass"
-                    style={{
-                      borderRadius: 18,
-                      padding: 12,
-                      display: 'grid',
-                      gridTemplateColumns: 'minmax(0, 1fr) auto',
-                      alignItems: 'center',
-                      gap: 10,
-                    }}
-                  >
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ color: 'var(--ink)', fontSize: 15, fontWeight: 900 }}>
-                        {isMatchmakingExpired
-                          ? 'Соперник не найден'
-                          : `Ищем соперника... ${formatMs(matchmakingRemaining)}`}
-                      </div>
-                      <div style={{ color: 'var(--muted)', fontSize: 12, fontWeight: 700 }}>
-                        {isMatchmakingExpired
-                          ? 'Можно запустить поиск ещё раз.'
-                          : 'Подберём игрока с пересекающимися форматами. Поиск длится 2 минуты.'}
-                      </div>
-                    </div>
-                    {isMatchmakingActive && (
-                      <button
-                        type="button"
-                        className="btn btn--ghost"
-                        disabled={leaveMatchmakingMut.isPending}
-                        onClick={() => {
-                          leaveMatchmakingMut.mutate();
-                        }}
-                        style={{ minHeight: 38, padding: '0 14px', fontSize: 12 }}
-                      >
-                        {leaveMatchmakingMut.isPending ? 'Отмена...' : 'Отменить'}
-                      </button>
-                    )}
-                  </div>
-                )}
-              </>
-            ) : (
-              <>
-                {templateItems.length > 0 && selectedTemplate ? (
-                  <>
-                    <GlassSelect
-                      ariaLabel="Шаблон дуэли"
-                      buttonClassName="duel-template-select"
-                      value={selectedTemplate.id}
-                      options={templateItems.map((template) => ({
-                        value: template.id,
-                        label: duelTemplateOptionLabel(template),
-                      }))}
-                      onChange={setSelectedTemplateId}
-                    />
-                  </>
-                ) : (
-                  <div style={{ color: 'var(--muted)', fontSize: 14 }}>Нет активных шаблонов</div>
-                )}
-                <div className="section-label duel-form-section-title">
-                  <span>Быстрый выбор</span>
-                  <button
-                    type="button"
-                    className="section-info-btn duel-form-section-info-btn"
-                    onClick={() => setQuickPickInfoOpen(true)}
-                    aria-label="Что такое быстрый выбор"
-                  >
-                    <Info size={12} color="var(--muted)" />
-                  </button>
-                </div>
-                <div
-                  className="glass duel-quick-pick"
-                  style={{ borderRadius: 18, padding: 12 }}
-                >
-                  <div
-                    aria-label="Быстрый выбор соперника"
-                    className="no-scrollbar"
-                    style={{
-                      display: 'flex',
-                      gap: 10,
-                      overflowX: 'auto',
-                      paddingTop: 2,
-                      paddingBottom: 2,
-                    }}
-                  >
-                    {suggestedOpponentOptions.length > 0 ? (
-                      suggestedOpponentOptions.map((opponent) => {
-                        const active = selectedOpponent?.userId === opponent.userId;
-                        return (
-                          <button
-                            key={opponent.userId}
-                            type="button"
-                            className={`duel-quick-pick__opponent${
-                              active ? ' duel-quick-pick__opponent--active' : ''
-                            }`}
-                            aria-label={`Выбрать соперника ${opponent.displayName}`}
-                            onClick={() => {
-                              setSelectedOpponent(opponent);
-                              setOpponentQuery('');
-                            }}
-                            style={{
-                              width: 58,
-                              flex: '0 0 auto',
-                              display: 'flex',
-                              flexDirection: 'column',
-                              alignItems: 'center',
-                              gap: 6,
-                              fontSize: 10,
-                              fontWeight: 900,
-                              lineHeight: 1.05,
-                              background: 'transparent',
-                              border: 'none',
-                              padding: 0,
-                              textAlign: 'center',
-                            }}
-                          >
-                            <span style={{ position: 'relative', display: 'inline-flex' }}>
-                              <UserAvatar
-                                avatarUrl={opponent.avatarUrl}
-                                name={opponent.displayName}
-                                size={44}
-                                fontSize={16}
-                                style={{
-                                  boxShadow: active
-                                    ? '0 0 0 3px #f59e0b, 0 10px 18px rgba(15, 23, 42, 0.18)'
-                                    : '0 8px 16px rgba(15, 23, 42, 0.12)',
-                                }}
-                              />
-                              <span
-                                aria-hidden="true"
-                                style={{
-                                  position: 'absolute',
-                                  right: 1,
-                                  bottom: 1,
-                                  width: 11,
-                                  height: 11,
-                                  borderRadius: 999,
-                                  background: isOpponentOnlineNow(opponent.lastSeenAt)
-                                    ? '#22c55e'
-                                    : '#94a3b8',
-                                  border: '2px solid rgba(226, 240, 252, 0.98)',
-                                }}
-                              />
-                            </span>
-                            <span
-                              className="duel-quick-pick__name"
-                              style={{
-                                width: '100%',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                              }}
-                            >
-                              {opponent.displayName}
-                            </span>
-                          </button>
-                        );
-                      })
-                    ) : (
-                      <div
-                        className="duel-quick-pick__empty"
-                        style={{ fontSize: 13, fontWeight: 700 }}
-                      >
-                        Игроков пока не видно. Можно найти по имени.
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div className="section-label duel-form-section-title">
-                  <span>Поиск</span>
-                  <button
-                    type="button"
-                    className="section-info-btn duel-form-section-info-btn"
-                    onClick={() => setOpponentSearchInfoOpen(true)}
-                    aria-label="Как работает поиск соперника"
-                  >
-                    <Info size={12} color="var(--muted)" />
-                  </button>
-                </div>
-                <div className="glass-dock-field duel-opponent-search" style={{ minHeight: 48 }}>
-                  <Search className="duel-opponent-search__icon" size={14} aria-hidden />
-                  <input
-                    className="duel-opponent-search__input"
-                    aria-label="Поиск соперника"
-                    value={opponentQuery}
-                    onChange={(event) => {
-                      setOpponentQuery(event.target.value);
-                      setSelectedOpponent(null);
-                    }}
-                    placeholder="Имя или фамилия"
-                    type="search"
-                    style={{
-                      flex: 1,
-                      border: 'none',
-                      outline: 'none',
-                      background: 'transparent',
-                      fontSize: 14,
-                      fontWeight: 800,
-                      fontFamily: 'inherit',
-                    }}
+              <SegmentedTabs
+                ariaLabel="Сценарий новой дуэли"
+                activeTab={duelCreationMode}
+                items={[
+                  { id: 'matchmaking', label: 'Найти' },
+                  { id: 'challenge', label: 'Вызвать' },
+                ]}
+                onChange={(id) => setDuelCreationMode(id as 'matchmaking' | 'challenge')}
+              />
+              {duelCreationMode === 'matchmaking' ? (
+                <>
+                  <DuelKindPreferencePicker
+                    selected={matchmakingKinds}
+                    onChange={setMatchmakingKinds}
+                    onInfo={() => setMatchmakingRulesOpen(true)}
                   />
-                </div>
-                {selectedOpponent && (
-                  <div
-                    className="glass"
-                    style={{
-                      borderRadius: 16,
-                      padding: '10px 12px',
-                      display: 'grid',
-                      gridTemplateColumns: 'minmax(0, 1fr) 34px',
-                      gap: 10,
-                      alignItems: 'center',
+                  <button
+                    type="button"
+                    className="btn btn--cta"
+                    disabled={!canStartMatchmaking}
+                    onClick={() => {
+                      setMatchmakingNow(Date.now());
+                      matchmakingMut.mutate(matchmakingKinds);
                     }}
                   >
-                    <div style={{ minWidth: 0 }}>
-                      <div className="section-label" style={{ margin: 0, padding: 0 }}>
-                        Соперник
-                      </div>
-                      <div
-                        style={{
-                          color: 'var(--ink)',
-                          fontSize: 16,
-                          fontWeight: 900,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {selectedOpponent.displayName}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      className="icon-btn"
-                      aria-label="Убрать соперника"
-                      title="Убрать соперника"
-                      onClick={() => setSelectedOpponent(null)}
-                    >
-                      <X size={15} />
-                    </button>
-                  </div>
-                )}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {opponentOptions.slice(0, 4).map((opponent) => (
-                    <button
-                      key={opponent.userId}
-                      type="button"
-                      onClick={() => {
-                        setSelectedOpponent(opponent);
-                        setOpponentQuery('');
-                      }}
+                    {matchmakingMut.isPending
+                      ? 'Запускаем поиск...'
+                      : isMatchmakingActive
+                        ? 'Поиск запущен'
+                        : isMatchmakingExpired
+                          ? 'Искать снова'
+                          : 'Начать поиск'}
+                  </button>
+                  {matchmakingTicket && (
+                    <div
                       className="glass"
                       style={{
-                        minHeight: 58,
-                        borderRadius: 20,
-                        padding: '8px 12px',
+                        borderRadius: 18,
+                        padding: 12,
                         display: 'grid',
-                        gridTemplateColumns: '42px minmax(0, 1fr)',
+                        gridTemplateColumns: 'minmax(0, 1fr) auto',
                         alignItems: 'center',
-                        gap: 12,
-                        textAlign: 'left',
-                        border:
-                          selectedOpponent?.userId === opponent.userId
-                            ? '2px solid #f59e0b'
-                            : '1px solid rgba(255,255,255,0.8)',
+                        gap: 10,
                       }}
                     >
-                      <span style={{ position: 'relative', display: 'inline-flex' }}>
-                        <UserAvatar
-                          avatarUrl={opponent.avatarUrl}
-                          name={opponent.displayName}
-                          size={42}
-                          fontSize={15}
-                        />
-                        <span
-                          aria-hidden="true"
-                          style={{
-                            position: 'absolute',
-                            right: 0,
-                            bottom: 0,
-                            width: 11,
-                            height: 11,
-                            borderRadius: 999,
-                            background: isOpponentOnlineNow(opponent.lastSeenAt)
-                              ? '#22c55e'
-                              : '#94a3b8',
-                            border: '2px solid rgba(226, 240, 252, 0.98)',
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ color: 'var(--ink)', fontSize: 15, fontWeight: 900 }}>
+                          {isMatchmakingExpired
+                            ? 'Соперник не найден'
+                            : `Ищем соперника... ${formatMs(matchmakingRemaining)}`}
+                        </div>
+                        <div style={{ color: 'var(--muted)', fontSize: 12, fontWeight: 700 }}>
+                          {isMatchmakingExpired
+                            ? 'Можно запустить поиск ещё раз.'
+                            : 'Подберём игрока с пересекающимися форматами. Поиск длится 2 минуты.'}
+                        </div>
+                      </div>
+                      {isMatchmakingActive && (
+                        <button
+                          type="button"
+                          className="btn btn--ghost"
+                          disabled={leaveMatchmakingMut.isPending}
+                          onClick={() => {
+                            leaveMatchmakingMut.mutate();
                           }}
-                        />
-                      </span>
-                      <span style={{ minWidth: 0 }}>
-                        <span
+                          style={{ minHeight: 38, padding: '0 14px', fontSize: 12 }}
+                        >
+                          {leaveMatchmakingMut.isPending ? 'Отмена...' : 'Отменить'}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  {templateItems.length > 0 && selectedTemplate ? (
+                    <>
+                      <GlassSelect
+                        ariaLabel="Шаблон дуэли"
+                        buttonClassName="duel-template-select"
+                        value={selectedTemplate.id}
+                        options={templateItems.map((template) => ({
+                          value: template.id,
+                          label: duelTemplateOptionLabel(template),
+                        }))}
+                        onChange={setSelectedTemplateId}
+                      />
+                    </>
+                  ) : (
+                    <div style={{ color: 'var(--muted)', fontSize: 14 }}>Нет активных шаблонов</div>
+                  )}
+                  <div className="section-label duel-form-section-title">
+                    <span>Быстрый выбор</span>
+                    <button
+                      type="button"
+                      className="section-info-btn duel-form-section-info-btn"
+                      onClick={() => setQuickPickInfoOpen(true)}
+                      aria-label="Что такое быстрый выбор"
+                    >
+                      <Info size={12} color="var(--muted)" />
+                    </button>
+                  </div>
+                  <div className="glass duel-quick-pick" style={{ borderRadius: 18, padding: 12 }}>
+                    <div
+                      aria-label="Быстрый выбор соперника"
+                      className="no-scrollbar"
+                      style={{
+                        display: 'flex',
+                        gap: 10,
+                        overflowX: 'auto',
+                        paddingTop: 2,
+                        paddingBottom: 2,
+                      }}
+                    >
+                      {suggestedOpponentOptions.length > 0 ? (
+                        suggestedOpponentOptions.map((opponent) => {
+                          const active = selectedOpponent?.userId === opponent.userId;
+                          return (
+                            <button
+                              key={opponent.userId}
+                              type="button"
+                              className={`duel-quick-pick__opponent${
+                                active ? ' duel-quick-pick__opponent--active' : ''
+                              }`}
+                              aria-label={`Выбрать соперника ${opponent.displayName}`}
+                              onClick={() => {
+                                setSelectedOpponent(opponent);
+                                setOpponentQuery('');
+                              }}
+                              style={{
+                                width: 58,
+                                flex: '0 0 auto',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                gap: 6,
+                                fontSize: 10,
+                                fontWeight: 900,
+                                lineHeight: 1.05,
+                                background: 'transparent',
+                                border: 'none',
+                                padding: 0,
+                                textAlign: 'center',
+                              }}
+                            >
+                              <span style={{ position: 'relative', display: 'inline-flex' }}>
+                                <UserAvatar
+                                  avatarUrl={opponent.avatarUrl}
+                                  name={opponent.displayName}
+                                  size={44}
+                                  fontSize={16}
+                                  style={{
+                                    boxShadow: active
+                                      ? '0 0 0 3px #f59e0b, 0 10px 18px rgba(15, 23, 42, 0.18)'
+                                      : '0 8px 16px rgba(15, 23, 42, 0.12)',
+                                  }}
+                                />
+                                <span
+                                  aria-hidden="true"
+                                  style={{
+                                    position: 'absolute',
+                                    right: 1,
+                                    bottom: 1,
+                                    width: 11,
+                                    height: 11,
+                                    borderRadius: 999,
+                                    background: isOpponentOnlineNow(opponent.lastSeenAt)
+                                      ? '#22c55e'
+                                      : '#94a3b8',
+                                    border: '2px solid rgba(226, 240, 252, 0.98)',
+                                  }}
+                                />
+                              </span>
+                              <span
+                                className="duel-quick-pick__name"
+                                style={{
+                                  width: '100%',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {opponent.displayName}
+                              </span>
+                            </button>
+                          );
+                        })
+                      ) : (
+                        <div
+                          className="duel-quick-pick__empty"
+                          style={{ fontSize: 13, fontWeight: 700 }}
+                        >
+                          Игроков пока не видно. Можно найти по имени.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="section-label duel-form-section-title">
+                    <span>Поиск</span>
+                    <button
+                      type="button"
+                      className="section-info-btn duel-form-section-info-btn"
+                      onClick={() => setOpponentSearchInfoOpen(true)}
+                      aria-label="Как работает поиск соперника"
+                    >
+                      <Info size={12} color="var(--muted)" />
+                    </button>
+                  </div>
+                  <div className="glass-dock-field duel-opponent-search" style={{ minHeight: 48 }}>
+                    <Search className="duel-opponent-search__icon" size={14} aria-hidden />
+                    <input
+                      className="duel-opponent-search__input"
+                      aria-label="Поиск соперника"
+                      value={opponentQuery}
+                      onChange={(event) => {
+                        setOpponentQuery(event.target.value);
+                        setSelectedOpponent(null);
+                      }}
+                      placeholder="Имя или фамилия"
+                      type="search"
+                      style={{
+                        flex: 1,
+                        border: 'none',
+                        outline: 'none',
+                        background: 'transparent',
+                        fontSize: 14,
+                        fontWeight: 800,
+                        fontFamily: 'inherit',
+                      }}
+                    />
+                  </div>
+                  {selectedOpponent && (
+                    <div
+                      className="glass"
+                      style={{
+                        borderRadius: 16,
+                        padding: '10px 12px',
+                        display: 'grid',
+                        gridTemplateColumns: 'minmax(0, 1fr) 34px',
+                        gap: 10,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <div className="section-label" style={{ margin: 0, padding: 0 }}>
+                          Соперник
+                        </div>
+                        <div
                           style={{
-                            display: 'block',
                             color: 'var(--ink)',
                             fontSize: 16,
                             fontWeight: 900,
@@ -4175,54 +4095,127 @@ function AmateurDuelsPage({
                             whiteSpace: 'nowrap',
                           }}
                         >
-                          {opponent.displayName}
+                          {selectedOpponent.displayName}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        aria-label="Убрать соперника"
+                        title="Убрать соперника"
+                        onClick={() => setSelectedOpponent(null)}
+                      >
+                        <X size={15} />
+                      </button>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {opponentOptions.slice(0, 4).map((opponent) => (
+                      <button
+                        key={opponent.userId}
+                        type="button"
+                        onClick={() => {
+                          setSelectedOpponent(opponent);
+                          setOpponentQuery('');
+                        }}
+                        className="glass"
+                        style={{
+                          minHeight: 58,
+                          borderRadius: 20,
+                          padding: '8px 12px',
+                          display: 'grid',
+                          gridTemplateColumns: '42px minmax(0, 1fr)',
+                          alignItems: 'center',
+                          gap: 12,
+                          textAlign: 'left',
+                          border:
+                            selectedOpponent?.userId === opponent.userId
+                              ? '2px solid #f59e0b'
+                              : '1px solid rgba(255,255,255,0.8)',
+                        }}
+                      >
+                        <span style={{ position: 'relative', display: 'inline-flex' }}>
+                          <UserAvatar
+                            avatarUrl={opponent.avatarUrl}
+                            name={opponent.displayName}
+                            size={42}
+                            fontSize={15}
+                          />
+                          <span
+                            aria-hidden="true"
+                            style={{
+                              position: 'absolute',
+                              right: 0,
+                              bottom: 0,
+                              width: 11,
+                              height: 11,
+                              borderRadius: 999,
+                              background: isOpponentOnlineNow(opponent.lastSeenAt)
+                                ? '#22c55e'
+                                : '#94a3b8',
+                              border: '2px solid rgba(226, 240, 252, 0.98)',
+                            }}
+                          />
                         </span>
-                        <span
-                          style={{
-                            display: 'block',
-                            color: 'var(--muted)',
-                            fontSize: 11,
-                            fontWeight: 800,
-                          }}
-                        >
-                          {isOpponentOnlineNow(opponent.lastSeenAt)
-                            ? 'сейчас в игре'
-                            : isOpponentRecentlySeen(opponent.lastSeenAt)
-                              ? 'недавно был'
-                              : 'доступен для вызова'}
+                        <span style={{ minWidth: 0 }}>
+                          <span
+                            style={{
+                              display: 'block',
+                              color: 'var(--ink)',
+                              fontSize: 16,
+                              fontWeight: 900,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {opponent.displayName}
+                          </span>
+                          <span
+                            style={{
+                              display: 'block',
+                              color: 'var(--muted)',
+                              fontSize: 11,
+                              fontWeight: 800,
+                            }}
+                          >
+                            {isOpponentOnlineNow(opponent.lastSeenAt)
+                              ? 'сейчас в игре'
+                              : isOpponentRecentlySeen(opponent.lastSeenAt)
+                                ? 'недавно был'
+                                : 'доступен для вызова'}
+                          </span>
                         </span>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  className="btn btn--cta duel-challenge-submit"
-                  disabled={!canChallenge}
-                  onClick={() => {
-                    if (!selectedTemplate || !selectedOpponent) return;
-                    challengeMut.mutate({
-                      template_id: selectedTemplate.id,
-                      opponent_user_id: selectedOpponent.userId,
-                    });
-                  }}
-                >
-                  {challengeMut.isPending
-                    ? 'Отправляем...'
-                    : selectedOpponent
-                      ? 'Вызвать игрока'
-                      : 'Выберите соперника'}
-                </button>
-                {challengeMut.error && (
-                  <div style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 700 }}>
-                    {challengeMut.error.message}
+                      </button>
+                    ))}
                   </div>
-                )}
-              </>
-            )}
+                  <button
+                    type="button"
+                    className="btn btn--cta duel-challenge-submit"
+                    disabled={!canChallenge}
+                    onClick={() => {
+                      if (!selectedTemplate || !selectedOpponent) return;
+                      challengeMut.mutate({
+                        template_id: selectedTemplate.id,
+                        opponent_user_id: selectedOpponent.userId,
+                      });
+                    }}
+                  >
+                    {challengeMut.isPending
+                      ? 'Отправляем...'
+                      : selectedOpponent
+                        ? 'Вызвать игрока'
+                        : 'Выберите соперника'}
+                  </button>
+                  {challengeMut.error && (
+                    <div style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 700 }}>
+                      {challengeMut.error.message}
+                    </div>
+                  )}
+                </>
+              )}
             </section>
           </div>
-
         </div>
       )}
 
@@ -4400,10 +4393,7 @@ function DuelLockerSlotButton({
       onClick={onOpen}
       aria-label={`${meta.title}: ${title}. ${status}`}
     >
-      <span
-        className="duel-locker-slot__artwork"
-        aria-hidden="true"
-      >
+      <span className="duel-locker-slot__artwork" aria-hidden="true">
         <img
           src={artwork}
           alt=""
@@ -4418,12 +4408,8 @@ function DuelLockerSlotButton({
         />
       </span>
       <span className="duel-locker-slot__copy amateur-hub-card__copy">
-        <strong className="duel-locker-slot__title">
-          {title}
-        </strong>
-        <span className="duel-locker-slot__status">
-          {status}
-        </span>
+        <strong className="duel-locker-slot__title">{title}</strong>
+        <span className="duel-locker-slot__status">{status}</span>
       </span>
       <ChevronRight className="card-chevron" size={19} strokeWidth={2.7} aria-hidden="true" />
     </button>
@@ -4746,10 +4732,7 @@ function DuelListCard({
           boxShadow: '0 10px 18px rgba(15,23,42,0.16)',
         }}
       />
-      <div
-        className="duel-card-heading"
-        style={{ gridColumn: '2 / 3', gridRow: '1', minWidth: 0 }}
-      >
+      <div className="duel-card-heading" style={{ gridColumn: '2 / 3', gridRow: '1', minWidth: 0 }}>
         <div
           className="duel-card-opponent-name"
           style={{
@@ -5124,9 +5107,8 @@ function AmateurDuelPlayView({
               Нажмите «Готов», чтобы подтвердить участие в дуэли.
             </p>
             <p className="modal-copy" style={{ margin: 0, fontSize: 13 }}>
-              Подтвердите готовность до конца таймера. Если соперник подтвердит участие, а вы —
-              нет, вам будет засчитано техническое поражение. Если не подтвердит никто, игра
-              закроется.
+              Подтвердите готовность до конца таймера. Если соперник подтвердит участие, а вы — нет,
+              вам будет засчитано техническое поражение. Если не подтвердит никто, игра закроется.
             </p>
             <label
               style={{
@@ -5149,9 +5131,7 @@ function AmateurDuelPlayView({
               Не показывать снова
             </label>
             {error && (
-              <div style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 700 }}>
-                {error}
-              </div>
+              <div style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 700 }}>{error}</div>
             )}
             <div className="modal-actions" style={{ marginTop: 2 }}>
               <button
@@ -7472,14 +7452,14 @@ function DailyPlayView({
           needsReconcile
             ? 'ПРОВЕРЯЕМ...'
             : canStartPeriod
-            ? pending
-              ? 'НАЧИНАЕМ...'
-              : 'НАЧАТЬ'
-            : isBreak || isDailyLockedByTraining
-              ? 'ЛЁД ГОТОВИТСЯ'
-              : isClosed
-                ? 'ИГРА ЗАВЕРШЕНА'
-                : undefined
+              ? pending
+                ? 'НАЧИНАЕМ...'
+                : 'НАЧАТЬ'
+              : isBreak || isDailyLockedByTraining
+                ? 'ЛЁД ГОТОВИТСЯ'
+                : isClosed
+                  ? 'ИГРА ЗАВЕРШЕНА'
+                  : undefined
         }
         inactiveAction={canStartPeriod ? handleStartPeriod : undefined}
         primaryActionBlocked={needsReconcile}
