@@ -2,13 +2,16 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../../src/app.js';
 import { createJwt } from '../../src/auth/jwt.js';
 import { applyMigrations } from '../../src/db/migrations.js';
+import { createTournamentDuelMatch } from '../../src/duel/amateur/routes.js';
+import { openTournamentFixtureSegment } from '../../src/tournament/fixtureLifecycle.js';
 import { reconcileTournamentLifecycle } from '../../src/tournament/automaticLifecycle.js';
 import { parseTournamentConfig } from '../../src/tournament/config.js';
 import type { TournamentRulesSnapshot } from '../../src/tournament/service.js';
+import { generateRegularSchedule, publishRegularSchedule } from '../../src/tournament/service.js';
 import {
   createTestPool,
   getTestUrls,
@@ -24,6 +27,7 @@ const DAILY_SEED_SECRET = 'lifecycle-plugin-test-daily-seed-secret';
 const ADMIN_ID = '00000000-0000-4000-8000-000000000971';
 const PLAYER_ID = '00000000-0000-4000-8000-000000000972';
 const PLAYER_TWO_ID = '00000000-0000-4000-8000-000000000973';
+const DUEL_TEMPLATE_ID = '00000000-0000-4000-8000-000000000974';
 
 function automaticRules(
   playoffSize: 2 | 4,
@@ -48,6 +52,7 @@ function automaticRules(
       bestDays: null,
     }),
     automaticLifecycleVersion: 1,
+    ...(source === 'head_to_head' ? { regularDuelTemplateId: DUEL_TEMPLATE_ID } : {}),
     eligibility: {
       minLevel: null,
       maxLevel: null,
@@ -86,6 +91,32 @@ async function seedAutomaticTournament(
     tournamentId,
     revision.rows[0]!.id,
   ]);
+  await pool.query(
+    `update amateur_duel_template set is_active = false where duel_kind = 'classic'`,
+  );
+  await pool.query(
+    `insert into amateur_duel_template
+         (id, title, description, difficulty, duel_kind, duel_variant, starts_at, ends_at,
+          total_periods, shots_per_period, period_duration_ms, break_duration_ms, goalie_id,
+          period_speed_presets, period_rules)
+       values ($1, 'Lifecycle template', '', 'hard', 'classic', 'classic', $2, $3,
+               1, 1, 60000, 0, 'rookie', $4::jsonb, $5::jsonb)`,
+    [
+      DUEL_TEMPLATE_ID,
+      new Date('2020-01-01T00:00:00.000Z'),
+      new Date('2100-01-01T00:00:00.000Z'),
+      JSON.stringify([
+        {
+          periodNumber: 1,
+          goalFrequency: 0.5,
+          goalieFrequency: 0.5,
+          shooterFrequency: 0.5,
+          puckSpeedPerMs: 1,
+        },
+      ]),
+      JSON.stringify([{ periodNumber: 1, mode: 'quota', durationMs: 60000, shotsLimit: 1 }]),
+    ],
+  );
   for (const userId of input.approvedUserIds) {
     await pool.query(
       `insert into tournament_participant (tournament_id, user_id, state, joined_at)
@@ -157,9 +188,9 @@ describe.skipIf(!hasIntegrationEnv)('tournament lifecycle plugin', () => {
     await pool.end();
   });
 
-  async function startApp(input: { lifecycleEnabled: boolean; intervalMs?: number }) {
+  async function createLifecycleApp(input: { lifecycleEnabled: boolean; intervalMs?: number }) {
     const { databaseUrl, redisUrl } = getTestUrls();
-    app = await buildApp({
+    return buildApp({
       config: {
         NODE_ENV: 'test',
         HOST: '0.0.0.0',
@@ -179,6 +210,10 @@ describe.skipIf(!hasIntegrationEnv)('tournament lifecycle plugin', () => {
         ? {}
         : { tournamentLifecycleIntervalMs: input.intervalMs }),
     });
+  }
+
+  async function startApp(input: { lifecycleEnabled: boolean; intervalMs?: number }) {
+    app = await createLifecycleApp(input);
     await app.ready();
     return app;
   }
@@ -193,6 +228,31 @@ describe.skipIf(!hasIntegrationEnv)('tournament lifecycle plugin', () => {
     await startApp({ lifecycleEnabled: true, intervalMs: 20 });
 
     await waitForTournamentStatus(pool, tournament.id, 'scheduling');
+  });
+
+  it('keeps a single regular calendar when two workers become ready together', async () => {
+    const tournament = await seedAutomaticTournament(pool, {
+      slug: 'lifecycle-two-workers',
+      playoffSize: 2,
+      approvedUserIds: [PLAYER_ID, PLAYER_TWO_ID],
+    });
+    const [first, second] = await Promise.all([
+      createLifecycleApp({ lifecycleEnabled: true }),
+      createLifecycleApp({ lifecycleEnabled: true }),
+    ]);
+    try {
+      await Promise.all([first.ready(), second.ready()]);
+      expect(await tournamentStatus(pool, tournament.id)).toBe('scheduling');
+      expect(
+        await pool.query(
+          `select id from tournament_round
+            where tournament_id = $1 and stage = 'regular'`,
+          [tournament.id],
+        ),
+      ).toMatchObject({ rowCount: 1 });
+    } finally {
+      await Promise.all([first.close(), second.close()]);
+    }
   });
 
   it('reconciles on tournament list after a server restart missed the deadline', async () => {
@@ -211,6 +271,92 @@ describe.skipIf(!hasIntegrationEnv)('tournament lifecycle plugin', () => {
 
     expect(response.statusCode).toBe(200);
     expect(await tournamentStatus(pool, tournament.id)).toBe('scheduling');
+  });
+
+  it('keeps a committed tournament-duel settlement successful when lifecycle maintenance fails', async () => {
+    const tournament = await seedAutomaticTournament(pool, {
+      slug: 'lifecycle-maintenance-failure',
+      playoffSize: 2,
+      approvedUserIds: [PLAYER_ID, PLAYER_TWO_ID],
+    });
+    await generateRegularSchedule(pool, tournament.id, tournament.revision);
+    await publishRegularSchedule(pool, tournament.id);
+    const fixture = await pool.query<{
+      id: string;
+      home_user_id: string;
+      away_user_id: string;
+      scheduled_starts_at: Date;
+    }>(
+      `select fixture.id, home.user_id as home_user_id, away.user_id as away_user_id,
+              fixture.scheduled_starts_at
+         from tournament_fixture fixture
+         join tournament_round round on round.id = fixture.round_id
+         join tournament_participant home on home.id = fixture.home_participant_id
+         join tournament_participant away on away.id = fixture.away_participant_id
+        where fixture.tournament_id = $1 and round.stage = 'regular'
+        order by fixture.fixture_number
+        limit 1`,
+      [tournament.id],
+    );
+    const row = fixture.rows[0]!;
+    const opened = await openTournamentFixtureSegment(
+      pool,
+      {
+        fixtureId: row.id,
+        tournamentId: tournament.id,
+        userId: row.home_user_id,
+        now: new Date(row.scheduled_starts_at.getTime() + 1),
+      },
+      createTournamentDuelMatch,
+    );
+    const server = await startApp({ lifecycleEnabled: false });
+    const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(row.scheduled_starts_at.getTime() + 1));
+    try {
+      for (const userId of [row.home_user_id, row.away_user_id]) {
+        const ready = await server.inject({
+          method: 'POST',
+          url: `/duel/amateur/matches/${opened.duelMatchId}/ready`,
+          headers: { authorization: `Bearer ${await jwt.issueAccessToken({ sub: userId })}` },
+          payload: { loadout: {} },
+        });
+        expect(ready.statusCode).toBe(200);
+      }
+      await pool.query(
+        `update amateur_duel_participant
+            set state = 'completed', completed_at = $2, goals = case when user_id = $3 then 2 else 0 end,
+                shots_taken = 2, active_duration_ms = 1000
+          where match_id = $1`,
+        [opened.duelMatchId, new Date(row.scheduled_starts_at.getTime() + 2), row.home_user_id],
+      );
+      const originalQuery = server.pg.query.bind(server.pg);
+      vi.spyOn(server.pg, 'query').mockImplementation(((query: unknown, ...args: unknown[]) => {
+        if (
+          typeof query === 'string' &&
+          query.includes('from tournament_fixture_segment segment') &&
+          query.includes("round.stage = 'regular'")
+        ) {
+          throw new Error('maintenance lookup unavailable');
+        }
+        return originalQuery(query as never, ...(args as never));
+      }) as never);
+      const settled = await server.inject({
+        method: 'POST',
+        url: `/duel/amateur/matches/${opened.duelMatchId}/settle`,
+        headers: {
+          authorization: `Bearer ${await jwt.issueAccessToken({ sub: row.home_user_id })}`,
+        },
+      });
+      expect(settled.statusCode).toBe(200);
+      expect(
+        await pool.query(`select status from amateur_duel_match where id = $1`, [
+          opened.duelMatchId,
+        ]),
+      ).toMatchObject({ rows: [{ status: 'settled' }] });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('retries a blocked tournament after an admin changes playoff size', async () => {
@@ -232,10 +378,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament lifecycle plugin', () => {
         title: 'Автоматический турнир',
         description: '',
         imageUrl: null,
-        rules: {
-          config: automaticRules(2, 'daily_aggregate').config,
-          eligibility: automaticRules(2, 'daily_aggregate').eligibility,
-        },
+        rules: automaticRules(2),
         registrationOpensAt: '2020-01-01T00:00:00.000Z',
         registrationClosesAt: '2020-01-01T01:00:00.000Z',
         startsAt: '2020-01-02T00:00:00.000Z',
@@ -244,5 +387,13 @@ describe.skipIf(!hasIntegrationEnv)('tournament lifecycle plugin', () => {
 
     expect(response.statusCode).toBe(200);
     expect(await tournamentStatus(pool, tournament.id)).toBe('scheduling');
+    expect(
+      await pool.query(
+        `select round.id
+           from tournament_round round
+          where round.tournament_id = $1 and round.stage = 'regular'`,
+        [tournament.id],
+      ),
+    ).toMatchObject({ rowCount: 1 });
   });
 });

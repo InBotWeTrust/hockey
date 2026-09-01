@@ -655,7 +655,7 @@ async function settlePlayedPlayoffFixture(
     away_user_id: string;
     scheduled_starts_at: Date;
   },
-) {
+): Promise<{ duelMatchId: string; settledNow: boolean }> {
   const duel = await pool.query<{ id: string }>(
     `insert into amateur_duel_match
        (challenger_user_id, opponent_user_id, status, source, rules_snapshot,
@@ -679,13 +679,14 @@ async function settlePlayedPlayoffFixture(
   const client = await pool.connect();
   try {
     await client.query('begin');
-    await settleTournamentSegmentForDuel(client, {
+    const result = await settleTournamentSegmentForDuel(client, {
       duelMatchId: duel.rows[0]!.id,
       homeScore: 1,
       awayScore: 0,
       settledAt: fixture.scheduled_starts_at,
     });
     await client.query('commit');
+    return { duelMatchId: duel.rows[0]!.id, settledNow: result?.settledNow === true };
   } catch (error) {
     await client.query('rollback');
     throw error;
@@ -2643,6 +2644,30 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         url: '/?view=amateur&section=tournaments',
       },
     ]);
+  });
+
+  it('reports a regular fixture completion only for the transaction that settles it', async () => {
+    const { fixtures } = await createBestOfThreePlayoff(pool, 'newly-settled-fixture');
+    const first = await settlePlayedPlayoffFixture(pool, fixtures[0]!);
+    expect(first.settledNow).toBe(true);
+
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      const repeated = await settleTournamentSegmentForDuel(client, {
+        duelMatchId: first.duelMatchId,
+        homeScore: 1,
+        awayScore: 0,
+        settledAt: fixtures[0]!.scheduled_starts_at,
+      });
+      await client.query('commit');
+      expect(repeated).toEqual(expect.objectContaining({ completed: true, settledNow: false }));
+    } catch (error) {
+      await client.query('rollback');
+      throw error;
+    } finally {
+      client.release();
+    }
   });
 
   it('notifies both active participants when a technical result promotes the next fixture', async () => {

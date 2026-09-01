@@ -1,7 +1,9 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Pool } from 'pg';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { buildApp } from '../../src/app.js';
+import { createJwt } from '../../src/auth/jwt.js';
 import { applyMigrations } from '../../src/db/migrations.js';
 import {
   finalizeDueClassicTournamentDays,
@@ -11,7 +13,12 @@ import {
   submitClassicGameShot,
 } from '../../src/tournament/classicGame.js';
 import { parseTournamentConfig } from '../../src/tournament/config.js';
-import { createTestPool, hasIntegrationEnv, resetDatabase } from '../helpers/testDb.js';
+import {
+  createTestPool,
+  getTestUrls,
+  hasIntegrationEnv,
+  resetDatabase,
+} from '../helpers/testDb.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
@@ -23,6 +30,8 @@ const MATCHDAY_ID = '00000000-0000-4000-8000-000000000805';
 const REVISION_ID = '00000000-0000-4000-8000-000000000806';
 const NOW = new Date('2030-09-01T10:00:00.000Z');
 const SEED_SECRET = 'classic-integration-seed-secret';
+const JWT_SECRET = 'classic-game-route-access-secret';
+const REFRESH_SECRET = 'classic-game-route-refresh-secret';
 
 function classicConfig() {
   return parseTournamentConfig({
@@ -79,6 +88,11 @@ async function seedClassicTournament(pool: Pool) {
      values ($1, 'Admin', 'Europe/Moscow', 'admin', 10),
             ($2, 'Игрок', 'Europe/Moscow', 'player', 2)`,
     [ADMIN_ID, PLAYER_ID],
+  );
+  await pool.query(
+    `insert into game_settings (key, value, label, description)
+     values ('tournaments.enabled', 'true'::jsonb, 'Турниры включены', 'test')
+     on conflict (key) do update set value = excluded.value`,
   );
   const rules = {
     config: classicConfig(),
@@ -303,6 +317,55 @@ describe.skipIf(!hasIntegrationEnv)('classic tournament game integration', () =>
     expect(user.rows[0]!.shots).toBe(3);
     expect(result.rows).toEqual([{ shots: 3, completed: true }]);
     expect((await pool.query(`select id from day_pool`)).rowCount).toBe(0);
+  });
+
+  it('runs tournament lifecycle only after the classic game becomes terminal', async () => {
+    const { databaseUrl, redisUrl } = getTestUrls();
+    const app = await buildApp({
+      config: {
+        NODE_ENV: 'test',
+        HOST: '0.0.0.0',
+        PORT: 3000,
+        LOG_LEVEL: 'warn',
+        DATABASE_URL: databaseUrl,
+        REDIS_URL: redisUrl,
+        JWT_SECRET,
+        REFRESH_SECRET,
+        TELEGRAM_BOT_TOKEN: 'classic-game-route-bot-token',
+        DAILY_SEED_SECRET: SEED_SECRET,
+      },
+      pushSchedulerEnabled: false,
+      pushWorkerEnabled: false,
+      tournamentLifecycleEnabled: false,
+    });
+    await app.ready();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+    const authorization = `Bearer ${await jwt.issueAccessToken({ sub: PLAYER_ID })}`;
+    const reconcile = vi.spyOn(app, 'reconcileTournamentLifecycleBestEffort');
+    try {
+      for (let period = 1; period <= 3; period += 1) {
+        const started = await app.inject({
+          method: 'POST',
+          url: `/tournaments/${TOURNAMENT_ID}/classic/period/start`,
+          headers: { authorization },
+        });
+        expect(started.statusCode).toBe(200);
+        const shot = await app.inject({
+          method: 'POST',
+          url: `/tournaments/${TOURNAMENT_ID}/classic/shot`,
+          headers: { authorization },
+          payload: { shot_index: 1, input: { tapTime: 0 }, claimed_result: 'miss' },
+        });
+        expect(shot.statusCode).toBe(200);
+        expect(reconcile).toHaveBeenCalledTimes(period === 3 ? 1 : 0);
+        vi.setSystemTime(new Date(NOW.getTime() + period));
+      }
+    } finally {
+      vi.useRealTimers();
+      await app.close();
+    }
   });
 
   it('finalizes a missed game once at the tournament-day deadline', async () => {

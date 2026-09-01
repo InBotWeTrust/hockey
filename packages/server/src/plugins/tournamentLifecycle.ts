@@ -69,25 +69,29 @@ const plugin: FastifyPluginAsync<TournamentLifecyclePluginOptions> = async (app,
 
   if (opts.enabled === false) return;
 
-  let running = false;
-  async function tick(): Promise<void> {
-    if (running) return;
-    running = true;
-    try {
-      if (!(await isTournamentFeatureEnabled(app.pg))) return;
-      const report = await reconcileTournamentLifecycle(app.pg, {
-        now: new Date(),
-        classicSeedSecret: opts.classicSeedSecret,
-      });
-      const changed = report.items.filter((item) => item.changed);
-      if (changed.length > 0) {
-        app.log.info({ changed }, 'tournament lifecycle tick completed');
+  let closing = false;
+  let activeTick: Promise<void> | null = null;
+  function tick(): Promise<void> {
+    if (closing) return Promise.resolve();
+    if (activeTick !== null) return activeTick;
+    activeTick = (async () => {
+      try {
+        if (!(await isTournamentFeatureEnabled(app.pg))) return;
+        const report = await reconcileTournamentLifecycle(app.pg, {
+          now: new Date(),
+          classicSeedSecret: opts.classicSeedSecret,
+        });
+        const changed = report.items.filter((item) => item.changed);
+        if (changed.length > 0) {
+          app.log.info({ changed }, 'tournament lifecycle tick completed');
+        }
+      } catch (err) {
+        app.log.error({ err }, 'tournament lifecycle tick failed');
+      } finally {
+        activeTick = null;
       }
-    } catch (err) {
-      app.log.error({ err }, 'tournament lifecycle tick failed');
-    } finally {
-      running = false;
-    }
+    })();
+    return activeTick;
   }
 
   const timer = setInterval(() => {
@@ -95,10 +99,12 @@ const plugin: FastifyPluginAsync<TournamentLifecyclePluginOptions> = async (app,
   }, opts.intervalMs ?? DEFAULT_INTERVAL_MS);
   timer.unref();
   app.addHook('onReady', async () => {
-    void tick();
+    await tick();
   });
   app.addHook('onClose', async () => {
+    closing = true;
     clearInterval(timer);
+    await activeTick;
   });
 };
 

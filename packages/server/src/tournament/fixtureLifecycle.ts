@@ -402,7 +402,7 @@ export async function openTournamentFixtureSegment(
 export async function settleTournamentSegmentForDuel(
   client: PoolClient,
   input: { duelMatchId: string; homeScore: number; awayScore: number; settledAt: Date },
-): Promise<{ fixtureId: string; completed: boolean } | null> {
+): Promise<{ fixtureId: string; completed: boolean; settledNow: boolean } | null> {
   const attemptSettlement = await settleEarnedTournamentAttemptForDuel(client, {
     duelMatchId: input.duelMatchId,
     settledAt: input.settledAt,
@@ -411,6 +411,7 @@ export async function settleTournamentSegmentForDuel(
     return {
       fixtureId: attemptSettlement.fixtureId,
       completed: attemptSettlement.completed,
+      settledNow: attemptSettlement.settledNow,
     };
   }
   const segmentResult = await client.query<{
@@ -450,13 +451,17 @@ export async function settleTournamentSegmentForDuel(
       `select status from tournament_fixture where id = $1`,
       [segment.fixture_id],
     );
-    return { fixtureId: segment.fixture_id, completed: fixture.rows[0]?.status === 'settled' };
+    return {
+      fixtureId: segment.fixture_id,
+      completed: fixture.rows[0]?.status === 'settled',
+      settledNow: false,
+    };
   }
   if (
     !['scheduled', 'active'].includes(segment.status) ||
     !['scheduled', 'open', 'active'].includes(segment.fixture_status)
   ) {
-    return { fixtureId: segment.fixture_id, completed: false };
+    return { fixtureId: segment.fixture_id, completed: false, settledNow: false };
   }
   await client.query(
     `update tournament_fixture_segment
@@ -511,7 +516,7 @@ export async function settleTournamentSegmentForDuel(
         JSON.stringify({ shotsPerParticipant: decision.shotsPerParticipant }),
       ],
     );
-    return { fixtureId: segment.fixture_id, completed: false };
+    return { fixtureId: segment.fixture_id, completed: false, settledNow: false };
   }
   const winnerParticipantId =
     decision.winner === 'home' ? segment.home_participant_id : segment.away_participant_id;
@@ -528,7 +533,9 @@ export async function settleTournamentSegmentForDuel(
       input.settledAt,
     ],
   );
-  if (fixtureUpdated.rowCount === 0) return { fixtureId: segment.fixture_id, completed: true };
+  if (fixtureUpdated.rowCount === 0) {
+    return { fixtureId: segment.fixture_id, completed: true, settledNow: false };
+  }
   if (segment.series_id !== null && winnerParticipantId !== null) {
     await advanceTournamentPlayoffSeries(client, {
       seriesId: segment.series_id,
@@ -544,5 +551,5 @@ export async function settleTournamentSegmentForDuel(
     awayParticipantId: segment.away_participant_id,
     winnerParticipantId,
   });
-  return { fixtureId: segment.fixture_id, completed: true };
+  return { fixtureId: segment.fixture_id, completed: true, settledNow: true };
 }

@@ -464,7 +464,7 @@ export async function hasActiveTournamentAttemptForDuel(
 export async function settleEarnedTournamentAttemptForDuel(
   client: PoolClient,
   input: { duelMatchId: string; settledAt: Date },
-): Promise<{ matched: boolean; fixtureId?: string; completed: boolean }> {
+): Promise<{ matched: boolean; fixtureId?: string; completed: boolean; settledNow: boolean }> {
   const contextResult = await client.query<EarnedAttemptContext>(
     `select attempt.id as attempt_id, attempt.attempt_number,
             attempt.status as attempt_status,
@@ -494,12 +494,13 @@ export async function settleEarnedTournamentAttemptForDuel(
     [input.duelMatchId],
   );
   const context = contextResult.rows[0];
-  if (context === undefined) return { matched: false, completed: false };
+  if (context === undefined) return { matched: false, completed: false, settledNow: false };
   if (context.attempt_status !== 'active') {
     return {
       matched: true,
       fixtureId: context.fixture_id,
       completed: context.fixture_status === 'settled',
+      settledNow: false,
     };
   }
   if (context.home_state !== 'completed' || context.away_state !== 'completed') {
@@ -586,7 +587,7 @@ export async function settleEarnedTournamentAttemptForDuel(
       ],
     );
     if ((settled.rowCount ?? 0) === 0) {
-      return { matched: true, fixtureId: context.fixture_id, completed: false };
+      return { matched: true, fixtureId: context.fixture_id, completed: false, settledNow: false };
     }
     await client.query(
       `update tournament_fixture_segment
@@ -632,7 +633,7 @@ export async function settleEarnedTournamentAttemptForDuel(
         JSON.stringify({ replayPending: true, replayOfAttemptId: context.attempt_id }),
       ],
     );
-    return { matched: true, fixtureId: context.fixture_id, completed: false };
+    return { matched: true, fixtureId: context.fixture_id, completed: false, settledNow: false };
   }
 
   const winnerParticipantId =
@@ -665,7 +666,7 @@ export async function settleEarnedTournamentAttemptForDuel(
     ],
   );
   if ((attemptUpdated.rowCount ?? 0) === 0) {
-    return { matched: true, fixtureId: context.fixture_id, completed: false };
+    return { matched: true, fixtureId: context.fixture_id, completed: false, settledNow: false };
   }
   await client.query(
     `update tournament_fixture_segment
@@ -712,7 +713,7 @@ export async function settleEarnedTournamentAttemptForDuel(
     awayParticipantId: context.away_participant_id,
     winnerParticipantId,
   });
-  return { matched: true, fixtureId: context.fixture_id, completed: true };
+  return { matched: true, fixtureId: context.fixture_id, completed: true, settledNow: true };
 }
 
 async function createNextGameChoices(

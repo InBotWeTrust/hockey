@@ -278,7 +278,9 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
       },
       claimedResult: body.claimed_result,
     });
-    await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
+    if (result.state.result?.game_completed === true) {
+      await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
+    }
     return result;
   });
 
