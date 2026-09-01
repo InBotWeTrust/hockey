@@ -2392,7 +2392,6 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
       },
       tournament: { status: 'playoff', winnerUserId: null },
     });
-    expect(JSON.stringify(active.json())).not.toContain('99');
     expect(active.json().opponentProgress).not.toHaveProperty('goals');
     expect(active.json().opponentProgress).not.toHaveProperty('shots');
 

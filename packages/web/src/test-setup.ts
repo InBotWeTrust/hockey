@@ -1,4 +1,43 @@
 import '@testing-library/jest-dom/vitest';
+import { createElement, type ComponentProps } from 'react';
+import { vi } from 'vitest';
+import type * as ReactRouterDom from 'react-router-dom';
+
+vi.mock('react-router-dom', async (importOriginal) => {
+  const actual = await importOriginal<typeof ReactRouterDom>();
+  return {
+    ...actual,
+    MemoryRouter: (props: ComponentProps<typeof actual.MemoryRouter>) =>
+      createElement(actual.MemoryRouter, {
+        ...props,
+        future: {
+          ...props.future,
+          v7_startTransition: true,
+          v7_relativeSplatPath: true,
+        },
+      }),
+  };
+});
+
+// jsdom intentionally ships without a Canvas implementation. Pixi probes a
+// small subset of the 2D API during module initialization, so expose only that
+// subset here instead of adding the heavyweight native `canvas` dependency to
+// DOM-only component tests.
+if (typeof HTMLCanvasElement !== 'undefined') {
+  Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+    configurable: true,
+    value: (contextId: string) => {
+      if (contextId !== '2d') return null;
+      return {
+        fillStyle: '',
+        globalCompositeOperation: 'source-over',
+        fillRect: () => {},
+        drawImage: () => {},
+        getImageData: () => null,
+      };
+    },
+  });
+}
 
 if (typeof globalThis.ResizeObserver === 'undefined') {
   globalThis.ResizeObserver = class {

@@ -293,7 +293,10 @@ function renderWith(initialEntries: string[] = ['/']) {
   });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={initialEntries}>
+      <MemoryRouter
+        initialEntries={initialEntries}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
         <DailyScreen />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -4612,6 +4615,7 @@ describe('DailyScreen', () => {
   });
 
   it('explains a tied-goals duel result with the time tiebreaker', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     const timeWinMatch: AmateurDuelMatchState = {
       ...settledDuelMatch,
       duel_kind: 'classic',
@@ -4702,6 +4706,11 @@ describe('DailyScreen', () => {
     expect(within(dialog).getByText('Решило время')).toBeInTheDocument();
     expect(within(dialog).getByText('04:34 / 04:56')).toBeInTheDocument();
     expect(within(dialog).getByText('Вы быстрее на 22 сек')).toBeInTheDocument();
+    expect(
+      consoleError.mock.calls.some(([message]) =>
+        String(message).includes('Encountered two children with the same key'),
+      ),
+    ).toBe(false);
   });
 
   it('explains an express tied-goals result with the accuracy tiebreaker', async () => {

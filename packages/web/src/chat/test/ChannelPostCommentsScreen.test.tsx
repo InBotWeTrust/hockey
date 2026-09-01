@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { ChannelPostCommentsScreen } from '../screens/ChannelPostCommentsScreen.js';
@@ -76,7 +76,9 @@ function renderScreen(): QueryClient {
 describe('ChannelPostCommentsScreen', () => {
   afterEach(() => {
     vi.restoreAllMocks();
-    useAuthStore.setState({ accessToken: null, refreshToken: null, user: null });
+    act(() => {
+      useAuthStore.setState({ accessToken: null, refreshToken: null, user: null });
+    });
   });
 
   it('sends replies to comments with replyToId', async () => {
