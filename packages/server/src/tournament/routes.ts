@@ -215,6 +215,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
 
   app.get('/tournaments', authenticated, async (req) => {
     await requireTournamentFeature(app);
+    await app.reconcileTournamentLifecycleBestEffort();
     return { tournaments: await listPlayerTournaments(app.pg, req.user.id) };
   });
 
@@ -251,7 +252,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
     await requireTournamentFeature(app);
     const params = z.object({ tournamentId: uuid }).parse(req.params);
     const body = classicShotSchema.parse(req.body);
-    return submitClassicGameShot(app.pg, {
+    const result = await submitClassicGameShot(app.pg, {
       userId: req.user.id,
       tournamentId: params.tournamentId,
       now: new Date(),
@@ -277,11 +278,14 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
       },
       claimedResult: body.claimed_result,
     });
+    await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
+    return result;
   });
 
   app.get('/tournaments/:tournamentId', authenticated, async (req) => {
     await requireTournamentFeature(app);
     const params = z.object({ tournamentId: uuid }).parse(req.params);
+    await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
     return { tournament: await getTournament(app.pg, params.tournamentId, req.user.id) };
   });
 
@@ -297,6 +301,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
   app.get('/tournaments/:tournamentId/schedule', authenticated, async (req) => {
     await requireTournamentFeature(app);
     const params = z.object({ tournamentId: uuid }).parse(req.params);
+    await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
     await getTournament(app.pg, params.tournamentId, req.user.id);
     const [fixtures, matchdays] = await Promise.all([
       getTournamentSchedule(app.pg, params.tournamentId),
@@ -308,6 +313,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
   app.get('/tournaments/:tournamentId/standings', authenticated, async (req) => {
     await requireTournamentFeature(app);
     const params = z.object({ tournamentId: uuid }).parse(req.params);
+    await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
     await getTournament(app.pg, params.tournamentId, req.user.id);
     await refreshCompletedTournamentDailyResultsForTournament(app.pg, {
       tournamentId: params.tournamentId,
@@ -319,6 +325,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
   app.get('/tournaments/:tournamentId/bracket', authenticated, async (req) => {
     await requireTournamentFeature(app);
     const params = z.object({ tournamentId: uuid }).parse(req.params);
+    await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
     await getTournament(app.pg, params.tournamentId, req.user.id);
     return { series: await getTournamentBracket(app.pg, params.tournamentId) };
   });
@@ -455,7 +462,9 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
   app.post('/tournaments/:tournamentId/applications', authenticated, async (req) => {
     await requireTournamentFeature(app);
     const params = z.object({ tournamentId: uuid }).parse(req.params);
-    return applyToTournament(app.pg, params.tournamentId, req.user.id);
+    const result = await applyToTournament(app.pg, params.tournamentId, req.user.id);
+    await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
+    return result;
   });
 
   app.delete('/tournaments/:tournamentId/applications/me', authenticated, async (req) => {
@@ -464,9 +473,10 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
     return withdrawTournamentApplication(app.pg, params.tournamentId, req.user.id);
   });
 
-  app.get('/admin/tournaments', admin, async () => ({
-    tournaments: await listAdminTournaments(app.pg),
-  }));
+  app.get('/admin/tournaments', admin, async () => {
+    await app.reconcileTournamentLifecycleBestEffort();
+    return { tournaments: await listAdminTournaments(app.pg) };
+  });
 
   app.get('/admin/tournaments/pending-applications', admin, async () => ({
     count: await countPendingTournamentApplications(app.pg),
@@ -474,6 +484,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
 
   app.get('/admin/tournaments/:tournamentId', admin, async (req) => {
     const params = z.object({ tournamentId: uuid }).parse(req.params);
+    await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
     return { tournament: await getTournament(app.pg, params.tournamentId) };
   });
 
@@ -484,6 +495,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
 
   app.get('/admin/tournaments/:tournamentId/schedule', admin, async (req) => {
     const params = z.object({ tournamentId: uuid }).parse(req.params);
+    await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
     await getTournament(app.pg, params.tournamentId);
     const [fixtures, matchdays] = await Promise.all([
       getTournamentSchedule(app.pg, params.tournamentId),
@@ -494,6 +506,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
 
   app.get('/admin/tournaments/:tournamentId/standings', admin, async (req) => {
     const params = z.object({ tournamentId: uuid }).parse(req.params);
+    await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
     await getTournament(app.pg, params.tournamentId);
     await refreshCompletedTournamentDailyResultsForTournament(app.pg, {
       tournamentId: params.tournamentId,
@@ -504,6 +517,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
 
   app.get('/admin/tournaments/:tournamentId/bracket', admin, async (req) => {
     const params = z.object({ tournamentId: uuid }).parse(req.params);
+    await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
     await getTournament(app.pg, params.tournamentId);
     return { series: await getTournamentBracket(app.pg, params.tournamentId) };
   });
@@ -608,22 +622,22 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
   app.patch('/admin/tournaments/:tournamentId', admin, async (req) => {
     const params = z.object({ tournamentId: uuid }).parse(req.params);
     const body = updateSchema.parse(req.body);
-    return {
-      tournament: await updateTournamentDraft(app.pg, {
-        tournamentId: params.tournamentId,
-        expectedRevision: body.expectedRevision,
-        title: body.title,
-        description: body.description,
-        ...(body.imageUrl !== undefined ? { imageUrl: body.imageUrl } : {}),
-        rules: parseRules(body.rules),
-        updatedBy: req.user.id,
-        registrationOpensAt:
-          body.registrationOpensAt === null ? null : new Date(body.registrationOpensAt),
-        registrationClosesAt:
-          body.registrationClosesAt === null ? null : new Date(body.registrationClosesAt),
-        startsAt: body.startsAt === null ? null : new Date(body.startsAt),
-      }),
-    };
+    const tournament = await updateTournamentDraft(app.pg, {
+      tournamentId: params.tournamentId,
+      expectedRevision: body.expectedRevision,
+      title: body.title,
+      description: body.description,
+      ...(body.imageUrl !== undefined ? { imageUrl: body.imageUrl } : {}),
+      rules: parseRules(body.rules),
+      updatedBy: req.user.id,
+      registrationOpensAt:
+        body.registrationOpensAt === null ? null : new Date(body.registrationOpensAt),
+      registrationClosesAt:
+        body.registrationClosesAt === null ? null : new Date(body.registrationClosesAt),
+      startsAt: body.startsAt === null ? null : new Date(body.startsAt),
+    });
+    await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
+    return { tournament };
   });
 
   app.patch('/admin/tournaments/:tournamentId/rewards', admin, async (req) => {
@@ -652,7 +666,14 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
   app.post('/admin/tournaments/:tournamentId/publish', admin, async (req) => {
     const params = z.object({ tournamentId: uuid }).parse(req.params);
     const body = z.object({ expectedRevision: z.number().int().min(1) }).parse(req.body);
-    return publishTournament(app.pg, params.tournamentId, body.expectedRevision, req.user.id);
+    const tournament = await publishTournament(
+      app.pg,
+      params.tournamentId,
+      body.expectedRevision,
+      req.user.id,
+    );
+    await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
+    return tournament;
   });
 
   app.post('/admin/tournaments/:tournamentId/duplicate', admin, async (req, reply) => {
@@ -684,7 +705,9 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
 
   app.post('/admin/tournaments/:tournamentId/participants/approve-all', admin, async (req) => {
     const params = z.object({ tournamentId: uuid }).parse(req.params);
-    return approveAllTournamentApplications(app.pg, params.tournamentId, req.user.id);
+    const result = await approveAllTournamentApplications(app.pg, params.tournamentId, req.user.id);
+    await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
+    return result;
   });
 
   app.post(
@@ -692,12 +715,14 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
     admin,
     async (req) => {
       const params = z.object({ tournamentId: uuid, participantId: uuid }).parse(req.params);
-      return approveTournamentParticipant(
+      const result = await approveTournamentParticipant(
         app.pg,
         params.tournamentId,
         params.participantId,
         req.user.id,
       );
+      await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
+      return result;
     },
   );
 
@@ -758,7 +783,9 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
     const params = z
       .object({ tournamentId: uuid, tournamentDay: z.coerce.number().int().min(1) })
       .parse(req.params);
-    return finalizeTournamentDailyDay(app.pg, { ...params, now: new Date() });
+    const result = await finalizeTournamentDailyDay(app.pg, { ...params, now: new Date() });
+    await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
+    return result;
   });
 
   app.post('/admin/tournaments/:tournamentId/rewards/:stage/grant', admin, async (req) => {
@@ -798,6 +825,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
         url: '/?view=amateur&section=tournaments',
       },
     });
+    await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
     return result;
   });
 
@@ -809,7 +837,13 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
         reason: z.string().trim().min(3).max(1000),
       })
       .parse(req.body);
-    return resolveTournamentNoShow(app.pg, { ...params, ...body, adminUserId: req.user.id });
+    const result = await resolveTournamentNoShow(app.pg, {
+      ...params,
+      ...body,
+      adminUserId: req.user.id,
+    });
+    await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
+    return result;
   });
 
   app.post(
@@ -841,10 +875,12 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
       const params = z
         .object({ tournamentId: uuid, seriesId: uuid, decisionId: uuid })
         .parse(req.params);
-      return confirmTournamentSeriesWinnerDecision(app.pg, {
+      const result = await confirmTournamentSeriesWinnerDecision(app.pg, {
         ...params,
         adminUserId: req.user.id,
       });
+      await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
+      return result;
     },
   );
 

@@ -3582,6 +3582,25 @@ async function publishDuelFixtureProgress(
   });
 }
 
+async function reconcileSettledRegularTournamentDuel(
+  app: Parameters<FastifyPluginAsync>[0],
+  duelMatchId: string,
+): Promise<void> {
+  const { rows } = await app.pg.query<{ tournament_id: string }>(
+    `select fixture.tournament_id
+       from tournament_fixture_segment segment
+       join tournament_fixture fixture on fixture.id = segment.fixture_id
+       join tournament_round round on round.id = fixture.round_id
+      where segment.duel_match_id = $1 and round.stage = 'regular'
+      limit 1`,
+    [duelMatchId],
+  );
+  const tournament = rows[0];
+  if (tournament !== undefined) {
+    await app.reconcileTournamentLifecycleBestEffort({ tournamentId: tournament.tournament_id });
+  }
+}
+
 async function isSettled(client: PoolClient, matchId: string): Promise<boolean> {
   const { rows } = await client.query<{ status: MatchStatus }>(
     `select status from amateur_duel_match where id = $1`,
@@ -4889,6 +4908,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         };
       });
       await publishDuelFixtureProgress(app, response.matchId);
+      if (response.settled) await reconcileSettledRegularTournamentDuel(app, response.matchId);
       if (response.settled) void notifySettlement(app, response.matchId);
       return response;
     },
@@ -4916,6 +4936,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         };
       });
       await publishDuelFixtureProgress(app, response.matchId);
+      if (response.settled) await reconcileSettledRegularTournamentDuel(app, response.matchId);
       if (response.settled) void notifySettlement(app, response.matchId);
       return { match: response.match };
     },
