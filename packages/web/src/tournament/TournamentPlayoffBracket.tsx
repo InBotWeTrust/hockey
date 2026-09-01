@@ -1,9 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import {
-  chooseTournamentNextGame,
-  fetchTournamentFixtureAttempt,
-} from '../api/tournament.js';
+import { chooseTournamentNextGame, fetchTournamentFixtureAttempt } from '../api/tournament.js';
 import type {
   TournamentBracketFixture,
   TournamentBracketSeries,
@@ -27,13 +24,16 @@ interface TournamentPlayoffBracketProps {
 export function currentSeriesFixtureId(
   fixtures: Array<{ id: string; status: string }>,
 ): string | null {
+  const active = fixtures.find((fixture) =>
+    ['open', 'active', 'ready_check', 'paused'].includes(fixture.status),
+  );
+  if (active) return active.id;
+  for (let index = fixtures.length - 1; index >= 0; index -= 1) {
+    const fixture = fixtures[index];
+    if (fixture && ['settled', 'forfeit'].includes(fixture.status)) return fixture.id;
+  }
   return (
-    fixtures.find((fixture) =>
-      ['open', 'active', 'ready_check'].includes(fixture.status),
-    )?.id ??
-    fixtures.find((fixture) => fixture.status === 'scheduled')?.id ??
-    fixtures.at(-1)?.id ??
-    null
+    fixtures.find((fixture) => fixture.status === 'scheduled')?.id ?? fixtures.at(-1)?.id ?? null
   );
 }
 
@@ -79,6 +79,9 @@ function terminalGameLabel(
   state: TournamentFixtureAttemptState,
   currentUserId: string,
 ): string | null {
+  if (['needs_reschedule', 'needs_admin_decision', 'cancelled'].includes(state.attempt.status)) {
+    return null;
+  }
   const result = state.attempt.result;
   if (result === null) return null;
   const won = result.winnerUserId === currentUserId;
@@ -96,6 +99,7 @@ export function TournamentPlayoffAttemptView(props: {
   currentUserId: string;
   timezone: string;
   onOpenGame: () => void;
+  onOpenNextGame?: () => void;
   onChooseNextGame: (choice: 'immediate' | 'scheduled') => void;
 }) {
   const state = props.state;
@@ -108,6 +112,11 @@ export function TournamentPlayoffAttemptView(props: {
       : null,
   );
   const nextChoiceRemaining = useRemaining(state.nextGameChoice?.expiresAt ?? null);
+  const replayStartRemaining = useRemaining(
+    state.attempt.kind === 'replay' && state.attempt.status === 'pending'
+      ? state.attempt.scheduledStart
+      : null,
+  );
   const scoreLabel = seriesScoreLabel(state);
   const isTerminal = [
     'settled',
@@ -137,9 +146,7 @@ export function TournamentPlayoffAttemptView(props: {
           <span>
             {state.attempt.opponentReady ? 'Соперник готов' : 'Ждём готовность соперника'}
           </span>
-          {readinessRemaining !== null && (
-            <span>До закрытия готовности {readinessRemaining}</span>
-          )}
+          {readinessRemaining !== null && <span>До закрытия готовности {readinessRemaining}</span>}
           {!state.attempt.myReady && (
             <button type="button" className="btn btn--cta" onClick={props.onOpenGame}>
               Подтвердить готовность
@@ -169,8 +176,23 @@ export function TournamentPlayoffAttemptView(props: {
       )}
       {state.attempt.status === 'pending' && (
         <div className="tournament-playoff-attempt__scheduled">
-          <strong>Игра по расписанию</strong>
-          <span>Подтверждение готовности откроется перед началом.</span>
+          <strong>
+            {state.attempt.kind === 'replay' ? 'Переигровка по расписанию' : 'Игра по расписанию'}
+          </strong>
+          {state.attempt.kind === 'replay' ? (
+            replayStartRemaining === '00:00' ? (
+              <>
+                <span>Переигровка готова к запуску.</span>
+                <button type="button" className="btn btn--cta" onClick={props.onOpenGame}>
+                  Открыть переигровку
+                </button>
+              </>
+            ) : (
+              <span>Переигровка откроется через {replayStartRemaining}</span>
+            )
+          ) : (
+            <span>Подтверждение готовности откроется перед началом.</span>
+          )}
         </div>
       )}
       {terminalLabel !== null && (
@@ -213,17 +235,26 @@ export function TournamentPlayoffAttemptView(props: {
         </div>
       )}
       {state.nextGameChoice !== null && !state.nextGameChoice.canChoose && (
-        <span>
-          {state.nextGameChoice.startsImmediately
-            ? 'Оба игрока готовы — следующая игра начинается.'
-            : state.nextGameChoice.myChoice === 'immediate'
-              ? 'Вы готовы сыграть сразу. Ждём решение соперника.'
-              : 'Следующая игра остаётся в расписании.'}
-        </span>
+        <>
+          <span>
+            {state.nextGameChoice.startsImmediately
+              ? 'Оба игрока готовы — следующая игра начинается.'
+              : state.nextGameChoice.myChoice === 'immediate'
+                ? 'Вы готовы сыграть сразу. Ждём решение соперника.'
+                : 'Следующая игра остаётся в расписании.'}
+          </span>
+          {state.nextGameChoice.startsImmediately && props.onOpenNextGame && (
+            <button type="button" className="btn btn--cta" onClick={props.onOpenNextGame}>
+              Открыть следующую игру
+            </button>
+          )}
+        </>
       )}
       {wonSeries ? (
         <strong className="tournament-playoff-attempt__series-win">
-          Вы выиграли серию {state.series!.myWins} : {state.series!.opponentWins}
+          {state.series!.myWins >= state.series!.winsRequired
+            ? `Вы выиграли серию ${state.series!.myWins} : ${state.series!.opponentWins}`
+            : 'Вы выиграли серию'}
         </strong>
       ) : (
         scoreLabel !== null && <strong>{scoreLabel}</strong>
@@ -257,7 +288,10 @@ function PlayerAttemptState(props: {
   const choice = useMutation({
     mutationFn: (value: 'immediate' | 'scheduled') =>
       chooseTournamentNextGame(props.tournamentId, props.fixtureId, value),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey });
+      if (result.startsImmediately) props.onOpenFixture(result.nextFixtureId);
+    },
   });
   if (!attempt.data) return null;
   return (
@@ -267,6 +301,11 @@ function PlayerAttemptState(props: {
         currentUserId={props.currentUserId}
         timezone={props.timezone}
         onOpenGame={() => props.onOpenFixture(props.fixtureId)}
+        onOpenNextGame={() => {
+          if (attempt.data.nextGameChoice !== null) {
+            props.onOpenFixture(attempt.data.nextGameChoice.nextFixtureId);
+          }
+        }}
         onChooseNextGame={(value) => choice.mutate(value)}
       />
       {choice.isError && (
@@ -348,8 +387,17 @@ function gameTimeLabel(fixture: TournamentBracketFixture, timezone: string): str
   return `${date}, ${startTime} — ${endDate}, ${time.format(endsAt)}`;
 }
 
-function gameResultLabel(fixture: TournamentBracketFixture): string | null {
+export function gameResultLabel(fixture: TournamentBracketFixture): string | null {
   if (!['settled', 'forfeit'].includes(fixture.status)) return null;
+  if (fixture.status === 'forfeit') {
+    const winnerName =
+      fixture.winnerSide === 'home'
+        ? fixture.homeName
+        : fixture.winnerSide === 'away'
+          ? fixture.awayName
+          : null;
+    return winnerName === null ? 'Технический результат' : `Техническая победа — ${winnerName}`;
+  }
   if (
     fixture.homeName === null ||
     fixture.awayName === null ||
@@ -469,14 +517,14 @@ function SeriesCard(props: {
                 </strong>
               )}
               {isMySeries && fixture.id === latestFixtureId && (
-                  <PlayerAttemptState
-                    tournamentId={props.tournamentId}
-                    fixtureId={fixture.id}
-                    currentUserId={props.currentUserId!}
-                    timezone={props.timezone}
-                    onOpenFixture={props.onOpenFixture}
-                  />
-                )}
+                <PlayerAttemptState
+                  tournamentId={props.tournamentId}
+                  fixtureId={fixture.id}
+                  currentUserId={props.currentUserId!}
+                  timezone={props.timezone}
+                  onOpenFixture={props.onOpenFixture}
+                />
+              )}
             </div>
           ))}
         </div>

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { TournamentFixtureAttemptState } from '../api/tournament.js';
 import {
   currentSeriesFixtureId,
+  gameResultLabel,
   TournamentPlayoffAttemptView,
 } from './TournamentPlayoffBracket.js';
 
@@ -59,6 +60,43 @@ describe('TournamentPlayoffAttemptView', () => {
     ).toBe('game-2');
   });
 
+  it('keeps the latest settled game visible while players choose when to play next', () => {
+    expect(
+      currentSeriesFixtureId([
+        { id: 'game-1', status: 'settled' },
+        { id: 'game-2', status: 'scheduled' },
+        { id: 'game-3', status: 'conditional' },
+      ]),
+    ).toBe('game-1');
+  });
+
+  it('shows a paused game that requires an administrator decision before prior results', () => {
+    expect(
+      currentSeriesFixtureId([
+        { id: 'game-1', status: 'settled' },
+        { id: 'game-2', status: 'paused' },
+        { id: 'game-3', status: 'conditional' },
+      ]),
+    ).toBe('game-2');
+  });
+
+  it('shows a technical winner without a misleading 0:0 score', () => {
+    expect(
+      gameResultLabel({
+        id: 'game-1',
+        gameNumber: 1,
+        scheduledStartsAt: null,
+        windowEndsAt: null,
+        status: 'forfeit',
+        homeName: 'Игрок Один',
+        awayName: 'Игрок Два',
+        homeScore: 0,
+        awayScore: 0,
+        winnerSide: 'away',
+      }),
+    ).toBe('Техническая победа — Игрок Два');
+  });
+
   it('shows live readiness and opponent period countdowns', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2030-09-10T12:00:30.000Z'));
@@ -111,11 +149,63 @@ describe('TournamentPlayoffAttemptView', () => {
     expect(onOpenGame).toHaveBeenCalledTimes(1);
   });
 
+  it('marks a replay before the player confirms readiness again', () => {
+    render(
+      <TournamentPlayoffAttemptView
+        state={attemptState({
+          attempt: {
+            ...attemptState().attempt,
+            number: 2,
+            kind: 'replay',
+          },
+        })}
+        currentUserId="u1"
+        timezone="Europe/Moscow"
+        onOpenGame={vi.fn()}
+        onChooseNextGame={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Переигровка')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Подтвердить готовность' })).toBeInTheDocument();
+  });
+
+  it('lets the player open a pending replay when its start time arrives', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2030-09-10T12:00:11.000Z'));
+    const onOpenGame = vi.fn();
+    render(
+      <TournamentPlayoffAttemptView
+        state={attemptState({
+          attempt: {
+            ...attemptState().attempt,
+            number: 2,
+            kind: 'replay',
+            status: 'pending',
+            scheduledStart: '2030-09-10T12:00:10.000Z',
+          },
+        })}
+        currentUserId="u1"
+        timezone="Europe/Moscow"
+        onOpenGame={onOpenGame}
+        onChooseNextGame={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть переигровку' }));
+    expect(onOpenGame).toHaveBeenCalledTimes(1);
+  });
+
   it('shows the opponent period while the game is running without revealing their score', () => {
     render(
       <TournamentPlayoffAttemptView
         state={attemptState({
-          attempt: { ...attemptState().attempt, status: 'active', myReady: true, opponentReady: true },
+          attempt: {
+            ...attemptState().attempt,
+            status: 'active',
+            myReady: true,
+            opponentReady: true,
+          },
           opponentProgress: {
             state: 'period_active',
             currentPeriod: 2,
@@ -195,6 +285,7 @@ describe('TournamentPlayoffAttemptView', () => {
 
     expect(screen.getByText('Нужно новое время')).toBeInTheDocument();
     expect(screen.getByText(/администратор назначит новую дату и время/i)).toBeInTheDocument();
+    expect(screen.queryByText(/поражение в игре/i)).not.toBeInTheDocument();
   });
 
   it('offers the one-minute next-game choice and records the selected option', () => {
@@ -242,6 +333,46 @@ describe('TournamentPlayoffAttemptView', () => {
     expect(onChooseNextGame).toHaveBeenCalledWith('scheduled');
   });
 
+  it('opens the next game after both players choose to continue immediately', () => {
+    const onOpenNextGame = vi.fn();
+    render(
+      <TournamentPlayoffAttemptView
+        state={attemptState({
+          attempt: {
+            ...attemptState().attempt,
+            status: 'settled',
+            result: {
+              outcome: 'home_win',
+              winnerUserId: 'u1',
+              myScore: 4,
+              opponentScore: 2,
+              myAccuracy: 62.5,
+              opponentAccuracy: 48.25,
+              myActiveTimeMs: 80_000,
+              opponentActiveTimeMs: 95_000,
+            },
+          },
+          nextGameChoice: {
+            nextFixtureId: 'fixture-2',
+            expiresAt: '2030-09-10T12:31:00.000Z',
+            myChoice: 'immediate',
+            opponentChoice: 'immediate',
+            canChoose: false,
+            startsImmediately: true,
+          },
+        })}
+        currentUserId="u1"
+        timezone="Europe/Moscow"
+        onOpenGame={vi.fn()}
+        onOpenNextGame={onOpenNextGame}
+        onChooseNextGame={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть следующую игру' }));
+    expect(onOpenNextGame).toHaveBeenCalledTimes(1);
+  });
+
   it('celebrates a series victory and a tournament victory distinctly', () => {
     const state = attemptState({
       attempt: {
@@ -279,5 +410,34 @@ describe('TournamentPlayoffAttemptView', () => {
 
     expect(screen.getByText('Вы выиграли серию 4 : 0')).toBeInTheDocument();
     expect(screen.getByText('Вы — победитель турнира')).toBeInTheDocument();
+  });
+
+  it('does not present a manual series decision as a zero-score victory', () => {
+    render(
+      <TournamentPlayoffAttemptView
+        state={attemptState({
+          attempt: {
+            ...attemptState().attempt,
+            status: 'cancelled',
+          },
+          series: {
+            ...attemptState().series!,
+            myWins: 0,
+            opponentWins: 0,
+            higherSeedWins: 0,
+            lowerSeedWins: 0,
+            status: 'completed',
+            winnerUserId: 'u1',
+          },
+        })}
+        currentUserId="u1"
+        timezone="Europe/Moscow"
+        onOpenGame={vi.fn()}
+        onChooseNextGame={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Вы выиграли серию')).toBeInTheDocument();
+    expect(screen.queryByText('Вы выиграли серию 0 : 0')).not.toBeInTheDocument();
   });
 });

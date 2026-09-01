@@ -14,6 +14,7 @@ import {
   generateRegularSchedule,
   publishRegularSchedule,
   publishTournament,
+  rescheduleTournamentFixture,
   startTournamentPlayoffs,
   type TournamentRulesSnapshot,
 } from '../../src/tournament/service.js';
@@ -30,6 +31,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
 const ADMIN_ID = '00000000-0000-4000-8000-000000000a01';
 const TEMPLATE_ID = '00000000-0000-4000-8000-000000000a02';
+const OFFICIAL_ID = '00000000-0000-4000-8000-000000000a03';
 const JWT_SECRET = 'access-secret-at-least-16-chars';
 const REFRESH_SECRET = 'refresh-secret-at-least-16-chars';
 const DAILY_SEED_SECRET = 'daily-seed-secret-at-least-16!!';
@@ -96,6 +98,11 @@ function lifecycleRules(marker = true, readinessMinutes = 5): TournamentRulesSna
 }
 
 async function seed(pool: Pool): Promise<void> {
+  await pool.query(
+    `insert into users (id, display_name, timezone, role, account_kind)
+     values ($1, 'Хоккей-бот', 'Europe/Moscow', 'player', 'official')`,
+    [OFFICIAL_ID],
+  );
   await pool.query(
     `insert into users (id, display_name, timezone, role, level, lifetime_goals_total, experience)
      values ($1, 'Attempt Admin', 'Europe/Moscow', 'admin', 10, 1000, 1000)`,
@@ -397,6 +404,15 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
 
   beforeAll(async () => {
     const { databaseUrl, redisUrl } = getTestUrls();
+    const initPool = createTestPool();
+    await resetDatabase(initPool);
+    await applyMigrations(initPool, MIGRATIONS_DIR);
+    await initPool.query(
+      `insert into users (id, display_name, timezone, role, account_kind)
+       values ($1, 'Хоккей-бот', 'Europe/Moscow', 'player', 'official')`,
+      [OFFICIAL_ID],
+    );
+    await initPool.end();
     app = await buildApp({
       config: {
         NODE_ENV: 'test',
@@ -409,6 +425,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
         REFRESH_SECRET,
         TELEGRAM_BOT_TOKEN: 'test-bot-token',
         DAILY_SEED_SECRET,
+        SYSTEM_USER_ID: OFFICIAL_ID,
       },
       pushSchedulerEnabled: false,
       pushWorkerEnabled: false,
@@ -887,6 +904,35 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
         event_key: expect.stringContaining(opened.duelMatchId),
       }),
     ]);
+    const directMessage = await pool.query<{ content: string; metadata: Record<string, unknown> }>(
+      `select message.content, message.metadata
+         from messages message
+         join chats chat on chat.id = message.chat_id and chat.type = 'direct'
+         join chat_members recipient
+           on recipient.chat_id = chat.id and recipient.user_id = $1
+        where message.sender_id = $2
+        order by message.created_at desc
+        limit 1`,
+      [row.away_user_id, OFFICIAL_ID],
+    );
+    expect(directMessage.rows[0]).toEqual(
+      expect.objectContaining({
+        content: expect.stringContaining('подтвердил готовность'),
+        metadata: expect.objectContaining({
+          type: 'tournament_announcement',
+          tournamentId: tournament.id,
+        }),
+      }),
+    );
+    const unread = await app.inject({
+      method: 'GET',
+      url: '/chat/unread',
+      headers: {
+        authorization: `Bearer ${await jwt.issueAccessToken({ sub: row.away_user_id })}`,
+      },
+    });
+    expect(unread.statusCode).toBe(200);
+    expect(Object.values(unread.json() as Record<string, number>)).toContain(1);
   });
 
   it('keeps the immutable attempt hard deadline when both players become ready', async () => {
@@ -1240,6 +1286,88 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
       duel_status: 'cancelled',
       settled_reason: 'tournament_attempt_both_no_show',
       incident_count: 1,
+    });
+  });
+
+  it('reschedules a paused attempt after both players miss readiness', async () => {
+    const { tournamentId, fixture, opened } = await openFirstPlayoffAttempt(
+      pool,
+      'attempt-both-no-show-reschedule',
+    );
+    const now = new Date();
+    const scheduledStartsAt = new Date(now.getTime() - 300_000);
+    const readinessExpiredAt = new Date(now.getTime() - 1_000);
+    const hardDeadlineAt = new Date(now.getTime() + 600_000);
+    await pool.query(
+      `update tournament_fixture_attempt
+          set scheduled_starts_at = $2, readiness_expires_at = $3, hard_deadline_at = $4
+        where fixture_id = $1`,
+      [fixture.fixture_id, scheduledStartsAt, readinessExpiredAt, hardDeadlineAt],
+    );
+    await pool.query(
+      `update amateur_duel_match
+          set starts_at = $2, ready_expires_at = $3, ends_at = $4
+        where id = $1`,
+      [opened.duelMatchId, scheduledStartsAt, readinessExpiredAt, hardDeadlineAt],
+    );
+    await pool.query(
+      `update tournament_fixture set scheduled_starts_at = $2, window_ends_at = $3 where id = $1`,
+      [fixture.fixture_id, scheduledStartsAt, hardDeadlineAt],
+    );
+    const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+    const homeToken = await jwt.issueAccessToken({ sub: fixture.home_user_id });
+    const state = await app.inject({
+      method: 'GET',
+      url: `/duel/amateur/matches/${opened.duelMatchId}`,
+      headers: { authorization: `Bearer ${homeToken}` },
+    });
+    expect(state.statusCode).toBe(200);
+
+    const newStartsAt = new Date(now.getTime() + 3_600_000);
+    const newEndsAt = new Date(newStartsAt.getTime() + 900_000);
+    await rescheduleTournamentFixture(pool, {
+      tournamentId,
+      fixtureId: fixture.fixture_id,
+      startsAt: newStartsAt,
+      endsAt: newEndsAt,
+      reason: 'integration reschedule after both no show',
+      adminUserId: ADMIN_ID,
+    });
+
+    const persisted = await pool.query<{
+      attempt_status: string;
+      attempt_outcome: string | null;
+      attempt_duel_id: string | null;
+      home_ready_at: Date | null;
+      away_ready_at: Date | null;
+      fixture_status: string;
+      series_status: string;
+      duel_status: string;
+      incident_status: string;
+    }>(
+      `select attempt.status as attempt_status, attempt.outcome as attempt_outcome,
+              attempt.amateur_duel_match_id as attempt_duel_id,
+              attempt.home_ready_at, attempt.away_ready_at,
+              fixture.status as fixture_status, series.status as series_status,
+              duel.status as duel_status, incident.status as incident_status
+         from tournament_fixture_attempt attempt
+         join tournament_fixture fixture on fixture.id = attempt.fixture_id
+         join tournament_playoff_series series on series.id = fixture.series_id
+         join amateur_duel_match duel on duel.id = $2
+         join tournament_incident incident on incident.fixture_attempt_id = attempt.id
+        where attempt.fixture_id = $1`,
+      [fixture.fixture_id, opened.duelMatchId],
+    );
+    expect(persisted.rows[0]).toEqual({
+      attempt_status: 'pending',
+      attempt_outcome: null,
+      attempt_duel_id: null,
+      home_ready_at: null,
+      away_ready_at: null,
+      fixture_status: 'scheduled',
+      series_status: 'scheduled',
+      duel_status: 'cancelled',
+      incident_status: 'resolved',
     });
   });
 
@@ -2526,6 +2654,10 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
     expect(nextAttempt.rows[0]!.readiness_expires_at.getTime()).toBeGreaterThan(
       nextAttempt.rows[0]!.scheduled_starts_at.getTime(),
     );
+    expect(
+      nextAttempt.rows[0]!.readiness_expires_at.getTime() -
+        nextAttempt.rows[0]!.scheduled_starts_at.getTime(),
+    ).toBe(60_000);
     expect(nextAttempt.rows[0]!.hard_deadline_at.getTime()).toBeGreaterThan(
       nextAttempt.rows[0]!.readiness_expires_at.getTime(),
     );

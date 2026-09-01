@@ -1490,7 +1490,7 @@ export async function chooseTournamentNextGame(
         throw new AppError('conflict', 'next tournament game is not available', 409);
       }
       if (attempt.result_snapshot?.readinessMode !== 'next_game_auto_continue') {
-        const readinessExpiresAt = new Date(input.now.getTime() + 10_000);
+        const readinessExpiresAt = new Date(input.now.getTime() + 60_000);
         const gameplayDurationMs = Math.max(
           1,
           attempt.hard_deadline_at.getTime() - attempt.readiness_expires_at.getTime(),

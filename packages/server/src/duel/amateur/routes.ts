@@ -3070,6 +3070,47 @@ async function fetchDisplayName(
   return rows[0]?.display_name ?? 'Соперник';
 }
 
+async function tournamentReadyNotice(
+  client: PoolClient,
+  input: { duelMatchId: string; readyUserId: string },
+): Promise<{
+  tournamentId: string;
+  tournamentTitle: string;
+  recipientUserId: string;
+  readyDisplayName: string;
+} | null> {
+  const result = await client.query<{
+    tournament_id: string;
+    tournament_title: string;
+    recipient_user_id: string;
+    ready_display_name: string;
+  }>(
+    `select fixture.tournament_id, tournament.title as tournament_title,
+            case when home.user_id = $2 then away.user_id else home.user_id end
+              as recipient_user_id,
+            ready_user.display_name as ready_display_name
+       from tournament_fixture_attempt attempt
+       join tournament_fixture fixture on fixture.id = attempt.fixture_id
+       join tournament tournament on tournament.id = fixture.tournament_id
+       join tournament_participant home on home.id = fixture.home_participant_id
+       join tournament_participant away on away.id = fixture.away_participant_id
+       join users ready_user on ready_user.id = $2
+      where attempt.amateur_duel_match_id = $1
+        and $2::uuid in (home.user_id, away.user_id)
+      limit 1`,
+    [input.duelMatchId, input.readyUserId],
+  );
+  const row = result.rows[0];
+  return row === undefined
+    ? null
+    : {
+        tournamentId: row.tournament_id,
+        tournamentTitle: row.tournament_title,
+        recipientUserId: row.recipient_user_id,
+        readyDisplayName: row.ready_display_name,
+      };
+}
+
 function formatDuelInviteTtl(ms: number): string {
   const totalMinutes = Math.max(1, Math.round(ms / 60_000));
   if (totalMinutes < 60) return `${totalMinutes} мин`;
@@ -3486,7 +3527,19 @@ async function activateReadyMatch(
       activeEndsAt,
     ],
   );
-  return rows[0]!;
+  return {
+    ...rows[0]!,
+    ...(match.challenger_name !== undefined
+      ? { challenger_name: match.challenger_name }
+      : {}),
+    ...(match.challenger_avatar_url !== undefined
+      ? { challenger_avatar_url: match.challenger_avatar_url }
+      : {}),
+    ...(match.opponent_name !== undefined ? { opponent_name: match.opponent_name } : {}),
+    ...(match.opponent_avatar_url !== undefined
+      ? { opponent_avatar_url: match.opponent_avatar_url }
+      : {}),
+  };
 }
 
 async function notifySettlement(app: Parameters<FastifyPluginAsync>[0], matchId: string) {
@@ -3537,7 +3590,10 @@ async function isSettled(client: PoolClient, matchId: string): Promise<boolean> 
   return rows[0]?.status === 'settled';
 }
 
-export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> = async (
+export const amateurDuelRoutes: FastifyPluginAsync<{
+  duelSeedSecret: string;
+  systemUserId?: string;
+}> = async (
   app,
   opts,
 ) => {
@@ -4315,9 +4371,17 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
         if (tournamentAttemptReady && match.status === 'active') {
           await markTournamentAttemptActive(client, match.id);
         }
+        const readyNotice =
+          tournamentAttemptReady && opts.systemUserId !== undefined
+            ? await tournamentReadyNotice(client, {
+                duelMatchId: match.id,
+                readyUserId: req.user.id,
+              })
+            : null;
         return {
           kind: 'ready' as const,
           match: await buildMatchStateDto(client, match, req.user.id, now),
+          readyNotice,
         };
       });
       if (response.kind === 'terminal_conflict') {
@@ -4325,6 +4389,30 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
         throw new AppError('conflict', `cannot ready in duel status '${response.status}'`, 409);
       }
       await publishDuelFixtureProgress(app, response.match.id);
+      if (response.readyNotice !== null && opts.systemUserId !== undefined) {
+        const notice = response.readyNotice;
+        await notifyDuelMessage(
+          app,
+          opts.systemUserId,
+          notice.recipientUserId,
+          `«${notice.tournamentTitle}»: ${notice.readyDisplayName} подтвердил готовность к игре.`,
+          {
+            type: 'tournament_announcement',
+            title: 'Соперник готов',
+            tournamentId: notice.tournamentId,
+            action: {
+              type: 'tournament',
+              label: 'Перейти в турнир',
+              url: `/?view=amateur&section=tournaments&tournament=${encodeURIComponent(notice.tournamentId)}&tab=playoff&from=sections`,
+            },
+          },
+        ).catch((err) =>
+          app.log.warn(
+            { err, matchId: response.match.id },
+            'tournament readiness DM notification failed',
+          ),
+        );
+      }
       return { match: response.match };
     },
   );
