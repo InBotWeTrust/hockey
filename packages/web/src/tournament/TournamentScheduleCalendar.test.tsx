@@ -31,6 +31,7 @@ describe('TournamentScheduleCalendar', () => {
         fixtures={fixtures}
         matchdays={[]}
         regularSource="head_to_head"
+        tournamentStatus="regular"
         currentUserId="me"
         isParticipant
         timezone="Europe/Moscow"
@@ -65,6 +66,7 @@ describe('TournamentScheduleCalendar', () => {
         fixtures={[fixture(1)]}
         matchdays={[]}
         regularSource="head_to_head"
+        tournamentStatus="regular"
         currentUserId="me"
         isParticipant
         timezone="Europe/Moscow"
@@ -87,6 +89,7 @@ describe('TournamentScheduleCalendar', () => {
         fixtures={[fixture(1, true)]}
         matchdays={[]}
         regularSource="head_to_head"
+        tournamentStatus="regular"
         currentUserId="me"
         isParticipant
         timezone="Europe/Moscow"
@@ -123,6 +126,7 @@ describe('TournamentScheduleCalendar', () => {
         fixtures={[opponentPlayoff, myPlayoff]}
         matchdays={[]}
         regularSource="head_to_head"
+        tournamentStatus="regular"
         currentUserId="me"
         isParticipant
         timezone="Europe/Moscow"
@@ -168,6 +172,7 @@ describe('TournamentScheduleCalendar', () => {
           },
         ]}
         regularSource="daily_aggregate"
+        tournamentStatus="regular"
         currentUserId="me"
         isParticipant
         timezone="Europe/Moscow"
@@ -205,6 +210,7 @@ describe('TournamentScheduleCalendar', () => {
           },
         ]}
         regularSource="daily_aggregate"
+        tournamentStatus="regular"
         currentUserId="me"
         isParticipant
         timezone="Europe/Moscow"
@@ -307,6 +313,7 @@ describe('TournamentScheduleCalendar', () => {
           },
         ]}
         regularSource="classic"
+        tournamentStatus="regular"
         currentUserId="me"
         isParticipant
         timezone="Europe/Moscow"
@@ -337,6 +344,7 @@ describe('TournamentScheduleCalendar', () => {
           },
         ]}
         regularSource="daily_aggregate"
+        tournamentStatus="regular"
         currentUserId="me"
         isParticipant
         timezone="Europe/Moscow"
@@ -367,6 +375,7 @@ describe('TournamentScheduleCalendar', () => {
           },
         ]}
         regularSource="daily_aggregate"
+        tournamentStatus="regular"
         currentUserId="me"
         isParticipant
         timezone="Europe/Moscow"
@@ -406,6 +415,7 @@ describe('TournamentScheduleCalendar', () => {
           },
         ]}
         regularSource="daily_aggregate"
+        tournamentStatus="regular"
         currentUserId="me"
         isParticipant
         timezone="Europe/Moscow"

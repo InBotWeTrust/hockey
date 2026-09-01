@@ -2206,6 +2206,17 @@ export async function getTournamentGameContext(
   if (row.status === 'completed') {
     return tournamentGameContext('tournament_completed', null, null, 'Турнир завершён.');
   }
+  if (row.status === 'cancelled') {
+    return tournamentGameContext('tournament_completed', null, null, 'Турнир отменён.');
+  }
+  if (row.status === 'paused') {
+    return tournamentGameContext(
+      'not_started',
+      null,
+      null,
+      'Турнир поставлен на паузу. О продолжении сообщат организаторы.',
+    );
+  }
   if (row.status !== 'regular') {
     return tournamentGameContext('not_started', null, null, 'Регулярный сезон ещё не начался.');
   }

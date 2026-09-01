@@ -123,6 +123,46 @@ describe('TournamentCatalog', () => {
     expect(screen.queryByText('Конец', { exact: true })).not.toBeInTheDocument();
   });
 
+  it('shows the registration deadline from the lifecycle response while applications are open', async () => {
+    vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
+      tournaments: [
+        {
+          id: 't-open',
+          slug: 'open-cup',
+          title: 'Открытый кубок',
+          description: '',
+          status: 'registration',
+          regularSource: 'head_to_head',
+          visibility: 'public',
+          revision: 1,
+          participantCount: 3,
+          lifecycle: {
+            ...TEST_LIFECYCLE,
+            action: 'registration_open',
+            dueAt: '2030-09-01T07:00:00.000Z',
+          },
+          myParticipantState: null,
+          registrationOpensAt: null,
+          registrationClosesAt: null,
+          startsAt: null,
+          rules: { config: { participantLimit: 8, entryFeeCoins: 0, playoffSize: 4 } },
+        },
+      ],
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TournamentCatalog />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByText('Заявки принимаются до 1 сентября в 10:00 мск'),
+    ).toBeInTheDocument();
+  });
+
   it('keeps tournament rule copy visually lighter than its headings', () => {
     expect(designSystemCss).toContain(
       '.tournament-rules p {\n  color: #26384d;\n  font-size: 13px;\n  font-weight: 440;',

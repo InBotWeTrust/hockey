@@ -1,4 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
+vi.hoisted(() => {
+  const prototype = globalThis.HTMLCanvasElement?.prototype;
+  if (prototype === undefined) return;
+  Object.defineProperty(prototype, 'getContext', {
+    configurable: true,
+    value: () => null,
+  });
+});
 import { render, screen, waitFor, fireEvent, act, within, cleanup } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -368,7 +377,7 @@ describe('DailyScreen', () => {
     expect(
       await screen.findByText('Регулярный сезон завершён. Ожидаем начала плей-офф.'),
     ).toBeInTheDocument();
-    expect(screen.getByText('24 шайбы · точность 26,67%')).toBeInTheDocument();
+    expect(screen.getByText('24 шайбы · 90 бросков · точность 26,67%')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /брос/i })).not.toBeInTheDocument();
     expect(
       fetchMock.mock.calls.some(([input]) => String(input).includes('/duel/daily/state')),
@@ -396,6 +405,79 @@ describe('DailyScreen', () => {
     expect(
       fetchMock.mock.calls.some(([input]) => String(input).includes('/duel/daily/state')),
     ).toBe(false);
+  });
+
+  it('opens the daily tournament game when the URL incorrectly says classic', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const body = url.includes('/tournaments/daily-1/game-context')
+        ? { action: 'play_daily', tournamentDay: 1, result: null, message: null }
+        : baseState;
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=classic&section=tournaments&tournament=daily-1&tab=schedule']);
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(([input]) => String(input).includes('/duel/daily/state')),
+      ).toBe(true);
+    });
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).includes('/tournaments/daily-1/classic/state'),
+      ),
+    ).toBe(false);
+  });
+
+  it('opens the classic tournament game when the URL incorrectly says daily', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const body = url.includes('/tournaments/classic-1/game-context')
+        ? { action: 'play_classic', tournamentDay: 1, result: null, message: null }
+        : url.includes('/tournaments/classic-1/classic/state')
+          ? classicIdleState
+          : baseState;
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=daily&section=tournaments&tournament=classic-1&tab=schedule']);
+
+    expect(await screen.findByText('Кубок классики · 1-й тур')).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input).includes('/duel/daily/state')),
+    ).toBe(false);
+  });
+
+  it('shows a credited incomplete tournament result', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const body = url.includes('/tournaments/daily-incomplete/game-context')
+        ? {
+            action: 'waiting_playoff',
+            tournamentDay: 1,
+            result: { goals: 1, shots: 2, accuracy: 0.5, completed: false },
+            message: 'Регулярный сезон завершён. Ожидаем начала плей-офф.',
+          }
+        : baseState;
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=daily&section=tournaments&tournament=daily-incomplete&tab=schedule']);
+
+    expect(
+      await screen.findByText('Незавершённая игра зачтена по правилам турнира.'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('1 шайба · 2 броска · точность 50,00%')).toBeInTheDocument();
   });
 
   it('shows every active classic tournament on the arena and opens its own game', async () => {

@@ -171,7 +171,10 @@ function registrationWindow(
     return {
       isOpen: true,
       label: 'Идёт регистрация',
-      timingLabel: null,
+      timingLabel:
+        tournament.lifecycle.dueAt === null
+          ? null
+          : `Заявки принимаются до ${tournamentLifecycleDateLabel(tournament.lifecycle.dueAt)}`,
       actionLabel: '',
       hideAction: false,
     };

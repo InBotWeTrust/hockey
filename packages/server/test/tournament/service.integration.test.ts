@@ -1604,6 +1604,40 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       });
     });
 
+    it('returns a credited incomplete result after its tournament day has closed', async () => {
+      await seedUsers(pool, 0);
+      const tournament = await createPublishedTournament(
+        pool,
+        'daily-incomplete-game-context',
+        0,
+        dailyPlayoffTournamentRules(),
+      );
+      const application = await applyToTournament(pool, tournament.id, PLAYER_IDS[0]);
+      await applyToTournament(pool, tournament.id, PLAYER_IDS[1]);
+      await generateRegularSchedule(pool, tournament.id, tournament.revision);
+      await publishRegularSchedule(pool, tournament.id);
+      await pool.query(
+        `insert into tournament_daily_result
+           (tournament_id, participant_id, tournament_day, player_local_date,
+            goals, shots, accuracy, completed, source_snapshot, finalized_at)
+         values ($1, $2, 1, '2030-09-01', 1, 2, $3, false, '{}', now())`,
+        [tournament.id, application.participantId, 1 / 2],
+      );
+
+      await expect(
+        getTournamentGameContext(pool, {
+          tournamentId: tournament.id,
+          userId: PLAYER_IDS[0],
+          now: new Date('2030-09-02T08:00:00.000Z'),
+        }),
+      ).resolves.toEqual({
+        action: 'waiting_playoff',
+        tournamentDay: 1,
+        result: { goals: 1, shots: 2, accuracy: 0.5, completed: false },
+        message: 'Регулярный сезон завершён. Ожидаем начала плей-офф.',
+      });
+    });
+
     it('distinguishes classic, non-participant, pre-start, playoff and completed tournament states', async () => {
       await seedUsers(pool, 0);
       const classicRules = dailyPlayoffTournamentRules();
@@ -1678,6 +1712,34 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
           now: new Date('2030-09-01T12:00:00.000Z'),
         }),
       ).resolves.toMatchObject({ action: 'tournament_completed', tournamentDay: null });
+
+      await pool.query(`update tournament set status = 'paused' where id = $1`, [tournament.id]);
+      await expect(
+        getTournamentGameContext(pool, {
+          tournamentId: tournament.id,
+          userId: PLAYER_IDS[0],
+          now: new Date('2030-09-01T12:00:00.000Z'),
+        }),
+      ).resolves.toEqual({
+        action: 'not_started',
+        tournamentDay: null,
+        result: null,
+        message: 'Турнир поставлен на паузу. О продолжении сообщат организаторы.',
+      });
+
+      await pool.query(`update tournament set status = 'cancelled' where id = $1`, [tournament.id]);
+      await expect(
+        getTournamentGameContext(pool, {
+          tournamentId: tournament.id,
+          userId: PLAYER_IDS[0],
+          now: new Date('2030-09-01T12:00:00.000Z'),
+        }),
+      ).resolves.toEqual({
+        action: 'tournament_completed',
+        tournamentDay: null,
+        result: null,
+        message: 'Турнир отменён.',
+      });
     });
   });
 

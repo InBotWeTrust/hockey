@@ -8,7 +8,7 @@ interface TournamentScheduleCalendarProps {
   fixtures: TournamentFixture[];
   matchdays: TournamentMatchday[];
   regularSource: 'head_to_head' | 'daily_aggregate' | 'classic';
-  tournamentStatus?: TournamentStatus;
+  tournamentStatus: TournamentStatus;
   currentUserId: string | null;
   isParticipant: boolean;
   timezone: string;
@@ -366,7 +366,7 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
                 selectedDate === today.key &&
                 selectedMatchdayIsActive &&
                 selectedMatchday.myResult?.completed !== true &&
-                (props.tournamentStatus === undefined || props.tournamentStatus === 'regular') &&
+                props.tournamentStatus === 'regular' &&
                 props.onOpenDailyGame && (
                   <button type="button" className="btn btn--cta" onClick={props.onOpenDailyGame}>
                     {props.regularSource === 'classic'

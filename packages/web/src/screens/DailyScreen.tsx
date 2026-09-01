@@ -515,9 +515,19 @@ export function DailyScreen(): JSX.Element {
         />
       );
     }
+    if (tournamentGameContext.data.action === 'play_classic') {
+      return (
+        <ClassicTournamentPlayView
+          tournamentId={tournamentId}
+          onBack={() =>
+            navigate(tournamentDuelBackPath(fromSections, tournamentId), { replace: true })
+          }
+        />
+      );
+    }
   }
 
-  if (routeParams.get('view') === 'classic' && tournamentId !== null) {
+  if (!tournamentGameRoute && routeParams.get('view') === 'classic' && tournamentId !== null) {
     return (
       <ClassicTournamentPlayView
         tournamentId={tournamentId}
@@ -624,7 +634,10 @@ export function DailyScreen(): JSX.Element {
     navigate('/?view=amateur&from=sections', { replace: true });
   };
 
-  if (selectedLevel === 'beginner' && beginnerMode === 'daily' && dailyView === 'play') {
+  if (
+    (selectedLevel === 'beginner' && beginnerMode === 'daily' && dailyView === 'play') ||
+    tournamentGameContext.data?.action === 'play_daily'
+  ) {
     return (
       <DailyPlayView
         backLabel={tournamentOrigin ? 'К турниру' : 'К режимам'}
@@ -778,10 +791,23 @@ function tournamentGameResultLabel(result: NonNullable<TournamentGameContext['re
         : last >= 2 && last <= 4
           ? 'шайбы'
           : 'шайб';
-  return `${result.goals} ${puckWord} · точность ${new Intl.NumberFormat('ru-RU', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(result.accuracy * 100)}%`;
+  const shotsLastTwo = Math.abs(result.shots) % 100;
+  const shotsLast = shotsLastTwo % 10;
+  const shotsWord =
+    shotsLastTwo >= 11 && shotsLastTwo <= 14
+      ? 'бросков'
+      : shotsLast === 1
+        ? 'бросок'
+        : shotsLast >= 2 && shotsLast <= 4
+          ? 'броска'
+          : 'бросков';
+  return `${result.goals} ${puckWord} · ${result.shots} ${shotsWord} · точность ${new Intl.NumberFormat(
+    'ru-RU',
+    {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    },
+  ).format(result.accuracy * 100)}%`;
 }
 
 function TournamentGameContextLoading(): JSX.Element {
@@ -808,10 +834,15 @@ function TournamentGameContextCard({
       >
         <h1 className="modal-title">Турнирная игра</h1>
         <p className="modal-copy">{message}</p>
-        {context?.result?.completed === true && (
-          <p className="modal-copy" aria-label="Результат турнирной игры">
-            {tournamentGameResultLabel(context.result)}
-          </p>
+        {context !== null && context.result !== null && (
+          <>
+            {context.result.completed === false && (
+              <p className="modal-copy">Незавершённая игра зачтена по правилам турнира.</p>
+            )}
+            <p className="modal-copy" aria-label="Результат турнирной игры">
+              {tournamentGameResultLabel(context.result)}
+            </p>
+          </>
         )}
         <div className="modal-actions">
           <button type="button" className="modal-primary btn--cta" onClick={onBack}>
