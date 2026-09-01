@@ -179,6 +179,52 @@ describe('TournamentAdmin', () => {
     expect(screen.getByRole('dialog', { name: 'Создание турнира' })).toBeInTheDocument();
   });
 
+  it('saves an edit to a published tournament without publishing it again', async () => {
+    const publishedTournament: api.AdminTournament = {
+      ...dstOverlapTournament(),
+      status: 'registration',
+      revision: 7,
+    };
+    vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({
+      tournaments: [publishedTournament],
+    });
+    vi.spyOn(api, 'fetchAdminTournamentParticipants').mockResolvedValue({ participants: [] });
+    vi.spyOn(api, 'fetchAdminTournamentDuelTemplates').mockResolvedValue({ templates: [] });
+    const update = vi.spyOn(api, 'updateAdminTournament').mockResolvedValue({
+      tournament: {
+        ...publishedTournament,
+        description: 'Описание после публикации',
+        revision: 8,
+      },
+    });
+    const publish = vi.spyOn(api, 'publishAdminTournament');
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentAdmin />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок DST' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать турнир' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Описание' }), {
+      target: { value: 'Описание после публикации' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить и закрыть' }));
+
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith(
+        publishedTournament.id,
+        publishedTournament.revision,
+        expect.objectContaining({ description: 'Описание после публикации' }),
+      ),
+    );
+    expect(publish).not.toHaveBeenCalled();
+    expect(await screen.findByRole('status')).toHaveTextContent('Изменения сохранены.');
+  });
+
   it('uses compact described fields, custom selects and collapsed advanced settings', async () => {
     vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [] });
     vi.spyOn(api, 'fetchAdminTournamentDuelTemplates').mockResolvedValue({ templates: [] });

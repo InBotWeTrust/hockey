@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from 'pg';
 import { AppError } from '../plugins/errors.js';
+import { appendEvent } from '../duel/eventLog.js';
 import { grantTournamentStageRewardsWithClient, resolvePlayoffPlacements } from './rewards.js';
 import { cancelTournamentDuel } from '../duel/amateur/lifecycle.js';
 import { enqueueTournamentAudiencePush, enqueueTournamentPush } from '../push/tournament.js';
@@ -44,7 +45,7 @@ import {
 import { lockTournament, lockTournamentFixture } from './locks.js';
 import { canTransitionTournament } from './lifecycle.js';
 import { tournamentSlugBase } from './slug.js';
-import type { TournamentConfig, TournamentStatus } from './types.js';
+import type { TournamentConfig, TournamentPlayoffSize, TournamentStatus } from './types.js';
 
 export interface TournamentRulesSnapshot {
   config: TournamentConfig;
@@ -1664,7 +1665,7 @@ export async function generateRegularSchedule(
   pool: Pool,
   tournamentId: string,
   expectedRevision: number,
-  options: { allowInsufficientHeadToHeadParticipants?: boolean } = {},
+  options: { manualPlayoffSize?: TournamentPlayoffSize; recoveredBy?: string } = {},
 ): Promise<GenerateRegularScheduleOutcome> {
   return inTransaction(pool, async (client) => {
     await lockTournament(client, tournamentId);
@@ -1686,9 +1687,6 @@ export async function generateRegularSchedule(
     if (!['registration', 'registration_blocked', 'scheduling'].includes(tournament.status)) {
       throw new AppError('conflict', 'schedule cannot be regenerated after publication', 409);
     }
-    if (Number(tournament.current_revision) !== expectedRevision) {
-      throw new AppError('revision_conflict', 'tournament was changed in another tab', 409);
-    }
     const participants = await client.query<{ id: string }>(
       `select id from tournament_participant
         where tournament_id = $1 and state = 'approved'
@@ -1696,23 +1694,39 @@ export async function generateRegularSchedule(
       [tournamentId],
     );
     const participantCount = participants.rows.length;
-    const config = tournament.rules_snapshot.config;
-    const manualHeadToHeadOverride = options.allowInsufficientHeadToHeadParticipants === true;
-    if (
-      manualHeadToHeadOverride &&
-      (config.regularSource !== 'head_to_head' || participantCount < 2)
-    ) {
-      throw new AppError('conflict', 'manual schedule override is not available', 409);
+    const manualPlayoffSize = options.manualPlayoffSize;
+    const manualRecovery = manualPlayoffSize !== undefined;
+    let revision = Number(tournament.current_revision);
+    let rulesSnapshot = tournament.rules_snapshot;
+    let config = rulesSnapshot.config;
+    const acceptedManualRetry =
+      manualRecovery &&
+      tournament.status === 'scheduling' &&
+      revision === expectedRevision + 1 &&
+      config.playoffSize === manualPlayoffSize;
+    if (revision !== expectedRevision && !acceptedManualRetry) {
+      throw new AppError('revision_conflict', 'tournament was changed in another tab', 409);
     }
-    const outcome = {
+    if (
+      manualRecovery &&
+      (config.regularSource !== 'head_to_head' ||
+        participantCount < 2 ||
+        manualPlayoffSize > participantCount)
+    ) {
+      throw new AppError('conflict', 'manual schedule recovery is not available', 409);
+    }
+    if (manualRecovery && tournament.status !== 'registration_blocked' && !acceptedManualRetry) {
+      throw new AppError('conflict', 'manual schedule recovery is not available', 409);
+    }
+    const outcome = () => ({
       tournamentId,
       beforeStatus: tournament.status,
-      revision: Number(tournament.current_revision),
+      revision,
       participantCount,
       playoffSize: config.playoffSize,
       title: tournament.title,
       createdBy: tournament.created_by,
-    };
+    });
     if (tournament.status === 'scheduling') {
       const existing = await client.query<{
         matchday_count: number;
@@ -1728,7 +1742,7 @@ export async function generateRegularSchedule(
       const counts = existing.rows[0]!;
       if (Number(counts.matchday_count) > 0) {
         return {
-          ...outcome,
+          ...outcome(),
           status: 'scheduling' as const,
           changed: false,
           matchdayCount: Number(counts.matchday_count),
@@ -1737,32 +1751,62 @@ export async function generateRegularSchedule(
         };
       }
     }
-    if (manualHeadToHeadOverride && tournament.status !== 'registration_blocked') {
-      throw new AppError('conflict', 'manual schedule override is not available', 409);
+    if (manualRecovery) {
+      if (options.recoveredBy === undefined) {
+        throw new AppError(
+          'configuration_error',
+          'manual schedule recovery requires an administrator',
+          409,
+        );
+      }
+      revision += 1;
+      rulesSnapshot = {
+        ...rulesSnapshot,
+        config: { ...config, playoffSize: manualPlayoffSize },
+      } as TournamentRulesSnapshot;
+      config = rulesSnapshot.config;
+      const insertedRevision = await client.query<{ id: string }>(
+        `insert into tournament_revision
+           (tournament_id, revision, rules_snapshot, is_published, published_at, created_by)
+         values ($1, $2, $3, true, now(), $4)
+         returning id`,
+        [tournamentId, revision, JSON.stringify(rulesSnapshot), options.recoveredBy],
+      );
+      await client.query(
+        `update tournament
+            set current_revision = $2, published_revision_id = $3, updated_by = $4, updated_at = now()
+          where id = $1`,
+        [tournamentId, revision, insertedRevision.rows[0]!.id, options.recoveredBy],
+      );
+      await appendEvent(client, options.recoveredBy, 'admin_tournament_manual_schedule_recovered', {
+        tournament_id: tournamentId,
+        previous_revision: expectedRevision,
+        revision,
+        playoff_size: manualPlayoffSize,
+        approved_participant_count: participantCount,
+      });
     }
     if (tournament.starts_at === null)
       throw new AppError('conflict', 'start time is required', 409);
     const regularLifecycleV2 =
-      config.regularSource === 'head_to_head' &&
-      tournament.rules_snapshot.duelLifecycleVersion === 2;
+      config.regularSource === 'head_to_head' && rulesSnapshot.duelLifecycleVersion === 2;
     const regularReadinessMinutes = boundedInteger(
-      tournament.rules_snapshot.regularReadinessMinutes ??
-        tournament.rules_snapshot.readinessMinutes,
+      rulesSnapshot.regularReadinessMinutes ?? rulesSnapshot.readinessMinutes,
       DEFAULT_TOURNAMENT_READINESS_MINUTES,
       1,
       120,
     );
     let regularAttemptTemplate: DuelTemplateLifecycleSnapshot | null = null;
     if (regularLifecycleV2) {
-      if (typeof tournament.rules_snapshot.regularDuelTemplateId !== 'string') {
+      if (typeof rulesSnapshot.regularDuelTemplateId !== 'string') {
         throw new AppError('configuration_error', 'regular duel template is not configured', 409);
       }
       regularAttemptTemplate = await loadDuelTemplateLifecycleSnapshot(
         client,
-        tournament.rules_snapshot.regularDuelTemplateId,
+        rulesSnapshot.regularDuelTemplateId,
       );
     }
-    if (participantCount < config.playoffSize && !manualHeadToHeadOverride) {
+    if (participantCount < config.playoffSize) {
       const changed = tournament.status !== 'registration_blocked';
       if (changed) {
         await client.query(
@@ -1771,7 +1815,7 @@ export async function generateRegularSchedule(
         );
       }
       const blockedOutcome = {
-        ...outcome,
+        ...outcome(),
         status: 'registration_blocked' as const,
         changed,
         matchdayCount: 0,
@@ -1881,7 +1925,7 @@ export async function generateRegularSchedule(
       [tournamentId],
     );
     return {
-      ...outcome,
+      ...outcome(),
       status: 'scheduling' as const,
       changed: true,
       matchdayCount,

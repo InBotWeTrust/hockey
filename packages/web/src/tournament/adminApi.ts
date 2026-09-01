@@ -322,6 +322,7 @@ export function generateAdminTournamentSchedule(tournamentId: string, expectedRe
 export function generateAdminTournamentManualSchedule(
   tournamentId: string,
   expectedRevision: number,
+  playoffSize: 2 | 4 | 8 | 16,
 ) {
   return apiFetch<{
     tournamentId: string;
@@ -332,7 +333,7 @@ export function generateAdminTournamentManualSchedule(
     fixtureCount: number;
   }>(`/admin/tournaments/${tournamentId}/schedule/generate-manual`, {
     method: 'POST',
-    body: JSON.stringify({ expectedRevision }),
+    body: JSON.stringify({ expectedRevision, playoffSize }),
   });
 }
 

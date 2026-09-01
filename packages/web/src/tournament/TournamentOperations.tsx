@@ -58,6 +58,16 @@ type OperationsTab =
   | 'dispatches';
 
 type ParticipantFilter = 'all' | 'approved' | 'applied' | 'rejected';
+type PlayoffSize = 2 | 4 | 8 | 16;
+
+const PLAYOFF_SIZES: PlayoffSize[] = [2, 4, 8, 16];
+
+function selectedManualPlayoffSize(approvedCount: number, currentSize: number): PlayoffSize {
+  const available = PLAYOFF_SIZES.filter((size) => size <= approvedCount);
+  const current = currentSize as PlayoffSize;
+  if (available.includes(current)) return current;
+  return available[available.length - 1] ?? 2;
+}
 
 const participantFilters: Array<{ id: ParticipantFilter; label: string }> = [
   { id: 'all', label: 'Все' },
@@ -509,6 +519,17 @@ export function TournamentOperations({
   const [tab, setTab] = useState<OperationsTab>('participants');
   const [status, setStatus] = useState(tournament.status);
   useEffect(() => setStatus(tournament.status), [tournament.status]);
+  const approvedParticipantCount = tournament.lifecycle.approvedParticipantCount;
+  const configuredPlayoffSize = Number(tournament.rules?.config?.playoffSize ?? 0);
+  const [manualScheduleRecoveryOpen, setManualScheduleRecoveryOpen] = useState(false);
+  const [manualPlayoffSize, setManualPlayoffSize] = useState<PlayoffSize>(() =>
+    selectedManualPlayoffSize(approvedParticipantCount, configuredPlayoffSize),
+  );
+  useEffect(() => {
+    setManualPlayoffSize(
+      selectedManualPlayoffSize(approvedParticipantCount, configuredPlayoffSize),
+    );
+  }, [approvedParticipantCount, configuredPlayoffSize]);
   const [reason, setReason] = useState('Решение администратора');
   const [participantFilter, setParticipantFilter] = useState<ParticipantFilter>('all');
   const [rejectingApplication, setRejectingApplication] = useState(false);
@@ -622,7 +643,11 @@ export function TournamentOperations({
       if (action === 'generate')
         return generateAdminTournamentSchedule(tournament.id, tournament.revision);
       if (action === 'manual_generate') {
-        return generateAdminTournamentManualSchedule(tournament.id, tournament.revision);
+        return generateAdminTournamentManualSchedule(
+          tournament.id,
+          tournament.revision,
+          manualPlayoffSize,
+        );
       }
       return startAdminTournamentRegularSeason(tournament.id);
     },
@@ -665,6 +690,7 @@ export function TournamentOperations({
       if (action === 'start_regular') {
         setLifecycleFeedback('Регулярный сезон начался.');
       }
+      if (action === 'manual_generate') setManualScheduleRecoveryOpen(false);
       refreshOperations();
       await onTournamentUpdated?.();
     },
@@ -677,40 +703,36 @@ export function TournamentOperations({
       );
     },
   });
+  const refreshTournamentAfterRosterMutation = async () => {
+    await client.invalidateQueries({ queryKey: ['admin', 'tournaments'] });
+    await client.invalidateQueries({ queryKey: ['admin', 'tournaments', 'pending-applications'] });
+    await onTournamentUpdated?.();
+  };
   const approve = useMutation({
     mutationFn: (participantId: string) =>
       approveAdminTournamentParticipant(tournament.id, participantId),
-    onSuccess: () => {
+    onSuccess: async () => {
       setSelectedParticipant(null);
-      void client.invalidateQueries({ queryKey: ['admin', 'tournaments'] });
-      void client.invalidateQueries({
-        queryKey: ['admin', 'tournaments', 'pending-applications'],
-      });
-      return client.invalidateQueries({ queryKey: participantsKey });
+      await refreshTournamentAfterRosterMutation();
+      await client.invalidateQueries({ queryKey: participantsKey });
     },
   });
   const approveAll = useMutation({
     mutationFn: () => approveAllAdminTournamentApplications(tournament.id),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: ['admin', 'tournaments'] });
-      void client.invalidateQueries({
-        queryKey: ['admin', 'tournaments', 'pending-applications'],
-      });
-      return client.invalidateQueries({ queryKey: participantsKey });
+    onSuccess: async () => {
+      await refreshTournamentAfterRosterMutation();
+      await client.invalidateQueries({ queryKey: participantsKey });
     },
   });
   const rejectApplication = useMutation({
     mutationFn: (participantId: string) =>
       rejectAdminTournamentApplication(tournament.id, participantId, rejectionReason.trim()),
-    onSuccess: () => {
+    onSuccess: async () => {
       setSelectedParticipant(null);
       setRejectingApplication(false);
       setRejectionReason('');
-      void client.invalidateQueries({ queryKey: ['admin', 'tournaments'] });
-      void client.invalidateQueries({
-        queryKey: ['admin', 'tournaments', 'pending-applications'],
-      });
-      return client.invalidateQueries({ queryKey: participantsKey });
+      await refreshTournamentAfterRosterMutation();
+      await client.invalidateQueries({ queryKey: participantsKey });
     },
   });
   const disqualify = useMutation({
@@ -720,11 +742,12 @@ export function TournamentOperations({
         participantId,
         disqualificationReason.trim(),
       ),
-    onSuccess: () => {
+    onSuccess: async () => {
       setSelectedParticipant(null);
       setDisqualifyingParticipant(false);
       setDisqualificationReason('');
-      return client.invalidateQueries({ queryKey: participantsKey });
+      await refreshTournamentAfterRosterMutation();
+      await client.invalidateQueries({ queryKey: participantsKey });
     },
   });
   const reschedule = useMutation({
@@ -829,9 +852,10 @@ export function TournamentOperations({
   });
   const invite = useMutation({
     mutationFn: (userId: string) => inviteAdminTournamentParticipant(tournament.id, userId),
-    onSuccess: () => {
+    onSuccess: async () => {
       setInviteSearch('');
-      void client.invalidateQueries({ queryKey: participantsKey });
+      await refreshTournamentAfterRosterMutation();
+      await client.invalidateQueries({ queryKey: participantsKey });
     },
   });
   const pause = useMutation({
@@ -982,7 +1006,7 @@ export function TournamentOperations({
               type="button"
               className="admin-compact-btn"
               disabled={lifecycle.isPending}
-              onClick={() => lifecycle.mutate('manual_generate')}
+              onClick={() => setManualScheduleRecoveryOpen(true)}
             >
               {lifecycle.isPending ? 'Создаём календарь…' : 'Создать календарь'}
             </button>
@@ -1609,6 +1633,51 @@ export function TournamentOperations({
           </div>
         </AccessibleModal>
       )}
+      {manualScheduleRecoveryOpen && (
+        <AccessibleModal
+          title="Создать календарь"
+          ariaLabel="Создать календарь"
+          onClose={() => setManualScheduleRecoveryOpen(false)}
+          headerAction={
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Закрыть создание календаря"
+              onClick={() => setManualScheduleRecoveryOpen(false)}
+            >
+              <X size={16} />
+            </button>
+          }
+        >
+          <div className="tournament-series-decision">
+            <p className="modal-copy">
+              Подтверждённые игроки: {approvedParticipantCount}. Перед созданием календаря выберите
+              размер плей-офф. Этот выбор станет частью опубликованных правил турнира.
+            </p>
+            <label className="tournament-operations__field">
+              <span>Размер плей-офф</span>
+              <GlassSelect
+                ariaLabel="Размер плей-офф"
+                value={String(manualPlayoffSize)}
+                options={PLAYOFF_SIZES.filter((size) => size <= approvedParticipantCount).map(
+                  (size) => ({ value: String(size), label: `${size} игрока` }),
+                )}
+                onChange={(value) => setManualPlayoffSize(Number(value) as PlayoffSize)}
+              />
+            </label>
+            <button
+              type="button"
+              className="admin-compact-btn admin-compact-btn--primary"
+              disabled={lifecycle.isPending}
+              onClick={() => lifecycle.mutate('manual_generate')}
+            >
+              {lifecycle.isPending
+                ? 'Создаём календарь…'
+                : 'Подтвердить размер плей-офф и создать календарь'}
+            </button>
+          </div>
+        </AccessibleModal>
+      )}
       {actionsOpen && (
         <AccessibleModal
           title="Действия турнира"
@@ -1655,7 +1724,7 @@ export function TournamentOperations({
                 className="admin-compact-btn"
                 onClick={() => {
                   setActionsOpen(false);
-                  lifecycle.mutate('generate');
+                  setManualScheduleRecoveryOpen(true);
                 }}
               >
                 Создать календарь

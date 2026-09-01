@@ -12,6 +12,7 @@ import { lockTournament } from '../../src/tournament/locks.js';
 import {
   generateRegularSchedule,
   publishRegularSchedule,
+  startTournamentPlayoffs,
   type TournamentRulesSnapshot,
   updateTournamentDraft,
 } from '../../src/tournament/service.js';
@@ -223,7 +224,8 @@ async function configureAutomaticPlayoffs(
             'firstGameStartsAt', $3::text
           ))
         )
-      where tournament_id = $1 and revision = 1`,
+      where tournament_id = $1
+        and revision = (select current_revision from tournament where id = $1)`,
     [input.tournamentId, template.rows[0]!.id, input.firstGameStartsAt],
   );
 }
@@ -384,10 +386,10 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
     expect(afterStaleGenerate.rows[0]!.id).toBe(beforeStaleGenerate.rows[0]!.id);
   });
 
-  it('manually schedules a blocked head-to-head tournament with two approved players and is idempotent', async () => {
+  it('recovers a blocked head-to-head tournament by publishing a chosen valid playoff size before scheduling', async () => {
     const tournament = await seedAutomaticTournament(pool, {
       source: 'head_to_head',
-      approved: 2,
+      approved: 3,
       playoffSize: 4,
       slugSuffix: '-manual-override',
     });
@@ -401,25 +403,63 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
       method: 'POST',
       url: `/admin/tournaments/${tournament.id}/schedule/generate-manual`,
       headers: { authorization: `Bearer ${adminToken}` },
-      payload: { expectedRevision: tournament.revision },
+      payload: { expectedRevision: tournament.revision, playoffSize: 2 },
     });
     const secondResponse = await app.inject({
       method: 'POST',
       url: `/admin/tournaments/${tournament.id}/schedule/generate-manual`,
       headers: { authorization: `Bearer ${adminToken}` },
-      payload: { expectedRevision: tournament.revision },
+      payload: { expectedRevision: tournament.revision, playoffSize: 2 },
     });
     expect(firstResponse.statusCode).toBe(200);
     expect(secondResponse.statusCode).toBe(200);
     const first = firstResponse.json();
     const second = secondResponse.json();
-    expect(first).toMatchObject({ status: 'scheduling', participantCount: 2, changed: true });
+    expect(first).toMatchObject({
+      status: 'scheduling',
+      participantCount: 3,
+      playoffSize: 2,
+      revision: 2,
+      changed: true,
+    });
     expect(first.fixtureCount).toBeGreaterThan(0);
-    expect(second).toMatchObject({ status: 'scheduling', participantCount: 2, changed: false });
+    expect(second).toMatchObject({
+      status: 'scheduling',
+      participantCount: 3,
+      playoffSize: 2,
+      revision: 2,
+      changed: false,
+    });
     expect(second.fixtureCount).toBe(first.fixtureCount);
+    const publishedRules = await pool.query<{ revision: number; playoff_size: number }>(
+      `select revision, (rules_snapshot->'config'->>'playoffSize')::int as playoff_size
+         from tournament_revision where tournament_id = $1 and is_published
+         order by revision`,
+      [tournament.id],
+    );
+    expect(publishedRules.rows).toEqual([
+      { revision: 1, playoff_size: 4 },
+      { revision: 2, playoff_size: 2 },
+    ]);
+
+    await configureAutomaticPlayoffs(pool, {
+      tournamentId: tournament.id,
+      firstGameStartsAt: '2030-09-03T12:00:00.000Z',
+    });
+    await publishRegularSchedule(pool, tournament.id);
+    await pool.query(
+      `update tournament_fixture
+          set status = 'settled', outcome = 'home_win', home_score = 1, away_score = 0,
+              winner_participant_id = home_participant_id
+        where tournament_id = $1`,
+      [tournament.id],
+    );
+    await expect(
+      startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-03T11:00:00.000Z')),
+    ).resolves.toMatchObject({ status: 'playoff', created: true, seriesCount: 1 });
   });
 
-  it('rejects the manual schedule override below two players and for daily or Classic tournaments', async () => {
+  it('rejects recovery below two players, above the approved roster, and for daily or Classic tournaments', async () => {
     const tooFew = await seedAutomaticTournament(pool, {
       source: 'head_to_head',
       approved: 1,
@@ -440,11 +480,19 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
       slugSuffix: '-manual-classic',
       playerIdBase: 1_300,
     });
-    for (const tournament of [tooFew, daily, classic]) {
+    const threePlayers = await seedAutomaticTournament(pool, {
+      source: 'head_to_head',
+      approved: 3,
+      playoffSize: 4,
+      slugSuffix: '-manual-too-large',
+      playerIdBase: 1_400,
+    });
+    for (const tournament of [tooFew, daily, classic, threePlayers]) {
       await reconcileTournamentLifecycle(pool, { now: CLOSES_AT, tournamentId: tournament.id });
       await expect(
         generateRegularSchedule(pool, tournament.id, tournament.revision, {
-          allowInsufficientHeadToHeadParticipants: true,
+          manualPlayoffSize: tournament.id === threePlayers.id ? 4 : 2,
+          recoveredBy: ADMIN_ID,
         }),
       ).rejects.toMatchObject({ code: 'conflict' });
     }

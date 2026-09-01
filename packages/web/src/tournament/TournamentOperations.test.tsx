@@ -271,10 +271,21 @@ describe('TournamentOperations', () => {
       </QueryClientProvider>,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Создать календарь' }));
+    expect(screen.getByRole('dialog', { name: 'Создать календарь' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Создать календарь' })).toHaveTextContent(
+      'Подтверждённые игроки: 2',
+    );
+    expect(screen.getByRole('combobox', { name: 'Размер плей-офф' })).toHaveTextContent('2 игрока');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Подтвердить размер плей-офф и создать календарь' }),
+    );
     await waitFor(() =>
       expect(globalThis.fetch).toHaveBeenCalledWith(
         `/api/admin/tournaments/${base.id}/schedule/generate-manual`,
-        expect.objectContaining({ method: 'POST' }),
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ expectedRevision: base.revision, playoffSize: 2 }),
+        }),
       ),
     );
 
@@ -325,6 +336,152 @@ describe('TournamentOperations', () => {
       </QueryClientProvider>,
     );
     expect(screen.queryByRole('button', { name: 'Создать календарь' })).not.toBeInTheDocument();
+  });
+
+  it('shows calendar recovery immediately after approving the player who completes the blocked roster', async () => {
+    const base = {
+      ...tournament(),
+      status: 'registration' as const,
+      lifecycle: {
+        action: 'registration_open' as const,
+        dueAt: null,
+        approvedParticipantCount: 1,
+        requiredParticipantCount: 4,
+        reason: null,
+      },
+    };
+    const refreshed = {
+      ...base,
+      status: 'registration_blocked' as const,
+      lifecycle: {
+        action: 'block_registration' as const,
+        dueAt: null,
+        approvedParticipantCount: 2,
+        requiredParticipantCount: 4,
+        reason: 'not_enough_participants' as const,
+      },
+    };
+    const participants = {
+      participants: [
+        {
+          id: 'approved-player',
+          user_id: 'approved-user',
+          display_name: 'Подтверждённый игрок',
+          avatar_url: null,
+          state: 'approved' as const,
+          seed: null,
+          entry_fee_coins: 0,
+          entry_fee_state: 'not_required' as const,
+        },
+        {
+          id: 'applied-player',
+          user_id: 'applied-user',
+          display_name: 'Игрок на проверке',
+          avatar_url: null,
+          state: 'applied' as const,
+          seed: null,
+          entry_fee_coins: 0,
+          entry_fee_state: 'not_required' as const,
+        },
+      ],
+    };
+    vi.spyOn(await import('./adminApi.js'), 'fetchAdminTournamentParticipants').mockResolvedValue(
+      participants,
+    );
+    const approve = vi
+      .spyOn(await import('./adminApi.js'), 'approveAdminTournamentParticipant')
+      .mockResolvedValue({ participantId: 'applied-player', state: 'approved' });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const rerenderTournament: { current?: (next: AdminTournament) => void } = {};
+    const refreshSelectedTournament = vi.fn(async () => rerenderTournament.current?.(refreshed));
+    const rendered = render(
+      <QueryClientProvider client={client}>
+        <TournamentOperations
+          tournament={base}
+          onBack={vi.fn()}
+          onEdit={vi.fn()}
+          onRemoved={vi.fn()}
+          onTournamentUpdated={refreshSelectedTournament}
+        />
+      </QueryClientProvider>,
+    );
+    rerenderTournament.current = (next) => {
+      rendered.rerender(
+        <QueryClientProvider client={client}>
+          <TournamentOperations
+            tournament={next}
+            onBack={vi.fn()}
+            onEdit={vi.fn()}
+            onRemoved={vi.fn()}
+            onTournamentUpdated={refreshSelectedTournament}
+          />
+        </QueryClientProvider>,
+      );
+    };
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Управление: Игрок на проверке' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Одобрить заявку' }));
+
+    await waitFor(() => expect(approve).toHaveBeenCalledWith(base.id, 'applied-player'));
+    await waitFor(() => expect(refreshSelectedTournament).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole('button', { name: 'Создать календарь' })).toBeInTheDocument();
+  });
+
+  it('offers only available playoff sizes and sends the size chosen for calendar recovery', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      const body = url.endsWith('/participants')
+        ? { participants: [] }
+        : { tournamentId: tournament().id, status: 'scheduling' };
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const base = {
+      ...tournament(),
+      status: 'registration_blocked' as const,
+      lifecycle: {
+        action: 'block_registration' as const,
+        dueAt: null,
+        approvedParticipantCount: 4,
+        requiredParticipantCount: 8,
+        reason: 'not_enough_participants' as const,
+      },
+      rules: { config: { timezone: 'Europe/Moscow', playoffSize: 2 } },
+    };
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentOperations
+          tournament={base}
+          onBack={vi.fn()}
+          onEdit={vi.fn()}
+          onRemoved={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Создать календарь' }));
+    fireEvent.click(screen.getByRole('combobox', { name: 'Размер плей-офф' }));
+    expect(await screen.findByRole('option', { name: '2 игрока' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('option', { name: '4 игрока' }));
+    expect(screen.queryByRole('option', { name: '8 игрока' })).not.toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Размер плей-офф' })).toHaveTextContent('4 игрока');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Подтвердить размер плей-офф и создать календарь' }),
+    );
+
+    await waitFor(() =>
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        `/api/admin/tournaments/${base.id}/schedule/generate-manual`,
+        expect.objectContaining({
+          body: JSON.stringify({ expectedRevision: base.revision, playoffSize: 4 }),
+        }),
+      ),
+    );
   });
 
   it('explains automatic lifecycle milestones in human language', () => {

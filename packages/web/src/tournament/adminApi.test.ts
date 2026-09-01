@@ -129,11 +129,14 @@ describe('tournament admin API', () => {
   });
 
   it('uses the dedicated endpoint for the exceptional manual head-to-head schedule', async () => {
-    await generateAdminTournamentManualSchedule('tournament-1', 7);
+    await generateAdminTournamentManualSchedule('tournament-1', 7, 2);
 
     expect(fetch).toHaveBeenCalledWith(
       '/api/admin/tournaments/tournament-1/schedule/generate-manual',
-      expect.objectContaining({ method: 'POST', body: JSON.stringify({ expectedRevision: 7 }) }),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ expectedRevision: 7, playoffSize: 2 }),
+      }),
     );
   });
 });
