@@ -447,11 +447,8 @@ function TournamentRules({ tournament }: { tournament: TournamentSummary }): JSX
         <div className="tournament-rules__rounds">
           {playoffRounds.map((value, index) => {
             const round = objectValue(value);
-            const overtime = objectValue(round.overtime);
             const roundNumber = numberValue(round.roundNumber, index + 1);
             const winsRequired = numberValue(round.winsRequired, 1);
-            const overtimeCount = numberValue(overtime.count, 1);
-            const shootoutShots = numberValue(overtime.shootoutInitialShots, 3);
             const format = tournament.playoffFormats?.find(
               (candidate) => candidate.roundNumber === roundNumber,
             );
@@ -469,12 +466,6 @@ function TournamentRules({ tournament }: { tournament: TournamentSummary }): JSX
                   .
                 </p>
                 <p>{homeSequenceSentence(round.homeSequence)}</p>
-                <p className="tournament-rules__muted">
-                  Если основное время закончится вничью, будет {overtimeCount}{' '}
-                  {pluralRu(overtimeCount, 'овертайм', 'овертайма', 'овертаймов')}. Затем — буллиты:
-                  по {shootoutShots} {pluralRu(shootoutShots, 'броску', 'броска', 'бросков')}{' '}
-                  каждому, после этого по одному до победы.
-                </p>
               </article>
             );
           })}

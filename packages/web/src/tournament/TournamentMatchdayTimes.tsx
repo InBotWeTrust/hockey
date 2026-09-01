@@ -30,14 +30,22 @@ export function TournamentMatchdayRow(props: {
   endsAt: string;
   startLabel: string;
   endLabel: string;
+  regularStarted?: boolean;
 }) {
-  const state = matchdayState(props.startsAt, props.endsAt);
+  const waitingForStart = props.regularStarted === false;
+  const state = waitingForStart ? 'upcoming' : matchdayState(props.startsAt, props.endsAt);
   return (
     <article className={`tournament-matchday-row tournament-matchday-row--${state}`}>
       <div className="tournament-matchday-row__heading">
         <strong>{props.number}-й тур</strong>
-        {state === 'past' && <span className="tournament-matchday-row__status">Завершён</span>}
-        {state === 'current' && <span className="tournament-matchday-row__status">Сейчас</span>}
+        {waitingForStart ? (
+          <span className="tournament-matchday-row__status">Ожидает запуска</span>
+        ) : (
+          <>
+            {state === 'past' && <span className="tournament-matchday-row__status">Завершён</span>}
+            {state === 'current' && <span className="tournament-matchday-row__status">Сейчас</span>}
+          </>
+        )}
       </div>
       <TournamentMatchdayTimes start={props.startLabel} end={props.endLabel} />
     </article>

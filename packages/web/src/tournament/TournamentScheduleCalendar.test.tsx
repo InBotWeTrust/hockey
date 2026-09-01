@@ -259,6 +259,9 @@ describe('TournamentScheduleCalendar', () => {
     expect(
       screen.queryByRole('button', { name: 'Открыть ежедневную игру' }),
     ).not.toBeInTheDocument();
+    expect(screen.getByText('Ожидает запуска')).toBeInTheDocument();
+    expect(screen.queryByText('Сейчас')).not.toBeInTheDocument();
+    expect(screen.queryByText('Завершён')).not.toBeInTheDocument();
   });
 
   it('offers a tournament game only inside the selected matchday time window', () => {

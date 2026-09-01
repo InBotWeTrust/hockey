@@ -113,6 +113,26 @@ function terminalStatus(status: TournamentStatus): boolean {
   return status === 'completed' || status === 'cancelled' || status === 'archived';
 }
 
+function hasOnlyCompletedDailyHistory(tournament: AuditTournamentRow): boolean {
+  const config = tournament.rules_snapshot.config;
+  return (
+    tournament.status === 'regular' &&
+    config.regularSource === 'daily_aggregate' &&
+    Number.isSafeInteger(config.dailyDays) &&
+    config.dailyDays > 0 &&
+    tournament.approved_participant_count > 0 &&
+    tournament.daily_result_count === tournament.approved_participant_count * config.dailyDays &&
+    tournament.completed_game_count === tournament.daily_result_count &&
+    tournament.started_game_count === 0 &&
+    tournament.round_count === 0 &&
+    tournament.fixture_count === 0 &&
+    tournament.series_count === 0 &&
+    tournament.classic_session_count === 0 &&
+    tournament.classic_period_count === 0 &&
+    tournament.classic_shot_count === 0
+  );
+}
+
 async function loadAuditTournament(
   conn: Pool | PoolClient,
   tournamentId: string,
@@ -343,9 +363,10 @@ async function blockingReasons(
     reasons.push('automatic_lifecycle_marker_is_not_legacy');
   }
   if (
-    tournament.started_game_count + tournament.completed_game_count > 0 ||
-    tournament.classic_period_count > 0 ||
-    tournament.classic_shot_count > 0
+    !hasOnlyCompletedDailyHistory(tournament) &&
+    (tournament.started_game_count + tournament.completed_game_count > 0 ||
+      tournament.classic_period_count > 0 ||
+      tournament.classic_shot_count > 0)
   ) {
     reasons.push('games_already_started');
   }
@@ -498,6 +519,40 @@ export async function auditAutomaticTournamentLifecycle(
     } else {
       tournaments.push(initial);
     }
+  }
+  return { tournaments };
+}
+
+export async function auditCompletedLegacyDailyTournamentLifecycle(
+  pool: Pool,
+  options: Omit<AutomaticLifecycleAuditOptions, 'tournamentId'>,
+): Promise<AutomaticLifecycleAuditReport> {
+  if (Number.isNaN(options.now.getTime())) throw new Error('now must be a valid date');
+  const candidates = await pool.query<{ id: string }>(
+    `select t.id::text
+       from tournament t
+       join tournament_revision revision on revision.id = t.published_revision_id
+      where t.status = 'regular'
+        and t.regular_source = 'daily_aggregate'
+        and not (revision.rules_snapshot ? 'automaticLifecycleVersion')
+        and coalesce((revision.rules_snapshot->'config'->>'dailyDays')::int, 0) > 0
+        and (select count(*)::int from tournament_participant participant
+              where participant.tournament_id = t.id and participant.state = 'approved') > 0
+        and (select count(*)::int from tournament_daily_result result
+              where result.tournament_id = t.id)
+            = (select count(*)::int from tournament_participant participant
+                where participant.tournament_id = t.id and participant.state = 'approved')
+              * (revision.rules_snapshot->'config'->>'dailyDays')::int
+      order by t.created_at, t.id`,
+  );
+  const tournaments: AutomaticLifecycleAuditItem[] = [];
+  for (const candidate of candidates.rows) {
+    const report = await auditAutomaticTournamentLifecycle(pool, {
+      tournamentId: candidate.id,
+      now: options.now,
+      apply: options.apply,
+    });
+    tournaments.push(...report.tournaments);
   }
   return { tournaments };
 }

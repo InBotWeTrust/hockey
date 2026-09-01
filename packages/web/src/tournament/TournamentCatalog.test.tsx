@@ -1399,11 +1399,7 @@ describe('TournamentCatalog', () => {
         'Первые две игры — дома, следующие две — в гостях. Затем площадки чередуются: дома, в гостях, дома.',
       ),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        'Если основное время закончится вничью, будет 2 овертайма. Затем — буллиты: по 3 броска каждому, после этого по одному до победы.',
-      ),
-    ).toBeInTheDocument();
+    expect(screen.queryByText(/овертайм|буллит/i)).not.toBeInTheDocument();
     expect(screen.getByText('1 место — 100 опыта, 50 монет, 3 звезды')).toBeInTheDocument();
     expect(screen.getByText('1 место — 200 опыта, 100 монет, 5 звёзд')).toBeInTheDocument();
     expect(
