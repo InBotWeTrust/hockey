@@ -33,10 +33,9 @@ export function normalizePublishedTournamentLifecycleRules<T extends UnknownReco
   const config = record(input.config);
   const shouldMarkHeadToHead =
     options.markNewHeadToHead !== false && config.regularSource === 'head_to_head';
-  const { automaticLifecycleVersion, ...rulesWithoutLifecycleMarker } = input;
-  const shouldMarkAutomaticLifecycle =
-    options.markNewAutomaticLifecycle === true ||
-    automaticLifecycleVersion === AUTOMATIC_TOURNAMENT_LIFECYCLE_VERSION;
+  const rulesWithoutLifecycleMarker = { ...input };
+  delete rulesWithoutLifecycleMarker.automaticLifecycleVersion;
+  const shouldMarkAutomaticLifecycle = options.markNewAutomaticLifecycle === true;
   const playoffRounds = Array.isArray(input.playoffRounds)
     ? input.playoffRounds.map((value) => {
         const round = record(value);

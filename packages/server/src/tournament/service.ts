@@ -20,6 +20,10 @@ import {
   DEFAULT_TOURNAMENT_PLANNED_START_INTERVAL_MINUTES,
   DEFAULT_TOURNAMENT_READINESS_MINUTES,
 } from './lifecycleRules.js';
+import {
+  AUTOMATIC_TOURNAMENT_LIFECYCLE_VERSION,
+  automaticLifecycleVersion,
+} from './automaticLifecycle.js';
 import type { RoundGameDay } from './playoffScheduling.js';
 import {
   buildPlayoffSeriesPlan,
@@ -551,6 +555,11 @@ export async function updateTournamentDraft(
         throw new AppError('conflict', 'participant limit is below current applications', 409);
       }
     }
+    const nextRules: TournamentRulesSnapshot = { ...input.rules };
+    delete nextRules.automaticLifecycleVersion;
+    if (automaticLifecycleVersion(tournament.rules_snapshot) !== null) {
+      nextRules.automaticLifecycleVersion = AUTOMATIC_TOURNAMENT_LIFECYCLE_VERSION;
+    }
     const revision = input.expectedRevision + 1;
     const insertedRevision = await client.query<{ id: string }>(
       `insert into tournament_revision
@@ -560,7 +569,7 @@ export async function updateTournamentDraft(
       [
         input.tournamentId,
         revision,
-        JSON.stringify(input.rules),
+        JSON.stringify(nextRules),
         updatesPublishedRules,
         input.updatedBy,
       ],

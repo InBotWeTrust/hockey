@@ -57,14 +57,14 @@ describe('normalizePublishedTournamentLifecycleRules', () => {
     expect(automaticLifecycleVersion(normalized)).toBe(1);
   });
 
-  it('preserves an existing automatic lifecycle v1 marker during an edit', () => {
+  it('strips a client-supplied automatic lifecycle marker without new-create opt-in', () => {
     expect(
       normalizePublishedTournamentLifecycleRules({
         config: { regularSource: 'daily_aggregate' },
         playoffRounds: [],
         automaticLifecycleVersion: 1,
       }),
-    ).toMatchObject({ automaticLifecycleVersion: 1 });
+    ).not.toHaveProperty('automaticLifecycleVersion');
   });
 
   it('does not treat an unmarked persisted rules snapshot as automatic lifecycle enabled', () => {
@@ -221,8 +221,8 @@ describe('published tournament route rules', () => {
     expect(parseRules(validHeadToHeadRules())).not.toHaveProperty('automaticLifecycleVersion');
   });
 
-  it('preserves a v1 automatic lifecycle marker when parsing an edit', () => {
-    expect(parseRules(validHeadToHeadRules(1))).toMatchObject({ automaticLifecycleVersion: 1 });
+  it('strips a v1 automatic lifecycle marker from an edit payload', () => {
+    expect(parseRules(validHeadToHeadRules(1))).not.toHaveProperty('automaticLifecycleVersion');
   });
 
   it('rejects explicit invalid lifecycle values as bad requests', () => {

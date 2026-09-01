@@ -767,6 +767,57 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     expect(updated.publishedRevisionId).toBe(revisions.rows[1]!.id);
   });
 
+  it('does not let a forged automatic lifecycle marker enable a legacy tournament revision', async () => {
+    await seedUsers(pool, 100);
+    const tournament = await createPublishedTournament(pool, 'legacy-marker-forgery', 0);
+
+    const updated = await updateTournamentDraft(pool, {
+      tournamentId: tournament.id,
+      expectedRevision: tournament.revision,
+      title: tournament.title,
+      description: tournament.description,
+      rules: { ...rules(0), automaticLifecycleVersion: 1 },
+      updatedBy: ADMIN_ID,
+      registrationOpensAt: new Date('2020-01-01T00:00:00.000Z'),
+      registrationClosesAt: new Date('2030-08-31T07:00:00.000Z'),
+      startsAt: new Date('2030-09-01T07:00:00.000Z'),
+    });
+    const revision = await pool.query<{ rules_snapshot: TournamentRulesSnapshot }>(
+      `select rules_snapshot from tournament_revision
+        where tournament_id = $1 and revision = $2`,
+      [tournament.id, updated.revision],
+    );
+
+    expect(revision.rows[0]!.rules_snapshot).not.toHaveProperty('automaticLifecycleVersion');
+  });
+
+  it('preserves a stored automatic lifecycle marker when an update payload omits it', async () => {
+    await seedUsers(pool, 100);
+    const tournament = await createPublishedTournament(pool, 'v1-marker-preserved', 0, {
+      ...rules(0),
+      automaticLifecycleVersion: 1,
+    });
+
+    const updated = await updateTournamentDraft(pool, {
+      tournamentId: tournament.id,
+      expectedRevision: tournament.revision,
+      title: tournament.title,
+      description: tournament.description,
+      rules: rules(0),
+      updatedBy: ADMIN_ID,
+      registrationOpensAt: new Date('2020-01-01T00:00:00.000Z'),
+      registrationClosesAt: new Date('2030-08-31T07:00:00.000Z'),
+      startsAt: new Date('2030-09-01T07:00:00.000Z'),
+    });
+    const revision = await pool.query<{ rules_snapshot: TournamentRulesSnapshot }>(
+      `select rules_snapshot from tournament_revision
+        where tournament_id = $1 and revision = $2`,
+      [tournament.id, updated.revision],
+    );
+
+    expect(revision.rows[0]!.rules_snapshot).toMatchObject({ automaticLifecycleVersion: 1 });
+  });
+
   it('does not change the registration price after a player has joined', async () => {
     await seedUsers(pool, 100);
     const tournament = await createPublishedTournament(pool, 'protected-published-edit', 0);
