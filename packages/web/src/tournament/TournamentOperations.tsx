@@ -61,12 +61,18 @@ type ParticipantFilter = 'all' | 'approved' | 'applied' | 'rejected';
 type PlayoffSize = 2 | 4 | 8 | 16;
 
 const PLAYOFF_SIZES: PlayoffSize[] = [2, 4, 8, 16];
+const MANUAL_SCHEDULE_RECOVERY_ERROR =
+  'Не удалось создать календарь. Проверьте число подтверждённых игроков и выбранный размер плей-офф, затем повторите.';
 
 function selectedManualPlayoffSize(approvedCount: number, currentSize: number): PlayoffSize {
   const available = PLAYOFF_SIZES.filter((size) => size <= approvedCount);
   const current = currentSize as PlayoffSize;
   if (available.includes(current)) return current;
   return available[available.length - 1] ?? 2;
+}
+
+function playoffSizeLabel(size: PlayoffSize): string {
+  return `${size} ${russianPlural(size, 'игрок', 'игрока', 'игроков')}`;
 }
 
 const participantFilters: Array<{ id: ParticipantFilter; label: string }> = [
@@ -522,6 +528,9 @@ export function TournamentOperations({
   const approvedParticipantCount = tournament.lifecycle.approvedParticipantCount;
   const configuredPlayoffSize = Number(tournament.rules?.config?.playoffSize ?? 0);
   const [manualScheduleRecoveryOpen, setManualScheduleRecoveryOpen] = useState(false);
+  const [manualScheduleRecoveryError, setManualScheduleRecoveryError] = useState<string | null>(
+    null,
+  );
   const [manualPlayoffSize, setManualPlayoffSize] = useState<PlayoffSize>(() =>
     selectedManualPlayoffSize(approvedParticipantCount, configuredPlayoffSize),
   );
@@ -629,6 +638,14 @@ export function TournamentOperations({
     void client.invalidateQueries({ queryKey: ['admin', 'tournaments'] });
     void client.invalidateQueries({ queryKey: ['admin', 'tournaments', tournament.id] });
   };
+  const openManualScheduleRecovery = () => {
+    setManualScheduleRecoveryError(null);
+    setManualScheduleRecoveryOpen(true);
+  };
+  const closeManualScheduleRecovery = () => {
+    setManualScheduleRecoveryError(null);
+    setManualScheduleRecoveryOpen(false);
+  };
   const lifecycle = useMutation({
     mutationFn: (
       action: 'generate' | 'manual_generate' | 'start_regular',
@@ -651,9 +668,10 @@ export function TournamentOperations({
       }
       return startAdminTournamentRegularSeason(tournament.id);
     },
-    onMutate: () => {
+    onMutate: (action) => {
       setLifecycleFeedback(null);
       setLifecycleFailed(false);
+      if (action === 'manual_generate') setManualScheduleRecoveryError(null);
     },
     onSuccess: async (result, action) => {
       if (
@@ -690,11 +708,15 @@ export function TournamentOperations({
       if (action === 'start_regular') {
         setLifecycleFeedback('Регулярный сезон начался.');
       }
-      if (action === 'manual_generate') setManualScheduleRecoveryOpen(false);
+      if (action === 'manual_generate') closeManualScheduleRecovery();
       refreshOperations();
       await onTournamentUpdated?.();
     },
     onError: (_error, action) => {
+      if (action === 'manual_generate') {
+        setManualScheduleRecoveryError(MANUAL_SCHEDULE_RECOVERY_ERROR);
+        return;
+      }
       setLifecycleFailed(true);
       setLifecycleFeedback(
         action === 'start_regular'
@@ -1006,7 +1028,7 @@ export function TournamentOperations({
               type="button"
               className="admin-compact-btn"
               disabled={lifecycle.isPending}
-              onClick={() => setManualScheduleRecoveryOpen(true)}
+              onClick={openManualScheduleRecovery}
             >
               {lifecycle.isPending ? 'Создаём календарь…' : 'Создать календарь'}
             </button>
@@ -1637,13 +1659,13 @@ export function TournamentOperations({
         <AccessibleModal
           title="Создать календарь"
           ariaLabel="Создать календарь"
-          onClose={() => setManualScheduleRecoveryOpen(false)}
+          onClose={closeManualScheduleRecovery}
           headerAction={
             <button
               type="button"
               className="icon-btn"
               aria-label="Закрыть создание календаря"
-              onClick={() => setManualScheduleRecoveryOpen(false)}
+              onClick={closeManualScheduleRecovery}
             >
               <X size={16} />
             </button>
@@ -1660,21 +1682,28 @@ export function TournamentOperations({
                 ariaLabel="Размер плей-офф"
                 value={String(manualPlayoffSize)}
                 options={PLAYOFF_SIZES.filter((size) => size <= approvedParticipantCount).map(
-                  (size) => ({ value: String(size), label: `${size} игрока` }),
+                  (size) => ({ value: String(size), label: playoffSizeLabel(size) }),
                 )}
                 onChange={(value) => setManualPlayoffSize(Number(value) as PlayoffSize)}
               />
             </label>
-            <button
-              type="button"
-              className="admin-compact-btn admin-compact-btn--primary"
-              disabled={lifecycle.isPending}
-              onClick={() => lifecycle.mutate('manual_generate')}
-            >
-              {lifecycle.isPending
-                ? 'Создаём календарь…'
-                : 'Подтвердить размер плей-офф и создать календарь'}
-            </button>
+            {manualScheduleRecoveryError !== null && (
+              <div className="tournament-operations__recovery-error" role="alert">
+                {manualScheduleRecoveryError}
+              </div>
+            )}
+            <div className="modal-actions tournament-operations__recovery-actions">
+              <button
+                type="button"
+                className="modal-primary btn btn--cta"
+                disabled={lifecycle.isPending}
+                onClick={() => lifecycle.mutate('manual_generate')}
+              >
+                {lifecycle.isPending
+                  ? 'Создаём календарь…'
+                  : 'Подтвердить размер плей-офф и создать календарь'}
+              </button>
+            </div>
           </div>
         </AccessibleModal>
       )}
@@ -1724,7 +1753,7 @@ export function TournamentOperations({
                 className="admin-compact-btn"
                 onClick={() => {
                   setActionsOpen(false);
-                  setManualScheduleRecoveryOpen(true);
+                  openManualScheduleRecovery();
                 }}
               >
                 Создать календарь

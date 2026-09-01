@@ -484,6 +484,117 @@ describe('TournamentOperations', () => {
     );
   });
 
+  it('keeps calendar recovery open after an error and lets the administrator retry', async () => {
+    let manualRequests = 0;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/participants')) {
+        return new Response(JSON.stringify({ participants: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.endsWith('/schedule/generate-manual')) {
+        manualRequests += 1;
+        if (manualRequests === 1) {
+          return new Response(
+            JSON.stringify({ error: { code: 'revision_conflict', message: 'stale revision' } }),
+            { status: 409, headers: { 'content-type': 'application/json' } },
+          );
+        }
+      }
+      return new Response(JSON.stringify({ tournamentId: tournament().id, status: 'scheduling' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const base = {
+      ...tournament(),
+      status: 'registration_blocked' as const,
+      lifecycle: {
+        action: 'block_registration' as const,
+        dueAt: null,
+        approvedParticipantCount: 2,
+        requiredParticipantCount: 4,
+        reason: 'not_enough_participants' as const,
+      },
+      rules: { config: { timezone: 'Europe/Moscow', playoffSize: 2 } },
+    };
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentOperations
+          tournament={base}
+          onBack={vi.fn()}
+          onEdit={vi.fn()}
+          onRemoved={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Создать календарь' }));
+    const dialog = screen.getByRole('dialog', { name: 'Создать календарь' });
+    const confirm = within(dialog).getByRole('button', {
+      name: 'Подтвердить размер плей-офф и создать календарь',
+    });
+    expect(confirm).toHaveClass('modal-primary', 'btn--cta');
+    fireEvent.click(confirm);
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      'Не удалось создать календарь. Проверьте число подтверждённых игроков и выбранный размер плей-офф, затем повторите.',
+    );
+    expect(screen.getByRole('dialog', { name: 'Создать календарь' })).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Закрыть создание календаря' }));
+    expect(screen.queryByRole('dialog', { name: 'Создать календарь' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Создать календарь' }));
+    const retryDialog = screen.getByRole('dialog', { name: 'Создать календарь' });
+    expect(within(retryDialog).queryByRole('alert')).not.toBeInTheDocument();
+
+    fireEvent.click(
+      within(retryDialog).getByRole('button', {
+        name: 'Подтвердить размер плей-офф и создать календарь',
+      }),
+    );
+    await waitFor(() => expect(manualRequests).toBe(2));
+    expect(screen.queryByRole('dialog', { name: 'Создать календарь' })).not.toBeInTheDocument();
+  });
+
+  it('uses correct Russian player labels for every supported playoff size', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const base = {
+      ...tournament(),
+      status: 'registration_blocked' as const,
+      lifecycle: {
+        action: 'block_registration' as const,
+        dueAt: null,
+        approvedParticipantCount: 16,
+        requiredParticipantCount: 16,
+        reason: 'not_enough_participants' as const,
+      },
+      rules: { config: { timezone: 'Europe/Moscow', playoffSize: 2 } },
+    };
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentOperations
+          tournament={base}
+          onBack={vi.fn()}
+          onEdit={vi.fn()}
+          onRemoved={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Создать календарь' }));
+    fireEvent.click(screen.getByRole('combobox', { name: 'Размер плей-офф' }));
+    expect(await screen.findByRole('option', { name: '2 игрока' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '4 игрока' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '8 игроков' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '16 игроков' })).toBeInTheDocument();
+  });
+
   it('explains automatic lifecycle milestones in human language', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { rerender } = render(

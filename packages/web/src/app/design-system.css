@@ -7149,6 +7149,23 @@ button.daily-calendar__day:active {
   padding-left: 2px;
 }
 
+.tournament-operations__recovery-error {
+  color: #9a2d2d;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.tournament-operations__recovery-actions {
+  margin-top: 4px;
+}
+
+.tournament-operations__recovery-actions .modal-primary {
+  line-height: 1.25;
+  white-space: normal;
+}
+
 .tournament-player-search {
   position: relative;
   min-width: 0;
