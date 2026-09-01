@@ -113,6 +113,30 @@ function calendarStatusLabel(status: CalendarDayStatus): string {
   return 'без бросков';
 }
 
+function liveDailyGame(state: DailyStateResponse | undefined): DailyGameStats | null {
+  if (!state?.day_date || state.current_period <= 0) return null;
+  const periods = [...state.recent_periods];
+  if (state.state === 'period_active') {
+    const startedAt = timestampMs(state.period_started_at);
+    const serverNow = timestampMs(state.server_now);
+    periods.push({
+      period_number: state.current_period,
+      shots_taken: state.current_period_shots,
+      goals: state.current_period_goals,
+      closed_reason: 'timeout',
+      duration_ms: startedAt > 0 && serverNow > startedAt ? serverNow - startedAt : 0,
+      ended_at: state.server_now,
+    });
+  }
+  return {
+    day_date: state.day_date,
+    total_shots: state.daily_total_shots,
+    total_goals: state.daily_total_goals,
+    total_duration_ms: periods.reduce((total, period) => total + period.duration_ms, 0),
+    periods,
+  };
+}
+
 function formatDurationMs(ms: number): string {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
   const hours = Math.floor(totalSeconds / 3600);
@@ -203,6 +227,7 @@ export function DailyOverviewScreen(): JSX.Element {
   const state = useQuery({
     queryKey: ['daily', 'state'],
     queryFn: fetchDailyState,
+    refetchOnMount: 'always',
   });
   const history = useInfiniteQuery({
     queryKey: ['daily', 'history'],
@@ -211,7 +236,12 @@ export function DailyOverviewScreen(): JSX.Element {
     getNextPageParam: (lastPage) => lastPage.nextOffset ?? undefined,
   });
   const today = state.data;
-  const games = history.data?.pages.flatMap((page) => page.games) ?? [];
+  const historyGames = history.data?.pages.flatMap((page) => page.games) ?? [];
+  const currentGame = liveDailyGame(today);
+  const games = useMemo(() => {
+    if (!currentGame) return historyGames;
+    return [currentGame, ...historyGames.filter((game) => game.day_date !== currentGame.day_date)];
+  }, [currentGame, historyGames]);
   const historySummary = history.data?.pages[0]?.summary;
   const syncedNow = dailyNowMs(today, now);
   const timer = todayTimer(today, syncedNow);
@@ -223,6 +253,10 @@ export function DailyOverviewScreen(): JSX.Element {
     const id = window.setInterval(() => setNow(Date.now()), 500);
     return () => window.clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    setCalendarMonth(null);
+  }, [today?.day_date]);
 
   useEffect(() => {
     if (!history.hasNextPage || history.isFetchingNextPage) return;
@@ -404,6 +438,9 @@ export function DailyOverviewScreen(): JSX.Element {
                 monthKey={selectedMonth}
                 latestMonth={latestMonth}
                 gamesByDate={gamesByDate}
+                activeDayDate={
+                  currentGame && today?.state !== 'closed' ? currentGame.day_date : null
+                }
                 totalPeriods={today?.total_periods ?? 3}
                 loadingOlderDays={history.isFetchingNextPage}
                 onPreviousMonth={() => setCalendarMonth(shiftMonth(selectedMonth, -1))}
@@ -429,6 +466,7 @@ function DailyHistoryCalendar({
   monthKey,
   latestMonth,
   gamesByDate,
+  activeDayDate,
   totalPeriods,
   loadingOlderDays,
   onPreviousMonth,
@@ -438,6 +476,7 @@ function DailyHistoryCalendar({
   monthKey: string;
   latestMonth: string;
   gamesByDate: Map<string, DailyGameStats>;
+  activeDayDate: string | null;
   totalPeriods: number;
   loadingOlderDays: boolean;
   onPreviousMonth: () => void;
@@ -486,13 +525,14 @@ function DailyHistoryCalendar({
               </span>
             );
           }
-          const status = calendarStatus(game, totalPeriods);
+          const isActiveToday = dayDate === activeDayDate;
+          const status = isActiveToday ? 'incomplete' : calendarStatus(game, totalPeriods);
           return (
             <button
               key={dayDate}
               type="button"
-              className={`daily-calendar__day daily-calendar__day--${status}`}
-              aria-label={`${calendarDayLabel(dayDate)}: ${calendarStatusLabel(status)}`}
+              className={`daily-calendar__day daily-calendar__day--${status}${isActiveToday ? ' daily-calendar__day--active-today' : ''}`}
+              aria-label={`${calendarDayLabel(dayDate)}: ${isActiveToday ? 'игра идёт' : calendarStatusLabel(status)}`}
               onClick={() => onSelectGame(game)}
             >
               <span className="daily-calendar__day-number">{day}</span>

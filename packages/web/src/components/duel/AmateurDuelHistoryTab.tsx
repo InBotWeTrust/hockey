@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import {
   fetchAmateurHistoryCalendar,
   type AmateurDuelHistoryCalendarMatch,
@@ -124,10 +124,22 @@ function HistorySummaryCard({
         <strong>{stats.win_percentage}% побед</strong>
       </div>
       <dl className="duel-history-summary__tiles">
-        <div><dt>Сыграно</dt><dd>{stats.played}</dd></div>
-        <div><dt>Победы</dt><dd>{stats.wins}</dd></div>
-        <div><dt>Ничьи</dt><dd>{stats.draws}</dd></div>
-        <div><dt>Поражения</dt><dd>{stats.losses}</dd></div>
+        <div>
+          <dt>Сыграно</dt>
+          <dd>{stats.played}</dd>
+        </div>
+        <div>
+          <dt>Победы</dt>
+          <dd>{stats.wins}</dd>
+        </div>
+        <div>
+          <dt>Ничьи</dt>
+          <dd>{stats.draws}</dd>
+        </div>
+        <div>
+          <dt>Поражения</dt>
+          <dd>{stats.losses}</dd>
+        </div>
       </dl>
     </article>
   );
@@ -136,17 +148,34 @@ function HistorySummaryCard({
 export function AmateurDuelHistoryTab({
   initialMonthKey,
   onOpenMatch,
+  onCloseMatch,
+  expandedMatchId,
+  expandedContent,
 }: {
   initialMonthKey: string;
   onOpenMatch: (matchId: string) => void;
+  onCloseMatch: () => void;
+  expandedMatchId: string | null;
+  expandedContent: ReactNode;
 }): JSX.Element {
   const [monthKey, setMonthKey] = useState(initialMonthKey);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  const [canScrollDayListDown, setCanScrollDayListDown] = useState(false);
+  const dayListRef = useRef<HTMLDivElement>(null);
+  const updateDayListScrollHint = useCallback(() => {
+    const list = dayListRef.current;
+    setCanScrollDayListDown(
+      Boolean(list && list.scrollHeight - list.scrollTop - list.clientHeight > 2),
+    );
+  }, []);
   const calendar = useQuery({
     queryKey: ['amateur-duel', 'history', 'calendar', monthKey],
     queryFn: () => fetchAmateurHistoryCalendar(monthKey),
   });
-  useEffect(() => setSelectedDay(null), [monthKey]);
+  useEffect(() => {
+    setSelectedDay(null);
+    onCloseMatch();
+  }, [monthKey, onCloseMatch]);
   const data = calendar.data;
   const dayMap = useMemo(
     () => new Map((data?.days ?? []).map((day) => [day.day, day.matches])),
@@ -177,6 +206,30 @@ export function AmateurDuelHistoryTab({
   const earliestMonth = data?.range.from ?? monthKey;
   const latestMonth = data?.range.to ?? monthKey;
 
+  useEffect(() => {
+    if (selectedDay === null) {
+      setCanScrollDayListDown(false);
+      return;
+    }
+
+    const list = dayListRef.current;
+    if (!list) return;
+
+    updateDayListScrollHint();
+    window.addEventListener('resize', updateDayListScrollHint);
+    const resizeObserver =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateDayListScrollHint);
+    resizeObserver?.observe(list);
+    const mutationObserver = new MutationObserver(updateDayListScrollHint);
+    mutationObserver.observe(list, { childList: true, subtree: true, characterData: true });
+
+    return () => {
+      window.removeEventListener('resize', updateDayListScrollHint);
+      resizeObserver?.disconnect();
+      mutationObserver.disconnect();
+    };
+  }, [selectedDay, updateDayListScrollHint]);
+
   return (
     <section className="duel-section" aria-label="История дуэлей">
       <div className="section-label duel-section-title">История</div>
@@ -193,7 +246,10 @@ export function AmateurDuelHistoryTab({
       ) : calendar.isError ? (
         <div className="duel-state-card duel-state-card--error">Не удалось загрузить историю.</div>
       ) : (
-        <section className="glass daily-calendar" aria-label={`Календарь дуэлей: ${monthLabel(monthKey)}`}>
+        <section
+          className="glass daily-calendar"
+          aria-label={`Календарь дуэлей: ${monthLabel(monthKey)}`}
+        >
           <div className="daily-calendar__header">
             <button
               type="button"
@@ -216,7 +272,9 @@ export function AmateurDuelHistoryTab({
             </button>
           </div>
           <div className="daily-calendar__weekdays" aria-hidden="true">
-            {WEEKDAYS.map((day) => <span key={day}>{day}</span>)}
+            {WEEKDAYS.map((day) => (
+              <span key={day}>{day}</span>
+            ))}
           </div>
           <div className="daily-calendar__grid">
             {Array.from({ length: geometry.offset }, (_, index) => (
@@ -226,7 +284,11 @@ export function AmateurDuelHistoryTab({
               const day = index + 1;
               const matches = dayMap.get(day) ?? [];
               if (matches.length === 0) {
-                return <span key={day} className="daily-calendar__day daily-calendar__day--neutral">{day}</span>;
+                return (
+                  <span key={day} className="daily-calendar__day daily-calendar__day--neutral">
+                    {day}
+                  </span>
+                );
               }
               return (
                 <button
@@ -276,46 +338,97 @@ export function AmateurDuelHistoryTab({
         </section>
       )}
       {selectedDay !== null && (
-        <div className="modal-backdrop" onClick={() => setSelectedDay(null)}>
+        <div
+          className="modal-backdrop"
+          onClick={() => {
+            setSelectedDay(null);
+            onCloseMatch();
+          }}
+        >
           <section
             role="dialog"
             aria-label={`Дуэли за ${selectedDay} ${monthDateName(monthKey)}`}
             className="modal-card duel-day-dialog"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="modal-title">Дуэли за {selectedDay} {monthDateName(monthKey)}</div>
-            <div className="duel-day-list">
-              {selectedMatches.map((match) => (
-                <button
-                  type="button"
-                  key={match.id}
-                  className="duel-day-match"
-                  aria-label={`Открыть дуэль с ${match.opponent.display_name}`}
-                  onClick={() => {
-                    setSelectedDay(null);
-                    onOpenMatch(match.id);
-                  }}
-                >
-                  <UserAvatar
-                    avatarUrl={match.opponent.avatar_url}
-                    name={match.opponent.display_name}
-                    size={40}
-                    fontSize={14}
-                  />
-                  <span className="duel-day-match__copy">
-                    <strong>{match.opponent.display_name}</strong>
-                    <span>
-                      {duelKindLabel(match.duel_kind)} · {match.my_goals}:{match.opponent_goals} · {venueLabel(match.venue_role)}
-                    </span>
-                  </span>
-                  <span className={`duel-day-match__result duel-day-match__result--${match.result}`}>
-                    {resultLabel(match.result)}
-                  </span>
-                </button>
-              ))}
+            <div className="duel-day-dialog__header">
+              <div className="modal-title">
+                Дуэли за {selectedDay} {monthDateName(monthKey)}
+              </div>
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Закрыть"
+                onClick={() => {
+                  setSelectedDay(null);
+                  onCloseMatch();
+                }}
+              >
+                <X size={16} />
+              </button>
             </div>
+            <div ref={dayListRef} className="duel-day-list" onScroll={updateDayListScrollHint}>
+              {selectedMatches.map((match) => {
+                const expanded = expandedMatchId === match.id;
+                return (
+                  <div
+                    key={match.id}
+                    className={`duel-day-match-group${expanded ? ' duel-day-match-group--expanded' : ''}`}
+                  >
+                    <button
+                      type="button"
+                      className="duel-day-match"
+                      aria-label={`Дуэль с ${match.opponent.display_name}, ${duelKindLabel(match.duel_kind)}, счёт ${match.my_goals}:${match.opponent_goals}, ${venueLabel(match.venue_role)}, ${resultLabel(match.result)}`}
+                      aria-expanded={expanded}
+                      onClick={() => (expanded ? onCloseMatch() : onOpenMatch(match.id))}
+                    >
+                      <UserAvatar
+                        avatarUrl={match.opponent.avatar_url}
+                        name={match.opponent.display_name}
+                        size={40}
+                        fontSize={14}
+                      />
+                      <span className="duel-day-match__copy">
+                        <strong>{match.opponent.display_name}</strong>
+                        <span>
+                          {duelKindLabel(match.duel_kind)} · {match.my_goals}:{match.opponent_goals}{' '}
+                          · {venueLabel(match.venue_role)}
+                        </span>
+                      </span>
+                      <span className="duel-day-match__aside">
+                        <span
+                          className={`duel-day-match__result duel-day-match__result--${match.result}`}
+                        >
+                          {resultLabel(match.result)}
+                        </span>
+                        <ChevronRight
+                          className="duel-day-match__chevron"
+                          size={16}
+                          aria-hidden="true"
+                        />
+                      </span>
+                    </button>
+                    {expanded ? expandedContent : null}
+                  </div>
+                );
+              })}
+            </div>
+            {canScrollDayListDown ? (
+              <div className="duel-day-scroll-hint" aria-hidden="true">
+                <span>
+                  <ChevronDown size={15} />
+                </span>
+              </div>
+            ) : null}
             <div className="modal-actions">
-              <button type="button" className="modal-primary btn btn--cta" onClick={() => setSelectedDay(null)}>
+              <button
+                type="button"
+                className="modal-primary btn btn--cta"
+                onClick={() => {
+                  setSelectedDay(null);
+                  onCloseMatch();
+                }}
+              >
                 Закрыть
               </button>
             </div>

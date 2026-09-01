@@ -2389,6 +2389,58 @@ describe('DailyScreen', () => {
     });
   });
 
+  it('keeps legacy amateur section routes inside the Sections back stack', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/templates')) {
+        return new Response(JSON.stringify({ templates: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/matches')) {
+        return new Response(JSON.stringify({ matches: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    function LocationProbe() {
+      const current = useLocation();
+      return <output aria-label="Текущий адрес">{`${current.pathname}${current.search}`}</output>;
+    }
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/?view=amateur&section=duels']}>
+          <DailyScreen />
+          <LocationProbe />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Назад' }));
+    expect(await screen.findByRole('heading', { name: 'Любители' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Текущий адрес')).toHaveTextContent(
+      '/?view=amateur&from=sections',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Назад' }));
+    expect(screen.getByLabelText('Текущий адрес')).toHaveTextContent('/sections');
+  });
+
   it('opens a direct amateur route without flashing the daily arena first', () => {
     // Break caught: route-derived state must be correct on the first render, before effects run.
     expect(initialGameRouteState('?view=amateur&section=duels&from=sections')).toMatchObject({
@@ -2715,6 +2767,12 @@ describe('DailyScreen', () => {
           { status: 200, headers: { 'content-type': 'application/json' } },
         );
       }
+      if (url.includes(`/duel/amateur/matches/${settledDuelMatch.id}`)) {
+        return new Response(JSON.stringify({ match: settledDuelMatch }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
       if (url.includes('/duel/amateur/matches')) {
         return new Response(
           JSON.stringify({ matches: [settledDuelMatch, expiredMatch, cancelledMatch] }),
@@ -2773,7 +2831,25 @@ describe('DailyScreen', () => {
     ).not.toBeInTheDocument();
 
     fireEvent.click(playedDay);
-    expect(await screen.findByRole('dialog', { name: 'Дуэли за 16 мая' })).toBeInTheDocument();
+    const dayDialog = await screen.findByRole('dialog', { name: 'Дуэли за 16 мая' });
+    expect(dayDialog).toBeInTheDocument();
+    const dayList = dayDialog.querySelector<HTMLElement>('.duel-day-list');
+    expect(dayList).not.toBeNull();
+    Object.defineProperties(dayList!, {
+      clientHeight: { configurable: true, value: 200 },
+      scrollHeight: { configurable: true, value: 400 },
+      scrollTop: { configurable: true, writable: true, value: 0 },
+    });
+    fireEvent(window, new Event('resize'));
+    await waitFor(() => {
+      expect(dayDialog.querySelector('.duel-day-scroll-hint')).toBeInTheDocument();
+    });
+    dayList!.scrollTop = 200;
+    fireEvent.scroll(dayList!);
+    await waitFor(() => {
+      expect(dayDialog.querySelector('.duel-day-scroll-hint')).not.toBeInTheDocument();
+    });
+    expect(within(dayDialog).getAllByRole('button', { name: 'Закрыть' })).toHaveLength(2);
     expect(await screen.findByText('Duel Opponent')).toBeInTheDocument();
     expect(screen.getByText('Классика · 3:1 · Дома')).toBeInTheDocument();
     expect(screen.getByText('50% побед')).toBeInTheDocument();
@@ -2782,7 +2858,54 @@ describe('DailyScreen', () => {
     expect(screen.queryByText('Ответа не было')).not.toBeInTheDocument();
     expect(screen.queryByText('Вы отменили вызов')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+    const duelRow = within(dayDialog).getByRole('button', {
+      name: 'Дуэль с Duel Opponent, Классика, счёт 3:1, Дома, Победа',
+    });
+    expect(duelRow).toHaveAttribute('aria-expanded', 'false');
+    expect(duelRow.querySelector('.duel-day-match__chevron')).toHaveClass('lucide-chevron-right');
+    fireEvent.click(duelRow);
+    expect(duelRow).toHaveAttribute('aria-expanded', 'true');
+    const expandedDetails = await within(dayDialog).findByLabelText(
+      'Подробности дуэли с Duel Opponent',
+    );
+    expect(expandedDetails).toBeInTheDocument();
+    expect(within(expandedDetails).queryByText('Результат')).not.toBeInTheDocument();
+    expect(within(expandedDetails).queryByText('Ничья')).not.toBeInTheDocument();
+    const totalResultHeading = within(expandedDetails).getByText('Итоговый результат');
+    expect(totalResultHeading).toHaveClass('section-label');
+    const totalResultTable = within(expandedDetails).getByRole('table', {
+      name: 'Итоговый результат',
+    });
+    expect(within(totalResultTable).getByRole('row', { name: 'Вы 3 12 25% 03:00' })).toBeVisible();
+    expect(
+      within(totalResultTable).getByRole('row', { name: 'Duel Opponent 1 10 10% 03:00' }),
+    ).toBeVisible();
+    expect(within(expandedDetails).queryByLabelText(/^Общие итоги:/)).not.toBeInTheDocument();
+    expect(within(expandedDetails).queryByText('Тип')).not.toBeInTheDocument();
+    expect(within(expandedDetails).queryByText('Соперник')).not.toBeInTheDocument();
+    expect(within(expandedDetails).getByText('Очки')).toBeInTheDocument();
+    expect(within(expandedDetails).getByText('Начало')).toBeInTheDocument();
+    expect(within(expandedDetails).getByText('Периоды')).toBeInTheDocument();
+    expect(within(expandedDetails).getByRole('table', { name: '1-й период' })).toBeInTheDocument();
+    expect(expandedDetails.querySelector('.duel-result-card__compact-metric')).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'Результат дуэли' })).not.toBeInTheDocument();
+    fireEvent.click(duelRow);
+    expect(duelRow).toHaveAttribute('aria-expanded', 'false');
+    expect(
+      within(dayDialog).queryByLabelText('Подробности дуэли с Duel Opponent'),
+    ).not.toBeInTheDocument();
+    fireEvent.click(duelRow);
+    const otherDuelRow = within(dayDialog).getByRole('button', {
+      name: /^Дуэль с First Opponent/,
+    });
+    fireEvent.click(otherDuelRow);
+    expect(duelRow).toHaveAttribute('aria-expanded', 'false');
+    expect(otherDuelRow).toHaveAttribute('aria-expanded', 'true');
+    expect(
+      within(dayDialog).queryByLabelText('Подробности дуэли с Duel Opponent'),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(within(dayDialog).getAllByRole('button', { name: 'Закрыть' }).at(-1)!);
     fireEvent.click(screen.getByRole('button', { name: 'Предыдущий месяц' }));
     expect(await screen.findByRole('heading', { name: 'Апрель 2026' })).toBeInTheDocument();
 
@@ -2980,7 +3103,9 @@ describe('DailyScreen', () => {
     fireEvent.click(await screen.findByRole('tab', { name: 'История' }));
     fireEvent.click(await screen.findByRole('button', { name: '17, сыграно дуэлей: 1' }));
     fireEvent.click(
-      await screen.findByRole('button', { name: 'Открыть дуэль с Inventory Opponent' }),
+      await screen.findByRole('button', {
+        name: 'Дуэль с Inventory Opponent, Классика, счёт 18:16, Нейтральное поле, Победа',
+      }),
     );
 
     const totalUsage = await screen.findByLabelText('Общий расход инвентаря');
@@ -3831,9 +3956,7 @@ describe('DailyScreen', () => {
     renderWith(['/?view=amateur&section=duels']);
 
     fireEvent.click(await screen.findByRole('tab', { name: 'Рейтинг' }));
-    const emptyCopy = await screen.findByText(
-      'Рейтинг появится после первых завершённых дуэлей.',
-    );
+    const emptyCopy = await screen.findByText('Рейтинг появится после первых завершённых дуэлей.');
     expect(emptyCopy).toHaveClass('duel-rating-empty');
     expect(emptyCopy).not.toHaveClass('duel-state-card', 'glass');
   });
