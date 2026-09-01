@@ -65,4 +65,32 @@ describe.skipIf(!hasIntegrationEnv)('086 event log sequence repair', () => {
     expect(applied.applied).toContain(MIGRATION_NAME);
     expect(inserted.rows[0]?.id).toBe('2906');
   });
+
+  it('does not move an already-ahead event log sequence backwards', async () => {
+    await resetDatabase(pool);
+    await applyMigrations(pool, migrationsBefore086Dir!);
+
+    const userId = '00000000-0000-4000-8000-000000000862';
+    await pool.query(
+      `insert into users (id, display_name, timezone)
+       values ($1, 'Ahead Sequence Player', 'Europe/Moscow')`,
+      [userId],
+    );
+    await pool.query(
+      `insert into event_log (id, user_id, type, payload)
+       values (2905, $1, 'amateur_duel_challenge_created', '{}'::jsonb)`,
+      [userId],
+    );
+    await pool.query(`select setval(pg_get_serial_sequence('event_log', 'id'), 4000, true)`);
+
+    await applyMigrations(pool, MIGRATIONS_DIR);
+    const inserted = await pool.query<{ id: string }>(
+      `insert into event_log (user_id, type, payload)
+       values ($1, 'amateur_duel_challenge_created', '{}'::jsonb)
+       returning id::text`,
+      [userId],
+    );
+
+    expect(inserted.rows[0]?.id).toBe('4002');
+  });
 });
