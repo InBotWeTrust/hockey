@@ -1612,12 +1612,19 @@ export function TournamentAdmin(): JSX.Element {
           result.tournament.id,
           result.tournament.revision,
         );
-        setSaveNotice('Турнир опубликован.');
-        closeWizard({
-          ...result.tournament,
-          status: published.status,
-          revision: published.revision,
+        await client.invalidateQueries({ queryKey: ['admin', 'tournaments'] });
+        const refreshed = await client.fetchQuery({
+          queryKey: ['admin', 'tournaments'],
+          queryFn: fetchAdminTournaments,
         });
+        setSaveNotice('Турнир опубликован.');
+        closeWizard(
+          refreshed.tournaments.find((item) => item.id === result.tournament.id) ?? {
+            ...result.tournament,
+            status: published.status,
+            revision: published.revision,
+          },
+        );
         return;
       }
       saveQueue.current?.enqueue(body, JSON.stringify(body));
@@ -1630,8 +1637,19 @@ export function TournamentAdmin(): JSX.Element {
           savedTournament.id,
           savedTournament.revision,
         );
+        await client.invalidateQueries({ queryKey: ['admin', 'tournaments'] });
+        const refreshed = await client.fetchQuery({
+          queryKey: ['admin', 'tournaments'],
+          queryFn: fetchAdminTournaments,
+        });
         setSaveNotice('Турнир опубликован.');
-        closeWizard({ ...savedTournament, status: published.status, revision: published.revision });
+        closeWizard(
+          refreshed.tournaments.find((item) => item.id === savedTournament.id) ?? {
+            ...savedTournament,
+            status: published.status,
+            revision: published.revision,
+          },
+        );
         return;
       }
       setSaveNotice('Изменения сохранены.');
@@ -1642,6 +1660,16 @@ export function TournamentAdmin(): JSX.Element {
       }
       setFinishing(false);
     }
+  };
+
+  const refreshSelectedTournament = async (tournamentId: string) => {
+    await client.invalidateQueries({ queryKey: ['admin', 'tournaments'] });
+    const refreshed = await client.fetchQuery({
+      queryKey: ['admin', 'tournaments'],
+      queryFn: fetchAdminTournaments,
+    });
+    const current = refreshed.tournaments.find((item) => item.id === tournamentId);
+    if (current !== undefined) setSelectedTournament(current);
   };
 
   if (selectedTournament !== null) {
@@ -1672,6 +1700,7 @@ export function TournamentAdmin(): JSX.Element {
           setSelectedTournament(null);
         }}
         onRemoved={() => setSelectedTournament(null)}
+        onTournamentUpdated={() => refreshSelectedTournament(selectedTournament.id)}
       />
     );
   }
@@ -2707,7 +2736,11 @@ export function TournamentAdmin(): JSX.Element {
                 )}
               </div>
               <div className="modal-actions">
-                <div className="tournament-wizard__save-state" role="status" aria-live="polite">
+                <div
+                  className="tournament-wizard__save-state"
+                  role={validationNotice === null ? 'status' : 'alert'}
+                  aria-live={validationNotice === null ? 'polite' : 'assertive'}
+                >
                   {validationNotice !== null && <span>{validationNotice}</span>}
                   {validationNotice === null &&
                     finishing &&

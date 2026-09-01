@@ -319,6 +319,23 @@ export function generateAdminTournamentSchedule(tournamentId: string, expectedRe
   });
 }
 
+export function generateAdminTournamentManualSchedule(
+  tournamentId: string,
+  expectedRevision: number,
+) {
+  return apiFetch<{
+    tournamentId: string;
+    status: 'scheduling';
+    participantCount: number;
+    matchdayCount: number;
+    roundCount: number;
+    fixtureCount: number;
+  }>(`/admin/tournaments/${tournamentId}/schedule/generate-manual`, {
+    method: 'POST',
+    body: JSON.stringify({ expectedRevision }),
+  });
+}
+
 export function startAdminTournamentRegularSeason(tournamentId: string) {
   return apiFetch<{ tournamentId: string; status: 'regular' }>(
     `/admin/tournaments/${tournamentId}/schedule/publish`,

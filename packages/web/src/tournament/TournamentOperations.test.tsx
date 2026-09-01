@@ -194,6 +194,7 @@ describe('TournamentOperations', () => {
       return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
     });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const refreshSelectedTournament = vi.fn().mockResolvedValue(undefined);
 
     render(
       <QueryClientProvider client={client}>
@@ -212,6 +213,7 @@ describe('TournamentOperations', () => {
           onBack={vi.fn()}
           onEdit={vi.fn()}
           onRemoved={vi.fn()}
+          onTournamentUpdated={refreshSelectedTournament}
         />
       </QueryClientProvider>,
     );
@@ -230,6 +232,99 @@ describe('TournamentOperations', () => {
         expect.objectContaining({ method: 'POST' }),
       ),
     );
+    await waitFor(() => expect(refreshSelectedTournament).toHaveBeenCalledTimes(1));
+  });
+
+  it('offers the exceptional calendar action only for a blocked head-to-head tournament with two players', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      const body = url.endsWith('/participants')
+        ? { participants: [] }
+        : url.endsWith('/schedule')
+          ? { fixtures: [], matchdays: [] }
+          : { tournamentId: tournament().id, status: 'scheduling' };
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const base = {
+      ...tournament(),
+      status: 'registration_blocked' as const,
+      lifecycle: {
+        action: 'block_registration' as const,
+        dueAt: null,
+        approvedParticipantCount: 2,
+        requiredParticipantCount: 4,
+        reason: 'not_enough_participants' as const,
+      },
+    };
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <TournamentOperations
+          tournament={base}
+          onBack={vi.fn()}
+          onEdit={vi.fn()}
+          onRemoved={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Создать календарь' }));
+    await waitFor(() =>
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        `/api/admin/tournaments/${base.id}/schedule/generate-manual`,
+        expect.objectContaining({ method: 'POST' }),
+      ),
+    );
+
+    rerender(
+      <QueryClientProvider client={client}>
+        <TournamentOperations
+          tournament={{
+            ...base,
+            lifecycle: {
+              ...base.lifecycle,
+              approvedParticipantCount: 1,
+            },
+          }}
+          onBack={vi.fn()}
+          onEdit={vi.fn()}
+          onRemoved={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+    expect(screen.queryByRole('button', { name: 'Создать календарь' })).not.toBeInTheDocument();
+
+    rerender(
+      <QueryClientProvider client={client}>
+        <TournamentOperations
+          tournament={{
+            ...base,
+            regularSource: 'daily_aggregate',
+          }}
+          onBack={vi.fn()}
+          onEdit={vi.fn()}
+          onRemoved={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+    expect(screen.queryByRole('button', { name: 'Создать календарь' })).not.toBeInTheDocument();
+
+    rerender(
+      <QueryClientProvider client={client}>
+        <TournamentOperations
+          tournament={{
+            ...base,
+            regularSource: 'classic',
+          }}
+          onBack={vi.fn()}
+          onEdit={vi.fn()}
+          onRemoved={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+    expect(screen.queryByRole('button', { name: 'Создать календарь' })).not.toBeInTheDocument();
   });
 
   it('explains automatic lifecycle milestones in human language', () => {
@@ -254,7 +349,9 @@ describe('TournamentOperations', () => {
       </QueryClientProvider>,
     );
 
-    expect(screen.getByText('Регистрация откроется 1 августа в 10:00 мск')).toBeInTheDocument();
+    expect(document.querySelector('.tournament-lifecycle-panel')?.textContent).toBe(
+      'Регистрация откроется 1 августа в 10:00 мск.',
+    );
 
     rerender(
       <QueryClientProvider client={client}>

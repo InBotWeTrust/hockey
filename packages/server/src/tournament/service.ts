@@ -744,8 +744,12 @@ export async function updateTournamentDraft(
     }
     const nextRules: TournamentRulesSnapshot = { ...input.rules };
     delete nextRules.automaticLifecycleVersion;
+    delete nextRules.duelLifecycleVersion;
     if (automaticLifecycleVersion(tournament.rules_snapshot) !== null) {
       nextRules.automaticLifecycleVersion = AUTOMATIC_TOURNAMENT_LIFECYCLE_VERSION;
+    }
+    if (tournament.rules_snapshot.duelLifecycleVersion === 2) {
+      nextRules.duelLifecycleVersion = 2;
     }
     const revision = input.expectedRevision + 1;
     const insertedRevision = await client.query<{ id: string }>(
@@ -1660,6 +1664,7 @@ export async function generateRegularSchedule(
   pool: Pool,
   tournamentId: string,
   expectedRevision: number,
+  options: { allowInsufficientHeadToHeadParticipants?: boolean } = {},
 ): Promise<GenerateRegularScheduleOutcome> {
   return inTransaction(pool, async (client) => {
     await lockTournament(client, tournamentId);
@@ -1692,6 +1697,13 @@ export async function generateRegularSchedule(
     );
     const participantCount = participants.rows.length;
     const config = tournament.rules_snapshot.config;
+    const manualHeadToHeadOverride = options.allowInsufficientHeadToHeadParticipants === true;
+    if (
+      manualHeadToHeadOverride &&
+      (config.regularSource !== 'head_to_head' || participantCount < 2)
+    ) {
+      throw new AppError('conflict', 'manual schedule override is not available', 409);
+    }
     const outcome = {
       tournamentId,
       beforeStatus: tournament.status,
@@ -1725,6 +1737,9 @@ export async function generateRegularSchedule(
         };
       }
     }
+    if (manualHeadToHeadOverride && tournament.status !== 'registration_blocked') {
+      throw new AppError('conflict', 'manual schedule override is not available', 409);
+    }
     if (tournament.starts_at === null)
       throw new AppError('conflict', 'start time is required', 409);
     const regularLifecycleV2 =
@@ -1747,7 +1762,7 @@ export async function generateRegularSchedule(
         tournament.rules_snapshot.regularDuelTemplateId,
       );
     }
-    if (participantCount < config.playoffSize) {
+    if (participantCount < config.playoffSize && !manualHeadToHeadOverride) {
       const changed = tournament.status !== 'registration_blocked';
       if (changed) {
         await client.query(

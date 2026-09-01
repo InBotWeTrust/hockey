@@ -384,6 +384,72 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
     expect(afterStaleGenerate.rows[0]!.id).toBe(beforeStaleGenerate.rows[0]!.id);
   });
 
+  it('manually schedules a blocked head-to-head tournament with two approved players and is idempotent', async () => {
+    const tournament = await seedAutomaticTournament(pool, {
+      source: 'head_to_head',
+      approved: 2,
+      playoffSize: 4,
+      slugSuffix: '-manual-override',
+    });
+    const automatic = await reconcileTournamentLifecycle(pool, {
+      now: CLOSES_AT,
+      tournamentId: tournament.id,
+    });
+    expect(automatic.items[0]).toMatchObject({ action: 'block_registration' });
+
+    const firstResponse = await app.inject({
+      method: 'POST',
+      url: `/admin/tournaments/${tournament.id}/schedule/generate-manual`,
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: { expectedRevision: tournament.revision },
+    });
+    const secondResponse = await app.inject({
+      method: 'POST',
+      url: `/admin/tournaments/${tournament.id}/schedule/generate-manual`,
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: { expectedRevision: tournament.revision },
+    });
+    expect(firstResponse.statusCode).toBe(200);
+    expect(secondResponse.statusCode).toBe(200);
+    const first = firstResponse.json();
+    const second = secondResponse.json();
+    expect(first).toMatchObject({ status: 'scheduling', participantCount: 2, changed: true });
+    expect(first.fixtureCount).toBeGreaterThan(0);
+    expect(second).toMatchObject({ status: 'scheduling', participantCount: 2, changed: false });
+    expect(second.fixtureCount).toBe(first.fixtureCount);
+  });
+
+  it('rejects the manual schedule override below two players and for daily or Classic tournaments', async () => {
+    const tooFew = await seedAutomaticTournament(pool, {
+      source: 'head_to_head',
+      approved: 1,
+      playoffSize: 4,
+      slugSuffix: '-manual-too-few',
+    });
+    const daily = await seedAutomaticTournament(pool, {
+      source: 'daily_aggregate',
+      approved: 2,
+      playoffSize: 4,
+      slugSuffix: '-manual-daily',
+      playerIdBase: 1_200,
+    });
+    const classic = await seedAutomaticTournament(pool, {
+      source: 'classic',
+      approved: 2,
+      playoffSize: 4,
+      slugSuffix: '-manual-classic',
+      playerIdBase: 1_300,
+    });
+    for (const tournament of [tooFew, daily, classic]) {
+      await reconcileTournamentLifecycle(pool, { now: CLOSES_AT, tournamentId: tournament.id });
+      await expect(
+        generateRegularSchedule(pool, tournament.id, tournament.revision, {
+          allowInsufficientHeadToHeadParticipants: true,
+        }),
+      ).rejects.toMatchObject({ code: 'conflict' });
+    }
+  });
+
   it.each(['daily_aggregate', 'classic'] as const)(
     'creates only matchdays for %s',
     async (source) => {
@@ -913,6 +979,7 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
         tournament.id,
         JSON.stringify({
           regularDuelTemplateId: template.rows[0]!.id,
+          duelLifecycleVersion: 2,
           playoffRounds: [
             {
               roundNumber: 1,
@@ -949,7 +1016,7 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
       expectedRevision: tournament.revision,
       title: 'Автоматический кубок',
       description: '',
-      rules: scheduledRules,
+      rules: { ...scheduledRules, duelLifecycleVersion: 1 },
       updatedBy: CREATOR_ID,
       registrationOpensAt: new Date(CLOSES_AT.getTime() - 3_600_000),
       registrationClosesAt: CLOSES_AT,
@@ -961,6 +1028,15 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
     });
 
     expect(updated).toMatchObject({ status: 'regular', revision: 2 });
+    expect(
+      (
+        await pool.query<{ duel_lifecycle_version: string | null }>(
+          `select rules_snapshot->>'duelLifecycleVersion' as duel_lifecycle_version
+             from tournament_revision where tournament_id = $1 and revision = 2`,
+          [tournament.id],
+        )
+      ).rows[0]?.duel_lifecycle_version,
+    ).toBe('2');
     expect(recovered.items[0]).toMatchObject({ action: 'await_playoff_time', reason: null });
 
     await expect(

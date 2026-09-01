@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Ellipsis, Pencil, X } from 'lucide-react';
 import { ApiError } from '../api/apiFetch.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
@@ -21,6 +21,7 @@ import {
   fetchAdminTournamentStandings,
   fetchAdminTournamentUsers,
   generateAdminTournamentSchedule,
+  generateAdminTournamentManualSchedule,
   inviteAdminTournamentParticipant,
   pauseAdminTournament,
   previewAdminTournamentAudience,
@@ -261,6 +262,8 @@ function lifecycleMessage(tournament: AdminTournament, timezone: string): string
       return `Подтверждено ${approvedParticipantCount} из ${requiredParticipantCount}. Уменьшите размер плей-офф, продлите регистрацию или пригласите игроков.`;
     case 'await_manual_regular_start':
       return 'Календарь готов. Регулярный сезон начнётся после вашего подтверждения.';
+    case 'regular_active':
+      return 'Регулярный сезон идёт. Результаты обновляются после каждой завершённой игры.';
     case 'await_regular_results':
       return 'Плей-офф начнётся автоматически после завершения всех игр.';
     case 'playoff_schedule_missing':
@@ -271,6 +274,20 @@ function lifecycleMessage(tournament: AdminTournament, timezone: string): string
         ? 'Плей-офф начнётся автоматически.'
         : `Плей-офф начнётся автоматически ${due}.`;
     }
+    case 'start_playoff':
+      return 'Плей-офф сформирован по итогам регулярного сезона.';
+    case 'playoff_active':
+      return 'Плей-офф идёт по расписанию.';
+    case 'terminal':
+      return 'Турнир завершён. Итоги и награды доступны в разделах турнира.';
+    case 'unchanged':
+      return tournament.status === 'regular'
+        ? 'Регулярный сезон идёт. Результаты обновляются после каждой завершённой игры.'
+        : tournament.status === 'playoff'
+          ? 'Плей-офф идёт по расписанию.'
+          : tournament.status === 'completed'
+            ? 'Турнир завершён. Итоги и награды доступны в разделах турнира.'
+            : null;
     case 'legacy_requires_audit':
       return 'Турнир создан по старым правилам. Нужна проверка администратора.';
     default:
@@ -478,17 +495,20 @@ export function TournamentOperations({
   onBack,
   onEdit,
   onRemoved,
+  onTournamentUpdated,
   notice,
 }: {
   tournament: AdminTournament;
   onBack: () => void;
   onEdit: (stage?: number, scheduleOnly?: boolean) => void;
   onRemoved: () => void;
+  onTournamentUpdated?: () => Promise<void> | void;
   notice?: string | null;
 }): JSX.Element {
   const client = useQueryClient();
   const [tab, setTab] = useState<OperationsTab>('participants');
   const [status, setStatus] = useState(tournament.status);
+  useEffect(() => setStatus(tournament.status), [tournament.status]);
   const [reason, setReason] = useState('Решение администратора');
   const [participantFilter, setParticipantFilter] = useState<ParticipantFilter>('all');
   const [rejectingApplication, setRejectingApplication] = useState(false);
@@ -590,7 +610,7 @@ export function TournamentOperations({
   };
   const lifecycle = useMutation({
     mutationFn: (
-      action: 'generate' | 'start_regular',
+      action: 'generate' | 'manual_generate' | 'start_regular',
     ): Promise<{
       tournamentId: string;
       status: string;
@@ -601,13 +621,16 @@ export function TournamentOperations({
     }> => {
       if (action === 'generate')
         return generateAdminTournamentSchedule(tournament.id, tournament.revision);
+      if (action === 'manual_generate') {
+        return generateAdminTournamentManualSchedule(tournament.id, tournament.revision);
+      }
       return startAdminTournamentRegularSeason(tournament.id);
     },
     onMutate: () => {
       setLifecycleFeedback(null);
       setLifecycleFailed(false);
     },
-    onSuccess: (result, action) => {
+    onSuccess: async (result, action) => {
       if (
         typeof result === 'object' &&
         result !== null &&
@@ -615,7 +638,11 @@ export function TournamentOperations({
       ) {
         setStatus((result as { status: string }).status);
       }
-      if (action === 'generate' && typeof result === 'object' && result !== null) {
+      if (
+        (action === 'generate' || action === 'manual_generate') &&
+        typeof result === 'object' &&
+        result !== null
+      ) {
         const generated = result as {
           status?: string;
           participantCount?: number;
@@ -639,6 +666,7 @@ export function TournamentOperations({
         setLifecycleFeedback('Регулярный сезон начался.');
       }
       refreshOperations();
+      await onTournamentUpdated?.();
     },
     onError: (_error, action) => {
       setLifecycleFailed(true);
@@ -849,8 +877,8 @@ export function TournamentOperations({
   const canGenerateBlockedHeadToHeadSchedule =
     tournament.regularSource === 'head_to_head' &&
     status === 'registration_blocked' &&
-    tournament.lifecycle.action === 'generate_schedule' &&
-    tournament.lifecycle.approvedParticipantCount >= tournament.lifecycle.requiredParticipantCount;
+    tournament.lifecycle.action === 'block_registration' &&
+    tournament.lifecycle.approvedParticipantCount >= 2;
   const incidentStatuses = new Set([
     'paused',
     'blocked',
@@ -947,6 +975,16 @@ export function TournamentOperations({
           {tournament.lifecycle.action === 'playoff_schedule_missing' && (
             <button type="button" className="admin-compact-btn" onClick={() => onEdit(3, true)}>
               Настроить расписание плей-офф
+            </button>
+          )}
+          {canGenerateBlockedHeadToHeadSchedule && (
+            <button
+              type="button"
+              className="admin-compact-btn"
+              disabled={lifecycle.isPending}
+              onClick={() => lifecycle.mutate('manual_generate')}
+            >
+              {lifecycle.isPending ? 'Создаём календарь…' : 'Создать календарь'}
             </button>
           )}
         </section>

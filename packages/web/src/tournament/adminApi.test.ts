@@ -6,6 +6,7 @@ import {
   dispatchAdminTournamentCommunication,
   fetchAdminTournamentParticipants,
   fetchAdminTournaments,
+  generateAdminTournamentManualSchedule,
   rejectAdminTournamentApplication,
   startAdminTournamentRegularSeason,
 } from './adminApi.js';
@@ -124,6 +125,15 @@ describe('tournament admin API', () => {
     expect(fetch).toHaveBeenCalledWith(
       '/api/admin/tournaments/tournament-1/schedule/publish',
       expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
+  it('uses the dedicated endpoint for the exceptional manual head-to-head schedule', async () => {
+    await generateAdminTournamentManualSchedule('tournament-1', 7);
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/admin/tournaments/tournament-1/schedule/generate-manual',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ expectedRevision: 7 }) }),
     );
   });
 });

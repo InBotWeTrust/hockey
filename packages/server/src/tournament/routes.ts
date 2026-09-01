@@ -800,6 +800,14 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
     return generateRegularSchedule(app.pg, params.tournamentId, body.expectedRevision);
   });
 
+  app.post('/admin/tournaments/:tournamentId/schedule/generate-manual', admin, async (req) => {
+    const params = z.object({ tournamentId: uuid }).parse(req.params);
+    const body = z.object({ expectedRevision: z.number().int().min(1) }).parse(req.body);
+    return generateRegularSchedule(app.pg, params.tournamentId, body.expectedRevision, {
+      allowInsufficientHeadToHeadParticipants: true,
+    });
+  });
+
   app.post('/admin/tournaments/:tournamentId/schedule/publish', admin, async (req) => {
     const params = z.object({ tournamentId: uuid }).parse(req.params);
     return publishRegularSchedule(app.pg, params.tournamentId);
