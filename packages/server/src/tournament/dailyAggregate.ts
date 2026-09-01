@@ -392,11 +392,7 @@ export async function finalizeTournamentDailyDay(
            (tournament_id, participant_id, tournament_day, player_local_date,
             goals, shots, accuracy, place, place_points, completed, source_snapshot, finalized_at)
          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-         on conflict (tournament_id, participant_id, tournament_day) do update
-           set player_local_date = excluded.player_local_date, goals = excluded.goals,
-               shots = excluded.shots, accuracy = excluded.accuracy, place = excluded.place,
-               place_points = excluded.place_points, completed = excluded.completed,
-               source_snapshot = excluded.source_snapshot, finalized_at = excluded.finalized_at`,
+         on conflict (tournament_id, participant_id, tournament_day) do nothing`,
         [
           input.tournamentId,
           source.participant_id,
