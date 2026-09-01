@@ -1796,6 +1796,15 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     await applyToTournament(pool, tournament.id, PLAYER_IDS[1]);
     await generateRegularSchedule(pool, tournament.id, tournament.revision);
 
+    const previewStandings = await getTournamentStandings(pool, tournament.id);
+    expect(previewStandings).toHaveLength(2);
+    expect(
+      previewStandings.every(
+        (row) =>
+          Number(row.played) === 0 && Number(row.goals_for) === 0 && Number(row.points) === 0,
+      ),
+    ).toBe(true);
+
     await publishRegularSchedule(pool, tournament.id);
 
     const standings = await pool.query<{

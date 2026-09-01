@@ -2341,7 +2341,33 @@ export async function getTournamentStandings(pool: Pool, tournamentId: string) {
       order by s.rank nulls last, u.display_name`,
     [tournamentId],
   );
-  return rows;
+  if (rows.length > 0) return rows;
+
+  const preview = await pool.query(
+    `select row_number() over (order by u.display_name, p.id)::int as rank,
+            p.user_id, u.display_name,
+            coalesce(
+              case
+                when u.display_source = 'custom' then u.custom_avatar_url
+                when u.display_source = 'vk' then u.vk_avatar_url
+                when u.display_source = 'telegram' then u.tg_avatar_url
+                else u.avatar_url
+              end,
+              u.avatar_url
+            ) as avatar_url,
+            0::int as played, 0::int as wins, 0::int as draws, 0::int as losses,
+            0::int as goals_for, 0::int as goals_against, 0::numeric as points,
+            '{}'::jsonb as metrics
+       from tournament_participant p
+       join tournament t on t.id = p.tournament_id
+       join users u on u.id = p.user_id
+      where p.tournament_id = $1
+        and p.state = 'approved'
+        and t.status in ('scheduling', 'regular')
+      order by u.display_name, p.id`,
+    [tournamentId],
+  );
+  return preview.rows;
 }
 
 function resolveSeedSource(source: PlayoffParticipantSource): string | null {

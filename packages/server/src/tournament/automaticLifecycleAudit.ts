@@ -225,7 +225,11 @@ async function existingScheduleMatches(
   if (config.regularSource !== tournament.regular_source) return false;
 
   if (config.regularSource !== 'head_to_head') {
-    if (rounds.rows.length !== 0 || fixtures.rows.length !== 0 || matchdays.rows.length !== config.dailyDays) {
+    if (
+      rounds.rows.length !== 0 ||
+      fixtures.rows.length !== 0 ||
+      matchdays.rows.length !== config.dailyDays
+    ) {
       return false;
     }
     return matchdays.rows.every((matchday, index) => {
@@ -323,14 +327,19 @@ async function existingScheduleMatches(
 async function blockingReasons(
   conn: Pool | PoolClient,
   tournament: AuditTournamentRow,
+  now: Date,
 ): Promise<string[]> {
   const reasons: string[] = [];
   const rules = tournament.rules_snapshot as Record<string, unknown>;
   if (terminalStatus(tournament.status)) reasons.push('terminal_status');
   if (
-    hasOwn(rules, 'automaticLifecycleVersion') &&
-    rules.automaticLifecycleVersion !== 1
+    tournament.starts_at !== null &&
+    tournament.starts_at.getTime() <= now.getTime() &&
+    ['registration', 'registration_blocked', 'scheduling'].includes(tournament.status)
   ) {
+    reasons.push('regular_schedule_already_started');
+  }
+  if (hasOwn(rules, 'automaticLifecycleVersion') && rules.automaticLifecycleVersion !== 1) {
     reasons.push('automatic_lifecycle_marker_is_not_legacy');
   }
   if (
@@ -350,8 +359,9 @@ async function inspectTournament(
   conn: Pool | PoolClient,
   tournament: AuditTournamentRow,
   dryRunReconcile: TournamentLifecycleReconcileReport,
+  now: Date,
 ): Promise<AutomaticLifecycleAuditItem> {
-  const reasons = await blockingReasons(conn, tournament);
+  const reasons = await blockingReasons(conn, tournament, now);
   const rules = tournament.rules_snapshot as Record<string, unknown>;
   const alreadyEnabled = rules.automaticLifecycleVersion === 1;
   return {
@@ -410,7 +420,7 @@ async function applyAuditItem(
         reasons: [...initial.reasons, 'published_revision_changed'],
       };
     }
-    const lockedItem = await inspectTournament(client, locked, initial.dryRunReconcile);
+    const lockedItem = await inspectTournament(client, locked, initial.dryRunReconcile, now);
     if (
       locked.published_revision_id !== initial.publishedRevisionId ||
       locked.current_revision !== initial.revision
@@ -482,7 +492,7 @@ export async function auditAutomaticTournamentLifecycle(
     });
     const row = await loadAuditTournament(pool, tournamentId);
     if (row === null) continue;
-    const initial = await inspectTournament(pool, row, dryRunReconcile);
+    const initial = await inspectTournament(pool, row, dryRunReconcile, options.now);
     if (options.apply && initial.status === 'ready_to_enable') {
       tournaments.push(await applyAuditItem(pool, tournamentId, initial, options.now));
     } else {

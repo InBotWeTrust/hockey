@@ -5,7 +5,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { applyMigrations } from '../../src/db/migrations.js';
 import { auditAutomaticTournamentLifecycle } from '../../src/tournament/automaticLifecycleAudit.js';
 import { parseTournamentConfig } from '../../src/tournament/config.js';
-import { generateRegularSchedule, type TournamentRulesSnapshot } from '../../src/tournament/service.js';
+import {
+  generateRegularSchedule,
+  type TournamentRulesSnapshot,
+} from '../../src/tournament/service.js';
 import {
   createTestPool,
   getTestUrls,
@@ -264,6 +267,26 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle audit', () =
       reconcile: { scanned: 1, changed: 0 },
     });
     expect(await automaticMarker(pool, safe.id)).toBe(1);
+  });
+
+  it('blocks a legacy tournament whose regular season has already started', async () => {
+    const elapsed = await seedLegacyTournament(pool, 'legacy-audit-elapsed-regular');
+    await pool.query(`update tournament set starts_at = $2 where id = $1`, [
+      elapsed.id,
+      new Date('2030-09-01T11:59:00.000Z'),
+    ]);
+
+    const report = await auditAutomaticTournamentLifecycle(pool, {
+      tournamentId: elapsed.id,
+      now: NOW,
+      apply: true,
+    });
+
+    expect(report.tournaments[0]).toMatchObject({
+      status: 'blocked',
+      reasons: expect.arrayContaining(['regular_schedule_already_started']),
+    });
+    expect(await automaticMarker(pool, elapsed.id)).toBeNull();
   });
 
   it('blocks a legacy daily aggregate tournament with a persisted daily result', async () => {

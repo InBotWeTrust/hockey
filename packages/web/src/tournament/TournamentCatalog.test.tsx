@@ -169,6 +169,15 @@ describe('TournamentCatalog', () => {
     );
   });
 
+  it('keeps a long participation status inside the tournament card', () => {
+    expect(designSystemCss).toMatch(
+      /\.tournament-catalog-card__topline\s*\{[^}]*flex-wrap:\s*wrap;/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-participation-badge\s*\{[^}]*max-width:\s*100%;[^}]*white-space:\s*normal;/s,
+    );
+  });
+
   it('groups tournaments by lifecycle and shows artwork with player-specific statuses', async () => {
     vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
       tournaments: [
