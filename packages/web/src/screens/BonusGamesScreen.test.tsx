@@ -315,6 +315,15 @@ describe('BonusGamesScreen', () => {
     expect(screen.queryByText('Разделы')).not.toBeInTheDocument();
   });
 
+  it('returns a legacy bonus catalog route to the amateur Sections stack', async () => {
+    mockCatalog([]);
+    renderCatalog();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Назад' }));
+
+    expect(screen.getByLabelText('location')).toHaveTextContent('/?view=amateur&from=sections');
+  });
+
   it('explains the bonus game rules in an accessible modal', async () => {
     mockCatalog([card({})]);
     renderCatalog();
@@ -467,9 +476,7 @@ describe('BonusGamesScreen', () => {
     expect(within(compactCard!).getByText('1 период · 30 бросков')).toHaveClass(
       'bonus-game-card__details-secondary',
     );
-    expect(availableCard!.querySelector('.bonus-game-card__chevron')).toHaveClass(
-      'card-chevron',
-    );
+    expect(availableCard!.querySelector('.bonus-game-card__chevron')).toHaveClass('card-chevron');
     expect(availableCard!.querySelector('.bonus-game-card__chevron')).not.toHaveClass(
       'bonus-game-card__chevron--hidden',
     );

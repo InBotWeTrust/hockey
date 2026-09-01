@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import {
@@ -160,6 +160,14 @@ export function AmateurDuelHistoryTab({
 }): JSX.Element {
   const [monthKey, setMonthKey] = useState(initialMonthKey);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  const [canScrollDayListDown, setCanScrollDayListDown] = useState(false);
+  const dayListRef = useRef<HTMLDivElement>(null);
+  const updateDayListScrollHint = useCallback(() => {
+    const list = dayListRef.current;
+    setCanScrollDayListDown(
+      Boolean(list && list.scrollHeight - list.scrollTop - list.clientHeight > 2),
+    );
+  }, []);
   const calendar = useQuery({
     queryKey: ['amateur-duel', 'history', 'calendar', monthKey],
     queryFn: () => fetchAmateurHistoryCalendar(monthKey),
@@ -197,6 +205,30 @@ export function AmateurDuelHistoryTab({
   }, [data?.days]);
   const earliestMonth = data?.range.from ?? monthKey;
   const latestMonth = data?.range.to ?? monthKey;
+
+  useEffect(() => {
+    if (selectedDay === null) {
+      setCanScrollDayListDown(false);
+      return;
+    }
+
+    const list = dayListRef.current;
+    if (!list) return;
+
+    updateDayListScrollHint();
+    window.addEventListener('resize', updateDayListScrollHint);
+    const resizeObserver =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateDayListScrollHint);
+    resizeObserver?.observe(list);
+    const mutationObserver = new MutationObserver(updateDayListScrollHint);
+    mutationObserver.observe(list, { childList: true, subtree: true, characterData: true });
+
+    return () => {
+      window.removeEventListener('resize', updateDayListScrollHint);
+      resizeObserver?.disconnect();
+      mutationObserver.disconnect();
+    };
+  }, [selectedDay, updateDayListScrollHint]);
 
   return (
     <section className="duel-section" aria-label="История дуэлей">
@@ -335,7 +367,7 @@ export function AmateurDuelHistoryTab({
                 <X size={16} />
               </button>
             </div>
-            <div className="duel-day-list">
+            <div ref={dayListRef} className="duel-day-list" onScroll={updateDayListScrollHint}>
               {selectedMatches.map((match) => {
                 const expanded = expandedMatchId === match.id;
                 return (
@@ -346,7 +378,7 @@ export function AmateurDuelHistoryTab({
                     <button
                       type="button"
                       className="duel-day-match"
-                      aria-label={`Дуэль с ${match.opponent.display_name}`}
+                      aria-label={`Дуэль с ${match.opponent.display_name}, ${duelKindLabel(match.duel_kind)}, счёт ${match.my_goals}:${match.opponent_goals}, ${venueLabel(match.venue_role)}, ${resultLabel(match.result)}`}
                       aria-expanded={expanded}
                       onClick={() => (expanded ? onCloseMatch() : onOpenMatch(match.id))}
                     >
@@ -369,7 +401,7 @@ export function AmateurDuelHistoryTab({
                         >
                           {resultLabel(match.result)}
                         </span>
-                        <ChevronDown
+                        <ChevronRight
                           className="duel-day-match__chevron"
                           size={16}
                           aria-hidden="true"
@@ -381,6 +413,13 @@ export function AmateurDuelHistoryTab({
                 );
               })}
             </div>
+            {canScrollDayListDown ? (
+              <div className="duel-day-scroll-hint" aria-hidden="true">
+                <span>
+                  <ChevronDown size={15} />
+                </span>
+              </div>
+            ) : null}
             <div className="modal-actions">
               <button
                 type="button"

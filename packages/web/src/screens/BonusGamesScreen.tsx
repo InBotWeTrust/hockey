@@ -10,7 +10,7 @@ import {
   Star,
   TrendingUp,
 } from 'lucide-react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { rewardColor, type RewardTone } from '../app/rewardColors.js';
 import {
   fetchBonusGames,
@@ -60,8 +60,6 @@ function isPlayable(game: BonusGameCard): boolean {
 
 export function BonusGamesScreen(): JSX.Element {
   const navigate = useNavigate();
-  const location = useLocation();
-  const fromSections = new URLSearchParams(location.search).get('from') === 'sections';
   const queryClient = useQueryClient();
   const [purchaseGame, setPurchaseGame] = useState<BonusGameCard | null>(null);
   const [purchaseNotice, setPurchaseNotice] = useState<string | null>(null);
@@ -105,9 +103,7 @@ export function BonusGamesScreen(): JSX.Element {
   const activeGame = allGames.find((game) => game.active_attempt?.id === activeAttempt?.id);
   const continueActiveAttempt = (): void => {
     if (activeAttempt === null || activeGame === undefined) return;
-    navigate(
-      `/bonus-games/${activeGame.id}/play?attempt=${encodeURIComponent(activeAttempt.id)}`,
-    );
+    navigate(`/bonus-games/${activeGame.id}/play?attempt=${encodeURIComponent(activeAttempt.id)}`);
   };
 
   const performGameAction = (game: BonusGameCard): void => {
@@ -187,7 +183,7 @@ export function BonusGamesScreen(): JSX.Element {
           <button
             type="button"
             className="icon-btn"
-            onClick={() => navigate(`/?view=amateur${fromSections ? '&from=sections' : ''}`)}
+            onClick={() => navigate('/?view=amateur&from=sections')}
             aria-label="Назад"
             title="Назад"
           >
@@ -250,10 +246,7 @@ export function BonusGamesScreen(): JSX.Element {
               </section>
             ) : null}
             {completedGames.length > 0 ? (
-              <section
-                className="bonus-games-group"
-                aria-labelledby="bonus-games-completed-title"
-              >
+              <section className="bonus-games-group" aria-labelledby="bonus-games-completed-title">
                 <h2
                   id="bonus-games-completed-title"
                   className="section-label sections-group__title"

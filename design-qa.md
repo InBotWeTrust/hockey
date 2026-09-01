@@ -143,3 +143,74 @@ The three inventory slots are now equal horizontal cards in one column: square a
 No actionable P0, P1, or P2 differences remain for the requested state.
 
 final result: passed
+
+---
+
+# Design QA — compact duel history result
+
+## Evidence
+
+- Source visual truth: `artifacts/duel-history-before.png` (734 × 932 px), the user-provided screenshot of the oversized expanded result.
+- Rendered implementation: `artifacts/duel-history-compact-rounded-390.png` (390 × 844 px) at a 390 × 844 CSS viewport and device scale factor 1.
+- Focused implementation crop: `artifacts/duel-history-compact-rounded-crop.png`; source and implementation were normalized to 676 px height for comparison.
+- Combined comparison: `artifacts/duel-history-compact-comparison.png` (1132 × 676 px).
+- State: Amateur → Duels → History → May 2026 → 25 May → winning Duel Opponent duel (`7:0`) expanded.
+
+## Full-view comparison
+
+The browser-rendered 390 px view keeps the modal header, duel summary row, both flat statistics tables, close action, and bottom navigation inside the viewport. The details no longer repeat the outcome, format, venue, or opponent as separate fact rows. Points and start time remain one flat line. `Итоговый результат` now mirrors the period table and shows both players' full-match goals, shots, conversion rate, and time. The expanded surface remains compact and its top and lower corners use the same soft rounding language as the surrounding duel UI.
+
+## Focused comparison
+
+The combined comparison confirms the intended density change: the original full result header, large outcome, type, opponent rows, and nested player cards are replaced by one compact `Очки / Начало` line and two matching flat tables: full-match result first, periods second. Both use `Игрок / Голы / Броски / % / Время`. Tiebreak information remains conditional and is absent from this decisive `7:0` result. A focused comparison was required because typography, vertical rhythm, and corner treatment were too small to judge reliably from the full screen.
+
+## Required fidelity surfaces
+
+- Fonts and typography: existing project font families and weights are preserved; compact labels remain uppercase and readable at 390 px; opponent text truncates in both the summary row and the table without disturbing numeric columns.
+- Spacing and layout rhythm: duplicated blocks and nested statistic containers were removed, compact gaps are 5–12 px, period padding was reduced, and the expanded card uses a continuous 18/17 px rounded silhouette. The collapsed row now explicitly has a 17 px radius on all four corners instead of relying only on parent clipping.
+- Colors and visual tokens: existing ink, muted, translucent surface, win/draw/loss, and border tokens are reused; no new accent color was introduced.
+- Image quality and asset fidelity: no imagery or custom assets were added or altered.
+- Copy and content: `Итоговый результат` presents both players' overall goals, shots, percentage, and time in the same vocabulary and order as every period.
+
+## Interaction and console checks
+
+- Opened History, navigated from September to May, opened 25 May, and expanded the winning Duel Opponent duel with score `7:0`.
+- Collapsing the duel removed the details; clicking again reopened exactly one details block.
+- The summary chevron uses the right-facing `ChevronRight` icon when collapsed and the same icon rotated upward when expanded; computed transforms were `none` and `matrix(0, -1, 1, 0, 0, 0)` respectively.
+- The compact result exposes semantic tables named `Итоговый результат` and `1-й период`; the winning fixture reads `Вы 7 13 54% 30:00` in both because it contains one period.
+- Collapsed-state computed radii are `18px` for the outer group and `17px` for the clickable row, so the bottom corners no longer appear square.
+- The accordion row exposes opponent, format, score, venue, and outcome in its accessible name, so removing visual duplicates does not remove screen-reader context.
+- Browser console errors checked after the interaction: 0.
+- Five-match QA at `390 × 844`: with all rows collapsed, the list is `342px` high and its `scrollHeight` is also `342px`, so no scrollbar is introduced while the content fits.
+- With the first of five matches expanded, the list remains the only scroll region: `clientHeight 515px`, `scrollHeight 591px`, and a real pointer scroll moves `scrollTop` from `0` to `76.5px`.
+- Every match group reports `flex-shrink: 0`; collapsed rows remain `62px` high and the expanded group remains `311.5px` high instead of being compressed or clipped.
+- The modal header and footer remain fixed while the list scrolls. The footer ends at `750.5px`, above the bottom navigation starting at `782px`, with `0px` overlap.
+- When content remains below the viewport, the list now ends with a soft translucent fade and a centered down-chevron affordance. The affordance is rendered only while `scrollHeight - scrollTop > clientHeight`; it disappears at the bottom and is absent for five collapsed rows that fit without scrolling.
+
+## Findings
+
+- No actionable P0, P1, or P2 differences remain for the requested compact result state.
+
+## Comparison history
+
+- Initial finding (P2): expanded details repeated result, score, format, opponent, and start information, producing an oversized nested card.
+- Fix: introduced the history-only compact result mode and tightened period spacing without changing the standalone result modal.
+- Follow-up finding (P2): the expanded surface still had visually square corners.
+- Fix: added matching top and bottom corner radii and recaptured the 390 px state.
+- Follow-up finding (P2): period statistics still read as nested cards and the closed accordion affordance pointed down.
+- Fix: replaced compact period cards with a semantic flat table and changed the closed/open affordance to right/up.
+- User follow-up: overall match numbers should use the same comparison structure as periods, not a second line of scalar facts.
+- Fix: replaced the scalar `Счёт / Процент` line with a matching `Итоговый результат` table for both players and explicitly rounded the collapsed row.
+- Review finding (P1): the old short `aria-label` hid the visible score, format, venue, and outcome from screen readers.
+- Fix: expanded the row's accessible name with all five summary fields and added a regression assertion.
+- Five-match finding (P1): flex items were allowed to shrink, so opening one match compressed and visibly clipped the bottoms of every row.
+- Fix: disabled shrinking on each complete match group. The modal stays intrinsic and scrollbar-free while five collapsed rows fit; once content exceeds the viewport limit, the entire list, including the expanded match, scrolls as one region.
+- Follow-up finding (P2): even with correct scrolling, the hard lower crop made the next duel look accidentally cut off.
+- Fix: added an overflow-aware fade and down-chevron scroll affordance, backed by a regression that verifies appearance on overflow and disappearance at the list end.
+- Post-fix evidence: `artifacts/duel-history-compact-comparison.png` and `artifacts/duel-history-compact-rounded-390.png`.
+
+## Follow-up polish
+
+- None required for this iteration.
+
+final result: passed
