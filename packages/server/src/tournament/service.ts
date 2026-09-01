@@ -2538,6 +2538,7 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
         status:
           tournament.status === 'playoff' ? ('playoff' as const) : ('tiebreak_required' as const),
         seriesCount: Number(existingSeries.rows[0]!.count),
+        created: false,
       };
     }
     if (tournament.status !== 'regular') {
@@ -2668,10 +2669,14 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
         throw new AppError('configuration_error', 'playoff duel template is not configured', 409);
       }
       if (rules.scheduleDays !== null) {
+        const earliestRoundStart = maxDate(
+          baseTime,
+          new Date(previousRoundEnd.getTime() + previousRoundBreakMs),
+        );
         const rebasedDays = rebaseRoundGameDaysAtOrAfter(
           tournament.rules_snapshot.config.timezone,
           rules.scheduleDays,
-          baseTime,
+          earliestRoundStart,
         );
         const days = resolveRoundGameDays(tournament.rules_snapshot.config.timezone, rebasedDays);
         const template = await loadDuelTemplateLifecycleSnapshot(client, rules.duelTemplateId);
@@ -2865,7 +2870,7 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
         url: '/?view=amateur&section=tournaments',
       },
     });
-    return { tournamentId, status: 'playoff' as const, seriesCount: seriesIds.size };
+    return { tournamentId, status: 'playoff' as const, seriesCount: seriesIds.size, created: true };
   });
 }
 

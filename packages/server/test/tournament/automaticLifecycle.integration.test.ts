@@ -114,9 +114,12 @@ async function seedAutomaticTournament(
     approved: number;
     playoffSize: 2 | 4;
     subscribedAdmins?: number;
+    slugSuffix?: string;
+    playerIdBase?: number;
   },
 ) {
   const source = input.source ?? 'head_to_head';
+  const playerIdBase = input.playerIdBase ?? 910;
   const tournament = await pool.query<{ id: string }>(
     `insert into tournament
        (slug, title, status, regular_source, current_revision, registration_opens_at,
@@ -124,7 +127,7 @@ async function seedAutomaticTournament(
      values ($1, 'Автоматический кубок', 'registration', $2, 1, $3, $4, $5, $6)
      returning id`,
     [
-      `automatic-${source}-${input.approved}-${input.playoffSize}`,
+      `automatic-${source}-${input.approved}-${input.playoffSize}${input.slugSuffix ?? ''}`,
       source,
       new Date(CLOSES_AT.getTime() - 3_600_000),
       CLOSES_AT,
@@ -146,7 +149,7 @@ async function seedAutomaticTournament(
   ]);
 
   for (let index = 0; index < input.approved; index += 1) {
-    const userId = `00000000-0000-4000-8000-${String(910 + index).padStart(12, '0')}`;
+    const userId = `00000000-0000-4000-8000-${String(playerIdBase + index).padStart(12, '0')}`;
     await pool.query(
       `insert into users (id, display_name, timezone, role)
        values ($1, $2, 'Europe/Moscow', 'player')`,
@@ -365,6 +368,52 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
         rounds: 0,
         fixtures: 0,
       });
+    },
+  );
+
+  it.each(['daily_aggregate', 'classic'] as const)(
+    'finalizes expired %s matchdays before it materializes duel-only playoffs',
+    async (source) => {
+      const tournament = await seedAutomaticTournament(pool, {
+        source,
+        approved: 4,
+        playoffSize: 4,
+      });
+      await reconcileTournamentLifecycle(pool, {
+        now: CLOSES_AT,
+        tournamentId: tournament.id,
+        classicSeedSecret: 'test-secret',
+      });
+      await publishRegularSchedule(pool, tournament.id);
+      await configureAutomaticPlayoffs(pool, {
+        tournamentId: tournament.id,
+        firstGameStartsAt: '2030-10-27T15:00:00.000Z',
+      });
+
+      const report = await reconcileTournamentLifecycle(pool, {
+        now: new Date('2030-10-27T15:00:00.000Z'),
+        tournamentId: tournament.id,
+        classicSeedSecret: 'test-secret',
+      });
+      const outcome = await pool.query<{
+        result_count: number;
+        playoff_fixture_count: number;
+        non_duel_fixture_count: number;
+      }>(
+        `select
+           (select count(*)::int from tournament_daily_result where tournament_id = $1) as result_count,
+           (select count(*)::int from tournament_fixture where tournament_id = $1 and series_id is not null)
+             as playoff_fixture_count,
+           (select count(*)::int from tournament_fixture
+             where tournament_id = $1 and series_id is not null
+               and result_snapshot->>'duelTemplateId' is null) as non_duel_fixture_count`,
+        [tournament.id],
+      );
+
+      expect(report.items[0]).toMatchObject({ action: 'start_playoff', after: 'playoff' });
+      expect(outcome.rows[0]!.result_count).toBe(12);
+      expect(outcome.rows[0]!.playoff_fixture_count).toBeGreaterThan(0);
+      expect(outcome.rows[0]!.non_duel_fixture_count).toBe(0);
     },
   );
 
@@ -702,5 +751,120 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
       changed: false,
     });
     expect(delivery.rows[0]!.count).toBe(2);
+  });
+
+  it('does not finalize expired daily results for a legacy tournament or during dry-run', async () => {
+    const legacy = await seedAutomaticTournament(pool, {
+      source: 'daily_aggregate',
+      approved: 4,
+      playoffSize: 4,
+    });
+    await reconcileTournamentLifecycle(pool, { now: CLOSES_AT, tournamentId: legacy.id });
+    await publishRegularSchedule(pool, legacy.id);
+    await pool.query(
+      `update tournament_revision
+          set rules_snapshot = rules_snapshot - 'automaticLifecycleVersion'
+        where tournament_id = $1 and revision = 1`,
+      [legacy.id],
+    );
+
+    const dryRun = await seedAutomaticTournament(pool, {
+      source: 'daily_aggregate',
+      approved: 4,
+      playoffSize: 4,
+      slugSuffix: '-dry-run',
+      playerIdBase: 2_000,
+    });
+    await reconcileTournamentLifecycle(pool, { now: CLOSES_AT, tournamentId: dryRun.id });
+    await publishRegularSchedule(pool, dryRun.id);
+
+    const now = new Date('2030-10-27T15:00:00.000Z');
+    const legacyReport = await reconcileTournamentLifecycle(pool, {
+      now,
+      tournamentId: legacy.id,
+      classicSeedSecret: 'test-secret',
+    });
+    await reconcileTournamentLifecycle(pool, {
+      now,
+      tournamentId: dryRun.id,
+      classicSeedSecret: 'test-secret',
+      dryRun: true,
+    });
+    const results = await pool.query<{ tournament_id: string; count: number }>(
+      `select tournament_id, count(*)::int as count
+         from tournament_daily_result
+        where tournament_id = any($1::uuid[])
+        group by tournament_id`,
+      [[legacy.id, dryRun.id]],
+    );
+
+    expect(legacyReport.items[0]).toMatchObject({ action: 'legacy_requires_audit' });
+    expect(results.rows).toEqual([]);
+  });
+
+  it('blocks a completed regular season without a configured playoff time and notifies admins once', async () => {
+    const tournament = await seedAutomaticTournament(pool, {
+      source: 'head_to_head',
+      approved: 4,
+      playoffSize: 4,
+      subscribedAdmins: 2,
+    });
+    await reconcileTournamentLifecycle(pool, { now: CLOSES_AT, tournamentId: tournament.id });
+    await publishRegularSchedule(pool, tournament.id);
+    await pool.query(
+      `update tournament_fixture
+          set status = 'settled', home_score = 1, away_score = 0,
+              winner_participant_id = home_participant_id
+        where tournament_id = $1`,
+      [tournament.id],
+    );
+
+    const first = await reconcileTournamentLifecycle(pool, {
+      now: new Date('2030-10-27T15:00:00.000Z'),
+      tournamentId: tournament.id,
+    });
+    await reconcileTournamentLifecycle(pool, {
+      now: new Date('2030-10-27T15:01:00.000Z'),
+      tournamentId: tournament.id,
+    });
+    const deliveries = await pool.query<{ count: number }>(
+      `select count(*)::int as count from push_delivery_log
+        where event_type = 'tournament.playoff_blocked'
+          and event_key = $1`,
+      [`${tournament.id}:playoff-blocked:${tournament.revision}`],
+    );
+
+    expect(first.items[0]).toMatchObject({
+      action: 'playoff_schedule_missing',
+      reason: 'playoff_schedule_missing',
+      changed: false,
+    });
+    expect(deliveries.rows[0]!.count).toBe(2);
+  });
+
+  it('reports only one changed lifecycle item when concurrent reconciles start playoffs', async () => {
+    const tournament = await prepareCompletedHeadToHeadRegular(pool, {
+      firstGameStartsAt: '2030-10-27T15:00:00.000Z',
+    });
+
+    const reports = await Promise.all([
+      reconcileTournamentLifecycle(pool, {
+        now: new Date('2030-10-27T15:00:00.000Z'),
+        tournamentId: tournament.id,
+      }),
+      reconcileTournamentLifecycle(pool, {
+        now: new Date('2030-10-27T15:00:00.000Z'),
+        tournamentId: tournament.id,
+      }),
+    ]);
+    const items = reports.map((report) => report.items[0]!);
+
+    expect(items.filter((item) => item.changed)).toHaveLength(1);
+    expect(items).toContainEqual(
+      expect.objectContaining({ action: 'start_playoff', after: 'playoff', changed: true }),
+    );
+    expect(items).toContainEqual(
+      expect.objectContaining({ action: 'unchanged', after: 'playoff', changed: false }),
+    );
   });
 });

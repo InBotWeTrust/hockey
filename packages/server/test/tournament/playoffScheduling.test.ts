@@ -26,6 +26,23 @@ describe('rebaseRoundGameDaysAtOrAfter', () => {
     expect(rebased.map((day) => day.maxResultGames)).toEqual([4, 3]);
     expect(rebased.map((day) => day.localDate)).toEqual(['2030-10-28', '2030-10-29']);
   });
+
+  it('skips a Europe/Berlin spring DST gap with one shared local-day shift', () => {
+    const rebased = rebaseRoundGameDaysAtOrAfter(
+      'Europe/Berlin',
+      [
+        { localDate: '2030-03-31', firstWaveLocalTime: '02:30', maxResultGames: 2 },
+        { localDate: '2030-04-01', firstWaveLocalTime: '02:30', maxResultGames: 1 },
+      ],
+      new Date('2030-03-30T00:00:00.000Z'),
+    );
+
+    expect(rebased.map((day) => day.localDate)).toEqual(['2030-04-01', '2030-04-02']);
+    expect(rebased.map((day) => day.firstGameStartsAt.toISOString())).toEqual([
+      '2030-04-01T00:30:00.000Z',
+      '2030-04-02T00:30:00.000Z',
+    ]);
+  });
 });
 
 describe('validateRoundGameDays', () => {

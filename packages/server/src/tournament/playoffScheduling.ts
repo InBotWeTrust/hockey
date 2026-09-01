@@ -35,33 +35,43 @@ export function rebaseRoundGameDaysAtOrAfter(
   if (Number.isNaN(notBefore.getTime())) throw new Error('notBefore must be a valid date');
   if (days.length === 0) throw new Error('at least one game day is required');
 
-  let offsetDays = 0;
   const firstDay = days[0]!;
-  let firstStart = zonedDateTimeToUtc(
-    localDateParts(firstDay.localDate, firstDay.firstWaveLocalTime),
-    timezone,
+  const firstLocalMidnightMs = new Date(`${firstDay.localDate}T00:00:00.000Z`).getTime();
+  if (Number.isNaN(firstLocalMidnightMs)) throw new Error('game day localDate must be valid');
+  const dayMs = 86_400_000;
+  const firstCandidateOffset = Math.max(
+    0,
+    Math.floor((notBefore.getTime() - firstLocalMidnightMs) / dayMs) - 1,
   );
-  while (firstStart.getTime() < notBefore.getTime()) {
-    offsetDays += 1;
-    const firstDay = days[0]!;
-    const localDate = shiftLocalDate(firstDay.localDate, offsetDays);
-    firstStart = zonedDateTimeToUtc(
-      localDateParts(localDate, firstDay.firstWaveLocalTime),
-      timezone,
-    );
+
+  // The initial candidate is within one local day of the deadline. A one-year
+  // search bound protects malformed input while covering DST gaps and a whole
+  // calendar cycle of otherwise-invalid local timestamps.
+  for (
+    let offsetDays = firstCandidateOffset;
+    offsetDays <= firstCandidateOffset + 366;
+    offsetDays += 1
+  ) {
+    try {
+      const rebased = days.map((day) => {
+        const localDate = shiftLocalDate(day.localDate, offsetDays);
+        return {
+          ...day,
+          localDate,
+          firstGameStartsAt: zonedDateTimeToUtc(
+            localDateParts(localDate, day.firstWaveLocalTime),
+            timezone,
+          ),
+        };
+      });
+      if (rebased[0]!.firstGameStartsAt.getTime() >= notBefore.getTime()) return rebased;
+    } catch {
+      // A spring DST gap invalidates the whole shared offset. Move all game
+      // days together so their configured local relationship stays intact.
+    }
   }
 
-  return days.map((day) => {
-    const localDate = shiftLocalDate(day.localDate, offsetDays);
-    return {
-      ...day,
-      localDate,
-      firstGameStartsAt: zonedDateTimeToUtc(
-        localDateParts(localDate, day.firstWaveLocalTime),
-        timezone,
-      ),
-    };
-  });
+  throw new Error('could not find a valid future local game-day schedule');
 }
 
 export interface RoundGameDayValidationInput {

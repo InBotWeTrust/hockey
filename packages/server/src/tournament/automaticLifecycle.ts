@@ -24,6 +24,7 @@ export type TournamentLifecycleAction =
   | 'await_manual_regular_start'
   | 'regular_active'
   | 'await_regular_results'
+  | 'playoff_schedule_missing'
   | 'await_playoff_time'
   | 'start_playoff'
   | 'playoff_active'
@@ -49,7 +50,12 @@ export interface TournamentLifecycleDecision {
   dueAt: Date | null;
   approvedParticipantCount: number;
   requiredParticipantCount: number;
-  reason: 'not_enough_participants' | 'regular_results_incomplete' | 'legacy_requires_audit' | null;
+  reason:
+    | 'not_enough_participants'
+    | 'regular_results_incomplete'
+    | 'playoff_schedule_missing'
+    | 'legacy_requires_audit'
+    | null;
 }
 
 export interface ReconcileTournamentLifecycleOptions {
@@ -198,7 +204,10 @@ export function evaluateTournamentLifecycle(
       }
       return decision(snapshot, 'regular_active', snapshot.playoffStartsAt);
     }
-    if (snapshot.playoffStartsAt === null || now < snapshot.playoffStartsAt) {
+    if (snapshot.playoffStartsAt === null) {
+      return decision(snapshot, 'playoff_schedule_missing', null, 'playoff_schedule_missing');
+    }
+    if (now < snapshot.playoffStartsAt) {
       return decision(snapshot, 'await_playoff_time', snapshot.playoffStartsAt);
     }
     return decision(snapshot, 'start_playoff');
@@ -300,7 +309,14 @@ async function regularResultsComplete(pool: Pool, row: LifecycleRow): Promise<bo
   );
 }
 
-async function enqueuePlayoffBlockedPushes(pool: Pool, tournamentId: string): Promise<void> {
+async function enqueuePlayoffBlockedPushes(
+  pool: Pool,
+  tournamentId: string,
+  reason: Extract<
+    TournamentLifecycleDecision['reason'],
+    'regular_results_incomplete' | 'playoff_schedule_missing'
+  >,
+): Promise<void> {
   const client = await pool.connect();
   try {
     await client.query('begin');
@@ -337,11 +353,18 @@ async function enqueuePlayoffBlockedPushes(pool: Pool, tournamentId: string): Pr
           eventType: 'tournament.playoff_blocked',
           eventKey,
           variables: { tournamentTitle: row.title },
-          fallback: {
-            title: 'Плей-офф ожидает результатов',
-            body: `В турнире «${row.title}» ещё не завершены все игры регулярного сезона.`,
-            url: '/admin',
-          },
+          fallback:
+            reason === 'playoff_schedule_missing'
+              ? {
+                  title: 'Для плей-офф не задано расписание',
+                  body: `В турнире «${row.title}» завершён регулярный сезон, но не указано время первой игры плей-офф.`,
+                  url: '/admin',
+                }
+              : {
+                  title: 'Плей-офф ожидает результатов',
+                  body: `В турнире «${row.title}» ещё не завершены все игры регулярного сезона.`,
+                  url: '/admin',
+                },
         });
       }
     }
@@ -417,7 +440,23 @@ export async function reconcileTournamentLifecycle(
   const items: TournamentLifecycleReconcileItem[] = [];
 
   for (const row of rows) {
-    await finalizeExpiredRegularDays(pool, row, options);
+    const persistedSnapshot = tournamentLifecycleSnapshot(row);
+    if (persistedSnapshot.automaticLifecycleVersion !== AUTOMATIC_TOURNAMENT_LIFECYCLE_VERSION) {
+      const legacy = evaluateTournamentLifecycle(persistedSnapshot, options.now);
+      items.push({
+        tournamentId: persistedSnapshot.tournamentId,
+        before: persistedSnapshot.status,
+        after: persistedSnapshot.status,
+        action: legacy.action,
+        changed: false,
+        reason: legacy.reason,
+      });
+      continue;
+    }
+
+    if (options.dryRun !== true) {
+      await finalizeExpiredRegularDays(pool, row, options);
+    }
     const snapshot = tournamentLifecycleSnapshot({
       ...row,
       regular_results_complete: await regularResultsComplete(pool, row),
@@ -444,12 +483,25 @@ export async function reconcileTournamentLifecycle(
       action = reconciled.action;
       changed = reconciled.changed;
       reason = reconciled.reason;
-    } else if (lifecycleDecision.action === 'await_regular_results') {
-      await enqueuePlayoffBlockedPushes(pool, snapshot.tournamentId);
+    } else if (
+      lifecycleDecision.action === 'await_regular_results' ||
+      lifecycleDecision.action === 'playoff_schedule_missing'
+    ) {
+      await enqueuePlayoffBlockedPushes(
+        pool,
+        snapshot.tournamentId,
+        lifecycleDecision.action === 'playoff_schedule_missing'
+          ? 'playoff_schedule_missing'
+          : 'regular_results_incomplete',
+      );
     } else if (lifecycleDecision.action === 'start_playoff') {
       const started = await startTournamentPlayoffs(pool, snapshot.tournamentId, options.now);
       after = started.status === 'playoff' ? 'playoff' : snapshot.status;
-      changed = true;
+      if (started.created) {
+        changed = true;
+      } else {
+        action = 'unchanged';
+      }
     }
 
     items.push({

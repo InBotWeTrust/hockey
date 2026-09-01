@@ -1654,6 +1654,64 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     expect(fixture.rows[0]!.scheduled_starts_at.toISOString()).toBe('2030-09-03T07:00:00.000Z');
   });
 
+  it('rebases each scheduled playoff round after the prior rebased round and its break', async () => {
+    await seedUsers(pool, 0);
+    const template = await pool.query<{ id: string }>(
+      `select id from amateur_duel_template
+        where deleted_at is null and is_active
+        order by created_at limit 1`,
+    );
+    const tournament = await createPublishedTournament(
+      pool,
+      'sequentially-rebased-playoff-rounds',
+      0,
+      playoffTournamentRules(4, {
+        playoffRounds: [
+          {
+            roundNumber: 1,
+            winsRequired: 1,
+            homeSequence: ['H'],
+            duelTemplateId: template.rows[0]!.id,
+            readinessMinutes: 5,
+            plannedStartIntervalMinutes: 20,
+            roundBreakMs: 86_400_000,
+            scheduleDays: [
+              { localDate: '2030-09-01', firstWaveLocalTime: '10:00', maxResultGames: 1 },
+            ],
+          },
+          {
+            roundNumber: 2,
+            winsRequired: 1,
+            homeSequence: ['H'],
+            duelTemplateId: template.rows[0]!.id,
+            readinessMinutes: 5,
+            plannedStartIntervalMinutes: 20,
+            roundBreakMs: 0,
+            scheduleDays: [
+              { localDate: '2030-09-01', firstWaveLocalTime: '10:00', maxResultGames: 1 },
+            ],
+          },
+        ],
+      }),
+    );
+    await prepareTournamentForPlayoffs(pool, tournament.id, [4, 3, 2, 1]);
+
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-02T08:15:00.000Z'));
+
+    const rounds = await pool.query<{ number: number; starts_at: Date; ends_at: Date }>(
+      `select number, starts_at, ends_at from tournament_round
+        where tournament_id = $1 and stage = 'playoff'
+        order by number`,
+      [tournament.id],
+    );
+
+    expect(rounds.rows.map((round) => round.number)).toEqual([1, 2]);
+    expect(rounds.rows[0]!.starts_at.toISOString()).toBe('2030-09-03T07:00:00.000Z');
+    expect(rounds.rows[1]!.starts_at.getTime()).toBeGreaterThanOrEqual(
+      rounds.rows[0]!.ends_at.getTime() + 86_400_000,
+    );
+  });
+
   it('rolls back tournament completion when its audience outbox insert fails', async () => {
     await seedUsers(pool, 0);
     await subscribeTournamentUsers(pool, PLAYER_IDS);
@@ -1662,6 +1720,13 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       'transactional-completion',
       0,
       playoffTournamentRules(2, {
+        stageRewards: {
+          regular: [],
+          playoff: [
+            { place: 1, coins: 10, stars: 1, experience: 20 },
+            { place: 2, coins: 5, stars: 0, experience: 10 },
+          ],
+        },
         playoffRounds: [
           {
             roundNumber: 1,
@@ -1719,21 +1784,39 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       }),
     ).resolves.toBeDefined();
     await expect(
+      resolveTournamentNoShow(pool, {
+        tournamentId: tournament.id,
+        fixtureId: finalFixture.rows[0]!.id,
+        absent: 'away',
+        reason: 'repeat completed final recovery request',
+        adminUserId: ADMIN_ID,
+      }),
+    ).resolves.toBeDefined();
+    await expect(
       grantTournamentStageRewards(pool, tournament.id, 'playoff'),
     ).resolves.toMatchObject({
       stage: 'playoff',
       granted: 0,
     });
-    const completed = await pool.query<{ status: string; delivery_count: string }>(
+    const completed = await pool.query<{
+      status: string;
+      delivery_count: string;
+      playoff_reward_count: string;
+    }>(
       `select tournament.status,
               (select count(*)::text from push_delivery_log
-                where event_type = 'tournament.completed') as delivery_count
+                where event_type = 'tournament.completed') as delivery_count,
+              (select count(*)::text from tournament_economy_event
+                where tournament_id = tournament.id
+                  and kind = 'stage_reward'
+                  and metadata->>'stage' = 'playoff') as playoff_reward_count
          from tournament where id = $1`,
       [tournament.id],
     );
     expect(completed.rows[0]).toEqual({
       status: 'completed',
       delivery_count: String(PLAYER_IDS.length),
+      playoff_reward_count: '2',
     });
   });
 
