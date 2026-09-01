@@ -413,6 +413,30 @@ describe('BonusGamesScreen', () => {
     );
   });
 
+  it('shows every completed game in the compact list when the skill has no current game', async () => {
+    mockCatalog(
+      Array.from({ length: 10 }, (_, index) =>
+        card({
+          id: `completed-${index + 1}`,
+          slug: `completed-${index + 1}`,
+          title: index === 9 ? 'Космос' : `Игра ${index + 1}`,
+          sort_order: index + 1,
+          state: 'completed',
+          is_completed: true,
+        }),
+      ),
+    );
+    renderCatalog();
+
+    expect(await screen.findByRole('heading', { name: 'Пройденные · 10' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Текущая игра' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Повторить' })).toHaveLength(10);
+    expect(screen.getByRole('heading', { name: 'Космос' }).closest('article')).toHaveClass(
+      'bonus-game-card--compact',
+      'bonus-game-card--completed',
+    );
+  });
+
   it('keeps a reserved chevron slot and splits compact game rules into two lines', async () => {
     mockCatalog([
       card({ id: 'beach', title: 'Пляж', state: 'completed', is_completed: true }),

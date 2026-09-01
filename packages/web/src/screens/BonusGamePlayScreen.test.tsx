@@ -345,8 +345,10 @@ describe('BonusGamePlayScreen', () => {
       initialSceneElapsedMs: 6_000,
       initialShooterElapsedMs: 4_800,
       goalieOptions: {
-        idleSpriteUrl: '/bonus-games/goalkeepers/beach-ready.webp',
-        saveSpriteUrl: '/bonus-games/goalkeepers/beach-save.webp',
+        idleSpriteUrl:
+          '/bonus-games/goalkeepers/beach-ready.webp?v=20260831-goalkeeper-framing-v1',
+        saveSpriteUrl:
+          '/bonus-games/goalkeepers/beach-save.webp?v=20260831-goalkeeper-framing-v1',
         visualYScale: 0.72,
         visualYOffset: 62,
         visualXScale: 0.9,
@@ -366,8 +368,8 @@ describe('BonusGamePlayScreen', () => {
       },
       preloadAssets: [
         '/bonus-games/arenas/beach.webp?v=20260829-world-tour-user-pngs-v10',
-        '/bonus-games/goalkeepers/beach-ready.webp',
-        '/bonus-games/goalkeepers/beach-save.webp',
+        '/bonus-games/goalkeepers/beach-ready.webp?v=20260831-goalkeeper-framing-v1',
+        '/bonus-games/goalkeepers/beach-save.webp?v=20260831-goalkeeper-framing-v1',
       ],
     });
     expect(props).not.toHaveProperty('rinkAspectRatio');
