@@ -431,6 +431,23 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle audit', () =
     expect(retry.tournaments).toHaveLength(1);
     expect(retry.tournaments[0]).toMatchObject({ id: complete.id, status: 'enabled' });
     expect(retry.tournaments[0]?.reconcile).toBeDefined();
+
+    await pool.query(
+      `insert into tournament_round
+         (tournament_id, stage, number, name, starts_at, ends_at, status, rules_snapshot)
+       values ($1, 'playoff', 1, 'Conflicting playoff round', $2, $3, 'scheduled', '{}')`,
+      [complete.id, new Date('2030-09-04T12:00:00.000Z'), new Date('2030-09-05T12:00:00.000Z')],
+    );
+    const conflictedRetry = await auditCompletedLegacyDailyTournamentLifecycle(pool, {
+      now: NOW,
+      apply: true,
+    });
+    expect(conflictedRetry.tournaments).toHaveLength(1);
+    expect(conflictedRetry.tournaments[0]).toMatchObject({
+      id: complete.id,
+      status: 'blocked',
+    });
+    expect(conflictedRetry.tournaments[0]?.reconcile).toBeUndefined();
   });
 
   it('blocks a legacy Classic tournament with a persisted session and period', async () => {

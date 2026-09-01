@@ -618,6 +618,10 @@ export async function auditCompletedLegacyDailyTournamentLifecycle(
     const item = report.tournaments[0];
     if (item === undefined) continue;
     if (options.apply && item.status === 'already_enabled') {
+      if (item.reasons.length > 0) {
+        tournaments.push({ ...item, status: 'blocked' });
+        continue;
+      }
       const reconcile = await reconcileTournamentLifecycle(pool, {
         tournamentId: candidate.id,
         now: options.now,
