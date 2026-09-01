@@ -72,6 +72,50 @@ export interface GenerateRegularScheduleOutcome {
   fixtureCount: number;
 }
 
+async function enqueueRegistrationBlockedPushes(
+  client: PoolClient,
+  outcome: Pick<
+    GenerateRegularScheduleOutcome,
+    'tournamentId' | 'revision' | 'participantCount' | 'playoffSize' | 'title' | 'createdBy'
+  >,
+): Promise<void> {
+  const recipients = await client.query<{ id: string }>(
+    `select distinct id::text as id
+       from users
+      where id = $1 or role = 'admin'`,
+    [outcome.createdBy],
+  );
+  const eventKey = `${outcome.tournamentId}:registration-blocked:${outcome.revision}`;
+  for (const recipient of recipients.rows) {
+    const previousDelivery = await client.query<{ exists: boolean }>(
+      `select exists(
+         select 1 from push_delivery_log
+          where user_id = $1
+            and event_type = 'tournament.registration_blocked'
+            and event_key like $2 || '%'
+       ) as exists`,
+      [recipient.id, `${outcome.tournamentId}:registration-blocked:`],
+    );
+    if (previousDelivery.rows[0]!.exists) continue;
+    await enqueueTournamentPush(client, {
+      userId: recipient.id,
+      tournamentId: outcome.tournamentId,
+      eventType: 'tournament.registration_blocked',
+      eventKey,
+      variables: {
+        tournamentTitle: outcome.title,
+        approvedCount: outcome.participantCount,
+        requiredCount: outcome.playoffSize,
+      },
+      fallback: {
+        title: 'Турнир требует внимания',
+        body: `В турнире «${outcome.title}» подтверждено ${outcome.participantCount} из ${outcome.playoffSize} участников.`,
+        url: '/admin',
+      },
+    });
+  }
+}
+
 export function assertTournamentDatesReady(
   registrationOpensAt: Date | null,
   registrationClosesAt: Date | null,
@@ -1583,7 +1627,7 @@ export async function generateRegularSchedule(
           [tournamentId],
         );
       }
-      return {
+      const blockedOutcome = {
         ...outcome,
         status: 'registration_blocked' as const,
         changed,
@@ -1591,6 +1635,8 @@ export async function generateRegularSchedule(
         roundCount: 0,
         fixtureCount: 0,
       };
+      await enqueueRegistrationBlockedPushes(client, blockedOutcome);
+      return blockedOutcome;
     }
     await client.query(`delete from tournament_matchday where tournament_id = $1`, [tournamentId]);
     let roundCount = 0;

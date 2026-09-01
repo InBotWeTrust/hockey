@@ -209,6 +209,22 @@ async function reconcileAfterLockedParticipantMutation(
   }
 }
 
+async function waitForBlockedTournamentUpdate(pool: Pool): Promise<void> {
+  for (let attempt = 0; attempt < 1_000; attempt += 1) {
+    const { rows } = await pool.query<{ query: string }>(
+      `select query
+         from pg_stat_activity
+        where datname = current_database()
+          and pid <> pg_backend_pid()
+          and wait_event_type = 'Lock'
+          and query ~* 'pg_advisory_xact_lock'`,
+    );
+    if (rows.length > 0) return;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+  throw new Error('revision update did not wait for the tournament advisory lock');
+}
+
 describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', () => {
   let pool: Pool;
 
@@ -459,6 +475,72 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
     expect(deliveries.rows[0]!.revisions).toEqual([
       `${tournament.id}:registration-blocked:${tournament.revision}`,
     ]);
+  });
+
+  it('serializes a blocked delivery before a cross-revision retry', async () => {
+    const tournament = await seedAutomaticTournament(pool, {
+      approved: 3,
+      playoffSize: 4,
+      subscribedAdmins: 2,
+    });
+    const locker = await pool.connect();
+    let lockTransactionOpen = false;
+    let firstReconcile: Promise<Awaited<ReturnType<typeof reconcileTournamentLifecycle>>> | null =
+      null;
+    let revisionUpdate: Promise<Awaited<ReturnType<typeof updateTournamentDraft>>> | null = null;
+    try {
+      await locker.query('begin');
+      lockTransactionOpen = true;
+      const backend = await locker.query<{ pid: number }>('select pg_backend_pid() as pid');
+      await locker.query('lock table push_delivery_log in share row exclusive mode');
+
+      firstReconcile = reconcileTournamentLifecycle(pool, {
+        now: CLOSES_AT,
+        tournamentId: tournament.id,
+      });
+      await waitForBlockedWriter(pool, backend.rows[0]!.pid, /push_delivery_log/i);
+
+      revisionUpdate = updateTournamentDraft(pool, {
+        tournamentId: tournament.id,
+        expectedRevision: tournament.revision,
+        title: 'Автоматический кубок, межревизионный retry',
+        description: '',
+        rules: rules('head_to_head', 4),
+        updatedBy: CREATOR_ID,
+        registrationOpensAt: new Date(CLOSES_AT.getTime() - 3_600_000),
+        registrationClosesAt: CLOSES_AT,
+        startsAt: new Date(CLOSES_AT.getTime() + 86_400_000),
+      });
+      await waitForBlockedTournamentUpdate(pool);
+
+      await locker.query('commit');
+      lockTransactionOpen = false;
+      const [first, updated] = await Promise.all([firstReconcile, revisionUpdate]);
+      const second = await reconcileTournamentLifecycle(pool, {
+        now: minuteAfter(CLOSES_AT),
+        tournamentId: tournament.id,
+      });
+
+      expect(first.items[0]).toMatchObject({
+        action: 'block_registration',
+        changed: true,
+      });
+      expect(updated.revision).toBe(2);
+      expect(second.items[0]).toMatchObject({ action: 'unchanged', changed: false });
+      const deliveries = await pool.query<{ count: number; keys: string[] }>(
+        `select count(*)::int as count, array_agg(distinct event_key order by event_key) as keys
+           from push_delivery_log
+          where event_type = 'tournament.registration_blocked'`,
+      );
+      expect(deliveries.rows[0]!.count).toBe(2);
+      expect(deliveries.rows[0]!.keys).toEqual([
+        `${tournament.id}:registration-blocked:${tournament.revision}`,
+      ]);
+    } finally {
+      if (lockTransactionOpen) await locker.query('rollback');
+      locker.release();
+      await Promise.allSettled([firstReconcile, revisionUpdate].filter((value) => value !== null));
+    }
   });
 
   it('keeps regular tournaments with no results away from playoff actions', async () => {

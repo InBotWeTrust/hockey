@@ -1,5 +1,4 @@
 import type { Pool } from 'pg';
-import { enqueueTournamentPush } from '../push/tournament.js';
 import {
   generateRegularSchedule,
   type GenerateRegularScheduleOutcome,
@@ -72,8 +71,6 @@ interface LifecycleRow {
   id: string;
   status: TournamentStatus;
   current_revision: number;
-  created_by: string;
-  title: string;
   registration_opens_at: Date | null;
   registration_closes_at: Date | null;
   rules_snapshot: TournamentRulesSnapshot;
@@ -177,8 +174,8 @@ async function loadLifecycleRows(
   tournamentId: string | undefined,
 ): Promise<LifecycleRow[]> {
   const { rows } = await pool.query<LifecycleRow>(
-    `select t.id, t.status, t.current_revision, t.created_by::text, t.title,
-            t.registration_opens_at, t.registration_closes_at, revision.rules_snapshot,
+    `select t.id, t.status, t.current_revision, t.registration_opens_at,
+            t.registration_closes_at, revision.rules_snapshot,
             (
               select count(*)::int from tournament_participant participant
                where participant.tournament_id = t.id and participant.state = 'approved'
@@ -203,50 +200,6 @@ function plannedAfterStatus(
   if (action === 'generate_schedule') return 'scheduling';
   if (action === 'block_registration') return 'registration_blocked';
   return before;
-}
-
-async function enqueueRegistrationBlockedPushes(
-  pool: Pool,
-  outcome: Pick<
-    GenerateRegularScheduleOutcome,
-    'tournamentId' | 'revision' | 'participantCount' | 'playoffSize' | 'title' | 'createdBy'
-  >,
-): Promise<void> {
-  const recipients = await pool.query<{ id: string }>(
-    `select distinct id::text as id
-       from users
-      where id = $1 or role = 'admin'`,
-    [outcome.createdBy],
-  );
-  const eventKey = `${outcome.tournamentId}:registration-blocked:${outcome.revision}`;
-  for (const recipient of recipients.rows) {
-    const previousDelivery = await pool.query<{ exists: boolean }>(
-      `select exists(
-         select 1 from push_delivery_log
-          where user_id = $1
-            and event_type = 'tournament.registration_blocked'
-            and event_key like $2 || '%'
-       ) as exists`,
-      [recipient.id, `${outcome.tournamentId}:registration-blocked:`],
-    );
-    if (previousDelivery.rows[0]!.exists) continue;
-    await enqueueTournamentPush(pool, {
-      userId: recipient.id,
-      tournamentId: outcome.tournamentId,
-      eventType: 'tournament.registration_blocked',
-      eventKey,
-      variables: {
-        tournamentTitle: outcome.title,
-        approvedCount: outcome.participantCount,
-        requiredCount: outcome.playoffSize,
-      },
-      fallback: {
-        title: 'Турнир требует внимания',
-        body: `В турнире «${outcome.title}» подтверждено ${outcome.participantCount} из ${outcome.playoffSize} участников.`,
-        url: '/admin',
-      },
-    });
-  }
 }
 
 function reconcileGeneratedSchedule(outcome: GenerateRegularScheduleOutcome) {
@@ -291,7 +244,9 @@ export async function reconcileTournamentLifecycle(
       after = plannedAfterStatus(snapshot.status, lifecycleDecision.action);
     } else if (
       lifecycleDecision.action === 'generate_schedule' ||
-      lifecycleDecision.action === 'block_registration'
+      lifecycleDecision.action === 'block_registration' ||
+      (snapshot.status === 'registration_blocked' &&
+        snapshot.automaticLifecycleVersion === AUTOMATIC_TOURNAMENT_LIFECYCLE_VERSION)
     ) {
       const result = await generateRegularSchedule(pool, snapshot.tournamentId, snapshot.revision);
       const reconciled = reconcileGeneratedSchedule(result);
@@ -300,21 +255,6 @@ export async function reconcileTournamentLifecycle(
       action = reconciled.action;
       changed = reconciled.changed;
       reason = reconciled.reason;
-      if (result.status === 'registration_blocked' && result.changed) {
-        await enqueueRegistrationBlockedPushes(pool, result);
-      }
-    } else if (
-      snapshot.status === 'registration_blocked' &&
-      snapshot.automaticLifecycleVersion === AUTOMATIC_TOURNAMENT_LIFECYCLE_VERSION
-    ) {
-      await enqueueRegistrationBlockedPushes(pool, {
-        tournamentId: snapshot.tournamentId,
-        revision: snapshot.revision,
-        participantCount: snapshot.approvedParticipantCount,
-        playoffSize: snapshot.playoffSize,
-        title: row.title,
-        createdBy: row.created_by,
-      });
     }
 
     items.push({
