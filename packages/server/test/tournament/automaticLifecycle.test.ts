@@ -1,6 +1,8 @@
+import type { Pool } from 'pg';
 import { describe, expect, it } from 'vitest';
 import {
   evaluateTournamentLifecycle,
+  loadTournamentLifecycleDTOs,
   type TournamentLifecycleSnapshot,
 } from '../../src/tournament/automaticLifecycle.js';
 
@@ -109,5 +111,131 @@ describe('evaluateTournamentLifecycle', () => {
         NOW,
       ).action,
     ).toBe('generate_schedule');
+  });
+
+  it('batches readiness only for automatic regular tournaments across both regular sources', async () => {
+    const queries: Array<{ sql: string; values: unknown[] | undefined }> = [];
+    const lifecycleRows = [
+      {
+        id: 'registration',
+        status: 'registration',
+        current_revision: 1,
+        registration_opens_at: new Date('2030-01-10T13:00:00.000Z'),
+        registration_closes_at: new Date('2030-01-10T14:00:00.000Z'),
+        rules_snapshot: {
+          automaticLifecycleVersion: 1,
+          config: { regularSource: 'head_to_head', playoffSize: 2, dailyDays: null },
+        },
+        approved_participant_count: 2,
+        schedule_exists: false,
+        regular_results_complete: false,
+      },
+      {
+        id: 'regular-head-to-head',
+        status: 'regular',
+        current_revision: 1,
+        registration_opens_at: null,
+        registration_closes_at: null,
+        rules_snapshot: {
+          automaticLifecycleVersion: 1,
+          config: { regularSource: 'head_to_head', playoffSize: 2, dailyDays: null },
+        },
+        approved_participant_count: 2,
+        schedule_exists: true,
+        regular_results_complete: false,
+      },
+      {
+        id: 'regular-daily',
+        status: 'regular',
+        current_revision: 1,
+        registration_opens_at: null,
+        registration_closes_at: null,
+        rules_snapshot: {
+          automaticLifecycleVersion: 1,
+          config: { regularSource: 'daily_aggregate', playoffSize: 2, dailyDays: 1 },
+        },
+        approved_participant_count: 2,
+        schedule_exists: true,
+        regular_results_complete: false,
+      },
+      {
+        id: 'regular-classic',
+        status: 'regular',
+        current_revision: 1,
+        registration_opens_at: null,
+        registration_closes_at: null,
+        rules_snapshot: {
+          automaticLifecycleVersion: 1,
+          config: { regularSource: 'classic', playoffSize: 2, dailyDays: 1 },
+        },
+        approved_participant_count: 2,
+        schedule_exists: true,
+        regular_results_complete: false,
+      },
+      {
+        id: 'completed',
+        status: 'completed',
+        current_revision: 1,
+        registration_opens_at: null,
+        registration_closes_at: null,
+        rules_snapshot: {
+          automaticLifecycleVersion: 1,
+          config: { regularSource: 'head_to_head', playoffSize: 2, dailyDays: null },
+        },
+        approved_participant_count: 2,
+        schedule_exists: true,
+        regular_results_complete: false,
+      },
+    ];
+    const pool = {
+      query: async (sql: string, values?: unknown[]) => {
+        queries.push({ sql, values });
+        if (sql.includes('from tournament t')) return { rows: lifecycleRows };
+        if (sql.includes('tournament_round')) {
+          return {
+            rows: [{ tournament_id: 'regular-head-to-head', fixture_count: 1, terminal_count: 1 }],
+          };
+        }
+        if (sql.includes('tournament_daily_result')) {
+          return {
+            rows: [
+              {
+                tournament_id: 'regular-daily',
+                participant_count: 2,
+                result_count: 2,
+                daily_days: 1,
+              },
+              {
+                tournament_id: 'regular-classic',
+                participant_count: 2,
+                result_count: 2,
+                daily_days: 1,
+              },
+            ],
+          };
+        }
+        throw new Error(`unexpected lifecycle query: ${sql}`);
+      },
+    } as unknown as Pool;
+
+    const lifecycle = await loadTournamentLifecycleDTOs(
+      pool,
+      lifecycleRows.map((row) => row.id),
+      NOW,
+    );
+
+    const readinessQueries = queries.filter(
+      ({ sql }) => sql.includes('tournament_round') || sql.includes('tournament_daily_result'),
+    );
+    expect(readinessQueries).toHaveLength(2);
+    expect(readinessQueries.map(({ values }) => values?.[0])).toEqual([
+      ['regular-head-to-head'],
+      ['regular-daily', 'regular-classic'],
+    ]);
+    expect(lifecycle.get('registration')?.action).toBe('registration_waiting');
+    expect(lifecycle.get('regular-head-to-head')?.action).toBe('playoff_schedule_missing');
+    expect(lifecycle.get('regular-daily')?.action).toBe('playoff_schedule_missing');
+    expect(lifecycle.get('regular-classic')?.action).toBe('playoff_schedule_missing');
+    expect(lifecycle.get('completed')?.action).toBe('terminal');
   });
 });

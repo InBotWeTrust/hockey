@@ -11,7 +11,7 @@ export interface AdminTournament {
   regularSource: 'head_to_head' | 'daily_aggregate' | 'classic';
   revision: number;
   participantCount: number;
-  lifecycle?: TournamentLifecycleDTO;
+  lifecycle: TournamentLifecycleDTO;
   pendingApplicationCount?: number;
   registrationOpensAt?: string | null;
   registrationClosesAt?: string | null;

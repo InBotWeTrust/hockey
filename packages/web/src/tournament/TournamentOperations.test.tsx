@@ -5,8 +5,16 @@ import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TournamentOperations } from './TournamentOperations.js';
 import type { AdminTournament } from './adminApi.js';
+import type { TournamentLifecycleDTO } from '../api/tournament.js';
 
 const designSystemCss = readFileSync(resolve(process.cwd(), 'src/app/design-system.css'), 'utf8');
+const TEST_LIFECYCLE: TournamentLifecycleDTO = {
+  action: 'unchanged',
+  dueAt: null,
+  approvedParticipantCount: 0,
+  requiredParticipantCount: 2,
+  reason: null,
+};
 
 function tournament(): AdminTournament {
   return {
@@ -18,6 +26,7 @@ function tournament(): AdminTournament {
     regularSource: 'head_to_head',
     revision: 3,
     participantCount: 0,
+    lifecycle: TEST_LIFECYCLE,
     registrationOpensAt: '2030-08-01T07:00:00.000Z',
     registrationClosesAt: '2030-08-31T07:00:00.000Z',
     startsAt: '2030-09-01T07:00:00.000Z',
@@ -72,7 +81,9 @@ describe('TournamentOperations', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Календарь' }));
 
     expect(await screen.findByRole('heading', { name: 'Требуют решения' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /игра №7.*нужно назначить новое время/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /игра №7.*нужно назначить новое время/i }),
+    ).toBeInTheDocument();
   });
 
   it('requires a reason and a separate confirmation before forcing a playoff series winner', async () => {
@@ -226,8 +237,8 @@ describe('TournamentOperations', () => {
             ],
           }),
           {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
+            status: 200,
+            headers: { 'content-type': 'application/json' },
           },
         );
       }

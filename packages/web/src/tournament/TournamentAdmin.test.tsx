@@ -7,8 +7,16 @@ import { ApiError } from '../api/apiFetch.js';
 import * as api from './adminApi.js';
 import { TournamentAdmin } from './TournamentAdmin.js';
 import { TournamentOperations } from './TournamentOperations.js';
+import type { TournamentLifecycleDTO } from '../api/tournament.js';
 
 const designSystemCss = readFileSync(resolve(process.cwd(), 'src/app/design-system.css'), 'utf8');
+const TEST_LIFECYCLE: TournamentLifecycleDTO = {
+  action: 'unchanged',
+  dueAt: null,
+  approvedParticipantCount: 0,
+  requiredParticipantCount: 2,
+  reason: null,
+};
 
 async function chooseGlassOption(label: string, option: string | RegExp): Promise<void> {
   fireEvent.click(screen.getByRole('combobox', { name: label }));
@@ -25,6 +33,7 @@ function dstOverlapTournament(): api.AdminTournament {
     regularSource: 'head_to_head',
     revision: 7,
     participantCount: 0,
+    lifecycle: TEST_LIFECYCLE,
     registrationOpensAt: '2026-11-01T06:10:00.000Z',
     registrationClosesAt: '2026-11-01T06:20:00.000Z',
     startsAt: '2026-11-01T06:30:00.000Z',
@@ -56,6 +65,7 @@ describe('TournamentAdmin', () => {
         regularSource: 'head_to_head',
         revision: 1,
         participantCount: 0,
+        lifecycle: TEST_LIFECYCLE,
       },
     });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -78,9 +88,9 @@ describe('TournamentAdmin', () => {
     expect(screen.getByRole('spinbutton', { name: 'Раунд 1: дней на раунд' })).toHaveValue(2);
     expect(screen.getByRole('spinbutton', { name: 'Раунд 1: максимум игр в день' })).toHaveValue(4);
     expect(screen.getByRole('spinbutton', { name: 'Раунд 1: минут на готовность' })).toHaveValue(5);
-    expect(screen.getByRole('spinbutton', { name: 'Раунд 1: интервал стартов, минуты' })).toHaveValue(
-      20,
-    );
+    expect(
+      screen.getByRole('spinbutton', { name: 'Раунд 1: интервал стартов, минуты' }),
+    ).toHaveValue(20);
     expect(screen.getByLabelText('Раунд 1: начало первой игры')).toBeInTheDocument();
     expect(screen.queryByText(/овертайм/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/буллит/i)).not.toBeInTheDocument();
@@ -99,6 +109,7 @@ describe('TournamentAdmin', () => {
         regularSource: 'head_to_head',
         revision: 1,
         participantCount: 0,
+        lifecycle: TEST_LIFECYCLE,
       },
     });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -155,6 +166,7 @@ describe('TournamentAdmin', () => {
       regularSource: 'head_to_head',
       revision: 4,
       participantCount: 0,
+      lifecycle: TEST_LIFECYCLE,
       rules: { config: { regularSource: 'head_to_head' } },
     };
     vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [tournament] });
@@ -225,6 +237,7 @@ describe('TournamentAdmin', () => {
         regularSource: 'head_to_head',
         revision: 1,
         participantCount: 0,
+        lifecycle: TEST_LIFECYCLE,
       },
     });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -272,6 +285,7 @@ describe('TournamentAdmin', () => {
         regularSource: 'head_to_head',
         revision: 1,
         participantCount: 0,
+        lifecycle: TEST_LIFECYCLE,
       },
     });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -385,6 +399,7 @@ describe('TournamentAdmin', () => {
         regularSource: 'head_to_head',
         revision: 1,
         participantCount: 0,
+        lifecycle: TEST_LIFECYCLE,
       },
     });
     expect(await screen.findByRole('combobox', { name: 'Регистрация' })).toBeInTheDocument();
@@ -400,6 +415,7 @@ describe('TournamentAdmin', () => {
       regularSource: 'head_to_head',
       revision: 3,
       participantCount: 0,
+      lifecycle: TEST_LIFECYCLE,
       rules: {
         config: { regularSource: 'head_to_head' },
         stageRewards: { regular: [{ place: 1, experience: 100, coins: 50, stars: 3 }] },
@@ -440,6 +456,7 @@ describe('TournamentAdmin', () => {
       regularSource: 'head_to_head',
       revision: 3,
       participantCount: 0,
+      lifecycle: TEST_LIFECYCLE,
       rules: {
         config: { regularSource: 'head_to_head' },
         stageRewards: { regular: [{ place: 1, experience: 100, coins: 50, stars: 3 }] },
@@ -484,6 +501,7 @@ describe('TournamentAdmin', () => {
       regularSource: 'head_to_head',
       revision: 4,
       participantCount: 0,
+      lifecycle: TEST_LIFECYCLE,
       rules: { config: { regularSource: 'head_to_head' } },
     };
     vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [tournament] });
@@ -525,6 +543,7 @@ describe('TournamentAdmin', () => {
       regularSource: 'head_to_head',
       revision: 4,
       participantCount: 0,
+      lifecycle: TEST_LIFECYCLE,
       rules: { config: { regularSource: 'head_to_head' } },
     };
     vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [tournament] });
@@ -574,6 +593,7 @@ describe('TournamentAdmin', () => {
       regularSource: 'head_to_head',
       revision: 2,
       participantCount: 0,
+      lifecycle: TEST_LIFECYCLE,
       rules: {
         config: { regularSource: 'head_to_head' },
         eligibility: { minLevel: null, maxLevel: null },
@@ -628,6 +648,7 @@ describe('TournamentAdmin', () => {
       regularSource: 'head_to_head',
       revision: 3,
       participantCount: 0,
+      lifecycle: TEST_LIFECYCLE,
       rules: {
         config: { regularSource: 'head_to_head', entryFeeCoins: 10 },
       },
@@ -712,6 +733,7 @@ describe('TournamentAdmin', () => {
       regularSource: 'head_to_head',
       revision: 2,
       participantCount: 0,
+      lifecycle: TEST_LIFECYCLE,
       rules: {
         config: { regularSource: 'head_to_head' },
         notificationOverrides: {
@@ -760,6 +782,7 @@ describe('TournamentAdmin', () => {
       regularSource: 'head_to_head',
       revision: 5,
       participantCount: 0,
+      lifecycle: TEST_LIFECYCLE,
       rules: {
         config: { regularSource: 'head_to_head' },
         notificationOverrides: {
@@ -843,6 +866,7 @@ describe('TournamentAdmin', () => {
       regularSource: 'head_to_head' as const,
       revision: 1,
       participantCount: 0,
+      lifecycle: TEST_LIFECYCLE,
       rules: { config: { regularSource: 'head_to_head' } },
     };
     vi.spyOn(api, 'createAdminTournament').mockResolvedValue({ tournament });
@@ -893,6 +917,7 @@ describe('TournamentAdmin', () => {
         regularSource: 'head_to_head',
         revision: 1,
         participantCount: 0,
+        lifecycle: TEST_LIFECYCLE,
       },
     });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -927,6 +952,7 @@ describe('TournamentAdmin', () => {
       regularSource: 'head_to_head' as const,
       revision: 1,
       participantCount: 0,
+      lifecycle: TEST_LIFECYCLE,
     };
     vi.spyOn(api, 'createAdminTournament').mockResolvedValue({ tournament });
     const update = vi.spyOn(api, 'updateAdminTournament').mockResolvedValue({
@@ -982,6 +1008,7 @@ describe('TournamentAdmin', () => {
       regularSource: 'head_to_head' as const,
       revision: 1,
       participantCount: 0,
+      lifecycle: TEST_LIFECYCLE,
     };
     vi.spyOn(api, 'createAdminTournament').mockResolvedValue({ tournament });
     vi.spyOn(api, 'updateAdminTournament').mockResolvedValue({ tournament });
@@ -1021,6 +1048,7 @@ describe('TournamentAdmin', () => {
         regularSource: 'daily_aggregate',
         revision: 1,
         participantCount: 0,
+        lifecycle: TEST_LIFECYCLE,
       },
     });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -1070,6 +1098,7 @@ describe('TournamentAdmin', () => {
       regularSource: 'classic' as const,
       revision: 1,
       participantCount: 0,
+      lifecycle: TEST_LIFECYCLE,
     };
     vi.spyOn(api, 'createAdminTournament').mockResolvedValue({ tournament });
     const update = vi
@@ -1192,6 +1221,7 @@ describe('TournamentAdmin', () => {
         regularSource: 'head_to_head',
         revision: 1,
         participantCount: 0,
+        lifecycle: TEST_LIFECYCLE,
       },
     });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -1244,6 +1274,7 @@ describe('TournamentAdmin', () => {
         regularSource: 'head_to_head',
         revision: 1,
         participantCount: 0,
+        lifecycle: TEST_LIFECYCLE,
       },
     });
     const update = vi.spyOn(api, 'updateAdminTournament').mockResolvedValue({
@@ -1256,6 +1287,7 @@ describe('TournamentAdmin', () => {
         regularSource: 'head_to_head',
         revision: 2,
         participantCount: 0,
+        lifecycle: TEST_LIFECYCLE,
       },
     });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -1378,6 +1410,7 @@ describe('TournamentAdmin', () => {
           regularSource: 'head_to_head',
           revision: 2,
           participantCount: 3,
+          lifecycle: TEST_LIFECYCLE,
           pendingApplicationCount: 1,
         },
       ],
@@ -1457,12 +1490,10 @@ describe('TournamentAdmin', () => {
     const approveAll = vi
       .spyOn(api, 'approveAllAdminTournamentApplications')
       .mockResolvedValue({ approvedCount: 1 });
-    const reject = vi
-      .spyOn(api, 'rejectAdminTournamentApplication')
-      .mockResolvedValue({
-        participantId: '00000000-0000-4000-8000-000000000902',
-        state: 'rejected',
-      });
+    const reject = vi.spyOn(api, 'rejectAdminTournamentApplication').mockResolvedValue({
+      participantId: '00000000-0000-4000-8000-000000000902',
+      state: 'rejected',
+    });
     const disqualify = vi
       .spyOn(api, 'disqualifyAdminTournamentParticipant')
       .mockResolvedValue({ participantId: '00000000-0000-4000-8000-000000000905' });
@@ -1660,65 +1691,66 @@ describe('TournamentAdmin', () => {
   ])(
     'explains the $code bulk approval error in plain language',
     async ({ code, details, expected }) => {
-    const tournament: api.AdminTournament = {
-      id: '00000000-0000-4000-8000-000000000971',
-      slug: 'capacity-cup',
-      title: 'Кубок на 16 игроков',
-      description: '',
-      status: 'registration',
-      regularSource: 'head_to_head',
-      revision: 2,
-      participantCount: 17,
-      pendingApplicationCount: 3,
-      rules: { config: { participantLimit: 16 } },
-    };
-    const approvedParticipants: api.AdminTournamentParticipant[] = Array.from(
-      { length: 14 },
-      (_, index) => ({
-        id: `approved-${index}`,
-        user_id: `approved-user-${index}`,
-        display_name: `Подтверждённый игрок ${index + 1}`,
-        avatar_url: null,
-        state: 'approved',
-        seed: index + 1,
-        entry_fee_coins: 0,
-        entry_fee_state: 'not_required',
-      }),
-    );
-    const pendingParticipants: api.AdminTournamentParticipant[] = Array.from(
-      { length: 3 },
-      (_, index) => ({
-        id: `pending-${index}`,
-        user_id: `pending-user-${index}`,
-        display_name: `Новая заявка ${index + 1}`,
-        avatar_url: null,
-        state: 'applied',
-        seed: null,
-        entry_fee_coins: 25,
-        entry_fee_state: 'pending',
-      }),
-    );
-    vi.spyOn(api, 'fetchAdminTournamentParticipants').mockResolvedValue({
-      participants: [...approvedParticipants, ...pendingParticipants],
-    });
-    vi.spyOn(api, 'approveAllAdminTournamentApplications').mockRejectedValue(
-      new ApiError(409, code, 'Внутренняя ошибка', details),
-    );
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(
-      <QueryClientProvider client={client}>
-        <TournamentOperations
-          tournament={tournament}
-          onBack={vi.fn()}
-          onEdit={vi.fn()}
-          onRemoved={vi.fn()}
-        />
-      </QueryClientProvider>,
-    );
+      const tournament: api.AdminTournament = {
+        id: '00000000-0000-4000-8000-000000000971',
+        slug: 'capacity-cup',
+        title: 'Кубок на 16 игроков',
+        description: '',
+        status: 'registration',
+        regularSource: 'head_to_head',
+        revision: 2,
+        participantCount: 17,
+        lifecycle: TEST_LIFECYCLE,
+        pendingApplicationCount: 3,
+        rules: { config: { participantLimit: 16 } },
+      };
+      const approvedParticipants: api.AdminTournamentParticipant[] = Array.from(
+        { length: 14 },
+        (_, index) => ({
+          id: `approved-${index}`,
+          user_id: `approved-user-${index}`,
+          display_name: `Подтверждённый игрок ${index + 1}`,
+          avatar_url: null,
+          state: 'approved',
+          seed: index + 1,
+          entry_fee_coins: 0,
+          entry_fee_state: 'not_required',
+        }),
+      );
+      const pendingParticipants: api.AdminTournamentParticipant[] = Array.from(
+        { length: 3 },
+        (_, index) => ({
+          id: `pending-${index}`,
+          user_id: `pending-user-${index}`,
+          display_name: `Новая заявка ${index + 1}`,
+          avatar_url: null,
+          state: 'applied',
+          seed: null,
+          entry_fee_coins: 25,
+          entry_fee_state: 'pending',
+        }),
+      );
+      vi.spyOn(api, 'fetchAdminTournamentParticipants').mockResolvedValue({
+        participants: [...approvedParticipants, ...pendingParticipants],
+      });
+      vi.spyOn(api, 'approveAllAdminTournamentApplications').mockRejectedValue(
+        new ApiError(409, code, 'Внутренняя ошибка', details),
+      );
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      render(
+        <QueryClientProvider client={client}>
+          <TournamentOperations
+            tournament={tournament}
+            onBack={vi.fn()}
+            onEdit={vi.fn()}
+            onRemoved={vi.fn()}
+          />
+        </QueryClientProvider>,
+      );
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Принять все заявки (3)' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Принять все заявки (3)' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(expected);
+      expect(await screen.findByRole('alert')).toHaveTextContent(expected);
     },
   );
 
@@ -1734,6 +1766,7 @@ describe('TournamentAdmin', () => {
           regularSource: 'head_to_head',
           revision: 3,
           participantCount: 0,
+          lifecycle: TEST_LIFECYCLE,
           registrationOpensAt: '2030-01-01T09:00:00.000Z',
           registrationClosesAt: '2030-01-02T09:00:00.000Z',
           startsAt: '2030-01-03T09:00:00.000Z',
@@ -1789,6 +1822,7 @@ describe('TournamentAdmin', () => {
       regularSource: 'head_to_head',
       revision: 5,
       participantCount: 8,
+      lifecycle: TEST_LIFECYCLE,
       rules: { config: { timezone: 'Europe/Moscow' } },
     };
     vi.spyOn(api, 'fetchAdminTournamentParticipants').mockResolvedValue({ participants: [] });
@@ -2011,6 +2045,7 @@ describe('TournamentAdmin', () => {
       regularSource: 'head_to_head' as const,
       revision: 5,
       participantCount: 0,
+      lifecycle: TEST_LIFECYCLE,
       registrationOpensAt: null,
       registrationClosesAt: null,
       startsAt: null,
@@ -2103,6 +2138,7 @@ describe('TournamentAdmin', () => {
       regularSource: 'head_to_head' as const,
       revision: 3,
       participantCount: 1,
+      lifecycle: TEST_LIFECYCLE,
       registrationOpensAt: null,
       registrationClosesAt: null,
       startsAt: null,

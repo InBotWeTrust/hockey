@@ -381,6 +381,60 @@ describe.skipIf(!hasIntegrationEnv)('tournament lifecycle plugin', () => {
     expect(await tournamentStatus(pool, tournament.id)).toBe('scheduling');
   });
 
+  it('returns lifecycle JSON from player and administrator tournament reads after lazy reconciliation', async () => {
+    const tournament = await seedAutomaticTournament(pool, {
+      slug: 'lifecycle-http-contract',
+      playoffSize: 4,
+      approvedUserIds: [PLAYER_ID, PLAYER_TWO_ID],
+    });
+    const server = await startApp({ lifecycleEnabled: false });
+
+    const playerList = await server.inject({
+      method: 'GET',
+      url: '/tournaments',
+      headers: playerAuth,
+    });
+    const playerDetail = await server.inject({
+      method: 'GET',
+      url: `/tournaments/${tournament.id}`,
+      headers: playerAuth,
+    });
+    const adminList = await server.inject({
+      method: 'GET',
+      url: '/admin/tournaments',
+      headers: adminAuth,
+    });
+    const adminDetail = await server.inject({
+      method: 'GET',
+      url: `/admin/tournaments/${tournament.id}`,
+      headers: adminAuth,
+    });
+
+    for (const response of [playerList, playerDetail, adminList, adminDetail]) {
+      expect(response.statusCode).toBe(200);
+    }
+    expect(
+      playerList.json().tournaments.find((item: { id: string }) => item.id === tournament.id),
+    ).toMatchObject({
+      lifecycle: {
+        action: 'block_registration',
+        dueAt: null,
+        approvedParticipantCount: 2,
+        requiredParticipantCount: 4,
+        reason: 'not_enough_participants',
+      },
+    });
+    expect(playerDetail.json().tournament).toMatchObject({
+      lifecycle: { action: 'block_registration' },
+    });
+    expect(
+      adminList.json().tournaments.find((item: { id: string }) => item.id === tournament.id),
+    ).toMatchObject({ lifecycle: { action: 'block_registration' } });
+    expect(adminDetail.json().tournament).toMatchObject({
+      lifecycle: { action: 'block_registration' },
+    });
+  });
+
   it('keeps a committed tournament-duel settlement successful when lifecycle maintenance fails', async () => {
     const tournament = await seedAutomaticTournament(pool, {
       slug: 'lifecycle-maintenance-failure',

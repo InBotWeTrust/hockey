@@ -294,47 +294,91 @@ async function finalizeExpiredRegularDays(
   }
 }
 
+async function regularResultsCompleteByTournament(
+  pool: Pool | PoolClient,
+  lifecycleRows: LifecycleRow[],
+): Promise<Map<string, boolean>> {
+  const complete = new Map<string, boolean>();
+  const headToHeadIds: string[] = [];
+  const aggregateDays: Array<{ tournamentId: string; dailyDays: number }> = [];
+
+  for (const row of lifecycleRows) {
+    if (row.rules_snapshot.config.regularSource === 'head_to_head') {
+      headToHeadIds.push(row.id);
+    } else {
+      aggregateDays.push({ tournamentId: row.id, dailyDays: row.rules_snapshot.config.dailyDays });
+    }
+  }
+
+  if (headToHeadIds.length > 0) {
+    const { rows } = await pool.query<{
+      tournament_id: string;
+      fixture_count: number;
+      terminal_count: number;
+    }>(
+      `select input.tournament_id::text as tournament_id,
+              count(fixture.id)::int as fixture_count,
+              count(fixture.id) filter (
+                where fixture.status in ('settled', 'forfeit', 'cancelled')
+              )::int as terminal_count
+         from unnest($1::uuid[]) as input(tournament_id)
+         left join tournament_round round
+           on round.tournament_id = input.tournament_id and round.stage = 'regular'
+         left join tournament_fixture fixture on fixture.round_id = round.id
+        group by input.tournament_id`,
+      [headToHeadIds],
+    );
+    for (const counts of rows) {
+      complete.set(
+        counts.tournament_id,
+        Number(counts.fixture_count) > 0 &&
+          Number(counts.fixture_count) === Number(counts.terminal_count),
+      );
+    }
+  }
+
+  if (aggregateDays.length > 0) {
+    const { rows } = await pool.query<{
+      tournament_id: string;
+      participant_count: number;
+      result_count: number;
+      daily_days: number;
+    }>(
+      `select input.tournament_id::text as tournament_id,
+              input.daily_days,
+              count(distinct participant.id)::int as participant_count,
+              count(result.id)::int as result_count
+         from unnest($1::uuid[], $2::int[]) as input(tournament_id, daily_days)
+         left join tournament_participant participant
+           on participant.tournament_id = input.tournament_id
+          and participant.state in ('approved', 'withdrawn', 'removed', 'disqualified')
+         left join tournament_daily_result result
+           on result.tournament_id = input.tournament_id
+          and result.participant_id = participant.id
+          and result.tournament_day between 1 and input.daily_days
+        group by input.tournament_id, input.daily_days`,
+      [
+        aggregateDays.map(({ tournamentId }) => tournamentId),
+        aggregateDays.map(({ dailyDays }) => dailyDays),
+      ],
+    );
+    for (const counts of rows) {
+      complete.set(
+        counts.tournament_id,
+        Number(counts.result_count) ===
+          Number(counts.participant_count) * Number(counts.daily_days),
+      );
+    }
+  }
+
+  return complete;
+}
+
 async function regularResultsComplete(
   pool: Pool | PoolClient,
   row: LifecycleRow,
 ): Promise<boolean> {
-  const source = row.rules_snapshot.config.regularSource;
-  if (source === 'head_to_head') {
-    const { rows } = await pool.query<{ fixture_count: number; terminal_count: number }>(
-      `select count(fixture.id)::int as fixture_count,
-              count(fixture.id) filter (
-                where fixture.status in ('settled', 'forfeit', 'cancelled')
-              )::int as terminal_count
-         from tournament_round round
-         left join tournament_fixture fixture on fixture.round_id = round.id
-        where round.tournament_id = $1 and round.stage = 'regular'`,
-      [row.id],
-    );
-    const counts = rows[0];
-    return (
-      counts !== undefined &&
-      Number(counts.fixture_count) > 0 &&
-      Number(counts.fixture_count) === Number(counts.terminal_count)
-    );
-  }
-  const { rows } = await pool.query<{ participant_count: number; result_count: number }>(
-    `select count(distinct participant.id)::int as participant_count,
-            count(result.id)::int as result_count
-       from tournament_participant participant
-       left join tournament_daily_result result
-         on result.tournament_id = participant.tournament_id
-        and result.participant_id = participant.id
-        and result.tournament_day between 1 and $2
-      where participant.tournament_id = $1
-        and participant.state in ('approved', 'withdrawn', 'removed', 'disqualified')`,
-    [row.id, row.rules_snapshot.config.dailyDays],
-  );
-  const counts = rows[0];
-  return (
-    counts !== undefined &&
-    Number(counts.result_count) ===
-      Number(counts.participant_count) * row.rules_snapshot.config.dailyDays
-  );
+  return (await regularResultsCompleteByTournament(pool, [row])).get(row.id) === true;
 }
 
 async function enqueuePlayoffBlockedPushes(
@@ -478,11 +522,19 @@ export async function loadTournamentLifecycleDTOs(
   if (tournamentIds.length === 0) return new Map();
 
   const rows = await loadLifecycleRows(pool, tournamentIds);
+  const readiness = await regularResultsCompleteByTournament(
+    pool,
+    rows.filter(
+      (row) =>
+        row.status === 'regular' &&
+        automaticLifecycleVersion(row.rules_snapshot) === AUTOMATIC_TOURNAMENT_LIFECYCLE_VERSION,
+    ),
+  );
   const result = new Map<string, TournamentLifecycleDTO>();
   for (const row of rows) {
     const snapshot = tournamentLifecycleSnapshot({
       ...row,
-      regular_results_complete: await regularResultsComplete(pool, row),
+      regular_results_complete: readiness.get(row.id) === true,
     });
     result.set(snapshot.tournamentId, lifecycleDto(evaluateTournamentLifecycle(snapshot, now)));
   }

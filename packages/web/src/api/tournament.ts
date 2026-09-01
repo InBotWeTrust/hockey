@@ -50,7 +50,7 @@ export interface TournamentSummary {
   visibility: 'public' | 'hidden';
   revision: number;
   participantCount: number;
-  lifecycle?: TournamentLifecycleDTO;
+  lifecycle: TournamentLifecycleDTO;
   myParticipantState: string | null;
   myFinalPlace?: number | null;
   registrationOpensAt: string | null;
