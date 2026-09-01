@@ -418,6 +418,7 @@ interface TournamentAttemptDuelContext {
 export interface TournamentAttemptReconcileResult {
   matched: boolean;
   changed: boolean;
+  newlySettledRegularFixture?: { fixtureId: string; tournamentId: string };
 }
 
 interface EarnedAttemptContext {
@@ -464,7 +465,14 @@ export async function hasActiveTournamentAttemptForDuel(
 export async function settleEarnedTournamentAttemptForDuel(
   client: PoolClient,
   input: { duelMatchId: string; settledAt: Date },
-): Promise<{ matched: boolean; fixtureId?: string; completed: boolean; settledNow: boolean }> {
+): Promise<{
+  matched: boolean;
+  fixtureId?: string;
+  completed: boolean;
+  settledNow: boolean;
+  tournamentId?: string;
+  roundStage?: string;
+}> {
   const contextResult = await client.query<EarnedAttemptContext>(
     `select attempt.id as attempt_id, attempt.attempt_number,
             attempt.status as attempt_status,
@@ -501,6 +509,8 @@ export async function settleEarnedTournamentAttemptForDuel(
       fixtureId: context.fixture_id,
       completed: context.fixture_status === 'settled',
       settledNow: false,
+      tournamentId: context.tournament_id,
+      roundStage: context.round_stage,
     };
   }
   if (context.home_state !== 'completed' || context.away_state !== 'completed') {
@@ -587,7 +597,14 @@ export async function settleEarnedTournamentAttemptForDuel(
       ],
     );
     if ((settled.rowCount ?? 0) === 0) {
-      return { matched: true, fixtureId: context.fixture_id, completed: false, settledNow: false };
+      return {
+        matched: true,
+        fixtureId: context.fixture_id,
+        completed: false,
+        settledNow: false,
+        tournamentId: context.tournament_id,
+        roundStage: context.round_stage,
+      };
     }
     await client.query(
       `update tournament_fixture_segment
@@ -633,7 +650,14 @@ export async function settleEarnedTournamentAttemptForDuel(
         JSON.stringify({ replayPending: true, replayOfAttemptId: context.attempt_id }),
       ],
     );
-    return { matched: true, fixtureId: context.fixture_id, completed: false, settledNow: false };
+    return {
+      matched: true,
+      fixtureId: context.fixture_id,
+      completed: false,
+      settledNow: false,
+      tournamentId: context.tournament_id,
+      roundStage: context.round_stage,
+    };
   }
 
   const winnerParticipantId =
@@ -666,7 +690,14 @@ export async function settleEarnedTournamentAttemptForDuel(
     ],
   );
   if ((attemptUpdated.rowCount ?? 0) === 0) {
-    return { matched: true, fixtureId: context.fixture_id, completed: false, settledNow: false };
+    return {
+      matched: true,
+      fixtureId: context.fixture_id,
+      completed: false,
+      settledNow: false,
+      tournamentId: context.tournament_id,
+      roundStage: context.round_stage,
+    };
   }
   await client.query(
     `update tournament_fixture_segment
@@ -713,7 +744,14 @@ export async function settleEarnedTournamentAttemptForDuel(
     awayParticipantId: context.away_participant_id,
     winnerParticipantId,
   });
-  return { matched: true, fixtureId: context.fixture_id, completed: true, settledNow: true };
+  return {
+    matched: true,
+    fixtureId: context.fixture_id,
+    completed: true,
+    settledNow: true,
+    tournamentId: context.tournament_id,
+    roundStage: context.round_stage,
+  };
 }
 
 async function createNextGameChoices(
@@ -762,7 +800,7 @@ async function settleTechnicalTournamentAttempt(
     reason: string;
     now: Date;
   },
-): Promise<boolean> {
+): Promise<TournamentAttemptReconcileResult> {
   const winnerParticipantId =
     input.winner === 'home' ? context.home_participant_id : context.away_participant_id;
   const fixtureOutcome = input.winner === 'home' ? 'home_win' : 'away_win';
@@ -781,7 +819,7 @@ async function settleTechnicalTournamentAttempt(
       input.now,
     ],
   );
-  if ((attemptUpdated.rowCount ?? 0) === 0) return false;
+  if ((attemptUpdated.rowCount ?? 0) === 0) return { matched: true, changed: false };
 
   await cancelTournamentDuel(client, { duelMatchId: input.duelMatchId, reason: input.reason });
   await client.query(
@@ -790,12 +828,13 @@ async function settleTechnicalTournamentAttempt(
       where duel_match_id = $1 and status in ('pending', 'scheduled', 'active')`,
     [input.duelMatchId],
   );
-  await client.query(
+  const fixtureUpdated = await client.query(
     `update tournament_fixture
         set status = 'settled', winner_participant_id = $2, outcome = $3,
             result_snapshot = coalesce(result_snapshot, '{}'::jsonb) || $4::jsonb,
             settled_at = $5, updated_at = now()
-      where id = $1 and status in ('conditional', 'scheduled', 'open', 'active')`,
+      where id = $1 and status in ('conditional', 'scheduled', 'open', 'active')
+      returning id`,
     [
       context.fixture_id,
       winnerParticipantId,
@@ -837,7 +876,18 @@ async function settleTechnicalTournamentAttempt(
     awayParticipantId: context.away_participant_id,
     winnerParticipantId,
   });
-  return true;
+  return {
+    matched: true,
+    changed: true,
+    ...(context.round_stage === 'regular' && (fixtureUpdated.rowCount ?? 0) > 0
+      ? {
+          newlySettledRegularFixture: {
+            fixtureId: context.fixture_id,
+            tournamentId: context.tournament_id,
+          },
+        }
+      : {}),
+  };
 }
 
 async function pauseTournamentAttempt(
@@ -954,14 +1004,14 @@ export async function reconcileTournamentAttemptForDuel(
     const awayReady = context.away_ready_at !== null;
     if (homeReady !== awayReady) {
       const winner = homeReady ? 'home' : 'away';
-      const changed = await settleTechnicalTournamentAttempt(client, context, {
+      const result = await settleTechnicalTournamentAttempt(client, context, {
         duelMatchId: input.duelMatchId,
         winner,
         attemptOutcome: homeReady ? 'away_no_show' : 'home_no_show',
         reason: homeReady ? 'tournament_attempt_away_no_show' : 'tournament_attempt_home_no_show',
         now: input.now,
       });
-      return { matched: true, changed };
+      return result;
     }
     if (!homeReady && !awayReady) {
       const isManualRegularReplay =
@@ -989,7 +1039,7 @@ export async function reconcileTournamentAttemptForDuel(
     const awayCompleted = context.away_duel_state === 'completed';
     if (homeCompleted !== awayCompleted) {
       const winner = homeCompleted ? 'home' : 'away';
-      const changed = await settleTechnicalTournamentAttempt(client, context, {
+      const result = await settleTechnicalTournamentAttempt(client, context, {
         duelMatchId: input.duelMatchId,
         winner,
         attemptOutcome: homeCompleted ? 'home_win' : 'away_win',
@@ -998,7 +1048,7 @@ export async function reconcileTournamentAttemptForDuel(
           : 'tournament_attempt_home_incomplete',
         now: input.now,
       });
-      return { matched: true, changed };
+      return result;
     }
     if (!homeCompleted && !awayCompleted) {
       const changed = await pauseTournamentAttempt(client, context, {
@@ -1072,14 +1122,14 @@ export async function reconcileTournamentAttemptForFixture(
   const awayReady = context.away_ready_at !== null;
   if (homeReady !== awayReady && context.duel_match_id !== null) {
     const winner = homeReady ? 'home' : 'away';
-    const changed = await settleTechnicalTournamentAttempt(client, context, {
+    const result = await settleTechnicalTournamentAttempt(client, context, {
       duelMatchId: context.duel_match_id,
       winner,
       attemptOutcome: homeReady ? 'away_no_show' : 'home_no_show',
       reason: homeReady ? 'tournament_attempt_away_no_show' : 'tournament_attempt_home_no_show',
       now: input.now,
     });
-    return { matched: true, changed };
+    return result;
   }
   if (!homeReady && !awayReady) {
     const isManualRegularReplay =

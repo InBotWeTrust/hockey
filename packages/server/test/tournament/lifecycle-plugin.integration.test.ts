@@ -52,6 +52,7 @@ function automaticRules(
       bestDays: null,
     }),
     automaticLifecycleVersion: 1,
+    duelLifecycleVersion: 2,
     ...(source === 'head_to_head' ? { regularDuelTemplateId: DUEL_TEMPLATE_ID } : {}),
     eligibility: {
       minLevel: null,
@@ -255,6 +256,48 @@ describe.skipIf(!hasIntegrationEnv)('tournament lifecycle plugin', () => {
     }
   });
 
+  it('waits for an active lifecycle tick before closing and does not start another one', async () => {
+    const server = await createLifecycleApp({ lifecycleEnabled: true, intervalMs: 5 });
+    let releaseTick: (() => void) | undefined;
+    let enteredTick: (() => void) | undefined;
+    const tickEntered = new Promise<void>((resolve) => {
+      enteredTick = resolve;
+    });
+    const tickReleased = new Promise<void>((resolve) => {
+      releaseTick = resolve;
+    });
+    const originalQuery = server.pg.query.bind(server.pg);
+    let lifecycleQueries = 0;
+    vi.spyOn(server.pg, 'query').mockImplementation(((query: unknown, ...args: unknown[]) => {
+      if (
+        typeof query === 'string' &&
+        query.includes("from game_settings where key = 'tournaments.enabled'")
+      ) {
+        lifecycleQueries += 1;
+        if (lifecycleQueries === 1) {
+          enteredTick?.();
+          return tickReleased.then(() => originalQuery(query as never, ...(args as never)));
+        }
+      }
+      return originalQuery(query as never, ...(args as never));
+    }) as never);
+
+    const ready = server.ready();
+    await tickEntered;
+    let closed = false;
+    const closing = server.close().then(() => {
+      closed = true;
+    });
+    await Promise.resolve();
+    expect(closed).toBe(false);
+
+    releaseTick?.();
+    await ready;
+    await closing;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(lifecycleQueries).toBe(1);
+  });
+
   it('reconciles on tournament list after a server restart missed the deadline', async () => {
     const tournament = await seedAutomaticTournament(pool, {
       slug: 'lifecycle-lazy-list',
@@ -330,17 +373,9 @@ describe.skipIf(!hasIntegrationEnv)('tournament lifecycle plugin', () => {
           where match_id = $1`,
         [opened.duelMatchId, new Date(row.scheduled_starts_at.getTime() + 2), row.home_user_id],
       );
-      const originalQuery = server.pg.query.bind(server.pg);
-      vi.spyOn(server.pg, 'query').mockImplementation(((query: unknown, ...args: unknown[]) => {
-        if (
-          typeof query === 'string' &&
-          query.includes('from tournament_fixture_segment segment') &&
-          query.includes("round.stage = 'regular'")
-        ) {
-          throw new Error('maintenance lookup unavailable');
-        }
-        return originalQuery(query as never, ...(args as never));
-      }) as never);
+      vi.spyOn(server, 'reconcileTournamentLifecycleBestEffort').mockRejectedValue(
+        new Error('maintenance reconcile unavailable'),
+      );
       const settled = await server.inject({
         method: 'POST',
         url: `/duel/amateur/matches/${opened.duelMatchId}/settle`,
@@ -354,6 +389,90 @@ describe.skipIf(!hasIntegrationEnv)('tournament lifecycle plugin', () => {
           opened.duelMatchId,
         ]),
       ).toMatchObject({ rows: [{ status: 'settled' }] });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reconciles a regular tournament immediately after a one-sided readiness timeout', async () => {
+    const tournament = await seedAutomaticTournament(pool, {
+      slug: 'lifecycle-readiness-timeout',
+      playoffSize: 2,
+      approvedUserIds: [PLAYER_ID, PLAYER_TWO_ID],
+    });
+    await generateRegularSchedule(pool, tournament.id, tournament.revision);
+    await publishRegularSchedule(pool, tournament.id);
+    const fixture = await pool.query<{
+      id: string;
+      home_user_id: string;
+      away_user_id: string;
+      scheduled_starts_at: Date;
+    }>(
+      `select fixture.id, home.user_id as home_user_id, away.user_id as away_user_id,
+              fixture.scheduled_starts_at
+         from tournament_fixture fixture
+         join tournament_round round on round.id = fixture.round_id
+         join tournament_participant home on home.id = fixture.home_participant_id
+         join tournament_participant away on away.id = fixture.away_participant_id
+        where fixture.tournament_id = $1 and round.stage = 'regular'
+        order by fixture.fixture_number
+        limit 1`,
+      [tournament.id],
+    );
+    const row = fixture.rows[0]!;
+    const opened = await openTournamentFixtureSegment(
+      pool,
+      {
+        fixtureId: row.id,
+        tournamentId: tournament.id,
+        userId: row.home_user_id,
+        now: new Date(row.scheduled_starts_at.getTime() + 1),
+      },
+      createTournamentDuelMatch,
+    );
+    const attempt = await pool.query<{ readiness_expires_at: Date }>(
+      `select readiness_expires_at from tournament_fixture_attempt where amateur_duel_match_id = $1`,
+      [opened.duelMatchId],
+    );
+    const server = await startApp({ lifecycleEnabled: false });
+    const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date(row.scheduled_starts_at.getTime() + 1));
+      const ready = await server.inject({
+        method: 'POST',
+        url: `/duel/amateur/matches/${opened.duelMatchId}/ready`,
+        headers: {
+          authorization: `Bearer ${await jwt.issueAccessToken({ sub: row.home_user_id })}`,
+        },
+        payload: { loadout: {} },
+      });
+      expect(ready.statusCode).toBe(200);
+
+      vi.setSystemTime(new Date(attempt.rows[0]!.readiness_expires_at.getTime() + 1));
+      const reconcile = vi.spyOn(server, 'reconcileTournamentLifecycleBestEffort');
+      const lateReady = await server.inject({
+        method: 'POST',
+        url: `/duel/amateur/matches/${opened.duelMatchId}/ready`,
+        headers: {
+          authorization: `Bearer ${await jwt.issueAccessToken({ sub: row.away_user_id })}`,
+        },
+        payload: { loadout: {} },
+      });
+
+      expect(lateReady.statusCode).toBe(409);
+      expect(reconcile).toHaveBeenCalledWith({ tournamentId: tournament.id });
+      expect(
+        await pool.query(`select status from tournament_fixture where id = $1`, [row.id]),
+      ).toMatchObject({ rows: [{ status: 'settled' }] });
+      const events = await server.inject({
+        method: 'GET',
+        url: '/duel/amateur/events',
+        headers: {
+          authorization: `Bearer ${await jwt.issueAccessToken({ sub: row.home_user_id })}`,
+        },
+      });
+      expect(events.statusCode).toBe(200);
     } finally {
       vi.useRealTimers();
     }
