@@ -3945,6 +3945,126 @@ describe('DailyScreen', () => {
     expect(document.querySelector('img[src="/sprites/arena-ice-court-v2.webp"]')).toBeFalsy();
   });
 
+  it('explains the second readiness confirmation when a tournament duel opens', async () => {
+    const tournamentMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      status: 'ready_check',
+      source: 'tournament',
+      venue_role: 'home',
+      outcome: null,
+      winner_user_id: null,
+      settled_at: null,
+      settled_reason: null,
+      starts_at: new Date(Date.now() - 60_000).toISOString(),
+      ends_at: new Date(Date.now() + 60 * 60_000).toISOString(),
+      ready_expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
+      server_now: new Date().toISOString(),
+      me: {
+        ...settledDuelMatch.me,
+        state: 'loadout_pending',
+        current_period: 0,
+      },
+      opponent: {
+        ...settledDuelMatch.opponent,
+        state: 'loadout_pending',
+        current_period: 0,
+      },
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/matches/match-1')) {
+        return new Response(JSON.stringify({ match: tournamentMatch }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=amateur&match=match-1&play=1']);
+
+    expect(
+      await screen.findByRole('dialog', { name: 'Подтвердите участие' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Нажмите «Готов», чтобы подтвердить участие в дуэли.'),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/техническое поражение/i)).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Не показывать снова' })).not.toBeChecked();
+    expect(screen.queryByRole('button', { name: 'Понятно' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Готов' })).toBeEnabled();
+  });
+
+  it('keeps the tournament readiness explanation disabled after opting out', async () => {
+    const tournamentMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      status: 'ready_check',
+      source: 'tournament',
+      venue_role: 'home',
+      outcome: null,
+      winner_user_id: null,
+      settled_at: null,
+      settled_reason: null,
+      starts_at: new Date(Date.now() - 60_000).toISOString(),
+      ends_at: new Date(Date.now() + 60 * 60_000).toISOString(),
+      ready_expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
+      server_now: new Date().toISOString(),
+      me: {
+        ...settledDuelMatch.me,
+        state: 'loadout_pending',
+        current_period: 0,
+      },
+      opponent: {
+        ...settledDuelMatch.opponent,
+        state: 'loadout_pending',
+        current_period: 0,
+      },
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/matches/match-1')) {
+        return new Response(JSON.stringify({ match: tournamentMatch }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    const firstRender = renderWith(['/?view=amateur&match=match-1&play=1']);
+
+    const optOut = await screen.findByRole('checkbox', { name: 'Не показывать снова' });
+    fireEvent.click(optOut);
+    fireEvent.click(screen.getByRole('button', { name: 'Готов' }));
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Подтвердите участие' })).not.toBeInTheDocument();
+    });
+    firstRender.unmount();
+
+    renderWith(['/?view=amateur&match=match-1&play=1']);
+
+    expect(await screen.findByRole('button', { name: 'ГОТОВ' })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Подтвердите участие' })).not.toBeInTheDocument();
+  });
+
   it('builds live opponent progress for the amateur duel scoreboard', () => {
     const now = new Date();
     const activeMatch: AmateurDuelMatchState = {

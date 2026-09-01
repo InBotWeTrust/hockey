@@ -71,6 +71,7 @@ import { GlassSelect } from '../components/GlassSelect.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
 import { UserAvatar } from '../chat/components/UserAvatar.js';
 import { UserProfileSheet } from '../chat/components/UserProfileSheet.js';
+import { AccessibleModal } from '../components/AccessibleModal.js';
 import type { UserPickerItem } from '../chat/api.js';
 import type {
   DailyGameStats,
@@ -4876,6 +4877,12 @@ function AmateurDuelPlayView({
   );
   const [playerReadyEntranceKey, setPlayerReadyEntranceKey] = useState<string | null>(null);
   const [goalieReadyEntranceKey, setGoalieReadyEntranceKey] = useState<string | null>(null);
+  const [showTournamentReadinessExplanation, setShowTournamentReadinessExplanation] = useState(
+    () => localStorage.getItem('hockey.tournamentReadinessExplanationDisabled') !== 'true',
+  );
+  const [disableTournamentReadinessExplanation, setDisableTournamentReadinessExplanation] =
+    useState(false);
+  const tournamentReadyButtonRef = useRef<HTMLButtonElement | null>(null);
   const previousReadyStateRef = useRef<{ me: boolean; opponent: boolean } | null>(null);
   const inventoryQuery = useQuery<InventoryState>({
     queryKey: ['inventory', 'me'],
@@ -4890,6 +4897,10 @@ function AmateurDuelPlayView({
   useEffect(() => {
     setDismissedResultMatchId(null);
     setSelectedLoadout({});
+    setShowTournamentReadinessExplanation(
+      localStorage.getItem('hockey.tournamentReadinessExplanationDisabled') !== 'true',
+    );
+    setDisableTournamentReadinessExplanation(false);
     previousReadyStateRef.current = null;
     setPlayerReadyEntranceKey(null);
     setGoalieReadyEntranceKey(null);
@@ -4989,6 +5000,15 @@ function AmateurDuelPlayView({
       await startPeriod(duelStartPeriodLoadoutSelection(match, selectedLoadout));
     }
   };
+  const handleTournamentReadinessConfirmation = async (): Promise<void> => {
+    if (inFlight) return;
+    const next = await ready(selectedLoadout);
+    if (next === null) return;
+    if (disableTournamentReadinessExplanation) {
+      localStorage.setItem('hockey.tournamentReadinessExplanationDisabled', 'true');
+    }
+    setShowTournamentReadinessExplanation(false);
+  };
   const nextPeriod =
     match.me.state === 'period_active'
       ? match.me.current_period
@@ -5023,6 +5043,11 @@ function AmateurDuelPlayView({
       canStartArenaDuelPeriod(match, duelMatchNowMs(match, now));
     const { playerReady: meReady, goalieReady: opponentReady } =
       duelRinkReadyPresenceForMatch(match);
+    const explainTournamentReadiness =
+      match.source === 'tournament' &&
+      match.status === 'ready_check' &&
+      match.me.state !== 'ready' &&
+      showTournamentReadinessExplanation;
     return (
       <>
         <PlayView<AmateurDuelMatchState>
@@ -5088,6 +5113,59 @@ function AmateurDuelPlayView({
             }}
           />
         )}
+        <AccessibleModal
+          title="Подтвердите участие"
+          open={explainTournamentReadiness}
+          closeBlocked
+          initialFocusRef={tournamentReadyButtonRef}
+        >
+          <div style={{ display: 'grid', gap: 14 }}>
+            <p className="modal-copy" style={{ margin: 0 }}>
+              Нажмите «Готов», чтобы подтвердить участие в дуэли.
+            </p>
+            <p className="modal-copy" style={{ margin: 0, fontSize: 13 }}>
+              Подтвердите готовность до конца таймера. Если соперник подтвердит участие, а вы —
+              нет, вам будет засчитано техническое поражение. Если не подтвердит никто, игра
+              закроется.
+            </p>
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                color: 'var(--ink)',
+                fontSize: 14,
+                fontWeight: 750,
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={disableTournamentReadinessExplanation}
+                onChange={(event) =>
+                  setDisableTournamentReadinessExplanation(event.currentTarget.checked)
+                }
+                style={{ width: 18, height: 18, margin: 0, accentColor: '#16263a' }}
+              />
+              Не показывать снова
+            </label>
+            {error && (
+              <div style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 700 }}>
+                {error}
+              </div>
+            )}
+            <div className="modal-actions" style={{ marginTop: 2 }}>
+              <button
+                ref={tournamentReadyButtonRef}
+                type="button"
+                className="modal-primary btn btn--cta"
+                disabled={inFlight}
+                onClick={() => void handleTournamentReadinessConfirmation()}
+              >
+                {inFlight ? 'Фиксируем...' : 'Готов'}
+              </button>
+            </div>
+          </div>
+        </AccessibleModal>
         <DuelDevStatePanel match={match} now={now} />
       </>
     );
