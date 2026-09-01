@@ -3,6 +3,12 @@ import {
   validateRoundGameDays,
   type RoundGameDay,
 } from './playoffScheduling.js';
+import { AUTOMATIC_TOURNAMENT_LIFECYCLE_VERSION } from './automaticLifecycle.js';
+
+export {
+  AUTOMATIC_TOURNAMENT_LIFECYCLE_VERSION,
+  automaticLifecycleVersion,
+} from './automaticLifecycle.js';
 
 export const DEFAULT_TOURNAMENT_READINESS_MINUTES = 5;
 export const DEFAULT_TOURNAMENT_PLANNED_START_INTERVAL_MINUTES = 20;
@@ -78,6 +84,7 @@ export function normalizePublishedTournamentLifecycleRules<T extends UnknownReco
   return {
     ...input,
     ...(playoffRounds !== undefined ? { playoffRounds } : {}),
+    automaticLifecycleVersion: AUTOMATIC_TOURNAMENT_LIFECYCLE_VERSION,
     ...(shouldMarkHeadToHead ? { duelLifecycleVersion: 2 } : {}),
   };
 }

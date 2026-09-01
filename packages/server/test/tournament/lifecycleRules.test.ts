@@ -1,8 +1,30 @@
 import { describe, expect, it } from 'vitest';
-import { normalizePublishedTournamentLifecycleRules } from '../../src/tournament/lifecycleRules.js';
+import {
+  automaticLifecycleVersion,
+  normalizePublishedTournamentLifecycleRules,
+} from '../../src/tournament/lifecycleRules.js';
 import { parseRules } from '../../src/tournament/routes.js';
 
 describe('normalizePublishedTournamentLifecycleRules', () => {
+  it('marks newly published tournament rules for automatic lifecycle v1', () => {
+    const normalized = normalizePublishedTournamentLifecycleRules({
+      config: { regularSource: 'daily_aggregate' },
+      playoffRounds: [],
+    });
+
+    expect(normalized.automaticLifecycleVersion).toBe(1);
+    expect(automaticLifecycleVersion(normalized)).toBe(1);
+  });
+
+  it('does not treat an unmarked persisted rules snapshot as automatic lifecycle enabled', () => {
+    expect(
+      automaticLifecycleVersion({
+        config: { regularSource: 'head_to_head' },
+        playoffRounds: [],
+      }),
+    ).toBeNull();
+  });
+
   it('marks newly published head-to-head rules for lifecycle v2', () => {
     expect(
       normalizePublishedTournamentLifecycleRules({
@@ -165,6 +187,7 @@ describe('published tournament route rules', () => {
 
     expect(parsed).toMatchObject({
       duelLifecycleVersion: 2,
+      automaticLifecycleVersion: 1,
       playoffRounds: [
         {
           readinessMinutes: 5,
