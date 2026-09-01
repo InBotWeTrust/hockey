@@ -2379,7 +2379,10 @@ describe('DailyScreen', () => {
     const heading = await screen.findByRole('heading', { name: 'Любители' });
     const shell = heading.closest('main');
     expect(shell).toHaveClass('mode-shell', 'mode-shell--section-hub');
-    expect(screen.getByRole('button', { name: 'Назад' })).toHaveClass('icon-btn');
+    expect(screen.getByRole('button', { name: 'Назад' })).toHaveClass(
+      'icon-btn',
+      'icon-btn--page-back',
+    );
     screen.getAllByRole('button', { name: /Дуэли|Бонусные игры|Турниры/ }).forEach((card) => {
       expect(card).toHaveClass('amateur-hub-card');
       expect(card.parentElement).toHaveClass('amateur-hub-grid');
@@ -3784,6 +3787,55 @@ describe('DailyScreen', () => {
         .getAllByRole('columnheader')
         .map((header) => header.textContent),
     ).toEqual(['М', 'Игрок', 'И', 'В', 'Н', 'П', 'О']);
+  });
+
+  it('renders an empty duel rating as plain copy without a nested state card', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/templates')) {
+        return new Response(JSON.stringify({ templates: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/matches')) {
+        return new Response(JSON.stringify({ matches: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/rating')) {
+        return new Response(
+          JSON.stringify({
+            season_key: '2026-05',
+            rating_visible: true,
+            available_seasons: ['2026-05'],
+            rating: [],
+            me_rank: null,
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=amateur&section=duels']);
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'Рейтинг' }));
+    const emptyCopy = await screen.findByText(
+      'Рейтинг появится после первых завершённых дуэлей.',
+    );
+    expect(emptyCopy).toHaveClass('duel-rating-empty');
+    expect(emptyCopy).not.toHaveClass('duel-state-card', 'glass');
   });
 
   it('starts a daily period from the rink start button', async () => {

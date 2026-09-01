@@ -54,6 +54,22 @@ const APPROVED_STATIC_SLUGS = [
   'space',
 ] as const;
 
+const WORLD_TOUR_STATIC_SLUGS = [
+  'moscow',
+  'istanbul',
+  'rome',
+  'paris',
+  'london',
+  'new-york',
+  'rio-de-janeiro',
+  'cape-town',
+  'dubai',
+  'mumbai',
+  'singapore',
+  'beijing',
+  'tokyo',
+] as const;
+
 type ApprovedStaticSlug = (typeof APPROVED_STATIC_SLUGS)[number];
 
 function committedMedia(slug: ApprovedStaticSlug) {
@@ -473,6 +489,90 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
         ...committedMedia(slug),
       });
       expect(game.status, slug).toBe('active');
+    }
+  });
+
+  it('keeps migrated World Tour games editable with their committed static media', async () => {
+    for (const [index, slug] of WORLD_TOUR_STATIC_SLUGS.entries()) {
+      const game = await createGame({
+        sortOrder: index + 1,
+        skillCode: 'accuracy',
+        arena: {
+          slug: `accuracy-world-tour-${slug}`,
+          title: slug,
+          artworkUrl: `/bonus-games/world-tour/arenas/${slug}.webp`,
+          thumbnailUrl: `/bonus-games/world-tour/previews/${slug}.webp`,
+        },
+        goalkeeperReadyUrl: `/bonus-games/world-tour/goalkeepers/${slug}-ready.webp`,
+        goalkeeperSaveUrl: `/bonus-games/world-tour/goalkeepers/${slug}-save.webp`,
+        previewTitle: slug,
+        previewStory: `World Tour ${slug}`,
+        previewArtworkUrl: `/bonus-games/world-tour/previews/${slug}.webp`,
+      });
+      await pool.query("update bonus_game set status = 'active' where id = $1", [game.id]);
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: `/admin/bonus-games/${game.id}`,
+        headers: adminHeaders,
+        payload: { rewardStars: index + 1 },
+      });
+
+      expect(response.statusCode, `${slug}: ${response.body}`).toBe(200);
+      expect(response.json().game).toMatchObject({
+        id: game.id,
+        status: 'active',
+        rewardStars: index + 1,
+      });
+    }
+  });
+
+  it('rejects swapped World Tour arena artwork and thumbnail paths', async () => {
+    for (const [index, slug] of WORLD_TOUR_STATIC_SLUGS.entries()) {
+      const base = {
+        sortOrder: 1,
+        skillCode: 'accuracy' as const,
+        goalkeeperReadyUrl: `/bonus-games/world-tour/goalkeepers/${slug}-ready.webp`,
+        goalkeeperSaveUrl: `/bonus-games/world-tour/goalkeepers/${slug}-save.webp`,
+        previewTitle: slug,
+        previewStory: `World Tour ${slug}`,
+        previewArtworkUrl: `/bonus-games/world-tour/previews/${slug}.webp`,
+      };
+      const variants = [
+        {
+          label: 'preview used as artwork',
+          artworkUrl: `/bonus-games/world-tour/previews/${slug}.webp`,
+          thumbnailUrl: `/bonus-games/world-tour/previews/${slug}.webp`,
+        },
+        {
+          label: 'arena used as thumbnail',
+          artworkUrl: `/bonus-games/world-tour/arenas/${slug}.webp`,
+          thumbnailUrl: `/bonus-games/world-tour/arenas/${slug}.webp`,
+        },
+      ];
+
+      for (const [variantIndex, variant] of variants.entries()) {
+        const game = await createGame({
+          ...base,
+          arena: {
+            slug: `world-tour-swap-${index}-${variantIndex}`,
+            title: slug,
+            artworkUrl: variant.artworkUrl,
+            thumbnailUrl: variant.thumbnailUrl,
+          },
+        });
+        const response = await app.inject({
+          method: 'PATCH',
+          url: `/admin/bonus-games/${game.id}`,
+          headers: adminHeaders,
+          payload: { status: 'active' },
+        });
+
+        expect(response.statusCode, `${slug}: ${variant.label}`).toBe(409);
+        expect(response.json().error.code, `${slug}: ${variant.label}`).toBe(
+          'bonus_game_incomplete',
+        );
+      }
     }
   });
 

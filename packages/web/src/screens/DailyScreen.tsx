@@ -2831,7 +2831,11 @@ function ModeShell({
         >
           <button
             type="button"
-            className={isSectionHub ? 'icon-btn catalog-header-back' : 'icon-btn'}
+            className={
+              isSectionHub
+                ? 'icon-btn icon-btn--page-back catalog-header-back'
+                : 'icon-btn icon-btn--page-back'
+            }
             onClick={onBack}
             aria-label="Назад"
             title="Назад"

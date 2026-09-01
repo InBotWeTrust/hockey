@@ -189,6 +189,7 @@ describe.skipIf(!hasIntegrationEnv)('071 accuracy World Tour migration', () => {
       '083_tournament_playoff_notifications.sql',
       '084_tournament_series_notification_url.sql',
       '085_accuracy_world_tour_uniform_balance.sql',
+      '086_repair_event_log_sequence.sql',
     ]);
 
     const preserved = await pool.query<{

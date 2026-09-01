@@ -138,7 +138,11 @@ describe('DailyOverviewScreen', () => {
   it('shows daily history as a calendar with completed, incomplete and missed days', async () => {
     renderScreen();
 
-    expect(await screen.findByRole('heading', { name: 'За всё время' })).toBeInTheDocument();
+    const historyHeading = await screen.findByRole('heading', { name: 'За всё время' });
+    const historySummary = historyHeading.closest('article') as HTMLElement;
+    expect(historySummary).toHaveClass('glass', 'daily-history-summary');
+    expect(historySummary.style.background).toBe('');
+    expect(historySummary.style.boxShadow).toBe('');
     const calendar = screen.getByRole('region', { name: 'Календарь ежедневных игр' });
     expect(within(calendar).getByText('Август 2026')).toBeInTheDocument();
     expect(

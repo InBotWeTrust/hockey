@@ -25,9 +25,20 @@ import {
 } from './types.js';
 
 const uuid = z.string().uuid();
-const mediaKinds = ['arena', 'thumbnail', 'goalkeeper_ready', 'goalkeeper_save', 'preview'] as const;
+const mediaKinds = [
+  'arena',
+  'thumbnail',
+  'goalkeeper_ready',
+  'goalkeeper_save',
+  'preview',
+] as const;
 type BonusMediaKind = (typeof mediaKinds)[number];
-type BonusMediaReferenceField = 'arena' | 'goalkeeper_ready' | 'goalkeeper_save' | 'preview';
+type BonusMediaReferenceField =
+  | 'arena_artwork'
+  | 'arena_thumbnail'
+  | 'goalkeeper_ready'
+  | 'goalkeeper_save'
+  | 'preview';
 const BONUS_MEDIA_MAX_PIXELS = 2048 * 2048;
 
 const approvedStaticMediaSlugs = [
@@ -43,20 +54,50 @@ const approvedStaticMediaSlugs = [
   'space',
 ] as const;
 
+const approvedWorldTourMediaSlugs = [
+  'moscow',
+  'istanbul',
+  'rome',
+  'paris',
+  'london',
+  'new-york',
+  'rio-de-janeiro',
+  'cape-town',
+  'dubai',
+  'mumbai',
+  'singapore',
+  'beijing',
+  'tokyo',
+] as const;
+
 const approvedStaticMediaPaths = {
-  arena: new Set(approvedStaticMediaSlugs.map((slug) => `/bonus-games/arenas/${slug}.webp`)),
-  goalkeeper_ready: new Set(
-    approvedStaticMediaSlugs.map((slug) => `/bonus-games/goalkeepers/${slug}-ready.webp`),
-  ),
-  goalkeeper_save: new Set(
-    approvedStaticMediaSlugs.map((slug) => `/bonus-games/goalkeepers/${slug}-save.webp`),
-  ),
-  preview: new Set(
-    approvedStaticMediaSlugs.flatMap((slug) => [
+  arena_artwork: new Set([
+    ...approvedStaticMediaSlugs.map((slug) => `/bonus-games/arenas/${slug}.webp`),
+    ...approvedWorldTourMediaSlugs.map((slug) => `/bonus-games/world-tour/arenas/${slug}.webp`),
+  ]),
+  arena_thumbnail: new Set([
+    ...approvedStaticMediaSlugs.map((slug) => `/bonus-games/arenas/${slug}.webp`),
+    ...approvedWorldTourMediaSlugs.map((slug) => `/bonus-games/world-tour/previews/${slug}.webp`),
+  ]),
+  goalkeeper_ready: new Set([
+    ...approvedStaticMediaSlugs.map((slug) => `/bonus-games/goalkeepers/${slug}-ready.webp`),
+    ...approvedWorldTourMediaSlugs.map(
+      (slug) => `/bonus-games/world-tour/goalkeepers/${slug}-ready.webp`,
+    ),
+  ]),
+  goalkeeper_save: new Set([
+    ...approvedStaticMediaSlugs.map((slug) => `/bonus-games/goalkeepers/${slug}-save.webp`),
+    ...approvedWorldTourMediaSlugs.map(
+      (slug) => `/bonus-games/world-tour/goalkeepers/${slug}-save.webp`,
+    ),
+  ]),
+  preview: new Set([
+    ...approvedStaticMediaSlugs.flatMap((slug) => [
       `/bonus-games/location-cards/${slug}.webp`,
       `/bonus-games/previews/${slug}.webp`,
     ]),
-  ),
+    ...approvedWorldTourMediaSlugs.map((slug) => `/bonus-games/world-tour/previews/${slug}.webp`),
+  ]),
 } satisfies Record<BonusMediaReferenceField, ReadonlySet<string>>;
 
 const slug = z
@@ -715,8 +756,8 @@ async function assertActiveDefinitionComplete(
     throw incompleteDefinition();
   }
   const mediaReferences: Array<[string, BonusMediaReferenceField]> = [
-    [arena.artwork_url, 'arena'],
-    [arena.thumbnail_url, 'arena'],
+    [arena.artwork_url, 'arena_artwork'],
+    [arena.thumbnail_url, 'arena_thumbnail'],
     [definition.goalkeeperReadyUrl, 'goalkeeper_ready'],
     [definition.goalkeeperSaveUrl, 'goalkeeper_save'],
     [definition.previewArtworkUrl, 'preview'],

@@ -72,7 +72,7 @@ export function AmateurDuelRatingTab({
         ) : rating.isError ? (
           <div className="duel-state-card duel-state-card--error">Не удалось загрузить рейтинг.</div>
         ) : rows.length === 0 ? (
-          <div className="duel-state-card">Рейтинг появится после первых завершённых дуэлей.</div>
+          <p className="duel-rating-empty">Рейтинг появится после первых завершённых дуэлей.</p>
         ) : (
           <TournamentStandingsTable
             rows={rows}
