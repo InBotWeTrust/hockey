@@ -10,6 +10,11 @@ import { applyMigrations } from '../../src/db/migrations.js';
 import { createTournamentDuelMatch } from '../../src/duel/amateur/routes.js';
 import { enqueueTournamentAudiencePush, enqueueTournamentPush } from '../../src/push/tournament.js';
 import { reconcileTournamentLifecycle } from '../../src/tournament/automaticLifecycle.js';
+import {
+  finalizeDueClassicTournamentDays,
+  startClassicGamePeriod,
+  submitClassicGameShot,
+} from '../../src/tournament/classicGame.js';
 import { parseTournamentConfig } from '../../src/tournament/config.js';
 import { finalizeDueTournamentDailyDays } from '../../src/tournament/dailyAggregate.js';
 import { openTournamentFixtureSegment } from '../../src/tournament/fixtureLifecycle.js';
@@ -794,7 +799,34 @@ async function settleAutomaticRegularSeason(
   tournamentId: string,
   regularSource: RegularSource,
 ): Promise<void> {
-  if (regularSource !== 'head_to_head') return;
+  if (regularSource === 'daily_aggregate') {
+    await seedDailySourceRows(pool);
+    expect(await finalizeDueTournamentDailyDays(pool, AUTOMATIC_PLAYOFF_STARTS_AT)).toEqual({
+      finalizedDays: 3,
+      finalizedParticipants: 12,
+    });
+    await assertFinalAggregateResults(pool, tournamentId, {
+      completed: 11,
+      played: 11,
+      source: 'daily_aggregate',
+    });
+    return;
+  }
+  if (regularSource === 'classic') {
+    await playCompletedClassicOpeningDay(pool, tournamentId);
+    expect(
+      await finalizeDueClassicTournamentDays(pool, {
+        now: AUTOMATIC_PLAYOFF_STARTS_AT,
+        seedSecret: CLASSIC_SEED_SECRET,
+      }),
+    ).toEqual({ finalizedDays: 2, finalizedParticipants: 8 });
+    await assertFinalAggregateResults(pool, tournamentId, {
+      completed: 4,
+      played: 4,
+      source: 'classic',
+    });
+    return;
+  }
   const fixtures = await pool.query<FixtureRow>(
     `select fixture.id, fixture.home_participant_id, fixture.away_participant_id,
             home.user_id as home_user_id, away.user_id as away_user_id,
@@ -817,7 +849,101 @@ async function settleAutomaticRegularSeason(
   }
 }
 
+async function playCompletedClassicOpeningDay(pool: Pool, tournamentId: string): Promise<void> {
+  const matchday = await pool.query<{ starts_at: Date }>(
+    `select starts_at from tournament_matchday
+      where tournament_id = $1 and number = 1`,
+    [tournamentId],
+  );
+  const startsAt = matchday.rows[0]!.starts_at;
+  for (const userId of PLAYER_IDS) {
+    let now = startsAt;
+    for (let period = 1; period <= 3; period += 1) {
+      const started = await startClassicGamePeriod(pool, {
+        userId,
+        tournamentId,
+        now,
+        seedSecret: CLASSIC_SEED_SECRET,
+      });
+      expect(started.current_period).toBe(period);
+      const submitted = await submitClassicGameShot(pool, {
+        userId,
+        tournamentId,
+        now,
+        seedSecret: CLASSIC_SEED_SECRET,
+        shotIndex: 1,
+        input: { tapTime: 0 },
+        claimedResult: 'miss',
+      });
+      expect(submitted.state.current_period).toBe(period);
+      now = new Date(now.getTime() + 1);
+    }
+  }
+}
+
+async function assertFinalAggregateResults(
+  pool: Pool,
+  tournamentId: string,
+  expected: { completed: number; played: number; source: 'daily_aggregate' | 'classic' },
+): Promise<void> {
+  const result = await pool.query<{
+    total: number;
+    finalized: number;
+    completed: number;
+    distinct_days: number;
+  }>(
+    `select count(*)::int as total,
+            count(*) filter (where finalized_at is not null)::int as finalized,
+            count(*) filter (where completed)::int as completed,
+            count(distinct tournament_day)::int as distinct_days
+       from tournament_daily_result where tournament_id = $1`,
+    [tournamentId],
+  );
+  expect(result.rows[0], `${expected.source} finalized results`).toEqual({
+    total: 12,
+    finalized: 12,
+    completed: expected.completed,
+    distinct_days: 3,
+  });
+  const standings = await pool.query<{
+    standings: number;
+    played: number;
+    source_versions: number[];
+  }>(
+    `select count(*)::int as standings,
+            coalesce(sum(played), 0)::int as played,
+            array_agg(distinct source_version::int order by source_version::int) as source_versions
+       from tournament_standing where tournament_id = $1`,
+    [tournamentId],
+  );
+  expect(standings.rows[0], `${expected.source} standings use final results`).toEqual({
+    standings: 4,
+    played: expected.played,
+    source_versions: [12],
+  });
+}
+
+async function assertPlayoffSeedsUseStandings(pool: Pool, tournamentId: string): Promise<void> {
+  const seeded = await pool.query<{ matched: number }>(
+    `select count(*)::int as matched
+       from tournament_playoff_series series
+       join tournament_round round on round.id = series.round_id and round.number = 1
+       join tournament_standing higher
+         on higher.tournament_id = series.tournament_id
+        and higher.participant_id = series.higher_seed_participant_id
+       join tournament_standing lower
+         on lower.tournament_id = series.tournament_id
+        and lower.participant_id = series.lower_seed_participant_id
+      where series.tournament_id = $1
+        and ((series.depends_on->>'key' = 'R1S1' and higher.rank = 1 and lower.rank = 4)
+          or (series.depends_on->>'key' = 'R1S2' and higher.rank = 2 and lower.rank = 3))`,
+    [tournamentId],
+  );
+  expect(seeded.rows[0]).toEqual({ matched: 2 });
+}
+
 async function settleEveryAutomaticPlayoffSeries(pool: Pool, tournamentId: string): Promise<void> {
+  let realDuelMatchId: string | null = null;
   for (let completedSeries = 0; completedSeries < 4; completedSeries += 1) {
     const next = await pool.query<FixtureRow>(
       `select fixture.id, fixture.home_participant_id, fixture.away_participant_id,
@@ -834,56 +960,157 @@ async function settleEveryAutomaticPlayoffSeries(pool: Pool, tournamentId: strin
     );
     const fixture = next.rows[0];
     expect(fixture, `scheduled playoff fixture ${completedSeries + 1}`).toBeDefined();
-    await settleFixtureTechnically(pool, tournamentId, fixture!, fixture!.home_user_id);
+    if (completedSeries === 0) {
+      realDuelMatchId = await settleRealTournamentDuel(
+        pool,
+        tournamentId,
+        fixture!,
+        fixture!.home_user_id,
+      );
+    } else {
+      await settleFixtureTechnically(pool, tournamentId, fixture!, fixture!.home_user_id);
+    }
   }
+  expect(realDuelMatchId).not.toBeNull();
+  const backingDuel = await pool.query<{
+    source: string;
+    duel_status: string;
+    segment_fixture_id: string;
+    segment_status: string;
+    fixture_status: string;
+    has_series: boolean;
+  }>(
+    `select duel.source, duel.status as duel_status,
+            segment.fixture_id as segment_fixture_id, segment.status as segment_status,
+            fixture.status as fixture_status,
+            fixture.series_id is not null as has_series
+       from amateur_duel_match duel
+       join tournament_fixture_segment segment on segment.duel_match_id = duel.id
+       join tournament_fixture fixture on fixture.id = segment.fixture_id
+      where duel.id = $1`,
+    [realDuelMatchId],
+  );
+  expect(backingDuel.rows[0]).toEqual({
+    source: 'tournament',
+    duel_status: 'settled',
+    segment_fixture_id: expect.any(String),
+    segment_status: 'settled',
+    fixture_status: 'settled',
+    has_series: true,
+  });
   expect(await tournamentStatus(pool, tournamentId)).toBe('completed');
 }
 
-async function duplicateCounts(
+const TOURNAMENT_NOTIFICATION_TYPES = [
+  'tournament.application_approved',
+  'tournament.completed',
+  'tournament.opponent_ready',
+  'tournament.playoff_blocked',
+  'tournament.playoff_schedule_missing',
+  'tournament.playoff_started',
+  'tournament.registration_blocked',
+  'tournament.result_ready',
+  'tournament.schedule_published',
+  'tournament.series_next_game',
+] as const;
+
+type TournamentNotificationType = (typeof TOURNAMENT_NOTIFICATION_TYPES)[number];
+
+interface AutomaticLifecycleCounts {
+  matchdays: number;
+  rounds: number;
+  fixtures: number;
+  series: number;
+  entryFees: number;
+  regularRewards: number;
+  playoffRewards: number;
+  notifications: Record<TournamentNotificationType, number>;
+}
+
+function expectedAutomaticNotifications(
+  overrides: Partial<Record<TournamentNotificationType, number>> = {},
+): Record<TournamentNotificationType, number> {
+  return {
+    'tournament.application_approved': 4,
+    'tournament.completed': 0,
+    'tournament.opponent_ready': 0,
+    'tournament.playoff_blocked': 0,
+    'tournament.playoff_schedule_missing': 0,
+    'tournament.playoff_started': 0,
+    'tournament.registration_blocked': 0,
+    'tournament.result_ready': 0,
+    'tournament.schedule_published': 0,
+    'tournament.series_next_game': 0,
+    ...overrides,
+  };
+}
+
+async function automaticLifecycleCounts(
   pool: Pool,
   tournamentId: string,
-): Promise<{ schedule: number; series: number; rewards: number; notifications: number }> {
-  const duplicates = await pool.query<{
-    schedule: number;
+): Promise<AutomaticLifecycleCounts> {
+  const counts = await pool.query<{
+    matchdays: number;
+    rounds: number;
+    fixtures: number;
     series: number;
-    rewards: number;
-    notifications: number;
+    entry_fees: number;
+    regular_rewards: number;
+    playoff_rewards: number;
   }>(
     `select
-       (
-         select count(*)::int from (
-           select number from tournament_matchday where tournament_id = $1
-             group by number having count(*) > 1
-           union all
-           select number from tournament_round where tournament_id = $1
-             group by stage, number having count(*) > 1
-           union all
-           select fixture_number from tournament_fixture where tournament_id = $1
-             group by fixture_number having count(*) > 1
-         ) duplicated_schedule
-       ) as schedule,
-       (
-         select count(*)::int from (
-           select depends_on->>'key' from tournament_playoff_series where tournament_id = $1
-             group by depends_on->>'key' having count(*) > 1
-         ) duplicated_series
-       ) as series,
-       (
-         select count(*)::int from (
-           select idempotency_key from tournament_economy_event where tournament_id = $1
-             group by idempotency_key having count(*) > 1
-         ) duplicated_rewards
-       ) as rewards,
-       (
-         select count(*)::int from (
-           select user_id, event_type, event_key from push_delivery_log
-             where event_type like 'tournament.%' and event_key like $1 || ':%'
-             group by user_id, event_type, event_key having count(*) > 1
-         ) duplicated_notifications
-       ) as notifications`,
+       (select count(*)::int from tournament_matchday where tournament_id = $1) as matchdays,
+       (select count(*)::int from tournament_round where tournament_id = $1) as rounds,
+       (select count(*)::int from tournament_fixture where tournament_id = $1) as fixtures,
+       (select count(*)::int from tournament_playoff_series where tournament_id = $1) as series,
+       (select count(*)::int from tournament_economy_event
+         where tournament_id = $1 and kind = 'entry_fee' and status = 'applied') as entry_fees,
+       (select count(*)::int from tournament_economy_event
+         where tournament_id = $1 and kind = 'stage_reward' and status = 'applied'
+           and metadata->>'stage' = 'regular') as regular_rewards,
+       (select count(*)::int from tournament_economy_event
+         where tournament_id = $1 and kind = 'stage_reward' and status = 'applied'
+           and metadata->>'stage' = 'playoff') as playoff_rewards`,
     [tournamentId],
   );
-  return duplicates.rows[0]!;
+  const deliveryCounts = await pool.query<{
+    event_type: TournamentNotificationType;
+    count: number;
+  }>(
+    `select event_type, count(*)::int as count from push_delivery_log
+      where event_type = any($1::text[])
+        and (
+          event_key like $2
+          or exists (
+            select 1 from tournament_fixture fixture
+              where fixture.tournament_id = $3
+                and push_delivery_log.event_key like fixture.id::text || ':%'
+          )
+          or exists (
+            select 1 from tournament_fixture_segment segment
+              join tournament_fixture fixture on fixture.id = segment.fixture_id
+              where fixture.tournament_id = $3
+                and push_delivery_log.event_key like segment.duel_match_id::text || ':%'
+          )
+        )
+      group by event_type`,
+    [TOURNAMENT_NOTIFICATION_TYPES, `${tournamentId}:%`, tournamentId],
+  );
+  const notifications = Object.fromEntries(
+    TOURNAMENT_NOTIFICATION_TYPES.map((eventType) => [eventType, 0]),
+  ) as Record<TournamentNotificationType, number>;
+  for (const delivery of deliveryCounts.rows) notifications[delivery.event_type] = delivery.count;
+  const row = counts.rows[0]!;
+  return {
+    matchdays: row.matchdays,
+    rounds: row.rounds,
+    fixtures: row.fixtures,
+    series: row.series,
+    entryFees: row.entry_fees,
+    regularRewards: row.regular_rewards,
+    playoffRewards: row.playoff_rewards,
+    notifications,
+  };
 }
 
 describe.skipIf(!hasIntegrationEnv)('synthetic tournament seasons', () => {
@@ -959,22 +1186,17 @@ describe.skipIf(!hasIntegrationEnv)('synthetic tournament seasons', () => {
         changed: true,
       });
       expect(await tournamentStatus(pool, tournament.id)).toBe('scheduling');
-      const generated = await pool.query<{
-        matchdays: number;
-        rounds: number;
-        fixtures: number;
-      }>(
-        `select
-           (select count(*)::int from tournament_matchday where tournament_id = $1) as matchdays,
-           (select count(*)::int from tournament_round where tournament_id = $1) as rounds,
-           (select count(*)::int from tournament_fixture where tournament_id = $1) as fixtures`,
-        [tournament.id],
-      );
-      expect(generated.rows[0]).toEqual(
-        regularSource === 'head_to_head'
-          ? { matchdays: 1, rounds: 3, fixtures: 6 }
-          : { matchdays: 3, rounds: 0, fixtures: 0 },
-      );
+      const schedulingCounts: AutomaticLifecycleCounts = {
+        matchdays: regularSource === 'head_to_head' ? 1 : 3,
+        rounds: regularSource === 'head_to_head' ? 3 : 0,
+        fixtures: regularSource === 'head_to_head' ? 6 : 0,
+        series: 0,
+        entryFees: 4,
+        regularRewards: 0,
+        playoffRewards: 0,
+        notifications: expectedAutomaticNotifications(),
+      };
+      expect(await automaticLifecycleCounts(pool, tournament.id)).toEqual(schedulingCounts);
       const repeatedClose = await reconcileTournamentLifecycle(pool, {
         now: AUTOMATIC_REGISTRATION_CLOSES_AT,
         tournamentId: tournament.id,
@@ -985,9 +1207,29 @@ describe.skipIf(!hasIntegrationEnv)('synthetic tournament seasons', () => {
         after: 'scheduling',
         changed: false,
       });
+      expect(await automaticLifecycleCounts(pool, tournament.id)).toEqual(schedulingCounts);
+
+      const startsAtWhileScheduling = await reconcileTournamentLifecycle(pool, {
+        now: AUTOMATIC_STARTS_AT,
+        tournamentId: tournament.id,
+        classicSeedSecret: CLASSIC_SEED_SECRET,
+      });
+      expect(startsAtWhileScheduling.items[0]).toMatchObject({
+        action: 'await_manual_regular_start',
+        after: 'scheduling',
+        changed: false,
+      });
+      expect(await tournamentStatus(pool, tournament.id)).toBe('scheduling');
+      expect(await automaticLifecycleCounts(pool, tournament.id)).toEqual(schedulingCounts);
 
       await publishRegularSchedule(pool, tournament.id);
       expect(await tournamentStatus(pool, tournament.id)).toBe('regular');
+      expect(await automaticLifecycleCounts(pool, tournament.id)).toEqual({
+        ...schedulingCounts,
+        notifications: expectedAutomaticNotifications({
+          'tournament.schedule_published': 4,
+        }),
+      });
       await settleAutomaticRegularSeason(pool, tournament.id, regularSource);
       const playoff = await reconcileTournamentLifecycle(pool, {
         now: AUTOMATIC_PLAYOFF_STARTS_AT,
@@ -1000,6 +1242,22 @@ describe.skipIf(!hasIntegrationEnv)('synthetic tournament seasons', () => {
         changed: true,
       });
       expect(await tournamentStatus(pool, tournament.id)).toBe('playoff');
+      await assertPlayoffSeedsUseStandings(pool, tournament.id);
+      const playoffCounts: AutomaticLifecycleCounts = {
+        matchdays: regularSource === 'head_to_head' ? 1 : 3,
+        rounds: regularSource === 'head_to_head' ? 6 : 3,
+        fixtures: regularSource === 'head_to_head' ? 10 : 4,
+        series: 4,
+        entryFees: 4,
+        regularRewards: 4,
+        playoffRewards: 0,
+        notifications: expectedAutomaticNotifications({
+          'tournament.playoff_started': 4,
+          'tournament.result_ready': regularSource === 'head_to_head' ? 12 : 0,
+          'tournament.schedule_published': 4,
+        }),
+      };
+      expect(await automaticLifecycleCounts(pool, tournament.id)).toEqual(playoffCounts);
       const repeatedPlayoff = await reconcileTournamentLifecycle(pool, {
         now: new Date(AUTOMATIC_PLAYOFF_STARTS_AT.getTime() + 1),
         tournamentId: tournament.id,
@@ -1010,8 +1268,21 @@ describe.skipIf(!hasIntegrationEnv)('synthetic tournament seasons', () => {
         after: 'playoff',
         changed: false,
       });
+      expect(await automaticLifecycleCounts(pool, tournament.id)).toEqual(playoffCounts);
 
       await settleEveryAutomaticPlayoffSeries(pool, tournament.id);
+      const terminalCounts: AutomaticLifecycleCounts = {
+        ...playoffCounts,
+        playoffRewards: 4,
+        notifications: expectedAutomaticNotifications({
+          'tournament.completed': 4,
+          'tournament.playoff_started': 4,
+          'tournament.result_ready': regularSource === 'head_to_head' ? 20 : 8,
+          'tournament.schedule_published': 4,
+          'tournament.series_next_game': 4,
+        }),
+      };
+      expect(await automaticLifecycleCounts(pool, tournament.id)).toEqual(terminalCounts);
       const terminalRetry = await reconcileTournamentLifecycle(pool, {
         now: new Date(AUTOMATIC_PLAYOFF_STARTS_AT.getTime() + 172_800_000),
         tournamentId: tournament.id,
@@ -1022,12 +1293,7 @@ describe.skipIf(!hasIntegrationEnv)('synthetic tournament seasons', () => {
         after: 'completed',
         changed: false,
       });
-      expect(await duplicateCounts(pool, tournament.id)).toEqual({
-        schedule: 0,
-        series: 0,
-        rewards: 0,
-        notifications: 0,
-      });
+      expect(await automaticLifecycleCounts(pool, tournament.id)).toEqual(terminalCounts);
     },
   );
 
@@ -1054,31 +1320,33 @@ describe.skipIf(!hasIntegrationEnv)('synthetic tournament seasons', () => {
         tournamentId: tournament.id,
         classicSeedSecret: CLASSIC_SEED_SECRET,
       });
+      const blockedCounts: AutomaticLifecycleCounts = {
+        matchdays: 0,
+        rounds: 0,
+        fixtures: 0,
+        series: 0,
+        entryFees: 3,
+        regularRewards: 0,
+        playoffRewards: 0,
+        notifications: expectedAutomaticNotifications({
+          'tournament.application_approved': 3,
+          'tournament.registration_blocked': 1,
+        }),
+      };
+      expect(await automaticLifecycleCounts(pool, tournament.id)).toEqual(blockedCounts);
       await reconcileTournamentLifecycle(pool, {
         now: new Date(AUTOMATIC_REGISTRATION_CLOSES_AT.getTime() + 1),
         tournamentId: tournament.id,
         classicSeedSecret: CLASSIC_SEED_SECRET,
       });
+      expect(await automaticLifecycleCounts(pool, tournament.id)).toEqual(blockedCounts);
 
       const blocked = await pool.query<{
         status: string;
         playoff_size: number;
-        matchdays: number;
-        rounds: number;
-        fixtures: number;
-        notifications: number;
       }>(
         `select tournament.status,
-                (revision.rules_snapshot->'config'->>'playoffSize')::int as playoff_size,
-                (select count(*)::int from tournament_matchday where tournament_id = tournament.id)
-                  as matchdays,
-                (select count(*)::int from tournament_round where tournament_id = tournament.id)
-                  as rounds,
-                (select count(*)::int from tournament_fixture where tournament_id = tournament.id)
-                  as fixtures,
-                (select count(*)::int from push_delivery_log
-                  where event_type = 'tournament.registration_blocked'
-                    and event_key like tournament.id::text || ':%') as notifications
+                (revision.rules_snapshot->'config'->>'playoffSize')::int as playoff_size
            from tournament
            join tournament_revision revision on revision.id = tournament.published_revision_id
           where tournament.id = $1`,
@@ -1087,10 +1355,6 @@ describe.skipIf(!hasIntegrationEnv)('synthetic tournament seasons', () => {
       expect(blocked.rows[0]).toEqual({
         status: 'registration_blocked',
         playoff_size: 4,
-        matchdays: 0,
-        rounds: 0,
-        fixtures: 0,
-        notifications: 1,
       });
     },
   );

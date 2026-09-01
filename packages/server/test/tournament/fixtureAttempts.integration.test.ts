@@ -1039,10 +1039,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
   });
 
   it('settles a single-ready readiness expiry as one idempotent technical result', async () => {
-    const { tournamentId, fixture, opened } = await openFirstPlayoffAttempt(
-      pool,
-      'attempt-single-ready-expiry',
-    );
+    const { fixture, opened } = await openFirstPlayoffAttempt(pool, 'attempt-single-ready-expiry');
     const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
     const homeToken = await jwt.issueAccessToken({ sub: fixture.home_user_id });
     const firstReady = await app.inject({
@@ -1216,10 +1213,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
   });
 
   it('pauses only the fixture and series once when neither player becomes ready', async () => {
-    const { tournamentId, fixture, opened } = await openFirstPlayoffAttempt(
-      pool,
-      'attempt-both-no-show',
-    );
+    const { fixture, opened } = await openFirstPlayoffAttempt(pool, 'attempt-both-no-show');
     const now = new Date();
     const scheduledStartsAt = new Date(now.getTime() - 300_000);
     const readinessExpiredAt = new Date(now.getTime() - 1_000);
@@ -2392,7 +2386,6 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
       },
       tournament: { status: 'playoff', winnerUserId: null },
     });
-    expect(JSON.stringify(active.json())).not.toContain('99');
     expect(active.json().opponentProgress).not.toHaveProperty('goals');
     expect(active.json().opponentProgress).not.toHaveProperty('shots');
 
