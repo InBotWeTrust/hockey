@@ -6609,6 +6609,156 @@ button.daily-calendar__day:active {
   text-align: left;
 }
 
+.tournament-schedule-days {
+  display: grid;
+  gap: 8px;
+}
+
+.tournament-schedule-day,
+.tournament-schedule-upcoming {
+  overflow: hidden;
+  border: 1px solid rgba(100, 116, 139, 0.14);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.tournament-schedule-day > summary,
+.tournament-schedule-upcoming > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px 12px;
+  color: var(--ink);
+  cursor: pointer;
+  list-style: none;
+}
+
+.tournament-schedule-day > summary::-webkit-details-marker,
+.tournament-schedule-upcoming > summary::-webkit-details-marker {
+  display: none;
+}
+
+.tournament-schedule-day > summary::after,
+.tournament-schedule-upcoming > summary::after {
+  content: '›';
+  flex: 0 0 auto;
+  color: rgba(15, 23, 42, 0.48);
+  font-size: 20px;
+  line-height: 1;
+  transform: rotate(90deg);
+  transition: transform 160ms ease;
+}
+
+.tournament-schedule-day:not([open]) > summary::after,
+.tournament-schedule-upcoming:not([open]) > summary::after {
+  transform: rotate(0deg);
+}
+
+.tournament-schedule-day > summary > strong,
+.tournament-schedule-upcoming > summary > strong {
+  flex: 1 1 auto;
+  font-size: 13px;
+  font-weight: 850;
+  text-transform: capitalize;
+}
+
+.tournament-schedule-day > summary > span,
+.tournament-schedule-upcoming > summary > span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 720;
+}
+
+.tournament-schedule-day__fixtures {
+  display: grid;
+  gap: 7px;
+  padding: 0 8px 8px;
+}
+
+.tournament-schedule-fixture {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  padding: 10px 11px;
+  border: 1px solid rgba(100, 116, 139, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.66);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+}
+
+.tournament-schedule-fixture__heading,
+.tournament-schedule-fixture__meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px 8px;
+}
+
+.tournament-schedule-fixture__heading {
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 760;
+}
+
+.tournament-schedule-fixture > strong {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 820;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tournament-schedule-fixture__status {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(100, 116, 139, 0.1);
+  color: rgba(51, 65, 85, 0.8);
+  font-size: 9px;
+  font-weight: 780;
+}
+
+.tournament-schedule-fixture__status.is-active,
+.tournament-schedule-fixture__status.is-open {
+  background: rgba(30, 113, 74, 0.12);
+  color: #226645;
+}
+
+.tournament-schedule-fixture__status.is-completed,
+.tournament-schedule-fixture__status.is-settled {
+  background: rgba(34, 77, 115, 0.1);
+  color: #244d73;
+}
+
+.tournament-schedule-fixture__meta {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.tournament-schedule-fixture__meta > span + span::before {
+  content: '·';
+  margin-right: 8px;
+  color: rgba(100, 116, 139, 0.5);
+}
+
+.tournament-schedule-upcoming {
+  border-style: dashed;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.tournament-schedule-upcoming > p {
+  margin: -2px 12px 10px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
 .tournament-operation-incidents,
 .tournament-admin-series-list {
   display: grid;

@@ -1779,6 +1779,86 @@ describe('TournamentAdmin', () => {
     expect(generate).toHaveBeenCalledWith('00000000-0000-4000-8000-000000000921', 3);
   });
 
+  it('groups the admin schedule by day and separates unresolved future games', async () => {
+    const tournament: api.AdminTournament = {
+      id: '00000000-0000-4000-8000-000000000981',
+      slug: 'schedule-cup',
+      title: 'Кубок с большим расписанием',
+      description: '',
+      status: 'regular',
+      regularSource: 'head_to_head',
+      revision: 5,
+      participantCount: 8,
+      rules: { config: { timezone: 'Europe/Moscow' } },
+    };
+    vi.spyOn(api, 'fetchAdminTournamentParticipants').mockResolvedValue({ participants: [] });
+    vi.spyOn(api, 'fetchAdminTournamentSchedule').mockResolvedValue({
+      fixtures: [
+        {
+          id: 'fixture-1',
+          fixtureNumber: 1,
+          stage: 'regular',
+          roundNumber: 1,
+          scheduledStartsAt: '2030-01-03T09:00:00.000Z',
+          windowEndsAt: '2030-01-03T09:20:00.000Z',
+          status: 'scheduled',
+          home: { userId: 'home-1', name: 'Александр Первый' },
+          away: { userId: 'away-1', name: 'Роза Вторая' },
+          score: { home: 0, away: 0 },
+        },
+        {
+          id: 'fixture-2',
+          fixtureNumber: 2,
+          stage: 'regular',
+          roundNumber: 1,
+          scheduledStartsAt: '2030-01-03T09:20:00.000Z',
+          windowEndsAt: '2030-01-03T09:40:00.000Z',
+          status: 'active',
+          home: { userId: 'home-2', name: 'Игрок Три' },
+          away: { userId: 'away-2', name: 'Игрок Четыре' },
+          score: { home: 1, away: 0 },
+        },
+        {
+          id: 'fixture-3',
+          fixtureNumber: 3,
+          stage: 'playoff',
+          roundNumber: 2,
+          scheduledStartsAt: '2030-01-04T09:00:00.000Z',
+          windowEndsAt: '2030-01-04T09:20:00.000Z',
+          status: 'conditional',
+          home: null,
+          away: null,
+          score: { home: 0, away: 0 },
+        },
+      ],
+      matchdays: [],
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentOperations
+          tournament={tournament}
+          onBack={vi.fn()}
+          onEdit={vi.fn()}
+          onRemoved={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Календарь' }));
+
+    const dayHeading = await screen.findByText(/3 января/);
+    expect(dayHeading.closest('details')).toHaveAttribute('open');
+    expect(screen.getAllByText('12:00–12:20')).toHaveLength(2);
+    expect(screen.getAllByText('1-й тур')).toHaveLength(2);
+    expect(screen.getByText('Александр Первый — Роза Вторая')).toBeInTheDocument();
+    expect(screen.getByText('Следующие игры')).toBeInTheDocument();
+    expect(screen.getByText('Соперники определятся позже')).toBeInTheDocument();
+    expect(screen.queryByText(/09:00:00/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Соперник не определён/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Условная игра')).not.toBeInTheDocument();
+  });
+
   it('preserves the later DST occurrence when unrelated fields change', async () => {
     const tournament = dstOverlapTournament();
     vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [tournament] });

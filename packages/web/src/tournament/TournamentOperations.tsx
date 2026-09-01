@@ -128,10 +128,64 @@ function approveAllErrorMessage(
   return 'Не удалось принять заявки. Обновите страницу и попробуйте ещё раз.';
 }
 
-function readableDate(value: string | null): string {
-  if (value === null) return 'время не задано';
+function fixtureDate(value: string | null): Date | null {
+  if (value === null) return null;
   const date = new Date(value);
-  return Number.isFinite(date.getTime()) ? date.toLocaleString('ru-RU') : 'время не задано';
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function fixtureDayKey(value: string | null, timezone: string): string {
+  const date = fixtureDate(value);
+  if (date === null) return 'without-date';
+  const parts = new Intl.DateTimeFormat('ru-RU', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((item) => item.type === type)?.value ?? '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
+}
+
+function fixtureDayLabel(value: string | null, timezone: string): string {
+  const date = fixtureDate(value);
+  if (date === null) return 'Время не назначено';
+  return new Intl.DateTimeFormat('ru-RU', {
+    timeZone: timezone,
+    day: 'numeric',
+    month: 'long',
+    weekday: 'long',
+  }).format(date);
+}
+
+function fixtureTime(value: string | null, timezone: string): string | null {
+  const date = fixtureDate(value);
+  if (date === null) return null;
+  return new Intl.DateTimeFormat('ru-RU', {
+    timeZone: timezone,
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
+function fixtureTimeRange(fixture: AdminTournamentFixture, timezone: string): string {
+  const start = fixtureTime(fixture.scheduledStartsAt, timezone);
+  if (start === null) return 'Время не назначено';
+  const end = fixtureTime(fixture.windowEndsAt, timezone);
+  return end === null ? start : `${start}–${end}`;
+}
+
+function fixtureStageLabel(fixture: AdminTournamentFixture): string {
+  if (fixture.stage === 'regular') return `${fixture.roundNumber}-й тур`;
+  if (fixture.stage === 'playoff') return `Плей-офф · ${fixture.roundNumber}-й раунд`;
+  return `${fixture.roundNumber}-й тур`;
+}
+
+function fixturePlayersLabel(fixture: AdminTournamentFixture): string {
+  const home = fixture.home?.name?.trim();
+  const away = fixture.away?.name?.trim();
+  return home && away ? `${home} — ${away}` : 'Соперники определятся позже';
 }
 
 function matchdayCountLabel(count: number): string {
@@ -172,9 +226,9 @@ function rowLabel(row: Record<string, unknown>, index: number): string {
 
 function fixtureStatusLabel(status: string): string {
   const labels: Record<string, string> = {
-    conditional: 'Условная игра',
+    conditional: 'Соперники определятся',
     scheduled: 'Запланирована',
-    open: 'Окно открыто',
+    open: 'Можно начинать',
     active: 'Идёт игра',
     completed: 'Завершена',
     settled: 'Завершена',
@@ -186,6 +240,44 @@ function fixtureStatusLabel(status: string): string {
     needs_admin_decision: 'Нужно решение администратора',
   };
   return labels[status] ?? 'Статус уточняется';
+}
+
+function AdminScheduleFixtureCard({
+  fixture,
+  timezone,
+  onSelect,
+}: {
+  fixture: AdminTournamentFixture;
+  timezone: string;
+  onSelect: (fixture: AdminTournamentFixture) => void;
+}): JSX.Element {
+  const players = fixturePlayersLabel(fixture);
+  const showScore = ['active', 'completed', 'settled', 'forfeit'].includes(fixture.status);
+  return (
+    <button
+      type="button"
+      className="tournament-schedule-fixture"
+      aria-label={`Игра №${fixture.fixtureNumber}: ${players}`}
+      onClick={() => onSelect(fixture)}
+    >
+      <span className="tournament-schedule-fixture__heading">
+        <span>Игра №{fixture.fixtureNumber}</span>
+        <span className={`tournament-schedule-fixture__status is-${fixture.status}`}>
+          {fixtureStatusLabel(fixture.status)}
+        </span>
+      </span>
+      <strong>{players}</strong>
+      <span className="tournament-schedule-fixture__meta">
+        <span>{fixtureStageLabel(fixture)}</span>
+        <span>{fixtureTimeRange(fixture, timezone)}</span>
+        {showScore && (
+          <span>
+            Счёт {fixture.score.home}:{fixture.score.away}
+          </span>
+        )}
+      </span>
+    </button>
+  );
 }
 
 function dispatchKindLabel(kind: unknown): string {
@@ -703,6 +795,40 @@ export function TournamentOperations({
     schedule.data?.fixtures.filter((fixture) => incidentStatuses.has(fixture.status)) ?? [];
   const regularFixtures =
     schedule.data?.fixtures.filter((fixture) => !incidentStatuses.has(fixture.status)) ?? [];
+  const conditionalFixtures = regularFixtures.filter((fixture) => fixture.status === 'conditional');
+  const scheduledFixtures = regularFixtures.filter((fixture) => fixture.status !== 'conditional');
+  const fixtureDays = Array.from(
+    scheduledFixtures
+      .slice()
+      .sort((left, right) => {
+        const leftTime = fixtureDate(left.scheduledStartsAt)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        const rightTime =
+          fixtureDate(right.scheduledStartsAt)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        return leftTime - rightTime || left.fixtureNumber - right.fixtureNumber;
+      })
+      .reduce<
+        Map<string, { key: string; label: string; fixtures: AdminTournamentFixture[] }>
+      >((groups, fixture) => {
+        const key = fixtureDayKey(fixture.scheduledStartsAt, tournamentTimezone);
+        const current = groups.get(key);
+        if (current) current.fixtures.push(fixture);
+        else {
+          groups.set(key, {
+            key,
+            label: fixtureDayLabel(fixture.scheduledStartsAt, tournamentTimezone),
+            fixtures: [fixture],
+          });
+        }
+        return groups;
+      }, new Map())
+      .values(),
+  );
+  const openFixtureDayIndex = Math.max(
+    0,
+    fixtureDays.findIndex((day) =>
+      day.fixtures.some((fixture) => ['active', 'open'].includes(fixture.status)),
+    ),
+  );
 
   return (
     <section className="tournament-operations">
@@ -951,18 +1077,57 @@ export function TournamentOperations({
                 ))}
               </section>
             )}
-            {regularFixtures.map((fixture) => (
-              <button
-                key={fixture.id}
-                type="button"
-                className="tournament-operation-list-row"
-                onClick={() => setSelectedFixture(fixture)}
-              >
-                №{fixture.fixtureNumber}: {fixture.home?.name ?? 'Соперник не определён'} —{' '}
-                {fixture.away?.name ?? 'Соперник не определён'} ·{' '}
-                {readableDate(fixture.scheduledStartsAt)} · {fixtureStatusLabel(fixture.status)}
-              </button>
-            ))}
+            {fixtureDays.length > 0 && (
+              <section className="tournament-schedule-days" aria-label="Игры по дням">
+                {fixtureDays.map((day, index) => (
+                  <details
+                    key={day.key}
+                    className="tournament-schedule-day"
+                    open={index === openFixtureDayIndex}
+                  >
+                    <summary>
+                      <strong>{day.label}</strong>
+                      <span>
+                        {day.fixtures.length}{' '}
+                        {russianPlural(day.fixtures.length, 'игра', 'игры', 'игр')}
+                      </span>
+                    </summary>
+                    <div className="tournament-schedule-day__fixtures">
+                      {day.fixtures.map((fixture) => (
+                        <AdminScheduleFixtureCard
+                          key={fixture.id}
+                          fixture={fixture}
+                          timezone={tournamentTimezone}
+                          onSelect={setSelectedFixture}
+                        />
+                      ))}
+                    </div>
+                  </details>
+                ))}
+              </section>
+            )}
+            {conditionalFixtures.length > 0 && (
+              <details className="tournament-schedule-upcoming">
+                <summary>
+                  <strong>Следующие игры</strong>
+                  <span>
+                    {conditionalFixtures.length}{' '}
+                    {russianPlural(conditionalFixtures.length, 'игра', 'игры', 'игр')}
+                  </span>
+                </summary>
+                <p>Соперники определятся после завершения предыдущих этапов.</p>
+                <div className="tournament-schedule-day__fixtures">
+                  {conditionalFixtures.map((fixture) => (
+                    <AdminScheduleFixtureCard
+                      key={fixture.id}
+                      fixture={fixture}
+                      timezone={tournamentTimezone}
+                      onSelect={setSelectedFixture}
+                    />
+                  ))}
+                </div>
+              </details>
+            )}
             {selectedFixture !== null && (
               <div className="tournament-operation-editor">
                 <strong>Управление игрой №{selectedFixture.fixtureNumber}</strong>
