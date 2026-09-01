@@ -37,6 +37,10 @@ export interface AutomaticLifecycleAuditItem {
   seriesCount: number;
   startedGameCount: number;
   completedGameCount: number;
+  dailyResultCount: number;
+  classicSessionCount: number;
+  classicPeriodCount: number;
+  classicShotCount: number;
   proposedAction: 'enable_and_reconcile' | 'none';
   reasons: string[];
   dryRunReconcile: TournamentLifecycleReconcileReport;
@@ -64,6 +68,10 @@ interface AuditTournamentRow {
   series_count: number;
   started_game_count: number;
   completed_game_count: number;
+  daily_result_count: number;
+  classic_session_count: number;
+  classic_period_count: number;
+  classic_shot_count: number;
 }
 
 interface MatchdayRow {
@@ -80,6 +88,7 @@ interface RoundRow {
   cycle_number: number | null;
   starts_at: Date | null;
   ends_at: Date | null;
+  rules_snapshot: Record<string, unknown>;
 }
 
 interface FixtureRow {
@@ -87,6 +96,7 @@ interface FixtureRow {
   fixture_number: number;
   home_participant_id: string | null;
   away_participant_id: string | null;
+  venue_mode: 'home_selected' | 'neutral_default';
   scheduled_starts_at: Date | null;
   window_ends_at: Date | null;
 }
@@ -126,12 +136,33 @@ async function loadAuditTournament(
               join tournament_round round_row on round_row.id = fixture.round_id
               where fixture.tournament_id = t.id
                 and round_row.stage in ('regular', 'playoff', 'third_place')
-                and fixture.status in ('open', 'active', 'paused')) as started_game_count,
+                and fixture.status in ('open', 'active', 'paused'))
+              + (select count(*)::int from tournament_classic_session session
+                  where session.tournament_id = t.id
+                    and session.state in ('idle', 'period_active', 'break_active', 'expired'))
+              as started_game_count,
             (select count(*)::int from tournament_fixture fixture
               join tournament_round round_row on round_row.id = fixture.round_id
               where fixture.tournament_id = t.id
                 and round_row.stage in ('regular', 'playoff', 'third_place')
-                and fixture.status in ('settled', 'forfeit')) as completed_game_count
+                and fixture.status in ('settled', 'forfeit'))
+              + (select count(*)::int from tournament_daily_result result
+                  where result.tournament_id = t.id)
+              + (select count(*)::int from tournament_classic_session session
+                  where session.tournament_id = t.id and session.state = 'closed')
+              as completed_game_count,
+            (select count(*)::int from tournament_daily_result result
+              where result.tournament_id = t.id) as daily_result_count,
+            (select count(*)::int from tournament_classic_session session
+              where session.tournament_id = t.id) as classic_session_count,
+            (select count(*)::int from tournament_classic_period period
+              join tournament_classic_session session on session.id = period.session_id
+              where session.tournament_id = t.id) as classic_period_count,
+            (select count(*)::int from shot_session shot
+              join tournament_classic_session session
+                on session.id = shot.tournament_classic_session_id
+              where session.tournament_id = t.id and shot.mode = 'tournament_classic')
+              as classic_shot_count
        from tournament t
        join tournament_revision revision on revision.id = t.published_revision_id
       where t.id = $1
@@ -168,29 +199,28 @@ async function existingScheduleMatches(
   }
   if (tournament.starts_at === null || tournament.series_count > 0) return false;
 
-  const [matchdays, rounds, fixtures] = await Promise.all([
-    conn.query<MatchdayRow>(
-      `select number, starts_at, ends_at from tournament_matchday
-        where tournament_id = $1 order by number`,
-      [tournament.id],
-    ),
-    conn.query<RoundRow>(
-      `select round_row.id, matchday.number as matchday_number, round_row.stage,
-              round_row.number, round_row.cycle_number, round_row.starts_at, round_row.ends_at
-         from tournament_round round_row
-         left join tournament_matchday matchday on matchday.id = round_row.matchday_id
-        where round_row.tournament_id = $1
-        order by round_row.stage, round_row.number`,
-      [tournament.id],
-    ),
-    conn.query<FixtureRow>(
-      `select round_id, fixture_number, home_participant_id, away_participant_id,
-              scheduled_starts_at, window_ends_at
-         from tournament_fixture
-        where tournament_id = $1 order by fixture_number`,
-      [tournament.id],
-    ),
-  ]);
+  const matchdays = await conn.query<MatchdayRow>(
+    `select number, starts_at, ends_at from tournament_matchday
+      where tournament_id = $1 order by number`,
+    [tournament.id],
+  );
+  const rounds = await conn.query<RoundRow>(
+    `select round_row.id, matchday.number as matchday_number, round_row.stage,
+            round_row.number, round_row.cycle_number, round_row.starts_at, round_row.ends_at,
+            round_row.rules_snapshot
+       from tournament_round round_row
+       left join tournament_matchday matchday on matchday.id = round_row.matchday_id
+      where round_row.tournament_id = $1
+      order by round_row.stage, round_row.number`,
+    [tournament.id],
+  );
+  const fixtures = await conn.query<FixtureRow>(
+    `select round_id, fixture_number, home_participant_id, away_participant_id, venue_mode,
+            scheduled_starts_at, window_ends_at
+       from tournament_fixture
+      where tournament_id = $1 order by fixture_number`,
+    [tournament.id],
+  );
   const config = tournament.rules_snapshot.config;
   if (config.regularSource !== tournament.regular_source) return false;
 
@@ -253,6 +283,7 @@ async function existingScheduleMatches(
     current.push(fixture);
     fixtureByRound.set(fixture.round_id, current);
   }
+  let expectedFixtureNumber = 0;
   return rounds.rows.every((round, index) => {
     const expected = plan[index];
     if (
@@ -262,22 +293,29 @@ async function existingScheduleMatches(
       Number(round.cycle_number) !== expected.cycleNumber ||
       Number(round.matchday_number) !== expected.matchdayNumber ||
       !sameInstant(round.starts_at, expected.startsAt) ||
-      !sameInstant(round.ends_at, expected.endsAt)
+      !sameInstant(round.ends_at, expected.endsAt) ||
+      round.rules_snapshot.byeParticipantId !== expected.byeParticipantId
     ) {
       return false;
     }
-    const actualFixtures = fixtureByRound.get(round.id) ?? [];
+    const actualFixtures = (fixtureByRound.get(round.id) ?? []).sort(
+      (left, right) => Number(left.fixture_number) - Number(right.fixture_number),
+    );
     return (
       actualFixtures.length === expected.fixtures.length &&
-      actualFixtures.every((fixture) =>
-        expected.fixtures.some(
-          (planned) =>
-            planned.homeParticipantId === fixture.home_participant_id &&
-            planned.awayParticipantId === fixture.away_participant_id &&
-            sameInstant(fixture.scheduled_starts_at, expected.startsAt) &&
-            sameInstant(fixture.window_ends_at, expected.endsAt),
-        ),
-      )
+      actualFixtures.every((fixture, fixtureIndex) => {
+        const planned = expected.fixtures[fixtureIndex];
+        const fixtureNumber = ++expectedFixtureNumber;
+        return (
+          planned !== undefined &&
+          Number(fixture.fixture_number) === fixtureNumber &&
+          planned.homeParticipantId === fixture.home_participant_id &&
+          planned.awayParticipantId === fixture.away_participant_id &&
+          planned.venueMode === fixture.venue_mode &&
+          sameInstant(fixture.scheduled_starts_at, expected.startsAt) &&
+          sameInstant(fixture.window_ends_at, expected.endsAt)
+        );
+      })
     );
   });
 }
@@ -295,7 +333,11 @@ async function blockingReasons(
   ) {
     reasons.push('automatic_lifecycle_marker_is_not_legacy');
   }
-  if (tournament.started_game_count + tournament.completed_game_count > 0) {
+  if (
+    tournament.started_game_count + tournament.completed_game_count > 0 ||
+    tournament.classic_period_count > 0 ||
+    tournament.classic_shot_count > 0
+  ) {
     reasons.push('games_already_started');
   }
   if (!(await existingScheduleMatches(conn, tournament))) {
@@ -327,6 +369,10 @@ async function inspectTournament(
     seriesCount: Number(tournament.series_count),
     startedGameCount: Number(tournament.started_game_count),
     completedGameCount: Number(tournament.completed_game_count),
+    dailyResultCount: Number(tournament.daily_result_count),
+    classicSessionCount: Number(tournament.classic_session_count),
+    classicPeriodCount: Number(tournament.classic_period_count),
+    classicShotCount: Number(tournament.classic_shot_count),
     proposedAction: alreadyEnabled || reasons.length > 0 ? 'none' : 'enable_and_reconcile',
     reasons,
     dryRunReconcile,
