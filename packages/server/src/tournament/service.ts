@@ -1495,6 +1495,29 @@ export async function generateRegularSchedule(
     if (Number(tournament.current_revision) !== expectedRevision) {
       throw new AppError('revision_conflict', 'tournament was changed in another tab', 409);
     }
+    if (tournament.status === 'scheduling') {
+      const existing = await client.query<{
+        matchday_count: number;
+        round_count: number;
+        fixture_count: number;
+      }>(
+        `select
+           (select count(*)::int from tournament_matchday where tournament_id = $1) as matchday_count,
+           (select count(*)::int from tournament_round where tournament_id = $1) as round_count,
+           (select count(*)::int from tournament_fixture where tournament_id = $1) as fixture_count`,
+        [tournamentId],
+      );
+      const counts = existing.rows[0]!;
+      if (Number(counts.matchday_count) > 0) {
+        return {
+          tournamentId,
+          status: 'scheduling' as const,
+          matchdayCount: Number(counts.matchday_count),
+          roundCount: Number(counts.round_count),
+          fixtureCount: Number(counts.fixture_count),
+        };
+      }
+    }
     if (tournament.starts_at === null)
       throw new AppError('conflict', 'start time is required', 409);
     const participants = await client.query<{ id: string }>(

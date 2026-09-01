@@ -33,6 +33,8 @@ export type PushEventType =
   | 'tournament.series_next_game'
   | 'tournament.completed'
   | 'tournament.manual'
+  | 'tournament.registration_blocked'
+  | 'tournament.playoff_blocked'
   | 'news.posted';
 
 export interface PushPreferencesRow {
@@ -150,6 +152,8 @@ export function isPushEventAllowed(
     case 'tournament.series_next_game':
     case 'tournament.completed':
     case 'tournament.manual':
+    case 'tournament.registration_blocked':
+    case 'tournament.playoff_blocked':
       return preferences.tournamentEvents;
     case 'news.posted':
       return preferences.gameNews;
