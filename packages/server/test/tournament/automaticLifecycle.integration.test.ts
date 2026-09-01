@@ -827,11 +827,14 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
       now: new Date('2030-10-27T15:01:00.000Z'),
       tournamentId: tournament.id,
     });
-    const deliveries = await pool.query<{ count: number }>(
-      `select count(*)::int as count from push_delivery_log
-        where event_type = 'tournament.playoff_blocked'
+    const deliveries = await pool.query<{ count: number; title: string; body: string }>(
+      `select count(*)::int as count,
+              min(payload->>'title') as title,
+              min(payload->>'body') as body
+         from push_delivery_log
+        where event_type = 'tournament.playoff_schedule_missing'
           and event_key = $1`,
-      [`${tournament.id}:playoff-blocked:${tournament.revision}`],
+      [`${tournament.id}:playoff-schedule-missing:${tournament.revision}`],
     );
 
     expect(first.items[0]).toMatchObject({
@@ -839,7 +842,43 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
       reason: 'playoff_schedule_missing',
       changed: false,
     });
-    expect(deliveries.rows[0]!.count).toBe(2);
+    expect(deliveries.rows[0]).toEqual({
+      count: 2,
+      title: 'Настройте расписание плей-офф',
+      body: 'В турнире «Автоматический кубок» завершён регулярный сезон. Укажите даты и время игр плей-офф.',
+    });
+  });
+
+  it('reports a changed lifecycle when it materializes a cutoff tie-break', async () => {
+    const tournament = await seedAutomaticTournament(pool, {
+      source: 'daily_aggregate',
+      approved: 4,
+      playoffSize: 2,
+    });
+    await reconcileTournamentLifecycle(pool, { now: CLOSES_AT, tournamentId: tournament.id });
+    await publishRegularSchedule(pool, tournament.id);
+    await configureAutomaticPlayoffs(pool, {
+      tournamentId: tournament.id,
+      firstGameStartsAt: '2030-10-27T15:00:00.000Z',
+    });
+
+    const report = await reconcileTournamentLifecycle(pool, {
+      now: new Date('2030-10-27T15:00:00.000Z'),
+      tournamentId: tournament.id,
+    });
+    const tieBreaks = await pool.query<{ count: number }>(
+      `select count(*)::int as count from tournament_round
+        where tournament_id = $1 and stage = 'tiebreak'`,
+      [tournament.id],
+    );
+
+    expect(report.items[0]).toMatchObject({
+      before: 'regular',
+      after: 'regular',
+      action: 'start_playoff',
+      changed: true,
+    });
+    expect(tieBreaks.rows[0]!.count).toBe(1);
   });
 
   it('reports only one changed lifecycle item when concurrent reconciles start playoffs', async () => {

@@ -136,7 +136,7 @@ git commit -m "feat(tournaments): define automatic lifecycle decisions"
 - Modify: `packages/server/src/tournament/service.ts`
 - Modify: `packages/server/src/push/preferences.ts`
 - Modify: `packages/server/src/push/tournament.ts`
-- Create: `packages/server/db/migrations/085_tournament_admin_attention_notification.sql`
+- Create: `packages/server/db/migrations/087_tournament_admin_attention_notification.sql`
 - Create: `packages/server/test/tournament/automaticLifecycle.integration.test.ts`
 - Modify: `packages/server/test/tournament/migration-contract.test.ts`
 
@@ -255,7 +255,7 @@ Expected: PASS; повторный reconcile оставляет те же кол
 - [ ] **Step 6: Закоммитить автоматическое закрытие регистрации**
 
 ```bash
-git add packages/server/src/tournament/automaticLifecycle.ts packages/server/src/tournament/service.ts packages/server/src/push/preferences.ts packages/server/src/push/tournament.ts packages/server/db/migrations/085_tournament_admin_attention_notification.sql packages/server/test/tournament/automaticLifecycle.integration.test.ts packages/server/test/tournament/migration-contract.test.ts
+git add packages/server/src/tournament/automaticLifecycle.ts packages/server/src/tournament/service.ts packages/server/src/push/preferences.ts packages/server/src/push/tournament.ts packages/server/db/migrations/087_tournament_admin_attention_notification.sql packages/server/test/tournament/automaticLifecycle.integration.test.ts packages/server/test/tournament/migration-contract.test.ts
 git commit -m "feat(tournaments): reconcile registration and schedules"
 ```
 

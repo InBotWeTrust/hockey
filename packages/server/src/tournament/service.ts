@@ -2612,6 +2612,7 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
     const baseTime = await playoffBaseTime(client, tournamentId, now, tournament.starts_at);
     if (rebuilt.boundaryTieParticipantIds.length > 0) {
       const roundToCreate = tieBreakRoundToCreate;
+      const created = roundToCreate !== null;
       if (roundToCreate !== null) {
         const rules = tieBreakRules(tournament.rules_snapshot);
         if (rules.duelTemplateId === null) {
@@ -2633,6 +2634,7 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
         tournamentId,
         status: 'tiebreak_required' as const,
         participantIds: rebuilt.boundaryTieParticipantIds,
+        created,
       };
     }
     const size = tournament.rules_snapshot.config.playoffSize;

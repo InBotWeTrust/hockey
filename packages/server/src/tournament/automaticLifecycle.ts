@@ -317,6 +317,26 @@ async function enqueuePlayoffBlockedPushes(
     'regular_results_incomplete' | 'playoff_schedule_missing'
   >,
 ): Promise<void> {
+  const notification =
+    reason === 'playoff_schedule_missing'
+      ? {
+          eventType: 'tournament.playoff_schedule_missing' as const,
+          eventKeyPrefix: 'playoff-schedule-missing',
+          fallback: (title: string) => ({
+            title: 'Настройте расписание плей-офф',
+            body: `В турнире «${title}» завершён регулярный сезон. Укажите даты и время игр плей-офф.`,
+            url: '/admin',
+          }),
+        }
+      : {
+          eventType: 'tournament.playoff_blocked' as const,
+          eventKeyPrefix: 'playoff-blocked',
+          fallback: (title: string) => ({
+            title: 'Плей-офф ожидает результатов',
+            body: `В турнире «${title}» ещё не завершены все игры регулярного сезона.`,
+            url: '/admin',
+          }),
+        };
   const client = await pool.connect();
   try {
     await client.query('begin');
@@ -336,35 +356,24 @@ async function enqueuePlayoffBlockedPushes(
         `select distinct id::text as id from users where id = $1 or role = 'admin'`,
         [row.created_by],
       );
-      const eventKey = `${tournamentId}:playoff-blocked:${Number(row.current_revision)}`;
+      const eventKey = `${tournamentId}:${notification.eventKeyPrefix}:${Number(row.current_revision)}`;
       for (const recipient of recipients.rows) {
         const previous = await client.query<{ exists: boolean }>(
           `select exists(
-             select 1 from push_delivery_log
-              where user_id = $1 and event_type = 'tournament.playoff_blocked'
-                and event_key like $2 || '%'
+              select 1 from push_delivery_log
+              where user_id = $1 and event_type = $2
+                and event_key like $3 || '%'
            ) as exists`,
-          [recipient.id, `${tournamentId}:playoff-blocked:`],
+          [recipient.id, notification.eventType, `${tournamentId}:${notification.eventKeyPrefix}:`],
         );
         if (previous.rows[0]!.exists) continue;
         await enqueueTournamentPush(client, {
           userId: recipient.id,
           tournamentId,
-          eventType: 'tournament.playoff_blocked',
+          eventType: notification.eventType,
           eventKey,
           variables: { tournamentTitle: row.title },
-          fallback:
-            reason === 'playoff_schedule_missing'
-              ? {
-                  title: 'Для плей-офф не задано расписание',
-                  body: `В турнире «${row.title}» завершён регулярный сезон, но не указано время первой игры плей-офф.`,
-                  url: '/admin',
-                }
-              : {
-                  title: 'Плей-офф ожидает результатов',
-                  body: `В турнире «${row.title}» ещё не завершены все игры регулярного сезона.`,
-                  url: '/admin',
-                },
+          fallback: notification.fallback(row.title),
         });
       }
     }

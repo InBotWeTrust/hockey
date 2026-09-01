@@ -4746,6 +4746,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       tournamentId: tournament.id,
       status: 'tiebreak_required',
       participantIds: expect.any(Array),
+      created: true,
     });
 
     const round = await pool.query<{
@@ -4911,6 +4912,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       tournamentId: tournament.id,
       status: 'tiebreak_required',
       participantIds: [participantIds[1], participantIds[2]],
+      created: true,
     });
 
     const rounds = await pool.query<{ stage: string; status: string }>(
@@ -5065,6 +5067,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       tournamentId: tournament.id,
       status: 'tiebreak_required',
       participantIds: [firstTied, secondTied, thirdTied],
+      created: true,
     });
     await settleExpectedTieBreakRound(pool, {
       tournamentId: tournament.id,
@@ -5078,6 +5081,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       tournamentId: tournament.id,
       status: 'tiebreak_required',
       participantIds: [firstTied, secondTied, thirdTied],
+      created: true,
     });
     const afterFirstCycle = await pool.query<{
       number: number;
@@ -5122,6 +5126,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       tournamentId: tournament.id,
       status: 'tiebreak_required',
       participantIds: [firstTied, secondTied, thirdTied],
+      created: true,
     });
     const thirdRound = await pool.query<{ number: number; fixture_count: string }>(
       `select round.number, count(fixture.id)::text as fixture_count
