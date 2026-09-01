@@ -188,6 +188,11 @@ jobs:
           export STAGING_OBJECT_STORAGE_TENANT_ID STAGING_OBJECT_STORAGE_ACCESS_KEY_ID
           export STAGING_OBJECT_STORAGE_SECRET_ACCESS_KEY STAGING_OBJECT_STORAGE_PUBLIC_BASE_URL
 
+          # SHA-tagged deploy images accumulate on the shared VPS and are not
+          # removed by the dangling-only prune at the end of the workflow.
+          # Running containers keep their images, and older images remain in GHCR.
+          docker image prune -af
+
           for i in 1 2 3 4 5; do
             if echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin; then
               break
