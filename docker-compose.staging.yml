@@ -30,6 +30,7 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
+      DEPLOYMENT_ENV: dev
       HOST: 0.0.0.0
       PORT: 3000
       LOG_LEVEL: ${STAGING_LOG_LEVEL:-info}
@@ -69,6 +70,7 @@ services:
     command: ['node', 'packages/server/dist/push/worker-cli.js']
     environment:
       NODE_ENV: production
+      DEPLOYMENT_ENV: dev
       HOST: 0.0.0.0
       PORT: 3000
       LOG_LEVEL: ${STAGING_LOG_LEVEL:-info}
