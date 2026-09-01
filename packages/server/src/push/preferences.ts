@@ -25,6 +25,8 @@ export type PushEventType =
   | 'tournament.fixture_opened'
   | 'tournament.live_soon'
   | 'tournament.fixture_deadline'
+  | 'tournament.opponent_ready'
+  | 'tournament.readiness_ending'
   | 'tournament.result_ready'
   | 'tournament.rescheduled'
   | 'tournament.playoff_started'
@@ -140,6 +142,8 @@ export function isPushEventAllowed(
     case 'tournament.fixture_opened':
     case 'tournament.live_soon':
     case 'tournament.fixture_deadline':
+    case 'tournament.opponent_ready':
+    case 'tournament.readiness_ending':
     case 'tournament.result_ready':
     case 'tournament.rescheduled':
     case 'tournament.playoff_started':

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { AppError } from '../plugins/errors.js';
 import { createTournamentDuelMatch } from '../duel/amateur/routes.js';
 import { parseTournamentConfig } from './config.js';
+import { normalizePublishedTournamentLifecycleRules } from './lifecycleRules.js';
 import {
   applyToTournament,
   approveAllTournamentApplications,
@@ -41,6 +42,7 @@ import {
   type TournamentRulesSnapshot,
 } from './service.js';
 import { openTournamentFixtureSegment } from './fixtureLifecycle.js';
+import { chooseTournamentNextGame, getTournamentFixtureAttemptState } from './fixtureAttempts.js';
 import { publishTournamentFixtureProgress } from './realtimeProgress.js';
 import {
   finalizeTournamentDailyDay,
@@ -67,6 +69,10 @@ import {
   startClassicGamePeriod,
   submitClassicGameShot,
 } from './classicGame.js';
+import {
+  confirmTournamentSeriesWinnerDecision,
+  requestTournamentSeriesWinnerDecision,
+} from './seriesAdminDecisions.js';
 
 const uuid = z.string().uuid();
 const nullableDate = z.string().datetime({ offset: true }).nullable().default(null);
@@ -149,12 +155,18 @@ const stageRewardsSchema = z
     message: 'reward places must be unique',
   });
 
-function parseRules(input: z.infer<typeof rulesSchema>): TournamentRulesSnapshot {
-  return {
-    ...input,
-    config: parseTournamentConfig(input.config),
-    eligibility: input.eligibility,
-  };
+export function parseRules(input: z.infer<typeof rulesSchema>): TournamentRulesSnapshot {
+  try {
+    return normalizePublishedTournamentLifecycleRules({
+      ...input,
+      config: parseTournamentConfig(input.config),
+      eligibility: input.eligibility,
+    }) as TournamentRulesSnapshot;
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    if (error instanceof Error) throw new AppError('bad_request', error.message, 400);
+    throw error;
+  }
 }
 
 async function requireAdmin(app: Parameters<FastifyPluginAsync>[0], req: FastifyRequest) {
@@ -175,6 +187,7 @@ interface TournamentRoutesOptions {
   objectStorage?: ObjectStorageClient;
   mediaAccessSecret: string;
   tournamentGameSeedSecret: string;
+  duelSeedSecret: string;
 }
 
 export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = async (
@@ -313,13 +326,39 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
       const opened = await openTournamentFixtureSegment(
         app.pg,
         { ...params, userId: req.user.id, now: new Date() },
-        createTournamentDuelMatch,
+        (client, input) => createTournamentDuelMatch(client, input, options.duelSeedSecret),
       );
       await publishTournamentFixtureProgress(app.pg, app.realtime, app.log, {
         duelMatchId: opened.duelMatchId,
         sequence: Date.now(),
       });
       return opened;
+    },
+  );
+
+  app.get('/tournaments/:tournamentId/fixtures/:fixtureId/attempt', authenticated, async (req) => {
+    await requireTournamentFeature(app);
+    const params = z.object({ tournamentId: uuid, fixtureId: uuid }).parse(req.params);
+    return getTournamentFixtureAttemptState(app.pg, {
+      ...params,
+      userId: req.user.id,
+      now: new Date(),
+    });
+  });
+
+  app.post(
+    '/tournaments/:tournamentId/fixtures/:fixtureId/attempt/next-game-choice',
+    authenticated,
+    async (req) => {
+      await requireTournamentFeature(app);
+      const params = z.object({ tournamentId: uuid, fixtureId: uuid }).parse(req.params);
+      const body = z.object({ choice: z.enum(['immediate', 'scheduled']) }).parse(req.body);
+      return chooseTournamentNextGame(app.pg, {
+        ...params,
+        ...body,
+        userId: req.user.id,
+        now: new Date(),
+      });
     },
   );
 
@@ -766,6 +805,42 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
       .parse(req.body);
     return resolveTournamentNoShow(app.pg, { ...params, ...body, adminUserId: req.user.id });
   });
+
+  app.post(
+    '/admin/tournaments/:tournamentId/series/:seriesId/winner-decisions',
+    admin,
+    async (req, reply) => {
+      const params = z.object({ tournamentId: uuid, seriesId: uuid }).parse(req.params);
+      const body = z
+        .object({
+          winnerParticipantId: uuid,
+          reason: z.string().trim().min(3).max(1000),
+          idempotencyKey: z.string().trim().min(8).max(200),
+        })
+        .parse(req.body);
+      const decision = await requestTournamentSeriesWinnerDecision(app.pg, {
+        ...params,
+        ...body,
+        adminUserId: req.user.id,
+      });
+      reply.status(201);
+      return decision;
+    },
+  );
+
+  app.post(
+    '/admin/tournaments/:tournamentId/series/:seriesId/winner-decisions/:decisionId/confirm',
+    admin,
+    async (req) => {
+      const params = z
+        .object({ tournamentId: uuid, seriesId: uuid, decisionId: uuid })
+        .parse(req.params);
+      return confirmTournamentSeriesWinnerDecision(app.pg, {
+        ...params,
+        adminUserId: req.user.id,
+      });
+    },
+  );
 
   app.post(
     '/admin/tournaments/:tournamentId/participants/:participantId/disqualify',

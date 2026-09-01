@@ -34,9 +34,17 @@ import {
   releaseRemainingDuelInventoryReserve,
   type AmateurDuelSource,
 } from './lifecycle.js';
+import type { TournamentDuelTemplateSnapshot } from './tournamentTemplateSnapshot.js';
 import { settleTournamentSegmentForDuel } from '../../tournament/fixtureLifecycle.js';
 import { lockTournamentForDuelMutation } from '../../tournament/locks.js';
+import { resolveTournamentDuelResult } from '../../tournament/playoffScheduling.js';
 import { publishTournamentFixtureProgress } from '../../tournament/realtimeProgress.js';
+import {
+  hasActiveTournamentAttemptForDuel,
+  markTournamentAttemptActive,
+  mirrorTournamentAttemptReady,
+  reconcileTournamentAttemptForDuel,
+} from '../../tournament/fixtureAttempts.js';
 
 type MatchStatus = 'invited' | 'ready_check' | 'active' | 'settled' | 'cancelled' | 'expired';
 type ParticipantState =
@@ -1333,6 +1341,54 @@ async function fetchTemplate(client: PoolClient, templateId: string): Promise<Du
   return template;
 }
 
+function tournamentTemplateFromSnapshot(input: {
+  templateId: string;
+  startsAt: Date;
+  endsAt: Date;
+  now: Date;
+  snapshot: TournamentDuelTemplateSnapshot;
+}): DuelTemplateRow {
+  return {
+    id: input.templateId,
+    title: input.snapshot.title,
+    description: input.snapshot.description,
+    is_active: true,
+    difficulty: input.snapshot.difficulty,
+    duel_kind: input.snapshot.duelKind,
+    duel_variant: input.snapshot.duelVariant,
+    ranked_enabled: input.snapshot.rankedEnabled,
+    matchmaking_enabled: input.snapshot.matchmakingEnabled,
+    matchmaking_venue_policy: input.snapshot.matchmakingVenuePolicy,
+    starts_at: input.startsAt,
+    ends_at: input.endsAt,
+    total_periods: input.snapshot.totalPeriods,
+    shots_per_period: input.snapshot.shotsPerPeriod,
+    period_duration_ms: input.snapshot.periodDurationMs,
+    break_duration_ms: input.snapshot.breakDurationMs,
+    challenge_ttl_ms: input.snapshot.challengeTtlMs,
+    ready_duration_ms: input.snapshot.readyDurationMs,
+    ready_no_show_cooldown_ms: input.snapshot.readyNoShowCooldownMs,
+    matchmaking_timeout_ms: input.snapshot.matchmakingTimeoutMs,
+    ranked_daily_limit: input.snapshot.rankedDailyLimit,
+    ranked_same_opponent_limit: input.snapshot.rankedSameOpponentLimit,
+    power_cap: input.snapshot.powerCap,
+    goalie_id: input.snapshot.goalieId,
+    period_speed_presets: input.snapshot.periodSpeedPresets,
+    period_rules: input.snapshot.periodRules,
+    stake_amount: 0,
+    entry_fee_amount: 0,
+    required_inventory_item_id: input.snapshot.requiredInventoryItemId,
+    inventory_charges_per_period: input.snapshot.inventoryChargesPerPeriod,
+    win_points: input.snapshot.winPoints,
+    draw_points: input.snapshot.drawPoints,
+    win_currency_reward: input.snapshot.winCurrencyReward,
+    draw_currency_reward: input.snapshot.drawCurrencyReward,
+    win_star_reward: input.snapshot.winStarReward,
+    created_at: input.now,
+    updated_at: input.now,
+  };
+}
+
 async function assertAmateurEligible(client: PoolClient, userId: string): Promise<void> {
   const settings = await getGameSettings(client);
   const { rows } = await client.query<{ level: number; lifetime_goals_total: number }>(
@@ -1943,6 +1999,62 @@ function compareAccuracy(
   return Math.sign(left - right);
 }
 
+async function resolveActiveTournamentAttemptOutcome(
+  client: PoolClient,
+  match: DuelMatchRow,
+  challenger: DuelParticipantRow,
+  opponent: DuelParticipantRow,
+): Promise<{ outcome: DuelOutcome; winnerUserId: string | null } | null> {
+  if (
+    match.source !== 'tournament' ||
+    !(await hasActiveTournamentAttemptForDuel(client, match.id))
+  ) {
+    return null;
+  }
+  const attempt = await client.query<{ duel_kind: string | null }>(
+    `select result_snapshot->>'duelKind' as duel_kind
+       from tournament_fixture_attempt
+      where amateur_duel_match_id = $1 and status = 'active'
+      limit 1`,
+    [match.id],
+  );
+  const format = attempt.rows[0]?.duel_kind;
+  if (
+    format !== 'express' &&
+    format !== 'mix' &&
+    format !== 'express_plus' &&
+    format !== 'classic'
+  ) {
+    throw new AppError('configuration_error', 'attempt duel format is not configured', 409);
+  }
+  const resolution = resolveTournamentDuelResult({
+    format,
+    home: {
+      goals: Number(challenger.goals),
+      accuracyPercent:
+        Number(challenger.shots_taken) > 0
+          ? (Number(challenger.goals) / Number(challenger.shots_taken)) * 100
+          : 0,
+      activeElapsedMs: Number(challenger.active_duration_ms),
+    },
+    away: {
+      goals: Number(opponent.goals),
+      accuracyPercent:
+        Number(opponent.shots_taken) > 0
+          ? (Number(opponent.goals) / Number(opponent.shots_taken)) * 100
+          : 0,
+      activeElapsedMs: Number(opponent.active_duration_ms),
+    },
+  });
+  if (resolution === 'home_win') {
+    return { outcome: 'challenger_win', winnerUserId: challenger.user_id };
+  }
+  if (resolution === 'away_win') {
+    return { outcome: 'opponent_win', winnerUserId: opponent.user_id };
+  }
+  return { outcome: 'draw', winnerUserId: null };
+}
+
 async function fetchMatchForUpdate(client: PoolClient, matchId: string): Promise<DuelMatchRow> {
   await lockTournamentForDuelMutation(client, matchId);
   const { rows } = await client.query<DuelMatchRow>(
@@ -2306,10 +2418,21 @@ async function settleMatchIfReady(
   const aTerminal = aDone || a.state === 'forfeit';
   const bTerminal = bDone || b.state === 'forfeit';
   if (!windowEnded && !(aTerminal && bTerminal)) return { match, changed: false };
+  if (
+    match.source === 'tournament' &&
+    !(aDone && bDone) &&
+    (await hasActiveTournamentAttemptForDuel(client, match.id))
+  ) {
+    return { match, changed: false };
+  }
 
   let outcome: DuelOutcome;
   let winnerUserId: string | null = null;
-  if (aDone && bDone) {
+  const tournamentAttemptOutcome = await resolveActiveTournamentAttemptOutcome(client, match, a, b);
+  if (tournamentAttemptOutcome !== null) {
+    outcome = tournamentAttemptOutcome.outcome;
+    winnerUserId = tournamentAttemptOutcome.winnerUserId;
+  } else if (aDone && bDone) {
     if (a.goals > b.goals) {
       outcome = 'challenger_win';
       winnerUserId = a.user_id;
@@ -2574,6 +2697,13 @@ async function reconcileMatch(
   now: Date,
 ): Promise<ReconciledMatch> {
   if (isTerminalMatchStatus(match.status)) return { match, changed: false };
+  const tournamentAttempt = await reconcileTournamentAttemptForDuel(client, {
+    duelMatchId: match.id,
+    now,
+  });
+  if (tournamentAttempt.changed) {
+    return { match: await fetchMatchForUpdate(client, match.id), changed: true };
+  }
   if (match.status === 'invited' || match.status === 'ready_check') {
     return settleMatchIfReady(client, match, now);
   }
@@ -2940,6 +3070,47 @@ async function fetchDisplayName(
   return rows[0]?.display_name ?? 'Соперник';
 }
 
+async function tournamentReadyNotice(
+  client: PoolClient,
+  input: { duelMatchId: string; readyUserId: string },
+): Promise<{
+  tournamentId: string;
+  tournamentTitle: string;
+  recipientUserId: string;
+  readyDisplayName: string;
+} | null> {
+  const result = await client.query<{
+    tournament_id: string;
+    tournament_title: string;
+    recipient_user_id: string;
+    ready_display_name: string;
+  }>(
+    `select fixture.tournament_id, tournament.title as tournament_title,
+            case when home.user_id = $2 then away.user_id else home.user_id end
+              as recipient_user_id,
+            ready_user.display_name as ready_display_name
+       from tournament_fixture_attempt attempt
+       join tournament_fixture fixture on fixture.id = attempt.fixture_id
+       join tournament tournament on tournament.id = fixture.tournament_id
+       join tournament_participant home on home.id = fixture.home_participant_id
+       join tournament_participant away on away.id = fixture.away_participant_id
+       join users ready_user on ready_user.id = $2
+      where attempt.amateur_duel_match_id = $1
+        and $2::uuid in (home.user_id, away.user_id)
+      limit 1`,
+    [input.duelMatchId, input.readyUserId],
+  );
+  const row = result.rows[0];
+  return row === undefined
+    ? null
+    : {
+        tournamentId: row.tournament_id,
+        tournamentTitle: row.tournament_title,
+        recipientUserId: row.recipient_user_id,
+        readyDisplayName: row.ready_display_name,
+      };
+}
+
 function formatDuelInviteTtl(ms: number): string {
   const totalMinutes = Math.max(1, Math.round(ms / 60_000));
   if (totalMinutes < 60) return `${totalMinutes} мин`;
@@ -3077,6 +3248,7 @@ async function createOpenMatch(
     source: AmateurDuelSource;
     startsAt?: Date;
     endsAt?: Date;
+    readyExpiresAt?: Date;
     venue?: {
       policy: 'home_selected' | 'neutral_default';
       homeUserId: string | null;
@@ -3117,9 +3289,10 @@ async function createOpenMatch(
     await assertOpenDuelSlots(client, [opts.challengerUserId, opts.opponentUserId]);
   }
   const inviteExpiresAt =
-    opts.source === 'challenge'
+    opts.readyExpiresAt ??
+    (opts.source === 'challenge'
       ? new Date(opts.now.getTime() + rules.challengeTtlMs)
-      : new Date(opts.now.getTime() + rules.readyDurationMs);
+      : new Date(opts.now.getTime() + rules.readyDurationMs));
   const status: MatchStatus = opts.source === 'challenge' ? 'invited' : 'ready_check';
   const challengerState: ParticipantState =
     opts.source === 'challenge' ? 'loadout_pending' : 'loadout_pending';
@@ -3146,7 +3319,7 @@ async function createOpenMatch(
       JSON.stringify(rules),
       seedBasis,
       opts.startsAt ?? opts.template.starts_at,
-      opts.now,
+      opts.readyExpiresAt === undefined ? opts.now : (opts.startsAt ?? opts.template.starts_at),
       opts.endsAt ?? opts.template.ends_at,
       inviteExpiresAt,
       rules.stakeAmount,
@@ -3156,14 +3329,12 @@ async function createOpenMatch(
   );
   const createdMatch = rows[0]!;
   const defaultArena = opts.venue === undefined ? await resolveDefaultArena(client) : null;
-  const venue =
-    opts.venue ??
-    ({
-      policy: 'neutral_default' as const,
-      homeUserId: null,
-      arenaThemeId: defaultArena!.id,
-      arena: defaultArena!,
-    });
+  const venue = opts.venue ?? {
+    policy: 'neutral_default' as const,
+    homeUserId: null,
+    arenaThemeId: defaultArena!.id,
+    arena: defaultArena!,
+  };
   const { rows: venueRows } = await client.query<DuelMatchRow>(
     `update amateur_duel_match
         set home_user_id = $2,
@@ -3197,6 +3368,10 @@ export async function createTournamentDuelMatch(
     awayUserId: string;
     startsAt: Date;
     endsAt: Date;
+    readyExpiresAt?: Date;
+    hardDeadlineAt?: Date;
+    autoContinue?: boolean;
+    templateSnapshot?: TournamentDuelTemplateSnapshot;
     now: Date;
     venue: {
       mode: 'home_selected' | 'neutral_default';
@@ -3205,9 +3380,19 @@ export async function createTournamentDuelMatch(
       arena: ArenaSnapshot;
     };
   },
+  duelSeedSecret?: string,
 ): Promise<{ matchId: string }> {
-  const template = await fetchTemplate(client, input.templateId);
-  const { match } = await createOpenMatch(client, {
+  const template =
+    input.templateSnapshot === undefined
+      ? await fetchTemplate(client, input.templateId)
+      : tournamentTemplateFromSnapshot({
+          templateId: input.templateId,
+          startsAt: input.startsAt,
+          endsAt: input.endsAt,
+          now: input.now,
+          snapshot: input.templateSnapshot,
+        });
+  const { match, rules } = await createOpenMatch(client, {
     template,
     challengerUserId: input.homeUserId,
     opponentUserId: input.awayUserId,
@@ -3215,6 +3400,7 @@ export async function createTournamentDuelMatch(
     source: 'tournament',
     startsAt: input.startsAt,
     endsAt: input.endsAt,
+    ...(input.readyExpiresAt !== undefined ? { readyExpiresAt: input.readyExpiresAt } : {}),
     venue: {
       policy: input.venue.mode,
       homeUserId: input.venue.homeUserId,
@@ -3222,6 +3408,28 @@ export async function createTournamentDuelMatch(
       arena: input.venue.arena,
     },
   });
+  if (input.autoContinue === true) {
+    if (duelSeedSecret === undefined) {
+      throw new AppError('configuration_error', 'duel seed secret is required', 500);
+    }
+    await client.query(
+      `update amateur_duel_participant
+          set state = 'ready', ready_at = $2, loadout_snapshot = '{}'::jsonb, updated_at = now()
+        where match_id = $1 and state = 'loadout_pending'`,
+      [match.id, input.now],
+    );
+    const activeMatch = await activateReadyMatch(
+      client,
+      match,
+      rules,
+      input.now,
+      duelSeedSecret,
+      true,
+    );
+    if (activeMatch.status !== 'active') {
+      throw new AppError('server_error', 'auto-continue tournament duel did not activate', 500);
+    }
+  }
   return { matchId: match.id };
 }
 
@@ -3231,6 +3439,7 @@ async function activateReadyMatch(
   rules: DuelRulesSnapshot,
   now: Date,
   duelSeedSecret: string,
+  preserveEndsAt: boolean,
 ): Promise<DuelMatchRow> {
   const participants = await fetchParticipants(client, match.id);
   if (participants.some((participant) => participant.state !== 'ready')) return match;
@@ -3243,9 +3452,9 @@ async function activateReadyMatch(
     acceptedAtIso,
     duelSeedSecret,
   );
-  const activeEndsAt = new Date(
-    Math.min(match.ends_at.getTime(), now.getTime() + estimateDuelPlayWindowMs(rules)),
-  );
+  const activeEndsAt = preserveEndsAt
+    ? match.ends_at
+    : new Date(Math.min(match.ends_at.getTime(), now.getTime() + estimateDuelPlayWindowMs(rules)));
 
   for (const participant of participants) {
     const loadout = loadoutFromUnknown(participant.loadout_snapshot, rules.powerCap);
@@ -3318,7 +3527,19 @@ async function activateReadyMatch(
       activeEndsAt,
     ],
   );
-  return rows[0]!;
+  return {
+    ...rows[0]!,
+    ...(match.challenger_name !== undefined
+      ? { challenger_name: match.challenger_name }
+      : {}),
+    ...(match.challenger_avatar_url !== undefined
+      ? { challenger_avatar_url: match.challenger_avatar_url }
+      : {}),
+    ...(match.opponent_name !== undefined ? { opponent_name: match.opponent_name } : {}),
+    ...(match.opponent_avatar_url !== undefined
+      ? { opponent_avatar_url: match.opponent_avatar_url }
+      : {}),
+  };
 }
 
 async function notifySettlement(app: Parameters<FastifyPluginAsync>[0], matchId: string) {
@@ -3369,7 +3590,10 @@ async function isSettled(client: PoolClient, matchId: string): Promise<boolean> 
   return rows[0]?.status === 'settled';
 }
 
-export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> = async (
+export const amateurDuelRoutes: FastifyPluginAsync<{
+  duelSeedSecret: string;
+  systemUserId?: string;
+}> = async (
   app,
   opts,
 ) => {
@@ -3653,7 +3877,8 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
         if (part.type === 'year' || part.type === 'month') parts[part.type] = part.value;
         return parts;
       }, {});
-    const monthKey = query.month_key ?? `${currentMonth.year ?? '1970'}-${currentMonth.month ?? '01'}`;
+    const monthKey =
+      query.month_key ?? `${currentMonth.year ?? '1970'}-${currentMonth.month ?? '01'}`;
     const validDuelSql = `
       from amateur_duel_match m
       join amateur_duel_participant me on me.match_id = m.id and me.user_id = $1
@@ -3725,11 +3950,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
     const days = new Map<number, Array<Record<string, unknown>>>();
     for (const row of monthRows) {
       const result =
-        row.outcome === 'draw'
-          ? 'draw'
-          : row.winner_user_id === req.user.id
-            ? 'win'
-            : 'loss';
+        row.outcome === 'draw' ? 'draw' : row.winner_user_id === req.user.id ? 'win' : 'loss';
       const matches = days.get(row.local_day) ?? [];
       matches.push({
         id: row.id,
@@ -4104,18 +4325,22 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
       if (!parsed.success) throw new AppError('bad_request', 'invalid duel ready payload', 400);
       const response = await withTransaction(app, async (client) => {
         const now = new Date();
-        let match = (
-          await reconcileMatch(
-            client,
-            await fetchPlayableMatchForUpdate(client, params.matchId),
-            now,
-          )
-        ).match;
+        const reconciled = await reconcileMatch(
+          client,
+          await fetchPlayableMatchForUpdate(client, params.matchId),
+          now,
+        );
+        let match = reconciled.match;
         if (match.challenger_user_id !== req.user.id && match.opponent_user_id !== req.user.id) {
           throw new AppError('forbidden', 'duel match access denied', 403);
         }
         if (match.status !== 'ready_check') {
-          throw new AppError('conflict', `cannot ready in duel status '${match.status}'`, 409);
+          return {
+            kind: 'terminal_conflict' as const,
+            matchId: match.id,
+            status: match.status,
+            changed: reconciled.changed,
+          };
         }
         const rules = parseRulesSnapshot(match.rules_snapshot);
         const loadout = await buildLoadoutSnapshot(client, req.user.id, parsed.data.loadout, rules);
@@ -4130,17 +4355,65 @@ export const amateurDuelRoutes: FastifyPluginAsync<{ duelSeedSecret: string }> =
               and state in ('loadout_pending', 'ready')`,
           [match.id, req.user.id, now, JSON.stringify(loadout)],
         );
+        const tournamentAttemptReady = await mirrorTournamentAttemptReady(client, {
+          duelMatchId: match.id,
+          userId: req.user.id,
+          readyAt: now,
+        });
         match = await activateReadyMatch(
           client,
           await fetchMatchForUpdate(client, match.id),
           rules,
           now,
           opts.duelSeedSecret,
+          tournamentAttemptReady,
         );
-        return { match: await buildMatchStateDto(client, match, req.user.id, now) };
+        if (tournamentAttemptReady && match.status === 'active') {
+          await markTournamentAttemptActive(client, match.id);
+        }
+        const readyNotice =
+          tournamentAttemptReady && opts.systemUserId !== undefined
+            ? await tournamentReadyNotice(client, {
+                duelMatchId: match.id,
+                readyUserId: req.user.id,
+              })
+            : null;
+        return {
+          kind: 'ready' as const,
+          match: await buildMatchStateDto(client, match, req.user.id, now),
+          readyNotice,
+        };
       });
+      if (response.kind === 'terminal_conflict') {
+        if (response.changed) await publishDuelFixtureProgress(app, response.matchId);
+        throw new AppError('conflict', `cannot ready in duel status '${response.status}'`, 409);
+      }
       await publishDuelFixtureProgress(app, response.match.id);
-      return response;
+      if (response.readyNotice !== null && opts.systemUserId !== undefined) {
+        const notice = response.readyNotice;
+        await notifyDuelMessage(
+          app,
+          opts.systemUserId,
+          notice.recipientUserId,
+          `«${notice.tournamentTitle}»: ${notice.readyDisplayName} подтвердил готовность к игре.`,
+          {
+            type: 'tournament_announcement',
+            title: 'Соперник готов',
+            tournamentId: notice.tournamentId,
+            action: {
+              type: 'tournament',
+              label: 'Перейти в турнир',
+              url: `/?view=amateur&section=tournaments&tournament=${encodeURIComponent(notice.tournamentId)}&tab=playoff&from=sections`,
+            },
+          },
+        ).catch((err) =>
+          app.log.warn(
+            { err, matchId: response.match.id },
+            'tournament readiness DM notification failed',
+          ),
+        );
+      }
+      return { match: response.match };
     },
   );
 

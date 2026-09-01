@@ -269,6 +269,52 @@ describe.skipIf(!hasIntegrationEnv)('scheduled push delivery', () => {
     ]);
   });
 
+  it('warns only the unready playoff player one minute before readiness closes', async () => {
+    const adminId = await createUser(pool, 'Readiness warning admin');
+    const homeUserId = await createUser(pool, 'Unready player');
+    const awayUserId = await createUser(pool, 'Ready player');
+    await addSubscription(pool, homeUserId, 'https://push.example.test/readiness/home');
+    await addSubscription(pool, awayUserId, 'https://push.example.test/readiness/away');
+    const startsAt = new Date('2026-05-04T10:00:00.000Z');
+    const readinessExpiresAt = new Date('2026-05-04T10:05:00.000Z');
+    const fixture = await createScheduledTournamentFixture(pool, {
+      adminId,
+      slug: 'readiness-warning-cup',
+      rulesSnapshot: {},
+      participants: [
+        { userId: homeUserId, state: 'approved' },
+        { userId: awayUserId, state: 'approved' },
+      ],
+      scheduledStartsAt: startsAt,
+      windowEndsAt: new Date('2026-05-04T11:00:00.000Z'),
+    });
+    await pool.query(`update tournament set status = 'playoff' where id = $1`, [
+      fixture.tournamentId,
+    ]);
+    await pool.query(
+      `insert into tournament_fixture_attempt
+         (fixture_id, attempt_number, kind, status, scheduled_starts_at,
+          readiness_expires_at, hard_deadline_at, away_ready_at, is_result_bearing)
+       values ($1, 1, 'initial', 'ready_check', $2, $3, $4, $2, true)`,
+      [fixture.fixtureId, startsAt, readinessExpiresAt, new Date('2026-05-04T11:00:00.000Z')],
+    );
+
+    const result = await runScheduledPushes(pool, {
+      ...vapid,
+      now: new Date('2026-05-04T10:04:00.000Z'),
+      processQueue: false,
+    });
+
+    expect(result.events.find((event) => event.eventType === 'tournament.readiness_ending')).toMatchObject({
+      targets: 1,
+      claimed: 1,
+    });
+    const deliveries = await pool.query<{ user_id: string }>(
+      `select user_id from push_delivery_log where event_type = 'tournament.readiness_ending'`,
+    );
+    expect(deliveries.rows).toEqual([{ user_id: homeUserId }]);
+  });
+
   it('skips tournament reminders when disabled', async () => {
     const adminId = await createUser(pool, 'Disabled scheduler admin');
     const playerId = await createUser(pool, 'Disabled scheduler player');

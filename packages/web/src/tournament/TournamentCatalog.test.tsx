@@ -760,6 +760,128 @@ describe('TournamentCatalog', () => {
     expect(screen.getByText('Проигравший полуфинала 1')).toBeInTheDocument();
   });
 
+  it('shows my playoff readiness and the current series score without revealing live scores', async () => {
+    vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
+      tournaments: [
+        {
+          id: 'playoff-ready',
+          slug: 'playoff-ready',
+          title: 'Кубок готовности',
+          description: 'Финальная серия',
+          status: 'playoff',
+          regularSource: 'head_to_head',
+          visibility: 'public',
+          revision: 2,
+          participantCount: 2,
+          myParticipantState: 'approved',
+          registrationOpensAt: null,
+          registrationClosesAt: null,
+          startsAt: '2030-09-01T07:00:00.000Z',
+          rules: {
+            config: {
+              participantLimit: 2,
+              entryFeeCoins: 0,
+              playoffSize: 2,
+              timezone: 'Europe/Moscow',
+            },
+          },
+        },
+      ],
+    });
+    vi.spyOn(api, 'fetchTournamentBracket').mockResolvedValue({
+      series: [
+        {
+          id: 'series-ready',
+          bracket_position: 1,
+          kind: 'championship',
+          round_number: 1,
+          round_name: 'Финал',
+          wins_required: 4,
+          status: 'active',
+          higher_seed_wins: 1,
+          lower_seed_wins: 0,
+          winner_user_id: null,
+          higher_user_id: 'u1',
+          higher_seed: 1,
+          higher_name: 'Первый',
+          higher_avatar_url: '/first.webp',
+          lower_user_id: 'u2',
+          lower_seed: 2,
+          lower_name: 'Второй',
+          lower_avatar_url: '/second.webp',
+          depends_on: null,
+          fixtures: [
+            {
+              id: 'fixture-ready',
+              gameNumber: 2,
+              scheduledStartsAt: '2030-09-10T12:00:00.000Z',
+              windowEndsAt: '2030-09-10T13:00:00.000Z',
+              status: 'active',
+              homeName: 'Первый',
+              awayName: 'Второй',
+              homeScore: 0,
+              awayScore: 0,
+              winnerSide: null,
+            },
+          ],
+        },
+      ],
+    });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          attempt: {
+            id: 'attempt-ready',
+            number: 1,
+            kind: 'initial',
+            status: 'ready_check',
+            scheduledStart: '2030-09-10T12:00:00.000Z',
+            readinessExpiresAt: '2030-09-10T12:05:00.000Z',
+            hardDeadlineAt: '2030-09-10T13:00:00.000Z',
+            myReady: true,
+            opponentReady: false,
+            duelMatchId: 'duel-ready',
+            result: null,
+            incidentType: null,
+          },
+          opponentProgress: null,
+          series: {
+            id: 'series-ready',
+            winsRequired: 4,
+            myWins: 1,
+            opponentWins: 0,
+            higherSeedWins: 1,
+            lowerSeedWins: 0,
+            higherSeedUserId: 'u1',
+            lowerSeedUserId: 'u2',
+            status: 'active',
+            winnerUserId: null,
+          },
+          tournament: { status: 'playoff', winnerUserId: null },
+          nextGameChoice: null,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TournamentCatalog />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок готовности' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Плей-офф' }));
+
+    expect(await screen.findByText('Вы готовы')).toBeInTheDocument();
+    expect(screen.getByText('Ждём готовность соперника')).toBeInTheDocument();
+    expect(screen.getByText('Серия: вы ведёте 1 : 0')).toBeInTheDocument();
+    expect(screen.getByText('До победы в 4 играх')).toBeInTheDocument();
+    expect(screen.queryByText(/текущий счёт/i)).not.toBeInTheDocument();
+  });
+
   it('restores a tournament schedule from the duel return URL', async () => {
     vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
       tournaments: [

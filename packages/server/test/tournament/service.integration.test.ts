@@ -44,6 +44,7 @@ import {
 } from '../../src/tournament/fixtureLifecycle.js';
 import { dispatchTournamentCommunication } from '../../src/tournament/communications.js';
 import { enqueueTournamentPush } from '../../src/push/tournament.js';
+import { backfillPlayoffScheduling } from '../../src/tournament/playoffScheduleBackfill.js';
 import { grantTournamentStageRewards } from '../../src/tournament/rewards.js';
 import {
   createTestPool,
@@ -694,8 +695,9 @@ async function settlePlayedPlayoffFixture(
 }
 
 async function seriesNextGameDeliveries(pool: Pool) {
-  return pool.query<{ user_id: string; event_key: string; body: string }>(
-    `select user_id, event_key, payload->>'body' as body from push_delivery_log
+  return pool.query<{ user_id: string; event_key: string; body: string; url: string }>(
+    `select user_id, event_key, payload->>'body' as body, payload->>'url' as url
+       from push_delivery_log
       where event_type = 'tournament.series_next_game'
       order by event_key, user_id`,
   );
@@ -989,6 +991,46 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       duel_status: 'cancelled',
       segment_status: 'cancelled',
       fixture_status: 'forfeit',
+    });
+  });
+
+  it('preserves fixture scheduling metadata when recording a no-show result', async () => {
+    await seedUsers(pool, 0);
+    const fixture = await createLiveFixture(pool, {
+      slug: 'no-show-preserves-fixture-metadata',
+      title: 'No-show metadata',
+      playerIds: [PLAYER_IDS[0], PLAYER_IDS[1]],
+    });
+    await pool.query(
+      `update tournament_fixture
+          set result_snapshot = $2::jsonb
+        where id = $1`,
+      [
+        fixture.fixtureId,
+        JSON.stringify({
+          gameNumber: 2,
+          duelTemplateId: '00000000-0000-4000-8000-000000000814',
+        }),
+      ],
+    );
+
+    await resolveTournamentNoShow(pool, {
+      tournamentId: fixture.tournamentId,
+      fixtureId: fixture.fixtureId,
+      absent: 'home',
+      reason: 'focused no-show metadata regression',
+      adminUserId: ADMIN_ID,
+    });
+
+    const result = await pool.query<{ result_snapshot: Record<string, unknown> }>(
+      `select result_snapshot from tournament_fixture where id = $1`,
+      [fixture.fixtureId],
+    );
+    expect(result.rows[0]?.result_snapshot).toEqual({
+      gameNumber: 2,
+      duelTemplateId: '00000000-0000-4000-8000-000000000814',
+      technical: true,
+      absent: 'home',
     });
   });
 
@@ -2383,11 +2425,13 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         user_id: nextFixture!.home_user_id,
         event_key: `${nextFixture!.id}:series-next-game:${startsAt}`,
         body: `Следующий матч откроется ${startsAt}.`,
+        url: '/?view=amateur&section=tournaments',
       },
       {
         user_id: nextFixture!.away_user_id,
         event_key: `${nextFixture!.id}:series-next-game:${startsAt}`,
         body: `Следующий матч откроется ${startsAt}.`,
+        url: '/?view=amateur&section=tournaments',
       },
     ]);
   });
@@ -2423,6 +2467,180 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       `${nextFixture!.id}:series-next-game:${startsAt}`,
       `${nextFixture!.id}:series-next-game:${startsAt}`,
     ]);
+  });
+
+  it('backfills a future best-of-seven playoff into four games on day one and three on day two', async () => {
+    await seedUsers(pool, 0);
+    const template = await pool.query<{ id: string }>(
+      `select id from amateur_duel_template
+        where deleted_at is null and is_active
+        order by created_at limit 1`,
+    );
+    const templateId = template.rows[0]!.id;
+    const tournament = await createPublishedTournament(
+      pool,
+      'legacy-best-of-seven-backfill',
+      0,
+      playoffTournamentRules(2, {
+        playoffRounds: [
+          {
+            roundNumber: 1,
+            winsRequired: 4,
+            homeSequence: ['H', 'A', 'H', 'A', 'H', 'A', 'H'],
+            duelTemplateId: templateId,
+            gameWindowMs: 3_600_000,
+            gameBreakMs: 0,
+            roundBreakMs: 0,
+            firstGameStartsAt: '2030-09-01T13:00:00.000Z',
+          },
+        ],
+      }),
+    );
+    await prepareTournamentForPlayoffs(pool, tournament.id, [4, 3, 2, 1]);
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-08-31T08:00:00.000Z'));
+
+    const dryRun = await backfillPlayoffScheduling(pool, {
+      tournamentSlug: tournament.slug,
+      now: new Date('2030-08-31T09:00:00.000Z'),
+      dryRun: true,
+      readinessMinutes: 5,
+      plannedStartIntervalMinutes: 20,
+    });
+    expect(dryRun.tournaments).toEqual([
+      expect.objectContaining({ slug: tournament.slug, status: 'planned', fixtureCount: 7 }),
+    ]);
+    expect(
+      await pool.query(
+        `select id from tournament_round_game_day where round_id in (
+        select id from tournament_round where tournament_id = $1 and stage = 'playoff'
+      )`,
+        [tournament.id],
+      ),
+    ).toHaveProperty('rowCount', 0);
+
+    const applied = await backfillPlayoffScheduling(pool, {
+      tournamentSlug: tournament.slug,
+      now: new Date('2030-08-31T09:00:00.000Z'),
+      dryRun: false,
+      readinessMinutes: 5,
+      plannedStartIntervalMinutes: 20,
+    });
+    expect(applied.tournaments).toEqual([
+      expect.objectContaining({ slug: tournament.slug, status: 'applied', fixtureCount: 7 }),
+    ]);
+
+    const days = await pool.query<{
+      day_number: number;
+      local_date: string;
+      max_result_bearing_games: number;
+    }>(
+      `select day.day_number, day.local_date, day.max_result_bearing_games
+         from tournament_round_game_day day
+         join tournament_round round on round.id = day.round_id
+        where round.tournament_id = $1 and round.stage = 'playoff'
+        order by day.day_number`,
+      [tournament.id],
+    );
+    expect(days.rows).toEqual([
+      { day_number: 1, local_date: '2030-09-01', max_result_bearing_games: 4 },
+      { day_number: 2, local_date: '2030-09-02', max_result_bearing_games: 3 },
+    ]);
+    const attempts = await pool.query<{
+      game_number: number;
+      scheduled_starts_at: Date;
+      readiness_minutes: number;
+    }>(
+      `select (fixture.result_snapshot->>'gameNumber')::int as game_number,
+              attempt.scheduled_starts_at,
+              extract(epoch from attempt.readiness_expires_at - attempt.scheduled_starts_at)::int / 60
+                as readiness_minutes
+         from tournament_fixture_attempt attempt
+         join tournament_fixture fixture on fixture.id = attempt.fixture_id
+         join tournament_round round on round.id = fixture.round_id
+        where round.tournament_id = $1 and round.stage = 'playoff'
+        order by game_number`,
+      [tournament.id],
+    );
+    expect(attempts.rows).toEqual([
+      {
+        game_number: 1,
+        scheduled_starts_at: new Date('2030-09-01T13:00:00.000Z'),
+        readiness_minutes: 5,
+      },
+      {
+        game_number: 2,
+        scheduled_starts_at: new Date('2030-09-01T13:20:00.000Z'),
+        readiness_minutes: 5,
+      },
+      {
+        game_number: 3,
+        scheduled_starts_at: new Date('2030-09-01T13:40:00.000Z'),
+        readiness_minutes: 5,
+      },
+      {
+        game_number: 4,
+        scheduled_starts_at: new Date('2030-09-01T14:00:00.000Z'),
+        readiness_minutes: 5,
+      },
+      {
+        game_number: 5,
+        scheduled_starts_at: new Date('2030-09-02T13:00:00.000Z'),
+        readiness_minutes: 5,
+      },
+      {
+        game_number: 6,
+        scheduled_starts_at: new Date('2030-09-02T13:20:00.000Z'),
+        readiness_minutes: 5,
+      },
+      {
+        game_number: 7,
+        scheduled_starts_at: new Date('2030-09-02T13:40:00.000Z'),
+        readiness_minutes: 5,
+      },
+    ]);
+    const secondApply = await backfillPlayoffScheduling(pool, {
+      tournamentSlug: tournament.slug,
+      now: new Date('2030-08-31T09:00:00.000Z'),
+      dryRun: false,
+      readinessMinutes: 5,
+      plannedStartIntervalMinutes: 20,
+    });
+    expect(secondApply.tournaments).toEqual([
+      expect.objectContaining({ slug: tournament.slug, status: 'unchanged', fixtureCount: 0 }),
+    ]);
+  });
+
+  it('blocks playoff schedule backfill when a tournament duel is already active', async () => {
+    const { tournament, fixtures } = await createBestOfThreePlayoff(
+      pool,
+      'active-playoff-backfill-block',
+    );
+    await attachActiveTournamentDuel(pool, fixtures[0]!.id);
+
+    const report = await backfillPlayoffScheduling(pool, {
+      tournamentSlug: tournament.slug,
+      now: new Date('2030-08-31T09:00:00.000Z'),
+      dryRun: false,
+      readinessMinutes: 5,
+      plannedStartIntervalMinutes: 20,
+    });
+
+    expect(report.tournaments).toEqual([
+      {
+        id: tournament.id,
+        slug: tournament.slug,
+        status: 'blocked',
+        fixtureCount: 0,
+        reason: 'есть начатая или приостановленная игра',
+      },
+    ]);
+    const days = await pool.query(
+      `select day.id from tournament_round_game_day day
+        join tournament_round round on round.id = day.round_id
+       where round.tournament_id = $1`,
+      [tournament.id],
+    );
+    expect(days.rowCount).toBe(0);
   });
 
   it('notifies the first scheduled final and bronze fixtures after both source series resolve', async () => {

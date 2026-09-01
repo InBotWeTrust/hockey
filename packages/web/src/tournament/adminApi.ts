@@ -61,6 +61,30 @@ export interface AdminTournamentDuelTemplate {
   shotsPerPeriod: number;
 }
 
+export interface AdminTournamentBracketSeries {
+  id: string;
+  status: string;
+  higher_user_id: string | null;
+  higher_name: string | null;
+  higher_seed_wins: number;
+  lower_user_id: string | null;
+  lower_name: string | null;
+  lower_seed_wins: number;
+  winner_user_id?: string | null;
+  [key: string]: unknown;
+}
+
+export interface AdminTournamentSeriesDecision {
+  id: string;
+  seriesId: string;
+  winnerParticipantId: string;
+  reason: string;
+  status: 'pending' | 'confirmed' | 'cancelled';
+  factualScore: { higherSeedWins: number; lowerSeedWins: number };
+  requestedAt: string;
+  confirmedAt: string | null;
+}
+
 export interface AdminTournamentUserOption {
   id: string;
   displayName: string;
@@ -249,8 +273,30 @@ export function fetchAdminTournamentStandings(tournamentId: string) {
 }
 
 export function fetchAdminTournamentBracket(tournamentId: string) {
-  return apiFetch<{ series: Array<Record<string, unknown>> }>(
+  return apiFetch<{ series: AdminTournamentBracketSeries[] }>(
     `/admin/tournaments/${tournamentId}/bracket`,
+  );
+}
+
+export function requestAdminTournamentSeriesWinner(
+  tournamentId: string,
+  seriesId: string,
+  input: { winnerParticipantId: string; reason: string; idempotencyKey: string },
+) {
+  return apiFetch<AdminTournamentSeriesDecision>(
+    `/admin/tournaments/${tournamentId}/series/${seriesId}/winner-decisions`,
+    { method: 'POST', body: JSON.stringify(input) },
+  );
+}
+
+export function confirmAdminTournamentSeriesWinner(
+  tournamentId: string,
+  seriesId: string,
+  decisionId: string,
+) {
+  return apiFetch<AdminTournamentSeriesDecision>(
+    `/admin/tournaments/${tournamentId}/series/${seriesId}/winner-decisions/${decisionId}/confirm`,
+    { method: 'POST' },
   );
 }
 

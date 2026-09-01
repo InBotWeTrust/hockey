@@ -967,6 +967,8 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     });
     expect(secondReady.statusCode).toBe(200);
     expect(secondReady.json().match.status).toBe('active');
+    expect(secondReady.json().match.me.display_name).toBe('Player B');
+    expect(secondReady.json().match.opponent.display_name).toBe('Player A');
     expect(secondReady.json().match.accepted_at).toBeTruthy();
     const acceptedAt = Date.parse(String(secondReady.json().match.accepted_at));
     const endsAt = Date.parse(String(secondReady.json().match.ends_at));

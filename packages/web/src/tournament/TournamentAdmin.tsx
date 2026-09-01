@@ -52,11 +52,13 @@ interface PlayoffRoundDraft {
   winsRequired: NumericDraftValue;
   duelTemplateId: string;
   homeSequence: string;
+  daysPerRound: NumericDraftValue;
+  maxGamesPerDay: NumericDraftValue;
+  readinessMinutes: NumericDraftValue;
+  plannedStartIntervalMinutes: NumericDraftValue;
   gameWindowMinutes: NumericDraftValue;
   gameBreakMinutes: NumericDraftValue;
   roundBreakMinutes: NumericDraftValue;
-  overtimeCount: NumericDraftValue;
-  shootoutInitialShots: NumericDraftValue;
   firstGameNotBefore: string;
 }
 
@@ -123,11 +125,13 @@ const defaultPlayoffRound = (): PlayoffRoundDraft => ({
   winsRequired: 4,
   duelTemplateId: '',
   homeSequence: 'H-H-A-A-H-A-H',
+  daysPerRound: 2,
+  maxGamesPerDay: 4,
+  readinessMinutes: 5,
+  plannedStartIntervalMinutes: 20,
   gameWindowMinutes: 60,
   gameBreakMinutes: 15,
   roundBreakMinutes: 1_440,
-  overtimeCount: 1,
-  shootoutInitialShots: 3,
   firstGameNotBefore: '',
 });
 
@@ -183,7 +187,7 @@ const defaultDraft: TournamentDraft = {
   playoffRounds: Array.from({ length: 4 }, defaultPlayoffRound),
   regularRewards: '',
   playoffRewards: '',
-  reminderMinutes: '60,15',
+  reminderMinutes: '30,5',
   deadlineLeadMinutes: 30,
   notificationOverrides: '',
 };
@@ -597,7 +601,17 @@ function draftFromTournament(tournament: AdminTournament): TournamentDraft {
       const configured = objectValue(
         configuredRounds.find((entry) => objectValue(entry).roundNumber === index + 1),
       );
-      const overtime = objectValue(configured.overtime);
+      const scheduleDays = Array.isArray(configured.scheduleDays)
+        ? configured.scheduleDays.map(objectValue)
+        : [];
+      const firstScheduleDay = scheduleDays[0];
+      const firstGameStartsAt =
+        typeof configured.firstGameStartsAt === 'string'
+          ? localDateTimeValue(configured.firstGameStartsAt, timezone)
+          : typeof firstScheduleDay?.localDate === 'string' &&
+              typeof firstScheduleDay.firstWaveLocalTime === 'string'
+            ? `${firstScheduleDay.localDate}T${firstScheduleDay.firstWaveLocalTime}`
+            : '';
       return {
         winsRequired: numberValue(configured.winsRequired, fallback.winsRequired),
         duelTemplateId: stringValue(configured.duelTemplateId),
@@ -613,15 +627,20 @@ function draftFromTournament(tournament: AdminTournament): TournamentDraft {
         roundBreakMinutes:
           numberValue(configured.roundBreakMs, draftNumber(fallback.roundBreakMinutes) * 60_000) /
           60_000,
-        overtimeCount: numberValue(overtime.count, fallback.overtimeCount),
-        shootoutInitialShots: numberValue(
-          overtime.shootoutInitialShots,
-          fallback.shootoutInitialShots,
+        daysPerRound: scheduleDays.length || fallback.daysPerRound,
+        maxGamesPerDay: scheduleDays.reduce(
+          (maximum, day) => Math.max(maximum, numberValue(day.maxResultGames, 0)),
+          draftNumber(fallback.maxGamesPerDay),
         ),
-        firstGameNotBefore: localDateTimeValue(
-          typeof configured.firstGameStartsAt === 'string' ? configured.firstGameStartsAt : null,
-          timezone,
+        readinessMinutes: numberValue(
+          configured.readinessMinutes,
+          fallback.readinessMinutes,
         ),
+        plannedStartIntervalMinutes: numberValue(
+          configured.plannedStartIntervalMinutes,
+          fallback.plannedStartIntervalMinutes,
+        ),
+        firstGameNotBefore: firstGameStartsAt,
       };
     }),
     regularRewards: rewardsDraft(rewards.regular),
@@ -742,14 +761,19 @@ function serializeDraft(draft: TournamentDraft): Record<string, unknown> {
           requiredInteger(round.roundBreakMinutes, `${prefix}: пауза после раунда, минуты`, 0) *
           60_000,
         firstGameStartsAt: dateOrNull(round.firstGameNotBefore, draft.timezone),
-        overtime: {
-          count: requiredInteger(round.overtimeCount, `${prefix}: овертаймов`, 0),
-          shootoutInitialShots: requiredInteger(
-            round.shootoutInitialShots,
-            `${prefix}: бросков в буллитах`,
-            1,
-          ),
-        },
+        readinessMinutes: requiredInteger(
+          round.readinessMinutes,
+          `${prefix}: минут на готовность`,
+          1,
+          120,
+        ),
+        plannedStartIntervalMinutes: requiredInteger(
+          round.plannedStartIntervalMinutes,
+          `${prefix}: интервал стартов, минуты`,
+          1,
+          1_440,
+        ),
+        scheduleDays: playoffScheduleDays(round, winsRequired, prefix),
       };
     });
   return {
@@ -824,7 +848,6 @@ function serializeDraft(draft: TournamentDraft): Record<string, unknown> {
       tieBreakCriteria: splitList(draft.tieBreakCriteria),
       dailyPlacePoints: splitList(draft.dailyPlacePoints).map(Number).filter(Number.isFinite),
       playoffRounds: configuredPlayoffRounds,
-      overtime: configuredPlayoffRounds[0]?.overtime ?? { count: 1, shootoutInitialShots: 3 },
       stageRewards: {
         regular: parseRewards(draft.regularRewards),
         playoff: parseRewards(draft.playoffRewards),
@@ -897,6 +920,44 @@ function normalizedHomeSequence(value: string, winsRequired: number): Array<'H' 
     { length: desired },
     (_, index) => configured[index] ?? (index % 2 ? 'A' : 'H'),
   );
+}
+
+function addDateOnlyDays(localDate: string, days: number): string {
+  const [year, month, day] = localDate.split('-').map(Number);
+  const date = new Date(Date.UTC(year!, month! - 1, day! + days));
+  return date.toISOString().slice(0, 10);
+}
+
+function playoffScheduleDays(
+  round: PlayoffRoundDraft,
+  winsRequired: number,
+  prefix: string,
+): Array<{ localDate: string; firstWaveLocalTime: string; maxResultGames: number }> | null {
+  if (round.firstGameNotBefore === '') return null;
+  const start = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})$/.exec(round.firstGameNotBefore);
+  if (start === null) throw new Error(`${prefix}: укажите дату и время первой игры`);
+  const totalGames = winsRequired * 2 - 1;
+  const daysPerRound = requiredInteger(round.daysPerRound, `${prefix}: дней на раунд`, 1, totalGames);
+  const maxGamesPerDay = requiredInteger(
+    round.maxGamesPerDay,
+    `${prefix}: максимум игр в день`,
+    1,
+    totalGames,
+  );
+  if (daysPerRound * maxGamesPerDay < totalGames) {
+    throw new Error(`${prefix}: выбранных дней не хватит для всех игр серии`);
+  }
+  let remaining = totalGames;
+  return Array.from({ length: daysPerRound }, (_, index) => {
+    const daysAfter = daysPerRound - index - 1;
+    const maxResultGames = Math.min(maxGamesPerDay, remaining - daysAfter);
+    remaining -= maxResultGames;
+    return {
+      localDate: addDateOnlyDays(start[1]!, index),
+      firstWaveLocalTime: start[2]!,
+      maxResultGames,
+    };
+  });
 }
 
 function HomeSequenceEditor({
@@ -2291,7 +2352,8 @@ export function TournamentAdmin(): JSX.Element {
                         <fieldset key={index} className="tournament-playoff-round">
                           <legend>Раунд {index + 1}</legend>
                           <TournamentAdminGroupHelp>
-                            Основные правила серии. Более редкие тайминги и овертайм скрыты ниже.
+                            Настройте серию, дни и точное время игр. Ничьей в плей-офф нет: при
+                            полном равенстве игра проводится заново.
                           </TournamentAdminGroupHelp>
                           <TournamentAdminField
                             label="Побед для серии"
@@ -2341,11 +2403,11 @@ export function TournamentAdmin(): JSX.Element {
                             onChange={(homeSequence) => updatePlayoffRound(index, { homeSequence })}
                           />
                           <TournamentAdminField
-                            label="Начать не раньше"
-                            help="Необязательная нижняя граница для первой игры этого раунда. Если предыдущий раунд закончится позже, новый начнётся после него."
+                            label="Начало первой игры"
+                            help="Дата и время первой игры раунда. Остальные игры распределятся по выбранным дням."
                           >
                             <input
-                              aria-label={`Раунд ${index + 1}: начать не раньше`}
+                              aria-label={`Раунд ${index + 1}: начало первой игры`}
                               type="datetime-local"
                               value={round.firstGameNotBefore}
                               onChange={(event) =>
@@ -2355,59 +2417,50 @@ export function TournamentAdmin(): JSX.Element {
                               }
                             />
                           </TournamentAdminField>
-                          <details className="tournament-admin-details">
-                            <summary>Тайминги, овертайм и буллиты</summary>
-                            <div className="tournament-admin-grid">
-                              {(
+                          <div className="tournament-admin-grid">
+                            {(
+                              [
                                 [
-                                  [
-                                    'gameWindowMinutes',
-                                    'Окно игры, минуты',
-                                    1,
-                                    'Время на завершение одной игры серии.',
-                                  ],
-                                  [
-                                    'gameBreakMinutes',
-                                    'Пауза между играми, минуты',
-                                    0,
-                                    'Перерыв до следующей условной игры серии.',
-                                  ],
-                                  [
-                                    'roundBreakMinutes',
-                                    'Пауза после раунда, минуты',
-                                    0,
-                                    'Перерыв перед открытием следующего раунда сетки.',
-                                  ],
-                                  [
-                                    'overtimeCount',
-                                    'Овертаймов',
-                                    0,
-                                    'Сколько дополнительных сегментов сыграть до буллитов.',
-                                  ],
-                                  [
-                                    'shootoutInitialShots',
-                                    'Бросков в буллитах',
-                                    1,
-                                    'Начальная равная серия бросков каждому игроку.',
-                                  ],
-                                ] as const
-                              ).map(([field, label, min, help]) => (
-                                <TournamentAdminField key={field} label={label} help={help}>
-                                  <input
-                                    aria-label={`Раунд ${index + 1}: ${label.toLowerCase()}`}
-                                    type="number"
-                                    min={min}
-                                    value={round[field]}
-                                    onChange={(event) =>
-                                      updatePlayoffRound(index, {
-                                        [field]: editableNumber(event.target.value),
-                                      })
-                                    }
-                                  />
-                                </TournamentAdminField>
-                              ))}
-                            </div>
-                          </details>
+                                  'daysPerRound',
+                                  'Дней на раунд',
+                                  1,
+                                  'Сколько календарных дней отводится на всю серию.',
+                                ],
+                                [
+                                  'maxGamesPerDay',
+                                  'Максимум игр в день',
+                                  1,
+                                  'Ограничение на один день. В последний день система оставит только нужное число игр.',
+                                ],
+                                [
+                                  'readinessMinutes',
+                                  'Минут на готовность',
+                                  1,
+                                  'Столько времени есть у обоих игроков, чтобы подтвердить готовность.',
+                                ],
+                                [
+                                  'plannedStartIntervalMinutes',
+                                  'Интервал стартов, минуты',
+                                  1,
+                                  'Через сколько минут по расписанию начинается следующая игра серии.',
+                                ],
+                              ] as const
+                            ).map(([field, label, min, help]) => (
+                              <TournamentAdminField key={field} label={label} help={help}>
+                                <input
+                                  aria-label={`Раунд ${index + 1}: ${label.toLowerCase()}`}
+                                  type="number"
+                                  min={min}
+                                  value={round[field]}
+                                  onChange={(event) =>
+                                    updatePlayoffRound(index, {
+                                      [field]: editableNumber(event.target.value),
+                                    })
+                                  }
+                                />
+                              </TournamentAdminField>
+                            ))}
+                          </div>
                         </fieldset>
                       ))}
                   </div>

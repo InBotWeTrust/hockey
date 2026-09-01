@@ -39,6 +39,132 @@ afterEach(() => {
 });
 
 describe('TournamentOperations', () => {
+  it('puts playoff incidents in a clear requires-decision block', async () => {
+    vi.spyOn(await import('./adminApi.js'), 'fetchAdminTournamentSchedule').mockResolvedValue({
+      matchdays: [],
+      fixtures: [
+        {
+          id: 'fixture-1',
+          fixtureNumber: 7,
+          stage: 'playoff',
+          roundNumber: 1,
+          scheduledStartsAt: '2030-09-10T12:00:00.000Z',
+          windowEndsAt: '2030-09-10T12:20:00.000Z',
+          status: 'needs_reschedule',
+          home: { userId: 'u1', name: 'Первый игрок' },
+          away: { userId: 'u2', name: 'Второй игрок' },
+          score: { home: 0, away: 0 },
+        },
+      ],
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentOperations
+          tournament={{ ...tournament(), status: 'playoff' }}
+          onBack={vi.fn()}
+          onEdit={vi.fn()}
+          onRemoved={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Календарь' }));
+
+    expect(await screen.findByRole('heading', { name: 'Требуют решения' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /игра №7.*нужно назначить новое время/i })).toBeInTheDocument();
+  });
+
+  it('requires a reason and a separate confirmation before forcing a playoff series winner', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      const body = url.endsWith('/confirm')
+        ? { id: 'decision-1', status: 'confirmed' }
+        : {
+            id: 'decision-1',
+            seriesId: 'series-1',
+            winnerParticipantId: 'participant-1',
+            reason: 'Игрок дисквалифицирован',
+            status: 'pending',
+            factualScore: { higherSeedWins: 2, lowerSeedWins: 1 },
+            requestedAt: '2030-09-10T12:00:00.000Z',
+            confirmedAt: null,
+          };
+      return new Response(JSON.stringify(body), {
+        status: url.endsWith('/confirm') ? 200 : 201,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    vi.spyOn(await import('./adminApi.js'), 'fetchAdminTournamentParticipants').mockResolvedValue({
+      participants: [
+        {
+          id: 'participant-1',
+          user_id: 'user-1',
+          display_name: 'Первый игрок',
+          avatar_url: null,
+          state: 'approved',
+          seed: 1,
+          entry_fee_coins: 0,
+          entry_fee_state: 'not_required',
+        },
+        {
+          id: 'participant-2',
+          user_id: 'user-2',
+          display_name: 'Второй игрок',
+          avatar_url: null,
+          state: 'approved',
+          seed: 2,
+          entry_fee_coins: 0,
+          entry_fee_state: 'not_required',
+        },
+      ],
+    });
+    vi.spyOn(await import('./adminApi.js'), 'fetchAdminTournamentBracket').mockResolvedValue({
+      series: [
+        {
+          id: 'series-1',
+          status: 'active',
+          higher_user_id: 'user-1',
+          higher_name: 'Первый игрок',
+          higher_seed_wins: 2,
+          lower_user_id: 'user-2',
+          lower_name: 'Второй игрок',
+          lower_seed_wins: 1,
+        },
+      ],
+    });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentOperations
+          tournament={{ ...tournament(), status: 'playoff' }}
+          onBack={vi.fn()}
+          onEdit={vi.fn()}
+          onRemoved={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Сетка' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Решить серию вручную' }));
+    expect(screen.getByRole('button', { name: 'Подготовить решение' })).toBeDisabled();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Причина решения' }), {
+      target: { value: 'Игрок дисквалифицирован' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Подготовить решение' }));
+
+    expect(await screen.findByText(/решение ещё не применено/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Подтвердить победителя серии' }));
+    await waitFor(() =>
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        expect.stringMatching(/winner-decisions\/[^/]+\/confirm$/),
+        expect.objectContaining({ method: 'POST' }),
+      ),
+    );
+  });
+
   it('explains that a generated schedule still needs publication', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input);

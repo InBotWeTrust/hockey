@@ -74,10 +74,33 @@ export async function advanceTournamentPlayoffSeries(
   const completedSeries = completed.rows[0];
   if (!completedSeries) return { completed: false };
 
+  return finalizeTournamentPlayoffSeries(client, completedSeries, input.winnerParticipantId);
+}
+
+async function finalizeTournamentPlayoffSeries(
+  client: PoolClient,
+  completedSeries: PlayoffSeriesRow,
+  winnerParticipantId: string,
+): Promise<{ completed: boolean }> {
   await client.query(
     `update tournament_fixture
         set status = 'cancelled', updated_at = now()
       where series_id = $1 and status in ('conditional', 'scheduled', 'open', 'active')`,
+    [completedSeries.id],
+  );
+  await client.query(
+    `update tournament_fixture_attempt attempt
+        set status = 'cancelled', outcome = 'cancelled',
+            result_snapshot = coalesce(attempt.result_snapshot, '{}'::jsonb)
+              || '{"cancelReason":"series_completed"}'::jsonb,
+            settled_at = coalesce(attempt.settled_at, now()), updated_at = now()
+       from tournament_fixture fixture
+      where fixture.id = attempt.fixture_id
+        and fixture.series_id = $1
+        and fixture.status = 'cancelled'
+        and attempt.status in (
+          'pending', 'ready_check', 'active', 'needs_reschedule', 'needs_admin_decision'
+        )`,
     [completedSeries.id],
   );
   await client.query(
@@ -111,7 +134,7 @@ export async function advanceTournamentPlayoffSeries(
 
   const completedKey = completedSeries.depends_on.key;
   const loserParticipantId =
-    completedSeries.higher_seed_participant_id === input.winnerParticipantId
+    completedSeries.higher_seed_participant_id === winnerParticipantId
       ? completedSeries.lower_seed_participant_id
       : completedSeries.higher_seed_participant_id;
   await grantPlayoffRewardsIfComplete(client, completedSeries.tournament_id);
@@ -137,7 +160,7 @@ export async function advanceTournamentPlayoffSeries(
     let changed = false;
     for (const [index, source] of sources.entries()) {
       if (source.seriesKey !== completedKey) continue;
-      const resolved = source.type === 'winner' ? input.winnerParticipantId : loserParticipantId;
+      const resolved = source.type === 'winner' ? winnerParticipantId : loserParticipantId;
       if (index === 0) higher = resolved;
       else lower = resolved;
       changed = true;
@@ -203,4 +226,23 @@ export async function advanceTournamentPlayoffSeries(
   }
 
   return { completed: true };
+}
+
+export async function forceTournamentPlayoffSeriesWinner(
+  client: PoolClient,
+  input: { seriesId: string; winnerParticipantId: string },
+): Promise<{ completed: boolean }> {
+  const forced = await client.query<PlayoffSeriesRow>(
+    `update tournament_playoff_series
+        set status = 'completed', winner_participant_id = $2, updated_at = now()
+      where id = $1
+        and status in ('pending', 'scheduled', 'active', 'paused')
+        and $2::uuid in (higher_seed_participant_id, lower_seed_participant_id)
+      returning id, tournament_id, wins_required, higher_seed_participant_id,
+                lower_seed_participant_id, higher_seed_wins, lower_seed_wins, depends_on`,
+    [input.seriesId, input.winnerParticipantId],
+  );
+  const completedSeries = forced.rows[0];
+  if (completedSeries === undefined) return { completed: false };
+  return finalizeTournamentPlayoffSeries(client, completedSeries, input.winnerParticipantId);
 }

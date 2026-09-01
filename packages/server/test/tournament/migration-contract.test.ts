@@ -30,6 +30,10 @@ const tournamentClassicMigrationUrl = new URL(
   '../../db/migrations/075_tournament_classic.sql',
   import.meta.url,
 );
+const playoffSchedulingMigrationUrl = new URL(
+  '../../db/migrations/082_tournament_playoff_scheduling.sql',
+  import.meta.url,
+);
 
 describe('tournament migration contract', () => {
   it('creates the complete tournament orchestration schema', async () => {
@@ -129,6 +133,70 @@ describe('tournament migration contract', () => {
     expect(sql).toContain('unique (tournament_id, participant_id, tournament_day)');
     expect(sql).toContain('tournament_classic_session_id');
     expect(sql).toContain("'tournament_classic'");
+    expect(sql).not.toMatch(/drop\s+(column|table)/i);
+  });
+
+  it('adds idempotent playoff game-day, readiness, incident, and forced-decision persistence', async () => {
+    const sql = await readFile(playoffSchedulingMigrationUrl, 'utf8');
+
+    for (const table of [
+      'tournament_round_game_day',
+      'tournament_fixture_attempt',
+      'tournament_next_game_choice',
+      'tournament_incident',
+      'tournament_series_admin_decision',
+    ]) {
+      expect(sql).toMatch(new RegExp(`create table if not exists ${table}\\s*\\(`, 'i'));
+    }
+
+    expect(sql).toContain('unique (round_id, day_number)');
+    expect(sql).toContain('unique (round_id, local_date)');
+    expect(sql).toContain("status in ('scheduled', 'open', 'closed', 'cancelled')");
+    expect(sql).toContain("readiness_duration between interval '1 minute' and interval '2 hours'");
+    expect(sql).toContain(
+      "planned_start_interval between interval '1 minute' and interval '24 hours'",
+    );
+    expect(sql).toContain('max_result_bearing_games between 1 and 127');
+
+    expect(sql).toContain("kind text not null check (kind in ('initial', 'replay'))");
+    expect(sql).toContain(
+      "status text not null default 'pending' check (status in (\n      'pending', 'ready_check', 'active', 'settled', 'technical_result',\n      'needs_reschedule', 'needs_admin_decision', 'cancelled'\n    ))",
+    );
+    expect(sql).toContain('unique (fixture_id, attempt_number)');
+    expect(sql).toContain('amateur_duel_match_id uuid unique');
+    expect(sql).toContain(
+      "where status in ('pending', 'ready_check', 'active', 'needs_reschedule', 'needs_admin_decision')",
+    );
+    expect(sql).toContain(
+      "check ((kind = 'initial' and is_result_bearing) or (kind = 'replay' and not is_result_bearing))",
+    );
+
+    expect(sql).toContain("choice text not null check (choice in ('immediate', 'scheduled'))");
+    expect(sql).toContain('unique (fixture_attempt_id, participant_id)');
+    expect(sql).toContain(
+      "kind text not null check (kind in ('both_no_show', 'both_incomplete', 'regular_replay_readiness_unresolved'))",
+    );
+    expect(sql).toContain(
+      "status text not null default 'open' check (status in ('open', 'resolved'))",
+    );
+    expect(sql).toContain('tournament_incident_one_open_attempt_kind_idx');
+    expect(sql).toContain("where status = 'open'");
+
+    expect(sql).toContain("reason text not null check (btrim(reason) <> '')");
+    expect(sql).toContain(
+      "status text not null default 'pending' check (status in ('pending', 'confirmed', 'cancelled'))",
+    );
+    expect(sql).toContain('tournament_series_admin_decision_one_confirmed_idx');
+    expect(sql).toContain("where status = 'confirmed'");
+
+    for (const index of [
+      'tournament_round_game_day_round_local_date_idx',
+      'tournament_fixture_attempt_schedule_idx',
+      'tournament_fixture_attempt_deadline_idx',
+      'tournament_incident_series_status_idx',
+    ]) {
+      expect(sql).toContain(index);
+    }
     expect(sql).not.toMatch(/drop\s+(column|table)/i);
   });
 });

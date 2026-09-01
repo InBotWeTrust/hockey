@@ -124,10 +124,14 @@ export async function buildApp(options: BuildAppOptions = {}) {
   );
   await app.register(dailyRoutes, { dailySeedSecret: config.DAILY_SEED_SECRET });
   await app.register(trainingRoutes, { trainingSeedSecret: config.DAILY_SEED_SECRET });
-  await app.register(amateurDuelRoutes, { duelSeedSecret: config.DAILY_SEED_SECRET });
+  await app.register(amateurDuelRoutes, {
+    duelSeedSecret: config.DAILY_SEED_SECRET,
+    ...(config.SYSTEM_USER_ID !== undefined ? { systemUserId: config.SYSTEM_USER_ID } : {}),
+  });
   await app.register(tournamentRoutes, {
     mediaAccessSecret: config.JWT_SECRET,
     tournamentGameSeedSecret: config.DAILY_SEED_SECRET,
+    duelSeedSecret: config.DAILY_SEED_SECRET,
     ...(config.SYSTEM_USER_ID !== undefined ? { systemUserId: config.SYSTEM_USER_ID } : {}),
     ...(objectStorage !== undefined ? { objectStorage } : {}),
   });

@@ -26,7 +26,9 @@ import {
   previewAdminTournamentAudience,
   publishAdminTournament,
   publishAdminTournamentSchedule,
+  confirmAdminTournamentSeriesWinner,
   rejectAdminTournamentApplication,
+  requestAdminTournamentSeriesWinner,
   resolveAdminTournamentNoShow,
   resumeAdminTournament,
   rescheduleAdminTournamentFixture,
@@ -35,6 +37,8 @@ import {
   type AdminTournament,
   type AdminTournamentFixture,
   type AdminTournamentParticipant,
+  type AdminTournamentBracketSeries,
+  type AdminTournamentSeriesDecision,
 } from './adminApi.js';
 import { tournamentTimezoneLabel } from './timezoneLabel.js';
 import {
@@ -124,10 +128,64 @@ function approveAllErrorMessage(
   return 'Не удалось принять заявки. Обновите страницу и попробуйте ещё раз.';
 }
 
-function readableDate(value: string | null): string {
-  if (value === null) return 'время не задано';
+function fixtureDate(value: string | null): Date | null {
+  if (value === null) return null;
   const date = new Date(value);
-  return Number.isFinite(date.getTime()) ? date.toLocaleString('ru-RU') : 'время не задано';
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function fixtureDayKey(value: string | null, timezone: string): string {
+  const date = fixtureDate(value);
+  if (date === null) return 'without-date';
+  const parts = new Intl.DateTimeFormat('ru-RU', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((item) => item.type === type)?.value ?? '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
+}
+
+function fixtureDayLabel(value: string | null, timezone: string): string {
+  const date = fixtureDate(value);
+  if (date === null) return 'Время не назначено';
+  return new Intl.DateTimeFormat('ru-RU', {
+    timeZone: timezone,
+    day: 'numeric',
+    month: 'long',
+    weekday: 'long',
+  }).format(date);
+}
+
+function fixtureTime(value: string | null, timezone: string): string | null {
+  const date = fixtureDate(value);
+  if (date === null) return null;
+  return new Intl.DateTimeFormat('ru-RU', {
+    timeZone: timezone,
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
+function fixtureTimeRange(fixture: AdminTournamentFixture, timezone: string): string {
+  const start = fixtureTime(fixture.scheduledStartsAt, timezone);
+  if (start === null) return 'Время не назначено';
+  const end = fixtureTime(fixture.windowEndsAt, timezone);
+  return end === null ? start : `${start}–${end}`;
+}
+
+function fixtureStageLabel(fixture: AdminTournamentFixture): string {
+  if (fixture.stage === 'regular') return `${fixture.roundNumber}-й тур`;
+  if (fixture.stage === 'playoff') return `Плей-офф · ${fixture.roundNumber}-й раунд`;
+  return `${fixture.roundNumber}-й тур`;
+}
+
+function fixturePlayersLabel(fixture: AdminTournamentFixture): string {
+  const home = fixture.home?.name?.trim();
+  const away = fixture.away?.name?.trim();
+  return home && away ? `${home} — ${away}` : 'Соперники определятся позже';
 }
 
 function matchdayCountLabel(count: number): string {
@@ -168,9 +226,9 @@ function rowLabel(row: Record<string, unknown>, index: number): string {
 
 function fixtureStatusLabel(status: string): string {
   const labels: Record<string, string> = {
-    conditional: 'Условная игра',
+    conditional: 'Соперники определятся',
     scheduled: 'Запланирована',
-    open: 'Окно открыто',
+    open: 'Можно начинать',
     active: 'Идёт игра',
     completed: 'Завершена',
     settled: 'Завершена',
@@ -178,8 +236,48 @@ function fixtureStatusLabel(status: string): string {
     forfeit: 'Технический результат',
     blocked: 'Ожидает решения',
     paused: 'Приостановлена',
+    needs_reschedule: 'Нужно назначить новое время',
+    needs_admin_decision: 'Нужно решение администратора',
   };
   return labels[status] ?? 'Статус уточняется';
+}
+
+function AdminScheduleFixtureCard({
+  fixture,
+  timezone,
+  onSelect,
+}: {
+  fixture: AdminTournamentFixture;
+  timezone: string;
+  onSelect: (fixture: AdminTournamentFixture) => void;
+}): JSX.Element {
+  const players = fixturePlayersLabel(fixture);
+  const showScore = ['active', 'completed', 'settled', 'forfeit'].includes(fixture.status);
+  return (
+    <button
+      type="button"
+      className="tournament-schedule-fixture"
+      aria-label={`Игра №${fixture.fixtureNumber}: ${players}`}
+      onClick={() => onSelect(fixture)}
+    >
+      <span className="tournament-schedule-fixture__heading">
+        <span>Игра №{fixture.fixtureNumber}</span>
+        <span className={`tournament-schedule-fixture__status is-${fixture.status}`}>
+          {fixtureStatusLabel(fixture.status)}
+        </span>
+      </span>
+      <strong>{players}</strong>
+      <span className="tournament-schedule-fixture__meta">
+        <span>{fixtureStageLabel(fixture)}</span>
+        <span>{fixtureTimeRange(fixture, timezone)}</span>
+        {showScore && (
+          <span>
+            Счёт {fixture.score.home}:{fixture.score.away}
+          </span>
+        )}
+      </span>
+    </button>
+  );
 }
 
 function dispatchKindLabel(kind: unknown): string {
@@ -340,6 +438,11 @@ export function TournamentOperations({
   const [disqualifyingParticipant, setDisqualifyingParticipant] = useState(false);
   const [disqualificationReason, setDisqualificationReason] = useState('');
   const [selectedFixture, setSelectedFixture] = useState<AdminTournamentFixture | null>(null);
+  const [selectedSeries, setSelectedSeries] = useState<AdminTournamentBracketSeries | null>(null);
+  const [seriesWinnerParticipantId, setSeriesWinnerParticipantId] = useState('');
+  const [seriesDecisionReason, setSeriesDecisionReason] = useState('');
+  const [preparedSeriesDecision, setPreparedSeriesDecision] =
+    useState<AdminTournamentSeriesDecision | null>(null);
   const [startsAt, setStartsAt] = useState('');
   const [endsAt, setEndsAt] = useState('');
   const [absent, setAbsent] = useState<'home' | 'away' | 'both'>('home');
@@ -377,7 +480,7 @@ export function TournamentOperations({
   const participants = useQuery({
     queryKey: participantsKey,
     queryFn: () => fetchAdminTournamentParticipants(tournament.id),
-    enabled: tab === 'participants',
+    enabled: tab === 'participants' || tab === 'bracket',
   });
   const pendingApplicationCount =
     participants.data?.participants.filter((participant) => participant.state === 'applied')
@@ -540,6 +643,31 @@ export function TournamentOperations({
       void client.invalidateQueries({ queryKey: scheduleKey });
     },
   });
+  const requestSeriesWinner = useMutation({
+    mutationFn: () =>
+      requestAdminTournamentSeriesWinner(tournament.id, selectedSeries!.id, {
+        winnerParticipantId: seriesWinnerParticipantId,
+        reason: seriesDecisionReason.trim(),
+        idempotencyKey: `${tournament.id}:${selectedSeries!.id}:${Date.now()}`,
+      }),
+    onSuccess: setPreparedSeriesDecision,
+  });
+  const confirmSeriesWinner = useMutation({
+    mutationFn: () =>
+      confirmAdminTournamentSeriesWinner(
+        tournament.id,
+        selectedSeries!.id,
+        preparedSeriesDecision!.id,
+      ),
+    onSuccess: () => {
+      setSelectedSeries(null);
+      setSeriesWinnerParticipantId('');
+      setSeriesDecisionReason('');
+      setPreparedSeriesDecision(null);
+      void client.invalidateQueries({ queryKey: bracketKey });
+      void client.invalidateQueries({ queryKey: scheduleKey });
+    },
+  });
   const dispatch = useMutation({
     mutationFn: (idempotencyKey: string) =>
       dispatchAdminTournamentCommunication(tournament.id, {
@@ -657,6 +785,50 @@ export function TournamentOperations({
     Number.isFinite(tournamentStartsAt.getTime()) &&
     registrationOpensAt < registrationClosesAt &&
     registrationClosesAt < tournamentStartsAt;
+  const incidentStatuses = new Set([
+    'paused',
+    'blocked',
+    'needs_reschedule',
+    'needs_admin_decision',
+  ]);
+  const incidentFixtures =
+    schedule.data?.fixtures.filter((fixture) => incidentStatuses.has(fixture.status)) ?? [];
+  const regularFixtures =
+    schedule.data?.fixtures.filter((fixture) => !incidentStatuses.has(fixture.status)) ?? [];
+  const conditionalFixtures = regularFixtures.filter((fixture) => fixture.status === 'conditional');
+  const scheduledFixtures = regularFixtures.filter((fixture) => fixture.status !== 'conditional');
+  const fixtureDays = Array.from(
+    scheduledFixtures
+      .slice()
+      .sort((left, right) => {
+        const leftTime = fixtureDate(left.scheduledStartsAt)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        const rightTime =
+          fixtureDate(right.scheduledStartsAt)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        return leftTime - rightTime || left.fixtureNumber - right.fixtureNumber;
+      })
+      .reduce<
+        Map<string, { key: string; label: string; fixtures: AdminTournamentFixture[] }>
+      >((groups, fixture) => {
+        const key = fixtureDayKey(fixture.scheduledStartsAt, tournamentTimezone);
+        const current = groups.get(key);
+        if (current) current.fixtures.push(fixture);
+        else {
+          groups.set(key, {
+            key,
+            label: fixtureDayLabel(fixture.scheduledStartsAt, tournamentTimezone),
+            fixtures: [fixture],
+          });
+        }
+        return groups;
+      }, new Map())
+      .values(),
+  );
+  const openFixtureDayIndex = Math.max(
+    0,
+    fixtureDays.findIndex((day) =>
+      day.fixtures.some((fixture) => ['active', 'open'].includes(fixture.status)),
+    ),
+  );
 
   return (
     <section className="tournament-operations">
@@ -883,18 +1055,79 @@ export function TournamentOperations({
                 endLabel={tournamentDate(matchday.endsAt, tournamentTimezone)}
               />
             ))}
-            {schedule.data?.fixtures.map((fixture) => (
-              <button
-                key={fixture.id}
-                type="button"
-                className="tournament-operation-list-row"
-                onClick={() => setSelectedFixture(fixture)}
-              >
-                №{fixture.fixtureNumber}: {fixture.home?.name ?? 'Соперник не определён'} —{' '}
-                {fixture.away?.name ?? 'Соперник не определён'} ·{' '}
-                {readableDate(fixture.scheduledStartsAt)} · {fixtureStatusLabel(fixture.status)}
-              </button>
-            ))}
+            {incidentFixtures.length > 0 && (
+              <section className="tournament-operation-incidents">
+                <h3>Требуют решения</h3>
+                <p>Эти игры не продолжатся, пока администратор не назначит новое время или исход.</p>
+                {incidentFixtures.map((fixture) => (
+                  <button
+                    key={fixture.id}
+                    type="button"
+                    className="tournament-operation-list-row tournament-operation-list-row--incident"
+                    aria-label={`Игра №${fixture.fixtureNumber}: ${fixtureStatusLabel(fixture.status)}`}
+                    onClick={() => setSelectedFixture(fixture)}
+                  >
+                    <strong>Игра №{fixture.fixtureNumber}</strong>
+                    <span>
+                      {fixture.home?.name ?? 'Соперник не определён'} —{' '}
+                      {fixture.away?.name ?? 'Соперник не определён'}
+                    </span>
+                    <span>{fixtureStatusLabel(fixture.status)}</span>
+                  </button>
+                ))}
+              </section>
+            )}
+            {fixtureDays.length > 0 && (
+              <section className="tournament-schedule-days" aria-label="Игры по дням">
+                {fixtureDays.map((day, index) => (
+                  <details
+                    key={day.key}
+                    className="tournament-schedule-day"
+                    open={index === openFixtureDayIndex}
+                  >
+                    <summary>
+                      <strong>{day.label}</strong>
+                      <span>
+                        {day.fixtures.length}{' '}
+                        {russianPlural(day.fixtures.length, 'игра', 'игры', 'игр')}
+                      </span>
+                    </summary>
+                    <div className="tournament-schedule-day__fixtures">
+                      {day.fixtures.map((fixture) => (
+                        <AdminScheduleFixtureCard
+                          key={fixture.id}
+                          fixture={fixture}
+                          timezone={tournamentTimezone}
+                          onSelect={setSelectedFixture}
+                        />
+                      ))}
+                    </div>
+                  </details>
+                ))}
+              </section>
+            )}
+            {conditionalFixtures.length > 0 && (
+              <details className="tournament-schedule-upcoming">
+                <summary>
+                  <strong>Следующие игры</strong>
+                  <span>
+                    {conditionalFixtures.length}{' '}
+                    {russianPlural(conditionalFixtures.length, 'игра', 'игры', 'игр')}
+                  </span>
+                </summary>
+                <p>Соперники определятся после завершения предыдущих этапов.</p>
+                <div className="tournament-schedule-day__fixtures">
+                  {conditionalFixtures.map((fixture) => (
+                    <AdminScheduleFixtureCard
+                      key={fixture.id}
+                      fixture={fixture}
+                      timezone={tournamentTimezone}
+                      onSelect={setSelectedFixture}
+                    />
+                  ))}
+                </div>
+              </details>
+            )}
             {selectedFixture !== null && (
               <div className="tournament-operation-editor">
                 <strong>Управление игрой №{selectedFixture.fixtureNumber}</strong>
@@ -956,11 +1189,48 @@ export function TournamentOperations({
           ))}
         {tab === 'bracket' &&
           (bracket.data?.series.length ? (
-            bracket.data.series.map((row, index) => (
-              <div key={String(row.id ?? index)}>
-                {rowLabel(row, index)} · {fixtureStatusLabel(String(row.status ?? 'conditional'))}
-              </div>
-            ))
+            <div className="tournament-admin-series-list">
+              {bracket.data.series.map((row, index) => {
+                const higherParticipant = participants.data?.participants.find(
+                  (participant) => participant.user_id === row.higher_user_id,
+                );
+                const lowerParticipant = participants.data?.participants.find(
+                  (participant) => participant.user_id === row.lower_user_id,
+                );
+                const isFinished = ['completed', 'settled'].includes(row.status);
+                return (
+                  <section className="tournament-admin-series" key={row.id}>
+                    <div className="tournament-admin-series__heading">
+                      <div>
+                        <strong>{rowLabel(row, index)}</strong>
+                        <span>{fixtureStatusLabel(row.status)}</span>
+                      </div>
+                      <strong>
+                        {row.higher_seed_wins}:{row.lower_seed_wins}
+                      </strong>
+                    </div>
+                    <div className="tournament-admin-series__players">
+                      <span>{row.higher_name ?? 'Участник ещё не определён'}</span>
+                      <span>{row.lower_name ?? 'Участник ещё не определён'}</span>
+                    </div>
+                    {!isFinished && higherParticipant && lowerParticipant && (
+                      <button
+                        type="button"
+                        className="admin-compact-btn"
+                        onClick={() => {
+                          setSelectedSeries(row);
+                          setSeriesWinnerParticipantId(higherParticipant.id);
+                          setSeriesDecisionReason('');
+                          setPreparedSeriesDecision(null);
+                        }}
+                      >
+                        Решить серию вручную
+                      </button>
+                    )}
+                  </section>
+                );
+              })}
+            </div>
           ) : (
             <div className="tournament-admin-empty">Сетка ещё не создана.</div>
           ))}
@@ -1110,6 +1380,113 @@ export function TournamentOperations({
           </>
         )}
       </div>
+      {selectedSeries !== null && (
+        <AccessibleModal
+          title="Решение по серии"
+          ariaLabel="Решение по серии"
+          onClose={() => {
+            setSelectedSeries(null);
+            setSeriesWinnerParticipantId('');
+            setSeriesDecisionReason('');
+            setPreparedSeriesDecision(null);
+          }}
+          headerAction={
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Закрыть решение по серии"
+              onClick={() => {
+                setSelectedSeries(null);
+                setSeriesWinnerParticipantId('');
+                setSeriesDecisionReason('');
+                setPreparedSeriesDecision(null);
+              }}
+            >
+              <X size={16} />
+            </button>
+          }
+        >
+          <div className="tournament-series-decision">
+            <div className="tournament-series-decision__score">
+              <span>Фактический счёт серии</span>
+              <strong>
+                {selectedSeries.higher_seed_wins}:{selectedSeries.lower_seed_wins}
+              </strong>
+            </div>
+            {preparedSeriesDecision === null ? (
+              <>
+                <label className="tournament-operations__field">
+                  <span>Назначить победителем</span>
+                  <GlassSelect
+                    ariaLabel="Победитель серии"
+                    value={seriesWinnerParticipantId}
+                    options={(participants.data?.participants ?? [])
+                      .filter(
+                        (participant) =>
+                          participant.user_id === selectedSeries.higher_user_id ||
+                          participant.user_id === selectedSeries.lower_user_id,
+                      )
+                      .map((participant) => ({
+                        value: participant.id,
+                        label: participant.display_name,
+                      }))}
+                    onChange={setSeriesWinnerParticipantId}
+                  />
+                </label>
+                <label className="tournament-operations__field">
+                  <span>Причина решения</span>
+                  <textarea
+                    aria-label="Причина решения"
+                    value={seriesDecisionReason}
+                    placeholder="Например, игрок дисквалифицирован"
+                    onChange={(event) => setSeriesDecisionReason(event.target.value)}
+                  />
+                </label>
+                <p className="modal-copy">
+                  Сначала решение будет только подготовлено. Результат серии изменится после
+                  отдельного подтверждения.
+                </p>
+                <button
+                  type="button"
+                  className="admin-compact-btn admin-compact-btn--danger"
+                  disabled={
+                    seriesWinnerParticipantId.length === 0 ||
+                    seriesDecisionReason.trim().length < 3 ||
+                    requestSeriesWinner.isPending
+                  }
+                  onClick={() => requestSeriesWinner.mutate()}
+                >
+                  Подготовить решение
+                </button>
+              </>
+            ) : (
+              <div className="tournament-series-decision__confirmation">
+                <strong>Решение ещё не применено</strong>
+                <p>
+                  Победителем будет назначен{' '}
+                  {participants.data?.participants.find(
+                    (participant) => participant.id === preparedSeriesDecision.winnerParticipantId,
+                  )?.display_name ?? 'выбранный игрок'}
+                  . Фактический счёт {preparedSeriesDecision.factualScore.higherSeedWins}:
+                  {preparedSeriesDecision.factualScore.lowerSeedWins} сохранится в истории.
+                </p>
+                <p>Причина: {preparedSeriesDecision.reason}</p>
+                <button
+                  type="button"
+                  className="admin-compact-btn admin-compact-btn--danger"
+                  disabled={confirmSeriesWinner.isPending}
+                  onClick={() => confirmSeriesWinner.mutate()}
+                >
+                  Подтвердить победителя серии
+                </button>
+              </div>
+            )}
+            {(requestSeriesWinner.isError || confirmSeriesWinner.isError) && (
+              <div role="alert">Не удалось применить решение. Обновите данные и повторите.</div>
+            )}
+          </div>
+        </AccessibleModal>
+      )}
       {actionsOpen && (
         <AccessibleModal
           title="Действия турнира"

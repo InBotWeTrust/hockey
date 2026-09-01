@@ -7,6 +7,21 @@ import { decideTournamentApplication, evaluateTournamentEligibility } from './re
 import { buildHeadToHeadSchedulePlan } from './materialize.js';
 import { addZonedCalendarDays } from './schedule.js';
 import {
+  attemptDeadline,
+  insertInitialFixtureAttempt,
+  insertRoundGameDays,
+  loadDuelTemplateLifecycleSnapshot,
+  resolveRoundGameDays,
+  scheduledStartForSeriesGame,
+  type DuelTemplateLifecycleSnapshot,
+  type ResolvedRoundGameDay,
+} from './fixtureAttempts.js';
+import {
+  DEFAULT_TOURNAMENT_PLANNED_START_INTERVAL_MINUTES,
+  DEFAULT_TOURNAMENT_READINESS_MINUTES,
+} from './lifecycleRules.js';
+import type { RoundGameDay } from './playoffScheduling.js';
+import {
   buildPlayoffSeriesPlan,
   buildPlayoffFixtureWindows,
   expandSeriesSchedule,
@@ -1480,6 +1495,26 @@ export async function generateRegularSchedule(
       [tournamentId],
     );
     const config = tournament.rules_snapshot.config;
+    const regularLifecycleV2 =
+      config.regularSource === 'head_to_head' &&
+      tournament.rules_snapshot.duelLifecycleVersion === 2;
+    const regularReadinessMinutes = boundedInteger(
+      tournament.rules_snapshot.regularReadinessMinutes ??
+        tournament.rules_snapshot.readinessMinutes,
+      DEFAULT_TOURNAMENT_READINESS_MINUTES,
+      1,
+      120,
+    );
+    let regularAttemptTemplate: DuelTemplateLifecycleSnapshot | null = null;
+    if (regularLifecycleV2) {
+      if (typeof tournament.rules_snapshot.regularDuelTemplateId !== 'string') {
+        throw new AppError('configuration_error', 'regular duel template is not configured', 409);
+      }
+      regularAttemptTemplate = await loadDuelTemplateLifecycleSnapshot(
+        client,
+        tournament.rules_snapshot.regularDuelTemplateId,
+      );
+    }
     if (participants.rows.length < config.playoffSize) {
       await client.query(
         `update tournament set status = 'registration_blocked', updated_at = now() where id = $1`,
@@ -1545,11 +1580,12 @@ export async function generateRegularSchedule(
         roundCount += 1;
         for (const fixture of round.fixtures) {
           fixtureCount += 1;
-          await client.query(
+          const insertedFixture = await client.query<{ id: string }>(
             `insert into tournament_fixture
                (tournament_id, round_id, fixture_number, home_participant_id,
                 away_participant_id, scheduled_starts_at, window_ends_at, status, venue_mode)
-             values ($1, $2, $3, $4, $5, $6, $7, 'scheduled', $8)`,
+             values ($1, $2, $3, $4, $5, $6, $7, 'scheduled', $8)
+             returning id`,
             [
               tournamentId,
               insertedRound.rows[0]!.id,
@@ -1561,6 +1597,15 @@ export async function generateRegularSchedule(
               fixture.venueMode,
             ],
           );
+          if (regularAttemptTemplate !== null) {
+            await insertInitialFixtureAttempt(client, {
+              fixtureId: insertedFixture.rows[0]!.id,
+              roundGameDayId: null,
+              scheduledStartsAt: new Date(round.startsAt),
+              readinessMinutes: regularReadinessMinutes,
+              template: regularAttemptTemplate,
+            });
+          }
         }
       }
     } else {
@@ -1817,6 +1862,9 @@ interface PlayoffRoundRules {
   gameBreakMs: number;
   roundBreakMs: number;
   firstGameStartsAt: Date | null;
+  readinessMinutes: number;
+  plannedStartIntervalMinutes: number;
+  scheduleDays: RoundGameDay[] | null;
   overtime: {
     count: number;
     shootoutInitialShots: number;
@@ -1896,6 +1944,12 @@ function nonNegativeDuration(value: unknown, fallback: number, maxMs = ONE_DAY_M
     : fallback;
 }
 
+function boundedInteger(value: unknown, fallback: number, min: number, max: number): number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= min && value <= max
+    ? value
+    : fallback;
+}
+
 function maxDate(...dates: Date[]): Date {
   return new Date(Math.max(...dates.map((date) => date.getTime())));
 }
@@ -1930,6 +1984,20 @@ function playoffRoundRules(rules: TournamentRulesSnapshot, roundNumber: number):
         ? rules.regularDuelTemplateId
         : null;
   const defaultOvertime = overtimeRules(rules.overtime);
+  const scheduleDays = Array.isArray(record.scheduleDays)
+    ? record.scheduleDays.map((value) => {
+        const day = objectRecord(value);
+        return {
+          localDate: typeof day.localDate === 'string' ? day.localDate : '',
+          firstWaveLocalTime:
+            typeof day.firstWaveLocalTime === 'string' ? day.firstWaveLocalTime : '',
+          maxResultGames:
+            typeof day.maxResultGames === 'number' && Number.isSafeInteger(day.maxResultGames)
+              ? day.maxResultGames
+              : 0,
+        };
+      })
+    : null;
   return {
     winsRequired,
     homeSequence,
@@ -1938,6 +2006,19 @@ function playoffRoundRules(rules: TournamentRulesSnapshot, roundNumber: number):
     gameBreakMs: nonNegativeDuration(record.gameBreakMs, 0),
     roundBreakMs: nonNegativeDuration(record.roundBreakMs, 0, MAX_PLAYOFF_ROUND_BREAK_MS),
     firstGameStartsAt: validIsoDate(record.firstGameStartsAt),
+    readinessMinutes: boundedInteger(
+      record.readinessMinutes,
+      DEFAULT_TOURNAMENT_READINESS_MINUTES,
+      1,
+      120,
+    ),
+    plannedStartIntervalMinutes: boundedInteger(
+      record.plannedStartIntervalMinutes,
+      DEFAULT_TOURNAMENT_PLANNED_START_INTERVAL_MINUTES,
+      1,
+      1440,
+    ),
+    scheduleDays,
     overtime: overtimeRules(record.overtime, defaultOvertime),
   };
 }
@@ -1988,6 +2069,9 @@ function tieBreakRules(rules: TournamentRulesSnapshot): PlayoffRoundRules {
         rules.tiebreakFirstGameStartsAt,
       ),
     ),
+    readinessMinutes: DEFAULT_TOURNAMENT_READINESS_MINUTES,
+    plannedStartIntervalMinutes: DEFAULT_TOURNAMENT_PLANNED_START_INTERVAL_MINUTES,
+    scheduleDays: null,
     overtime: overtimeRules(configured.overtime, defaultOvertime),
   };
 }
@@ -2435,7 +2519,9 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
         rules: PlayoffRoundRules;
         startsAt: Date;
         endsAt: Date;
-        windows: ReturnType<typeof buildPlayoffFixtureWindows>;
+        windows: ReturnType<typeof buildPlayoffFixtureWindows> | null;
+        days: ResolvedRoundGameDay[] | null;
+        template: DuelTemplateLifecycleSnapshot | null;
       }
     >();
     let previousRoundEnd = baseTime;
@@ -2447,6 +2533,33 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
     ].sort((left, right) => left - right);
     for (const roundNumber of roundNumbers) {
       const rules = playoffRoundRules(tournament.rules_snapshot, roundNumber);
+      if (rules.duelTemplateId === null) {
+        throw new AppError('configuration_error', 'playoff duel template is not configured', 409);
+      }
+      if (rules.scheduleDays !== null) {
+        const days = resolveRoundGameDays(
+          tournament.rules_snapshot.config.timezone,
+          rules.scheduleDays,
+        );
+        const template = await loadDuelTemplateLifecycleSnapshot(client, rules.duelTemplateId);
+        const lastGame = scheduledStartForSeriesGame(
+          days,
+          rules.winsRequired * 2 - 1,
+          rules.plannedStartIntervalMinutes,
+        );
+        const endsAt = attemptDeadline(lastGame.startsAt, rules.readinessMinutes, template);
+        schedules.set(roundNumber, {
+          rules,
+          startsAt: days[0]!.firstGameStartsAt,
+          endsAt,
+          windows: null,
+          days,
+          template,
+        });
+        previousRoundEnd = endsAt;
+        previousRoundBreakMs = rules.roundBreakMs;
+        continue;
+      }
       const firstStart = maxDate(
         new Date(previousRoundEnd.getTime() + previousRoundBreakMs),
         rules.firstGameStartsAt ?? previousRoundEnd,
@@ -2458,11 +2571,19 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
         gameBreakMs: rules.gameBreakMs,
       });
       const endsAt = new Date(windows[windows.length - 1]!.endsAt);
-      schedules.set(roundNumber, { rules, startsAt: firstStart, endsAt, windows });
+      schedules.set(roundNumber, {
+        rules,
+        startsAt: firstStart,
+        endsAt,
+        windows,
+        days: null,
+        template: null,
+      });
       previousRoundEnd = endsAt;
       previousRoundBreakMs = rules.roundBreakMs;
     }
     const roundIds = new Map<string, string>();
+    const roundGameDays = new Map<string, ResolvedRoundGameDay[]>();
     for (const item of plan) {
       const stage = item.kind === 'third_place' ? 'third_place' : 'playoff';
       const key = `${stage}:${item.roundNumber}`;
@@ -2486,6 +2607,17 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
         ],
       );
       roundIds.set(key, round.rows[0]!.id);
+      if (schedule.days !== null) {
+        roundGameDays.set(
+          key,
+          await insertRoundGameDays(client, {
+            roundId: round.rows[0]!.id,
+            days: schedule.days,
+            readinessMinutes: schedule.rules.readinessMinutes,
+            plannedStartIntervalMinutes: schedule.rules.plannedStartIntervalMinutes,
+          }),
+        );
+      }
     }
     const seriesIds = new Map<string, string>();
     const fixtureNumberResult = await client.query<{ next: number }>(
@@ -2527,13 +2659,32 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
       const schedule = expandSeriesSchedule(rules.winsRequired, rules.homeSequence);
       for (const game of schedule) {
         const higherIsHome = game.higherSeedIsHome;
-        const window = scheduleWindows.windows[game.gameNumber - 1]!;
-        await client.query(
+        const modernSlot =
+          scheduleWindows.days === null
+            ? null
+            : scheduledStartForSeriesGame(
+                roundGameDays.get(`${stage}:${item.roundNumber}`)!,
+                game.gameNumber,
+                rules.plannedStartIntervalMinutes,
+              );
+        const legacyWindow =
+          scheduleWindows.windows === null ? null : scheduleWindows.windows[game.gameNumber - 1]!;
+        const scheduledStartsAt = modernSlot?.startsAt ?? legacyWindow!.startsAt;
+        const windowEndsAt =
+          modernSlot !== null
+            ? attemptDeadline(
+                modernSlot.startsAt,
+                rules.readinessMinutes,
+                scheduleWindows.template!,
+              )
+            : legacyWindow!.endsAt;
+        const insertedFixture = await client.query<{ id: string }>(
           `insert into tournament_fixture
              (tournament_id, round_id, series_id, fixture_number,
               home_participant_id, away_participant_id, scheduled_starts_at,
               window_ends_at, status, result_snapshot, venue_mode)
-           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'home_selected')`,
+           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'home_selected')
+           returning id`,
           [
             tournamentId,
             roundIds.get(`${stage}:${item.roundNumber}`),
@@ -2541,8 +2692,8 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
             fixtureNumber,
             higherIsHome ? higherParticipantId : lowerParticipantId,
             higherIsHome ? lowerParticipantId : higherParticipantId,
-            window.startsAt,
-            window.endsAt,
+            scheduledStartsAt,
+            windowEndsAt,
             higherParticipantId === null || lowerParticipantId === null || game.conditional
               ? 'conditional'
               : 'scheduled',
@@ -2553,6 +2704,15 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
             }),
           ],
         );
+        if (modernSlot !== null) {
+          await insertInitialFixtureAttempt(client, {
+            fixtureId: insertedFixture.rows[0]!.id,
+            roundGameDayId: modernSlot.day.id!,
+            scheduledStartsAt: modernSlot.startsAt,
+            readinessMinutes: rules.readinessMinutes,
+            template: scheduleWindows.template!,
+          });
+        }
         fixtureNumber += 1;
       }
     }
@@ -2738,9 +2898,77 @@ export async function rescheduleTournamentFixture(
 ) {
   return inTransaction(pool, async (client) => {
     await lockTournamentFixture(client, input);
+    const attempt = await client.query<{
+      id: string;
+      status: string;
+      amateur_duel_match_id: string | null;
+      duel_status: string | null;
+      scheduled_starts_at: Date;
+      readiness_expires_at: Date;
+      hard_deadline_at: Date;
+    }>(
+      `select attempt.id, attempt.status, attempt.amateur_duel_match_id,
+              duel.status as duel_status, attempt.scheduled_starts_at,
+              attempt.readiness_expires_at, attempt.hard_deadline_at
+         from tournament_fixture_attempt attempt
+         left join amateur_duel_match duel on duel.id = attempt.amateur_duel_match_id
+        where attempt.fixture_id = $1
+        order by attempt.attempt_number desc
+        limit 1
+        for update of attempt`,
+      [input.fixtureId],
+    );
+    const currentAttempt = attempt.rows[0];
+    if (currentAttempt !== undefined) {
+      if (
+        !['pending', 'needs_reschedule', 'needs_admin_decision'].includes(currentAttempt.status) ||
+        (currentAttempt.amateur_duel_match_id !== null &&
+          currentAttempt.duel_status !== 'cancelled')
+      ) {
+        throw new AppError('conflict', 'Игру нельзя перенести после начала готовности', 409);
+      }
+      const readinessDurationMs =
+        currentAttempt.readiness_expires_at.getTime() -
+        currentAttempt.scheduled_starts_at.getTime();
+      const gameplayDurationMs =
+        currentAttempt.hard_deadline_at.getTime() - currentAttempt.readiness_expires_at.getTime();
+      const readinessExpiresAt = new Date(input.startsAt.getTime() + readinessDurationMs);
+      const hardDeadlineAt = new Date(readinessExpiresAt.getTime() + gameplayDurationMs);
+      if (hardDeadlineAt.getTime() !== input.endsAt.getTime()) {
+        throw new AppError(
+          'bad_request',
+          'Конец игры должен учитывать готовность и длительность выбранного формата',
+          400,
+        );
+      }
+      await client.query(
+        `update tournament_fixture_attempt
+            set status = 'pending', scheduled_starts_at = $2,
+                readiness_expires_at = $3, hard_deadline_at = $4,
+                amateur_duel_match_id = null,
+                home_ready_at = null, away_ready_at = null,
+                outcome = null, winner_participant_id = null,
+                home_score = null, away_score = null,
+                home_accuracy = null, away_accuracy = null,
+                home_active_time_ms = null, away_active_time_ms = null,
+                settled_at = null,
+                result_snapshot = coalesce(result_snapshot, '{}'::jsonb)
+                  || jsonb_build_object('rescheduledReason', $5::text),
+                updated_at = now()
+          where id = $1`,
+        [currentAttempt.id, input.startsAt, readinessExpiresAt, hardDeadlineAt, input.reason],
+      );
+      await client.query(
+        `update tournament_incident
+            set status = 'resolved', resolved_at = now(), resolved_by = $2, updated_at = now()
+          where fixture_attempt_id = $1 and status = 'open'`,
+        [currentAttempt.id, input.adminUserId],
+      );
+    }
     const updated = await client.query(
       `update tournament_fixture
           set scheduled_starts_at = $3, window_ends_at = $4,
+              status = case when status = 'paused' then 'scheduled' else status end,
               rescheduled_reason = $5, updated_at = now()
         where id = $1 and tournament_id = $2
           and status in ('conditional', 'scheduled', 'open', 'paused')
@@ -2749,6 +2977,13 @@ export async function rescheduleTournamentFixture(
     );
     if (updated.rowCount === 0)
       throw new AppError('conflict', 'fixture cannot be rescheduled', 409);
+    await client.query(
+      `update tournament_playoff_series series
+          set status = 'scheduled', updated_at = now()
+         from tournament_fixture fixture
+        where fixture.id = $1 and fixture.series_id = series.id and series.status = 'paused'`,
+      [input.fixtureId],
+    );
     await client.query(
       `insert into tournament_adjustment
          (tournament_id, fixture_id, kind, payload, reason, created_by)
@@ -2802,6 +3037,18 @@ export async function resolveTournamentNoShow(
     if (!fixture || fixture.home_participant_id === null || fixture.away_participant_id === null) {
       throw new AppError('not_found', 'fixture not found', 404);
     }
+    const attemptResult = await client.query<{
+      id: string;
+      status: string;
+    }>(
+      `select id, status from tournament_fixture_attempt
+        where fixture_id = $1
+        order by attempt_number desc
+        limit 1
+        for update`,
+      [input.fixtureId],
+    );
+    const attempt = attemptResult.rows[0];
     let fixtureChanged = false;
     if (input.absent === 'both' && fixture.stage !== 'regular') {
       const paused = await client.query(
@@ -2821,12 +3068,38 @@ export async function resolveTournamentNoShow(
         );
       }
       if (fixtureChanged) {
+        if (attempt !== undefined) {
+          await client.query(
+            `update tournament_fixture_attempt
+                set status = 'needs_admin_decision', outcome = 'both_no_show',
+                    result_snapshot = coalesce(result_snapshot, '{}'::jsonb)
+                      || $2::jsonb,
+                    updated_at = now()
+              where id = $1 and status in (
+                'pending', 'ready_check', 'active', 'needs_reschedule', 'needs_admin_decision'
+              )`,
+            [attempt.id, JSON.stringify({ reason: input.reason, resolvedByAdmin: true })],
+          );
+          await client.query(
+            `insert into tournament_incident
+               (tournament_id, series_id, fixture_id, fixture_attempt_id, kind, details)
+             values ($1, $2, $3, $4, 'both_no_show', $5::jsonb)
+             on conflict (fixture_attempt_id, kind) where status = 'open' do nothing`,
+            [
+              input.tournamentId,
+              fixture.series_id,
+              input.fixtureId,
+              attempt.id,
+              JSON.stringify({ reason: input.reason, resolvedByAdmin: true }),
+            ],
+          );
+        }
         await terminalizeTournamentFixtureDuels(client, {
           tournamentId: input.tournamentId,
           fixtureIds: [input.fixtureId],
           reason: 'tournament_no_show',
         });
-        if (fixture.tournament_status !== 'paused') {
+        if (attempt === undefined && fixture.tournament_status !== 'paused') {
           await client.query(
             `insert into tournament_adjustment
                (tournament_id, fixture_id, kind, payload, reason, created_by)
@@ -2840,11 +3113,13 @@ export async function resolveTournamentNoShow(
             ],
           );
         }
-        await client.query(
-          `update tournament set status = 'paused', updated_at = now()
-            where id = $1 and status <> 'paused'`,
-          [input.tournamentId],
-        );
+        if (attempt === undefined) {
+          await client.query(
+            `update tournament set status = 'paused', updated_at = now()
+              where id = $1 and status <> 'paused'`,
+            [input.tournamentId],
+          );
+        }
       }
     } else {
       const winner =
@@ -2864,7 +3139,8 @@ export async function resolveTournamentNoShow(
             set status = 'forfeit', winner_participant_id = $2, outcome = $3,
                 home_score = case when $3 = 'home_win' then 1 else 0 end,
                 away_score = case when $3 = 'away_win' then 1 else 0 end,
-                result_snapshot = $4, settled_at = now(), updated_at = now()
+                result_snapshot = coalesce(result_snapshot, '{}'::jsonb) || $4::jsonb,
+                settled_at = now(), updated_at = now()
           where id = $1 and status in ('conditional', 'scheduled', 'open', 'active', 'paused')
           returning id`,
         [
@@ -2876,6 +3152,25 @@ export async function resolveTournamentNoShow(
       );
       if ((updated.rowCount ?? 0) > 0) {
         fixtureChanged = true;
+        if (attempt !== undefined && winner !== null) {
+          await client.query(
+            `update tournament_fixture_attempt
+                set status = 'technical_result', winner_participant_id = $2,
+                    outcome = $3,
+                    result_snapshot = coalesce(result_snapshot, '{}'::jsonb)
+                      || $4::jsonb,
+                    settled_at = now(), updated_at = now()
+              where id = $1 and status in (
+                'pending', 'ready_check', 'active', 'needs_reschedule', 'needs_admin_decision'
+              )`,
+            [
+              attempt.id,
+              winner,
+              input.absent === 'home' ? 'home_no_show' : 'away_no_show',
+              JSON.stringify({ reason: input.reason, resolvedByAdmin: true }),
+            ],
+          );
+        }
         await terminalizeTournamentFixtureDuels(client, {
           tournamentId: input.tournamentId,
           fixtureIds: [input.fixtureId],
@@ -2980,6 +3275,27 @@ export async function disqualifyTournamentParticipant(
       );
       if (updated.rowCount === 0) continue;
       futureForfeits += 1;
+      await client.query(
+        `update tournament_fixture_attempt
+            set status = 'technical_result', winner_participant_id = $2,
+                outcome = $3,
+                result_snapshot = coalesce(result_snapshot, '{}'::jsonb)
+                  || $4::jsonb,
+                settled_at = now(), updated_at = now()
+          where fixture_id = $1 and status in (
+            'pending', 'ready_check', 'active', 'needs_reschedule', 'needs_admin_decision'
+          )`,
+        [
+          fixture.id,
+          fixture.winner_participant_id,
+          fixture.side === 'home' ? 'home_no_show' : 'away_no_show',
+          JSON.stringify({
+            technical: true,
+            disqualification: true,
+            reason: input.reason,
+          }),
+        ],
+      );
       await terminalizeTournamentFixtureDuels(client, {
         tournamentId: input.tournamentId,
         fixtureIds: [fixture.id],
