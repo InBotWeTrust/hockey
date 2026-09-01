@@ -1219,6 +1219,7 @@ export function TournamentOperations({
                 endsAt={matchday.endsAt}
                 startLabel={tournamentDate(matchday.startsAt, tournamentTimezone)}
                 endLabel={tournamentDate(matchday.endsAt, tournamentTimezone)}
+                regularStarted={['regular', 'playoff', 'completed'].includes(status)}
               />
             ))}
             {incidentFixtures.length > 0 && (

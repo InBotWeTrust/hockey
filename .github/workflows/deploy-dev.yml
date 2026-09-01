@@ -223,6 +223,11 @@ jobs:
               -U "$STAGING_POSTGRES_USER" -d "$STAGING_POSTGRES_DB" \
               -c "insert into users (id, display_name, timezone, account_kind, avatar_url) values ('$STAGING_SYSTEM_USER_ID', 'Ультимейт Хоккей', 'Europe/Moscow', 'official', '/icons/official-account.webp') on conflict (id) do update set display_name = excluded.display_name, account_kind = excluded.account_kind, avatar_url = excluded.avatar_url" < /dev/null
 
+          docker compose -f docker-compose.yml -f docker-compose.staging.yml \
+            run --rm -T -e TOURNAMENT_LIFECYCLE_RECONCILE=1 server-dev \
+              node packages/server/dist/tournament/automaticLifecycleAuditCli.js \
+              --completed-daily --apply < /dev/null
+
           if [ "$RESET_STAGING_ACHIEVEMENTS" = "true" ]; then
             docker compose -f docker-compose.yml -f docker-compose.staging.yml \
               run --rm -T server-dev node packages/server/dist/achievements/reset-dev-achievements-cli.js < /dev/null

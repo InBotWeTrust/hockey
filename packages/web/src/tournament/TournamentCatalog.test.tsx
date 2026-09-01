@@ -123,6 +123,50 @@ describe('TournamentCatalog', () => {
     expect(screen.queryByText('Конец', { exact: true })).not.toBeInTheDocument();
   });
 
+  it.each([
+    [1, '1 игрок'],
+    [4, '4 игрока'],
+    [5, '5 игроков'],
+    [11, '11 игроков'],
+    [21, '21 игрок'],
+  ])('uses the correct player form for a %i-player playoff', async (playoffSize, label) => {
+    vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
+      tournaments: [
+        {
+          id: 't1',
+          slug: 'ice-cup',
+          title: 'Кубок льда',
+          description: '',
+          status: 'registration',
+          regularSource: 'head_to_head',
+          visibility: 'public',
+          revision: 1,
+          participantCount: 1,
+          lifecycle: TEST_LIFECYCLE,
+          myParticipantState: null,
+          registrationOpensAt: null,
+          registrationClosesAt: null,
+          startsAt: null,
+          rules: {
+            config: { participantLimit: 32, entryFeeCoins: 0, playoffSize },
+          },
+        },
+      ],
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TournamentCatalog />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок льда' }));
+
+    expect(screen.getByText(label)).toBeInTheDocument();
+  });
+
   it('shows the registration deadline from the lifecycle response while applications are open', async () => {
     vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
       tournaments: [
@@ -166,6 +210,15 @@ describe('TournamentCatalog', () => {
   it('keeps tournament rule copy visually lighter than its headings', () => {
     expect(designSystemCss).toContain(
       '.tournament-rules p {\n  color: #26384d;\n  font-size: 13px;\n  font-weight: 440;',
+    );
+  });
+
+  it('keeps a long participation status inside the tournament card', () => {
+    expect(designSystemCss).toMatch(
+      /\.tournament-catalog-card__topline\s*\{[^}]*flex-wrap:\s*wrap;/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-participation-badge\s*\{[^}]*max-width:\s*100%;[^}]*white-space:\s*normal;/s,
     );
   });
 
@@ -1346,11 +1399,7 @@ describe('TournamentCatalog', () => {
         'Первые две игры — дома, следующие две — в гостях. Затем площадки чередуются: дома, в гостях, дома.',
       ),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        'Если основное время закончится вничью, будет 2 овертайма. Затем — буллиты: по 3 броска каждому, после этого по одному до победы.',
-      ),
-    ).toBeInTheDocument();
+    expect(screen.queryByText(/овертайм|буллит/i)).not.toBeInTheDocument();
     expect(screen.getByText('1 место — 100 опыта, 50 монет, 3 звезды')).toBeInTheDocument();
     expect(screen.getByText('1 место — 200 опыта, 100 монет, 5 звёзд')).toBeInTheDocument();
     expect(

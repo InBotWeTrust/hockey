@@ -3,9 +3,16 @@ import { fileURLToPath } from 'node:url';
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { applyMigrations } from '../../src/db/migrations.js';
-import { auditAutomaticTournamentLifecycle } from '../../src/tournament/automaticLifecycleAudit.js';
+import {
+  auditAutomaticTournamentLifecycle,
+  auditCompletedLegacyDailyTournamentLifecycle,
+} from '../../src/tournament/automaticLifecycleAudit.js';
 import { parseTournamentConfig } from '../../src/tournament/config.js';
-import { generateRegularSchedule, type TournamentRulesSnapshot } from '../../src/tournament/service.js';
+import {
+  generateRegularSchedule,
+  publishRegularSchedule,
+  type TournamentRulesSnapshot,
+} from '../../src/tournament/service.js';
 import {
   createTestPool,
   getTestUrls,
@@ -110,11 +117,13 @@ async function seedLegacyTournament(
     source?: 'head_to_head' | 'daily_aggregate' | 'classic';
     participantCount?: number;
     playoffSize?: 2 | 4;
+    userIdOffset?: number;
   } = {},
 ) {
   const source = input.source ?? 'head_to_head';
   const participantCount = input.participantCount ?? 4;
   const playoffSize = input.playoffSize ?? 4;
+  const userIdOffset = input.userIdOffset ?? 0;
   const tournament = await pool.query<{ id: string }>(
     `insert into tournament
        (slug, title, status, regular_source, current_revision, registration_opens_at,
@@ -143,7 +152,7 @@ async function seedLegacyTournament(
     revision.rows[0]!.id,
   ]);
   for (let index = 0; index < participantCount; index += 1) {
-    const userId = `00000000-0000-4000-8000-${String(8_100 + index).padStart(12, '0')}`;
+    const userId = `00000000-0000-4000-8000-${String(8_100 + userIdOffset + index).padStart(12, '0')}`;
     await pool.query(
       `insert into users (id, display_name, timezone, role)
        values ($1, $2, 'Europe/Moscow', 'player')`,
@@ -266,6 +275,26 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle audit', () =
     expect(await automaticMarker(pool, safe.id)).toBe(1);
   });
 
+  it('blocks a legacy tournament whose regular season has already started', async () => {
+    const elapsed = await seedLegacyTournament(pool, 'legacy-audit-elapsed-regular');
+    await pool.query(`update tournament set starts_at = $2 where id = $1`, [
+      elapsed.id,
+      new Date('2030-09-01T11:59:00.000Z'),
+    ]);
+
+    const report = await auditAutomaticTournamentLifecycle(pool, {
+      tournamentId: elapsed.id,
+      now: NOW,
+      apply: true,
+    });
+
+    expect(report.tournaments[0]).toMatchObject({
+      status: 'blocked',
+      reasons: expect.arrayContaining(['regular_schedule_already_started']),
+    });
+    expect(await automaticMarker(pool, elapsed.id)).toBeNull();
+  });
+
   it('blocks a legacy daily aggregate tournament with a persisted daily result', async () => {
     const daily = await seedLegacyTournament(pool, 'legacy-audit-daily-result', {
       source: 'daily_aggregate',
@@ -295,6 +324,130 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle audit', () =
     });
     expect(report.tournaments[0]!.completedGameCount).toBeGreaterThan(0);
     expect(await automaticMarker(pool, daily.id)).toBeNull();
+  });
+
+  it('enables only fully completed legacy daily seasons for automatic playoff recovery', async () => {
+    const complete = await seedLegacyTournament(pool, 'legacy-audit-daily-complete', {
+      source: 'daily_aggregate',
+    });
+    const partial = await seedLegacyTournament(pool, 'legacy-audit-daily-partial', {
+      source: 'daily_aggregate',
+      userIdOffset: 100,
+    });
+    const misleading = await seedLegacyTournament(pool, 'legacy-audit-daily-misleading', {
+      source: 'daily_aggregate',
+      userIdOffset: 200,
+    });
+    for (const tournamentId of [complete.id, partial.id, misleading.id]) {
+      await generateRegularSchedule(pool, tournamentId, 1);
+      await publishRegularSchedule(pool, tournamentId);
+    }
+    const participants = await pool.query<{ id: string }>(
+      `select id from tournament_participant where tournament_id = $1 order by id`,
+      [complete.id],
+    );
+    for (const [participantIndex, participant] of participants.rows.entries()) {
+      for (let day = 1; day <= 3; day += 1) {
+        await pool.query(
+          `insert into tournament_daily_result
+             (tournament_id, participant_id, tournament_day, player_local_date, goals, shots,
+              accuracy, completed, finalized_at)
+           values ($1, $2, $3, $4, $5, 10, $6, true, $7)`,
+          [
+            complete.id,
+            participant.id,
+            day,
+            `2030-09-0${3 + day}`,
+            participantIndex + day,
+            (participantIndex + day) / 10,
+            NOW,
+          ],
+        );
+      }
+    }
+    const partialParticipant = await pool.query<{ id: string }>(
+      `select id from tournament_participant where tournament_id = $1 order by id limit 1`,
+      [partial.id],
+    );
+    await pool.query(
+      `insert into tournament_daily_result
+         (tournament_id, participant_id, tournament_day, player_local_date, goals, shots,
+          accuracy, completed, finalized_at)
+       values ($1, $2, 1, '2030-09-04', 1, 3, $3, true, $4)`,
+      [partial.id, partialParticipant.rows[0]!.id, 1 / 3, NOW],
+    );
+    const misleadingParticipants = await pool.query<{ id: string }>(
+      `select id from tournament_participant where tournament_id = $1 order by id`,
+      [misleading.id],
+    );
+    let insertedApprovedResults = 0;
+    for (const participant of misleadingParticipants.rows) {
+      for (let day = 1; day <= 3 && insertedApprovedResults < 11; day += 1) {
+        await pool.query(
+          `insert into tournament_daily_result
+             (tournament_id, participant_id, tournament_day, player_local_date, goals, shots,
+              accuracy, completed, finalized_at)
+           values ($1, $2, $3, $4, 1, 10, 0.1, true, $5)`,
+          [misleading.id, participant.id, day, `2030-09-0${3 + day}`, NOW],
+        );
+        insertedApprovedResults += 1;
+      }
+    }
+    const withdrawnUserId = '00000000-0000-4000-8000-000000008399';
+    await pool.query(
+      `insert into users (id, display_name, timezone, role)
+       values ($1, 'Withdrawn player', 'Europe/Moscow', 'player')`,
+      [withdrawnUserId],
+    );
+    const withdrawn = await pool.query<{ id: string }>(
+      `insert into tournament_participant (tournament_id, user_id, state, joined_at)
+       values ($1, $2, 'withdrawn', $3)
+       returning id`,
+      [misleading.id, withdrawnUserId, NOW],
+    );
+    await pool.query(
+      `insert into tournament_daily_result
+         (tournament_id, participant_id, tournament_day, player_local_date, goals, shots,
+          accuracy, completed, finalized_at)
+       values ($1, $2, 1, '2030-09-04', 1, 10, 0.1, true, $3)`,
+      [misleading.id, withdrawn.rows[0]!.id, NOW],
+    );
+
+    const report = await auditCompletedLegacyDailyTournamentLifecycle(pool, {
+      now: NOW,
+      apply: true,
+    });
+
+    expect(report.tournaments).toHaveLength(1);
+    expect(report.tournaments[0]).toMatchObject({ id: complete.id, status: 'enabled' });
+    expect(await automaticMarker(pool, complete.id)).toBe(1);
+    expect(await automaticMarker(pool, partial.id)).toBeNull();
+    expect(await automaticMarker(pool, misleading.id)).toBeNull();
+
+    const retry = await auditCompletedLegacyDailyTournamentLifecycle(pool, {
+      now: NOW,
+      apply: true,
+    });
+    expect(retry.tournaments).toHaveLength(1);
+    expect(retry.tournaments[0]).toMatchObject({ id: complete.id, status: 'enabled' });
+    expect(retry.tournaments[0]?.reconcile).toBeDefined();
+
+    await pool.query(
+      `insert into tournament_round
+         (tournament_id, stage, number, name, starts_at, ends_at, status, rules_snapshot)
+       values ($1, 'playoff', 1, 'Conflicting playoff round', $2, $3, 'scheduled', '{}')`,
+      [complete.id, new Date('2030-09-04T12:00:00.000Z'), new Date('2030-09-05T12:00:00.000Z')],
+    );
+    const conflictedRetry = await auditCompletedLegacyDailyTournamentLifecycle(pool, {
+      now: NOW,
+      apply: true,
+    });
+    expect(conflictedRetry.tournaments).toHaveLength(1);
+    expect(conflictedRetry.tournaments[0]).toMatchObject({
+      id: complete.id,
+      status: 'blocked',
+    });
+    expect(conflictedRetry.tournaments[0]?.reconcile).toBeUndefined();
   });
 
   it('blocks a legacy Classic tournament with a persisted session and period', async () => {

@@ -72,6 +72,8 @@ interface AuditTournamentRow {
   classic_session_count: number;
   classic_period_count: number;
   classic_shot_count: number;
+  missing_daily_result_count: number;
+  unexpected_daily_result_count: number;
 }
 
 interface MatchdayRow {
@@ -111,6 +113,28 @@ function sameInstant(left: Date | null, right: string): boolean {
 
 function terminalStatus(status: TournamentStatus): boolean {
   return status === 'completed' || status === 'cancelled' || status === 'archived';
+}
+
+function hasOnlyCompletedDailyHistory(tournament: AuditTournamentRow): boolean {
+  const config = tournament.rules_snapshot.config;
+  return (
+    tournament.status === 'regular' &&
+    config.regularSource === 'daily_aggregate' &&
+    Number.isSafeInteger(config.dailyDays) &&
+    config.dailyDays > 0 &&
+    tournament.approved_participant_count > 0 &&
+    tournament.daily_result_count === tournament.approved_participant_count * config.dailyDays &&
+    tournament.completed_game_count === tournament.daily_result_count &&
+    tournament.started_game_count === 0 &&
+    tournament.round_count === 0 &&
+    tournament.fixture_count === 0 &&
+    tournament.series_count === 0 &&
+    tournament.classic_session_count === 0 &&
+    tournament.classic_period_count === 0 &&
+    tournament.classic_shot_count === 0 &&
+    tournament.missing_daily_result_count === 0 &&
+    tournament.unexpected_daily_result_count === 0
+  );
 }
 
 async function loadAuditTournament(
@@ -162,7 +186,34 @@ async function loadAuditTournament(
               join tournament_classic_session session
                 on session.id = shot.tournament_classic_session_id
               where session.tournament_id = t.id and shot.mode = 'tournament_classic')
-              as classic_shot_count
+              as classic_shot_count,
+            (select count(*)::int
+               from tournament_participant participant
+               cross join lateral generate_series(
+                 1,
+                 greatest(coalesce((revision.rules_snapshot->'config'->>'dailyDays')::int, 0), 0)
+               ) expected(day)
+              where participant.tournament_id = t.id
+                and participant.state = 'approved'
+                and not exists (
+                  select 1 from tournament_daily_result result
+                   where result.tournament_id = t.id
+                     and result.participant_id = participant.id
+                     and result.tournament_day = expected.day
+                     and result.completed
+                )) as missing_daily_result_count,
+            (select count(*)::int
+               from tournament_daily_result result
+               join tournament_participant participant on participant.id = result.participant_id
+              where result.tournament_id = t.id
+                and (
+                  participant.state <> 'approved'
+                  or result.tournament_day not between 1 and greatest(
+                    coalesce((revision.rules_snapshot->'config'->>'dailyDays')::int, 0),
+                    0
+                  )
+                  or not result.completed
+                )) as unexpected_daily_result_count
        from tournament t
        join tournament_revision revision on revision.id = t.published_revision_id
       where t.id = $1
@@ -225,7 +276,11 @@ async function existingScheduleMatches(
   if (config.regularSource !== tournament.regular_source) return false;
 
   if (config.regularSource !== 'head_to_head') {
-    if (rounds.rows.length !== 0 || fixtures.rows.length !== 0 || matchdays.rows.length !== config.dailyDays) {
+    if (
+      rounds.rows.length !== 0 ||
+      fixtures.rows.length !== 0 ||
+      matchdays.rows.length !== config.dailyDays
+    ) {
       return false;
     }
     return matchdays.rows.every((matchday, index) => {
@@ -323,20 +378,26 @@ async function existingScheduleMatches(
 async function blockingReasons(
   conn: Pool | PoolClient,
   tournament: AuditTournamentRow,
+  now: Date,
 ): Promise<string[]> {
   const reasons: string[] = [];
   const rules = tournament.rules_snapshot as Record<string, unknown>;
   if (terminalStatus(tournament.status)) reasons.push('terminal_status');
   if (
-    hasOwn(rules, 'automaticLifecycleVersion') &&
-    rules.automaticLifecycleVersion !== 1
+    tournament.starts_at !== null &&
+    tournament.starts_at.getTime() <= now.getTime() &&
+    ['registration', 'registration_blocked', 'scheduling'].includes(tournament.status)
   ) {
+    reasons.push('regular_schedule_already_started');
+  }
+  if (hasOwn(rules, 'automaticLifecycleVersion') && rules.automaticLifecycleVersion !== 1) {
     reasons.push('automatic_lifecycle_marker_is_not_legacy');
   }
   if (
-    tournament.started_game_count + tournament.completed_game_count > 0 ||
-    tournament.classic_period_count > 0 ||
-    tournament.classic_shot_count > 0
+    !hasOnlyCompletedDailyHistory(tournament) &&
+    (tournament.started_game_count + tournament.completed_game_count > 0 ||
+      tournament.classic_period_count > 0 ||
+      tournament.classic_shot_count > 0)
   ) {
     reasons.push('games_already_started');
   }
@@ -350,8 +411,9 @@ async function inspectTournament(
   conn: Pool | PoolClient,
   tournament: AuditTournamentRow,
   dryRunReconcile: TournamentLifecycleReconcileReport,
+  now: Date,
 ): Promise<AutomaticLifecycleAuditItem> {
-  const reasons = await blockingReasons(conn, tournament);
+  const reasons = await blockingReasons(conn, tournament, now);
   const rules = tournament.rules_snapshot as Record<string, unknown>;
   const alreadyEnabled = rules.automaticLifecycleVersion === 1;
   return {
@@ -410,7 +472,7 @@ async function applyAuditItem(
         reasons: [...initial.reasons, 'published_revision_changed'],
       };
     }
-    const lockedItem = await inspectTournament(client, locked, initial.dryRunReconcile);
+    const lockedItem = await inspectTournament(client, locked, initial.dryRunReconcile, now);
     if (
       locked.published_revision_id !== initial.publishedRevisionId ||
       locked.current_revision !== initial.revision
@@ -482,11 +544,91 @@ export async function auditAutomaticTournamentLifecycle(
     });
     const row = await loadAuditTournament(pool, tournamentId);
     if (row === null) continue;
-    const initial = await inspectTournament(pool, row, dryRunReconcile);
+    const initial = await inspectTournament(pool, row, dryRunReconcile, options.now);
     if (options.apply && initial.status === 'ready_to_enable') {
       tournaments.push(await applyAuditItem(pool, tournamentId, initial, options.now));
     } else {
       tournaments.push(initial);
+    }
+  }
+  return { tournaments };
+}
+
+export async function auditCompletedLegacyDailyTournamentLifecycle(
+  pool: Pool,
+  options: Omit<AutomaticLifecycleAuditOptions, 'tournamentId'>,
+): Promise<AutomaticLifecycleAuditReport> {
+  if (Number.isNaN(options.now.getTime())) throw new Error('now must be a valid date');
+  const candidates = await pool.query<{ id: string }>(
+    `select t.id::text
+       from tournament t
+       join tournament_revision revision on revision.id = t.published_revision_id
+      where t.status = 'regular'
+        and t.regular_source = 'daily_aggregate'
+        and (
+          not (revision.rules_snapshot ? 'automaticLifecycleVersion')
+          or revision.rules_snapshot->>'automaticLifecycleVersion' = '1'
+        )
+        and coalesce((revision.rules_snapshot->'config'->>'dailyDays')::int, 0) > 0
+        and (select count(*)::int from tournament_participant participant
+              where participant.tournament_id = t.id and participant.state = 'approved') > 0
+        and (select count(*)::int from tournament_daily_result result
+              where result.tournament_id = t.id)
+            = (select count(*)::int from tournament_participant participant
+                where participant.tournament_id = t.id and participant.state = 'approved')
+              * (revision.rules_snapshot->'config'->>'dailyDays')::int
+        and not exists (
+          select 1
+            from tournament_participant participant
+            cross join lateral generate_series(
+              1,
+              (revision.rules_snapshot->'config'->>'dailyDays')::int
+            ) expected(day)
+           where participant.tournament_id = t.id
+             and participant.state = 'approved'
+             and not exists (
+               select 1 from tournament_daily_result result
+                where result.tournament_id = t.id
+                  and result.participant_id = participant.id
+                  and result.tournament_day = expected.day
+                  and result.completed
+             )
+        )
+        and not exists (
+          select 1
+            from tournament_daily_result result
+            join tournament_participant participant on participant.id = result.participant_id
+           where result.tournament_id = t.id
+             and (
+               participant.state <> 'approved'
+               or result.tournament_day not between 1
+                 and (revision.rules_snapshot->'config'->>'dailyDays')::int
+               or not result.completed
+             )
+        )
+      order by t.created_at, t.id`,
+  );
+  const tournaments: AutomaticLifecycleAuditItem[] = [];
+  for (const candidate of candidates.rows) {
+    const report = await auditAutomaticTournamentLifecycle(pool, {
+      tournamentId: candidate.id,
+      now: options.now,
+      apply: options.apply,
+    });
+    const item = report.tournaments[0];
+    if (item === undefined) continue;
+    if (options.apply && item.status === 'already_enabled') {
+      if (item.reasons.length > 0) {
+        tournaments.push({ ...item, status: 'blocked' });
+        continue;
+      }
+      const reconcile = await reconcileTournamentLifecycle(pool, {
+        tournamentId: candidate.id,
+        now: options.now,
+      });
+      tournaments.push({ ...item, status: 'enabled', reconcile });
+    } else {
+      tournaments.push(item);
     }
   }
   return { tournaments };
