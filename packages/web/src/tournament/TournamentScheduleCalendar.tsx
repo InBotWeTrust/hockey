@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import type { TournamentFixture, TournamentMatchday } from '../api/tournament.js';
+import type { TournamentFixture, TournamentMatchday, TournamentStatus } from '../api/tournament.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import { TournamentMatchdayRow } from './TournamentMatchdayTimes.js';
 
@@ -8,6 +8,7 @@ interface TournamentScheduleCalendarProps {
   fixtures: TournamentFixture[];
   matchdays: TournamentMatchday[];
   regularSource: 'head_to_head' | 'daily_aggregate' | 'classic';
+  tournamentStatus?: TournamentStatus;
   currentUserId: string | null;
   isParticipant: boolean;
   timezone: string;
@@ -215,6 +216,10 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
     ? selectedFixtures
     : selectedFixtures.slice(0, 4);
   const selectedMatchday = matchdaysByDate.get(selectedDate);
+  const selectedMatchdayIsActive =
+    selectedMatchday !== undefined &&
+    new Date(selectedMatchday.startsAt).getTime() <= Date.now() &&
+    Date.now() < new Date(selectedMatchday.endsAt).getTime();
   const undatedFixtures = props.fixtures.filter(
     (fixture) => fixtureDateKey(fixture, props.timezone) === null,
   );
@@ -359,7 +364,9 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
               )}
               {props.isParticipant &&
                 selectedDate === today.key &&
+                selectedMatchdayIsActive &&
                 selectedMatchday.myResult?.completed !== true &&
+                (props.tournamentStatus === undefined || props.tournamentStatus === 'regular') &&
                 props.onOpenDailyGame && (
                   <button type="button" className="btn btn--cta" onClick={props.onOpenDailyGame}>
                     {props.regularSource === 'classic'

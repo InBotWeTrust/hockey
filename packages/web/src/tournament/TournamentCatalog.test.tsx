@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { MemoryRouter, useLocation } from 'react-router-dom';
@@ -1055,6 +1055,83 @@ describe('TournamentCatalog', () => {
     expect(screen.getByRole('button', { name: 'Регистрация ещё не открыта' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Регистрация ещё не открыта' }));
     expect(apply).not.toHaveBeenCalled();
+  });
+
+  it('uses lifecycle availability for registration and the approved-player waiting state', async () => {
+    vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
+      tournaments: [
+        {
+          id: 'waiting-registration',
+          slug: 'waiting-registration',
+          title: 'Регистрация позже',
+          description: '',
+          status: 'registration',
+          regularSource: 'daily_aggregate',
+          visibility: 'public',
+          revision: 1,
+          participantCount: 0,
+          lifecycle: {
+            action: 'registration_waiting',
+            dueAt: '2030-09-01T07:00:00.000Z',
+            approvedParticipantCount: 0,
+            requiredParticipantCount: 2,
+            reason: null,
+          },
+          myParticipantState: null,
+          registrationOpensAt: null,
+          registrationClosesAt: null,
+          startsAt: null,
+          rules: { config: { participantLimit: 8, entryFeeCoins: 0, playoffSize: 2 } },
+        },
+        {
+          id: 'waiting-regular',
+          slug: 'waiting-regular',
+          title: 'Ждём старт сезона',
+          description: '',
+          status: 'scheduling',
+          regularSource: 'classic',
+          visibility: 'public',
+          revision: 1,
+          participantCount: 4,
+          lifecycle: {
+            action: 'await_manual_regular_start',
+            dueAt: null,
+            approvedParticipantCount: 4,
+            requiredParticipantCount: 2,
+            reason: null,
+          },
+          myParticipantState: 'approved',
+          registrationOpensAt: null,
+          registrationClosesAt: null,
+          startsAt: null,
+          rules: { config: { participantLimit: 8, entryFeeCoins: 0, playoffSize: 2 } },
+        },
+      ],
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TournamentCatalog />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Регистрация позже' }));
+    expect(screen.getByText('Регистрация откроется 1 сентября в 10:00 мск')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Подать заявку' })).not.toBeInTheDocument();
+
+    cleanup();
+    render(
+      <MemoryRouter initialEntries={['/?tournament=waiting-regular']}>
+        <QueryClientProvider client={client}>
+          <TournamentCatalog />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+    expect(
+      screen.getByText('Заявка подтверждена. Ожидаем начала регулярного сезона.'),
+    ).toBeInTheDocument();
   });
 
   it('shows daily aggregate matchdays even though the format has no fixtures', async () => {

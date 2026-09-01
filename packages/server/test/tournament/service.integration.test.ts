@@ -22,6 +22,7 @@ import {
   createTournamentDraft,
   disqualifyTournamentParticipant,
   generateRegularSchedule,
+  getTournamentGameContext,
   getTournamentMatchdays,
   getTournamentSchedule,
   getTournamentStandings,
@@ -1514,6 +1515,170 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       },
     });
     expect(matchdays[1]).toMatchObject({ number: 2, myResult: null });
+  });
+
+  describe('game context', () => {
+    it('allows an approved player to open only the currently active daily matchday', async () => {
+      await seedUsers(pool, 0);
+      const dailyRules = dailyPlayoffTournamentRules();
+      dailyRules.config = parseTournamentConfig({
+        ...dailyRules.config,
+        dailyDays: 2,
+        bestDays: 2,
+      });
+      const tournament = await createPublishedTournament(pool, 'daily-game-context', 0, dailyRules);
+      await applyToTournament(pool, tournament.id, PLAYER_IDS[0]);
+      await applyToTournament(pool, tournament.id, PLAYER_IDS[1]);
+      await generateRegularSchedule(pool, tournament.id, tournament.revision);
+      await publishRegularSchedule(pool, tournament.id);
+
+      await expect(
+        getTournamentGameContext(pool, {
+          tournamentId: tournament.id,
+          userId: PLAYER_IDS[0],
+          now: new Date('2030-09-02T12:00:00.000Z'),
+        }),
+      ).resolves.toEqual({
+        action: 'play_daily',
+        tournamentDay: 2,
+        result: null,
+        message: null,
+      });
+
+      const participant = await pool.query<{ id: string }>(
+        `select id from tournament_participant where tournament_id = $1 and user_id = $2`,
+        [tournament.id, PLAYER_IDS[0]],
+      );
+      await pool.query(
+        `insert into tournament_daily_result
+           (tournament_id, participant_id, tournament_day, player_local_date,
+            goals, shots, accuracy, completed, source_snapshot, finalized_at)
+         values ($1, $2, 2, '2030-09-02', 5, 30, $3, true, '{}', now())`,
+        [tournament.id, participant.rows[0]!.id, 5 / 30],
+      );
+      await expect(
+        getTournamentGameContext(pool, {
+          tournamentId: tournament.id,
+          userId: PLAYER_IDS[0],
+          now: new Date('2030-09-02T12:00:00.000Z'),
+        }),
+      ).resolves.toEqual({
+        action: 'round_completed',
+        tournamentDay: 2,
+        result: { goals: 5, shots: 30, accuracy: 0.16667, completed: true },
+        message: 'Этот тур уже завершён. Ожидаем следующий игровой день.',
+      });
+    });
+
+    it('returns a completed daily result instead of opening a stale tournament daily URL', async () => {
+      await seedUsers(pool, 0);
+      const tournament = await createPublishedTournament(
+        pool,
+        'daily-completed-game-context',
+        0,
+        dailyPlayoffTournamentRules(),
+      );
+      const application = await applyToTournament(pool, tournament.id, PLAYER_IDS[0]);
+      await applyToTournament(pool, tournament.id, PLAYER_IDS[1]);
+      await generateRegularSchedule(pool, tournament.id, tournament.revision);
+      await publishRegularSchedule(pool, tournament.id);
+      await pool.query(
+        `insert into tournament_daily_result
+           (tournament_id, participant_id, tournament_day, player_local_date,
+            goals, shots, accuracy, completed, source_snapshot, finalized_at)
+         values ($1, $2, 1, '2030-09-01', 24, 90, $3, true, '{}', now())`,
+        [tournament.id, application.participantId, 24 / 90],
+      );
+
+      await expect(
+        getTournamentGameContext(pool, {
+          tournamentId: tournament.id,
+          userId: PLAYER_IDS[0],
+          now: new Date('2030-09-02T08:00:00.000Z'),
+        }),
+      ).resolves.toEqual({
+        action: 'waiting_playoff',
+        tournamentDay: 1,
+        result: { goals: 24, shots: 90, accuracy: 0.26667, completed: true },
+        message: 'Регулярный сезон завершён. Ожидаем начала плей-офф.',
+      });
+    });
+
+    it('distinguishes classic, non-participant, pre-start, playoff and completed tournament states', async () => {
+      await seedUsers(pool, 0);
+      const classicRules = dailyPlayoffTournamentRules();
+      classicRules.config = parseTournamentConfig({
+        ...classicRules.config,
+        regularSource: 'classic',
+        dailyDays: 1,
+        bestDays: 1,
+        classicRules: {
+          goalieId: 'rookie',
+          shotsPerPeriod: 30,
+          periodDurationMs: 1_200_000,
+          breakDurationMs: 900_000,
+          incompleteResultPolicy: 'completed_game',
+          periodSpeedPresets: [1, 2, 3].map((periodNumber) => ({
+            periodNumber,
+            goalFrequency: 0.5,
+            goalieFrequency: 0.5,
+            shooterFrequency: 0.5,
+            puckSpeedPerMs: 0.5,
+          })),
+        },
+      });
+      const tournament = await createPublishedTournament(
+        pool,
+        'classic-game-context',
+        0,
+        classicRules,
+      );
+      await applyToTournament(pool, tournament.id, PLAYER_IDS[0]);
+      await applyToTournament(pool, tournament.id, PLAYER_IDS[1]);
+      await generateRegularSchedule(pool, tournament.id, tournament.revision);
+
+      await expect(
+        getTournamentGameContext(pool, {
+          tournamentId: tournament.id,
+          userId: PLAYER_IDS[0],
+          now: new Date('2030-09-01T12:00:00.000Z'),
+        }),
+      ).resolves.toMatchObject({ action: 'not_started', tournamentDay: null });
+
+      await publishRegularSchedule(pool, tournament.id);
+      await expect(
+        getTournamentGameContext(pool, {
+          tournamentId: tournament.id,
+          userId: PLAYER_IDS[2],
+          now: new Date('2030-09-01T12:00:00.000Z'),
+        }),
+      ).resolves.toMatchObject({ action: 'not_participant', tournamentDay: null });
+      await expect(
+        getTournamentGameContext(pool, {
+          tournamentId: tournament.id,
+          userId: PLAYER_IDS[0],
+          now: new Date('2030-09-01T12:00:00.000Z'),
+        }),
+      ).resolves.toMatchObject({ action: 'play_classic', tournamentDay: 1 });
+
+      await pool.query(`update tournament set status = 'playoff' where id = $1`, [tournament.id]);
+      await expect(
+        getTournamentGameContext(pool, {
+          tournamentId: tournament.id,
+          userId: PLAYER_IDS[0],
+          now: new Date('2030-09-01T12:00:00.000Z'),
+        }),
+      ).resolves.toMatchObject({ action: 'playoff_active', tournamentDay: null });
+
+      await pool.query(`update tournament set status = 'completed' where id = $1`, [tournament.id]);
+      await expect(
+        getTournamentGameContext(pool, {
+          tournamentId: tournament.id,
+          userId: PLAYER_IDS[0],
+          now: new Date('2030-09-01T12:00:00.000Z'),
+        }),
+      ).resolves.toMatchObject({ action: 'tournament_completed', tournamentDay: null });
+    });
   });
 
   it('shows every approved daily aggregate participant with zeroes when the regular season starts', async () => {

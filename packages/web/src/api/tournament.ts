@@ -109,6 +109,28 @@ export interface TournamentMatchday {
   } | null;
 }
 
+export type TournamentGameContextAction =
+  | 'play_daily'
+  | 'play_classic'
+  | 'round_completed'
+  | 'not_started'
+  | 'waiting_playoff'
+  | 'playoff_active'
+  | 'tournament_completed'
+  | 'not_participant';
+
+export interface TournamentGameContext {
+  action: TournamentGameContextAction;
+  tournamentDay: number | null;
+  result: {
+    goals: number;
+    shots: number;
+    accuracy: number;
+    completed: boolean;
+  } | null;
+  message: string | null;
+}
+
 export interface TournamentBracketSource {
   type: 'seed' | 'winner' | 'loser';
   participantId?: string;
@@ -262,6 +284,10 @@ export function fetchTournamentSchedule(tournamentId: string) {
   return apiFetch<{ fixtures: TournamentFixture[]; matchdays?: TournamentMatchday[] }>(
     `/tournaments/${tournamentId}/schedule`,
   );
+}
+
+export function fetchTournamentGameContext(tournamentId: string) {
+  return apiFetch<TournamentGameContext>(`/tournaments/${tournamentId}/game-context`);
 }
 
 export function fetchTournamentParticipants(tournamentId: string) {

@@ -2114,6 +2114,193 @@ export async function getTournamentMatchdays(
   }));
 }
 
+export type TournamentGameContextAction =
+  | 'play_daily'
+  | 'play_classic'
+  | 'round_completed'
+  | 'not_started'
+  | 'waiting_playoff'
+  | 'playoff_active'
+  | 'tournament_completed'
+  | 'not_participant';
+
+export interface TournamentGameContext {
+  action: TournamentGameContextAction;
+  tournamentDay: number | null;
+  result: { goals: number; shots: number; accuracy: number; completed: boolean } | null;
+  message: string | null;
+}
+
+interface TournamentGameContextRow {
+  status: TournamentStatus;
+  regular_source: TournamentConfig['regularSource'];
+  participant_id: string | null;
+  participant_state: string | null;
+}
+
+interface TournamentGameContextMatchday {
+  number: number;
+  starts_at: Date;
+  ends_at: Date;
+  goals: number | null;
+  shots: number | null;
+  accuracy: string | null;
+  completed: boolean | null;
+}
+
+function gameContextResult(
+  row: Pick<TournamentGameContextMatchday, 'goals' | 'shots' | 'accuracy' | 'completed'>,
+): TournamentGameContext['result'] {
+  if (row.goals === null || row.shots === null || row.accuracy === null || row.completed === null) {
+    return null;
+  }
+  return {
+    goals: Number(row.goals),
+    shots: Number(row.shots),
+    accuracy: Number(Number(row.accuracy).toFixed(5)),
+    completed: row.completed === true,
+  };
+}
+
+function tournamentGameContext(
+  action: TournamentGameContextAction,
+  tournamentDay: number | null,
+  result: TournamentGameContext['result'],
+  message: string | null,
+): TournamentGameContext {
+  return { action, tournamentDay, result, message };
+}
+
+/**
+ * Resolves a tournament-origin game URL without reading or creating an ordinary daily attempt.
+ * Matchday windows are deliberately half-open: starts_at <= now < ends_at.
+ */
+export async function getTournamentGameContext(
+  pool: Pool,
+  input: { tournamentId: string; userId: string; now: Date },
+): Promise<TournamentGameContext> {
+  const tournament = await pool.query<TournamentGameContextRow>(
+    `select tournament.status, tournament.regular_source,
+            participant.id::text as participant_id, participant.state as participant_state
+       from tournament
+       left join tournament_participant participant
+         on participant.tournament_id = tournament.id and participant.user_id = $2
+      where tournament.id = $1
+        and (tournament.visibility = 'public' or participant.id is not null)`,
+    [input.tournamentId, input.userId],
+  );
+  const row = tournament.rows[0];
+  if (row === undefined) throw new AppError('not_found', 'tournament not found', 404);
+
+  if (row.participant_id === null || row.participant_state !== 'approved') {
+    return tournamentGameContext('not_participant', null, null, 'Вы не участвуете в этом турнире.');
+  }
+  if (row.status === 'playoff') {
+    return tournamentGameContext(
+      'playoff_active',
+      null,
+      null,
+      'Регулярный сезон завершён. Плей-офф уже начался.',
+    );
+  }
+  if (row.status === 'completed') {
+    return tournamentGameContext('tournament_completed', null, null, 'Турнир завершён.');
+  }
+  if (row.status !== 'regular') {
+    return tournamentGameContext('not_started', null, null, 'Регулярный сезон ещё не начался.');
+  }
+  if (row.regular_source === 'head_to_head') {
+    return tournamentGameContext(
+      'not_started',
+      null,
+      null,
+      'В этом турнире регулярный сезон проходит в дуэлях.',
+    );
+  }
+
+  const active = await pool.query<TournamentGameContextMatchday>(
+    `select matchday.number, matchday.starts_at, matchday.ends_at,
+            result.goals, result.shots, result.accuracy, result.completed
+       from tournament_matchday matchday
+       left join tournament_daily_result result
+         on result.tournament_id = matchday.tournament_id
+        and result.participant_id = $2
+        and result.tournament_day = matchday.number
+      where matchday.tournament_id = $1
+        and matchday.starts_at <= $3
+        and $3 < matchday.ends_at
+      order by matchday.number
+      limit 1`,
+    [input.tournamentId, row.participant_id, input.now],
+  );
+  const activeMatchday = active.rows[0];
+  if (activeMatchday !== undefined) {
+    const result = gameContextResult(activeMatchday);
+    if (result?.completed === true) {
+      return tournamentGameContext(
+        'round_completed',
+        Number(activeMatchday.number),
+        result,
+        'Этот тур уже завершён. Ожидаем следующий игровой день.',
+      );
+    }
+    return tournamentGameContext(
+      row.regular_source === 'classic' ? 'play_classic' : 'play_daily',
+      Number(activeMatchday.number),
+      result,
+      null,
+    );
+  }
+
+  const previous = await pool.query<TournamentGameContextMatchday>(
+    `select matchday.number, matchday.starts_at, matchday.ends_at,
+            result.goals, result.shots, result.accuracy, result.completed
+       from tournament_matchday matchday
+       left join tournament_daily_result result
+         on result.tournament_id = matchday.tournament_id
+        and result.participant_id = $2
+        and result.tournament_day = matchday.number
+      where matchday.tournament_id = $1 and matchday.ends_at <= $3
+      order by matchday.number desc
+      limit 1`,
+    [input.tournamentId, row.participant_id, input.now],
+  );
+  const last = previous.rows[0];
+  const next = await pool.query<{ number: number }>(
+    `select number from tournament_matchday
+      where tournament_id = $1 and starts_at > $2
+      order by number
+      limit 1`,
+    [input.tournamentId, input.now],
+  );
+  if (last !== undefined && next.rows[0] !== undefined) {
+    return tournamentGameContext(
+      'round_completed',
+      Number(last.number),
+      gameContextResult(last),
+      'Игровой день завершён. Следующий тур ещё не начался.',
+    );
+  }
+  if (last !== undefined) {
+    return tournamentGameContext(
+      'waiting_playoff',
+      Number(last.number),
+      gameContextResult(last),
+      'Регулярный сезон завершён. Ожидаем начала плей-офф.',
+    );
+  }
+  const first = await pool.query<{ number: number }>(
+    `select number from tournament_matchday where tournament_id = $1 order by number limit 1`,
+    [input.tournamentId],
+  );
+  return tournamentGameContext(
+    'not_started',
+    first.rows[0] === undefined ? null : Number(first.rows[0].number),
+    null,
+    'Регулярный сезон ещё не начался.',
+  );
+}
+
 export async function getTournamentStandings(pool: Pool, tournamentId: string) {
   const { rows } = await pool.query(
     `select s.rank, p.user_id, u.display_name,

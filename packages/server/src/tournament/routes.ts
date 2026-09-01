@@ -17,6 +17,7 @@ import {
   duplicateTournamentDraft,
   deleteEmptyDraft,
   getTournament,
+  getTournamentGameContext,
   getTournamentMatchdays,
   getTournamentSchedule,
   getTournamentStandings,
@@ -327,6 +328,17 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
       getTournamentMatchdays(app.pg, params.tournamentId, req.user.id),
     ]);
     return { fixtures, matchdays };
+  });
+
+  app.get('/tournaments/:tournamentId/game-context', authenticated, async (req) => {
+    await requireTournamentFeature(app);
+    const params = z.object({ tournamentId: uuid }).parse(req.params);
+    await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
+    return getTournamentGameContext(app.pg, {
+      tournamentId: params.tournamentId,
+      userId: req.user.id,
+      now: new Date(),
+    });
   });
 
   app.get('/tournaments/:tournamentId/standings', authenticated, async (req) => {

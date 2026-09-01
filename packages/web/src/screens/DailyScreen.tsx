@@ -121,6 +121,7 @@ import { AmateurDuelHistoryTab } from '../components/duel/AmateurDuelHistoryTab.
 import { StartPeriodModal } from '../components/StartPeriodModal.js';
 import { getLastSeenAt, setLastSeenAt } from '../stores/seenPeriods.js';
 import { TournamentCatalog } from '../tournament/TournamentCatalog.js';
+import { fetchTournamentGameContext, type TournamentGameContext } from '../api/tournament.js';
 import { venueRoleLabel, type VenueRole } from '../components/VenueBadge.js';
 import { artworkForInventoryItem, placeholderArtworkForKind } from './inventoryArtwork.js';
 import {
@@ -413,6 +414,16 @@ export function DailyScreen(): JSX.Element {
   const fromSections = routeParams.get('from') === 'sections';
   const tournamentOrigin = routeParams.get('section') === 'tournaments';
   const tournamentId = routeParams.get('tournament');
+  const tournamentGameRoute =
+    tournamentOrigin &&
+    tournamentId !== null &&
+    (routeParams.get('view') === 'daily' || routeParams.get('view') === 'classic');
+  const tournamentGameContext = useQuery({
+    queryKey: ['tournament-game-context', tournamentId],
+    queryFn: () => fetchTournamentGameContext(tournamentId!),
+    enabled: tournamentGameRoute,
+    retry: false,
+  });
   const initialRouteState = initialGameRouteState(location.search);
   const [selectedLevel, setSelectedLevel] = useState<GameLevel>(initialRouteState.selectedLevel);
   const [activeAmateurMatchId, setActiveAmateurMatchId] = useState<string | null>(
@@ -426,8 +437,14 @@ export function DailyScreen(): JSX.Element {
     useState<PendingPlayMarker>(null);
 
   useEffect(() => {
+    if (tournamentGameRoute) return;
     void refresh();
-  }, [refresh]);
+  }, [refresh, tournamentGameRoute]);
+
+  useEffect(() => {
+    if (tournamentGameContext.data?.action !== 'play_daily') return;
+    void refresh();
+  }, [refresh, tournamentGameContext.data?.action]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -470,6 +487,35 @@ export function DailyScreen(): JSX.Element {
       setActiveAmateurMatchId(null);
     }
   }, [location.search]);
+
+  if (tournamentGameRoute) {
+    if (tournamentGameContext.isLoading) {
+      return <TournamentGameContextLoading />;
+    }
+    if (tournamentGameContext.isError || tournamentGameContext.data === undefined) {
+      return (
+        <TournamentGameContextCard
+          context={null}
+          onBack={() =>
+            navigate(tournamentDuelBackPath(fromSections, tournamentId), { replace: true })
+          }
+        />
+      );
+    }
+    if (
+      tournamentGameContext.data.action !== 'play_daily' &&
+      tournamentGameContext.data.action !== 'play_classic'
+    ) {
+      return (
+        <TournamentGameContextCard
+          context={tournamentGameContext.data}
+          onBack={() =>
+            navigate(tournamentDuelBackPath(fromSections, tournamentId), { replace: true })
+          }
+        />
+      );
+    }
+  }
 
   if (routeParams.get('view') === 'classic' && tournamentId !== null) {
     return (
@@ -718,6 +764,62 @@ export function DailyScreen(): JSX.Element {
         );
       }}
     />
+  );
+}
+
+function tournamentGameResultLabel(result: NonNullable<TournamentGameContext['result']>): string {
+  const lastTwo = Math.abs(result.goals) % 100;
+  const last = lastTwo % 10;
+  const puckWord =
+    lastTwo >= 11 && lastTwo <= 14
+      ? 'шайб'
+      : last === 1
+        ? 'шайба'
+        : last >= 2 && last <= 4
+          ? 'шайбы'
+          : 'шайб';
+  return `${result.goals} ${puckWord} · точность ${new Intl.NumberFormat('ru-RU', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(result.accuracy * 100)}%`;
+}
+
+function TournamentGameContextLoading(): JSX.Element {
+  return (
+    <main className="screen route-loading" role="status">
+      Проверяем турнирную игру…
+    </main>
+  );
+}
+
+function TournamentGameContextCard({
+  context,
+  onBack,
+}: {
+  context: TournamentGameContext | null;
+  onBack: () => void;
+}): JSX.Element {
+  const message = context?.message ?? 'Не удалось проверить доступ к турнирной игре.';
+  return (
+    <main className="screen" style={{ display: 'grid', placeItems: 'center', padding: 20 }}>
+      <section
+        className="glass"
+        style={{ width: 'min(100%, 420px)', padding: 24, textAlign: 'center' }}
+      >
+        <h1 className="modal-title">Турнирная игра</h1>
+        <p className="modal-copy">{message}</p>
+        {context?.result?.completed === true && (
+          <p className="modal-copy" aria-label="Результат турнирной игры">
+            {tournamentGameResultLabel(context.result)}
+          </p>
+        )}
+        <div className="modal-actions">
+          <button type="button" className="modal-primary btn--cta" onClick={onBack}>
+            Вернуться к турниру
+          </button>
+        </div>
+      </section>
+    </main>
   );
 }
 

@@ -346,6 +346,58 @@ afterEach(() => {
 });
 
 describe('DailyScreen', () => {
+  it('does not load the ordinary daily game from a completed tournament URL', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const body = url.includes('/tournaments/daily-1/game-context')
+        ? {
+            action: 'waiting_playoff',
+            tournamentDay: 1,
+            result: { goals: 24, shots: 90, accuracy: 0.26667, completed: true },
+            message: 'Регулярный сезон завершён. Ожидаем начала плей-офф.',
+          }
+        : baseState;
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=daily&section=tournaments&tournament=daily-1&tab=schedule']);
+
+    expect(
+      await screen.findByText('Регулярный сезон завершён. Ожидаем начала плей-офф.'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('24 шайбы · точность 26,67%')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /брос/i })).not.toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input).includes('/duel/daily/state')),
+    ).toBe(false);
+  });
+
+  it('opens a classic tournament game after the context guard without loading daily state', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const body = url.includes('/tournaments/classic-1/game-context')
+        ? { action: 'play_classic', tournamentDay: 1, result: null, message: null }
+        : url.includes('/tournaments/classic-1/classic/state')
+          ? classicIdleState
+          : baseState;
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=classic&section=tournaments&tournament=classic-1&tab=schedule']);
+
+    expect(await screen.findByText('Кубок классики · 1-й тур')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'НАЧАТЬ' })).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input).includes('/duel/daily/state')),
+    ).toBe(false);
+  });
+
   it('shows every active classic tournament on the arena and opens its own game', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = input instanceof Request ? input.url : String(input);
@@ -1307,20 +1359,24 @@ describe('DailyScreen', () => {
   });
 
   it('returns from a tournament daily game to that tournament schedule', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          ...baseState,
-          state: 'period_active',
-          current_period: 1,
-          current_period_shots: 4,
-          current_period_goals: 2,
-          daily_seed: 'seed-abc',
-          period_ends_at: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
-        }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      ),
-    );
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const body = url.includes('/tournaments/daily-1/game-context')
+        ? { action: 'play_daily', tournamentDay: 1, result: null, message: null }
+        : {
+            ...baseState,
+            state: 'period_active',
+            current_period: 1,
+            current_period_shots: 4,
+            current_period_goals: 2,
+            daily_seed: 'seed-abc',
+            period_ends_at: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
+          };
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
     function LocationProbe() {
       return <output aria-label="Текущий адрес">{useLocation().search}</output>;
     }
