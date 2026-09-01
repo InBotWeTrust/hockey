@@ -214,7 +214,10 @@ export function inviteAdminTournamentParticipant(tournamentId: string, userId: s
   });
 }
 
-export function publishAdminTournament(tournamentId: string, expectedRevision: number) {
+export function publishAdminTournament(
+  tournamentId: string,
+  expectedRevision: number,
+): Promise<{ tournamentId: string; status: 'registration'; revision: number }> {
   return apiFetch(`/admin/tournaments/${tournamentId}/publish`, {
     method: 'POST',
     body: JSON.stringify({ expectedRevision }),
@@ -316,8 +319,11 @@ export function generateAdminTournamentSchedule(tournamentId: string, expectedRe
   });
 }
 
-export function publishAdminTournamentSchedule(tournamentId: string) {
-  return apiFetch(`/admin/tournaments/${tournamentId}/schedule/publish`, { method: 'POST' });
+export function startAdminTournamentRegularSeason(tournamentId: string) {
+  return apiFetch<{ tournamentId: string; status: 'regular' }>(
+    `/admin/tournaments/${tournamentId}/schedule/publish`,
+    { method: 'POST' },
+  );
 }
 
 export function startAdminTournamentPlayoffs(tournamentId: string) {

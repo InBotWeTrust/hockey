@@ -176,7 +176,7 @@ describe('TournamentOperations', () => {
     );
   });
 
-  it('explains that a generated schedule still needs publication', async () => {
+  it('shows the automatic lifecycle and keeps only the manual regular-season start', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input);
       if (url.endsWith('/schedule')) {
@@ -198,7 +198,17 @@ describe('TournamentOperations', () => {
     render(
       <QueryClientProvider client={client}>
         <TournamentOperations
-          tournament={{ ...tournament(), status: 'scheduling' }}
+          tournament={{
+            ...tournament(),
+            status: 'scheduling',
+            lifecycle: {
+              action: 'await_manual_regular_start',
+              dueAt: null,
+              approvedParticipantCount: 8,
+              requiredParticipantCount: 8,
+              reason: null,
+            },
+          }}
           onBack={vi.fn()}
           onEdit={vi.fn()}
           onRemoved={vi.fn()}
@@ -206,11 +216,121 @@ describe('TournamentOperations', () => {
       </QueryClientProvider>,
     );
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Календарь' }));
+    expect(screen.getByRole('button', { name: 'Начать регулярный сезон' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Открыть регистрацию' })).not.toBeInTheDocument();
     expect(
-      await screen.findByText(/Календарь создан, но участники его ещё не видят/),
+      screen.queryByRole('button', { name: 'Опубликовать календарь' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /запустить плей-офф/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Начать регулярный сезон' }));
+    await waitFor(() =>
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        `/api/admin/tournaments/${tournament().id}/schedule/publish`,
+        expect.objectContaining({ method: 'POST' }),
+      ),
+    );
+  });
+
+  it('explains automatic lifecycle milestones in human language', () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <TournamentOperations
+          tournament={{
+            ...tournament(),
+            lifecycle: {
+              action: 'registration_waiting',
+              dueAt: '2030-08-01T07:00:00.000Z',
+              approvedParticipantCount: 0,
+              requiredParticipantCount: 8,
+              reason: null,
+            },
+          }}
+          onBack={vi.fn()}
+          onEdit={vi.fn()}
+          onRemoved={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByText('Регистрация откроется 1 августа в 10:00 мск')).toBeInTheDocument();
+
+    rerender(
+      <QueryClientProvider client={client}>
+        <TournamentOperations
+          tournament={{
+            ...tournament(),
+            lifecycle: {
+              action: 'generate_schedule',
+              dueAt: null,
+              approvedParticipantCount: 8,
+              requiredParticipantCount: 8,
+              reason: null,
+            },
+          }}
+          onBack={vi.fn()}
+          onEdit={vi.fn()}
+          onRemoved={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+    expect(
+      screen.getByText('Регистрация завершена. Календарь создаётся автоматически.'),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/Календарь уже опубликован/)).not.toBeInTheDocument();
+
+    rerender(
+      <QueryClientProvider client={client}>
+        <TournamentOperations
+          tournament={{
+            ...tournament(),
+            status: 'regular',
+            lifecycle: {
+              action: 'await_regular_results',
+              dueAt: null,
+              approvedParticipantCount: 8,
+              requiredParticipantCount: 8,
+              reason: 'regular_results_incomplete',
+            },
+          }}
+          onBack={vi.fn()}
+          onEdit={vi.fn()}
+          onRemoved={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+    expect(
+      screen.getByText('Плей-офф начнётся автоматически после завершения всех игр.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /плей-офф/i })).not.toBeInTheDocument();
+
+    rerender(
+      <QueryClientProvider client={client}>
+        <TournamentOperations
+          tournament={{
+            ...tournament(),
+            status: 'regular',
+            lifecycle: {
+              action: 'playoff_schedule_missing',
+              dueAt: null,
+              approvedParticipantCount: 8,
+              requiredParticipantCount: 8,
+              reason: 'playoff_schedule_missing',
+            },
+          }}
+          onBack={vi.fn()}
+          onEdit={vi.fn()}
+          onRemoved={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+    expect(
+      screen.getByText('Укажите дату и время первого раунда плей-офф в настройках турнира.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Настроить расписание плей-офф' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /запустить плей-офф/i })).not.toBeInTheDocument();
   });
 
   it('keeps date and reward editing visible and locks only the paid reward stage', async () => {

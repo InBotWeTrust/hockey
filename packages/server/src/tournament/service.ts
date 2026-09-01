@@ -59,6 +59,66 @@ export interface TournamentRulesSnapshot {
   [key: string]: unknown;
 }
 
+const PLAYOFF_SCHEDULING_FIELDS = new Set(['firstGameStartsAt', 'scheduleDays', 'roundBreakMs']);
+const DEFAULT_PLAYOFF_READINESS_MINUTES = 5;
+const DEFAULT_PLAYOFF_START_INTERVAL_MINUTES = 20;
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+  if (value !== null && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'undefined';
+}
+
+function rulesWithoutPlayoffSchedule(rules: TournamentRulesSnapshot): Record<string, unknown> {
+  const rest: Record<string, unknown> = { ...rules };
+  const playoffRounds = rest.playoffRounds;
+  delete rest.playoffRounds;
+  delete rest.automaticLifecycleVersion;
+  delete rest.duelLifecycleVersion;
+  return {
+    ...rest,
+    playoffRounds: Array.isArray(playoffRounds)
+      ? playoffRounds.map((round) => {
+          if (round === null || typeof round !== 'object' || Array.isArray(round)) return round;
+          const values = round as Record<string, unknown>;
+          return Object.fromEntries(
+            Object.entries(values).filter(([key, value]) => {
+              if (PLAYOFF_SCHEDULING_FIELDS.has(key)) return false;
+              // The HTTP parser fills these legacy omissions with their standard values only
+              // after scheduleDays appears. They are not a manual rule change.
+              if (key === 'readinessMinutes' && value === DEFAULT_PLAYOFF_READINESS_MINUTES) {
+                return false;
+              }
+              if (
+                key === 'plannedStartIntervalMinutes' &&
+                value === DEFAULT_PLAYOFF_START_INTERVAL_MINUTES
+              ) {
+                return false;
+              }
+              return true;
+            }),
+          );
+        })
+      : playoffRounds,
+  };
+}
+
+function isPlayoffScheduleOnlyRulesUpdate(
+  current: TournamentRulesSnapshot,
+  next: TournamentRulesSnapshot,
+): boolean {
+  return (
+    stableJson(rulesWithoutPlayoffSchedule(current)) ===
+    stableJson(rulesWithoutPlayoffSchedule(next))
+  );
+}
+
 export interface GenerateRegularScheduleOutcome {
   tournamentId: string;
   beforeStatus: TournamentStatus;
@@ -619,11 +679,23 @@ export async function updateTournamentDraft(
       current_revision: number;
       rules_snapshot: TournamentRulesSnapshot;
       participant_count: number;
+      playoff_series_exists: boolean;
+      title: string;
+      description: string;
+      image_url: string | null;
+      registration_opens_at: Date | null;
+      registration_closes_at: Date | null;
+      starts_at: Date | null;
     }>(
       `select t.status, t.current_revision, revision.rules_snapshot,
               (select count(*)::int from tournament_participant participant
                 where participant.tournament_id = t.id
-                  and participant.state in ('invited', 'applied', 'approved')) as participant_count
+                  and participant.state in ('invited', 'applied', 'approved')) as participant_count,
+              exists (
+                select 1 from tournament_playoff_series series where series.tournament_id = t.id
+              ) as playoff_series_exists,
+              t.title, t.description, t.image_url,
+              t.registration_opens_at, t.registration_closes_at, t.starts_at
          from tournament t
          join tournament_revision revision
            on revision.tournament_id = t.id and revision.revision = t.current_revision
@@ -632,9 +704,19 @@ export async function updateTournamentDraft(
     );
     const tournament = current.rows[0];
     if (!tournament) throw new AppError('not_found', 'tournament not found', 404);
-    const updatesPublishedRules = ['registration', 'registration_blocked'].includes(
-      tournament.status,
-    );
+    const regularScheduleRecovery =
+      tournament.status === 'regular' &&
+      !tournament.playoff_series_exists &&
+      tournament.title === input.title &&
+      tournament.description === input.description &&
+      (input.imageUrl === undefined || input.imageUrl === tournament.image_url) &&
+      input.registrationOpensAt?.getTime() === tournament.registration_opens_at?.getTime() &&
+      input.registrationClosesAt?.getTime() === tournament.registration_closes_at?.getTime() &&
+      input.startsAt?.getTime() === tournament.starts_at?.getTime() &&
+      isPlayoffScheduleOnlyRulesUpdate(tournament.rules_snapshot, input.rules);
+    const updatesPublishedRules =
+      ['registration', 'registration_blocked'].includes(tournament.status) ||
+      regularScheduleRecovery;
     if (tournament.status !== 'draft' && !updatesPublishedRules) {
       throw new AppError('conflict', 'tournament format can no longer be edited', 409);
     }

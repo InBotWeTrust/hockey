@@ -1,8 +1,11 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { FastifyInstance } from 'fastify';
 import type { Pool, PoolClient } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { applyMigrations } from '../../src/db/migrations.js';
+import { buildApp } from '../../src/app.js';
+import { createJwt } from '../../src/auth/jwt.js';
 import { reconcileTournamentLifecycle } from '../../src/tournament/automaticLifecycle.js';
 import { parseTournamentConfig } from '../../src/tournament/config.js';
 import { lockTournament } from '../../src/tournament/locks.js';
@@ -12,7 +15,14 @@ import {
   type TournamentRulesSnapshot,
   updateTournamentDraft,
 } from '../../src/tournament/service.js';
-import { createTestPool, hasIntegrationEnv, resetDatabase } from '../helpers/testDb.js';
+import {
+  createTestPool,
+  createTestRedis,
+  getTestUrls,
+  hasIntegrationEnv,
+  resetDatabase,
+  resetRedis,
+} from '../helpers/testDb.js';
 import { waitForBlockedWriter } from '../helpers/postgresLocks.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -20,6 +30,8 @@ const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
 const CLOSES_AT = new Date('2030-09-01T12:00:00.000Z');
 const CREATOR_ID = '00000000-0000-4000-8000-000000000901';
 const ADMIN_ID = '00000000-0000-4000-8000-000000000902';
+const JWT_SECRET = 'automatic-lifecycle-access-secret';
+const REFRESH_SECRET = 'automatic-lifecycle-refresh-secret';
 
 function minuteAfter(date: Date): Date {
   return new Date(date.getTime() + 60_000);
@@ -283,9 +295,29 @@ async function waitForBlockedTournamentUpdate(pool: Pool): Promise<void> {
 
 describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', () => {
   let pool: Pool;
+  let app: FastifyInstance;
+  let adminToken: string;
 
-  beforeAll(() => {
+  beforeAll(async () => {
     pool = createTestPool();
+    const { databaseUrl, redisUrl } = getTestUrls();
+    const redis = createTestRedis();
+    await resetRedis(redis);
+    redis.disconnect();
+    app = await buildApp({
+      config: {
+        NODE_ENV: 'test',
+        HOST: '0.0.0.0',
+        PORT: 3000,
+        LOG_LEVEL: 'warn',
+        DATABASE_URL: databaseUrl,
+        REDIS_URL: redisUrl,
+        JWT_SECRET,
+        REFRESH_SECRET,
+        TELEGRAM_BOT_TOKEN: 'test-bot-token',
+        DAILY_SEED_SECRET: 'test-daily-seed-secret',
+      },
+    });
   });
 
   beforeEach(async () => {
@@ -297,9 +329,12 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
               ($2, 'Администратор', 'Europe/Moscow', 'admin')`,
       [CREATOR_ID, ADMIN_ID],
     );
+    const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+    adminToken = await jwt.issueAccessToken({ sub: ADMIN_ID });
   });
 
   afterAll(async () => {
+    await app.close();
     await pool.end();
   });
 
@@ -848,6 +883,244 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
       title: 'Настройте расписание плей-офф',
       body: 'В турнире «Автоматический кубок» завершён регулярный сезон. Укажите даты и время игр плей-офф.',
     });
+  });
+
+  it('allows only playoff scheduling changes to recover a regular tournament before the bracket exists', async () => {
+    const tournament = await seedAutomaticTournament(pool, {
+      source: 'head_to_head',
+      approved: 4,
+      playoffSize: 4,
+    });
+    await reconcileTournamentLifecycle(pool, { now: CLOSES_AT, tournamentId: tournament.id });
+    await publishRegularSchedule(pool, tournament.id);
+    await pool.query(
+      `update tournament_fixture
+          set status = 'settled', home_score = 1, away_score = 0,
+              winner_participant_id = home_participant_id
+        where tournament_id = $1`,
+      [tournament.id],
+    );
+    const template = await pool.query<{ id: string }>(
+      `select id from amateur_duel_template
+        where deleted_at is null and is_active
+        order by starts_at, id limit 1`,
+    );
+    await pool.query(
+      `update tournament_revision
+          set rules_snapshot = rules_snapshot || $2::jsonb
+        where tournament_id = $1 and revision = 1`,
+      [
+        tournament.id,
+        JSON.stringify({
+          regularDuelTemplateId: template.rows[0]!.id,
+          playoffRounds: [
+            {
+              roundNumber: 1,
+              winsRequired: 1,
+              homeSequence: ['H'],
+              duelTemplateId: template.rows[0]!.id,
+              gameWindowMs: 3_600_000,
+              gameBreakMs: 0,
+              roundBreakMs: 0,
+            },
+          ],
+        }),
+      ],
+    );
+    const current = await pool.query<{ rules_snapshot: TournamentRulesSnapshot }>(
+      `select rules_snapshot from tournament_revision where tournament_id = $1 and revision = 1`,
+      [tournament.id],
+    );
+    const scheduledRules: TournamentRulesSnapshot = {
+      ...current.rows[0]!.rules_snapshot,
+      playoffRounds: [
+        {
+          ...(current.rows[0]!.rules_snapshot.playoffRounds as Array<Record<string, unknown>>)[0]!,
+          firstGameStartsAt: '2030-10-28T15:00:00.000Z',
+          scheduleDays: [
+            { localDate: '2030-10-28', firstWaveLocalTime: '18:00', maxResultGames: 1 },
+          ],
+        },
+      ],
+    };
+
+    const updated = await updateTournamentDraft(pool, {
+      tournamentId: tournament.id,
+      expectedRevision: tournament.revision,
+      title: 'Автоматический кубок',
+      description: '',
+      rules: scheduledRules,
+      updatedBy: CREATOR_ID,
+      registrationOpensAt: new Date(CLOSES_AT.getTime() - 3_600_000),
+      registrationClosesAt: CLOSES_AT,
+      startsAt: new Date(CLOSES_AT.getTime() + 86_400_000),
+    });
+    const recovered = await reconcileTournamentLifecycle(pool, {
+      now: new Date('2030-10-27T15:00:00.000Z'),
+      tournamentId: tournament.id,
+    });
+
+    expect(updated).toMatchObject({ status: 'regular', revision: 2 });
+    expect(recovered.items[0]).toMatchObject({ action: 'await_playoff_time', reason: null });
+
+    await expect(
+      updateTournamentDraft(pool, {
+        tournamentId: tournament.id,
+        expectedRevision: updated.revision,
+        title: 'Автоматический кубок',
+        description: '',
+        rules: {
+          ...scheduledRules,
+          config: { ...scheduledRules.config, playoffSize: 2 },
+        },
+        updatedBy: CREATOR_ID,
+        registrationOpensAt: new Date(CLOSES_AT.getTime() - 3_600_000),
+        registrationClosesAt: CLOSES_AT,
+        startsAt: new Date(CLOSES_AT.getTime() + 86_400_000),
+      }),
+    ).rejects.toMatchObject({ code: 'conflict' });
+
+    const bracketStarted = await reconcileTournamentLifecycle(pool, {
+      now: new Date('2030-10-29T15:00:00.000Z'),
+      tournamentId: tournament.id,
+    });
+    expect(bracketStarted.items[0]).toMatchObject({ action: 'start_playoff', changed: true });
+
+    await expect(
+      updateTournamentDraft(pool, {
+        tournamentId: tournament.id,
+        expectedRevision: updated.revision,
+        title: 'Автоматический кубок',
+        description: '',
+        rules: {
+          ...scheduledRules,
+          playoffRounds: [
+            {
+              ...(scheduledRules.playoffRounds as Array<Record<string, unknown>>)[0]!,
+              firstGameStartsAt: '2030-10-30T15:00:00.000Z',
+            },
+          ],
+        },
+        updatedBy: CREATOR_ID,
+        registrationOpensAt: new Date(CLOSES_AT.getTime() - 3_600_000),
+        registrationClosesAt: CLOSES_AT,
+        startsAt: new Date(CLOSES_AT.getTime() + 86_400_000),
+      }),
+    ).rejects.toMatchObject({ code: 'conflict' });
+  });
+
+  it('accepts the schedule-only recovery through the admin route and reconciles the lifecycle', async () => {
+    const tournament = await seedAutomaticTournament(pool, {
+      source: 'head_to_head',
+      approved: 4,
+      playoffSize: 4,
+      slugSuffix: '-route-recovery',
+    });
+    await reconcileTournamentLifecycle(pool, { now: CLOSES_AT, tournamentId: tournament.id });
+    await publishRegularSchedule(pool, tournament.id);
+    await pool.query(
+      `update tournament_fixture
+          set status = 'settled', home_score = 1, away_score = 0,
+              winner_participant_id = home_participant_id
+        where tournament_id = $1`,
+      [tournament.id],
+    );
+    const template = await pool.query<{ id: string }>(
+      `select id from amateur_duel_template
+        where deleted_at is null and is_active
+        order by starts_at, id limit 1`,
+    );
+    await pool.query(
+      `update tournament_revision
+          set rules_snapshot = rules_snapshot || $2::jsonb
+        where tournament_id = $1 and revision = 1`,
+      [
+        tournament.id,
+        JSON.stringify({
+          regularDuelTemplateId: template.rows[0]!.id,
+          playoffRounds: [
+            {
+              roundNumber: 1,
+              winsRequired: 1,
+              homeSequence: ['H'],
+              duelTemplateId: template.rows[0]!.id,
+              gameWindowMs: 3_600_000,
+              gameBreakMs: 0,
+              roundBreakMs: 0,
+            },
+          ],
+        }),
+      ],
+    );
+    const current = await pool.query<{ rules_snapshot: TournamentRulesSnapshot }>(
+      `select rules_snapshot from tournament_revision where tournament_id = $1 and revision = 1`,
+      [tournament.id],
+    );
+    const scheduledRules: TournamentRulesSnapshot = {
+      ...current.rows[0]!.rules_snapshot,
+      playoffRounds: [
+        {
+          ...(current.rows[0]!.rules_snapshot.playoffRounds as Array<Record<string, unknown>>)[0]!,
+          firstGameStartsAt: '2030-10-28T15:00:00.000Z',
+          scheduleDays: [
+            { localDate: '2030-10-28', firstWaveLocalTime: '18:00', maxResultGames: 1 },
+          ],
+        },
+      ],
+    };
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/admin/tournaments/${tournament.id}`,
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: {
+        expectedRevision: tournament.revision,
+        title: 'Автоматический кубок',
+        description: '',
+        imageUrl: null,
+        rules: scheduledRules,
+        registrationOpensAt: new Date(CLOSES_AT.getTime() - 3_600_000).toISOString(),
+        registrationClosesAt: CLOSES_AT.toISOString(),
+        startsAt: new Date(CLOSES_AT.getTime() + 86_400_000).toISOString(),
+      },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ tournament: { status: 'regular', revision: 2 } });
+
+    const lifecycle = await reconcileTournamentLifecycle(pool, {
+      now: new Date('2030-10-27T15:00:00.000Z'),
+      tournamentId: tournament.id,
+    });
+    expect(lifecycle.items[0]).toMatchObject({ action: 'await_playoff_time', reason: null });
+
+    await reconcileTournamentLifecycle(pool, {
+      now: new Date('2030-10-29T15:00:00.000Z'),
+      tournamentId: tournament.id,
+    });
+    const afterBracket = await app.inject({
+      method: 'PATCH',
+      url: `/admin/tournaments/${tournament.id}`,
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: {
+        expectedRevision: 2,
+        title: 'Автоматический кубок',
+        description: '',
+        imageUrl: null,
+        rules: {
+          ...scheduledRules,
+          playoffRounds: [
+            {
+              ...(scheduledRules.playoffRounds as Array<Record<string, unknown>>)[0]!,
+              firstGameStartsAt: '2030-10-30T15:00:00.000Z',
+            },
+          ],
+        },
+        registrationOpensAt: new Date(CLOSES_AT.getTime() - 3_600_000).toISOString(),
+        registrationClosesAt: CLOSES_AT.toISOString(),
+        startsAt: new Date(CLOSES_AT.getTime() + 86_400_000).toISOString(),
+      },
+    });
+    expect(afterBracket.statusCode).toBe(409);
   });
 
   it('does not send a stale missing-schedule alert after the published revision adds a playoff time', async () => {

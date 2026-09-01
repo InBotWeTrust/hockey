@@ -24,15 +24,13 @@ import {
   inviteAdminTournamentParticipant,
   pauseAdminTournament,
   previewAdminTournamentAudience,
-  publishAdminTournament,
-  publishAdminTournamentSchedule,
   confirmAdminTournamentSeriesWinner,
   rejectAdminTournamentApplication,
   requestAdminTournamentSeriesWinner,
   resolveAdminTournamentNoShow,
   resumeAdminTournament,
   rescheduleAdminTournamentFixture,
-  startAdminTournamentPlayoffs,
+  startAdminTournamentRegularSeason,
   updateAdminTournamentRewards,
   type AdminTournament,
   type AdminTournamentFixture,
@@ -217,6 +215,66 @@ function tournamentDate(value: string | null | undefined, timezone: string): str
     }).format(date)} (${tournamentTimezoneLabel(timezone)})`;
   } catch {
     return date.toLocaleString('ru-RU');
+  }
+}
+
+function lifecycleDate(value: string | null, timezone: string): string | null {
+  if (value === null) return null;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  try {
+    const day = new Intl.DateTimeFormat('ru-RU', {
+      timeZone: timezone,
+      day: 'numeric',
+      month: 'long',
+    }).format(date);
+    const time = new Intl.DateTimeFormat('ru-RU', {
+      timeZone: timezone,
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(date);
+    return `${day} в ${time} ${tournamentTimezoneLabel(timezone).toLocaleLowerCase('ru-RU')}`;
+  } catch {
+    return null;
+  }
+}
+
+function lifecycleMessage(tournament: AdminTournament, timezone: string): string | null {
+  const { action, dueAt, approvedParticipantCount, requiredParticipantCount } =
+    tournament.lifecycle;
+  switch (action) {
+    case 'registration_waiting': {
+      const due = lifecycleDate(dueAt, timezone);
+      return due === null
+        ? 'Регистрация откроется автоматически.'
+        : `Регистрация откроется ${due}.`;
+    }
+    case 'registration_open': {
+      const due = lifecycleDate(dueAt, timezone);
+      return due === null
+        ? 'Регистрация открыта. После закрытия календарь создастся автоматически.'
+        : `Регистрация открыта до ${due}. После закрытия календарь создастся автоматически.`;
+    }
+    case 'generate_schedule':
+      return 'Регистрация завершена. Календарь создаётся автоматически.';
+    case 'block_registration':
+      return `Подтверждено ${approvedParticipantCount} из ${requiredParticipantCount}. Уменьшите размер плей-офф, продлите регистрацию или пригласите игроков.`;
+    case 'await_manual_regular_start':
+      return 'Календарь готов. Регулярный сезон начнётся после вашего подтверждения.';
+    case 'await_regular_results':
+      return 'Плей-офф начнётся автоматически после завершения всех игр.';
+    case 'playoff_schedule_missing':
+      return 'Укажите дату и время первого раунда плей-офф в настройках турнира.';
+    case 'await_playoff_time': {
+      const due = lifecycleDate(dueAt, timezone);
+      return due === null
+        ? 'Плей-офф начнётся автоматически.'
+        : `Плей-офф начнётся автоматически ${due}.`;
+    }
+    case 'legacy_requires_audit':
+      return 'Турнир создан по старым правилам. Нужна проверка администратора.';
+    default:
+      return null;
   }
 }
 
@@ -424,7 +482,7 @@ export function TournamentOperations({
 }: {
   tournament: AdminTournament;
   onBack: () => void;
-  onEdit: (stage?: number) => void;
+  onEdit: (stage?: number, scheduleOnly?: boolean) => void;
   onRemoved: () => void;
   notice?: string | null;
 }): JSX.Element {
@@ -464,6 +522,7 @@ export function TournamentOperations({
   );
   const [editingRewards, setEditingRewards] = useState(false);
   const [lifecycleFeedback, setLifecycleFeedback] = useState<string | null>(null);
+  const [lifecycleFailed, setLifecycleFailed] = useState(false);
   const [rewardRevision, setRewardRevision] = useState(tournament.revision);
   const [regularRewards, setRegularRewards] = useState(() =>
     tournamentRewardRows(tournament, 'regular'),
@@ -530,14 +589,24 @@ export function TournamentOperations({
     void client.invalidateQueries({ queryKey: ['admin', 'tournaments', tournament.id] });
   };
   const lifecycle = useMutation({
-    mutationFn: (action: 'publish' | 'generate' | 'publish_schedule' | 'playoffs') => {
-      if (action === 'publish') return publishAdminTournament(tournament.id, tournament.revision);
+    mutationFn: (
+      action: 'generate' | 'start_regular',
+    ): Promise<{
+      tournamentId: string;
+      status: string;
+      participantCount?: number;
+      matchdayCount?: number;
+      roundCount?: number;
+      fixtureCount?: number;
+    }> => {
       if (action === 'generate')
         return generateAdminTournamentSchedule(tournament.id, tournament.revision);
-      if (action === 'publish_schedule') return publishAdminTournamentSchedule(tournament.id);
-      return startAdminTournamentPlayoffs(tournament.id);
+      return startAdminTournamentRegularSeason(tournament.id);
     },
-    onMutate: () => setLifecycleFeedback(null),
+    onMutate: () => {
+      setLifecycleFeedback(null);
+      setLifecycleFailed(false);
+    },
     onSuccess: (result, action) => {
       if (
         typeof result === 'object' &&
@@ -566,12 +635,19 @@ export function TournamentOperations({
           );
         }
       }
+      if (action === 'start_regular') {
+        setLifecycleFeedback('Регулярный сезон начался.');
+      }
       refreshOperations();
     },
-    onError: () =>
+    onError: (_error, action) => {
+      setLifecycleFailed(true);
       setLifecycleFeedback(
-        'Не удалось создать календарь. Проверьте подтверждённые заявки, даты и настройки турнира.',
-      ),
+        action === 'start_regular'
+          ? 'Не удалось начать регулярный сезон. Обновите страницу и попробуйте ещё раз.'
+          : 'Не удалось создать календарь. Проверьте подтверждённые заявки, даты и настройки турнира.',
+      );
+    },
   });
   const approve = useMutation({
     mutationFn: (participantId: string) =>
@@ -769,22 +845,12 @@ export function TournamentOperations({
     (tab === 'bracket' && bracket.data?.series.length === 0);
   const canEditRules = ['draft', 'registration', 'registration_blocked'].includes(status);
   const tournamentTimezone = String(tournament.rules?.config?.timezone ?? 'Europe/Moscow');
-  const registrationOpensAt = tournament.registrationOpensAt
-    ? new Date(tournament.registrationOpensAt)
-    : null;
-  const registrationClosesAt = tournament.registrationClosesAt
-    ? new Date(tournament.registrationClosesAt)
-    : null;
-  const tournamentStartsAt = tournament.startsAt ? new Date(tournament.startsAt) : null;
-  const datesReady =
-    registrationOpensAt !== null &&
-    registrationClosesAt !== null &&
-    tournamentStartsAt !== null &&
-    Number.isFinite(registrationOpensAt.getTime()) &&
-    Number.isFinite(registrationClosesAt.getTime()) &&
-    Number.isFinite(tournamentStartsAt.getTime()) &&
-    registrationOpensAt < registrationClosesAt &&
-    registrationClosesAt < tournamentStartsAt;
+  const currentLifecycleMessage = lifecycleMessage(tournament, tournamentTimezone);
+  const canGenerateBlockedHeadToHeadSchedule =
+    tournament.regularSource === 'head_to_head' &&
+    status === 'registration_blocked' &&
+    tournament.lifecycle.action === 'generate_schedule' &&
+    tournament.lifecycle.approvedParticipantCount >= tournament.lifecycle.requiredParticipantCount;
   const incidentStatuses = new Set([
     'paused',
     'blocked',
@@ -806,21 +872,22 @@ export function TournamentOperations({
           fixtureDate(right.scheduledStartsAt)?.getTime() ?? Number.MAX_SAFE_INTEGER;
         return leftTime - rightTime || left.fixtureNumber - right.fixtureNumber;
       })
-      .reduce<
-        Map<string, { key: string; label: string; fixtures: AdminTournamentFixture[] }>
-      >((groups, fixture) => {
-        const key = fixtureDayKey(fixture.scheduledStartsAt, tournamentTimezone);
-        const current = groups.get(key);
-        if (current) current.fixtures.push(fixture);
-        else {
-          groups.set(key, {
-            key,
-            label: fixtureDayLabel(fixture.scheduledStartsAt, tournamentTimezone),
-            fixtures: [fixture],
-          });
-        }
-        return groups;
-      }, new Map())
+      .reduce<Map<string, { key: string; label: string; fixtures: AdminTournamentFixture[] }>>(
+        (groups, fixture) => {
+          const key = fixtureDayKey(fixture.scheduledStartsAt, tournamentTimezone);
+          const current = groups.get(key);
+          if (current) current.fixtures.push(fixture);
+          else {
+            groups.set(key, {
+              key,
+              label: fixtureDayLabel(fixture.scheduledStartsAt, tournamentTimezone),
+              fixtures: [fixture],
+            });
+          }
+          return groups;
+        },
+        new Map(),
+      )
       .values(),
   );
   const openFixtureDayIndex = Math.max(
@@ -859,9 +926,30 @@ export function TournamentOperations({
         </div>
       </div>
       {(notice || lifecycleFeedback) && (
-        <div className="tournament-operations__notice" role="status">
+        <div className="tournament-operations__notice" role={lifecycleFailed ? 'alert' : 'status'}>
           {notice ?? lifecycleFeedback}
         </div>
+      )}
+      {currentLifecycleMessage !== null && (
+        <section className="tournament-lifecycle-panel" aria-live="polite">
+          <p>{currentLifecycleMessage}</p>
+          {status === 'scheduling' &&
+            tournament.lifecycle.action === 'await_manual_regular_start' && (
+              <button
+                type="button"
+                className="admin-compact-btn admin-compact-btn--primary"
+                disabled={lifecycle.isPending}
+                onClick={() => lifecycle.mutate('start_regular')}
+              >
+                {lifecycle.isPending ? 'Начинаем регулярный сезон…' : 'Начать регулярный сезон'}
+              </button>
+            )}
+          {tournament.lifecycle.action === 'playoff_schedule_missing' && (
+            <button type="button" className="admin-compact-btn" onClick={() => onEdit(3, true)}>
+              Настроить расписание плей-офф
+            </button>
+          )}
+        </section>
       )}
       <SegmentedTabs
         ariaLabel="Управление турниром"
@@ -928,15 +1016,15 @@ export function TournamentOperations({
             />
             {pendingApplicationCount > 0 &&
               ['registration', 'registration_blocked'].includes(status) && (
-              <button
-                type="button"
-                className="admin-compact-btn admin-compact-btn--primary tournament-approve-all"
-                disabled={approveAll.isPending}
-                onClick={() => approveAll.mutate()}
-              >
-                Принять все заявки ({pendingApplicationCount})
-              </button>
-            )}
+                <button
+                  type="button"
+                  className="admin-compact-btn admin-compact-btn--primary tournament-approve-all"
+                  disabled={approveAll.isPending}
+                  onClick={() => approveAll.mutate()}
+                >
+                  Принять все заявки ({pendingApplicationCount})
+                </button>
+              )}
             {approveAll.isSuccess && (
               <div className="tournament-dispatch-feedback" role="status">
                 Принято заявок: {approveAll.data.approvedCount}.
@@ -1025,12 +1113,6 @@ export function TournamentOperations({
                 Изменить сроки
               </button>
             )}
-            {status === 'scheduling' && (
-              <div className="tournament-operation-hint">
-                Календарь создан, но участники его ещё не видят. Проверьте даты и выберите
-                «Опубликовать календарь» в действиях турнира.
-              </div>
-            )}
             {!canEditRules && status !== 'scheduling' && (
               <div className="tournament-operation-hint">
                 Календарь уже опубликован. Чтобы изменить время, выберите конкретную игру и укажите
@@ -1058,7 +1140,9 @@ export function TournamentOperations({
             {incidentFixtures.length > 0 && (
               <section className="tournament-operation-incidents">
                 <h3>Требуют решения</h3>
-                <p>Эти игры не продолжатся, пока администратор не назначит новое время или исход.</p>
+                <p>
+                  Эти игры не продолжатся, пока администратор не назначит новое время или исход.
+                </p>
                 {incidentFixtures.map((fixture) => (
                   <button
                     key={fixture.id}
@@ -1527,28 +1611,7 @@ export function TournamentOperations({
             >
               Дублировать турнир
             </button>
-            {status === 'draft' && (
-              <>
-                <button
-                  type="button"
-                  className="admin-compact-btn"
-                  disabled={!datesReady || lifecycle.isPending}
-                  onClick={() => {
-                    setActionsOpen(false);
-                    lifecycle.mutate('publish');
-                  }}
-                >
-                  Открыть регистрацию
-                </button>
-                {!datesReady && (
-                  <div className="tournament-operation-hint">
-                    Сначала укажите открытие и закрытие регистрации и дату первого тура. Порядок:
-                    открытие → закрытие → старт.
-                  </div>
-                )}
-              </>
-            )}
-            {['registration', 'registration_blocked'].includes(status) && (
+            {canGenerateBlockedHeadToHeadSchedule && (
               <button
                 type="button"
                 className="admin-compact-btn"
@@ -1558,30 +1621,6 @@ export function TournamentOperations({
                 }}
               >
                 Создать календарь
-              </button>
-            )}
-            {status === 'scheduling' && (
-              <button
-                type="button"
-                className="admin-compact-btn"
-                onClick={() => {
-                  setActionsOpen(false);
-                  lifecycle.mutate('publish_schedule');
-                }}
-              >
-                Опубликовать календарь
-              </button>
-            )}
-            {status === 'regular' && (
-              <button
-                type="button"
-                className="admin-compact-btn"
-                onClick={() => {
-                  setActionsOpen(false);
-                  lifecycle.mutate('playoffs');
-                }}
-              >
-                Запустить плей-офф
               </button>
             )}
             {!['draft', 'paused', 'completed', 'cancelled', 'archived'].includes(status) && (
@@ -1779,9 +1818,7 @@ export function TournamentOperations({
                   <button
                     type="button"
                     className="admin-compact-btn admin-compact-btn--danger"
-                    disabled={
-                      disqualificationReason.trim().length < 3 || disqualify.isPending
-                    }
+                    disabled={disqualificationReason.trim().length < 3 || disqualify.isPending}
                     onClick={() => disqualify.mutate(selectedParticipant.id)}
                   >
                     Подтвердить дисквалификацию

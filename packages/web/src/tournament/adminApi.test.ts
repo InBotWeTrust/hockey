@@ -7,6 +7,7 @@ import {
   fetchAdminTournamentParticipants,
   fetchAdminTournaments,
   rejectAdminTournamentApplication,
+  startAdminTournamentRegularSeason,
 } from './adminApi.js';
 
 describe('tournament admin API', () => {
@@ -115,5 +116,14 @@ describe('tournament admin API', () => {
       requiredParticipantCount: 4,
       reason: 'playoff_schedule_missing',
     });
+  });
+
+  it('uses the existing schedule publication endpoint to start the regular season', async () => {
+    await startAdminTournamentRegularSeason('tournament-1');
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/admin/tournaments/tournament-1/schedule/publish',
+      expect.objectContaining({ method: 'POST' }),
+    );
   });
 });

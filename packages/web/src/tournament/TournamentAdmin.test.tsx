@@ -50,6 +50,11 @@ function dstOverlapTournament(): api.AdminTournament {
 describe('TournamentAdmin', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.spyOn(api, 'publishAdminTournament').mockResolvedValue({
+      tournamentId: 'published-tournament',
+      status: 'registration',
+      revision: 1,
+    });
   });
 
   it('configures playoff rounds by days, daily game limit, readiness and start interval', async () => {
@@ -94,6 +99,84 @@ describe('TournamentAdmin', () => {
     expect(screen.getByLabelText('Раунд 1: начало первой игры')).toBeInTheDocument();
     expect(screen.queryByText(/овертайм/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/буллит/i)).not.toBeInTheDocument();
+  });
+
+  it('publishes a newly created draft before closing the wizard', async () => {
+    const draftTournament: api.AdminTournament = {
+      id: '00000000-0000-4000-8000-000000000951',
+      slug: 'published-cup',
+      title: 'Опубликованный кубок',
+      description: '',
+      status: 'draft',
+      regularSource: 'head_to_head',
+      revision: 1,
+      participantCount: 0,
+      lifecycle: TEST_LIFECYCLE,
+    };
+    vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [] });
+    vi.spyOn(api, 'fetchAdminTournamentDuelTemplates').mockResolvedValue({ templates: [] });
+    vi.spyOn(api, 'createAdminTournament').mockResolvedValue({ tournament: draftTournament });
+    const publish = vi.spyOn(api, 'publishAdminTournament').mockResolvedValue({
+      tournamentId: draftTournament.id,
+      status: 'registration',
+      revision: 1,
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentAdmin />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Создать' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Название' }), {
+      target: { value: draftTournament.title },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    for (let step = 0; step < 6; step += 1) {
+      fireEvent.click(await screen.findByRole('button', { name: 'Далее' }));
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить и опубликовать' }));
+    await waitFor(() => expect(publish).toHaveBeenCalledWith(draftTournament.id, 1));
+    expect(screen.queryByRole('dialog', { name: 'Создание турнира' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the wizard open when publishing a new draft fails', async () => {
+    const draftTournament: api.AdminTournament = {
+      id: '00000000-0000-4000-8000-000000000952',
+      slug: 'failed-publish-cup',
+      title: 'Кубок с ошибкой публикации',
+      description: '',
+      status: 'draft',
+      regularSource: 'head_to_head',
+      revision: 1,
+      participantCount: 0,
+      lifecycle: TEST_LIFECYCLE,
+    };
+    vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [] });
+    vi.spyOn(api, 'fetchAdminTournamentDuelTemplates').mockResolvedValue({ templates: [] });
+    vi.spyOn(api, 'createAdminTournament').mockResolvedValue({ tournament: draftTournament });
+    vi.spyOn(api, 'publishAdminTournament').mockRejectedValue(new Error('publish failed'));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentAdmin />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Создать' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Название' }), {
+      target: { value: draftTournament.title },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    for (let step = 0; step < 6; step += 1) {
+      fireEvent.click(await screen.findByRole('button', { name: 'Далее' }));
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить и опубликовать' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось опубликовать турнир.');
+    expect(screen.getByRole('dialog', { name: 'Создание турнира' })).toBeInTheDocument();
   });
 
   it('uses compact described fields, custom selects and collapsed advanced settings', async () => {
@@ -194,13 +277,13 @@ describe('TournamentAdmin', () => {
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
     expect(
       screen.getByText(
-        'Изменения сохраняются автоматически. Кнопка ниже сохранит последние правки и закроет форму. Запуск турнира выполняется отдельно.',
+        'Изменения сохраняются автоматически. Кнопка ниже сохранит последние правки и опубликует турнир. Регистрация откроется и закроется по указанным датам, а регулярный сезон вы начнёте вручную, когда всё будет готово.',
       ),
     ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Сохранить и закрыть' }));
+    fireEvent.click(screen.getByRole('button', { name: /Сохранить и (закрыть|опубликовать)/ }));
 
-    expect(screen.getByRole('button', { name: 'Сохраняем и закрываем…' })).toBeDisabled();
-    expect(screen.getByRole('status')).toHaveTextContent('Сохраняем изменения и закрываем…');
+    expect(screen.getByRole('button', { name: 'Публикуем…' })).toBeDisabled();
+    expect(screen.getByRole('status')).toHaveTextContent('Публикуем…');
 
     expect(update).toHaveBeenCalledWith(
       tournament.id,
@@ -441,7 +524,7 @@ describe('TournamentAdmin', () => {
     expect(place).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('Заполните место награды');
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Сохранить и закрыть' }));
+    fireEvent.click(screen.getByRole('button', { name: /Сохранить и (закрыть|опубликовать)/ }));
     expect(update).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog', { name: 'Создание турнира' })).toBeInTheDocument();
   });
@@ -572,7 +655,7 @@ describe('TournamentAdmin', () => {
 
     expect(await screen.findByText('Не удалось сохранить изменения.')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
-    const finish = screen.getByRole('button', { name: 'Сохранить и закрыть' });
+    const finish = screen.getByRole('button', { name: /Сохранить и (закрыть|опубликовать)/ });
     expect(finish).toBeEnabled();
     fireEvent.click(finish);
 
@@ -677,7 +760,7 @@ describe('TournamentAdmin', () => {
     expect(update).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
-    const finish = screen.getByRole('button', { name: 'Сохранить и закрыть' });
+    const finish = screen.getByRole('button', { name: /Сохранить и (закрыть|опубликовать)/ });
     expect(finish).toBeEnabled();
     fireEvent.click(finish);
     expect(screen.getByRole('status')).toHaveTextContent(
@@ -765,7 +848,7 @@ describe('TournamentAdmin', () => {
     expect(body).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('Заполните текст уведомления');
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
-    const finish = screen.getByRole('button', { name: 'Сохранить и закрыть' });
+    const finish = screen.getByRole('button', { name: /Сохранить и (закрыть|опубликовать)/ });
     expect(finish).toBeEnabled();
     fireEvent.click(finish);
     expect(screen.getByRole('status')).toHaveTextContent('Заполните текст уведомления.');
@@ -1914,7 +1997,7 @@ describe('TournamentAdmin', () => {
       target: { value: 'Описание обновлено' },
     });
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Сохранить и закрыть' }));
+    fireEvent.click(screen.getByRole('button', { name: /Сохранить и (закрыть|опубликовать)/ }));
 
     await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
     const body = update.mock.calls[0]?.[2];
@@ -1958,7 +2041,7 @@ describe('TournamentAdmin', () => {
       target: { value: '01:45' },
     });
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Сохранить и закрыть' }));
+    fireEvent.click(screen.getByRole('button', { name: /Сохранить и (закрыть|опубликовать)/ }));
 
     await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
     expect(update.mock.calls[0]?.[2]).toEqual(
@@ -1990,7 +2073,7 @@ describe('TournamentAdmin', () => {
     fireEvent.click(screen.getByRole('button', { name: '5. Сроки' }));
     await chooseGlassOption('Часовой пояс', 'Москва (МСК)');
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Сохранить и закрыть' }));
+    fireEvent.click(screen.getByRole('button', { name: /Сохранить и (закрыть|опубликовать)/ }));
 
     await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
     expect(update.mock.calls[0]?.[2]).toEqual(
@@ -2029,7 +2112,7 @@ describe('TournamentAdmin', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Сохранить и закрыть' }));
+      fireEvent.click(screen.getByRole('button', { name: /Сохранить и (закрыть|опубликовать)/ }));
     });
 
     expect(update).not.toHaveBeenCalled();
@@ -2103,7 +2186,7 @@ describe('TournamentAdmin', () => {
       target: { value: 'Кубок CRUD обновлён' },
     });
     fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Сохранить и закрыть' }));
+    fireEvent.click(screen.getByRole('button', { name: /Сохранить и (закрыть|опубликовать)/ }));
     await waitFor(() =>
       expect(update).toHaveBeenCalledWith(
         tournament.id,
