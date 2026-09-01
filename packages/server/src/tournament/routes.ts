@@ -155,13 +155,19 @@ const stageRewardsSchema = z
     message: 'reward places must be unique',
   });
 
-export function parseRules(input: z.infer<typeof rulesSchema>): TournamentRulesSnapshot {
+export function parseRules(
+  input: z.infer<typeof rulesSchema>,
+  options: { markNewAutomaticLifecycle?: boolean } = {},
+): TournamentRulesSnapshot {
   try {
-    return normalizePublishedTournamentLifecycleRules({
-      ...input,
-      config: parseTournamentConfig(input.config),
-      eligibility: input.eligibility,
-    }) as TournamentRulesSnapshot;
+    return normalizePublishedTournamentLifecycleRules(
+      {
+        ...input,
+        config: parseTournamentConfig(input.config),
+        eligibility: input.eligibility,
+      },
+      options.markNewAutomaticLifecycle === true ? { markNewAutomaticLifecycle: true } : {},
+    ) as TournamentRulesSnapshot;
   } catch (error) {
     if (error instanceof AppError) throw error;
     if (error instanceof Error) throw new AppError('bad_request', error.message, 400);
@@ -587,7 +593,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
       title: body.title,
       description: body.description,
       ...(body.imageUrl !== undefined ? { imageUrl: body.imageUrl } : {}),
-      rules: parseRules(body.rules),
+      rules: parseRules(body.rules, { markNewAutomaticLifecycle: true }),
       createdBy: req.user.id,
       registrationOpensAt:
         body.registrationOpensAt === null ? null : new Date(body.registrationOpensAt),

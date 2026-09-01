@@ -1,4 +1,4 @@
-import type { TournamentStatus } from './types.js';
+import type { TournamentPlayoffSize, TournamentStatus } from './types.js';
 
 export const AUTOMATIC_TOURNAMENT_LIFECYCLE_VERSION = 1;
 
@@ -25,7 +25,7 @@ export interface TournamentLifecycleSnapshot {
   registrationOpensAt: Date | null;
   registrationClosesAt: Date | null;
   approvedParticipantCount: number;
-  playoffSize: number;
+  playoffSize: TournamentPlayoffSize;
   scheduleExists: boolean;
   regularResultsComplete: boolean;
   playoffStartsAt: Date | null;
