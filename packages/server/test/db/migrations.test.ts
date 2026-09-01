@@ -177,7 +177,9 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       'accuracy-beijing',
       'accuracy-tokyo',
     ]);
-    expect(speedTrack.every((game) => game.qualification_rules.type === 'goals_in_time')).toBe(true);
+    expect(speedTrack.every((game) => game.qualification_rules.type === 'goals_in_time')).toBe(
+      true,
+    );
     expect(
       accuracyTrack.every((game) => game.qualification_rules.type === 'goals_from_shots'),
     ).toBe(true);
@@ -190,18 +192,18 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       })),
     ).toEqual([
       { title: 'Москва', targetGoals: 18, shotsLimit: 30, requiredGoalStreak: 0 },
-      { title: 'Стамбул', targetGoals: 20, shotsLimit: 30, requiredGoalStreak: 0 },
-      { title: 'Рим', targetGoals: 21, shotsLimit: 30, requiredGoalStreak: 3 },
-      { title: 'Париж', targetGoals: 36, shotsLimit: 50, requiredGoalStreak: 0 },
-      { title: 'Лондон', targetGoals: 38, shotsLimit: 50, requiredGoalStreak: 3 },
+      { title: 'Стамбул', targetGoals: 21, shotsLimit: 30, requiredGoalStreak: 0 },
+      { title: 'Рим', targetGoals: 23, shotsLimit: 30, requiredGoalStreak: 3 },
+      { title: 'Париж', targetGoals: 30, shotsLimit: 45, requiredGoalStreak: 0 },
+      { title: 'Лондон', targetGoals: 36, shotsLimit: 50, requiredGoalStreak: 3 },
       { title: 'Нью-Йорк', targetGoals: 40, shotsLimit: 50, requiredGoalStreak: 4 },
       { title: 'Рио-де-Жанейро', targetGoals: 42, shotsLimit: 50, requiredGoalStreak: 4 },
-      { title: 'Кейптаун', targetGoals: 47, shotsLimit: 60, requiredGoalStreak: 4 },
+      { title: 'Кейптаун', targetGoals: 47, shotsLimit: 55, requiredGoalStreak: 4 },
       { title: 'Дубай', targetGoals: 49, shotsLimit: 60, requiredGoalStreak: 5 },
       { title: 'Мумбаи', targetGoals: 52, shotsLimit: 60, requiredGoalStreak: 6 },
       { title: 'Сингапур', targetGoals: 66, shotsLimit: 80, requiredGoalStreak: 6 },
       { title: 'Пекин', targetGoals: 76, shotsLimit: 90, requiredGoalStreak: 7 },
-      { title: 'Токио', targetGoals: 80, shotsLimit: 90, requiredGoalStreak: 7 },
+      { title: 'Токио', targetGoals: 90, shotsLimit: 90, requiredGoalStreak: 7 },
     ]);
     for (const game of accuracyTrack) {
       const citySlug = game.slug.replace('accuracy-', '');
@@ -209,9 +211,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         game.qualification_rules.shotsLimit,
       );
       expect(game.period_rules.every((period) => period.durationMs === 240_000)).toBe(true);
-      expect(game.preview_artwork_url).toBe(
-        `/bonus-games/world-tour/previews/${citySlug}.webp`,
-      );
+      expect(game.preview_artwork_url).toBe(`/bonus-games/world-tour/previews/${citySlug}.webp`);
       expect(game.goalkeeper_ready_url).toBe(
         `/bonus-games/world-tour/goalkeepers/${citySlug}-ready.webp`,
       );
@@ -219,12 +219,8 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         `/bonus-games/world-tour/goalkeepers/${citySlug}-save.webp`,
       );
       expect(game.arena_slug).toBe(`accuracy-world-tour-${citySlug}`);
-      expect(game.arena_artwork_url).toBe(
-        `/bonus-games/world-tour/arenas/${citySlug}.webp`,
-      );
-      expect(game.arena_thumbnail_url).toBe(
-        `/bonus-games/world-tour/previews/${citySlug}.webp`,
-      );
+      expect(game.arena_artwork_url).toBe(`/bonus-games/world-tour/arenas/${citySlug}.webp`);
+      expect(game.arena_thumbnail_url).toBe(`/bonus-games/world-tour/previews/${citySlug}.webp`);
     }
 
     const nonLinearBonusPeriods = await pool.query<{ count: string }>(
@@ -529,6 +525,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '082_tournament_playoff_scheduling.sql',
       '083_tournament_playoff_notifications.sql',
       '084_tournament_series_notification_url.sql',
+      '085_accuracy_world_tour_uniform_balance.sql',
     ]);
     const achievementEventIndexes = await pool.query<{
       indexname: string;
@@ -757,12 +754,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         where schemaname = 'public'
           and indexname = any($1::text[])
         order by indexname`,
-      [
-        [
-          'bonus_game_attempt_one_active_user_idx',
-          'bonus_game_economy_one_first_clear_reward_idx',
-        ],
-      ],
+      [['bonus_game_attempt_one_active_user_idx', 'bonus_game_economy_one_first_clear_reward_idx']],
     );
     expect(partialUniqueIndexes.rows).toHaveLength(2);
     for (const index of partialUniqueIndexes.rows) {
@@ -979,6 +971,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '082_tournament_playoff_scheduling.sql',
       '083_tournament_playoff_notifications.sql',
       '084_tournament_series_notification_url.sql',
+      '085_accuracy_world_tour_uniform_balance.sql',
     ]);
 
     const activeInventory = await pool.query<{

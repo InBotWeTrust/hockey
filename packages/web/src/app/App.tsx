@@ -148,11 +148,21 @@ export function appBackdropClassName(pathname: string, search = ''): string {
   return 'app-shell--arena';
 }
 
+export function appSurfaceClassName(pathname: string): string {
+  if (pathname === '/login' || pathname.startsWith('/auth/')) {
+    return 'app-shell--auth-surfaces';
+  }
+  return pathname === '/profile' || pathname.startsWith('/profile/')
+    ? 'app-shell--profile-tab'
+    : 'app-shell--unified-glass';
+}
+
 function AppFrame(): JSX.Element {
   const location = useLocation();
   const user = useAuthStore((s) => s.user);
   const bottomNavVisible = isBottomNavVisible(location, user);
   const backdropClassName = appBackdropClassName(location.pathname, location.search);
+  const surfaceClassName = appSurfaceClassName(location.pathname);
   const hasArenaBackdrop = backdropClassName.split(' ').includes('app-shell--arena');
 
   return (
@@ -160,7 +170,7 @@ function AppFrame(): JSX.Element {
       <ChatRealtime />
       <DuelInviteToast />
       <div
-        className={`app-shell${bottomNavVisible ? ' app-shell--bottom-nav-visible' : ''}${backdropClassName ? ` ${backdropClassName}` : ''}`}
+        className={`app-shell ${surfaceClassName}${bottomNavVisible ? ' app-shell--bottom-nav-visible' : ''}${backdropClassName ? ` ${backdropClassName}` : ''}`}
         style={{
           maxWidth: 430,
           margin: '0 auto',

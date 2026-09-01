@@ -170,19 +170,19 @@ describe.skipIf(!hasIntegrationEnv)('077 accuracy World Tour movement balance', 
     );
 
     const expected = [
-      { slug: 'accuracy-moscow', goal: 0.5, goalie: 0.6, shooter: 0.75 },
-      { slug: 'accuracy-istanbul', goal: 0.5, goalie: 0.6, shooter: 0.75 },
-      { slug: 'accuracy-rome', goal: 0.5, goalie: 0.6, shooter: 0.75 },
-      { slug: 'accuracy-paris', goal: 0.5, goalie: 0.6, shooter: 0.75 },
-      { slug: 'accuracy-london', goal: 0.6, goalie: 0.7, shooter: 0.85 },
-      { slug: 'accuracy-new-york', goal: 0.6, goalie: 0.7, shooter: 0.85 },
-      { slug: 'accuracy-rio-de-janeiro', goal: 0.6, goalie: 0.7, shooter: 0.85 },
-      { slug: 'accuracy-cape-town', goal: 0.65, goalie: 0.75, shooter: 0.9 },
-      { slug: 'accuracy-dubai', goal: 0.65, goalie: 0.75, shooter: 0.9 },
-      { slug: 'accuracy-mumbai', goal: 0.65, goalie: 0.75, shooter: 0.9 },
-      { slug: 'accuracy-singapore', goal: 0.65, goalie: 0.75, shooter: 0.9 },
-      { slug: 'accuracy-beijing', goal: 0.75, goalie: 0.85, shooter: 1 },
-      { slug: 'accuracy-tokyo', goal: 0.75, goalie: 0.85, shooter: 1 },
+      { slug: 'accuracy-moscow', targetGoals: 18, shotsLimit: 30 },
+      { slug: 'accuracy-istanbul', targetGoals: 21, shotsLimit: 30 },
+      { slug: 'accuracy-rome', targetGoals: 23, shotsLimit: 30 },
+      { slug: 'accuracy-paris', targetGoals: 30, shotsLimit: 45 },
+      { slug: 'accuracy-london', targetGoals: 36, shotsLimit: 50 },
+      { slug: 'accuracy-new-york', targetGoals: 40, shotsLimit: 50 },
+      { slug: 'accuracy-rio-de-janeiro', targetGoals: 42, shotsLimit: 50 },
+      { slug: 'accuracy-cape-town', targetGoals: 47, shotsLimit: 55 },
+      { slug: 'accuracy-dubai', targetGoals: 49, shotsLimit: 60 },
+      { slug: 'accuracy-mumbai', targetGoals: 52, shotsLimit: 60 },
+      { slug: 'accuracy-singapore', targetGoals: 66, shotsLimit: 80 },
+      { slug: 'accuracy-beijing', targetGoals: 76, shotsLimit: 90 },
+      { slug: 'accuracy-tokyo', targetGoals: 90, shotsLimit: 90 },
     ];
 
     expect(before.rows).toHaveLength(13);
@@ -191,19 +191,23 @@ describe.skipIf(!hasIntegrationEnv)('077 accuracy World Tour movement balance', 
       const previous = before.rows[gameIndex]!;
       const wanted = expected[gameIndex]!;
       expect(game.slug).toBe(wanted.slug);
-      expect(game.target_goals).toBe(previous.target_goals);
+      expect(game.target_goals).toBe(wanted.targetGoals);
       expect(game.total_periods).toBe(1);
       expect(game.break_duration_ms).toBe(0);
-      expect(game.qualification_rules).toEqual(previous.qualification_rules);
-      expect(game.revision).toBe(previous.revision + 1);
+      expect(game.qualification_rules).toEqual({
+        ...(previous.qualification_rules as Record<string, unknown>),
+        targetGoals: wanted.targetGoals,
+        shotsLimit: wanted.shotsLimit,
+      });
+      expect(game.revision).toBe(previous.revision + 2);
       expect(game.period_rules).toEqual([
         {
           ...previous.period_rules[0]!,
           periodNumber: 1,
-          shotsLimit: (previous.qualification_rules as { shotsLimit: number }).shotsLimit,
-          goalFrequency: wanted.goal,
-          goalieFrequency: wanted.goalie,
-          shooterFrequency: wanted.shooter,
+          shotsLimit: wanted.shotsLimit,
+          goalFrequency: 0.5,
+          goalieFrequency: 0.6,
+          shooterFrequency: 0.75,
           puckSpeedPerMs: 1.25,
         },
       ]);
@@ -218,6 +222,7 @@ describe.skipIf(!hasIntegrationEnv)('077 accuracy World Tour movement balance', 
       '082_tournament_playoff_scheduling.sql',
       '083_tournament_playoff_notifications.sql',
       '084_tournament_series_notification_url.sql',
+      '085_accuracy_world_tour_uniform_balance.sql',
     ]);
     const attempt = await pool.query<{
       status: string;
