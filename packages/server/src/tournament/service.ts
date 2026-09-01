@@ -2902,24 +2902,28 @@ export async function rescheduleTournamentFixture(
       id: string;
       status: string;
       amateur_duel_match_id: string | null;
+      duel_status: string | null;
       scheduled_starts_at: Date;
       readiness_expires_at: Date;
       hard_deadline_at: Date;
     }>(
-      `select id, status, amateur_duel_match_id, scheduled_starts_at,
-              readiness_expires_at, hard_deadline_at
-         from tournament_fixture_attempt
-        where fixture_id = $1
-        order by attempt_number desc
+      `select attempt.id, attempt.status, attempt.amateur_duel_match_id,
+              duel.status as duel_status, attempt.scheduled_starts_at,
+              attempt.readiness_expires_at, attempt.hard_deadline_at
+         from tournament_fixture_attempt attempt
+         left join amateur_duel_match duel on duel.id = attempt.amateur_duel_match_id
+        where attempt.fixture_id = $1
+        order by attempt.attempt_number desc
         limit 1
-        for update`,
+        for update of attempt`,
       [input.fixtureId],
     );
     const currentAttempt = attempt.rows[0];
     if (currentAttempt !== undefined) {
       if (
-        currentAttempt.amateur_duel_match_id !== null ||
-        !['pending', 'needs_reschedule', 'needs_admin_decision'].includes(currentAttempt.status)
+        !['pending', 'needs_reschedule', 'needs_admin_decision'].includes(currentAttempt.status) ||
+        (currentAttempt.amateur_duel_match_id !== null &&
+          currentAttempt.duel_status !== 'cancelled')
       ) {
         throw new AppError('conflict', 'Игру нельзя перенести после начала готовности', 409);
       }
@@ -2941,7 +2945,13 @@ export async function rescheduleTournamentFixture(
         `update tournament_fixture_attempt
             set status = 'pending', scheduled_starts_at = $2,
                 readiness_expires_at = $3, hard_deadline_at = $4,
-                outcome = null, winner_participant_id = null, settled_at = null,
+                amateur_duel_match_id = null,
+                home_ready_at = null, away_ready_at = null,
+                outcome = null, winner_participant_id = null,
+                home_score = null, away_score = null,
+                home_accuracy = null, away_accuracy = null,
+                home_active_time_ms = null, away_active_time_ms = null,
+                settled_at = null,
                 result_snapshot = coalesce(result_snapshot, '{}'::jsonb)
                   || jsonb_build_object('rescheduledReason', $5::text),
                 updated_at = now()
@@ -3129,7 +3139,8 @@ export async function resolveTournamentNoShow(
             set status = 'forfeit', winner_participant_id = $2, outcome = $3,
                 home_score = case when $3 = 'home_win' then 1 else 0 end,
                 away_score = case when $3 = 'away_win' then 1 else 0 end,
-                result_snapshot = $4, settled_at = now(), updated_at = now()
+                result_snapshot = coalesce(result_snapshot, '{}'::jsonb) || $4::jsonb,
+                settled_at = now(), updated_at = now()
           where id = $1 and status in ('conditional', 'scheduled', 'open', 'active', 'paused')
           returning id`,
         [
