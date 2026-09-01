@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { applyMigrations } from '../../src/db/migrations.js';
 import { reconcileTournamentLifecycle } from '../../src/tournament/automaticLifecycle.js';
@@ -8,8 +8,10 @@ import { parseTournamentConfig } from '../../src/tournament/config.js';
 import {
   generateRegularSchedule,
   type TournamentRulesSnapshot,
+  updateTournamentDraft,
 } from '../../src/tournament/service.js';
 import { createTestPool, hasIntegrationEnv, resetDatabase } from '../helpers/testDb.js';
+import { waitForBlockedWriter } from '../helpers/postgresLocks.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
@@ -180,6 +182,33 @@ async function counts(pool: Pool, tournamentId: string) {
   return rows[0]!;
 }
 
+async function reconcileAfterLockedParticipantMutation(
+  pool: Pool,
+  tournamentId: string,
+  mutate: (client: PoolClient) => Promise<void>,
+) {
+  const blocker = await pool.connect();
+  let transactionOpen = false;
+  try {
+    await blocker.query('begin');
+    transactionOpen = true;
+    const backend = await blocker.query<{ pid: number }>('select pg_backend_pid() as pid');
+    await blocker.query(`select id from tournament where id = $1 for update`, [tournamentId]);
+
+    const first = reconcileTournamentLifecycle(pool, { now: CLOSES_AT, tournamentId });
+    const second = reconcileTournamentLifecycle(pool, { now: CLOSES_AT, tournamentId });
+    await waitForBlockedWriter(pool, backend.rows[0]!.pid, /tournament/i);
+    await mutate(blocker);
+    await blocker.query('commit');
+    transactionOpen = false;
+
+    return Promise.all([first, second]);
+  } finally {
+    if (transactionOpen) await blocker.query('rollback');
+    blocker.release();
+  }
+}
+
 describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', () => {
   let pool: Pool;
 
@@ -271,6 +300,101 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
     },
   );
 
+  it('uses the locked outcome when concurrent composition falls below the playoff size', async () => {
+    const tournament = await seedAutomaticTournament(pool, {
+      approved: 4,
+      playoffSize: 4,
+      subscribedAdmins: 2,
+    });
+
+    const reports = await reconcileAfterLockedParticipantMutation(
+      pool,
+      tournament.id,
+      async (client) => {
+        await client.query(
+          `delete from tournament_participant
+          where id = (
+            select id from tournament_participant
+             where tournament_id = $1 and state = 'approved'
+             order by joined_at, id
+             limit 1
+          )`,
+          [tournament.id],
+        );
+      },
+    );
+    const items = reports.map((report) => report.items[0]!);
+
+    expect(items.filter((item) => item.changed)).toHaveLength(1);
+    expect(items).toContainEqual(
+      expect.objectContaining({
+        action: 'block_registration',
+        after: 'registration_blocked',
+        changed: true,
+        reason: 'not_enough_participants',
+      }),
+    );
+    expect(items).toContainEqual(
+      expect.objectContaining({
+        action: 'unchanged',
+        after: 'registration_blocked',
+        changed: false,
+        reason: 'not_enough_participants',
+      }),
+    );
+    const deliveries = await pool.query<{ count: number }>(
+      `select count(*)::int as count from push_delivery_log
+        where event_type = 'tournament.registration_blocked'`,
+    );
+    expect(deliveries.rows[0]!.count).toBe(2);
+  });
+
+  it('uses the locked outcome when concurrent composition reaches the playoff size', async () => {
+    const tournament = await seedAutomaticTournament(pool, { approved: 3, playoffSize: 4 });
+    const latePlayerId = '00000000-0000-4000-8000-000000001000';
+
+    const reports = await reconcileAfterLockedParticipantMutation(
+      pool,
+      tournament.id,
+      async (client) => {
+        await client.query(
+          `insert into users (id, display_name, timezone, role)
+         values ($1, 'Поздний игрок', 'Europe/Moscow', 'player')`,
+          [latePlayerId],
+        );
+        await client.query(
+          `insert into tournament_participant (tournament_id, user_id, state, joined_at)
+         values ($1, $2, 'approved', $3)`,
+          [tournament.id, latePlayerId, CLOSES_AT],
+        );
+      },
+    );
+    const items = reports.map((report) => report.items[0]!);
+
+    expect(items.filter((item) => item.changed)).toHaveLength(1);
+    expect(items).toContainEqual(
+      expect.objectContaining({
+        action: 'generate_schedule',
+        after: 'scheduling',
+        changed: true,
+        reason: null,
+      }),
+    );
+    expect(items).toContainEqual(
+      expect.objectContaining({
+        action: 'await_manual_regular_start',
+        after: 'scheduling',
+        changed: false,
+        reason: null,
+      }),
+    );
+    expect(await counts(pool, tournament.id)).toMatchObject({
+      matchdays: 1,
+      rounds: 3,
+      fixtures: 6,
+    });
+  });
+
   it('blocks without shrinking playoff size and notifies creator and admins once', async () => {
     const tournament = await seedAutomaticTournament(pool, {
       approved: 3,
@@ -298,5 +422,58 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
       [eventKey],
     );
     expect(deliveries.rows[0]!.count).toBe(2);
+  });
+
+  it('does not enqueue a new blocked delivery after a revision-only edit', async () => {
+    const tournament = await seedAutomaticTournament(pool, {
+      approved: 3,
+      playoffSize: 4,
+      subscribedAdmins: 2,
+    });
+
+    await reconcileTournamentLifecycle(pool, { now: CLOSES_AT, tournamentId: tournament.id });
+    const updated = await updateTournamentDraft(pool, {
+      tournamentId: tournament.id,
+      expectedRevision: tournament.revision,
+      title: 'Автоматический кубок, редакция',
+      description: '',
+      rules: rules('head_to_head', 4),
+      updatedBy: CREATOR_ID,
+      registrationOpensAt: new Date(CLOSES_AT.getTime() - 3_600_000),
+      registrationClosesAt: CLOSES_AT,
+      startsAt: new Date(CLOSES_AT.getTime() + 86_400_000),
+    });
+
+    await reconcileTournamentLifecycle(pool, {
+      now: minuteAfter(CLOSES_AT),
+      tournamentId: tournament.id,
+    });
+
+    const deliveries = await pool.query<{ count: number; revisions: string[] }>(
+      `select count(*)::int as count, array_agg(distinct event_key order by event_key) as revisions
+         from push_delivery_log
+        where event_type = 'tournament.registration_blocked'`,
+    );
+    expect(updated.revision).toBe(2);
+    expect(deliveries.rows[0]!.count).toBe(2);
+    expect(deliveries.rows[0]!.revisions).toEqual([
+      `${tournament.id}:registration-blocked:${tournament.revision}`,
+    ]);
+  });
+
+  it('keeps regular tournaments with no results away from playoff actions', async () => {
+    const tournament = await seedAutomaticTournament(pool, { approved: 4, playoffSize: 4 });
+    await pool.query(`update tournament set status = 'regular' where id = $1`, [tournament.id]);
+
+    const report = await reconcileTournamentLifecycle(pool, {
+      now: minuteAfter(CLOSES_AT),
+      tournamentId: tournament.id,
+    });
+
+    expect(report.items[0]).toMatchObject({
+      action: 'regular_active',
+      changed: false,
+      reason: null,
+    });
   });
 });

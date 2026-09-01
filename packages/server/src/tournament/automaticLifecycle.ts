@@ -1,6 +1,10 @@
 import type { Pool } from 'pg';
 import { enqueueTournamentPush } from '../push/tournament.js';
-import { generateRegularSchedule, type TournamentRulesSnapshot } from './service.js';
+import {
+  generateRegularSchedule,
+  type GenerateRegularScheduleOutcome,
+  type TournamentRulesSnapshot,
+} from './service.js';
 import type { TournamentPlayoffSize, TournamentStatus } from './types.js';
 
 export const AUTOMATIC_TOURNAMENT_LIFECYCLE_VERSION = 1;
@@ -182,14 +186,7 @@ async function loadLifecycleRows(
             exists(
               select 1 from tournament_matchday matchday where matchday.tournament_id = t.id
             ) as schedule_exists,
-            not exists(
-              select 1
-                from tournament_fixture fixture
-                join tournament_round round on round.id = fixture.round_id
-               where fixture.tournament_id = t.id
-                 and round.stage in ('regular', 'tiebreak')
-                 and fixture.status not in ('settled', 'forfeit', 'cancelled')
-            ) as regular_results_complete
+            false as regular_results_complete
        from tournament t
        join tournament_revision revision on revision.id = t.published_revision_id
       where ($1::uuid is null or t.id = $1)
@@ -210,34 +207,67 @@ function plannedAfterStatus(
 
 async function enqueueRegistrationBlockedPushes(
   pool: Pool,
-  row: LifecycleRow,
-  snapshot: TournamentLifecycleSnapshot,
+  outcome: Pick<
+    GenerateRegularScheduleOutcome,
+    'tournamentId' | 'revision' | 'participantCount' | 'playoffSize' | 'title' | 'createdBy'
+  >,
 ): Promise<void> {
   const recipients = await pool.query<{ id: string }>(
     `select distinct id::text as id
        from users
       where id = $1 or role = 'admin'`,
-    [row.created_by],
+    [outcome.createdBy],
   );
-  const eventKey = `${row.id}:registration-blocked:${snapshot.revision}`;
+  const eventKey = `${outcome.tournamentId}:registration-blocked:${outcome.revision}`;
   for (const recipient of recipients.rows) {
+    const previousDelivery = await pool.query<{ exists: boolean }>(
+      `select exists(
+         select 1 from push_delivery_log
+          where user_id = $1
+            and event_type = 'tournament.registration_blocked'
+            and event_key like $2 || '%'
+       ) as exists`,
+      [recipient.id, `${outcome.tournamentId}:registration-blocked:`],
+    );
+    if (previousDelivery.rows[0]!.exists) continue;
     await enqueueTournamentPush(pool, {
       userId: recipient.id,
-      tournamentId: row.id,
+      tournamentId: outcome.tournamentId,
       eventType: 'tournament.registration_blocked',
       eventKey,
       variables: {
-        tournamentTitle: row.title,
-        approvedCount: snapshot.approvedParticipantCount,
-        requiredCount: snapshot.playoffSize,
+        tournamentTitle: outcome.title,
+        approvedCount: outcome.participantCount,
+        requiredCount: outcome.playoffSize,
       },
       fallback: {
         title: 'Турнир требует внимания',
-        body: `В турнире «${row.title}» подтверждено ${snapshot.approvedParticipantCount} из ${snapshot.playoffSize} участников.`,
+        body: `В турнире «${outcome.title}» подтверждено ${outcome.participantCount} из ${outcome.playoffSize} участников.`,
         url: '/admin',
       },
     });
   }
+}
+
+function reconcileGeneratedSchedule(outcome: GenerateRegularScheduleOutcome) {
+  if (outcome.status === 'registration_blocked') {
+    return {
+      before: outcome.beforeStatus,
+      after: outcome.status,
+      action: outcome.changed ? ('block_registration' as const) : ('unchanged' as const),
+      changed: outcome.changed,
+      reason: 'not_enough_participants' as const,
+    };
+  }
+  return {
+    before: outcome.beforeStatus,
+    after: outcome.status,
+    action: outcome.changed
+      ? ('generate_schedule' as const)
+      : ('await_manual_regular_start' as const),
+    changed: outcome.changed,
+    reason: null,
+  };
 }
 
 export async function reconcileTournamentLifecycle(
@@ -253,6 +283,9 @@ export async function reconcileTournamentLifecycle(
     const lifecycleDecision = evaluateTournamentLifecycle(snapshot, options.now);
     let after = snapshot.status;
     let changed = false;
+    let before = snapshot.status;
+    let action = lifecycleDecision.action;
+    let reason = lifecycleDecision.reason;
 
     if (options.dryRun === true) {
       after = plannedAfterStatus(snapshot.status, lifecycleDecision.action);
@@ -261,25 +294,36 @@ export async function reconcileTournamentLifecycle(
       lifecycleDecision.action === 'block_registration'
     ) {
       const result = await generateRegularSchedule(pool, snapshot.tournamentId, snapshot.revision);
-      after = result.status;
-      changed = after !== snapshot.status;
-      if (lifecycleDecision.action === 'block_registration' && after === 'registration_blocked') {
-        await enqueueRegistrationBlockedPushes(pool, row, snapshot);
+      const reconciled = reconcileGeneratedSchedule(result);
+      before = reconciled.before;
+      after = reconciled.after;
+      action = reconciled.action;
+      changed = reconciled.changed;
+      reason = reconciled.reason;
+      if (result.status === 'registration_blocked' && result.changed) {
+        await enqueueRegistrationBlockedPushes(pool, result);
       }
     } else if (
       snapshot.status === 'registration_blocked' &&
       snapshot.automaticLifecycleVersion === AUTOMATIC_TOURNAMENT_LIFECYCLE_VERSION
     ) {
-      await enqueueRegistrationBlockedPushes(pool, row, snapshot);
+      await enqueueRegistrationBlockedPushes(pool, {
+        tournamentId: snapshot.tournamentId,
+        revision: snapshot.revision,
+        participantCount: snapshot.approvedParticipantCount,
+        playoffSize: snapshot.playoffSize,
+        title: row.title,
+        createdBy: row.created_by,
+      });
     }
 
     items.push({
       tournamentId: snapshot.tournamentId,
-      before: snapshot.status,
+      before,
       after,
-      action: lifecycleDecision.action,
+      action,
       changed,
-      reason: lifecycleDecision.reason,
+      reason,
     });
   }
 

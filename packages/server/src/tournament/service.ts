@@ -57,6 +57,21 @@ export interface TournamentRulesSnapshot {
   [key: string]: unknown;
 }
 
+export interface GenerateRegularScheduleOutcome {
+  tournamentId: string;
+  beforeStatus: TournamentStatus;
+  status: 'registration_blocked' | 'scheduling';
+  revision: number;
+  participantCount: number;
+  playoffSize: TournamentConfig['playoffSize'];
+  title: string;
+  createdBy: string;
+  changed: boolean;
+  matchdayCount: number;
+  roundCount: number;
+  fixtureCount: number;
+}
+
 export function assertTournamentDatesReady(
   registrationOpensAt: Date | null,
   registrationClosesAt: Date | null,
@@ -1473,16 +1488,18 @@ export async function generateRegularSchedule(
   pool: Pool,
   tournamentId: string,
   expectedRevision: number,
-) {
+): Promise<GenerateRegularScheduleOutcome> {
   return inTransaction(pool, async (client) => {
     await lockTournament(client, tournamentId);
     const tournamentResult = await client.query<{
       status: TournamentStatus;
       current_revision: number;
       starts_at: Date | null;
+      title: string;
+      created_by: string;
       rules_snapshot: TournamentRulesSnapshot;
     }>(
-      `select t.status, t.current_revision, t.starts_at, r.rules_snapshot
+      `select t.status, t.current_revision, t.starts_at, t.title, t.created_by::text, r.rules_snapshot
          from tournament t join tournament_revision r on r.id = t.published_revision_id
         where t.id = $1 for update of t`,
       [tournamentId],
@@ -1495,6 +1512,23 @@ export async function generateRegularSchedule(
     if (Number(tournament.current_revision) !== expectedRevision) {
       throw new AppError('revision_conflict', 'tournament was changed in another tab', 409);
     }
+    const participants = await client.query<{ id: string }>(
+      `select id from tournament_participant
+        where tournament_id = $1 and state = 'approved'
+        order by seed nulls last, joined_at, id`,
+      [tournamentId],
+    );
+    const participantCount = participants.rows.length;
+    const config = tournament.rules_snapshot.config;
+    const outcome = {
+      tournamentId,
+      beforeStatus: tournament.status,
+      revision: Number(tournament.current_revision),
+      participantCount,
+      playoffSize: config.playoffSize,
+      title: tournament.title,
+      createdBy: tournament.created_by,
+    };
     if (tournament.status === 'scheduling') {
       const existing = await client.query<{
         matchday_count: number;
@@ -1510,8 +1544,9 @@ export async function generateRegularSchedule(
       const counts = existing.rows[0]!;
       if (Number(counts.matchday_count) > 0) {
         return {
-          tournamentId,
+          ...outcome,
           status: 'scheduling' as const,
+          changed: false,
           matchdayCount: Number(counts.matchday_count),
           roundCount: Number(counts.round_count),
           fixtureCount: Number(counts.fixture_count),
@@ -1520,13 +1555,6 @@ export async function generateRegularSchedule(
     }
     if (tournament.starts_at === null)
       throw new AppError('conflict', 'start time is required', 409);
-    const participants = await client.query<{ id: string }>(
-      `select id from tournament_participant
-        where tournament_id = $1 and state = 'approved'
-        order by seed nulls last, joined_at, id`,
-      [tournamentId],
-    );
-    const config = tournament.rules_snapshot.config;
     const regularLifecycleV2 =
       config.regularSource === 'head_to_head' &&
       tournament.rules_snapshot.duelLifecycleVersion === 2;
@@ -1547,15 +1575,21 @@ export async function generateRegularSchedule(
         tournament.rules_snapshot.regularDuelTemplateId,
       );
     }
-    if (participants.rows.length < config.playoffSize) {
-      await client.query(
-        `update tournament set status = 'registration_blocked', updated_at = now() where id = $1`,
-        [tournamentId],
-      );
+    if (participantCount < config.playoffSize) {
+      const changed = tournament.status !== 'registration_blocked';
+      if (changed) {
+        await client.query(
+          `update tournament set status = 'registration_blocked', updated_at = now() where id = $1`,
+          [tournamentId],
+        );
+      }
       return {
-        tournamentId,
+        ...outcome,
         status: 'registration_blocked' as const,
-        participantCount: participants.rows.length,
+        changed,
+        matchdayCount: 0,
+        roundCount: 0,
+        fixtureCount: 0,
       };
     }
     await client.query(`delete from tournament_matchday where tournament_id = $1`, [tournamentId]);
@@ -1658,8 +1692,9 @@ export async function generateRegularSchedule(
       [tournamentId],
     );
     return {
-      tournamentId,
+      ...outcome,
       status: 'scheduling' as const,
+      changed: true,
       matchdayCount,
       roundCount,
       fixtureCount,
