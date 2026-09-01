@@ -5557,58 +5557,61 @@ function DuelResultCard({
         compact={compact}
         style={{ marginTop: compact ? 10 : 14 }}
       />
-      <div
-        style={{
-          marginTop: compact ? 12 : 16,
-          minHeight: 0,
-          flex: hasMultiplePeriods ? '1 1 auto' : '0 0 auto',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-        }}
-      >
-        <div className="section-label" style={{ margin: 0, padding: 0 }}>
-          Периоды
+      {hasMultiplePeriods && (
+        <div
+          style={{
+            marginTop: compact ? 12 : 16,
+            minHeight: 0,
+            flex: '1 1 auto',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+          }}
+        >
+          <div className="section-label" style={{ margin: 0, padding: 0 }}>
+            Периоды
+          </div>
+          {hasPeriodDetails ? (
+            <div
+              style={{
+                minHeight: 0,
+                flex: '1 1 auto',
+                maxHeight: 'min(38dvh, 330px)',
+                overflowY: 'auto',
+                paddingRight: 2,
+              }}
+            >
+              <DuelResultPeriodComparison
+                key={match.id}
+                match={match}
+                totalPeriods={match.rules.totalPeriods}
+                mePeriods={mePeriods}
+                opponentPeriods={opponentPeriods}
+                opponentName={match.opponent.display_name || 'Соперник'}
+                compact={compact}
+              />
+            </div>
+          ) : (
+            <div
+              style={{
+                marginTop: 8,
+                borderRadius: 16,
+                padding: '12px 14px',
+                background: 'rgba(255,255,255,0.42)',
+                border: '1px solid rgba(255,255,255,0.62)',
+                color: 'rgba(15, 23, 42, 0.58)',
+                fontSize: 12,
+                fontWeight: 750,
+                lineHeight: 1.35,
+              }}
+            >
+              {isLoadingDetails
+                ? 'Загружаем статистику периодов...'
+                : 'Подробная статистика периодов пока недоступна.'}
+            </div>
+          )}
         </div>
-        {hasPeriodDetails ? (
-          <div
-            style={{
-              minHeight: 0,
-              flex: hasMultiplePeriods ? '1 1 auto' : undefined,
-              maxHeight: hasMultiplePeriods ? 'min(38dvh, 330px)' : undefined,
-              overflowY: hasMultiplePeriods ? 'auto' : undefined,
-              paddingRight: hasMultiplePeriods ? 2 : 0,
-            }}
-          >
-            <DuelResultPeriodComparison
-              match={match}
-              totalPeriods={match.rules.totalPeriods}
-              mePeriods={mePeriods}
-              opponentPeriods={opponentPeriods}
-              opponentName={match.opponent.display_name || 'Соперник'}
-              compact={compact}
-            />
-          </div>
-        ) : (
-          <div
-            style={{
-              marginTop: 8,
-              borderRadius: 16,
-              padding: '12px 14px',
-              background: 'rgba(255,255,255,0.42)',
-              border: '1px solid rgba(255,255,255,0.62)',
-              color: 'rgba(15, 23, 42, 0.58)',
-              fontSize: 12,
-              fontWeight: 750,
-              lineHeight: 1.35,
-            }}
-          >
-            {isLoadingDetails
-              ? 'Загружаем статистику периодов...'
-              : 'Подробная статистика периодов пока недоступна.'}
-          </div>
-        )}
-      </div>
+      )}
       {footer}
     </div>
   );
@@ -5698,9 +5701,7 @@ function DuelResultPeriodComparison({
   const opponentByPeriod = new Map(opponentPeriods.map((period) => [period.period_number, period]));
   const periodNumbers = Array.from({ length: totalPeriods }, (_, index) => index + 1);
   const hasMultiplePeriods = totalPeriods > 1;
-  const [openPeriods, setOpenPeriods] = useState<ReadonlySet<number>>(
-    () => new Set(hasMultiplePeriods ? [periodNumbers.at(-1) ?? 1] : periodNumbers),
-  );
+  const [openPeriods, setOpenPeriods] = useState<ReadonlySet<number>>(() => new Set());
   const togglePeriod = useCallback((periodNumber: number) => {
     setOpenPeriods((current) => {
       const next = new Set(current);
@@ -6364,7 +6365,16 @@ function DuelInventoryUsageSummary({
   if (usage.length === 0) return null;
   return (
     <div aria-label={label ?? title} style={{ display: 'grid', gap: compact ? 5 : 6, ...style }}>
-      <div style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 900 }}>{title}</div>
+      <div
+        className={compact ? 'section-label' : undefined}
+        style={
+          compact
+            ? { margin: 0, padding: 0 }
+            : { color: 'var(--muted)', fontSize: 11, fontWeight: 900 }
+        }
+      >
+        {title}
+      </div>
       <div style={{ display: 'grid', gap: 5 }}>
         {usage.map((item) => (
           <div

@@ -143,6 +143,13 @@ describe('DailyOverviewScreen', () => {
     expect(historySummary).toHaveClass('glass', 'daily-history-summary');
     expect(historySummary.style.background).toBe('');
     expect(historySummary.style.boxShadow).toBe('');
+    const monthSummary = screen.getByRole('article', { name: 'Статистика за август' });
+    expect(within(monthSummary).getByRole('heading', { name: 'За август' })).toBeInTheDocument();
+    expect(within(monthSummary).getByText('49% (59 из 120)')).toBeInTheDocument();
+    expect(within(monthSummary).getByText('2/3')).toBeInTheDocument();
+    expect(within(monthSummary).getByText('67%')).toBeInTheDocument();
+    expect(within(monthSummary).getByText('1/2')).toBeInTheDocument();
+    expect(within(monthSummary).getByText('50%')).toBeInTheDocument();
     const calendar = screen.getByRole('region', { name: 'Календарь ежедневных игр' });
     expect(within(calendar).getByText('Август 2026')).toBeInTheDocument();
     expect(

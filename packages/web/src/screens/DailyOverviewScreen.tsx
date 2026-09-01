@@ -83,6 +83,11 @@ function monthTitle(monthKey: string): string {
   return `${monthName} ${yearText}`;
 }
 
+function monthNameAfterZa(monthKey: string): string {
+  const month = Number(monthKey.split('-')[1]);
+  return (MONTH_NAMES[month - 1] ?? monthKey).toLocaleLowerCase('ru-RU');
+}
+
 function calendarDayLabel(dayDate: string): string {
   const [year, month, day] = dayDate.split('-');
   const monthName = MONTH_NAMES_GENITIVE[Number(month) - 1] ?? month;
@@ -248,6 +253,20 @@ export function DailyOverviewScreen(): JSX.Element {
   const latestMonth = today?.day_date?.slice(0, 7) ?? currentMonthKey();
   const selectedMonth = calendarMonth ?? latestMonth;
   const gamesByDate = useMemo(() => new Map(games.map((game) => [game.day_date, game])), [games]);
+  const monthSummary = useMemo<DailyHistorySummary>(() => {
+    const monthGames = games.filter((game) => game.day_date.startsWith(`${selectedMonth}-`));
+    const playedGames = monthGames.filter((game) => game.total_shots > 0);
+    const completedGames = playedGames.filter(
+      (game) => game.periods.length >= (today?.total_periods ?? 3),
+    );
+    return {
+      possible_games: monthGames.length,
+      played_games: playedGames.length,
+      completed_games: completedGames.length,
+      total_shots: monthGames.reduce((total, game) => total + game.total_shots, 0),
+      total_goals: monthGames.reduce((total, game) => total + game.total_goals, 0),
+    };
+  }, [games, selectedMonth, today?.total_periods]);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 500);
@@ -433,7 +452,18 @@ export function DailyOverviewScreen(): JSX.Element {
             </div>
           ) : (
             <div style={{ display: 'grid', gap: 8 }}>
-              {historySummary && <HistorySummaryCard summary={historySummary} />}
+              {historySummary && (
+                <HistorySummaryCard
+                  title="За всё время"
+                  ariaLabel="Общая статистика ежедневных игр"
+                  summary={historySummary}
+                />
+              )}
+              <HistorySummaryCard
+                title={`За ${monthNameAfterZa(selectedMonth)}`}
+                ariaLabel={`Статистика за ${monthNameAfterZa(selectedMonth)}`}
+                summary={monthSummary}
+              />
               <DailyHistoryCalendar
                 monthKey={selectedMonth}
                 latestMonth={latestMonth}
@@ -633,13 +663,21 @@ function DailyGameResultModal({
   );
 }
 
-function HistorySummaryCard({ summary }: { summary: DailyHistorySummary }): JSX.Element {
+function HistorySummaryCard({
+  title,
+  ariaLabel,
+  summary,
+}: {
+  title: string;
+  ariaLabel: string;
+  summary: DailyHistorySummary;
+}): JSX.Element {
   const participationPercent = formatPercent(summary.played_games, summary.possible_games);
   const goalRate = formatGoalRate(summary.total_goals, summary.total_shots);
   return (
     <article
       className="glass daily-history-summary"
-      aria-label="Общая статистика ежедневных игр"
+      aria-label={ariaLabel}
       style={{
         borderRadius: 22,
         padding: 14,
@@ -666,7 +704,7 @@ function HistorySummaryCard({ summary }: { summary: DailyHistorySummary }): JSX.
             lineHeight: 1.05,
           }}
         >
-          За всё время
+          {title}
         </h2>
         <div
           style={{

@@ -2885,8 +2885,10 @@ describe('DailyScreen', () => {
     expect(within(expandedDetails).queryByText('Соперник')).not.toBeInTheDocument();
     expect(within(expandedDetails).getByText('Очки')).toBeInTheDocument();
     expect(within(expandedDetails).getByText('Начало')).toBeInTheDocument();
-    expect(within(expandedDetails).getByText('Периоды')).toBeInTheDocument();
-    expect(within(expandedDetails).getByRole('table', { name: '1-й период' })).toBeInTheDocument();
+    expect(within(expandedDetails).queryByText('Периоды')).not.toBeInTheDocument();
+    expect(
+      within(expandedDetails).queryByRole('table', { name: '1-й период' }),
+    ).not.toBeInTheDocument();
     expect(expandedDetails.querySelector('.duel-result-card__compact-metric')).toBeNull();
     expect(screen.queryByRole('dialog', { name: 'Результат дуэли' })).not.toBeInTheDocument();
     fireEvent.click(duelRow);
@@ -3109,6 +3111,7 @@ describe('DailyScreen', () => {
     );
 
     const totalUsage = await screen.findByLabelText('Общий расход инвентаря');
+    expect(within(totalUsage).getByText('Расход инвентаря')).toHaveClass('section-label');
     expect(within(totalUsage).getByText('Клюшка тест')).toBeInTheDocument();
     expect(within(totalUsage).getByText('21 бросок')).toBeInTheDocument();
     expect(within(totalUsage).getByText('Коньки тест')).toBeInTheDocument();
@@ -3116,7 +3119,25 @@ describe('DailyScreen', () => {
     expect(within(totalUsage).getByText('Питание тест')).toBeInTheDocument();
     expect(within(totalUsage).getByText('2 минуты энергии')).toBeInTheDocument();
 
-    const secondPeriodUsage = screen.getByLabelText('2-й период: расход инвентаря');
+    const expandedDetails = screen.getByLabelText('Подробности дуэли с Inventory Opponent');
+    const firstPeriodToggle = within(expandedDetails).getByRole('button', {
+      name: /1-й период/,
+    });
+    const secondPeriodToggle = within(expandedDetails).getByRole('button', {
+      name: /2-й период/,
+    });
+    expect(firstPeriodToggle).toHaveAttribute('aria-expanded', 'false');
+    expect(secondPeriodToggle).toHaveAttribute('aria-expanded', 'false');
+    expect(
+      within(expandedDetails).queryByLabelText('2-й период: расход инвентаря'),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(secondPeriodToggle);
+
+    const secondPeriodUsage = within(expandedDetails).getByLabelText(
+      '2-й период: расход инвентаря',
+    );
+    expect(within(secondPeriodUsage).getByText('Расход за период')).toHaveClass('section-label');
     expect(within(secondPeriodUsage).getByText('9 бросков')).toBeInTheDocument();
     expect(within(secondPeriodUsage).getByText('2 проката')).toBeInTheDocument();
     expect(within(secondPeriodUsage).getByText('30 секунд энергии')).toBeInTheDocument();
@@ -4581,9 +4602,9 @@ describe('DailyScreen', () => {
     expect(within(dialog).getByText('Победа')).toBeInTheDocument();
     expect(within(dialog).getByText('3:1')).toBeInTheDocument();
     expect(within(dialog).getByText('+3')).toBeInTheDocument();
-    expect(within(dialog).getByText('1-й период')).toBeInTheDocument();
-    expect(within(dialog).getByText('25%')).toBeInTheDocument();
-    expect(within(dialog).getByText('10%')).toBeInTheDocument();
+    expect(within(dialog).queryByText('1-й период')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('25%')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('10%')).not.toBeInTheDocument();
     fireEvent.click(dialog);
     expect(screen.getByRole('dialog', { name: 'Результат дуэли' })).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Понятно' }));
