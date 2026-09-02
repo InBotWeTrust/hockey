@@ -25,6 +25,7 @@ import { pushSchedulerPlugin } from './plugins/pushScheduler.js';
 import { createObjectStorageClient } from './storage/objectStorage.js';
 import { arenaRoutes } from './arenas/routes.js';
 import { bonusGameRoutes } from './bonusGames/routes.js';
+import { onboardingRoutes } from './onboarding/routes.js';
 
 export interface BuildAppOptions {
   config?: AppConfig;
@@ -96,6 +97,10 @@ export async function buildApp(options: BuildAppOptions = {}) {
     refreshSecret: config.REFRESH_SECRET,
     devLoginEnabled: config.NODE_ENV !== 'production',
     devAccessCodeLoginEnabled: config.DEV_ACCESS_CODE_LOGIN_ENABLED === true,
+  });
+  await app.register(onboardingRoutes, {
+    tutorialSeedSecret: config.DAILY_SEED_SECRET,
+    mediaAccessSecret: config.JWT_SECRET,
   });
   await app.register(achievementRoutes);
   await app.register(feedbackRoutes);
