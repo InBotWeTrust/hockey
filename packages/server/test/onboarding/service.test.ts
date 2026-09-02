@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -23,6 +24,7 @@ interface PublishedStep {
 describe.skipIf(!hasIntegrationEnv)('onboarding applicability service', () => {
   let pool: Pool;
   let userSequence = 0;
+  let mediaOwnerId: string;
 
   beforeAll(async () => {
     pool = createTestPool();
@@ -37,6 +39,13 @@ describe.skipIf(!hasIntegrationEnv)('onboarding applicability service', () => {
   beforeEach(async () => {
     await pool.query('truncate users restart identity cascade');
     userSequence = 0;
+    mediaOwnerId = randomUUID();
+    await pool.query(
+      `insert into users (id, display_name, timezone)
+       values ($1, 'Onboarding media owner', 'Europe/Moscow')`,
+      [mediaOwnerId],
+    );
+    await pool.query(`insert into onboarding_chain (key) values ('beginner'), ('amateur')`);
   });
 
   async function createUser({
@@ -49,12 +58,19 @@ describe.skipIf(!hasIntegrationEnv)('onboarding applicability service', () => {
     level?: 'beginner' | 'amateur';
   }) {
     userSequence += 1;
+    const id = randomUUID();
     const { rows } = await pool.query<{ id: string }>(
       `insert into users
-         (display_name, timezone, level, beginner_onboarding_completed, amateur_onboarding_completed)
-       values ($1, 'Europe/Moscow', $2, $3, $4)
+         (id, display_name, timezone, level, beginner_onboarding_completed, amateur_onboarding_completed)
+       values ($1, $2, 'Europe/Moscow', $3, $4, $5)
        returning id`,
-      [`Onboarding player ${userSequence}`, level === 'amateur' ? 2 : 1, beginnerDone, amateurDone],
+      [
+        id,
+        `Onboarding player ${userSequence}`,
+        level === 'amateur' ? 2 : 1,
+        beginnerDone,
+        amateurDone,
+      ],
     );
     return rows[0]!.id;
   }
@@ -77,9 +93,13 @@ describe.skipIf(!hasIntegrationEnv)('onboarding applicability service', () => {
         const media = await pool.query<{ id: string }>(
           `insert into media_objects
              (owner_user_id, purpose, object_key, url, content_type, size_bytes)
-           values (null, 'onboarding_image', $1, $2, 'image/webp', 1)
+           values ($1, 'onboarding_image', $2, $3, 'image/webp', 1)
            returning id`,
-          [`onboarding-${chain}-${step.position}`, `/onboarding-${chain}-${step.position}.webp`],
+          [
+            mediaOwnerId,
+            `onboarding-${chain}-${step.position}`,
+            `/onboarding-${chain}-${step.position}.webp`,
+          ],
         );
         const mediaId = media.rows[0]!.id;
         mediaIds.push(mediaId);
@@ -162,10 +182,12 @@ describe.skipIf(!hasIntegrationEnv)('onboarding applicability service', () => {
         userId,
         lifetimeGoals,
       ]);
-      await pool.query(`update game_settings set value = to_jsonb($2::text) where key = $1`, [
-        'amateur.unlock_goals_required',
-        unlockGoalsRequired,
-      ]);
+      await pool.query(
+        `insert into game_settings (key, value, label, description)
+         values ($1, to_jsonb($2::text), 'Голов для любителей', 'Fixture threshold')
+         on conflict (key) do update set value = excluded.value`,
+        ['amateur.unlock_goals_required', unlockGoalsRequired],
+      );
 
       const result = await getRequiredOnboarding(pool, userId, MEDIA_SECRET);
 
