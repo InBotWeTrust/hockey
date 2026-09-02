@@ -1,6 +1,6 @@
 # Task 5 report — versioned onboarding admin backend
 
-Status: PASS for Task 5. Implementation commit: `1d5e7a3bee763f37aea8602252d3c34053848252`.
+Status: PASS for Task 5. Original implementation commit: `1d5e7a3bee763f37aea8602252d3c34053848252`. Review-fix commit: `a9dfdbfcd861b7bcb3963789c7cdaf5c7e6a26fa`.
 
 ## Delivered contracts
 
@@ -8,7 +8,7 @@ Status: PASS for Task 5. Implementation commit: `1d5e7a3bee763f37aea8602252d3c34
 - `GET /admin/onboarding/chains/:chainKey` returns the authoritative published and draft snapshots.
 - Draft step create, full patch, duplicate, delete, and reorder endpoints always return the full authoritative chain DTO.
 - The first edit of published content clones a new version; published step rows remain immutable. Patch, duplicate, delete, and first-edit reorder map published IDs to their cloned draft rows.
-- `POST /admin/onboarding/media` accepts a real, decodable, non-empty, in-limit WebP, stores it below `onboarding/`, persists an `onboarding_image` `media_objects` row, and returns a protected proxy URL. Replacing a step reference never deletes old media.
+- `POST /admin/onboarding/media` accepts a real, decodable, non-empty, in-limit WebP with an exact portrait `2:3` aspect ratio and minimum dimensions `800×1200`, stores it below `onboarding/`, persists an `onboarding_image` `media_objects` row, and returns a protected proxy URL. Replacing a step reference never deletes old media.
 - `GET /admin/onboarding/chains/:chainKey/preview` returns the public step shape plus `preview: true`.
 - Preview tutorial start/shot endpoints use the shared deterministic tutorial validator and persist only `source='preview'` runs without changing user onboarding flags.
 - Publish locks the chain and draft, validates content/order/tutorial/media rules plus object-storage availability, publishes the version, moves the pointer, and enables enforcement in one transaction. Failed validation leaves the old pointer and draft unchanged.
@@ -67,6 +67,44 @@ All integration commands sourced the repo-root `.env` with `set -a; source ../..
 
 ## Concerns / follow-up
 
-- The pre-existing migration-list assertion at `packages/server/test/db/migrations.test.ts:942` must be updated by the owner of migration-test maintenance; it is not a Task 5 behavior and was intentionally left unchanged.
+- The previously reported migration-list baseline failure was fixed before this review round by preserved commit `a7f282d81ba41c18c35b204ffa9b8f0f712bf2b3`. This focused review round did not rerun the full server suite.
 - Publish intentionally fails closed during a transient object-storage GET outage. This protects players from a newly published chain with unavailable imagery, at the cost of requiring the administrator to retry publication after storage recovers.
 - Expected storage-failure tests emit error-level application log lines even though their assertions pass; this matches the existing bonus-game media test pattern.
+
+## Review fix round — image dimensions and safe teardown
+
+The review correctly identified two gaps. Section 5.2 requires server-side image-dimension validation, while the upload path previously accepted any decodable WebP. The test teardown also called `app.close()` after a failed setup even when `app` had never been initialized.
+
+The backend now applies one onboarding image export contract: exact portrait `2:3`, at least `800×1200`, with larger same-ratio images allowed up to the existing byte and decoded-pixel limits. This matches the planned mobile portrait composition and gives source illustrations enough detail without changing the successful upload response DTO or the existing empty-body, content-type, byte-limit, decode, storage, and persistence contracts. A valid WebP with unsuitable geometry returns `422` with code `invalid_image_dimensions` and a human-readable requirement. The test teardown now closes the app only when setup initialized it.
+
+### Review RED evidence
+
+The integration command sourced the repo-root `.env` with `set -a; source ../../.env; set +a`; no values were printed.
+
+- `pnpm --filter @hockey/server exec vitest run test/onboarding/admin.test.ts -t "dimensions"`
+  - Exit 1 before production changes.
+  - The valid `800×1200` WebP passed, while both the `1×1` WebP and the `1200×1200` WebP returned `201` instead of expected `422`.
+  - Result: 1 passed, 2 failed, 10 skipped. Both failures were the missing dimension/aspect validation rather than fixture or setup errors.
+
+### Review GREEN and regression evidence
+
+- `pnpm --filter @hockey/server exec vitest run test/onboarding/admin.test.ts -t "dimensions"`
+  - PASS: 3/3 selected tests.
+- `pnpm --filter @hockey/server exec vitest run test/onboarding/admin.test.ts --no-file-parallelism`
+  - PASS: 13/13 tests.
+- `pnpm --filter @hockey/server exec vitest run test/onboarding/routes.test.ts test/onboarding/service.test.ts --no-file-parallelism`
+  - PASS: 20/20 tests.
+- `pnpm --filter @hockey/server exec vitest run test/admin/routes.test.ts --no-file-parallelism`
+  - PASS: 9/9 tests.
+- `pnpm --filter @hockey/server typecheck`
+  - PASS.
+- `pnpm --filter @hockey/server build`
+  - PASS.
+- `pnpm lint`
+  - PASS.
+- `pnpm exec prettier --check packages/server/src/onboarding/adminRoutes.ts packages/server/test/onboarding/admin.test.ts .superpowers/sdd/2026-09-02-player-onboarding/task-5-report.md`
+  - PASS.
+- `git diff --check`
+  - PASS.
+
+No web UI, migrations, public onboarding behavior, credentials, sessions, deployment, or production state changed in this review round. GLM and subagents were not used, per instruction.
