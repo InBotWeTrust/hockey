@@ -25,6 +25,25 @@ The command completed with exit code 0 but reported `1 skipped` test file and `6
 - `pnpm --filter @hockey/server exec tsc --noEmit --pretty false` — PASS.
 - `git diff --check` — PASS.
 
+## Fix round 2
+
+The duplicate `tutorial_goal` regression fixture now supplies the existing valid `tutorialStepId`, so the assertion reaches the partial unique index instead of the event step-id CHECK. The separate null-step regression remains in place for `step_viewed`, `tutorial_attempt`, and `tutorial_goal`.
+
+Focused integration command (repo-root `.env` sourced without printing values):
+
+```text
+pnpm --filter @hockey/server exec vitest run test/db/migrations.test.ts -t '060 player onboarding migration'
+```
+
+Result: PASS — `Test Files 1 passed`, `Tests 2 passed | 4 skipped` (the four skipped tests are outside the selected suite). The first sandboxed attempt was blocked by `connect EPERM` to local PostgreSQL; rerunning with local-service access produced the PASS above.
+
+Additional verification:
+
+- `pnpm lint` — PASS.
+- `pnpm exec prettier --check packages/server/test/db/migrations.test.ts` — PASS.
+- `pnpm --filter @hockey/server exec tsc --noEmit --pretty false` — PASS.
+- `git diff --check` — PASS.
+
 ## Self-review
 
 - Migration is forward-only and uses the existing migration runner transaction model.

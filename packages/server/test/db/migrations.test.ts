@@ -769,9 +769,9 @@ describe.skipIf(!hasIntegrationEnv)('060 player onboarding migration', () => {
     await expect(
       pool.query(
         `insert into onboarding_event
-           (run_id, user_id, chain_key, version_id, kind, attempt_number)
-         values ($1, $2, 'beginner', $3, 'tutorial_goal', 1)`,
-        [runId, userId, versionId],
+           (run_id, user_id, chain_key, version_id, step_id, kind, attempt_number)
+         values ($1, $2, 'beginner', $3, $4, 'tutorial_goal', 1)`,
+        [runId, userId, versionId, tutorialStepId],
       ),
     ).rejects.toMatchObject({ code: '23505' });
     await expect(
