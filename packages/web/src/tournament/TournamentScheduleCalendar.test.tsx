@@ -87,6 +87,36 @@ describe('TournamentScheduleCalendar', () => {
     expect(screen.queryByRole('button', { name: /Показать все игры/ })).not.toBeInTheDocument();
   });
 
+  it('selects today when the tournament schedule contains games for today', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2030-09-02T09:00:00.000Z'));
+    const todayFixture = {
+      ...fixture(2),
+      scheduledStartsAt: '2030-09-02T10:00:00.000Z',
+      windowEndsAt: '2030-09-02T11:00:00.000Z',
+    };
+    render(
+      <TournamentScheduleCalendar
+        fixtures={[fixture(1), todayFixture]}
+        matchdays={[]}
+        regularSource="head_to_head"
+        tournamentStatus="regular"
+        currentUserId="me"
+        isParticipant
+        timezone="Europe/Moscow"
+        rangeStartsAt="2030-09-01T00:00:00.000Z"
+        rangeEndsAt="2030-09-03T23:59:59.000Z"
+        fixtureDetailsMode="inline"
+        renderFixture={(item) => <article key={item.id}>{item.home?.name}</article>}
+        formatDateTime={(value) => value}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: '2 сентября' })).toBeInTheDocument();
+    expect(screen.getByText('Игра 2')).toBeInTheDocument();
+    expect(screen.queryByText('Игра 1')).not.toBeInTheDocument();
+  });
+
   it('renders playoff fixtures inline for a tournament with daily regular games', () => {
     const playoffFixture = {
       ...fixture(1),

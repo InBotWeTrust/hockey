@@ -13,6 +13,7 @@ export interface ActiveClassicTournamentGame {
   tournament_day: number;
   starts_at: string;
   closes_at: string;
+  break_ends_at: string | null;
   state: 'available' | 'idle' | 'period_active' | 'break_active' | 'closed';
   current_period: number;
   total_shots: number;

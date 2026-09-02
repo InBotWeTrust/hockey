@@ -1243,6 +1243,8 @@ function GameHub({
     })
     .map<ArenaEntry>((game) => {
       const deadlineRemaining = Math.max(0, timestampMs(game.closes_at) - now);
+      const breakRemaining = Math.max(0, timestampMs(game.break_ends_at) - now);
+      const isBreak = game.state === 'break_active' && game.break_ends_at !== null;
       const started =
         game.state === 'period_active' ||
         game.state === 'break_active' ||
@@ -1294,10 +1296,14 @@ function GameHub({
                       ? game.current_period
                       : Math.min(3, game.current_period + 1)
                   }
-                  ariaLabel={`${game.tournament_title}. ${game.tournament_day}-й тур. До закрытия ${formatEventRemaining(deadlineRemaining)}`}
+                  ariaLabel={
+                    isBreak
+                      ? `${game.tournament_title}. ${game.tournament_day}-й тур. Перерыв. До конца ${formatMs(breakRemaining)}. Период ${Math.min(3, game.current_period + 1)}`
+                      : `${game.tournament_title}. ${game.tournament_day}-й тур. До закрытия ${formatEventRemaining(deadlineRemaining)}`
+                  }
                   periodsTotal={3}
-                  timer={formatEventRemaining(deadlineRemaining)}
-                  timerLabel="До закрытия"
+                  timer={isBreak ? formatMs(breakRemaining) : formatEventRemaining(deadlineRemaining)}
+                  timerLabel={isBreak ? 'Перерыв' : 'До закрытия'}
                 />
               ),
             }),

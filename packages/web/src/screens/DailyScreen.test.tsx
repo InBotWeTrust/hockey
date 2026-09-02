@@ -641,6 +641,96 @@ describe('DailyScreen', () => {
     expect(screen.getByRole('button', { name: 'НАЧАТЬ' })).toBeInTheDocument();
   });
 
+  it('shows the classic break countdown on the arena instead of the game deadline', async () => {
+    const breakEndsAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const body = url.includes('/tournaments/classic/active')
+        ? {
+            games: [
+              {
+                tournament_id: 'classic-break',
+                tournament_title: 'Кубок перерыва',
+                tournament_day: 2,
+                starts_at: '2030-09-01T00:00:00.000Z',
+                closes_at: '2030-09-01T21:00:00.000Z',
+                break_ends_at: breakEndsAt,
+                state: 'break_active',
+                current_period: 1,
+                total_shots: 30,
+                total_goals: 12,
+              },
+            ],
+          }
+        : url.includes('/duel/training/state')
+          ? trainingIdleState
+          : baseState;
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=arena']);
+
+    expect(
+      await screen.findByLabelText(/Кубок перерыва\. 2-й тур\. Перерыв\. До конца/),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Перерыв')).toBeInTheDocument();
+    expect(screen.queryByText('До закрытия')).not.toBeInTheDocument();
+  });
+
+  it('returns from a classic tournament game to its schedule', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const body = url.includes('/tournaments/classic/active')
+        ? {
+            games: [
+              {
+                tournament_id: 'classic-1',
+                tournament_title: 'Кубок классики',
+                tournament_day: 1,
+                starts_at: '2030-09-01T00:00:00.000Z',
+                closes_at: '2030-09-01T21:00:00.000Z',
+                break_ends_at: null,
+                state: 'available',
+                current_period: 0,
+                total_shots: 0,
+                total_goals: 0,
+              },
+            ],
+          }
+        : url.includes('/tournaments/classic-1/classic/state')
+          ? classicIdleState
+          : url.includes('/duel/training/state')
+            ? trainingIdleState
+            : baseState;
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    function LocationProbe() {
+      return <output aria-label="Текущий адрес">{useLocation().search}</output>;
+    }
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/?view=arena']}>
+          <DailyScreen />
+          <LocationProbe />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Начать' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'К турниру' }));
+
+    expect(screen.getByLabelText('Текущий адрес')).toHaveTextContent(
+      'view=amateur&section=tournaments&tournament=classic-1&tab=schedule',
+    );
+  });
+
   it('puts an already started classic game before a new one', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = input instanceof Request ? input.url : String(input);

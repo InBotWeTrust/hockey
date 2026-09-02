@@ -215,6 +215,31 @@ describe.skipIf(!hasIntegrationEnv)('classic tournament game integration', () =>
     expect(sessions.rowCount).toBe(1);
   });
 
+  it('exposes the current break deadline on the active-games board', async () => {
+    const state = await getClassicGameState(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+    });
+    await pool.query(
+      `update tournament_classic_session
+          set state = 'break_active', current_period = 1, break_started_at = $2,
+              rules_snapshot = jsonb_set(rules_snapshot, '{breakDurationMs}', '300000'::jsonb)
+        where id = $1`,
+      [state.session_id, NOW],
+    );
+
+    const active = await listActiveClassicGames(pool, { userId: PLAYER_ID, now: NOW });
+
+    expect(active[0]).toEqual(
+      expect.objectContaining({
+        state: 'break_active',
+        break_ends_at: new Date(NOW.getTime() + 5 * 60_000).toISOString(),
+      }),
+    );
+  });
+
   it('does not duplicate a session or shot when requests arrive together', async () => {
     const states = await Promise.all([
       getClassicGameState(pool, {
