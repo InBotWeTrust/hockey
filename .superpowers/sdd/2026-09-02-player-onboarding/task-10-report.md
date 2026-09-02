@@ -42,3 +42,28 @@ GREEN:
 - No server or game-core implementation was changed.
 - No content was uploaded or published.
 - No push, dev deploy, production deploy or GLM review was performed.
+
+## Independent review fix round 1
+
+Fix commit: `eb584d4` (`fix(onboarding): harden admin validation and preview recovery`)
+
+Addressed all five review findings:
+
+1. Step-level publish failures now return safe structured `422` details and render beside the exact
+   step and field; chain-level failures retain the global summary contract.
+2. Informational rows render their protected proxy thumbnail with an accessible fallback.
+3. Preview shot recovery resumes the same owned preview run and authoritative shot index through a
+   dedicated admin endpoint; no new run is created during recovery.
+4. A declared non-WebP MIME type is rejected before upload even when the filename ends in `.webp`.
+5. Tutorial speed controls stack to one column at the mobile breakpoint.
+
+Fix verification:
+
+- Focused web admin/API/tutorial/flow: 66/66 passed.
+- Server onboarding admin integration: 15/15 passed.
+- Broader sequential server onboarding integration: 35/35 passed.
+- Full web excluding isolated DailyScreen: 582/582 passed on clean rerun. One preceding run had one
+  unrelated timing failure in `BonusGamesScreen`; the unchanged test passed in the clean rerun.
+- Isolated DailyScreen: 70/70 passed.
+- Web and server builds: passed.
+- Root lint, root typecheck, scoped Prettier and diff-check: passed.
