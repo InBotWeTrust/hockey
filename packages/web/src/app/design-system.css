@@ -2055,21 +2055,18 @@
 }
 
 .tournament-lifecycle-panel {
-  display: grid;
-  gap: 10px;
-  padding: 13px 14px;
-  border: 1px solid rgba(45, 93, 142, 0.2);
-  border-radius: 16px;
-  background: linear-gradient(135deg, rgba(233, 244, 253, 0.9), rgba(255, 255, 255, 0.54));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82);
+  margin: 0 4px;
 }
 
 .tournament-lifecycle-panel p {
   margin: 0;
-  color: var(--ink);
+  color: rgba(244, 249, 255, 0.96);
   font-size: 13px;
   font-weight: 750;
   line-height: 1.4;
+  text-shadow:
+    0 1px 2px rgba(6, 24, 43, 0.82),
+    0 0 10px rgba(6, 24, 43, 0.48);
 }
 
 .tournament-review-card strong {
@@ -6623,7 +6620,7 @@ button.daily-calendar__day:active {
 
 .tournament-bracket {
   display: grid;
-  gap: 12px;
+  gap: 8px;
 }
 
 .tournament-bracket__round-tabs {
@@ -6670,6 +6667,10 @@ button.daily-calendar__day:active {
   color: var(--ink);
   font-size: 14px;
   font-weight: 850;
+}
+
+.tournament-bracket-round > .tournament-rules__muted {
+  margin: 0;
 }
 
 .tournament-bracket-round > div {
@@ -7445,6 +7446,10 @@ button.daily-calendar__day:active {
 .tournament-admin-series-list {
   display: grid;
   gap: 8px;
+}
+
+.tournament-bracket-series__admin-action {
+  width: 100%;
 }
 
 .tournament-operation-incidents {

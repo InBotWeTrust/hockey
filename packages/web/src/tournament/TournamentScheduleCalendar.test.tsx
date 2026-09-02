@@ -60,6 +60,61 @@ describe('TournamentScheduleCalendar', () => {
     expect(screen.queryByText('Игра 4')).not.toBeInTheDocument();
   });
 
+  it('renders every game below the calendar when inline day details are requested', () => {
+    const fixtures = [fixture(1), fixture(2), fixture(3), fixture(4), fixture(5), fixture(6)];
+    render(
+      <TournamentScheduleCalendar
+        fixtures={fixtures}
+        matchdays={[]}
+        regularSource="head_to_head"
+        tournamentStatus="regular"
+        currentUserId={null}
+        isParticipant={false}
+        timezone="Europe/Moscow"
+        rangeStartsAt="2030-09-01T00:00:00.000Z"
+        rangeEndsAt="2030-09-01T23:59:59.000Z"
+        fixtureDetailsMode="inline"
+        renderFixture={(item) => <article key={item.id}>{item.home?.name}</article>}
+        formatDateTime={(value) => value}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: '1 сентября' })).toBeInTheDocument();
+    expect(screen.getByText('Игра 1')).toBeInTheDocument();
+    expect(screen.getByText('Игра 6')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Игры выбранного дня' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Ваша игра')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Показать все игры/ })).not.toBeInTheDocument();
+  });
+
+  it('renders playoff fixtures inline for a tournament with daily regular games', () => {
+    const playoffFixture = {
+      ...fixture(1),
+      stage: 'playoff',
+      scheduledStartsAt: '2030-09-02T07:00:00.000Z',
+    };
+    render(
+      <TournamentScheduleCalendar
+        fixtures={[playoffFixture]}
+        matchdays={[]}
+        regularSource="daily_aggregate"
+        tournamentStatus="playoff"
+        currentUserId={null}
+        isParticipant={false}
+        timezone="Europe/Moscow"
+        rangeStartsAt="2030-09-01T00:00:00.000Z"
+        rangeEndsAt="2030-09-02T23:59:59.000Z"
+        fixtureDetailsMode="inline"
+        renderFixture={(item) => <article key={item.id}>{item.home?.name}</article>}
+        formatDateTime={(value) => value}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: /2 сентября, 1 игра, плей-офф/i })).toBeEnabled();
+    expect(screen.getByRole('heading', { name: '2 сентября' })).toBeInTheDocument();
+    expect(screen.getByText('Игра 1')).toBeInTheDocument();
+  });
+
   it('explains an empty tournament day in the modal', () => {
     render(
       <TournamentScheduleCalendar

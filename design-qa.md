@@ -1,3 +1,40 @@
+# Design QA — календарь турнира в админке
+
+## Evidence
+
+- User references:
+  - `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-555b73e6-9ef2-4015-9993-b9a5d1c1a44e.png`
+  - `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-344753e7-eb8a-4812-93b8-dcfd18e828df.png`
+  - `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-38f3175e-2599-4201-bdd7-76e1dd9029b8.png`
+  - `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-2414ca75-62c5-4793-a7d7-da633612be64.png`
+- Browser-rendered implementation: `admin-calendar-final.png`.
+- Local URL: `http://127.0.0.1:5179/admin`.
+- State: local Classic tournament with playoff fixtures, including known, conditional, unresolved, paused, and inconsistent legacy fixture states.
+
+## Verified behavior
+
+- The admin schedule uses the same month calendar structure as the player tournament page.
+- Selecting a date renders every game for that date directly below the calendar.
+- Long vertical sections for matchdays and the separate `Следующие игры` disclosure are absent.
+- Playoff days are visually distinct and remain clickable only inside the tournament date range.
+- A conditional fixture with known players reads `Если серия продолжится`.
+- A fixture without a formed pair reads `Ожидает определения пары`, even if inconsistent legacy data reports it as active; the card does not show a false live state or `0:0` score.
+- Unresolved championship fixtures are labelled as playoff rounds; the third-place series reads `Плей-офф · матч за 3-е место`.
+- The admin playoff bracket reuses the player-facing round tabs and series cards: both players have equal visual weight, avatars and seeds are visible, and each series contains its game list.
+- The selected round shows its duel format; future participants are explained through the source series instead of an ambiguous status.
+- Round tabs, round heading, format label, and the first series now use the same compact 8px vertical rhythm in both admin and player views.
+- The existing `Решить серию вручную` action remains available inside the corresponding unfinished series card.
+- The approved-participant badge is shortened to `Заявка подтверждена`, preventing the tournament-card layout from stretching.
+- Browser console errors: none.
+
+## Findings
+
+No actionable P0, P1, or P2 visual differences remain for the requested admin calendar flow.
+
+final result: passed
+
+---
+
 # Design QA — история любительских дуэлей
 
 ## Evidence

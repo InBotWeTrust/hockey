@@ -77,7 +77,7 @@ function participationLabel(tournament: TournamentSummary): string {
     tournament.myParticipantState === 'approved' &&
     tournament.lifecycle.action === 'await_manual_regular_start'
   ) {
-    return 'Заявка подтверждена. Ожидаем начала регулярного сезона.';
+    return 'Заявка подтверждена';
   }
   return participantStateLabel(tournament.myParticipantState);
 }

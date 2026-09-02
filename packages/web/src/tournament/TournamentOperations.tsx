@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Ellipsis, Pencil, X } from 'lucide-react';
 import { ApiError } from '../api/apiFetch.js';
+import type { TournamentFixture, TournamentStatus } from '../api/tournament.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import { GlassSelect } from '../components/GlassSelect.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
@@ -47,7 +48,8 @@ import {
   tournamentStatusLabel,
 } from './labels.js';
 import { TournamentStandingsTable } from './TournamentStandingsTable.js';
-import { TournamentMatchdayRow } from './TournamentMatchdayTimes.js';
+import { TournamentPlayoffBracket } from './TournamentPlayoffBracket.js';
+import { TournamentScheduleCalendar } from './TournamentScheduleCalendar.js';
 
 type OperationsTab =
   | 'participants'
@@ -149,31 +151,6 @@ function fixtureDate(value: string | null): Date | null {
   return Number.isFinite(date.getTime()) ? date : null;
 }
 
-function fixtureDayKey(value: string | null, timezone: string): string {
-  const date = fixtureDate(value);
-  if (date === null) return 'without-date';
-  const parts = new Intl.DateTimeFormat('ru-RU', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(date);
-  const part = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((item) => item.type === type)?.value ?? '';
-  return `${part('year')}-${part('month')}-${part('day')}`;
-}
-
-function fixtureDayLabel(value: string | null, timezone: string): string {
-  const date = fixtureDate(value);
-  if (date === null) return 'Время не назначено';
-  return new Intl.DateTimeFormat('ru-RU', {
-    timeZone: timezone,
-    day: 'numeric',
-    month: 'long',
-    weekday: 'long',
-  }).format(date);
-}
-
 function fixtureTime(value: string | null, timezone: string): string | null {
   const date = fixtureDate(value);
   if (date === null) return null;
@@ -193,14 +170,16 @@ function fixtureTimeRange(fixture: AdminTournamentFixture, timezone: string): st
 
 function fixtureStageLabel(fixture: AdminTournamentFixture): string {
   if (fixture.stage === 'regular') return `${fixture.roundNumber}-й тур`;
+  if (fixture.stage === 'tiebreak') return `Тай-брейк · ${fixture.roundNumber}-й раунд`;
+  if (fixture.stage === 'third_place') return 'Плей-офф · матч за 3-е место';
   if (fixture.stage === 'playoff') return `Плей-офф · ${fixture.roundNumber}-й раунд`;
-  return `${fixture.roundNumber}-й тур`;
+  return `Этап · ${fixture.roundNumber}-й раунд`;
 }
 
 function fixturePlayersLabel(fixture: AdminTournamentFixture): string {
   const home = fixture.home?.name?.trim();
   const away = fixture.away?.name?.trim();
-  return home && away ? `${home} — ${away}` : 'Соперники определятся позже';
+  return home && away ? `${home} — ${away}` : 'Пара сформируется по итогам предыдущего раунда';
 }
 
 function matchdayCountLabel(count: number): string {
@@ -311,13 +290,12 @@ function lifecycleMessage(tournament: AdminTournament, timezone: string): string
   }
 }
 
-function rowLabel(row: Record<string, unknown>, index: number): string {
-  return String(row.display_name ?? row.higher_name ?? `Участник ${index + 1}`);
-}
-
-function fixtureStatusLabel(status: string): string {
+function fixtureStatusLabel(status: string, participantsKnown = true): string {
+  if (!participantsKnown && ['conditional', 'scheduled', 'open', 'active'].includes(status)) {
+    return 'Ожидает определения пары';
+  }
   const labels: Record<string, string> = {
-    conditional: 'Соперники определятся',
+    conditional: 'Если серия продолжится',
     scheduled: 'Запланирована',
     open: 'Можно начинать',
     active: 'Идёт игра',
@@ -343,7 +321,11 @@ function AdminScheduleFixtureCard({
   onSelect: (fixture: AdminTournamentFixture) => void;
 }): JSX.Element {
   const players = fixturePlayersLabel(fixture);
-  const showScore = ['active', 'completed', 'settled', 'forfeit'].includes(fixture.status);
+  const participantsKnown = fixture.home !== null && fixture.away !== null;
+  const presentationStatus =
+    participantsKnown || fixture.status === 'cancelled' ? fixture.status : 'conditional';
+  const showScore =
+    participantsKnown && ['active', 'completed', 'settled', 'forfeit'].includes(fixture.status);
   return (
     <button
       type="button"
@@ -353,8 +335,8 @@ function AdminScheduleFixtureCard({
     >
       <span className="tournament-schedule-fixture__heading">
         <span>Игра №{fixture.fixtureNumber}</span>
-        <span className={`tournament-schedule-fixture__status is-${fixture.status}`}>
-          {fixtureStatusLabel(fixture.status)}
+        <span className={`tournament-schedule-fixture__status is-${presentationStatus}`}>
+          {fixtureStatusLabel(fixture.status, participantsKnown)}
         </span>
       </span>
       <strong>{players}</strong>
@@ -933,43 +915,26 @@ export function TournamentOperations({
   ]);
   const incidentFixtures =
     schedule.data?.fixtures.filter((fixture) => incidentStatuses.has(fixture.status)) ?? [];
-  const regularFixtures =
-    schedule.data?.fixtures.filter((fixture) => !incidentStatuses.has(fixture.status)) ?? [];
-  const conditionalFixtures = regularFixtures.filter((fixture) => fixture.status === 'conditional');
-  const scheduledFixtures = regularFixtures.filter((fixture) => fixture.status !== 'conditional');
-  const fixtureDays = Array.from(
-    scheduledFixtures
-      .slice()
-      .sort((left, right) => {
-        const leftTime = fixtureDate(left.scheduledStartsAt)?.getTime() ?? Number.MAX_SAFE_INTEGER;
-        const rightTime =
-          fixtureDate(right.scheduledStartsAt)?.getTime() ?? Number.MAX_SAFE_INTEGER;
-        return leftTime - rightTime || left.fixtureNumber - right.fixtureNumber;
-      })
-      .reduce<Map<string, { key: string; label: string; fixtures: AdminTournamentFixture[] }>>(
-        (groups, fixture) => {
-          const key = fixtureDayKey(fixture.scheduledStartsAt, tournamentTimezone);
-          const current = groups.get(key);
-          if (current) current.fixtures.push(fixture);
-          else {
-            groups.set(key, {
-              key,
-              label: fixtureDayLabel(fixture.scheduledStartsAt, tournamentTimezone),
-              fixtures: [fixture],
-            });
-          }
-          return groups;
-        },
-        new Map(),
-      )
-      .values(),
+  const calendarAdminFixtures = schedule.data?.fixtures ?? [];
+  const calendarFixtureById = new Map(
+    calendarAdminFixtures.map((fixture) => [fixture.id, fixture]),
   );
-  const openFixtureDayIndex = Math.max(
-    0,
-    fixtureDays.findIndex((day) =>
-      day.fixtures.some((fixture) => ['active', 'open'].includes(fixture.status)),
-    ),
-  );
+  const calendarFixtures: TournamentFixture[] = calendarAdminFixtures.map((fixture) => ({
+    ...fixture,
+    venueMode: 'home_selected',
+  }));
+  const calendarStatus: TournamentStatus = [
+    'registration',
+    'registration_blocked',
+    'scheduling',
+    'regular',
+    'playoff',
+    'paused',
+    'completed',
+    'cancelled',
+  ].includes(status)
+    ? (status as TournamentStatus)
+    : 'registration';
 
   return (
     <section className="tournament-operations">
@@ -1211,17 +1176,6 @@ export function TournamentOperations({
               (schedule.data.matchdays?.length ?? 0) === 0 && (
                 <div className="tournament-admin-empty">Календарь пока пуст.</div>
               )}
-            {schedule.data?.matchdays?.map((matchday) => (
-              <TournamentMatchdayRow
-                key={matchday.id}
-                number={matchday.number}
-                startsAt={matchday.startsAt}
-                endsAt={matchday.endsAt}
-                startLabel={tournamentDate(matchday.startsAt, tournamentTimezone)}
-                endLabel={tournamentDate(matchday.endsAt, tournamentTimezone)}
-                regularStarted={['regular', 'playoff', 'completed'].includes(status)}
-              />
-            ))}
             {incidentFixtures.length > 0 && (
               <section className="tournament-operation-incidents">
                 <h3>Требуют решения</h3>
@@ -1246,56 +1200,38 @@ export function TournamentOperations({
                 ))}
               </section>
             )}
-            {fixtureDays.length > 0 && (
-              <section className="tournament-schedule-days" aria-label="Игры по дням">
-                {fixtureDays.map((day, index) => (
-                  <details
-                    key={day.key}
-                    className="tournament-schedule-day"
-                    open={index === openFixtureDayIndex}
-                  >
-                    <summary>
-                      <strong>{day.label}</strong>
-                      <span>
-                        {day.fixtures.length}{' '}
-                        {russianPlural(day.fixtures.length, 'игра', 'игры', 'игр')}
-                      </span>
-                    </summary>
-                    <div className="tournament-schedule-day__fixtures">
-                      {day.fixtures.map((fixture) => (
-                        <AdminScheduleFixtureCard
-                          key={fixture.id}
-                          fixture={fixture}
-                          timezone={tournamentTimezone}
-                          onSelect={setSelectedFixture}
-                        />
-                      ))}
-                    </div>
-                  </details>
-                ))}
-              </section>
-            )}
-            {conditionalFixtures.length > 0 && (
-              <details className="tournament-schedule-upcoming">
-                <summary>
-                  <strong>Следующие игры</strong>
-                  <span>
-                    {conditionalFixtures.length}{' '}
-                    {russianPlural(conditionalFixtures.length, 'игра', 'игры', 'игр')}
-                  </span>
-                </summary>
-                <p>Соперники определятся после завершения предыдущих этапов.</p>
-                <div className="tournament-schedule-day__fixtures">
-                  {conditionalFixtures.map((fixture) => (
+            {(calendarFixtures.length > 0 || (schedule.data?.matchdays?.length ?? 0) > 0) && (
+              <TournamentScheduleCalendar
+                fixtures={calendarFixtures}
+                matchdays={schedule.data?.matchdays ?? []}
+                regularSource={tournament.regularSource}
+                tournamentStatus={calendarStatus}
+                currentUserId={null}
+                isParticipant={false}
+                timezone={tournamentTimezone}
+                rangeStartsAt={tournament.startsAt ?? null}
+                rangeEndsAt={tournament.completedAt ?? tournament.projectedEndsAt ?? null}
+                playoffStartsAt={calendarFixtures
+                  .filter(
+                    (fixture) =>
+                      ['playoff', 'third_place'].includes(fixture.stage) &&
+                      fixture.scheduledStartsAt !== null,
+                  )
+                  .map((fixture) => fixture.scheduledStartsAt!)}
+                fixtureDetailsMode="inline"
+                formatDateTime={(value) => tournamentDate(value, tournamentTimezone)}
+                renderFixture={(fixture) => {
+                  const adminFixture = calendarFixtureById.get(fixture.id);
+                  return adminFixture === undefined ? null : (
                     <AdminScheduleFixtureCard
-                      key={fixture.id}
-                      fixture={fixture}
+                      key={adminFixture.id}
+                      fixture={adminFixture}
                       timezone={tournamentTimezone}
                       onSelect={setSelectedFixture}
                     />
-                  ))}
-                </div>
-              </details>
+                  );
+                }}
+              />
             )}
             {selectedFixture !== null && (
               <div className="tournament-operation-editor">
@@ -1358,8 +1294,16 @@ export function TournamentOperations({
           ))}
         {tab === 'bracket' &&
           (bracket.data?.series.length ? (
-            <div className="tournament-admin-series-list">
-              {bracket.data.series.map((row, index) => {
+            <TournamentPlayoffBracket
+              tournamentId={tournament.id}
+              currentUserId={null}
+              onOpenFixture={() => {}}
+              series={bracket.data.series}
+              timezone={String(tournament.rules?.config?.timezone ?? 'Europe/Moscow')}
+              {...(tournament.playoffFormats === undefined
+                ? {}
+                : { formats: tournament.playoffFormats })}
+              renderSeriesAction={(row) => {
                 const higherParticipant = participants.data?.participants.find(
                   (participant) => participant.user_id === row.higher_user_id,
                 );
@@ -1367,39 +1311,23 @@ export function TournamentOperations({
                   (participant) => participant.user_id === row.lower_user_id,
                 );
                 const isFinished = ['completed', 'settled'].includes(row.status);
+                if (isFinished || !higherParticipant || !lowerParticipant) return null;
                 return (
-                  <section className="tournament-admin-series" key={row.id}>
-                    <div className="tournament-admin-series__heading">
-                      <div>
-                        <strong>{rowLabel(row, index)}</strong>
-                        <span>{fixtureStatusLabel(row.status)}</span>
-                      </div>
-                      <strong>
-                        {row.higher_seed_wins}:{row.lower_seed_wins}
-                      </strong>
-                    </div>
-                    <div className="tournament-admin-series__players">
-                      <span>{row.higher_name ?? 'Участник ещё не определён'}</span>
-                      <span>{row.lower_name ?? 'Участник ещё не определён'}</span>
-                    </div>
-                    {!isFinished && higherParticipant && lowerParticipant && (
-                      <button
-                        type="button"
-                        className="admin-compact-btn"
-                        onClick={() => {
-                          setSelectedSeries(row);
-                          setSeriesWinnerParticipantId(higherParticipant.id);
-                          setSeriesDecisionReason('');
-                          setPreparedSeriesDecision(null);
-                        }}
-                      >
-                        Решить серию вручную
-                      </button>
-                    )}
-                  </section>
+                  <button
+                    type="button"
+                    className="admin-compact-btn tournament-bracket-series__admin-action"
+                    onClick={() => {
+                      setSelectedSeries(row);
+                      setSeriesWinnerParticipantId(higherParticipant.id);
+                      setSeriesDecisionReason('');
+                      setPreparedSeriesDecision(null);
+                    }}
+                  >
+                    Решить серию вручную
+                  </button>
                 );
-              })}
-            </div>
+              }}
+            />
           ) : (
             <div className="tournament-admin-empty">Сетка ещё не создана.</div>
           ))}
