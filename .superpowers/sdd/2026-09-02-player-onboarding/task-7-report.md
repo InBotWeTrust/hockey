@@ -84,3 +84,20 @@ Post-fix verification:
 
 - Full web runner: PASS, 74 non-Daily files / 542 tests plus all 65 isolated `DailyScreen` scenarios.
 - Web typecheck, production build, root lint, scoped Prettier, and `git diff --check`: PASS.
+
+## Review fix round 2
+
+Coverage/layout commit: `7c0a92e` (`test(web): cover onboarding view request replay`)
+
+The re-review accepted the specification but requested explicit proof for two concurrency cases and a viewport-bounded scroll container.
+
+- Added a deferred-promise regression showing that Finish shares the already active view request, does not call complete while it is pending, and emits no second view after success.
+- Added a React Strict Mode effect-replay regression showing one active request and one successful view event across replay and rerender.
+- Bounded `.onboarding-flow` with the actual app viewport height/max-height and contained vertical overscroll, so its sticky footer is relative to a real scroll container while safe-area padding remains reachable.
+- Added a static CSS contract test for viewport height, vertical scrolling, and overscroll containment.
+
+Round 2 verification:
+
+- Focused App/onboarding suites: PASS, 3 files / 19 tests.
+- Root lint, web typecheck, production build, scoped Prettier, and `git diff --check`: PASS.
+- The complete web runner had already passed immediately before this coverage-only round: 74 non-Daily files / 542 tests plus all 65 isolated `DailyScreen` scenarios.
