@@ -47,7 +47,12 @@ create table onboarding_step (
   unique (version_id, position),
   check (
     (kind = 'informational' and media_object_id is not null and tutorial_config is null)
-    or (kind = 'tutorial_shot' and media_object_id is null and jsonb_typeof(tutorial_config) = 'object')
+    or (
+      kind = 'tutorial_shot'
+      and media_object_id is null
+      and tutorial_config is not null
+      and jsonb_typeof(tutorial_config) = 'object'
+    )
   )
 );
 
@@ -80,7 +85,11 @@ create table onboarding_event (
   kind text not null check (kind in ('step_viewed', 'tutorial_attempt', 'tutorial_goal', 'completed')),
   result text check (result is null or result in ('goal', 'save', 'miss')),
   attempt_number int not null default 0 check (attempt_number >= 0),
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  check (
+    (kind in ('step_viewed', 'tutorial_attempt', 'tutorial_goal') and step_id is not null)
+    or (kind = 'completed' and step_id is null)
+  )
 );
 
 create index onboarding_event_version_created_idx

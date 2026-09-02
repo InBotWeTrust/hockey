@@ -709,6 +709,14 @@ describe.skipIf(!hasIntegrationEnv)('060 player onboarding migration', () => {
         [versionId],
       ),
     ).rejects.toMatchObject({ code: '23514' });
+    await expect(
+      pool.query(
+        `insert into onboarding_step
+           (version_id, position, kind, title, description, cta_label)
+         values ($1, 2, 'tutorial_shot', 'Missing config', 'Invalid tutorial', 'Shoot')`,
+        [versionId],
+      ),
+    ).rejects.toMatchObject({ code: '23514' });
     await pool.query(
       `insert into onboarding_step
          (id, version_id, position, kind, title, description, cta_label, tutorial_config)
@@ -740,6 +748,16 @@ describe.skipIf(!hasIntegrationEnv)('060 player onboarding migration', () => {
               ($1, $2, 'beginner', $3, null, 'completed', 1)`,
       [runId, userId, versionId, stepId, tutorialStepId],
     );
+    for (const kind of ['step_viewed', 'tutorial_attempt', 'tutorial_goal'] as const) {
+      await expect(
+        pool.query(
+          `insert into onboarding_event
+             (run_id, user_id, chain_key, version_id, kind, attempt_number)
+           values ($1, $2, 'beginner', $3, $4, 1)`,
+          [secondRunId, userId, versionId, kind],
+        ),
+      ).rejects.toMatchObject({ code: '23514' });
+    }
     await expect(
       pool.query(
         `insert into onboarding_event

@@ -36,3 +36,25 @@ The command completed with exit code 0 but reported `1 skipped` test file and `6
 ## Concerns
 
 The integration test could not execute against PostgreSQL/Redis in this environment. Run the focused migration test with the project integration services before merging.
+
+## Fix round 1
+
+Addressed both review findings:
+
+- `tutorial_shot` now requires `tutorial_config is not null` in the step-kind CHECK before checking that its JSON type is `object`.
+- `step_viewed`, `tutorial_attempt`, and `tutorial_goal` now require a non-null `step_id`; `completed` explicitly requires a null `step_id`.
+- Added regression assertions for missing tutorial config and null step IDs for each step-bearing event kind.
+
+TDD evidence before the SQL fix:
+
+```text
+pnpm --filter @hockey/server exec vitest run test/db/migrations.test.ts
+```
+
+Result: exit code 0, `1 skipped` file and `6 skipped` tests because `TEST_DATABASE_URL`/`TEST_REDIS_URL` are unset. The database-level RED failure could not be observed without PostgreSQL/Redis.
+
+Covering verification after the SQL fix:
+
+- `pnpm --filter @hockey/server exec vitest run test/db/migrations.test.ts` — exit 0; 1 file/6 tests skipped for missing integration environment.
+- `pnpm --filter @hockey/server exec tsc --noEmit --pretty false` — PASS.
+- `git diff --check` — PASS.
