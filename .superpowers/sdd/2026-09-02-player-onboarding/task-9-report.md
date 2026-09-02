@@ -37,3 +37,22 @@ Implementation commit: `849fcbc` (`feat(web): defer amateur onboarding until gam
 ## Concerns
 
 - React Router's `navigate` call is synchronous and has no failure return value; “successful navigation initiation” is therefore the strongest observable boundary available to these handlers. Tests assert the destination appears before accepting the exit behavior.
+
+## Independent review coverage fix
+
+Review found the implementation correct but required branch-complete regression evidence. Commit `57eaf12` adds coverage for:
+
+- active daily Back after crossing the threshold, including a rapid second click and exact arena destination;
+- deferred final-game statistics closing through the existing `onBack` exit;
+- active and closed training exits;
+- active direct duel Back, settled direct duel result exit, and settled non-direct duel exit to the exact duels destination;
+- bonus terminal return, continue-later, successful abandon, cancelled prompt, and failed abandon;
+- exactly one refresh for every successful exit and zero refresh before or after blocked/non-exit actions.
+
+The rapid-click regressions passed against the existing implementation because navigation synchronously unmounts the old exit surface; no additional mutable guard was necessary.
+
+Fix verification:
+
+- Focused DailyScreen, BonusGamePlayScreen, and OnboardingGate: 3 files / 95 tests PASS.
+- Full web runner: 75 non-Daily files / 564 tests PASS, followed by every one of 70 isolated DailyScreen scenarios; exit code 0.
+- Web typecheck/build, root lint, focused Prettier, and `git diff --check`: PASS.
