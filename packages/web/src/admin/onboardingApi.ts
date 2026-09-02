@@ -156,7 +156,12 @@ export function publishOnboardingDraft(
 
 export async function uploadOnboardingImage(file: File): Promise<AdminOnboardingMedia> {
   if (file.size === 0) throw new Error('Файл пустой');
-  if (file.type !== 'image/webp' && !file.name.toLowerCase().endsWith('.webp')) {
+  const declaredType = file.type.trim().toLowerCase();
+  const unknownType = declaredType === '' || declaredType === 'application/octet-stream';
+  if (
+    (!unknownType && declaredType !== 'image/webp') ||
+    (unknownType && !file.name.toLowerCase().endsWith('.webp'))
+  ) {
     throw new Error('Только WebP');
   }
   const response = await apiFetch<{ media: AdminOnboardingMedia }>('/admin/onboarding/media', {
@@ -179,6 +184,10 @@ export function startOnboardingPreviewTutorial(
   return apiFetch(`/admin/onboarding/chains/${chainKey}/preview/tutorial/start`, {
     method: 'POST',
   });
+}
+
+export function resumeOnboardingPreviewTutorial(runId: string): Promise<OnboardingTutorialSession> {
+  return apiFetch(`/admin/onboarding/preview/runs/${runId}/tutorial/resume`, { method: 'POST' });
 }
 
 export function submitOnboardingPreviewTutorialShot(

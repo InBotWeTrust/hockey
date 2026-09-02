@@ -130,7 +130,7 @@ export function OnboardingStepEditor({
           {imageUrl && <img src={imageUrl} alt="Предпросмотр изображения" style={{ width: 120 }} />}
         </label>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
+        <div className="onboarding-step-editor__speeds">
           {(
             [
               ['shooterFrequency', 'Скорость игрока'],

@@ -611,6 +611,37 @@ describe.skipIf(!hasIntegrationEnv)('/admin/onboarding', () => {
       nextShotIndex: 2,
       goalConfirmed: expect.any(Boolean),
     });
+    const resumed = await app.inject({
+      method: 'POST',
+      url: `/admin/onboarding/preview/runs/${runId}/tutorial/resume`,
+      headers: adminHeaders,
+    });
+    expect(resumed.statusCode, resumed.body).toBe(200);
+    expect(resumed.json()).toMatchObject({
+      shotIndex: 2,
+      goalieId: 'rookie',
+      speeds: tutorialInput.tutorial,
+    });
+    const previewRuns = await pool.query<{ count: string }>(
+      `select count(*) from onboarding_run where id = $1 and source = 'preview'`,
+      [runId],
+    );
+    expect(Number(previewRuns.rows[0]?.count)).toBe(1);
+    const otherAdmin = await findOrCreateTelegramUser(pool, {
+      providerUid: 'onboarding-other-admin',
+      displayName: 'Other Admin',
+      timezone: 'Europe/Moscow',
+    });
+    await pool.query(`update users set role = 'admin' where id = $1`, [otherAdmin.id]);
+    const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+    const foreignResume = await app.inject({
+      method: 'POST',
+      url: `/admin/onboarding/preview/runs/${runId}/tutorial/resume`,
+      headers: {
+        authorization: `Bearer ${await jwt.issueAccessToken({ sub: otherAdmin.id })}`,
+      },
+    });
+    expect(foreignResume.statusCode).toBe(404);
     const stored = await pool.query<{
       source: string;
       version_id: string;
@@ -629,6 +660,40 @@ describe.skipIf(!hasIntegrationEnv)('/admin/onboarding', () => {
       version_id: chain.draft!.id,
       beginner_onboarding_completed: false,
       amateur_onboarding_completed: false,
+    });
+  });
+
+  it('returns safe step-specific publication issues for every invalid media reference', async () => {
+    const wrongPurpose = await insertMedia('bonus_game_media');
+    const wrongType = await insertMedia('onboarding_image', { contentType: 'image/png' });
+    const draft = await insertVersion('beginner', 'draft', [
+      { kind: 'informational', position: 1, mediaObjectId: wrongPurpose, title: 'Первый' },
+      { kind: 'informational', position: 2, mediaObjectId: wrongType, title: 'Второй' },
+      { kind: 'tutorial_shot', position: 3 },
+    ]);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/admin/onboarding/chains/beginner/publish',
+      headers: adminHeaders,
+    });
+    expect(response.statusCode, response.body).toBe(422);
+    expect(response.json().error).toMatchObject({
+      code: 'onboarding_publish_invalid',
+      details: {
+        issues: [
+          {
+            stepId: draft.stepIds[0],
+            field: 'mediaObjectId',
+            code: 'invalid_media',
+          },
+          {
+            stepId: draft.stepIds[1],
+            field: 'mediaObjectId',
+            code: 'invalid_media',
+          },
+        ],
+      },
     });
   });
 
@@ -687,7 +752,7 @@ describe.skipIf(!hasIntegrationEnv)('/admin/onboarding', () => {
       },
     ];
 
-    for (const testCase of cases) {
+    for (const [index, testCase] of cases.entries()) {
       await pool.query("delete from onboarding_version where status = 'draft'");
       const { versionId } = await insertVersion(testCase.chain, 'draft', testCase.steps);
       await testCase.mutate?.(versionId);
@@ -696,7 +761,9 @@ describe.skipIf(!hasIntegrationEnv)('/admin/onboarding', () => {
         url: `/admin/onboarding/chains/${testCase.chain}/publish`,
         headers: adminHeaders,
       });
-      expect(response.statusCode, `${testCase.chain} ${JSON.stringify(testCase.steps)}`).toBe(409);
+      expect(response.statusCode, `${testCase.chain} ${JSON.stringify(testCase.steps)}`).toBe(
+        index === 4 || index === 5 ? 422 : 409,
+      );
       expect(response.json().error.code).toBe('onboarding_publish_invalid');
     }
   });
@@ -720,7 +787,7 @@ describe.skipIf(!hasIntegrationEnv)('/admin/onboarding', () => {
         url: '/admin/onboarding/chains/beginner/publish',
         headers: adminHeaders,
       });
-      expect(missingImage.statusCode).toBe(409);
+      expect(missingImage.statusCode).toBe(422);
       expect(missingImage.json().error.code).toBe('onboarding_publish_invalid');
     } finally {
       if (missingImageVersionId !== undefined) {
@@ -788,7 +855,7 @@ describe.skipIf(!hasIntegrationEnv)('/admin/onboarding', () => {
       url: '/admin/onboarding/chains/beginner/publish',
       headers: adminHeaders,
     });
-    expect(failed.statusCode).toBe(409);
+    expect(failed.statusCode).toBe(422);
     const afterFailure = await pool.query<{
       current_published_version_id: string;
       enforcement_enabled: boolean;

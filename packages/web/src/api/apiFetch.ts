@@ -36,6 +36,7 @@ export class ApiError extends Error {
     public readonly status: number,
     public readonly code: string,
     message: string,
+    public readonly details: unknown = undefined,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -57,12 +58,13 @@ export function __resetRefreshStateForTests(): void {
 async function parseError(res: Response): Promise<ApiError> {
   let code = 'http_error';
   let message = `HTTP ${res.status}`;
+  let details: unknown;
   try {
     // Server (errorsPlugin) sends `{ error: { code, message } }`. Older
     // callers/tests may still send the flat `{ error, message }` shape, so
     // accept both.
     const body = (await res.json()) as {
-      error?: string | { code?: string; message?: string };
+      error?: string | { code?: string; message?: string; details?: unknown };
       message?: string;
     };
     if (typeof body.error === 'string') {
@@ -70,12 +72,13 @@ async function parseError(res: Response): Promise<ApiError> {
     } else if (body.error && typeof body.error === 'object') {
       if (body.error.code) code = body.error.code;
       if (body.error.message) message = body.error.message;
+      details = body.error.details;
     }
     if (body.message) message = body.message;
   } catch {
     // ignore body parse failures
   }
-  return new ApiError(res.status, code, localizeServerError(message, code));
+  return new ApiError(res.status, code, localizeServerError(message, code), details);
 }
 
 async function runRefresh(): Promise<string | null> {

@@ -217,6 +217,50 @@ describe('TutorialShotStep', () => {
     expect(submitOnboardingTutorialShot).not.toHaveBeenCalled();
   });
 
+  it.each([
+    { label: 'no-commit rejection', resumedShotIndex: 1, retriedShotIndex: 1 },
+    { label: 'commit-lost rejection', resumedShotIndex: 2, retriedShotIndex: 2 },
+  ])('resyncs $label on the same preview run', async ({ resumedShotIndex, retriedShotIndex }) => {
+    const previewStart = vi
+      .fn()
+      .mockResolvedValueOnce({ ...session, runId: 'preview-run' })
+      .mockResolvedValueOnce({ ...session, runId: 'preview-run', shotIndex: resumedShotIndex });
+    const previewSubmit = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('lost response'))
+      .mockResolvedValueOnce({
+        serverResult: 'save',
+        nextShotIndex: retriedShotIndex + 1,
+        goalConfirmed: false,
+      });
+    const tutorialApi = { start: previewStart, submit: previewSubmit };
+    render(
+      <TutorialShotStep
+        runId="preview-pending"
+        step={step}
+        goalConfirmed={false}
+        onGoalConfirmed={vi.fn()}
+        onBack={vi.fn()}
+        onContinue={vi.fn()}
+        tutorialApi={tutorialApi}
+      />,
+    );
+    await screen.findByTestId('play-view');
+    fireEvent.click(screen.getByRole('button', { name: 'Mock shot' }));
+    await waitFor(() => expect(previewStart).toHaveBeenNthCalledWith(2, 'preview-run'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Попробовать ещё раз' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mock shot' }));
+    await waitFor(() =>
+      expect(previewSubmit).toHaveBeenNthCalledWith(
+        2,
+        'preview-run',
+        expect.objectContaining({ shotIndex: retriedShotIndex }),
+      ),
+    );
+    expect(startOnboardingTutorial).not.toHaveBeenCalled();
+    expect(submitOnboardingTutorialShot).not.toHaveBeenCalled();
+  });
+
   it('shows a retryable start error without mounting game progress', async () => {
     vi.mocked(startOnboardingTutorial)
       .mockRejectedValueOnce(new Error('offline'))

@@ -1,5 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { OnboardingAdmin } from './OnboardingAdmin.js';
 import {
@@ -10,6 +12,7 @@ import {
   publishOnboardingDraft,
   reorderOnboardingSteps,
   startOnboardingPreviewTutorial,
+  resumeOnboardingPreviewTutorial,
   submitOnboardingPreviewTutorialShot,
   uploadOnboardingImage,
 } from './onboardingApi.js';
@@ -52,6 +55,7 @@ const chain = {
     ],
   },
 };
+const adminCss = readFileSync(resolve(process.cwd(), 'src/admin/onboarding-admin.css'), 'utf8');
 
 function renderAdmin(): void {
   const queryClient = new QueryClient({
@@ -115,7 +119,30 @@ describe('onboardingApi', () => {
     await expect(
       uploadOnboardingImage(new File(['x'], 'image.png', { type: 'image/png' })),
     ).rejects.toThrow('Только WebP');
+    await expect(
+      uploadOnboardingImage(new File(['x'], 'renamed.webp', { type: 'image/png' })),
+    ).rejects.toThrow('Только WebP');
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('resumes the same preview tutorial run through its dedicated endpoint', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          seed: 'seed',
+          shotIndex: 2,
+          goalieId: 'rookie',
+          gameCoreVersion: 1,
+          speeds: { shooterFrequency: 0.2, goalieFrequency: 0.2, goalFrequency: 0.2 },
+          goalConfirmed: false,
+        }),
+      ),
+    );
+    await resumeOnboardingPreviewTutorial('preview-run');
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/admin/onboarding/preview/runs/preview-run/tutorial/resume'),
+      expect.objectContaining({ method: 'POST' }),
+    );
   });
 
   it('uses exact edit, duplicate, delete, publish, upload and preview tutorial contracts', async () => {
@@ -182,6 +209,12 @@ describe('onboardingApi', () => {
 describe('OnboardingAdmin', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('stacks tutorial speed controls at the mobile breakpoint', () => {
+    expect(adminCss).toMatch(
+      /@media\s*\(max-width:\s*640px\)[\s\S]*\.onboarding-step-editor__speeds\s*\{[^}]*grid-template-columns:\s*1fr/,
+    );
   });
 
   it('shows fixed chains, statuses, CRUD and accessible reorder controls', async () => {
@@ -279,6 +312,60 @@ describe('OnboardingAdmin', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Опубликовать' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('проверьте шаги и изображения');
+  });
+
+  it('associates structured publish issues with each exact step and field', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/admin/onboarding/chains/beginner')) {
+        return new Response(JSON.stringify({ chain }));
+      }
+      return new Response(
+        JSON.stringify({
+          error: {
+            code: 'onboarding_publish_invalid',
+            message: 'Исправьте ошибки шагов',
+            details: {
+              issues: [
+                {
+                  stepId: 'step-1',
+                  field: 'mediaObjectId',
+                  code: 'media_unavailable',
+                  message: 'Изображение недоступно',
+                },
+                {
+                  stepId: 'step-2',
+                  field: 'goalieFrequency',
+                  code: 'invalid_speed',
+                  message: 'Скорость вратаря вне диапазона',
+                },
+              ],
+            },
+          },
+        }),
+        { status: 422 },
+      );
+    });
+    renderAdmin();
+    await screen.findByText('Всё начинается здесь');
+    fireEvent.click(screen.getByRole('button', { name: 'Опубликовать' }));
+
+    const firstRow = screen.getByText('Всё начинается здесь').closest('[role="listitem"]')!;
+    const tutorialRow = screen.getByText('Забей первую шайбу').closest('[role="listitem"]')!;
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Не удалось опубликовать: проверьте шаги и изображения.',
+    );
+    expect(firstRow).toHaveTextContent('Изображение: Изображение недоступно');
+    expect(tutorialRow).toHaveTextContent('Скорость вратаря: Скорость вратаря вне диапазона');
+  });
+
+  it('renders protected informational thumbnails and a visible fallback', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ chain })));
+    renderAdmin();
+    const thumbnail = await screen.findByRole('img', { name: 'Всё начинается здесь' });
+    expect(thumbnail).toHaveAttribute('src', '/media/1');
+    fireEvent.error(thumbnail);
+    expect(screen.getByRole('img', { name: 'Изображение шага недоступно' })).toBeInTheDocument();
   });
 
   it('replaces the editor state with the authoritative full-chain mutation response', async () => {

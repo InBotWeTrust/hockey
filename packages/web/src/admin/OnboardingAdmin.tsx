@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, Copy, Pencil, Trash2 } from 'lucide-react';
+import { ApiError } from '../api/apiFetch.js';
 import type { OnboardingChainKey } from '../api/onboarding.js';
 import { OnboardingFlow } from '../onboarding/OnboardingFlow.js';
 import { OnboardingStepEditor } from './OnboardingStepEditor.js';
@@ -12,6 +13,7 @@ import {
   patchOnboardingStep,
   publishOnboardingDraft,
   reorderOnboardingSteps,
+  resumeOnboardingPreviewTutorial,
   startOnboardingPreviewTutorial,
   submitOnboardingPreviewTutorialShot,
   type AdminOnboardingChain,
@@ -19,8 +21,42 @@ import {
   type AdminOnboardingStepInput,
   type AdminOnboardingPreview,
 } from './onboardingApi.js';
+import './onboarding-admin.css';
 
 type Section = 'content' | 'preview' | 'statistics';
+type PublishIssue = {
+  stepId: string;
+  field: string;
+  code: string;
+  message: string;
+};
+
+const issueFieldLabels: Record<string, string> = {
+  title: 'Заголовок',
+  description: 'Описание',
+  ctaLabel: 'Текст кнопки',
+  mediaObjectId: 'Изображение',
+  shooterFrequency: 'Скорость игрока',
+  goalieFrequency: 'Скорость вратаря',
+  goalFrequency: 'Скорость ворот',
+};
+
+function publishIssues(error: unknown): PublishIssue[] {
+  if (!(error instanceof ApiError) || error.code !== 'onboarding_publish_invalid') return [];
+  const details = error.details;
+  if (details === null || typeof details !== 'object' || !('issues' in details)) return [];
+  const issues = (details as { issues?: unknown }).issues;
+  if (!Array.isArray(issues)) return [];
+  return issues.filter(
+    (issue): issue is PublishIssue =>
+      issue !== null &&
+      typeof issue === 'object' &&
+      typeof (issue as PublishIssue).stepId === 'string' &&
+      typeof (issue as PublishIssue).field === 'string' &&
+      typeof (issue as PublishIssue).code === 'string' &&
+      typeof (issue as PublishIssue).message === 'string',
+  );
+}
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Не удалось выполнить действие';
@@ -35,11 +71,14 @@ export function OnboardingAdmin(): JSX.Element {
   const [editorStep, setEditorStep] = useState<AdminOnboardingStep | null | undefined>();
   const [preview, setPreview] = useState<AdminOnboardingPreview | null>(null);
   const [draggedStepId, setDraggedStepId] = useState<string | null>(null);
+  const [validationIssues, setValidationIssues] = useState<PublishIssue[]>([]);
+  const [brokenThumbnails, setBrokenThumbnails] = useState(() => new Set<string>());
 
   useEffect(() => {
     let active = true;
     setLoading(true);
     setError(null);
+    setValidationIssues([]);
     setEditorStep(undefined);
     setPreview(null);
     void fetchOnboardingChain(chainKey)
@@ -64,10 +103,12 @@ export function OnboardingAdmin(): JSX.Element {
 
   async function apply(operation: () => Promise<AdminOnboardingChain>): Promise<void> {
     setError(null);
+    setValidationIssues([]);
     try {
       setChain(await operation());
     } catch (nextError) {
       setError(errorMessage(nextError));
+      setValidationIssues(publishIssues(nextError));
       throw nextError;
     }
   }
@@ -215,24 +256,54 @@ export function OnboardingAdmin(): JSX.Element {
                   setDraggedStepId(null);
                   void reorder(ids).catch(() => undefined);
                 }}
-                className="glass"
+                className="glass onboarding-admin__step"
                 style={{
                   borderRadius: 18,
                   padding: 12,
                   display: 'grid',
-                  gridTemplateColumns: 'minmax(0, 1fr) auto',
                   gap: 10,
                 }}
               >
-                <div>
+                {step.kind === 'informational' &&
+                  (brokenThumbnails.has(step.id) ? (
+                    <div
+                      className="onboarding-admin__thumbnail-fallback"
+                      role="img"
+                      aria-label="Изображение шага недоступно"
+                    >
+                      Нет изображения
+                    </div>
+                  ) : (
+                    <img
+                      className="onboarding-admin__thumbnail"
+                      src={step.imageUrl}
+                      alt={step.title}
+                      onError={() =>
+                        setBrokenThumbnails((current) => new Set(current).add(step.id))
+                      }
+                    />
+                  ))}
+                <div className="onboarding-admin__step-copy">
                   <small>
                     Шаг {step.position} ·{' '}
                     {step.kind === 'tutorial_shot' ? 'Учебный бросок' : 'Информация'}
                   </small>
                   <h3 style={{ margin: '4px 0' }}>{step.title}</h3>
                   <p style={{ margin: 0, color: 'var(--muted)' }}>{step.description}</p>
+                  {validationIssues
+                    .filter((issue) => issue.stepId === step.id)
+                    .map((issue) => (
+                      <div
+                        key={`${issue.field}:${issue.code}`}
+                        className="onboarding-admin__field-error"
+                        data-field={issue.field}
+                      >
+                        {issueFieldLabels[issue.field] ?? issue.field}: {issue.message}
+                      </div>
+                    ))}
                 </div>
                 <div
+                  className="onboarding-admin__step-actions"
                   style={{ display: 'flex', gap: 5, flexWrap: 'wrap', justifyContent: 'flex-end' }}
                 >
                   <button
@@ -307,9 +378,10 @@ export function OnboardingAdmin(): JSX.Element {
             required={previewRequired}
             onCompleted={() => setSection('content')}
             tutorialApi={{
-              start: async () => {
-                return startOnboardingPreviewTutorial(chainKey);
-              },
+              start: (runId) =>
+                runId === 'preview-pending'
+                  ? startOnboardingPreviewTutorial(chainKey)
+                  : resumeOnboardingPreviewTutorial(runId),
               submit: submitOnboardingPreviewTutorialShot,
             }}
           />

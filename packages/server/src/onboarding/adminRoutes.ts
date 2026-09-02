@@ -130,8 +130,27 @@ function badRequest(message: string): AppError {
   return new AppError('bad_request', message, 400);
 }
 
-function publishInvalid(message: string): AppError {
-  return new AppError('onboarding_publish_invalid', message, 409);
+interface PublishIssue {
+  stepId: string;
+  field:
+    | 'title'
+    | 'description'
+    | 'ctaLabel'
+    | 'mediaObjectId'
+    | 'shooterFrequency'
+    | 'goalieFrequency'
+    | 'goalFrequency';
+  code: string;
+  message: string;
+}
+
+function publishInvalid(message: string, issues?: PublishIssue[]): AppError {
+  return new AppError(
+    'onboarding_publish_invalid',
+    message,
+    issues === undefined ? 409 : 422,
+    issues === undefined ? undefined : { issues },
+  );
 }
 
 function parse<TSchema extends z.ZodTypeAny>(
@@ -553,28 +572,79 @@ async function assertPublishable(
     throw publishInvalid('amateur onboarding cannot contain a tutorial step');
   }
 
-  const mediaIds: string[] = [];
+  const issues: PublishIssue[] = [];
+  const mediaSteps = new Map<string, string[]>();
   for (const row of rows) {
-    if (
-      row.title.trim().length === 0 ||
-      row.description.trim().length === 0 ||
-      row.cta_label.trim().length === 0
-    ) {
-      throw publishInvalid('onboarding step has a missing required field');
-    }
+    if (row.title.trim().length === 0)
+      issues.push({
+        stepId: row.id,
+        field: 'title',
+        code: 'required',
+        message: 'Заполните заголовок',
+      });
+    if (row.description.trim().length === 0)
+      issues.push({
+        stepId: row.id,
+        field: 'description',
+        code: 'required',
+        message: 'Заполните описание',
+      });
+    if (row.cta_label.trim().length === 0)
+      issues.push({
+        stepId: row.id,
+        field: 'ctaLabel',
+        code: 'required',
+        message: 'Заполните текст кнопки',
+      });
     if (row.kind === 'informational') {
       if (row.media_object_id === null || row.tutorial_config !== null) {
-        throw publishInvalid('informational step has no image');
+        issues.push({
+          stepId: row.id,
+          field: 'mediaObjectId',
+          code: 'required',
+          message: 'Загрузите изображение WebP',
+        });
+      } else {
+        const owners = mediaSteps.get(row.media_object_id) ?? [];
+        owners.push(row.id);
+        mediaSteps.set(row.media_object_id, owners);
       }
-      mediaIds.push(row.media_object_id);
-    } else if (
-      row.media_object_id !== null ||
-      !onboardingTutorialConfigSchema.safeParse(row.tutorial_config).success
-    ) {
-      throw publishInvalid('tutorial step has invalid speed configuration');
+    } else {
+      const parsed = onboardingTutorialConfigSchema.safeParse(row.tutorial_config);
+      if (row.media_object_id !== null || !parsed.success) {
+        const invalidFields = parsed.success
+          ? (['shooterFrequency', 'goalieFrequency', 'goalFrequency'] as const)
+          : parsed.error.issues
+              .map((issue) => issue.path[0])
+              .filter(
+                (field): field is 'shooterFrequency' | 'goalieFrequency' | 'goalFrequency' =>
+                  field === 'shooterFrequency' ||
+                  field === 'goalieFrequency' ||
+                  field === 'goalFrequency',
+              );
+        for (const field of invalidFields.length > 0
+          ? invalidFields
+          : (['shooterFrequency'] as const)) {
+          const label =
+            field === 'shooterFrequency'
+              ? 'игрока'
+              : field === 'goalieFrequency'
+                ? 'вратаря'
+                : 'ворот';
+          issues.push({
+            stepId: row.id,
+            field,
+            code: 'invalid_speed',
+            message: `Проверьте скорость ${label}`,
+          });
+        }
+      }
     }
   }
 
+  if (issues.length > 0) throw publishInvalid('Исправьте ошибки шагов', issues);
+
+  const mediaIds = [...mediaSteps.keys()];
   if (mediaIds.length === 0) return;
   if (objectStorage === undefined) {
     throw publishInvalid('onboarding media storage is unavailable');
@@ -586,6 +656,7 @@ async function assertPublishable(
     [mediaIds],
   );
   const mediaById = new Map(mediaResult.rows.map((row) => [row.id, row]));
+  const mediaIssues: PublishIssue[] = [];
   for (const mediaId of mediaIds) {
     const media = mediaById.get(mediaId);
     if (
@@ -594,7 +665,15 @@ async function assertPublishable(
       media.content_type !== 'image/webp' ||
       Number(media.size_bytes) <= 0
     ) {
-      throw publishInvalid('onboarding step references invalid media');
+      for (const stepId of mediaSteps.get(mediaId) ?? []) {
+        mediaIssues.push({
+          stepId,
+          field: 'mediaObjectId',
+          code: 'invalid_media',
+          message: 'Изображение недоступно или имеет неверный формат',
+        });
+      }
+      continue;
     }
     try {
       const object = await objectStorage.getObject({ key: media.object_key });
@@ -602,9 +681,17 @@ async function assertPublishable(
         throw new Error('stored onboarding image is invalid');
       }
     } catch {
-      throw publishInvalid('onboarding media is unavailable in object storage');
+      for (const stepId of mediaSteps.get(mediaId) ?? []) {
+        mediaIssues.push({
+          stepId,
+          field: 'mediaObjectId',
+          code: 'media_unavailable',
+          message: 'Изображение недоступно в хранилище',
+        });
+      }
     }
   }
+  if (mediaIssues.length > 0) throw publishInvalid('Исправьте ошибки изображений', mediaIssues);
 }
 
 function publicPreview(
@@ -1099,6 +1186,46 @@ export const onboardingAdminRoutes: FastifyPluginAsync<OnboardingAdminRoutesOpti
       });
       reply.code(201);
       return result;
+    },
+  );
+
+  app.post(
+    '/admin/onboarding/preview/runs/:runId/tutorial/resume',
+    { preHandler: adminPreHandlers },
+    async (request) => {
+      const { runId } = parse(
+        previewRunParamsSchema,
+        request.params,
+        'invalid onboarding preview run',
+      );
+      return withTransaction(app, async (client) => {
+        const runs = await client.query<{
+          id: string;
+          user_id: string;
+          chain_key: OnboardingChainKey;
+          version_id: string;
+          tutorial_state: unknown;
+        }>(
+          `select id, user_id, chain_key, version_id, tutorial_state
+             from onboarding_run
+            where id = $1 and user_id = $2 and source = 'preview'
+            for update`,
+          [runId, request.user.id],
+        );
+        const run = runs.rows[0];
+        if (!run) throw new AppError('not_found', 'onboarding preview run not found', 404);
+        return startTutorialSession(
+          client,
+          {
+            id: run.id,
+            userId: run.user_id,
+            chainKey: run.chain_key,
+            versionId: run.version_id,
+            tutorialState: run.tutorial_state,
+          },
+          options.tutorialSeedSecret,
+        );
+      });
     },
   );
 
