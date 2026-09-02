@@ -4,6 +4,8 @@ Implementation commit: `1c1da10` (`feat(web): add the first-goal onboarding step
 
 Review-fix commit: `5b65106` (`fix(web): harden onboarding tutorial recovery`)
 
+Review-fix round 2 commit: `a20b78c` (`fix(web): resync rejected tutorial shots`)
+
 ## Scope delivered
 
 - Extended `PlayView` with opt-in result copy while preserving the existing default labels and renderer/gameplay path.
@@ -60,4 +62,19 @@ Fix verification:
 - GREEN focused Task 8: 3 files / 30 tests PASS with no unhandled errors or React warnings.
 - GREEN expanded PlayView/tutorial/flow/gate/App: 5 files / 42 tests PASS.
 - Full web runner: 75 non-Daily files / 562 tests PASS, then all 65 isolated DailyScreen scenarios PASS; exit code 0.
+- Web typecheck/build, root lint, focused Prettier, `git diff --check`, and unchanged game-core check: PASS.
+
+## Independent review fix round 2
+
+Two further Important findings were reproduced before the second fix:
+
+- After an optimistic attempt, a rejected response left the tutorial counter at `N + 1` although the server might still expect `N`. The tutorial now calls the existing idempotent `POST /tutorial/start` as an authoritative re-sync before enabling another attempt. Tests cover both safe outcomes: an uncommitted request retries the same index, while a committed request with a lost response continues from the server-advanced index.
+- Hiding PlayView's Back button collapsed the first grid column and shifted the shot CTA. The controls now preserve an inert 56px first slot, explicitly keep the shot button in column two, and leave the sound action in column three.
+
+Round-2 verification:
+
+- RED: focused tests failed on missing authoritative re-sync and missing controls structure.
+- GREEN focused Task 8: 3 files / 31 tests PASS.
+- GREEN expanded PlayView/tutorial/flow/gate/App: 5 files / 44 tests PASS.
+- Full web runner: 75 non-Daily files / 564 tests PASS, followed by all 65 isolated DailyScreen scenarios; exit code 0.
 - Web typecheck/build, root lint, focused Prettier, `git diff --check`, and unchanged game-core check: PASS.
