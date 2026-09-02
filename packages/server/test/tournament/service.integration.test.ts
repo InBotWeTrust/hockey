@@ -1950,6 +1950,216 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     expect(fixture.rows[0]!.scheduled_starts_at.toISOString()).toBe('2030-09-03T07:00:00.000Z');
   });
 
+  it('reschedules every unstarted playoff game when an admin changes the published round dates', async () => {
+    await seedUsers(pool, 0);
+    const template = await pool.query<{ id: string }>(
+      `select id from amateur_duel_template
+        where deleted_at is null and is_active
+        order by created_at limit 1`,
+    );
+    const initialRules = playoffTournamentRules(2, {
+      playoffRounds: [
+        {
+          roundNumber: 1,
+          winsRequired: 2,
+          homeSequence: ['H', 'A', 'H'],
+          duelTemplateId: template.rows[0]!.id,
+          readinessMinutes: 5,
+          plannedStartIntervalMinutes: 20,
+          roundBreakMs: 0,
+          firstGameStartsAt: '2030-09-05T07:00:00.000Z',
+          scheduleDays: [
+            { localDate: '2030-09-05', firstWaveLocalTime: '10:00', maxResultGames: 2 },
+            { localDate: '2030-09-06', firstWaveLocalTime: '10:00', maxResultGames: 1 },
+          ],
+        },
+      ],
+    });
+    const tournament = await createPublishedTournament(
+      pool,
+      'published-playoff-reschedule',
+      0,
+      initialRules,
+    );
+    await prepareTournamentForPlayoffs(pool, tournament.id, [4, 3, 2, 1]);
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-01T08:00:00.000Z'));
+
+    const updatedRules: TournamentRulesSnapshot = {
+      ...initialRules,
+      playoffRounds: [
+        {
+          ...(initialRules.playoffRounds as Array<Record<string, unknown>>)[0],
+          firstGameStartsAt: '2030-09-10T08:00:00.000Z',
+          scheduleDays: [
+            { localDate: '2030-09-10', firstWaveLocalTime: '11:00', maxResultGames: 2 },
+            { localDate: '2030-09-11', firstWaveLocalTime: '11:00', maxResultGames: 1 },
+          ],
+        },
+      ],
+    };
+    const updated = await updateTournamentDraft(pool, {
+      tournamentId: tournament.id,
+      expectedRevision: tournament.revision,
+      title: 'Integration Championship',
+      description: 'Tournament integration test',
+      rules: updatedRules,
+      updatedBy: ADMIN_ID,
+      registrationOpensAt: new Date('2020-01-01T00:00:00.000Z'),
+      registrationClosesAt: new Date('2030-08-31T07:00:00.000Z'),
+      startsAt: new Date('2030-09-01T07:00:00.000Z'),
+    });
+
+    expect(updated.status).toBe('playoff');
+    expect(updated.revision).toBe(tournament.revision + 1);
+    const fixtures = await pool.query<{
+      game_number: number;
+      fixture_starts_at: Date;
+      attempt_starts_at: Date;
+      readiness_expires_at: Date;
+      local_date: string;
+    }>(
+      `select (fixture.result_snapshot->>'gameNumber')::int as game_number,
+              fixture.scheduled_starts_at as fixture_starts_at,
+              attempt.scheduled_starts_at as attempt_starts_at,
+              attempt.readiness_expires_at,
+              day.local_date
+         from tournament_fixture fixture
+         join tournament_fixture_attempt attempt on attempt.fixture_id = fixture.id
+         join tournament_round_game_day day on day.id = attempt.round_game_day_id
+        where fixture.tournament_id = $1 and fixture.series_id is not null
+        order by fixture.fixture_number`,
+      [tournament.id],
+    );
+    expect(
+      fixtures.rows.map((fixture) => ({
+        gameNumber: fixture.game_number,
+        startsAt: fixture.fixture_starts_at.toISOString(),
+        attemptStartsAt: fixture.attempt_starts_at.toISOString(),
+        readinessMinutes:
+          (fixture.readiness_expires_at.getTime() - fixture.attempt_starts_at.getTime()) / 60_000,
+        localDate: fixture.local_date,
+      })),
+    ).toEqual([
+      {
+        gameNumber: 1,
+        startsAt: '2030-09-10T08:00:00.000Z',
+        attemptStartsAt: '2030-09-10T08:00:00.000Z',
+        readinessMinutes: 5,
+        localDate: '2030-09-10',
+      },
+      {
+        gameNumber: 2,
+        startsAt: '2030-09-10T08:20:00.000Z',
+        attemptStartsAt: '2030-09-10T08:20:00.000Z',
+        readinessMinutes: 5,
+        localDate: '2030-09-10',
+      },
+      {
+        gameNumber: 3,
+        startsAt: '2030-09-11T08:00:00.000Z',
+        attemptStartsAt: '2030-09-11T08:00:00.000Z',
+        readinessMinutes: 5,
+        localDate: '2030-09-11',
+      },
+    ]);
+  });
+
+  it('preserves playoff history when an admin tries to reschedule a round that has started', async () => {
+    await seedUsers(pool, 0);
+    const template = await pool.query<{ id: string }>(
+      `select id from amateur_duel_template
+        where deleted_at is null and is_active
+        order by created_at limit 1`,
+    );
+    const initialRules = playoffTournamentRules(2, {
+      playoffRounds: [
+        {
+          roundNumber: 1,
+          winsRequired: 2,
+          homeSequence: ['H', 'A', 'H'],
+          duelTemplateId: template.rows[0]!.id,
+          readinessMinutes: 5,
+          plannedStartIntervalMinutes: 20,
+          roundBreakMs: 0,
+          firstGameStartsAt: '2030-09-05T07:00:00.000Z',
+          scheduleDays: [
+            { localDate: '2030-09-05', firstWaveLocalTime: '10:00', maxResultGames: 2 },
+            { localDate: '2030-09-06', firstWaveLocalTime: '10:00', maxResultGames: 1 },
+          ],
+        },
+      ],
+    });
+    const tournament = await createPublishedTournament(
+      pool,
+      'published-playoff-started-reschedule',
+      0,
+      initialRules,
+    );
+    await prepareTournamentForPlayoffs(pool, tournament.id, [4, 3, 2, 1]);
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-01T08:00:00.000Z'));
+    const firstAttempt = await pool.query<{ id: string; scheduled_starts_at: Date }>(
+      `select attempt.id, attempt.scheduled_starts_at
+         from tournament_fixture_attempt attempt
+         join tournament_fixture fixture on fixture.id = attempt.fixture_id
+        where fixture.tournament_id = $1
+        order by fixture.fixture_number
+        limit 1`,
+      [tournament.id],
+    );
+    await pool.query(
+      `update tournament_fixture_attempt set home_ready_at = scheduled_starts_at where id = $1`,
+      [firstAttempt.rows[0]!.id],
+    );
+
+    const updatedRules: TournamentRulesSnapshot = {
+      ...initialRules,
+      playoffRounds: [
+        {
+          ...(initialRules.playoffRounds as Array<Record<string, unknown>>)[0],
+          firstGameStartsAt: '2030-09-10T08:00:00.000Z',
+          scheduleDays: [
+            { localDate: '2030-09-10', firstWaveLocalTime: '11:00', maxResultGames: 2 },
+            { localDate: '2030-09-11', firstWaveLocalTime: '11:00', maxResultGames: 1 },
+          ],
+        },
+      ],
+    };
+    await expect(
+      updateTournamentDraft(pool, {
+        tournamentId: tournament.id,
+        expectedRevision: tournament.revision,
+        title: 'Integration Championship',
+        description: 'Tournament integration test',
+        rules: updatedRules,
+        updatedBy: ADMIN_ID,
+        registrationOpensAt: new Date('2020-01-01T00:00:00.000Z'),
+        registrationClosesAt: new Date('2030-08-31T07:00:00.000Z'),
+        startsAt: new Date('2030-09-01T07:00:00.000Z'),
+      }),
+    ).rejects.toMatchObject({
+      code: 'conflict',
+      message: 'Раунд 1 уже начался. Перенесите оставшиеся игры отдельно в календаре',
+    });
+
+    const unchanged = await pool.query<{
+      current_revision: number;
+      scheduled_starts_at: Date;
+      home_ready_at: Date | null;
+    }>(
+      `select tournament.current_revision, attempt.scheduled_starts_at, attempt.home_ready_at
+         from tournament
+         join tournament_fixture fixture on fixture.tournament_id = tournament.id
+         join tournament_fixture_attempt attempt on attempt.fixture_id = fixture.id
+        where tournament.id = $1 and attempt.id = $2`,
+      [tournament.id, firstAttempt.rows[0]!.id],
+    );
+    expect(unchanged.rows[0]!.current_revision).toBe(tournament.revision);
+    expect(unchanged.rows[0]!.scheduled_starts_at.toISOString()).toBe(
+      firstAttempt.rows[0]!.scheduled_starts_at.toISOString(),
+    );
+    expect(unchanged.rows[0]!.home_ready_at).not.toBeNull();
+  });
+
   it('rebases each scheduled playoff round after the prior rebased round and its break', async () => {
     await seedUsers(pool, 0);
     const template = await pool.query<{ id: string }>(

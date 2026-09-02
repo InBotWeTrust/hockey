@@ -900,6 +900,7 @@ export function TournamentOperations({
     (tab === 'standings' && standings.data?.standings.length === 0) ||
     (tab === 'bracket' && bracket.data?.series.length === 0);
   const canEditRules = ['draft', 'registration', 'registration_blocked'].includes(status);
+  const canEditPlayoffSchedule = status === 'playoff';
   const tournamentTimezone = String(tournament.rules?.config?.timezone ?? 'Europe/Moscow');
   const currentLifecycleMessage = lifecycleMessage(tournament, tournamentTimezone);
   const canGenerateBlockedHeadToHeadSchedule =
@@ -1663,6 +1664,18 @@ export function TournamentOperations({
                 }}
               >
                 Редактировать турнир
+              </button>
+            )}
+            {canEditPlayoffSchedule && (
+              <button
+                type="button"
+                className="admin-compact-btn"
+                onClick={() => {
+                  setActionsOpen(false);
+                  onEdit(3, true);
+                }}
+              >
+                Изменить расписание плей-офф
               </button>
             )}
             <button

@@ -48,6 +48,26 @@ afterEach(() => {
 });
 
 describe('TournamentOperations', () => {
+  it('opens playoff schedule editing from tournament actions after the bracket is created', async () => {
+    const onEdit = vi.fn();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentOperations
+          tournament={{ ...tournament(), status: 'playoff' }}
+          onBack={vi.fn()}
+          onEdit={onEdit}
+          onRemoved={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Изменить расписание плей-офф' }));
+
+    expect(onEdit).toHaveBeenCalledWith(3, true);
+  });
+
   it('puts playoff incidents in a clear requires-decision block', async () => {
     vi.spyOn(await import('./adminApi.js'), 'fetchAdminTournamentSchedule').mockResolvedValue({
       matchdays: [],

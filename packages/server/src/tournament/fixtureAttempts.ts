@@ -304,6 +304,7 @@ export async function insertInitialFixtureAttempt(
     readinessMinutes: number;
     template: DuelTemplateLifecycleSnapshot;
     readinessMode?: 'manual' | 'auto_continue';
+    rescheduledReason?: string;
   },
 ): Promise<{ id: string; readinessExpiresAt: Date; hardDeadlineAt: Date }> {
   const readinessExpiresAt = new Date(
@@ -330,6 +331,9 @@ export async function insertInitialFixtureAttempt(
       JSON.stringify({
         ...input.template,
         readinessMode: input.readinessMode ?? 'manual',
+        ...(input.rescheduledReason === undefined
+          ? {}
+          : { rescheduledReason: input.rescheduledReason }),
       }),
     ],
   );
