@@ -38,3 +38,24 @@ The repository wrapper's redundant one-by-one DailyScreen phase was intentionall
 ## Commit
 
 - `b3e0284 feat(web): show onboarding metrics and player controls`
+
+## Independent review fix round 1
+
+The first independent review found two blocking client-side read-back races:
+
+1. Statistics data was stored independently of the active chain/version/date filters, so an already loaded table could briefly remain visible under a newly selected version and a chain without published versions could retain prior metrics.
+2. A successful player mutation updated the detail cache only when that cache already existed; saving before the detail request resolved could discard the authoritative mutation response, and a late stale detail response could overwrite it.
+
+Both were reproduced with deferred-response tests before the fix. Statistics snapshots are now keyed to the exact `chain/version/from/to` tuple; rendering requires an exact key match, chain changes synchronously clear version context, and effect cleanup prevents out-of-order responses from becoming current. Player mutations now keep their returned user as modal-local authoritative state, which remains dominant over an absent or late stale detail cache; save failures still preserve the previous authoritative display and edit state.
+
+Fix verification:
+
+- Deferred version/date/out-of-order, no-version chain, and save-before-detail tests — 3/3 passed.
+- Full focused admin UI — 28/28 passed.
+- Full non-Daily web suite — 76 files, 589/589 passed.
+- Isolated full DailyScreen — 70/70 passed.
+- Web typecheck, root lint, root build, Prettier, and `git diff --check` — passed.
+
+Fix commit:
+
+- `9a8a1de fix(web): isolate onboarding admin read-backs`
