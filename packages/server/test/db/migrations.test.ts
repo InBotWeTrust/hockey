@@ -392,6 +392,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '057_amateur_no_inventory_penalty_settings.sql',
       '058_bonus_games_and_home_arenas.sql',
       '059_seed_bonus_games.sql',
+      '060_player_onboarding.sql',
     ]);
   });
 
@@ -585,6 +586,218 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     expect(constraints.get('shot_session_check')).toContain('period_number');
     expect(constraints.get('currency_ledger_reason_check')).toContain("'bonus_game_reward'::text");
     expect(constraints.get('media_objects_purpose_check')).toContain("'bonus_game_media'::text");
+  });
+});
+
+describe.skipIf(!hasIntegrationEnv)('060 player onboarding migration', () => {
+  let pool: Pool;
+  let migrationsBefore060Dir: string | undefined;
+
+  beforeAll(async () => {
+    pool = createTestPool();
+    await resetDatabase(pool);
+    migrationsBefore060Dir = await createMigrationsDirBefore('060_player_onboarding.sql');
+  });
+
+  afterAll(async () => {
+    await pool.end();
+    if (migrationsBefore060Dir) {
+      await fs.rm(migrationsBefore060Dir, { recursive: true, force: true });
+    }
+  });
+
+  it('preserves existing users and defaults onboarding state for new users', async () => {
+    await applyMigrations(pool, migrationsBefore060Dir!);
+
+    const existingUserId = '00000000-0000-4060-8060-000000000001';
+    const createdUserId = '00000000-0000-4060-8060-000000000002';
+    await pool.query(
+      `insert into users (id, display_name, timezone)
+       values ($1, 'Existing onboarding user', 'Europe/Moscow')`,
+      [existingUserId],
+    );
+
+    await applyMigrations(pool, MIGRATIONS_DIR);
+
+    await pool.query(
+      `insert into users (id, display_name, timezone)
+       values ($1, 'Created onboarding user', 'Europe/Moscow')`,
+      [createdUserId],
+    );
+    const existing = await pool.query(
+      `select beginner_onboarding_completed, amateur_onboarding_completed
+         from users where id = $1`,
+      [existingUserId],
+    );
+    const createdAfter = await pool.query(
+      `select beginner_onboarding_completed, amateur_onboarding_completed
+         from users where id = $1`,
+      [createdUserId],
+    );
+
+    expect(existing.rows[0]).toMatchObject({
+      beginner_onboarding_completed: true,
+      amateur_onboarding_completed: true,
+    });
+    expect(createdAfter.rows[0]).toMatchObject({
+      beginner_onboarding_completed: false,
+      amateur_onboarding_completed: false,
+    });
+  });
+
+  it('enforces onboarding table, event, index, and media contracts', async () => {
+    const userId = '00000000-0000-4060-8060-000000000010';
+    const secondUserId = '00000000-0000-4060-8060-000000000011';
+    const mediaId = '00000000-0000-4060-8060-000000000012';
+    const chainKey = 'beginner';
+    const versionId = '00000000-0000-4060-8060-000000000013';
+    const secondVersionId = '00000000-0000-4060-8060-000000000014';
+    const runId = '00000000-0000-4060-8060-000000000015';
+    const secondRunId = '00000000-0000-4060-8060-000000000016';
+    const sessionId = '00000000-0000-4060-8060-000000000017';
+    const stepId = '00000000-0000-4060-8060-000000000018';
+    const tutorialStepId = '00000000-0000-4060-8060-000000000019';
+
+    await pool.query(
+      `insert into users (id, display_name, timezone)
+       values ($1, 'Onboarding contract user', 'Europe/Moscow'),
+              ($2, 'Onboarding contract creator', 'Europe/Moscow')`,
+      [userId, secondUserId],
+    );
+    await pool.query(
+      `insert into media_objects
+         (id, owner_user_id, purpose, object_key, url, content_type, size_bytes)
+       values ($1, $2, 'onboarding_image', 'onboarding-contract',
+               '/onboarding-contract.webp', 'image/webp', 1)`,
+      [mediaId, secondUserId],
+    );
+    await pool.query(
+      `insert into onboarding_chain (key) values ('beginner'), ('amateur')
+       on conflict (key) do nothing`,
+    );
+    await pool.query(
+      `insert into onboarding_version (id, chain_key, status, created_by)
+       values ($1, $2, 'draft', $3), ($4, $2, 'published', $3)`,
+      [versionId, chainKey, secondUserId, secondVersionId],
+    );
+    await expect(
+      pool.query(
+        `insert into onboarding_version (chain_key, status)
+         values ('beginner', 'draft')`,
+      ),
+    ).rejects.toMatchObject({ code: '23505' });
+
+    await pool.query(
+      `insert into onboarding_step
+         (id, version_id, position, kind, title, description, cta_label, media_object_id)
+       values ($1, $2, 1, 'informational', 'Welcome', 'Welcome to hockey', 'Continue', $3)`,
+      [stepId, versionId, mediaId],
+    );
+    await expect(
+      pool.query(
+        `insert into onboarding_step
+           (version_id, position, kind, title, description, cta_label, media_object_id)
+         values ($1, 1, 'informational', 'Duplicate', 'Duplicate position', 'Continue', $2)`,
+        [versionId, mediaId],
+      ),
+    ).rejects.toMatchObject({ code: '23505' });
+    await expect(
+      pool.query(
+        `insert into onboarding_step
+           (version_id, position, kind, title, description, cta_label)
+         values ($1, 2, 'informational', 'Missing media', 'Invalid step', 'Continue')`,
+        [versionId],
+      ),
+    ).rejects.toMatchObject({ code: '23514' });
+    await pool.query(
+      `insert into onboarding_step
+         (id, version_id, position, kind, title, description, cta_label, tutorial_config)
+       values ($1, $2, 2, 'tutorial_shot', 'Tutorial', 'Take a shot', 'Shoot', '{"period":1}')`,
+      [tutorialStepId, versionId],
+    );
+
+    await pool.query(
+      `insert into onboarding_run
+         (id, user_id, chain_key, version_id, client_session_id, source)
+       values ($1, $2, 'beginner', $3, $4, 'natural'),
+              ($5, $2, 'beginner', $3, '00000000-0000-4060-8060-000000000020', 'preview')`,
+      [runId, userId, versionId, sessionId, secondRunId],
+    );
+    await expect(
+      pool.query(
+        `insert into onboarding_run
+           (user_id, chain_key, version_id, client_session_id, source)
+         values ($1, 'beginner', $2, $3, 'natural')`,
+        [userId, versionId, sessionId],
+      ),
+    ).rejects.toMatchObject({ code: '23505' });
+
+    await pool.query(
+      `insert into onboarding_event
+         (run_id, user_id, chain_key, version_id, step_id, kind, attempt_number)
+       values ($1, $2, 'beginner', $3, $4, 'step_viewed', 1),
+              ($1, $2, 'beginner', $3, $5, 'tutorial_goal', 1),
+              ($1, $2, 'beginner', $3, null, 'completed', 1)`,
+      [runId, userId, versionId, stepId, tutorialStepId],
+    );
+    await expect(
+      pool.query(
+        `insert into onboarding_event
+           (run_id, user_id, chain_key, version_id, step_id, kind, attempt_number)
+         values ($1, $2, 'beginner', $3, $4, 'step_viewed', 1)`,
+        [runId, userId, versionId, stepId],
+      ),
+    ).rejects.toMatchObject({ code: '23505' });
+    await expect(
+      pool.query(
+        `insert into onboarding_event
+           (run_id, user_id, chain_key, version_id, kind, attempt_number)
+         values ($1, $2, 'beginner', $3, 'tutorial_goal', 1)`,
+        [runId, userId, versionId],
+      ),
+    ).rejects.toMatchObject({ code: '23505' });
+    await expect(
+      pool.query(
+        `insert into onboarding_event
+           (run_id, user_id, chain_key, version_id, kind, attempt_number)
+         values ($1, $2, 'beginner', $3, 'invalid', 1)`,
+        [runId, userId, versionId],
+      ),
+    ).rejects.toMatchObject({ code: '23514' });
+
+    const indexes = await pool.query<{ indexname: string; indexdef: string }>(
+      `select indexname, indexdef from pg_indexes
+        where schemaname = 'public'
+          and indexname = any($1::text[])
+        order by indexname`,
+      [
+        [
+          'onboarding_version_one_draft_idx',
+          'onboarding_run_user_started_idx',
+          'onboarding_event_version_created_idx',
+          'onboarding_event_step_viewed_once_idx',
+          'onboarding_event_tutorial_goal_once_idx',
+          'onboarding_event_completed_once_idx',
+        ],
+      ],
+    );
+    expect(indexes.rows).toHaveLength(6);
+    expect(
+      indexes.rows.find((index) => index.indexname === 'onboarding_version_one_draft_idx')
+        ?.indexdef,
+    ).toContain('CREATE UNIQUE INDEX');
+    expect(
+      indexes.rows.find((index) => index.indexname === 'onboarding_event_version_created_idx')
+        ?.indexdef,
+    ).toContain('(version_id, created_at');
+    expect(
+      indexes.rows
+        .filter((index) => index.indexname.endsWith('_once_idx'))
+        .every(
+          (index) =>
+            index.indexdef.includes('CREATE UNIQUE INDEX') && index.indexdef.includes(' WHERE '),
+        ),
+    ).toBe(true);
   });
 });
 
