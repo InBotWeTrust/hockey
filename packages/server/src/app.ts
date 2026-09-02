@@ -26,6 +26,7 @@ import { createObjectStorageClient } from './storage/objectStorage.js';
 import { arenaRoutes } from './arenas/routes.js';
 import { bonusGameRoutes } from './bonusGames/routes.js';
 import { onboardingRoutes } from './onboarding/routes.js';
+import { onboardingAdminRoutes } from './onboarding/adminRoutes.js';
 
 export interface BuildAppOptions {
   config?: AppConfig;
@@ -126,6 +127,19 @@ export async function buildApp(options: BuildAppOptions = {}) {
     objectStorage !== undefined
       ? { objectStorage, mediaAccessSecret: config.JWT_SECRET }
       : { mediaAccessSecret: config.JWT_SECRET },
+  );
+  await app.register(
+    onboardingAdminRoutes,
+    objectStorage !== undefined
+      ? {
+          objectStorage,
+          mediaAccessSecret: config.JWT_SECRET,
+          tutorialSeedSecret: config.DAILY_SEED_SECRET,
+        }
+      : {
+          mediaAccessSecret: config.JWT_SECRET,
+          tutorialSeedSecret: config.DAILY_SEED_SECRET,
+        },
   );
   await app.register(pushSchedulerPlugin, {
     ...pushVapidOptions,

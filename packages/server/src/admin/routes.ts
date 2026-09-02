@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
+import type { FastifyPluginAsync } from 'fastify';
 import { Buffer } from 'node:buffer';
 import type { Pool, PoolClient } from 'pg';
 import { z } from 'zod';
@@ -27,6 +27,7 @@ import {
 } from '../push/templates.js';
 import type { PushEventType } from '../push/preferences.js';
 import { PUSH_QUEUE_PROCESSING_STALE_MS } from '../push/queue.js';
+import { createAdminPreHandlers } from './guards.js';
 
 type UserRole = 'player' | 'admin';
 type DisplaySource = 'custom' | 'telegram' | 'vk';
@@ -1410,15 +1411,6 @@ function mapChannelPost(row: AdminChannelPostRow) {
   };
 }
 
-async function requireAdmin(app: Parameters<FastifyPluginAsync>[0], req: FastifyRequest) {
-  const { rows } = await app.pg.query<{ role: UserRole }>('select role from users where id = $1', [
-    req.user.id,
-  ]);
-  if (rows[0]?.role !== 'admin') {
-    throw new AppError('forbidden', 'admin role required', 403);
-  }
-}
-
 async function fetchPushNotificationStats(
   client: Pool | PoolClient,
 ): Promise<AdminPushNotificationStatsRow> {
@@ -1933,10 +1925,7 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
     (_req, body, done) => done(null, body),
   );
 
-  const adminPreHandlers = [
-    app.authenticate,
-    async (req: FastifyRequest) => requireAdmin(app, req),
-  ];
+  const adminPreHandlers = createAdminPreHandlers(app);
 
   await registerWeeklyChallengeAdminRoutes(app);
   await registerBonusGameAdminRoutes(
