@@ -41,6 +41,25 @@ export interface OnboardingRunResponse {
   required: OnboardingRequired;
 }
 
+export interface OnboardingTutorialSession {
+  seed: string;
+  shotIndex: number;
+  goalieId: 'rookie';
+  gameCoreVersion: number;
+  speeds: {
+    shooterFrequency: number;
+    goalieFrequency: number;
+    goalFrequency: number;
+  };
+  goalConfirmed: boolean;
+}
+
+export interface OnboardingTutorialShotResponse {
+  serverResult: 'goal' | 'save' | 'miss';
+  nextShotIndex: number;
+  goalConfirmed: boolean;
+}
+
 export const onboardingQueryKeys = {
   required: () => ['onboarding', 'required'] as const,
 };
@@ -65,5 +84,25 @@ export function recordStepView(runId: string, stepId: string): Promise<{ viewed:
 export function completeOnboarding(runId: string): Promise<OnboardingRequiredResponse> {
   return apiFetch<OnboardingRequiredResponse>(`/onboarding/runs/${runId}/complete`, {
     method: 'POST',
+  });
+}
+
+export function startOnboardingTutorial(runId: string): Promise<OnboardingTutorialSession> {
+  return apiFetch<OnboardingTutorialSession>(`/onboarding/runs/${runId}/tutorial/start`, {
+    method: 'POST',
+  });
+}
+
+export function submitOnboardingTutorialShot(
+  runId: string,
+  shot: {
+    shotIndex: number;
+    input: { tapTime: number; shooterTapTime: number };
+    claimedResult: 'goal' | 'save' | 'miss';
+  },
+): Promise<OnboardingTutorialShotResponse> {
+  return apiFetch<OnboardingTutorialShotResponse>(`/onboarding/runs/${runId}/tutorial/shot`, {
+    method: 'POST',
+    body: JSON.stringify(shot),
   });
 }

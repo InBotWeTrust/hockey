@@ -6,6 +6,7 @@ import {
   type OnboardingRequiredResponse,
 } from '../api/onboarding.js';
 import './onboarding.css';
+import { TutorialShotStep } from './TutorialShotStep.js';
 
 interface OnboardingFlowProps {
   runId: string;
@@ -21,6 +22,7 @@ export function OnboardingFlow({ runId, required, onCompleted }: OnboardingFlowP
   const reachedSteps = useRef(new Set<string>());
   const viewedSteps = useRef(new Set<string>());
   const viewRequests = useRef(new Map<string, Promise<void>>());
+  const confirmedTutorialSteps = useRef(new Set<string>());
   const step = required.steps[stepIndex];
 
   function ensureStepView(stepId: string): Promise<void> {
@@ -109,54 +111,58 @@ export function OnboardingFlow({ runId, required, onCompleted }: OnboardingFlowP
             />
           )
         ) : (
-          <div className="onboarding-flow__tutorial-placeholder" aria-label="Учебный бросок">
-            Учебный бросок загружается…
+          <TutorialShotStep
+            runId={runId}
+            step={step}
+            goalConfirmed={confirmedTutorialSteps.current.has(step.id)}
+            onGoalConfirmed={() => confirmedTutorialSteps.current.add(step.id)}
+            onBack={() => setStepIndex((current) => current - 1)}
+            onContinue={advance}
+          />
+        )}
+        {step.kind === 'informational' && (
+          <div className="onboarding-flow__copy">
+            <h1>{step.title}</h1>
+            <p>{step.description}</p>
           </div>
         )}
-        <div className="onboarding-flow__copy">
-          <h1>{step.title}</h1>
-          <p>{step.description}</p>
-        </div>
       </section>
-      <div className="onboarding-flow__footer">
-        {lifecycleError && (
-          <div className="onboarding-flow__error" role="alert">
-            <span>
-              {lifecycleError === 'view'
-                ? 'Не удалось сохранить прогресс. Проверьте соединение.'
-                : 'Не удалось завершить онбординг. Проверьте соединение.'}
-            </span>
-            <button
-              className="btn btn--ghost"
-              type="button"
-              onClick={() => void finish()}
-              disabled={completing}
-            >
-              Повторить
+      {step.kind === 'informational' && (
+        <div className="onboarding-flow__footer">
+          {lifecycleError && (
+            <div className="onboarding-flow__error" role="alert">
+              <span>
+                {lifecycleError === 'view'
+                  ? 'Не удалось сохранить прогресс. Проверьте соединение.'
+                  : 'Не удалось завершить онбординг. Проверьте соединение.'}
+              </span>
+              <button
+                className="btn btn--ghost"
+                type="button"
+                onClick={() => void finish()}
+                disabled={completing}
+              >
+                Повторить
+              </button>
+            </div>
+          )}
+          <div className="onboarding-flow__actions">
+            {stepIndex > 0 && (
+              <button
+                className="btn btn--ghost"
+                type="button"
+                onClick={() => setStepIndex((current) => current - 1)}
+                disabled={completing}
+              >
+                Назад
+              </button>
+            )}
+            <button className="btn btn--cta" type="button" onClick={advance} disabled={completing}>
+              {completing ? 'Завершаем…' : step.ctaLabel}
             </button>
           </div>
-        )}
-        <div className="onboarding-flow__actions">
-          {stepIndex > 0 && (
-            <button
-              className="btn btn--ghost"
-              type="button"
-              onClick={() => setStepIndex((current) => current - 1)}
-              disabled={completing}
-            >
-              Назад
-            </button>
-          )}
-          <button
-            className="btn btn--cta"
-            type="button"
-            onClick={advance}
-            disabled={completing || step.kind === 'tutorial_shot'}
-          >
-            {completing ? 'Завершаем…' : step.ctaLabel}
-          </button>
         </div>
-      </div>
+      )}
     </main>
   );
 }

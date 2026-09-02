@@ -299,6 +299,7 @@ export interface PlayViewProps<TState> {
   hudAddon?: ReactNode;
   scoreboardOpponent?: ScoreBoardOpponent | undefined;
   readyPresence?: ReadyPresence | undefined;
+  resultCopy?: Partial<Record<ResultModalKind, string>> | undefined;
 }
 
 export interface ReadyPresence {
@@ -562,6 +563,7 @@ export function PlayView<TState>({
   hudAddon,
   scoreboardOpponent,
   readyPresence,
+  resultCopy,
 }: PlayViewProps<TState>): JSX.Element {
   const session: PlaySessionSnapshot = useMemo(
     () => ({
@@ -626,6 +628,7 @@ export function PlayView<TState>({
   const wasDuelStumblingRef = useRef(false);
   const [resultSubText, setResultSubText] = useState<string | null>(null);
   const [resultDisplayKind, setResultDisplayKind] = useState<ResultModalKind | null>(null);
+  const authoritativeResultRef = useRef<ShotResult['type'] | null>(null);
   const [lastResult, setLastResult] = useState<ShotResult | null>(null);
   const [playLayout, setPlayLayout] = useState<{
     rinkWidth: number;
@@ -1485,6 +1488,7 @@ export function PlayView<TState>({
     }
 
     optimisticAddShot(result.type);
+    authoritativeResultRef.current = null;
     shotSubmitPendingRef.current = true;
     shotAnimationInProgressRef.current = true;
     setIsShotInProgress(true);
@@ -1514,7 +1518,7 @@ export function PlayView<TState>({
       if (result.type === 'save') goalie.setSavePose(true);
       setLastResult(result);
       setResultSubText(subText);
-      setResultDisplayKind(displayKind);
+      setResultDisplayKind(authoritativeResultRef.current ?? displayKind);
       setIsShowingResult(true);
     }, flightMs);
 
@@ -1547,6 +1551,10 @@ export function PlayView<TState>({
       shotSubmitPendingRef.current = false;
       setIsShotSubmitPending(false);
       if (res === null) return;
+      if (resultCopy) {
+        authoritativeResultRef.current = res.serverResult;
+        setResultDisplayKind(res.serverResult);
+      }
       const applyNextState = () => (applyResolvedState ?? applyState)(res.state);
       if (shotAnimationInProgressRef.current) {
         pendingMidShotApplyRef.current = applyNextState;
@@ -1554,7 +1562,7 @@ export function PlayView<TState>({
       }
       applyNextState();
     });
-  }, [optimisticAddShot, submitShot, applyState, applyResolvedState]);
+  }, [optimisticAddShot, submitShot, applyState, applyResolvedState, resultCopy]);
 
   const handleInactiveAction = useCallback(async (): Promise<void> => {
     if (!inactiveAction || isInactiveActionPending) return;
@@ -1913,6 +1921,7 @@ export function PlayView<TState>({
           durationMs={PAUSE_MS}
           subText={resultSubText}
           displayKind={resultDisplayKind ?? undefined}
+          title={resultCopy?.[resultDisplayKind ?? lastResult.type]}
         />
       )}
     </main>

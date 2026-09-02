@@ -374,4 +374,92 @@ describe('PlayView', () => {
     });
     expect(applyState).not.toHaveBeenCalled();
   });
+
+  it('keeps the default result copy when no override is supplied', async () => {
+    vi.useFakeTimers();
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="result-copy-seed"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        shotResolver={() => ({ type: 'save', goalieContact: { x: 286, y: 80 } })}
+        optimisticAddShot={() => undefined}
+        submitShot={() => new Promise(() => undefined)}
+        applyState={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+    await act(async () => vi.advanceTimersByTimeAsync(500));
+
+    expect(screen.getByRole('status')).toHaveTextContent('СЭЙВ');
+  });
+
+  it('uses result copy only when an override is supplied', async () => {
+    vi.useFakeTimers();
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="result-copy-seed"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        resultCopy={{ save: 'Ещё раз' }}
+        shotResolver={() => ({ type: 'save', goalieContact: { x: 286, y: 80 } })}
+        optimisticAddShot={() => undefined}
+        submitShot={() => new Promise(() => undefined)}
+        applyState={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+    await act(async () => vi.advanceTimersByTimeAsync(500));
+
+    expect(screen.getByRole('status')).toHaveTextContent('Ещё раз');
+    expect(screen.getByRole('status')).not.toHaveTextContent('СЭЙВ');
+  });
+
+  it('reconciles visible result copy with a fast authoritative server result', async () => {
+    vi.useFakeTimers();
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="authoritative-copy-seed"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        resultCopy={{ goal: 'Первая шайба!', save: 'Ещё раз' }}
+        shotResolver={() => ({ type: 'goal', hitPoint: { x: 286, y: 60 } })}
+        optimisticAddShot={() => undefined}
+        submitShot={async () => ({ serverResult: 'save', state: {} })}
+        applyState={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+    await act(async () => {
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(500);
+    });
+
+    expect(screen.getByRole('status')).toHaveTextContent('Ещё раз');
+    expect(screen.getByRole('status')).not.toHaveTextContent('Первая шайба!');
+  });
 });

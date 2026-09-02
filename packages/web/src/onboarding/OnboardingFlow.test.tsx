@@ -8,6 +8,37 @@ import type * as OnboardingApi from '../api/onboarding.js';
 import { completeOnboarding, recordStepView } from '../api/onboarding.js';
 import { OnboardingFlow } from './OnboardingFlow.js';
 
+let tutorialGoalConfirmed = false;
+
+vi.mock('./TutorialShotStep.js', () => ({
+  TutorialShotStep: ({
+    goalConfirmed,
+    onGoalConfirmed,
+    onBack,
+    onContinue,
+  }: {
+    goalConfirmed: boolean;
+    onGoalConfirmed: () => void;
+    onBack: () => void;
+    onContinue: () => void;
+  }) => {
+    tutorialGoalConfirmed = goalConfirmed;
+    return (
+      <div data-testid="tutorial-step">
+        <button type="button" onClick={onGoalConfirmed}>
+          Confirm goal
+        </button>
+        <button type="button" onClick={onBack}>
+          Tutorial Back
+        </button>
+        <button type="button" onClick={onContinue}>
+          Tutorial Next
+        </button>
+      </div>
+    );
+  },
+}));
+
 const onboardingCss = readFileSync(resolve(process.cwd(), 'src/onboarding/onboarding.css'), 'utf8');
 
 function deferred<T>(): {
@@ -66,6 +97,7 @@ const required: OnboardingRequired = {
 
 describe('OnboardingFlow', () => {
   beforeEach(() => {
+    tutorialGoalConfirmed = false;
     vi.mocked(recordStepView).mockReset().mockResolvedValue({ viewed: true });
     vi.mocked(completeOnboarding).mockReset();
   });
@@ -190,5 +222,34 @@ describe('OnboardingFlow', () => {
     expect(onboardingCss).toMatch(/\n\s*height:\s*var\(--app-viewport-height,\s*100dvh\)/);
     expect(onboardingCss).toMatch(/overscroll-behavior-y:\s*contain/);
     expect(onboardingCss).toMatch(/overflow-y:\s*auto/);
+  });
+
+  it('preserves a confirmed tutorial goal across Back and forward in the same run', async () => {
+    const tutorialRequired: OnboardingRequired = {
+      chain: 'beginner',
+      versionId: 'beginner-v1',
+      steps: [
+        required.steps[0]!,
+        {
+          id: 'tutorial',
+          position: 2,
+          kind: 'tutorial_shot',
+          title: 'Первая шайба',
+          description: 'Забей гол',
+          ctaLabel: 'Далее',
+          tutorial: { shooterFrequency: 0.2, goalieFrequency: 0.3, goalFrequency: 0.1 },
+        },
+        required.steps[2]!,
+      ],
+    };
+    render(<OnboardingFlow runId="run-1" required={tutorialRequired} onCompleted={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    await screen.findByTestId('tutorial-step');
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm goal' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Tutorial Back' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+
+    expect(await screen.findByTestId('tutorial-step')).toBeInTheDocument();
+    expect(tutorialGoalConfirmed).toBe(true);
   });
 });

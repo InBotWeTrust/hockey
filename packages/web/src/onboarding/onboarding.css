@@ -105,8 +105,47 @@
   color: var(--muted);
 }
 
+.onboarding-tutorial {
+  display: grid;
+  gap: 16px;
+  min-height: 0;
+}
+.onboarding-tutorial__instruction {
+  margin: 0;
+  text-align: center;
+  font-weight: 800;
+}
+.onboarding-tutorial__rink {
+  position: relative;
+  width: 100%;
+  min-height: 420px;
+  overflow: hidden;
+  border-radius: var(--r-xl);
+}
+.onboarding-tutorial__rink > main {
+  position: absolute !important;
+  inset: 0 !important;
+  min-height: 420px;
+  height: 70vh;
+}
+.onboarding-flow__tutorial-status {
+  display: grid;
+  place-items: center;
+  gap: 16px;
+  min-height: 320px;
+  text-align: center;
+}
+.onboarding-tutorial .onboarding-flow__actions .btn {
+  flex: 1;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .onboarding-flow .btn {
     transition: none;
+  }
+  .onboarding-tutorial--confirmed * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
