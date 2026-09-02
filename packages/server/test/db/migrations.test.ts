@@ -950,6 +950,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '057_amateur_no_inventory_penalty_settings.sql',
       '058_bonus_games_and_home_arenas.sql',
       '059_seed_bonus_games.sql',
+      '060_player_onboarding.sql',
     ]);
 
     const activeInventory = await pool.query<{

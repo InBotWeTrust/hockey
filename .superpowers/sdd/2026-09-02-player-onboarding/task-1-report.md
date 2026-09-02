@@ -25,6 +25,28 @@ The command completed with exit code 0 but reported `1 skipped` test file and `6
 - `pnpm --filter @hockey/server exec tsc --noEmit --pretty false` — PASS.
 - `git diff --check` — PASS.
 
+## Fix round 3
+
+Updated the migration continuity expectation in `packages/server/test/db/migrations.test.ts` to include `060_player_onboarding.sql` after `059_seed_bonus_games.sql`.
+
+The first focused attempt against the continuity test exposed the existing shared-database reset race when filtering a single test (`pg_type_typname_nsp_index`); the stale expectation was then reproduced as the direct assertion failure (`received []` when setup was filtered out). A clean full run was used for final verification.
+
+Full sequential server suite:
+
+```text
+set -a; source ../../.env; set +a
+pnpm --filter @hockey/server exec vitest run --no-file-parallelism
+```
+
+Result: PASS — `Test Files 61 passed`, `Tests 525 passed`, duration `77.62s`.
+
+Additional verification:
+
+- `pnpm lint` — PASS.
+- `pnpm exec prettier --check packages/server/test/db/migrations.test.ts` — PASS.
+- `pnpm --filter @hockey/server exec tsc --noEmit --pretty false` — PASS.
+- `git diff --check` — PASS.
+
 ## Fix round 2
 
 The duplicate `tutorial_goal` regression fixture now supplies the existing valid `tutorialStepId`, so the assertion reaches the partial unique index instead of the event step-id CHECK. The separate null-step regression remains in place for `step_viewed`, `tutorial_attempt`, and `tutorial_goal`.
