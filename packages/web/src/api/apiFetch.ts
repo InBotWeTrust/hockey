@@ -27,6 +27,7 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   arena_not_selectable: 'Эту домашнюю площадку сейчас нельзя выбрать.',
   arena_unavailable: 'Домашняя площадка временно недоступна.',
   playoff_round_started: 'Раунд уже начался. Перенесите оставшиеся игры отдельно в календаре.',
+  tournament_schedule_date_not_future: 'Выберите будущую дату первого тура.',
 };
 
 export class ApiError extends Error {

@@ -1551,6 +1551,19 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       [tournament.id],
     );
 
+    await expect(
+      shiftTournamentSchedule(pool, {
+        tournamentId: tournament.id,
+        expectedRevision: tournament.revision,
+        firstMatchdayLocalDate: '2030-09-02',
+        adminUserId: ADMIN_ID,
+        now: new Date('2030-09-02T12:00:00.000Z'),
+      }),
+    ).rejects.toMatchObject({
+      code: 'tournament_schedule_date_not_future',
+      statusCode: 400,
+    });
+
     const shifted = await shiftTournamentSchedule(pool, {
       tournamentId: tournament.id,
       expectedRevision: tournament.revision,

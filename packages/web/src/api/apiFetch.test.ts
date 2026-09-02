@@ -165,6 +165,7 @@ describe('apiFetch', () => {
       'playoff_round_started',
       'Раунд уже начался. Перенесите оставшиеся игры отдельно в календаре.',
     ],
+    ['tournament_schedule_date_not_future', 'Выберите будущую дату первого тура.'],
   ])('localizes the stable player error %s without replacing its code', async (code, message) => {
     // This catches leaking server copy into player UI while preserving a stable branchable code.
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(

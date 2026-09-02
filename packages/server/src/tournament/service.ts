@@ -684,7 +684,11 @@ export async function shiftTournamentSchedule(
       shiftedCalendarDays,
     );
     if (shiftedFirstStart <= (input.now ?? new Date())) {
-      throw new AppError('bad_request', 'Новая дата первого тура должна быть в будущем', 400);
+      throw new AppError(
+        'tournament_schedule_date_not_future',
+        'Новая дата первого тура должна быть в будущем',
+        400,
+      );
     }
 
     const dirty = await client.query<{ dirty: boolean }>(

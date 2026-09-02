@@ -4,7 +4,6 @@ import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { ApiError } from '../api/apiFetch.js';
 import { GlassSelect } from '../components/GlassSelect.js';
-import { formatRussianCount } from '../lib/russianPlural.js';
 import {
   createAdminTournament,
   fetchAdminTournamentDuelTemplates,
@@ -1108,7 +1107,7 @@ function PlayoffScheduleDaysEditor(props: {
     <section className="tournament-playoff-days" aria-label={`Дни раунда ${props.roundNumber}`}>
       <div className="tournament-playoff-days__header">
         <strong>Дни раунда</strong>
-        <span>Распределите ровно {formatRussianCount(maximumGames, 'игру', 'игры', 'игр')}</span>
+        <span>Максимум игр в серии — {maximumGames}</span>
       </div>
       <div className="tournament-playoff-days__list">
         {props.days.map((day, dayIndex) => (

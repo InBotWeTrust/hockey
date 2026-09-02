@@ -2078,7 +2078,7 @@ describe('TournamentAdmin', () => {
     expect(screen.getByLabelText('Раунд 1, день 1: дата')).toHaveValue('2030-01-05');
     expect(screen.getByLabelText('Раунд 1, день 2: дата')).toHaveValue('2030-01-07');
     expect(screen.getByLabelText('Раунд 1, день 2: время начала')).toHaveValue('20:30');
-    expect(screen.getAllByText('Распределите ровно 3 игры')).toHaveLength(2);
+    expect(screen.getAllByText('Максимум игр в серии — 3')).toHaveLength(2);
     expect(screen.getByRole('spinbutton', { name: 'Раунд 1, день 2: количество игр' })).toHaveValue(
       1,
     );
