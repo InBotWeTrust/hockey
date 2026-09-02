@@ -14,6 +14,7 @@ interface MockSectionsData {
   weeklyPendingRewards?: Array<Record<string, unknown>>;
   dailyLifetimeTotalGoals?: number;
   dailyAmateurUnlockGoalsRequired?: number;
+  dailyTotalShots?: number;
   profileCompetitionLevel?: 'beginner' | 'amateur' | 'professional';
   profileRequest?: 'error' | 'loading';
 }
@@ -44,6 +45,7 @@ function mockSectionsApi({
   weeklyPendingRewards = [],
   dailyLifetimeTotalGoals = 300,
   dailyAmateurUnlockGoalsRequired = 300,
+  dailyTotalShots = 0,
   profileCompetitionLevel,
   profileRequest,
 }: MockSectionsData = {}): void {
@@ -78,7 +80,7 @@ function mockSectionsApi({
             state: 'idle',
             shots_per_period: 30,
             total_periods: 3,
-            daily_total_shots: 0,
+            daily_total_shots: dailyTotalShots,
             lifetime_total_goals: dailyLifetimeTotalGoals,
             amateur_unlock_goals_required: dailyAmateurUnlockGoalsRequired,
           }),
@@ -147,6 +149,13 @@ describe('SectionsScreen', () => {
     vi.restoreAllMocks();
     useDailyStore.setState({ data: null, loading: false, error: null, inFlight: false });
     useTrainingSessionStore.setState({ data: null, loading: false, error: null, inFlight: false });
+  });
+
+  it('shows today after the current daily shot progress', async () => {
+    mockSectionsApi({ dailyTotalShots: 50 });
+    renderSections();
+
+    expect(await screen.findByText('50/90 бросков сегодня')).toBeInTheDocument();
   });
 
   it('marks the achievements section when an achievement reward is waiting', async () => {

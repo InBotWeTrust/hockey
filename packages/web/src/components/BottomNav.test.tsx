@@ -223,6 +223,44 @@ describe('BottomNav remembered navigation', () => {
     expect(await screen.findByLabelText('События игры: 1')).toHaveTextContent('1');
   });
 
+  it('adds unfinished classic tournament games to the game badge', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/duel/amateur/events')) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ events: [] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+      }
+      if (url.endsWith('/api/tournaments/classic/active')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              games: [
+                { tournament_id: 'available', state: 'available' },
+                { tournament_id: 'started', state: 'period_active' },
+                { tournament_id: 'completed', state: 'closed' },
+              ],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+
+    renderBottomNav('/profile');
+
+    expect(await screen.findByLabelText('События игры: 2')).toHaveTextContent('2');
+  });
+
   it('renders every notification badge above its navigation icon', async () => {
     vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
       const url = String(input);
