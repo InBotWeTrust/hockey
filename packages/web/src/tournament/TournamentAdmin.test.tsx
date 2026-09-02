@@ -2077,6 +2077,9 @@ describe('TournamentAdmin', () => {
 
     const dialog = screen.getByRole('dialog', { name: 'Расписание плей-офф' });
     expect(dialog).toHaveClass('tournament-wizard--schedule-only');
+    expect(dialog).toHaveTextContent(
+      'Сегодняшнюю дату можно выбрать, если время первой игры ещё не наступило.',
+    );
     expect(screen.getByLabelText('Раунд 1, день 1: дата')).toHaveValue('2030-01-05');
     expect(screen.getByLabelText('Раунд 1, день 2: дата')).toHaveValue('2030-01-07');
     expect(screen.getByLabelText('Раунд 1, день 2: время начала')).toHaveValue('20:30');
