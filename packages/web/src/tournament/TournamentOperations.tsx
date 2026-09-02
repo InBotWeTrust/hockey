@@ -215,7 +215,7 @@ function tournamentDate(value: string | null | undefined, timezone: string): str
   }
 }
 
-function nextTournamentLocalDate(timezone: string, now = new Date()): string {
+function currentTournamentLocalDate(timezone: string, now = new Date()): string {
   try {
     const parts = new Intl.DateTimeFormat('en-CA', {
       timeZone: timezone,
@@ -227,12 +227,12 @@ function nextTournamentLocalDate(timezone: string, now = new Date()): string {
     const month = Number(parts.find((part) => part.type === 'month')?.value);
     const day = Number(parts.find((part) => part.type === 'day')?.value);
     if (Number.isInteger(year) && Number.isInteger(month) && Number.isInteger(day)) {
-      return new Date(Date.UTC(year, month - 1, day + 1)).toISOString().slice(0, 10);
+      return new Date(Date.UTC(year, month - 1, day)).toISOString().slice(0, 10);
     }
   } catch {
     // Fall back to UTC when an old browser does not recognize the tournament timezone.
   }
-  return new Date(now.getTime() + 86_400_000).toISOString().slice(0, 10);
+  return now.toISOString().slice(0, 10);
 }
 
 function readableDateOnly(value: string): string {
@@ -959,7 +959,7 @@ export function TournamentOperations({
   const canEditRules = ['draft', 'registration', 'registration_blocked'].includes(status);
   const canEditPlayoffSchedule = status === 'playoff';
   const tournamentTimezone = String(tournament.rules?.config?.timezone ?? 'Europe/Moscow');
-  const minimumScheduleShiftDate = nextTournamentLocalDate(tournamentTimezone);
+  const minimumScheduleShiftDate = currentTournamentLocalDate(tournamentTimezone);
   const currentLifecycleMessage = lifecycleMessage(tournament, tournamentTimezone);
   const canGenerateBlockedHeadToHeadSchedule =
     tournament.regularSource === 'head_to_head' &&
@@ -1739,9 +1739,9 @@ export function TournamentOperations({
               />
             </label>
             <p className="tournament-schedule-shift__note">
-              Выберите будущую дату, не раньше {readableDateOnly(minimumScheduleShiftDate)}.
-              Регистрация останется без изменений. Перенос доступен только до фактического старта
-              игр.
+              Можно выбрать сегодняшний или будущий день. Самая ранняя дата —{' '}
+              {readableDateOnly(minimumScheduleShiftDate)} Регистрация останется без изменений.
+              Перенос доступен только до фактического старта игр.
             </p>
             {scheduleShiftError !== null && (
               <div className="tournament-operations__recovery-error" role="alert">
