@@ -1742,13 +1742,22 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
           </div>
         ) : (
           <div
+            className={`arena-cube-title${entry.title.length > 28 ? ' arena-cube-title--long' : ''}`}
             style={{
               color: '#f7feff',
-              fontSize: 'clamp(16px, 2.65vh, 22px)',
-              lineHeight: 0.95,
+              fontSize:
+                entry.title.length > 28
+                  ? 'clamp(13px, 2.05vh, 17px)'
+                  : 'clamp(16px, 2.65vh, 22px)',
+              lineHeight: entry.title.length > 28 ? 1.02 : 0.95,
               fontWeight: 950,
+              display: '-webkit-box',
+              WebkitBoxOrient: 'vertical',
+              WebkitLineClamp: 3,
+              overflow: 'hidden',
               overflowWrap: 'break-word',
               textTransform: 'uppercase',
+              maxWidth: '100%',
             }}
           >
             {entry.title}
@@ -7893,6 +7902,16 @@ function ClassicTournamentPlayView({
   const submitShot = useClassicTournamentStore((state) => state.submitShot);
   const applyState = useClassicTournamentStore((state) => state.applyState);
   const [now, setNow] = useState(Date.now());
+  const [deferredState, setDeferredState] = useState<ClassicTournamentState | null>(null);
+  const [statsModalState, setStatsModalState] = useState<ClassicTournamentState | null>(null);
+
+  const summaryCandidate = deferredState ?? data;
+  const summaryKey = summaryCandidate ? `classic:${summaryCandidate.session_id}` : '';
+  const unseenPeriod =
+    summaryCandidate &&
+    (summaryCandidate.state === 'break_active' || summaryCandidate.state === 'closed')
+      ? findUnseenPeriodSummary(summaryCandidate, summaryKey)
+      : null;
 
   useEffect(() => {
     void refresh(tournamentId);
@@ -7903,6 +7922,44 @@ function ClassicTournamentPlayView({
     const timer = window.setInterval(() => setNow(Date.now()), 500);
     return () => window.clearInterval(timer);
   }, [data?.state]);
+
+  useEffect(() => {
+    if (statsModalState !== null || summaryCandidate === null || unseenPeriod === null) return;
+    setStatsModalState(summaryCandidate);
+  }, [statsModalState, summaryCandidate, unseenPeriod]);
+
+  useEffect(() => {
+    if (data?.state !== 'break_active' || loading) return;
+    const breakDeadline = data.break_ends_at ? timestampMs(data.break_ends_at) : 0;
+    if (breakDeadline <= 0 || breakDeadline > now) return;
+    void refresh(tournamentId);
+  }, [data?.break_ends_at, data?.state, loading, now, refresh, tournamentId]);
+
+  const applyClassicResolvedState = useCallback(
+    (next: ClassicTournamentState): void => {
+      if (
+        (next.state === 'break_active' || next.state === 'closed') &&
+        next.recent_periods.length > 0
+      ) {
+        setDeferredState(next);
+        return;
+      }
+      applyState(next);
+    },
+    [applyState],
+  );
+
+  const handleStatsModalClose = useCallback((): void => {
+    const latestPeriod = statsModalState?.recent_periods.at(-1);
+    if (statsModalState && latestPeriod) {
+      setLastSeenAt(`classic:${statsModalState.session_id}`, latestPeriod.ended_at);
+    }
+    setStatsModalState(null);
+    if (deferredState !== null) {
+      applyState(deferredState);
+      setDeferredState(null);
+    }
+  }, [applyState, deferredState, statsModalState]);
 
   if (data === null) {
     return (
@@ -7942,73 +7999,99 @@ function ClassicTournamentPlayView({
   const nextPeriod = Math.min(data.total_periods, data.current_period + 1);
   const periodNumber = active ? data.current_period : canStart ? nextPeriod : data.current_period;
   const completedResult = data.result;
+  const shouldShowSummary = statsModalState !== null || unseenPeriod !== null;
+  const stats = statsModalState ? dailyGameStatsFromState(statsModalState) : null;
 
   return (
-    <PlayView<ClassicTournamentState>
-      suppressedByModal={!active}
-      showIceCar={!active}
-      onBack={onBack}
-      backLabel="К турниру"
-      active={active}
-      seed={data.daily_seed}
-      goalieId={data.goalie_id}
-      periodNumber={Math.max(1, periodNumber)}
-      periodSpeedPresets={data.period_speed_presets}
-      sessionStartedAt={data.period_started_at}
-      serverNow={data.server_now}
-      receivedAtPerformanceMs={data.received_at_performance_ms}
-      goals={active ? data.current_period_goals : data.daily_total_goals}
-      scoreboardGoals={data.daily_total_goals}
-      shots={active ? data.current_period_shots : data.daily_total_shots}
-      shotsTotal={active ? data.shots_per_period : data.shots_per_period * data.total_periods}
-      periodsTotal={data.total_periods}
-      scoreboardPeriodsTotal={data.total_periods}
-      timer={
-        data.state === 'break_active'
-          ? formatMs(breakRemaining)
-          : data.state === 'closed'
-            ? formatEventRemaining(closesRemaining)
-            : canStart
-              ? formatMs(data.period_duration_ms)
-              : undefined
-      }
-      timerLabel={
-        data.state === 'break_active'
-          ? 'ПЕРЕРЫВ'
-          : data.state === 'closed'
-            ? 'ДО ЗАКРЫТИЯ'
-            : canStart
-              ? 'ВРЕМЯ'
-              : undefined
-      }
-      scoreboardNotice={
-        data.state === 'closed' && completedResult !== null
-          ? `${completedResult.goals} шайб · точность ${Math.round(completedResult.accuracy * 100)}%`
-          : `${data.tournament_title} · ${data.tournament_day}-й тур`
-      }
-      shotButtonLabel={
-        canStart
-          ? inFlight
-            ? 'НАЧИНАЕМ...'
-            : data.current_period === 0
-              ? 'НАЧАТЬ'
-              : 'ПРОДОЛЖИТЬ'
-          : data.state === 'break_active'
-            ? 'ЛЁД ГОТОВИТСЯ'
+    <>
+      <PlayView<ClassicTournamentState>
+        suppressedByModal={!active || shouldShowSummary}
+        showIceCar={data.state === 'break_active' && !shouldShowSummary}
+        onBack={onBack}
+        backLabel="К турниру"
+        active={active}
+        seed={data.daily_seed}
+        goalieId={data.goalie_id}
+        periodNumber={Math.max(1, periodNumber)}
+        periodSpeedPresets={data.period_speed_presets}
+        sessionStartedAt={data.period_started_at}
+        serverNow={data.server_now}
+        receivedAtPerformanceMs={data.received_at_performance_ms}
+        goals={active ? data.current_period_goals : data.daily_total_goals}
+        scoreboardGoals={data.daily_total_goals}
+        shots={active ? data.current_period_shots : data.daily_total_shots}
+        shotsTotal={active ? data.shots_per_period : data.shots_per_period * data.total_periods}
+        periodsTotal={data.total_periods}
+        scoreboardPeriodsTotal={data.total_periods}
+        timer={
+          data.state === 'break_active'
+            ? formatMs(breakRemaining)
             : data.state === 'closed'
-              ? 'ИГРА ЗАВЕРШЕНА'
-              : undefined
-      }
-      inactiveAction={canStart ? startPeriod : undefined}
-      entranceBeforeInactiveAction
-      periodEndsAt={active && periodEndsAt > 0 ? periodEndsAt : undefined}
-      onTimerExpired={() => refresh(tournamentId)}
-      optimisticAddShot={optimisticAddShot}
-      submitShot={submitShot}
-      applyState={applyState}
-      applyResolvedState={applyState}
-      longCourtBackground={AMATEUR_DAILY_COURT_BACKGROUND}
-    />
+              ? formatEventRemaining(closesRemaining)
+              : canStart
+                ? formatMs(data.period_duration_ms)
+                : undefined
+        }
+        timerLabel={
+          data.state === 'break_active'
+            ? 'ПЕРЕРЫВ'
+            : data.state === 'closed'
+              ? 'ДО ЗАКРЫТИЯ'
+              : canStart
+                ? 'ВРЕМЯ'
+                : undefined
+        }
+        scoreboardNotice={
+          data.state === 'closed' && completedResult !== null
+            ? `${completedResult.goals} шайб · точность ${Math.round(completedResult.accuracy * 100)}%`
+            : `${data.tournament_title} · ${data.tournament_day}-й тур`
+        }
+        shotButtonLabel={
+          canStart
+            ? inFlight
+              ? 'НАЧИНАЕМ...'
+              : data.current_period === 0
+                ? 'НАЧАТЬ'
+                : 'ПРОДОЛЖИТЬ'
+            : data.state === 'break_active'
+              ? 'ЛЁД ГОТОВИТСЯ'
+              : data.state === 'closed'
+                ? 'ИГРА ЗАВЕРШЕНА'
+                : undefined
+        }
+        inactiveAction={canStart ? startPeriod : undefined}
+        entranceBeforeInactiveAction
+        periodEndsAt={active && periodEndsAt > 0 ? periodEndsAt : undefined}
+        onTimerExpired={() => refresh(tournamentId)}
+        optimisticAddShot={optimisticAddShot}
+        submitShot={submitShot}
+        applyState={applyState}
+        applyResolvedState={applyClassicResolvedState}
+        longCourtBackground={AMATEUR_DAILY_COURT_BACKGROUND}
+      />
+      {statsModalState && stats && (
+        <DailyGameStatsModal
+          stats={stats}
+          totalPeriods={
+            statsModalState.state === 'closed'
+              ? statsModalState.total_periods
+              : statsModalState.current_period
+          }
+          title={
+            statsModalState.state === 'closed'
+              ? 'Игра завершена'
+              : `${statsModalState.current_period}-й период завершён`
+          }
+          ariaLabel={
+            statsModalState.state === 'closed'
+              ? 'Игра завершена'
+              : `${statsModalState.current_period}-й период завершён`
+          }
+          closeLabel="Понятно"
+          onClose={handleStatsModalClose}
+        />
+      )}
+    </>
   );
 }
 

@@ -13,7 +13,7 @@ interface DailyParticipantSourceRow {
   shots: number;
 }
 
-interface DailyRulesSnapshot {
+export interface DailyRulesSnapshot {
   config: {
     regularSource: string;
     dailyDays: number;
@@ -30,6 +30,77 @@ interface DailyResultRow {
   shots: number;
   completed: boolean;
   place_points: number;
+  source_snapshot: {
+    source?: unknown;
+    sessionId?: unknown;
+    activeDurationMs?: unknown;
+    gameCompleted?: unknown;
+    incompleteResultPolicy?: unknown;
+  };
+}
+
+interface ClassicPeriodDuration {
+  allMs: number;
+  completedMs: number;
+}
+
+function resultKey(result: Pick<DailyResultRow, 'participant_id' | 'tournament_day'>): string {
+  return `${result.participant_id}:${result.tournament_day}`;
+}
+
+async function loadClassicResultDurations(
+  client: PoolClient,
+  results: DailyResultRow[],
+): Promise<Map<string, number>> {
+  const sessionIds = results.flatMap((result) => {
+    const snapshot = result.source_snapshot;
+    return snapshot.source === 'tournament_classic' && typeof snapshot.sessionId === 'string'
+      ? [snapshot.sessionId]
+      : [];
+  });
+  const durationsBySession = new Map<string, ClassicPeriodDuration>();
+  if (sessionIds.length > 0) {
+    const periods = await client.query<{
+      session_id: string;
+      closed_reason: string;
+      duration_ms: number | string;
+    }>(
+      `select session_id, closed_reason,
+              greatest(0, extract(epoch from (ended_at - started_at)) * 1000)::bigint as duration_ms
+         from tournament_classic_period
+        where session_id::text = any($1::text[])`,
+      [sessionIds],
+    );
+    for (const period of periods.rows) {
+      const current = durationsBySession.get(period.session_id) ?? { allMs: 0, completedMs: 0 };
+      const durationMs = Number(period.duration_ms);
+      current.allMs += durationMs;
+      if (period.closed_reason !== 'day_end') current.completedMs += durationMs;
+      durationsBySession.set(period.session_id, current);
+    }
+  }
+
+  const result = new Map<string, number>();
+  for (const row of results) {
+    const snapshot = row.source_snapshot;
+    if (snapshot.source !== 'tournament_classic') continue;
+    const storedDuration =
+      typeof snapshot.activeDurationMs === 'number' ? snapshot.activeDurationMs : Number.NaN;
+    if (Number.isFinite(storedDuration) && storedDuration >= 0) {
+      result.set(resultKey(row), storedDuration);
+      continue;
+    }
+    if (typeof snapshot.sessionId !== 'string') continue;
+    const periodDuration = durationsBySession.get(snapshot.sessionId);
+    if (periodDuration === undefined) continue;
+    result.set(
+      resultKey(row),
+      snapshot.gameCompleted === true || snapshot.incompleteResultPolicy === 'all_shots'
+        ? periodDuration.allMs
+        : periodDuration.completedMs,
+    );
+  }
+  return result;
 }
 
 async function transaction<T>(pool: Pool, work: (client: PoolClient) => Promise<T>): Promise<T> {
@@ -47,7 +118,7 @@ async function transaction<T>(pool: Pool, work: (client: PoolClient) => Promise<
   }
 }
 
-async function refreshDailyDayPlacements(
+export async function refreshDailyDayPlacements(
   client: PoolClient,
   tournamentId: string,
   tournamentDay: number,
@@ -55,14 +126,19 @@ async function refreshDailyDayPlacements(
 ): Promise<void> {
   const results = await client.query<{
     participant_id: string;
+    tournament_day: number;
     goals: number;
     shots: number;
+    completed: boolean;
+    place_points: number;
+    source_snapshot: DailyResultRow['source_snapshot'];
   }>(
-    `select participant_id, goals, shots
+    `select participant_id, tournament_day, goals, shots, completed, place_points, source_snapshot
        from tournament_daily_result
       where tournament_id = $1 and tournament_day = $2 and completed = true`,
     [tournamentId, tournamentDay],
   );
+  const durationByResult = await loadClassicResultDurations(client, results.rows);
   const placementInput = results.rows.map((result) => ({
     participantId: result.participant_id,
     value:
@@ -71,6 +147,9 @@ async function refreshDailyDayPlacements(
           ? 0
           : Number(result.goals) / Number(result.shots)
         : Number(result.goals),
+    ...(durationByResult.get(resultKey(result)) === undefined
+      ? {}
+      : { durationMs: durationByResult.get(resultKey(result))! }),
   }));
   const placements = awardSharedPlacePoints(
     placementInput,
@@ -104,11 +183,13 @@ export async function rebuildDailyAggregateStandings(
       [tournamentId],
     ),
     client.query<DailyResultRow>(
-      `select participant_id, tournament_day, goals, shots, completed, place_points
+      `select participant_id, tournament_day, goals, shots, completed, place_points,
+              source_snapshot
          from tournament_daily_result where tournament_id = $1`,
       [tournamentId],
     ),
   ]);
+  const durationByResult = await loadClassicResultDurations(client, allResults.rows);
   const calculated = calculateDailyAggregateStandings(
     allResults.rows.map((row) => ({
       participantId: row.participant_id,
@@ -117,6 +198,9 @@ export async function rebuildDailyAggregateStandings(
       shots: Number(row.shots),
       completed: row.completed,
       placePoints: Number(row.place_points),
+      ...(durationByResult.get(resultKey(row)) === undefined
+        ? {}
+        : { durationMs: durationByResult.get(resultKey(row))! }),
     })),
     { metric: rules.config.dailyMetric, bestDays: rules.config.bestDays },
   );
@@ -131,7 +215,13 @@ export async function rebuildDailyAggregateStandings(
       (playedByParticipant.get(result.participant_id) ?? 0) + 1,
     );
   }
-  const standings = participants.rows
+  const standings: Array<{
+    participantId: string;
+    value: number;
+    countedDays: number[];
+    played: number;
+    totalDurationMs?: number;
+  }> = participants.rows
     .map(({ participant_id: participantId }) => {
       const calculatedStanding = calculatedByParticipant.get(participantId);
       return {
@@ -139,11 +229,22 @@ export async function rebuildDailyAggregateStandings(
         value: calculatedStanding?.value ?? 0,
         countedDays: calculatedStanding?.countedDays ?? [],
         played: playedByParticipant.get(participantId) ?? 0,
+        ...(calculatedStanding?.totalDurationMs === undefined
+          ? {}
+          : { totalDurationMs: calculatedStanding.totalDurationMs }),
       };
     })
     .sort(
       (left, right) =>
-        right.value - left.value || left.participantId.localeCompare(right.participantId),
+        right.value - left.value ||
+        (left.totalDurationMs === undefined && right.totalDurationMs === undefined
+          ? 0
+          : left.totalDurationMs === undefined
+            ? 1
+            : right.totalDurationMs === undefined
+              ? -1
+              : left.totalDurationMs - right.totalDurationMs) ||
+        left.participantId.localeCompare(right.participantId),
     );
 
   await client.query(`delete from tournament_standing where tournament_id = $1`, [tournamentId]);
@@ -158,8 +259,18 @@ export async function rebuildDailyAggregateStandings(
         index + 1,
         standing.played,
         standing.value,
-        JSON.stringify({ metric: rules.config.dailyMetric, countedDays: standing.countedDays }),
-        JSON.stringify([standing.value]),
+        JSON.stringify({
+          metric: rules.config.dailyMetric,
+          countedDays: standing.countedDays,
+          ...(standing.totalDurationMs === undefined
+            ? {}
+            : { totalDurationMs: standing.totalDurationMs }),
+        }),
+        JSON.stringify(
+          standing.totalDurationMs === undefined
+            ? [standing.value]
+            : [standing.value, standing.totalDurationMs],
+        ),
         allResults.rows.length,
       ],
     );

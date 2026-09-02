@@ -219,6 +219,26 @@ describe.skipIf(!hasIntegrationEnv)('tournament lifecycle plugin', () => {
     return app;
   }
 
+  it('rejects tournament titles longer than 60 characters', async () => {
+    const server = await startApp({ lifecycleEnabled: false });
+    const response = await server.inject({
+      method: 'POST',
+      url: '/admin/tournaments',
+      headers: adminAuth,
+      payload: {
+        title: 'Т'.repeat(61),
+        description: '',
+        imageUrl: null,
+        rules: automaticRules(2),
+        registrationOpensAt: null,
+        registrationClosesAt: null,
+        startsAt: null,
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+
   async function openRegularFixtureWithOneReady(
     server: FastifyInstance,
     input: { slug: string },

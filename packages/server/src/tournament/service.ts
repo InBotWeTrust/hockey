@@ -3056,7 +3056,58 @@ export async function getTournamentGameContext(
   );
 }
 
+async function refreshLegacyClassicStandings(pool: Pool, tournamentId: string): Promise<void> {
+  const legacy = await pool.query<{ rules_snapshot: TournamentRulesSnapshot }>(
+    `select revision.rules_snapshot
+       from tournament tournament
+       join tournament_revision revision on revision.id = tournament.published_revision_id
+      where tournament.id = $1
+        and tournament.regular_source = 'classic'
+        and exists (
+          select 1
+            from tournament_daily_result result
+            left join tournament_standing standing
+              on standing.tournament_id = result.tournament_id
+             and standing.participant_id = result.participant_id
+           where result.tournament_id = tournament.id
+             and result.completed = true
+             and result.source_snapshot->>'source' = 'tournament_classic'
+             and (
+               standing.participant_id is null
+               or not (standing.metrics ? 'totalDurationMs')
+             )
+        )
+      limit 1`,
+    [tournamentId],
+  );
+  const rules = legacy.rows[0]?.rules_snapshot;
+  if (rules === undefined || rules.config.regularSource !== 'classic') return;
+  const dailyPlacePoints = rules.dailyPlacePoints;
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    await rebuildDailyAggregateStandings(client, tournamentId, {
+      config: {
+        regularSource: rules.config.regularSource,
+        dailyDays: rules.config.dailyDays,
+        dailyMetric: rules.config.dailyMetric,
+        bestDays: rules.config.bestDays,
+      },
+      ...(Array.isArray(dailyPlacePoints) && dailyPlacePoints.every(Number.isFinite)
+        ? { dailyPlacePoints: dailyPlacePoints as number[] }
+        : {}),
+    });
+    await client.query('commit');
+  } catch (error) {
+    await client.query('rollback');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function getTournamentStandings(pool: Pool, tournamentId: string) {
+  await refreshLegacyClassicStandings(pool, tournamentId);
   const { rows } = await pool.query(
     `select s.rank, p.user_id, u.display_name,
             coalesce(

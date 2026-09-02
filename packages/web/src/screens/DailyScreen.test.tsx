@@ -410,6 +410,116 @@ describe('DailyScreen', () => {
     ).toBe(false);
   });
 
+  it('shows classic period results before the resurfacing break', async () => {
+    const breakState: ClassicTournamentState = {
+      ...classicIdleState,
+      state: 'break_active',
+      current_period: 1,
+      daily_total_shots: 30,
+      daily_total_goals: 28,
+      break_ends_at: new Date(Date.now() + 3 * 60 * 1000).toISOString(),
+      recent_periods: [
+        {
+          period_number: 1,
+          shots_taken: 30,
+          goals: 28,
+          closed_reason: 'quota',
+          duration_ms: 180_000,
+          ended_at: '2026-09-02T18:03:00.000Z',
+        },
+      ],
+    };
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(breakState), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+
+    renderWith(['/?view=classic&tournament=classic-1']);
+
+    expect(await screen.findByRole('dialog', { name: '1-й период завершён' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Итого: 28 голов из 30 бросков')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Понятно' }));
+    expect(screen.queryByRole('dialog', { name: '1-й период завершён' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'ЛЁД ГОТОВИТСЯ' })).toBeDisabled();
+  });
+
+  it('refreshes classic state when the break timer reaches zero', async () => {
+    const expiredBreak: ClassicTournamentState = {
+      ...classicIdleState,
+      state: 'break_active',
+      current_period: 1,
+      daily_total_shots: 30,
+      daily_total_goals: 28,
+      break_ends_at: new Date(Date.now() - 1_000).toISOString(),
+      recent_periods: [],
+    };
+    const nextPeriod: ClassicTournamentState = {
+      ...classicIdleState,
+      state: 'idle',
+      current_period: 1,
+      daily_total_shots: 30,
+      daily_total_goals: 28,
+    };
+    let stateRequests = 0;
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      stateRequests += 1;
+      return new Response(JSON.stringify(stateRequests === 1 ? expiredBreak : nextPeriod), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=classic&tournament=classic-1']);
+
+    expect(await screen.findByRole('button', { name: 'ПРОДОЛЖИТЬ' })).toBeEnabled();
+    expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('shows the complete classic game result after the third period', async () => {
+    const periods = [
+      { period_number: 1, goals: 28, ended_at: '2026-09-02T18:03:00.000Z' },
+      { period_number: 2, goals: 25, ended_at: '2026-09-02T18:09:00.000Z' },
+      { period_number: 3, goals: 25, ended_at: '2026-09-02T18:15:00.000Z' },
+    ].map((period) => ({
+      ...period,
+      shots_taken: 30,
+      closed_reason: 'quota' as const,
+      duration_ms: 180_000,
+    }));
+    const closedState: ClassicTournamentState = {
+      ...classicIdleState,
+      state: 'closed',
+      current_period: 3,
+      daily_total_shots: 90,
+      daily_total_goals: 78,
+      recent_periods: periods,
+      result: {
+        goals: 78,
+        shots: 90,
+        accuracy: 78 / 90,
+        counted: true,
+        game_completed: true,
+      },
+    };
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(closedState), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+
+    renderWith(['/?view=classic&tournament=classic-1']);
+
+    expect(await screen.findByRole('dialog', { name: 'Игра завершена' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Итого: 78 голов из 90 бросков')).toBeInTheDocument();
+    expect(screen.getByText('87%')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Понятно' }));
+    expect(screen.queryByRole('dialog', { name: 'Игра завершена' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'ИГРА ЗАВЕРШЕНА' })).toBeDisabled();
+  });
+
   it('opens the daily tournament game when the URL incorrectly says classic', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = input instanceof Request ? input.url : String(input);
@@ -491,7 +601,7 @@ describe('DailyScreen', () => {
             games: [
               {
                 tournament_id: 'classic-1',
-                tournament_title: 'Кубок классики',
+                tournament_title: 'Турнир с новой ежедневной игрой',
                 tournament_day: 1,
                 starts_at: '2030-09-01T00:00:00.000Z',
                 closes_at: '2030-09-01T21:00:00.000Z',
@@ -514,9 +624,9 @@ describe('DailyScreen', () => {
     });
 
     renderWith(['/?view=arena']);
-    expect(
-      await screen.findByRole('article', { name: 'Турнир · 1-й тур: Кубок классики' }),
-    ).toBeInTheDocument();
+    const title = await screen.findByText('Турнир с новой ежедневной игрой');
+    expect(title).toHaveClass('arena-cube-title--long');
+    expect(title).toHaveStyle({ WebkitLineClamp: '3' });
     fireEvent.click(screen.getByRole('button', { name: 'Начать' }));
 
     expect(await screen.findByText('Кубок классики · 1-й тур')).toBeInTheDocument();

@@ -85,6 +85,7 @@ import {
 const uuid = z.string().uuid();
 const nullableDate = z.string().datetime({ offset: true }).nullable().default(null);
 const nullableImageUrl = z.string().trim().max(2048).nullable().optional();
+export const tournamentTitleSchema = z.string().trim().min(1).max(60);
 const TOURNAMENT_ARTWORK_MAX_PIXELS = 2048 * 2048;
 const classicShotSchema = z.object({
   shot_index: z.number().int().min(1),
@@ -136,7 +137,7 @@ const draftSchema = z.object({
     .max(80)
     .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
     .optional(),
-  title: z.string().trim().min(1).max(160),
+  title: tournamentTitleSchema,
   description: z.string().trim().max(10_000).default(''),
   imageUrl: nullableImageUrl,
   rules: rulesSchema,
@@ -728,7 +729,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
           .string()
           .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
           .optional(),
-        title: z.string().trim().min(1).max(160),
+        title: tournamentTitleSchema,
       })
       .parse(req.body);
     const tournament = await duplicateTournamentDraft(app.pg, {
