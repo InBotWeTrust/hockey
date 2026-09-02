@@ -1916,7 +1916,7 @@ describe('TournamentAdmin', () => {
     expect(screen.queryByRole('button', { name: 'Создать календарь' })).not.toBeInTheDocument();
   });
 
-  it('groups the admin schedule by day and separates unresolved future games', async () => {
+  it('shows the admin schedule as a monthly calendar with games below the selected day', async () => {
     const tournament: api.AdminTournament = {
       id: '00000000-0000-4000-8000-000000000981',
       slug: 'schedule-cup',
@@ -1927,6 +1927,8 @@ describe('TournamentAdmin', () => {
       revision: 5,
       participantCount: 8,
       lifecycle: TEST_LIFECYCLE,
+      startsAt: '2030-01-03T09:00:00.000Z',
+      projectedEndsAt: '2030-01-06T09:00:00.000Z',
       rules: { config: { timezone: 'Europe/Moscow' } },
     };
     vi.spyOn(api, 'fetchAdminTournamentParticipants').mockResolvedValue({ participants: [] });
@@ -1964,6 +1966,18 @@ describe('TournamentAdmin', () => {
           scheduledStartsAt: '2030-01-04T09:00:00.000Z',
           windowEndsAt: '2030-01-04T09:20:00.000Z',
           status: 'conditional',
+          home: { userId: 'home-3', name: 'Сириус' },
+          away: { userId: 'away-3', name: 'Александра' },
+          score: { home: 0, away: 0 },
+        },
+        {
+          id: 'fixture-4',
+          fixtureNumber: 4,
+          stage: 'third_place',
+          roundNumber: 3,
+          scheduledStartsAt: '2030-01-05T09:00:00.000Z',
+          windowEndsAt: '2030-01-05T09:20:00.000Z',
+          status: 'active',
           home: null,
           away: null,
           score: { home: 0, away: 0 },
@@ -1985,13 +1999,27 @@ describe('TournamentAdmin', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: 'Календарь' }));
 
-    const dayHeading = await screen.findByText(/3 января/);
-    expect(dayHeading.closest('details')).toHaveAttribute('open');
-    expect(screen.getAllByText('12:00–12:20')).toHaveLength(2);
+    expect(await screen.findByRole('grid', { name: 'Календарь турнира' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '3 января' })).toBeInTheDocument();
+    expect(screen.getByText('12:00–12:20')).toBeInTheDocument();
+    expect(screen.getByText('12:20–12:40')).toBeInTheDocument();
     expect(screen.getAllByText('1-й тур')).toHaveLength(2);
     expect(screen.getByText('Александр Первый — Роза Вторая')).toBeInTheDocument();
-    expect(screen.getByText('Следующие игры')).toBeInTheDocument();
-    expect(screen.getByText('Соперники определятся позже')).toBeInTheDocument();
+    expect(screen.queryByText('Следующие игры')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /4 января, 1 игра, плей-офф/i }));
+    expect(screen.getByRole('heading', { name: '4 января' })).toBeInTheDocument();
+    expect(screen.getByText('Сириус — Александра')).toBeInTheDocument();
+    expect(screen.getByText('Если серия продолжится')).toBeInTheDocument();
+    expect(screen.queryByText('Соперники определятся')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /5 января, 1 игра, плей-офф/i }));
+    expect(screen.getByRole('heading', { name: '5 января' })).toBeInTheDocument();
+    expect(screen.getByText('Пара сформируется по итогам предыдущего раунда')).toBeInTheDocument();
+    expect(screen.getByText('Ожидает определения пары')).toBeInTheDocument();
+    expect(screen.getByText('Плей-офф · матч за 3-е место')).toBeInTheDocument();
+    expect(screen.queryByText('Идёт игра')).not.toBeInTheDocument();
+    expect(screen.queryByText('Счёт 0:0')).not.toBeInTheDocument();
     expect(screen.queryByText(/09:00:00/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Соперник не определён/)).not.toBeInTheDocument();
     expect(screen.queryByText('Условная игра')).not.toBeInTheDocument();

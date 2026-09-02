@@ -134,13 +134,88 @@ describe('TournamentOperations', () => {
       series: [
         {
           id: 'series-1',
+          bracket_position: 1,
+          kind: 'championship',
+          round_number: 1,
+          round_name: 'Полуфиналы',
+          wins_required: 4,
           status: 'active',
           higher_user_id: 'user-1',
           higher_name: 'Первый игрок',
+          higher_avatar_url: null,
+          higher_seed: 1,
           higher_seed_wins: 2,
           lower_user_id: 'user-2',
           lower_name: 'Второй игрок',
+          lower_avatar_url: null,
+          lower_seed: 4,
           lower_seed_wins: 1,
+          winner_user_id: null,
+          depends_on: { key: 'semi-1', sources: [] },
+          fixtures: [
+            {
+              id: 'fixture-1',
+              gameNumber: 1,
+              scheduledStartsAt: '2030-09-01T07:00:00.000Z',
+              windowEndsAt: '2030-09-01T08:00:00.000Z',
+              status: 'settled',
+              homeName: 'Первый игрок',
+              awayName: 'Второй игрок',
+              homeScore: 3,
+              awayScore: 2,
+              winnerSide: 'home',
+            },
+          ],
+        },
+        {
+          id: 'series-2',
+          bracket_position: 2,
+          kind: 'championship',
+          round_number: 1,
+          round_name: 'Полуфиналы',
+          wins_required: 4,
+          status: 'pending',
+          higher_user_id: null,
+          higher_name: null,
+          higher_avatar_url: null,
+          higher_seed: null,
+          higher_seed_wins: 0,
+          lower_user_id: null,
+          lower_name: null,
+          lower_avatar_url: null,
+          lower_seed: null,
+          lower_seed_wins: 0,
+          winner_user_id: null,
+          depends_on: { key: 'semi-2', sources: [] },
+          fixtures: [],
+        },
+        {
+          id: 'series-3',
+          bracket_position: 1,
+          kind: 'championship',
+          round_number: 2,
+          round_name: 'Финал',
+          wins_required: 4,
+          status: 'pending',
+          higher_user_id: null,
+          higher_name: null,
+          higher_avatar_url: null,
+          higher_seed: null,
+          higher_seed_wins: 0,
+          lower_user_id: null,
+          lower_name: null,
+          lower_avatar_url: null,
+          lower_seed: null,
+          lower_seed_wins: 0,
+          winner_user_id: null,
+          depends_on: {
+            key: 'final',
+            sources: [
+              { type: 'winner', seriesKey: 'semi-1' },
+              { type: 'winner', seriesKey: 'semi-2' },
+            ],
+          },
+          fixtures: [],
         },
       ],
     });
@@ -159,7 +234,29 @@ describe('TournamentOperations', () => {
     );
 
     fireEvent.click(screen.getByRole('tab', { name: 'Сетка' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Решить серию вручную' }));
+    const semifinalCard = (await screen.findByText('Полуфинал 1')).closest<HTMLElement>(
+      '.tournament-bracket-series',
+    );
+    expect(semifinalCard).not.toBeNull();
+    expect(within(semifinalCard!).getByText('Первый игрок')).toBeInTheDocument();
+    expect(within(semifinalCard!).getByText('Второй игрок')).toBeInTheDocument();
+    expect(
+      within(semifinalCard!).getByText('Игра 1 · 1 сентября, 10:00–11:00'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Полуфиналы' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    fireEvent.click(screen.getByRole('tab', { name: 'Финал' }));
+    expect(screen.getByText('Победитель полуфинала 1')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Полуфиналы' }));
+    const reopenedSemifinalCard = screen
+      .getByText('Полуфинал 1')
+      .closest<HTMLElement>('.tournament-bracket-series');
+    expect(reopenedSemifinalCard).not.toBeNull();
+    fireEvent.click(
+      await within(reopenedSemifinalCard!).findByRole('button', { name: 'Решить серию вручную' }),
+    );
     expect(screen.getByRole('button', { name: 'Подготовить решение' })).toBeDisabled();
     fireEvent.change(screen.getByRole('textbox', { name: 'Причина решения' }), {
       target: { value: 'Игрок дисквалифицирован' },
@@ -742,7 +839,7 @@ describe('TournamentOperations', () => {
     render(
       <QueryClientProvider client={client}>
         <TournamentOperations
-          tournament={tournament()}
+          tournament={{ ...tournament(), regularSource: 'daily_aggregate' }}
           onBack={vi.fn()}
           onEdit={onEdit}
           onRemoved={vi.fn()}

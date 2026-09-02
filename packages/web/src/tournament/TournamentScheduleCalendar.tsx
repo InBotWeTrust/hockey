@@ -15,6 +15,7 @@ interface TournamentScheduleCalendarProps {
   rangeStartsAt: string | null;
   rangeEndsAt: string | null;
   playoffStartsAt?: string[];
+  fixtureDetailsMode?: 'modal' | 'inline';
   renderFixture: (fixture: TournamentFixture, mine: boolean) => ReactNode;
   formatDateTime: (value: string) => string;
   onOpenDailyGame?: () => void;
@@ -87,7 +88,17 @@ function puckWord(value: number): string {
   return 'шайб';
 }
 
+function gameWord(value: number): string {
+  const lastTwo = Math.abs(value) % 100;
+  if (lastTwo >= 11 && lastTwo <= 14) return 'игр';
+  const last = lastTwo % 10;
+  if (last === 1) return 'игра';
+  if (last >= 2 && last <= 4) return 'игры';
+  return 'игр';
+}
+
 export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProps) {
+  const fixtureDetailsMode = props.fixtureDetailsMode ?? 'modal';
   const today = datePartsInTimezone(Date.now(), props.timezone) ?? {
     year: new Date().getUTCFullYear(),
     month: new Date().getUTCMonth() + 1,
@@ -263,7 +274,11 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
           const fixtures = fixturesByDate.get(key) ?? [];
           const matchday = matchdaysByDate.get(key);
           const hasEvents =
-            props.regularSource !== 'head_to_head' ? matchday !== undefined : fixtures.length > 0;
+            fixtureDetailsMode === 'inline'
+              ? matchday !== undefined || fixtures.length > 0
+              : props.regularSource !== 'head_to_head'
+                ? matchday !== undefined
+                : fixtures.length > 0;
           const hasPlayoff =
             playoffDateKeys.includes(key) ||
             fixtures.some(
@@ -274,10 +289,13 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
               ? hasEvents && props.isParticipant
               : fixtures.some((fixture) => isMine(fixture, props.currentUserId));
           const descriptions = [spokenDate(visibleMonth.year, visibleMonth.month, day)];
-          if (props.regularSource !== 'head_to_head' && hasEvents)
+          if (props.regularSource !== 'head_to_head' && matchday !== undefined)
             descriptions.push('игровой день');
-          if (props.regularSource === 'head_to_head' && hasEvents) {
-            descriptions.push(`${fixtures.length} ${fixtures.length === 1 ? 'игра' : 'игры'}`);
+          if (
+            fixtures.length > 0 &&
+            (props.regularSource === 'head_to_head' || fixtureDetailsMode === 'inline')
+          ) {
+            descriptions.push(`${fixtures.length} ${gameWord(fixtures.length)}`);
           }
           if (hasPlayoff) descriptions.push('плей-офф');
           if (mine && props.regularSource === 'head_to_head') descriptions.push('ваша игра');
@@ -292,7 +310,9 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
               className={`tournament-calendar__day${!inRange ? ' tournament-calendar__day--outside-range' : ''}${hasEvents ? ' tournament-calendar__day--has-events' : ''}${hasPlayoff ? ' tournament-calendar__day--playoff' : ''}${mine ? ' tournament-calendar__day--mine' : ''}${today.key === key ? ' tournament-calendar__day--today' : ''}${selectedDate === key ? ' tournament-calendar__day--selected' : ''}`}
               onClick={() => {
                 setSelectedDate(key);
-                if (props.regularSource === 'head_to_head') setModalDate(key);
+                if (props.regularSource === 'head_to_head' && fixtureDetailsMode === 'modal') {
+                  setModalDate(key);
+                }
               }}
             >
               <span>{day}</span>
@@ -311,9 +331,11 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
             className="tournament-calendar__legend-dot tournament-calendar__legend-dot--events"
             aria-hidden="true"
           />
-          {props.regularSource !== 'head_to_head' ? 'Игровой день' : 'Есть игры'}
+          {fixtureDetailsMode === 'inline' || props.regularSource === 'head_to_head'
+            ? 'Есть игры'
+            : 'Игровой день'}
         </li>
-        {props.regularSource === 'head_to_head' && (
+        {props.regularSource === 'head_to_head' && props.currentUserId !== null && (
           <li>
             <span
               className="tournament-calendar__legend-dot tournament-calendar__legend-dot--mine"
@@ -343,7 +365,7 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
           <h4>
             {spokenDate(...(selectedDate.split('-').map(Number) as [number, number, number]))}
           </h4>
-          {selectedMatchday ? (
+          {selectedMatchday && (
             <>
               <TournamentMatchdayRow
                 number={selectedMatchday.number}
@@ -378,43 +400,70 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
                   </button>
                 )}
             </>
+          )}
+          {fixtureDetailsMode === 'inline' && selectedFixtures.length > 0 && (
+            <div className="tournament-fixture-list">
+              {selectedFixtures.map((fixture) =>
+                props.renderFixture(fixture, isMine(fixture, props.currentUserId)),
+              )}
+            </div>
+          )}
+          {selectedMatchday === undefined && selectedFixtures.length === 0 && (
+            <p>В этот день игр нет.</p>
+          )}
+        </div>
+      )}
+
+      {props.regularSource === 'head_to_head' && fixtureDetailsMode === 'inline' && (
+        <div className="tournament-calendar__details" aria-live="polite">
+          <h4>
+            {spokenDate(...(selectedDate.split('-').map(Number) as [number, number, number]))}
+          </h4>
+          {selectedFixtures.length > 0 ? (
+            <div className="tournament-fixture-list">
+              {selectedFixtures.map((fixture) =>
+                props.renderFixture(fixture, isMine(fixture, props.currentUserId)),
+              )}
+            </div>
           ) : (
             <p>В этот день игр нет.</p>
           )}
         </div>
       )}
 
-      {props.regularSource === 'head_to_head' && modalDate !== null && (
-        <AccessibleModal
-          title={spokenDate(...(modalDate.split('-').map(Number) as [number, number, number]))}
-          ariaLabel="Игры выбранного дня"
-          onClose={() => {
-            setModalDate(null);
-            setExpandedDate(null);
-          }}
-        >
-          {selectedFixtures.length > 0 ? (
-            <div className="tournament-fixture-list">
-              {visibleSelectedFixtures.map((fixture) =>
-                props.renderFixture(fixture, isMine(fixture, props.currentUserId)),
-              )}
-              {selectedFixtures.length > 4 && (
-                <button
-                  type="button"
-                  className="tournament-calendar__expand"
-                  onClick={() => setExpandedDate(selectedFixturesExpanded ? null : fixturesDate)}
-                >
-                  {selectedFixturesExpanded
-                    ? 'Свернуть'
-                    : `Показать все игры (${selectedFixtures.length})`}
-                </button>
-              )}
-            </div>
-          ) : (
-            <p className="modal-copy">В этот день игр нет.</p>
-          )}
-        </AccessibleModal>
-      )}
+      {props.regularSource === 'head_to_head' &&
+        fixtureDetailsMode === 'modal' &&
+        modalDate !== null && (
+          <AccessibleModal
+            title={spokenDate(...(modalDate.split('-').map(Number) as [number, number, number]))}
+            ariaLabel="Игры выбранного дня"
+            onClose={() => {
+              setModalDate(null);
+              setExpandedDate(null);
+            }}
+          >
+            {selectedFixtures.length > 0 ? (
+              <div className="tournament-fixture-list">
+                {visibleSelectedFixtures.map((fixture) =>
+                  props.renderFixture(fixture, isMine(fixture, props.currentUserId)),
+                )}
+                {selectedFixtures.length > 4 && (
+                  <button
+                    type="button"
+                    className="tournament-calendar__expand"
+                    onClick={() => setExpandedDate(selectedFixturesExpanded ? null : fixturesDate)}
+                  >
+                    {selectedFixturesExpanded
+                      ? 'Свернуть'
+                      : `Показать все игры (${selectedFixtures.length})`}
+                  </button>
+                )}
+              </div>
+            ) : (
+              <p className="modal-copy">В этот день игр нет.</p>
+            )}
+          </AccessibleModal>
+        )}
 
       {undatedFixtures.length > 0 && (
         <section className="tournament-calendar__undated">

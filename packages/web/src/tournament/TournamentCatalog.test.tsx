@@ -213,6 +213,35 @@ describe('TournamentCatalog', () => {
     );
   });
 
+  it('keeps the shared playoff round heading rhythm compact and even', () => {
+    const style = document.createElement('style');
+    style.textContent = designSystemCss;
+    const bracket = document.createElement('div');
+    bracket.className = 'tournament-bracket';
+    bracket.innerHTML = `
+      <div class="tournament-bracket__round-tabs"></div>
+      <section class="tournament-bracket-round">
+        <h3>Полуфиналы</h3>
+        <p class="tournament-rules__muted">Формат игры: Микс</p>
+        <div></div>
+      </section>
+    `;
+    document.head.append(style);
+    document.body.append(bracket);
+    try {
+      expect(getComputedStyle(bracket).gap).toBe('8px');
+      const round = bracket.querySelector<HTMLElement>('.tournament-bracket-round');
+      const format = bracket.querySelector<HTMLElement>('.tournament-rules__muted');
+      expect(round).not.toBeNull();
+      expect(format).not.toBeNull();
+      expect(getComputedStyle(round!).gap).toBe('8px');
+      expect(getComputedStyle(format!).margin).toBe('0px');
+    } finally {
+      bracket.remove();
+      style.remove();
+    }
+  });
+
   it('keeps a long participation status inside the tournament card', () => {
     expect(designSystemCss).toMatch(
       /\.tournament-catalog-card__topline\s*\{[^}]*flex-wrap:\s*wrap;/s,
@@ -1222,9 +1251,7 @@ describe('TournamentCatalog', () => {
         </QueryClientProvider>
       </MemoryRouter>,
     );
-    expect(
-      screen.getByText('Заявка подтверждена. Ожидаем начала регулярного сезона.'),
-    ).toBeInTheDocument();
+    expect(screen.getByText('Заявка подтверждена')).toBeInTheDocument();
   });
 
   it('shows daily aggregate matchdays even though the format has no fixtures', async () => {

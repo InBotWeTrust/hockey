@@ -1,5 +1,5 @@
 import { apiFetch } from '../api/apiFetch.js';
-import type { TournamentLifecycleDTO } from '../api/tournament.js';
+import type { TournamentBracketSeries, TournamentLifecycleDTO } from '../api/tournament.js';
 
 export interface AdminTournament {
   id: string;
@@ -19,6 +19,10 @@ export interface AdminTournament {
   projectedEndsAt?: string | null;
   completedAt?: string | null;
   rewardEditability?: { regular: 'editable' | 'paid'; playoff: 'editable' | 'paid' };
+  playoffFormats?: Array<{
+    roundNumber: number;
+    duelKind: 'express' | 'express_plus' | 'classic';
+  }>;
   rules?: Record<string, unknown> & { config?: Record<string, unknown> };
 }
 
@@ -63,18 +67,7 @@ export interface AdminTournamentDuelTemplate {
   shotsPerPeriod: number;
 }
 
-export interface AdminTournamentBracketSeries {
-  id: string;
-  status: string;
-  higher_user_id: string | null;
-  higher_name: string | null;
-  higher_seed_wins: number;
-  lower_user_id: string | null;
-  lower_name: string | null;
-  lower_seed_wins: number;
-  winner_user_id?: string | null;
-  [key: string]: unknown;
-}
+export type AdminTournamentBracketSeries = TournamentBracketSeries;
 
 export interface AdminTournamentSeriesDecision {
   id: string;

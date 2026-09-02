@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { chooseTournamentNextGame, fetchTournamentFixtureAttempt } from '../api/tournament.js';
 import type {
   TournamentBracketFixture,
@@ -19,6 +19,7 @@ interface TournamentPlayoffBracketProps {
     roundNumber: number;
     duelKind: 'express' | 'express_plus' | 'classic';
   }>;
+  renderSeriesAction?: (series: TournamentBracketSeries) => ReactNode;
 }
 
 export function currentSeriesFixtureId(
@@ -460,6 +461,7 @@ function SeriesCard(props: {
   byKey: Map<string, TournamentBracketSeries>;
   finalRound: number;
   timezone: string;
+  renderSeriesAction?: (series: TournamentBracketSeries) => ReactNode;
 }) {
   const sources = props.series.depends_on?.sources ?? [];
   const finished = ['completed', 'settled'].includes(props.series.status);
@@ -502,6 +504,7 @@ function SeriesCard(props: {
           Счёт в серии {props.series.higher_seed_wins} : {props.series.lower_seed_wins}
         </div>
       )}
+      {props.renderSeriesAction?.(props.series)}
       {props.series.fixtures.length > 0 && (
         <div className="tournament-bracket-series__games">
           {props.series.fixtures.map((fixture) => (
@@ -540,6 +543,7 @@ export function TournamentPlayoffBracket({
   series,
   timezone,
   formats,
+  renderSeriesAction,
 }: TournamentPlayoffBracketProps) {
   const championship = series.filter((item) => item.kind === 'championship');
   const finalRound = Math.max(...championship.map((item) => item.round_number));
@@ -629,6 +633,7 @@ export function TournamentPlayoffBracket({
               byKey={byKey}
               finalRound={finalRound}
               timezone={timezone}
+              {...(renderSeriesAction === undefined ? {} : { renderSeriesAction })}
             />
           ))}
         </div>
