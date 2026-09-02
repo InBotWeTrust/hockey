@@ -1,0 +1,153 @@
+import { useEffect, useRef, useState } from 'react';
+import {
+  completeOnboarding,
+  recordStepView,
+  type OnboardingRequired,
+  type OnboardingRequiredResponse,
+} from '../api/onboarding.js';
+import './onboarding.css';
+
+interface OnboardingFlowProps {
+  runId: string;
+  required: OnboardingRequired;
+  onCompleted: (result: OnboardingRequiredResponse) => void;
+}
+
+export function OnboardingFlow({ runId, required, onCompleted }: OnboardingFlowProps): JSX.Element {
+  const [stepIndex, setStepIndex] = useState(0);
+  const [brokenImage, setBrokenImage] = useState(false);
+  const [completing, setCompleting] = useState(false);
+  const [completionError, setCompletionError] = useState(false);
+  const viewedSteps = useRef(new Set<string>());
+  const step = required.steps[stepIndex];
+
+  useEffect(() => {
+    if (!step || viewedSteps.current.has(step.id)) return;
+    viewedSteps.current.add(step.id);
+    void recordStepView(runId, step.id).catch(() => {
+      // Viewing analytics is deliberately best-effort. The server still validates
+      // complete evidence and exposes a blocking error if recording never arrived.
+    });
+  }, [runId, step]);
+
+  useEffect(() => setBrokenImage(false), [step?.id]);
+
+  if (!step) {
+    return <OnboardingStatus message="Онбординг пока недоступен" />;
+  }
+
+  const lastStep = stepIndex === required.steps.length - 1;
+
+  async function finish(): Promise<void> {
+    setCompleting(true);
+    setCompletionError(false);
+    try {
+      const result = await completeOnboarding(runId);
+      onCompleted(result);
+    } catch {
+      setCompletionError(true);
+    } finally {
+      setCompleting(false);
+    }
+  }
+
+  function advance(): void {
+    if (lastStep) {
+      void finish();
+      return;
+    }
+    setStepIndex((current) => current + 1);
+  }
+
+  return (
+    <main className="onboarding-flow" aria-label="Обязательный онбординг">
+      <div className="onboarding-flow__progress" aria-live="polite">
+        {stepIndex + 1} из {required.steps.length}
+      </div>
+      <section className="onboarding-flow__content">
+        {step.kind === 'informational' ? (
+          brokenImage ? (
+            <div
+              className="onboarding-flow__image-fallback"
+              role="img"
+              aria-label="Изображение временно недоступно"
+            >
+              Изображение временно недоступно
+            </div>
+          ) : (
+            <img
+              className="onboarding-flow__image"
+              src={step.imageUrl}
+              alt={step.title}
+              onError={() => setBrokenImage(true)}
+            />
+          )
+        ) : (
+          <div className="onboarding-flow__tutorial-placeholder" aria-label="Учебный бросок">
+            Учебный бросок загружается…
+          </div>
+        )}
+        <div className="onboarding-flow__copy">
+          <h1>{step.title}</h1>
+          <p>{step.description}</p>
+        </div>
+      </section>
+      <div className="onboarding-flow__footer">
+        {completionError && (
+          <div className="onboarding-flow__error" role="alert">
+            <span>Не удалось завершить онбординг. Проверьте соединение.</span>
+            <button
+              className="btn btn--ghost"
+              type="button"
+              onClick={() => void finish()}
+              disabled={completing}
+            >
+              Повторить
+            </button>
+          </div>
+        )}
+        <div className="onboarding-flow__actions">
+          {stepIndex > 0 && (
+            <button
+              className="btn btn--ghost"
+              type="button"
+              onClick={() => setStepIndex((current) => current - 1)}
+              disabled={completing}
+            >
+              Назад
+            </button>
+          )}
+          <button
+            className="btn btn--cta"
+            type="button"
+            onClick={advance}
+            disabled={completing || step.kind === 'tutorial_shot'}
+          >
+            {completing ? 'Завершаем…' : step.ctaLabel}
+          </button>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+export function OnboardingStatus({
+  message,
+  retry,
+}: {
+  message: string;
+  retry?: () => void;
+}): JSX.Element {
+  return (
+    <main className="onboarding-flow onboarding-flow--status">
+      <div className="onboarding-flow__status" role={retry ? 'alert' : 'status'}>
+        <p>{message}</p>
+        {retry && (
+          <button className="btn btn--cta" type="button" onClick={retry}>
+            Повторить
+          </button>
+        )}
+      </div>
+    </main>
+  );
+}
