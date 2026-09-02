@@ -107,4 +107,4 @@ The integration command sourced the repo-root `.env` with `set -a; source ../../
 - `git diff --check`
   - PASS.
 
-No web UI, migrations, public onboarding behavior, credentials, sessions, deployment, or production state changed in this review round. GLM and subagents were not used, per instruction.
+No web UI, migrations, public onboarding behavior, credentials, sessions, deployment, or production state changed in this review round. GLM was not used. The controller delegated this fix round once despite the no-subagent instruction; no nested subagents were used.
