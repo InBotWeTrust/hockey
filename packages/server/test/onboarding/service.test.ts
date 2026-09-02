@@ -136,6 +136,43 @@ describe.skipIf(!hasIntegrationEnv)('onboarding applicability service', () => {
     expect(result.required?.chain ?? null).toBe(expected);
   });
 
+  it('does not let a draft beginner pointer suppress a published amateur chain', async () => {
+    const { versionId: beginnerVersionId } = await publishChain('beginner');
+    await publishChain('amateur');
+    const userId = await createUser({ level: 'amateur' });
+    await pool.query(`update onboarding_version set status = 'draft' where id = $1`, [
+      beginnerVersionId,
+    ]);
+
+    const result = await getRequiredOnboarding(pool, userId, MEDIA_SECRET);
+
+    expect(result.required?.chain).toBe('amateur');
+  });
+
+  it.each([
+    ['not-a-number', 300],
+    ['1.9', 1],
+    ['1000001', 1_000_000],
+  ])(
+    'uses normalized game settings for amateur applicability: %s',
+    async (unlockGoalsRequired, lifetimeGoals) => {
+      await publishChain('amateur');
+      const userId = await createUser({ beginnerDone: true });
+      await pool.query(`update users set lifetime_goals_total = $2 where id = $1`, [
+        userId,
+        lifetimeGoals,
+      ]);
+      await pool.query(`update game_settings set value = to_jsonb($2::text) where key = $1`, [
+        'amateur.unlock_goals_required',
+        unlockGoalsRequired,
+      ]);
+
+      const result = await getRequiredOnboarding(pool, userId, MEDIA_SECRET);
+
+      expect(result.required?.chain).toBe('amateur');
+    },
+  );
+
   it('returns no required chain when enforcement is disabled or no version is published', async () => {
     const userId = await createUser({});
     await publishChain('beginner');

@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from 'pg';
+import { getGameSettings } from '../duel/gameSettings.js';
 import { resolveCompetitionLevel } from '../profile/summary.js';
 import { createMediaProxyUrl } from '../storage/mediaAccess.js';
 import {
@@ -16,7 +17,6 @@ interface ApplicabilityRow {
   amateur_onboarding_completed: boolean;
   level: number | string;
   lifetime_goals_total: number | string;
-  amateur_unlock_goals_required: number | string;
   beginner_enforcement_enabled: boolean;
   beginner_version_id: string | null;
   amateur_enforcement_enabled: boolean;
@@ -54,11 +54,14 @@ function numberValue(value: number | string): number {
   return typeof value === 'number' ? value : Number(value);
 }
 
-function requiredChain(row: ApplicabilityRow): OnboardingChainKey | null {
+function requiredChain(
+  row: ApplicabilityRow,
+  amateurUnlockGoalsRequired: number,
+): OnboardingChainKey | null {
   const competitionLevel = resolveCompetitionLevel(
     numberValue(row.level),
     numberValue(row.lifetime_goals_total),
-    numberValue(row.amateur_unlock_goals_required),
+    amateurUnlockGoalsRequired,
   );
   if (
     !row.beginner_onboarding_completed &&
@@ -87,19 +90,23 @@ async function loadApplicabilityRow(
             u.amateur_onboarding_completed,
             u.level,
             u.lifetime_goals_total,
-            coalesce((settings.value #>> '{}')::int, 300) as amateur_unlock_goals_required,
             beginner.enforcement_enabled as beginner_enforcement_enabled,
-            beginner.current_published_version_id as beginner_version_id,
+            beginner_version.id as beginner_version_id,
             amateur.enforcement_enabled as amateur_enforcement_enabled,
-            amateur.current_published_version_id as amateur_version_id,
+            amateur_version.id as amateur_version_id,
             u.beginner_onboarding_reset_at,
             u.amateur_onboarding_reset_at,
             natural_completion.beginner_natural_completed_at,
             natural_completion.amateur_natural_completed_at
        from users u
-       left join game_settings settings on settings.key = 'amateur.unlock_goals_required'
        left join onboarding_chain beginner on beginner.key = 'beginner'
+       left join onboarding_version beginner_version
+         on beginner_version.id = beginner.current_published_version_id
+        and beginner_version.status = 'published'
        left join onboarding_chain amateur on amateur.key = 'amateur'
+       left join onboarding_version amateur_version
+         on amateur_version.id = amateur.current_published_version_id
+        and amateur_version.status = 'published'
        left join lateral (
          select max(completed_at) filter (
                   where chain_key = 'beginner' and source = 'natural'
@@ -192,7 +199,8 @@ async function getRequiredOnboardingDetails(
 ): Promise<RequiredOnboardingDetails> {
   const row = await loadApplicabilityRow(db, userId);
   if (!row) return { required: null, row: undefined };
-  const chainKey = requiredChain(row);
+  const settings = await getGameSettings(db);
+  const chainKey = requiredChain(row, settings.amateur.unlockGoalsRequired);
   if (!chainKey) return { required: null, row };
   return { required: await loadPublishedVersion(db, chainKey, mediaAccessSecret), row };
 }
