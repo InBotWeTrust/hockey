@@ -59,6 +59,7 @@ import {
 } from '../stores/demoSession.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
 import { useAmateurDuelStore } from '../stores/amateurDuelStore.js';
+import { useOnboardingGate } from '../onboarding/OnboardingGate.js';
 import { rewardColor } from '../app/rewardColors.js';
 import type { ScoreBoardOpponent } from '../components/ScoreBoard.js';
 import { GlassSelect } from '../components/GlassSelect.js';
@@ -332,6 +333,7 @@ type PendingPlayMarker = 'daily' | 'training' | `duel:${string}` | null;
 export function DailyScreen(): JSX.Element {
   const location = useLocation();
   const navigate = useNavigate();
+  const { refreshAfterGameExit } = useOnboardingGate();
   const data = useDailyStore((s) => s.data);
   const error = useDailyStore((s) => s.error);
   const loading = useDailyStore((s) => s.loading);
@@ -352,6 +354,15 @@ export function DailyScreen(): JSX.Element {
   const [pendingPlayEntrance, setPendingPlayEntrance] = useState<PendingPlayMarker>(null);
   const [pendingPlayRouteTransition, setPendingPlayRouteTransition] =
     useState<PendingPlayMarker>(null);
+
+  const leavePlaySurface = useCallback(
+    (destination: string): void => {
+      setDailyView('arena');
+      navigate(destination, { replace: true });
+      void refreshAfterGameExit();
+    },
+    [navigate, refreshAfterGameExit],
+  );
 
   useEffect(() => {
     void refresh();
@@ -445,6 +456,14 @@ export function DailyScreen(): JSX.Element {
     navigate('/?view=arena', { replace: true });
   };
 
+  const leavePlayForHub = (): void => {
+    setPendingPlayEntrance(null);
+    setPendingPlayRouteTransition(null);
+    setSelectedLevel('beginner');
+    setBeginnerMode('daily');
+    leavePlaySurface('/?view=arena');
+  };
+
   const openSections = (): void => {
     setPendingPlayEntrance(null);
     setPendingPlayRouteTransition(null);
@@ -488,7 +507,7 @@ export function DailyScreen(): JSX.Element {
   if (selectedLevel === 'beginner' && beginnerMode === 'daily' && dailyView === 'play') {
     return (
       <DailyPlayView
-        onBack={openHub}
+        onBack={leavePlayForHub}
         playEntranceOnMount={pendingPlayEntrance === 'daily'}
         onEntranceConsumed={() => setPendingPlayEntrance(null)}
         playRouteTransitionOnMount={pendingPlayRouteTransition === 'daily'}
@@ -518,12 +537,11 @@ export function DailyScreen(): JSX.Element {
               if (directDuelPlay) {
                 setSelectedLevel('beginner');
                 setBeginnerMode('daily');
-                setDailyView('arena');
-                navigate('/?view=arena', { replace: true });
+                leavePlaySurface('/?view=arena');
                 return;
               }
               setAmateurView('duels');
-              navigate('/?view=amateur&section=duels', { replace: true });
+              leavePlaySurface('/?view=amateur&section=duels');
             }}
           />
         );
@@ -611,7 +629,7 @@ export function DailyScreen(): JSX.Element {
       <TrainingPlaceholder
         autoPlay={routeParams.get('play') === '1'}
         onBack={fromSections ? openSections : openHub}
-        onPlayHome={openHub}
+        onPlayHome={leavePlayForHub}
         playEntranceOnStart={pendingPlayEntrance === 'training'}
         onEntranceConsumed={() => setPendingPlayEntrance(null)}
         playRouteTransitionOnStart={pendingPlayRouteTransition === 'training'}

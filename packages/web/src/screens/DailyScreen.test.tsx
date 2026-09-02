@@ -33,6 +33,12 @@ vi.mock('../game/RinkSvg.js', () => ({
   RinkSvg: () => <div data-testid="rink-svg-stub" />,
 }));
 
+const refreshAfterGameExit = vi.hoisted(() => vi.fn(async () => undefined));
+
+vi.mock('../onboarding/OnboardingGate.js', () => ({
+  useOnboardingGate: () => ({ refreshAfterGameExit }),
+}));
+
 const baseState: DailyStateResponse = {
   state: 'idle',
   current_period: 0,
@@ -250,6 +256,7 @@ async function findArenaCta(articleName: string): Promise<HTMLElement> {
 }
 
 beforeEach(() => {
+  refreshAfterGameExit.mockClear();
   localStorage.clear();
   useAuthStore.getState().setSession({
     accessToken: 'token',
@@ -980,10 +987,87 @@ describe('DailyScreen', () => {
     renderWith(['/?view=daily']);
 
     const back = await screen.findByRole('button', { name: 'К режимам' });
+    act(() => {
+      useDailyStore.setState((state) => ({
+        data: state.data ? { ...state.data, lifetime_total_goals: 1000 } : state.data,
+      }));
+    });
+    expect(screen.getByRole('button', { name: 'БРОСОК' })).toBeInTheDocument();
+    expect(refreshAfterGameExit).not.toHaveBeenCalled();
     fireEvent.click(back);
 
     expect(await findArenaCta('Ежедневная игра: 1-й период')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();
+    expect(refreshAfterGameExit).toHaveBeenCalledTimes(1);
+  });
+
+  it('refreshes onboarding once after leaving active training, never while still playing', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      return new Response(
+        JSON.stringify(url.includes('/duel/training/state') ? trainingActiveState : baseState),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+    renderWith(['/?view=training&play=1']);
+
+    const back = await screen.findByRole('button', { name: 'К тренировке' });
+    expect(refreshAfterGameExit).not.toHaveBeenCalled();
+    fireEvent.click(back);
+
+    await screen.findByRole('article', { name: 'Ежедневная игра: 1-й период доступен' });
+    expect(refreshAfterGameExit).toHaveBeenCalledTimes(1);
+  });
+
+  it('refreshes onboarding once after leaving an active direct duel', async () => {
+    const now = Date.now();
+    const activeMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      status: 'active',
+      outcome: null,
+      winner_user_id: null,
+      settled_at: null,
+      settled_reason: null,
+      starts_at: new Date(now - 60_000).toISOString(),
+      ends_at: new Date(now + 60 * 60_000).toISOString(),
+      server_now: new Date(now).toISOString(),
+      period_started_at: new Date(now - 15_000).toISOString(),
+      period_ends_at: new Date(now + 165_000).toISOString(),
+      me: {
+        ...settledDuelMatch.me,
+        state: 'period_active',
+        current_period: 1,
+        period_started_at: new Date(now - 15_000).toISOString(),
+        period_ends_at: new Date(now + 165_000).toISOString(),
+      },
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/matches/match-1')) {
+        return new Response(JSON.stringify({ match: activeMatch }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    renderWith(['/?view=amateur&match=match-1&play=1']);
+
+    const back = await screen.findByRole('button', { name: 'К дуэлям' });
+    expect(refreshAfterGameExit).not.toHaveBeenCalled();
+    fireEvent.click(back);
+
+    await screen.findByRole('article', { name: /Ежедневная игра/ });
+    expect(refreshAfterGameExit).toHaveBeenCalledTimes(1);
   });
 
   it('keeps the third period playable instead of showing the closed-day modal', async () => {

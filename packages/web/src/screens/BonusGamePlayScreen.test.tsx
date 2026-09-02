@@ -6,6 +6,11 @@ import type { BonusGameAttempt } from '../api/bonusGames.js';
 import { useBonusGameStore } from '../stores/bonusGameStore.js';
 
 const playViewProbe = vi.hoisted(() => vi.fn());
+const refreshAfterGameExit = vi.hoisted(() => vi.fn(async () => undefined));
+
+vi.mock('../onboarding/OnboardingGate.js', () => ({
+  useOnboardingGate: () => ({ refreshAfterGameExit }),
+}));
 
 vi.mock('../game/PlayView.js', () => ({
   PlayView(props: {
@@ -549,8 +554,10 @@ describe('BonusGamePlayScreen', () => {
     fireEvent.mouseDown(document.querySelector('.modal-backdrop') as HTMLElement);
 
     expect(screen.getByRole('dialog', { name: 'Попытка завершена' })).toBeInTheDocument();
+    expect(refreshAfterGameExit).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'К бонусным играм' }));
     expect(screen.getByLabelText('location')).toHaveTextContent('/bonus-games');
+    expect(refreshAfterGameExit).toHaveBeenCalledTimes(1);
   });
 
   it('uses Russian plural forms for every granted reward', () => {
@@ -607,6 +614,7 @@ describe('BonusGamePlayScreen', () => {
     await waitFor(() => {
       expect(screen.getByLabelText('location')).toHaveTextContent('/bonus-games');
     });
+    expect(refreshAfterGameExit).toHaveBeenCalledTimes(1);
   });
 
   it('returns to the catalog without abandoning when continuing later', () => {
@@ -623,6 +631,7 @@ describe('BonusGamePlayScreen', () => {
 
     expect(abandon).not.toHaveBeenCalled();
     expect(screen.getByLabelText('location')).toHaveTextContent('/bonus-games');
+    expect(refreshAfterGameExit).toHaveBeenCalledTimes(1);
   });
 
   it('keeps the active rink simulation running while the exit prompt is open', () => {
@@ -673,5 +682,6 @@ describe('BonusGamePlayScreen', () => {
     await waitFor(() => expect(abandon).toHaveBeenCalledTimes(1));
     expect(screen.getByLabelText('location')).toHaveTextContent('/bonus-games/game-1/play');
     expect(screen.getByRole('dialog', { name: 'Выйти из бонусной игры?' })).toBeInTheDocument();
+    expect(refreshAfterGameExit).not.toHaveBeenCalled();
   });
 });

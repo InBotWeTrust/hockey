@@ -15,6 +15,7 @@ import type { SpeedOverrides } from '../game/loop.js';
 import type { GoalieOptions } from '../game/renderer/Goalie.js';
 import { useBonusGameStore } from '../stores/bonusGameStore.js';
 import { formatRussianCount } from '../lib/russianPlural.js';
+import { useOnboardingGate } from '../onboarding/OnboardingGate.js';
 
 const BONUS_GAME_GOALIE_OPTIONS: Omit<GoalieOptions, 'idleSpriteUrl' | 'saveSpriteUrl'> = {
   visualYScale: PERSPECTIVE_COURT_VISUAL_Y_SCALE,
@@ -228,6 +229,7 @@ function speedOverridesFor(rule: BonusPeriodRule): SpeedOverrides {
 
 export function BonusGamePlayScreen(): JSX.Element {
   const navigate = useNavigate();
+  const { refreshAfterGameExit } = useOnboardingGate();
   const { gameId } = useParams<{ gameId: string }>();
   const [searchParams] = useSearchParams();
   const routeAttemptId = searchParams.get('attempt');
@@ -286,7 +288,11 @@ export function BonusGamePlayScreen(): JSX.Element {
     void reconcileAttempt();
   }, [needsReconcile, reconcileAttempt]);
 
-  const goToCatalog = useCallback(() => navigate('/bonus-games'), [navigate]);
+  const navigateToCatalog = useCallback(() => navigate('/bonus-games'), [navigate]);
+  const leavePlaySurface = useCallback(() => {
+    navigate('/bonus-games');
+    void refreshAfterGameExit();
+  }, [navigate, refreshAfterGameExit]);
   const refreshAttempt = useCallback(async (): Promise<void> => {
     if (attempt) await loadAttempt(attempt.id);
   }, [attempt, loadAttempt]);
@@ -301,12 +307,12 @@ export function BonusGamePlayScreen(): JSX.Element {
     setIsConfirmingAbandon(true);
     const result = await abandon();
     if (result?.status === 'abandoned') {
-      navigate('/bonus-games');
+      leavePlaySurface();
       return;
     }
     abandonRequestRef.current = false;
     setIsConfirmingAbandon(false);
-  }, [abandon, navigate]);
+  }, [abandon, leavePlaySurface]);
 
   if (needsReconcile) {
     return (
@@ -331,7 +337,7 @@ export function BonusGamePlayScreen(): JSX.Element {
         {...(error ? { role: 'alert' as const } : {})}
         text={error ?? 'Активная попытка не найдена.'}
         actionLabel="К бонусным играм"
-        onAction={goToCatalog}
+        onAction={navigateToCatalog}
       />
     );
   }
@@ -341,7 +347,7 @@ export function BonusGamePlayScreen(): JSX.Element {
         role="alert"
         text="Открыта другая бонусная попытка. Вернитесь в каталог."
         actionLabel="К бонусным играм"
-        onAction={goToCatalog}
+        onAction={navigateToCatalog}
       />
     );
   }
@@ -464,7 +470,7 @@ export function BonusGamePlayScreen(): JSX.Element {
       />
 
       {terminalKind ? (
-        <BonusResult kind={terminalKind} attempt={attempt} onCatalog={goToCatalog} />
+        <BonusResult kind={terminalKind} attempt={attempt} onCatalog={leavePlaySurface} />
       ) : null}
 
       {confirmAbandon && !isTerminal ? (
@@ -484,7 +490,7 @@ export function BonusGamePlayScreen(): JSX.Element {
               type="button"
               className="btn btn--ghost"
               disabled={isConfirmingAbandon}
-              onClick={goToCatalog}
+              onClick={leavePlaySurface}
             >
               Продолжить позже
             </button>
