@@ -2,6 +2,8 @@
 
 Implementation commit: `0f930c8` (`feat(server): expose onboarding controls and metrics`)
 
+Review fix commit: `1e9a896` (`fix(server): index and isolate onboarding metrics`)
+
 ## Delivered
 
 - Admin user list/detail DTOs expose independent Beginner and Amateur completion flags.
@@ -54,3 +56,31 @@ Regressions and static verification:
 
 - The schema has no `migrated` run source: migration compatibility is represented by pre-completed user flags rather than analytics runs. The endpoint's strict `source = 'natural'` predicate excludes every supported non-natural source (`preview` and `admin_reset`) and any future source by default.
 - No deployment, push, content publication, or GLM review was performed.
+
+## Review fix round 1/5
+
+Independent review returned Spec PASS and two Important quality findings.
+
+1. Filter coverage coupled chain/version and chain/date. New fixtures now isolate `chain`,
+   `versionId`, `from`, and `to` independently. Each assertion checks overall conversion,
+   completion duration, repeat starts, the full tutorial block, exact returned step IDs,
+   reached users, and drop-offs. Exact `from` and `to` timestamps are inclusive boundary cases.
+   The new RED exposed that date filters constrained counts but not the returned historical step
+   set; the step query now returns only versions represented by the same filtered-run CTE.
+2. Historical natural-version statistics lacked a supporting index. Migration 060 now creates
+   partial index `onboarding_run_natural_version_started_idx` on
+   `(version_id, started_at) where source = 'natural'`. The migration test checks its definition,
+   and an `EXPLAIN` assertion proves PostgreSQL selects it for the endpoint's version/date shape.
+
+Fix-round TDD and verification:
+
+- RED migration suite: `1 failed, 5 passed` on the missing seventh onboarding index.
+- RED onboarding admin suite: `1 failed, 13 passed` on extra step IDs leaking through the date
+  filter.
+- GREEN migration suite: `6/6 PASS`, including index definition and query-plan proof.
+- GREEN onboarding admin suite: `14/14 PASS`, including independent filters and boundaries.
+- Full server suite after fixes, `vitest run --no-file-parallelism`:
+  `61 files, 528 tests PASS`.
+- Server typecheck/build and root lint: PASS.
+- Prettier for changed TypeScript files and `git diff --check`: PASS. The repository Prettier
+  configuration has no SQL parser, so migration formatting is covered by review/diff check.
