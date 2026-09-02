@@ -1948,6 +1948,10 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
+.tournament-admin-grid--playoff-timing {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .tournament-admin-grid__wide,
 .tournament-admin-details,
 .tournament-playoff-round {
@@ -2303,6 +2307,7 @@
   }
 
   .tournament-admin-grid,
+  .tournament-admin-grid--playoff-timing,
   .tournament-playoff-round,
   .tournament-playoff-day {
     grid-template-columns: minmax(0, 1fr);

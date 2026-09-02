@@ -123,6 +123,7 @@ export interface ActiveClassicGame {
   tournament_day: number;
   starts_at: string;
   closes_at: string;
+  break_ends_at: string | null;
   state: 'available' | 'idle' | 'period_active' | 'break_active' | 'closed';
   current_period: number;
   total_shots: number;
@@ -681,12 +682,15 @@ export async function listActiveClassicGames(
     ends_at: Date;
     state: ClassicSessionState | null;
     current_period: number | null;
+    break_started_at: Date | null;
+    break_duration_ms: number | string | null;
     total_shots: number | string;
     total_goals: number | string;
   }>(
     `select t.id as tournament_id, t.title as tournament_title,
             matchday.number as tournament_day, matchday.starts_at, matchday.ends_at,
-            session.state, session.current_period,
+            session.state, session.current_period, session.break_started_at,
+            (session.rules_snapshot->>'breakDurationMs')::bigint as break_duration_ms,
             count(shot.id)::int as total_shots,
             count(shot.id) filter (where shot.server_result = 'goal')::int as total_goals
        from tournament t
@@ -708,7 +712,8 @@ export async function listActiveClassicGames(
         and shot.tournament_classic_session_id = session.id
       where t.regular_source = 'classic' and t.status = 'regular'
       group by t.id, t.title, matchday.number, matchday.starts_at, matchday.ends_at,
-               session.state, session.current_period
+               session.state, session.current_period, session.break_started_at,
+               session.rules_snapshot
       order by
         case session.state
           when 'period_active' then 0 when 'break_active' then 1 when 'idle' then 2
@@ -717,17 +722,31 @@ export async function listActiveClassicGames(
         matchday.ends_at, t.title`,
     [input.userId, input.now],
   );
-  return rows.map((row) => ({
-    tournament_id: row.tournament_id,
-    tournament_title: row.tournament_title,
-    tournament_day: Number(row.tournament_day),
-    starts_at: row.starts_at.toISOString(),
-    closes_at: row.ends_at.toISOString(),
-    state: row.state === null ? 'available' : row.state === 'expired' ? 'closed' : row.state,
-    current_period: Number(row.current_period ?? 0),
-    total_shots: Number(row.total_shots),
-    total_goals: Number(row.total_goals),
-  }));
+  return rows.map((row) => {
+    const breakEndsAt =
+      row.state === 'break_active' &&
+      row.break_started_at !== null &&
+      row.break_duration_ms !== null
+        ? new Date(
+            Math.min(
+              row.ends_at.getTime(),
+              row.break_started_at.getTime() + Number(row.break_duration_ms),
+            ),
+          ).toISOString()
+        : null;
+    return {
+      tournament_id: row.tournament_id,
+      tournament_title: row.tournament_title,
+      tournament_day: Number(row.tournament_day),
+      starts_at: row.starts_at.toISOString(),
+      closes_at: row.ends_at.toISOString(),
+      break_ends_at: breakEndsAt,
+      state: row.state === null ? 'available' : row.state === 'expired' ? 'closed' : row.state,
+      current_period: Number(row.current_period ?? 0),
+      total_shots: Number(row.total_shots),
+      total_goals: Number(row.total_goals),
+    };
+  });
 }
 
 export async function getClassicGameState(

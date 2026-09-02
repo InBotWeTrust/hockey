@@ -65,9 +65,16 @@ export interface TournamentRulesSnapshot {
   [key: string]: unknown;
 }
 
-const PLAYOFF_SCHEDULING_FIELDS = new Set(['firstGameStartsAt', 'scheduleDays', 'roundBreakMs']);
+const PLAYOFF_SCHEDULING_FIELDS = new Set([
+  'firstGameStartsAt',
+  'scheduleDays',
+  'roundBreakMs',
+  'readinessMinutes',
+  'gameDurationMinutes',
+  'plannedStartIntervalMinutes',
+]);
 const DEFAULT_PLAYOFF_READINESS_MINUTES = 5;
-const DEFAULT_PLAYOFF_START_INTERVAL_MINUTES = 20;
+const DEFAULT_PLAYOFF_START_INTERVAL_MINUTES = 30;
 const LEGACY_TOURNAMENT_EDITOR_DEFAULTS: Record<string, unknown> = {
   regularDuelTemplateId: null,
   regularScoring: {
@@ -222,6 +229,9 @@ function playoffRoundScheduleKey(rules: TournamentRulesSnapshot, roundNumber: nu
     firstGameStartsAt: round.firstGameStartsAt?.toISOString() ?? null,
     roundBreakMs: round.roundBreakMs,
     scheduleDays: round.scheduleDays,
+    gameDurationMinutes: round.gameDurationMinutes,
+    readinessMinutes: round.readinessMinutes,
+    plannedStartIntervalMinutes: round.plannedStartIntervalMinutes,
   });
 }
 
@@ -261,6 +271,9 @@ async function reschedulePublishedPlayoffRounds(
     validateRoundGameDays({
       winsRequired: rules.winsRequired,
       readinessMinutes: rules.readinessMinutes,
+      ...(rules.gameDurationMinutes === null
+        ? {}
+        : { gameDurationMinutes: rules.gameDurationMinutes }),
       plannedStartIntervalMinutes: rules.plannedStartIntervalMinutes,
       days: rules.scheduleDays,
     });
@@ -376,7 +389,12 @@ async function reschedulePublishedPlayoffRounds(
       return {
         fixture,
         slot,
-        hardDeadlineAt: attemptDeadline(slot.startsAt, rules.readinessMinutes, template),
+        hardDeadlineAt: attemptDeadline(
+          slot.startsAt,
+          rules.readinessMinutes,
+          template,
+          rules.gameDurationMinutes ?? undefined,
+        ),
       };
     });
 
@@ -407,6 +425,9 @@ async function reschedulePublishedPlayoffRounds(
           roundGameDayId: persistedDay.id!,
           scheduledStartsAt: item.slot.startsAt,
           readinessMinutes: rules.readinessMinutes,
+          ...(rules.gameDurationMinutes === null
+            ? {}
+            : { gameDurationMinutes: rules.gameDurationMinutes }),
           template,
           rescheduledReason: 'Изменение расписания плей-офф',
         });
@@ -3184,6 +3205,7 @@ interface PlayoffRoundRules {
   roundBreakMs: number;
   firstGameStartsAt: Date | null;
   readinessMinutes: number;
+  gameDurationMinutes: number | null;
   plannedStartIntervalMinutes: number;
   scheduleDays: RoundGameDay[] | null;
   overtime: {
@@ -3336,6 +3358,10 @@ export function playoffRoundRules(
       1,
       120,
     ),
+    gameDurationMinutes:
+      record.gameDurationMinutes === undefined
+        ? null
+        : boundedInteger(record.gameDurationMinutes, 20, 1, 1440),
     plannedStartIntervalMinutes: boundedInteger(
       record.plannedStartIntervalMinutes,
       DEFAULT_TOURNAMENT_PLANNED_START_INTERVAL_MINUTES,
@@ -3394,6 +3420,7 @@ function tieBreakRules(rules: TournamentRulesSnapshot): PlayoffRoundRules {
       ),
     ),
     readinessMinutes: DEFAULT_TOURNAMENT_READINESS_MINUTES,
+    gameDurationMinutes: null,
     plannedStartIntervalMinutes: DEFAULT_TOURNAMENT_PLANNED_START_INTERVAL_MINUTES,
     scheduleDays: null,
     overtime: overtimeRules(configured.overtime, defaultOvertime),
@@ -3895,7 +3922,12 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
           rules.winsRequired * 2 - 1,
           rules.plannedStartIntervalMinutes,
         );
-        const endsAt = attemptDeadline(lastGame.startsAt, rules.readinessMinutes, template);
+        const endsAt = attemptDeadline(
+          lastGame.startsAt,
+          rules.readinessMinutes,
+          template,
+          rules.gameDurationMinutes ?? undefined,
+        );
         schedules.set(roundNumber, {
           rules,
           startsAt: days[0]!.firstGameStartsAt,
@@ -4024,6 +4056,7 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
                 modernSlot.startsAt,
                 rules.readinessMinutes,
                 scheduleWindows.template!,
+                rules.gameDurationMinutes ?? undefined,
               )
             : legacyWindow!.endsAt;
         const insertedFixture = await client.query<{ id: string }>(
@@ -4058,6 +4091,9 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
             roundGameDayId: modernSlot.day.id!,
             scheduledStartsAt: modernSlot.startsAt,
             readinessMinutes: rules.readinessMinutes,
+            ...(rules.gameDurationMinutes === null
+              ? {}
+              : { gameDurationMinutes: rules.gameDurationMinutes }),
             template: scheduleWindows.template!,
           });
         }

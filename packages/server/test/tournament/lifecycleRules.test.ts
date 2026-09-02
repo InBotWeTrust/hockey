@@ -103,7 +103,7 @@ describe('normalizePublishedTournamentLifecycleRules', () => {
     expect(normalized.playoffRounds).toEqual([
       expect.objectContaining({
         readinessMinutes: 5,
-        plannedStartIntervalMinutes: 20,
+        plannedStartIntervalMinutes: 30,
         scheduleDays: [
           { localDate: '2030-10-26', firstWaveLocalTime: '20:00', maxResultGames: 4 },
           { localDate: '2030-10-27', firstWaveLocalTime: '20:00', maxResultGames: 3 },
@@ -151,7 +151,7 @@ describe('normalizePublishedTournamentLifecycleRules', () => {
     expect(normalized.playoffRounds).toEqual([
       expect.objectContaining({
         readinessMinutes: 5,
-        plannedStartIntervalMinutes: 20,
+        plannedStartIntervalMinutes: 30,
         scheduleDays: [
           { localDate: '2030-10-26', firstWaveLocalTime: '20:00', maxResultGames: 1 },
           { localDate: '2030-10-27', firstWaveLocalTime: '20:00', maxResultGames: 1 },
@@ -210,7 +210,7 @@ describe('published tournament route rules', () => {
       playoffRounds: [
         {
           readinessMinutes: 5,
-          plannedStartIntervalMinutes: 20,
+          plannedStartIntervalMinutes: 30,
           scheduleDays: [{ maxResultGames: 1 }],
         },
       ],

@@ -11,7 +11,7 @@ export {
 } from './automaticLifecycle.js';
 
 export const DEFAULT_TOURNAMENT_READINESS_MINUTES = 5;
-export const DEFAULT_TOURNAMENT_PLANNED_START_INTERVAL_MINUTES = 20;
+export const DEFAULT_TOURNAMENT_PLANNED_START_INTERVAL_MINUTES = 30;
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -46,6 +46,10 @@ export function normalizePublishedTournamentLifecycleRules<T extends UnknownReco
           round.readinessMinutes,
           DEFAULT_TOURNAMENT_READINESS_MINUTES,
         );
+        const gameDurationMinutes =
+          round.gameDurationMinutes === undefined
+            ? undefined
+            : explicitNumberOrDefault(round.gameDurationMinutes, Number.NaN);
         const plannedStartIntervalMinutes = explicitNumberOrDefault(
           round.plannedStartIntervalMinutes,
           DEFAULT_TOURNAMENT_PLANNED_START_INTERVAL_MINUTES,
@@ -71,6 +75,7 @@ export function normalizePublishedTournamentLifecycleRules<T extends UnknownReco
         validateRoundGameDays({
           winsRequired,
           readinessMinutes,
+          ...(gameDurationMinutes === undefined ? {} : { gameDurationMinutes }),
           plannedStartIntervalMinutes,
           days: scheduleDays,
         });
@@ -78,6 +83,7 @@ export function normalizePublishedTournamentLifecycleRules<T extends UnknownReco
           ...round,
           winsRequired,
           readinessMinutes,
+          ...(gameDurationMinutes === undefined ? {} : { gameDurationMinutes }),
           plannedStartIntervalMinutes,
           scheduleDays,
         };
