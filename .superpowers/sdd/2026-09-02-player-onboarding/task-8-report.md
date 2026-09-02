@@ -2,6 +2,8 @@
 
 Implementation commit: `1c1da10` (`feat(web): add the first-goal onboarding step`)
 
+Review-fix commit: `5b65106` (`fix(web): harden onboarding tutorial recovery`)
+
 ## Scope delivered
 
 - Extended `PlayView` with opt-in result copy while preserving the existing default labels and renderer/gameplay path.
@@ -43,4 +45,19 @@ Implementation commit: `1c1da10` (`feat(web): add the first-goal onboarding step
 ## Concerns
 
 - No rendered browser QA was performed in this implementation task. The CSS containment contract is regression-tested and the production build passes, but visual acceptance should still inspect the tutorial at representative mobile heights before release.
-- Tutorial shot transport failures remain governed by the existing PlayView pending-shot behavior; Task 8 required retryable start lifecycle and immediate retries for authoritative non-goals, not a new generic shot-error UX.
+
+## Independent review fix round 1
+
+The initial review reported three Important findings. All were reproduced with failing tests before production changes:
+
+- A rejected `submitShot` produced an unhandled rejection and left PlayView's pending-shot guard stuck. PlayView now catches failures, clears pending state in `finally`, ignores stale/unmounted resolution and exposes an optional error callback. Tutorial UI shows a dismissible retry message and permits another shot; normal callers remain unchanged.
+- Tutorial navigation previously exposed both PlayView's Home action and the outer Back button, and a tutorial published at index zero could decrement below zero. PlayView now has an opt-in hidden-back contract, the tutorial owns exactly one outer Back only when `stepIndex > 0`, and the flow clamps backward navigation to zero.
+- Reduced motion was applied only after a confirmed goal. Tutorial preference is now detected before PlayView mounts and an opt-in PlayView override shortens flight/result timing from the first attempt; default callers retain existing timing.
+
+Fix verification:
+
+- RED: 7 focused failures plus 2 unhandled promise rejections across the three findings.
+- GREEN focused Task 8: 3 files / 30 tests PASS with no unhandled errors or React warnings.
+- GREEN expanded PlayView/tutorial/flow/gate/App: 5 files / 42 tests PASS.
+- Full web runner: 75 non-Daily files / 562 tests PASS, then all 65 isolated DailyScreen scenarios PASS; exit code 0.
+- Web typecheck/build, root lint, focused Prettier, `git diff --check`, and unchanged game-core check: PASS.
