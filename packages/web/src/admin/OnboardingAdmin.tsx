@@ -4,12 +4,14 @@ import { ApiError } from '../api/apiFetch.js';
 import type { OnboardingChainKey } from '../api/onboarding.js';
 import { OnboardingFlow } from '../onboarding/OnboardingFlow.js';
 import { OnboardingStepEditor } from './OnboardingStepEditor.js';
+import { GlassSelect } from '../components/GlassSelect.js';
 import {
   createOnboardingStep,
   deleteOnboardingStep,
   duplicateOnboardingStep,
   fetchOnboardingChain,
   fetchOnboardingPreview,
+  fetchOnboardingStats,
   patchOnboardingStep,
   publishOnboardingDraft,
   reorderOnboardingSteps,
@@ -20,6 +22,7 @@ import {
   type AdminOnboardingStep,
   type AdminOnboardingStepInput,
   type AdminOnboardingPreview,
+  type AdminOnboardingStats,
 } from './onboardingApi.js';
 import './onboarding-admin.css';
 
@@ -62,6 +65,25 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Не удалось выполнить действие';
 }
 
+const integerFormat = new Intl.NumberFormat('ru-RU');
+const decimalFormat = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1 });
+
+function durationText(seconds: number | null): string {
+  if (seconds === null) return '—';
+  const rounded = Math.max(0, Math.round(seconds));
+  const minutes = Math.floor(rounded / 60);
+  const rest = rounded % 60;
+  return minutes > 0 ? `${minutes} мин ${rest} сек` : `${rest} сек`;
+}
+
+function nullableNumber(value: number | null): string {
+  return value === null ? '—' : decimalFormat.format(value);
+}
+
+function nullablePercent(value: number | null): string {
+  return value === null ? '—' : `${decimalFormat.format(value)}%`;
+}
+
 export function OnboardingAdmin(): JSX.Element {
   const [chainKey, setChainKey] = useState<OnboardingChainKey>('beginner');
   const [section, setSection] = useState<Section>('content');
@@ -73,6 +95,13 @@ export function OnboardingAdmin(): JSX.Element {
   const [draggedStepId, setDraggedStepId] = useState<string | null>(null);
   const [validationIssues, setValidationIssues] = useState<PublishIssue[]>([]);
   const [brokenThumbnails, setBrokenThumbnails] = useState(() => new Set<string>());
+  const [selectedVersionId, setSelectedVersionId] = useState('');
+  const [statsFrom, setStatsFrom] = useState('');
+  const [statsTo, setStatsTo] = useState('');
+  const [stats, setStats] = useState<AdminOnboardingStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [statsError, setStatsError] = useState<string | null>(null);
+  const [statsRetry, setStatsRetry] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -82,13 +111,38 @@ export function OnboardingAdmin(): JSX.Element {
     setEditorStep(undefined);
     setPreview(null);
     void fetchOnboardingChain(chainKey)
-      .then((next) => active && setChain(next))
+      .then((next) => {
+        if (!active) return;
+        setChain(next);
+        setSelectedVersionId(next.published?.id ?? next.publishedVersions[0]?.id ?? '');
+      })
       .catch((nextError: unknown) => active && setError(errorMessage(nextError)))
       .finally(() => active && setLoading(false));
     return () => {
       active = false;
     };
   }, [chainKey]);
+
+  const invalidStatsDates = statsFrom !== '' && statsTo !== '' && statsFrom > statsTo;
+
+  useEffect(() => {
+    if (section !== 'statistics' || selectedVersionId === '' || invalidStatsDates) return;
+    let active = true;
+    setStatsLoading(true);
+    setStatsError(null);
+    void fetchOnboardingStats({
+      chain: chainKey,
+      versionId: selectedVersionId,
+      ...(statsFrom === '' ? {} : { from: `${statsFrom}T00:00:00.000Z` }),
+      ...(statsTo === '' ? {} : { to: `${statsTo}T23:59:59.999Z` }),
+    })
+      .then((next) => active && setStats(next))
+      .catch((nextError: unknown) => active && setStatsError(errorMessage(nextError)))
+      .finally(() => active && setStatsLoading(false));
+    return () => {
+      active = false;
+    };
+  }, [chainKey, invalidStatsDates, section, selectedVersionId, statsFrom, statsRetry, statsTo]);
 
   const editableSteps = chain?.draft?.steps ?? chain?.published?.steps ?? [];
   const tutorialExists = editableSteps.some((step) => step.kind === 'tutorial_shot');
@@ -391,11 +445,163 @@ export function OnboardingAdmin(): JSX.Element {
         <div role="status">Предпросмотр пока недоступен</div>
       )}
       {!loading && section === 'statistics' && (
-        <div className="glass" style={{ borderRadius: 18, padding: 16 }}>
-          <h3 style={{ marginTop: 0 }}>Статистика онбординга</h3>
-          <p>Подробная воронка прохождения появится в следующем этапе.</p>
-        </div>
+        <OnboardingStatistics
+          chain={chain}
+          selectedVersionId={selectedVersionId}
+          onVersionChange={setSelectedVersionId}
+          from={statsFrom}
+          to={statsTo}
+          onFromChange={setStatsFrom}
+          onToChange={setStatsTo}
+          stats={stats}
+          loading={statsLoading}
+          error={invalidStatsDates ? 'Дата начала не может быть позже даты окончания' : statsError}
+          onRetry={() => setStatsRetry((value) => value + 1)}
+        />
       )}
     </section>
+  );
+}
+
+function OnboardingStatistics({
+  chain,
+  selectedVersionId,
+  onVersionChange,
+  from,
+  to,
+  onFromChange,
+  onToChange,
+  stats,
+  loading,
+  error,
+  onRetry,
+}: {
+  chain: AdminOnboardingChain | null;
+  selectedVersionId: string;
+  onVersionChange: (value: string) => void;
+  from: string;
+  to: string;
+  onFromChange: (value: string) => void;
+  onToChange: (value: string) => void;
+  stats: AdminOnboardingStats | null;
+  loading: boolean;
+  error: string | null;
+  onRetry: () => void;
+}): JSX.Element {
+  const versions = chain?.publishedVersions ?? [];
+  const selected = versions.find((version) => version.id === selectedVersionId);
+  const cards = stats
+    ? [
+        ['Уникальные старты', integerFormat.format(stats.startedUsers)],
+        ['Завершения', integerFormat.format(stats.completedUsers)],
+        ['Конверсия', `${decimalFormat.format(stats.completionRate)}%`],
+        ['Среднее время', durationText(stats.averageCompletionSeconds)],
+        ['Повторные старты', integerFormat.format(stats.repeatStarts)],
+        ['Среднее попыток', nullableNumber(stats.tutorial.averageAttemptsToGoal)],
+        ['Гол с первой попытки', nullablePercent(stats.tutorial.firstAttemptGoalRate)],
+        ['Максимум попыток', nullableNumber(stats.tutorial.maxAttempts)],
+      ]
+    : [];
+  return (
+    <div style={{ display: 'grid', gap: 12 }}>
+      <div className="glass" style={{ borderRadius: 18, padding: 16, display: 'grid', gap: 12 }}>
+        <h3 style={{ margin: 0 }}>Статистика онбординга</h3>
+        {versions.length === 0 ? (
+          <div role="status">Нет опубликованных версий</div>
+        ) : (
+          <>
+            <GlassSelect
+              value={selectedVersionId}
+              options={versions.map((version) => ({
+                value: version.id,
+                label: `Версия ${version.versionNumber} · ${new Date(version.publishedAt).toLocaleDateString('ru-RU')}`,
+              }))}
+              onChange={onVersionChange}
+              ariaLabel="Опубликованная версия"
+            />
+            {selected && <strong>Выбрана версия {selected.versionNumber}</strong>}
+          </>
+        )}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+          <label>
+            Дата начала
+            <input
+              type="date"
+              aria-label="Дата начала"
+              value={from}
+              onChange={(event) => onFromChange(event.target.value)}
+            />
+          </label>
+          <label>
+            Дата окончания
+            <input
+              type="date"
+              aria-label="Дата окончания"
+              value={to}
+              onChange={(event) => onToChange(event.target.value)}
+            />
+          </label>
+        </div>
+        {loading && <div role="status">Загружаем статистику…</div>}
+        {error && (
+          <div role="alert">
+            {error}
+            <button className="btn btn--ghost" type="button" onClick={onRetry}>
+              Повторить загрузку статистики
+            </button>
+          </div>
+        )}
+      </div>
+      {!loading && !error && stats && (
+        <>
+          {stats.startedUsers === 0 && (
+            <div className="glass" role="status" style={{ borderRadius: 16, padding: 12 }}>
+              За выбранный период запусков нет
+            </div>
+          )}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+              gap: 8,
+            }}
+          >
+            {cards.map(([label, value]) => (
+              <div className="glass" style={{ borderRadius: 16, padding: 12 }} key={label}>
+                <small>{label}</small>
+                <strong style={{ display: 'block', marginTop: 5 }}>{value}</strong>
+              </div>
+            ))}
+          </div>
+          <div className="glass" style={{ borderRadius: 18, padding: 12, overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th>Шаг</th>
+                  <th>Дошли</th>
+                  <th>Отвал</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...stats.steps]
+                  .sort((a, b) => a.position - b.position)
+                  .map((step) => (
+                    <tr key={step.stepId}>
+                      <td>
+                        {step.position}. {step.title}
+                      </td>
+                      <td>{integerFormat.format(step.reachedUsers)}</td>
+                      <td>{integerFormat.format(step.dropOffUsers)}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+            <p style={{ color: 'var(--muted)', marginBottom: 0 }}>
+              Отвал учитывается через 30 минут после последнего действия
+            </p>
+          </div>
+        </>
+      )}
+    </div>
   );
 }

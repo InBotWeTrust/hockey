@@ -279,6 +279,19 @@ async function loadAdminChain(
       limit 1`,
     [chainKey],
   );
+  const publishedVersions = await db.query<{
+    id: string;
+    version_number: number;
+    published_at: Date;
+  }>(
+    `select id,
+            row_number() over (order by created_at, id)::int as version_number,
+            published_at
+       from onboarding_version
+      where chain_key = $1 and status = 'published'
+      order by created_at desc, id desc`,
+    [chainKey],
+  );
   return {
     chainKey: chain.key,
     enforcementEnabled: chain.enforcement_enabled,
@@ -290,6 +303,11 @@ async function loadAdminChain(
       drafts.rows[0] === undefined
         ? null
         : await loadVersion(db, drafts.rows[0].id, mediaAccessSecret),
+    publishedVersions: publishedVersions.rows.map((version) => ({
+      id: version.id,
+      versionNumber: version.version_number,
+      publishedAt: version.published_at.toISOString(),
+    })),
   };
 }
 

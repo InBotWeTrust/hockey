@@ -37,6 +37,8 @@ function makeAdminUser() {
     lifetimeGoalsTotal: 6,
     accuracy: 50,
     competitionLevel: 'beginner',
+    beginnerOnboardingCompleted: true,
+    amateurOnboardingCompleted: true,
     identities: [
       {
         source: 'custom',
@@ -92,6 +94,148 @@ function makeAdminUser() {
     },
   };
 }
+
+it('saves onboarding flags independently and updates persisted display only from server read-back', async () => {
+  useAuthStore.getState().setSession({
+    accessToken: 'a',
+    refreshToken: 'r',
+    user: { id: 'admin', displayName: 'Egor', role: 'admin' },
+  });
+  let patchBody: Record<string, unknown> | null = null;
+  let authoritativeUser = makeAdminUser();
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const url = String(input);
+    if (url.includes('/admin/summary')) return new Response(JSON.stringify(makeAdminSummary()));
+    if (url.includes('/admin/feedback')) {
+      return new Response(
+        JSON.stringify({
+          feedback: [],
+          total: 0,
+          unreadCount: 0,
+          ratingStats: { count: 0, average: null },
+        }),
+      );
+    }
+    if (url.endsWith('/admin/users/u1') && init?.method === 'PATCH') {
+      patchBody = JSON.parse(String(init.body));
+      authoritativeUser = { ...authoritativeUser, beginnerOnboardingCompleted: false };
+      return new Response(JSON.stringify({ user: authoritativeUser }));
+    }
+    if (url.endsWith('/admin/users/u1')) {
+      return new Response(
+        JSON.stringify({
+          user: authoritativeUser,
+          purchaseSummary: { totalRubSpent: 0, purchasesCount: 0 },
+          purchases: [],
+          achievements: [],
+          shotModes: [],
+          events: [],
+        }),
+      );
+    }
+    if (url.includes('/admin/users')) {
+      return new Response(
+        JSON.stringify({
+          users: [authoritativeUser],
+          total: 1,
+          limit: 20,
+          offset: 0,
+          notificationStats: makeNotificationStats(),
+        }),
+      );
+    }
+    return new Response('{}');
+  });
+
+  renderAdmin();
+  fireEvent.click(await screen.findByRole('button', { name: 'Игроки' }));
+  fireEvent.click(await screen.findByRole('button', { name: /Regular Player/ }));
+  const dialog = await screen.findByRole('dialog', { name: 'Игрок Regular Player' });
+  expect(within(dialog).getByTestId('beginner-onboarding-status')).toHaveTextContent('Пройден');
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Редактировать' }));
+  const beginner = within(dialog).getByRole('checkbox', { name: 'Онбординг новичка пройден' });
+  const amateur = within(dialog).getByRole('checkbox', { name: 'Онбординг любителя пройден' });
+  expect(beginner).toBeChecked();
+  expect(amateur).toBeChecked();
+  fireEvent.click(beginner);
+  expect(within(dialog).getByTestId('beginner-onboarding-status')).toHaveTextContent('Пройден');
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Применить' }));
+
+  await waitFor(() => expect(patchBody).not.toBeNull());
+  expect(patchBody).toMatchObject({
+    beginnerOnboardingCompleted: false,
+    amateurOnboardingCompleted: true,
+  });
+  await waitFor(() =>
+    expect(within(dialog).getByTestId('beginner-onboarding-status')).toHaveTextContent(
+      'Не пройден',
+    ),
+  );
+  expect(within(dialog).getByTestId('amateur-onboarding-status')).toHaveTextContent('Пройден');
+});
+
+it('keeps edit mode and authoritative onboarding display when player save fails', async () => {
+  useAuthStore.getState().setSession({
+    accessToken: 'a',
+    refreshToken: 'r',
+    user: { id: 'admin', displayName: 'Egor', role: 'admin' },
+  });
+  const user = makeAdminUser();
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const url = String(input);
+    if (url.includes('/admin/summary')) return new Response(JSON.stringify(makeAdminSummary()));
+    if (url.includes('/admin/feedback'))
+      return new Response(
+        JSON.stringify({
+          feedback: [],
+          total: 0,
+          unreadCount: 0,
+          ratingStats: { count: 0, average: null },
+        }),
+      );
+    if (url.endsWith('/admin/users/u1') && init?.method === 'PATCH') {
+      return new Response(JSON.stringify({ error: { code: 'failed', message: 'Не сохранено' } }), {
+        status: 500,
+      });
+    }
+    if (url.endsWith('/admin/users/u1'))
+      return new Response(
+        JSON.stringify({
+          user,
+          purchaseSummary: { totalRubSpent: 0, purchasesCount: 0 },
+          purchases: [],
+          achievements: [],
+          shotModes: [],
+          events: [],
+        }),
+      );
+    if (url.includes('/admin/users'))
+      return new Response(
+        JSON.stringify({
+          users: [user],
+          total: 1,
+          limit: 20,
+          offset: 0,
+          notificationStats: makeNotificationStats(),
+        }),
+      );
+    return new Response('{}');
+  });
+  renderAdmin();
+  fireEvent.click(await screen.findByRole('button', { name: 'Игроки' }));
+  fireEvent.click(await screen.findByRole('button', { name: /Regular Player/ }));
+  const dialog = await screen.findByRole('dialog', { name: 'Игрок Regular Player' });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Редактировать' }));
+  fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Онбординг новичка пройден' }));
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Применить' }));
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent('Не удалось выполнить запрос');
+  expect(
+    within(dialog).getByRole('checkbox', { name: 'Онбординг новичка пройден' }),
+  ).not.toBeChecked();
+  expect(within(dialog).getByTestId('beginner-onboarding-status')).toHaveTextContent('Пройден');
+});
 
 function makeNotificationStats() {
   return {

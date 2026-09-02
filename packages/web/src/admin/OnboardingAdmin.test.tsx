@@ -27,6 +27,10 @@ const chain = {
     publishedAt: '2026-09-01T01:00:00.000Z',
     steps: [],
   },
+  publishedVersions: [
+    { id: 'published', versionNumber: 2, publishedAt: '2026-09-01T01:00:00.000Z' },
+    { id: 'published-old', versionNumber: 1, publishedAt: '2026-08-01T01:00:00.000Z' },
+  ],
   draft: {
     id: 'draft',
     status: 'draft' as const,
@@ -215,6 +219,134 @@ describe('OnboardingAdmin', () => {
     expect(adminCss).toMatch(
       /@media\s*\(max-width:\s*640px\)[\s\S]*\.onboarding-step-editor__speeds\s*\{[^}]*grid-template-columns:\s*1fr/,
     );
+  });
+
+  it('loads one selected published version with independent date bounds and renders all metrics', async () => {
+    const requests: string[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      requests.push(url);
+      if (url.endsWith('/admin/onboarding/chains/beginner')) {
+        return new Response(JSON.stringify({ chain }));
+      }
+      if (url.includes('/admin/onboarding/stats')) {
+        return new Response(
+          JSON.stringify({
+            startedUsers: 12,
+            completedUsers: 9,
+            completionRate: 75,
+            averageCompletionSeconds: 125,
+            repeatStarts: 3,
+            tutorial: {
+              averageAttemptsToGoal: null,
+              firstAttemptGoalRate: null,
+              maxAttempts: null,
+            },
+            steps: [
+              { stepId: 's2', position: 2, title: 'Второй', reachedUsers: 10, dropOffUsers: 2 },
+              { stepId: 's1', position: 1, title: 'Первый', reachedUsers: 12, dropOffUsers: 1 },
+            ],
+          }),
+        );
+      }
+      throw new Error(`Unexpected request ${url}`);
+    });
+    renderAdmin();
+    await screen.findByText('Всё начинается здесь');
+    fireEvent.click(screen.getByRole('button', { name: 'Статистика' }));
+
+    expect(await screen.findByText('Уникальные старты')).toBeInTheDocument();
+    expect(screen.getAllByText('12')).toHaveLength(2);
+    expect(screen.getByText('75%')).toBeInTheDocument();
+    expect(screen.getByText('2 мин 5 сек')).toBeInTheDocument();
+    expect(screen.getAllByText('—')).toHaveLength(3);
+    expect(
+      screen.getByText('Отвал учитывается через 30 минут после последнего действия'),
+    ).toBeInTheDocument();
+    expect(
+      screen
+        .getAllByRole('row')
+        .slice(1)
+        .map((row) => row.textContent),
+    ).toEqual([expect.stringContaining('Первый'), expect.stringContaining('Второй')]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Опубликованная версия' }));
+    fireEvent.click(await screen.findByRole('option', { name: /Версия 1/ }));
+    fireEvent.change(screen.getByLabelText('Дата начала'), { target: { value: '2026-08-10' } });
+    fireEvent.change(screen.getByLabelText('Дата окончания'), { target: { value: '2026-08-12' } });
+    await waitFor(() =>
+      expect(
+        requests.some(
+          (url) =>
+            url.includes('chain=beginner') &&
+            url.includes('versionId=published-old') &&
+            url.includes('from=2026-08-10T00%3A00%3A00.000Z') &&
+            url.includes('to=2026-08-12T23%3A59%3A59.999Z'),
+        ),
+      ).toBe(true),
+    );
+    expect(screen.getByText(/Выбрана версия 1/)).toBeInTheDocument();
+  });
+
+  it('keeps invalid date filters understandable and retryable after an API failure', async () => {
+    let statsAttempts = 0;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/admin/onboarding/chains/beginner')) {
+        return new Response(JSON.stringify({ chain }));
+      }
+      if (url.includes('/admin/onboarding/stats')) {
+        statsAttempts += 1;
+        return new Response(
+          JSON.stringify({ error: { code: 'failed', message: 'Сбой статистики' } }),
+          { status: 500 },
+        );
+      }
+      throw new Error(`Unexpected request ${url}`);
+    });
+    renderAdmin();
+    await screen.findByText('Всё начинается здесь');
+    fireEvent.click(screen.getByRole('button', { name: 'Статистика' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось выполнить запрос');
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить загрузку статистики' }));
+    await waitFor(() => expect(statsAttempts).toBe(2));
+    fireEvent.change(screen.getByLabelText('Дата начала'), { target: { value: '2026-09-10' } });
+    fireEvent.change(screen.getByLabelText('Дата окончания'), { target: { value: '2026-09-01' } });
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Дата начала не может быть позже даты окончания',
+    );
+  });
+
+  it('shows an explicit empty state for a selected version without natural starts', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/admin/onboarding/chains/beginner')) {
+        return new Response(JSON.stringify({ chain }));
+      }
+      if (url.includes('/admin/onboarding/stats')) {
+        return new Response(
+          JSON.stringify({
+            startedUsers: 0,
+            completedUsers: 0,
+            completionRate: 0,
+            averageCompletionSeconds: null,
+            repeatStarts: 0,
+            tutorial: {
+              averageAttemptsToGoal: null,
+              firstAttemptGoalRate: null,
+              maxAttempts: null,
+            },
+            steps: [],
+          }),
+        );
+      }
+      throw new Error(`Unexpected request ${url}`);
+    });
+    renderAdmin();
+    await screen.findByText('Всё начинается здесь');
+    fireEvent.click(screen.getByRole('button', { name: 'Статистика' }));
+    expect(await screen.findByText('За выбранный период запусков нет')).toBeInTheDocument();
+    expect(screen.getAllByText('0').length).toBeGreaterThanOrEqual(3);
   });
 
   it('shows fixed chains, statuses, CRUD and accessible reorder controls', async () => {
@@ -418,13 +550,14 @@ describe('OnboardingAdmin', () => {
     ).toBe(false);
   });
 
-  it('renders a truthful statistics placeholder', async () => {
+  it('loads the statistics section instead of rendering a placeholder', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ chain: { ...chain, draft: null } })),
     );
     renderAdmin();
     await screen.findByText('Опубликовано');
     fireEvent.click(screen.getByRole('button', { name: 'Статистика' }));
-    expect(screen.getByText(/появится в следующем этапе/i)).toBeInTheDocument();
+    expect(screen.queryByText(/появится в следующем этапе/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Опубликованная версия' })).toBeInTheDocument();
   });
 });

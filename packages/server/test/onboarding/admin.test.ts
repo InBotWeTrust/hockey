@@ -45,6 +45,7 @@ interface AdminChain {
   enforcementEnabled: boolean;
   published: AdminVersion | null;
   draft: AdminVersion | null;
+  publishedVersions: Array<{ id: string; versionNumber: number; publishedAt: string }>;
 }
 
 function validWebpBytes(): Buffer {
@@ -348,6 +349,38 @@ describe.skipIf(!hasIntegrationEnv)('/admin/onboarding', () => {
       [published.stepIds[0]],
     );
     expect(stored.rows[0]?.title).toBe('Старый заголовок');
+  });
+
+  it('returns every published version newest-first with stable version numbers and current included', async () => {
+    const mediaObjectId = await insertMedia();
+    const first = await insertVersion('beginner', 'published', [
+      { kind: 'informational', position: 1, mediaObjectId },
+    ]);
+    const second = await insertVersion('beginner', 'published', [
+      { kind: 'informational', position: 1, mediaObjectId },
+    ]);
+    const third = await insertVersion('beginner', 'published', [
+      { kind: 'informational', position: 1, mediaObjectId },
+    ]);
+    await pool.query(
+      `update onboarding_version
+          set created_at = case id when $1 then '2026-09-01T00:00:00Z'::timestamptz
+                                   when $2 then '2026-09-02T00:00:00Z'::timestamptz
+                                   when $3 then '2026-09-03T00:00:00Z'::timestamptz end,
+              published_at = case id when $1 then '2026-09-01T01:00:00Z'::timestamptz
+                                     when $2 then '2026-09-02T01:00:00Z'::timestamptz
+                                     when $3 then '2026-09-03T01:00:00Z'::timestamptz end
+        where id in ($1, $2, $3)`,
+      [first.versionId, second.versionId, third.versionId],
+    );
+
+    const chain = await readChain('beginner');
+    expect(chain.published?.id).toBe(third.versionId);
+    expect(chain.publishedVersions).toEqual([
+      { id: third.versionId, versionNumber: 3, publishedAt: '2026-09-03T01:00:00.000Z' },
+      { id: second.versionId, versionNumber: 2, publishedAt: '2026-09-02T01:00:00.000Z' },
+      { id: first.versionId, versionNumber: 1, publishedAt: '2026-09-01T01:00:00.000Z' },
+    ]);
   });
 
   it('creates, validates, duplicates, updates, and deletes draft steps with full read-back', async () => {

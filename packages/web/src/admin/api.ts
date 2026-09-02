@@ -248,6 +248,8 @@ export interface AdminUser {
   lifetimeGoalsTotal: number;
   accuracy: number;
   competitionLevel: 'beginner' | 'amateur' | 'professional';
+  beginnerOnboardingCompleted: boolean;
+  amateurOnboardingCompleted: boolean;
   identities: Array<{
     source: AdminIdentitySource;
     label: string;
@@ -945,6 +947,8 @@ export interface AdminUserPatch {
   lifetimeShotsTotal?: number;
   lifetimeGoalsTotal?: number;
   isBlocked?: boolean;
+  beginnerOnboardingCompleted?: boolean;
+  amateurOnboardingCompleted?: boolean;
   wallet?: Partial<AdminUser['wallet']>;
 }
 

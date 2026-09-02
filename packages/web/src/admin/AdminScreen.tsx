@@ -2057,6 +2057,12 @@ function UserDetailsModal({
   const [coins, setCoins] = useState(fieldNumber(user.wallet.coins));
   const [shotsCurrent, setShotsCurrent] = useState(fieldNumber(user.wallet.shotsCurrent));
   const [shotsMax, setShotsMax] = useState(fieldNumber(user.wallet.shotsMax));
+  const [beginnerOnboardingCompleted, setBeginnerOnboardingCompleted] = useState(
+    user.beginnerOnboardingCompleted,
+  );
+  const [amateurOnboardingCompleted, setAmateurOnboardingCompleted] = useState(
+    user.amateurOnboardingCompleted,
+  );
 
   useEffect(() => {
     setRole(user.role);
@@ -2070,6 +2076,8 @@ function UserDetailsModal({
     setCoins(fieldNumber(user.wallet.coins));
     setShotsCurrent(fieldNumber(user.wallet.shotsCurrent));
     setShotsMax(fieldNumber(user.wallet.shotsMax));
+    setBeginnerOnboardingCompleted(user.beginnerOnboardingCompleted);
+    setAmateurOnboardingCompleted(user.amateurOnboardingCompleted);
   }, [user]);
 
   useEffect(() => {
@@ -2079,9 +2087,11 @@ function UserDetailsModal({
 
   const saveMutation = useMutation({
     mutationFn: () => patchAdminUser(user.id, buildUserPatch()),
-    onSuccess: () => {
+    onSuccess: (response) => {
+      queryClient.setQueryData<AdminUserDetail>(['admin', 'user', user.id], (current) =>
+        current === undefined ? current : { ...current, user: response.user },
+      );
       void queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
-      void queryClient.invalidateQueries({ queryKey: ['admin', 'user', user.id] });
       setEditMode(false);
       setConfirmAction(null);
     },
@@ -2106,6 +2116,8 @@ function UserDetailsModal({
       experience: Number(experience),
       lifetimeShotsTotal: Number(lifetimeShots),
       lifetimeGoalsTotal: Number(lifetimeGoals),
+      beginnerOnboardingCompleted,
+      amateurOnboardingCompleted,
       wallet: {
         coins: Number(coins),
         shotsCurrent: Number(shotsCurrent),
@@ -2208,6 +2220,24 @@ function UserDetailsModal({
 
         <PushNotificationCard pushNotifications={user.pushNotifications} />
 
+        <section className="glass" style={{ marginTop: 10, borderRadius: 18, padding: 12 }}>
+          <strong style={{ display: 'block', marginBottom: 8 }}>Онбординг</strong>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <div>
+              Новичок:{' '}
+              <span data-testid="beginner-onboarding-status">
+                {user.beginnerOnboardingCompleted ? 'Пройден' : 'Не пройден'}
+              </span>
+            </div>
+            <div>
+              Любитель:{' '}
+              <span data-testid="amateur-onboarding-status">
+                {user.amateurOnboardingCompleted ? 'Пройден' : 'Не пройден'}
+              </span>
+            </div>
+          </div>
+        </section>
+
         <section style={{ marginTop: 8, display: 'grid', gap: 8 }}>
           {user.isBlocked && (
             <InfoRow
@@ -2247,6 +2277,25 @@ function UserDetailsModal({
                 />
               </AdminField>
             </div>
+            <fieldset style={{ border: 0, margin: 0, padding: 0, display: 'grid', gap: 8 }}>
+              <legend style={{ fontWeight: 850, marginBottom: 6 }}>Прохождение онбординга</legend>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={beginnerOnboardingCompleted}
+                  onChange={(event) => setBeginnerOnboardingCompleted(event.target.checked)}
+                />{' '}
+                Онбординг новичка пройден
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={amateurOnboardingCompleted}
+                  onChange={(event) => setAmateurOnboardingCompleted(event.target.checked)}
+                />{' '}
+                Онбординг любителя пройден
+              </label>
+            </fieldset>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
               <AdminField label="Уровень">
                 <input value={level} onChange={(event) => setLevel(event.target.value)} />

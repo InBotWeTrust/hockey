@@ -23,6 +23,7 @@ export interface AdminOnboardingChain {
   enforcementEnabled: boolean;
   published: AdminOnboardingVersion | null;
   draft: AdminOnboardingVersion | null;
+  publishedVersions: Array<{ id: string; versionNumber: number; publishedAt: string }>;
 }
 
 export type AdminOnboardingStepInput =
