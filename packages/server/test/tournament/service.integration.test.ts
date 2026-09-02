@@ -2277,7 +2277,8 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
           homeSequence: ['H', 'A', 'H'],
           duelTemplateId: template.rows[0]!.id,
           readinessMinutes: 5,
-          plannedStartIntervalMinutes: 20,
+          gameDurationMinutes: 20,
+          plannedStartIntervalMinutes: 30,
           roundBreakMs: 0,
           overtime: { count: 1, shootoutInitialShots: 3 },
           firstGameStartsAt: '2030-09-05T07:00:00.000Z',
@@ -2367,12 +2368,13 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       fixture_starts_at: Date;
       attempt_starts_at: Date;
       readiness_expires_at: Date;
+      hard_deadline_at: Date;
       local_date: string;
     }>(
       `select (fixture.result_snapshot->>'gameNumber')::int as game_number,
               fixture.scheduled_starts_at as fixture_starts_at,
               attempt.scheduled_starts_at as attempt_starts_at,
-              attempt.readiness_expires_at,
+              attempt.readiness_expires_at, attempt.hard_deadline_at,
               day.local_date
          from tournament_fixture fixture
          join tournament_fixture_attempt attempt on attempt.fixture_id = fixture.id
@@ -2388,6 +2390,8 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         attemptStartsAt: fixture.attempt_starts_at.toISOString(),
         readinessMinutes:
           (fixture.readiness_expires_at.getTime() - fixture.attempt_starts_at.getTime()) / 60_000,
+        gameDurationMinutes:
+          (fixture.hard_deadline_at.getTime() - fixture.attempt_starts_at.getTime()) / 60_000,
         localDate: fixture.local_date,
       })),
     ).toEqual([
@@ -2396,13 +2400,15 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         startsAt: '2030-09-10T08:00:00.000Z',
         attemptStartsAt: '2030-09-10T08:00:00.000Z',
         readinessMinutes: 5,
+        gameDurationMinutes: 20,
         localDate: '2030-09-10',
       },
       {
         gameNumber: 2,
-        startsAt: '2030-09-10T08:20:00.000Z',
-        attemptStartsAt: '2030-09-10T08:20:00.000Z',
+        startsAt: '2030-09-10T08:30:00.000Z',
+        attemptStartsAt: '2030-09-10T08:30:00.000Z',
         readinessMinutes: 5,
+        gameDurationMinutes: 20,
         localDate: '2030-09-10',
       },
       {
@@ -2410,6 +2416,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         startsAt: '2030-09-11T08:00:00.000Z',
         attemptStartsAt: '2030-09-11T08:00:00.000Z',
         readinessMinutes: 5,
+        gameDurationMinutes: 20,
         localDate: '2030-09-11',
       },
     ]);

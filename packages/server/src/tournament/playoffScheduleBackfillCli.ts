@@ -42,7 +42,7 @@ try {
     now: new Date(),
     dryRun: !apply,
     readinessMinutes: positiveIntegerOption('--readiness', 5),
-    plannedStartIntervalMinutes: positiveIntegerOption('--interval', 20),
+    plannedStartIntervalMinutes: positiveIntegerOption('--interval', 30),
   });
   console.log(JSON.stringify({ mode: apply ? 'apply' : 'dry-run', ...report }, null, 2));
   if (report.tournaments.some((tournament) => tournament.status === 'blocked')) {

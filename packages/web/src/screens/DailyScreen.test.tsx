@@ -627,6 +627,14 @@ describe('DailyScreen', () => {
     const title = await screen.findByText('Турнир с новой ежедневной игрой');
     expect(title).toHaveClass('arena-cube-title--long');
     expect(title).toHaveStyle({ WebkitLineClamp: '3' });
+    const classicDescription = screen.getByLabelText('Отдельная игра по правилам турнира');
+    expect(classicDescription.querySelectorAll('br')).toHaveLength(1);
+    expect(
+      screen.getByLabelText(/Турнир с новой ежедневной игрой\. 1-й тур\. До закрытия/),
+    ).toHaveStyle({
+      gridTemplateColumns: 'max-content max-content',
+      gap: 'clamp(14px, 2.2vh, 18px)',
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Начать' }));
 
     expect(await screen.findByText('Кубок классики · 1-й тур')).toBeInTheDocument();

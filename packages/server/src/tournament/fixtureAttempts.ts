@@ -253,10 +253,14 @@ export function attemptDeadline(
   scheduledStartsAt: Date,
   readinessMinutes: number,
   template: DuelTemplateLifecycleSnapshot,
+  gameDurationMinutes?: number,
 ): Date {
   return calculateHardGameDeadline({
     plannedStartAt: scheduledStartsAt,
     readyCheckDurationMs: readinessMinutes * 60_000,
+    ...(gameDurationMinutes === undefined
+      ? {}
+      : { configuredGameDurationMs: gameDurationMinutes * 60_000 }),
     templateTiming: template,
   });
 }
@@ -302,6 +306,7 @@ export async function insertInitialFixtureAttempt(
     roundGameDayId: string | null;
     scheduledStartsAt: Date;
     readinessMinutes: number;
+    gameDurationMinutes?: number;
     template: DuelTemplateLifecycleSnapshot;
     readinessMode?: 'manual' | 'auto_continue';
     rescheduledReason?: string;
@@ -314,6 +319,7 @@ export async function insertInitialFixtureAttempt(
     input.scheduledStartsAt,
     input.readinessMinutes,
     input.template,
+    input.gameDurationMinutes,
   );
   const inserted = await client.query<{ id: string }>(
     `insert into tournament_fixture_attempt

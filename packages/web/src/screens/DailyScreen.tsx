@@ -145,6 +145,7 @@ interface ArenaEntry {
   eyebrowStatus?: string;
   title: string;
   subtitle: string;
+  subtitleLines?: [string, string];
   meta: string;
   ctaLabel: string;
   disabled?: boolean;
@@ -1257,7 +1258,10 @@ function GameHub({
           ? 'Игра завершена, результат сохранён.'
           : started
             ? 'Турнирная игра уже начата.'
-            : 'Отдельная игра по правилам этого турнира.',
+            : 'Отдельная игра по правилам турнира',
+        ...(!completed && !started
+          ? { subtitleLines: ['Отдельная игра', 'по правилам турнира'] as [string, string] }
+          : {}),
         meta: completed
           ? `${game.total_goals} шайб · точность ${accuracy}`
           : `${game.current_period > 0 ? `${game.current_period}-й период` : 'Три периода'} · до ${formatEventRemaining(deadlineRemaining)}`,
@@ -1774,7 +1778,15 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
             textShadow: '0 0 7px rgba(0, 12, 24, 0.88)',
           }}
         >
-          {entry.subtitle}
+          {entry.subtitleLines ? (
+            <span aria-label={entry.subtitle}>
+              {entry.subtitleLines[0]}
+              <br />
+              {entry.subtitleLines[1]}
+            </span>
+          ) : (
+            entry.subtitle
+          )}
         </div>
         <div
           style={{
@@ -1844,10 +1856,10 @@ function DailyHubScoreboard({
           ? 'minmax(0, 1fr)'
           : align === 'left'
             ? 'max-content max-content'
-            : 'minmax(0, 1fr) minmax(0, 1fr)',
+            : 'max-content max-content',
         alignItems: 'center',
         justifyItems: timerOnly ? 'center' : align === 'left' ? 'start' : 'center',
-        gap: align === 'left' ? 36 : 'clamp(6px, 1.1vh, 10px)',
+        gap: align === 'left' ? 36 : 'clamp(14px, 2.2vh, 18px)',
         margin: '0 auto',
       }}
     >

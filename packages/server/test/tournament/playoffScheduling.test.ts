@@ -60,6 +60,30 @@ describe('validateRoundGameDays', () => {
     ).not.toThrow();
   });
 
+  it('accepts a configurable game duration and rejects overlapping starts', () => {
+    const days = [
+      { localDate: '2026-09-10', firstWaveLocalTime: '10:00', maxResultGames: 3 },
+    ];
+    expect(() =>
+      validateRoundGameDays({
+        winsRequired: 2,
+        readinessMinutes: 5,
+        gameDurationMinutes: 30,
+        plannedStartIntervalMinutes: 30,
+        days,
+      }),
+    ).not.toThrow();
+    expect(() =>
+      validateRoundGameDays({
+        winsRequired: 2,
+        readinessMinutes: 5,
+        gameDurationMinutes: 30,
+        plannedStartIntervalMinutes: 20,
+        days,
+      }),
+    ).toThrow('planned start interval cannot be shorter than game duration');
+  });
+
   it.each([
     ['no days', [], 'at least one game day is required'],
     [
@@ -314,6 +338,20 @@ describe('calculateHardGameDeadline', () => {
         },
       }).toISOString(),
     ).toBe('2026-09-10T10:20:15.000Z');
+  });
+
+  it('uses the configured total game duration when it is longer than the template minimum', () => {
+    expect(
+      calculateHardGameDeadline({
+        plannedStartAt: new Date('2026-09-10T10:00:00.000Z'),
+        readyCheckDurationMs: 5 * 60_000,
+        configuredGameDurationMs: 30 * 60_000,
+        templateTiming: {
+          periodDurationsMs: [3 * 60_000],
+          breakDurationsMs: [],
+        },
+      }).toISOString(),
+    ).toBe('2026-09-10T10:30:00.000Z');
   });
 
   it.each([
