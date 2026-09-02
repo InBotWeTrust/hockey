@@ -12,12 +12,13 @@ import { AppError } from '../plugins/errors.js';
 import { appendEvent } from '../duel/eventLog.js';
 import { parseTournamentConfig } from './config.js';
 import { resolveClassicResult } from './classic.js';
-import { rebuildDailyAggregateStandings } from './dailyAggregate.js';
-import { awardSharedPlacePoints } from './standings.js';
+import {
+  rebuildDailyAggregateStandings,
+  refreshDailyDayPlacements,
+} from './dailyAggregate.js';
 import type {
   ClassicTournamentConfig,
   TournamentClassicRules,
-  TournamentDailyMetric,
 } from './types.js';
 
 type ClassicSessionState = 'idle' | 'period_active' | 'break_active' | 'closed' | 'expired';
@@ -358,53 +359,6 @@ async function fetchPeriods(client: PoolClient, sessionId: string): Promise<Clas
   return rows;
 }
 
-async function refreshDayPlacements(client: PoolClient, context: ClassicContext): Promise<void> {
-  const results = await client.query<{
-    participant_id: string;
-    goals: number;
-    shots: number;
-  }>(
-    `select participant_id, goals, shots
-       from tournament_daily_result
-      where tournament_id = $1 and tournament_day = $2 and completed = true`,
-    [context.tournamentId, context.tournamentDay],
-  );
-  const metric: TournamentDailyMetric = context.config.dailyMetric;
-  const placementInput = results.rows.map((row) => ({
-    participantId: row.participant_id,
-    value:
-      metric === 'accuracy_average'
-        ? Number(row.shots) === 0
-          ? 0
-          : Number(row.goals) / Number(row.shots)
-        : Number(row.goals),
-  }));
-  const placements = awardSharedPlacePoints(
-    placementInput,
-    context.rulesSnapshot.dailyPlacePoints ??
-      placementInput.map((_, index) => placementInput.length - index),
-  );
-  await client.query(
-    `update tournament_daily_result set place = null, place_points = 0
-      where tournament_id = $1 and tournament_day = $2`,
-    [context.tournamentId, context.tournamentDay],
-  );
-  for (const placement of placements) {
-    await client.query(
-      `update tournament_daily_result
-          set place = $4, place_points = $5
-        where tournament_id = $1 and tournament_day = $2 and participant_id = $3`,
-      [
-        context.tournamentId,
-        context.tournamentDay,
-        placement.participantId,
-        placement.place,
-        placement.points,
-      ],
-    );
-  }
-}
-
 async function finalizeSessionResult(
   client: PoolClient,
   context: ClassicContext,
@@ -431,6 +385,18 @@ async function finalizeSessionResult(
         ? null
         : { shots: Number(dayEnd.shots_taken), goals: Number(dayEnd.goals) },
   });
+  const includedPeriods = result.gameCompleted
+    ? periods
+    : session.rules_snapshot.incompleteResultPolicy === 'all_shots'
+      ? periods
+      : periods.filter((period) => period.closed_reason !== 'day_end');
+  const activeDurationMs = result.counted
+    ? includedPeriods.reduce(
+        (total, period) =>
+          total + Math.max(0, period.ended_at.getTime() - period.started_at.getTime()),
+        0,
+      )
+    : null;
   await client.query(
     `insert into tournament_daily_result
        (tournament_id, participant_id, tournament_day, player_local_date,
@@ -455,11 +421,22 @@ async function finalizeSessionResult(
         gameCompleted: result.gameCompleted,
         incompleteResultPolicy: session.rules_snapshot.incompleteResultPolicy,
         provisional: finalizedAt.getTime() < context.endsAt.getTime(),
+        ...(activeDurationMs === null ? {} : { activeDurationMs }),
       }),
       finalizedAt,
     ],
   );
-  await refreshDayPlacements(client, context);
+  await refreshDailyDayPlacements(client, context.tournamentId, context.tournamentDay, {
+    config: {
+      regularSource: context.config.regularSource,
+      dailyDays: context.config.dailyDays,
+      dailyMetric: context.config.dailyMetric,
+      bestDays: context.config.bestDays,
+    },
+    ...(context.rulesSnapshot.dailyPlacePoints === undefined
+      ? {}
+      : { dailyPlacePoints: context.rulesSnapshot.dailyPlacePoints }),
+  });
   await rebuildDailyAggregateStandings(client, context.tournamentId, {
     config: {
       regularSource: context.config.regularSource,

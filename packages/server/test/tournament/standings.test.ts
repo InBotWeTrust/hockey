@@ -25,6 +25,21 @@ describe('daily aggregate standings', () => {
     ]);
   });
 
+  it('places the faster classic result first when goals are tied', () => {
+    expect(
+      awardSharedPlacePoints(
+        [
+          { participantId: 'slow', value: 78, durationMs: 240_000 },
+          { participantId: 'fast', value: 78, durationMs: 180_000 },
+        ],
+        [10, 6],
+      ),
+    ).toEqual([
+      { participantId: 'fast', place: 1, points: 10 },
+      { participantId: 'slow', place: 2, points: 6 },
+    ]);
+  });
+
   it('counts only complete days and keeps the best N results', () => {
     const standings = calculateDailyAggregateStandings(
       [
@@ -52,6 +67,33 @@ describe('daily aggregate standings', () => {
       { metric: 'accuracy_average', bestDays: null },
     );
     expect(standings[0]?.value).toBe(0.5);
+  });
+
+  it('ranks tied classic totals by the summed duration of counted games', () => {
+    const standings = calculateDailyAggregateStandings(
+      [
+        {
+          participantId: 'slow',
+          day: 1,
+          goals: 78,
+          shots: 90,
+          completed: true,
+          durationMs: 240_000,
+        },
+        {
+          participantId: 'fast',
+          day: 1,
+          goals: 78,
+          shots: 90,
+          completed: true,
+          durationMs: 180_000,
+        },
+      ],
+      { metric: 'goals_sum', bestDays: null },
+    );
+
+    expect(standings.map((standing) => standing.participantId)).toEqual(['fast', 'slow']);
+    expect(standings.map((standing) => standing.totalDurationMs)).toEqual([180_000, 240_000]);
   });
 });
 

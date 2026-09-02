@@ -81,7 +81,9 @@ describe('TournamentAdmin', () => {
     );
 
     fireEvent.click(await screen.findByRole('button', { name: 'Создать' }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Название' }), {
+    const titleInput = screen.getByRole('textbox', { name: 'Название' });
+    expect(titleInput).toHaveAttribute('maxlength', '60');
+    fireEvent.change(titleInput, {
       target: { value: 'Кубок расписания' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Далее' }));

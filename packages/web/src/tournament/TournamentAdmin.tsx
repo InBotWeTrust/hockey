@@ -2069,10 +2069,11 @@ export function TournamentAdmin(): JSX.Element {
                   <div className="tournament-admin-grid tournament-admin-grid--single">
                     <TournamentAdminField
                       label="Название"
-                      help="Так турнир будет называться в каталоге, календаре и уведомлениях."
+                      help="Так турнир будет называться в каталоге, календаре и уведомлениях. До 60 символов."
                     >
                       <input
                         aria-label="Название"
+                        maxLength={60}
                         value={draft.title}
                         onChange={(event) => setDraft({ ...draft, title: event.target.value })}
                       />

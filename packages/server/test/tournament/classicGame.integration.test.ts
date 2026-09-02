@@ -13,6 +13,7 @@ import {
   submitClassicGameShot,
 } from '../../src/tournament/classicGame.js';
 import { parseTournamentConfig } from '../../src/tournament/config.js';
+import { getTournamentStandings } from '../../src/tournament/service.js';
 import {
   createTestPool,
   getTestUrls,
@@ -28,6 +29,8 @@ const TOURNAMENT_ID = '00000000-0000-4000-8000-000000000803';
 const PARTICIPANT_ID = '00000000-0000-4000-8000-000000000804';
 const MATCHDAY_ID = '00000000-0000-4000-8000-000000000805';
 const REVISION_ID = '00000000-0000-4000-8000-000000000806';
+const SECOND_PLAYER_ID = '00000000-0000-4000-8000-000000000807';
+const SECOND_PARTICIPANT_ID = '00000000-0000-4000-8000-000000000808';
 const NOW = new Date('2030-09-01T10:00:00.000Z');
 const SEED_SECRET = 'classic-integration-seed-secret';
 const JWT_SECRET = 'classic-game-route-access-secret';
@@ -317,6 +320,84 @@ describe.skipIf(!hasIntegrationEnv)('classic tournament game integration', () =>
     expect(user.rows[0]!.shots).toBe(3);
     expect(result.rows).toEqual([{ shots: 3, completed: true }]);
     expect((await pool.query(`select id from day_pool`)).rowCount).toBe(0);
+  });
+
+  it('rebuilds existing tied classic standings with the faster player first', async () => {
+    await pool.query(
+      `insert into users (id, display_name, timezone, role, level)
+       values ($1, 'Быстрый игрок', 'Europe/Moscow', 'player', 2)`,
+      [SECOND_PLAYER_ID],
+    );
+    await pool.query(
+      `insert into tournament_participant (id, tournament_id, user_id, state, joined_at)
+       values ($1, $2, $3, 'approved', $4)`,
+      [SECOND_PARTICIPANT_ID, TOURNAMENT_ID, SECOND_PLAYER_ID, NOW],
+    );
+    const slowSessionId = '00000000-0000-4000-8000-000000000809';
+    const fastSessionId = '00000000-0000-4000-8000-000000000810';
+    for (const [sessionId, participantId, durationMs] of [
+      [slowSessionId, PARTICIPANT_ID, 240_000],
+      [fastSessionId, SECOND_PARTICIPANT_ID, 180_000],
+    ] as const) {
+      await pool.query(
+        `insert into tournament_classic_session
+           (id, tournament_id, participant_id, matchday_id, tournament_day, state,
+            current_period, rules_snapshot, game_core_version, session_seed, closes_at, closed_at)
+         values ($1, $2, $3, $4, 1, 'closed', 3, $5, 1, $6, $7, $7)`,
+        [
+          sessionId,
+          TOURNAMENT_ID,
+          participantId,
+          MATCHDAY_ID,
+          JSON.stringify(classicConfig().classicRules),
+          `seed-${sessionId}`,
+          new Date(NOW.getTime() + durationMs),
+        ],
+      );
+      await pool.query(
+        `insert into tournament_classic_period
+           (session_id, period_number, started_at, ended_at, shots_taken, goals, closed_reason)
+         values ($1, 1, $2, $3, 90, 78, 'quota')`,
+        [sessionId, NOW, new Date(NOW.getTime() + durationMs)],
+      );
+      await pool.query(
+        `insert into tournament_daily_result
+           (tournament_id, participant_id, tournament_day, player_local_date,
+            goals, shots, accuracy, place_points, completed, source_snapshot, finalized_at)
+         values ($1, $2, 1, '2030-09-01', 78, 90, 78.0 / 90.0, 0, true, $3, $4)`,
+        [
+          TOURNAMENT_ID,
+          participantId,
+          JSON.stringify({
+            source: 'tournament_classic',
+            sessionId,
+            gameCompleted: true,
+            incompleteResultPolicy: 'completed_game',
+          }),
+          new Date(NOW.getTime() + durationMs),
+        ],
+      );
+    }
+
+    await getTournamentStandings(pool, TOURNAMENT_ID);
+
+    const standings = await pool.query<{
+      user_id: string;
+      rank: number;
+      total_duration_ms: number;
+    }>(
+      `select participant.user_id, standing.rank,
+              (standing.metrics->>'totalDurationMs')::int as total_duration_ms
+         from tournament_standing standing
+         join tournament_participant participant on participant.id = standing.participant_id
+        where standing.tournament_id = $1
+        order by standing.rank`,
+      [TOURNAMENT_ID],
+    );
+    expect(standings.rows).toEqual([
+      { user_id: SECOND_PLAYER_ID, rank: 1, total_duration_ms: 180_000 },
+      { user_id: PLAYER_ID, rank: 2, total_duration_ms: 240_000 },
+    ]);
   });
 
   it('runs tournament lifecycle only after the classic game becomes terminal', async () => {
